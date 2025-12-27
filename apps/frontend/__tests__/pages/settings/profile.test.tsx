@@ -12,11 +12,30 @@ const renderWithI18n = (ui: React.ReactElement) => {
 const mockRefetch = jest.fn();
 const mockUpdateProfile = jest.fn();
 
-let mockQueryResult = {
+let mockProfileQueryResult = {
   data: null as { myProfile: unknown } | null,
   loading: false,
   error: null as Error | null,
   refetch: mockRefetch,
+};
+
+let mockCompletionQueryResult = {
+  data: {
+    myProfileCompletion: {
+      percentage: 75,
+      isComplete: false,
+      coreFieldsComplete: {
+        hasName: true,
+        hasPhoto: false,
+        hasTimezone: true,
+        hasAddress: true,
+      },
+      suggestedNextSteps: ["Add a profile photo"],
+    },
+  },
+  loading: false,
+  error: null as Error | null,
+  refetch: jest.fn(),
 };
 
 let mockMutationResult = {
@@ -24,7 +43,21 @@ let mockMutationResult = {
 };
 
 jest.mock("@apollo/client/react", () => ({
-  useQuery: () => mockQueryResult,
+  useQuery: (query: unknown) => {
+    const queryModule = require("@/lib/graphql/profile");
+    if (query === queryModule.GET_MY_PROFILE) return mockProfileQueryResult;
+    if (query === queryModule.GET_MY_PROFILE_COMPLETION)
+      return mockCompletionQueryResult;
+    return { data: null, loading: false, error: null };
+  },
+  useMutation: () => [mockUpdateProfile, mockMutationResult],
+  useLazyQuery: () => [jest.fn(), { data: null, loading: false, error: null }],
+}));
+
+// Mock @apollo/client for components that import directly from it
+jest.mock("@apollo/client", () => ({
+  ...jest.requireActual("@apollo/client"),
+  useLazyQuery: () => [jest.fn(), { data: null, loading: false, error: null }],
   useMutation: () => [mockUpdateProfile, mockMutationResult],
 }));
 
@@ -46,18 +79,36 @@ const mockProfile = {
 describe("ProfileSettingsPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockQueryResult = {
+    mockProfileQueryResult = {
       data: { myProfile: mockProfile },
       loading: false,
       error: null,
       refetch: mockRefetch,
+    };
+    mockCompletionQueryResult = {
+      data: {
+        myProfileCompletion: {
+          percentage: 75,
+          isComplete: false,
+          coreFieldsComplete: {
+            hasName: true,
+            hasPhoto: false,
+            hasTimezone: true,
+            hasAddress: true,
+          },
+          suggestedNextSteps: ["Add a profile photo"],
+        },
+      },
+      loading: false,
+      error: null,
+      refetch: jest.fn(),
     };
     mockMutationResult = { loading: false };
   });
 
   describe("loading state", () => {
     it("should show loading skeleton when data is loading", () => {
-      mockQueryResult = {
+      mockProfileQueryResult = {
         data: null,
         loading: true,
         error: null,
@@ -72,7 +123,7 @@ describe("ProfileSettingsPage", () => {
 
   describe("error state", () => {
     it("should show error message when query fails", () => {
-      mockQueryResult = {
+      mockProfileQueryResult = {
         data: null,
         loading: false,
         error: new Error("Failed to load"),

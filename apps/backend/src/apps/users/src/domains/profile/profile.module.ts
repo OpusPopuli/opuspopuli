@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { StorageModule } from '@qckstrt/storage-provider';
 
 import { UserProfileEntity } from 'src/db/entities/user-profile.entity';
 import { UserAddressEntity } from 'src/db/entities/user-address.entity';
@@ -17,6 +18,7 @@ import { ProfileResolver } from './profile.resolver';
       NotificationPreferenceEntity,
       UserConsentEntity,
     ]),
+    StorageModule,
   ],
   providers: [ProfileService, ProfileResolver],
   exports: [ProfileService],

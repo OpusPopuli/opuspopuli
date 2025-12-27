@@ -10,6 +10,13 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { UserEntity } from './user.entity';
+import {
+  PoliticalAffiliation,
+  VotingFrequency,
+  EducationLevel,
+  IncomeRange,
+  HomeownerStatus,
+} from '../../common/enums/profile.enum';
 
 @ObjectType()
 @Entity('user_profiles')
@@ -81,6 +88,50 @@ export class UserProfileEntity extends BaseEntity {
   @Field({ nullable: true })
   @Column({ type: 'text', nullable: true })
   public bio?: string;
+
+  // Profile Visibility
+  @Field()
+  @Column({ type: 'boolean', default: false })
+  public isPublic!: boolean;
+
+  // Avatar Storage (Supabase storage key)
+  @Field({ nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  public avatarStorageKey?: string;
+
+  // Civic Fields
+  @Field(() => PoliticalAffiliation, { nullable: true })
+  @Column({ type: 'enum', enum: PoliticalAffiliation, nullable: true })
+  public politicalAffiliation?: PoliticalAffiliation;
+
+  @Field(() => VotingFrequency, { nullable: true })
+  @Column({ type: 'enum', enum: VotingFrequency, nullable: true })
+  public votingFrequency?: VotingFrequency;
+
+  @Field(() => [String], { nullable: true })
+  @Column({ type: 'text', array: true, nullable: true })
+  public policyPriorities?: string[];
+
+  // Demographic Fields
+  @Field({ nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  public occupation?: string;
+
+  @Field(() => EducationLevel, { nullable: true })
+  @Column({ type: 'enum', enum: EducationLevel, nullable: true })
+  public educationLevel?: EducationLevel;
+
+  @Field(() => IncomeRange, { nullable: true })
+  @Column({ type: 'enum', enum: IncomeRange, nullable: true })
+  public incomeRange?: IncomeRange;
+
+  @Field({ nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  public householdSize?: string;
+
+  @Field(() => HomeownerStatus, { nullable: true })
+  @Column({ type: 'enum', enum: HomeownerStatus, nullable: true })
+  public homeownerStatus?: HomeownerStatus;
 
   @Field()
   @CreateDateColumn({

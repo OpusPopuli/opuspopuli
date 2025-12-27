@@ -566,4 +566,214 @@ describe('ProfileService', () => {
       expect(result[1].type).toBe(ConsentType.PRIVACY_POLICY);
     });
   });
+
+  // ============================================
+  // Profile Completion Tests
+  // ============================================
+
+  describe('getProfileCompletion', () => {
+    it('should return 0% completion for empty profile', async () => {
+      profileRepo.findOne = jest.fn().mockResolvedValue(null);
+      addressRepo.find = jest.fn().mockResolvedValue([]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.percentage).toBe(0);
+      expect(result.isComplete).toBe(false);
+      expect(result.coreFieldsComplete.hasName).toBe(false);
+      expect(result.coreFieldsComplete.hasPhoto).toBe(false);
+      expect(result.coreFieldsComplete.hasTimezone).toBe(false);
+      expect(result.coreFieldsComplete.hasAddress).toBe(false);
+    });
+
+    it('should return 25% for profile with name only', async () => {
+      profileRepo.findOne = jest.fn().mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        timezone: null,
+        avatarUrl: null,
+      });
+      addressRepo.find = jest.fn().mockResolvedValue([]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.percentage).toBe(25);
+      expect(result.coreFieldsComplete.hasName).toBe(true);
+      expect(result.coreFieldsComplete.hasPhoto).toBe(false);
+    });
+
+    it('should return 100% for complete core profile', async () => {
+      profileRepo.findOne = jest.fn().mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        timezone: 'America/New_York',
+        avatarUrl: 'https://example.com/avatar.jpg',
+      });
+      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.percentage).toBe(100);
+      expect(result.isComplete).toBe(true);
+    });
+
+    it('should add civic field bonus percentage', async () => {
+      profileRepo.findOne = jest.fn().mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        timezone: 'America/New_York',
+        avatarUrl: 'https://example.com/avatar.jpg',
+        politicalAffiliation: 'independent',
+        votingFrequency: 'always',
+      });
+      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.percentage).toBe(110); // 100% core + 10% civic (2 fields * 5%)
+    });
+
+    it('should add demographic field bonus percentage', async () => {
+      profileRepo.findOne = jest.fn().mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        timezone: 'America/New_York',
+        avatarUrl: 'https://example.com/avatar.jpg',
+        occupation: 'Engineer',
+        educationLevel: 'bachelor',
+      });
+      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.percentage).toBe(106); // 100% core + 6% demographic (2 fields * 3%)
+    });
+
+    it('should cap percentage at 130%', async () => {
+      profileRepo.findOne = jest.fn().mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        timezone: 'America/New_York',
+        avatarUrl: 'https://example.com/avatar.jpg',
+        politicalAffiliation: 'independent',
+        votingFrequency: 'always',
+        policyPriorities: ['healthcare', 'education'],
+        occupation: 'Engineer',
+        educationLevel: 'bachelor',
+        incomeRange: '50k_75k',
+        householdSize: '2',
+        homeownerStatus: 'own',
+      });
+      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.percentage).toBe(130); // Capped at 130%
+    });
+
+    it('should return suggested steps for incomplete profile', async () => {
+      profileRepo.findOne = jest.fn().mockResolvedValue(null);
+      addressRepo.find = jest.fn().mockResolvedValue([]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.suggestedNextSteps.length).toBeGreaterThan(0);
+      expect(result.suggestedNextSteps).toContain(
+        'Add your name to personalize your profile',
+      );
+    });
+
+    it('should suggest civic fields when core is complete', async () => {
+      profileRepo.findOne = jest.fn().mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        timezone: 'America/New_York',
+        avatarUrl: 'https://example.com/avatar.jpg',
+      });
+      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.suggestedNextSteps).toContain(
+        'Share your political affiliation for personalized insights',
+      );
+    });
+
+    it('should use displayName if firstName is not set', async () => {
+      profileRepo.findOne = jest.fn().mockResolvedValue({
+        ...mockProfile,
+        firstName: null,
+        displayName: 'johndoe',
+        timezone: null,
+        avatarUrl: null,
+      });
+      addressRepo.find = jest.fn().mockResolvedValue([]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.coreFieldsComplete.hasName).toBe(true);
+    });
+
+    it('should use avatarStorageKey if avatarUrl is not set', async () => {
+      profileRepo.findOne = jest.fn().mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        timezone: null,
+        avatarUrl: null,
+        avatarStorageKey: 'avatars/user-123/photo.jpg',
+      });
+      addressRepo.find = jest.fn().mockResolvedValue([]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.coreFieldsComplete.hasPhoto).toBe(true);
+    });
+  });
+
+  // ============================================
+  // Avatar Upload Tests
+  // ============================================
+
+  describe('getAvatarUploadUrl', () => {
+    it('should throw error when storage provider not configured', async () => {
+      await expect(
+        service.getAvatarUploadUrl(mockUserId, 'photo.jpg'),
+      ).rejects.toThrow('Storage provider not configured');
+    });
+  });
+
+  describe('updateAvatarStorageKey', () => {
+    it('should update avatar storage key', async () => {
+      const storageKey = 'avatars/user-123/photo.jpg';
+      const updatedProfile = { ...mockProfile, avatarStorageKey: storageKey };
+
+      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
+      profileRepo.save = jest.fn().mockResolvedValue(updatedProfile);
+
+      const result = await service.updateAvatarStorageKey(
+        mockUserId,
+        storageKey,
+      );
+
+      expect(result.avatarStorageKey).toBe(storageKey);
+      expect(profileRepo.save).toHaveBeenCalled();
+    });
+
+    it('should create profile if not exists and update storage key', async () => {
+      const storageKey = 'avatars/user-123/photo.jpg';
+      const newProfile = { userId: mockUserId, avatarStorageKey: storageKey };
+
+      profileRepo.findOne = jest.fn().mockResolvedValue(null);
+      profileRepo.create = jest.fn().mockReturnValue(newProfile);
+      profileRepo.save = jest.fn().mockResolvedValue(newProfile);
+
+      const result = await service.updateAvatarStorageKey(
+        mockUserId,
+        storageKey,
+      );
+
+      expect(result.avatarStorageKey).toBe(storageKey);
+      expect(profileRepo.create).toHaveBeenCalled();
+    });
+  });
 });

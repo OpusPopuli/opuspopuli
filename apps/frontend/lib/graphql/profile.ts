@@ -6,6 +6,66 @@ import { gql } from "@apollo/client";
 
 export type SupportedLanguage = "en" | "es";
 
+// Profile Enhancement Enums
+export type PoliticalAffiliation =
+  | "democrat"
+  | "republican"
+  | "independent"
+  | "libertarian"
+  | "green"
+  | "other"
+  | "prefer_not_to_say";
+
+export type VotingFrequency =
+  | "every_election"
+  | "most_elections"
+  | "some_elections"
+  | "rarely"
+  | "never"
+  | "prefer_not_to_say";
+
+export type EducationLevel =
+  | "high_school"
+  | "some_college"
+  | "associate"
+  | "bachelor"
+  | "master"
+  | "doctorate"
+  | "trade_school"
+  | "prefer_not_to_say";
+
+export type IncomeRange =
+  | "under_25k"
+  | "25k_50k"
+  | "50k_75k"
+  | "75k_100k"
+  | "100k_150k"
+  | "150k_200k"
+  | "over_200k"
+  | "prefer_not_to_say";
+
+export type HomeownerStatus =
+  | "own"
+  | "rent"
+  | "living_with_family"
+  | "other"
+  | "prefer_not_to_say";
+
+// Profile Completion Types
+export interface CoreFieldsStatus {
+  hasName: boolean;
+  hasPhoto: boolean;
+  hasTimezone: boolean;
+  hasAddress: boolean;
+}
+
+export interface ProfileCompletion {
+  percentage: number;
+  isComplete: boolean;
+  coreFieldsComplete: CoreFieldsStatus;
+  suggestedNextSteps: string[];
+}
+
 export interface UserProfile {
   id: string;
   userId: string;
@@ -21,7 +81,20 @@ export interface UserProfile {
   locale: string;
   preferredLanguage: SupportedLanguage;
   avatarUrl?: string;
+  avatarStorageKey?: string;
   bio?: string;
+  // Profile Visibility
+  isPublic: boolean;
+  // Civic Fields
+  politicalAffiliation?: PoliticalAffiliation;
+  votingFrequency?: VotingFrequency;
+  policyPriorities?: string[];
+  // Demographic Fields
+  occupation?: string;
+  educationLevel?: EducationLevel;
+  incomeRange?: IncomeRange;
+  householdSize?: string;
+  homeownerStatus?: HomeownerStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,7 +111,20 @@ export interface UpdateProfileInput {
   locale?: string;
   preferredLanguage?: SupportedLanguage;
   avatarUrl?: string;
+  avatarStorageKey?: string;
   bio?: string;
+  // Profile Visibility
+  isPublic?: boolean;
+  // Civic Fields
+  politicalAffiliation?: PoliticalAffiliation;
+  votingFrequency?: VotingFrequency;
+  policyPriorities?: string[];
+  // Demographic Fields
+  occupation?: string;
+  educationLevel?: EducationLevel;
+  incomeRange?: IncomeRange;
+  householdSize?: string;
+  homeownerStatus?: HomeownerStatus;
 }
 
 export type AddressType = "residential" | "mailing" | "business" | "voting";
@@ -212,7 +298,17 @@ export const GET_MY_PROFILE = gql`
       locale
       preferredLanguage
       avatarUrl
+      avatarStorageKey
       bio
+      isPublic
+      politicalAffiliation
+      votingFrequency
+      policyPriorities
+      occupation
+      educationLevel
+      incomeRange
+      householdSize
+      homeownerStatus
       createdAt
       updatedAt
     }
@@ -235,8 +331,58 @@ export const UPDATE_MY_PROFILE = gql`
       locale
       preferredLanguage
       avatarUrl
+      avatarStorageKey
       bio
+      isPublic
+      politicalAffiliation
+      votingFrequency
+      policyPriorities
+      occupation
+      educationLevel
+      incomeRange
+      householdSize
+      homeownerStatus
       updatedAt
+    }
+  }
+`;
+
+// ============================================
+// Profile Completion Queries
+// ============================================
+
+export const GET_MY_PROFILE_COMPLETION = gql`
+  query MyProfileCompletion {
+    myProfileCompletion {
+      percentage
+      isComplete
+      coreFieldsComplete {
+        hasName
+        hasPhoto
+        hasTimezone
+        hasAddress
+      }
+      suggestedNextSteps
+    }
+  }
+`;
+
+// ============================================
+// Avatar Upload Queries & Mutations
+// ============================================
+
+export const GET_AVATAR_UPLOAD_URL = gql`
+  query AvatarUploadUrl($filename: String!) {
+    avatarUploadUrl(filename: $filename)
+  }
+`;
+
+export const UPDATE_AVATAR_STORAGE_KEY = gql`
+  mutation UpdateAvatarStorageKey($storageKey: String!) {
+    updateAvatarStorageKey(storageKey: $storageKey) {
+      id
+      avatarUrl
+      avatarStorageKey
     }
   }
 `;
@@ -519,4 +665,16 @@ export interface WithdrawConsentData {
 
 export interface HasValidConsentData {
   hasValidConsent: boolean;
+}
+
+export interface MyProfileCompletionData {
+  myProfileCompletion: ProfileCompletion;
+}
+
+export interface AvatarUploadUrlData {
+  avatarUploadUrl: string;
+}
+
+export interface UpdateAvatarStorageKeyData {
+  updateAvatarStorageKey: UserProfile;
 }

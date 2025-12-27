@@ -27,7 +27,134 @@
     "bioHint": "Brief description for your profile",
     "bioPlaceholder": "Tell us a little about yourself...",
     "saveSuccess": "Profile saved successfully!",
-    "loadError": "Failed to load profile. Please try again."
+    "loadError": "Failed to load profile. Please try again.",
+    "completion": {
+      "title": "Profile Completion",
+      "complete": "Your profile is complete!",
+      "nextSteps": "Suggested next steps:",
+      "fields": {
+        "name": "Name",
+        "photo": "Photo",
+        "timezone": "Timezone",
+        "address": "Address"
+      }
+    },
+    "visibility": {
+      "label": "Profile Visibility",
+      "public": "Public",
+      "private": "Private",
+      "toggle": "Toggle profile visibility",
+      "infoLabel": "Visibility information",
+      "hint": "Public profiles can be discovered by other users. Private profiles are only visible to you."
+    },
+    "avatar": {
+      "upload": "Upload profile photo",
+      "change": "Change profile photo",
+      "alt": "Profile photo",
+      "hint": "Click to upload a photo",
+      "errorInvalidType": "Please select a JPEG, PNG, or WebP image",
+      "errorTooLarge": "Image must be less than 5MB",
+      "errorUploadUrl": "Failed to get upload URL",
+      "errorUpload": "Failed to upload image",
+      "errorSave": "Failed to save avatar",
+      "errorGeneric": "An error occurred"
+    },
+    "civic": {
+      "title": "Civic Information",
+      "optional": "(Optional)",
+      "description": "This information helps us provide more relevant civic engagement recommendations and ballot information tailored to your interests.",
+      "politicalAffiliation": "Political Affiliation",
+      "votingFrequency": "Voting Frequency",
+      "policyPriorities": "Policy Priorities",
+      "selectOption": "Select an option",
+      "selectMultiple": "(Select all that apply)",
+      "affiliations": {
+        "democrat": "Democrat",
+        "republican": "Republican",
+        "independent": "Independent",
+        "libertarian": "Libertarian",
+        "green": "Green Party",
+        "other": "Other",
+        "prefer_not_to_say": "Prefer not to say"
+      },
+      "frequencies": {
+        "every_election": "Every election",
+        "most_elections": "Most elections",
+        "some_elections": "Some elections",
+        "rarely": "Rarely",
+        "never": "Never",
+        "prefer_not_to_say": "Prefer not to say"
+      },
+      "priorities": {
+        "healthcare": "Healthcare",
+        "economy": "Economy",
+        "education": "Education",
+        "environment": "Environment",
+        "immigration": "Immigration",
+        "gun_rights": "Gun Rights",
+        "gun_control": "Gun Control",
+        "social_security": "Social Security",
+        "taxes": "Taxes",
+        "criminal_justice": "Criminal Justice",
+        "housing": "Housing",
+        "infrastructure": "Infrastructure",
+        "national_security": "National Security",
+        "civil_rights": "Civil Rights",
+        "womens_rights": "Women's Rights",
+        "lgbtq_rights": "LGBTQ+ Rights",
+        "veterans_affairs": "Veterans Affairs",
+        "labor_unions": "Labor Unions",
+        "small_business": "Small Business",
+        "agriculture": "Agriculture"
+      }
+    },
+    "demographic": {
+      "title": "Demographic Information",
+      "optional": "(Optional)",
+      "description": "This information helps us better understand how policies and ballot measures may affect you personally. All information is kept private and secure.",
+      "occupation": "Occupation",
+      "occupationPlaceholder": "e.g., Software Engineer, Teacher, Nurse",
+      "educationLevel": "Education Level",
+      "incomeRange": "Annual Household Income",
+      "householdSize": "Household Size",
+      "homeownerStatus": "Housing Status",
+      "selectOption": "Select an option",
+      "education": {
+        "high_school": "High School",
+        "some_college": "Some College",
+        "associate": "Associate Degree",
+        "bachelor": "Bachelor's Degree",
+        "master": "Master's Degree",
+        "doctorate": "Doctorate",
+        "trade_school": "Trade School",
+        "prefer_not_to_say": "Prefer not to say"
+      },
+      "income": {
+        "under_25k": "Under $25,000",
+        "25k_50k": "$25,000 - $50,000",
+        "50k_75k": "$50,000 - $75,000",
+        "75k_100k": "$75,000 - $100,000",
+        "100k_150k": "$100,000 - $150,000",
+        "150k_200k": "$150,000 - $200,000",
+        "over_200k": "Over $200,000",
+        "prefer_not_to_say": "Prefer not to say"
+      },
+      "householdSizes": {
+        "1": "1 person",
+        "2": "2 people",
+        "3": "3 people",
+        "4": "4 people",
+        "5": "5 people",
+        "6plus": "6 or more"
+      },
+      "homeowner": {
+        "own": "Own",
+        "rent": "Rent",
+        "living_with_family": "Living with family",
+        "other": "Other",
+        "prefer_not_to_say": "Prefer not to say"
+      }
+    }
   },
   "timezones": {
     "pacific": "Pacific Time (PT)",

@@ -21,6 +21,7 @@ import {
   BulkUpdateConsentsDto,
   WithdrawConsentDto,
 } from './dto/consent.dto';
+import { ProfileCompletionResult } from './models/profile-completion.model';
 
 interface GqlContext {
   req: {
@@ -70,6 +71,43 @@ export class ProfileResolver {
   ): Promise<UserProfileEntity> {
     const user = getUserFromContext(context);
     return this.profileService.updateProfile(user.id, input);
+  }
+
+  // ============================================
+  // Profile Completion Queries
+  // ============================================
+
+  @Query(() => ProfileCompletionResult, { name: 'myProfileCompletion' })
+  @UseGuards(AuthGuard)
+  async getMyProfileCompletion(
+    @Context() context: GqlContext,
+  ): Promise<ProfileCompletionResult> {
+    const user = getUserFromContext(context);
+    return this.profileService.getProfileCompletion(user.id);
+  }
+
+  // ============================================
+  // Avatar Upload Queries & Mutations
+  // ============================================
+
+  @Query(() => String, { name: 'avatarUploadUrl' })
+  @UseGuards(AuthGuard)
+  async getAvatarUploadUrl(
+    @Args('filename') filename: string,
+    @Context() context: GqlContext,
+  ): Promise<string> {
+    const user = getUserFromContext(context);
+    return this.profileService.getAvatarUploadUrl(user.id, filename);
+  }
+
+  @Mutation(() => UserProfileEntity)
+  @UseGuards(AuthGuard)
+  async updateAvatarStorageKey(
+    @Args('storageKey') storageKey: string,
+    @Context() context: GqlContext,
+  ): Promise<UserProfileEntity> {
+    const user = getUserFromContext(context);
+    return this.profileService.updateAvatarStorageKey(user.id, storageKey);
   }
 
   // ============================================

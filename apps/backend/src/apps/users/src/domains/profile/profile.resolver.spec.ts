@@ -439,4 +439,100 @@ describe('ProfileResolver', () => {
       expect(result).toBe(true);
     });
   });
+
+  // ============================================
+  // Profile Completion Tests
+  // ============================================
+
+  describe('getMyProfileCompletion', () => {
+    const mockCompletion = {
+      percentage: 75,
+      isComplete: false,
+      coreFieldsComplete: {
+        hasName: true,
+        hasPhoto: false,
+        hasTimezone: true,
+        hasAddress: true,
+      },
+      suggestedNextSteps: ['Upload a profile photo'],
+    };
+
+    it('should return profile completion for authenticated user', async () => {
+      profileService.getProfileCompletion = jest
+        .fn()
+        .mockResolvedValue(mockCompletion);
+
+      const result = await resolver.getMyProfileCompletion(mockContext as any);
+
+      expect(result).toEqual(mockCompletion);
+      expect(profileService.getProfileCompletion).toHaveBeenCalledWith(
+        mockUserId,
+      );
+    });
+
+    it('should throw UserInputError if user not authenticated', async () => {
+      await expect(
+        resolver.getMyProfileCompletion(mockContextNoUser as any),
+      ).rejects.toThrow(UserInputError);
+    });
+  });
+
+  // ============================================
+  // Avatar Upload Tests
+  // ============================================
+
+  describe('getAvatarUploadUrl', () => {
+    it('should return upload URL for authenticated user', async () => {
+      const mockUrl = 'https://storage.example.com/upload?signed=abc123';
+      profileService.getAvatarUploadUrl = jest.fn().mockResolvedValue(mockUrl);
+
+      const result = await resolver.getAvatarUploadUrl(
+        'photo.jpg',
+        mockContext as any,
+      );
+
+      expect(result).toBe(mockUrl);
+      expect(profileService.getAvatarUploadUrl).toHaveBeenCalledWith(
+        mockUserId,
+        'photo.jpg',
+      );
+    });
+
+    it('should throw UserInputError if user not authenticated', async () => {
+      await expect(
+        resolver.getAvatarUploadUrl('photo.jpg', mockContextNoUser as any),
+      ).rejects.toThrow(UserInputError);
+    });
+  });
+
+  describe('updateAvatarStorageKey', () => {
+    it('should update avatar storage key for authenticated user', async () => {
+      const storageKey = 'avatars/user-123/photo.jpg';
+      const updatedProfile = { ...mockProfile, avatarStorageKey: storageKey };
+
+      profileService.updateAvatarStorageKey = jest
+        .fn()
+        .mockResolvedValue(updatedProfile);
+
+      const result = await resolver.updateAvatarStorageKey(
+        storageKey,
+        mockContext as any,
+      );
+
+      expect(result).toEqual(updatedProfile);
+      expect(profileService.updateAvatarStorageKey).toHaveBeenCalledWith(
+        mockUserId,
+        storageKey,
+      );
+    });
+
+    it('should throw UserInputError if user not authenticated', async () => {
+      await expect(
+        resolver.updateAvatarStorageKey(
+          'avatars/user-123/photo.jpg',
+          mockContextNoUser as any,
+        ),
+      ).rejects.toThrow(UserInputError);
+    });
+  });
 });

@@ -91,6 +91,23 @@ let mockProfileQuery = {
   loading: false,
   error: null,
 };
+let mockProfileCompletionQuery = {
+  data: {
+    myProfileCompletion: {
+      percentage: 75,
+      isComplete: false,
+      coreFieldsComplete: {
+        hasName: true,
+        hasPhoto: false,
+        hasTimezone: true,
+        hasAddress: true,
+      },
+      suggestedNextSteps: ["Add a profile photo"],
+    },
+  },
+  loading: false,
+  error: null,
+};
 let mockAddressesQuery = {
   data: { myAddresses: mockAddresses },
   loading: false,
@@ -114,12 +131,22 @@ jest.mock("@apollo/client/react", () => ({
   useQuery: (query: unknown) => {
     const queryModule = require("@/lib/graphql/profile");
     if (query === queryModule.GET_MY_PROFILE) return mockProfileQuery;
+    if (query === queryModule.GET_MY_PROFILE_COMPLETION)
+      return mockProfileCompletionQuery;
     if (query === queryModule.GET_MY_ADDRESSES) return mockAddressesQuery;
     if (query === queryModule.GET_MY_NOTIFICATION_SETTINGS)
       return mockNotificationsQuery;
     if (query === queryModule.GET_MY_CONSENTS) return mockConsentsQuery;
     return { data: null, loading: false, error: null };
   },
+  useMutation: () => [jest.fn(), { loading: false }],
+  useLazyQuery: () => [jest.fn(), { data: null, loading: false, error: null }],
+}));
+
+// Mock @apollo/client for components that import directly from it
+jest.mock("@apollo/client", () => ({
+  ...jest.requireActual("@apollo/client"),
+  useLazyQuery: () => [jest.fn(), { data: null, loading: false, error: null }],
   useMutation: () => [jest.fn(), { loading: false }],
 }));
 

@@ -1,6 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { IStorageProvider } from '@qckstrt/storage-provider';
 
 import { UserProfileEntity } from 'src/db/entities/user-profile.entity';
 import { UserAddressEntity } from 'src/db/entities/user-address.entity';
@@ -10,14 +17,18 @@ import {
   ConsentStatus,
   ConsentType,
 } from 'src/db/entities/user-consent.entity';
+import { IFileConfig } from 'src/config';
 
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateAddressDto, UpdateAddressDto } from './dto/address.dto';
 import { UpdateNotificationPreferencesDto } from './dto/notification-preferences.dto';
 import { UpdateConsentDto } from './dto/consent.dto';
+import { ProfileCompletionResult } from './models/profile-completion.model';
 
 @Injectable()
 export class ProfileService {
+  private fileConfig?: IFileConfig;
+
   constructor(
     @InjectRepository(UserProfileEntity)
     private readonly profileRepository: Repository<UserProfileEntity>,
@@ -27,7 +38,14 @@ export class ProfileService {
     private readonly notificationRepository: Repository<NotificationPreferenceEntity>,
     @InjectRepository(UserConsentEntity)
     private readonly consentRepository: Repository<UserConsentEntity>,
-  ) {}
+    @Optional()
+    @Inject('STORAGE_PROVIDER')
+    private readonly storage?: IStorageProvider,
+    @Optional()
+    private readonly configService?: ConfigService,
+  ) {
+    this.fileConfig = configService?.get<IFileConfig>('file');
+  }
 
   // ============================================
   // Profile Methods
@@ -54,6 +72,137 @@ export class ProfileService {
 
     // Update only provided fields
     Object.assign(profile, updateDto);
+
+    return this.profileRepository.save(profile);
+  }
+
+  // ============================================
+  // Profile Completion Methods
+  // ============================================
+
+  async getProfileCompletion(userId: string): Promise<ProfileCompletionResult> {
+    const profile = await this.getProfile(userId);
+    const addresses = await this.getAddresses(userId);
+
+    // Core fields: Name + Photo + Timezone + Address = 100% when complete
+    const coreFieldsComplete = {
+      hasName: !!(profile?.firstName || profile?.displayName),
+      hasPhoto: !!(profile?.avatarUrl || profile?.avatarStorageKey),
+      hasTimezone: !!profile?.timezone,
+      hasAddress: addresses.length > 0,
+    };
+
+    const coreComplete = Object.values(coreFieldsComplete).every(Boolean);
+
+    // Calculate weighted percentage
+    // Core fields: 25% each = 100% when all complete
+    let percentage = 0;
+    if (coreFieldsComplete.hasName) percentage += 25;
+    if (coreFieldsComplete.hasPhoto) percentage += 25;
+    if (coreFieldsComplete.hasTimezone) percentage += 25;
+    if (coreFieldsComplete.hasAddress) percentage += 25;
+
+    // Civic fields bonus (up to 15%): 5% each
+    const civicFieldsCount = [
+      profile?.politicalAffiliation,
+      profile?.votingFrequency,
+      profile?.policyPriorities && profile.policyPriorities.length > 0,
+    ].filter(Boolean).length;
+    percentage += Math.min(civicFieldsCount * 5, 15);
+
+    // Demographic fields bonus (up to 15%): 3% each
+    const demographicFieldsCount = [
+      profile?.occupation,
+      profile?.educationLevel,
+      profile?.incomeRange,
+      profile?.householdSize,
+      profile?.homeownerStatus,
+    ].filter(Boolean).length;
+    percentage += Math.min(demographicFieldsCount * 3, 15);
+
+    return {
+      percentage: Math.min(percentage, 130), // Cap at 130% (100% core + 30% bonus)
+      isComplete: coreComplete,
+      coreFieldsComplete,
+      suggestedNextSteps: this.getSuggestedSteps(coreFieldsComplete, profile),
+    };
+  }
+
+  private getSuggestedSteps(
+    coreFieldsComplete: {
+      hasName: boolean;
+      hasPhoto: boolean;
+      hasTimezone: boolean;
+      hasAddress: boolean;
+    },
+    profile: UserProfileEntity | null,
+  ): string[] {
+    const steps: string[] = [];
+
+    if (!coreFieldsComplete.hasName) {
+      steps.push('Add your name to personalize your profile');
+    }
+    if (!coreFieldsComplete.hasPhoto) {
+      steps.push('Upload a profile photo');
+    }
+    if (!coreFieldsComplete.hasTimezone) {
+      steps.push('Set your timezone for accurate notifications');
+    }
+    if (!coreFieldsComplete.hasAddress) {
+      steps.push('Add an address to see relevant ballot information');
+    }
+
+    // Suggest civic fields if core is complete
+    if (Object.values(coreFieldsComplete).every(Boolean)) {
+      if (!profile?.politicalAffiliation) {
+        steps.push(
+          'Share your political affiliation for personalized insights',
+        );
+      }
+      if (!profile?.votingFrequency) {
+        steps.push('Tell us how often you vote');
+      }
+      if (!profile?.policyPriorities || profile.policyPriorities.length === 0) {
+        steps.push('Select your policy priorities');
+      }
+    }
+
+    return steps.slice(0, 3); // Return max 3 suggestions
+  }
+
+  // ============================================
+  // Avatar Upload Methods
+  // ============================================
+
+  async getAvatarUploadUrl(userId: string, filename: string): Promise<string> {
+    if (!this.storage || !this.fileConfig) {
+      throw new Error('Storage provider not configured');
+    }
+
+    const key = `avatars/${userId}/${filename}`;
+    return this.storage.getSignedUrl(this.fileConfig.bucket, key, true);
+  }
+
+  async updateAvatarStorageKey(
+    userId: string,
+    storageKey: string,
+  ): Promise<UserProfileEntity> {
+    const profile = await this.getOrCreateProfile(userId);
+    profile.avatarStorageKey = storageKey;
+
+    // Generate a download URL for the avatar
+    if (this.storage && this.fileConfig) {
+      try {
+        profile.avatarUrl = await this.storage.getSignedUrl(
+          this.fileConfig.bucket,
+          storageKey,
+          false,
+        );
+      } catch {
+        // If we can't get a signed URL, store the storage key as a fallback
+        profile.avatarUrl = storageKey;
+      }
+    }
 
     return this.profileRepository.save(profile);
   }

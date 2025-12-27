@@ -1,18 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
 import {
   GET_MY_PROFILE,
+  GET_MY_PROFILE_COMPLETION,
   UPDATE_MY_PROFILE,
   MyProfileData,
+  MyProfileCompletionData,
   UpdateMyProfileData,
   UpdateProfileInput,
   UserProfile,
   SupportedLanguage,
+  PoliticalAffiliation,
+  VotingFrequency,
+  EducationLevel,
+  IncomeRange,
+  HomeownerStatus,
 } from "@/lib/graphql/profile";
 import { useLocale } from "@/lib/i18n/context";
+import { ProfileCompletionIndicator } from "@/components/profile/ProfileCompletionIndicator";
+import { AvatarUpload } from "@/components/profile/AvatarUpload";
+import { ProfileVisibilityToggle } from "@/components/profile/ProfileVisibilityToggle";
+import { CivicFieldsSection } from "@/components/profile/CivicFieldsSection";
+import { DemographicFieldsSection } from "@/components/profile/DemographicFieldsSection";
 
 const TIMEZONES = [
   { value: "America/Los_Angeles", labelKey: "timezones.pacific" },
@@ -40,7 +52,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
   const [updateProfile, { loading: updating }] =
     useMutation<UpdateMyProfileData>(UPDATE_MY_PROFILE);
 
-  // Initialize form with locale from context (already synced with profile)
+  // Initialize form with all profile data
   const [formData, setFormData] = useState<UpdateProfileInput>({
     firstName: profile.firstName || "",
     lastName: profile.lastName || "",
@@ -50,25 +62,86 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
     timezone: profile.timezone || "America/Los_Angeles",
     preferredLanguage: locale,
     bio: profile.bio || "",
+    isPublic: profile.isPublic ?? false,
+    politicalAffiliation: profile.politicalAffiliation,
+    votingFrequency: profile.votingFrequency,
+    policyPriorities: profile.policyPriorities,
+    occupation: profile.occupation,
+    educationLevel: profile.educationLevel,
+    incomeRange: profile.incomeRange,
+    householdSize: profile.householdSize,
+    homeownerStatus: profile.homeownerStatus,
   });
+  const [currentAvatarUrl, setCurrentAvatarUrl] = useState(profile.avatarUrl);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >,
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+  const handleChange = useCallback(
+    (
+      e: React.ChangeEvent<
+        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+      >,
+    ) => {
+      const { name, value } = e.target;
+      setFormData((prev) => ({ ...prev, [name]: value }));
+      setSaveSuccess(false);
+      setSaveError(null);
+
+      // Update locale immediately when language changes
+      if (name === "preferredLanguage") {
+        setLocale(value as SupportedLanguage);
+      }
+    },
+    [setLocale],
+  );
+
+  const handleVisibilityChange = useCallback((isPublic: boolean) => {
+    setFormData((prev) => ({ ...prev, isPublic }));
     setSaveSuccess(false);
     setSaveError(null);
+  }, []);
 
-    // Update locale immediately when language changes
-    if (name === "preferredLanguage") {
-      setLocale(value as SupportedLanguage);
-    }
-  };
+  const handleCivicChange = useCallback(
+    (
+      field: "politicalAffiliation" | "votingFrequency" | "policyPriorities",
+      value: PoliticalAffiliation | VotingFrequency | string[] | undefined,
+    ) => {
+      setFormData((prev) => ({ ...prev, [field]: value }));
+      setSaveSuccess(false);
+      setSaveError(null);
+    },
+    [],
+  );
+
+  const handleDemographicChange = useCallback(
+    (
+      field:
+        | "occupation"
+        | "educationLevel"
+        | "incomeRange"
+        | "householdSize"
+        | "homeownerStatus",
+      value:
+        | string
+        | EducationLevel
+        | IncomeRange
+        | HomeownerStatus
+        | undefined,
+    ) => {
+      setFormData((prev) => ({ ...prev, [field]: value }));
+      setSaveSuccess(false);
+      setSaveError(null);
+    },
+    [],
+  );
+
+  const handleAvatarUpdated = useCallback(
+    (newUrl: string) => {
+      setCurrentAvatarUrl(newUrl);
+      onSave(); // Refetch to update completion indicator
+    },
+    [onSave],
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,6 +178,14 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Avatar Upload */}
+        <div className="flex justify-center py-4 border-b border-gray-100">
+          <AvatarUpload
+            currentAvatarUrl={currentAvatarUrl}
+            onAvatarUpdated={handleAvatarUpdated}
+          />
+        </div>
+
         {/* Name Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -163,6 +244,15 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <p className="mt-1 text-sm text-[#64748b]">
             {t("profile.displayNameHint")}
           </p>
+        </div>
+
+        {/* Profile Visibility Toggle */}
+        <div className="border-t border-gray-100 pt-4">
+          <ProfileVisibilityToggle
+            isPublic={formData.isPublic ?? false}
+            onChange={handleVisibilityChange}
+            disabled={updating}
+          />
         </div>
 
         {/* Phone */}
@@ -253,6 +343,26 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <p className="mt-1 text-sm text-[#64748b]">{t("profile.bioHint")}</p>
         </div>
 
+        {/* Civic Fields Section */}
+        <CivicFieldsSection
+          politicalAffiliation={formData.politicalAffiliation}
+          votingFrequency={formData.votingFrequency}
+          policyPriorities={formData.policyPriorities}
+          onChange={handleCivicChange}
+          disabled={updating}
+        />
+
+        {/* Demographic Fields Section */}
+        <DemographicFieldsSection
+          occupation={formData.occupation}
+          educationLevel={formData.educationLevel}
+          incomeRange={formData.incomeRange}
+          householdSize={formData.householdSize}
+          homeownerStatus={formData.homeownerStatus}
+          onChange={handleDemographicChange}
+          disabled={updating}
+        />
+
         {/* Submit Button */}
         <div className="pt-4">
           <button
@@ -270,26 +380,56 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
 
 export default function ProfileSettingsPage() {
   const { t } = useTranslation("settings");
-  const { data, loading, error, refetch } =
-    useQuery<MyProfileData>(GET_MY_PROFILE);
+  const {
+    data: profileData,
+    loading: profileLoading,
+    error: profileError,
+    refetch: refetchProfile,
+  } = useQuery<MyProfileData>(GET_MY_PROFILE);
+  const {
+    data: completionData,
+    loading: completionLoading,
+    refetch: refetchCompletion,
+  } = useQuery<MyProfileCompletionData>(GET_MY_PROFILE_COMPLETION);
 
-  if (loading) {
+  const handleSave = useCallback(() => {
+    refetchProfile();
+    refetchCompletion();
+  }, [refetchProfile, refetchCompletion]);
+
+  if (profileLoading || completionLoading) {
     return (
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-          <div className="space-y-3 mt-8">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-12 bg-gray-200 rounded"></div>
-            ))}
+      <div className="space-y-6">
+        {/* Completion Indicator Skeleton */}
+        <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+            <div className="h-3 bg-gray-200 rounded-full w-full"></div>
+            <div className="grid grid-cols-4 gap-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-10 bg-gray-200 rounded-lg"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Form Skeleton */}
+        <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 bg-gray-200 rounded w-1/4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            <div className="space-y-3 mt-8">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-12 bg-gray-200 rounded"></div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (profileError) {
     return (
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
         <div className="text-center text-red-600">
@@ -300,21 +440,31 @@ export default function ProfileSettingsPage() {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#1e293b]">
-          {t("profile.title")}
-        </h1>
-        <p className="text-[#64748b] mt-1">{t("profile.subtitle")}</p>
-      </div>
-
-      {data?.myProfile && (
-        <ProfileForm
-          key={data.myProfile.id}
-          profile={data.myProfile}
-          onSave={() => refetch()}
+    <div className="space-y-6">
+      {/* Profile Completion Indicator */}
+      {completionData?.myProfileCompletion && (
+        <ProfileCompletionIndicator
+          completion={completionData.myProfileCompletion}
         />
       )}
+
+      {/* Profile Form */}
+      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-[#1e293b]">
+            {t("profile.title")}
+          </h1>
+          <p className="text-[#64748b] mt-1">{t("profile.subtitle")}</p>
+        </div>
+
+        {profileData?.myProfile && (
+          <ProfileForm
+            key={profileData.myProfile.id}
+            profile={profileData.myProfile}
+            onSave={handleSave}
+          />
+        )}
+      </div>
     </div>
   );
 }
