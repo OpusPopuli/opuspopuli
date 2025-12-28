@@ -27,8 +27,17 @@ apps/frontend/
 │   │   │   └── add-passkey/ # Post-registration passkey setup
 │   │   └── auth/
 │   │       └── callback/  # Magic link verification callback
+│   ├── settings/          # User settings
+│   │   └── page.tsx       # Profile, addresses, notifications, privacy
 │   └── rag-demo/          # RAG Demo feature
 │       └── page.tsx       # RAG Demo page
+├── components/             # Reusable UI components
+│   └── profile/           # Profile management components
+│       ├── AvatarUpload.tsx             # Avatar photo upload
+│       ├── ProfileCompletionIndicator.tsx # Progress bar with suggestions
+│       ├── ProfileVisibilityToggle.tsx   # Public/private toggle
+│       ├── CivicFieldsSection.tsx        # Civic data fields
+│       └── DemographicFieldsSection.tsx  # Demographic fields
 ├── lib/                    # Shared utilities
 │   ├── apollo-client.ts   # Apollo Client configuration
 │   ├── apollo-provider.tsx # Apollo Provider wrapper
@@ -38,6 +47,7 @@ apps/frontend/
 │   │   └── useMagicLink.ts # Magic link operations
 │   └── graphql/           # GraphQL operations
 │       ├── auth.ts        # Auth queries/mutations
+│       ├── profile.ts     # Profile queries/mutations
 │       └── knowledge.ts   # Knowledge service queries/mutations
 ├── __tests__/             # Jest unit tests
 ├── playwright/            # Playwright E2E tests
@@ -297,6 +307,89 @@ const RegisterPage = () => {
 };
 ```
 
+## Profile Management
+
+### Profile Components
+
+The frontend includes a comprehensive profile management system with modular components:
+
+| Component | Purpose |
+|-----------|---------|
+| `AvatarUpload` | Upload profile photos via Supabase Storage presigned URLs |
+| `ProfileCompletionIndicator` | Visual progress bar with suggested next steps |
+| `ProfileVisibilityToggle` | Toggle profile between public/private |
+| `CivicFieldsSection` | Political affiliation, voting frequency, policy priorities |
+| `DemographicFieldsSection` | Occupation, education, income, household, homeowner status |
+
+### Profile Completion
+
+The profile completion indicator uses weighted scoring:
+
+```typescript
+interface ProfileCompletionResult {
+  percentage: number;           // 0-130%
+  isComplete: boolean;          // true when core fields complete
+  coreFieldsComplete: {
+    hasName: boolean;           // 25%
+    hasPhoto: boolean;          // 25%
+    hasTimezone: boolean;       // 25%
+    hasAddress: boolean;        // 25%
+  };
+  suggestedNextSteps: string[]; // Up to 3 suggestions
+}
+```
+
+**Scoring**:
+- Core fields (100%): Name, Photo, Timezone, Address (25% each)
+- Civic bonus (up to 15%): Political affiliation, voting frequency, policy priorities
+- Demographic bonus (up to 15%): Occupation, education, income, household, homeowner
+- Maximum: 130%
+
+### Avatar Upload Flow
+
+```
+1. User clicks avatar → File picker opens
+2. Client validates file (type: jpeg/png/webp, size: <5MB)
+3. Client shows preview immediately
+4. GET_AVATAR_UPLOAD_URL query → Presigned Supabase URL
+5. PUT file to presigned URL → Supabase Storage
+6. UPDATE_AVATAR_STORAGE_KEY mutation → Profile updated
+7. Parent component receives new avatar URL
+```
+
+### Profile GraphQL Operations
+
+```typescript
+// lib/graphql/profile.ts
+export const GET_PROFILE_COMPLETION = gql`
+  query GetProfileCompletion {
+    myProfileCompletion { percentage isComplete coreFieldsComplete suggestedNextSteps }
+  }
+`;
+
+export const GET_AVATAR_UPLOAD_URL = gql`
+  query GetAvatarUploadUrl($filename: String!) {
+    avatarUploadUrl(filename: $filename)
+  }
+`;
+
+export const UPDATE_AVATAR_STORAGE_KEY = gql`
+  mutation UpdateAvatarStorageKey($storageKey: String!) {
+    updateAvatarStorageKey(storageKey: $storageKey) { id avatarUrl }
+  }
+`;
+
+export const UPDATE_MY_PROFILE = gql`
+  mutation UpdateMyProfile($input: UpdateProfileInput!) {
+    updateMyProfile(input: $input) {
+      id firstName lastName displayName timezone isPublic
+      politicalAffiliation votingFrequency policyPriorities
+      occupation educationLevel incomeRange householdSize homeownerStatus
+    }
+  }
+`;
+```
+
 ## Styling
 
 ### Tailwind CSS 4
@@ -407,6 +500,32 @@ function LanguageSelector() {
 |-----------|---------|
 | `common` | Shared UI elements (buttons, errors, status badges) |
 | `settings` | Settings pages (profile, addresses, notifications, privacy, security) |
+
+### Profile-Specific Translation Keys
+
+The profile enhancements include comprehensive translations:
+
+```json
+{
+  "profile": {
+    "completion": { "title", "percentage", "nextSteps", "complete" },
+    "visibility": { "label", "public", "private", "hint" },
+    "avatar": { "upload", "change", "hint", "errorInvalidType", "errorTooLarge" },
+    "civic": {
+      "title", "politicalAffiliation", "votingFrequency", "policyPriorities",
+      "affiliations": { "democrat", "republican", "independent", ... },
+      "frequencies": { "everyElection", "mostElections", ... },
+      "policies": { "healthcare", "economy", "education", ... }
+    },
+    "demographic": {
+      "title", "occupation", "educationLevel", "incomeRange", "householdSize", "homeownerStatus",
+      "education": { "highSchool", "bachelor", "master", ... },
+      "income": { "under25k", "25k50k", ... },
+      "homeowner": { "own", "rent", ... }
+    }
+  }
+}
+```
 
 ## Accessibility (WCAG 2.2 AA)
 

@@ -46,13 +46,19 @@ QCKSTRT is built on a modular, provider-based architecture with three core princ
 ### Users Service
 - **Technology**: NestJS + Apollo Federation
 - **Port**: 3001
-- **Purpose**: User authentication and management
+- **Purpose**: User authentication, profile management, and civic data
 - **Location**: `apps/backend/src/apps/users`
 - **Database**: Relational (User profiles, credentials, passkeys)
 - **Authentication Methods**:
   - Passkeys (WebAuthn/FIDO2) - Primary passwordless method
   - Magic Links - Email-based passwordless login
   - Password - Legacy fallback
+- **Profile Features**:
+  - Avatar upload via Supabase Storage (presigned URLs)
+  - Civic fields (political affiliation, voting frequency, policy priorities)
+  - Demographic fields (occupation, education, income, household, homeowner status)
+  - Profile completion tracking (weighted scoring up to 130%)
+  - Profile visibility toggle (public/private)
 
 ### Documents Service
 - **Technology**: NestJS + Apollo Federation
@@ -368,11 +374,17 @@ AWS/Cloud Infrastructure
 - **LLM**: vLLM, Text Generation Inference
 - **Embeddings**: Custom fine-tuned models
 
+### Recently Implemented
+- **Profile Enhancements**: Avatar upload, civic/demographic fields, profile completion tracking, visibility controls
+- **WCAG 2.2 AA Accessibility**: Keyboard navigation, screen reader support, focus management
+- **Internationalization**: English and Spanish translations with react-i18next
+
 ### Planned Features
 - Multi-modal RAG (images, PDFs)
 - Streaming RAG responses
 - Conversation history
 - Fine-tuning support
+- AI ballot proposition interpretation using civic profile data
 
 ---
 
