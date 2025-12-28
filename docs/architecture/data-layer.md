@@ -151,7 +151,7 @@ export class Document {
 The platform includes a comprehensive user profile system designed for civic applications, with support for GDPR/CCPA compliance. All profile tables have a foreign key to the `users` table with `ON DELETE CASCADE`.
 
 #### UserProfileEntity
-Extended user profile data (1:1 with users).
+Extended user profile data (1:1 with users). Includes civic and demographic fields for personalized AI ballot interpretation.
 
 ```typescript
 @Entity('user_profiles')
@@ -174,11 +174,72 @@ export class UserProfileEntity {
   // Preferences
   timezone: string;  // Default: 'America/Los_Angeles'
   locale: string;    // Default: 'en-US'
+  preferredLanguage: string;  // Default: 'en'
 
   // Profile
   avatarUrl?: string;
+  avatarStorageKey?: string;  // Supabase storage key for avatar uploads
   bio?: string;
+
+  // Visibility
+  isPublic: boolean;  // Default: false (private by default)
+
+  // Civic Fields (for AI ballot interpretation)
+  politicalAffiliation?: PoliticalAffiliation;
+  votingFrequency?: VotingFrequency;
+  policyPriorities?: string[];  // Array of policy priority categories
+
+  // Demographic Fields (optional, privacy-conscious)
+  occupation?: string;
+  educationLevel?: EducationLevel;
+  incomeRange?: IncomeRange;
+  householdSize?: string;
+  homeownerStatus?: HomeownerStatus;
 }
+
+// Civic Enums
+enum PoliticalAffiliation {
+  DEMOCRAT, REPUBLICAN, INDEPENDENT, LIBERTARIAN, GREEN, OTHER, PREFER_NOT_TO_SAY
+}
+
+enum VotingFrequency {
+  EVERY_ELECTION, MOST_ELECTIONS, SOME_ELECTIONS, RARELY, NEVER, PREFER_NOT_TO_SAY
+}
+
+// Demographic Enums
+enum EducationLevel {
+  HIGH_SCHOOL, SOME_COLLEGE, ASSOCIATE, BACHELOR, MASTER, DOCTORATE, TRADE_SCHOOL, PREFER_NOT_TO_SAY
+}
+
+enum IncomeRange {
+  UNDER_25K, RANGE_25K_50K, RANGE_50K_75K, RANGE_75K_100K, RANGE_100K_150K, RANGE_150K_200K, OVER_200K, PREFER_NOT_TO_SAY
+}
+
+enum HomeownerStatus {
+  OWN, RENT, LIVING_WITH_FAMILY, OTHER, PREFER_NOT_TO_SAY
+}
+```
+
+#### Profile Completion Tracking
+The platform tracks profile completion with weighted scoring to encourage users to provide information that improves AI ballot interpretation:
+
+```typescript
+interface ProfileCompletionResult {
+  percentage: number;           // 0-130% (100% core + 30% bonus)
+  isComplete: boolean;          // true when all core fields are complete
+  coreFieldsComplete: {
+    hasName: boolean;           // 25% - firstName or displayName
+    hasPhoto: boolean;          // 25% - avatarUrl or avatarStorageKey
+    hasTimezone: boolean;       // 25% - timezone set
+    hasAddress: boolean;        // 25% - at least one address
+  };
+  suggestedNextSteps: string[]; // Up to 3 suggestions
+}
+
+// Bonus points (beyond 100% core):
+// - Civic fields: 5% each (up to 15%)
+// - Demographic fields: 3% each (up to 15%)
+// - Maximum total: 130%
 ```
 
 #### UserLoginEntity

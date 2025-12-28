@@ -160,6 +160,7 @@ docker-compose logs -f   # View logs
 ## Features
 
 - ✅ **Passwordless Authentication** - Passkeys (WebAuthn/FIDO2) and Magic Links
+- ✅ **Profile Management** - Avatar upload, civic/demographic fields, completion tracking
 - ✅ **RAG (Retrieval-Augmented Generation)** - Ask questions about your documents
 - ✅ **Semantic Search** - Find relevant information using vector similarity
 - ✅ **Document Indexing** - Automatic chunking and embedding generation
@@ -167,6 +168,8 @@ docker-compose logs -f   # View logs
 - ✅ **Pluggable Providers** - Swap databases and AI models via configuration
 - ✅ **GraphQL Federation** - Unified API across microservices
 - ✅ **Audit Logging** - Comprehensive logging with PII masking and retention policies
+- ✅ **Internationalization** - English and Spanish with react-i18next
+- ✅ **Accessibility** - WCAG 2.2 Level AA compliant
 - ✅ **100% Self-Hosted** - Complete data control and privacy
 
 ## License

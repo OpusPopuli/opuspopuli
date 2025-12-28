@@ -65,11 +65,12 @@ This platform is built on three core principles:
 | **Vector DB** | pgvector (PostgreSQL) |
 | **Relational DB** | PostgreSQL (via Supabase) |
 | **Auth** | Supabase Auth (Passkeys, Magic Links, Password) |
-| **Storage** | Supabase Storage |
+| **Storage** | Supabase Storage (avatars, documents) |
 | **Secrets** | Supabase Vault |
 | **LLM** | Ollama (Falcon 7B) |
 | **i18n** | react-i18next (English, Spanish) |
 | **Accessibility** | WCAG 2.2 Level AA compliant |
+| **Profile** | Civic/demographic fields, completion tracking |
 
 ## Platform Packages
 
