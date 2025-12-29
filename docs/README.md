@@ -25,6 +25,7 @@ Practical guides for common tasks and workflows.
 - [**Frontend Testing**](guides/frontend-testing.md) - Testing the frontend application
 - [**Database Migration**](guides/database-migration.md) - Migrating between database providers
 - [**Audit Logging**](guides/audit-logging.md) - Comprehensive audit logging for compliance and security
+- [**Region Provider**](guides/region-provider.md) - Creating custom region providers for civic data
 
 ## Quick Links
 
@@ -87,8 +88,9 @@ The `packages/` directory contains reusable, publishable npm packages (`@qckstrt
 | `@qckstrt/storage-provider` | Supabase Storage |
 | `@qckstrt/auth-provider` | Supabase Auth (Passkeys, Magic Links, Password) |
 | `@qckstrt/secrets-provider` | Supabase Vault |
+| `@qckstrt/region-provider` | Civic data integration (propositions, meetings, representatives) |
 
-See [Provider Pattern](architecture/provider-pattern.md) for implementation details.
+See [Provider Pattern](architecture/provider-pattern.md) and [Region Provider Guide](guides/region-provider.md) for implementation details.
 
 ## Support
 

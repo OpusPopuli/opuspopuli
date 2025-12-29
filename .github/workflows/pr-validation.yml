@@ -1,0 +1,71 @@
+# PR Validation Workflow
+#
+# This workflow prevents jurisdiction-specific region providers from being
+# added to the upstream repository. The base platform should only contain
+# the example provider. Forks should add their own providers in their fork.
+#
+# Allowed:
+# - packages/region-provider/ (base package with example provider)
+#
+# Blocked:
+# - packages/region-provider-california/
+# - packages/region-provider-texas/
+# - packages/region-provider-*/ (any other region provider)
+
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  validate-region-providers:
+    name: Validate Region Providers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for non-example region providers
+        run: |
+          echo "Checking for non-example region providers..."
+
+          # Get list of changed files in PR
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          # Check for region provider packages other than the example
+          BLOCKED_PROVIDERS=""
+          for file in $CHANGED_FILES; do
+            # Check if file is in a region-provider-* directory (but not region-provider/)
+            if [[ "$file" =~ ^packages/region-provider-[^/]+/ ]]; then
+              PROVIDER_DIR=$(echo "$file" | cut -d'/' -f1-2)
+              if [[ ! "$BLOCKED_PROVIDERS" =~ "$PROVIDER_DIR" ]]; then
+                BLOCKED_PROVIDERS="$BLOCKED_PROVIDERS $PROVIDER_DIR"
+              fi
+            fi
+          done
+
+          if [ -n "$BLOCKED_PROVIDERS" ]; then
+            echo ""
+            echo "================================================================"
+            echo "ERROR: Jurisdiction-specific region providers detected!"
+            echo "================================================================"
+            echo ""
+            echo "The following region provider packages were found in this PR:"
+            echo "$BLOCKED_PROVIDERS" | tr ' ' '\n' | grep -v '^$' | sed 's/^/  - /'
+            echo ""
+            echo "The upstream repository should only contain the base platform"
+            echo "with the example region provider (packages/region-provider/)."
+            echo ""
+            echo "Jurisdiction-specific providers should be added to your fork."
+            echo "See docs/guides/region-provider.md for instructions."
+            echo ""
+            echo "If you believe this is an error, please contact the maintainers."
+            echo "================================================================"
+            exit 1
+          fi
+
+          echo "No jurisdiction-specific region providers found."
+          echo "PR validation passed."
