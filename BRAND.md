@@ -48,11 +48,11 @@ assets/
 
 ## Frontend Assets
 
-Assets for the frontend application are in [`apps/frontend/public/`](apps/frontend/public/):
-- `favicons/` - Browser tab icons
-- `logos/` - Logo files for UI use
+The frontend uses symlinks to reference assets from the central `assets/` directory:
+- `apps/frontend/public/favicons` -> `../../../assets/favicons`
+- `apps/frontend/public/logos` -> `../../../assets/logos`
 
-These can be referenced in the app as `/favicons/...` and `/logos/...`.
+In the app, reference these as `/favicons/...` and `/logos/...`.
 
 ## Usage Guidelines
 
