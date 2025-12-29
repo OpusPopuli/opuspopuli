@@ -17,7 +17,7 @@ Thank you for your interest in contributing to QCKSTRT! This document explains h
 QCKSTRT is designed as a **forkable platform** for civic technology. This means:
 
 - **Upstream (this repository)**: Contains the core platform - authentication, AI/ML pipeline, UI components, infrastructure templates, and provider implementations
-- **Forks**: Contain jurisdiction-specific implementations - scrapers, local data, custom configurations, and deployment specifics
+- **Forks**: Contain region-specific implementations - scrapers, local data, custom configurations, and deployment specifics
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -37,8 +37,8 @@ QCKSTRT is designed as a **forkable platform** for civic technology. This means:
 
 ### Why This Model?
 
-1. **Platform improvements benefit everyone**: Bug fixes and new features flow to all jurisdictions
-2. **Jurisdiction data stays local**: Each jurisdiction controls their own scrapers and data
+1. **Platform improvements benefit everyone**: Bug fixes and new features flow to all regions
+2. **Region data stays local**: Each region controls their own scrapers and data
 3. **Distributed infrastructure**: Each deployment runs on its own infrastructure
 4. **Unified branding**: All deployments share the Commonwealth Labs network identity
 
@@ -53,22 +53,22 @@ QCKSTRT is designed as a **forkable platform** for civic technology. This means:
 - New provider implementations (databases, LLMs, embeddings)
 - Documentation improvements
 - Infrastructure template improvements
-- The `jurisdictions/example/` template (reference implementation only)
+- The `regions/example/` template (reference implementation only)
 
 ### Keep in Your Fork
 
-- Jurisdiction-specific scrapers (e.g., CA ballot proposition scraper)
+- Region-specific scrapers (e.g., CA ballot proposition scraper)
 - Local data and fixtures
 - Custom environment configurations
-- Jurisdiction-specific UI customizations
+- Region-specific UI customizations
 - Deployment-specific Terraform variables
-- Any code that references specific jurisdiction data sources
+- Any code that references specific region data sources
 
 ### Not Sure?
 
-Ask yourself: "Would this benefit ALL jurisdictions, or just mine?"
+Ask yourself: "Would this benefit ALL regions, or just mine?"
 
-- **All jurisdictions** → Contribute upstream
+- **All regions** → Contribute upstream
 - **Just mine** → Keep in fork
 
 ## Getting Started
@@ -99,7 +99,7 @@ pnpm dev
 
 See [docs/guides/getting-started.md](docs/guides/getting-started.md) for detailed instructions.
 
-### Creating a Jurisdiction Fork
+### Creating a Region Fork
 
 ```bash
 # Fork the repository on GitHub, then:
@@ -109,11 +109,11 @@ cd qckstrt
 # Add upstream remote
 git remote add upstream https://github.com/CommonwealthLabsCode/qckstrt.git
 
-# Create your jurisdiction from the example template
-cp -r jurisdictions/example jurisdictions/your-state
+# Create your region from the example template
+cp -r regions/example regions/your-region
 
-# Customize for your jurisdiction
-# Edit jurisdictions/your-state/...
+# Customize for your region
+# Edit regions/your-region/...
 ```
 
 ## Development Workflow
@@ -139,7 +139,7 @@ cp -r jurisdictions/example jurisdictions/your-state
    ```
 6. **Push** and create a Pull Request to `develop`
 
-### For Jurisdiction Development
+### For Region Development
 
 Work in your fork. To sync platform updates:
 
@@ -151,7 +151,7 @@ git fetch upstream
 git checkout main
 git merge upstream/main
 
-# Resolve any conflicts in your jurisdiction code
+# Resolve any conflicts in your region code
 ```
 
 ## Code Standards
@@ -203,7 +203,7 @@ test: add profile completion tests
 - [ ] Linting passes (`pnpm lint`)
 - [ ] Documentation updated (if applicable)
 - [ ] Accessibility verified (for UI changes)
-- [ ] Contains platform code only (not jurisdiction-specific)
+- [ ] Contains platform code only (not region-specific)
 
 ## Community Guidelines
 

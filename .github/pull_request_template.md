@@ -42,12 +42,12 @@ Fixes #
 > **Important**: This is the upstream qckstrt platform repository.
 >
 > - **Platform improvements** (bug fixes, new features, providers) belong here
-> - **Jurisdiction-specific code** (scrapers, data, configs) belongs in your fork
-> - Only `jurisdictions/example/` can be modified in upstream
+> - **Region-specific code** (scrapers, data, configs) belongs in your fork
+> - Only `regions/example/` can be modified in upstream
 >
 > See [CONTRIBUTING.md](../CONTRIBUTING.md) for details.
 
-- [ ] I confirm this PR contains platform code, not jurisdiction-specific implementation
+- [ ] I confirm this PR contains platform code, not region-specific implementation
 
 ## Screenshots/Recordings
 

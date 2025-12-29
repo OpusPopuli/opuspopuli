@@ -82,7 +82,7 @@ This security policy applies to:
 - Official Commonwealth Labs deployments
 - Infrastructure code in `/infra`
 
-For jurisdiction-specific forks, security policies may vary. Contact the fork maintainers directly.
+For region-specific forks, security policies may vary. Contact the fork maintainers directly.
 
 ## Recognition
 

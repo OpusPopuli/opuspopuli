@@ -24,7 +24,7 @@ pnpm-workspace.yaml @rodneygagnon
 tsconfig.json @rodneygagnon
 docker-compose.yml @rodneygagnon
 
-# Jurisdictions - Only example/ is in upstream
-# Actual jurisdiction implementations belong in forks, not upstream
-# The pr-validation workflow will block PRs adding other jurisdictions
-/jurisdictions/example/ @rodneygagnon
+# Regions - Only example/ is in upstream
+# Actual region implementations belong in forks, not upstream
+# The pr-validation workflow will block PRs adding other regions
+/regions/example/ @rodneygagnon

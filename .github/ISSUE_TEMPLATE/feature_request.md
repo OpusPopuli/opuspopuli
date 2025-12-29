@@ -31,11 +31,11 @@ assignees: ''
 <!-- Where does this feature belong? -->
 
 - [ ] Platform Core (belongs in upstream qckstrt)
-- [ ] Jurisdiction-Specific (belongs in a fork)
+- [ ] Region-Specific (belongs in a fork)
 - [ ] Not sure
 
 > **Note**: Platform features (auth, AI/ML, UI components, providers) belong in upstream.
-> Jurisdiction-specific features (scrapers, local data, custom configs) belong in forks.
+> Region-specific features (scrapers, local data, custom configs) belong in forks.
 > See [CONTRIBUTING.md](../CONTRIBUTING.md) for details.
 
 ## Mockups/Examples
