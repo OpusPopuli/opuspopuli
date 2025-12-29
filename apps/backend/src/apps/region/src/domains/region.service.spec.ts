@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { Repository, SelectQueryBuilder, UpdateResult } from 'typeorm';
 import { createMock } from '@golevelup/ts-jest';
 
 import { RegionDomainService } from './region.service';
@@ -202,7 +202,7 @@ describe('RegionDomainService', () => {
       propositionRepo.findOne.mockResolvedValue(
         existingProp as PropositionEntity,
       );
-      propositionRepo.update.mockResolvedValue({} as any);
+      propositionRepo.update.mockResolvedValue({} as UpdateResult);
 
       const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
 
@@ -232,7 +232,7 @@ describe('RegionDomainService', () => {
     it('should update existing meetings', async () => {
       const existingMeeting = { id: 'uuid-1', externalId: 'meeting-1' };
       meetingRepo.findOne.mockResolvedValue(existingMeeting as MeetingEntity);
-      meetingRepo.update.mockResolvedValue({} as any);
+      meetingRepo.update.mockResolvedValue({} as UpdateResult);
 
       const result = await service.syncDataType(CivicDataType.MEETINGS);
 
@@ -257,7 +257,7 @@ describe('RegionDomainService', () => {
       representativeRepo.findOne.mockResolvedValue(
         existingRep as RepresentativeEntity,
       );
-      representativeRepo.update.mockResolvedValue({} as any);
+      representativeRepo.update.mockResolvedValue({} as UpdateResult);
 
       const result = await service.syncDataType(CivicDataType.REPRESENTATIVES);
 
@@ -279,7 +279,10 @@ describe('RegionDomainService', () => {
           updatedAt: new Date(),
         },
       ];
-      propositionRepo.findAndCount.mockResolvedValue([mockItems, 1] as any);
+      propositionRepo.findAndCount.mockResolvedValue([
+        mockItems as PropositionEntity[],
+        1,
+      ]);
 
       const result = await service.getPropositions(0, 10);
 
@@ -289,18 +292,19 @@ describe('RegionDomainService', () => {
     });
 
     it('should indicate hasMore when more items exist', async () => {
-      const mockItems = Array(11)
-        .fill(null)
-        .map((_, i) => ({
-          id: String(i),
-          externalId: `prop-${i}`,
-          title: `Prop ${i}`,
-          summary: 'Summary',
-          status: 'pending',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }));
-      propositionRepo.findAndCount.mockResolvedValue([mockItems, 15] as any);
+      const mockItems = Array.from({ length: 11 }, (_, i) => ({
+        id: String(i),
+        externalId: `prop-${i}`,
+        title: `Prop ${i}`,
+        summary: 'Summary',
+        status: 'pending',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+      propositionRepo.findAndCount.mockResolvedValue([
+        mockItems as PropositionEntity[],
+        15,
+      ]);
 
       const result = await service.getPropositions(0, 10);
 
@@ -344,7 +348,10 @@ describe('RegionDomainService', () => {
           updatedAt: new Date(),
         },
       ];
-      meetingRepo.findAndCount.mockResolvedValue([mockItems, 1] as any);
+      meetingRepo.findAndCount.mockResolvedValue([
+        mockItems as MeetingEntity[],
+        1,
+      ]);
 
       const result = await service.getMeetings(0, 10);
 
@@ -380,7 +387,8 @@ describe('RegionDomainService', () => {
         },
       ];
 
-      const mockQueryBuilder = createMock<SelectQueryBuilder<any>>();
+      const mockQueryBuilder =
+        createMock<SelectQueryBuilder<RepresentativeEntity>>();
       mockQueryBuilder.where.mockReturnThis();
       mockQueryBuilder.orderBy.mockReturnThis();
       mockQueryBuilder.addOrderBy.mockReturnThis();
@@ -399,7 +407,8 @@ describe('RegionDomainService', () => {
     });
 
     it('should filter by chamber when provided', async () => {
-      const mockQueryBuilder = createMock<SelectQueryBuilder<any>>();
+      const mockQueryBuilder =
+        createMock<SelectQueryBuilder<RepresentativeEntity>>();
       mockQueryBuilder.where.mockReturnThis();
       mockQueryBuilder.orderBy.mockReturnThis();
       mockQueryBuilder.addOrderBy.mockReturnThis();

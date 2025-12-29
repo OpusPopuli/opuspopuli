@@ -4,6 +4,10 @@ import { createMock } from '@golevelup/ts-jest';
 import { RegionResolver } from './region.resolver';
 import { RegionDomainService } from './region.service';
 import { CivicDataType } from '@qckstrt/region-provider';
+import { CivicDataTypeGQL } from './models/region-info.model';
+import { PropositionModel } from './models/proposition.model';
+import { MeetingModel } from './models/meeting.model';
+import { RepresentativeModel } from './models/representative.model';
 
 describe('RegionResolver', () => {
   let resolver: RegionResolver;
@@ -15,7 +19,11 @@ describe('RegionResolver', () => {
     description: 'A test region',
     timezone: 'America/Los_Angeles',
     dataSourceUrls: ['https://example.com'],
-    supportedDataTypes: ['PROPOSITIONS', 'MEETINGS', 'REPRESENTATIVES'],
+    supportedDataTypes: [
+      CivicDataTypeGQL.PROPOSITIONS,
+      CivicDataTypeGQL.MEETINGS,
+      CivicDataTypeGQL.REPRESENTATIVES,
+    ],
   };
 
   const mockProposition = {
@@ -72,7 +80,7 @@ describe('RegionResolver', () => {
 
   describe('regionInfo', () => {
     it('should return region info', async () => {
-      regionService.getRegionInfo.mockReturnValue(mockRegionInfo as any);
+      regionService.getRegionInfo.mockReturnValue(mockRegionInfo);
 
       const result = await resolver.regionInfo();
 
@@ -84,13 +92,11 @@ describe('RegionResolver', () => {
   describe('propositions', () => {
     it('should return paginated propositions', async () => {
       const mockPaginatedResult = {
-        items: [mockProposition],
+        items: [mockProposition as PropositionModel],
         total: 1,
         hasMore: false,
       };
-      regionService.getPropositions.mockResolvedValue(
-        mockPaginatedResult as any,
-      );
+      regionService.getPropositions.mockResolvedValue(mockPaginatedResult);
 
       const result = await resolver.propositions(0, 10);
 
@@ -100,13 +106,11 @@ describe('RegionResolver', () => {
 
     it('should use default pagination values', async () => {
       const mockPaginatedResult = {
-        items: [],
+        items: [] as PropositionModel[],
         total: 0,
         hasMore: false,
       };
-      regionService.getPropositions.mockResolvedValue(
-        mockPaginatedResult as any,
-      );
+      regionService.getPropositions.mockResolvedValue(mockPaginatedResult);
 
       await resolver.propositions(0, 10);
 
@@ -116,7 +120,9 @@ describe('RegionResolver', () => {
 
   describe('proposition', () => {
     it('should return a single proposition', async () => {
-      regionService.getProposition.mockResolvedValue(mockProposition as any);
+      regionService.getProposition.mockResolvedValue(
+        mockProposition as PropositionModel,
+      );
 
       const result = await resolver.proposition('1');
 
@@ -152,7 +158,7 @@ describe('RegionResolver', () => {
 
   describe('meeting', () => {
     it('should return a single meeting', async () => {
-      regionService.getMeeting.mockResolvedValue(mockMeeting as any);
+      regionService.getMeeting.mockResolvedValue(mockMeeting as MeetingModel);
 
       const result = await resolver.meeting('1');
 
@@ -209,7 +215,7 @@ describe('RegionResolver', () => {
   describe('representative', () => {
     it('should return a single representative', async () => {
       regionService.getRepresentative.mockResolvedValue(
-        mockRepresentative as any,
+        mockRepresentative as RepresentativeModel,
       );
 
       const result = await resolver.representative('1');
