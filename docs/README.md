@@ -92,6 +92,14 @@ The `packages/` directory contains reusable, publishable npm packages (`@qckstrt
 
 See [Provider Pattern](architecture/provider-pattern.md) and [Region Provider Guide](guides/region-provider.md) for implementation details.
 
+## Commonwealth Labs Network
+
+QCKSTRT is the foundation for the Commonwealth Labs Network. See the root-level documentation:
+
+- [**Network Overview**](../NETWORK.md) - Learn about the network and how to join
+- [**Network Terms**](../NETWORK-TERMS.md) - Terms of service for network members
+- [**Commercial Licensing**](../LICENSE-COMMERCIAL.md) - Options for commercial use
+
 ## Support
 
 For issues or questions:

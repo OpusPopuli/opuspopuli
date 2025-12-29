@@ -174,7 +174,17 @@ docker-compose logs -f   # View logs
 
 ## License
 
-GNU Affero General Public License v3.0 (AGPL-3.0) - See [LICENSE](LICENSE) file for details
+GNU Affero General Public License v3.0 (AGPL-3.0) - See [LICENSE](LICENSE) file for details.
+
+For commercial licensing options, see [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
+
+## Commonwealth Labs Network
+
+QCKSTRT is the foundation for the Commonwealth Labs Network - a collaborative ecosystem of civic technology deployments serving different jurisdictions.
+
+- **[Network Overview](NETWORK.md)** - Learn about the network and how to join
+- **[Network Terms](NETWORK-TERMS.md)** - Terms of service for network members
+- **[Region Provider Guide](docs/guides/region-provider.md)** - Create a custom region provider for your jurisdiction
 
 ## Support
 
