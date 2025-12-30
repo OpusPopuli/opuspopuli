@@ -1,0 +1,24 @@
+name: Validate Main PR
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-source-branch:
+    name: Verify PR from develop
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR source branch
+        run: |
+          if [[ "${{ github.head_ref }}" != "develop" ]]; then
+            echo "::error::PRs to main must come from the develop branch"
+            echo ""
+            echo "Current source branch: ${{ github.head_ref }}"
+            echo ""
+            echo "To fix this:"
+            echo "1. Merge your changes to develop first"
+            echo "2. Create a PR from develop to main"
+            exit 1
+          fi
+          echo "✅ PR is from develop branch - allowed"
