@@ -19,6 +19,7 @@ import { AuthModule } from './domains/auth/auth.module';
 import { UsersModule } from './domains/user/users.module';
 import { ProfileModule } from './domains/profile/profile.module';
 import { ActivityModule } from './domains/activity/activity.module';
+import { EmailDomainModule } from './domains/email/email.module';
 
 import configuration from 'src/config';
 import supabaseConfig from 'src/config/supabase.config';
@@ -26,6 +27,7 @@ import storageConfig from 'src/config/storage.config';
 import authConfig from 'src/config/auth.config';
 import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
+import emailConfig from 'src/config/email.config';
 
 import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
 import {
@@ -44,6 +46,7 @@ import { NotificationPreferenceEntity } from 'src/db/entities/notification-prefe
 import { UserConsentEntity } from 'src/db/entities/user-consent.entity';
 import { PasskeyCredentialEntity } from 'src/db/entities/passkey-credential.entity';
 import { WebAuthnChallengeEntity } from 'src/db/entities/webauthn-challenge.entity';
+import { EmailCorrespondenceEntity } from 'src/db/entities/email-correspondence.entity';
 import { AuditModule } from 'src/common/audit/audit.module';
 import { CaslModule } from 'src/permissions/casl.module';
 
@@ -57,6 +60,7 @@ import { CaslModule } from 'src/permissions/casl.module';
         authConfig,
         secretsConfig,
         relationaldbConfig,
+        emailConfig,
       ],
       isGlobal: true,
     }),
@@ -74,6 +78,7 @@ import { CaslModule } from 'src/permissions/casl.module';
         UserConsentEntity,
         PasskeyCredentialEntity,
         WebAuthnChallengeEntity,
+        EmailCorrespondenceEntity,
       ],
     }),
     AuditModule.forRoot(),
@@ -88,6 +93,7 @@ import { CaslModule } from 'src/permissions/casl.module';
     AuthModule,
     ProfileModule,
     ActivityModule,
+    EmailDomainModule,
   ],
   providers: SHARED_PROVIDERS,
 })

@@ -1,10 +1,17 @@
-import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  forwardRef,
+  Optional,
+} from '@nestjs/common';
 
 import { LoginUserDto } from './dto/login-user.dto';
 import { RegisterUserDto } from './dto/register-user.dto';
 import { Auth } from './models/auth.model';
 
 import { UsersService } from '../user/users.service';
+import { EmailService } from '../email/email.service';
 import { IAuthProvider, IAuthResult } from '@qckstrt/auth-provider';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ConfirmForgotPasswordDto } from './dto/confirm-forgot-password.dto';
@@ -28,6 +35,9 @@ export class AuthService {
     private readonly usersService: UsersService,
     @Inject('AUTH_PROVIDER')
     private readonly authProvider: IAuthProviderWithMagicLink,
+    @Optional()
+    @Inject(forwardRef(() => EmailService))
+    private readonly emailService?: EmailService,
   ) {}
 
   async registerUser(registerUserDto: RegisterUserDto): Promise<string> {
@@ -73,6 +83,17 @@ export class AuthService {
 
     // Use AWS Cognito User ID as our ID
     await this.usersService.update(user.id, { id: userId });
+
+    // Send welcome email (async, don't wait for it)
+    if (this.emailService) {
+      this.emailService
+        .sendWelcomeEmail(userId, email, username)
+        .catch((err) => {
+          this.logger.warn(
+            `Failed to send welcome email to ${email}: ${err.message}`,
+          );
+        });
+    }
 
     return userId;
   }
@@ -242,7 +263,16 @@ export class AuthService {
     }
 
     // Create user in our database first (passwordless - no password required)
-    await this.usersService.createPasswordlessUser(email);
+    const newUser = await this.usersService.createPasswordlessUser(email);
+
+    // Send welcome email (async, don't wait for it)
+    if (this.emailService && newUser) {
+      this.emailService.sendWelcomeEmail(newUser.id, email).catch((err) => {
+        this.logger.warn(
+          `Failed to send welcome email to ${email}: ${err.message}`,
+        );
+      });
+    }
 
     return this.authProvider.registerWithMagicLink(email, redirectTo);
   }

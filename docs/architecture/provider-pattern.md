@@ -398,7 +398,65 @@ SUPABASE_SERVICE_ROLE_KEY=your-key
 
 ---
 
-### 7. Secrets Provider
+### 7. Email Provider
+
+**Package**: `@qckstrt/email-provider`
+
+**Purpose**: Abstract email sending via transactional email services (Resend)
+
+**Interface**:
+```typescript
+export interface IEmailProvider {
+  getName(): string;
+  send(options: ISendEmailOptions): Promise<IEmailResult>;
+  sendBatch(emails: ISendEmailOptions[]): Promise<IEmailResult[]>;
+}
+
+export interface ISendEmailOptions {
+  to: string | string[];
+  from?: string;
+  subject: string;
+  html?: string;
+  text?: string;
+  replyTo?: string;
+  tags?: { name: string; value: string }[];
+}
+
+export interface IEmailResult {
+  success: boolean;
+  id?: string;
+  error?: string;
+}
+```
+
+**Implementation**:
+
+| Provider | File | Use Case | Features |
+|----------|------|----------|----------|
+| Resend | `packages/email-provider/src/providers/resend.provider.ts` | Default | Transactional email, webhooks, analytics |
+
+**Configuration**:
+```bash
+# Resend
+RESEND_API_KEY=re_xxxxxxxxxxxxx
+EMAIL_FROM_ADDRESS=noreply@commonwealthlabs.io
+EMAIL_FROM_NAME=Commonwealth Labs
+EMAIL_REPLY_TO=support@commonwealthlabs.io
+```
+
+**Module**: `EmailProviderModule`
+
+**Consumed By**: `EmailDomainService` (welcome emails, representative contact)
+
+**Email Templates**:
+- Welcome email (after registration)
+- Representative contact (user-to-representative correspondence)
+
+**Email History**: All sent emails are tracked in `EmailCorrespondenceEntity` for user reference.
+
+---
+
+### 8. Secrets Provider
 
 **Package**: `@qckstrt/secrets-provider`
 

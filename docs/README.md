@@ -25,6 +25,7 @@ Practical guides for common tasks and workflows.
 - [**Frontend Testing**](guides/frontend-testing.md) - Testing the frontend application
 - [**Database Migration**](guides/database-migration.md) - Migrating between database providers
 - [**Audit Logging**](guides/audit-logging.md) - Comprehensive audit logging for compliance and security
+- [**Email Integration**](guides/email-integration.md) - Transactional email with Resend
 - [**Region Provider**](guides/region-provider.md) - Creating custom region providers for civic data
 
 ## Quick Links
@@ -69,6 +70,7 @@ This platform is built on three core principles:
 | **Storage** | Supabase Storage (avatars, documents) |
 | **Secrets** | Supabase Vault |
 | **LLM** | Ollama (Falcon 7B) |
+| **Email** | Resend (transactional email) |
 | **i18n** | react-i18next (English, Spanish) |
 | **Accessibility** | WCAG 2.2 Level AA compliant |
 | **Profile** | Civic/demographic fields, completion tracking |
@@ -88,6 +90,7 @@ The `packages/` directory contains reusable, publishable npm packages (`@qckstrt
 | `@qckstrt/storage-provider` | Supabase Storage |
 | `@qckstrt/auth-provider` | Supabase Auth (Passkeys, Magic Links, Password) |
 | `@qckstrt/secrets-provider` | Supabase Vault |
+| `@qckstrt/email-provider` | Resend transactional email |
 | `@qckstrt/region-provider` | Civic data integration (propositions, meetings, representatives) |
 
 See [Provider Pattern](architecture/provider-pattern.md) and [Region Provider Guide](guides/region-provider.md) for implementation details.

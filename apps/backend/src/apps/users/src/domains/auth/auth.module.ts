@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { PasskeyService } from './services/passkey.service';
 import { JwtStrategy } from 'src/common/auth/jwt.strategy';
 import { UsersModule } from '../user/users.module';
+import { EmailDomainModule } from '../email/email.module';
 import { AuthModule as AuthProviderModule } from '@qckstrt/auth-provider';
 
 // Entities
@@ -21,6 +22,7 @@ import { WebAuthnChallengeEntity } from 'src/db/entities/webauthn-challenge.enti
       WebAuthnChallengeEntity,
     ]),
     forwardRef(() => UsersModule),
+    forwardRef(() => EmailDomainModule),
     AuthProviderModule,
   ],
   providers: [AuthResolver, AuthService, PasskeyService, JwtStrategy],

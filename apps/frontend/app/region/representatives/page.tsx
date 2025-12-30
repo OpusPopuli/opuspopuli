@@ -9,6 +9,7 @@ import {
   RepresentativesData,
   Representative,
 } from "@/lib/graphql/region";
+import { ContactRepresentativeForm } from "@/components/email/ContactRepresentativeForm";
 
 const PAGE_SIZE = 12;
 
@@ -36,7 +37,8 @@ function PartyBadge({ party }: { readonly party: string }) {
 
 function RepresentativeCard({
   representative,
-}: Readonly<{ representative: Representative }>) {
+  onContact,
+}: Readonly<{ representative: Representative; onContact: () => void }>) {
   return (
     <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow">
       <div className="flex items-start gap-4">
@@ -116,11 +118,23 @@ function RepresentativeCard({
               href={representative.contactInfo.website}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-700 hover:underline col-span-2 truncate"
+              className="text-blue-600 hover:text-blue-700 hover:underline truncate"
             >
               Website
             </a>
           )}
+        </div>
+      )}
+
+      {/* Contact Button */}
+      {representative.contactInfo?.email && (
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <button
+            onClick={onContact}
+            className="w-full px-4 py-2 text-sm font-medium text-white bg-[#1e293b] rounded-lg hover:bg-[#334155] transition-colors"
+          >
+            Contact {representative.name.split(" ")[0]}
+          </button>
         </div>
       )}
     </div>
@@ -130,6 +144,7 @@ function RepresentativeCard({
 export default function RepresentativesPage() {
   const [page, setPage] = useState(0);
   const [chamber, setChamber] = useState<string | undefined>(undefined);
+  const [contactRep, setContactRep] = useState<Representative | null>(null);
 
   const { data, loading, error } = useQuery<RepresentativesData>(
     GET_REPRESENTATIVES,
@@ -178,7 +193,11 @@ export default function RepresentativesPage() {
       <>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {data?.representatives.items.map((rep) => (
-            <RepresentativeCard key={rep.id} representative={rep} />
+            <RepresentativeCard
+              key={rep.id}
+              representative={rep}
+              onContact={() => setContactRep(rep)}
+            />
           ))}
         </div>
 
@@ -264,6 +283,27 @@ export default function RepresentativesPage() {
 
       {/* Content */}
       {renderContent()}
+
+      {/* Contact Modal */}
+      {contactRep && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
+            <ContactRepresentativeForm
+              representative={{
+                id: contactRep.id,
+                name: contactRep.name,
+                email: contactRep.contactInfo?.email || "",
+                chamber: contactRep.chamber,
+              }}
+              onSuccess={() => {
+                setContactRep(null);
+                alert("Message sent successfully!");
+              }}
+              onCancel={() => setContactRep(null)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

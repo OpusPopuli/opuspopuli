@@ -62,6 +62,7 @@
     "@nestjs/typeorm": "^11.0.0",
     "@qckstrt/auth-provider": "workspace:*",
     "@qckstrt/common": "workspace:*",
+    "@qckstrt/email-provider": "workspace:*",
     "@qckstrt/embeddings-provider": "workspace:*",
     "@qckstrt/extraction-provider": "workspace:*",
     "@qckstrt/llm-provider": "workspace:*",
