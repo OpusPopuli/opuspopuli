@@ -1,14 +1,13 @@
 # Commonwealth Labs Brand Guidelines
 
-This document provides quick access to Commonwealth Labs brand assets and usage guidelines.
+Complete visual identity system and brand assets for Commonwealth Labs.
 
-## Brand Assets Location
+## Brand Assets
 
 All brand assets are located in the [`assets/`](assets/) directory:
 
 ```
 assets/
-├── README.md          # Full brand guide with usage guidelines
 ├── index.html         # Interactive style guide (open in browser)
 ├── favicons/          # Favicon files (SVG + PNG)
 ├── logos/             # Logo files
@@ -17,56 +16,114 @@ assets/
 └── social/            # Social media banners
 ```
 
-**For the complete brand guide, see [`assets/README.md`](assets/README.md).**
+### Logos
 
-## Quick Reference
+All logos available in both **SVG** (vector, infinite scaling) and **PNG** (high-resolution raster).
 
-### Brand Colors
+| Logo Type | Light Background | Dark Background |
+|-----------|------------------|-----------------|
+| **Horizontal Lockup** | `logos/svg/cwlabs-horizontal-light.svg` | `logos/svg/cwlabs-horizontal-dark.svg` |
+| **Mark Only** | `logos/svg/cwlabs-mark-light.svg` | `logos/svg/cwlabs-mark-dark.svg` |
 
-| Color | Hex | Usage |
-|-------|-----|-------|
-| Slate Dark | `#2C3E50` | Primary text, logos, dark backgrounds |
-| Sage Green | `#7F9C8E` | Highlights, accents, CTAs |
-| Light Background | `#FAFAFA` | Light mode backgrounds |
-| Dark Background | `#1E1E1E` | Dark mode backgrounds |
+- **Horizontal Lockup** - Use for headers, banners, wide spaces
+- **Mark Only** - Use when space is constrained or brand is established
 
-### Typography
+### Favicons
 
-**Primary Font:** [Inter](https://fonts.google.com/specimen/Inter)
-- Display/Headings: Bold 700
-- Subheadings: Regular 400
-- Body Text: Regular 400
+Available in both SVG and PNG formats:
 
-### Logo Usage
+| Size | Files | Usage |
+|------|-------|-------|
+| 16x16 | `favicon-16.svg` / `favicon-16.png` | Browser tab icon |
+| 32x32 | `favicon-32.svg` / `favicon-32.png` | Browser tab icon |
+| 512x512 | `favicon-512.svg` / `favicon-512.png` | High-res icon, social profiles |
 
-| Context | File |
-|---------|------|
-| Website header | `logos/svg/cwlabs-horizontal-light.svg` |
-| Dark backgrounds | `logos/svg/cwlabs-horizontal-dark.svg` |
-| Small spaces | `logos/svg/cwlabs-mark-light.svg` |
-| Social profiles | `favicons/favicon-512.png` |
+### Social Media
 
-## Frontend Assets
+| Platform | File | Dimensions |
+|----------|------|------------|
+| Twitter/X Header | `social/twitter-header.svg` / `.png` | 1500x500 |
+| LinkedIn Banner | `social/linkedin-banner.svg` / `.png` | 1584x396 |
+| Profile Picture | Use `favicons/favicon-512.png` | - |
 
-The frontend uses symlinks to reference assets from the central `assets/` directory:
-- `apps/frontend/public/favicons` -> `../../../assets/favicons`
-- `apps/frontend/public/logos` -> `../../../assets/logos`
+## Brand Colors
 
-In the app, reference these as `/favicons/...` and `/logos/...`.
+### Primary
+
+| Color | Hex | RGB | Usage |
+|-------|-----|-----|-------|
+| **Slate Dark** | `#2C3E50` | 44, 62, 80 | Primary text, logos, dark backgrounds |
+
+### Accent
+
+| Color | Hex | RGB | Usage |
+|-------|-----|-----|-------|
+| **Sage Green** | `#7F9C8E` | 127, 156, 142 | Highlights, accents, CTAs |
+
+### Backgrounds
+
+| Color | Hex | RGB | Usage |
+|-------|-----|-----|-------|
+| **Light** | `#FAFAFA` | 250, 250, 250 | Light mode backgrounds |
+| **Dark** | `#1E1E1E` | 30, 30, 30 | Dark mode backgrounds |
+
+## Typography
+
+### Primary Font: Inter
+
+| Style | Weight | Usage |
+|-------|--------|-------|
+| Display/Headings | Bold 700 | Page titles, section headers |
+| Subheadings | Regular 400 | With generous letter-spacing |
+| Body Text | Regular 400 | Paragraphs, general content |
+
+**Download:** [Google Fonts - Inter](https://fonts.google.com/specimen/Inter)
 
 ## Usage Guidelines
 
 ### Do
+
 - Use provided logo files without modification
 - Maintain clear space around logo (minimum 2x mark height)
+- Use slate dark (#2C3E50) or white for logo colors
 - Scale logos proportionally
-- Use appropriate color variant for background
+- Choose appropriate lockup for context
 
 ### Don't
+
 - Alter logo colors or add gradients
 - Rotate, skew, or distort the logo
+- Outline the logo or add effects
 - Place logo on busy backgrounds
 - Recreate or redraw the logo
+- Use the mark and wordmark at different scales
+
+## Quick Start
+
+| Use Case | Recommended File |
+|----------|------------------|
+| Website Header | `logos/svg/cwlabs-horizontal-light.svg` |
+| Dark Backgrounds | `logos/svg/cwlabs-horizontal-dark.svg` |
+| Social Profile | `favicons/favicon-512.png` |
+| Presentations | `logos/svg/cwlabs-horizontal-light.svg` or `-dark.svg` |
+| Print | Use SVG files for infinite scalability |
+
+## Frontend Integration
+
+The frontend uses symlinks to reference assets from the central `assets/` directory:
+
+```
+apps/frontend/public/favicons -> ../../../assets/favicons
+apps/frontend/public/logos    -> ../../../assets/logos
+```
+
+In the app, reference these as `/favicons/...` and `/logos/...`.
+
+Example usage in React/Next.js:
+```tsx
+<img src="/logos/svg/cwlabs-horizontal-light.svg" alt="Commonwealth Labs" />
+<link rel="icon" href="/favicons/favicon-32.png" />
+```
 
 ## Interactive Style Guide
 
