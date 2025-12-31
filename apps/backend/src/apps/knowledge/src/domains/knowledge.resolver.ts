@@ -2,29 +2,11 @@ import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { KnowledgeService } from './knowledge.service';
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from 'src/common/guards/auth.guard';
-import { UserInputError } from '@nestjs/apollo';
 import { PaginatedSearchResults } from './models/search-result.model';
-
-interface GqlContext {
-  req: {
-    headers: {
-      user?: string;
-    };
-  };
-}
-
-interface UserInfo {
-  id: string;
-  email: string;
-}
-
-function getUserFromContext(context: GqlContext): UserInfo {
-  const userHeader = context.req.headers.user;
-  if (!userHeader) {
-    throw new UserInputError('User not authenticated');
-  }
-  return JSON.parse(userHeader) as UserInfo;
-}
+import {
+  GqlContext,
+  getUserFromContext,
+} from 'src/common/utils/graphql-context';
 
 /**
  * Knowledge Resolver

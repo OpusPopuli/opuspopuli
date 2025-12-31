@@ -12,28 +12,10 @@ import { User } from './models/user.model';
 import { DocumentsService } from './documents.service';
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from 'src/common/guards/auth.guard';
-import { UserInputError } from '@nestjs/apollo';
-
-interface GqlContext {
-  req: {
-    headers: {
-      user?: string;
-    };
-  };
-}
-
-interface UserInfo {
-  id: string;
-  email: string;
-}
-
-function getUserFromContext(context: GqlContext): UserInfo {
-  const userHeader = context.req.headers.user;
-  if (!userHeader) {
-    throw new UserInputError('User not authenticated');
-  }
-  return JSON.parse(userHeader) as UserInfo;
-}
+import {
+  GqlContext,
+  getUserFromContext,
+} from 'src/common/utils/graphql-context';
 
 /**
  * Documents Resolver
