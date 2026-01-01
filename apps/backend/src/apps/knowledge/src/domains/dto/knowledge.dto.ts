@@ -33,6 +33,7 @@ export class SearchInput {
 
   @Field(() => Int, { defaultValue: 0 })
   @Min(0, { message: 'Skip must be non-negative' })
+  @Max(10000, { message: 'Skip must not exceed 10000' })
   skip!: number;
 
   @Field(() => Int, { defaultValue: 10 })

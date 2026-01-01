@@ -8,7 +8,10 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
   Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { UserEntity } from './user.entity';
 
 @Entity('documents')
 export class DocumentEntity extends BaseEntity {
@@ -18,7 +21,12 @@ export class DocumentEntity extends BaseEntity {
   @Column({ type: 'varchar', length: 255 })
   public location!: string;
 
+  @ManyToOne(() => UserEntity, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
+  public user!: UserEntity;
+
   @Column({ type: 'varchar', length: 255 })
+  @Index()
   public userId!: string;
 
   @Column({ type: 'varchar', length: 255 })

@@ -1,6 +1,7 @@
 import { Args, Context, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { KnowledgeService } from './knowledge.service';
-import { UseGuards } from '@nestjs/common';
+import { Logger, UseGuards } from '@nestjs/common';
+import { UserInputError } from '@nestjs/apollo';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import { PaginatedSearchResults } from './models/search-result.model';
 import {
@@ -21,6 +22,10 @@ import {
  */
 @Resolver()
 export class KnowledgeResolver {
+  private readonly logger = new Logger(KnowledgeResolver.name, {
+    timestamp: true,
+  });
+
   constructor(private readonly knowledgeService: KnowledgeService) {}
 
   @Mutation(() => String)
@@ -62,8 +67,14 @@ export class KnowledgeResolver {
         input.text,
       );
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `Failed to index document ${input.documentId}: ${errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new UserInputError(`Failed to index document: ${errorMessage}`);
     }
   }
 }

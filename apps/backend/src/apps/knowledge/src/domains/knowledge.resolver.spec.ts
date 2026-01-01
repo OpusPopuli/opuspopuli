@@ -147,17 +147,17 @@ describe('KnowledgeResolver', () => {
       );
     });
 
-    it('should return false when indexing fails', async () => {
+    it('should throw UserInputError when indexing fails', async () => {
       knowledgeService.indexDocument = jest
         .fn()
         .mockRejectedValue(new Error('Index failed'));
 
-      const result = await knowledgeResolver.indexDocument(
-        { documentId: 'doc-1', text: 'Document content' },
-        mockContext,
-      );
-
-      expect(result).toBe(false);
+      await expect(
+        knowledgeResolver.indexDocument(
+          { documentId: 'doc-1', text: 'Document content' },
+          mockContext,
+        ),
+      ).rejects.toThrow('Failed to index document: Index failed');
     });
   });
 });

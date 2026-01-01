@@ -37,12 +37,43 @@ export class PasskeyService {
     private readonly challengeRepo: Repository<WebAuthnChallengeEntity>,
     private readonly configService: ConfigService,
   ) {
-    this.rpName =
-      this.configService.get<string>('webauthn.rpName') || 'Qckstrt';
-    this.rpId = this.configService.get<string>('webauthn.rpId') || 'localhost';
-    this.origin =
-      this.configService.get<string>('webauthn.origin') ||
-      'http://localhost:3000';
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // Get WebAuthn configuration
+    const rpId = this.configService.get<string>('webauthn.rpId');
+    const origin = this.configService.get<string>('webauthn.origin');
+    const rpName = this.configService.get<string>('webauthn.rpName');
+
+    // Require explicit configuration in production
+    if (isProduction) {
+      if (!rpId) {
+        throw new Error(
+          'WebAuthn rpId must be configured in production (WEBAUTHN_RP_ID)',
+        );
+      }
+      if (!origin) {
+        throw new Error(
+          'WebAuthn origin must be configured in production (WEBAUTHN_ORIGIN)',
+        );
+      }
+    }
+
+    // Use configured values or defaults for development
+    this.rpId = rpId || 'localhost';
+    this.origin = origin || 'http://localhost:3000';
+    this.rpName = rpName || 'Qckstrt';
+
+    // Log warning if using defaults in non-production
+    if (!isProduction && (!rpId || !origin)) {
+      this.logger.warn(
+        'WebAuthn using default localhost configuration. ' +
+          'Set WEBAUTHN_RP_ID and WEBAUTHN_ORIGIN for production.',
+      );
+    }
+
+    this.logger.log(
+      `WebAuthn configured - rpId: ${this.rpId}, origin: ${this.origin}`,
+    );
   }
 
   /**

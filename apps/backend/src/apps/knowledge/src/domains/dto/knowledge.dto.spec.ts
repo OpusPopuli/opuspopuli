@@ -45,6 +45,17 @@ describe('Knowledge DTOs', () => {
       expect(errors.length).toBeGreaterThan(0);
     });
 
+    it('should fail validation for skip exceeding 10000', async () => {
+      const input = plainToInstance(SearchInput, {
+        query: 'search',
+        skip: 10001,
+        take: 10,
+      });
+      const errors = await validate(input);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0].constraints).toHaveProperty('max');
+    });
+
     it('should fail validation for take exceeding 100', async () => {
       const input = plainToInstance(SearchInput, {
         query: 'search',

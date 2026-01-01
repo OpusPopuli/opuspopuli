@@ -98,6 +98,137 @@ describe('PasskeyService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('WebAuthn configuration validation', () => {
+    const originalEnv = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalEnv;
+    });
+
+    it('should throw error in production when rpId is missing', async () => {
+      process.env.NODE_ENV = 'production';
+
+      await expect(
+        Test.createTestingModule({
+          providers: [
+            PasskeyService,
+            {
+              provide: getRepositoryToken(PasskeyCredentialEntity),
+              useValue: createMock<Repository<PasskeyCredentialEntity>>(),
+            },
+            {
+              provide: getRepositoryToken(WebAuthnChallengeEntity),
+              useValue: createMock<Repository<WebAuthnChallengeEntity>>(),
+            },
+            {
+              provide: ConfigService,
+              useValue: {
+                get: jest.fn((key: string) => {
+                  if (key === 'webauthn.origin') return 'https://example.com';
+                  return undefined; // rpId is missing
+                }),
+              },
+            },
+          ],
+        }).compile(),
+      ).rejects.toThrow(
+        'WebAuthn rpId must be configured in production (WEBAUTHN_RP_ID)',
+      );
+    });
+
+    it('should throw error in production when origin is missing', async () => {
+      process.env.NODE_ENV = 'production';
+
+      await expect(
+        Test.createTestingModule({
+          providers: [
+            PasskeyService,
+            {
+              provide: getRepositoryToken(PasskeyCredentialEntity),
+              useValue: createMock<Repository<PasskeyCredentialEntity>>(),
+            },
+            {
+              provide: getRepositoryToken(WebAuthnChallengeEntity),
+              useValue: createMock<Repository<WebAuthnChallengeEntity>>(),
+            },
+            {
+              provide: ConfigService,
+              useValue: {
+                get: jest.fn((key: string) => {
+                  if (key === 'webauthn.rpId') return 'example.com';
+                  return undefined; // origin is missing
+                }),
+              },
+            },
+          ],
+        }).compile(),
+      ).rejects.toThrow(
+        'WebAuthn origin must be configured in production (WEBAUTHN_ORIGIN)',
+      );
+    });
+
+    it('should initialize with defaults in non-production when config is missing', async () => {
+      process.env.NODE_ENV = 'development';
+
+      const module = await Test.createTestingModule({
+        providers: [
+          PasskeyService,
+          {
+            provide: getRepositoryToken(PasskeyCredentialEntity),
+            useValue: createMock<Repository<PasskeyCredentialEntity>>(),
+          },
+          {
+            provide: getRepositoryToken(WebAuthnChallengeEntity),
+            useValue: createMock<Repository<WebAuthnChallengeEntity>>(),
+          },
+          {
+            provide: ConfigService,
+            useValue: {
+              get: jest.fn().mockReturnValue(undefined), // All config missing
+            },
+          },
+        ],
+      }).compile();
+
+      const testService = module.get<PasskeyService>(PasskeyService);
+      expect(testService).toBeDefined();
+    });
+
+    it('should initialize correctly in production with all config values', async () => {
+      process.env.NODE_ENV = 'production';
+
+      const module = await Test.createTestingModule({
+        providers: [
+          PasskeyService,
+          {
+            provide: getRepositoryToken(PasskeyCredentialEntity),
+            useValue: createMock<Repository<PasskeyCredentialEntity>>(),
+          },
+          {
+            provide: getRepositoryToken(WebAuthnChallengeEntity),
+            useValue: createMock<Repository<WebAuthnChallengeEntity>>(),
+          },
+          {
+            provide: ConfigService,
+            useValue: {
+              get: jest.fn((key: string) => {
+                const config: Record<string, string> = {
+                  'webauthn.rpName': 'Production App',
+                  'webauthn.rpId': 'example.com',
+                  'webauthn.origin': 'https://example.com',
+                };
+                return config[key];
+              }),
+            },
+          },
+        ],
+      }).compile();
+
+      const testService = module.get<PasskeyService>(PasskeyService);
+      expect(testService).toBeDefined();
+    });
+  });
+
   describe('generateRegistrationOptions', () => {
     it('should generate registration options for a user', async () => {
       const mockOptions = {
