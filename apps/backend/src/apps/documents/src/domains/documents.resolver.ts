@@ -1,6 +1,6 @@
 import {
   Args,
-  ID,
+  Context,
   Parent,
   Mutation,
   Query,
@@ -12,13 +12,17 @@ import { User } from './models/user.model';
 import { DocumentsService } from './documents.service';
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from 'src/common/guards/auth.guard';
-import { Action } from 'src/common/enums/action.enum';
-import { Permissions } from 'src/common/decorators/permissions.decorator';
+import {
+  GqlContext,
+  getUserFromContext,
+} from 'src/common/utils/graphql-context';
+import { FilenameInput } from './dto/documents.dto';
 
 /**
  * Documents Resolver
  *
  * Handles document metadata and file storage operations.
+ * Filename inputs are validated to prevent path traversal attacks.
  */
 @Resolver(() => File)
 export class DocumentsResolver {
@@ -26,57 +30,39 @@ export class DocumentsResolver {
 
   @Query(() => [File])
   @UseGuards(AuthGuard)
-  @Permissions({
-    action: Action.Read,
-    subject: 'File',
-    conditions: { userId: '{{ userId }}' },
-  })
-  listFiles(
-    @Args({ name: 'userId', type: () => ID }) userId: string,
-  ): Promise<File[]> {
-    return this.documentsService.listFiles(userId);
+  listFiles(@Context() context: GqlContext): Promise<File[]> {
+    const user = getUserFromContext(context);
+    return this.documentsService.listFiles(user.id);
   }
 
   @Query(() => String)
   @UseGuards(AuthGuard)
-  @Permissions({
-    action: Action.Create,
-    subject: 'File',
-    conditions: { userId: '{{ userId }}' },
-  })
   getUploadUrl(
-    @Args({ name: 'userId', type: () => ID }) userId: string,
-    @Args('filename') filename: string,
+    @Args('input') input: FilenameInput,
+    @Context() context: GqlContext,
   ): Promise<string> {
-    return this.documentsService.getUploadUrl(userId, filename);
+    const user = getUserFromContext(context);
+    return this.documentsService.getUploadUrl(user.id, input.filename);
   }
 
   @Query(() => String)
   @UseGuards(AuthGuard)
-  @Permissions({
-    action: Action.Read,
-    subject: 'File',
-    conditions: { userId: '{{ userId }}' },
-  })
   getDownloadUrl(
-    @Args({ name: 'userId', type: () => ID }) userId: string,
-    @Args('filename') filename: string,
+    @Args('input') input: FilenameInput,
+    @Context() context: GqlContext,
   ): Promise<string> {
-    return this.documentsService.getDownloadUrl(userId, filename);
+    const user = getUserFromContext(context);
+    return this.documentsService.getDownloadUrl(user.id, input.filename);
   }
 
   @Mutation(() => Boolean)
   @UseGuards(AuthGuard)
-  @Permissions({
-    action: Action.Delete,
-    subject: 'File',
-    conditions: { userId: '{{ userId }}' },
-  })
   async deleteFile(
-    @Args({ name: 'userId', type: () => ID }) userId: string,
-    @Args('filename') filename: string,
+    @Args('input') input: FilenameInput,
+    @Context() context: GqlContext,
   ): Promise<boolean> {
-    return this.documentsService.deleteFile(userId, filename);
+    const user = getUserFromContext(context);
+    return this.documentsService.deleteFile(user.id, input.filename);
   }
 
   @ResolveField(() => User)

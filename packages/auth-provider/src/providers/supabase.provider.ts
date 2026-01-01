@@ -69,6 +69,22 @@ export class SupabaseAuthProvider implements IAuthProvider {
     return "SupabaseAuthProvider";
   }
 
+  /**
+   * Convert a Supabase session to IAuthResult
+   */
+  private sessionToAuthResult(session: {
+    access_token: string;
+    refresh_token?: string;
+    expires_in?: number;
+  }): IAuthResult {
+    return {
+      accessToken: session.access_token,
+      idToken: session.access_token, // Supabase uses access token for both
+      refreshToken: session.refresh_token || "",
+      expiresIn: session.expires_in,
+    };
+  }
+
   async registerUser(input: IRegisterUserInput): Promise<string> {
     try {
       // Build user metadata including username and custom attributes
@@ -122,13 +138,14 @@ export class SupabaseAuthProvider implements IAuthProvider {
       }
 
       this.logger.log(`User authenticated: ${email}`);
-      return {
-        accessToken: data.session?.access_token || "",
-        // Supabase uses the access token for both purposes
-        idToken: data.session?.access_token || "",
-        refreshToken: data.session?.refresh_token || "",
-        expiresIn: data.session?.expires_in,
-      };
+      return data.session
+        ? this.sessionToAuthResult(data.session)
+        : {
+            accessToken: "",
+            idToken: "",
+            refreshToken: "",
+            expiresIn: undefined,
+          };
     } catch (error) {
       this.logger.error(
         `Error authenticating user: ${(error as Error).message}`,
@@ -471,12 +488,7 @@ export class SupabaseAuthProvider implements IAuthProvider {
       }
 
       this.logger.log(`Magic link verified for: ${email}`);
-      return {
-        accessToken: data.session.access_token,
-        idToken: data.session.access_token,
-        refreshToken: data.session.refresh_token || "",
-        expiresIn: data.session.expires_in,
-      };
+      return this.sessionToAuthResult(data.session);
     } catch (error) {
       this.logger.error(
         `Error verifying magic link: ${(error as Error).message}`,
@@ -519,6 +531,57 @@ export class SupabaseAuthProvider implements IAuthProvider {
       throw new AuthError(
         `Failed to send registration magic link to ${email}`,
         "REGISTER_MAGIC_LINK_ERROR",
+        error as Error,
+      );
+    }
+  }
+
+  /**
+   * Create a session for a verified user (used after passkey authentication)
+   * Uses admin.generateLink to create a magic link token, then verifies it to get a session
+   */
+  async createSessionForUser(email: string): Promise<IAuthResult> {
+    try {
+      // Generate a magic link using admin API (doesn't send email)
+      const { data: linkData, error: linkError } =
+        await this.supabase.auth.admin.generateLink({
+          type: "magiclink",
+          email,
+        });
+
+      if (linkError) {
+        throw linkError;
+      }
+
+      if (!linkData.properties?.hashed_token) {
+        throw new Error("Failed to generate magic link token");
+      }
+
+      // The hashed_token from generateLink can be used directly with verifyOtp
+      // to create a session without sending an email
+      const { data, error } = await this.supabase.auth.verifyOtp({
+        email,
+        token: linkData.properties.hashed_token,
+        type: "email",
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data.session) {
+        throw new Error("No session returned from token verification");
+      }
+
+      this.logger.log(`Session created for verified user: ${email}`);
+      return this.sessionToAuthResult(data.session);
+    } catch (error) {
+      this.logger.error(
+        `Error creating session for user: ${(error as Error).message}`,
+      );
+      throw new AuthError(
+        `Failed to create session for ${email}`,
+        "CREATE_SESSION_ERROR",
         error as Error,
       );
     }

@@ -16,6 +16,7 @@ const mockAuth = {
     updateUserById: jest.fn(),
     getUserById: jest.fn(),
     listUsers: jest.fn(),
+    generateLink: jest.fn(),
   },
 };
 
@@ -784,6 +785,133 @@ describe("SupabaseAuthProvider", () => {
 
       await expect(
         provider.registerWithMagicLink("test@example.com"),
+      ).rejects.toThrow(AuthError);
+    });
+  });
+
+  describe("createSessionForUser", () => {
+    it("should create session for verified user successfully", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: {
+          properties: {
+            hashed_token: "hashed-magic-token",
+          },
+        },
+        error: null,
+      });
+      mockAuth.verifyOtp.mockResolvedValue({
+        data: {
+          session: {
+            access_token: "access-token",
+            refresh_token: "refresh-token",
+            expires_in: 3600,
+          },
+        },
+        error: null,
+      });
+
+      const result = await provider.createSessionForUser("test@example.com");
+
+      expect(result).toEqual({
+        accessToken: "access-token",
+        idToken: "access-token",
+        refreshToken: "refresh-token",
+        expiresIn: 3600,
+      });
+      expect(mockAuth.admin.generateLink).toHaveBeenCalledWith({
+        type: "magiclink",
+        email: "test@example.com",
+      });
+      expect(mockAuth.verifyOtp).toHaveBeenCalledWith({
+        email: "test@example.com",
+        token: "hashed-magic-token",
+        type: "email",
+      });
+    });
+
+    it("should handle missing refresh token", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: {
+          properties: {
+            hashed_token: "hashed-magic-token",
+          },
+        },
+        error: null,
+      });
+      mockAuth.verifyOtp.mockResolvedValue({
+        data: {
+          session: {
+            access_token: "access-token",
+            expires_in: 3600,
+          },
+        },
+        error: null,
+      });
+
+      const result = await provider.createSessionForUser("test@example.com");
+
+      expect(result.refreshToken).toBe("");
+    });
+
+    it("should throw AuthError when generateLink fails", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: null,
+        error: { message: "Failed to generate link" },
+      });
+
+      await expect(
+        provider.createSessionForUser("test@example.com"),
+      ).rejects.toThrow(AuthError);
+    });
+
+    it("should throw AuthError when hashed_token is missing", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: {
+          properties: {},
+        },
+        error: null,
+      });
+
+      await expect(
+        provider.createSessionForUser("test@example.com"),
+      ).rejects.toThrow(AuthError);
+    });
+
+    it("should throw AuthError when verifyOtp fails", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: {
+          properties: {
+            hashed_token: "hashed-magic-token",
+          },
+        },
+        error: null,
+      });
+      mockAuth.verifyOtp.mockResolvedValue({
+        data: null,
+        error: { message: "Invalid OTP" },
+      });
+
+      await expect(
+        provider.createSessionForUser("test@example.com"),
+      ).rejects.toThrow(AuthError);
+    });
+
+    it("should throw AuthError when no session returned", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: {
+          properties: {
+            hashed_token: "hashed-magic-token",
+          },
+        },
+        error: null,
+      });
+      mockAuth.verifyOtp.mockResolvedValue({
+        data: { session: null },
+        error: null,
+      });
+
+      await expect(
+        provider.createSessionForUser("test@example.com"),
       ).rejects.toThrow(AuthError);
     });
   });
