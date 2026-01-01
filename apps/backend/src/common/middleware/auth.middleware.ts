@@ -5,6 +5,24 @@ import { Request, Response, NextFunction } from 'express';
 
 import passport from 'passport';
 
+// Headers that should be masked in logs to prevent credential exposure
+const SENSITIVE_HEADERS = ['authorization', 'cookie', 'x-api-key'];
+
+/**
+ * Mask sensitive headers for safe logging
+ */
+function maskSensitiveHeaders(
+  headers: Record<string, unknown>,
+): Record<string, unknown> {
+  const masked = { ...headers };
+  for (const header of SENSITIVE_HEADERS) {
+    if (masked[header]) {
+      masked[header] = '[REDACTED]';
+    }
+  }
+  return masked;
+}
+
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
   private readonly apiKeys: Map<string, string>;
@@ -39,7 +57,9 @@ export class AuthMiddleware implements NestMiddleware {
             });
           }
 
-          req.headers['user'] = JSON.stringify(user);
+          // Store user in req.user (Express standard) instead of headers
+          // This prevents header spoofing if middleware is bypassed
+          req.user = user;
 
           return next();
         },
@@ -50,7 +70,10 @@ export class AuthMiddleware implements NestMiddleware {
   }
 
   use(req: Request, res: Response, next: NextFunction) {
-    this.logger.log(`Request: ${JSON.stringify(req.headers)}`);
+    // Mask sensitive headers to prevent credential exposure in logs
+    this.logger.log(
+      `Request: ${JSON.stringify(maskSensitiveHeaders(req.headers as Record<string, unknown>))}`,
+    );
 
     return this.validateRequest(req, res, next);
   }

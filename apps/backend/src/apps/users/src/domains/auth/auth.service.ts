@@ -19,11 +19,12 @@ import { Role } from 'src/common/enums/role.enum';
 import { UserEntity } from 'src/db/entities/user.entity';
 import { User } from '../user/models/user.model';
 
-// Extended auth provider type with optional magic link methods
-interface IAuthProviderWithMagicLink extends IAuthProvider {
+// Extended auth provider type with optional passwordless methods
+interface IAuthProviderWithPasswordless extends IAuthProvider {
   sendMagicLink?(email: string, redirectTo?: string): Promise<boolean>;
   verifyMagicLink?(email: string, token: string): Promise<IAuthResult>;
   registerWithMagicLink?(email: string, redirectTo?: string): Promise<boolean>;
+  createSessionForUser?(email: string): Promise<IAuthResult>;
 }
 
 @Injectable()
@@ -34,7 +35,7 @@ export class AuthService {
     @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
     @Inject('AUTH_PROVIDER')
-    private readonly authProvider: IAuthProviderWithMagicLink,
+    private readonly authProvider: IAuthProviderWithPasswordless,
     @Optional()
     @Inject(forwardRef(() => EmailService))
     private readonly emailService?: EmailService,
@@ -279,37 +280,18 @@ export class AuthService {
 
   /**
    * Generate auth tokens for a user (used after passkey authentication)
+   * Creates a session for a user who has been verified via WebAuthn
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async generateTokensForUser(_user: UserEntity): Promise<Auth> {
-    // For passkey auth, we need to generate tokens without password
-    // Use the auth provider's magic link verification as a workaround
-    // since we've already verified the user via WebAuthn
-
-    // Option 1: If using Supabase, we can use admin API to create a session
-    // For now, we'll use a simplified approach that works with the provider
-
-    if (
-      !this.authProvider.sendMagicLink ||
-      !this.authProvider.verifyMagicLink
-    ) {
+  async generateTokensForUser(user: UserEntity): Promise<Auth> {
+    if (!this.authProvider.createSessionForUser) {
       throw new Error(
-        'Token generation for passkey auth requires magic link support',
+        'Token generation for passkey auth requires createSessionForUser support',
       );
     }
 
-    // This is a placeholder - in production, you'd want to use
-    // a proper token generation method from your auth provider
-    // For Supabase, you might use admin.generateLink() or similar
-    this.logger.warn(
-      'generateTokensForUser: Using fallback token generation for passkey auth',
+    this.logger.log(
+      `Generating tokens for passkey-authenticated user: ${user.email}`,
     );
-
-    // For now, throw an error indicating this needs proper implementation
-    // based on your specific auth provider capabilities
-    throw new Error(
-      'Passkey token generation not yet implemented. ' +
-        'Configure your auth provider to support session creation for verified users.',
-    );
+    return this.authProvider.createSessionForUser(user.email);
   }
 }
