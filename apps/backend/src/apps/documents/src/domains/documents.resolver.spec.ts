@@ -90,7 +90,7 @@ describe('DocumentsResolver', () => {
       documentsService.getUploadUrl = jest.fn().mockResolvedValue(mockUrl);
 
       const result = await documentsResolver.getUploadUrl(
-        'test.pdf',
+        { filename: 'test.pdf' },
         mockContext,
       );
 
@@ -108,7 +108,7 @@ describe('DocumentsResolver', () => {
       documentsService.getDownloadUrl = jest.fn().mockResolvedValue(mockUrl);
 
       const result = await documentsResolver.getDownloadUrl(
-        'test.pdf',
+        { filename: 'test.pdf' },
         mockContext,
       );
 
@@ -125,7 +125,7 @@ describe('DocumentsResolver', () => {
       documentsService.deleteFile = jest.fn().mockResolvedValue(true);
 
       const result = await documentsResolver.deleteFile(
-        'test.pdf',
+        { filename: 'test.pdf' },
         mockContext,
       );
 
@@ -140,7 +140,7 @@ describe('DocumentsResolver', () => {
       documentsService.deleteFile = jest.fn().mockResolvedValue(false);
 
       const result = await documentsResolver.deleteFile(
-        'test.pdf',
+        { filename: 'test.pdf' },
         mockContext,
       );
 

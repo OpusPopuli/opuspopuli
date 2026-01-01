@@ -1,5 +1,5 @@
 import serverlessExpress from '@codegenie/serverless-express';
-import { INestApplication, Logger, Type } from '@nestjs/common';
+import { INestApplication, Logger, Type, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Handler } from 'aws-lambda';
@@ -86,6 +86,15 @@ export default async function bootstrap(
 
   app.use(helmet());
   app.enableCors(getCorsConfig(configService));
+
+  // Enable global validation for DTOs with class-validator decorators
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true, // Strip properties not in DTO
+      forbidNonWhitelisted: true, // Throw error for unknown properties
+      transform: true, // Auto-transform payloads to DTO instances
+    }),
+  );
 
   if (env.ENV !== 'prod') {
     setupSwagger(app, appName, appDescription, appVersion);

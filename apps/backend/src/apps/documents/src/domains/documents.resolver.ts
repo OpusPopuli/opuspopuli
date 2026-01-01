@@ -16,11 +16,13 @@ import {
   GqlContext,
   getUserFromContext,
 } from 'src/common/utils/graphql-context';
+import { FilenameInput } from './dto/documents.dto';
 
 /**
  * Documents Resolver
  *
  * Handles document metadata and file storage operations.
+ * Filename inputs are validated to prevent path traversal attacks.
  */
 @Resolver(() => File)
 export class DocumentsResolver {
@@ -36,31 +38,31 @@ export class DocumentsResolver {
   @Query(() => String)
   @UseGuards(AuthGuard)
   getUploadUrl(
-    @Args('filename') filename: string,
+    @Args('input') input: FilenameInput,
     @Context() context: GqlContext,
   ): Promise<string> {
     const user = getUserFromContext(context);
-    return this.documentsService.getUploadUrl(user.id, filename);
+    return this.documentsService.getUploadUrl(user.id, input.filename);
   }
 
   @Query(() => String)
   @UseGuards(AuthGuard)
   getDownloadUrl(
-    @Args('filename') filename: string,
+    @Args('input') input: FilenameInput,
     @Context() context: GqlContext,
   ): Promise<string> {
     const user = getUserFromContext(context);
-    return this.documentsService.getDownloadUrl(user.id, filename);
+    return this.documentsService.getDownloadUrl(user.id, input.filename);
   }
 
   @Mutation(() => Boolean)
   @UseGuards(AuthGuard)
   async deleteFile(
-    @Args('filename') filename: string,
+    @Args('input') input: FilenameInput,
     @Context() context: GqlContext,
   ): Promise<boolean> {
     const user = getUserFromContext(context);
-    return this.documentsService.deleteFile(user.id, filename);
+    return this.documentsService.deleteFile(user.id, input.filename);
   }
 
   @ResolveField(() => User)

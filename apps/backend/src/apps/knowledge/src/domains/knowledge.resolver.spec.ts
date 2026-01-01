@@ -42,7 +42,7 @@ describe('KnowledgeResolver', () => {
       knowledgeService.answerQuery = jest.fn().mockResolvedValue(mockAnswer);
 
       const result = await knowledgeResolver.answerQuery(
-        'What is the topic?',
+        { query: 'What is the topic?' },
         mockContext,
       );
 
@@ -59,7 +59,7 @@ describe('KnowledgeResolver', () => {
         .mockRejectedValue(new Error('Query failed'));
 
       await expect(
-        knowledgeResolver.answerQuery('test query', mockContext),
+        knowledgeResolver.answerQuery({ query: 'test query' }, mockContext),
       ).rejects.toThrow('Query failed');
     });
   });
@@ -78,9 +78,7 @@ describe('KnowledgeResolver', () => {
       knowledgeService.searchText = jest.fn().mockResolvedValue(mockResults);
 
       const result = await knowledgeResolver.searchText(
-        'search term',
-        0,
-        10,
+        { query: 'search term', skip: 0, take: 10 },
         mockContext,
       );
 
@@ -102,9 +100,7 @@ describe('KnowledgeResolver', () => {
       knowledgeService.searchText = jest.fn().mockResolvedValue(emptyResults);
 
       const result = await knowledgeResolver.searchText(
-        'unknown term',
-        0,
-        10,
+        { query: 'unknown term', skip: 0, take: 10 },
         mockContext,
       );
 
@@ -120,9 +116,7 @@ describe('KnowledgeResolver', () => {
       knowledgeService.searchText = jest.fn().mockResolvedValue(mockResults);
 
       const result = await knowledgeResolver.searchText(
-        'search term',
-        10,
-        5,
+        { query: 'search term', skip: 10, take: 5 },
         mockContext,
       );
 
@@ -141,8 +135,7 @@ describe('KnowledgeResolver', () => {
       knowledgeService.indexDocument = jest.fn().mockResolvedValue(undefined);
 
       const result = await knowledgeResolver.indexDocument(
-        'doc-1',
-        'Document content',
+        { documentId: 'doc-1', text: 'Document content' },
         mockContext,
       );
 
@@ -160,8 +153,7 @@ describe('KnowledgeResolver', () => {
         .mockRejectedValue(new Error('Index failed'));
 
       const result = await knowledgeResolver.indexDocument(
-        'doc-1',
-        'Document content',
+        { documentId: 'doc-1', text: 'Document content' },
         mockContext,
       );
 
