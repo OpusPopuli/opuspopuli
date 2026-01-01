@@ -1,4 +1,10 @@
-import { Directive, Field, ID, ObjectType } from '@nestjs/graphql';
+import {
+  Directive,
+  Field,
+  ID,
+  ObjectType,
+  registerEnumType,
+} from '@nestjs/graphql';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -8,6 +14,13 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
 } from 'typeorm';
+import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
+
+// Register enum for GraphQL
+registerEnumType(AuthStrategy, {
+  name: 'AuthStrategy',
+  description: 'Authentication strategies supported by the platform',
+});
 
 @ObjectType()
 @Directive('@key(fields: "id")')
@@ -28,6 +41,15 @@ export class UserEntity extends BaseEntity {
   @Field({ nullable: true })
   @Column({ type: 'varchar', length: 255, select: true, nullable: true })
   lastName?: string;
+
+  @Field(() => AuthStrategy, { nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+    default: null,
+  })
+  authStrategy?: AuthStrategy;
 
   @Field()
   @CreateDateColumn({

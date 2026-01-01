@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import evaluateDBError from 'src/db/db.errors';
 import { AuthService } from '../auth/auth.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
 
 @Injectable()
 export class UsersService {
@@ -86,10 +87,14 @@ export class UsersService {
    * Only requires email - no password or auth provider registration
    *
    * @param {string} email - User's email address
+   * @param {AuthStrategy} authStrategy - The authentication strategy used
    * @returns {Promise<User>} The created user
    */
-  async createPasswordlessUser(email: string): Promise<User> {
-    const userEntity = this.userRepo.create({ email });
+  async createPasswordlessUser(
+    email: string,
+    authStrategy: AuthStrategy = AuthStrategy.MAGIC_LINK,
+  ): Promise<User> {
+    const userEntity = this.userRepo.create({ email, authStrategy });
 
     try {
       return await this.userRepo.save(userEntity);
@@ -97,6 +102,29 @@ export class UsersService {
       const dbError = evaluateDBError(error);
       this.logger.warn(
         `userRepo error creating passwordless user (${email}): ${dbError.message}`,
+      );
+      throw dbError;
+    }
+  }
+
+  /**
+   * Updates a user's authentication strategy
+   *
+   * @param {string} id - User ID
+   * @param {AuthStrategy} authStrategy - The new authentication strategy
+   * @returns {Promise<boolean>} Success status
+   */
+  async updateAuthStrategy(
+    id: string,
+    authStrategy: AuthStrategy,
+  ): Promise<boolean> {
+    try {
+      await this.userRepo.update({ id }, { authStrategy });
+      return true;
+    } catch (error) {
+      const dbError = evaluateDBError(error);
+      this.logger.warn(
+        `userRepo error updating auth strategy for user ${id}: ${dbError.message}`,
       );
       throw dbError;
     }

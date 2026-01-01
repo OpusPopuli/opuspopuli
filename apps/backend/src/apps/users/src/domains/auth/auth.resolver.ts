@@ -11,9 +11,11 @@ import { AuthGuard } from 'src/common/guards/auth.guard';
 import { Auth } from './models/auth.model';
 import { Permissions } from 'src/common/decorators/permissions.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Action } from 'src/common/enums/action.enum';
 import { ConfirmForgotPasswordDto } from './dto/confirm-forgot-password.dto';
+import { UsersService } from '../user/users.service';
 
 // Passkey DTOs
 import {
@@ -39,6 +41,7 @@ export class AuthResolver {
   constructor(
     private readonly authService: AuthService,
     private readonly passkeyService: PasskeyService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Mutation(() => Boolean)
@@ -188,6 +191,13 @@ export class AuthResolver {
           verification,
           input.friendlyName,
         );
+
+        // Update user's auth strategy to passkey (most secure method)
+        await this.usersService.updateAuthStrategy(
+          user.id,
+          AuthStrategy.PASSKEY,
+        );
+
         return true;
       }
 

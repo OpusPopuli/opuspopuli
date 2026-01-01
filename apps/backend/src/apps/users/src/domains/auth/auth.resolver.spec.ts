@@ -6,6 +6,7 @@ import { createMock } from '@golevelup/ts-jest';
 import { AuthResolver } from './auth.resolver';
 import { AuthService } from './auth.service';
 import { PasskeyService } from './services/passkey.service';
+import { UsersService } from '../user/users.service';
 
 import {
   changePasswordDto,
@@ -29,6 +30,7 @@ describe('AuthResolver', () => {
         AuthResolver,
         { provide: AuthService, useValue: createMock<AuthService>() },
         { provide: PasskeyService, useValue: createMock<PasskeyService>() },
+        { provide: UsersService, useValue: createMock<UsersService>() },
       ],
     }).compile();
 
@@ -300,6 +302,7 @@ describe('AuthResolver', () => {
           AuthResolver,
           { provide: AuthService, useValue: createMock<AuthService>() },
           { provide: PasskeyService, useValue: createMock<PasskeyService>() },
+          { provide: UsersService, useValue: createMock<UsersService>() },
         ],
       }).compile();
 
@@ -356,6 +359,7 @@ describe('AuthResolver', () => {
 
   describe('verifyPasskeyRegistration', () => {
     let passkeyService: PasskeyService;
+    let usersService: UsersService;
 
     beforeEach(async () => {
       const module: TestingModule = await Test.createTestingModule({
@@ -363,12 +367,14 @@ describe('AuthResolver', () => {
           AuthResolver,
           { provide: AuthService, useValue: createMock<AuthService>() },
           { provide: PasskeyService, useValue: createMock<PasskeyService>() },
+          { provide: UsersService, useValue: createMock<UsersService>() },
         ],
       }).compile();
 
       resolver = module.get<AuthResolver>(AuthResolver);
       authService = module.get<AuthService>(AuthService);
       passkeyService = module.get<PasskeyService>(PasskeyService);
+      usersService = module.get<UsersService>(UsersService);
     });
 
     it('should verify passkey registration successfully', async () => {
@@ -379,6 +385,7 @@ describe('AuthResolver', () => {
         .fn()
         .mockResolvedValue({ verified: true });
       passkeyService.saveCredential = jest.fn().mockResolvedValue(undefined);
+      usersService.updateAuthStrategy = jest.fn().mockResolvedValue(true);
 
       const result = await resolver.verifyPasskeyRegistration({
         email: 'test@example.com',
@@ -388,6 +395,10 @@ describe('AuthResolver', () => {
 
       expect(result).toBe(true);
       expect(passkeyService.saveCredential).toHaveBeenCalled();
+      expect(usersService.updateAuthStrategy).toHaveBeenCalledWith(
+        'user-1',
+        'passkey',
+      );
     });
 
     it('should return false when verification fails', async () => {
@@ -427,6 +438,7 @@ describe('AuthResolver', () => {
           AuthResolver,
           { provide: AuthService, useValue: createMock<AuthService>() },
           { provide: PasskeyService, useValue: createMock<PasskeyService>() },
+          { provide: UsersService, useValue: createMock<UsersService>() },
         ],
       }).compile();
 
@@ -486,6 +498,7 @@ describe('AuthResolver', () => {
           AuthResolver,
           { provide: AuthService, useValue: createMock<AuthService>() },
           { provide: PasskeyService, useValue: createMock<PasskeyService>() },
+          { provide: UsersService, useValue: createMock<UsersService>() },
         ],
       }).compile();
 
@@ -536,6 +549,7 @@ describe('AuthResolver', () => {
           AuthResolver,
           { provide: AuthService, useValue: createMock<AuthService>() },
           { provide: PasskeyService, useValue: createMock<PasskeyService>() },
+          { provide: UsersService, useValue: createMock<UsersService>() },
         ],
       }).compile();
 
@@ -575,6 +589,7 @@ describe('AuthResolver', () => {
           AuthResolver,
           { provide: AuthService, useValue: createMock<AuthService>() },
           { provide: PasskeyService, useValue: createMock<PasskeyService>() },
+          { provide: UsersService, useValue: createMock<UsersService>() },
         ],
       }).compile();
 

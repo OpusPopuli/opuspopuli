@@ -16,6 +16,7 @@ import { IAuthProvider, IAuthResult } from '@qckstrt/auth-provider';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ConfirmForgotPasswordDto } from './dto/confirm-forgot-password.dto';
 import { Role } from 'src/common/enums/role.enum';
+import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
 import { UserEntity } from 'src/db/entities/user.entity';
 import { User } from '../user/models/user.model';
 
@@ -46,8 +47,6 @@ export class AuthService {
       registerUserDto;
 
     // Find user by email first to make sure they were created
-    // FUTURE NOTE: think about storing auth strategy/provider in user db ...
-
     const user = await this.usersService.findByEmail(email);
 
     if (user?.email !== registerUserDto.email) {
@@ -82,8 +81,9 @@ export class AuthService {
       await this.authProvider.confirmUser(username);
     }
 
-    // Use AWS Cognito User ID as our ID
+    // Use AWS Cognito User ID as our ID and set auth strategy
     await this.usersService.update(user.id, { id: userId });
+    await this.usersService.updateAuthStrategy(userId, AuthStrategy.PASSWORD);
 
     // Send welcome email (async, don't wait for it)
     if (this.emailService) {
@@ -143,8 +143,6 @@ export class AuthService {
     const { email, password } = loginUserDto;
 
     // Find user by email first to make sure they were created
-    // NOTE: think about storing auth strategy in user db ...
-
     const user = await this.usersService.findByEmail(email);
 
     if (user?.email !== loginUserDto.email) {

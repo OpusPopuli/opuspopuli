@@ -124,12 +124,18 @@ describe('UsersService', () => {
       await usersService.createPasswordlessUser('test@example.com');
 
     expect(result).toEqual({ id: 'new-user-id', email: 'test@example.com' });
-    expect(userRepo.create).toHaveBeenCalledWith({ email: 'test@example.com' });
+    expect(userRepo.create).toHaveBeenCalledWith({
+      email: 'test@example.com',
+      authStrategy: 'magic_link',
+    });
     expect(userRepo.save).toHaveBeenCalledTimes(1);
   });
 
   it('should fail to create a passwordless user with DB error', async () => {
-    userRepo.create = jest.fn().mockReturnValue({ email: 'test@example.com' });
+    userRepo.create = jest.fn().mockReturnValue({
+      email: 'test@example.com',
+      authStrategy: 'magic_link',
+    });
     userRepo.save = jest.fn().mockRejectedValue(
       new QueryFailedError('Failed user creation!', undefined, {
         code: PostgresErrorCodes.UniqueViolation,
