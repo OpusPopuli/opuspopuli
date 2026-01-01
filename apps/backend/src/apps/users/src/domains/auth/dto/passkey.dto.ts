@@ -1,6 +1,12 @@
 import { Field, InputType, ObjectType } from '@nestjs/graphql';
 import { IsEmail, IsOptional, IsString } from 'class-validator';
 import GraphQLJSON from 'graphql-type-json';
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+  AuthenticationResponseJSON,
+} from '@simplewebauthn/server';
 
 // Input DTOs
 
@@ -18,7 +24,7 @@ export class VerifyPasskeyRegistrationDto {
   email!: string;
 
   @Field(() => GraphQLJSON)
-  response!: Record<string, unknown>;
+  response!: RegistrationResponseJSON;
 
   @Field({ nullable: true })
   @IsOptional()
@@ -41,7 +47,7 @@ export class VerifyPasskeyAuthenticationDto {
   identifier!: string;
 
   @Field(() => GraphQLJSON)
-  response!: Record<string, unknown>;
+  response!: AuthenticationResponseJSON;
 }
 
 @InputType()
@@ -56,15 +62,13 @@ export class DeletePasskeyDto {
 @ObjectType()
 export class PasskeyRegistrationOptions {
   @Field(() => GraphQLJSON)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  options!: any;
+  options!: PublicKeyCredentialCreationOptionsJSON;
 }
 
 @ObjectType()
 export class PasskeyAuthenticationOptions {
   @Field(() => GraphQLJSON)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  options!: any;
+  options!: PublicKeyCredentialRequestOptionsJSON;
 
   @Field()
   identifier!: string;

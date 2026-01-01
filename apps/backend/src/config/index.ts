@@ -1,6 +1,16 @@
 import { ConfigService } from '@nestjs/config';
 import { getSecrets } from '@qckstrt/secrets-provider';
+import { createLogger, LogLevel } from '@qckstrt/logging-provider';
 import { DBConnection, DBType } from 'src/common/enums/db.enums';
+
+/**
+ * Config logger for use during application initialization
+ * before NestJS logger is available
+ */
+const configLogger = createLogger({
+  serviceName: 'config',
+  level: LogLevel.WARN,
+});
 
 export interface IAuthConfig {
   userPoolId: string;
@@ -103,7 +113,7 @@ export default async (): Promise<Partial<IAppConfig>> => {
           apiKeys: new Map<string, string>(Object.entries(apiKeysObj)),
         };
       } catch {
-        console.warn('Failed to parse API_KEYS environment variable');
+        configLogger.warn('Failed to parse API_KEYS environment variable');
       }
     }
     return baseConfig;
@@ -128,7 +138,7 @@ export default async (): Promise<Partial<IAppConfig>> => {
         };
       }
     } catch (error) {
-      console.warn(
+      configLogger.warn(
         `Failed to load secrets from Vault: ${(error as Error).message}`,
       );
     }

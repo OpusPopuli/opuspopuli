@@ -5,6 +5,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository, DeleteResult, UpdateResult } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { createMock } from '@golevelup/ts-jest';
+import type {
+  RegistrationResponseJSON,
+  AuthenticationResponseJSON,
+} from '@simplewebauthn/server';
 
 import { PasskeyService } from './passkey.service';
 import { PasskeyCredentialEntity } from 'src/db/entities/passkey-credential.entity';
@@ -50,6 +54,30 @@ describe('PasskeyService', () => {
     type: 'registration',
     expiresAt: new Date(Date.now() + 300000), // 5 minutes from now
     createdAt: new Date(),
+  };
+
+  // Mock WebAuthn response objects with proper types
+  const mockRegistrationResponse: RegistrationResponseJSON = {
+    id: 'credential-id-123',
+    rawId: 'credential-id-123',
+    response: {
+      clientDataJSON: 'mock-client-data',
+      attestationObject: 'mock-attestation',
+    },
+    clientExtensionResults: {},
+    type: 'public-key',
+  };
+
+  const mockAuthenticationResponse: AuthenticationResponseJSON = {
+    id: 'credential-id-123',
+    rawId: 'credential-id-123',
+    response: {
+      clientDataJSON: 'mock-client-data',
+      authenticatorData: 'mock-auth-data',
+      signature: 'mock-signature',
+    },
+    clientExtensionResults: {},
+    type: 'public-key',
   };
 
   beforeEach(async () => {
@@ -300,7 +328,10 @@ describe('PasskeyService', () => {
       ).mockResolvedValue(mockVerification);
       challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
 
-      const result = await service.verifyRegistration('test@example.com', {});
+      const result = await service.verifyRegistration(
+        'test@example.com',
+        mockRegistrationResponse,
+      );
 
       expect(result).toEqual(mockVerification);
       expect(challengeRepo.delete).toHaveBeenCalled();
@@ -310,7 +341,10 @@ describe('PasskeyService', () => {
       challengeRepo.findOne = jest.fn().mockResolvedValue(null);
 
       await expect(
-        service.verifyRegistration('test@example.com', {}),
+        service.verifyRegistration(
+          'test@example.com',
+          mockRegistrationResponse,
+        ),
       ).rejects.toThrow('Challenge not found or expired');
     });
 
@@ -322,7 +356,10 @@ describe('PasskeyService', () => {
       challengeRepo.findOne = jest.fn().mockResolvedValue(expiredChallenge);
 
       await expect(
-        service.verifyRegistration('test@example.com', {}),
+        service.verifyRegistration(
+          'test@example.com',
+          mockRegistrationResponse,
+        ),
       ).rejects.toThrow('Challenge not found or expired');
     });
   });
@@ -529,9 +566,10 @@ describe('PasskeyService', () => {
       credentialRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
       challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
 
-      const result = await service.verifyAuthentication('test@example.com', {
-        id: mockCredential.credentialId,
-      });
+      const result = await service.verifyAuthentication(
+        'test@example.com',
+        mockAuthenticationResponse,
+      );
 
       expect(result.verification).toEqual(mockVerification);
       expect(result.user).toBeDefined();
@@ -542,7 +580,10 @@ describe('PasskeyService', () => {
       challengeRepo.findOne = jest.fn().mockResolvedValue(null);
 
       await expect(
-        service.verifyAuthentication('test@example.com', { id: 'cred-id' }),
+        service.verifyAuthentication(
+          'test@example.com',
+          mockAuthenticationResponse,
+        ),
       ).rejects.toThrow('Challenge not found or expired');
     });
 
@@ -552,6 +593,7 @@ describe('PasskeyService', () => {
 
       await expect(
         service.verifyAuthentication('test@example.com', {
+          ...mockAuthenticationResponse,
           id: 'unknown-cred',
         }),
       ).rejects.toThrow('Credential not found');
@@ -569,9 +611,10 @@ describe('PasskeyService', () => {
         simplewebauthn.verifyAuthenticationResponse as jest.Mock
       ).mockResolvedValue(mockVerification);
 
-      const result = await service.verifyAuthentication('test@example.com', {
-        id: mockCredential.credentialId,
-      });
+      const result = await service.verifyAuthentication(
+        'test@example.com',
+        mockAuthenticationResponse,
+      );
 
       expect(result.verification.verified).toBe(false);
       expect(credentialRepo.update).not.toHaveBeenCalled();

@@ -18,16 +18,12 @@ describe('EmailResolver', () => {
 
   const mockContext = {
     req: {
-      headers: {
-        user: JSON.stringify({ id: mockUserId, email: mockUserEmail }),
-      },
+      user: { id: mockUserId, email: mockUserEmail },
     },
   };
 
   const mockContextNoUser = {
-    req: {
-      headers: {},
-    },
+    req: {},
   };
 
   const mockCorrespondence = {

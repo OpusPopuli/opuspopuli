@@ -15,6 +15,8 @@ import type {
   AuthenticatorTransportFuture,
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+  AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
 
 import { PasskeyCredentialEntity } from 'src/db/entities/passkey-credential.entity';
@@ -121,8 +123,7 @@ export class PasskeyService {
    */
   async verifyRegistration(
     email: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    response: any,
+    response: RegistrationResponseJSON,
   ): Promise<VerifiedRegistrationResponse> {
     const storedChallenge = await this.getChallenge(email, 'registration');
 
@@ -225,8 +226,7 @@ export class PasskeyService {
    */
   async verifyAuthentication(
     identifier: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    response: any,
+    response: AuthenticationResponseJSON,
   ): Promise<{
     verification: VerifiedAuthenticationResponse;
     user: UserEntity;

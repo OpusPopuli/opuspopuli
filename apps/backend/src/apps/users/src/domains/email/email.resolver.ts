@@ -10,6 +10,10 @@ import {
 } from '@nestjs/graphql';
 
 import { AuthGuard } from 'src/common/guards/auth.guard';
+import {
+  GqlContext,
+  getUserFromContext,
+} from 'src/common/utils/graphql-context';
 import { EmailType } from 'src/db/entities/email-correspondence.entity';
 
 import { EmailService } from './email.service';
@@ -23,27 +27,6 @@ import {
   PaginatedEmailCorrespondence,
   SendEmailResult,
 } from './models/email-correspondence.model';
-
-interface GqlContext {
-  req: {
-    headers: {
-      user?: string;
-    };
-  };
-}
-
-interface UserInfo {
-  id: string;
-  email: string;
-}
-
-function getUserFromContext(context: GqlContext): UserInfo {
-  const userHeader = context.req.headers.user;
-  if (!userHeader) {
-    throw new Error('User not authenticated');
-  }
-  return JSON.parse(userHeader) as UserInfo;
-}
 
 @Resolver()
 export class EmailResolver {
