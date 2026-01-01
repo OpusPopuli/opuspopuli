@@ -525,6 +525,62 @@ export class SupabaseAuthProvider implements IAuthProvider {
   }
 
   /**
+   * Create a session for a verified user (used after passkey authentication)
+   * Uses admin.generateLink to create a magic link token, then verifies it to get a session
+   */
+  async createSessionForUser(email: string): Promise<IAuthResult> {
+    try {
+      // Generate a magic link using admin API (doesn't send email)
+      const { data: linkData, error: linkError } =
+        await this.supabase.auth.admin.generateLink({
+          type: "magiclink",
+          email,
+        });
+
+      if (linkError) {
+        throw linkError;
+      }
+
+      if (!linkData.properties?.hashed_token) {
+        throw new Error("Failed to generate magic link token");
+      }
+
+      // The hashed_token from generateLink can be used directly with verifyOtp
+      // to create a session without sending an email
+      const { data, error } = await this.supabase.auth.verifyOtp({
+        email,
+        token: linkData.properties.hashed_token,
+        type: "email",
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data.session) {
+        throw new Error("No session returned from token verification");
+      }
+
+      this.logger.log(`Session created for verified user: ${email}`);
+      return {
+        accessToken: data.session.access_token,
+        idToken: data.session.access_token,
+        refreshToken: data.session.refresh_token || "",
+        expiresIn: data.session.expires_in,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error creating session for user: ${(error as Error).message}`,
+      );
+      throw new AuthError(
+        `Failed to create session for ${email}`,
+        "CREATE_SESSION_ERROR",
+        error as Error,
+      );
+    }
+  }
+
+  /**
    * Helper method to find a user's ID by their username
    * Username is stored in user_metadata
    */

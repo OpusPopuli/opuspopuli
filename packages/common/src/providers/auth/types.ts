@@ -119,6 +119,14 @@ export interface IAuthProvider {
    * @returns true if registration email was sent successfully
    */
   registerWithMagicLink?(email: string, redirectTo?: string): Promise<boolean>;
+
+  /**
+   * Create a session for a verified user (used after passkey authentication)
+   * Generates tokens without requiring password authentication
+   * @param email User's email address
+   * @returns Auth tokens for the user
+   */
+  createSessionForUser?(email: string): Promise<IAuthResult>;
 }
 
 /**

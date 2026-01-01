@@ -595,23 +595,35 @@ describe('AuthService', () => {
   });
 
   describe('generateTokensForUser', () => {
-    it('should throw error when magic link not supported', async () => {
-      (authProvider as any).sendMagicLink = undefined;
+    it('should throw error when createSessionForUser not supported', async () => {
+      (authProvider as any).createSessionForUser = undefined;
 
       await expect(
-        authService.generateTokensForUser({} as any),
+        authService.generateTokensForUser({ email: 'test@example.com' } as any),
       ).rejects.toThrow(
-        'Token generation for passkey auth requires magic link support',
+        'Token generation for passkey auth requires createSessionForUser support',
       );
     });
 
-    it('should throw error for passkey token generation not implemented', async () => {
-      (authProvider as any).sendMagicLink = jest.fn();
-      (authProvider as any).verifyMagicLink = jest.fn();
+    it('should generate tokens successfully for passkey-authenticated user', async () => {
+      const mockAuth = {
+        accessToken: 'access-token',
+        idToken: 'id-token',
+        refreshToken: 'refresh-token',
+        expiresIn: 3600,
+      };
+      (authProvider as any).createSessionForUser = jest
+        .fn()
+        .mockResolvedValue(mockAuth);
 
-      await expect(
-        authService.generateTokensForUser({} as any),
-      ).rejects.toThrow('Passkey token generation not yet implemented');
+      const result = await authService.generateTokensForUser({
+        email: 'test@example.com',
+      } as any);
+
+      expect(result).toEqual(mockAuth);
+      expect((authProvider as any).createSessionForUser).toHaveBeenCalledWith(
+        'test@example.com',
+      );
     });
   });
 });
