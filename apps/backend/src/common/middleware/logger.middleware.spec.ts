@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LoggerMiddleware } from './logger.middleware';
 import { Request, Response, NextFunction } from 'express';
-import { ILogger, LOGGER, LogLevel } from '@qckstrt/logging-provider';
+import { ILogger, LOGGER } from '@qckstrt/logging-provider';
 
 describe('LoggerMiddleware', () => {
   let middleware: LoggerMiddleware;
@@ -36,7 +36,7 @@ describe('LoggerMiddleware', () => {
       method: 'GET',
       url: '/api/test',
       ip: '127.0.0.1',
-      socket: { remoteAddress: '127.0.0.1' } as any,
+      socket: { remoteAddress: '127.0.0.1' } as Request['socket'],
     };
 
     mockResponse = {
@@ -102,7 +102,6 @@ describe('LoggerMiddleware', () => {
 
     it('should include duration in completed request log', () => {
       jest.useFakeTimers();
-      const startTime = Date.now();
 
       middleware.use(
         mockRequest as Request,
@@ -288,7 +287,7 @@ describe('LoggerMiddleware', () => {
 
     it('should fallback to req.ip', () => {
       mockRequest.headers = {};
-      (mockRequest as any).ip = '10.0.0.1';
+      Object.defineProperty(mockRequest, 'ip', { value: '10.0.0.1' });
 
       middleware.use(
         mockRequest as Request,
@@ -301,8 +300,8 @@ describe('LoggerMiddleware', () => {
 
     it('should fallback to socket remoteAddress', () => {
       mockRequest.headers = {};
-      (mockRequest as any).ip = undefined;
-      mockRequest.socket = { remoteAddress: '10.0.0.2' } as any;
+      Object.defineProperty(mockRequest, 'ip', { value: undefined });
+      mockRequest.socket = { remoteAddress: '10.0.0.2' } as Request['socket'];
 
       middleware.use(
         mockRequest as Request,
@@ -318,7 +317,7 @@ describe('LoggerMiddleware', () => {
         'x-forwarded-for': '203.0.113.195',
         'x-real-ip': '192.168.1.100',
       };
-      (mockRequest as any).ip = '10.0.0.1';
+      Object.defineProperty(mockRequest, 'ip', { value: '10.0.0.1' });
 
       middleware.use(
         mockRequest as Request,
