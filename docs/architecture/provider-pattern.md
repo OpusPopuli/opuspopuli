@@ -456,7 +456,100 @@ EMAIL_REPLY_TO=support@commonwealthlabs.io
 
 ---
 
-### 8. Secrets Provider
+### 8. Extraction Provider
+
+**Package**: `@qckstrt/extraction-provider`
+
+**Purpose**: Extract text from URLs and PDFs with caching, rate limiting, and retry logic
+
+**Interface**:
+```typescript
+export interface ExtractionProvider {
+  // Fetch URL with rate limiting and caching
+  fetchUrl(url: string, options?: FetchOptions): Promise<CachedFetchResult>;
+
+  // Extract text from PDF buffer
+  extractPdfText(buffer: Buffer): Promise<string>;
+
+  // Parse HTML and return cheerio instance
+  parseHtml(html: string): CheerioAPI;
+
+  // Fetch with exponential backoff retry
+  fetchWithRetry(url: string, options?: RetryOptions): Promise<CachedFetchResult>;
+}
+```
+
+**Implementation**:
+
+| Provider | File | Use Case | Features |
+|----------|------|----------|----------|
+| ExtractionProvider | `packages/extraction-provider/src/extraction.provider.ts` | Default | Caching, Rate Limiting, Retry |
+
+**Features**:
+- **Rate Limiting**: Token bucket algorithm (configurable requests/second)
+- **Caching**: In-memory cache with TTL for repeated requests
+- **Retry Logic**: Exponential backoff with jitter for failed requests
+- **PDF Extraction**: Uses `pdf-parse` for PDF text extraction
+- **HTML Parsing**: Uses `cheerio` for DOM selection and manipulation
+
+**Configuration**:
+```bash
+# Rate limiting
+EXTRACTION_RATE_LIMIT_RPS=2          # Requests per second
+EXTRACTION_RATE_LIMIT_BURST=5        # Burst size for token bucket
+
+# Caching
+EXTRACTION_CACHE_TTL_MS=300000       # Cache TTL (5 minutes)
+EXTRACTION_CACHE_MAX_SIZE=100        # Maximum cached entries
+
+# Timeouts and retries
+EXTRACTION_DEFAULT_TIMEOUT_MS=30000  # Request timeout (30 seconds)
+EXTRACTION_RETRY_MAX_ATTEMPTS=3      # Maximum retry attempts
+EXTRACTION_RETRY_BASE_DELAY_MS=1000  # Base delay for exponential backoff
+EXTRACTION_RETRY_MAX_DELAY_MS=30000  # Maximum retry delay
+```
+
+**Module Configuration**:
+```typescript
+// Default configuration
+@Module({
+  imports: [ExtractionModule],
+})
+export class AppModule {}
+
+// Custom configuration
+@Module({
+  imports: [
+    ExtractionModule.forRoot({
+      config: {
+        rateLimit: { requestsPerSecond: 5, burstSize: 10 },
+        cache: { ttlMs: 60000, maxSize: 50 },
+      },
+    }),
+  ],
+})
+export class AppModule {}
+
+// Async configuration with injected dependencies
+@Module({
+  imports: [
+    ExtractionModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        config: config.get('extraction'),
+      }),
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+**Consumed By**: `TextExtractionService`, Region Providers
+
+---
+
+### 9. Secrets Provider
 
 **Package**: `@qckstrt/secrets-provider`
 

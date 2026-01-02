@@ -21,6 +21,10 @@ Forks only need to create a new provider package that implements `IRegionProvide
 │  packages/common/src/providers/region/                              │
 │  └── types.ts (IRegionProvider, CivicDataTypes)                     │
 │                                                                     │
+│  packages/extraction-provider/                                      │
+│  ├── src/extraction.provider.ts (fetch, parse, rate limit, cache)  │
+│  └── src/extraction.service.ts (text extraction orchestration)     │
+│                                                                     │
 │  packages/region-provider/                                          │
 │  ├── src/providers/example.provider.ts (mock/sample data)          │
 │  ├── src/region.service.ts (orchestrates sync)                     │
@@ -36,9 +40,11 @@ Forks only need to create a new provider package that implements `IRegionProvide
 │                         FORK ADDS ONLY                              │
 ├─────────────────────────────────────────────────────────────────────┤
 │  packages/region-provider-california/  (or your jurisdiction)       │
-│  └── Implements IRegionProvider with real data sources              │
+│  └── Implements IRegionProvider using ExtractionProvider            │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+**Note**: Region providers should use `ExtractionProvider` from `@qckstrt/extraction-provider` for fetching web content. This provides built-in rate limiting, caching, retry with exponential backoff, and HTML parsing via cheerio.
 
 ## Creating a Custom Provider
 
@@ -297,44 +303,62 @@ mutation {
 
 Always use stable external IDs from your data source. This allows the sync process to correctly update existing records.
 
-### 2. Handle Rate Limits
+### 2. Use ExtractionProvider for Web Fetching
 
-Many government APIs have rate limits. Implement proper throttling and retry logic:
+**Always** use `ExtractionProvider` from `@qckstrt/extraction-provider` for fetching web content. It provides:
+
+- **Rate Limiting**: Token bucket algorithm prevents overwhelming data sources
+- **Caching**: Automatic caching with configurable TTL
+- **Retry Logic**: Exponential backoff with jitter for transient failures
+- **HTML Parsing**: Built-in cheerio integration for DOM selection
 
 ```typescript
-private async fetchWithRetry<T>(
-  fn: () => Promise<T>,
-  maxRetries = 3
-): Promise<T> {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (i === maxRetries - 1) throw error;
-      await this.delay(1000 * Math.pow(2, i));
-    }
+import { ExtractionProvider } from '@qckstrt/extraction-provider';
+
+export class CaliforniaRegionProvider implements IRegionProvider {
+  constructor(private readonly extraction: ExtractionProvider) {}
+
+  async fetchPropositions(): Promise<Proposition[]> {
+    // Fetch with automatic rate limiting, caching, and retry
+    const result = await this.extraction.fetchUrl(
+      'https://www.sos.ca.gov/elections/ballot-measures'
+    );
+
+    // Parse HTML with cheerio
+    const $ = this.extraction.parseHtml(result.content);
+
+    // Select and parse elements
+    return $('table.ballot-measures tr')
+      .map((_, row) => ({
+        id: $(row).find('td:nth-child(1)').text().trim(),
+        title: $(row).find('td:nth-child(2)').text().trim(),
+        // ...
+      }))
+      .get();
   }
-  throw new Error('Max retries exceeded');
+
+  async fetchPdfProposition(url: string): Promise<string> {
+    // Fetch PDF with retry logic
+    const result = await this.extraction.fetchWithRetry(url);
+    const buffer = Buffer.from(result.content);
+    return this.extraction.extractPdfText(buffer);
+  }
 }
 ```
 
-### 3. Cache Responses
+### 3. Configure Extraction for Your Needs
 
-For data that doesn't change frequently, consider caching:
+Customize extraction settings via environment variables:
 
-```typescript
-private cache = new Map<string, { data: any; timestamp: number }>();
-private CACHE_TTL = 1000 * 60 * 60; // 1 hour
+```bash
+# Higher rate limit for APIs that allow it
+EXTRACTION_RATE_LIMIT_RPS=5
 
-private async fetchCached<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const cached = this.cache.get(key);
-  if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-    return cached.data;
-  }
-  const data = await fn();
-  this.cache.set(key, { data, timestamp: Date.now() });
-  return data;
-}
+# Longer cache for infrequently changing data
+EXTRACTION_CACHE_TTL_MS=3600000  # 1 hour
+
+# More retries for unreliable sources
+EXTRACTION_RETRY_MAX_ATTEMPTS=5
 ```
 
 ### 4. Log Progress

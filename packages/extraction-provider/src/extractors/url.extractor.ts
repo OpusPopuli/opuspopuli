@@ -6,18 +6,21 @@ import {
   ExtractionError,
 } from "@qckstrt/common";
 
+import { ExtractionProvider } from "../extraction.provider.js";
+
 /**
- * URL Text Extractor (OSS Implementation)
+ * URL Text Extractor
  *
- * Extracts text from web pages using simple HTTP fetching.
- * For production, consider using:
- * - Firecrawl (https://firecrawl.dev)
- * - Jina Reader (https://jina.ai/reader)
- * - Playwright for JS-heavy sites
+ * Extracts text from web pages using ExtractionProvider infrastructure.
+ * Benefits from caching, rate limiting, and proper HTML parsing via cheerio.
+ *
+ * For JS-heavy sites, consider using Playwright or similar.
  */
 @Injectable()
 export class URLExtractor implements ITextExtractor {
   private readonly logger = new Logger(URLExtractor.name);
+
+  constructor(private readonly extraction: ExtractionProvider) {}
 
   getName(): string {
     return "URLExtractor";
@@ -35,24 +38,17 @@ export class URLExtractor implements ITextExtractor {
     this.logger.log(`Extracting text from URL: ${input.url}`);
 
     try {
-      // Simple implementation - fetch and extract text
-      // TODO: Replace with Firecrawl or similar for production
-      const response = await fetch(input.url);
+      // Use ExtractionProvider for fetching with caching and rate limiting
+      const result = await this.extraction.fetchUrl(input.url);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      // Use cheerio for proper HTML parsing instead of regex
+      const $ = this.extraction.parseHtml(result.content);
 
-      const html = await response.text();
+      // Remove script and style elements
+      $("script, style, noscript").remove();
 
-      // Basic HTML tag stripping (very naive - use a proper library in production)
-      // Using simple patterns to avoid catastrophic backtracking
-      const text = html
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+      // Extract text from body
+      const text = $("body").text().replaceAll(/\s+/g, " ").trim();
 
       return {
         text,
@@ -60,8 +56,9 @@ export class URLExtractor implements ITextExtractor {
           source: input.url,
           extractedAt: new Date(),
           extractor: this.getName(),
-          statusCode: response.status,
-          contentType: response.headers.get("content-type") || "unknown",
+          statusCode: result.statusCode,
+          contentType: result.contentType || "unknown",
+          fromCache: result.fromCache,
         },
       };
     } catch (error) {

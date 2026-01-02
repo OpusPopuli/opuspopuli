@@ -126,7 +126,7 @@ The `packages/` directory contains reusable, publishable npm packages that provi
 | `@qckstrt/embeddings-provider` | Xenova/Ollama embeddings | 24 |
 | `@qckstrt/vectordb-provider` | pgvector (PostgreSQL) | 19 |
 | `@qckstrt/relationaldb-provider` | PostgreSQL | 7 |
-| `@qckstrt/extraction-provider` | Text extraction from URLs | 16 |
+| `@qckstrt/extraction-provider` | Text extraction (URLs, PDFs) with caching & rate limiting | 116 |
 | `@qckstrt/storage-provider` | Supabase Storage | 17 |
 | `@qckstrt/auth-provider` | Supabase Auth (Passkeys, Magic Links, Password) | 29 |
 | `@qckstrt/secrets-provider` | Supabase Vault | 10 |
