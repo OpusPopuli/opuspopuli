@@ -1,15 +1,17 @@
 import { Field, InputType } from '@nestjs/graphql';
-import { IsEmail, IsString, IsOptional } from 'class-validator';
+import { IsEmail, IsString, IsOptional, MaxLength } from 'class-validator';
 
 @InputType()
 export class SendMagicLinkDto {
   @Field()
   @IsEmail()
+  @MaxLength(255)
   email!: string;
 
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   redirectTo?: string;
 }
 
@@ -17,10 +19,12 @@ export class SendMagicLinkDto {
 export class VerifyMagicLinkDto {
   @Field()
   @IsEmail()
+  @MaxLength(255)
   email!: string;
 
   @Field()
   @IsString()
+  @MaxLength(500)
   token!: string;
 }
 
@@ -28,10 +32,12 @@ export class VerifyMagicLinkDto {
 export class RegisterWithMagicLinkDto {
   @Field()
   @IsEmail()
+  @MaxLength(255)
   email!: string;
 
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   redirectTo?: string;
 }

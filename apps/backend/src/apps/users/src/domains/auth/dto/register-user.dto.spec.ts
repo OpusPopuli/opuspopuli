@@ -152,6 +152,70 @@ describe('RegisterUserDto', () => {
     });
   });
 
+  describe('max length validation', () => {
+    it('should fail when email exceeds 255 characters', async () => {
+      const dto = createValidDto();
+      dto.email = 'a'.repeat(250) + '@test.com';
+
+      const errors = await validate(dto);
+      const emailError = errors.find((e) => e.property === 'email');
+
+      expect(emailError).toBeDefined();
+    });
+
+    it('should fail when username exceeds 50 characters', async () => {
+      const dto = createValidDto();
+      dto.username = 'a'.repeat(51);
+
+      const errors = await validate(dto);
+      const usernameError = errors.find((e) => e.property === 'username');
+
+      expect(usernameError).toBeDefined();
+    });
+
+    it('should fail when password exceeds 128 characters', async () => {
+      const dto = createValidDto();
+      dto.password = 'Aa1!' + 'a'.repeat(125);
+
+      const errors = await validate(dto);
+      const passwordError = errors.find((e) => e.property === 'password');
+
+      expect(passwordError).toBeDefined();
+    });
+
+    it('should fail when department exceeds 100 characters', async () => {
+      const dto = createValidDto();
+      dto.department = 'a'.repeat(101);
+
+      const errors = await validate(dto);
+      const departmentError = errors.find((e) => e.property === 'department');
+
+      expect(departmentError).toBeDefined();
+    });
+
+    it('should fail when clearance exceeds 100 characters', async () => {
+      const dto = createValidDto();
+      dto.clearance = 'a'.repeat(101);
+
+      const errors = await validate(dto);
+      const clearanceError = errors.find((e) => e.property === 'clearance');
+
+      expect(clearanceError).toBeDefined();
+    });
+
+    it('should pass when all fields are at max length', async () => {
+      const dto = createValidDto();
+      dto.username = 'a'.repeat(50);
+      dto.department = 'a'.repeat(100);
+      dto.clearance = 'a'.repeat(100);
+
+      const errors = await validate(dto);
+      // Filter out password errors (regex pattern validation)
+      const nonPasswordErrors = errors.filter((e) => e.property !== 'password');
+      expect(nonPasswordErrors.length).toBe(0);
+    });
+  });
+
   describe('optional fields', () => {
     it('should pass with optional department', async () => {
       const dto = createValidDto();

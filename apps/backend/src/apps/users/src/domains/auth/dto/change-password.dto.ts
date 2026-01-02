@@ -1,5 +1,5 @@
 import { Field, InputType } from '@nestjs/graphql';
-import { IsDefined, IsString, Matches } from 'class-validator';
+import { IsDefined, IsString, Matches, MaxLength } from 'class-validator';
 
 // @ArgsType()
 @InputType()
@@ -9,11 +9,13 @@ export class ChangePasswordDto {
    */
   @IsDefined()
   @IsString()
+  @MaxLength(2048)
   @Field()
   public accessToken!: string;
 
   @IsDefined()
   @IsString()
+  @MaxLength(128)
   @Matches(
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$&+,:;=?@#|'<>.^*()%!-])[A-Za-z\d@$&+,:;=?@#|'<>.^*()%!-]{8,}$/,
     { message: 'invalid password' },
@@ -23,6 +25,7 @@ export class ChangePasswordDto {
 
   @IsDefined()
   @IsString()
+  @MaxLength(128)
   @Matches(
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$&+,:;=?@#|'<>.^*()%!-])[A-Za-z\d@$&+,:;=?@#|'<>.^*()%!-]{8,}$/,
     { message: 'invalid password' },

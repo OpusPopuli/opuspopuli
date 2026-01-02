@@ -137,11 +137,13 @@ export class GeocodeResultDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   @Field({ nullable: true })
   public formattedAddress?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
   @Field({ nullable: true })
   public placeId?: string;
 }

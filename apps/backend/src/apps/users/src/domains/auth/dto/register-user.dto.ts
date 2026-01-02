@@ -6,6 +6,7 @@ import {
   IsOptional,
   Matches,
   MinLength,
+  MaxLength,
   IsBoolean,
 } from 'class-validator';
 
@@ -18,17 +19,20 @@ export class RegisterUserDto {
   @IsDefined()
   @IsString()
   @IsEmail()
+  @MaxLength(255)
   @Field()
   public email!: string;
 
   @IsDefined()
   @MinLength(6)
+  @MaxLength(50)
   @IsString()
   @Field()
   public username!: string;
 
   @IsDefined()
   @IsString()
+  @MaxLength(128)
   @Matches(
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$&+,:;=?@#|'<>.^*()%!-])[A-Za-z\d@$&+,:;=?@#|'<>.^*()%!-]{8,}$/,
     { message: 'invalid password' },
@@ -41,11 +45,13 @@ export class RegisterUserDto {
    */
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   @Field({ nullable: true })
   public department?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   @Field({ nullable: true })
   public clearance?: string;
 

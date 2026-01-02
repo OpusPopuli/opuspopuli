@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   MinLength,
+  MaxLength,
 } from 'class-validator';
 
 // @ArgsType()
@@ -16,17 +17,20 @@ export class CreateUserDto {
   @IsDefined()
   @IsString()
   @IsEmail()
+  @MaxLength(255)
   @Field()
   public email!: string;
 
   @IsDefined()
   @MinLength(6)
+  @MaxLength(50)
   @IsString()
   @Field()
   public username!: string;
 
   @IsDefined()
   @MinLength(6)
+  @MaxLength(128)
   @IsString()
   @Field()
   public password!: string;
@@ -36,21 +40,25 @@ export class CreateUserDto {
    */
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   @Field({ nullable: true })
   public firstName?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   @Field({ nullable: true })
   public lastName?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   @Field({ nullable: true })
   public department?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   @Field({ nullable: true })
   public clearance?: string;
 }

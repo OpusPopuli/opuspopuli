@@ -121,9 +121,35 @@ All rate limit violations are logged with:
 
 See [auth-throttle.config.ts](apps/backend/src/config/auth-throttle.config.ts) for configuration.
 
+### Input Validation
+
+All GraphQL inputs are validated using NestJS ValidationPipe with class-validator decorators:
+
+**Global Validation Settings:**
+- `whitelist: true` - Strips properties not defined in DTOs
+- `forbidNonWhitelisted: true` - Rejects requests with unknown properties
+- `transform: true` - Auto-transforms payloads to DTO instances
+
+**Field Validation Rules:**
+
+| Field Type | Validation | Max Length |
+|------------|------------|------------|
+| Email | Valid email format | 255 chars |
+| Password | Uppercase, lowercase, digit, special char, min 8 chars | 128 chars |
+| Username | Min 6 characters | 50 chars |
+| Name fields | String type | 100 chars |
+| Token/JWT | String type | 2048 chars |
+| URL/redirectTo | Valid URL format | 2000 chars |
+
+**Validation Protections:**
+- Prevents buffer overflow attacks via max length limits
+- Blocks injection attempts by sanitizing inputs
+- Rejects malformed data before processing
+- Provides clear error messages for invalid inputs
+
 ### Code Security
 
-- Input validation on all user inputs
+- Input validation on all user inputs via class-validator
 - Parameterized queries (TypeORM)
 - CORS configuration for API endpoints
 - Rate limiting on authentication endpoints

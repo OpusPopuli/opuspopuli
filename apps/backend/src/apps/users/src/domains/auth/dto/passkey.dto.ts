@@ -1,5 +1,5 @@
 import { Field, InputType, ObjectType } from '@nestjs/graphql';
-import { IsEmail, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
 import GraphQLJSON from 'graphql-type-json';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
@@ -14,6 +14,7 @@ import type {
 export class GeneratePasskeyRegistrationOptionsDto {
   @Field()
   @IsEmail()
+  @MaxLength(255)
   email!: string;
 }
 
@@ -21,6 +22,7 @@ export class GeneratePasskeyRegistrationOptionsDto {
 export class VerifyPasskeyRegistrationDto {
   @Field()
   @IsEmail()
+  @MaxLength(255)
   email!: string;
 
   @Field(() => GraphQLJSON)
@@ -29,6 +31,7 @@ export class VerifyPasskeyRegistrationDto {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   friendlyName?: string;
 }
 
@@ -37,6 +40,7 @@ export class GeneratePasskeyAuthenticationOptionsDto {
   @Field({ nullable: true })
   @IsOptional()
   @IsEmail()
+  @MaxLength(255)
   email?: string;
 }
 
@@ -44,6 +48,7 @@ export class GeneratePasskeyAuthenticationOptionsDto {
 export class VerifyPasskeyAuthenticationDto {
   @Field()
   @IsString()
+  @MaxLength(255)
   identifier!: string;
 
   @Field(() => GraphQLJSON)
@@ -54,6 +59,7 @@ export class VerifyPasskeyAuthenticationDto {
 export class DeletePasskeyDto {
   @Field()
   @IsString()
+  @MaxLength(255)
   credentialId!: string;
 }
 
