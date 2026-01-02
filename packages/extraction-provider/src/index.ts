@@ -23,6 +23,9 @@ export * from "./cache/index.js";
 // Utility functions
 export * from "./utils/index.js";
 
+// Main provider
+export * from "./extraction.provider.js";
+
 // Extractor implementations
 export * from "./extractors/url.extractor.js";
 
