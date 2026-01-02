@@ -1,27 +1,43 @@
 import "reflect-metadata";
 import { URLExtractor } from "../src/extractors/url.extractor";
 import { ExtractionError, TextExtractionInput } from "@qckstrt/common";
-
-// Mock fetch globally
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+import { ExtractionProvider } from "../src/extraction.provider";
+import { FetchError } from "../src/types";
 
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({
   Injectable: () => (target: any) => target,
+  Inject: () => () => undefined,
+  Optional: () => () => undefined,
   Logger: jest.fn().mockImplementation(() => ({
     log: jest.fn(),
     error: jest.fn(),
     warn: jest.fn(),
+    debug: jest.fn(),
   })),
 }));
 
 describe("URLExtractor", () => {
   let extractor: URLExtractor;
+  let mockExtractionProvider: jest.Mocked<ExtractionProvider>;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    extractor = new URLExtractor();
+
+    // Create mock ExtractionProvider
+    mockExtractionProvider = {
+      fetchUrl: jest.fn(),
+      fetchWithRetry: jest.fn(),
+      extractPdfText: jest.fn(),
+      selectElements: jest.fn(),
+      parseHtml: jest.fn(),
+      getCacheStats: jest.fn(),
+      clearCache: jest.fn(),
+      resetRateLimiter: jest.fn(),
+      onModuleDestroy: jest.fn(),
+    } as unknown as jest.Mocked<ExtractionProvider>;
+
+    extractor = new URLExtractor(mockExtractionProvider);
   });
 
   describe("getName", () => {
@@ -74,12 +90,18 @@ describe("URLExtractor", () => {
         </html>
       `;
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve(htmlContent),
-        headers: new Map([["content-type", "text/html"]]),
+      mockExtractionProvider.fetchUrl.mockResolvedValueOnce({
+        content: htmlContent,
+        statusCode: 200,
+        contentType: "text/html",
+        fromCache: false,
       });
+
+      // Create a real cheerio instance for parseHtml
+      const cheerio = await import("cheerio");
+      mockExtractionProvider.parseHtml.mockImplementation((html: string) =>
+        cheerio.load(html),
+      );
 
       const input: TextExtractionInput = {
         type: "url",
@@ -94,6 +116,7 @@ describe("URLExtractor", () => {
       expect(result.metadata.source).toBe("https://example.com");
       expect(result.metadata.extractor).toBe("URLExtractor");
       expect(result.metadata.statusCode).toBe(200);
+      expect(result.metadata.fromCache).toBe(false);
     });
 
     it("should throw error for non-url input type", async () => {
@@ -109,12 +132,10 @@ describe("URLExtractor", () => {
       );
     });
 
-    it("should throw ExtractionError on HTTP error", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: "Not Found",
-      });
+    it("should throw ExtractionError on fetch error", async () => {
+      mockExtractionProvider.fetchUrl.mockRejectedValueOnce(
+        new FetchError("https://example.com/notfound", 404, "Not Found"),
+      );
 
       const input: TextExtractionInput = {
         type: "url",
@@ -128,7 +149,9 @@ describe("URLExtractor", () => {
     });
 
     it("should throw ExtractionError on network error", async () => {
-      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+      mockExtractionProvider.fetchUrl.mockRejectedValueOnce(
+        new Error("Network error"),
+      );
 
       const input: TextExtractionInput = {
         type: "url",
@@ -144,12 +167,17 @@ describe("URLExtractor", () => {
     it("should handle pages with no script or style tags", async () => {
       const htmlContent = "<html><body><p>Simple text</p></body></html>";
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve(htmlContent),
-        headers: new Map([["content-type", "text/html"]]),
+      mockExtractionProvider.fetchUrl.mockResolvedValueOnce({
+        content: htmlContent,
+        statusCode: 200,
+        contentType: "text/html",
+        fromCache: false,
       });
+
+      const cheerio = await import("cheerio");
+      mockExtractionProvider.parseHtml.mockImplementation((html: string) =>
+        cheerio.load(html),
+      );
 
       const input: TextExtractionInput = {
         type: "url",
@@ -159,6 +187,64 @@ describe("URLExtractor", () => {
       const result = await extractor.extractText(input);
 
       expect(result.text).toContain("Simple text");
+    });
+
+    it("should include fromCache in metadata when result is cached", async () => {
+      const htmlContent = "<html><body><p>Cached content</p></body></html>";
+
+      mockExtractionProvider.fetchUrl.mockResolvedValueOnce({
+        content: htmlContent,
+        statusCode: 200,
+        contentType: "text/html",
+        fromCache: true,
+      });
+
+      const cheerio = await import("cheerio");
+      mockExtractionProvider.parseHtml.mockImplementation((html: string) =>
+        cheerio.load(html),
+      );
+
+      const input: TextExtractionInput = {
+        type: "url",
+        url: "https://example.com",
+        userId: "user-1",
+      };
+      const result = await extractor.extractText(input);
+
+      expect(result.metadata.fromCache).toBe(true);
+    });
+
+    it("should remove noscript tags", async () => {
+      const htmlContent = `
+        <html>
+          <body>
+            <noscript>Please enable JavaScript</noscript>
+            <p>Main content</p>
+          </body>
+        </html>
+      `;
+
+      mockExtractionProvider.fetchUrl.mockResolvedValueOnce({
+        content: htmlContent,
+        statusCode: 200,
+        contentType: "text/html",
+        fromCache: false,
+      });
+
+      const cheerio = await import("cheerio");
+      mockExtractionProvider.parseHtml.mockImplementation((html: string) =>
+        cheerio.load(html),
+      );
+
+      const input: TextExtractionInput = {
+        type: "url",
+        url: "https://example.com",
+        userId: "user-1",
+      };
+      const result = await extractor.extractText(input);
+
+      expect(result.text).toContain("Main content");
+      expect(result.text).not.toContain("Please enable JavaScript");
     });
   });
 });
