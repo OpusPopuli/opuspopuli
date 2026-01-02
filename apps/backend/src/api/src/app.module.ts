@@ -10,7 +10,7 @@ import {
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { LoggingModule, LogLevel } from '@qckstrt/logging-provider';
 
 import configuration from 'src/config';
@@ -39,16 +39,22 @@ import { HmacRemoteGraphQLDataSource } from './hmac-data-source';
  * SECURITY: Only trusts req.user which is set by AuthMiddleware after JWT validation.
  * Never trusts req.headers.user as it can be spoofed by clients.
  *
+ * The response object is included in context to allow propagation of Set-Cookie
+ * headers from subgraphs back to the browser in a federated architecture.
+ *
  * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/182
  */
-const handleAuth = ({ req }: { req: Request }) => {
+const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
   // Only use the validated user from passport (set by AuthMiddleware after JWT validation)
   // req.user contains the ILogin object from JwtStrategy.validate()
+  const context: { user?: string; res: Response } = { res };
+
   if (req.user) {
     // Serialize user object to JSON string for propagation to subgraphs
-    return { user: JSON.stringify(req.user) };
+    context.user = JSON.stringify(req.user);
   }
-  return {};
+
+  return context;
 };
 
 @Module({
