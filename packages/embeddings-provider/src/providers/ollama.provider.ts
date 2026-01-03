@@ -1,5 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { IEmbeddingProvider, EmbeddingError } from "@qckstrt/common";
+import {
+  IEmbeddingProvider,
+  EmbeddingError,
+  CircuitBreakerManager,
+  createCircuitBreaker,
+  DEFAULT_CIRCUIT_CONFIGS,
+  CircuitBreakerHealth,
+} from "@qckstrt/common";
 
 /**
  * Ollama Embedding Provider (OSS)
@@ -15,6 +22,7 @@ import { IEmbeddingProvider, EmbeddingError } from "@qckstrt/common";
 @Injectable()
 export class OllamaEmbeddingProvider implements IEmbeddingProvider {
   private readonly logger = new Logger(OllamaEmbeddingProvider.name);
+  private readonly circuitBreaker: CircuitBreakerManager;
   private baseUrl: string;
   private model: string;
   private dimensions: number;
@@ -29,6 +37,30 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
     this.logger.log(
       `Initialized Ollama embeddings at ${this.baseUrl} with model: ${this.model}`,
     );
+
+    // Initialize circuit breaker for Ollama calls
+    this.circuitBreaker = createCircuitBreaker(DEFAULT_CIRCUIT_CONFIGS.ollama);
+
+    // Log circuit state changes
+    this.circuitBreaker.addListener((event) => {
+      switch (event) {
+        case "break":
+          this.logger.warn(
+            `Circuit breaker OPENED for Ollama Embeddings - service unavailable`,
+          );
+          break;
+        case "reset":
+          this.logger.log(
+            `Circuit breaker RESET for Ollama Embeddings - service recovered`,
+          );
+          break;
+        case "half_open":
+          this.logger.log(
+            `Circuit breaker HALF-OPEN for Ollama Embeddings - testing recovery`,
+          );
+          break;
+      }
+    });
   }
 
   getName(): string {
@@ -73,20 +105,30 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
   }
 
   private async embed(text: string): Promise<number[]> {
-    const response = await fetch(`${this.baseUrl}/api/embeddings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: this.model,
-        prompt: text,
-      }),
+    // Wrap the call with circuit breaker protection
+    return this.circuitBreaker.execute(async () => {
+      const response = await fetch(`${this.baseUrl}/api/embeddings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: this.model,
+          prompt: text,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const data = (await response.json()) as { embedding: number[] };
+      return data.embedding;
     });
+  }
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-    }
-
-    const data = (await response.json()) as { embedding: number[] };
-    return data.embedding;
+  /**
+   * Get circuit breaker health status
+   */
+  getCircuitBreakerHealth(): CircuitBreakerHealth {
+    return this.circuitBreaker.getHealth();
   }
 }

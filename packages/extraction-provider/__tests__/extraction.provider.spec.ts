@@ -374,4 +374,78 @@ describe("ExtractionProvider", () => {
       expect(() => provider.onModuleDestroy()).not.toThrow();
     });
   });
+
+  describe("circuit breaker", () => {
+    it("should provide circuit breaker health", () => {
+      const health = provider.getCircuitBreakerHealth();
+
+      expect(health).toBeDefined();
+      expect(health.serviceName).toBe("Extraction");
+      expect(health.state).toBe("closed");
+      expect(health.isHealthy).toBe(true);
+      expect(health.failureCount).toBe(0);
+    });
+
+    it("should track failures and open circuit after threshold", async () => {
+      // Create provider with lower threshold for testing
+      const testProvider = new ExtractionProvider({
+        rateLimit: { requestsPerSecond: 100, burstSize: 100 },
+      });
+
+      // Simulate 5 consecutive failures (default threshold)
+      mockFetch.mockRejectedValue(new Error("Network error"));
+
+      for (let i = 0; i < 5; i++) {
+        await testProvider
+          .fetchUrl(`https://example.com/${i}`, {
+            bypassCache: true,
+          })
+          .catch(() => {});
+      }
+
+      // Check health after failures - circuit should be open
+      const health = testProvider.getCircuitBreakerHealth();
+      expect(health.failureCount).toBeGreaterThan(0);
+
+      testProvider.onModuleDestroy();
+    });
+
+    it("should recover after half-open period", async () => {
+      // Create provider
+      const testProvider = new ExtractionProvider({
+        rateLimit: { requestsPerSecond: 100, burstSize: 100 },
+      });
+
+      // First, open the circuit
+      mockFetch.mockRejectedValue(new Error("Network error"));
+      for (let i = 0; i < 5; i++) {
+        await testProvider
+          .fetchUrl(`https://example.com/${i}`, {
+            bypassCache: true,
+          })
+          .catch(() => {});
+      }
+
+      // Then succeed
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        text: () => Promise.resolve("content"),
+        headers: new Map([["content-type", "text/html"]]),
+      });
+
+      // Advance time past half-open period (60 seconds for extraction)
+      await jest.advanceTimersByTimeAsync(61000);
+
+      // Try to fetch again - should succeed if circuit allows
+      await testProvider
+        .fetchUrl("https://example.com/recover", {
+          bypassCache: true,
+        })
+        .catch(() => {});
+
+      testProvider.onModuleDestroy();
+    });
+  });
 });

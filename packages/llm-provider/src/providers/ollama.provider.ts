@@ -5,6 +5,10 @@ import {
   GenerateOptions,
   GenerateResult,
   LLMError,
+  CircuitBreakerManager,
+  createCircuitBreaker,
+  DEFAULT_CIRCUIT_CONFIGS,
+  CircuitBreakerHealth,
 } from "@qckstrt/common";
 
 /**
@@ -47,11 +51,36 @@ export interface OllamaConfig {
 @Injectable()
 export class OllamaLLMProvider implements ILLMProvider {
   private readonly logger = new Logger(OllamaLLMProvider.name);
+  private readonly circuitBreaker: CircuitBreakerManager;
 
   constructor(private readonly config: OllamaConfig) {
     this.logger.log(
       `Ollama LLM provider initialized: ${config.model} at ${config.url}`,
     );
+
+    // Initialize circuit breaker for Ollama calls
+    this.circuitBreaker = createCircuitBreaker(DEFAULT_CIRCUIT_CONFIGS.ollama);
+
+    // Log circuit state changes
+    this.circuitBreaker.addListener((event) => {
+      switch (event) {
+        case "break":
+          this.logger.warn(
+            `Circuit breaker OPENED for Ollama - service unavailable`,
+          );
+          break;
+        case "reset":
+          this.logger.log(
+            `Circuit breaker RESET for Ollama - service recovered`,
+          );
+          break;
+        case "half_open":
+          this.logger.log(
+            `Circuit breaker HALF-OPEN for Ollama - testing recovery`,
+          );
+          break;
+      }
+    });
   }
 
   getName(): string {
@@ -66,66 +95,71 @@ export class OllamaLLMProvider implements ILLMProvider {
     prompt: string,
     options?: GenerateOptions,
   ): Promise<GenerateResult> {
-    try {
-      this.logger.log(
-        `Generating completion with Ollama/${this.config.model} (${prompt.length} chars)`,
-      );
-
-      // Add timeout to prevent hanging if Ollama isn't responding
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
-
-      const response = await fetch(`${this.config.url}/api/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: this.config.model,
-          prompt,
-          stream: false,
-          options: {
-            num_predict: options?.maxTokens || 512,
-            temperature: options?.temperature || 0.7,
-            top_p: options?.topP || 0.95,
-            top_k: options?.topK || 40,
-            stop: options?.stopSequences || [],
-          },
-        }),
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-      }
-
-      const data = (await response.json()) as {
-        response?: string;
-        eval_count?: number;
-        done?: boolean;
-      };
-
-      this.logger.log(
-        `Generated ${data.response?.length || 0} chars with Ollama`,
-      );
-
-      return {
-        text: data.response || "",
-        tokensUsed: data.eval_count || undefined,
-        finishReason: data.done ? "stop" : "length",
-      };
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        this.logger.error("Ollama generation timed out after 60 seconds");
-        throw new LLMError(
-          this.getName(),
-          "generate",
-          new Error("Request timed out. Is Ollama running? Try: ollama serve"),
+    // Wrap the call with circuit breaker protection
+    return this.circuitBreaker.execute(async () => {
+      try {
+        this.logger.log(
+          `Generating completion with Ollama/${this.config.model} (${prompt.length} chars)`,
         );
+
+        // Add timeout to prevent hanging if Ollama isn't responding
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
+        const response = await fetch(`${this.config.url}/api/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: this.config.model,
+            prompt,
+            stream: false,
+            options: {
+              num_predict: options?.maxTokens || 512,
+              temperature: options?.temperature || 0.7,
+              top_p: options?.topP || 0.95,
+              top_k: options?.topK || 40,
+              stop: options?.stopSequences || [],
+            },
+          }),
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+
+        const data = (await response.json()) as {
+          response?: string;
+          eval_count?: number;
+          done?: boolean;
+        };
+
+        this.logger.log(
+          `Generated ${data.response?.length || 0} chars with Ollama`,
+        );
+
+        return {
+          text: data.response || "",
+          tokensUsed: data.eval_count || undefined,
+          finishReason: data.done ? "stop" : "length",
+        };
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          this.logger.error("Ollama generation timed out after 60 seconds");
+          throw new LLMError(
+            this.getName(),
+            "generate",
+            new Error(
+              "Request timed out. Is Ollama running? Try: ollama serve",
+            ),
+          );
+        }
+        this.logger.error("Ollama generation failed:", error);
+        throw new LLMError(this.getName(), "generate", error as Error);
       }
-      this.logger.error("Ollama generation failed:", error);
-      throw new LLMError(this.getName(), "generate", error as Error);
-    }
+    });
   }
 
   async *generateStream(
@@ -192,59 +226,72 @@ export class OllamaLLMProvider implements ILLMProvider {
     messages: ChatMessage[],
     options?: GenerateOptions,
   ): Promise<GenerateResult> {
-    try {
-      this.logger.log(
-        `Chat completion with Ollama/${this.config.model} (${messages.length} messages)`,
-      );
+    // Wrap the call with circuit breaker protection
+    return this.circuitBreaker.execute(async () => {
+      try {
+        this.logger.log(
+          `Chat completion with Ollama/${this.config.model} (${messages.length} messages)`,
+        );
 
-      const response = await fetch(`${this.config.url}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: this.config.model,
-          messages: messages.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-          })),
-          stream: false,
-          options: {
-            num_predict: options?.maxTokens || 512,
-            temperature: options?.temperature || 0.7,
-            top_p: options?.topP || 0.95,
-            top_k: options?.topK || 40,
-          },
-        }),
-      });
+        const response = await fetch(`${this.config.url}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: this.config.model,
+            messages: messages.map((msg) => ({
+              role: msg.role,
+              content: msg.content,
+            })),
+            stream: false,
+            options: {
+              num_predict: options?.maxTokens || 512,
+              temperature: options?.temperature || 0.7,
+              top_p: options?.topP || 0.95,
+              top_k: options?.topK || 40,
+            },
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+
+        const data = (await response.json()) as {
+          message?: { content?: string };
+          eval_count?: number;
+          done?: boolean;
+        };
+
+        return {
+          text: data.message?.content || "",
+          tokensUsed: data.eval_count || undefined,
+          finishReason: data.done ? "stop" : "length",
+        };
+      } catch (error) {
+        this.logger.error("Ollama chat failed:", error);
+        throw new LLMError(this.getName(), "chat", error as Error);
       }
-
-      const data = (await response.json()) as {
-        message?: { content?: string };
-        eval_count?: number;
-        done?: boolean;
-      };
-
-      return {
-        text: data.message?.content || "",
-        tokensUsed: data.eval_count || undefined,
-        finishReason: data.done ? "stop" : "length",
-      };
-    } catch (error) {
-      this.logger.error("Ollama chat failed:", error);
-      throw new LLMError(this.getName(), "chat", error as Error);
-    }
+    });
   }
 
   async isAvailable(): Promise<boolean> {
     try {
-      // Check if Ollama server is running
+      // Check if Ollama server is running and circuit breaker is healthy
+      if (!this.circuitBreaker.isHealthy()) {
+        return false;
+      }
       const response = await fetch(`${this.config.url}/api/tags`);
       return response.ok;
     } catch (error) {
       this.logger.error("Ollama availability check failed:", error);
       return false;
     }
+  }
+
+  /**
+   * Get circuit breaker health status
+   */
+  getCircuitBreakerHealth(): CircuitBreakerHealth {
+    return this.circuitBreaker.getHealth();
   }
 }

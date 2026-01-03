@@ -6,6 +6,10 @@ import {
   IAuthResult,
   IRegisterUserInput,
   AuthError,
+  CircuitBreakerManager,
+  createCircuitBreaker,
+  DEFAULT_CIRCUIT_CONFIGS,
+  CircuitBreakerHealth,
 } from "@qckstrt/common";
 
 /**
@@ -35,8 +39,9 @@ export class SupabaseAuthProvider implements IAuthProvider {
   });
   private readonly supabase: SupabaseClient;
   private readonly config: ISupabaseAuthConfig;
+  private readonly circuitBreaker: CircuitBreakerManager;
 
-  constructor(private configService: ConfigService) {
+  constructor(private readonly configService: ConfigService) {
     const url = configService.get<string>("supabase.url");
     const anonKey = configService.get<string>("supabase.anonKey");
     const serviceRoleKey = configService.get<string>("supabase.serviceRoleKey");
@@ -60,6 +65,32 @@ export class SupabaseAuthProvider implements IAuthProvider {
         autoRefreshToken: false,
         persistSession: false,
       },
+    });
+
+    // Initialize circuit breaker for Supabase calls
+    this.circuitBreaker = createCircuitBreaker(
+      DEFAULT_CIRCUIT_CONFIGS.supabase,
+    );
+
+    // Log circuit state changes
+    this.circuitBreaker.addListener((event) => {
+      switch (event) {
+        case "break":
+          this.logger.warn(
+            `Circuit breaker OPENED for Supabase Auth - service unavailable`,
+          );
+          break;
+        case "reset":
+          this.logger.log(
+            `Circuit breaker RESET for Supabase Auth - service recovered`,
+          );
+          break;
+        case "half_open":
+          this.logger.log(
+            `Circuit breaker HALF-OPEN for Supabase Auth - testing recovery`,
+          );
+          break;
+      }
     });
 
     this.logger.log(`SupabaseAuthProvider initialized for: ${url}`);
@@ -86,76 +117,84 @@ export class SupabaseAuthProvider implements IAuthProvider {
   }
 
   async registerUser(input: IRegisterUserInput): Promise<string> {
-    try {
-      // Build user metadata including username and custom attributes
-      const userMetadata: Record<string, string> = {
-        username: input.username,
-      };
+    // Wrap with circuit breaker protection
+    return this.circuitBreaker.execute(async () => {
+      try {
+        // Build user metadata including username and custom attributes
+        const userMetadata: Record<string, string> = {
+          username: input.username,
+        };
 
-      if (input.attributes) {
-        for (const [key, value] of Object.entries(input.attributes)) {
-          // Remove "custom:" prefix if present (Supabase doesn't use it)
-          const cleanKey = key.startsWith("custom:") ? key.slice(7) : key;
-          userMetadata[cleanKey] = value;
+        if (input.attributes) {
+          for (const [key, value] of Object.entries(input.attributes)) {
+            // Remove "custom:" prefix if present (Supabase doesn't use it)
+            const cleanKey = key.startsWith("custom:") ? key.slice(7) : key;
+            userMetadata[cleanKey] = value;
+          }
         }
+
+        const { data, error } = await this.supabase.auth.admin.createUser({
+          email: input.email,
+          password: input.password,
+          email_confirm: false,
+          user_metadata: userMetadata,
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        this.logger.log(`User registered: ${input.username}`);
+        return data.user?.id || "unknown";
+      } catch (error) {
+        this.logger.error(
+          `Error registering user: ${(error as Error).message}`,
+        );
+        throw new AuthError(
+          `Failed to register user ${input.username}`,
+          "REGISTER_ERROR",
+          error as Error,
+        );
       }
-
-      const { data, error } = await this.supabase.auth.admin.createUser({
-        email: input.email,
-        password: input.password,
-        email_confirm: false,
-        user_metadata: userMetadata,
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      this.logger.log(`User registered: ${input.username}`);
-      return data.user?.id || "unknown";
-    } catch (error) {
-      this.logger.error(`Error registering user: ${(error as Error).message}`);
-      throw new AuthError(
-        `Failed to register user ${input.username}`,
-        "REGISTER_ERROR",
-        error as Error,
-      );
-    }
+    });
   }
 
   async authenticateUser(
     email: string,
     password: string,
   ): Promise<IAuthResult> {
-    try {
-      const { data, error } = await this.supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    // Wrap with circuit breaker protection
+    return this.circuitBreaker.execute(async () => {
+      try {
+        const { data, error } = await this.supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-      if (error) {
-        throw error;
+        if (error) {
+          throw error;
+        }
+
+        this.logger.log(`User authenticated: ${email}`);
+        return data.session
+          ? this.sessionToAuthResult(data.session)
+          : {
+              accessToken: "",
+              idToken: "",
+              refreshToken: "",
+              expiresIn: undefined,
+            };
+      } catch (error) {
+        this.logger.error(
+          `Error authenticating user: ${(error as Error).message}`,
+        );
+        throw new AuthError(
+          `Failed to authenticate user ${email}`,
+          "AUTH_ERROR",
+          error as Error,
+        );
       }
-
-      this.logger.log(`User authenticated: ${email}`);
-      return data.session
-        ? this.sessionToAuthResult(data.session)
-        : {
-            accessToken: "",
-            idToken: "",
-            refreshToken: "",
-            expiresIn: undefined,
-          };
-    } catch (error) {
-      this.logger.error(
-        `Error authenticating user: ${(error as Error).message}`,
-      );
-      throw new AuthError(
-        `Failed to authenticate user ${email}`,
-        "AUTH_ERROR",
-        error as Error,
-      );
-    }
+    });
   }
 
   async confirmUser(username: string): Promise<void> {
@@ -636,5 +675,12 @@ export class SupabaseAuthProvider implements IAuthProvider {
       );
       return null;
     }
+  }
+
+  /**
+   * Get circuit breaker health status
+   */
+  getCircuitBreakerHealth(): CircuitBreakerHealth {
+    return this.circuitBreaker.getHealth();
   }
 }

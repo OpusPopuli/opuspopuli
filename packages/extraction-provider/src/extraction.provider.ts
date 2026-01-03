@@ -2,8 +2,10 @@
  * Extraction Provider
  *
  * Main infrastructure provider for web content extraction.
- * Provides URL fetching with caching, rate limiting, and retry logic,
- * plus PDF text extraction and HTML element selection.
+ * Provides URL fetching with caching, rate limiting, circuit breaker,
+ * and retry logic, plus PDF text extraction and HTML element selection.
+ *
+ * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/198
  */
 
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
@@ -11,6 +13,12 @@ import * as cheerio from "cheerio";
 import type { CheerioAPI, Cheerio } from "cheerio";
 import type { Element } from "domhandler";
 import { PDFParse } from "pdf-parse";
+import {
+  CircuitBreakerManager,
+  createCircuitBreaker,
+  DEFAULT_CIRCUIT_CONFIGS,
+  CircuitBreakerHealth,
+} from "@qckstrt/common";
 
 import { MemoryCache } from "./cache/memory-cache.js";
 import {
@@ -52,6 +60,7 @@ export class ExtractionProvider {
   private readonly config: ExtractionConfig;
   private readonly cache: MemoryCache<CachedFetchResult>;
   private readonly rateLimiter: RateLimiter;
+  private readonly circuitBreaker: CircuitBreakerManager;
 
   constructor(
     @Optional()
@@ -71,6 +80,32 @@ export class ExtractionProvider {
 
     this.cache = new MemoryCache<CachedFetchResult>(this.config.cache);
     this.rateLimiter = new RateLimiter(this.config.rateLimit);
+
+    // Initialize circuit breaker for external URL fetching
+    this.circuitBreaker = createCircuitBreaker(
+      DEFAULT_CIRCUIT_CONFIGS.extraction,
+    );
+
+    // Log circuit state changes
+    this.circuitBreaker.addListener((event) => {
+      switch (event) {
+        case "break":
+          this.logger.warn(
+            `Circuit breaker OPENED for Extraction - external URLs unavailable`,
+          );
+          break;
+        case "reset":
+          this.logger.log(
+            `Circuit breaker RESET for Extraction - external URLs recovered`,
+          );
+          break;
+        case "half_open":
+          this.logger.log(
+            `Circuit breaker HALF-OPEN for Extraction - testing recovery`,
+          );
+          break;
+      }
+    });
 
     this.logger.log("ExtractionProvider initialized", {
       cache: this.config.cache,
@@ -106,35 +141,38 @@ export class ExtractionProvider {
 
     this.logger.debug(`Fetching ${url}`);
 
-    const timeout = options.timeout ?? this.config.defaultTimeout;
+    // Wrap the fetch call with circuit breaker protection
+    return this.circuitBreaker.execute(async () => {
+      const timeout = options.timeout ?? this.config.defaultTimeout;
 
-    const response = await fetch(url, {
-      headers: options.headers,
-      signal: AbortSignal.timeout(timeout),
+      const response = await fetch(url, {
+        headers: options.headers,
+        signal: AbortSignal.timeout(timeout),
+      });
+
+      if (!response.ok) {
+        throw new FetchError(
+          url,
+          response.status,
+          `HTTP ${response.status}: ${response.statusText}`,
+        );
+      }
+
+      const content = await response.text();
+      const contentType = response.headers.get("content-type") || "unknown";
+
+      const result: CachedFetchResult = {
+        content,
+        fromCache: false,
+        statusCode: response.status,
+        contentType,
+      };
+
+      // Cache the result
+      this.cache.set(cacheKey, result);
+
+      return result;
     });
-
-    if (!response.ok) {
-      throw new FetchError(
-        url,
-        response.status,
-        `HTTP ${response.status}: ${response.statusText}`,
-      );
-    }
-
-    const content = await response.text();
-    const contentType = response.headers.get("content-type") || "unknown";
-
-    const result: CachedFetchResult = {
-      content,
-      fromCache: false,
-      statusCode: response.status,
-      contentType,
-    };
-
-    // Cache the result
-    this.cache.set(cacheKey, result);
-
-    return result;
   }
 
   /**
@@ -281,5 +319,12 @@ export class ExtractionProvider {
       Object.assign(attrs, el.attribs);
     }
     return attrs;
+  }
+
+  /**
+   * Get circuit breaker health status
+   */
+  getCircuitBreakerHealth(): CircuitBreakerHealth {
+    return this.circuitBreaker.getHealth();
   }
 }

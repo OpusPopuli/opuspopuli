@@ -9,3 +9,4 @@ export * from "./secrets/index.js";
 export * from "./logging/index.js";
 export * from "./region/index.js";
 export * from "./email/index.js";
+export * from "./resilience/index.js";
