@@ -24,9 +24,13 @@ describe('AuthGuard', () => {
   });
 
   const createMockContext = (user: unknown) => {
-    const mockRequest = { user };
+    const mockRequest = { user, headers: {} };
     const mockGqlContext = {
       getContext: () => ({ req: mockRequest }),
+      getInfo: () => ({
+        fieldName: 'testField',
+        parentType: { name: 'Query' },
+      }),
     };
 
     (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
@@ -158,6 +162,10 @@ describe('AuthGuard', () => {
 
       const mockGqlContext = {
         getContext: () => ({ req: mockRequest }),
+        getInfo: () => ({
+          fieldName: 'testField',
+          parentType: { name: 'Query' },
+        }),
       };
 
       (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);

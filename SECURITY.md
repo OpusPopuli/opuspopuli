@@ -252,6 +252,55 @@ All error responses are sanitized to prevent information disclosure that could h
 
 See [error-sanitizer.ts](apps/backend/src/common/exceptions/error-sanitizer.ts) for configuration.
 
+### Security Audit Logging
+
+All security-relevant events are logged for monitoring, alerting, and forensic analysis. The audit log system provides comprehensive tracking of authentication and authorization events.
+
+**Logged Security Events:**
+
+| Category | Events Logged |
+|----------|---------------|
+| Authentication | Login success/failure, logout, account lockout/unlock |
+| Password | Change, reset request, reset completion, failures |
+| Registration | User registration, confirmation |
+| Passkey (WebAuthn) | Registration, authentication, deletion |
+| Magic Link | Send, verify, registration |
+| Authorization | Access denied (guard rejections) |
+| Permissions | Admin role granted/revoked |
+
+**Audit Log Fields:**
+
+| Field | Description |
+|-------|-------------|
+| requestId | Unique identifier for request tracing |
+| userId | User ID (if authenticated) |
+| userEmail | User email (if known) |
+| action | Security event type (e.g., LOGIN, AUTHORIZATION_DENIED) |
+| success | Whether the operation succeeded |
+| resolverName | GraphQL resolver that was invoked |
+| operationType | query, mutation, or subscription |
+| ipAddress | Client IP address |
+| userAgent | Client user agent |
+| errorMessage | Error details (for failures) |
+| timestamp | When the event occurred |
+
+**PII Protection:**
+- Sensitive fields (passwords, tokens) are masked in logs
+- Email addresses are partially redacted in production
+- Compliant with data protection requirements
+
+**Batch Processing:**
+- Non-critical events are batched for performance
+- Critical security events (failures, denials) are logged synchronously
+- Configurable batch size and flush intervals
+
+**Log Retention:**
+- Configurable retention period (default: 90 days)
+- Automatic cleanup of old audit records
+- Archived logs preserved for compliance requirements
+
+See [audit-log.service.ts](apps/backend/src/common/services/audit-log.service.ts) for configuration.
+
 ### Code Security
 
 - Input validation on all user inputs via class-validator

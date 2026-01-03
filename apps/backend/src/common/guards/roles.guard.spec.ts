@@ -28,12 +28,16 @@ describe('RolesGuard', () => {
     user: ILogin | null | undefined,
     requiredRoles: Role[] | undefined = undefined,
   ) => {
-    const mockRequest = { user };
+    const mockRequest = { user, headers: {} };
 
     const mockGqlContext = {
       getContext: () => ({ req: mockRequest }),
       getHandler: () => jest.fn(),
       getClass: () => jest.fn(),
+      getInfo: () => ({
+        fieldName: 'testField',
+        parentType: { name: 'Query' },
+      }),
     };
 
     (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
@@ -240,6 +244,10 @@ describe('RolesGuard', () => {
         getContext: () => ({ req: mockRequest }),
         getHandler: () => jest.fn(),
         getClass: () => jest.fn(),
+        getInfo: () => ({
+          fieldName: 'testField',
+          parentType: { name: 'Query' },
+        }),
       };
 
       (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);

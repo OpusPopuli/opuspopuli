@@ -1,7 +1,8 @@
 import { Args, ID, Mutation, Query, Resolver, Context } from '@nestjs/graphql';
 import { ConfigService } from '@nestjs/config';
-import { ForbiddenException, Logger } from '@nestjs/common';
+import { ForbiddenException, Logger, Optional } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { randomUUID } from 'node:crypto';
 import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { RegisterUserDto } from './dto/register-user.dto';
@@ -16,6 +17,7 @@ import { Role } from 'src/common/enums/role.enum';
 import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Action } from 'src/common/enums/action.enum';
+import { AuditAction } from 'src/common/enums/audit-action.enum';
 import { ConfirmForgotPasswordDto } from './dto/confirm-forgot-password.dto';
 import { UsersService } from '../user/users.service';
 import {
@@ -28,6 +30,8 @@ import {
 } from 'src/common/utils/cookie.utils';
 import { AUTH_THROTTLE } from 'src/config/auth-throttle.config';
 import { AccountLockoutService } from './services/account-lockout.service';
+import { AuditLogService } from 'src/common/services/audit-log.service';
+import { IAuditContext } from 'src/common/interfaces/audit.interface';
 
 // Passkey DTOs
 import {
@@ -51,6 +55,7 @@ import {
 @Resolver(() => Boolean)
 export class AuthResolver {
   private readonly logger = new Logger(AuthResolver.name);
+  private readonly serviceName = 'users-service';
 
   constructor(
     private readonly authService: AuthService,
@@ -58,7 +63,29 @@ export class AuthResolver {
     private readonly usersService: UsersService,
     private readonly configService: ConfigService,
     private readonly lockoutService: AccountLockoutService,
+    @Optional() private readonly auditLogService?: AuditLogService,
   ) {}
+
+  /**
+   * Create audit context from GraphQL context
+   * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/191
+   */
+  private createAuditContext(
+    context: GqlContext,
+    userEmail?: string,
+  ): IAuditContext {
+    const user = context.req?.user;
+    return {
+      requestId: randomUUID(),
+      userId: user?.id,
+      userEmail: userEmail || user?.email,
+      ipAddress:
+        context.req?.ip ||
+        (context.req?.headers as Record<string, string>)?.['x-forwarded-for'],
+      userAgent: context.req?.headers?.['user-agent'],
+      serviceName: this.serviceName,
+    };
+  }
 
   /**
    * Register a new user account
@@ -70,11 +97,39 @@ export class AuthResolver {
   @Mutation(() => Boolean)
   async registerUser(
     @Args('registerUserDto') registerUserDto: RegisterUserDto,
+    @Context() context: GqlContext,
   ): Promise<boolean> {
+    const auditContext = this.createAuditContext(
+      context,
+      registerUserDto.email,
+    );
+
     let userRegistered: string;
     try {
       userRegistered = await this.authService.registerUser(registerUserDto);
+
+      // Audit: Registration success
+      this.auditLogService?.log({
+        ...auditContext,
+        action: AuditAction.REGISTRATION,
+        success: true,
+        entityType: 'User',
+        entityId: userRegistered,
+        resolverName: 'registerUser',
+        operationType: 'mutation',
+        inputVariables: { email: registerUserDto.email },
+      });
     } catch (error) {
+      // Audit: Registration failure
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.REGISTRATION_FAILED,
+        success: false,
+        resolverName: 'registerUser',
+        operationType: 'mutation',
+        inputVariables: { email: registerUserDto.email },
+        errorMessage: error.message,
+      });
       throw new UserInputError(error.message);
     }
     return userRegistered !== null;
@@ -94,9 +149,8 @@ export class AuthResolver {
     @Context() context: GqlContext,
   ): Promise<Auth> {
     const { email } = loginUserDto;
-    const clientIp =
-      context.req?.ip ||
-      (context.req?.headers as Record<string, string>)?.['x-forwarded-for'];
+    const auditContext = this.createAuditContext(context, email);
+    const clientIp = auditContext.ipAddress;
 
     // Check if account is locked
     if (this.lockoutService.isLocked(email)) {
@@ -105,6 +159,17 @@ export class AuthResolver {
       this.logger.warn(
         `Blocked login attempt for locked account: ${email} (IP: ${clientIp})`,
       );
+
+      // Audit: Blocked login attempt on locked account
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.LOGIN_FAILED,
+        success: false,
+        resolverName: 'loginUser',
+        operationType: 'mutation',
+        errorMessage: 'Account locked - login attempt blocked',
+      });
+
       throw new ForbiddenException(
         `Account temporarily locked. Try again in ${remainingMin} minute(s).`,
       );
@@ -126,6 +191,15 @@ export class AuthResolver {
           auth.refreshToken,
         );
       }
+
+      // Audit: Login success
+      this.auditLogService?.log({
+        ...auditContext,
+        action: AuditAction.LOGIN,
+        success: true,
+        resolverName: 'loginUser',
+        operationType: 'mutation',
+      });
     } catch (error) {
       // Record failed attempt (may trigger lockout)
       const isNowLocked = this.lockoutService.recordFailedAttempt(
@@ -134,10 +208,30 @@ export class AuthResolver {
       );
 
       if (isNowLocked) {
+        // Audit: Account locked
+        this.auditLogService?.logSync({
+          ...auditContext,
+          action: AuditAction.ACCOUNT_LOCKED,
+          success: false,
+          resolverName: 'loginUser',
+          operationType: 'mutation',
+          errorMessage: 'Account locked after too many failed attempts',
+        });
+
         throw new ForbiddenException(
           'Too many failed login attempts. Account temporarily locked for 15 minutes.',
         );
       }
+
+      // Audit: Login failure
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.LOGIN_FAILED,
+        success: false,
+        resolverName: 'loginUser',
+        operationType: 'mutation',
+        errorMessage: error.message,
+      });
 
       throw new UserInputError(error.message);
     }
@@ -152,12 +246,33 @@ export class AuthResolver {
   })
   async changePassword(
     @Args('changePasswordDto') changePasswordDto: ChangePasswordDto,
+    @Context() context: GqlContext,
   ): Promise<boolean> {
+    const auditContext = this.createAuditContext(context);
+
     let passwordUpdated: boolean;
     try {
       passwordUpdated =
         await this.authService.changePassword(changePasswordDto);
+
+      // Audit: Password change success
+      this.auditLogService?.log({
+        ...auditContext,
+        action: AuditAction.PASSWORD_CHANGE,
+        success: true,
+        resolverName: 'changePassword',
+        operationType: 'mutation',
+      });
     } catch (error) {
+      // Audit: Password change failure
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.PASSWORD_CHANGE_FAILED,
+        success: false,
+        resolverName: 'changePassword',
+        operationType: 'mutation',
+        errorMessage: error.message,
+      });
       throw new UserInputError(error.message);
     }
     return passwordUpdated;
@@ -171,7 +286,21 @@ export class AuthResolver {
   @Public()
   @Throttle({ default: AUTH_THROTTLE.passwordReset })
   @Mutation(() => Boolean)
-  forgotPassword(@Args('email') email: string): Promise<boolean> {
+  async forgotPassword(
+    @Args('email') email: string,
+    @Context() context: GqlContext,
+  ): Promise<boolean> {
+    const auditContext = this.createAuditContext(context, email);
+
+    // Audit: Password reset request (always log, regardless of user existence)
+    this.auditLogService?.log({
+      ...auditContext,
+      action: AuditAction.PASSWORD_RESET_REQUEST,
+      success: true,
+      resolverName: 'forgotPassword',
+      operationType: 'mutation',
+    });
+
     return this.authService.forgotPassword(email);
   }
 
@@ -180,13 +309,37 @@ export class AuthResolver {
   async confirmForgotPassword(
     @Args('confirmForgotPasswordDto')
     confirmForgotPasswordDto: ConfirmForgotPasswordDto,
+    @Context() context: GqlContext,
   ): Promise<boolean> {
+    const auditContext = this.createAuditContext(
+      context,
+      confirmForgotPasswordDto.email,
+    );
+
     let passwordUpdated: boolean;
     try {
       passwordUpdated = await this.authService.confirmForgotPassword(
         confirmForgotPasswordDto,
       );
+
+      // Audit: Password reset success
+      this.auditLogService?.log({
+        ...auditContext,
+        action: AuditAction.PASSWORD_RESET,
+        success: true,
+        resolverName: 'confirmForgotPassword',
+        operationType: 'mutation',
+      });
     } catch (error) {
+      // Audit: Password reset failure
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.PASSWORD_RESET_FAILED,
+        success: false,
+        resolverName: 'confirmForgotPassword',
+        operationType: 'mutation',
+        errorMessage: error.message,
+      });
       throw new UserInputError(error.message);
     }
     return passwordUpdated;
@@ -197,8 +350,23 @@ export class AuthResolver {
   @Roles(Role.Admin)
   async confirmUser(
     @Args({ name: 'id', type: () => ID }) id: string,
+    @Context() context: GqlContext,
   ): Promise<boolean> {
+    const auditContext = this.createAuditContext(context);
+
     const result = await this.authService.confirmUser(id);
+
+    // Audit: User confirmation
+    this.auditLogService?.log({
+      ...auditContext,
+      action: AuditAction.USER_CONFIRMED,
+      success: result,
+      entityType: 'User',
+      entityId: id,
+      resolverName: 'confirmUser',
+      operationType: 'mutation',
+    });
+
     if (!result) throw new UserInputError('User not confirmed!');
     return result;
   }
@@ -207,8 +375,24 @@ export class AuthResolver {
   @Roles(Role.Admin)
   async addAdminPermission(
     @Args({ name: 'id', type: () => ID }) id: string,
+    @Context() context: GqlContext,
   ): Promise<boolean> {
+    const auditContext = this.createAuditContext(context);
+
     const result = await this.authService.addPermission(id, Role.Admin);
+
+    // Audit: Admin permission granted
+    this.auditLogService?.log({
+      ...auditContext,
+      action: AuditAction.PERMISSION_GRANTED,
+      success: result,
+      entityType: 'User',
+      entityId: id,
+      resolverName: 'addAdminPermission',
+      operationType: 'mutation',
+      newValues: { role: Role.Admin },
+    });
+
     if (!result)
       throw new UserInputError('Admin Permissions were not granted!');
     return result;
@@ -218,8 +402,24 @@ export class AuthResolver {
   @Roles(Role.Admin)
   async removeAdminPermission(
     @Args({ name: 'id', type: () => ID }) id: string,
+    @Context() context: GqlContext,
   ): Promise<boolean> {
+    const auditContext = this.createAuditContext(context);
+
     const result = await this.authService.removePermission(id, Role.Admin);
+
+    // Audit: Admin permission revoked
+    this.auditLogService?.log({
+      ...auditContext,
+      action: AuditAction.PERMISSION_REVOKED,
+      success: result,
+      entityType: 'User',
+      entityId: id,
+      resolverName: 'removeAdminPermission',
+      operationType: 'mutation',
+      previousValues: { role: Role.Admin },
+    });
+
     if (!result)
       throw new UserInputError('Admin Permissions were not revoked!');
     return result;
@@ -260,7 +460,10 @@ export class AuthResolver {
   @Mutation(() => Boolean)
   async verifyPasskeyRegistration(
     @Args('input') input: VerifyPasskeyRegistrationDto,
+    @Context() context: GqlContext,
   ): Promise<boolean> {
+    const auditContext = this.createAuditContext(context, input.email);
+
     try {
       const user = await this.authService.getUserByEmail(input.email);
       if (!user) {
@@ -285,11 +488,41 @@ export class AuthResolver {
           AuthStrategy.PASSKEY,
         );
 
+        // Audit: Passkey registration success
+        this.auditLogService?.log({
+          ...auditContext,
+          userId: user.id,
+          action: AuditAction.PASSKEY_REGISTRATION,
+          success: true,
+          entityType: 'PasskeyCredential',
+          resolverName: 'verifyPasskeyRegistration',
+          operationType: 'mutation',
+        });
+
         return true;
       }
 
+      // Audit: Passkey registration verification failed
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.PASSKEY_REGISTRATION_FAILED,
+        success: false,
+        resolverName: 'verifyPasskeyRegistration',
+        operationType: 'mutation',
+        errorMessage: 'Passkey verification returned false',
+      });
+
       return false;
     } catch (error) {
+      // Audit: Passkey registration failure
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.PASSKEY_REGISTRATION_FAILED,
+        success: false,
+        resolverName: 'verifyPasskeyRegistration',
+        operationType: 'mutation',
+        errorMessage: error.message,
+      });
       throw new UserInputError(error.message);
     }
   }
@@ -317,6 +550,8 @@ export class AuthResolver {
     @Args('input') input: VerifyPasskeyAuthenticationDto,
     @Context() context: GqlContext,
   ): Promise<Auth> {
+    const auditContext = this.createAuditContext(context);
+
     try {
       const { verification, user } =
         await this.passkeyService.verifyAuthentication(
@@ -325,6 +560,15 @@ export class AuthResolver {
         );
 
       if (!verification.verified) {
+        // Audit: Passkey authentication failed
+        this.auditLogService?.logSync({
+          ...auditContext,
+          action: AuditAction.PASSKEY_AUTHENTICATION_FAILED,
+          success: false,
+          resolverName: 'verifyPasskeyAuthentication',
+          operationType: 'mutation',
+          errorMessage: 'Passkey verification failed',
+        });
         throw new UserInputError('Passkey verification failed');
       }
 
@@ -341,8 +585,28 @@ export class AuthResolver {
         );
       }
 
+      // Audit: Passkey authentication success
+      this.auditLogService?.log({
+        ...auditContext,
+        userId: user.id,
+        userEmail: user.email,
+        action: AuditAction.PASSKEY_AUTHENTICATION,
+        success: true,
+        resolverName: 'verifyPasskeyAuthentication',
+        operationType: 'mutation',
+      });
+
       return auth;
     } catch (error) {
+      // Audit: Passkey authentication failure
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.PASSKEY_AUTHENTICATION_FAILED,
+        success: false,
+        resolverName: 'verifyPasskeyAuthentication',
+        operationType: 'mutation',
+        errorMessage: error.message,
+      });
       throw new UserInputError(error.message);
     }
   }
@@ -361,7 +625,25 @@ export class AuthResolver {
     @Context() context: GqlContext,
   ): Promise<boolean> {
     const user = getUserFromContext(context);
-    return this.passkeyService.deleteCredential(credentialId, user.id);
+    const auditContext = this.createAuditContext(context, user.email);
+
+    const result = await this.passkeyService.deleteCredential(
+      credentialId,
+      user.id,
+    );
+
+    // Audit: Passkey deletion
+    this.auditLogService?.log({
+      ...auditContext,
+      action: AuditAction.PASSKEY_DELETED,
+      success: result,
+      entityType: 'PasskeyCredential',
+      entityId: credentialId,
+      resolverName: 'deletePasskey',
+      operationType: 'mutation',
+    });
+
+    return result;
   }
 
   // ============================================
@@ -375,12 +657,26 @@ export class AuthResolver {
   @Mutation(() => Boolean)
   async sendMagicLink(
     @Args('input') input: SendMagicLinkDto,
+    @Context() context: GqlContext,
   ): Promise<boolean> {
+    const auditContext = this.createAuditContext(context, input.email);
+
     try {
-      return await this.authService.sendMagicLink(
+      const result = await this.authService.sendMagicLink(
         input.email,
         input.redirectTo,
       );
+
+      // Audit: Magic link sent (don't reveal if user exists)
+      this.auditLogService?.log({
+        ...auditContext,
+        action: AuditAction.MAGIC_LINK_SENT,
+        success: true,
+        resolverName: 'sendMagicLink',
+        operationType: 'mutation',
+      });
+
+      return result;
     } catch (error) {
       throw new UserInputError(error.message);
     }
@@ -393,6 +689,8 @@ export class AuthResolver {
     @Args('input') input: VerifyMagicLinkDto,
     @Context() context: GqlContext,
   ): Promise<Auth> {
+    const auditContext = this.createAuditContext(context, input.email);
+
     try {
       const auth = await this.authService.verifyMagicLink(
         input.email,
@@ -409,8 +707,26 @@ export class AuthResolver {
         );
       }
 
+      // Audit: Magic link verified (login success)
+      this.auditLogService?.log({
+        ...auditContext,
+        action: AuditAction.MAGIC_LINK_VERIFIED,
+        success: true,
+        resolverName: 'verifyMagicLink',
+        operationType: 'mutation',
+      });
+
       return auth;
     } catch (error) {
+      // Audit: Magic link verification failed
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.MAGIC_LINK_FAILED,
+        success: false,
+        resolverName: 'verifyMagicLink',
+        operationType: 'mutation',
+        errorMessage: error.message,
+      });
       throw new UserInputError(error.message);
     }
   }
@@ -420,12 +736,26 @@ export class AuthResolver {
   @Mutation(() => Boolean)
   async registerWithMagicLink(
     @Args('input') input: RegisterWithMagicLinkDto,
+    @Context() context: GqlContext,
   ): Promise<boolean> {
+    const auditContext = this.createAuditContext(context, input.email);
+
     try {
-      return await this.authService.registerWithMagicLink(
+      const result = await this.authService.registerWithMagicLink(
         input.email,
         input.redirectTo,
       );
+
+      // Audit: Magic link registration
+      this.auditLogService?.log({
+        ...auditContext,
+        action: AuditAction.MAGIC_LINK_SENT,
+        success: true,
+        resolverName: 'registerWithMagicLink',
+        operationType: 'mutation',
+      });
+
+      return result;
     } catch (error) {
       throw new UserInputError(error.message);
     }
@@ -437,10 +767,22 @@ export class AuthResolver {
 
   @Mutation(() => Boolean)
   async logout(@Context() context: GqlContext): Promise<boolean> {
+    const auditContext = this.createAuditContext(context);
+
     // Clear httpOnly auth cookies
     if (context.res) {
       clearAuthCookies(context.res, this.configService);
     }
+
+    // Audit: Logout
+    this.auditLogService?.log({
+      ...auditContext,
+      action: AuditAction.LOGOUT,
+      success: true,
+      resolverName: 'logout',
+      operationType: 'mutation',
+    });
+
     return true;
   }
 }
