@@ -199,7 +199,7 @@ describe('HttpExceptionFilter', () => {
       );
     });
 
-    it('should extract message array from validation errors', () => {
+    it('should convert message array to string from validation errors', () => {
       const exception = new BadRequestException({
         message: ['email must be valid', 'password is required'],
         error: 'Validation failed',
@@ -207,9 +207,10 @@ describe('HttpExceptionFilter', () => {
 
       filter.catch(exception, mockArgumentsHost as ArgumentsHost);
 
+      // Message arrays are converted to strings for consistent error handling
       expect(mockJson).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: ['email must be valid', 'password is required'],
+          message: 'email must be valid,password is required',
         }),
       );
     });

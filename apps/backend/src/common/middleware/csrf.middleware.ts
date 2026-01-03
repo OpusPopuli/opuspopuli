@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
+import { safeCompare } from '../utils/crypto.utils';
 
 /**
  * CSRF Middleware - Stateless Double-Submit Cookie Pattern
@@ -148,7 +149,9 @@ export class CsrfMiddleware implements NestMiddleware {
       throw new ForbiddenException('CSRF token required');
     }
 
-    if (headerToken !== csrfToken) {
+    // Use constant-time comparison to prevent timing attacks
+    // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/195
+    if (!safeCompare(headerToken, csrfToken)) {
       this.logger.warn(
         `CSRF validation failed: Token mismatch for ${req.method} ${req.path}`,
       );

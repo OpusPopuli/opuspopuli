@@ -16,19 +16,24 @@ import {
   ExecutionContext,
   Inject,
   Injectable,
+  Optional,
+  Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { cloneDeep, isEmpty } from 'lodash';
+import { randomUUID } from 'node:crypto';
 
 import { ILogin } from 'src/interfaces/login.interface';
 import { isLoggedIn } from 'src/common/auth/jwt.strategy';
 
 import { Action } from '../enums/action.enum';
+import { AuditAction } from '../enums/audit-action.enum';
 
 import { IPolicy } from 'src/interfaces/policy.interface';
 import { IUserPolicies } from 'src/interfaces/user.interface';
 import { IFilePolicies } from 'src/interfaces/file.interface';
+import { AuditLogService } from 'src/common/services/audit-log.service';
 
 interface IPermissions {
   subject: string;
@@ -45,10 +50,13 @@ export class PoliciesGuard<
   A extends string = Action,
   S extends CaslSubject = Subject,
 > implements CanActivate {
+  private readonly logger = new Logger(PoliciesGuard.name);
+
   constructor(
     private readonly reflector: Reflector,
     @Inject(CaslAbilityFactory)
     private readonly caslAbilityFactory: CaslAbilityFactory<A, S>,
+    @Optional() private readonly auditLogService?: AuditLogService,
   ) {}
 
   /**
@@ -58,6 +66,7 @@ export class PoliciesGuard<
    */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const ctx = GqlExecutionContext.create(context);
+    const info = ctx.getInfo();
 
     // Retrieve policies defined for the route handler and class
     const requiredPolicies =
@@ -98,7 +107,46 @@ export class PoliciesGuard<
       }
 
       // Check if all policies are satisfied
-      return this.checkPolicies(requiredPolicies, ability, conditionContext);
+      const allowed = this.checkPolicies(
+        requiredPolicies,
+        ability,
+        conditionContext,
+      );
+
+      if (!allowed) {
+        // Audit: Authorization denied - policy check failed
+        // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/191
+        this.auditLogService?.logSync({
+          requestId: randomUUID(),
+          serviceName: 'policies-guard',
+          userId: user.id,
+          userEmail: user.email,
+          action: AuditAction.AUTHORIZATION_DENIED,
+          success: false,
+          resolverName: info?.fieldName,
+          operationType: info?.parentType?.name?.toLowerCase() as
+            | 'query'
+            | 'mutation'
+            | 'subscription',
+          ipAddress:
+            request?.ip ||
+            (request?.headers as Record<string, string>)?.['x-forwarded-for'],
+          userAgent: request?.headers?.['user-agent'],
+          errorMessage: 'Policy check failed',
+          inputVariables: {
+            requiredPolicies: requiredPolicies.map((p) => ({
+              action: p.action,
+              subject: p.subject,
+            })),
+          },
+        });
+
+        this.logger.warn(
+          `Policy-based access denied for user ${user.email} to ${info?.fieldName || 'unknown'}`,
+        );
+      }
+
+      return allowed;
     }
 
     return false;

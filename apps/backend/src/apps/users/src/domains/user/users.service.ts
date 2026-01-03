@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { UserEntity } from 'src/db/entities/user.entity';
 import { User } from './models/user.model';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -10,10 +10,13 @@ import evaluateDBError from 'src/db/db.errors';
 import { AuthService } from '../auth/auth.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
+import { SecureLogger } from 'src/common/services/secure-logger.service';
 
 @Injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name, { timestamp: true });
+  // Use SecureLogger to automatically redact PII (emails, passwords) from log messages
+  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+  private readonly logger = new SecureLogger(UsersService.name);
 
   constructor(
     @InjectRepository(UserEntity) private userRepo: Repository<UserEntity>,

@@ -47,12 +47,16 @@ describe('PoliciesGuard', () => {
     user: ILogin | null | undefined,
     args: Record<string, unknown> = {},
   ) => {
-    const mockRequest = { user };
+    const mockRequest = { user, headers: {} };
     const mockGqlContext = {
       getContext: () => ({ req: mockRequest }),
       getHandler: () => jest.fn(),
       getClass: () => jest.fn(),
       getArgs: () => args,
+      getInfo: () => ({
+        fieldName: 'testField',
+        parentType: { name: 'Query' },
+      }),
     };
 
     (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
@@ -233,6 +237,10 @@ describe('PoliciesGuard', () => {
         getHandler: () => jest.fn(),
         getClass: () => jest.fn(),
         getArgs: () => ({}),
+        getInfo: () => ({
+          fieldName: 'testField',
+          parentType: { name: 'Query' },
+        }),
       };
 
       (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);

@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { LogLevel } from '@qckstrt/logging-provider';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { AllExceptionsFilter } from '../exceptions/all-exceptions.filter';
 import { GraphQLExceptionFilter } from '../exceptions/graphql-exception.filter';
 import { RolesGuard } from '../guards/roles.guard';
 import { GqlThrottlerGuard } from '../guards/throttler.guard';
@@ -29,8 +30,14 @@ export const THROTTLER_CONFIG = [
 
 /**
  * Shared providers for all microservices (guards and filters)
+ *
+ * Note: AllExceptionsFilter must be registered first (processed last)
+ * to catch any unhandled exceptions after more specific filters.
+ *
+ * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
  */
 export const SHARED_PROVIDERS = [
+  { provide: APP_FILTER, useClass: AllExceptionsFilter },
   { provide: APP_FILTER, useClass: GraphQLExceptionFilter },
   { provide: APP_GUARD, useClass: GqlThrottlerGuard },
   { provide: APP_GUARD, useClass: RolesGuard },

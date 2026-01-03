@@ -70,7 +70,7 @@ describe('GraphQLExceptionFilter', () => {
       expect(result.extensions?.code).toBe('UNAUTHORIZED');
     });
 
-    it('should default to 500 when no code in original error', () => {
+    it('should default to INTERNAL_SERVER_ERROR when no code in original error', () => {
       createMockGqlHost({ fieldName: 'testQuery' });
 
       const originalError = new GraphQLError('Internal error');
@@ -80,7 +80,7 @@ describe('GraphQLExceptionFilter', () => {
         mockArgumentsHost as ArgumentsHost,
       );
 
-      expect(result.extensions?.code).toBe(500);
+      expect(result.extensions?.code).toBe('INTERNAL_SERVER_ERROR');
     });
   });
 
@@ -202,7 +202,7 @@ describe('GraphQLExceptionFilter', () => {
         mockArgumentsHost as ArgumentsHost,
       );
 
-      expect(result.extensions?.code).toBe(500);
+      expect(result.extensions?.code).toBe('INTERNAL_SERVER_ERROR');
     });
 
     it('should handle empty error message', () => {

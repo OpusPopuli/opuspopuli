@@ -77,7 +77,9 @@ describe('UsersService', () => {
     try {
       await usersService.create(createUserDto);
     } catch (error) {
-      expect(error.message).toEqual('TypeORMError: ORM Error');
+      // Database errors are sanitized to prevent information disclosure
+      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
+      expect(error.message).toEqual('Database operation failed');
       expect(authService.registerUser).toHaveBeenCalledTimes(0);
     }
   });
@@ -108,7 +110,9 @@ describe('UsersService', () => {
     try {
       await usersService.create(createUserDto);
     } catch (error) {
-      expect(error.message).toEqual('Failed user creation!');
+      // Database errors are sanitized to prevent information disclosure
+      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
+      expect(error.message).toEqual('A database error occurred.');
       expect(authService.registerUser).toHaveBeenCalledTimes(0);
     }
   });
@@ -207,7 +211,9 @@ describe('UsersService', () => {
     try {
       await usersService.update(users[0].id, updateUserDto);
     } catch (error) {
-      expect(error.message).toEqual('TypeORMError: ORM Error');
+      // Database errors are sanitized to prevent information disclosure
+      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
+      expect(error.message).toEqual('Database operation failed');
       expect(userRepo.update).toHaveBeenCalledTimes(1);
     }
   });

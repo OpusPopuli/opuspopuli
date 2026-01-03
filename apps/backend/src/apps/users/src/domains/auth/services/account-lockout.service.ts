@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SecureLogger } from 'src/common/services/secure-logger.service';
 
 interface LockoutRecord {
   failedAttempts: number;
@@ -20,7 +21,9 @@ interface LockoutRecord {
  */
 @Injectable()
 export class AccountLockoutService {
-  private readonly logger = new Logger(AccountLockoutService.name);
+  // Use SecureLogger to automatically redact PII (emails, IPs) from log messages
+  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+  private readonly logger = new SecureLogger(AccountLockoutService.name);
   private readonly lockoutRecords = new Map<string, LockoutRecord>();
 
   private readonly maxAttempts: number;

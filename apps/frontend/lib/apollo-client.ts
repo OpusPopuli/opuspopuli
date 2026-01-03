@@ -1,7 +1,18 @@
-import { ApolloClient, HttpLink, InMemoryCache } from "@apollo/client";
+import {
+  ApolloClient,
+  ApolloLink,
+  HttpLink,
+  InMemoryCache,
+  split,
+} from "@apollo/client";
+import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
+import { getMainDefinition } from "@apollo/client/utilities";
+import { createClient } from "graphql-ws";
 
 const GRAPHQL_URL =
   process.env.NEXT_PUBLIC_GRAPHQL_URL || "http://localhost:3000/api";
+const GRAPHQL_WS_URL =
+  process.env.NEXT_PUBLIC_GRAPHQL_WS_URL || GRAPHQL_URL.replace(/^http/, "ws");
 
 /**
  * Extract CSRF token from cookie
@@ -54,9 +65,98 @@ const httpLink = new HttpLink({
   credentials: "include", // Ensure cookies are sent
 });
 
+/**
+ * Get auth token for WebSocket connection
+ *
+ * SECURITY: WebSocket connections require JWT authentication via connection params.
+ * The access token is extracted from httpOnly cookie or localStorage.
+ *
+ * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/194
+ */
+function getAuthToken(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+
+  // Try to get token from cookie (if accessible)
+  const cookies = document.cookie.split("; ");
+  const tokenCookie = cookies.find((cookie) =>
+    cookie.startsWith("access-token="),
+  );
+  if (tokenCookie) {
+    return decodeURIComponent(tokenCookie.split("=")[1]);
+  }
+
+  // Fallback: Get from localStorage if stored there
+  const storedToken = globalThis.localStorage?.getItem("accessToken");
+  if (storedToken) {
+    return storedToken;
+  }
+
+  return undefined;
+}
+
+/**
+ * Create WebSocket link for GraphQL subscriptions
+ *
+ * SECURITY: All WebSocket connections are authenticated via JWT in connection params.
+ * Connections without valid tokens are rejected by the server.
+ *
+ * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/194
+ */
+function createWsLink(): ApolloLink | null {
+  // WebSocket is not available during SSR
+  if (globalThis.window === undefined) {
+    return null;
+  }
+
+  const wsClient = createClient({
+    url: GRAPHQL_WS_URL,
+    connectionParams: () => {
+      const token = getAuthToken();
+      return token ? { authorization: `Bearer ${token}` } : {};
+    },
+    // Retry connection with exponential backoff
+    retryAttempts: 5,
+    shouldRetry: () => true,
+    // Lazy connection - only connect when subscription starts
+    lazy: true,
+    // Handle connection acknowledgement timeout
+    connectionAckWaitTimeout: 10000,
+  });
+
+  return new GraphQLWsLink(wsClient);
+}
+
+/**
+ * Create the Apollo Link that routes subscriptions to WebSocket
+ * and queries/mutations to HTTP
+ */
+function createLink(): ApolloLink {
+  const wsLink = createWsLink();
+
+  // If no WebSocket link (SSR), use HTTP only
+  if (!wsLink) {
+    return httpLink;
+  }
+
+  // Split traffic: subscriptions go to WebSocket, rest to HTTP
+  return split(
+    ({ query }) => {
+      const definition = getMainDefinition(query);
+      return (
+        definition.kind === "OperationDefinition" &&
+        definition.operation === "subscription"
+      );
+    },
+    wsLink,
+    httpLink,
+  );
+}
+
 export const apolloClient = new ApolloClient({
-  link: httpLink,
+  link: createLink(),
   cache: new InMemoryCache(),
+  // Enable SSR mode when running on server
+  ssrMode: globalThis.window === undefined,
 });
 
 export interface DemoUser {

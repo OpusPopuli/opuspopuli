@@ -1,4 +1,8 @@
+import { Logger } from '@nestjs/common';
 import { QueryFailedError, TypeORMError } from 'typeorm';
+import { sanitizeDatabaseError } from '../common/exceptions/error-sanitizer';
+
+const logger = new Logger('DbErrors');
 
 export enum PostgresErrorCodes {
   UniqueViolation = '23505',
@@ -24,22 +28,32 @@ interface PostgresDriverError {
   detail?: string;
 }
 
+/**
+ * Handle query failed errors with sanitization
+ *
+ * Logs full error details server-side and returns sanitized messages
+ * to prevent information disclosure about database schema.
+ *
+ * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
+ */
 const handleQueryFailedError = (error: QueryFailedError): DbError => {
   const postgresDriverError =
     error.driverError as unknown as PostgresDriverError;
 
-  switch (postgresDriverError.code) {
-    case PostgresErrorCodes.UniqueViolation:
-      return new DbError(postgresDriverError.detail);
-    // case PostgresErrorCodes.CheckViolation:
-    //   return handleCheckViolation(error);
-    // case PostgresErrorCodes.NotNullViolation:
-    //   return handleNotNullViolation(error);
-    // case PostgresErrorCodes.ForeignKeyViolation:
-    //   return handleForeignKeyViolation(error);
-    default:
-      return error as DbError;
-  }
+  // Log full error details server-side for debugging
+  logger.error('Database query failed', {
+    code: postgresDriverError.code,
+    detail: postgresDriverError.detail,
+    query: error.query,
+  });
+
+  // Return sanitized error message
+  const sanitizedMessage = sanitizeDatabaseError(
+    postgresDriverError.detail,
+    postgresDriverError.code,
+  );
+
+  return new DbError(sanitizedMessage);
 };
 
 export default (error: TypeORMError): DbError => {
@@ -47,6 +61,11 @@ export default (error: TypeORMError): DbError => {
     case 'QueryFailedError':
       return handleQueryFailedError(error as QueryFailedError);
     default:
-      return error;
+      // Log unexpected database errors
+      logger.error('Unexpected database error', {
+        name: error.name,
+        message: error.message,
+      });
+      return new DbError('A database error occurred.');
   }
 };

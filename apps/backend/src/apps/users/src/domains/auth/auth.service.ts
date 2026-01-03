@@ -1,10 +1,4 @@
-import {
-  Inject,
-  Injectable,
-  Logger,
-  forwardRef,
-  Optional,
-} from '@nestjs/common';
+import { Inject, Injectable, forwardRef, Optional } from '@nestjs/common';
 
 import { LoginUserDto } from './dto/login-user.dto';
 import { RegisterUserDto } from './dto/register-user.dto';
@@ -19,6 +13,7 @@ import { Role } from 'src/common/enums/role.enum';
 import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
 import { UserEntity } from 'src/db/entities/user.entity';
 import { User } from '../user/models/user.model';
+import { SecureLogger } from 'src/common/services/secure-logger.service';
 
 // Extended auth provider type with optional passwordless methods
 interface IAuthProviderWithPasswordless extends IAuthProvider {
@@ -30,7 +25,9 @@ interface IAuthProviderWithPasswordless extends IAuthProvider {
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name, { timestamp: true });
+  // Use SecureLogger to automatically redact PII (emails, IPs) from log messages
+  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+  private readonly logger = new SecureLogger(AuthService.name);
 
   constructor(
     @Inject(forwardRef(() => UsersService))

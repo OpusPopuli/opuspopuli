@@ -84,7 +84,10 @@ describe('AuthResolver', () => {
         return Promise.resolve(true);
       });
 
-    expect(await resolver.registerUser(registerUserDto)).toEqual(true);
+    const mockContext = createMockContext();
+    expect(await resolver.registerUser(registerUserDto, mockContext)).toEqual(
+      true,
+    );
     expect(authService.registerUser).toHaveBeenCalledTimes(1);
   });
 
@@ -95,8 +98,9 @@ describe('AuthResolver', () => {
         return Promise.reject(new Error('Failed user registration!'));
       });
 
+    const mockContext = createMockContext();
     try {
-      await resolver.registerUser(registerUserDto);
+      await resolver.registerUser(registerUserDto, mockContext);
     } catch (error) {
       expect(error.message).toEqual('Failed user registration!');
       expect(authService.registerUser).toHaveBeenCalledTimes(1);
@@ -148,7 +152,10 @@ describe('AuthResolver', () => {
         return Promise.resolve(true);
       });
 
-    expect(await resolver.changePassword(changePasswordDto)).toBe(true);
+    const mockContext = createMockContext();
+    expect(await resolver.changePassword(changePasswordDto, mockContext)).toBe(
+      true,
+    );
     expect(authService.changePassword).toHaveBeenCalledTimes(1);
   });
 
@@ -159,8 +166,9 @@ describe('AuthResolver', () => {
         return Promise.reject(new Error('Failed user password change!'));
       });
 
+    const mockContext = createMockContext();
     try {
-      await resolver.changePassword(changePasswordDto);
+      await resolver.changePassword(changePasswordDto, mockContext);
     } catch (error) {
       expect(error.message).toEqual('Failed user password change!');
       expect(authService.changePassword).toHaveBeenCalledTimes(1);
@@ -174,7 +182,8 @@ describe('AuthResolver', () => {
         return Promise.resolve(true);
       });
 
-    expect(await resolver.forgotPassword('email')).toBe(true);
+    const mockContext = createMockContext();
+    expect(await resolver.forgotPassword('email', mockContext)).toBe(true);
     expect(authService.forgotPassword).toHaveBeenCalledTimes(1);
   });
 
@@ -185,9 +194,13 @@ describe('AuthResolver', () => {
         return Promise.resolve(true);
       });
 
-    expect(await resolver.confirmForgotPassword(confirmForgotPasswordDto)).toBe(
-      true,
-    );
+    const mockContext = createMockContext();
+    expect(
+      await resolver.confirmForgotPassword(
+        confirmForgotPasswordDto,
+        mockContext,
+      ),
+    ).toBe(true);
     expect(authService.confirmForgotPassword).toHaveBeenCalledTimes(1);
   });
 
@@ -198,8 +211,12 @@ describe('AuthResolver', () => {
         return Promise.reject(new Error('Failed forgot user password change!'));
       });
 
+    const mockContext = createMockContext();
     try {
-      await resolver.confirmForgotPassword(confirmForgotPasswordDto);
+      await resolver.confirmForgotPassword(
+        confirmForgotPasswordDto,
+        mockContext,
+      );
     } catch (error) {
       expect(error.message).toEqual('Failed forgot user password change!');
       expect(authService.confirmForgotPassword).toHaveBeenCalledTimes(1);
@@ -211,7 +228,8 @@ describe('AuthResolver', () => {
       return Promise.resolve(true);
     });
 
-    expect(await resolver.confirmUser('1')).toBe(true);
+    const mockContext = createMockContext();
+    expect(await resolver.confirmUser('1', mockContext)).toBe(true);
     expect(authService.confirmUser).toHaveBeenCalledTimes(1);
   });
 
@@ -220,8 +238,9 @@ describe('AuthResolver', () => {
       return Promise.resolve(false);
     });
 
+    const mockContext = createMockContext();
     try {
-      await resolver.confirmUser('1');
+      await resolver.confirmUser('1', mockContext);
     } catch (error) {
       expect(error.message).toEqual('User not confirmed!');
       expect(authService.confirmUser).toHaveBeenCalledTimes(1);
@@ -235,8 +254,9 @@ describe('AuthResolver', () => {
         return Promise.reject(new Error('Failed confirm user!'));
       });
 
+    const mockContext = createMockContext();
     try {
-      await resolver.confirmUser('1');
+      await resolver.confirmUser('1', mockContext);
     } catch (error) {
       expect(error.message).toEqual('Failed confirm user!');
       expect(authService.confirmUser).toHaveBeenCalledTimes(1);
@@ -250,7 +270,8 @@ describe('AuthResolver', () => {
         return Promise.resolve(true);
       });
 
-    expect(await resolver.addAdminPermission('1')).toBe(true);
+    const mockContext = createMockContext();
+    expect(await resolver.addAdminPermission('1', mockContext)).toBe(true);
     expect(authService.addPermission).toHaveBeenCalledTimes(1);
   });
 
@@ -261,8 +282,9 @@ describe('AuthResolver', () => {
         return Promise.resolve(false);
       });
 
+    const mockContext = createMockContext();
     try {
-      await resolver.addAdminPermission('1');
+      await resolver.addAdminPermission('1', mockContext);
     } catch (error) {
       expect(error.message).toEqual('Admin Permissions were not granted!');
       expect(authService.addPermission).toHaveBeenCalledTimes(1);
@@ -274,8 +296,9 @@ describe('AuthResolver', () => {
       return Promise.reject(new Error('Failed to add admin permissions!'));
     });
 
+    const mockContext = createMockContext();
     try {
-      await resolver.addAdminPermission('1');
+      await resolver.addAdminPermission('1', mockContext);
     } catch (error) {
       expect(error.message).toEqual('Failed to add admin permissions!');
       expect(authService.addPermission).toHaveBeenCalledTimes(1);
@@ -289,7 +312,8 @@ describe('AuthResolver', () => {
         return Promise.resolve(true);
       });
 
-    expect(await resolver.removeAdminPermission('1')).toBe(true);
+    const mockContext = createMockContext();
+    expect(await resolver.removeAdminPermission('1', mockContext)).toBe(true);
     expect(authService.removePermission).toHaveBeenCalledTimes(1);
   });
 
@@ -300,8 +324,9 @@ describe('AuthResolver', () => {
         return Promise.resolve(false);
       });
 
+    const mockContext = createMockContext();
     try {
-      await resolver.removeAdminPermission('1');
+      await resolver.removeAdminPermission('1', mockContext);
     } catch (error) {
       expect(error.message).toEqual('Admin Permissions were not revoked!');
       expect(authService.removePermission).toHaveBeenCalledTimes(1);
@@ -315,8 +340,9 @@ describe('AuthResolver', () => {
         return Promise.reject(new Error('Failed to revoke admin permissions!'));
       });
 
+    const mockContext = createMockContext();
     try {
-      await resolver.removeAdminPermission('1');
+      await resolver.removeAdminPermission('1', mockContext);
     } catch (error) {
       expect(error.message).toEqual('Failed to revoke admin permissions!');
       expect(authService.removePermission).toHaveBeenCalledTimes(1);
@@ -431,11 +457,15 @@ describe('AuthResolver', () => {
       passkeyService.saveCredential = jest.fn().mockResolvedValue(undefined);
       usersService.updateAuthStrategy = jest.fn().mockResolvedValue(true);
 
-      const result = await resolver.verifyPasskeyRegistration({
-        email: 'test@example.com',
-        response: {} as any,
-        friendlyName: 'My Device',
-      });
+      const mockContext = createMockContext();
+      const result = await resolver.verifyPasskeyRegistration(
+        {
+          email: 'test@example.com',
+          response: {} as any,
+          friendlyName: 'My Device',
+        },
+        mockContext,
+      );
 
       expect(result).toBe(true);
       expect(passkeyService.saveCredential).toHaveBeenCalled();
@@ -453,10 +483,14 @@ describe('AuthResolver', () => {
         .fn()
         .mockResolvedValue({ verified: false });
 
-      const result = await resolver.verifyPasskeyRegistration({
-        email: 'test@example.com',
-        response: {} as any,
-      });
+      const mockContext = createMockContext();
+      const result = await resolver.verifyPasskeyRegistration(
+        {
+          email: 'test@example.com',
+          response: {} as any,
+        },
+        mockContext,
+      );
 
       expect(result).toBe(false);
     });
@@ -464,11 +498,15 @@ describe('AuthResolver', () => {
     it('should throw error when user not found', async () => {
       authService.getUserByEmail = jest.fn().mockResolvedValue(null);
 
+      const mockContext = createMockContext();
       await expect(
-        resolver.verifyPasskeyRegistration({
-          email: 'unknown@example.com',
-          response: {} as any,
-        }),
+        resolver.verifyPasskeyRegistration(
+          {
+            email: 'unknown@example.com',
+            response: {} as any,
+          },
+          mockContext,
+        ),
       ).rejects.toThrow('User not found');
     });
   });
@@ -725,10 +763,14 @@ describe('AuthResolver', () => {
     it('should send magic link successfully', async () => {
       authService.sendMagicLink = jest.fn().mockResolvedValue(true);
 
-      const result = await resolver.sendMagicLink({
-        email: 'test@example.com',
-        redirectTo: 'http://localhost',
-      });
+      const mockContext = createMockContext();
+      const result = await resolver.sendMagicLink(
+        {
+          email: 'test@example.com',
+          redirectTo: 'http://localhost',
+        },
+        mockContext,
+      );
 
       expect(result).toBe(true);
       expect(authService.sendMagicLink).toHaveBeenCalledWith(
@@ -742,8 +784,9 @@ describe('AuthResolver', () => {
         .fn()
         .mockRejectedValue(new Error('Send failed'));
 
+      const mockContext = createMockContext();
       await expect(
-        resolver.sendMagicLink({ email: 'test@example.com' }),
+        resolver.sendMagicLink({ email: 'test@example.com' }, mockContext),
       ).rejects.toThrow('Send failed');
     });
   });
@@ -786,10 +829,14 @@ describe('AuthResolver', () => {
     it('should register with magic link successfully', async () => {
       authService.registerWithMagicLink = jest.fn().mockResolvedValue(true);
 
-      const result = await resolver.registerWithMagicLink({
-        email: 'new@example.com',
-        redirectTo: 'http://localhost',
-      });
+      const mockContext = createMockContext();
+      const result = await resolver.registerWithMagicLink(
+        {
+          email: 'new@example.com',
+          redirectTo: 'http://localhost',
+        },
+        mockContext,
+      );
 
       expect(result).toBe(true);
     });
@@ -799,8 +846,12 @@ describe('AuthResolver', () => {
         .fn()
         .mockRejectedValue(new Error('Register failed'));
 
+      const mockContext = createMockContext();
       await expect(
-        resolver.registerWithMagicLink({ email: 'new@example.com' }),
+        resolver.registerWithMagicLink(
+          { email: 'new@example.com' },
+          mockContext,
+        ),
       ).rejects.toThrow('Register failed');
     });
   });

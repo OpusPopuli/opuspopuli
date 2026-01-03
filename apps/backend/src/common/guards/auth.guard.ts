@@ -1,8 +1,17 @@
-import { Injectable, ExecutionContext, CanActivate } from '@nestjs/common';
+import {
+  Injectable,
+  ExecutionContext,
+  CanActivate,
+  Optional,
+  Logger,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
+import { randomUUID } from 'node:crypto';
 import { isLoggedIn } from 'src/common/auth/jwt.strategy';
 import { IS_PUBLIC_KEY } from 'src/common/decorators/public.decorator';
+import { AuditLogService } from 'src/common/services/audit-log.service';
+import { AuditAction } from 'src/common/enums/audit-action.enum';
 
 /**
  * Global authentication guard for GraphQL operations.
@@ -18,7 +27,12 @@ import { IS_PUBLIC_KEY } from 'src/common/decorators/public.decorator';
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  private readonly logger = new Logger(AuthGuard.name);
+
+  constructor(
+    private readonly reflector: Reflector,
+    @Optional() private readonly auditLogService?: AuditLogService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // Check if the endpoint is marked as public
@@ -33,6 +47,7 @@ export class AuthGuard implements CanActivate {
 
     const ctx = GqlExecutionContext.create(context);
     const request = ctx.getContext().req;
+    const info = ctx.getInfo();
 
     // SECURITY: Only trust request.user which is set by AuthMiddleware
     // after JWT validation via Passport.js. Never trust request.headers.user
@@ -40,11 +55,32 @@ export class AuthGuard implements CanActivate {
     const user = request.user;
 
     // No authenticated user - deny access
-    if (!user) {
+    if (!user || !isLoggedIn(user)) {
+      // Audit: Authorization denied - unauthenticated access attempt
+      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/191
+      this.auditLogService?.logSync({
+        requestId: randomUUID(),
+        serviceName: 'auth-guard',
+        action: AuditAction.AUTHORIZATION_DENIED,
+        success: false,
+        resolverName: info?.fieldName,
+        operationType: info?.parentType?.name?.toLowerCase() as
+          | 'query'
+          | 'mutation'
+          | 'subscription',
+        ipAddress:
+          request?.ip ||
+          (request?.headers as Record<string, string>)?.['x-forwarded-for'],
+        userAgent: request?.headers?.['user-agent'],
+        errorMessage: 'Unauthenticated access attempt',
+      });
+
+      this.logger.warn(
+        `Unauthenticated access attempt to ${info?.fieldName || 'unknown'} from IP: ${request?.ip || 'unknown'}`,
+      );
       return false;
     }
 
-    // Validate user object has required fields
-    return isLoggedIn(user);
+    return true;
   }
 }

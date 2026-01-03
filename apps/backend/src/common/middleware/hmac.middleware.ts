@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
 
 import crypto from 'crypto-js';
+import { safeCompare } from '../utils/crypto.utils';
 
 @Injectable()
 export class HMACMiddleware implements NestMiddleware {
@@ -72,7 +73,9 @@ export class HMACMiddleware implements NestMiddleware {
           break;
       }
 
-      if (signatureHash === credentials.signature) {
+      // Use constant-time comparison to prevent timing attacks
+      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/195
+      if (signatureHash && safeCompare(signatureHash, credentials.signature)) {
         return next();
       }
     }
