@@ -17,7 +17,23 @@ import {
 export interface OllamaConfig {
   url: string; // Ollama server URL
   model: string; // Model name (e.g., 'llama3.2', 'mistral', 'falcon')
+  /**
+   * Overall request timeout in milliseconds
+   * Default: 60000 (60 seconds)
+   */
+  requestTimeoutMs?: number;
+  /**
+   * Timeout between streaming chunks in milliseconds
+   * Default: 30000 (30 seconds)
+   */
+  chunkTimeoutMs?: number;
 }
+
+/**
+ * Default timeout values
+ */
+const DEFAULT_REQUEST_TIMEOUT_MS = 60000; // 60 seconds
+const DEFAULT_CHUNK_TIMEOUT_MS = 30000; // 30 seconds
 
 /**
  * Ollama LLM Provider (OSS, Local)
@@ -52,10 +68,18 @@ export interface OllamaConfig {
 export class OllamaLLMProvider implements ILLMProvider {
   private readonly logger = new Logger(OllamaLLMProvider.name);
   private readonly circuitBreaker: CircuitBreakerManager;
+  private readonly requestTimeoutMs: number;
+  private readonly chunkTimeoutMs: number;
 
   constructor(private readonly config: OllamaConfig) {
+    // Initialize timeout values from config or defaults
+    this.requestTimeoutMs =
+      config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.chunkTimeoutMs = config.chunkTimeoutMs ?? DEFAULT_CHUNK_TIMEOUT_MS;
+
     this.logger.log(
-      `Ollama LLM provider initialized: ${config.model} at ${config.url}`,
+      `Ollama LLM provider initialized: ${config.model} at ${config.url} ` +
+        `(request timeout: ${this.requestTimeoutMs}ms, chunk timeout: ${this.chunkTimeoutMs}ms)`,
     );
 
     // Initialize circuit breaker for Ollama calls
@@ -104,7 +128,10 @@ export class OllamaLLMProvider implements ILLMProvider {
 
         // Add timeout to prevent hanging if Ollama isn't responding
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+        const timeoutId = setTimeout(
+          () => controller.abort(),
+          this.requestTimeoutMs,
+        );
 
         const response = await fetch(`${this.config.url}/api/generate`, {
           method: "POST",
@@ -147,12 +174,14 @@ export class OllamaLLMProvider implements ILLMProvider {
         };
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
-          this.logger.error("Ollama generation timed out after 60 seconds");
+          this.logger.error(
+            `Ollama generation timed out after ${this.requestTimeoutMs}ms`,
+          );
           throw new LLMError(
             this.getName(),
             "generate",
             new Error(
-              "Request timed out. Is Ollama running? Try: ollama serve",
+              `Request timed out after ${this.requestTimeoutMs}ms. Is Ollama running? Try: ollama serve`,
             ),
           );
         }
@@ -166,12 +195,18 @@ export class OllamaLLMProvider implements ILLMProvider {
     prompt: string,
     options?: GenerateOptions,
   ): AsyncGenerator<string, void, unknown> {
+    const timeoutManager = this.createStreamingTimeoutManager();
+
     try {
       this.logger.log(`Streaming completion with Ollama/${this.config.model}`);
+
+      // Set overall request timeout
+      timeoutManager.startOverallTimeout();
 
       const response = await fetch(`${this.config.url}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: timeoutManager.controller.signal,
         body: JSON.stringify({
           model: this.config.model,
           prompt,
@@ -190,36 +225,108 @@ export class OllamaLLMProvider implements ILLMProvider {
         throw new Error(`HTTP ${response.status}: ${await response.text()}`);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Response body is not readable");
-      }
+      yield* this.processStreamResponse(response, timeoutManager);
+    } catch (error) {
+      timeoutManager.clearAll();
+      this.handleStreamError(error);
+    }
+  }
 
-      const decoder = new TextDecoder();
+  /**
+   * Creates a timeout manager for streaming requests
+   */
+  private createStreamingTimeoutManager() {
+    const controller = new AbortController();
+    let overallTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    let chunkTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
+    return {
+      controller,
+      startOverallTimeout: () => {
+        overallTimeoutId = setTimeout(() => {
+          this.logger.error(
+            `Ollama streaming request timed out after ${this.requestTimeoutMs}ms`,
+          );
+          controller.abort();
+        }, this.requestTimeoutMs);
+      },
+      resetChunkTimeout: () => {
+        if (chunkTimeoutId) clearTimeout(chunkTimeoutId);
+        chunkTimeoutId = setTimeout(() => {
+          this.logger.error(
+            `Ollama streaming chunk timed out after ${this.chunkTimeoutMs}ms`,
+          );
+          controller.abort();
+        }, this.chunkTimeoutMs);
+      },
+      clearAll: () => {
+        if (overallTimeoutId) clearTimeout(overallTimeoutId);
+        if (chunkTimeoutId) clearTimeout(chunkTimeoutId);
+      },
+    };
+  }
+
+  /**
+   * Process streaming response and yield chunks
+   */
+  private async *processStreamResponse(
+    response: Response,
+    timeoutManager: ReturnType<typeof this.createStreamingTimeoutManager>,
+  ): AsyncGenerator<string, void, unknown> {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Response body is not readable");
+    }
+
+    const decoder = new TextDecoder();
+    timeoutManager.resetChunkTimeout();
+
+    try {
       while (true) {
         const { done, value } = await reader.read();
-
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n").filter((line) => line.trim());
-
-        for (const line of lines) {
-          try {
-            const json = JSON.parse(line) as { response?: string };
-            if (json.response) {
-              yield json.response;
-            }
-          } catch {
-            // Skip malformed JSON lines
-          }
-        }
+        timeoutManager.resetChunkTimeout();
+        yield* this.parseStreamChunk(decoder.decode(value));
       }
-    } catch (error) {
-      this.logger.error("Ollama streaming failed:", error);
-      throw new LLMError(this.getName(), "generateStream", error as Error);
+    } finally {
+      timeoutManager.clearAll();
     }
+  }
+
+  /**
+   * Parse a streaming chunk and yield response tokens
+   */
+  private *parseStreamChunk(chunk: string): Generator<string, void, unknown> {
+    const lines = chunk.split("\n").filter((line) => line.trim());
+    for (const line of lines) {
+      try {
+        const json = JSON.parse(line) as { response?: string };
+        if (json.response) {
+          yield json.response;
+        }
+      } catch {
+        // Skip malformed JSON lines
+      }
+    }
+  }
+
+  /**
+   * Handle streaming errors with appropriate error messages
+   */
+  private handleStreamError(error: unknown): never {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new LLMError(
+        this.getName(),
+        "generateStream",
+        new Error(
+          `Streaming request timed out. Is Ollama running? Try: ollama serve`,
+        ),
+      );
+    }
+
+    this.logger.error("Ollama streaming failed:", error);
+    throw new LLMError(this.getName(), "generateStream", error as Error);
   }
 
   async chat(
@@ -233,9 +340,17 @@ export class OllamaLLMProvider implements ILLMProvider {
           `Chat completion with Ollama/${this.config.model} (${messages.length} messages)`,
         );
 
+        // Add timeout to prevent hanging if Ollama isn't responding
+        const controller = new AbortController();
+        const timeoutId = setTimeout(
+          () => controller.abort(),
+          this.requestTimeoutMs,
+        );
+
         const response = await fetch(`${this.config.url}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             model: this.config.model,
             messages: messages.map((msg) => ({
@@ -251,6 +366,8 @@ export class OllamaLLMProvider implements ILLMProvider {
             },
           }),
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${await response.text()}`);
@@ -268,6 +385,18 @@ export class OllamaLLMProvider implements ILLMProvider {
           finishReason: data.done ? "stop" : "length",
         };
       } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          this.logger.error(
+            `Ollama chat timed out after ${this.requestTimeoutMs}ms`,
+          );
+          throw new LLMError(
+            this.getName(),
+            "chat",
+            new Error(
+              `Request timed out after ${this.requestTimeoutMs}ms. Is Ollama running? Try: ollama serve`,
+            ),
+          );
+        }
         this.logger.error("Ollama chat failed:", error);
         throw new LLMError(this.getName(), "chat", error as Error);
       }

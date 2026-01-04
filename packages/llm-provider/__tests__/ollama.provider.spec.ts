@@ -36,6 +36,24 @@ describe("OllamaLLMProvider", () => {
       expect(provider.getName()).toBe("Ollama");
       expect(provider.getModelName()).toBe("llama3.2");
     });
+
+    it("should use default timeout values when not specified", () => {
+      const defaultProvider = new OllamaLLMProvider({
+        url: "http://localhost:11434",
+        model: "llama3.2",
+      });
+      expect(defaultProvider).toBeDefined();
+    });
+
+    it("should accept custom timeout values", () => {
+      const customProvider = new OllamaLLMProvider({
+        url: "http://localhost:11434",
+        model: "llama3.2",
+        requestTimeoutMs: 120000,
+        chunkTimeoutMs: 60000,
+      });
+      expect(customProvider).toBeDefined();
+    });
   });
 
   describe("generate", () => {
@@ -116,6 +134,22 @@ describe("OllamaLLMProvider", () => {
         expect((error as LLMError).originalError.message).toMatch(/timed out/i);
       }
     });
+
+    it("should include AbortSignal in fetch request", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ response: "test", done: true }),
+      });
+
+      await provider.generate("Test prompt");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
   });
 
   describe("chat", () => {
@@ -156,6 +190,40 @@ describe("OllamaLLMProvider", () => {
       await expect(
         provider.chat([{ role: "user", content: "Hello" }]),
       ).rejects.toThrow(LLMError);
+    });
+
+    it("should throw LLMError with timeout message on AbortError", async () => {
+      const abortError = new Error("The operation was aborted");
+      abortError.name = "AbortError";
+      mockFetch.mockRejectedValueOnce(abortError);
+
+      try {
+        await provider.chat([{ role: "user", content: "Hello" }]);
+        fail("Expected LLMError to be thrown");
+      } catch (error) {
+        expect(error).toBeInstanceOf(LLMError);
+        expect((error as LLMError).originalError.message).toMatch(/timed out/i);
+      }
+    });
+
+    it("should include AbortSignal in fetch request", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            message: { content: "response" },
+            done: true,
+          }),
+      });
+
+      await provider.chat([{ role: "user", content: "Hello" }]);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+        }),
+      );
     });
   });
 
@@ -316,6 +384,45 @@ describe("OllamaLLMProvider", () => {
       }
 
       expect(tokens).toEqual(["Hello"]);
+    });
+
+    it("should include AbortSignal in fetch request", async () => {
+      const mockReader = {
+        read: jest.fn().mockResolvedValueOnce({ done: true, value: undefined }),
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: { getReader: () => mockReader },
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _token of provider.generateStream("Test prompt")) {
+        // consume generator
+      }
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
+
+    it("should throw LLMError with timeout message on AbortError", async () => {
+      const abortError = new Error("The operation was aborted");
+      abortError.name = "AbortError";
+      mockFetch.mockRejectedValueOnce(abortError);
+
+      const generator = provider.generateStream("Test prompt");
+
+      try {
+        await generator.next();
+        fail("Expected LLMError to be thrown");
+      } catch (error) {
+        expect(error).toBeInstanceOf(LLMError);
+        expect((error as LLMError).originalError.message).toMatch(/timed out/i);
+      }
     });
   });
 });
