@@ -1,5 +1,6 @@
 import {
   Args,
+  Extensions,
   ID,
   Mutation,
   Query,
@@ -70,6 +71,7 @@ export class UsersResolver {
 
   @Query(() => [User])
   @Roles(Role.Admin)
+  @Extensions({ complexity: 20 }) // List operation - higher complexity
   getUsers(): Promise<User[] | null> {
     return this.usersService.findAll();
   }

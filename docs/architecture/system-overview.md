@@ -363,6 +363,12 @@ AWS/Cloud Infrastructure
 - GraphQL field-level authorization via CASL
 - Passkey credentials stored in PostgreSQL with counter verification
 
+**GraphQL DoS Protection**:
+- Query depth limiting (max 10 levels) prevents deeply nested queries
+- Query complexity limiting (max 1000 points) prevents expensive query combinations
+- Field-level complexity hints on expensive operations (LLM calls: 100, vector search: 50)
+- Clear error messages with `QUERY_COMPLEXITY_EXCEEDED` code
+
 See [Authentication Security Guide](../guides/auth-security.md) for implementation details.
 
 ### Infrastructure

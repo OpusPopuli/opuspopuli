@@ -1,4 +1,11 @@
-import { Args, Context, Mutation, Query, Resolver } from '@nestjs/graphql';
+import {
+  Args,
+  Context,
+  Extensions,
+  Mutation,
+  Query,
+  Resolver,
+} from '@nestjs/graphql';
 import { KnowledgeService } from './knowledge.service';
 import { Logger, UseGuards } from '@nestjs/common';
 import { UserInputError } from '@nestjs/apollo';
@@ -30,6 +37,7 @@ export class KnowledgeResolver {
 
   @Mutation(() => String)
   @UseGuards(AuthGuard)
+  @Extensions({ complexity: 100 }) // LLM call - expensive operation
   async answerQuery(
     @Args('input') input: QueryInput,
     @Context() context: GqlContext,
@@ -40,6 +48,7 @@ export class KnowledgeResolver {
 
   @Query(() => PaginatedSearchResults)
   @UseGuards(AuthGuard)
+  @Extensions({ complexity: 50 }) // Vector search with embeddings
   async searchText(
     @Args('input') input: SearchInput,
     @Context() context: GqlContext,
@@ -55,6 +64,7 @@ export class KnowledgeResolver {
 
   @Mutation(() => Boolean)
   @UseGuards(AuthGuard)
+  @Extensions({ complexity: 50 }) // Document embedding generation
   async indexDocument(
     @Args('input') input: IndexDocumentInput,
     @Context() context: GqlContext,

@@ -298,6 +298,102 @@ GATEWAY_CLIENT_ID='api-gateway'
 - [ ] CSRF enabled (`CSRF_ENABLED=true`)
 - [ ] All microservices have `HMACMiddleware` configured
 - [ ] No secrets in frontend environment variables
+- [ ] GraphQL depth limiting enabled (default: 10)
+- [ ] GraphQL complexity limiting enabled (default: 1000)
+
+## GraphQL Query Complexity & Depth Limiting
+
+GraphQL's flexible query language allows clients to request deeply nested or computationally expensive queries, which can lead to denial-of-service attacks.
+
+### The Problem
+
+```graphql
+# Malicious query that could exhaust server resources
+query MaliciousQuery {
+  users {
+    posts {
+      comments {
+        author {
+          posts {
+            comments {
+              # ... deeply nested to consume CPU/memory
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Solution: Depth & Complexity Limiting
+
+All GraphQL subgraphs enforce:
+
+1. **Query Depth Limit** (max 10 levels) - Prevents deeply nested queries
+2. **Query Complexity Limit** (max 1000 points) - Limits expensive field combinations
+
+```typescript
+// apps/backend/src/apps/*/src/app.module.ts
+GraphQLModule.forRoot<ApolloFederationDriverConfig>({
+  validationRules: [
+    depthLimit(10),
+    createQueryComplexityValidationRule(),
+  ],
+});
+```
+
+### Field Complexity Hints
+
+Expensive operations have higher complexity costs:
+
+| Operation | Complexity | Reason |
+|-----------|------------|--------|
+| `answerQuery` | 100 | LLM call |
+| `searchText` | 50 | Vector search + embeddings |
+| `indexDocument` | 50 | Embedding generation |
+| `syncRegionData` | 100 | Full data sync |
+| List operations | 15-20 | Database pagination |
+| Scalar fields | 1 | Default cost |
+
+```typescript
+// Example: High complexity hint on expensive operation
+@Mutation(() => String)
+@UseGuards(AuthGuard)
+@Extensions({ complexity: 100 }) // LLM call - expensive operation
+async answerQuery(@Args('input') input: QueryInput): Promise<string> {
+  return this.knowledgeService.answerQuery(input.query);
+}
+```
+
+### Error Response
+
+Queries exceeding limits receive clear error messages:
+
+```json
+{
+  "errors": [{
+    "message": "Query complexity of 1500 exceeds maximum allowed complexity of 1000. Please simplify your query by requesting fewer fields or reducing nesting.",
+    "extensions": {
+      "code": "QUERY_COMPLEXITY_EXCEEDED",
+      "complexity": 1500,
+      "maxComplexity": 1000
+    }
+  }]
+}
+```
+
+### Configuration
+
+```bash
+# Environment variables (all optional with sensible defaults)
+GRAPHQL_MAX_DEPTH=10          # Maximum query depth
+GRAPHQL_MAX_COMPLEXITY=1000   # Maximum complexity score
+GRAPHQL_SCALAR_COST=1         # Cost per scalar field
+GRAPHQL_OBJECT_COST=10        # Cost per object field
+GRAPHQL_LIST_FACTOR=10        # Multiplier for list fields
+GRAPHQL_LOG_COMPLEXITY=true   # Enable complexity logging
+```
 
 ## Security Benefits
 
@@ -308,6 +404,8 @@ GATEWAY_CLIENT_ID='api-gateway'
 | Direct microservice access | HMAC signature validation |
 | Replay attacks | Timestamp validation in HMAC |
 | Secret exposure | All secrets server-side only |
+| GraphQL DoS (deep queries) | Query depth limiting (max 10) |
+| GraphQL DoS (expensive queries) | Query complexity limiting (max 1000) |
 
 ## Troubleshooting
 

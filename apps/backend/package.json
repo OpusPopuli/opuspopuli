@@ -82,6 +82,7 @@
     "dotenv": "^17.2.3",
     "graphql": "^16.9.0",
     "graphql-depth-limit": "^1.1.0",
+    "graphql-query-complexity": "^1.1.0",
     "graphql-tools": "^9.0.4",
     "graphql-type-json": "^0.3.2",
     "helmet": "^8.1.0",

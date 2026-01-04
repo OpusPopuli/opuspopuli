@@ -14,6 +14,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ApolloServerPluginInlineTrace } from '@apollo/server/plugin/inlineTrace';
 import { LoggingModule } from '@qckstrt/logging-provider';
 import depthLimit from 'graphql-depth-limit';
+import { createQueryComplexityValidationRule } from 'src/common/graphql/query-complexity.plugin';
 
 import { DocumentsModule } from './domains/documents.module';
 
@@ -69,7 +70,7 @@ import { AuditModule } from 'src/common/audit/audit.module';
       driver: ApolloFederationDriver,
       autoSchemaFile: { path: 'documents-schema.gql', federation: 2 },
       plugins: [ApolloServerPluginInlineTrace()],
-      validationRules: [depthLimit(10)],
+      validationRules: [depthLimit(10), createQueryComplexityValidationRule()],
       buildSchemaOptions: {
         orphanedTypes: [User],
       },

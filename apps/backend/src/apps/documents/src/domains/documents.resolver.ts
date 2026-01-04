@@ -1,6 +1,7 @@
 import {
   Args,
   Context,
+  Extensions,
   Parent,
   Mutation,
   Query,
@@ -30,6 +31,7 @@ export class DocumentsResolver {
 
   @Query(() => [File])
   @UseGuards(AuthGuard)
+  @Extensions({ complexity: 15 }) // List operation
   listFiles(@Context() context: GqlContext): Promise<File[]> {
     const user = getUserFromContext(context);
     return this.documentsService.listFiles(user.id);

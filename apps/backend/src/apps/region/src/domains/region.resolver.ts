@@ -1,4 +1,12 @@
-import { Args, ID, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import {
+  Args,
+  Extensions,
+  ID,
+  Int,
+  Mutation,
+  Query,
+  Resolver,
+} from '@nestjs/graphql';
 import { RegionDomainService } from './region.service';
 import {
   RegionInfoModel,
@@ -37,6 +45,7 @@ export class RegionResolver {
    * Get paginated propositions
    */
   @Query(() => PaginatedPropositions)
+  @Extensions({ complexity: 15 }) // Paginated list query
   async propositions(
     @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
     @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
@@ -63,6 +72,7 @@ export class RegionResolver {
    * Get paginated meetings
    */
   @Query(() => PaginatedMeetings)
+  @Extensions({ complexity: 15 }) // Paginated list query
   async meetings(
     @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
     @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
@@ -84,6 +94,7 @@ export class RegionResolver {
    * Get paginated representatives
    */
   @Query(() => PaginatedRepresentatives)
+  @Extensions({ complexity: 15 }) // Paginated list query
   async representatives(
     @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
     @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
@@ -107,6 +118,7 @@ export class RegionResolver {
    * Note: In production, this should be protected with admin auth
    */
   @Mutation(() => [SyncResultModel])
+  @Extensions({ complexity: 100 }) // Full data sync - expensive operation
   async syncRegionData(): Promise<SyncResultModel[]> {
     const results = await this.regionService.syncAll();
     return results.map((r) => ({
