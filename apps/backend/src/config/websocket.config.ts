@@ -24,8 +24,8 @@ export default registerAs(
   (): IWebSocketConfig => ({
     enabled: process.env.WEBSOCKET_ENABLED === 'true',
     path: process.env.WEBSOCKET_PATH || 'api',
-    keepAlive: parseInt(process.env.WEBSOCKET_KEEP_ALIVE || '30000', 10),
-    connectionTimeout: parseInt(
+    keepAlive: Number.parseInt(process.env.WEBSOCKET_KEEP_ALIVE || '30000', 10),
+    connectionTimeout: Number.parseInt(
       process.env.WEBSOCKET_CONNECTION_TIMEOUT || '0',
       10,
     ),

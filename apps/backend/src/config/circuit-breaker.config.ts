@@ -37,31 +37,31 @@ export default registerAs(
     enableLogging: process.env.CIRCUIT_BREAKER_LOGGING !== 'false',
     services: {
       ollama: {
-        failureThreshold: parseInt(
+        failureThreshold: Number.parseInt(
           process.env.CIRCUIT_BREAKER_OLLAMA_FAILURES || '3',
           10,
         ),
-        halfOpenAfterMs: parseInt(
+        halfOpenAfterMs: Number.parseInt(
           process.env.CIRCUIT_BREAKER_OLLAMA_RECOVERY_MS || '30000',
           10,
         ),
       },
       supabase: {
-        failureThreshold: parseInt(
+        failureThreshold: Number.parseInt(
           process.env.CIRCUIT_BREAKER_SUPABASE_FAILURES || '5',
           10,
         ),
-        halfOpenAfterMs: parseInt(
+        halfOpenAfterMs: Number.parseInt(
           process.env.CIRCUIT_BREAKER_SUPABASE_RECOVERY_MS || '10000',
           10,
         ),
       },
       extraction: {
-        failureThreshold: parseInt(
+        failureThreshold: Number.parseInt(
           process.env.CIRCUIT_BREAKER_EXTRACTION_FAILURES || '5',
           10,
         ),
-        halfOpenAfterMs: parseInt(
+        halfOpenAfterMs: Number.parseInt(
           process.env.CIRCUIT_BREAKER_EXTRACTION_RECOVERY_MS || '60000',
           10,
         ),
