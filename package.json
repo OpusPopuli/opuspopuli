@@ -18,7 +18,11 @@
     "lint-staged": "^15.2.10"
   },
   "lint-staged": {
-    "**/*.+(js|jsx|ts|tsx|json|css)": [
+    "**/*.+(js|jsx|ts|tsx)": [
+      "pnpm -r lint",
+      "pnpm -r format"
+    ],
+    "**/*.+(json|css)": [
       "pnpm -r format"
     ]
   },
