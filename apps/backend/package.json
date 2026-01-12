@@ -75,7 +75,6 @@
     "@qckstrt/vectordb-provider": "workspace:*",
     "@simplewebauthn/server": "^13.2.2",
     "@xenova/transformers": "^2.17.2",
-    "aws-lambda": "^1.0.7",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "compression": "^1.8.1",
