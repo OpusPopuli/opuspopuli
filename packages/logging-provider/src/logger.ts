@@ -22,9 +22,9 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
  * PII patterns to redact from log messages and metadata
  */
 const PII_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
-  // Email addresses
+  // Email addresses (with length limits to prevent ReDoS)
   {
-    pattern: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+    pattern: /\b[a-zA-Z0-9._%+-]{1,64}@[a-zA-Z0-9.-]{1,255}\.[a-zA-Z]{2,10}\b/g,
     replacement: "[EMAIL_REDACTED]",
   },
   // IPv4 addresses
