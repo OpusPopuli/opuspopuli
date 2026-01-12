@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { sanitizeErrorMessage, logErrorDetails } from './error-sanitizer';
+// Import for Express Request augmentation (auditContext)
+import '../types/express';
 
 /**
  * HTTP Exception Filter
@@ -50,6 +52,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
       message: sanitizedMessage,
       path: request.url,
+      ...(request.auditContext?.requestId && {
+        requestId: request.auditContext.requestId,
+      }),
     });
   }
 }
