@@ -8,21 +8,6 @@ import {
 } from '@qckstrt/logging-provider';
 import { isProduction } from 'src/config/environment.config';
 
-// Extend Express Request to include audit context
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace Express {
-    interface Request {
-      auditContext?: {
-        requestId: string;
-        ipAddress?: string;
-        userAgent?: string;
-        startTime: number;
-      };
-    }
-  }
-}
-
 @Injectable()
 export class LoggerMiddleware implements NestMiddleware {
   private readonly logger: ILogger;
