@@ -59,7 +59,7 @@ const PII_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
   },
   // Bearer tokens
   {
-    pattern: /Bearer\s+[a-zA-Z0-9_-]+/gi,
+    pattern: /Bearer\s+[\w-]+/gi,
     replacement: "Bearer [TOKEN_REDACTED]",
   },
 ];
