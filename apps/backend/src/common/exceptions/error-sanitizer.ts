@@ -197,17 +197,20 @@ export interface SanitizedErrorResponse {
   message: string;
   timestamp: string;
   path?: string;
+  requestId?: string;
 }
 
 export function createSanitizedResponse(
   statusCode: number,
   originalMessage: string,
   path?: string,
+  requestId?: string,
 ): SanitizedErrorResponse {
   return {
     statusCode,
     message: sanitizeErrorMessage(originalMessage, statusCode),
     timestamp: new Date().toISOString(),
     ...(path && { path }),
+    ...(requestId && { requestId }),
   };
 }

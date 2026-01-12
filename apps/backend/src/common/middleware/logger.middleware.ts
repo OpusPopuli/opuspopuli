@@ -53,6 +53,8 @@ export class LoggerMiddleware implements NestMiddleware {
       startTime: start,
     };
 
+    res.setHeader('x-request-id', requestId);
+
     // Set request context
     this.logger.setRequestId(requestId);
     if (userId) {

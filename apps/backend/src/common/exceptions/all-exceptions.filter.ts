@@ -69,6 +69,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       status,
       originalMessage,
       request.url,
+      request.auditContext?.requestId,
     );
 
     // In production, for 5xx errors, always use generic message
