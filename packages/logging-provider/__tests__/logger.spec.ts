@@ -370,4 +370,231 @@ describe("StructuredLogger", () => {
       expect(output.level).toBe("error");
     });
   });
+
+  describe("durationMs extraction", () => {
+    it("should extract durationMs to top-level field", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+      });
+
+      logger.info("request completed", undefined, { durationMs: 150, path: "/api" });
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.durationMs).toBe(150);
+      expect(output.meta).toEqual({ path: "/api" });
+    });
+
+    it("should not include durationMs in meta after extraction", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+      });
+
+      logger.info("request completed", undefined, { durationMs: 100 });
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.durationMs).toBe(100);
+      expect(output.meta).toBeUndefined();
+    });
+
+    it("should only extract numeric durationMs values", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+      });
+
+      logger.info("request completed", undefined, { durationMs: "invalid", other: "value" });
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.durationMs).toBeUndefined();
+      // Non-numeric durationMs is stripped from meta, only other fields remain
+      expect(output.meta).toEqual({ other: "value" });
+    });
+  });
+
+  describe("PII redaction", () => {
+    it("should redact email addresses when redactPii is enabled", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+        redactPii: true,
+      });
+
+      logger.info("User logged in: user@example.com");
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.message).toBe("User logged in: [EMAIL_REDACTED]");
+      expect(output.message).not.toContain("user@example.com");
+    });
+
+    it("should redact IPv4 addresses", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+        redactPii: true,
+      });
+
+      logger.info("Request from 192.168.1.100");
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.message).toBe("Request from [IP_REDACTED]");
+    });
+
+    it("should redact credit card numbers", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+        redactPii: true,
+      });
+
+      logger.info("Card: 4111-1111-1111-1111");
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.message).toBe("Card: [CC_REDACTED]");
+    });
+
+    it("should redact phone numbers", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+        redactPii: true,
+      });
+
+      logger.info("Contact: (555) 123-4567");
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.message).toBe("Contact: [PHONE_REDACTED]");
+    });
+
+    it("should redact JWT tokens", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+        redactPii: true,
+      });
+
+      logger.info("Token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U");
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.message).toBe("Token: [JWT_REDACTED]");
+    });
+
+    it("should redact Bearer tokens", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+        redactPii: true,
+      });
+
+      logger.info("Authorization: Bearer abc123xyz");
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.message).toBe("Authorization: Bearer [TOKEN_REDACTED]");
+    });
+
+    it("should redact PII in metadata", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+        redactPii: true,
+      });
+
+      logger.info("Request received", undefined, {
+        email: "user@example.com",
+        ip: "10.0.0.1",
+      });
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.meta.email).toBe("[EMAIL_REDACTED]");
+      expect(output.meta.ip).toBe("[IP_REDACTED]");
+    });
+
+    it("should redact PII in nested metadata", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+        redactPii: true,
+      });
+
+      logger.info("Request received", undefined, {
+        user: { email: "test@test.com", name: "John" },
+      });
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.meta.user.email).toBe("[EMAIL_REDACTED]");
+      expect(output.meta.user.name).toBe("John");
+    });
+
+    it("should not redact when redactPii is disabled", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+        redactPii: false,
+      });
+
+      logger.info("User logged in: user@example.com");
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.message).toBe("User logged in: user@example.com");
+    });
+
+    it("should redact PII in error stack traces", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "json",
+        redactPii: true,
+        stackTrace: true,
+      });
+
+      const stack = "Error: Failed for user@example.com\n    at test.js:1:1";
+      logger.error("error occurred", stack, "ErrorContext");
+
+      const output = JSON.parse(consoleSpy.error.mock.calls[0][0]);
+      expect(output.error.stack).toContain("[EMAIL_REDACTED]");
+      expect(output.error.stack).not.toContain("user@example.com");
+    });
+
+    it("should redact PII in pretty format", () => {
+      const logger = createLogger({
+        serviceName: "test-service",
+        format: "pretty",
+        redactPii: true,
+      });
+
+      logger.info("User: user@example.com from 192.168.1.1");
+
+      const output = consoleSpy.log.mock.calls[0][0];
+      expect(output).toContain("[EMAIL_REDACTED]");
+      expect(output).toContain("[IP_REDACTED]");
+      expect(output).not.toContain("user@example.com");
+      expect(output).not.toContain("192.168.1.1");
+    });
+
+    it("should default to redactPii true in production", () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+
+      const logger = createLogger({ serviceName: "test-service" });
+      logger.info("User: user@example.com");
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output.message).toBe("User: [EMAIL_REDACTED]");
+
+      process.env.NODE_ENV = originalEnv;
+    });
+
+    it("should default to redactPii false in development", () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+
+      const logger = createLogger({ serviceName: "test-service" });
+      logger.info("User: user@example.com");
+
+      const output = consoleSpy.log.mock.calls[0][0];
+      expect(output).toContain("user@example.com");
+
+      process.env.NODE_ENV = originalEnv;
+    });
+  });
 });

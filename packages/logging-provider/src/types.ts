@@ -22,6 +22,8 @@ export interface LoggingConfig {
   timestamp?: boolean;
   /** Include stack traces for errors (default: true in development) */
   stackTrace?: boolean;
+  /** Redact PII from log messages and metadata (default: true in production) */
+  redactPii?: boolean;
 }
 
 /**

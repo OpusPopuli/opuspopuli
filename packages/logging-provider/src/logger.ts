@@ -19,6 +19,52 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
 };
 
 /**
+ * PII patterns to redact from log messages and metadata
+ */
+const PII_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
+  // Email addresses (with length limits to prevent ReDoS)
+  {
+    pattern: /\b[a-zA-Z0-9._%+-]{1,64}@[a-zA-Z0-9.-]{1,255}\.[a-zA-Z]{2,10}\b/g,
+    replacement: "[EMAIL_REDACTED]",
+  },
+  // IPv4 addresses
+  {
+    pattern: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
+    replacement: "[IP_REDACTED]",
+  },
+  // IPv6 addresses (simplified pattern)
+  {
+    pattern: /\b(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4}\b/g,
+    replacement: "[IP_REDACTED]",
+  },
+  // Credit card numbers (basic pattern)
+  {
+    pattern: /\b(?:\d{4}[-\s]?){3}\d{4}\b/g,
+    replacement: "[CC_REDACTED]",
+  },
+  // SSN (US Social Security Number)
+  {
+    pattern: /\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b/g,
+    replacement: "[SSN_REDACTED]",
+  },
+  // Phone numbers (various formats)
+  {
+    pattern: /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
+    replacement: "[PHONE_REDACTED]",
+  },
+  // JWT tokens
+  {
+    pattern: /eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*/g,
+    replacement: "[JWT_REDACTED]",
+  },
+  // Bearer tokens
+  {
+    pattern: /Bearer\s+[\w-]+/gi,
+    replacement: "Bearer [TOKEN_REDACTED]",
+  },
+];
+
+/**
  * Structured logger implementation that outputs JSON for CloudWatch Logs
  * or pretty-printed logs for development.
  */
@@ -41,6 +87,7 @@ export class StructuredLogger implements ILogger, LoggerService {
         (process.env.NODE_ENV === "production" ? "json" : "pretty"),
       timestamp: config.timestamp ?? true,
       stackTrace: config.stackTrace ?? process.env.NODE_ENV !== "production",
+      redactPii: config.redactPii ?? process.env.NODE_ENV === "production",
     };
   }
 
@@ -204,25 +251,107 @@ export class StructuredLogger implements ILogger, LoggerService {
     }
 
     if (meta) {
-      if ("error" in meta && typeof meta.error === "object") {
-        entry.error = meta.error as LogEntry["error"];
-        const { error: _error, ...restMeta } = meta;
-        if (Object.keys(restMeta).length > 0) {
-          entry.meta = restMeta;
-        }
-      } else if (Object.keys(meta).length > 0) {
-        entry.meta = meta;
-      }
+      this.processMetadata(entry, meta);
     }
 
     return entry;
   }
 
   /**
+   * Process metadata and extract special fields to top-level
+   */
+  private processMetadata(entry: LogEntry, meta: Record<string, unknown>): void {
+    // Extract durationMs to top-level field for CloudWatch Logs Insights queries
+    if ("durationMs" in meta && typeof meta.durationMs === "number") {
+      entry.durationMs = meta.durationMs;
+    }
+
+    // Extract error to top-level and compute remaining meta
+    const hasError = "error" in meta && typeof meta.error === "object";
+    if (hasError) {
+      entry.error = meta.error as LogEntry["error"];
+    }
+
+    // Remove extracted fields from meta
+    const { error: _error, durationMs: _duration, ...restMeta } = meta;
+    if (Object.keys(restMeta).length > 0) {
+      entry.meta = restMeta;
+    }
+  }
+
+  /**
+   * Redact PII from a string value
+   */
+  private redactString(value: string): string {
+    if (!this.config.redactPii) {
+      return value;
+    }
+    let result = value;
+    for (const { pattern, replacement } of PII_PATTERNS) {
+      // Reset regex lastIndex for global patterns
+      pattern.lastIndex = 0;
+      result = result.replace(pattern, replacement);
+    }
+    return result;
+  }
+
+  /**
+   * Recursively redact PII from an object
+   */
+  private redactObject<T>(obj: T): T {
+    if (!this.config.redactPii || obj === null || obj === undefined) {
+      return obj;
+    }
+
+    if (typeof obj === "string") {
+      return this.redactString(obj) as T;
+    }
+
+    if (Array.isArray(obj)) {
+      return obj.map((item) => this.redactObject(item)) as T;
+    }
+
+    if (typeof obj === "object") {
+      const result: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(obj)) {
+        result[key] = this.redactObject(value);
+      }
+      return result as T;
+    }
+
+    return obj;
+  }
+
+  /**
+   * Apply PII redaction to a log entry
+   */
+  private redactEntry(entry: LogEntry): LogEntry {
+    if (!this.config.redactPii) {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      message: this.redactString(entry.message),
+      meta: entry.meta ? this.redactObject(entry.meta) : undefined,
+      error: entry.error
+        ? {
+            ...entry.error,
+            message: this.redactString(entry.error.message),
+            stack: entry.error.stack
+              ? this.redactString(entry.error.stack)
+              : undefined,
+          }
+        : undefined,
+    };
+  }
+
+  /**
    * Write JSON formatted log (for CloudWatch)
    */
   private writeJson(entry: LogEntry, level: LogLevel): void {
-    const output = JSON.stringify(entry);
+    const redactedEntry = this.redactEntry(entry);
+    const output = JSON.stringify(redactedEntry);
 
     if (level === LogLevel.ERROR) {
       console.error(output);
@@ -237,6 +366,7 @@ export class StructuredLogger implements ILogger, LoggerService {
    * Write pretty-printed log (for development)
    */
   private writePretty(entry: LogEntry, level: LogLevel): void {
+    const redactedEntry = this.redactEntry(entry);
     const colors = {
       [LogLevel.DEBUG]: "\x1b[36m", // Cyan
       [LogLevel.INFO]: "\x1b[32m", // Green
@@ -247,22 +377,24 @@ export class StructuredLogger implements ILogger, LoggerService {
     const dim = "\x1b[2m";
 
     const timestamp = this.config.timestamp
-      ? `${dim}${entry.timestamp}${reset} `
+      ? `${dim}${redactedEntry.timestamp}${reset} `
       : "";
     const levelStr = `${colors[level]}[${level.toUpperCase()}]${reset}`;
-    const contextStr = entry.context ? ` ${dim}[${entry.context}]${reset}` : "";
-    const requestStr = entry.requestId
-      ? ` ${dim}(${entry.requestId})${reset}`
+    const contextStr = redactedEntry.context
+      ? ` ${dim}[${redactedEntry.context}]${reset}`
+      : "";
+    const requestStr = redactedEntry.requestId
+      ? ` ${dim}(${redactedEntry.requestId})${reset}`
       : "";
 
-    let output = `${timestamp}${levelStr}${contextStr}${requestStr} ${entry.message}`;
+    let output = `${timestamp}${levelStr}${contextStr}${requestStr} ${redactedEntry.message}`;
 
-    if (entry.meta && Object.keys(entry.meta).length > 0) {
-      output += ` ${dim}${JSON.stringify(entry.meta)}${reset}`;
+    if (redactedEntry.meta && Object.keys(redactedEntry.meta).length > 0) {
+      output += ` ${dim}${JSON.stringify(redactedEntry.meta)}${reset}`;
     }
 
-    if (entry.error?.stack) {
-      output += `\n${dim}${entry.error.stack}${reset}`;
+    if (redactedEntry.error?.stack) {
+      output += `\n${dim}${redactedEntry.error.stack}${reset}`;
     }
 
     if (level === LogLevel.ERROR) {
