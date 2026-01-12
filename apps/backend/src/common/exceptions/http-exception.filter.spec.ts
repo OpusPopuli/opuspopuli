@@ -27,6 +27,10 @@ describe('HttpExceptionFilter', () => {
 
     mockRequest = {
       url: '/api/test',
+      auditContext: {
+        requestId: 'test-request-id-123',
+        startTime: Date.now(),
+      },
     };
 
     mockResponse = {
@@ -260,7 +264,19 @@ describe('HttpExceptionFilter', () => {
       expect(response.password).toBeUndefined();
     });
 
-    it('should only include code, timestamp, message, and path', () => {
+    it('should only include allowed fields in response', () => {
+      const exception = new BadRequestException('Invalid input');
+
+      filter.catch(exception, mockArgumentsHost as ArgumentsHost);
+
+      const response = mockJson.mock.calls[0][0];
+      expect(Object.keys(response).sort()).toEqual(
+        ['code', 'message', 'path', 'requestId', 'timestamp'].sort(),
+      );
+    });
+
+    it('should not include requestId when auditContext is not present', () => {
+      mockRequest.auditContext = undefined;
       const exception = new BadRequestException('Invalid input');
 
       filter.catch(exception, mockArgumentsHost as ArgumentsHost);
@@ -269,6 +285,30 @@ describe('HttpExceptionFilter', () => {
       expect(Object.keys(response).sort()).toEqual(
         ['code', 'message', 'path', 'timestamp'].sort(),
       );
+    });
+  });
+
+  describe('request ID tracing', () => {
+    it('should include requestId in error response', () => {
+      const exception = new BadRequestException('Invalid input');
+
+      filter.catch(exception, mockArgumentsHost as ArgumentsHost);
+
+      expect(mockJson).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: 'test-request-id-123',
+        }),
+      );
+    });
+
+    it('should not include requestId when auditContext is missing', () => {
+      mockRequest.auditContext = undefined;
+      const exception = new BadRequestException('Invalid input');
+
+      filter.catch(exception, mockArgumentsHost as ArgumentsHost);
+
+      const response = mockJson.mock.calls[0][0];
+      expect(response.requestId).toBeUndefined();
     });
   });
 

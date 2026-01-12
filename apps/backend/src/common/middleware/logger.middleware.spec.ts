@@ -41,6 +41,7 @@ describe('LoggerMiddleware', () => {
 
     mockResponse = {
       statusCode: 200,
+      setHeader: jest.fn(),
       on: jest
         .fn()
         .mockImplementation((event: string, callback: () => void) => {
@@ -326,6 +327,42 @@ describe('LoggerMiddleware', () => {
       );
 
       expect(mockRequest.auditContext?.ipAddress).toBe('203.0.113.195');
+    });
+  });
+
+  describe('response headers', () => {
+    it('should set x-request-id response header with provided request id', () => {
+      mockRequest.headers = {
+        'x-request-id': 'client-request-id-456',
+      };
+
+      middleware.use(
+        mockRequest as Request,
+        mockResponse as Response,
+        mockNext,
+      );
+
+      expect(mockResponse.setHeader).toHaveBeenCalledWith(
+        'x-request-id',
+        'client-request-id-456',
+      );
+    });
+
+    it('should set x-request-id response header with generated request id', () => {
+      mockRequest.headers = {};
+
+      middleware.use(
+        mockRequest as Request,
+        mockResponse as Response,
+        mockNext,
+      );
+
+      expect(mockResponse.setHeader).toHaveBeenCalledWith(
+        'x-request-id',
+        expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        ),
+      );
     });
   });
 
