@@ -24,6 +24,14 @@ services:
     ports:
       - "3000:3000"
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
   nginx:
     build:
       context: .
@@ -39,3 +47,11 @@ services:
       - "80:80"
       - "443:443"
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 64M

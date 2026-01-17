@@ -58,6 +58,14 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # Inbucket - Local Email Testing (captures emails in web UI)
   inbucket:
@@ -69,6 +77,14 @@ services:
     networks:
       - qckstrt-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
 
   # GoTrue - Authentication Service
   supabase-auth:
@@ -119,6 +135,14 @@ services:
     networks:
       - qckstrt-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   # PostgREST - RESTful API for PostgreSQL
   supabase-rest:
@@ -138,6 +162,14 @@ services:
     networks:
       - qckstrt-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   # Storage API
   supabase-storage:
@@ -167,6 +199,14 @@ services:
     networks:
       - qckstrt-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   # Image Transformation
   supabase-imgproxy:
@@ -182,6 +222,14 @@ services:
     networks:
       - qckstrt-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   # Kong API Gateway
   supabase-kong:
@@ -210,6 +258,14 @@ services:
     networks:
       - qckstrt-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   # Supabase Studio (Admin UI)
   supabase-studio:
@@ -235,6 +291,14 @@ services:
     networks:
       - qckstrt-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
 
   # Postgres Meta (for Studio)
   supabase-meta:
@@ -253,6 +317,14 @@ services:
     networks:
       - qckstrt-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
 
   # ===========================================
   # AI/ML Services
@@ -270,14 +342,19 @@ services:
     networks:
       - qckstrt-network
     restart: unless-stopped
-    # Uncomment for GPU support (requires NVIDIA GPU + nvidia-docker)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '1.0'
+          memory: 1024M
+          # Uncomment for GPU support (requires NVIDIA GPU + nvidia-docker)
+          # devices:
+          #   - driver: nvidia
+          #     count: 1
+          #     capabilities: [gpu]
 
 volumes:
   supabase-db-data:

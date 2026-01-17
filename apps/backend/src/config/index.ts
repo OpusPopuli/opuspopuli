@@ -111,7 +111,7 @@ export default async (): Promise<Partial<IAppConfig>> => {
     application,
     version,
     description,
-    port: typeof port === 'string' ? parseInt(port, 10) : port,
+    port: typeof port === 'string' ? Number.parseInt(port, 10) : port,
     region: region || 'us-east-1',
     apiKeys,
   };
