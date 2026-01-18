@@ -6,6 +6,7 @@ import {
   DEFAULT_POOL_CONFIG,
 } from "../src/providers/postgres.provider";
 import { RelationalDBType } from "@qckstrt/common";
+import { DEFAULT_CONNECTION_RETRY_CONFIG } from "../src/types";
 
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({
@@ -166,6 +167,53 @@ describe("PostgresProvider", () => {
       expect(DEFAULT_POOL_CONFIG.idleTimeoutMs).toBe(30000);
       expect(DEFAULT_POOL_CONFIG.connectionTimeoutMs).toBe(5000);
       expect(DEFAULT_POOL_CONFIG.acquireTimeoutMs).toBe(10000);
+    });
+  });
+
+  describe("connection retry configuration", () => {
+    it("should return default retry config when not provided", () => {
+      const retryConfig = provider.getRetryConfig();
+
+      expect(retryConfig).toEqual(DEFAULT_CONNECTION_RETRY_CONFIG);
+    });
+
+    it("should use custom retry config when provided", () => {
+      const customRetry = {
+        maxAttempts: 10,
+        baseDelayMs: 2000,
+        maxDelayMs: 60000,
+        useJitter: false,
+      };
+      const customConfig: PostgresConfig = { ...config, retry: customRetry };
+      const customProvider = new PostgresProvider(customConfig);
+      const retryConfig = customProvider.getRetryConfig();
+
+      expect(retryConfig.maxAttempts).toBe(10);
+      expect(retryConfig.baseDelayMs).toBe(2000);
+      expect(retryConfig.maxDelayMs).toBe(60000);
+      expect(retryConfig.useJitter).toBe(false);
+    });
+
+    it("should merge partial retry config with defaults", () => {
+      const partialRetry = {
+        maxAttempts: 8,
+      };
+      const partialConfig: PostgresConfig = { ...config, retry: partialRetry };
+      const partialProvider = new PostgresProvider(partialConfig);
+      const retryConfig = partialProvider.getRetryConfig();
+
+      // Custom value
+      expect(retryConfig.maxAttempts).toBe(8);
+      // Default values
+      expect(retryConfig.baseDelayMs).toBe(
+        DEFAULT_CONNECTION_RETRY_CONFIG.baseDelayMs,
+      );
+      expect(retryConfig.maxDelayMs).toBe(
+        DEFAULT_CONNECTION_RETRY_CONFIG.maxDelayMs,
+      );
+      expect(retryConfig.useJitter).toBe(
+        DEFAULT_CONNECTION_RETRY_CONFIG.useJitter,
+      );
     });
   });
 });

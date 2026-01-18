@@ -10,6 +10,14 @@ function parseOptionalInt(value: string | undefined): number | undefined {
 }
 
 /**
+ * Parse an optional boolean from environment variable
+ */
+function parseOptionalBool(value: string | undefined): boolean | undefined {
+  if (value === undefined || value === '') return undefined;
+  return value.toLowerCase() === 'true';
+}
+
+/**
  * Relational Database Configuration
  *
  * Maps RELATIONAL_DB_* environment variables to nested config.
@@ -20,6 +28,12 @@ function parseOptionalInt(value: string | undefined): number | undefined {
  * - RELATIONAL_DB_IDLE_TIMEOUT_MS: Idle timeout in ms (default: 30000)
  * - RELATIONAL_DB_CONNECTION_TIMEOUT_MS: Connection timeout in ms (default: 5000)
  * - RELATIONAL_DB_ACQUIRE_TIMEOUT_MS: Acquire timeout in ms (default: 10000)
+ *
+ * Connection retry settings (exponential backoff):
+ * - RELATIONAL_DB_RETRY_MAX_ATTEMPTS: Max retry attempts (default: 5)
+ * - RELATIONAL_DB_RETRY_BASE_DELAY_MS: Base delay in ms (default: 1000)
+ * - RELATIONAL_DB_RETRY_MAX_DELAY_MS: Max delay in ms (default: 30000)
+ * - RELATIONAL_DB_RETRY_USE_JITTER: Add jitter to prevent thundering herd (default: true)
  */
 export default registerAs('relationaldb', () => ({
   provider: process.env.RELATIONAL_DB_PROVIDER || 'postgres',
@@ -42,6 +56,18 @@ export default registerAs('relationaldb', () => ({
       acquireTimeoutMs: parseOptionalInt(
         process.env.RELATIONAL_DB_ACQUIRE_TIMEOUT_MS,
       ),
+    },
+    retry: {
+      maxAttempts: parseOptionalInt(
+        process.env.RELATIONAL_DB_RETRY_MAX_ATTEMPTS,
+      ),
+      baseDelayMs: parseOptionalInt(
+        process.env.RELATIONAL_DB_RETRY_BASE_DELAY_MS,
+      ),
+      maxDelayMs: parseOptionalInt(
+        process.env.RELATIONAL_DB_RETRY_MAX_DELAY_MS,
+      ),
+      useJitter: parseOptionalBool(process.env.RELATIONAL_DB_RETRY_USE_JITTER),
     },
   },
 }));
