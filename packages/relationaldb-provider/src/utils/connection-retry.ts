@@ -36,6 +36,26 @@ export function calculateBackoffDelay(
 }
 
 /**
+ * Retryable error patterns - network/connection errors that are typically transient
+ */
+const RETRYABLE_PATTERNS = [
+  "econnrefused", // Connection refused
+  "econnreset", // Connection reset
+  "etimedout", // Timed out
+  "enotfound", // DNS not found
+  "ehostunreach", // Host unreachable
+  "enetunreach", // Network unreachable
+  "connection refused",
+  "connection terminated",
+  "connection reset",
+  "socket hang up",
+  "too many connections",
+  "server closed the connection",
+  "the database system is starting up",
+  "the database system is shutting down",
+];
+
+/**
  * Check if an error is a retryable connection error (transient)
  *
  * @param error - The error to check
@@ -43,26 +63,7 @@ export function calculateBackoffDelay(
  */
 export function isRetryableConnectionError(error: Error): boolean {
   const message = error.message.toLowerCase();
-
-  // Network/connection errors that are typically transient
-  const retryablePatterns = [
-    "econnrefused", // Connection refused
-    "econnreset", // Connection reset
-    "etimedout", // Timed out
-    "enotfound", // DNS not found
-    "ehostunreach", // Host unreachable
-    "enetunreach", // Network unreachable
-    "connection refused",
-    "connection terminated",
-    "connection reset",
-    "socket hang up",
-    "too many connections",
-    "server closed the connection",
-    "the database system is starting up",
-    "the database system is shutting down",
-  ];
-
-  return retryablePatterns.some((pattern) => message.includes(pattern));
+  return RETRYABLE_PATTERNS.some((pattern) => message.includes(pattern));
 }
 
 /**
@@ -93,6 +94,98 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Extract host from DataSource options for logging (avoids logging credentials)
+ */
+function extractHostForLogging(dataSource: DataSource): string {
+  if (dataSource.options.type !== "postgres") {
+    return "unknown";
+  }
+  return (dataSource.options as { host?: string }).host ?? "unknown";
+}
+
+/**
+ * Normalize error to Error instance
+ */
+function normalizeError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
+ * Determine if retry should continue after a failed attempt
+ */
+function shouldRetry(
+  attempt: number,
+  maxAttempts: number,
+  error: Error,
+  logger: Logger,
+): boolean {
+  if (attempt >= maxAttempts) {
+    return false;
+  }
+
+  if (!isRetryableConnectionError(error)) {
+    logger.error(`Non-retryable database error encountered: ${error.message}`);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Execute a single connection attempt
+ */
+async function executeConnectionAttempt(
+  dataSource: DataSource,
+  attempt: number,
+  config: ConnectionRetryConfig,
+  logger: Logger,
+  startTime: number,
+): Promise<DataSource | null> {
+  const host = extractHostForLogging(dataSource);
+
+  logger.log(
+    `Database connection attempt ${attempt}/${config.maxAttempts} to ${host}`,
+  );
+
+  await dataSource.initialize();
+
+  const connectionTime = Date.now() - startTime;
+  logger.log(
+    `Database connection established successfully after ${attempt} attempt(s) in ${connectionTime}ms`,
+  );
+
+  return dataSource;
+}
+
+/**
+ * Handle failed connection attempt and prepare for retry
+ */
+async function handleFailedAttempt(
+  error: Error,
+  attempt: number,
+  attemptDuration: number,
+  config: ConnectionRetryConfig,
+  logger: Logger,
+  options: ConnectionRetryOptions,
+): Promise<void> {
+  logger.warn(
+    `Database connection attempt ${attempt}/${config.maxAttempts} failed after ${attemptDuration}ms: ${error.message}`,
+  );
+
+  const delayMs = calculateBackoffDelay(attempt, config);
+
+  if (options.onRetry) {
+    options.onRetry(error, attempt, delayMs);
+  }
+
+  logger.log(
+    `Retrying database connection in ${delayMs}ms (attempt ${attempt + 1}/${config.maxAttempts})`,
+  );
+
+  await sleep(delayMs);
+}
+
+/**
  * Attempt to establish a database connection with retry logic
  *
  * @param dataSource - TypeORM DataSource to initialize
@@ -117,58 +210,32 @@ export async function connectWithRetry(
     const attemptStartTime = Date.now();
 
     try {
-      // Extract host for logging (avoid logging credentials)
-      const host =
-        dataSource.options.type === "postgres"
-          ? ((dataSource.options as { host?: string }).host ?? "unknown")
-          : "unknown";
-
-      logger.log(
-        `Database connection attempt ${attempt}/${config.maxAttempts} to ${host}`,
+      const result = await executeConnectionAttempt(
+        dataSource,
+        attempt,
+        config,
+        logger,
+        startTime,
       );
-
-      await dataSource.initialize();
-
-      const connectionTime = Date.now() - startTime;
-      logger.log(
-        `Database connection established successfully after ${attempt} attempt(s) in ${connectionTime}ms`,
-      );
-
-      return dataSource;
+      if (result) {
+        return result;
+      }
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      lastError = normalizeError(error);
       const attemptDuration = Date.now() - attemptStartTime;
 
-      // Log the failure
-      logger.warn(
-        `Database connection attempt ${attempt}/${config.maxAttempts} failed after ${attemptDuration}ms: ${lastError.message}`,
-      );
-
-      // Check if we've exhausted all attempts
-      if (attempt >= config.maxAttempts) {
+      if (!shouldRetry(attempt, config.maxAttempts, lastError, logger)) {
         break;
       }
 
-      // Check if error is retryable
-      if (!isRetryableConnectionError(lastError)) {
-        logger.error(
-          `Non-retryable database error encountered: ${lastError.message}`,
-        );
-        break;
-      }
-
-      // Calculate delay and wait
-      const delayMs = calculateBackoffDelay(attempt, config);
-
-      if (options.onRetry) {
-        options.onRetry(lastError, attempt, delayMs);
-      }
-
-      logger.log(
-        `Retrying database connection in ${delayMs}ms (attempt ${attempt + 1}/${config.maxAttempts})`,
+      await handleFailedAttempt(
+        lastError,
+        attempt,
+        attemptDuration,
+        config,
+        logger,
+        options,
       );
-
-      await sleep(delayMs);
     }
   }
 
