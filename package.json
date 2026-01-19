@@ -9,6 +9,10 @@
     "test": "pnpm -r test",
     "test:ci": "pnpm -r test -- --coverage",
     "test:integration": "pnpm --filter backend test:integration",
+    "test:integration:docker": "bash scripts/test-integration-docker.sh",
+    "integration:up": "docker compose -f docker-compose-integration.yml up -d --build",
+    "integration:down": "docker compose -f docker-compose-integration.yml down -v",
+    "integration:logs": "docker compose -f docker-compose-integration.yml logs -f",
     "prepare": "husky"
   },
   "keywords": [],

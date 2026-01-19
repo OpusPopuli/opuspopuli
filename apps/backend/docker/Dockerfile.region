@@ -1,4 +1,4 @@
-# Dockerfile for Users Service
+# Dockerfile for Region Service
 # Build context: monorepo root (.)
 
 FROM node:20-slim AS base
@@ -26,7 +26,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 # Build the service
 WORKDIR /usr/src/app/apps/backend
-RUN pnpm build:users
+RUN pnpm build:region
 
 ### Run the project ###
 FROM base AS runner
@@ -52,4 +52,4 @@ WORKDIR /usr/src/app/apps/backend
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD node -e "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
-CMD [ "node", "dist/src/apps/users/apps/users/src/main" ]
+CMD [ "node", "dist/src/apps/region/apps/region/src/main" ]
