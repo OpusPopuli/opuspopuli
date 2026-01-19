@@ -1,0 +1,119 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type RegionInfoModel {
+  id: String!
+  name: String!
+  description: String!
+  timezone: String!
+  dataSourceUrls: [String!]
+  supportedDataTypes: [CivicDataType!]!
+}
+
+"""Types of civic data available in the region"""
+enum CivicDataType {
+  PROPOSITIONS
+  MEETINGS
+  REPRESENTATIVES
+}
+
+type SyncResultModel {
+  dataType: CivicDataType!
+  itemsProcessed: Float!
+  itemsCreated: Float!
+  itemsUpdated: Float!
+  errors: [String!]!
+  syncedAt: DateTime!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type PropositionModel {
+  id: ID!
+  externalId: String!
+  title: String!
+  summary: String!
+  fullText: String
+  status: PropositionStatus!
+  electionDate: DateTime
+  sourceUrl: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""The status of a proposition"""
+enum PropositionStatus {
+  PENDING
+  PASSED
+  FAILED
+  WITHDRAWN
+}
+
+type PaginatedPropositions {
+  items: [PropositionModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type MeetingModel {
+  id: ID!
+  externalId: String!
+  title: String!
+  body: String!
+  scheduledAt: DateTime!
+  location: String
+  agendaUrl: String
+  videoUrl: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type PaginatedMeetings {
+  items: [MeetingModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type ContactInfoModel {
+  email: String
+  phone: String
+  address: String
+  website: String
+}
+
+type RepresentativeModel {
+  id: ID!
+  externalId: String!
+  name: String!
+  chamber: String!
+  district: String!
+  party: String!
+  photoUrl: String
+  contactInfo: ContactInfoModel
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type PaginatedRepresentatives {
+  items: [RepresentativeModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type Query {
+  regionInfo: RegionInfoModel!
+  propositions(skip: Int! = 0, take: Int! = 10): PaginatedPropositions!
+  proposition(id: ID!): PropositionModel
+  meetings(skip: Int! = 0, take: Int! = 10): PaginatedMeetings!
+  meeting(id: ID!): MeetingModel
+  representatives(skip: Int! = 0, take: Int! = 10, chamber: String): PaginatedRepresentatives!
+  representative(id: ID!): RepresentativeModel
+}
+
+type Mutation {
+  syncRegionData: [SyncResultModel!]!
+}

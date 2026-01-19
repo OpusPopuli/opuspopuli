@@ -15,10 +15,25 @@ type PaginatedSearchResults {
 }
 
 type Query {
-  searchText(userId: ID!, query: String!, skip: Int! = 0, take: Int! = 10): PaginatedSearchResults!
+  searchText(input: SearchInput!): PaginatedSearchResults!
+}
+
+input SearchInput {
+  query: String!
+  skip: Int! = 0
+  take: Int! = 10
 }
 
 type Mutation {
-  answerQuery(userId: ID!, query: String!): String!
-  indexDocument(userId: ID!, documentId: String!, text: String!): Boolean!
+  answerQuery(input: QueryInput!): String!
+  indexDocument(input: IndexDocumentInput!): Boolean!
+}
+
+input QueryInput {
+  query: String!
+}
+
+input IndexDocumentInput {
+  documentId: String!
+  text: String!
 }

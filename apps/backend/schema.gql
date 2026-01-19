@@ -2,48 +2,6 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
-type Auth {
-  accessToken: String!
-  idToken: String!
-  refreshToken: String!
-}
-
-type PasskeyRegistrationOptions {
-  options: JSON!
-}
-
-"""
-The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
-"""
-scalar JSON
-
-type PasskeyAuthenticationOptions {
-  options: JSON!
-  identifier: String!
-}
-
-type PasskeyCredential {
-  id: String!
-  friendlyName: String
-  deviceType: String
-  createdAt: DateTime!
-  lastUsedAt: DateTime!
-}
-
-"""
-A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
-"""
-scalar DateTime
-
-type User {
-  id: ID!
-  email: String!
-  firstName: String
-  lastName: String
-  created: DateTime
-  updated: DateTime
-}
-
 type UserProfileEntity {
   id: ID!
   firstName: String
@@ -59,8 +17,77 @@ type UserProfileEntity {
   preferredLanguage: String!
   avatarUrl: String
   bio: String
+  isPublic: Boolean!
+  avatarStorageKey: String
+  politicalAffiliation: PoliticalAffiliation
+  votingFrequency: VotingFrequency
+  policyPriorities: [String!]
+  occupation: String
+  educationLevel: EducationLevel
+  incomeRange: IncomeRange
+  householdSize: String
+  homeownerStatus: HomeownerStatus
   createdAt: DateTime!
   updatedAt: DateTime!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+"""Political party affiliation"""
+enum PoliticalAffiliation {
+  DEMOCRAT
+  REPUBLICAN
+  INDEPENDENT
+  LIBERTARIAN
+  GREEN
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+"""How often the user votes"""
+enum VotingFrequency {
+  EVERY_ELECTION
+  MOST_ELECTIONS
+  SOME_ELECTIONS
+  RARELY
+  NEVER
+  PREFER_NOT_TO_SAY
+}
+
+"""Highest education level completed"""
+enum EducationLevel {
+  HIGH_SCHOOL
+  SOME_COLLEGE
+  ASSOCIATE
+  BACHELOR
+  MASTER
+  DOCTORATE
+  TRADE_SCHOOL
+  PREFER_NOT_TO_SAY
+}
+
+"""Annual household income range"""
+enum IncomeRange {
+  UNDER_25K
+  RANGE_25K_50K
+  RANGE_50K_75K
+  RANGE_75K_100K
+  RANGE_100K_150K
+  RANGE_150K_200K
+  OVER_200K
+  PREFER_NOT_TO_SAY
+}
+
+"""Home ownership status"""
+enum HomeownerStatus {
+  OWN
+  RENT
+  LIVING_WITH_FAMILY
+  OTHER
+  PREFER_NOT_TO_SAY
 }
 
 type UserAddressEntity {
@@ -98,41 +125,6 @@ enum AddressType {
   MAILING
   BUSINESS
   VOTING
-}
-
-type NotificationPreferenceEntity {
-  id: ID!
-  emailEnabled: Boolean!
-  emailProductUpdates: Boolean!
-  emailSecurityAlerts: Boolean!
-  emailMarketing: Boolean!
-  emailFrequency: NotificationFrequency!
-  pushEnabled: Boolean!
-  pushProductUpdates: Boolean!
-  pushSecurityAlerts: Boolean!
-  pushMarketing: Boolean!
-  smsEnabled: Boolean!
-  smsSecurityAlerts: Boolean!
-  smsMarketing: Boolean!
-  civicElectionReminders: Boolean!
-  civicVoterDeadlines: Boolean!
-  civicBallotUpdates: Boolean!
-  civicLocalNews: Boolean!
-  civicRepresentativeUpdates: Boolean!
-  civicFrequency: NotificationFrequency!
-  quietHoursEnabled: Boolean!
-  quietHoursStart: String
-  quietHoursEnd: String
-  createdAt: DateTime!
-  updatedAt: DateTime!
-}
-
-"""How often to receive notifications"""
-enum NotificationFrequency {
-  IMMEDIATE
-  DAILY_DIGEST
-  WEEKLY_DIGEST
-  NEVER
 }
 
 type UserConsentEntity {
@@ -177,18 +169,267 @@ enum ConsentStatus {
   PENDING
 }
 
+type Auth {
+  accessToken: String!
+  idToken: String!
+  refreshToken: String!
+}
+
+type PasskeyRegistrationOptions {
+  options: JSON!
+}
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+type PasskeyAuthenticationOptions {
+  options: JSON!
+  identifier: String!
+}
+
+type PasskeyCredential {
+  id: String!
+  friendlyName: String
+  deviceType: String
+  createdAt: DateTime!
+  lastUsedAt: DateTime!
+}
+
+type User {
+  id: ID!
+  email: String!
+  firstName: String
+  lastName: String
+  created: DateTime
+  updated: DateTime
+}
+
+type EmailCorrespondenceModel {
+  id: ID!
+  emailType: EmailType!
+  status: EmailStatus!
+  recipientEmail: String!
+  recipientName: String
+  subject: String!
+  bodyPreview: String
+  representativeId: String
+  representativeName: String
+  propositionId: String
+  propositionTitle: String
+  errorMessage: String
+  sentAt: DateTime
+  createdAt: DateTime!
+}
+
+"""Type of email sent"""
+enum EmailType {
+  WELCOME
+  REPRESENTATIVE_CONTACT
+  CIVIC_UPDATE
+  ELECTION_REMINDER
+  BALLOT_UPDATE
+  ACCOUNT_ACTIVITY
+}
+
+"""Status of the email"""
+enum EmailStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+}
+
+type PaginatedEmailCorrespondence {
+  items: [EmailCorrespondenceModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type SendEmailResult {
+  success: Boolean!
+  correspondenceId: String
+  error: String
+}
+
+type NotificationPreferenceEntity {
+  id: ID!
+  emailEnabled: Boolean!
+  emailProductUpdates: Boolean!
+  emailSecurityAlerts: Boolean!
+  emailMarketing: Boolean!
+  emailFrequency: NotificationFrequency!
+  pushEnabled: Boolean!
+  pushProductUpdates: Boolean!
+  pushSecurityAlerts: Boolean!
+  pushMarketing: Boolean!
+  smsEnabled: Boolean!
+  smsSecurityAlerts: Boolean!
+  smsMarketing: Boolean!
+  civicElectionReminders: Boolean!
+  civicVoterDeadlines: Boolean!
+  civicBallotUpdates: Boolean!
+  civicLocalNews: Boolean!
+  civicRepresentativeUpdates: Boolean!
+  civicFrequency: NotificationFrequency!
+  quietHoursEnabled: Boolean!
+  quietHoursStart: String
+  quietHoursEnd: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""How often to receive notifications"""
+enum NotificationFrequency {
+  IMMEDIATE
+  DAILY_DIGEST
+  WEEKLY_DIGEST
+  NEVER
+}
+
+type CoreFieldsStatus {
+  hasName: Boolean!
+  hasPhoto: Boolean!
+  hasTimezone: Boolean!
+  hasAddress: Boolean!
+}
+
+type ProfileCompletionResult {
+  percentage: Int!
+  isComplete: Boolean!
+  coreFieldsComplete: CoreFieldsStatus!
+  suggestedNextSteps: [String!]!
+}
+
+type ActivityLogEntry {
+  id: ID!
+  action: AuditAction!
+  entityType: String
+  entityId: String
+  operationName: String
+  operationType: String
+  success: Boolean!
+  errorMessage: String
+  ipAddress: String
+  userAgent: String
+  deviceType: String
+  browser: String
+  timestamp: DateTime!
+}
+
+"""Types of audit actions"""
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  ACCOUNT_LOCKED
+  ACCOUNT_UNLOCKED
+  PASSWORD_CHANGE
+  PASSWORD_CHANGE_FAILED
+  PASSWORD_RESET_REQUEST
+  PASSWORD_RESET
+  PASSWORD_RESET_FAILED
+  REGISTRATION
+  REGISTRATION_FAILED
+  USER_CONFIRMED
+  PASSKEY_REGISTRATION
+  PASSKEY_REGISTRATION_FAILED
+  PASSKEY_AUTHENTICATION
+  PASSKEY_AUTHENTICATION_FAILED
+  PASSKEY_DELETED
+  MAGIC_LINK_SENT
+  MAGIC_LINK_VERIFIED
+  MAGIC_LINK_FAILED
+  AUTHORIZATION_DENIED
+  PERMISSION_GRANTED
+  PERMISSION_REVOKED
+  ROLE_ASSIGNED
+  ROLE_REMOVED
+  SUSPICIOUS_ACTIVITY
+  RATE_LIMIT_EXCEEDED
+  TOKEN_REFRESH
+  SESSION_EXPIRED
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  BULK_READ
+  BULK_UPDATE
+  BULK_DELETE
+  UPLOAD
+  DOWNLOAD
+  SEARCH
+  EXPORT
+}
+
+type ActivityLogPage {
+  items: [ActivityLogEntry!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type SessionInfo {
+  id: ID!
+  deviceType: String
+  deviceName: String
+  browser: String
+  operatingSystem: String
+  city: String
+  region: String
+  country: String
+  isActive: Boolean!
+  isCurrent: Boolean!
+  lastActivityAt: DateTime
+  createdAt: DateTime!
+  expiresAt: DateTime!
+  revokedAt: DateTime
+}
+
+type SessionsPage {
+  items: [SessionInfo!]!
+  total: Int!
+}
+
+type ActivitySummary {
+  totalActions: Int!
+  successfulActions: Int!
+  failedActions: Int!
+  activeSessions: Int!
+  lastLoginAt: DateTime
+  lastActivityAt: DateTime
+}
+
 type Query {
   getUsers: [User!]!
   getUser(id: ID!): User!
   findUser(email: String!): User!
   myPasskeys: [PasskeyCredential!]!
+  myEmailHistory(skip: Int! = 0, take: Int! = 10, emailType: EmailType): PaginatedEmailCorrespondence!
+  myEmail(id: ID!): EmailCorrespondenceModel
+  representativeMailtoLink(representativeEmail: String!, subject: String!, body: String!): String!
   myProfile: UserProfileEntity
+  myProfileCompletion: ProfileCompletionResult!
+  avatarUploadUrl(filename: String!): String!
   myAddresses: [UserAddressEntity!]!
   myAddress(id: ID!): UserAddressEntity
   myNotificationPreferences: NotificationPreferenceEntity
   myConsents: [UserConsentEntity!]!
   myConsent(consentType: ConsentType!): UserConsentEntity
   hasValidConsent(consentType: ConsentType!): Boolean!
+  myActivityLog(limit: Int! = 20, offset: Int! = 0, filters: ActivityLogFilters): ActivityLogPage!
+  myActivitySummary: ActivitySummary!
+  mySessions(includeRevoked: Boolean! = false): SessionsPage!
+  mySession(id: ID!): SessionInfo
+}
+
+input ActivityLogFilters {
+  actions: [AuditAction!]
+  entityType: String
+  startDate: DateTime
+  endDate: DateTime
+  successOnly: Boolean
 }
 
 type Mutation {
@@ -211,7 +452,10 @@ type Mutation {
   sendMagicLink(input: SendMagicLinkDto!): Boolean!
   verifyMagicLink(input: VerifyMagicLinkDto!): Auth!
   registerWithMagicLink(input: RegisterWithMagicLinkDto!): Boolean!
+  logout: Boolean!
+  contactRepresentative(input: ContactRepresentativeDto!, representative: RepresentativeInfoDto!, proposition: PropositionInfoDto): SendEmailResult!
   updateMyProfile(input: UpdateProfileDto!): UserProfileEntity!
+  updateAvatarStorageKey(storageKey: String!): UserProfileEntity!
   createAddress(input: CreateAddressDto!): UserAddressEntity!
   updateAddress(input: UpdateAddressDto!): UserAddressEntity!
   deleteAddress(id: ID!): Boolean!
@@ -221,6 +465,10 @@ type Mutation {
   updateConsent(input: UpdateConsentDto!): UserConsentEntity!
   bulkUpdateConsents(input: BulkUpdateConsentsDto!): [UserConsentEntity!]!
   withdrawConsent(input: WithdrawConsentDto!): UserConsentEntity!
+  revokeSession(id: ID!): Boolean!
+
+  """Revoke all sessions except current"""
+  revokeAllOtherSessions: Int!
 }
 
 input CreateUserDto {
@@ -303,6 +551,26 @@ input RegisterWithMagicLinkDto {
   redirectTo: String
 }
 
+input ContactRepresentativeDto {
+  representativeId: ID!
+  subject: String!
+  message: String!
+  propositionId: ID
+  includeAddress: Boolean
+}
+
+input RepresentativeInfoDto {
+  id: ID!
+  name: String!
+  email: String!
+  chamber: String
+}
+
+input PropositionInfoDto {
+  id: ID!
+  title: String!
+}
+
 input UpdateProfileDto {
   firstName: String
   middleName: String
@@ -316,6 +584,16 @@ input UpdateProfileDto {
   preferredLanguage: String
   avatarUrl: String
   bio: String
+  isPublic: Boolean
+  avatarStorageKey: String
+  politicalAffiliation: PoliticalAffiliation
+  votingFrequency: VotingFrequency
+  policyPriorities: [String!]
+  occupation: String
+  educationLevel: EducationLevel
+  incomeRange: IncomeRange
+  householdSize: String
+  homeownerStatus: HomeownerStatus
 }
 
 input CreateAddressDto {
