@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DataSourceOptions } from "typeorm";
 import { IRelationalDBProvider, RelationalDBType } from "@qckstrt/common";
+import {
+  ConnectionRetryConfig,
+  DEFAULT_CONNECTION_RETRY_CONFIG,
+} from "../types.js";
 
 /**
  * Connection pool configuration
@@ -47,6 +51,10 @@ export interface PostgresConfig {
    * Connection pool configuration
    */
   pool?: PoolConfig;
+  /**
+   * Connection retry configuration for initial connection
+   */
+  retry?: Partial<ConnectionRetryConfig>;
 }
 
 /**
@@ -144,6 +152,16 @@ export class PostgresProvider implements IRelationalDBProvider {
    */
   getPoolConfig(): Required<PoolConfig> {
     return { ...this.poolConfig };
+  }
+
+  /**
+   * Get the connection retry configuration
+   */
+  getRetryConfig(): ConnectionRetryConfig {
+    return {
+      ...DEFAULT_CONNECTION_RETRY_CONFIG,
+      ...this.config.retry,
+    };
   }
 
   async isAvailable(): Promise<boolean> {

@@ -12,6 +12,10 @@ export {
   RelationalDBError,
 } from "@qckstrt/common";
 
+// Connection retry types and utilities
+export * from "./types.js";
+export * from "./utils/connection-retry.js";
+
 // Provider implementations
 export * from "./providers/postgres.provider.js";
 
