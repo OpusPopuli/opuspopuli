@@ -1,345 +1,303 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
+import { Prisma } from '@prisma/client';
 
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError, Repository, TypeORMError } from 'typeorm';
-import { PostgresErrorCodes } from 'src/db/db.errors';
+import { PrismaService } from 'src/db/prisma.service';
+import { PrismaErrorCodes } from 'src/db/db.prisma-errors';
+import {
+  createMockPrismaService,
+  MockPrismaService,
+} from 'src/test/prisma-mock';
 
-import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../auth/auth.service';
 
 import { UsersService } from './users.service';
 import { User } from './models/user.model';
-import { UserEntity } from 'src/db/entities/user.entity';
+import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
 
 import { users, createUserDto, updateUserDto } from '../../../../data.spec';
 
+// Helper to create Prisma-style user data (with null instead of undefined)
+const createPrismaUser = (user: (typeof users)[0]) => ({
+  id: user.id,
+  email: user.email,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  authStrategy: null,
+  created: user.created,
+  updated: user.updated,
+  deletedAt: null,
+});
+
 describe('UsersService', () => {
-  let userRepo: Repository<UserEntity>;
+  let prismaService: MockPrismaService;
   let usersService: UsersService;
   let authService: AuthService;
-  let configService: ConfigService;
 
   beforeEach(async () => {
+    const mockPrisma = createMockPrismaService();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
-        {
-          provide: getRepositoryToken(UserEntity),
-          useValue: createMock<Repository<UserEntity>>({}),
-        },
+        { provide: PrismaService, useValue: mockPrisma },
         { provide: AuthService, useValue: createMock<AuthService>() },
-        { provide: ConfigService, useValue: createMock<ConfigService>() },
       ],
     }).compile();
 
-    userRepo = module.get<Repository<UserEntity>>(
-      getRepositoryToken(UserEntity),
-    );
+    prismaService = module.get(PrismaService);
     usersService = module.get<UsersService>(UsersService);
     authService = module.get<AuthService>(AuthService);
-    configService = module.get<ConfigService>(ConfigService);
   });
 
   it('services should be defined', () => {
-    expect(userRepo).toBeDefined();
+    expect(prismaService).toBeDefined();
     expect(usersService).toBeDefined();
     expect(authService).toBeDefined();
-    expect(configService).toBeDefined();
   });
 
   it('should create a user', async () => {
-    userRepo.save = jest.fn().mockImplementation((user: User) => {
-      return Promise.resolve(users[0]);
-    });
-    authService.registerUser = jest.fn().mockImplementation((user: User) => {
-      return Promise.resolve(true);
-    });
+    const prismaUser = createPrismaUser(users[0]);
+    prismaService.user.create.mockResolvedValue(prismaUser);
+    (authService.registerUser as jest.Mock).mockResolvedValue(true);
 
-    expect(await usersService.create(createUserDto)).toEqual(users[0]);
-    expect(userRepo.save).toHaveBeenCalledTimes(1);
+    const result = await usersService.create(createUserDto);
+
+    expect(result).toEqual(User.fromPrisma(prismaUser));
+    expect(prismaService.user.create).toHaveBeenCalledTimes(1);
     expect(authService.registerUser).toHaveBeenCalledTimes(1);
   });
 
-  it('should fail to create a user with generic DB error', async () => {
-    userRepo.save = jest.fn().mockImplementation((user: User) => {
-      return Promise.reject(
-        new QueryFailedError(
-          'Failed user creation!',
-          undefined,
-          new TypeORMError('ORM Error'),
-        ),
-      );
-    });
+  it('should fail to create a user with unique constraint error', async () => {
+    const prismaError = new Prisma.PrismaClientKnownRequestError(
+      'Unique constraint failed',
+      {
+        code: PrismaErrorCodes.UniqueConstraintViolation,
+        clientVersion: '5.0.0',
+        meta: { target: ['email'] },
+      },
+    );
+    prismaService.user.create.mockRejectedValue(prismaError);
 
     try {
       await usersService.create(createUserDto);
     } catch (error) {
-      // Database errors are sanitized to prevent information disclosure
-      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
-      expect(error.message).toEqual('Database operation failed');
-      expect(authService.registerUser).toHaveBeenCalledTimes(0);
-    }
-  });
-
-  it('should fail to create a user with postgres DB error', async () => {
-    userRepo.save = jest.fn().mockImplementation((user: User) => {
-      return Promise.reject(
-        new QueryFailedError('Failed user creation!', undefined, {
-          code: PostgresErrorCodes.UniqueViolation,
-          detail: 'Postgres Error',
-        } as any),
-      );
-    });
-
-    try {
-      await usersService.create(createUserDto);
-    } catch (error) {
-      expect(error.message).toEqual('Postgres Error');
+      expect((error as Error).message).toContain('Unique constraint violation');
       expect(authService.registerUser).toHaveBeenCalledTimes(0);
     }
   });
 
   it('should fail to create a user with unknown DB error', async () => {
-    userRepo.save = jest.fn().mockImplementation((user: User) => {
-      return Promise.reject(new Error('Failed user creation!'));
-    });
+    prismaService.user.create.mockRejectedValue(new Error('Unknown error'));
 
     try {
       await usersService.create(createUserDto);
     } catch (error) {
-      // Database errors are sanitized to prevent information disclosure
-      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
-      expect(error.message).toEqual('A database error occurred.');
+      expect((error as Error).message).toEqual('A database error occurred.');
       expect(authService.registerUser).toHaveBeenCalledTimes(0);
     }
   });
 
   it('should create a passwordless user', async () => {
-    userRepo.create = jest.fn().mockReturnValue({ email: 'test@example.com' });
-    userRepo.save = jest.fn().mockResolvedValue({
+    const prismaUser = {
       id: 'new-user-id',
       email: 'test@example.com',
-    });
+      firstName: null,
+      lastName: null,
+      authStrategy: 'magic_link',
+      created: new Date(),
+      updated: new Date(),
+      deletedAt: null,
+    };
+    prismaService.user.create.mockResolvedValue(prismaUser);
 
     const result =
       await usersService.createPasswordlessUser('test@example.com');
 
-    expect(result).toEqual({ id: 'new-user-id', email: 'test@example.com' });
-    expect(userRepo.create).toHaveBeenCalledWith({
-      email: 'test@example.com',
-      authStrategy: 'magic_link',
+    expect(result.id).toEqual('new-user-id');
+    expect(result.email).toEqual('test@example.com');
+    expect(prismaService.user.create).toHaveBeenCalledWith({
+      data: { email: 'test@example.com', authStrategy: 'magic_link' },
     });
-    expect(userRepo.save).toHaveBeenCalledTimes(1);
   });
 
   it('should fail to create a passwordless user with DB error', async () => {
-    userRepo.create = jest.fn().mockReturnValue({
-      email: 'test@example.com',
-      authStrategy: 'magic_link',
-    });
-    userRepo.save = jest.fn().mockRejectedValue(
-      new QueryFailedError('Failed user creation!', undefined, {
-        code: PostgresErrorCodes.UniqueViolation,
-        detail: 'Email already exists',
-      } as any),
+    const prismaError = new Prisma.PrismaClientKnownRequestError(
+      'Unique constraint failed',
+      {
+        code: PrismaErrorCodes.UniqueConstraintViolation,
+        clientVersion: '5.0.0',
+        meta: { target: ['email'] },
+      },
     );
+    prismaService.user.create.mockRejectedValue(prismaError);
 
     try {
       await usersService.createPasswordlessUser('test@example.com');
     } catch (error) {
-      expect(error.message).toEqual('Email already exists');
+      expect((error as Error).message).toContain('Unique constraint violation');
     }
   });
 
   it('should update auth strategy successfully', async () => {
-    userRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
+    const prismaUser = createPrismaUser(users[0]);
+    prismaService.user.update.mockResolvedValue({
+      ...prismaUser,
+      authStrategy: AuthStrategy.PASSKEY,
+    });
 
     const result = await usersService.updateAuthStrategy(
       'user-id',
-      'passkey' as any,
+      AuthStrategy.PASSKEY,
     );
 
     expect(result).toBe(true);
-    expect(userRepo.update).toHaveBeenCalledWith(
-      { id: 'user-id' },
-      { authStrategy: 'passkey' },
-    );
+    expect(prismaService.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-id' },
+      data: { authStrategy: AuthStrategy.PASSKEY },
+    });
   });
 
   it('should fail to update auth strategy with DB error', async () => {
-    userRepo.update = jest.fn().mockRejectedValue(
-      new QueryFailedError('Failed auth strategy update!', undefined, {
-        code: PostgresErrorCodes.UniqueViolation,
-        detail: 'Update failed',
-      } as any),
+    const prismaError = new Prisma.PrismaClientKnownRequestError(
+      'Record not found',
+      {
+        code: PrismaErrorCodes.RecordNotFound,
+        clientVersion: '5.0.0',
+      },
     );
+    prismaService.user.update.mockRejectedValue(prismaError);
 
     try {
-      await usersService.updateAuthStrategy('user-id', 'passkey' as any);
+      await usersService.updateAuthStrategy('user-id', AuthStrategy.PASSKEY);
     } catch (error) {
-      expect(error.message).toEqual('Update failed');
+      expect((error as Error).message).toEqual('Record not found');
     }
   });
 
   it('should update a user', async () => {
-    userRepo.update = jest
-      .fn()
-      .mockImplementation((criteria: any, user: User) => {
-        return Promise.resolve(true);
-      });
+    const prismaUser = createPrismaUser(users[0]);
+    prismaService.user.update.mockResolvedValue(prismaUser);
 
     expect(await usersService.update(users[0].id, updateUserDto)).toBe(true);
-    expect(userRepo.update).toHaveBeenCalledTimes(1);
+    expect(prismaService.user.update).toHaveBeenCalledTimes(1);
   });
 
-  it('should fail to update a user with generic DB error', async () => {
-    userRepo.update = jest
-      .fn()
-      .mockImplementation((criteria: any, user: User) => {
-        return Promise.reject(
-          new QueryFailedError(
-            'Failed user update!',
-            undefined,
-            new TypeORMError('ORM Error'),
-          ),
-        );
-      });
+  it('should fail to update a user with DB error', async () => {
+    const prismaError = new Prisma.PrismaClientKnownRequestError(
+      'Record not found',
+      {
+        code: PrismaErrorCodes.RecordNotFound,
+        clientVersion: '5.0.0',
+      },
+    );
+    prismaService.user.update.mockRejectedValue(prismaError);
 
     try {
       await usersService.update(users[0].id, updateUserDto);
     } catch (error) {
-      // Database errors are sanitized to prevent information disclosure
-      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
-      expect(error.message).toEqual('Database operation failed');
-      expect(userRepo.update).toHaveBeenCalledTimes(1);
+      expect((error as Error).message).toEqual('Record not found');
+      expect(prismaService.user.update).toHaveBeenCalledTimes(1);
     }
   });
 
   it('should fail to register a user after DB creation', async () => {
-    userRepo.save = jest.fn().mockImplementation((user: User) => {
-      return Promise.resolve(users[0]);
-    });
-    userRepo.createQueryBuilder().delete().from(User).where({}).execute = jest
-      .fn()
-      .mockImplementation(() => {
-        return Promise.resolve(true);
-      });
-    authService.registerUser = jest.fn().mockImplementation((user: User) => {
-      return Promise.reject(new Error('Failed user registration!'));
-    });
+    const prismaUser = createPrismaUser(users[0]);
+    prismaService.user.create.mockResolvedValue(prismaUser);
+    prismaService.user.delete.mockResolvedValue(prismaUser);
+    (authService.registerUser as jest.Mock).mockRejectedValue(
+      new Error('Failed user registration!'),
+    );
 
     try {
       await usersService.create(createUserDto);
     } catch (error) {
-      expect(userRepo.create).toHaveBeenCalledTimes(1);
+      expect(prismaService.user.create).toHaveBeenCalledTimes(1);
       expect(authService.registerUser).toHaveBeenCalledTimes(1);
-      expect(error.message).toEqual('Failed user registration!');
+      expect((error as Error).message).toEqual('Failed user registration!');
     }
   });
 
-  it('should fail to register a user and DB rollback after DB creation', async () => {
-    userRepo.save = jest.fn().mockImplementation((user: User) => {
-      return Promise.resolve(users[0]);
-    });
-    userRepo.createQueryBuilder().delete().from(User).where({}).execute = jest
-      .fn()
-      .mockImplementation(() => {
-        return Promise.reject(new Error('Failed user db rollback!'));
-      });
-    authService.registerUser = jest.fn().mockImplementation((user: User) => {
-      return Promise.reject(new Error('Failed user registration!'));
-    });
+  it('should fetch all users', async () => {
+    const prismaUsers = users.map(createPrismaUser);
+    prismaService.user.findMany.mockResolvedValue(prismaUsers);
 
-    try {
-      await usersService.create(createUserDto);
-    } catch (error) {
-      expect(userRepo.create).toHaveBeenCalledTimes(1);
-      expect(authService.registerUser).toHaveBeenCalledTimes(1);
-      expect(error.message).toEqual('Failed user registration!');
-    }
-  });
+    const result = await usersService.findAll();
 
-  it('should fetch all users', () => {
-    userRepo.find = jest.fn().mockImplementation((options: any) => {
-      return users;
-    });
-
-    expect(usersService.findAll()).toEqual(users);
-    expect(userRepo.find).toHaveBeenCalledTimes(1);
-  });
-
-  it('should fetch a user by its id', () => {
-    userRepo.findOne = jest.fn().mockImplementation((options: any) => {
-      return users.find((user) => user.id === options.where.id);
-    });
-
-    expect(usersService.findById(users[0].id)).toEqual(users[0]);
-    expect(userRepo.findOne).toHaveBeenCalledWith({
-      where: { id: users[0].id },
+    expect(result).toEqual(User.fromPrismaArray(prismaUsers));
+    expect(prismaService.user.findMany).toHaveBeenCalledWith({
+      where: { deletedAt: null },
     });
   });
 
-  it('should fetch a user by its email', () => {
-    userRepo.findOne = jest.fn().mockImplementation((options: any) => {
-      return users.find((user) => user.email === options.where.email);
-    });
+  it('should fetch a user by its id', async () => {
+    const prismaUser = createPrismaUser(users[0]);
+    prismaService.user.findFirst.mockResolvedValue(prismaUser);
 
-    expect(usersService.findByEmail(users[0].email)).toEqual(users[0]);
-    expect(userRepo.findOne).toHaveBeenCalledWith({
-      where: { email: users[0].email },
+    const result = await usersService.findById(users[0].id);
+
+    expect(result).toEqual(User.fromPrisma(prismaUser));
+    expect(prismaService.user.findFirst).toHaveBeenCalledWith({
+      where: { id: users[0].id, deletedAt: null },
     });
   });
 
-  it('should delete a user by its id', async () => {
-    userRepo.findOne = jest.fn().mockImplementation((options: any) => {
-      return users.find((user) => user.id === options.where.id);
+  it('should fetch a user by its email', async () => {
+    const prismaUser = createPrismaUser(users[0]);
+    prismaService.user.findFirst.mockResolvedValue(prismaUser);
+
+    const result = await usersService.findByEmail(users[0].email);
+
+    expect(result).toEqual(User.fromPrisma(prismaUser));
+    expect(prismaService.user.findFirst).toHaveBeenCalledWith({
+      where: { email: users[0].email, deletedAt: null },
     });
-    userRepo.delete = jest.fn().mockImplementation((options: any) => {
-      return Promise.resolve(true);
+  });
+
+  it('should delete a user by its id (soft delete)', async () => {
+    const prismaUser = createPrismaUser(users[0]);
+    prismaService.user.findFirst.mockResolvedValue(prismaUser);
+    prismaService.user.update.mockResolvedValue({
+      ...prismaUser,
+      deletedAt: new Date(),
     });
-    authService.deleteUser = jest.fn().mockImplementation((email: string) => {
-      return Promise.resolve(true);
-    });
+    (authService.deleteUser as jest.Mock).mockResolvedValue(true);
 
     expect(await usersService.delete(users[0].id)).toBe(true);
-    expect(userRepo.findOne).toHaveBeenCalledWith({
-      where: { id: users[0].id },
+    expect(prismaService.user.findFirst).toHaveBeenCalledWith({
+      where: { id: users[0].id, deletedAt: null },
     });
-    expect(userRepo.delete).toHaveBeenCalledWith({ id: users[0].id });
+    expect(prismaService.user.update).toHaveBeenCalledWith({
+      where: { id: users[0].id },
+      data: { deletedAt: expect.any(Date) },
+    });
     expect(authService.deleteUser).toHaveBeenCalledTimes(1);
   });
 
   it('should fail to delete an unknown user', async () => {
-    userRepo.findOne = jest.fn().mockImplementation((options: any) => {
-      return null;
-    });
+    prismaService.user.findFirst.mockResolvedValue(null);
 
     expect(await usersService.delete(users[0].id)).toBe(false);
-    expect(userRepo.findOne).toHaveBeenCalledWith({
-      where: { id: users[0].id },
+    expect(prismaService.user.findFirst).toHaveBeenCalledWith({
+      where: { id: users[0].id, deletedAt: null },
     });
-    expect(userRepo.delete).toHaveBeenCalledTimes(0);
+    expect(prismaService.user.update).toHaveBeenCalledTimes(0);
     expect(authService.deleteUser).toHaveBeenCalledTimes(0);
   });
 
-  it('should fail to delete a user due to AWS Cognito error', async () => {
-    userRepo.findOne = jest.fn().mockImplementation((options: any) => {
-      return users.find((user) => user.id === options.where.id);
-    });
-    authService.deleteUser = jest.fn().mockImplementation((email: string) => {
-      return Promise.reject(false);
-    });
+  it('should fail to delete a user due to auth service error', async () => {
+    const prismaUser = createPrismaUser(users[0]);
+    prismaService.user.findFirst.mockResolvedValue(prismaUser);
+    (authService.deleteUser as jest.Mock).mockRejectedValue(false);
 
     try {
       await usersService.delete(users[0].id);
     } catch (error) {
-      expect(userRepo.findOne).toHaveBeenCalledWith({
-        where: { id: users[0].id },
+      expect(prismaService.user.findFirst).toHaveBeenCalledWith({
+        where: { id: users[0].id, deletedAt: null },
       });
-      expect(userRepo.delete).toHaveBeenCalledTimes(0);
+      expect(prismaService.user.update).toHaveBeenCalledTimes(0);
       expect(authService.deleteUser).toHaveBeenCalledTimes(1);
     }
   });

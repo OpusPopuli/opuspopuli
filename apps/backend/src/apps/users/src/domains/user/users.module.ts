@@ -1,16 +1,12 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { UsersResolver } from './users.resolver';
 import { UsersService } from './users.service';
-import { UserEntity } from 'src/db/entities/user.entity';
 import { AuthModule } from '../auth/auth.module';
 
+// PrismaModule is global, no need to import
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([UserEntity]),
-    forwardRef(() => AuthModule),
-  ],
+  imports: [forwardRef(() => AuthModule)],
   providers: [UsersResolver, UsersService],
   exports: [UsersService],
 })
