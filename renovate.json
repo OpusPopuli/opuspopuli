@@ -1,0 +1,72 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":preserveSemverRanges"
+  ],
+  "schedule": ["before 9am on monday"],
+  "timezone": "America/New_York",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "NestJS packages",
+      "matchPackagePatterns": ["^@nestjs/"],
+      "groupName": "NestJS packages"
+    },
+    {
+      "description": "Apollo GraphQL packages",
+      "matchPackagePatterns": ["^@apollo/", "^graphql"],
+      "groupName": "GraphQL packages"
+    },
+    {
+      "description": "AWS SDK packages",
+      "matchPackagePatterns": ["^@aws-sdk/"],
+      "groupName": "AWS SDK packages"
+    },
+    {
+      "description": "LangChain packages",
+      "matchPackagePatterns": ["^@langchain/", "^langchain"],
+      "groupName": "LangChain packages"
+    },
+    {
+      "description": "Testing packages",
+      "matchPackagePatterns": [
+        "jest",
+        "vitest",
+        "@testing-library",
+        "playwright"
+      ],
+      "groupName": "Testing packages"
+    },
+    {
+      "description": "TypeScript and linting",
+      "matchPackagePatterns": [
+        "typescript",
+        "eslint",
+        "prettier",
+        "@typescript-eslint"
+      ],
+      "groupName": "TypeScript & linting"
+    },
+    {
+      "description": "React ecosystem",
+      "matchPackagePatterns": ["^react", "^next", "^@types/react"],
+      "groupName": "React & Next.js"
+    },
+    {
+      "description": "Automerge patch and minor updates",
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Major updates require manual review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "breaking-change"]
+    }
+  ]
+}
