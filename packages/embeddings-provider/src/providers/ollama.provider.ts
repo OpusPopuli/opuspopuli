@@ -9,6 +9,14 @@ import {
 } from "@qckstrt/common";
 
 /**
+ * Custom fetch function type for HTTP connection pooling support
+ */
+export type FetchFunction = (
+  url: string | URL,
+  options?: RequestInit,
+) => Promise<Response>;
+
+/**
  * Ollama Embedding Provider (OSS)
  *
  * Uses Ollama for local embedding generation.
@@ -23,16 +31,21 @@ import {
 export class OllamaEmbeddingProvider implements IEmbeddingProvider {
   private readonly logger = new Logger(OllamaEmbeddingProvider.name);
   private readonly circuitBreaker: CircuitBreakerManager;
+  private readonly fetchFn: FetchFunction;
   private baseUrl: string;
   private model: string;
   private dimensions: number;
 
-  constructor(baseUrl?: string, model?: string) {
+  constructor(baseUrl?: string, model?: string, fetchFn?: FetchFunction) {
     this.baseUrl = baseUrl || "http://localhost:11434";
     this.model = model || "nomic-embed-text";
     // nomic-embed-text: 768 dimensions
     // mxbai-embed-large: 1024 dimensions
     this.dimensions = model === "mxbai-embed-large" ? 1024 : 768;
+
+    // Use custom fetch function if provided, otherwise use native fetch
+    // Native fetch respects global dispatcher set via setGlobalHttpPool()
+    this.fetchFn = fetchFn ?? fetch;
 
     this.logger.log(
       `Initialized Ollama embeddings at ${this.baseUrl} with model: ${this.model}`,
@@ -107,7 +120,7 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
   private async embed(text: string): Promise<number[]> {
     // Wrap the call with circuit breaker protection
     return this.circuitBreaker.execute(async () => {
-      const response = await fetch(`${this.baseUrl}/api/embeddings`, {
+      const response = await this.fetchFn(`${this.baseUrl}/api/embeddings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

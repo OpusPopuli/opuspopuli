@@ -12,6 +12,14 @@ import {
 } from "@qckstrt/common";
 
 /**
+ * Custom fetch function type for HTTP connection pooling support
+ */
+export type FetchFunction = (
+  url: string | URL,
+  options?: RequestInit,
+) => Promise<Response>;
+
+/**
  * Ollama configuration
  */
 export interface OllamaConfig {
@@ -27,6 +35,11 @@ export interface OllamaConfig {
    * Default: 30000 (30 seconds)
    */
   chunkTimeoutMs?: number;
+  /**
+   * Custom fetch function for HTTP connection pooling
+   * If not provided, uses native fetch (which respects global dispatcher)
+   */
+  fetchFn?: FetchFunction;
 }
 
 /**
@@ -70,12 +83,17 @@ export class OllamaLLMProvider implements ILLMProvider {
   private readonly circuitBreaker: CircuitBreakerManager;
   private readonly requestTimeoutMs: number;
   private readonly chunkTimeoutMs: number;
+  private readonly fetchFn: FetchFunction;
 
   constructor(private readonly config: OllamaConfig) {
     // Initialize timeout values from config or defaults
     this.requestTimeoutMs =
       config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.chunkTimeoutMs = config.chunkTimeoutMs ?? DEFAULT_CHUNK_TIMEOUT_MS;
+
+    // Use custom fetch function if provided, otherwise use native fetch
+    // Native fetch respects global dispatcher set via setGlobalHttpPool()
+    this.fetchFn = config.fetchFn ?? fetch;
 
     this.logger.log(
       `Ollama LLM provider initialized: ${config.model} at ${config.url} ` +
@@ -133,7 +151,7 @@ export class OllamaLLMProvider implements ILLMProvider {
           this.requestTimeoutMs,
         );
 
-        const response = await fetch(`${this.config.url}/api/generate`, {
+        const response = await this.fetchFn(`${this.config.url}/api/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: controller.signal,
@@ -203,7 +221,7 @@ export class OllamaLLMProvider implements ILLMProvider {
       // Set overall request timeout
       timeoutManager.startOverallTimeout();
 
-      const response = await fetch(`${this.config.url}/api/generate`, {
+      const response = await this.fetchFn(`${this.config.url}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: timeoutManager.controller.signal,
@@ -347,7 +365,7 @@ export class OllamaLLMProvider implements ILLMProvider {
           this.requestTimeoutMs,
         );
 
-        const response = await fetch(`${this.config.url}/api/chat`, {
+        const response = await this.fetchFn(`${this.config.url}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: controller.signal,
@@ -409,7 +427,7 @@ export class OllamaLLMProvider implements ILLMProvider {
       if (!this.circuitBreaker.isHealthy()) {
         return false;
       }
-      const response = await fetch(`${this.config.url}/api/tags`);
+      const response = await this.fetchFn(`${this.config.url}/api/tags`);
       return response.ok;
     } catch (error) {
       this.logger.error("Ollama availability check failed:", error);

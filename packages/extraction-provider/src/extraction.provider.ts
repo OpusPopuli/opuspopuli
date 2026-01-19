@@ -29,6 +29,7 @@ import {
   RetryOptions,
   CachedFetchResult,
   FetchError,
+  FetchFunction,
 } from "./types.js";
 import { RateLimiter } from "./utils/rate-limiter.js";
 import { withRetry, RetryPredicates } from "./utils/retry.js";
@@ -61,6 +62,7 @@ export class ExtractionProvider {
   private readonly cache: MemoryCache<CachedFetchResult>;
   private readonly rateLimiter: RateLimiter;
   private readonly circuitBreaker: CircuitBreakerManager;
+  private readonly fetchFn: FetchFunction;
 
   constructor(
     @Optional()
@@ -77,6 +79,10 @@ export class ExtractionProvider {
       },
       retry: { ...DEFAULT_EXTRACTION_CONFIG.retry, ...config?.retry },
     };
+
+    // Use custom fetch function if provided, otherwise use native fetch
+    // Native fetch respects global dispatcher set via setGlobalHttpPool()
+    this.fetchFn = config?.fetchFn ?? fetch;
 
     this.cache = new MemoryCache<CachedFetchResult>(this.config.cache);
     this.rateLimiter = new RateLimiter(this.config.rateLimit);
@@ -145,7 +151,7 @@ export class ExtractionProvider {
     return this.circuitBreaker.execute(async () => {
       const timeout = options.timeout ?? this.config.defaultTimeout;
 
-      const response = await fetch(url, {
+      const response = await this.fetchFn(url, {
         headers: options.headers,
         signal: AbortSignal.timeout(timeout),
       });

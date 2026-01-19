@@ -585,6 +585,146 @@ SUPABASE_SERVICE_ROLE_KEY=your-key
 
 ---
 
+### 10. HTTP Connection Pool (Common Utility)
+
+**Package**: `@qckstrt/common`
+
+**Purpose**: Provide HTTP connection pooling for external requests using undici, reducing TCP connection overhead and improving performance for repeated HTTP calls.
+
+**Exports**:
+```typescript
+import {
+  HttpPoolManager,        // Class for creating custom pool instances
+  HttpPoolConfig,         // Configuration interface
+  DEFAULT_HTTP_POOL_CONFIG, // Default configuration values
+  getSharedHttpPool,      // Get/create singleton pool instance
+  closeSharedHttpPool,    // Gracefully close shared pool
+  destroySharedHttpPool,  // Immediately destroy shared pool
+  setGlobalHttpPool,      // Set as Node.js global dispatcher
+  getGlobalHttpDispatcher, // Get current global dispatcher
+  createPooledFetch,      // Create a fetch function bound to a pool
+} from '@qckstrt/common';
+```
+
+**Configuration**:
+```typescript
+interface HttpPoolConfig {
+  connections?: number;         // Max connections per origin (default: 100)
+  pipelining?: number;          // HTTP pipelining factor (default: 10)
+  keepAliveTimeoutMs?: number;  // Keep-alive timeout (default: 30000)
+  keepAliveMaxTimeoutMs?: number; // Max keep-alive time (default: 600000)
+  connectTimeoutMs?: number;    // Connection timeout (default: 30000)
+  bodyTimeoutMs?: number;       // Body read timeout (default: 0 = no timeout)
+  headersTimeoutMs?: number;    // Headers timeout (default: 0 = no timeout)
+}
+```
+
+**Usage Patterns**:
+
+1. **Shared Pool (Recommended)** - Single pool instance for entire application:
+```typescript
+import { getSharedHttpPool } from '@qckstrt/common';
+
+// Get shared pool (creates on first call)
+const pool = getSharedHttpPool({ connections: 50 });
+
+// Use pooled fetch
+const response = await pool.fetch('https://api.example.com/data');
+
+// On application shutdown
+import { closeSharedHttpPool } from '@qckstrt/common';
+await closeSharedHttpPool();
+```
+
+2. **Global Dispatcher** - Make all Node.js fetch calls use pooling:
+```typescript
+import { setGlobalHttpPool } from '@qckstrt/common';
+
+// Set once at application startup
+setGlobalHttpPool({ connections: 100 });
+
+// All subsequent fetch() calls automatically use pooling
+const response = await fetch('https://api.example.com/data');
+```
+
+3. **Custom Pool** - Dedicated pool for specific use case:
+```typescript
+import { HttpPoolManager } from '@qckstrt/common';
+
+const pool = new HttpPoolManager({
+  connections: 25,
+  pipelining: 5,
+  keepAliveTimeoutMs: 60000,
+});
+
+const response = await pool.fetch('https://api.example.com/data');
+
+// Clean up when done
+await pool.close();
+```
+
+4. **Pooled Fetch Function** - Create a standalone fetch bound to a pool:
+```typescript
+import { createPooledFetch } from '@qckstrt/common';
+
+// Create a fetch function with pooling
+const pooledFetch = createPooledFetch({ connections: 50 });
+
+// Use like normal fetch
+const response = await pooledFetch('https://api.example.com/data');
+```
+
+**Integration with Providers**:
+
+Providers that make external HTTP requests can accept a custom `fetchFn` for connection pooling:
+
+```typescript
+import { getSharedHttpPool, ExtractionProvider } from '@qckstrt/common';
+
+// Create extraction provider with pooled fetch
+const pool = getSharedHttpPool();
+const extractor = new ExtractionProvider({
+  fetchFn: pool.fetch.bind(pool),
+  // ... other config
+});
+
+// Ollama providers also support fetchFn
+const llm = new OllamaLLMProvider({
+  fetchFn: pool.fetch.bind(pool),
+  // ... other config
+});
+```
+
+**Performance Benefits**:
+- **Connection Reuse**: TCP connections are kept alive and reused across requests
+- **Reduced Latency**: Eliminates TCP handshake overhead for subsequent requests
+- **Resource Efficiency**: Limits maximum connections to prevent resource exhaustion
+- **HTTP Pipelining**: Multiple requests can be sent without waiting for responses
+
+**Pool Statistics**:
+```typescript
+const pool = getSharedHttpPool();
+const stats = pool.getStats();
+// { connected: 5, free: 3, pending: 0, queued: 0, running: 2, size: 5 }
+```
+
+**Graceful Shutdown**:
+
+For Kubernetes/container environments, properly close the pool during shutdown:
+
+```typescript
+// In NestJS, add to OnApplicationShutdown
+@Injectable()
+export class AppShutdownService implements OnApplicationShutdown {
+  async onApplicationShutdown() {
+    await closeSharedHttpPool(); // Graceful close
+    // Or: await destroySharedHttpPool(); // Immediate destroy
+  }
+}
+```
+
+---
+
 ## Benefits of Provider Pattern
 
 ### 1. Unified Development Stack
