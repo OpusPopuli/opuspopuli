@@ -23,6 +23,7 @@ Practical guides for common tasks and workflows.
 - [**RAG Implementation**](guides/rag-implementation.md) - Using the RAG system (backend)
 - [**RAG Demo Guide**](guides/frontend-rag-demo.md) - Using the RAG demo (frontend)
 - [**Frontend Testing**](guides/frontend-testing.md) - Testing the frontend application
+- [**Backend Testing**](guides/backend-testing.md) - Unit and integration testing for backend services
 - [**Database Migration**](guides/database-migration.md) - Migrating between database providers
 - [**Audit Logging**](guides/audit-logging.md) - Comprehensive audit logging for compliance and security
 - [**Email Integration**](guides/email-integration.md) - Transactional email with Resend
@@ -39,6 +40,11 @@ Practical guides for common tasks and workflows.
 - [Frontend Architecture](architecture/frontend-architecture.md) - Includes i18n and WCAG 2.2 AA accessibility
 - [RAG Demo Guide](guides/frontend-rag-demo.md)
 - [Frontend Testing](guides/frontend-testing.md)
+
+### For Backend Developers
+- [System Overview](architecture/system-overview.md)
+- [Backend Testing](guides/backend-testing.md) - Unit and integration tests
+- [Audit Logging](guides/audit-logging.md)
 
 ### For DevOps/Infrastructure
 - [Provider Pattern](architecture/provider-pattern.md)

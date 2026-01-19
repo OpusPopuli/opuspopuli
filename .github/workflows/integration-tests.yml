@@ -71,16 +71,16 @@ jobs:
           cd apps/backend
 
           echo "Starting users service on port 3001..."
-          pnpm start:users > /tmp/users.log 2>&1 &
+          PORT=3001 pnpm start:users > /tmp/users.log 2>&1 &
 
           echo "Starting documents service on port 3002..."
-          pnpm start:documents > /tmp/documents.log 2>&1 &
+          PORT=3002 pnpm start:documents > /tmp/documents.log 2>&1 &
 
           echo "Starting knowledge service on port 3003..."
-          pnpm start:knowledge > /tmp/knowledge.log 2>&1 &
+          PORT=3003 pnpm start:knowledge > /tmp/knowledge.log 2>&1 &
 
           echo "Starting region service on port 3004..."
-          pnpm start:region > /tmp/region.log 2>&1 &
+          PORT=3004 pnpm start:region > /tmp/region.log 2>&1 &
 
           # Wait for all microservices to be ready (up to 120 seconds)
           echo "Waiting for microservices to be ready..."
@@ -123,7 +123,7 @@ jobs:
 
           # Start API Gateway after microservices are ready
           echo "Starting API Gateway on port 3000..."
-          pnpm start:api > /tmp/api.log 2>&1 &
+          PORT=3000 pnpm start:api > /tmp/api.log 2>&1 &
 
           # Wait for API Gateway (up to 60 seconds)
           for i in {1..30}; do

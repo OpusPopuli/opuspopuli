@@ -131,7 +131,8 @@ cp -r regions/example regions/your-region
 4. **Test thoroughly**:
    ```bash
    pnpm lint
-   pnpm test
+   pnpm test              # Unit tests
+   pnpm test:integration  # Integration tests (requires docker-compose up)
    ```
 5. **Commit** using conventional commits:
    ```bash
