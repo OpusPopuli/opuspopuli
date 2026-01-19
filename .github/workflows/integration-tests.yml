@@ -171,7 +171,10 @@ jobs:
           # API Gateway microservices configuration
           MICROSERVICES: '[{"name":"users","url":"http://localhost:3001/graphql"},{"name":"documents","url":"http://localhost:3002/graphql"},{"name":"knowledge","url":"http://localhost:3003/graphql"}]'
           # HMAC API Keys for service-to-service auth
-          API_KEYS: '{"frontend":"dev-frontend-secret-key-change-in-production"}'
+          # API Gateway signs requests with GATEWAY_HMAC_SECRET, microservices validate using API_KEYS
+          GATEWAY_CLIENT_ID: api-gateway
+          GATEWAY_HMAC_SECRET: ci-gateway-hmac-secret-for-testing
+          API_KEYS: '{"api-gateway":"ci-gateway-hmac-secret-for-testing"}'
           # Email configuration (placeholder for CI)
           RESEND_API_KEY: re_placeholder_for_ci
           EMAIL_FROM_ADDRESS: noreply@test.local
