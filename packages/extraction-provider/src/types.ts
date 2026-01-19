@@ -62,6 +62,14 @@ export interface RetryConfig {
 }
 
 /**
+ * Custom fetch function type for HTTP connection pooling support
+ */
+export type FetchFunction = (
+  url: string | URL,
+  options?: RequestInit,
+) => Promise<Response>;
+
+/**
  * Complete configuration for the ExtractionProvider
  */
 export interface ExtractionConfig {
@@ -73,6 +81,11 @@ export interface ExtractionConfig {
   defaultTimeout: number;
   /** Retry configuration */
   retry: RetryConfig;
+  /**
+   * Custom fetch function for HTTP connection pooling
+   * If not provided, uses native fetch (which respects global dispatcher)
+   */
+  fetchFn?: FetchFunction;
 }
 
 /**

@@ -39,6 +39,11 @@
       "types": "./dist/providers/logging/index.d.ts",
       "import": "./dist/providers/logging/index.js",
       "require": "./dist/providers/logging/index.js"
+    },
+    "./providers/http": {
+      "types": "./dist/providers/http/index.d.ts",
+      "import": "./dist/providers/http/index.js",
+      "require": "./dist/providers/http/index.js"
     }
   },
   "files": [
@@ -83,6 +88,7 @@
     "registry": "https://npm.pkg.github.com"
   },
   "dependencies": {
-    "cockatiel": "^3.2.1"
+    "cockatiel": "^3.2.1",
+    "undici": "^7.3.0"
   }
 }
