@@ -1,11 +1,11 @@
 import { DynamicModule, Global, Module, Provider } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 
-import { AuditLogEntity } from '../../db/entities/audit-log.entity';
 import { AuditLogService } from '../services/audit-log.service';
 import { GraphQLAuditInterceptor } from '../interceptors/graphql-audit.interceptor';
+
+// PrismaModule is global, no need to import
 
 export const AUDIT_CONFIG = 'AUDIT_CONFIG';
 
@@ -76,7 +76,7 @@ export class AuditModule {
 
     return {
       module: AuditModule,
-      imports: [ConfigModule, TypeOrmModule.forFeature([AuditLogEntity])],
+      imports: [ConfigModule],
       providers,
       exports: [AuditLogService],
     };
