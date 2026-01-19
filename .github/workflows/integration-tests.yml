@@ -69,31 +69,58 @@ jobs:
       - name: Start backend server
         run: |
           cd apps/backend
-          pnpm start:dev &
+          pnpm start:users &
 
-          # Wait for backend to be ready (up to 60 seconds)
-          for i in {1..30}; do
+          # Wait for backend to be ready (up to 90 seconds)
+          for i in {1..45}; do
             if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
               echo "Backend is ready!"
               break
             fi
-            echo "Waiting for backend... ($i/30)"
+            echo "Waiting for backend... ($i/45)"
             sleep 2
           done
+
+          # Verify server is actually running
+          if ! curl -sf http://localhost:3001/health > /dev/null 2>&1; then
+            echo "ERROR: Backend server failed to start"
+            exit 1
+          fi
         env:
           NODE_ENV: test
-          PORT: 3001
+          # Required service configuration
+          PROJECT: qckstrt
+          APPLICATION: users-service
+          VERSION: 0.0.1
+          DESCRIPTION: Users Service
+          USERS_PORT: 3001
+          # Database configuration
+          RELATIONAL_DB_PROVIDER: postgres
           RELATIONAL_DB_HOST: localhost
           RELATIONAL_DB_PORT: 5432
           RELATIONAL_DB_USERNAME: postgres
           RELATIONAL_DB_PASSWORD: your-super-secret-password
           RELATIONAL_DB_DATABASE: postgres
+          # Supabase configuration
           SUPABASE_URL: http://localhost:8000
           SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
           SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+          # Email configuration (placeholder for CI)
+          RESEND_API_KEY: re_placeholder_for_ci
+          EMAIL_FROM_ADDRESS: noreply@test.local
+          EMAIL_FROM_NAME: QckStrt CI
 
       - name: Run integration tests
         run: pnpm test:integration
+
+      - name: Show backend logs on failure
+        if: failure()
+        run: |
+          echo "=== Backend Server Logs ==="
+          # Show any nest process output
+          ps aux | grep -i nest || true
+          # Show recent system logs
+          dmesg | tail -50 || true
 
       - name: Show docker logs on failure
         if: failure()
