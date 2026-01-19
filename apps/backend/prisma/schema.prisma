@@ -1,0 +1,540 @@
+// Prisma Schema for qckstrt Backend
+// Migration from TypeORM - Issue #264
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum AuthStrategy {
+  password   @map("password")
+  magic_link @map("magic_link")
+  passkey    @map("passkey")
+}
+
+enum PoliticalAffiliation {
+  democrat        @map("democrat")
+  republican      @map("republican")
+  independent     @map("independent")
+  libertarian     @map("libertarian")
+  green           @map("green")
+  other           @map("other")
+  prefer_not_to_say @map("prefer_not_to_say")
+}
+
+enum VotingFrequency {
+  every_election    @map("every_election")
+  most_elections    @map("most_elections")
+  some_elections    @map("some_elections")
+  rarely            @map("rarely")
+  never             @map("never")
+  prefer_not_to_say @map("prefer_not_to_say")
+}
+
+enum EducationLevel {
+  high_school       @map("high_school")
+  some_college      @map("some_college")
+  associate         @map("associate")
+  bachelor          @map("bachelor")
+  master            @map("master")
+  doctorate         @map("doctorate")
+  trade_school      @map("trade_school")
+  prefer_not_to_say @map("prefer_not_to_say")
+}
+
+enum IncomeRange {
+  under_25k         @map("under_25k")
+  range_25k_50k     @map("25k_50k")
+  range_50k_75k     @map("50k_75k")
+  range_75k_100k    @map("75k_100k")
+  range_100k_150k   @map("100k_150k")
+  range_150k_200k   @map("150k_200k")
+  over_200k         @map("over_200k")
+  prefer_not_to_say @map("prefer_not_to_say")
+}
+
+enum HomeownerStatus {
+  own                @map("own")
+  rent               @map("rent")
+  living_with_family @map("living_with_family")
+  other              @map("other")
+  prefer_not_to_say  @map("prefer_not_to_say")
+}
+
+enum ConsentType {
+  terms_of_service       @map("terms_of_service")
+  privacy_policy         @map("privacy_policy")
+  marketing_email        @map("marketing_email")
+  marketing_sms          @map("marketing_sms")
+  marketing_push         @map("marketing_push")
+  data_sharing           @map("data_sharing")
+  analytics              @map("analytics")
+  personalization        @map("personalization")
+  location_tracking      @map("location_tracking")
+  voter_data_collection  @map("voter_data_collection")
+  civic_notifications    @map("civic_notifications")
+  representative_contact @map("representative_contact")
+}
+
+enum ConsentStatus {
+  granted   @map("granted")
+  denied    @map("denied")
+  withdrawn @map("withdrawn")
+  pending   @map("pending")
+}
+
+enum AddressType {
+  residential @map("residential")
+  mailing     @map("mailing")
+  business    @map("business")
+  voting      @map("voting")
+}
+
+enum EmailType {
+  welcome                @map("welcome")
+  representative_contact @map("representative_contact")
+  civic_update           @map("civic_update")
+  election_reminder      @map("election_reminder")
+  ballot_update          @map("ballot_update")
+  account_activity       @map("account_activity")
+}
+
+enum EmailStatus {
+  pending   @map("pending")
+  sent      @map("sent")
+  delivered @map("delivered")
+  failed    @map("failed")
+  bounced   @map("bounced")
+}
+
+enum NotificationFrequency {
+  immediate    @map("immediate")
+  daily_digest @map("daily_digest")
+  weekly_digest @map("weekly_digest")
+  never        @map("never")
+}
+
+enum DocumentStatus {
+  processing_pending         @map("Processing")
+  text_extraction_started    @map("Text Extraction Started")
+  text_extraction_complete   @map("Text Extraction Complete")
+  text_extraction_failed     @map("Text Extraction Failed")
+  ai_embeddings_started      @map("AI Embeddings Started")
+  ai_embeddings_complete     @map("AI Embeddings Complete")
+  ai_embeddings_failed       @map("AI Embeddings Failed")
+  processing_complete        @map("Complete")
+}
+
+// ============================================
+// USER CORE
+// ============================================
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  firstName    String?       @map("first_name")
+  lastName     String?       @map("last_name")
+  authStrategy String?       @map("auth_strategy") @db.VarChar(20)
+  created      DateTime      @default(now()) @db.Timestamptz
+  updated      DateTime      @default(now()) @updatedAt @db.Timestamptz
+  deletedAt    DateTime?     @map("deleted_at") @db.Timestamptz
+
+  // Relations
+  profile              UserProfile?
+  login                UserLogin?
+  sessions             UserSession[]
+  consents             UserConsent[]
+  addresses            UserAddress[]
+  documents            Document[]
+  passkeyCredentials   PasskeyCredential[]
+  emailCorrespondence  EmailCorrespondence[]
+  notificationPreference NotificationPreference?
+
+  @@index([email], name: "idx_users_email")
+  @@map("users")
+}
+
+model UserProfile {
+  id                   String              @id @default(uuid())
+  userId               String              @unique @map("user_id")
+  firstName            String?             @map("first_name") @db.VarChar(255)
+  middleName           String?             @map("middle_name") @db.VarChar(255)
+  lastName             String?             @map("last_name") @db.VarChar(255)
+  displayName          String?             @map("display_name") @db.VarChar(255)
+  preferredName        String?             @map("preferred_name") @db.VarChar(255)
+  dateOfBirth          DateTime?           @map("date_of_birth") @db.Date
+  phone                String?             @db.VarChar(20)
+  phoneVerifiedAt      DateTime?           @map("phone_verified_at") @db.Timestamptz
+  timezone             String              @default("America/Los_Angeles") @db.VarChar(50)
+  locale               String              @default("en-US") @db.VarChar(10)
+  preferredLanguage    String              @default("en") @map("preferred_language") @db.VarChar(5)
+  avatarUrl            String?             @map("avatar_url") @db.VarChar(500)
+  bio                  String?             @db.Text
+  isPublic             Boolean             @default(false) @map("is_public")
+  avatarStorageKey     String?             @map("avatar_storage_key") @db.VarChar(255)
+  politicalAffiliation PoliticalAffiliation? @map("political_affiliation")
+  votingFrequency      VotingFrequency?    @map("voting_frequency")
+  policyPriorities     String[]            @map("policy_priorities")
+  occupation           String?             @db.VarChar(100)
+  educationLevel       EducationLevel?     @map("education_level")
+  incomeRange          IncomeRange?        @map("income_range")
+  householdSize        String?             @map("household_size") @db.VarChar(50)
+  homeownerStatus      HomeownerStatus?    @map("homeowner_status")
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model UserLogin {
+  id                  String    @id @default(uuid())
+  userId              String    @unique @map("user_id")
+  passwordHash        String?   @map("password_hash") @db.VarChar(255)
+  lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz
+  loginCount          Int       @default(0) @map("login_count")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until") @db.Timestamptz
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([failedLoginAttempts], name: "idx_user_logins_failed_attempts")
+  @@index([lockedUntil], name: "idx_user_logins_locked_until")
+  @@map("user_logins")
+}
+
+// ============================================
+// AUTH - PASSKEYS
+// ============================================
+
+model PasskeyCredential {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  credentialId String    @unique @map("credential_id") @db.Text
+  publicKey    String    @map("public_key") @db.Text
+  counter      BigInt    @default(0)
+  aaguid       String?   @db.VarChar(36)
+  deviceType   String?   @map("device_type") @db.VarChar(50)
+  backedUp     Boolean   @default(false) @map("backed_up")
+  friendlyName String?   @map("friendly_name") @db.VarChar(255)
+  transports   String[]
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastUsedAt   DateTime  @default(now()) @updatedAt @map("last_used_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([credentialId])
+  @@map("passkey_credentials")
+}
+
+model WebAuthnChallenge {
+  identifier String   @id @db.VarChar(255)
+  challenge  String   @db.Text
+  type       String   @db.VarChar(20) // 'registration' | 'authentication'
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+
+  @@index([identifier, type], name: "idx_webauthn_challenges_lookup")
+  @@index([expiresAt])
+  @@map("webauthn_challenges")
+}
+
+// ============================================
+// SESSION & CONSENT
+// ============================================
+
+model UserSession {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  sessionToken    String    @unique @map("session_token") @db.VarChar(255)
+  refreshToken    String?   @map("refresh_token") @db.VarChar(255)
+  deviceType      String?   @map("device_type") @db.VarChar(100)
+  deviceName      String?   @map("device_name") @db.VarChar(255)
+  browser         String?   @db.VarChar(255)
+  operatingSystem String?   @map("operating_system") @db.VarChar(100)
+  ipAddress       String?   @map("ip_address") @db.Inet
+  city            String?   @db.VarChar(100)
+  region          String?   @db.VarChar(100)
+  country         String?   @db.VarChar(2)
+  isActive        Boolean   @default(true) @map("is_active")
+  lastActivityAt  DateTime? @map("last_activity_at") @db.Timestamptz
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz
+  revokedReason   String?   @map("revoked_reason") @db.VarChar(50)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isActive])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+model UserConsent {
+  id                String        @id @default(uuid())
+  userId            String        @map("user_id")
+  consentType       ConsentType   @map("consent_type")
+  status            ConsentStatus @default(pending)
+  documentVersion   String?       @map("document_version") @db.VarChar(50)
+  documentUrl       String?       @map("document_url") @db.VarChar(255)
+  ipAddress         String?       @map("ip_address") @db.Inet
+  userAgent         String?       @map("user_agent") @db.VarChar(500)
+  collectionMethod  String?       @map("collection_method") @db.VarChar(100)
+  collectionContext String?       @map("collection_context") @db.VarChar(255)
+  grantedAt         DateTime?     @map("granted_at") @db.Timestamptz
+  deniedAt          DateTime?     @map("denied_at") @db.Timestamptz
+  withdrawnAt       DateTime?     @map("withdrawn_at") @db.Timestamptz
+  expiresAt         DateTime?     @map("expires_at") @db.Timestamptz
+  consentText       String?       @map("consent_text") @db.Text
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, consentType])
+  @@index([userId])
+  @@index([userId, status])
+  @@map("user_consents")
+}
+
+model UserAddress {
+  id                       String      @id @default(uuid())
+  userId                   String      @map("user_id")
+  addressType              AddressType @default(residential) @map("address_type")
+  isPrimary                Boolean     @default(false) @map("is_primary")
+  label                    String?     @db.VarChar(255)
+  addressLine1             String      @map("address_line_1") @db.VarChar(255)
+  addressLine2             String?     @map("address_line_2") @db.VarChar(255)
+  city                     String      @db.VarChar(100)
+  state                    String      @db.VarChar(100)
+  postalCode               String      @map("postal_code") @db.VarChar(20)
+  country                  String      @default("US") @db.VarChar(2)
+  latitude                 Decimal?    @db.Decimal(10, 8)
+  longitude                Decimal?    @db.Decimal(11, 8)
+  formattedAddress         String?     @map("formatted_address") @db.VarChar(255)
+  placeId                  String?     @map("place_id") @db.VarChar(100)
+  geocodedAt               DateTime?   @map("geocoded_at") @db.Timestamptz
+  congressionalDistrict    String?     @map("congressional_district") @db.VarChar(50)
+  stateSenatorialDistrict  String?     @map("state_senatorial_district") @db.VarChar(50)
+  stateAssemblyDistrict    String?     @map("state_assembly_district") @db.VarChar(50)
+  county                   String?     @db.VarChar(100)
+  municipality             String?     @db.VarChar(100)
+  schoolDistrict           String?     @map("school_district") @db.VarChar(100)
+  precinctId               String?     @map("precinct_id") @db.VarChar(100)
+  pollingPlace             String?     @map("polling_place") @db.VarChar(100)
+  civicDataUpdatedAt       DateTime?   @map("civic_data_updated_at") @db.Timestamptz
+  isVerified               Boolean     @default(false) @map("is_verified")
+  verifiedAt               DateTime?   @map("verified_at") @db.Timestamptz
+  verificationMethod       String?     @map("verification_method") @db.VarChar(50)
+  createdAt                DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, addressType])
+  @@index([userId, isPrimary])
+  @@map("user_addresses")
+}
+
+// ============================================
+// COMMUNICATION
+// ============================================
+
+model EmailCorrespondence {
+  id                 String      @id @default(uuid())
+  userId             String      @map("user_id")
+  emailType          EmailType   @map("email_type")
+  status             EmailStatus @default(pending)
+  recipientEmail     String      @map("recipient_email") @db.VarChar(255)
+  recipientName      String?     @map("recipient_name") @db.VarChar(255)
+  subject            String      @db.VarChar(500)
+  bodyPreview        String?     @map("body_preview") @db.Text
+  representativeId   String?     @map("representative_id")
+  representativeName String?     @map("representative_name") @db.VarChar(255)
+  propositionId      String?     @map("proposition_id")
+  propositionTitle   String?     @map("proposition_title") @db.VarChar(500)
+  resendId           String?     @map("resend_id") @db.VarChar(255)
+  errorMessage       String?     @map("error_message") @db.Text
+  sentAt             DateTime?   @map("sent_at") @db.Timestamptz
+  deliveredAt        DateTime?   @map("delivered_at") @db.Timestamptz
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([emailType, status])
+  @@index([representativeId])
+  @@index([propositionId])
+  @@map("email_correspondence")
+}
+
+model NotificationPreference {
+  id                          String                @id @default(uuid())
+  userId                      String                @unique @map("user_id")
+  emailEnabled                Boolean               @default(true) @map("email_enabled")
+  emailProductUpdates         Boolean               @default(true) @map("email_product_updates")
+  emailSecurityAlerts         Boolean               @default(true) @map("email_security_alerts")
+  emailMarketing              Boolean               @default(false) @map("email_marketing")
+  emailFrequency              NotificationFrequency @default(immediate) @map("email_frequency")
+  pushEnabled                 Boolean               @default(true) @map("push_enabled")
+  pushProductUpdates          Boolean               @default(true) @map("push_product_updates")
+  pushSecurityAlerts          Boolean               @default(true) @map("push_security_alerts")
+  pushMarketing               Boolean               @default(false) @map("push_marketing")
+  smsEnabled                  Boolean               @default(false) @map("sms_enabled")
+  smsSecurityAlerts           Boolean               @default(true) @map("sms_security_alerts")
+  smsMarketing                Boolean               @default(false) @map("sms_marketing")
+  civicElectionReminders      Boolean               @default(true) @map("civic_election_reminders")
+  civicVoterDeadlines         Boolean               @default(true) @map("civic_voter_deadlines")
+  civicBallotUpdates          Boolean               @default(true) @map("civic_ballot_updates")
+  civicLocalNews              Boolean               @default(true) @map("civic_local_news")
+  civicRepresentativeUpdates  Boolean               @default(true) @map("civic_representative_updates")
+  civicFrequency              NotificationFrequency @default(daily_digest) @map("civic_frequency")
+  quietHoursEnabled           Boolean               @default(false) @map("quiet_hours_enabled")
+  quietHoursStart             DateTime?             @map("quiet_hours_start") @db.Time
+  quietHoursEnd               DateTime?             @map("quiet_hours_end") @db.Time
+  unsubscribedAllAt           DateTime?             @map("unsubscribed_all_at") @db.Timestamptz
+  createdAt                   DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                   DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("notification_preferences")
+}
+
+// ============================================
+// AUDIT
+// ============================================
+
+model AuditLog {
+  id              String    @id @default(uuid())
+  action          String    @db.VarChar(50)
+  entityType      String?   @map("entity_type") @db.VarChar(100)
+  entityId        String?   @map("entity_id") @db.VarChar(255)
+  userId          String?   @map("user_id")
+  userEmail       String?   @map("user_email") @db.VarChar(255)
+  requestId       String    @map("request_id")
+  ipAddress       String?   @map("ip_address") @db.VarChar(45)
+  userAgent       String?   @map("user_agent") @db.Text
+  operationName   String?   @map("operation_name") @db.VarChar(100)
+  operationType   String?   @map("operation_type") @db.VarChar(20)
+  resolverName    String?   @map("resolver_name") @db.VarChar(100)
+  inputVariables  Json?     @map("input_variables")
+  success         Boolean   @default(true)
+  statusCode      Int?      @map("status_code")
+  errorMessage    String?   @map("error_message") @db.Text
+  previousValues  Json?     @map("previous_values")
+  newValues       Json?     @map("new_values")
+  durationMs      Int?      @map("duration_ms")
+  serviceName     String    @map("service_name") @db.VarChar(50)
+  timestamp       DateTime  @default(now()) @db.Timestamptz
+
+  @@index([userId])
+  @@index([userId, timestamp])
+  @@index([entityType, entityId])
+  @@index([action, timestamp])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+// ============================================
+// DOCUMENTS
+// ============================================
+
+model Document {
+  id        String         @id @default(uuid())
+  location  String         @db.VarChar(255)
+  userId    String         @map("user_id")
+  key       String         @db.VarChar(255)
+  size      Int
+  checksum  String         @db.VarChar(255)
+  status    DocumentStatus @default(processing_pending)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime?      @map("deleted_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([checksum])
+  @@map("documents")
+}
+
+// ============================================
+// CIVIC - REGION
+// ============================================
+
+model Representative {
+  id          String    @id @default(uuid())
+  externalId  String    @unique @map("external_id")
+  name        String
+  chamber     String
+  district    String
+  party       String
+  photoUrl    String?   @map("photo_url")
+  contactInfo Json?     @map("contact_info")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@index([externalId])
+  @@index([name])
+  @@index([chamber])
+  @@index([party])
+  @@map("representatives")
+}
+
+model Proposition {
+  id           String    @id @default(uuid())
+  externalId   String    @unique @map("external_id")
+  title        String
+  summary      String    @db.Text
+  fullText     String?   @map("full_text") @db.Text
+  status       String    @default("pending") @db.VarChar(50)
+  electionDate DateTime? @map("election_date") @db.Timestamp
+  sourceUrl    String?   @map("source_url")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@index([externalId])
+  @@index([status])
+  @@index([electionDate])
+  @@map("propositions")
+}
+
+model Meeting {
+  id          String    @id @default(uuid())
+  externalId  String    @unique @map("external_id")
+  title       String
+  body        String
+  scheduledAt DateTime  @map("scheduled_at") @db.Timestamp
+  location    String?
+  agendaUrl   String?   @map("agenda_url")
+  videoUrl    String?   @map("video_url")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@index([externalId])
+  @@index([body])
+  @@index([scheduledAt])
+  @@map("meetings")
+}
