@@ -1,0 +1,175 @@
+# Docker Compose for Integration Testing
+#
+# This file extends the base docker-compose.yml (Supabase stack) and adds
+# backend microservices for running integration tests fully containerized.
+#
+# Usage:
+#   # One command (builds, tests, cleans up):
+#   pnpm test:integration:docker
+#
+#   # Or manually:
+#   docker compose -f docker-compose-integration.yml up -d --build
+#   pnpm test:integration
+#   docker compose -f docker-compose-integration.yml down -v
+
+include:
+  - docker-compose.yml  # Base Supabase services (db, auth, kong, inbucket)
+
+x-backend-env: &backend-env
+  NODE_ENV: test
+  # Service metadata
+  PROJECT: qckstrt
+  VERSION: 1.0.0
+  # Email (placeholder for testing - won't actually send)
+  RESEND_API_KEY: re_test_placeholder_key
+  # Database
+  RELATIONAL_DB_PROVIDER: postgres
+  RELATIONAL_DB_HOST: supabase-db
+  RELATIONAL_DB_PORT: 5432
+  RELATIONAL_DB_USERNAME: postgres
+  RELATIONAL_DB_PASSWORD: your-super-secret-password
+  RELATIONAL_DB_DATABASE: postgres
+  # Supabase
+  SUPABASE_URL: http://supabase-kong:8000
+  SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+  SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+  # HMAC Authentication (API Gateway <-> Microservices)
+  GATEWAY_CLIENT_ID: api-gateway
+  GATEWAY_HMAC_SECRET: integration-test-hmac-secret
+  API_KEYS: '{"api-gateway":"integration-test-hmac-secret"}'
+  # JWT
+  JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
+  AUTH_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
+
+services:
+  users:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.users
+    container_name: qckstrt-integration-users
+    environment:
+      <<: *backend-env
+      APPLICATION: users
+      DESCRIPTION: Users microservice
+      PORT: 8080
+    ports:
+      - "3001:8080"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - qckstrt-network
+    restart: unless-stopped
+
+  documents:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.documents
+    container_name: qckstrt-integration-documents
+    environment:
+      <<: *backend-env
+      APPLICATION: documents
+      DESCRIPTION: Documents microservice
+      PORT: 8080
+    ports:
+      - "3002:8080"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - qckstrt-network
+    restart: unless-stopped
+
+  knowledge:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.knowledge
+    container_name: qckstrt-integration-knowledge
+    environment:
+      <<: *backend-env
+      APPLICATION: knowledge
+      DESCRIPTION: Knowledge microservice
+      PORT: 8080
+    ports:
+      - "3003:8080"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - qckstrt-network
+    restart: unless-stopped
+
+  region:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.region
+    container_name: qckstrt-integration-region
+    environment:
+      <<: *backend-env
+      APPLICATION: region
+      DESCRIPTION: Region microservice
+      PORT: 8080
+    ports:
+      - "3004:8080"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - qckstrt-network
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.api
+    container_name: qckstrt-integration-api
+    environment:
+      <<: *backend-env
+      APPLICATION: api
+      DESCRIPTION: API Gateway
+      PORT: 8080
+      MICROSERVICES: '[{"name":"users","url":"http://users:8080/graphql"},{"name":"documents","url":"http://documents:8080/graphql"},{"name":"knowledge","url":"http://knowledge:8080/graphql"},{"name":"region","url":"http://region:8080/graphql"}]'
+    ports:
+      - "3000:8080"
+    depends_on:
+      users:
+        condition: service_healthy
+      documents:
+        condition: service_healthy
+      knowledge:
+        condition: service_healthy
+      region:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - qckstrt-network
+    restart: unless-stopped
