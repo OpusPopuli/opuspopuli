@@ -25,7 +25,7 @@ export class DocumentEntity extends BaseEntity {
   @JoinColumn({ name: 'userId' })
   public user!: UserEntity;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: 'uuid' })
   @Index()
   public userId!: string;
 

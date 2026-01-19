@@ -39,6 +39,7 @@ import { User } from './domains/models/user.model';
 
 import { CaslModule } from 'src/permissions/casl.module';
 import { DocumentEntity } from 'src/db/entities/document.entity';
+import { UserEntity } from 'src/db/entities/user.entity';
 import { AuditLogEntity } from 'src/db/entities/audit-log.entity';
 import { AuditModule } from 'src/common/audit/audit.module';
 import { HealthModule } from 'src/common/health';
@@ -65,7 +66,9 @@ import { HealthModule } from 'src/common/health';
     }),
     LoggingModule.forRootAsync(createLoggingConfig('documents-service')),
     ThrottlerModule.forRoot(THROTTLER_CONFIG),
-    DbModule.forRoot({ entities: [DocumentEntity, AuditLogEntity] }),
+    DbModule.forRoot({
+      entities: [DocumentEntity, UserEntity, AuditLogEntity],
+    }),
     AuditModule.forRoot(),
     GraphQLModule.forRoot<ApolloFederationDriverConfig>({
       driver: ApolloFederationDriver,
