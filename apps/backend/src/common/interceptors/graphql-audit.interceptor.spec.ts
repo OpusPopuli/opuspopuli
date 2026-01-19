@@ -106,6 +106,43 @@ describe('GraphQLAuditInterceptor', () => {
       expect(interceptor).toBeDefined();
     });
 
+    it('should skip non-GraphQL requests (HTTP/REST)', (done) => {
+      const mockCallHandler = createMockCallHandler();
+      const context = {
+        getHandler: jest.fn().mockReturnValue(() => {}),
+        getType: jest.fn().mockReturnValue('http'),
+      } as unknown as ExecutionContext;
+
+      interceptor.intercept(context, mockCallHandler).subscribe({
+        complete: () => {
+          expect(auditLogService.log).not.toHaveBeenCalled();
+          done();
+        },
+      });
+    });
+
+    it('should skip when GraphQL info has no fieldName', (done) => {
+      const mockCallHandler = createMockCallHandler();
+      const mockGqlContext = {
+        getInfo: () => ({}), // No fieldName
+        getContext: () => ({ req: {} }),
+        getArgs: () => ({}),
+      };
+      (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
+
+      const context = {
+        getHandler: jest.fn().mockReturnValue(() => {}),
+        getType: jest.fn().mockReturnValue('graphql'),
+      } as unknown as ExecutionContext;
+
+      interceptor.intercept(context, mockCallHandler).subscribe({
+        complete: () => {
+          expect(auditLogService.log).not.toHaveBeenCalled();
+          done();
+        },
+      });
+    });
+
     it('should skip audit when skipAudit is true', (done) => {
       reflector.get.mockReturnValue({ skipAudit: true });
 
@@ -258,6 +295,92 @@ describe('GraphQLAuditInterceptor', () => {
           expect(auditLogService.log).toHaveBeenCalledWith(
             expect.objectContaining({
               ipAddress: '192.168.1.1',
+            }),
+          );
+          done();
+        },
+      });
+    });
+
+    it('should extract IP address from x-real-ip header when x-forwarded-for is not present', (done) => {
+      reflector.get.mockReturnValue(undefined);
+
+      const mockRequest = {
+        headers: {
+          'x-request-id': 'test-request-id',
+          'x-real-ip': '10.20.30.40',
+          'user-agent': 'test-agent',
+        },
+        ip: '127.0.0.1',
+        socket: { remoteAddress: '127.0.0.1' },
+      };
+
+      const mockGqlContext = {
+        getInfo: () => ({
+          fieldName: 'testQuery',
+          operation: { operation: 'query' },
+          parentType: { name: 'Query' },
+        }),
+        getContext: () => ({ req: mockRequest }),
+        getArgs: () => ({}),
+      };
+
+      (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
+
+      const context = {
+        getHandler: jest.fn().mockReturnValue(() => {}),
+        getType: jest.fn().mockReturnValue('graphql'),
+      } as unknown as ExecutionContext;
+
+      interceptor.intercept(context, createMockCallHandler()).subscribe({
+        complete: () => {
+          expect(auditLogService.log).toHaveBeenCalledWith(
+            expect.objectContaining({
+              ipAddress: '10.20.30.40',
+            }),
+          );
+          done();
+        },
+      });
+    });
+
+    it('should handle invalid JSON in user header gracefully', (done) => {
+      reflector.get.mockReturnValue(undefined);
+
+      const mockRequest = {
+        headers: {
+          user: 'invalid-json-not-parseable',
+          'x-request-id': 'test-request-id',
+          'user-agent': 'test-agent',
+        },
+        ip: '127.0.0.1',
+        socket: { remoteAddress: '127.0.0.1' },
+      };
+
+      const mockGqlContext = {
+        getInfo: () => ({
+          fieldName: 'testQuery',
+          operation: { operation: 'query' },
+          parentType: { name: 'Query' },
+        }),
+        getContext: () => ({ req: mockRequest }),
+        getArgs: () => ({}),
+      };
+
+      (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
+
+      const context = {
+        getHandler: jest.fn().mockReturnValue(() => {}),
+        getType: jest.fn().mockReturnValue('graphql'),
+      } as unknown as ExecutionContext;
+
+      interceptor.intercept(context, createMockCallHandler()).subscribe({
+        complete: () => {
+          // Should still log successfully, just without user info
+          expect(auditLogService.log).toHaveBeenCalledWith(
+            expect.objectContaining({
+              userId: undefined,
+              userEmail: undefined,
             }),
           );
           done();
