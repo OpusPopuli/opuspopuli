@@ -1,4 +1,4 @@
-import { Field, InputType, registerEnumType } from '@nestjs/graphql';
+import { Field, InputType } from '@nestjs/graphql';
 import {
   IsBoolean,
   IsEnum,
@@ -7,21 +7,7 @@ import {
   IsString,
   MaxLength,
 } from 'class-validator';
-import {
-  ConsentType,
-  ConsentStatus,
-} from 'src/db/entities/user-consent.entity';
-
-// Re-export enum registration for GraphQL
-registerEnumType(ConsentType, {
-  name: 'ConsentType',
-  description: 'Type of consent',
-});
-
-registerEnumType(ConsentStatus, {
-  name: 'ConsentStatus',
-  description: 'Status of consent',
-});
+import { ConsentType } from 'src/common/enums/consent.enum';
 
 @InputType()
 export class UpdateConsentDto {

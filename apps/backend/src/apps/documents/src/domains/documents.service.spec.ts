@@ -1,28 +1,26 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { createMock } from '@golevelup/ts-jest';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 
 import { DocumentsService } from './documents.service';
-import { DocumentEntity } from 'src/db/entities/document.entity';
+import { PrismaService } from 'src/db/prisma.service';
+import { createMockPrismaService } from 'src/test/prisma-mock';
 import { IStorageProvider } from '@qckstrt/storage-provider';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 
 describe('DocumentsService', () => {
   let documentsService: DocumentsService;
-  let documentRepo: Repository<DocumentEntity>;
+  let mockPrisma: ReturnType<typeof createMockPrismaService>;
   let storage: IStorageProvider;
-  let configService: ConfigService;
 
   const mockFileConfig = {
     bucket: 'test-bucket',
     region: 'us-west-2',
   };
 
-  const mockDocuments: Partial<DocumentEntity>[] = [
+  // Using 'any' type for mock objects to avoid strict Prisma type checking
+  const mockDocuments: any[] = [
     {
       id: 'doc-1',
       userId: 'user-1',
@@ -43,17 +41,22 @@ describe('DocumentsService', () => {
     },
   ];
 
+  const mockStorageProvider = {
+    getSignedUrl: jest.fn(),
+    deleteFile: jest.fn(),
+    uploadFile: jest.fn(),
+  };
+
   beforeEach(async () => {
+    mockPrisma = createMockPrismaService();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DocumentsService,
-        {
-          provide: getRepositoryToken(DocumentEntity),
-          useValue: createMock<Repository<DocumentEntity>>(),
-        },
+        { provide: PrismaService, useValue: mockPrisma },
         {
           provide: 'STORAGE_PROVIDER',
-          useValue: createMock<IStorageProvider>(),
+          useValue: mockStorageProvider,
         },
         {
           provide: ConfigService,
@@ -65,35 +68,34 @@ describe('DocumentsService', () => {
     }).compile();
 
     documentsService = module.get<DocumentsService>(DocumentsService);
-    documentRepo = module.get<Repository<DocumentEntity>>(
-      getRepositoryToken(DocumentEntity),
-    );
     storage = module.get<IStorageProvider>('STORAGE_PROVIDER');
-    configService = module.get<ConfigService>(ConfigService);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   it('services should be defined', () => {
     expect(documentsService).toBeDefined();
-    expect(documentRepo).toBeDefined();
     expect(storage).toBeDefined();
   });
 
   describe('listFiles', () => {
     it('should return list of files for a user', async () => {
-      documentRepo.find = jest.fn().mockResolvedValue(mockDocuments);
+      mockPrisma.document.findMany.mockResolvedValue(mockDocuments);
 
       const files = await documentsService.listFiles('user-1');
 
       expect(files).toHaveLength(2);
       expect(files[0].filename).toBe('file1.pdf');
       expect(files[0].userId).toBe('user-1');
-      expect(documentRepo.find).toHaveBeenCalledWith({
+      expect(mockPrisma.document.findMany).toHaveBeenCalledWith({
         where: { userId: 'user-1' },
       });
     });
 
     it('should return empty array when no documents found', async () => {
-      documentRepo.find = jest.fn().mockResolvedValue(null);
+      mockPrisma.document.findMany.mockResolvedValue([]);
 
       const files = await documentsService.listFiles('user-1');
 
@@ -104,12 +106,12 @@ describe('DocumentsService', () => {
   describe('getUploadUrl', () => {
     it('should return signed upload URL', async () => {
       const mockUrl = 'https://s3.example.com/upload-url';
-      storage.getSignedUrl = jest.fn().mockResolvedValue(mockUrl);
+      mockStorageProvider.getSignedUrl.mockResolvedValue(mockUrl);
 
       const url = await documentsService.getUploadUrl('user-1', 'test.pdf');
 
       expect(url).toBe(mockUrl);
-      expect(storage.getSignedUrl).toHaveBeenCalledWith(
+      expect(mockStorageProvider.getSignedUrl).toHaveBeenCalledWith(
         'test-bucket',
         'user-1/test.pdf',
         true,
@@ -120,12 +122,12 @@ describe('DocumentsService', () => {
   describe('getDownloadUrl', () => {
     it('should return signed download URL', async () => {
       const mockUrl = 'https://s3.example.com/download-url';
-      storage.getSignedUrl = jest.fn().mockResolvedValue(mockUrl);
+      mockStorageProvider.getSignedUrl.mockResolvedValue(mockUrl);
 
       const url = await documentsService.getDownloadUrl('user-1', 'test.pdf');
 
       expect(url).toBe(mockUrl);
-      expect(storage.getSignedUrl).toHaveBeenCalledWith(
+      expect(mockStorageProvider.getSignedUrl).toHaveBeenCalledWith(
         'test-bucket',
         'user-1/test.pdf',
         false,
@@ -135,35 +137,34 @@ describe('DocumentsService', () => {
 
   describe('deleteFile', () => {
     it('should delete file and metadata successfully', async () => {
-      storage.deleteFile = jest.fn().mockResolvedValue(true);
-      documentRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
+      mockStorageProvider.deleteFile.mockResolvedValue(true);
+      mockPrisma.document.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await documentsService.deleteFile('user-1', 'test.pdf');
 
       expect(result).toBe(true);
-      expect(storage.deleteFile).toHaveBeenCalledWith(
+      expect(mockStorageProvider.deleteFile).toHaveBeenCalledWith(
         'test-bucket',
         'user-1/test.pdf',
       );
-      expect(documentRepo.delete).toHaveBeenCalledWith({
-        userId: 'user-1',
-        key: 'test.pdf',
+      expect(mockPrisma.document.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', key: 'test.pdf' },
       });
     });
 
     it('should return false when S3 deletion fails', async () => {
-      storage.deleteFile = jest.fn().mockResolvedValue(false);
+      mockStorageProvider.deleteFile.mockResolvedValue(false);
 
       const result = await documentsService.deleteFile('user-1', 'test.pdf');
 
       expect(result).toBe(false);
-      expect(documentRepo.delete).not.toHaveBeenCalled();
+      expect(mockPrisma.document.deleteMany).not.toHaveBeenCalled();
     });
 
     it('should throw error on storage error', async () => {
-      storage.deleteFile = jest
-        .fn()
-        .mockRejectedValue(new Error('Storage error'));
+      mockStorageProvider.deleteFile.mockRejectedValue(
+        new Error('Storage error'),
+      );
 
       await expect(
         documentsService.deleteFile('user-1', 'test.pdf'),
@@ -173,18 +174,18 @@ describe('DocumentsService', () => {
 
   describe('getDocumentById', () => {
     it('should return document by ID', async () => {
-      documentRepo.findOne = jest.fn().mockResolvedValue(mockDocuments[0]);
+      mockPrisma.document.findUnique.mockResolvedValue(mockDocuments[0]);
 
       const doc = await documentsService.getDocumentById('doc-1');
 
       expect(doc).toEqual(mockDocuments[0]);
-      expect(documentRepo.findOne).toHaveBeenCalledWith({
+      expect(mockPrisma.document.findUnique).toHaveBeenCalledWith({
         where: { id: 'doc-1' },
       });
     });
 
     it('should return null when document not found', async () => {
-      documentRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.document.findUnique.mockResolvedValue(null);
 
       const doc = await documentsService.getDocumentById('unknown');
 
@@ -194,17 +195,17 @@ describe('DocumentsService', () => {
 
   describe('createDocument', () => {
     it('should create document metadata', async () => {
-      const newDoc = {
+      const newDoc: any = {
         id: 'new-doc',
         location: 's3://bucket/path',
         userId: 'user-1',
         key: 'new-file.pdf',
         size: 2048,
         checksum: 'abc123',
-        createdAt: expect.any(Date),
-        updatedAt: expect.any(Date),
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
-      documentRepo.save = jest.fn().mockResolvedValue(newDoc);
+      mockPrisma.document.create.mockResolvedValue(newDoc);
 
       const result = await documentsService.createDocument(
         's3://bucket/path',
@@ -215,28 +216,29 @@ describe('DocumentsService', () => {
       );
 
       expect(result).toEqual(newDoc);
-      expect(documentRepo.save).toHaveBeenCalledWith({
-        location: 's3://bucket/path',
-        userId: 'user-1',
-        key: 'new-file.pdf',
-        size: 2048,
-        checksum: 'abc123',
-        createdAt: expect.any(Date),
-        updatedAt: expect.any(Date),
+      expect(mockPrisma.document.create).toHaveBeenCalledWith({
+        data: {
+          location: 's3://bucket/path',
+          userId: 'user-1',
+          key: 'new-file.pdf',
+          size: 2048,
+          checksum: 'abc123',
+        },
       });
     });
   });
 
   describe('updateDocument', () => {
     it('should update document metadata', async () => {
-      documentRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
+      mockPrisma.document.update.mockResolvedValue(mockDocuments[0]);
 
       await documentsService.updateDocument('doc-1', {
-        status: DocumentStatus.AIEMBEDDINGSCOMPLETE,
+        status: DocumentStatus.AIEMBEDDINGSCOMPLETE as any,
       });
 
-      expect(documentRepo.update).toHaveBeenCalledWith('doc-1', {
-        status: DocumentStatus.AIEMBEDDINGSCOMPLETE,
+      expect(mockPrisma.document.update).toHaveBeenCalledWith({
+        where: { id: 'doc-1' },
+        data: { status: DocumentStatus.AIEMBEDDINGSCOMPLETE },
       });
     });
   });
@@ -248,13 +250,13 @@ describe('DocumentsService - config validation', () => {
       Test.createTestingModule({
         providers: [
           DocumentsService,
-          {
-            provide: getRepositoryToken(DocumentEntity),
-            useValue: createMock<Repository<DocumentEntity>>(),
-          },
+          { provide: PrismaService, useValue: createMockPrismaService() },
           {
             provide: 'STORAGE_PROVIDER',
-            useValue: createMock<IStorageProvider>(),
+            useValue: {
+              getSignedUrl: jest.fn(),
+              deleteFile: jest.fn(),
+            },
           },
           {
             provide: ConfigService,

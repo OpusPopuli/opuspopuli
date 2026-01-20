@@ -1,4 +1,4 @@
-import { Field, ID, ObjectType, registerEnumType } from '@nestjs/graphql';
+import { Field, ID, ObjectType } from '@nestjs/graphql';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -11,43 +11,10 @@ import {
   Index,
 } from 'typeorm';
 import { UserEntity } from './user.entity';
+import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 
-export enum ConsentType {
-  // Required
-  TERMS_OF_SERVICE = 'terms_of_service',
-  PRIVACY_POLICY = 'privacy_policy',
-
-  // Optional
-  MARKETING_EMAIL = 'marketing_email',
-  MARKETING_SMS = 'marketing_sms',
-  MARKETING_PUSH = 'marketing_push',
-  DATA_SHARING = 'data_sharing', // Third-party data sharing
-  ANALYTICS = 'analytics', // Usage analytics
-  PERSONALIZATION = 'personalization', // Personalized content/recommendations
-  LOCATION_TRACKING = 'location_tracking',
-
-  // Civic-specific
-  VOTER_DATA_COLLECTION = 'voter_data_collection',
-  CIVIC_NOTIFICATIONS = 'civic_notifications',
-  REPRESENTATIVE_CONTACT = 'representative_contact', // Allow reps to contact via platform
-}
-
-export enum ConsentStatus {
-  GRANTED = 'granted',
-  DENIED = 'denied',
-  WITHDRAWN = 'withdrawn',
-  PENDING = 'pending',
-}
-
-registerEnumType(ConsentType, {
-  name: 'ConsentType',
-  description: 'Type of consent',
-});
-
-registerEnumType(ConsentStatus, {
-  name: 'ConsentStatus',
-  description: 'Status of consent',
-});
+// Re-export for backward compatibility
+export { ConsentType, ConsentStatus };
 
 @ObjectType()
 @Entity('user_consents')

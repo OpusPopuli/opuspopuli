@@ -2,6 +2,96 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type User {
+  id: ID!
+  email: String!
+  firstName: String
+  lastName: String
+  created: DateTime
+  updated: DateTime
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type Auth {
+  accessToken: String!
+  idToken: String!
+  refreshToken: String!
+}
+
+type PasskeyRegistrationOptions {
+  options: JSON!
+}
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+type PasskeyAuthenticationOptions {
+  options: JSON!
+  identifier: String!
+}
+
+type PasskeyCredential {
+  id: String!
+  friendlyName: String
+  deviceType: String
+  createdAt: DateTime!
+  lastUsedAt: DateTime!
+}
+
+type EmailCorrespondenceModel {
+  id: ID!
+  emailType: EmailType!
+  status: EmailStatus!
+  recipientEmail: String!
+  recipientName: String
+  subject: String!
+  bodyPreview: String
+  representativeId: String
+  representativeName: String
+  propositionId: String
+  propositionTitle: String
+  errorMessage: String
+  sentAt: DateTime
+  createdAt: DateTime!
+}
+
+"""Type of email sent"""
+enum EmailType {
+  WELCOME
+  REPRESENTATIVE_CONTACT
+  CIVIC_UPDATE
+  ELECTION_REMINDER
+  BALLOT_UPDATE
+  ACCOUNT_ACTIVITY
+}
+
+"""Status of the email"""
+enum EmailStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+}
+
+type PaginatedEmailCorrespondence {
+  items: [EmailCorrespondenceModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type SendEmailResult {
+  success: Boolean!
+  correspondenceId: String
+  error: String
+}
+
 type UserProfileEntity {
   id: ID!
   firstName: String
@@ -30,11 +120,6 @@ type UserProfileEntity {
   createdAt: DateTime!
   updatedAt: DateTime!
 }
-
-"""
-A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
-"""
-scalar DateTime
 
 """Political party affiliation"""
 enum PoliticalAffiliation {
@@ -127,6 +212,41 @@ enum AddressType {
   VOTING
 }
 
+type NotificationPreferenceEntity {
+  id: ID!
+  emailEnabled: Boolean!
+  emailProductUpdates: Boolean!
+  emailSecurityAlerts: Boolean!
+  emailMarketing: Boolean!
+  emailFrequency: NotificationFrequency!
+  pushEnabled: Boolean!
+  pushProductUpdates: Boolean!
+  pushSecurityAlerts: Boolean!
+  pushMarketing: Boolean!
+  smsEnabled: Boolean!
+  smsSecurityAlerts: Boolean!
+  smsMarketing: Boolean!
+  civicElectionReminders: Boolean!
+  civicVoterDeadlines: Boolean!
+  civicBallotUpdates: Boolean!
+  civicLocalNews: Boolean!
+  civicRepresentativeUpdates: Boolean!
+  civicFrequency: NotificationFrequency!
+  quietHoursEnabled: Boolean!
+  quietHoursStart: String
+  quietHoursEnd: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""How often to receive notifications"""
+enum NotificationFrequency {
+  IMMEDIATE
+  DAILY_DIGEST
+  WEEKLY_DIGEST
+  NEVER
+}
+
 type UserConsentEntity {
   id: ID!
   consentType: ConsentType!
@@ -167,126 +287,6 @@ enum ConsentStatus {
   DENIED
   WITHDRAWN
   PENDING
-}
-
-type Auth {
-  accessToken: String!
-  idToken: String!
-  refreshToken: String!
-}
-
-type PasskeyRegistrationOptions {
-  options: JSON!
-}
-
-"""
-The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
-"""
-scalar JSON
-
-type PasskeyAuthenticationOptions {
-  options: JSON!
-  identifier: String!
-}
-
-type PasskeyCredential {
-  id: String!
-  friendlyName: String
-  deviceType: String
-  createdAt: DateTime!
-  lastUsedAt: DateTime!
-}
-
-type User {
-  id: ID!
-  email: String!
-  firstName: String
-  lastName: String
-  created: DateTime
-  updated: DateTime
-}
-
-type EmailCorrespondenceModel {
-  id: ID!
-  emailType: EmailType!
-  status: EmailStatus!
-  recipientEmail: String!
-  recipientName: String
-  subject: String!
-  bodyPreview: String
-  representativeId: String
-  representativeName: String
-  propositionId: String
-  propositionTitle: String
-  errorMessage: String
-  sentAt: DateTime
-  createdAt: DateTime!
-}
-
-"""Type of email sent"""
-enum EmailType {
-  WELCOME
-  REPRESENTATIVE_CONTACT
-  CIVIC_UPDATE
-  ELECTION_REMINDER
-  BALLOT_UPDATE
-  ACCOUNT_ACTIVITY
-}
-
-"""Status of the email"""
-enum EmailStatus {
-  PENDING
-  SENT
-  DELIVERED
-  FAILED
-  BOUNCED
-}
-
-type PaginatedEmailCorrespondence {
-  items: [EmailCorrespondenceModel!]!
-  total: Int!
-  hasMore: Boolean!
-}
-
-type SendEmailResult {
-  success: Boolean!
-  correspondenceId: String
-  error: String
-}
-
-type NotificationPreferenceEntity {
-  id: ID!
-  emailEnabled: Boolean!
-  emailProductUpdates: Boolean!
-  emailSecurityAlerts: Boolean!
-  emailMarketing: Boolean!
-  emailFrequency: NotificationFrequency!
-  pushEnabled: Boolean!
-  pushProductUpdates: Boolean!
-  pushSecurityAlerts: Boolean!
-  pushMarketing: Boolean!
-  smsEnabled: Boolean!
-  smsSecurityAlerts: Boolean!
-  smsMarketing: Boolean!
-  civicElectionReminders: Boolean!
-  civicVoterDeadlines: Boolean!
-  civicBallotUpdates: Boolean!
-  civicLocalNews: Boolean!
-  civicRepresentativeUpdates: Boolean!
-  civicFrequency: NotificationFrequency!
-  quietHoursEnabled: Boolean!
-  quietHoursStart: String
-  quietHoursEnd: String
-  createdAt: DateTime!
-  updatedAt: DateTime!
-}
-
-"""How often to receive notifications"""
-enum NotificationFrequency {
-  IMMEDIATE
-  DAILY_DIGEST
-  WEEKLY_DIGEST
-  NEVER
 }
 
 type CoreFieldsStatus {

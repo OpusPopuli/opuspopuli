@@ -19,17 +19,24 @@ COPY packages/ ./packages/
 COPY apps/backend/package.json ./apps/backend/
 COPY apps/backend/tsconfig.* ./apps/backend/
 COPY apps/backend/nest-cli.json ./apps/backend/
+COPY apps/backend/prisma/ ./apps/backend/prisma/
 COPY apps/backend/src/ ./apps/backend/src/
 
 # Install dependencies from monorepo root
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
-# Build the service
+# Generate Prisma client
 WORKDIR /usr/src/app/apps/backend
+RUN npx prisma generate
+
+# Build the service
 RUN pnpm build:knowledge
 
 ### Run the project ###
 FROM base AS runner
+
+# Install OpenSSL for Prisma
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 ENV PORT=8080
 EXPOSE 8080

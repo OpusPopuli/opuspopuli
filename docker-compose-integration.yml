@@ -29,6 +29,8 @@ x-backend-env: &backend-env
   RELATIONAL_DB_USERNAME: postgres
   RELATIONAL_DB_PASSWORD: your-super-secret-password
   RELATIONAL_DB_DATABASE: postgres
+  # Prisma DATABASE_URL (required for Prisma ORM)
+  DATABASE_URL: postgresql://postgres:your-super-secret-password@supabase-db:5432/postgres
   # Supabase
   SUPABASE_URL: http://supabase-kong:8000
   SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0

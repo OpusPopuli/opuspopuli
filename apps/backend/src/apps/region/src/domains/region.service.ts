@@ -1,21 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import {
   RegionService as RegionProviderService,
   CivicDataType,
   SyncResult,
 } from '@qckstrt/region-provider';
-import { PropositionEntity } from 'src/db/entities/proposition.entity';
-import { MeetingEntity } from 'src/db/entities/meeting.entity';
-import { RepresentativeEntity } from 'src/db/entities/representative.entity';
+import { Prisma } from '@prisma/client';
+
+import { PrismaService } from 'src/db/prisma.service';
 import { RegionInfoModel, CivicDataTypeGQL } from './models/region-info.model';
 import {
   PaginatedPropositions,
   PropositionStatusGQL,
 } from './models/proposition.model';
 import { PaginatedMeetings } from './models/meeting.model';
-import { PaginatedRepresentatives } from './models/representative.model';
+import {
+  ContactInfoModel,
+  PaginatedRepresentatives,
+} from './models/representative.model';
 
 /**
  * Region Domain Service
@@ -31,12 +32,7 @@ export class RegionDomainService {
 
   constructor(
     private readonly regionService: RegionProviderService,
-    @InjectRepository(PropositionEntity)
-    private readonly propositionRepo: Repository<PropositionEntity>,
-    @InjectRepository(MeetingEntity)
-    private readonly meetingRepo: Repository<MeetingEntity>,
-    @InjectRepository(RepresentativeEntity)
-    private readonly representativeRepo: Repository<RepresentativeEntity>,
+    private readonly prisma: PrismaService,
   ) {
     const info = regionService.getRegionInfo();
     this.logger.log(
@@ -145,30 +141,39 @@ export class RegionDomainService {
 
     // Get existing externalIds in a single query to calculate created vs updated
     const externalIds = propositions.map((p) => p.externalId);
-    const existingRecords = await this.propositionRepo
-      .createQueryBuilder('p')
-      .select('p.externalId')
-      .where('p.externalId IN (:...externalIds)', { externalIds })
-      .getMany();
+    const existingRecords = await this.prisma.proposition.findMany({
+      where: { externalId: { in: externalIds } },
+      select: { externalId: true },
+    });
     const existingExternalIds = new Set(
       existingRecords.map((r) => r.externalId),
     );
 
-    // Batch upsert all propositions in a single query
-    const entities = propositions.map((prop) => ({
-      externalId: prop.externalId,
-      title: prop.title,
-      summary: prop.summary,
-      fullText: prop.fullText,
-      status: prop.status,
-      electionDate: prop.electionDate,
-      sourceUrl: prop.sourceUrl,
-    }));
-
-    await this.propositionRepo.upsert(entities, {
-      conflictPaths: ['externalId'],
-      skipUpdateIfNoValuesChanged: true,
-    });
+    // Batch upsert all propositions using Prisma transaction
+    await this.prisma.$transaction(
+      propositions.map((prop) =>
+        this.prisma.proposition.upsert({
+          where: { externalId: prop.externalId },
+          update: {
+            title: prop.title,
+            summary: prop.summary,
+            fullText: prop.fullText,
+            status: prop.status,
+            electionDate: prop.electionDate,
+            sourceUrl: prop.sourceUrl,
+          },
+          create: {
+            externalId: prop.externalId,
+            title: prop.title,
+            summary: prop.summary,
+            fullText: prop.fullText,
+            status: prop.status,
+            electionDate: prop.electionDate,
+            sourceUrl: prop.sourceUrl,
+          },
+        }),
+      ),
+    );
 
     const created = propositions.filter(
       (p) => !existingExternalIds.has(p.externalId),
@@ -199,30 +204,39 @@ export class RegionDomainService {
 
     // Get existing externalIds in a single query to calculate created vs updated
     const externalIds = meetings.map((m) => m.externalId);
-    const existingRecords = await this.meetingRepo
-      .createQueryBuilder('m')
-      .select('m.externalId')
-      .where('m.externalId IN (:...externalIds)', { externalIds })
-      .getMany();
+    const existingRecords = await this.prisma.meeting.findMany({
+      where: { externalId: { in: externalIds } },
+      select: { externalId: true },
+    });
     const existingExternalIds = new Set(
       existingRecords.map((r) => r.externalId),
     );
 
-    // Batch upsert all meetings in a single query
-    const entities = meetings.map((meeting) => ({
-      externalId: meeting.externalId,
-      title: meeting.title,
-      body: meeting.body,
-      scheduledAt: meeting.scheduledAt,
-      location: meeting.location,
-      agendaUrl: meeting.agendaUrl,
-      videoUrl: meeting.videoUrl,
-    }));
-
-    await this.meetingRepo.upsert(entities, {
-      conflictPaths: ['externalId'],
-      skipUpdateIfNoValuesChanged: true,
-    });
+    // Batch upsert all meetings using Prisma transaction
+    await this.prisma.$transaction(
+      meetings.map((meeting) =>
+        this.prisma.meeting.upsert({
+          where: { externalId: meeting.externalId },
+          update: {
+            title: meeting.title,
+            body: meeting.body,
+            scheduledAt: meeting.scheduledAt,
+            location: meeting.location,
+            agendaUrl: meeting.agendaUrl,
+            videoUrl: meeting.videoUrl,
+          },
+          create: {
+            externalId: meeting.externalId,
+            title: meeting.title,
+            body: meeting.body,
+            scheduledAt: meeting.scheduledAt,
+            location: meeting.location,
+            agendaUrl: meeting.agendaUrl,
+            videoUrl: meeting.videoUrl,
+          },
+        }),
+      ),
+    );
 
     const created = meetings.filter(
       (m) => !existingExternalIds.has(m.externalId),
@@ -253,30 +267,39 @@ export class RegionDomainService {
 
     // Get existing externalIds in a single query to calculate created vs updated
     const externalIds = reps.map((r) => r.externalId);
-    const existingRecords = await this.representativeRepo
-      .createQueryBuilder('r')
-      .select('r.externalId')
-      .where('r.externalId IN (:...externalIds)', { externalIds })
-      .getMany();
+    const existingRecords = await this.prisma.representative.findMany({
+      where: { externalId: { in: externalIds } },
+      select: { externalId: true },
+    });
     const existingExternalIds = new Set(
       existingRecords.map((r) => r.externalId),
     );
 
-    // Batch upsert all representatives in a single query
-    const entities = reps.map((rep) => ({
-      externalId: rep.externalId,
-      name: rep.name,
-      chamber: rep.chamber,
-      district: rep.district,
-      party: rep.party,
-      photoUrl: rep.photoUrl,
-      contactInfo: rep.contactInfo,
-    }));
-
-    await this.representativeRepo.upsert(entities, {
-      conflictPaths: ['externalId'],
-      skipUpdateIfNoValuesChanged: true,
-    });
+    // Batch upsert all representatives using Prisma transaction
+    await this.prisma.$transaction(
+      reps.map((rep) =>
+        this.prisma.representative.upsert({
+          where: { externalId: rep.externalId },
+          update: {
+            name: rep.name,
+            chamber: rep.chamber,
+            district: rep.district,
+            party: rep.party,
+            photoUrl: rep.photoUrl,
+            contactInfo: rep.contactInfo as Prisma.InputJsonValue,
+          },
+          create: {
+            externalId: rep.externalId,
+            name: rep.name,
+            chamber: rep.chamber,
+            district: rep.district,
+            party: rep.party,
+            photoUrl: rep.photoUrl,
+            contactInfo: rep.contactInfo as Prisma.InputJsonValue,
+          },
+        }),
+      ),
+    );
 
     const created = reps.filter(
       (r) => !existingExternalIds.has(r.externalId),
@@ -295,18 +318,25 @@ export class RegionDomainService {
     skip: number = 0,
     take: number = 10,
   ): Promise<PaginatedPropositions> {
-    const [items, total] = await this.propositionRepo.findAndCount({
-      order: { electionDate: 'DESC', createdAt: 'DESC' },
-      skip,
-      take: take + 1,
-    });
+    const [items, total] = await Promise.all([
+      this.prisma.proposition.findMany({
+        orderBy: [{ electionDate: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take: take + 1,
+      }),
+      this.prisma.proposition.count(),
+    ]);
 
     const hasMore = items.length > take;
     const paginatedItems = items.slice(0, take);
 
+    // Cast Prisma types to GraphQL types - enum values are compatible at runtime
     return {
       items: paginatedItems.map((item) => ({
         ...item,
+        fullText: item.fullText ?? undefined,
+        electionDate: item.electionDate ?? undefined,
+        sourceUrl: item.sourceUrl ?? undefined,
         status: item.status as unknown as PropositionStatusGQL,
       })),
       total,
@@ -318,7 +348,7 @@ export class RegionDomainService {
    * Get a single proposition by ID
    */
   async getProposition(id: string) {
-    return this.propositionRepo.findOne({ where: { id } });
+    return this.prisma.proposition.findUnique({ where: { id } });
   }
 
   /**
@@ -328,17 +358,26 @@ export class RegionDomainService {
     skip: number = 0,
     take: number = 10,
   ): Promise<PaginatedMeetings> {
-    const [items, total] = await this.meetingRepo.findAndCount({
-      order: { scheduledAt: 'DESC' },
-      skip,
-      take: take + 1,
-    });
+    const [items, total] = await Promise.all([
+      this.prisma.meeting.findMany({
+        orderBy: { scheduledAt: 'desc' },
+        skip,
+        take: take + 1,
+      }),
+      this.prisma.meeting.count(),
+    ]);
 
     const hasMore = items.length > take;
     const paginatedItems = items.slice(0, take);
 
+    // Cast Prisma types to GraphQL types
     return {
-      items: paginatedItems,
+      items: paginatedItems.map((item) => ({
+        ...item,
+        location: item.location ?? undefined,
+        agendaUrl: item.agendaUrl ?? undefined,
+        videoUrl: item.videoUrl ?? undefined,
+      })),
       total,
       hasMore,
     };
@@ -348,7 +387,7 @@ export class RegionDomainService {
    * Get a single meeting by ID
    */
   async getMeeting(id: string) {
-    return this.meetingRepo.findOne({ where: { id } });
+    return this.prisma.meeting.findUnique({ where: { id } });
   }
 
   /**
@@ -359,25 +398,28 @@ export class RegionDomainService {
     take: number = 10,
     chamber?: string,
   ): Promise<PaginatedRepresentatives> {
-    const query = this.representativeRepo.createQueryBuilder('rep');
+    const where = chamber ? { chamber } : undefined;
 
-    if (chamber) {
-      query.where('rep.chamber = :chamber', { chamber });
-    }
-
-    query.orderBy('rep.chamber', 'ASC').addOrderBy('rep.name', 'ASC');
-
-    const total = await query.getCount();
-    const items = await query
-      .skip(skip)
-      .take(take + 1)
-      .getMany();
+    const [items, total] = await Promise.all([
+      this.prisma.representative.findMany({
+        where,
+        orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+        skip,
+        take: take + 1,
+      }),
+      this.prisma.representative.count({ where }),
+    ]);
 
     const hasMore = items.length > take;
     const paginatedItems = items.slice(0, take);
 
+    // Cast Prisma types to GraphQL types
     return {
-      items: paginatedItems,
+      items: paginatedItems.map((item) => ({
+        ...item,
+        photoUrl: item.photoUrl ?? undefined,
+        contactInfo: (item.contactInfo as ContactInfoModel) ?? undefined,
+      })),
       total,
       hasMore,
     };
@@ -387,6 +429,6 @@ export class RegionDomainService {
    * Get a single representative by ID
    */
   async getRepresentative(id: string) {
-    return this.representativeRepo.findOne({ where: { id } });
+    return this.prisma.representative.findUnique({ where: { id } });
   }
 }

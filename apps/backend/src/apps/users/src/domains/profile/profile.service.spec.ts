@@ -1,116 +1,149 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
-import { createMock } from '@golevelup/ts-jest';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { NotFoundException } from '@nestjs/common';
 
 import { ProfileService } from './profile.service';
-import { UserProfileEntity } from 'src/db/entities/user-profile.entity';
+import { PrismaService } from 'src/db/prisma.service';
 import {
-  UserAddressEntity,
-  AddressType,
-} from 'src/db/entities/user-address.entity';
-import { NotificationPreferenceEntity } from 'src/db/entities/notification-preference.entity';
-import {
-  UserConsentEntity,
-  ConsentStatus,
-  ConsentType,
-} from 'src/db/entities/user-consent.entity';
+  createMockPrismaService,
+  MockPrismaService,
+} from 'src/test/prisma-mock';
+import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
+import { AddressType } from 'src/common/enums/address.enum';
 
 describe('ProfileService', () => {
   let service: ProfileService;
-  let profileRepo: Repository<UserProfileEntity>;
-  let addressRepo: Repository<UserAddressEntity>;
-  let notificationRepo: Repository<NotificationPreferenceEntity>;
-  let consentRepo: Repository<UserConsentEntity>;
+  let mockPrisma: MockPrismaService;
 
   const mockUserId = 'test-user-id';
 
-  const mockProfile = {
+  // Cast mock objects to any to avoid strict Prisma type checking in tests
+  const mockProfile: any = {
     id: 'profile-id',
     userId: mockUserId,
     firstName: 'John',
+    middleName: null,
     lastName: 'Doe',
     displayName: 'johndoe',
-    phoneNumber: '+1234567890',
+    preferredName: null,
+    dateOfBirth: null,
+    phone: '+1234567890',
+    phoneVerifiedAt: null,
     preferredLanguage: 'en',
     timezone: 'America/New_York',
+    locale: 'en-US',
+    avatarUrl: null,
+    avatarStorageKey: null,
+    bio: null,
+    isPublic: false,
+    politicalAffiliation: null,
+    votingFrequency: null,
+    policyPriorities: [],
+    occupation: null,
+    educationLevel: null,
+    incomeRange: null,
+    householdSize: null,
+    homeownerStatus: null,
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as UserProfileEntity;
+  };
 
-  const mockAddress = {
+  const mockAddress: any = {
     id: 'address-id',
     userId: mockUserId,
     addressType: AddressType.RESIDENTIAL,
     addressLine1: '123 Main St',
+    addressLine2: null,
     city: 'New York',
     state: 'NY',
     postalCode: '10001',
     country: 'US',
     isPrimary: true,
     isVerified: false,
+    latitude: null,
+    longitude: null,
+    formattedAddress: null,
+    placeId: null,
+    geocodedAt: null,
+    congressionalDistrict: null,
+    stateSenatorialDistrict: null,
+    stateAssemblyDistrict: null,
+    county: null,
+    municipality: null,
+    schoolDistrict: null,
+    precinctId: null,
+    pollingPlace: null,
+    civicDataUpdatedAt: null,
+    verifiedAt: null,
+    verificationMethod: null,
+    label: null,
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as UserAddressEntity;
+  };
 
-  const mockNotificationPrefs = {
+  const mockNotificationPrefs: any = {
     id: 'notif-id',
     userId: mockUserId,
     emailEnabled: true,
+    emailProductUpdates: true,
+    emailSecurityAlerts: true,
+    emailMarketing: false,
+    emailFrequency: 'immediate',
     pushEnabled: true,
+    pushProductUpdates: true,
+    pushSecurityAlerts: true,
+    pushMarketing: false,
     smsEnabled: false,
+    smsSecurityAlerts: true,
+    smsMarketing: false,
+    civicElectionReminders: true,
+    civicVoterDeadlines: true,
+    civicBallotUpdates: true,
+    civicLocalNews: true,
+    civicRepresentativeUpdates: true,
+    civicFrequency: 'daily_digest',
+    quietHoursEnabled: false,
+    quietHoursStart: null,
+    quietHoursEnd: null,
+    unsubscribedAllAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as NotificationPreferenceEntity;
+  };
 
-  const mockConsent = {
+  const mockConsent: any = {
     id: 'consent-id',
     userId: mockUserId,
     consentType: ConsentType.TERMS_OF_SERVICE,
     status: ConsentStatus.GRANTED,
+    documentVersion: null,
+    documentUrl: null,
+    ipAddress: null,
+    userAgent: null,
+    collectionMethod: null,
+    collectionContext: null,
+    consentText: null,
     grantedAt: new Date(),
+    deniedAt: null,
+    withdrawnAt: null,
+    expiresAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as UserConsentEntity;
+  };
 
   beforeEach(async () => {
+    mockPrisma = createMockPrismaService();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProfileService,
         {
-          provide: getRepositoryToken(UserProfileEntity),
-          useValue: createMock<Repository<UserProfileEntity>>(),
-        },
-        {
-          provide: getRepositoryToken(UserAddressEntity),
-          useValue: createMock<Repository<UserAddressEntity>>(),
-        },
-        {
-          provide: getRepositoryToken(NotificationPreferenceEntity),
-          useValue: createMock<Repository<NotificationPreferenceEntity>>(),
-        },
-        {
-          provide: getRepositoryToken(UserConsentEntity),
-          useValue: createMock<Repository<UserConsentEntity>>(),
+          provide: PrismaService,
+          useValue: mockPrisma,
         },
       ],
     }).compile();
 
     service = module.get<ProfileService>(ProfileService);
-    profileRepo = module.get<Repository<UserProfileEntity>>(
-      getRepositoryToken(UserProfileEntity),
-    );
-    addressRepo = module.get<Repository<UserAddressEntity>>(
-      getRepositoryToken(UserAddressEntity),
-    );
-    notificationRepo = module.get<Repository<NotificationPreferenceEntity>>(
-      getRepositoryToken(NotificationPreferenceEntity),
-    );
-    consentRepo = module.get<Repository<UserConsentEntity>>(
-      getRepositoryToken(UserConsentEntity),
-    );
   });
 
   it('should be defined', () => {
@@ -123,18 +156,18 @@ describe('ProfileService', () => {
 
   describe('getProfile', () => {
     it('should return a profile if found', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
 
       const result = await service.getProfile(mockUserId);
 
       expect(result).toEqual(mockProfile);
-      expect(profileRepo.findOne).toHaveBeenCalledWith({
+      expect(mockPrisma.userProfile.findUnique).toHaveBeenCalledWith({
         where: { userId: mockUserId },
       });
     });
 
     it('should return null if profile not found', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(null);
 
       const result = await service.getProfile(mockUserId);
 
@@ -144,24 +177,24 @@ describe('ProfileService', () => {
 
   describe('getOrCreateProfile', () => {
     it('should return existing profile if found', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
 
       const result = await service.getOrCreateProfile(mockUserId);
 
       expect(result).toEqual(mockProfile);
-      expect(profileRepo.create).not.toHaveBeenCalled();
+      expect(mockPrisma.userProfile.create).not.toHaveBeenCalled();
     });
 
     it('should create new profile if not found', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue(null);
-      profileRepo.create = jest.fn().mockReturnValue(mockProfile);
-      profileRepo.save = jest.fn().mockResolvedValue(mockProfile);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(null);
+      mockPrisma.userProfile.create.mockResolvedValue(mockProfile);
 
       const result = await service.getOrCreateProfile(mockUserId);
 
       expect(result).toEqual(mockProfile);
-      expect(profileRepo.create).toHaveBeenCalledWith({ userId: mockUserId });
-      expect(profileRepo.save).toHaveBeenCalled();
+      expect(mockPrisma.userProfile.create).toHaveBeenCalledWith({
+        data: { userId: mockUserId },
+      });
     });
   });
 
@@ -170,13 +203,16 @@ describe('ProfileService', () => {
       const updateDto = { firstName: 'Jane' };
       const updatedProfile = { ...mockProfile, ...updateDto };
 
-      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
-      profileRepo.save = jest.fn().mockResolvedValue(updatedProfile);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.userProfile.update.mockResolvedValue(updatedProfile);
 
       const result = await service.updateProfile(mockUserId, updateDto);
 
       expect(result).toEqual(updatedProfile);
-      expect(profileRepo.save).toHaveBeenCalled();
+      expect(mockPrisma.userProfile.update).toHaveBeenCalledWith({
+        where: { userId: mockUserId },
+        data: updateDto,
+      });
     });
   });
 
@@ -186,21 +222,21 @@ describe('ProfileService', () => {
 
   describe('getAddresses', () => {
     it('should return list of addresses', async () => {
-      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getAddresses(mockUserId);
 
       expect(result).toEqual([mockAddress]);
-      expect(addressRepo.find).toHaveBeenCalledWith({
+      expect(mockPrisma.userAddress.findMany).toHaveBeenCalledWith({
         where: { userId: mockUserId },
-        order: { isPrimary: 'DESC', createdAt: 'ASC' },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
       });
     });
   });
 
   describe('getAddress', () => {
     it('should return address if found', async () => {
-      addressRepo.findOne = jest.fn().mockResolvedValue(mockAddress);
+      mockPrisma.userAddress.findFirst.mockResolvedValue(mockAddress);
 
       const result = await service.getAddress(mockUserId, mockAddress.id);
 
@@ -208,7 +244,7 @@ describe('ProfileService', () => {
     });
 
     it('should return null if address not found', async () => {
-      addressRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.userAddress.findFirst.mockResolvedValue(null);
 
       const result = await service.getAddress(mockUserId, 'non-existent');
 
@@ -228,8 +264,7 @@ describe('ProfileService', () => {
         isPrimary: false,
       };
 
-      addressRepo.create = jest.fn().mockReturnValue(mockAddress);
-      addressRepo.save = jest.fn().mockResolvedValue(mockAddress);
+      mockPrisma.userAddress.create.mockResolvedValue(mockAddress);
 
       const result = await service.createAddress(mockUserId, createDto as any);
 
@@ -247,16 +282,15 @@ describe('ProfileService', () => {
         isPrimary: true,
       };
 
-      addressRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
-      addressRepo.create = jest.fn().mockReturnValue(mockAddress);
-      addressRepo.save = jest.fn().mockResolvedValue(mockAddress);
+      mockPrisma.userAddress.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.userAddress.create.mockResolvedValue(mockAddress);
 
       await service.createAddress(mockUserId, createDto as any);
 
-      expect(addressRepo.update).toHaveBeenCalledWith(
-        { userId: mockUserId, isPrimary: true },
-        { isPrimary: false },
-      );
+      expect(mockPrisma.userAddress.updateMany).toHaveBeenCalledWith({
+        where: { userId: mockUserId, isPrimary: true },
+        data: { isPrimary: false },
+      });
     });
   });
 
@@ -265,8 +299,8 @@ describe('ProfileService', () => {
       const updateDto = { id: mockAddress.id, city: 'Boston' };
       const updatedAddress = { ...mockAddress, city: 'Boston' };
 
-      addressRepo.findOne = jest.fn().mockResolvedValue(mockAddress);
-      addressRepo.save = jest.fn().mockResolvedValue(updatedAddress);
+      mockPrisma.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockPrisma.userAddress.update.mockResolvedValue(updatedAddress);
 
       const result = await service.updateAddress(mockUserId, updateDto);
 
@@ -274,7 +308,7 @@ describe('ProfileService', () => {
     });
 
     it('should throw NotFoundException if address not found', async () => {
-      addressRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.userAddress.findFirst.mockResolvedValue(null);
 
       await expect(
         service.updateAddress(mockUserId, { id: 'non-existent' }),
@@ -284,7 +318,7 @@ describe('ProfileService', () => {
 
   describe('deleteAddress', () => {
     it('should delete address and return true', async () => {
-      addressRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
+      mockPrisma.userAddress.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await service.deleteAddress(mockUserId, mockAddress.id);
 
@@ -292,7 +326,7 @@ describe('ProfileService', () => {
     });
 
     it('should return false if address not found', async () => {
-      addressRepo.delete = jest.fn().mockResolvedValue({ affected: 0 });
+      mockPrisma.userAddress.deleteMany.mockResolvedValue({ count: 0 });
 
       const result = await service.deleteAddress(mockUserId, 'non-existent');
 
@@ -302,11 +336,12 @@ describe('ProfileService', () => {
 
   describe('setPrimaryAddress', () => {
     it('should set address as primary', async () => {
-      addressRepo.findOne = jest.fn().mockResolvedValue(mockAddress);
-      addressRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
-      addressRepo.save = jest
-        .fn()
-        .mockResolvedValue({ ...mockAddress, isPrimary: true });
+      mockPrisma.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockPrisma.userAddress.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.userAddress.update.mockResolvedValue({
+        ...mockAddress,
+        isPrimary: true,
+      });
 
       const result = await service.setPrimaryAddress(
         mockUserId,
@@ -314,11 +349,11 @@ describe('ProfileService', () => {
       );
 
       expect(result.isPrimary).toBe(true);
-      expect(addressRepo.update).toHaveBeenCalled();
+      expect(mockPrisma.userAddress.updateMany).toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if address not found', async () => {
-      addressRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.userAddress.findFirst.mockResolvedValue(null);
 
       await expect(
         service.setPrimaryAddress(mockUserId, 'non-existent'),
@@ -332,9 +367,9 @@ describe('ProfileService', () => {
 
   describe('getNotificationPreferences', () => {
     it('should return notification preferences', async () => {
-      notificationRepo.findOne = jest
-        .fn()
-        .mockResolvedValue(mockNotificationPrefs);
+      mockPrisma.notificationPreference.findUnique.mockResolvedValue(
+        mockNotificationPrefs,
+      );
 
       const result = await service.getNotificationPreferences(mockUserId);
 
@@ -347,10 +382,10 @@ describe('ProfileService', () => {
       const updateDto = { emailEnabled: false };
       const updatedPrefs = { ...mockNotificationPrefs, emailEnabled: false };
 
-      notificationRepo.findOne = jest
-        .fn()
-        .mockResolvedValue(mockNotificationPrefs);
-      notificationRepo.save = jest.fn().mockResolvedValue(updatedPrefs);
+      mockPrisma.notificationPreference.findUnique.mockResolvedValue(
+        mockNotificationPrefs,
+      );
+      mockPrisma.notificationPreference.update.mockResolvedValue(updatedPrefs);
 
       const result = await service.updateNotificationPreferences(
         mockUserId,
@@ -371,10 +406,12 @@ describe('ProfileService', () => {
         unsubscribedAllAt: expect.any(Date),
       };
 
-      notificationRepo.findOne = jest
-        .fn()
-        .mockResolvedValue(mockNotificationPrefs);
-      notificationRepo.save = jest.fn().mockResolvedValue(unsubscribedPrefs);
+      mockPrisma.notificationPreference.findUnique.mockResolvedValue(
+        mockNotificationPrefs,
+      );
+      mockPrisma.notificationPreference.update.mockResolvedValue(
+        unsubscribedPrefs,
+      );
 
       const result = await service.unsubscribeAll(mockUserId);
 
@@ -390,7 +427,7 @@ describe('ProfileService', () => {
 
   describe('getConsents', () => {
     it('should return list of consents', async () => {
-      consentRepo.find = jest.fn().mockResolvedValue([mockConsent]);
+      mockPrisma.userConsent.findMany.mockResolvedValue([mockConsent]);
 
       const result = await service.getConsents(mockUserId);
 
@@ -400,7 +437,7 @@ describe('ProfileService', () => {
 
   describe('getConsent', () => {
     it('should return consent if found', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
+      mockPrisma.userConsent.findUnique.mockResolvedValue(mockConsent);
 
       const result = await service.getConsent(
         mockUserId,
@@ -412,53 +449,32 @@ describe('ProfileService', () => {
   });
 
   describe('updateConsent', () => {
-    it('should create new consent if not exists', async () => {
+    it('should upsert consent when granting', async () => {
       const updateDto = {
         consentType: ConsentType.PRIVACY_POLICY,
         granted: true,
       };
 
-      consentRepo.findOne = jest.fn().mockResolvedValue(null);
-      consentRepo.create = jest.fn().mockReturnValue({
-        userId: mockUserId,
-        consentType: ConsentType.PRIVACY_POLICY,
-      });
-      consentRepo.save = jest.fn().mockResolvedValue({
+      mockPrisma.userConsent.upsert.mockResolvedValue({
         ...mockConsent,
         consentType: ConsentType.PRIVACY_POLICY,
-      });
-
-      const result = await service.updateConsent(mockUserId, updateDto);
-
-      expect(result.consentType).toBe(ConsentType.PRIVACY_POLICY);
-      expect(consentRepo.create).toHaveBeenCalled();
-    });
-
-    it('should update existing consent to granted', async () => {
-      const updateDto = {
-        consentType: ConsentType.TERMS_OF_SERVICE,
-        granted: true,
-      };
-
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      consentRepo.save = jest.fn().mockResolvedValue({
-        ...mockConsent,
         status: ConsentStatus.GRANTED,
       });
 
       const result = await service.updateConsent(mockUserId, updateDto);
 
+      expect(result.consentType).toBe(ConsentType.PRIVACY_POLICY);
       expect(result.status).toBe(ConsentStatus.GRANTED);
+      expect(mockPrisma.userConsent.upsert).toHaveBeenCalled();
     });
 
-    it('should update existing consent to denied', async () => {
+    it('should upsert consent when denying', async () => {
       const updateDto = {
         consentType: ConsentType.TERMS_OF_SERVICE,
         granted: false,
       };
 
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      consentRepo.save = jest.fn().mockResolvedValue({
+      mockPrisma.userConsent.upsert.mockResolvedValue({
         ...mockConsent,
         status: ConsentStatus.DENIED,
       });
@@ -471,8 +487,8 @@ describe('ProfileService', () => {
 
   describe('withdrawConsent', () => {
     it('should withdraw consent', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      consentRepo.save = jest.fn().mockResolvedValue({
+      mockPrisma.userConsent.findUnique.mockResolvedValue(mockConsent);
+      mockPrisma.userConsent.update.mockResolvedValue({
         ...mockConsent,
         status: ConsentStatus.WITHDRAWN,
       });
@@ -486,7 +502,7 @@ describe('ProfileService', () => {
     });
 
     it('should throw NotFoundException if consent not found', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.userConsent.findUnique.mockResolvedValue(null);
 
       await expect(
         service.withdrawConsent(mockUserId, ConsentType.TERMS_OF_SERVICE),
@@ -496,7 +512,7 @@ describe('ProfileService', () => {
 
   describe('hasValidConsent', () => {
     it('should return true for valid granted consent', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
+      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
 
       const result = await service.hasValidConsent(
         mockUserId,
@@ -507,7 +523,7 @@ describe('ProfileService', () => {
     });
 
     it('should return false if consent not found', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.userConsent.findFirst.mockResolvedValue(null);
 
       const result = await service.hasValidConsent(
         mockUserId,
@@ -522,7 +538,7 @@ describe('ProfileService', () => {
         ...mockConsent,
         expiresAt: new Date(Date.now() - 86400000), // expired yesterday
       };
-      consentRepo.findOne = jest.fn().mockResolvedValue(expiredConsent);
+      mockPrisma.userConsent.findFirst.mockResolvedValue(expiredConsent);
 
       const result = await service.hasValidConsent(
         mockUserId,
@@ -540,24 +556,21 @@ describe('ProfileService', () => {
         { consentType: ConsentType.PRIVACY_POLICY, granted: true },
       ];
 
-      consentRepo.findOne = jest.fn().mockResolvedValue(null);
-      consentRepo.create = jest.fn().mockImplementation((data) => data);
-      consentRepo.save = jest.fn().mockImplementation((consent) => ({
-        ...consent,
-        id: 'new-id',
+      mockPrisma.userConsent.upsert.mockResolvedValue({
+        ...mockConsent,
         status: ConsentStatus.GRANTED,
-      }));
+      });
 
       const result = await service.bulkUpdateConsents(mockUserId, consents);
 
       expect(result).toHaveLength(2);
-      expect(consentRepo.save).toHaveBeenCalledTimes(2);
+      expect(mockPrisma.userConsent.upsert).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('getRequiredConsentsStatus', () => {
     it('should return status of required consents', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
+      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
 
       const result = await service.getRequiredConsentsStatus(mockUserId);
 
@@ -573,8 +586,8 @@ describe('ProfileService', () => {
 
   describe('getProfileCompletion', () => {
     it('should return 0% completion for empty profile', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue(null);
-      addressRepo.find = jest.fn().mockResolvedValue([]);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(null);
+      mockPrisma.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -587,13 +600,13 @@ describe('ProfileService', () => {
     });
 
     it('should return 25% for profile with name only', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue({
+      mockPrisma.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: null,
         avatarUrl: null,
       });
-      addressRepo.find = jest.fn().mockResolvedValue([]);
+      mockPrisma.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -603,13 +616,13 @@ describe('ProfileService', () => {
     });
 
     it('should return 100% for complete core profile', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue({
+      mockPrisma.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: 'America/New_York',
         avatarUrl: 'https://example.com/avatar.jpg',
       });
-      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -618,7 +631,7 @@ describe('ProfileService', () => {
     });
 
     it('should add civic field bonus percentage', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue({
+      mockPrisma.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: 'America/New_York',
@@ -626,7 +639,7 @@ describe('ProfileService', () => {
         politicalAffiliation: 'independent',
         votingFrequency: 'always',
       });
-      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -634,7 +647,7 @@ describe('ProfileService', () => {
     });
 
     it('should add demographic field bonus percentage', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue({
+      mockPrisma.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: 'America/New_York',
@@ -642,7 +655,7 @@ describe('ProfileService', () => {
         occupation: 'Engineer',
         educationLevel: 'bachelor',
       });
-      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -650,7 +663,7 @@ describe('ProfileService', () => {
     });
 
     it('should cap percentage at 130%', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue({
+      mockPrisma.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: 'America/New_York',
@@ -664,7 +677,7 @@ describe('ProfileService', () => {
         householdSize: '2',
         homeownerStatus: 'own',
       });
-      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -672,8 +685,8 @@ describe('ProfileService', () => {
     });
 
     it('should return suggested steps for incomplete profile', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue(null);
-      addressRepo.find = jest.fn().mockResolvedValue([]);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(null);
+      mockPrisma.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -684,13 +697,13 @@ describe('ProfileService', () => {
     });
 
     it('should suggest civic fields when core is complete', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue({
+      mockPrisma.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: 'America/New_York',
         avatarUrl: 'https://example.com/avatar.jpg',
       });
-      addressRepo.find = jest.fn().mockResolvedValue([mockAddress]);
+      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -700,14 +713,14 @@ describe('ProfileService', () => {
     });
 
     it('should use displayName if firstName is not set', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue({
+      mockPrisma.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: null,
         displayName: 'johndoe',
         timezone: null,
         avatarUrl: null,
       });
-      addressRepo.find = jest.fn().mockResolvedValue([]);
+      mockPrisma.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -715,14 +728,14 @@ describe('ProfileService', () => {
     });
 
     it('should use avatarStorageKey if avatarUrl is not set', async () => {
-      profileRepo.findOne = jest.fn().mockResolvedValue({
+      mockPrisma.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: null,
         avatarUrl: null,
         avatarStorageKey: 'avatars/user-123/photo.jpg',
       });
-      addressRepo.find = jest.fn().mockResolvedValue([]);
+      mockPrisma.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -747,8 +760,8 @@ describe('ProfileService', () => {
       const storageKey = 'avatars/user-123/photo.jpg';
       const updatedProfile = { ...mockProfile, avatarStorageKey: storageKey };
 
-      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
-      profileRepo.save = jest.fn().mockResolvedValue(updatedProfile);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.userProfile.update.mockResolvedValue(updatedProfile);
 
       const result = await service.updateAvatarStorageKey(
         mockUserId,
@@ -756,16 +769,22 @@ describe('ProfileService', () => {
       );
 
       expect(result.avatarStorageKey).toBe(storageKey);
-      expect(profileRepo.save).toHaveBeenCalled();
+      expect(mockPrisma.userProfile.update).toHaveBeenCalled();
     });
 
     it('should create profile if not exists and update storage key', async () => {
       const storageKey = 'avatars/user-123/photo.jpg';
-      const newProfile = { userId: mockUserId, avatarStorageKey: storageKey };
+      const newProfile = {
+        ...mockProfile,
+        avatarStorageKey: storageKey,
+      };
 
-      profileRepo.findOne = jest.fn().mockResolvedValue(null);
-      profileRepo.create = jest.fn().mockReturnValue(newProfile);
-      profileRepo.save = jest.fn().mockResolvedValue(newProfile);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(null);
+      mockPrisma.userProfile.create.mockResolvedValue({
+        ...mockProfile,
+        avatarStorageKey: null,
+      });
+      mockPrisma.userProfile.update.mockResolvedValue(newProfile);
 
       const result = await service.updateAvatarStorageKey(
         mockUserId,
@@ -773,7 +792,7 @@ describe('ProfileService', () => {
       );
 
       expect(result.avatarStorageKey).toBe(storageKey);
-      expect(profileRepo.create).toHaveBeenCalled();
+      expect(mockPrisma.userProfile.create).toHaveBeenCalled();
     });
   });
 });

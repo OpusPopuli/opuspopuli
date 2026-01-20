@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentsService } from './documents.service';
 import { DocumentsResolver } from './documents.resolver';
 import { StorageModule } from '@qckstrt/storage-provider';
-import { DocumentEntity } from 'src/db/entities/document.entity';
+
+// PrismaModule is global, no need to import
 
 /**
  * Documents Module
@@ -12,7 +12,7 @@ import { DocumentEntity } from 'src/db/entities/document.entity';
  * Manages documents in PostgreSQL and files in S3.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([DocumentEntity]), StorageModule],
+  imports: [StorageModule],
   providers: [DocumentsService, DocumentsResolver],
   exports: [DocumentsService],
 })

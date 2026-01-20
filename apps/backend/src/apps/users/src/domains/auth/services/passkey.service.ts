@@ -1,7 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import {
   generateRegistrationOptions,
@@ -18,10 +16,13 @@ import type {
   RegistrationResponseJSON,
   AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
+import {
+  PasskeyCredential as PrismaPasskeyCredential,
+  WebAuthnChallenge as PrismaWebAuthnChallenge,
+  User as PrismaUser,
+} from '@prisma/client';
 
-import { PasskeyCredentialEntity } from 'src/db/entities/passkey-credential.entity';
-import { WebAuthnChallengeEntity } from 'src/db/entities/webauthn-challenge.entity';
-import { UserEntity } from 'src/db/entities/user.entity';
+import { PrismaService } from 'src/db/prisma.service';
 import { isProduction } from 'src/config/environment.config';
 
 @Injectable()
@@ -34,10 +35,7 @@ export class PasskeyService {
   private readonly origin: string;
 
   constructor(
-    @InjectRepository(PasskeyCredentialEntity)
-    private readonly credentialRepo: Repository<PasskeyCredentialEntity>,
-    @InjectRepository(WebAuthnChallengeEntity)
-    private readonly challengeRepo: Repository<WebAuthnChallengeEntity>,
+    private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
     const isProd = isProduction();
@@ -88,7 +86,7 @@ export class PasskeyService {
     displayName: string,
   ): Promise<PublicKeyCredentialCreationOptionsJSON> {
     // Get existing credentials to exclude (prevent re-registration of same authenticator)
-    const existingCredentials = await this.credentialRepo.find({
+    const existingCredentials = await this.prisma.passkeyCredential.findMany({
       where: { userId },
     });
 
@@ -140,9 +138,11 @@ export class PasskeyService {
     });
 
     // Clear used challenge
-    await this.challengeRepo.delete({
-      identifier: email,
-      type: 'registration',
+    await this.prisma.webAuthnChallenge.deleteMany({
+      where: {
+        identifier: email,
+        type: 'registration',
+      },
     });
 
     this.logger.log(
@@ -158,23 +158,24 @@ export class PasskeyService {
     userId: string,
     verification: VerifiedRegistrationResponse,
     friendlyName?: string,
-  ): Promise<PasskeyCredentialEntity> {
+  ): Promise<PrismaPasskeyCredential> {
     const { credential, credentialDeviceType, credentialBackedUp } =
       verification.registrationInfo!;
 
-    const entity = this.credentialRepo.create({
-      userId,
-      credentialId: credential.id,
-      publicKey: Buffer.from(credential.publicKey).toString('base64url'),
-      counter: credential.counter,
-      deviceType: credentialDeviceType,
-      backedUp: credentialBackedUp,
-      friendlyName:
-        friendlyName || this.getDefaultFriendlyName(credentialDeviceType),
-      transports: credential.transports,
+    const saved = await this.prisma.passkeyCredential.create({
+      data: {
+        userId,
+        credentialId: credential.id,
+        publicKey: Buffer.from(credential.publicKey).toString('base64url'),
+        counter: BigInt(credential.counter),
+        deviceType: credentialDeviceType,
+        backedUp: credentialBackedUp,
+        friendlyName:
+          friendlyName || this.getDefaultFriendlyName(credentialDeviceType),
+        transports: credential.transports || [],
+      },
     });
 
-    const saved = await this.credentialRepo.save(entity);
     this.logger.log(`Saved passkey credential for user: ${userId}`);
     return saved;
   }
@@ -190,14 +191,14 @@ export class PasskeyService {
 
     if (email) {
       // Find credentials for this user by looking up user by email first
-      const credentials = await this.credentialRepo
-        .createQueryBuilder('cred')
-        .innerJoin(UserEntity, 'u', 'cred.userId = u.id')
-        .where('u.email = :email', { email })
-        .getMany();
+      // Use Prisma include to get credentials via the user relation
+      const user = await this.prisma.user.findUnique({
+        where: { email },
+        include: { passkeyCredentials: true },
+      });
 
-      if (credentials.length > 0) {
-        allowCredentials = credentials.map((cred) => ({
+      if (user && user.passkeyCredentials.length > 0) {
+        allowCredentials = user.passkeyCredentials.map((cred) => ({
           id: cred.credentialId,
           transports: cred.transports as
             | AuthenticatorTransportFuture[]
@@ -230,7 +231,7 @@ export class PasskeyService {
     response: AuthenticationResponseJSON,
   ): Promise<{
     verification: VerifiedAuthenticationResponse;
-    user: UserEntity;
+    user: PrismaUser;
   }> {
     const storedChallenge = await this.getChallenge(
       identifier,
@@ -241,11 +242,11 @@ export class PasskeyService {
       throw new Error('Challenge not found or expired');
     }
 
-    // Find credential by ID
+    // Find credential by ID with user relation
     const credentialId = response.id;
-    const credential = await this.credentialRepo.findOne({
+    const credential = await this.prisma.passkeyCredential.findUnique({
       where: { credentialId },
-      relations: ['user'],
+      include: { user: true },
     });
 
     if (!credential) {
@@ -269,13 +270,18 @@ export class PasskeyService {
 
     if (verification.verified) {
       // Update counter and last used timestamp
-      await this.credentialRepo.update(credential.id, {
-        counter: verification.authenticationInfo.newCounter,
-        lastUsedAt: new Date(),
+      await this.prisma.passkeyCredential.update({
+        where: { id: credential.id },
+        data: {
+          counter: BigInt(verification.authenticationInfo.newCounter),
+          lastUsedAt: new Date(),
+        },
       });
 
       // Clear used challenge
-      await this.challengeRepo.delete({ identifier, type: 'authentication' });
+      await this.prisma.webAuthnChallenge.deleteMany({
+        where: { identifier, type: 'authentication' },
+      });
 
       this.logger.log(
         `Verified authentication for user: ${credential.user.email}`,
@@ -288,10 +294,10 @@ export class PasskeyService {
   /**
    * Get all passkey credentials for a user
    */
-  async getUserCredentials(userId: string): Promise<PasskeyCredentialEntity[]> {
-    return this.credentialRepo.find({
+  async getUserCredentials(userId: string): Promise<PrismaPasskeyCredential[]> {
+    return this.prisma.passkeyCredential.findMany({
       where: { userId },
-      order: { createdAt: 'DESC' },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -302,11 +308,13 @@ export class PasskeyService {
     credentialId: string,
     userId: string,
   ): Promise<boolean> {
-    const result = await this.credentialRepo.delete({
-      id: credentialId,
-      userId,
+    const result = await this.prisma.passkeyCredential.deleteMany({
+      where: {
+        id: credentialId,
+        userId,
+      },
     });
-    const deleted = result.affected === 1;
+    const deleted = result.count === 1;
 
     if (deleted) {
       this.logger.log(
@@ -321,7 +329,9 @@ export class PasskeyService {
    * Check if a user has any passkeys registered
    */
   async userHasPasskeys(userId: string): Promise<boolean> {
-    const count = await this.credentialRepo.count({ where: { userId } });
+    const count = await this.prisma.passkeyCredential.count({
+      where: { userId },
+    });
     return count > 0;
   }
 
@@ -329,15 +339,17 @@ export class PasskeyService {
    * Cleanup expired challenges (should be run periodically)
    */
   async cleanupExpiredChallenges(): Promise<number> {
-    const result = await this.challengeRepo.delete({
-      expiresAt: LessThan(new Date()),
+    const result = await this.prisma.webAuthnChallenge.deleteMany({
+      where: {
+        expiresAt: { lt: new Date() },
+      },
     });
 
-    if (result.affected && result.affected > 0) {
-      this.logger.log(`Cleaned up ${result.affected} expired challenges`);
+    if (result.count > 0) {
+      this.logger.log(`Cleaned up ${result.count} expired challenges`);
     }
 
-    return result.affected || 0;
+    return result.count;
   }
 
   // Private helper methods
@@ -348,25 +360,27 @@ export class PasskeyService {
     type: 'registration' | 'authentication',
   ): Promise<void> {
     // Remove any existing challenge for this identifier and type
-    await this.challengeRepo.delete({ identifier, type });
+    await this.prisma.webAuthnChallenge.deleteMany({
+      where: { identifier, type },
+    });
 
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-    const entity = this.challengeRepo.create({
-      identifier,
-      challenge,
-      type,
-      expiresAt,
+    await this.prisma.webAuthnChallenge.create({
+      data: {
+        identifier,
+        challenge,
+        type,
+        expiresAt,
+      },
     });
-
-    await this.challengeRepo.save(entity);
   }
 
   private async getChallenge(
     identifier: string,
     type: 'registration' | 'authentication',
-  ): Promise<WebAuthnChallengeEntity | null> {
-    const challenge = await this.challengeRepo.findOne({
+  ): Promise<PrismaWebAuthnChallenge | null> {
+    const challenge = await this.prisma.webAuthnChallenge.findFirst({
       where: { identifier, type },
     });
 

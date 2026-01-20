@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 
@@ -5,9 +6,6 @@ import { RegionResolver } from './region.resolver';
 import { RegionDomainService } from './region.service';
 import { CivicDataType } from '@qckstrt/region-provider';
 import { CivicDataTypeGQL } from './models/region-info.model';
-import { PropositionModel } from './models/proposition.model';
-import { MeetingModel } from './models/meeting.model';
-import { RepresentativeModel } from './models/representative.model';
 
 describe('RegionResolver', () => {
   let resolver: RegionResolver;
@@ -26,35 +24,46 @@ describe('RegionResolver', () => {
     ],
   };
 
-  const mockProposition = {
+  const mockProposition: any = {
     id: '1',
     externalId: 'prop-1',
     title: 'Test Proposition',
     summary: 'Summary',
+    fullText: null,
     status: 'pending',
+    electionDate: null,
+    sourceUrl: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    deletedAt: null,
   };
 
-  const mockMeeting = {
+  const mockMeeting: any = {
     id: '1',
     externalId: 'meeting-1',
     title: 'Test Meeting',
     body: 'Council',
     scheduledAt: new Date(),
+    location: null,
+    agendaUrl: null,
+    videoUrl: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    deletedAt: null,
   };
 
-  const mockRepresentative = {
+  const mockRepresentative: any = {
     id: '1',
     externalId: 'rep-1',
     name: 'John Doe',
     chamber: 'Senate',
     district: 'D1',
     party: 'Independent',
+    photoUrl: null,
+    contactInfo: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    deletedAt: null,
   };
 
   beforeEach(async () => {
@@ -92,7 +101,7 @@ describe('RegionResolver', () => {
   describe('propositions', () => {
     it('should return paginated propositions', async () => {
       const mockPaginatedResult = {
-        items: [mockProposition as PropositionModel],
+        items: [mockProposition],
         total: 1,
         hasMore: false,
       };
@@ -106,7 +115,7 @@ describe('RegionResolver', () => {
 
     it('should use default pagination values', async () => {
       const mockPaginatedResult = {
-        items: [] as PropositionModel[],
+        items: [],
         total: 0,
         hasMore: false,
       };
@@ -120,9 +129,7 @@ describe('RegionResolver', () => {
 
   describe('proposition', () => {
     it('should return a single proposition', async () => {
-      regionService.getProposition.mockResolvedValue(
-        mockProposition as PropositionModel,
-      );
+      regionService.getProposition.mockResolvedValue(mockProposition);
 
       const result = await resolver.proposition('1');
 
@@ -158,11 +165,17 @@ describe('RegionResolver', () => {
 
   describe('meeting', () => {
     it('should return a single meeting', async () => {
-      regionService.getMeeting.mockResolvedValue(mockMeeting as MeetingModel);
+      regionService.getMeeting.mockResolvedValue(mockMeeting);
 
       const result = await resolver.meeting('1');
 
-      expect(result).toEqual(mockMeeting);
+      // Resolver converts null to undefined for optional fields
+      expect(result).toEqual({
+        ...mockMeeting,
+        location: undefined,
+        agendaUrl: undefined,
+        videoUrl: undefined,
+      });
       expect(regionService.getMeeting).toHaveBeenCalledWith('1');
     });
 
@@ -214,13 +227,16 @@ describe('RegionResolver', () => {
 
   describe('representative', () => {
     it('should return a single representative', async () => {
-      regionService.getRepresentative.mockResolvedValue(
-        mockRepresentative as RepresentativeModel,
-      );
+      regionService.getRepresentative.mockResolvedValue(mockRepresentative);
 
       const result = await resolver.representative('1');
 
-      expect(result).toEqual(mockRepresentative);
+      // Resolver converts null to undefined for optional fields
+      expect(result).toEqual({
+        ...mockRepresentative,
+        photoUrl: undefined,
+        contactInfo: undefined,
+      });
       expect(regionService.getRepresentative).toHaveBeenCalledWith('1');
     });
 

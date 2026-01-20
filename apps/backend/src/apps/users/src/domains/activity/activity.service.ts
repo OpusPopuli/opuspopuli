@@ -1,15 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import {
-  Repository,
-  FindOptionsWhere,
-  LessThanOrEqual,
-  MoreThanOrEqual,
-  In,
-} from 'typeorm';
+  AuditLog as PrismaAuditLog,
+  UserSession as PrismaUserSession,
+} from '@prisma/client';
 
-import { AuditLogEntity } from 'src/db/entities/audit-log.entity';
-import { UserSessionEntity } from 'src/db/entities/user-session.entity';
+import { PrismaService } from 'src/db/prisma.service';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
 
 import {
@@ -23,12 +18,7 @@ import {
 
 @Injectable()
 export class ActivityService {
-  constructor(
-    @InjectRepository(AuditLogEntity)
-    private readonly auditLogRepository: Repository<AuditLogEntity>,
-    @InjectRepository(UserSessionEntity)
-    private readonly sessionRepository: Repository<UserSessionEntity>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Get paginated activity log for a user
@@ -39,31 +29,39 @@ export class ActivityService {
     offset: number = 0,
     filters?: ActivityLogFilters,
   ): Promise<ActivityLogPage> {
-    const where: FindOptionsWhere<AuditLogEntity> = { userId };
+    // Build where clause
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = { userId };
 
     // Apply filters
     if (filters?.actions?.length) {
-      where.action = In(filters.actions);
+      where.action = { in: filters.actions };
     }
     if (filters?.entityType) {
       where.entityType = filters.entityType;
     }
     if (filters?.startDate) {
-      where.timestamp = MoreThanOrEqual(filters.startDate);
+      where.timestamp = { gte: filters.startDate };
     }
     if (filters?.endDate) {
-      where.timestamp = LessThanOrEqual(filters.endDate);
+      where.timestamp = {
+        ...where.timestamp,
+        lte: filters.endDate,
+      };
     }
     if (filters?.successOnly !== undefined) {
       where.success = filters.successOnly;
     }
 
-    const [logs, total] = await this.auditLogRepository.findAndCount({
-      where,
-      order: { timestamp: 'DESC' },
-      take: limit,
-      skip: offset,
-    });
+    const [logs, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { timestamp: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
 
     const items: ActivityLogEntry[] = logs.map((log) =>
       this.mapAuditLogToEntry(log),
@@ -84,16 +82,20 @@ export class ActivityService {
     currentSessionToken?: string,
     includeRevoked: boolean = false,
   ): Promise<SessionsPage> {
-    const where: FindOptionsWhere<UserSessionEntity> = { userId };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = { userId };
 
     if (!includeRevoked) {
       where.isActive = true;
     }
 
-    const [sessions, total] = await this.sessionRepository.findAndCount({
-      where,
-      order: { lastActivityAt: 'DESC', createdAt: 'DESC' },
-    });
+    const [sessions, total] = await Promise.all([
+      this.prisma.userSession.findMany({
+        where,
+        orderBy: [{ lastActivityAt: 'desc' }, { createdAt: 'desc' }],
+      }),
+      this.prisma.userSession.count({ where }),
+    ]);
 
     const items: SessionInfo[] = sessions.map((session) =>
       this.mapSessionToInfo(session, currentSessionToken),
@@ -110,7 +112,7 @@ export class ActivityService {
     sessionId: string,
     currentSessionToken?: string,
   ): Promise<SessionInfo | null> {
-    const session = await this.sessionRepository.findOne({
+    const session = await this.prisma.userSession.findFirst({
       where: { id: sessionId, userId },
     });
 
@@ -129,16 +131,16 @@ export class ActivityService {
     sessionId: string,
     reason: string = 'user_logout',
   ): Promise<boolean> {
-    const result = await this.sessionRepository.update(
-      { id: sessionId, userId },
-      {
+    const result = await this.prisma.userSession.updateMany({
+      where: { id: sessionId, userId },
+      data: {
         isActive: false,
         revokedAt: new Date(),
         revokedReason: reason,
       },
-    );
+    });
 
-    return (result.affected ?? 0) > 0;
+    return result.count > 0;
   }
 
   /**
@@ -149,17 +151,20 @@ export class ActivityService {
     exceptSessionToken?: string,
     reason: string = 'user_logout_all',
   ): Promise<number> {
-    const sessions = await this.sessionRepository.find({
+    const sessions = await this.prisma.userSession.findMany({
       where: { userId, isActive: true },
     });
 
     let revokedCount = 0;
     for (const session of sessions) {
       if (session.sessionToken !== exceptSessionToken) {
-        await this.sessionRepository.update(session.id, {
-          isActive: false,
-          revokedAt: new Date(),
-          revokedReason: reason,
+        await this.prisma.userSession.update({
+          where: { id: session.id },
+          data: {
+            isActive: false,
+            revokedAt: new Date(),
+            revokedReason: reason,
+          },
         });
         revokedCount++;
       }
@@ -173,33 +178,24 @@ export class ActivityService {
    */
   async getActivitySummary(userId: string): Promise<ActivitySummary> {
     // Get action counts
-    const totalActions = await this.auditLogRepository.count({
-      where: { userId },
-    });
-
-    const successfulActions = await this.auditLogRepository.count({
-      where: { userId, success: true },
-    });
-
-    const failedActions = await this.auditLogRepository.count({
-      where: { userId, success: false },
-    });
-
-    // Get session counts
-    const activeSessions = await this.sessionRepository.count({
-      where: { userId, isActive: true },
-    });
+    const [totalActions, successfulActions, failedActions, activeSessions] =
+      await Promise.all([
+        this.prisma.auditLog.count({ where: { userId } }),
+        this.prisma.auditLog.count({ where: { userId, success: true } }),
+        this.prisma.auditLog.count({ where: { userId, success: false } }),
+        this.prisma.userSession.count({ where: { userId, isActive: true } }),
+      ]);
 
     // Get last login
-    const lastLogin = await this.auditLogRepository.findOne({
+    const lastLogin = await this.prisma.auditLog.findFirst({
       where: { userId, action: AuditAction.LOGIN },
-      order: { timestamp: 'DESC' },
+      orderBy: { timestamp: 'desc' },
     });
 
     // Get last activity
-    const lastActivity = await this.auditLogRepository.findOne({
+    const lastActivity = await this.prisma.auditLog.findFirst({
       where: { userId },
-      order: { timestamp: 'DESC' },
+      orderBy: { timestamp: 'desc' },
     });
 
     return {
@@ -207,15 +203,15 @@ export class ActivityService {
       successfulActions,
       failedActions,
       activeSessions,
-      lastLoginAt: lastLogin?.timestamp,
-      lastActivityAt: lastActivity?.timestamp,
+      lastLoginAt: lastLogin?.timestamp ?? undefined,
+      lastActivityAt: lastActivity?.timestamp ?? undefined,
     };
   }
 
   /**
    * Parse user agent to extract device info
    */
-  private parseUserAgent(userAgent?: string): {
+  private parseUserAgent(userAgent?: string | null): {
     deviceType?: string;
     browser?: string;
   } {
@@ -244,20 +240,20 @@ export class ActivityService {
     return { deviceType, browser };
   }
 
-  private mapAuditLogToEntry(log: AuditLogEntity): ActivityLogEntry {
+  private mapAuditLogToEntry(log: PrismaAuditLog): ActivityLogEntry {
     const { deviceType, browser } = this.parseUserAgent(log.userAgent);
 
     return {
       id: log.id,
-      action: log.action,
-      entityType: log.entityType,
-      entityId: log.entityId,
-      operationName: log.operationName,
-      operationType: log.operationType,
+      action: log.action as AuditAction,
+      entityType: log.entityType ?? undefined,
+      entityId: log.entityId ?? undefined,
+      operationName: log.operationName ?? undefined,
+      operationType: log.operationType ?? undefined,
       success: log.success,
-      errorMessage: log.errorMessage,
-      ipAddress: log.ipAddress,
-      userAgent: log.userAgent,
+      errorMessage: log.errorMessage ?? undefined,
+      ipAddress: log.ipAddress ?? undefined,
+      userAgent: log.userAgent ?? undefined,
       deviceType,
       browser,
       timestamp: log.timestamp,
@@ -265,24 +261,24 @@ export class ActivityService {
   }
 
   private mapSessionToInfo(
-    session: UserSessionEntity,
+    session: PrismaUserSession,
     currentSessionToken?: string,
   ): SessionInfo {
     return {
       id: session.id,
-      deviceType: session.deviceType,
-      deviceName: session.deviceName,
-      browser: session.browser,
-      operatingSystem: session.operatingSystem,
-      city: session.city,
-      region: session.region,
-      country: session.country,
+      deviceType: session.deviceType ?? undefined,
+      deviceName: session.deviceName ?? undefined,
+      browser: session.browser ?? undefined,
+      operatingSystem: session.operatingSystem ?? undefined,
+      city: session.city ?? undefined,
+      region: session.region ?? undefined,
+      country: session.country ?? undefined,
       isActive: session.isActive,
       isCurrent: session.sessionToken === currentSessionToken,
-      lastActivityAt: session.lastActivityAt,
+      lastActivityAt: session.lastActivityAt ?? undefined,
       createdAt: session.createdAt,
-      expiresAt: session.expiresAt,
-      revokedAt: session.revokedAt,
+      expiresAt: session.expiresAt ?? undefined,
+      revokedAt: session.revokedAt ?? undefined,
     };
   }
 }

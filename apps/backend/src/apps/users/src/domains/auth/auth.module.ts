@@ -1,5 +1,4 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { PassportModule } from '@nestjs/passport';
 
 import { AuthResolver } from './auth.resolver';
@@ -11,17 +10,11 @@ import { UsersModule } from '../user/users.module';
 import { EmailDomainModule } from '../email/email.module';
 import { AuthModule as AuthProviderModule } from '@qckstrt/auth-provider';
 
-// Entities
-import { PasskeyCredentialEntity } from 'src/db/entities/passkey-credential.entity';
-import { WebAuthnChallengeEntity } from 'src/db/entities/webauthn-challenge.entity';
+// PrismaModule is global, no need to import
 
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    TypeOrmModule.forFeature([
-      PasskeyCredentialEntity,
-      WebAuthnChallengeEntity,
-    ]),
     forwardRef(() => UsersModule),
     forwardRef(() => EmailDomainModule),
     AuthProviderModule,

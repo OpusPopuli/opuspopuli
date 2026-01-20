@@ -1,27 +1,20 @@
 import { Inject, Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { IEmailProvider } from '@qckstrt/common';
 import {
   welcomeEmailTemplate,
   representativeContactTemplate,
   generateMailtoLink,
 } from '@qckstrt/email-provider';
-
 import {
-  EmailCorrespondenceEntity,
-  EmailType,
-  EmailStatus,
-} from 'src/db/entities/email-correspondence.entity';
-import { UserProfileEntity } from 'src/db/entities/user-profile.entity';
-import { UserAddressEntity } from 'src/db/entities/user-address.entity';
-import {
-  UserConsentEntity,
-  ConsentType,
-  ConsentStatus,
-} from 'src/db/entities/user-consent.entity';
+  EmailCorrespondence as PrismaEmailCorrespondence,
+  EmailType as PrismaEmailType,
+  EmailStatus as PrismaEmailStatus,
+  ConsentType as PrismaConsentType,
+  ConsentStatus as PrismaConsentStatus,
+} from '@prisma/client';
 
+import { PrismaService } from 'src/db/prisma.service';
 import { ContactRepresentativeDto } from './dto/contact-representative.dto';
 
 interface RepresentativeInfo {
@@ -37,7 +30,7 @@ interface PropositionInfo {
 }
 
 interface EmailHistoryResult {
-  items: EmailCorrespondenceEntity[];
+  items: PrismaEmailCorrespondence[];
   total: number;
   hasMore: boolean;
 }
@@ -51,14 +44,7 @@ export class EmailService {
   constructor(
     @Inject('EMAIL_PROVIDER')
     private readonly emailProvider: IEmailProvider,
-    @InjectRepository(EmailCorrespondenceEntity)
-    private readonly correspondenceRepo: Repository<EmailCorrespondenceEntity>,
-    @InjectRepository(UserProfileEntity)
-    private readonly profileRepo: Repository<UserProfileEntity>,
-    @InjectRepository(UserAddressEntity)
-    private readonly addressRepo: Repository<UserAddressEntity>,
-    @InjectRepository(UserConsentEntity)
-    private readonly consentRepo: Repository<UserConsentEntity>,
+    private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
     this.platformName =
@@ -83,17 +69,17 @@ export class EmailService {
       loginUrl: this.frontendUrl,
     });
 
-    const correspondence = this.correspondenceRepo.create({
-      userId,
-      emailType: EmailType.WELCOME,
-      status: EmailStatus.PENDING,
-      recipientEmail: email,
-      recipientName: userName,
-      subject: template.subject,
-      bodyPreview: template.text.substring(0, 500),
+    let correspondence = await this.prisma.emailCorrespondence.create({
+      data: {
+        userId,
+        emailType: PrismaEmailType.welcome,
+        status: PrismaEmailStatus.pending,
+        recipientEmail: email,
+        recipientName: userName,
+        subject: template.subject,
+        bodyPreview: template.text.substring(0, 500),
+      },
     });
-
-    await this.correspondenceRepo.save(correspondence);
 
     try {
       const result = await this.emailProvider.send({
@@ -104,15 +90,23 @@ export class EmailService {
       });
 
       if (result.success) {
-        correspondence.status = EmailStatus.SENT;
-        correspondence.sentAt = new Date();
-        correspondence.resendId = result.id;
+        correspondence = await this.prisma.emailCorrespondence.update({
+          where: { id: correspondence.id },
+          data: {
+            status: PrismaEmailStatus.sent,
+            sentAt: new Date(),
+            resendId: result.id,
+          },
+        });
       } else {
-        correspondence.status = EmailStatus.FAILED;
-        correspondence.errorMessage = result.error;
+        correspondence = await this.prisma.emailCorrespondence.update({
+          where: { id: correspondence.id },
+          data: {
+            status: PrismaEmailStatus.failed,
+            errorMessage: result.error,
+          },
+        });
       }
-
-      await this.correspondenceRepo.save(correspondence);
 
       this.logger.log(
         `Welcome email ${result.success ? 'sent' : 'failed'} for user ${userId}`,
@@ -121,9 +115,13 @@ export class EmailService {
       return { success: result.success, correspondenceId: correspondence.id };
     } catch (error) {
       const err = error as Error;
-      correspondence.status = EmailStatus.FAILED;
-      correspondence.errorMessage = err.message;
-      await this.correspondenceRepo.save(correspondence);
+      await this.prisma.emailCorrespondence.update({
+        where: { id: correspondence.id },
+        data: {
+          status: PrismaEmailStatus.failed,
+          errorMessage: err.message,
+        },
+      });
 
       this.logger.error(`Failed to send welcome email: ${err.message}`);
       throw error;
@@ -142,11 +140,11 @@ export class EmailService {
     proposition?: PropositionInfo,
   ): Promise<{ success: boolean; correspondenceId?: string }> {
     // Verify user has consent for representative contact
-    const consent = await this.consentRepo.findOne({
+    const consent = await this.prisma.userConsent.findFirst({
       where: {
         userId,
-        consentType: ConsentType.REPRESENTATIVE_CONTACT,
-        status: ConsentStatus.GRANTED,
+        consentType: PrismaConsentType.representative_contact,
+        status: PrismaConsentStatus.granted,
       },
     });
 
@@ -157,13 +155,15 @@ export class EmailService {
     }
 
     // Get user profile and address
-    const profile = await this.profileRepo.findOne({ where: { userId } });
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId },
+    });
     const senderName =
       profile?.displayName || profile?.firstName || 'A Constituent';
 
     let senderAddress: string | undefined;
     if (dto.includeAddress) {
-      const address = await this.addressRepo.findOne({
+      const address = await this.prisma.userAddress.findFirst({
         where: { userId, isPrimary: true },
       });
       if (address) {
@@ -184,21 +184,21 @@ export class EmailService {
       platformName: this.platformName,
     });
 
-    const correspondence = this.correspondenceRepo.create({
-      userId,
-      emailType: EmailType.REPRESENTATIVE_CONTACT,
-      status: EmailStatus.PENDING,
-      recipientEmail: representative.email,
-      recipientName: representative.name,
-      subject: dto.subject,
-      bodyPreview: dto.message.substring(0, 500),
-      representativeId: representative.id,
-      representativeName: representative.name,
-      propositionId: proposition?.id,
-      propositionTitle: proposition?.title,
+    let correspondence = await this.prisma.emailCorrespondence.create({
+      data: {
+        userId,
+        emailType: PrismaEmailType.representative_contact,
+        status: PrismaEmailStatus.pending,
+        recipientEmail: representative.email,
+        recipientName: representative.name,
+        subject: dto.subject,
+        bodyPreview: dto.message.substring(0, 500),
+        representativeId: representative.id,
+        representativeName: representative.name,
+        propositionId: proposition?.id,
+        propositionTitle: proposition?.title,
+      },
     });
-
-    await this.correspondenceRepo.save(correspondence);
 
     try {
       const result = await this.emailProvider.send({
@@ -214,15 +214,23 @@ export class EmailService {
       });
 
       if (result.success) {
-        correspondence.status = EmailStatus.SENT;
-        correspondence.sentAt = new Date();
-        correspondence.resendId = result.id;
+        correspondence = await this.prisma.emailCorrespondence.update({
+          where: { id: correspondence.id },
+          data: {
+            status: PrismaEmailStatus.sent,
+            sentAt: new Date(),
+            resendId: result.id,
+          },
+        });
       } else {
-        correspondence.status = EmailStatus.FAILED;
-        correspondence.errorMessage = result.error;
+        correspondence = await this.prisma.emailCorrespondence.update({
+          where: { id: correspondence.id },
+          data: {
+            status: PrismaEmailStatus.failed,
+            errorMessage: result.error,
+          },
+        });
       }
-
-      await this.correspondenceRepo.save(correspondence);
 
       this.logger.log(
         `Representative contact email ${result.success ? 'sent' : 'failed'} from user ${userId} to ${representative.name}`,
@@ -231,9 +239,13 @@ export class EmailService {
       return { success: result.success, correspondenceId: correspondence.id };
     } catch (error) {
       const err = error as Error;
-      correspondence.status = EmailStatus.FAILED;
-      correspondence.errorMessage = err.message;
-      await this.correspondenceRepo.save(correspondence);
+      await this.prisma.emailCorrespondence.update({
+        where: { id: correspondence.id },
+        data: {
+          status: PrismaEmailStatus.failed,
+          errorMessage: err.message,
+        },
+      });
 
       this.logger.error(
         `Failed to send representative contact email: ${err.message}`,
@@ -250,19 +262,22 @@ export class EmailService {
     userId: string,
     skip: number = 0,
     take: number = 10,
-    emailType?: EmailType,
+    emailType?: PrismaEmailType,
   ): Promise<EmailHistoryResult> {
-    const where: Record<string, unknown> = { userId };
+    const where: { userId: string; emailType?: PrismaEmailType } = { userId };
     if (emailType) {
       where.emailType = emailType;
     }
 
-    const [items, total] = await this.correspondenceRepo.findAndCount({
-      where,
-      order: { createdAt: 'DESC' },
-      skip,
-      take: take + 1,
-    });
+    const [items, total] = await Promise.all([
+      this.prisma.emailCorrespondence.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: take + 1,
+      }),
+      this.prisma.emailCorrespondence.count({ where }),
+    ]);
 
     const hasMore = items.length > take;
     const paginatedItems = items.slice(0, take);
@@ -273,8 +288,8 @@ export class EmailService {
   async getEmailById(
     userId: string,
     id: string,
-  ): Promise<EmailCorrespondenceEntity | null> {
-    return this.correspondenceRepo.findOne({
+  ): Promise<PrismaEmailCorrespondence | null> {
+    return this.prisma.emailCorrespondence.findFirst({
       where: { id, userId },
     });
   }

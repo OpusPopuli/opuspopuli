@@ -5,13 +5,13 @@ import {
   getUserFromContext,
 } from 'src/common/utils/graphql-context';
 
+// TypeORM entities are still used as GraphQL types (they have @ObjectType decorators)
+// The service now returns Prisma types which are structurally compatible
 import { UserProfileEntity } from 'src/db/entities/user-profile.entity';
 import { UserAddressEntity } from 'src/db/entities/user-address.entity';
 import { NotificationPreferenceEntity } from 'src/db/entities/notification-preference.entity';
-import {
-  UserConsentEntity,
-  ConsentType,
-} from 'src/db/entities/user-consent.entity';
+import { UserConsentEntity } from 'src/db/entities/user-consent.entity';
+import { ConsentType } from 'src/common/enums/consent.enum';
 
 import { ProfileService } from './profile.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -37,7 +37,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<UserProfileEntity | null> {
     const user = getUserFromContext(context);
-    return this.profileService.getProfile(user.id);
+    const profile = await this.profileService.getProfile(user.id);
+    return profile as UserProfileEntity | null;
   }
 
   @Mutation(() => UserProfileEntity)
@@ -46,7 +47,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<UserProfileEntity> {
     const user = getUserFromContext(context);
-    return this.profileService.updateProfile(user.id, input);
+    const profile = await this.profileService.updateProfile(user.id, input);
+    return profile as unknown as UserProfileEntity;
   }
 
   // ============================================
@@ -80,7 +82,11 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<UserProfileEntity> {
     const user = getUserFromContext(context);
-    return this.profileService.updateAvatarStorageKey(user.id, storageKey);
+    const profile = await this.profileService.updateAvatarStorageKey(
+      user.id,
+      storageKey,
+    );
+    return profile as unknown as UserProfileEntity;
   }
 
   // ============================================
@@ -92,7 +98,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<UserAddressEntity[]> {
     const user = getUserFromContext(context);
-    return this.profileService.getAddresses(user.id);
+    const addresses = await this.profileService.getAddresses(user.id);
+    return addresses as unknown as UserAddressEntity[];
   }
 
   @Query(() => UserAddressEntity, { nullable: true, name: 'myAddress' })
@@ -101,7 +108,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<UserAddressEntity | null> {
     const user = getUserFromContext(context);
-    return this.profileService.getAddress(user.id, id);
+    const address = await this.profileService.getAddress(user.id, id);
+    return address as UserAddressEntity | null;
   }
 
   @Mutation(() => UserAddressEntity)
@@ -110,7 +118,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<UserAddressEntity> {
     const user = getUserFromContext(context);
-    return this.profileService.createAddress(user.id, input);
+    const address = await this.profileService.createAddress(user.id, input);
+    return address as unknown as UserAddressEntity;
   }
 
   @Mutation(() => UserAddressEntity)
@@ -119,7 +128,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<UserAddressEntity> {
     const user = getUserFromContext(context);
-    return this.profileService.updateAddress(user.id, input);
+    const address = await this.profileService.updateAddress(user.id, input);
+    return address as unknown as UserAddressEntity;
   }
 
   @Mutation(() => Boolean)
@@ -137,7 +147,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<UserAddressEntity> {
     const user = getUserFromContext(context);
-    return this.profileService.setPrimaryAddress(user.id, id);
+    const address = await this.profileService.setPrimaryAddress(user.id, id);
+    return address as unknown as UserAddressEntity;
   }
 
   // ============================================
@@ -152,7 +163,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<NotificationPreferenceEntity | null> {
     const user = getUserFromContext(context);
-    return this.profileService.getNotificationPreferences(user.id);
+    const prefs = await this.profileService.getNotificationPreferences(user.id);
+    return prefs as NotificationPreferenceEntity | null;
   }
 
   @Mutation(() => NotificationPreferenceEntity)
@@ -161,7 +173,11 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<NotificationPreferenceEntity> {
     const user = getUserFromContext(context);
-    return this.profileService.updateNotificationPreferences(user.id, input);
+    const prefs = await this.profileService.updateNotificationPreferences(
+      user.id,
+      input,
+    );
+    return prefs as unknown as NotificationPreferenceEntity;
   }
 
   @Mutation(() => NotificationPreferenceEntity)
@@ -169,7 +185,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<NotificationPreferenceEntity> {
     const user = getUserFromContext(context);
-    return this.profileService.unsubscribeAll(user.id);
+    const prefs = await this.profileService.unsubscribeAll(user.id);
+    return prefs as unknown as NotificationPreferenceEntity;
   }
 
   // ============================================
@@ -181,7 +198,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<UserConsentEntity[]> {
     const user = getUserFromContext(context);
-    return this.profileService.getConsents(user.id);
+    const consents = await this.profileService.getConsents(user.id);
+    return consents as unknown as UserConsentEntity[];
   }
 
   @Query(() => UserConsentEntity, { nullable: true, name: 'myConsent' })
@@ -190,7 +208,8 @@ export class ProfileResolver {
     @Context() context: GqlContext,
   ): Promise<UserConsentEntity | null> {
     const user = getUserFromContext(context);
-    return this.profileService.getConsent(user.id, consentType);
+    const consent = await this.profileService.getConsent(user.id, consentType);
+    return consent as UserConsentEntity | null;
   }
 
   @Mutation(() => UserConsentEntity)
@@ -204,7 +223,12 @@ export class ProfileResolver {
       userAgent: context.req?.headers?.['user-agent'],
       collectionMethod: 'graphql_api',
     };
-    return this.profileService.updateConsent(user.id, input, metadata);
+    const consent = await this.profileService.updateConsent(
+      user.id,
+      input,
+      metadata,
+    );
+    return consent as unknown as UserConsentEntity;
   }
 
   @Mutation(() => [UserConsentEntity])
@@ -218,11 +242,12 @@ export class ProfileResolver {
       userAgent: context.req?.headers?.['user-agent'],
       collectionMethod: 'graphql_api',
     };
-    return this.profileService.bulkUpdateConsents(
+    const consents = await this.profileService.bulkUpdateConsents(
       user.id,
       input.consents,
       metadata,
     );
+    return consents as unknown as UserConsentEntity[];
   }
 
   @Mutation(() => UserConsentEntity)
@@ -235,11 +260,12 @@ export class ProfileResolver {
       ipAddress: context.req?.ip,
       userAgent: context.req?.headers?.['user-agent'],
     };
-    return this.profileService.withdrawConsent(
+    const consent = await this.profileService.withdrawConsent(
       user.id,
       input.consentType,
       metadata,
     );
+    return consent as unknown as UserConsentEntity;
   }
 
   @Query(() => Boolean)

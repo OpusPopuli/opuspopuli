@@ -1,17 +1,18 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { IStorageProvider } from '@qckstrt/storage-provider';
+import { Document as PrismaDocument } from '@prisma/client';
+
 import { IFileConfig } from 'src/config';
-import { DocumentEntity } from 'src/db/entities/document.entity';
+import { PrismaService } from 'src/db/prisma.service';
+import { DocumentStatus } from 'src/common/enums/document.status.enum';
 import { File } from './models/file.model';
 
 /**
  * Documents Service
  *
  * Handles document metadata management and file storage operations.
- * Manages DocumentEntity in PostgreSQL and file storage in S3.
+ * Manages Document in PostgreSQL and file storage in S3.
  */
 @Injectable()
 export class DocumentsService {
@@ -21,8 +22,7 @@ export class DocumentsService {
   private fileConfig: IFileConfig;
 
   constructor(
-    @InjectRepository(DocumentEntity)
-    private documentRepo: Repository<DocumentEntity>,
+    private readonly prisma: PrismaService,
     @Inject('STORAGE_PROVIDER') private storage: IStorageProvider,
     private configService: ConfigService,
   ) {
@@ -40,18 +40,19 @@ export class DocumentsService {
    * List all documents for a user
    */
   async listFiles(userId: string): Promise<File[]> {
-    const documents = await this.documentRepo.find({ where: { userId } });
+    const documents = await this.prisma.document.findMany({
+      where: { userId },
+    });
 
-    const files: File[] = documents
-      ? documents.map((document) => ({
-          userId,
-          filename: document.key,
-          size: document.size,
-          status: document.status,
-          createdAt: document.createdAt,
-          updatedAt: document.updatedAt,
-        }))
-      : [];
+    const files: File[] = documents.map((document) => ({
+      userId,
+      filename: document.key,
+      size: document.size,
+      // Cast Prisma enum to application enum - values are compatible at runtime
+      status: document.status as unknown as DocumentStatus,
+      createdAt: document.createdAt,
+      updatedAt: document.updatedAt,
+    }));
 
     return files;
   }
@@ -98,7 +99,9 @@ export class DocumentsService {
 
       if (deleted) {
         // Delete metadata from database
-        await this.documentRepo.delete({ userId, key: filename });
+        await this.prisma.document.deleteMany({
+          where: { userId, key: filename },
+        });
         this.logger.log(`Deleted file ${filename} successfully`);
       }
 
@@ -112,8 +115,10 @@ export class DocumentsService {
   /**
    * Get document by ID
    */
-  async getDocumentById(documentId: string): Promise<DocumentEntity | null> {
-    return this.documentRepo.findOne({ where: { id: documentId } });
+  async getDocumentById(documentId: string): Promise<PrismaDocument | null> {
+    return this.prisma.document.findUnique({
+      where: { id: documentId },
+    });
   }
 
   /**
@@ -125,15 +130,15 @@ export class DocumentsService {
     key: string,
     size: number,
     checksum: string,
-  ): Promise<DocumentEntity> {
-    return this.documentRepo.save({
-      location,
-      userId,
-      key,
-      size,
-      checksum,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+  ): Promise<PrismaDocument> {
+    return this.prisma.document.create({
+      data: {
+        location,
+        userId,
+        key,
+        size,
+        checksum,
+      },
     });
   }
 
@@ -142,8 +147,11 @@ export class DocumentsService {
    */
   async updateDocument(
     id: string,
-    updates: Partial<DocumentEntity>,
+    updates: Partial<PrismaDocument>,
   ): Promise<void> {
-    await this.documentRepo.update(id, updates);
+    await this.prisma.document.update({
+      where: { id },
+      data: updates,
+    });
   }
 }

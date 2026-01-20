@@ -20,6 +20,7 @@ import {
 } from './models/proposition.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
 import {
+  ContactInfoModel,
   RepresentativeModel,
   PaginatedRepresentatives,
 } from './models/representative.model';
@@ -62,8 +63,12 @@ export class RegionResolver {
   ): Promise<PropositionModel | null> {
     const result = await this.regionService.getProposition(id);
     if (!result) return null;
+    // Convert Prisma nulls to GraphQL undefined
     return {
       ...result,
+      fullText: result.fullText ?? undefined,
+      electionDate: result.electionDate ?? undefined,
+      sourceUrl: result.sourceUrl ?? undefined,
       status: result.status as PropositionStatusGQL,
     };
   }
@@ -87,7 +92,15 @@ export class RegionResolver {
   async meeting(
     @Args({ name: 'id', type: () => ID }) id: string,
   ): Promise<MeetingModel | null> {
-    return this.regionService.getMeeting(id);
+    const result = await this.regionService.getMeeting(id);
+    if (!result) return null;
+    // Convert Prisma nulls to GraphQL undefined
+    return {
+      ...result,
+      location: result.location ?? undefined,
+      agendaUrl: result.agendaUrl ?? undefined,
+      videoUrl: result.videoUrl ?? undefined,
+    };
   }
 
   /**
@@ -110,7 +123,14 @@ export class RegionResolver {
   async representative(
     @Args({ name: 'id', type: () => ID }) id: string,
   ): Promise<RepresentativeModel | null> {
-    return this.regionService.getRepresentative(id);
+    const result = await this.regionService.getRepresentative(id);
+    if (!result) return null;
+    // Convert Prisma nulls to GraphQL undefined
+    return {
+      ...result,
+      photoUrl: result.photoUrl ?? undefined,
+      contactInfo: (result.contactInfo as ContactInfoModel) ?? undefined,
+    };
   }
 
   /**

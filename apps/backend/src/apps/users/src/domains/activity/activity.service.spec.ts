@@ -1,21 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { createMock } from '@golevelup/ts-jest';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
 
+import { PrismaService } from 'src/db/prisma.service';
+import { createMockPrismaService } from 'src/test/prisma-mock';
 import { ActivityService } from './activity.service';
-import { AuditLogEntity } from 'src/db/entities/audit-log.entity';
-import { UserSessionEntity } from 'src/db/entities/user-session.entity';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
 
 describe('ActivityService', () => {
   let service: ActivityService;
-  let auditLogRepo: Repository<AuditLogEntity>;
-  let sessionRepo: Repository<UserSessionEntity>;
+  let mockPrisma: ReturnType<typeof createMockPrismaService>;
 
   const mockUserId = 'test-user-id';
   const mockSessionToken = 'mock-session-token-123';
 
+  // Test mock objects - using partial types for test simplicity
   const mockAuditLog = {
     id: 'log-1',
     userId: mockUserId,
@@ -29,20 +26,20 @@ describe('ActivityService', () => {
     ipAddress: '192.168.1.1',
     userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/120.0.0.0',
     timestamp: new Date('2024-01-20T10:00:00Z'),
-  } as unknown as AuditLogEntity;
+  };
 
   const mockMobileAuditLog = {
     ...mockAuditLog,
     id: 'log-2',
     userAgent:
       'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile Safari/605.1.15',
-  } as unknown as AuditLogEntity;
+  };
 
   const mockTabletAuditLog = {
     ...mockAuditLog,
     id: 'log-3',
     userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) Safari',
-  } as unknown as AuditLogEntity;
+  };
 
   const mockSession = {
     id: 'session-1',
@@ -61,7 +58,7 @@ describe('ActivityService', () => {
     expiresAt: new Date('2024-02-15T08:00:00Z'),
     revokedAt: null,
     revokedReason: null,
-  } as unknown as UserSessionEntity;
+  };
 
   const mockOtherSession = {
     ...mockSession,
@@ -69,30 +66,19 @@ describe('ActivityService', () => {
     sessionToken: 'other-token',
     deviceName: 'iPhone',
     deviceType: 'mobile',
-  } as unknown as UserSessionEntity;
+  };
 
   beforeEach(async () => {
+    mockPrisma = createMockPrismaService();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ActivityService,
-        {
-          provide: getRepositoryToken(AuditLogEntity),
-          useValue: createMock<Repository<AuditLogEntity>>(),
-        },
-        {
-          provide: getRepositoryToken(UserSessionEntity),
-          useValue: createMock<Repository<UserSessionEntity>>(),
-        },
+        { provide: PrismaService, useValue: mockPrisma },
       ],
     }).compile();
 
     service = module.get<ActivityService>(ActivityService);
-    auditLogRepo = module.get<Repository<AuditLogEntity>>(
-      getRepositoryToken(AuditLogEntity),
-    );
-    sessionRepo = module.get<Repository<UserSessionEntity>>(
-      getRepositoryToken(UserSessionEntity),
-    );
   });
 
   it('should be defined', () => {
@@ -105,27 +91,25 @@ describe('ActivityService', () => {
 
   describe('getActivityLog', () => {
     it('should return paginated activity log', async () => {
-      auditLogRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[mockAuditLog], 1]);
+      mockPrisma.auditLog.findMany.mockResolvedValue([mockAuditLog]);
+      mockPrisma.auditLog.count.mockResolvedValue(1);
 
       const result = await service.getActivityLog(mockUserId, 20, 0);
 
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
       expect(result.hasMore).toBe(false);
-      expect(auditLogRepo.findAndCount).toHaveBeenCalledWith({
+      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith({
         where: { userId: mockUserId },
-        order: { timestamp: 'DESC' },
+        orderBy: { timestamp: 'desc' },
         take: 20,
         skip: 0,
       });
     });
 
     it('should set hasMore true when more items exist', async () => {
-      auditLogRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[mockAuditLog], 25]);
+      mockPrisma.auditLog.findMany.mockResolvedValue([mockAuditLog]);
+      mockPrisma.auditLog.count.mockResolvedValue(25);
 
       const result = await service.getActivityLog(mockUserId, 10, 0);
 
@@ -133,30 +117,30 @@ describe('ActivityService', () => {
     });
 
     it('should apply action filters', async () => {
-      auditLogRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[mockAuditLog], 1]);
+      mockPrisma.auditLog.findMany.mockResolvedValue([mockAuditLog]);
+      mockPrisma.auditLog.count.mockResolvedValue(1);
 
       const filters = { actions: [AuditAction.LOGIN, AuditAction.LOGOUT] };
       await service.getActivityLog(mockUserId, 20, 0, filters);
 
-      expect(auditLogRepo.findAndCount).toHaveBeenCalledWith(
+      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             userId: mockUserId,
-            action: In([AuditAction.LOGIN, AuditAction.LOGOUT]),
+            action: { in: [AuditAction.LOGIN, AuditAction.LOGOUT] },
           }),
         }),
       );
     });
 
     it('should apply entityType filter', async () => {
-      auditLogRepo.findAndCount = jest.fn().mockResolvedValue([[], 0]);
+      mockPrisma.auditLog.findMany.mockResolvedValue([]);
+      mockPrisma.auditLog.count.mockResolvedValue(0);
 
       const filters = { entityType: 'User' };
       await service.getActivityLog(mockUserId, 20, 0, filters);
 
-      expect(auditLogRepo.findAndCount).toHaveBeenCalledWith(
+      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             entityType: 'User',
@@ -166,12 +150,13 @@ describe('ActivityService', () => {
     });
 
     it('should apply successOnly filter', async () => {
-      auditLogRepo.findAndCount = jest.fn().mockResolvedValue([[], 0]);
+      mockPrisma.auditLog.findMany.mockResolvedValue([]);
+      mockPrisma.auditLog.count.mockResolvedValue(0);
 
       const filters = { successOnly: true };
       await service.getActivityLog(mockUserId, 20, 0, filters);
 
-      expect(auditLogRepo.findAndCount).toHaveBeenCalledWith(
+      expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             success: true,
@@ -181,9 +166,8 @@ describe('ActivityService', () => {
     });
 
     it('should parse desktop user agent correctly', async () => {
-      auditLogRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[mockAuditLog], 1]);
+      mockPrisma.auditLog.findMany.mockResolvedValue([mockAuditLog]);
+      mockPrisma.auditLog.count.mockResolvedValue(1);
 
       const result = await service.getActivityLog(mockUserId, 20, 0);
 
@@ -192,9 +176,8 @@ describe('ActivityService', () => {
     });
 
     it('should parse mobile user agent correctly', async () => {
-      auditLogRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[mockMobileAuditLog], 1]);
+      mockPrisma.auditLog.findMany.mockResolvedValue([mockMobileAuditLog]);
+      mockPrisma.auditLog.count.mockResolvedValue(1);
 
       const result = await service.getActivityLog(mockUserId, 20, 0);
 
@@ -203,9 +186,8 @@ describe('ActivityService', () => {
     });
 
     it('should parse tablet user agent correctly', async () => {
-      auditLogRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[mockTabletAuditLog], 1]);
+      mockPrisma.auditLog.findMany.mockResolvedValue([mockTabletAuditLog]);
+      mockPrisma.auditLog.count.mockResolvedValue(1);
 
       const result = await service.getActivityLog(mockUserId, 20, 0);
 
@@ -213,10 +195,9 @@ describe('ActivityService', () => {
     });
 
     it('should handle missing user agent', async () => {
-      const logWithoutUA = { ...mockAuditLog, userAgent: undefined };
-      auditLogRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[logWithoutUA], 1]);
+      const logWithoutUA = { ...mockAuditLog, userAgent: null };
+      mockPrisma.auditLog.findMany.mockResolvedValue([logWithoutUA]);
+      mockPrisma.auditLog.count.mockResolvedValue(1);
 
       const result = await service.getActivityLog(mockUserId, 20, 0);
 
@@ -229,9 +210,8 @@ describe('ActivityService', () => {
         ...mockAuditLog,
         userAgent: 'Mozilla/5.0 (Windows NT 10.0) Firefox/121.0',
       };
-      auditLogRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[firefoxLog], 1]);
+      mockPrisma.auditLog.findMany.mockResolvedValue([firefoxLog]);
+      mockPrisma.auditLog.count.mockResolvedValue(1);
 
       const result = await service.getActivityLog(mockUserId, 20, 0);
 
@@ -243,7 +223,8 @@ describe('ActivityService', () => {
         ...mockAuditLog,
         userAgent: 'Mozilla/5.0 (Windows NT 10.0) Edge/121.0',
       };
-      auditLogRepo.findAndCount = jest.fn().mockResolvedValue([[edgeLog], 1]);
+      mockPrisma.auditLog.findMany.mockResolvedValue([edgeLog]);
+      mockPrisma.auditLog.count.mockResolvedValue(1);
 
       const result = await service.getActivityLog(mockUserId, 20, 0);
 
@@ -257,37 +238,37 @@ describe('ActivityService', () => {
 
   describe('getSessions', () => {
     it('should return active sessions', async () => {
-      sessionRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[mockSession], 1]);
+      mockPrisma.userSession.findMany.mockResolvedValue([mockSession]);
+      mockPrisma.userSession.count.mockResolvedValue(1);
 
       const result = await service.getSessions(mockUserId, mockSessionToken);
 
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
-      expect(sessionRepo.findAndCount).toHaveBeenCalledWith({
+      expect(mockPrisma.userSession.findMany).toHaveBeenCalledWith({
         where: { userId: mockUserId, isActive: true },
-        order: { lastActivityAt: 'DESC', createdAt: 'DESC' },
+        orderBy: [{ lastActivityAt: 'desc' }, { createdAt: 'desc' }],
       });
     });
 
     it('should include revoked sessions when flag is set', async () => {
-      sessionRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[mockSession], 1]);
+      mockPrisma.userSession.findMany.mockResolvedValue([mockSession]);
+      mockPrisma.userSession.count.mockResolvedValue(1);
 
       await service.getSessions(mockUserId, mockSessionToken, true);
 
-      expect(sessionRepo.findAndCount).toHaveBeenCalledWith({
+      expect(mockPrisma.userSession.findMany).toHaveBeenCalledWith({
         where: { userId: mockUserId },
-        order: { lastActivityAt: 'DESC', createdAt: 'DESC' },
+        orderBy: [{ lastActivityAt: 'desc' }, { createdAt: 'desc' }],
       });
     });
 
     it('should mark current session correctly', async () => {
-      sessionRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([[mockSession, mockOtherSession], 2]);
+      mockPrisma.userSession.findMany.mockResolvedValue([
+        mockSession,
+        mockOtherSession,
+      ]);
+      mockPrisma.userSession.count.mockResolvedValue(2);
 
       const result = await service.getSessions(mockUserId, mockSessionToken);
 
@@ -302,7 +283,7 @@ describe('ActivityService', () => {
 
   describe('getSession', () => {
     it('should return session by id', async () => {
-      sessionRepo.findOne = jest.fn().mockResolvedValue(mockSession);
+      mockPrisma.userSession.findFirst.mockResolvedValue(mockSession);
 
       const result = await service.getSession(
         mockUserId,
@@ -316,7 +297,7 @@ describe('ActivityService', () => {
     });
 
     it('should return null for non-existent session', async () => {
-      sessionRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.userSession.findFirst.mockResolvedValue(null);
 
       const result = await service.getSession(
         mockUserId,
@@ -328,7 +309,7 @@ describe('ActivityService', () => {
     });
 
     it('should mark isCurrent false for different token', async () => {
-      sessionRepo.findOne = jest.fn().mockResolvedValue(mockSession);
+      mockPrisma.userSession.findFirst.mockResolvedValue(mockSession);
 
       const result = await service.getSession(
         mockUserId,
@@ -346,7 +327,7 @@ describe('ActivityService', () => {
 
   describe('revokeSession', () => {
     it('should revoke session successfully', async () => {
-      sessionRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
+      mockPrisma.userSession.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await service.revokeSession(
         mockUserId,
@@ -355,17 +336,17 @@ describe('ActivityService', () => {
       );
 
       expect(result).toBe(true);
-      expect(sessionRepo.update).toHaveBeenCalledWith(
-        { id: 'session-1', userId: mockUserId },
-        expect.objectContaining({
+      expect(mockPrisma.userSession.updateMany).toHaveBeenCalledWith({
+        where: { id: 'session-1', userId: mockUserId },
+        data: expect.objectContaining({
           isActive: false,
           revokedReason: 'user_logout',
         }),
-      );
+      });
     });
 
     it('should return false if session not found', async () => {
-      sessionRepo.update = jest.fn().mockResolvedValue({ affected: 0 });
+      mockPrisma.userSession.updateMany.mockResolvedValue({ count: 0 });
 
       const result = await service.revokeSession(
         mockUserId,
@@ -383,10 +364,11 @@ describe('ActivityService', () => {
 
   describe('revokeAllSessions', () => {
     it('should revoke all sessions except current', async () => {
-      sessionRepo.find = jest
-        .fn()
-        .mockResolvedValue([mockSession, mockOtherSession]);
-      sessionRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
+      mockPrisma.userSession.findMany.mockResolvedValue([
+        mockSession,
+        mockOtherSession,
+      ]);
+      mockPrisma.userSession.update.mockResolvedValue(mockOtherSession);
 
       const result = await service.revokeAllSessions(
         mockUserId,
@@ -395,18 +377,18 @@ describe('ActivityService', () => {
       );
 
       expect(result).toBe(1);
-      expect(sessionRepo.update).toHaveBeenCalledTimes(1);
-      expect(sessionRepo.update).toHaveBeenCalledWith(
-        'session-2',
-        expect.objectContaining({
+      expect(mockPrisma.userSession.update).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.userSession.update).toHaveBeenCalledWith({
+        where: { id: 'session-2' },
+        data: expect.objectContaining({
           isActive: false,
           revokedReason: 'user_logout_all',
         }),
-      );
+      });
     });
 
     it('should return 0 if no other sessions exist', async () => {
-      sessionRepo.find = jest.fn().mockResolvedValue([mockSession]);
+      mockPrisma.userSession.findMany.mockResolvedValue([mockSession]);
 
       const result = await service.revokeAllSessions(
         mockUserId,
@@ -418,10 +400,11 @@ describe('ActivityService', () => {
     });
 
     it('should revoke all sessions if no current token provided', async () => {
-      sessionRepo.find = jest
-        .fn()
-        .mockResolvedValue([mockSession, mockOtherSession]);
-      sessionRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
+      mockPrisma.userSession.findMany.mockResolvedValue([
+        mockSession,
+        mockOtherSession,
+      ]);
+      mockPrisma.userSession.update.mockResolvedValue(mockSession);
 
       const result = await service.revokeAllSessions(
         mockUserId,
@@ -430,7 +413,7 @@ describe('ActivityService', () => {
       );
 
       expect(result).toBe(2);
-      expect(sessionRepo.update).toHaveBeenCalledTimes(2);
+      expect(mockPrisma.userSession.update).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -440,16 +423,14 @@ describe('ActivityService', () => {
 
   describe('getActivitySummary', () => {
     it('should return complete activity summary', async () => {
-      auditLogRepo.count = jest
-        .fn()
+      mockPrisma.auditLog.count
         .mockResolvedValueOnce(100) // totalActions
         .mockResolvedValueOnce(95) // successfulActions
         .mockResolvedValueOnce(5); // failedActions
 
-      sessionRepo.count = jest.fn().mockResolvedValue(2);
+      mockPrisma.userSession.count.mockResolvedValue(2);
 
-      auditLogRepo.findOne = jest
-        .fn()
+      mockPrisma.auditLog.findFirst
         .mockResolvedValueOnce(mockAuditLog) // lastLogin
         .mockResolvedValueOnce(mockAuditLog); // lastActivity
 
@@ -464,9 +445,9 @@ describe('ActivityService', () => {
     });
 
     it('should handle no login history', async () => {
-      auditLogRepo.count = jest.fn().mockResolvedValue(0);
-      sessionRepo.count = jest.fn().mockResolvedValue(0);
-      auditLogRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.auditLog.count.mockResolvedValue(0);
+      mockPrisma.userSession.count.mockResolvedValue(0);
+      mockPrisma.auditLog.findFirst.mockResolvedValue(null);
 
       const result = await service.getActivitySummary(mockUserId);
 

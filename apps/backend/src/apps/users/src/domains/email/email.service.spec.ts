@@ -1,50 +1,42 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
-import { createMock } from '@golevelup/ts-jest';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { ForbiddenException } from '@nestjs/common';
 import { IEmailProvider } from '@qckstrt/common';
+import {
+  EmailType as PrismaEmailType,
+  EmailStatus as PrismaEmailStatus,
+  ConsentType as PrismaConsentType,
+  ConsentStatus as PrismaConsentStatus,
+} from '@prisma/client';
 
 import { EmailService } from './email.service';
-import {
-  EmailCorrespondenceEntity,
-  EmailType,
-  EmailStatus,
-} from 'src/db/entities/email-correspondence.entity';
-import { UserProfileEntity } from 'src/db/entities/user-profile.entity';
-import { UserAddressEntity } from 'src/db/entities/user-address.entity';
-import {
-  UserConsentEntity,
-  ConsentType,
-  ConsentStatus,
-} from 'src/db/entities/user-consent.entity';
+import { PrismaService } from 'src/db/prisma.service';
+import { createMockPrismaService } from 'src/test/prisma-mock';
 
 describe('EmailService', () => {
   let service: EmailService;
   let emailProvider: IEmailProvider;
-  let correspondenceRepo: Repository<EmailCorrespondenceEntity>;
-  let profileRepo: Repository<UserProfileEntity>;
-  let addressRepo: Repository<UserAddressEntity>;
-  let consentRepo: Repository<UserConsentEntity>;
+  let mockPrisma: ReturnType<typeof createMockPrismaService>;
 
   const mockUserId = 'test-user-id';
   const mockUserEmail = 'user@example.com';
 
-  const mockCorrespondence = {
+  // Using 'any' type for mock objects to avoid strict Prisma type checking
+  const mockCorrespondence: any = {
     id: 'correspondence-id',
     userId: mockUserId,
-    emailType: EmailType.WELCOME,
-    status: EmailStatus.PENDING,
+    emailType: PrismaEmailType.welcome,
+    status: PrismaEmailStatus.pending,
     recipientEmail: 'recipient@example.com',
     recipientName: 'Recipient',
     subject: 'Test Subject',
     bodyPreview: 'Test body preview',
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as EmailCorrespondenceEntity;
+  };
 
-  const mockProfile = {
+  const mockProfile: any = {
     id: 'profile-id',
     userId: mockUserId,
     firstName: 'John',
@@ -52,9 +44,9 @@ describe('EmailService', () => {
     displayName: 'johndoe',
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as UserProfileEntity;
+  };
 
-  const mockAddress = {
+  const mockAddress: any = {
     id: 'address-id',
     userId: mockUserId,
     addressLine1: '123 Main St',
@@ -64,17 +56,17 @@ describe('EmailService', () => {
     isPrimary: true,
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as UserAddressEntity;
+  };
 
-  const mockConsent = {
+  const mockConsent: any = {
     id: 'consent-id',
     userId: mockUserId,
-    consentType: ConsentType.REPRESENTATIVE_CONTACT,
-    status: ConsentStatus.GRANTED,
+    consentType: PrismaConsentType.representative_contact,
+    status: PrismaConsentStatus.granted,
     grantedAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as UserConsentEntity;
+  };
 
   const mockRepresentative = {
     id: 'rep-id',
@@ -88,22 +80,31 @@ describe('EmailService', () => {
     title: 'Test Proposition',
   };
 
-  beforeEach(async () => {
-    const mockEmailProvider = {
-      getName: jest.fn().mockReturnValue('resend'),
-      send: jest.fn().mockResolvedValue({ success: true, id: 'email-id-123' }),
-      sendBatch: jest.fn().mockResolvedValue([]),
-    };
+  const mockEmailProvider = {
+    getName: jest.fn().mockReturnValue('resend'),
+    send: jest.fn().mockResolvedValue({ success: true, id: 'email-id-123' }),
+    sendBatch: jest.fn().mockResolvedValue([]),
+  };
 
-    const mockConfigService = {
-      get: jest.fn().mockImplementation((key: string) => {
-        const config: Record<string, string> = {
-          'email.fromName': 'Commonwealth Labs',
-          FRONTEND_URL: 'https://app.commonwealthlabs.io',
-        };
-        return config[key];
-      }),
-    };
+  const mockConfigService = {
+    get: jest.fn().mockImplementation((key: string) => {
+      const config: Record<string, string> = {
+        'email.fromName': 'Commonwealth Labs',
+        FRONTEND_URL: 'https://app.commonwealthlabs.io',
+      };
+      return config[key];
+    }),
+  };
+
+  beforeEach(async () => {
+    mockPrisma = createMockPrismaService();
+
+    // Reset email provider mock to default behavior
+    mockEmailProvider.send.mockReset();
+    mockEmailProvider.send.mockResolvedValue({
+      success: true,
+      id: 'email-id-123',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -112,22 +113,7 @@ describe('EmailService', () => {
           provide: 'EMAIL_PROVIDER',
           useValue: mockEmailProvider,
         },
-        {
-          provide: getRepositoryToken(EmailCorrespondenceEntity),
-          useValue: createMock<Repository<EmailCorrespondenceEntity>>(),
-        },
-        {
-          provide: getRepositoryToken(UserProfileEntity),
-          useValue: createMock<Repository<UserProfileEntity>>(),
-        },
-        {
-          provide: getRepositoryToken(UserAddressEntity),
-          useValue: createMock<Repository<UserAddressEntity>>(),
-        },
-        {
-          provide: getRepositoryToken(UserConsentEntity),
-          useValue: createMock<Repository<UserConsentEntity>>(),
-        },
+        { provide: PrismaService, useValue: mockPrisma },
         {
           provide: ConfigService,
           useValue: mockConfigService,
@@ -137,18 +123,6 @@ describe('EmailService', () => {
 
     service = module.get<EmailService>(EmailService);
     emailProvider = module.get<IEmailProvider>('EMAIL_PROVIDER');
-    correspondenceRepo = module.get<Repository<EmailCorrespondenceEntity>>(
-      getRepositoryToken(EmailCorrespondenceEntity),
-    );
-    profileRepo = module.get<Repository<UserProfileEntity>>(
-      getRepositoryToken(UserProfileEntity),
-    );
-    addressRepo = module.get<Repository<UserAddressEntity>>(
-      getRepositoryToken(UserAddressEntity),
-    );
-    consentRepo = module.get<Repository<UserConsentEntity>>(
-      getRepositoryToken(UserConsentEntity),
-    );
   });
 
   it('should be defined', () => {
@@ -161,8 +135,13 @@ describe('EmailService', () => {
 
   describe('sendWelcomeEmail', () => {
     it('should send welcome email successfully', async () => {
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue({
+        ...mockCorrespondence,
+        status: PrismaEmailStatus.sent,
+      });
 
       const result = await service.sendWelcomeEmail(
         mockUserId,
@@ -183,17 +162,27 @@ describe('EmailService', () => {
     });
 
     it('should update correspondence status on success', async () => {
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue({
+        ...mockCorrespondence,
+        status: PrismaEmailStatus.sent,
+      });
 
       await service.sendWelcomeEmail(mockUserId, mockUserEmail);
 
-      expect(correspondenceRepo.save).toHaveBeenCalledTimes(2);
+      expect(mockPrisma.emailCorrespondence.update).toHaveBeenCalled();
     });
 
     it('should handle send failure gracefully', async () => {
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue({
+        ...mockCorrespondence,
+        status: PrismaEmailStatus.failed,
+      });
       (emailProvider.send as jest.Mock).mockResolvedValue({
         success: false,
         error: 'Rate limit exceeded',
@@ -209,8 +198,12 @@ describe('EmailService', () => {
     });
 
     it('should throw error on provider exception', async () => {
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue(
+        mockCorrespondence,
+      );
       (emailProvider.send as jest.Mock).mockRejectedValue(
         new Error('Network error'),
       );
@@ -234,16 +227,17 @@ describe('EmailService', () => {
     };
 
     it('should send representative contact email successfully', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
-      addressRepo.findOne = jest.fn().mockResolvedValue(mockAddress);
-      correspondenceRepo.create = jest.fn().mockReturnValue({
+      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue({
         ...mockCorrespondence,
-        emailType: EmailType.REPRESENTATIVE_CONTACT,
+        emailType: PrismaEmailType.representative_contact,
       });
-      correspondenceRepo.save = jest.fn().mockResolvedValue({
+      mockPrisma.emailCorrespondence.update.mockResolvedValue({
         ...mockCorrespondence,
-        emailType: EmailType.REPRESENTATIVE_CONTACT,
+        emailType: PrismaEmailType.representative_contact,
+        status: PrismaEmailStatus.sent,
       });
 
       const result = await service.contactRepresentative(
@@ -269,7 +263,7 @@ describe('EmailService', () => {
     });
 
     it('should throw ForbiddenException when consent not granted', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.userConsent.findFirst.mockResolvedValue(null);
 
       await expect(
         service.contactRepresentative(
@@ -282,11 +276,15 @@ describe('EmailService', () => {
     });
 
     it('should include address when requested and available', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
-      addressRepo.findOne = jest.fn().mockResolvedValue(mockAddress);
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue(
+        mockCorrespondence,
+      );
 
       await service.contactRepresentative(
         mockUserId,
@@ -295,16 +293,20 @@ describe('EmailService', () => {
         mockRepresentative,
       );
 
-      expect(addressRepo.findOne).toHaveBeenCalledWith({
+      expect(mockPrisma.userAddress.findFirst).toHaveBeenCalledWith({
         where: { userId: mockUserId, isPrimary: true },
       });
     });
 
     it('should not include address when not requested', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue(
+        mockCorrespondence,
+      );
 
       await service.contactRepresentative(
         mockUserId,
@@ -313,18 +315,22 @@ describe('EmailService', () => {
         mockRepresentative,
       );
 
-      expect(addressRepo.findOne).not.toHaveBeenCalled();
+      expect(mockPrisma.userAddress.findFirst).not.toHaveBeenCalled();
     });
 
     it('should use displayName when firstName not available', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      profileRepo.findOne = jest.fn().mockResolvedValue({
+      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockPrisma.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: null,
         displayName: 'johndoe',
       });
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue(
+        mockCorrespondence,
+      );
 
       const result = await service.contactRepresentative(
         mockUserId,
@@ -337,14 +343,18 @@ describe('EmailService', () => {
     });
 
     it('should use fallback name when no profile name available', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      profileRepo.findOne = jest.fn().mockResolvedValue({
+      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockPrisma.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: null,
         displayName: null,
       });
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue(
+        mockCorrespondence,
+      );
 
       const result = await service.contactRepresentative(
         mockUserId,
@@ -357,10 +367,14 @@ describe('EmailService', () => {
     });
 
     it('should handle contact without proposition', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue(
+        mockCorrespondence,
+      );
 
       const result = await service.contactRepresentative(
         mockUserId,
@@ -374,10 +388,15 @@ describe('EmailService', () => {
     });
 
     it('should handle email send failure', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue({
+        ...mockCorrespondence,
+        status: PrismaEmailStatus.failed,
+      });
       (emailProvider.send as jest.Mock).mockResolvedValue({
         success: false,
         error: 'Invalid recipient email',
@@ -394,10 +413,14 @@ describe('EmailService', () => {
     });
 
     it('should throw error on provider exception', async () => {
-      consentRepo.findOne = jest.fn().mockResolvedValue(mockConsent);
-      profileRepo.findOne = jest.fn().mockResolvedValue(mockProfile);
-      correspondenceRepo.create = jest.fn().mockReturnValue(mockCorrespondence);
-      correspondenceRepo.save = jest.fn().mockResolvedValue(mockCorrespondence);
+      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.emailCorrespondence.create.mockResolvedValue(
+        mockCorrespondence,
+      );
+      mockPrisma.emailCorrespondence.update.mockResolvedValue(
+        mockCorrespondence,
+      );
       (emailProvider.send as jest.Mock).mockRejectedValue(
         new Error('Network error'),
       );
@@ -420,9 +443,8 @@ describe('EmailService', () => {
   describe('getEmailHistory', () => {
     it('should return paginated email history', async () => {
       const mockItems = [mockCorrespondence, mockCorrespondence];
-      correspondenceRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([mockItems, 2]);
+      mockPrisma.emailCorrespondence.findMany.mockResolvedValue(mockItems);
+      mockPrisma.emailCorrespondence.count.mockResolvedValue(2);
 
       const result = await service.getEmailHistory(mockUserId, 0, 10);
 
@@ -433,9 +455,8 @@ describe('EmailService', () => {
 
     it('should indicate hasMore when more items exist', async () => {
       const mockItems = Array(11).fill(mockCorrespondence);
-      correspondenceRepo.findAndCount = jest
-        .fn()
-        .mockResolvedValue([mockItems, 20]);
+      mockPrisma.emailCorrespondence.findMany.mockResolvedValue(mockItems);
+      mockPrisma.emailCorrespondence.count.mockResolvedValue(20);
 
       const result = await service.getEmailHistory(mockUserId, 0, 10);
 
@@ -444,27 +465,29 @@ describe('EmailService', () => {
     });
 
     it('should filter by email type when provided', async () => {
-      correspondenceRepo.findAndCount = jest.fn().mockResolvedValue([[], 0]);
+      mockPrisma.emailCorrespondence.findMany.mockResolvedValue([]);
+      mockPrisma.emailCorrespondence.count.mockResolvedValue(0);
 
       await service.getEmailHistory(
         mockUserId,
         0,
         10,
-        EmailType.REPRESENTATIVE_CONTACT,
+        PrismaEmailType.representative_contact,
       );
 
-      expect(correspondenceRepo.findAndCount).toHaveBeenCalledWith(
+      expect(mockPrisma.emailCorrespondence.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             userId: mockUserId,
-            emailType: EmailType.REPRESENTATIVE_CONTACT,
+            emailType: PrismaEmailType.representative_contact,
           },
         }),
       );
     });
 
     it('should return empty result when no emails exist', async () => {
-      correspondenceRepo.findAndCount = jest.fn().mockResolvedValue([[], 0]);
+      mockPrisma.emailCorrespondence.findMany.mockResolvedValue([]);
+      mockPrisma.emailCorrespondence.count.mockResolvedValue(0);
 
       const result = await service.getEmailHistory(mockUserId);
 
@@ -480,9 +503,9 @@ describe('EmailService', () => {
 
   describe('getEmailById', () => {
     it('should return email if found', async () => {
-      correspondenceRepo.findOne = jest
-        .fn()
-        .mockResolvedValue(mockCorrespondence);
+      mockPrisma.emailCorrespondence.findFirst.mockResolvedValue(
+        mockCorrespondence,
+      );
 
       const result = await service.getEmailById(
         mockUserId,
@@ -490,13 +513,13 @@ describe('EmailService', () => {
       );
 
       expect(result).toEqual(mockCorrespondence);
-      expect(correspondenceRepo.findOne).toHaveBeenCalledWith({
+      expect(mockPrisma.emailCorrespondence.findFirst).toHaveBeenCalledWith({
         where: { id: mockCorrespondence.id, userId: mockUserId },
       });
     });
 
     it('should return null if email not found', async () => {
-      correspondenceRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.emailCorrespondence.findFirst.mockResolvedValue(null);
 
       const result = await service.getEmailById(mockUserId, 'non-existent');
 

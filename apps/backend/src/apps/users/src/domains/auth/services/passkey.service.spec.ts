@@ -1,18 +1,14 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, DeleteResult, UpdateResult } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { createMock } from '@golevelup/ts-jest';
 import type {
   RegistrationResponseJSON,
   AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
 
+import { PrismaService } from 'src/db/prisma.service';
+import { createMockPrismaService } from 'src/test/prisma-mock';
 import { PasskeyService } from './passkey.service';
-import { PasskeyCredentialEntity } from 'src/db/entities/passkey-credential.entity';
-import { WebAuthnChallengeEntity } from 'src/db/entities/webauthn-challenge.entity';
 
 // Mock @simplewebauthn/server
 jest.mock('@simplewebauthn/server', () => ({
@@ -26,16 +22,15 @@ import * as simplewebauthn from '@simplewebauthn/server';
 
 describe('PasskeyService', () => {
   let service: PasskeyService;
-  let credentialRepo: Repository<PasskeyCredentialEntity>;
-  let challengeRepo: Repository<WebAuthnChallengeEntity>;
-  let configService: ConfigService;
+  let mockPrisma: ReturnType<typeof createMockPrismaService>;
 
-  const mockCredential: Partial<PasskeyCredentialEntity> = {
+  // Using 'any' type for mock objects to avoid strict Prisma type checking
+  const mockCredential: any = {
     id: 'cred-1',
     userId: 'user-1',
     credentialId: 'credential-id-123',
     publicKey: Buffer.from('publickey').toString('base64url'),
-    counter: 0,
+    counter: BigInt(0),
     deviceType: 'singleDevice',
     backedUp: false,
     friendlyName: 'Test Device',
@@ -45,10 +40,10 @@ describe('PasskeyService', () => {
     user: {
       id: 'user-1',
       email: 'test@example.com',
-    } as any,
+    },
   };
 
-  const mockChallenge: Partial<WebAuthnChallengeEntity> = {
+  const mockChallenge: any = {
     identifier: 'test@example.com',
     challenge: 'challenge-string',
     type: 'registration',
@@ -80,42 +75,29 @@ describe('PasskeyService', () => {
     type: 'public-key',
   };
 
+  const mockConfigService = {
+    get: jest.fn((key: string) => {
+      const config: Record<string, string> = {
+        'webauthn.rpName': 'TestApp',
+        'webauthn.rpId': 'localhost',
+        'webauthn.origin': 'http://localhost:3000',
+      };
+      return config[key];
+    }),
+  };
+
   beforeEach(async () => {
+    mockPrisma = createMockPrismaService();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PasskeyService,
-        {
-          provide: getRepositoryToken(PasskeyCredentialEntity),
-          useValue: createMock<Repository<PasskeyCredentialEntity>>(),
-        },
-        {
-          provide: getRepositoryToken(WebAuthnChallengeEntity),
-          useValue: createMock<Repository<WebAuthnChallengeEntity>>(),
-        },
-        {
-          provide: ConfigService,
-          useValue: {
-            get: jest.fn((key: string) => {
-              const config: Record<string, string> = {
-                'webauthn.rpName': 'TestApp',
-                'webauthn.rpId': 'localhost',
-                'webauthn.origin': 'http://localhost:3000',
-              };
-              return config[key];
-            }),
-          },
-        },
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
     service = module.get<PasskeyService>(PasskeyService);
-    credentialRepo = module.get<Repository<PasskeyCredentialEntity>>(
-      getRepositoryToken(PasskeyCredentialEntity),
-    );
-    challengeRepo = module.get<Repository<WebAuthnChallengeEntity>>(
-      getRepositoryToken(WebAuthnChallengeEntity),
-    );
-    configService = module.get<ConfigService>(ConfigService);
   });
 
   afterEach(() => {
@@ -140,14 +122,7 @@ describe('PasskeyService', () => {
         Test.createTestingModule({
           providers: [
             PasskeyService,
-            {
-              provide: getRepositoryToken(PasskeyCredentialEntity),
-              useValue: createMock<Repository<PasskeyCredentialEntity>>(),
-            },
-            {
-              provide: getRepositoryToken(WebAuthnChallengeEntity),
-              useValue: createMock<Repository<WebAuthnChallengeEntity>>(),
-            },
+            { provide: PrismaService, useValue: createMockPrismaService() },
             {
               provide: ConfigService,
               useValue: {
@@ -171,14 +146,7 @@ describe('PasskeyService', () => {
         Test.createTestingModule({
           providers: [
             PasskeyService,
-            {
-              provide: getRepositoryToken(PasskeyCredentialEntity),
-              useValue: createMock<Repository<PasskeyCredentialEntity>>(),
-            },
-            {
-              provide: getRepositoryToken(WebAuthnChallengeEntity),
-              useValue: createMock<Repository<WebAuthnChallengeEntity>>(),
-            },
+            { provide: PrismaService, useValue: createMockPrismaService() },
             {
               provide: ConfigService,
               useValue: {
@@ -201,14 +169,7 @@ describe('PasskeyService', () => {
       const module = await Test.createTestingModule({
         providers: [
           PasskeyService,
-          {
-            provide: getRepositoryToken(PasskeyCredentialEntity),
-            useValue: createMock<Repository<PasskeyCredentialEntity>>(),
-          },
-          {
-            provide: getRepositoryToken(WebAuthnChallengeEntity),
-            useValue: createMock<Repository<WebAuthnChallengeEntity>>(),
-          },
+          { provide: PrismaService, useValue: createMockPrismaService() },
           {
             provide: ConfigService,
             useValue: {
@@ -228,14 +189,7 @@ describe('PasskeyService', () => {
       const module = await Test.createTestingModule({
         providers: [
           PasskeyService,
-          {
-            provide: getRepositoryToken(PasskeyCredentialEntity),
-            useValue: createMock<Repository<PasskeyCredentialEntity>>(),
-          },
-          {
-            provide: getRepositoryToken(WebAuthnChallengeEntity),
-            useValue: createMock<Repository<WebAuthnChallengeEntity>>(),
-          },
+          { provide: PrismaService, useValue: createMockPrismaService() },
           {
             provide: ConfigService,
             useValue: {
@@ -264,13 +218,12 @@ describe('PasskeyService', () => {
         rp: { name: 'TestApp', id: 'localhost' },
       };
 
-      credentialRepo.find = jest.fn().mockResolvedValue([]);
+      mockPrisma.passkeyCredential.findMany.mockResolvedValue([]);
       (
         simplewebauthn.generateRegistrationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
-      challengeRepo.create = jest.fn().mockReturnValue({});
-      challengeRepo.save = jest.fn().mockResolvedValue({});
+      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       const result = await service.generateRegistrationOptions(
         'user-1',
@@ -285,13 +238,12 @@ describe('PasskeyService', () => {
     it('should exclude existing credentials from registration options', async () => {
       const mockOptions = { challenge: 'test-challenge' };
 
-      credentialRepo.find = jest.fn().mockResolvedValue([mockCredential]);
+      mockPrisma.passkeyCredential.findMany.mockResolvedValue([mockCredential]);
       (
         simplewebauthn.generateRegistrationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
-      challengeRepo.create = jest.fn().mockReturnValue({});
-      challengeRepo.save = jest.fn().mockResolvedValue({});
+      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       await service.generateRegistrationOptions(
         'user-1',
@@ -322,11 +274,11 @@ describe('PasskeyService', () => {
         },
       };
 
-      challengeRepo.findOne = jest.fn().mockResolvedValue(mockChallenge);
+      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
       (
         simplewebauthn.verifyRegistrationResponse as jest.Mock
       ).mockResolvedValue(mockVerification);
-      challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
+      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await service.verifyRegistration(
         'test@example.com',
@@ -334,11 +286,11 @@ describe('PasskeyService', () => {
       );
 
       expect(result).toEqual(mockVerification);
-      expect(challengeRepo.delete).toHaveBeenCalled();
+      expect(mockPrisma.webAuthnChallenge.deleteMany).toHaveBeenCalled();
     });
 
     it('should throw error when challenge not found', async () => {
-      challengeRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(null);
 
       await expect(
         service.verifyRegistration(
@@ -353,7 +305,9 @@ describe('PasskeyService', () => {
         ...mockChallenge,
         expiresAt: new Date(Date.now() - 1000), // Expired
       };
-      challengeRepo.findOne = jest.fn().mockResolvedValue(expiredChallenge);
+      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(
+        expiredChallenge,
+      );
 
       await expect(
         service.verifyRegistration(
@@ -380,8 +334,7 @@ describe('PasskeyService', () => {
         },
       };
 
-      credentialRepo.create = jest.fn().mockReturnValue(mockCredential);
-      credentialRepo.save = jest.fn().mockResolvedValue(mockCredential);
+      mockPrisma.passkeyCredential.create.mockResolvedValue(mockCredential);
 
       const result = await service.saveCredential(
         'user-1',
@@ -390,7 +343,7 @@ describe('PasskeyService', () => {
       );
 
       expect(result).toEqual(mockCredential);
-      expect(credentialRepo.save).toHaveBeenCalled();
+      expect(mockPrisma.passkeyCredential.create).toHaveBeenCalled();
     });
 
     it('should use default friendly name when not provided', async () => {
@@ -407,16 +360,15 @@ describe('PasskeyService', () => {
         },
       };
 
-      credentialRepo.create = jest.fn().mockReturnValue(mockCredential);
-      credentialRepo.save = jest.fn().mockResolvedValue(mockCredential);
+      mockPrisma.passkeyCredential.create.mockResolvedValue(mockCredential);
 
       await service.saveCredential('user-1', mockVerification as any);
 
-      expect(credentialRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(mockPrisma.passkeyCredential.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
           friendlyName: 'This device',
         }),
-      );
+      });
     });
 
     it('should use synced passkey name for multiDevice', async () => {
@@ -433,16 +385,15 @@ describe('PasskeyService', () => {
         },
       };
 
-      credentialRepo.create = jest.fn().mockReturnValue(mockCredential);
-      credentialRepo.save = jest.fn().mockResolvedValue(mockCredential);
+      mockPrisma.passkeyCredential.create.mockResolvedValue(mockCredential);
 
       await service.saveCredential('user-1', mockVerification as any);
 
-      expect(credentialRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(mockPrisma.passkeyCredential.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
           friendlyName: 'Synced passkey',
         }),
-      );
+      });
     });
 
     it('should use default passkey name for unknown device type', async () => {
@@ -459,16 +410,15 @@ describe('PasskeyService', () => {
         },
       };
 
-      credentialRepo.create = jest.fn().mockReturnValue(mockCredential);
-      credentialRepo.save = jest.fn().mockResolvedValue(mockCredential);
+      mockPrisma.passkeyCredential.create.mockResolvedValue(mockCredential);
 
       await service.saveCredential('user-1', mockVerification as any);
 
-      expect(credentialRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(mockPrisma.passkeyCredential.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
           friendlyName: 'Passkey',
         }),
-      );
+      });
     });
   });
 
@@ -479,9 +429,8 @@ describe('PasskeyService', () => {
       (
         simplewebauthn.generateAuthenticationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
-      challengeRepo.create = jest.fn().mockReturnValue({});
-      challengeRepo.save = jest.fn().mockResolvedValue({});
+      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       const result = await service.generateAuthenticationOptions();
 
@@ -491,22 +440,18 @@ describe('PasskeyService', () => {
 
     it('should generate authentication options with email', async () => {
       const mockOptions = { challenge: 'auth-challenge' };
-
-      const mockQueryBuilder = {
-        innerJoin: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue([mockCredential]),
+      const mockUser: any = {
+        id: 'user-1',
+        email: 'test@example.com',
+        passkeyCredentials: [mockCredential],
       };
-      credentialRepo.createQueryBuilder = jest
-        .fn()
-        .mockReturnValue(mockQueryBuilder);
 
+      mockPrisma.user.findUnique.mockResolvedValue(mockUser);
       (
         simplewebauthn.generateAuthenticationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
-      challengeRepo.create = jest.fn().mockReturnValue({});
-      challengeRepo.save = jest.fn().mockResolvedValue({});
+      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       const result =
         await service.generateAuthenticationOptions('test@example.com');
@@ -524,22 +469,37 @@ describe('PasskeyService', () => {
 
     it('should generate options without allowCredentials when no credentials found', async () => {
       const mockOptions = { challenge: 'auth-challenge' };
-
-      const mockQueryBuilder = {
-        innerJoin: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue([]),
+      const mockUser: any = {
+        id: 'user-1',
+        email: 'test@example.com',
+        passkeyCredentials: [],
       };
-      credentialRepo.createQueryBuilder = jest
-        .fn()
-        .mockReturnValue(mockQueryBuilder);
 
+      mockPrisma.user.findUnique.mockResolvedValue(mockUser);
       (
         simplewebauthn.generateAuthenticationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
-      challengeRepo.create = jest.fn().mockReturnValue({});
-      challengeRepo.save = jest.fn().mockResolvedValue({});
+      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
+
+      await service.generateAuthenticationOptions('test@example.com');
+
+      expect(simplewebauthn.generateAuthenticationOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          allowCredentials: undefined,
+        }),
+      );
+    });
+
+    it('should generate options without allowCredentials when user not found', async () => {
+      const mockOptions = { challenge: 'auth-challenge' };
+
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      (
+        simplewebauthn.generateAuthenticationOptions as jest.Mock
+      ).mockResolvedValue(mockOptions);
+      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       await service.generateAuthenticationOptions('test@example.com');
 
@@ -558,13 +518,13 @@ describe('PasskeyService', () => {
         authenticationInfo: { newCounter: 1 },
       };
 
-      challengeRepo.findOne = jest.fn().mockResolvedValue(mockChallenge);
-      credentialRepo.findOne = jest.fn().mockResolvedValue(mockCredential);
+      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
+      mockPrisma.passkeyCredential.findUnique.mockResolvedValue(mockCredential);
       (
         simplewebauthn.verifyAuthenticationResponse as jest.Mock
       ).mockResolvedValue(mockVerification);
-      credentialRepo.update = jest.fn().mockResolvedValue({ affected: 1 });
-      challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
+      mockPrisma.passkeyCredential.update.mockResolvedValue(mockCredential);
+      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await service.verifyAuthentication(
         'test@example.com',
@@ -573,11 +533,11 @@ describe('PasskeyService', () => {
 
       expect(result.verification).toEqual(mockVerification);
       expect(result.user).toBeDefined();
-      expect(credentialRepo.update).toHaveBeenCalled();
+      expect(mockPrisma.passkeyCredential.update).toHaveBeenCalled();
     });
 
     it('should throw error when challenge not found', async () => {
-      challengeRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(null);
 
       await expect(
         service.verifyAuthentication(
@@ -588,8 +548,8 @@ describe('PasskeyService', () => {
     });
 
     it('should throw error when credential not found', async () => {
-      challengeRepo.findOne = jest.fn().mockResolvedValue(mockChallenge);
-      credentialRepo.findOne = jest.fn().mockResolvedValue(null);
+      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
+      mockPrisma.passkeyCredential.findUnique.mockResolvedValue(null);
 
       await expect(
         service.verifyAuthentication('test@example.com', {
@@ -605,8 +565,8 @@ describe('PasskeyService', () => {
         authenticationInfo: { newCounter: 1 },
       };
 
-      challengeRepo.findOne = jest.fn().mockResolvedValue(mockChallenge);
-      credentialRepo.findOne = jest.fn().mockResolvedValue(mockCredential);
+      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
+      mockPrisma.passkeyCredential.findUnique.mockResolvedValue(mockCredential);
       (
         simplewebauthn.verifyAuthenticationResponse as jest.Mock
       ).mockResolvedValue(mockVerification);
@@ -617,27 +577,27 @@ describe('PasskeyService', () => {
       );
 
       expect(result.verification.verified).toBe(false);
-      expect(credentialRepo.update).not.toHaveBeenCalled();
+      expect(mockPrisma.passkeyCredential.update).not.toHaveBeenCalled();
     });
   });
 
   describe('getUserCredentials', () => {
     it('should return user credentials', async () => {
-      credentialRepo.find = jest.fn().mockResolvedValue([mockCredential]);
+      mockPrisma.passkeyCredential.findMany.mockResolvedValue([mockCredential]);
 
       const result = await service.getUserCredentials('user-1');
 
       expect(result).toEqual([mockCredential]);
-      expect(credentialRepo.find).toHaveBeenCalledWith({
+      expect(mockPrisma.passkeyCredential.findMany).toHaveBeenCalledWith({
         where: { userId: 'user-1' },
-        order: { createdAt: 'DESC' },
+        orderBy: { createdAt: 'desc' },
       });
     });
   });
 
   describe('deleteCredential', () => {
     it('should delete credential successfully', async () => {
-      credentialRepo.delete = jest.fn().mockResolvedValue({ affected: 1 });
+      mockPrisma.passkeyCredential.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await service.deleteCredential('cred-1', 'user-1');
 
@@ -645,7 +605,7 @@ describe('PasskeyService', () => {
     });
 
     it('should return false when credential not found', async () => {
-      credentialRepo.delete = jest.fn().mockResolvedValue({ affected: 0 });
+      mockPrisma.passkeyCredential.deleteMany.mockResolvedValue({ count: 0 });
 
       const result = await service.deleteCredential('unknown-cred', 'user-1');
 
@@ -655,7 +615,7 @@ describe('PasskeyService', () => {
 
   describe('userHasPasskeys', () => {
     it('should return true when user has passkeys', async () => {
-      credentialRepo.count = jest.fn().mockResolvedValue(2);
+      mockPrisma.passkeyCredential.count.mockResolvedValue(2);
 
       const result = await service.userHasPasskeys('user-1');
 
@@ -663,7 +623,7 @@ describe('PasskeyService', () => {
     });
 
     it('should return false when user has no passkeys', async () => {
-      credentialRepo.count = jest.fn().mockResolvedValue(0);
+      mockPrisma.passkeyCredential.count.mockResolvedValue(0);
 
       const result = await service.userHasPasskeys('user-1');
 
@@ -673,7 +633,7 @@ describe('PasskeyService', () => {
 
   describe('cleanupExpiredChallenges', () => {
     it('should cleanup expired challenges', async () => {
-      challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 5 });
+      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 5 });
 
       const result = await service.cleanupExpiredChallenges();
 
@@ -681,7 +641,7 @@ describe('PasskeyService', () => {
     });
 
     it('should return 0 when no challenges expired', async () => {
-      challengeRepo.delete = jest.fn().mockResolvedValue({ affected: 0 });
+      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 0 });
 
       const result = await service.cleanupExpiredChallenges();
 

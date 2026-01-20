@@ -8,7 +8,7 @@ import {
   ID,
   Int,
 } from '@nestjs/graphql';
-
+import { EmailType as PrismaEmailType } from '@prisma/client';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import {
   GqlContext,
@@ -46,7 +46,14 @@ export class EmailResolver {
     emailType?: EmailType,
   ): Promise<PaginatedEmailCorrespondence> {
     const user = getUserFromContext(context);
-    return this.emailService.getEmailHistory(user.id, skip, take, emailType);
+    // Cast Prisma types to GraphQL types - enum values are compatible at runtime
+    const result = await this.emailService.getEmailHistory(
+      user.id,
+      skip,
+      take,
+      emailType as unknown as PrismaEmailType,
+    );
+    return result as unknown as PaginatedEmailCorrespondence;
   }
 
   @Query(() => EmailCorrespondenceModel, { nullable: true, name: 'myEmail' })
@@ -56,7 +63,8 @@ export class EmailResolver {
     @Context() context: GqlContext,
   ): Promise<EmailCorrespondenceModel | null> {
     const user = getUserFromContext(context);
-    return this.emailService.getEmailById(user.id, id);
+    const email = await this.emailService.getEmailById(user.id, id);
+    return email as unknown as EmailCorrespondenceModel | null;
   }
 
   @Query(() => String, { name: 'representativeMailtoLink' })

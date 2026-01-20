@@ -5,6 +5,7 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 
 import configuration from 'src/config';
 import { DbConfigError } from './db.errors';
+import { PrismaModule } from './prisma.module';
 import {
   RelationalDBModule,
   IRelationalDBProvider,
@@ -36,6 +37,7 @@ export class DbModule {
       module: DbModule,
       imports: [
         ConfigModule.forRoot({ load: [configuration], isGlobal: true }),
+        PrismaModule,
         RelationalDBModule,
         TypeOrmModule.forRootAsync({
           imports: [RelationalDBModule],

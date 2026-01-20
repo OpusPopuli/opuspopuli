@@ -45,6 +45,7 @@ import {
   PasskeyCredential,
 } from './dto/passkey.dto';
 import { PasskeyService } from './services/passkey.service';
+import { UserEntity } from 'src/db/entities/user.entity';
 
 // Magic Link DTOs
 import {
@@ -576,7 +577,10 @@ export class AuthResolver {
       }
 
       // Generate tokens for the authenticated user
-      const auth = await this.authService.generateTokensForUser(user);
+      // Cast Prisma User to UserEntity for auth service compatibility
+      const auth = await this.authService.generateTokensForUser(
+        user as unknown as UserEntity,
+      );
 
       // Set httpOnly cookies for browser clients
       if (context.res) {
@@ -619,7 +623,15 @@ export class AuthResolver {
     @Context() context: GqlContext,
   ): Promise<PasskeyCredential[]> {
     const user = getUserFromContext(context);
-    return this.passkeyService.getUserCredentials(user.id);
+    const credentials = await this.passkeyService.getUserCredentials(user.id);
+    // Map Prisma types (null) to GraphQL types (undefined)
+    return credentials.map((cred) => ({
+      id: cred.id,
+      friendlyName: cred.friendlyName ?? undefined,
+      deviceType: cred.deviceType ?? undefined,
+      createdAt: cred.createdAt,
+      lastUsedAt: cred.lastUsedAt,
+    }));
   }
 
   @Mutation(() => Boolean)
