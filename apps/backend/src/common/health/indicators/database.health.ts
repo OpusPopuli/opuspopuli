@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HealthIndicatorResult } from '@nestjs/terminus';
-import { DataSource } from 'typeorm';
-import { InjectDataSource } from '@nestjs/typeorm';
+import { PrismaService } from 'src/db/prisma.service';
 
 /**
  * Database Health Indicator
@@ -15,10 +14,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 export class DatabaseHealthIndicator {
   private readonly logger = new Logger(DatabaseHealthIndicator.name);
 
-  constructor(
-    @InjectDataSource()
-    private readonly dataSource: DataSource,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Check database connectivity
@@ -35,7 +31,7 @@ export class DatabaseHealthIndicator {
     try {
       // Execute a simple query to check connectivity
       // This also validates the connection pool is working
-      await this.dataSource.query('SELECT 1');
+      await this.prisma.$queryRaw`SELECT 1`;
 
       const responseTime = Date.now() - startTime;
 

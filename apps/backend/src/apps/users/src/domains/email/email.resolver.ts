@@ -14,7 +14,7 @@ import {
   GqlContext,
   getUserFromContext,
 } from 'src/common/utils/graphql-context';
-import { EmailType } from 'src/db/entities/email-correspondence.entity';
+import { EmailType } from 'src/common/enums/email.enum';
 
 import { EmailService } from './email.service';
 import {

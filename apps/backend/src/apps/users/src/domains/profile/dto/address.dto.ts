@@ -10,7 +10,7 @@ import {
   Length,
   MaxLength,
 } from 'class-validator';
-import { AddressType } from 'src/db/entities/user-address.entity';
+import { AddressType } from 'src/common/enums/address.enum';
 
 @InputType()
 export class CreateAddressDto {

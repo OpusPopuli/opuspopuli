@@ -1,12 +1,6 @@
-import { Field, InputType, registerEnumType } from '@nestjs/graphql';
+import { Field, InputType } from '@nestjs/graphql';
 import { IsBoolean, IsEnum, IsOptional, Matches } from 'class-validator';
-import { NotificationFrequency } from 'src/db/entities/notification-preference.entity';
-
-// Re-export enum registration for GraphQL
-registerEnumType(NotificationFrequency, {
-  name: 'NotificationFrequency',
-  description: 'How often to receive notifications',
-});
+import { NotificationFrequency } from 'src/common/enums/notification.enum';
 
 @InputType()
 export class UpdateNotificationPreferencesDto {

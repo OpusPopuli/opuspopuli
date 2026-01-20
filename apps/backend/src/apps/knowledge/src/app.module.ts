@@ -33,7 +33,6 @@ import {
   createLoggingConfig,
 } from 'src/common/config/shared-app.config';
 import { DbModule } from 'src/db/db.module';
-import { AuditLogEntity } from 'src/db/entities/audit-log.entity';
 import { AuditModule } from 'src/common/audit/audit.module';
 import { CaslModule } from 'src/permissions/casl.module';
 import { HealthModule } from 'src/common/health';
@@ -59,7 +58,7 @@ import { HealthModule } from 'src/common/health';
     }),
     LoggingModule.forRootAsync(createLoggingConfig('knowledge-service')),
     ThrottlerModule.forRoot(THROTTLER_CONFIG),
-    DbModule.forRoot({ entities: [AuditLogEntity] }),
+    DbModule.forRoot(),
     AuditModule.forRoot(),
     GraphQLModule.forRoot<ApolloFederationDriverConfig>({
       driver: ApolloFederationDriver,

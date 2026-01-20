@@ -1,8 +1,5 @@
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
-import {
-  EmailType,
-  EmailStatus,
-} from 'src/db/entities/email-correspondence.entity';
+import { EmailType, EmailStatus } from 'src/common/enums/email.enum';
 
 @ObjectType()
 export class EmailCorrespondenceModel {

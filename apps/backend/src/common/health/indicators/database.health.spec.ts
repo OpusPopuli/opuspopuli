@@ -1,29 +1,30 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getDataSourceToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
 import { DatabaseHealthIndicator } from './database.health';
+import { PrismaService } from 'src/db/prisma.service';
+import {
+  createMockPrismaService,
+  MockPrismaService,
+} from 'src/test/prisma-mock';
 
 describe('DatabaseHealthIndicator', () => {
   let indicator: DatabaseHealthIndicator;
-  let dataSource: DataSource;
+  let prisma: MockPrismaService;
 
   beforeEach(async () => {
-    const mockDataSource = {
-      query: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
-    };
+    prisma = createMockPrismaService();
+    prisma.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DatabaseHealthIndicator,
         {
-          provide: getDataSourceToken(),
-          useValue: mockDataSource,
+          provide: PrismaService,
+          useValue: prisma,
         },
       ],
     }).compile();
 
     indicator = module.get<DatabaseHealthIndicator>(DatabaseHealthIndicator);
-    dataSource = module.get<DataSource>(getDataSourceToken());
   });
 
   afterEach(() => {
@@ -42,7 +43,7 @@ describe('DatabaseHealthIndicator', () => {
     it('should execute SELECT 1 query', async () => {
       await indicator.check();
 
-      expect(dataSource.query).toHaveBeenCalledWith('SELECT 1');
+      expect(prisma.$queryRaw).toHaveBeenCalled();
     });
 
     it('should include response time in result', async () => {
@@ -52,9 +53,7 @@ describe('DatabaseHealthIndicator', () => {
     });
 
     it('should return down status when database query fails', async () => {
-      (dataSource.query as jest.Mock).mockRejectedValue(
-        new Error('Connection refused'),
-      );
+      prisma.$queryRaw.mockRejectedValue(new Error('Connection refused'));
 
       const result = await indicator.check();
 
@@ -64,7 +63,7 @@ describe('DatabaseHealthIndicator', () => {
     });
 
     it('should handle unknown errors', async () => {
-      (dataSource.query as jest.Mock).mockRejectedValue('Unknown error');
+      prisma.$queryRaw.mockRejectedValue('Unknown error');
 
       const result = await indicator.check();
 
@@ -73,7 +72,7 @@ describe('DatabaseHealthIndicator', () => {
     });
 
     it('should measure response time even on failure', async () => {
-      (dataSource.query as jest.Mock).mockRejectedValue(new Error('Timeout'));
+      prisma.$queryRaw.mockRejectedValue(new Error('Timeout'));
 
       const result = await indicator.check();
 

@@ -62,7 +62,6 @@
     "@nestjs/swagger": "^11.2.3",
     "@nestjs/terminus": "^11.0.0",
     "@nestjs/throttler": "^6.5.0",
-    "@nestjs/typeorm": "^11.0.0",
     "@prisma/client": "5",
     "@qckstrt/auth-provider": "workspace:*",
     "@qckstrt/common": "workspace:*",
@@ -72,7 +71,6 @@
     "@qckstrt/llm-provider": "workspace:*",
     "@qckstrt/logging-provider": "workspace:*",
     "@qckstrt/region-provider": "workspace:*",
-    "@qckstrt/relationaldb-provider": "workspace:*",
     "@qckstrt/secrets-provider": "workspace:*",
     "@qckstrt/storage-provider": "workspace:*",
     "@qckstrt/vectordb-provider": "workspace:*",
@@ -100,7 +98,6 @@
     "rimraf": "^6.0.1",
     "rxjs": "^7.8.1",
     "sqs-consumer": "^14.2.0",
-    "typeorm": "^0.3.20",
     "uuid": "^13.0.0",
     "zod": "^4.1.13"
   },

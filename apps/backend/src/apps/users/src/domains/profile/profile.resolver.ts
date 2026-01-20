@@ -5,12 +5,6 @@ import {
   getUserFromContext,
 } from 'src/common/utils/graphql-context';
 
-// TypeORM entities are still used as GraphQL types (they have @ObjectType decorators)
-// The service now returns Prisma types which are structurally compatible
-import { UserProfileEntity } from 'src/db/entities/user-profile.entity';
-import { UserAddressEntity } from 'src/db/entities/user-address.entity';
-import { NotificationPreferenceEntity } from 'src/db/entities/notification-preference.entity';
-import { UserConsentEntity } from 'src/db/entities/user-consent.entity';
 import { ConsentType } from 'src/common/enums/consent.enum';
 
 import { ProfileService } from './profile.service';
@@ -23,6 +17,10 @@ import {
   WithdrawConsentDto,
 } from './dto/consent.dto';
 import { ProfileCompletionResult } from './models/profile-completion.model';
+import { UserProfileModel } from './models/user-profile.model';
+import { UserAddressModel } from './models/user-address.model';
+import { NotificationPreferenceModel } from './models/notification-preference.model';
+import { UserConsentModel } from './models/user-consent.model';
 
 @Resolver()
 export class ProfileResolver {
@@ -32,23 +30,23 @@ export class ProfileResolver {
   // Profile Queries & Mutations
   // ============================================
 
-  @Query(() => UserProfileEntity, { nullable: true, name: 'myProfile' })
+  @Query(() => UserProfileModel, { nullable: true, name: 'myProfile' })
   async getMyProfile(
     @Context() context: GqlContext,
-  ): Promise<UserProfileEntity | null> {
+  ): Promise<UserProfileModel | null> {
     const user = getUserFromContext(context);
     const profile = await this.profileService.getProfile(user.id);
-    return profile as UserProfileEntity | null;
+    return profile as UserProfileModel | null;
   }
 
-  @Mutation(() => UserProfileEntity)
+  @Mutation(() => UserProfileModel)
   async updateMyProfile(
     @Args('input') input: UpdateProfileDto,
     @Context() context: GqlContext,
-  ): Promise<UserProfileEntity> {
+  ): Promise<UserProfileModel> {
     const user = getUserFromContext(context);
     const profile = await this.profileService.updateProfile(user.id, input);
-    return profile as unknown as UserProfileEntity;
+    return profile as unknown as UserProfileModel;
   }
 
   // ============================================
@@ -76,60 +74,60 @@ export class ProfileResolver {
     return this.profileService.getAvatarUploadUrl(user.id, filename);
   }
 
-  @Mutation(() => UserProfileEntity)
+  @Mutation(() => UserProfileModel)
   async updateAvatarStorageKey(
     @Args('storageKey') storageKey: string,
     @Context() context: GqlContext,
-  ): Promise<UserProfileEntity> {
+  ): Promise<UserProfileModel> {
     const user = getUserFromContext(context);
     const profile = await this.profileService.updateAvatarStorageKey(
       user.id,
       storageKey,
     );
-    return profile as unknown as UserProfileEntity;
+    return profile as unknown as UserProfileModel;
   }
 
   // ============================================
   // Address Queries & Mutations
   // ============================================
 
-  @Query(() => [UserAddressEntity], { name: 'myAddresses' })
+  @Query(() => [UserAddressModel], { name: 'myAddresses' })
   async getMyAddresses(
     @Context() context: GqlContext,
-  ): Promise<UserAddressEntity[]> {
+  ): Promise<UserAddressModel[]> {
     const user = getUserFromContext(context);
     const addresses = await this.profileService.getAddresses(user.id);
-    return addresses as unknown as UserAddressEntity[];
+    return addresses as unknown as UserAddressModel[];
   }
 
-  @Query(() => UserAddressEntity, { nullable: true, name: 'myAddress' })
+  @Query(() => UserAddressModel, { nullable: true, name: 'myAddress' })
   async getMyAddress(
     @Args('id', { type: () => ID }) id: string,
     @Context() context: GqlContext,
-  ): Promise<UserAddressEntity | null> {
+  ): Promise<UserAddressModel | null> {
     const user = getUserFromContext(context);
     const address = await this.profileService.getAddress(user.id, id);
-    return address as UserAddressEntity | null;
+    return address as UserAddressModel | null;
   }
 
-  @Mutation(() => UserAddressEntity)
+  @Mutation(() => UserAddressModel)
   async createAddress(
     @Args('input') input: CreateAddressDto,
     @Context() context: GqlContext,
-  ): Promise<UserAddressEntity> {
+  ): Promise<UserAddressModel> {
     const user = getUserFromContext(context);
     const address = await this.profileService.createAddress(user.id, input);
-    return address as unknown as UserAddressEntity;
+    return address as unknown as UserAddressModel;
   }
 
-  @Mutation(() => UserAddressEntity)
+  @Mutation(() => UserAddressModel)
   async updateAddress(
     @Args('input') input: UpdateAddressDto,
     @Context() context: GqlContext,
-  ): Promise<UserAddressEntity> {
+  ): Promise<UserAddressModel> {
     const user = getUserFromContext(context);
     const address = await this.profileService.updateAddress(user.id, input);
-    return address as unknown as UserAddressEntity;
+    return address as unknown as UserAddressModel;
   }
 
   @Mutation(() => Boolean)
@@ -141,82 +139,82 @@ export class ProfileResolver {
     return this.profileService.deleteAddress(user.id, id);
   }
 
-  @Mutation(() => UserAddressEntity)
+  @Mutation(() => UserAddressModel)
   async setPrimaryAddress(
     @Args('id', { type: () => ID }) id: string,
     @Context() context: GqlContext,
-  ): Promise<UserAddressEntity> {
+  ): Promise<UserAddressModel> {
     const user = getUserFromContext(context);
     const address = await this.profileService.setPrimaryAddress(user.id, id);
-    return address as unknown as UserAddressEntity;
+    return address as unknown as UserAddressModel;
   }
 
   // ============================================
   // Notification Preferences Queries & Mutations
   // ============================================
 
-  @Query(() => NotificationPreferenceEntity, {
+  @Query(() => NotificationPreferenceModel, {
     nullable: true,
     name: 'myNotificationPreferences',
   })
   async getMyNotificationPreferences(
     @Context() context: GqlContext,
-  ): Promise<NotificationPreferenceEntity | null> {
+  ): Promise<NotificationPreferenceModel | null> {
     const user = getUserFromContext(context);
     const prefs = await this.profileService.getNotificationPreferences(user.id);
-    return prefs as NotificationPreferenceEntity | null;
+    return prefs as NotificationPreferenceModel | null;
   }
 
-  @Mutation(() => NotificationPreferenceEntity)
+  @Mutation(() => NotificationPreferenceModel)
   async updateNotificationPreferences(
     @Args('input') input: UpdateNotificationPreferencesDto,
     @Context() context: GqlContext,
-  ): Promise<NotificationPreferenceEntity> {
+  ): Promise<NotificationPreferenceModel> {
     const user = getUserFromContext(context);
     const prefs = await this.profileService.updateNotificationPreferences(
       user.id,
       input,
     );
-    return prefs as unknown as NotificationPreferenceEntity;
+    return prefs as unknown as NotificationPreferenceModel;
   }
 
-  @Mutation(() => NotificationPreferenceEntity)
+  @Mutation(() => NotificationPreferenceModel)
   async unsubscribeFromAll(
     @Context() context: GqlContext,
-  ): Promise<NotificationPreferenceEntity> {
+  ): Promise<NotificationPreferenceModel> {
     const user = getUserFromContext(context);
     const prefs = await this.profileService.unsubscribeAll(user.id);
-    return prefs as unknown as NotificationPreferenceEntity;
+    return prefs as unknown as NotificationPreferenceModel;
   }
 
   // ============================================
   // Consent Queries & Mutations
   // ============================================
 
-  @Query(() => [UserConsentEntity], { name: 'myConsents' })
+  @Query(() => [UserConsentModel], { name: 'myConsents' })
   async getMyConsents(
     @Context() context: GqlContext,
-  ): Promise<UserConsentEntity[]> {
+  ): Promise<UserConsentModel[]> {
     const user = getUserFromContext(context);
     const consents = await this.profileService.getConsents(user.id);
-    return consents as unknown as UserConsentEntity[];
+    return consents as unknown as UserConsentModel[];
   }
 
-  @Query(() => UserConsentEntity, { nullable: true, name: 'myConsent' })
+  @Query(() => UserConsentModel, { nullable: true, name: 'myConsent' })
   async getMyConsent(
     @Args('consentType', { type: () => ConsentType }) consentType: ConsentType,
     @Context() context: GqlContext,
-  ): Promise<UserConsentEntity | null> {
+  ): Promise<UserConsentModel | null> {
     const user = getUserFromContext(context);
     const consent = await this.profileService.getConsent(user.id, consentType);
-    return consent as UserConsentEntity | null;
+    return consent as UserConsentModel | null;
   }
 
-  @Mutation(() => UserConsentEntity)
+  @Mutation(() => UserConsentModel)
   async updateConsent(
     @Args('input') input: UpdateConsentDto,
     @Context() context: GqlContext,
-  ): Promise<UserConsentEntity> {
+  ): Promise<UserConsentModel> {
     const user = getUserFromContext(context);
     const metadata = {
       ipAddress: context.req?.ip,
@@ -228,14 +226,14 @@ export class ProfileResolver {
       input,
       metadata,
     );
-    return consent as unknown as UserConsentEntity;
+    return consent as unknown as UserConsentModel;
   }
 
-  @Mutation(() => [UserConsentEntity])
+  @Mutation(() => [UserConsentModel])
   async bulkUpdateConsents(
     @Args('input') input: BulkUpdateConsentsDto,
     @Context() context: GqlContext,
-  ): Promise<UserConsentEntity[]> {
+  ): Promise<UserConsentModel[]> {
     const user = getUserFromContext(context);
     const metadata = {
       ipAddress: context.req?.ip,
@@ -247,14 +245,14 @@ export class ProfileResolver {
       input.consents,
       metadata,
     );
-    return consents as unknown as UserConsentEntity[];
+    return consents as unknown as UserConsentModel[];
   }
 
-  @Mutation(() => UserConsentEntity)
+  @Mutation(() => UserConsentModel)
   async withdrawConsent(
     @Args('input') input: WithdrawConsentDto,
     @Context() context: GqlContext,
-  ): Promise<UserConsentEntity> {
+  ): Promise<UserConsentModel> {
     const user = getUserFromContext(context);
     const metadata = {
       ipAddress: context.req?.ip,
@@ -265,7 +263,7 @@ export class ProfileResolver {
       input.consentType,
       metadata,
     );
-    return consent as unknown as UserConsentEntity;
+    return consent as unknown as UserConsentModel;
   }
 
   @Query(() => Boolean)
