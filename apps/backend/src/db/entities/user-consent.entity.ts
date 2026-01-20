@@ -14,7 +14,7 @@ import { UserEntity } from './user.entity';
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 
 // Re-export for backward compatibility
-export { ConsentType, ConsentStatus };
+export { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 
 @ObjectType()
 @Entity('user_consents')

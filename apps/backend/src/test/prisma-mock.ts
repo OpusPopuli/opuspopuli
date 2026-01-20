@@ -21,8 +21,8 @@ export const resetMockPrismaClient = (mock: MockPrismaClient): void => {
 };
 
 /**
- * Type alias for PrismaService mock (same as PrismaClient mock)
- * since PrismaService extends PrismaClient
+ * Type alias for PrismaService mock - exported for test compatibility
+ * (PrismaService extends PrismaClient, so they share the same mock type)
  */
 export type MockPrismaService = MockPrismaClient;
 

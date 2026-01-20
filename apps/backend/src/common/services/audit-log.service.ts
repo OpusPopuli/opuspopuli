@@ -6,21 +6,20 @@ import {
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
-import { AuditLog, Prisma } from '@prisma/client';
-
 import { PrismaService } from '../../db/prisma.service';
 import { IAuditLogCreate } from '../interfaces/audit.interface';
 import { maskSensitiveData } from '../utils/pii-masker';
 import { ILogger, LOGGER } from '@qckstrt/logging-provider';
 import { AUDIT_CONFIG } from '../audit/audit.module';
 
-// Helper to convert Record<string, unknown> to Prisma's InputJsonValue
-type JsonValue = Prisma.InputJsonValue;
-const toJsonValue = (
-  value: Record<string, unknown> | undefined,
-): JsonValue | undefined => {
-  return value as JsonValue | undefined;
+// Helper to convert Record<string, unknown> to JSON-compatible type
+type JsonValue = object | undefined;
+const toJsonValue = (value: Record<string, unknown> | undefined): JsonValue => {
+  return value as JsonValue;
 };
+
+// Type alias for audit log records returned from Prisma
+type AuditLog = Awaited<ReturnType<PrismaService['auditLog']['create']>>;
 
 export interface AuditConfig {
   retentionDays: number;

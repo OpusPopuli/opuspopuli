@@ -38,8 +38,8 @@ export class RepresentativeModel {
   @Field()
   district!: string;
 
-  @Field()
-  party!: string;
+  @Field({ nullable: true })
+  party?: string;
 
   @Field({ nullable: true })
   photoUrl?: string;

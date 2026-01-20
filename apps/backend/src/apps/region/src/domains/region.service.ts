@@ -16,6 +16,45 @@ import {
   PaginatedRepresentatives,
 } from './models/representative.model';
 
+// Type aliases for Prisma query results (avoids direct Prisma type imports for CI compatibility)
+type ExternalIdRecord = { externalId: string };
+type PropositionRecord = {
+  id: string;
+  externalId: string;
+  title: string;
+  summary: string;
+  fullText: string | null;
+  status: string;
+  electionDate: Date | null;
+  sourceUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+type MeetingRecord = {
+  id: string;
+  externalId: string;
+  title: string;
+  body: string;
+  scheduledAt: Date;
+  location: string | null;
+  agendaUrl: string | null;
+  videoUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+type RepresentativeRecord = {
+  id: string;
+  externalId: string;
+  name: string;
+  chamber: string;
+  district: string;
+  party: string | null;
+  photoUrl: string | null;
+  contactInfo: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 /**
  * Region Domain Service
  *
@@ -144,7 +183,7 @@ export class RegionDomainService {
       select: { externalId: true },
     });
     const existingExternalIds = new Set(
-      existingRecords.map((r) => r.externalId),
+      existingRecords.map((r: ExternalIdRecord) => r.externalId),
     );
 
     // Batch upsert all propositions using Prisma transaction
@@ -207,7 +246,7 @@ export class RegionDomainService {
       select: { externalId: true },
     });
     const existingExternalIds = new Set(
-      existingRecords.map((r) => r.externalId),
+      existingRecords.map((r: ExternalIdRecord) => r.externalId),
     );
 
     // Batch upsert all meetings using Prisma transaction
@@ -270,7 +309,7 @@ export class RegionDomainService {
       select: { externalId: true },
     });
     const existingExternalIds = new Set(
-      existingRecords.map((r) => r.externalId),
+      existingRecords.map((r: ExternalIdRecord) => r.externalId),
     );
 
     // Batch upsert all representatives using Prisma transaction
@@ -330,7 +369,7 @@ export class RegionDomainService {
 
     // Cast Prisma types to GraphQL types - enum values are compatible at runtime
     return {
-      items: paginatedItems.map((item) => ({
+      items: paginatedItems.map((item: PropositionRecord) => ({
         ...item,
         fullText: item.fullText ?? undefined,
         electionDate: item.electionDate ?? undefined,
@@ -370,7 +409,7 @@ export class RegionDomainService {
 
     // Cast Prisma types to GraphQL types
     return {
-      items: paginatedItems.map((item) => ({
+      items: paginatedItems.map((item: MeetingRecord) => ({
         ...item,
         location: item.location ?? undefined,
         agendaUrl: item.agendaUrl ?? undefined,
@@ -413,8 +452,9 @@ export class RegionDomainService {
 
     // Cast Prisma types to GraphQL types
     return {
-      items: paginatedItems.map((item) => ({
+      items: paginatedItems.map((item: RepresentativeRecord) => ({
         ...item,
+        party: item.party ?? undefined,
         photoUrl: item.photoUrl ?? undefined,
         contactInfo: (item.contactInfo as ContactInfoModel) ?? undefined,
       })),
