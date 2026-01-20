@@ -12,19 +12,32 @@ describe('ActivityService', () => {
   const mockUserId = 'test-user-id';
   const mockSessionToken = 'mock-session-token-123';
 
-  // Test mock objects - using partial types for test simplicity
+  // Test mock objects - using complete types for Prisma compatibility
   const mockAuditLog = {
     id: 'log-1',
     userId: mockUserId,
+    userEmail: 'test@example.com',
     action: AuditAction.LOGIN,
     entityType: null,
     entityId: null,
+    requestId: 'req-123',
     operationName: 'login',
     operationType: 'mutation',
+    resolverName: 'login',
+    inputVariables: null,
+    previousValues: null,
+    newValues: null,
     success: true,
     errorMessage: null,
+    statusCode: 200,
+    responseTime: 50,
+    durationMs: 50,
+    serviceName: 'users',
     ipAddress: '192.168.1.1',
     userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/120.0.0.0',
+    contextData: null,
+    deletedAt: null,
+    createdAt: new Date('2024-01-20T10:00:00Z'),
     timestamp: new Date('2024-01-20T10:00:00Z'),
   };
 
@@ -44,7 +57,9 @@ describe('ActivityService', () => {
   const mockSession = {
     id: 'session-1',
     userId: mockUserId,
+    ipAddress: '192.168.1.1',
     sessionToken: mockSessionToken,
+    refreshToken: null,
     deviceType: 'desktop',
     deviceName: 'MacBook Pro',
     browser: 'Chrome',
@@ -55,6 +70,7 @@ describe('ActivityService', () => {
     isActive: true,
     lastActivityAt: new Date('2024-01-20T10:30:00Z'),
     createdAt: new Date('2024-01-15T08:00:00Z'),
+    updatedAt: new Date('2024-01-20T10:30:00Z'),
     expiresAt: new Date('2024-02-15T08:00:00Z'),
     revokedAt: null,
     revokedReason: null,
