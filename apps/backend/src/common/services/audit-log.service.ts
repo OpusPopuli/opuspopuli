@@ -6,7 +6,7 @@ import {
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
-import { PrismaService } from '../../db/prisma.service';
+import { DbService } from '@qckstrt/relationaldb-provider';
 import { IAuditLogCreate } from '../interfaces/audit.interface';
 import { maskSensitiveData } from '../utils/pii-masker';
 import { ILogger, LOGGER } from '@qckstrt/logging-provider';
@@ -18,8 +18,8 @@ const toJsonValue = (value: Record<string, unknown> | undefined): JsonValue => {
   return value as JsonValue;
 };
 
-// Type alias for audit log records returned from Prisma
-type AuditLog = Awaited<ReturnType<PrismaService['auditLog']['create']>>;
+// Type alias for audit log records returned from database
+type AuditLog = Awaited<ReturnType<DbService['auditLog']['create']>>;
 
 export interface AuditConfig {
   retentionDays: number;
@@ -37,7 +37,7 @@ export class AuditLogService implements OnModuleInit, OnModuleDestroy {
   private cleanupTimer: NodeJS.Timeout | null = null;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: DbService,
     @Optional() @Inject(LOGGER) private structuredLogger?: ILogger,
     @Optional()
     @Inject(AUDIT_CONFIG)
@@ -76,7 +76,7 @@ export class AuditLogService implements OnModuleInit, OnModuleDestroy {
    */
   async logSync(entry: IAuditLogCreate): Promise<AuditLog> {
     const maskedEntry = this.maskEntry(entry);
-    return this.prisma.auditLog.create({
+    return this.db.auditLog.create({
       data: {
         action: maskedEntry.action,
         entityType: maskedEntry.entityType,
@@ -133,8 +133,8 @@ export class AuditLogService implements OnModuleInit, OnModuleDestroy {
     const batch = this.writeQueue.splice(0, this.batchSize);
 
     try {
-      // Use Prisma's createMany for batch insert
-      await this.prisma.auditLog.createMany({
+      // Use createMany for batch insert
+      await this.db.auditLog.createMany({
         data: batch.map((entry) => ({
           action: entry.action,
           entityType: entry.entityType,
@@ -224,7 +224,7 @@ export class AuditLogService implements OnModuleInit, OnModuleDestroy {
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
     try {
-      const result = await this.prisma.auditLog.deleteMany({
+      const result = await this.db.auditLog.deleteMany({
         where: {
           timestamp: {
             lt: cutoffDate,

@@ -11,8 +11,12 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ConfirmForgotPasswordDto } from './dto/confirm-forgot-password.dto';
 import { Role } from 'src/common/enums/role.enum';
 import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
-import { UserEntity } from 'src/db/entities/user.entity';
 import { User } from '../user/models/user.model';
+
+// Interface for user data needed by generateTokensForUser
+interface UserWithEmail {
+  email: string;
+}
 import { SecureLogger } from 'src/common/services/secure-logger.service';
 
 // Extended auth provider type with optional passwordless methods
@@ -277,7 +281,7 @@ export class AuthService {
    * Generate auth tokens for a user (used after passkey authentication)
    * Creates a session for a user who has been verified via WebAuthn
    */
-  async generateTokensForUser(user: UserEntity): Promise<Auth> {
+  async generateTokensForUser(user: UserWithEmail): Promise<Auth> {
     if (!this.authProvider.createSessionForUser) {
       throw new Error(
         'Token generation for passkey auth requires createSessionForUser support',

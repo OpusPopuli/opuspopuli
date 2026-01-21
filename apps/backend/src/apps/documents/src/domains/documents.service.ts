@@ -1,10 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IStorageProvider } from '@qckstrt/storage-provider';
-import { Document as PrismaDocument } from '@prisma/client';
+import {
+  DbService,
+  Document as DbDocument,
+} from '@qckstrt/relationaldb-provider';
 
 import { IFileConfig } from 'src/config';
-import { PrismaService } from 'src/db/prisma.service';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 import { File } from './models/file.model';
 
@@ -22,7 +24,7 @@ export class DocumentsService {
   private fileConfig: IFileConfig;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: DbService,
     @Inject('STORAGE_PROVIDER') private storage: IStorageProvider,
     private configService: ConfigService,
   ) {
@@ -40,7 +42,7 @@ export class DocumentsService {
    * List all documents for a user
    */
   async listFiles(userId: string): Promise<File[]> {
-    const documents = await this.prisma.document.findMany({
+    const documents = await this.db.document.findMany({
       where: { userId },
     });
 
@@ -48,7 +50,7 @@ export class DocumentsService {
       userId,
       filename: document.key,
       size: document.size,
-      // Cast Prisma enum to application enum - values are compatible at runtime
+      // Cast database enum to application enum - values are compatible at runtime
       status: document.status as unknown as DocumentStatus,
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
@@ -99,7 +101,7 @@ export class DocumentsService {
 
       if (deleted) {
         // Delete metadata from database
-        await this.prisma.document.deleteMany({
+        await this.db.document.deleteMany({
           where: { userId, key: filename },
         });
         this.logger.log(`Deleted file ${filename} successfully`);
@@ -115,8 +117,8 @@ export class DocumentsService {
   /**
    * Get document by ID
    */
-  async getDocumentById(documentId: string): Promise<PrismaDocument | null> {
-    return this.prisma.document.findUnique({
+  async getDocumentById(documentId: string): Promise<DbDocument | null> {
+    return this.db.document.findUnique({
       where: { id: documentId },
     });
   }
@@ -130,8 +132,8 @@ export class DocumentsService {
     key: string,
     size: number,
     checksum: string,
-  ): Promise<PrismaDocument> {
-    return this.prisma.document.create({
+  ): Promise<DbDocument> {
+    return this.db.document.create({
       data: {
         location,
         userId,
@@ -147,9 +149,9 @@ export class DocumentsService {
    */
   async updateDocument(
     id: string,
-    updates: Partial<PrismaDocument>,
+    updates: Partial<DbDocument>,
   ): Promise<void> {
-    await this.prisma.document.update({
+    await this.db.document.update({
       where: { id },
       data: updates,
     });

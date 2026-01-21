@@ -4,14 +4,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 
 import { DocumentsService } from './documents.service';
-import { PrismaService } from 'src/db/prisma.service';
-import { createMockPrismaService } from 'src/test/prisma-mock';
+import { DbService } from '@qckstrt/relationaldb-provider';
+import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
 import { IStorageProvider } from '@qckstrt/storage-provider';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 
 describe('DocumentsService', () => {
   let documentsService: DocumentsService;
-  let mockPrisma: ReturnType<typeof createMockPrismaService>;
+  let mockDb: ReturnType<typeof createMockDbService>;
   let storage: IStorageProvider;
 
   const mockFileConfig = {
@@ -19,7 +19,7 @@ describe('DocumentsService', () => {
     region: 'us-west-2',
   };
 
-  // Using 'any' type for mock objects to avoid strict Prisma type checking
+  // Using 'any' type for mock objects to avoid strict type checking
   const mockDocuments: any[] = [
     {
       id: 'doc-1',
@@ -48,12 +48,12 @@ describe('DocumentsService', () => {
   };
 
   beforeEach(async () => {
-    mockPrisma = createMockPrismaService();
+    mockDb = createMockDbService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DocumentsService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: DbService, useValue: mockDb },
         {
           provide: 'STORAGE_PROVIDER',
           useValue: mockStorageProvider,
@@ -82,20 +82,20 @@ describe('DocumentsService', () => {
 
   describe('listFiles', () => {
     it('should return list of files for a user', async () => {
-      mockPrisma.document.findMany.mockResolvedValue(mockDocuments);
+      mockDb.document.findMany.mockResolvedValue(mockDocuments);
 
       const files = await documentsService.listFiles('user-1');
 
       expect(files).toHaveLength(2);
       expect(files[0].filename).toBe('file1.pdf');
       expect(files[0].userId).toBe('user-1');
-      expect(mockPrisma.document.findMany).toHaveBeenCalledWith({
+      expect(mockDb.document.findMany).toHaveBeenCalledWith({
         where: { userId: 'user-1' },
       });
     });
 
     it('should return empty array when no documents found', async () => {
-      mockPrisma.document.findMany.mockResolvedValue([]);
+      mockDb.document.findMany.mockResolvedValue([]);
 
       const files = await documentsService.listFiles('user-1');
 
@@ -138,7 +138,7 @@ describe('DocumentsService', () => {
   describe('deleteFile', () => {
     it('should delete file and metadata successfully', async () => {
       mockStorageProvider.deleteFile.mockResolvedValue(true);
-      mockPrisma.document.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.document.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await documentsService.deleteFile('user-1', 'test.pdf');
 
@@ -147,7 +147,7 @@ describe('DocumentsService', () => {
         'test-bucket',
         'user-1/test.pdf',
       );
-      expect(mockPrisma.document.deleteMany).toHaveBeenCalledWith({
+      expect(mockDb.document.deleteMany).toHaveBeenCalledWith({
         where: { userId: 'user-1', key: 'test.pdf' },
       });
     });
@@ -158,7 +158,7 @@ describe('DocumentsService', () => {
       const result = await documentsService.deleteFile('user-1', 'test.pdf');
 
       expect(result).toBe(false);
-      expect(mockPrisma.document.deleteMany).not.toHaveBeenCalled();
+      expect(mockDb.document.deleteMany).not.toHaveBeenCalled();
     });
 
     it('should throw error on storage error', async () => {
@@ -174,18 +174,18 @@ describe('DocumentsService', () => {
 
   describe('getDocumentById', () => {
     it('should return document by ID', async () => {
-      mockPrisma.document.findUnique.mockResolvedValue(mockDocuments[0]);
+      mockDb.document.findUnique.mockResolvedValue(mockDocuments[0]);
 
       const doc = await documentsService.getDocumentById('doc-1');
 
       expect(doc).toEqual(mockDocuments[0]);
-      expect(mockPrisma.document.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.document.findUnique).toHaveBeenCalledWith({
         where: { id: 'doc-1' },
       });
     });
 
     it('should return null when document not found', async () => {
-      mockPrisma.document.findUnique.mockResolvedValue(null);
+      mockDb.document.findUnique.mockResolvedValue(null);
 
       const doc = await documentsService.getDocumentById('unknown');
 
@@ -205,7 +205,7 @@ describe('DocumentsService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      mockPrisma.document.create.mockResolvedValue(newDoc);
+      mockDb.document.create.mockResolvedValue(newDoc);
 
       const result = await documentsService.createDocument(
         's3://bucket/path',
@@ -216,7 +216,7 @@ describe('DocumentsService', () => {
       );
 
       expect(result).toEqual(newDoc);
-      expect(mockPrisma.document.create).toHaveBeenCalledWith({
+      expect(mockDb.document.create).toHaveBeenCalledWith({
         data: {
           location: 's3://bucket/path',
           userId: 'user-1',
@@ -230,13 +230,13 @@ describe('DocumentsService', () => {
 
   describe('updateDocument', () => {
     it('should update document metadata', async () => {
-      mockPrisma.document.update.mockResolvedValue(mockDocuments[0]);
+      mockDb.document.update.mockResolvedValue(mockDocuments[0]);
 
       await documentsService.updateDocument('doc-1', {
         status: DocumentStatus.AIEMBEDDINGSCOMPLETE as any,
       });
 
-      expect(mockPrisma.document.update).toHaveBeenCalledWith({
+      expect(mockDb.document.update).toHaveBeenCalledWith({
         where: { id: 'doc-1' },
         data: { status: DocumentStatus.AIEMBEDDINGSCOMPLETE },
       });
@@ -250,7 +250,7 @@ describe('DocumentsService - config validation', () => {
       Test.createTestingModule({
         providers: [
           DocumentsService,
-          { provide: PrismaService, useValue: createMockPrismaService() },
+          { provide: DbService, useValue: createMockDbService() },
           {
             provide: 'STORAGE_PROVIDER',
             useValue: {

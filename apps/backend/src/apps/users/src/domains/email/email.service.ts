@@ -7,14 +7,13 @@ import {
   generateMailtoLink,
 } from '@qckstrt/email-provider';
 import {
-  EmailCorrespondence as PrismaEmailCorrespondence,
-  EmailType as PrismaEmailType,
-  EmailStatus as PrismaEmailStatus,
-  ConsentType as PrismaConsentType,
-  ConsentStatus as PrismaConsentStatus,
-} from '@prisma/client';
-
-import { PrismaService } from 'src/db/prisma.service';
+  DbService,
+  EmailCorrespondence as DbEmailCorrespondence,
+  EmailType as DbEmailType,
+  EmailStatus as DbEmailStatus,
+  ConsentType as DbConsentType,
+  ConsentStatus as DbConsentStatus,
+} from '@qckstrt/relationaldb-provider';
 import { ContactRepresentativeDto } from './dto/contact-representative.dto';
 
 interface RepresentativeInfo {
@@ -30,7 +29,7 @@ interface PropositionInfo {
 }
 
 interface EmailHistoryResult {
-  items: PrismaEmailCorrespondence[];
+  items: DbEmailCorrespondence[];
   total: number;
   hasMore: boolean;
 }
@@ -44,7 +43,7 @@ export class EmailService {
   constructor(
     @Inject('EMAIL_PROVIDER')
     private readonly emailProvider: IEmailProvider,
-    private readonly prisma: PrismaService,
+    private readonly db: DbService,
     private readonly configService: ConfigService,
   ) {
     this.platformName =
@@ -69,11 +68,11 @@ export class EmailService {
       loginUrl: this.frontendUrl,
     });
 
-    let correspondence = await this.prisma.emailCorrespondence.create({
+    let correspondence = await this.db.emailCorrespondence.create({
       data: {
         userId,
-        emailType: PrismaEmailType.welcome,
-        status: PrismaEmailStatus.pending,
+        emailType: DbEmailType.welcome,
+        status: DbEmailStatus.pending,
         recipientEmail: email,
         recipientName: userName,
         subject: template.subject,
@@ -90,19 +89,19 @@ export class EmailService {
       });
 
       if (result.success) {
-        correspondence = await this.prisma.emailCorrespondence.update({
+        correspondence = await this.db.emailCorrespondence.update({
           where: { id: correspondence.id },
           data: {
-            status: PrismaEmailStatus.sent,
+            status: DbEmailStatus.sent,
             sentAt: new Date(),
             resendId: result.id,
           },
         });
       } else {
-        correspondence = await this.prisma.emailCorrespondence.update({
+        correspondence = await this.db.emailCorrespondence.update({
           where: { id: correspondence.id },
           data: {
-            status: PrismaEmailStatus.failed,
+            status: DbEmailStatus.failed,
             errorMessage: result.error,
           },
         });
@@ -115,10 +114,10 @@ export class EmailService {
       return { success: result.success, correspondenceId: correspondence.id };
     } catch (error) {
       const err = error as Error;
-      await this.prisma.emailCorrespondence.update({
+      await this.db.emailCorrespondence.update({
         where: { id: correspondence.id },
         data: {
-          status: PrismaEmailStatus.failed,
+          status: DbEmailStatus.failed,
           errorMessage: err.message,
         },
       });
@@ -140,11 +139,11 @@ export class EmailService {
     proposition?: PropositionInfo,
   ): Promise<{ success: boolean; correspondenceId?: string }> {
     // Verify user has consent for representative contact
-    const consent = await this.prisma.userConsent.findFirst({
+    const consent = await this.db.userConsent.findFirst({
       where: {
         userId,
-        consentType: PrismaConsentType.representative_contact,
-        status: PrismaConsentStatus.granted,
+        consentType: DbConsentType.representative_contact,
+        status: DbConsentStatus.granted,
       },
     });
 
@@ -155,7 +154,7 @@ export class EmailService {
     }
 
     // Get user profile and address
-    const profile = await this.prisma.userProfile.findUnique({
+    const profile = await this.db.userProfile.findUnique({
       where: { userId },
     });
     const senderName =
@@ -163,7 +162,7 @@ export class EmailService {
 
     let senderAddress: string | undefined;
     if (dto.includeAddress) {
-      const address = await this.prisma.userAddress.findFirst({
+      const address = await this.db.userAddress.findFirst({
         where: { userId, isPrimary: true },
       });
       if (address) {
@@ -184,11 +183,11 @@ export class EmailService {
       platformName: this.platformName,
     });
 
-    let correspondence = await this.prisma.emailCorrespondence.create({
+    let correspondence = await this.db.emailCorrespondence.create({
       data: {
         userId,
-        emailType: PrismaEmailType.representative_contact,
-        status: PrismaEmailStatus.pending,
+        emailType: DbEmailType.representative_contact,
+        status: DbEmailStatus.pending,
         recipientEmail: representative.email,
         recipientName: representative.name,
         subject: dto.subject,
@@ -214,19 +213,19 @@ export class EmailService {
       });
 
       if (result.success) {
-        correspondence = await this.prisma.emailCorrespondence.update({
+        correspondence = await this.db.emailCorrespondence.update({
           where: { id: correspondence.id },
           data: {
-            status: PrismaEmailStatus.sent,
+            status: DbEmailStatus.sent,
             sentAt: new Date(),
             resendId: result.id,
           },
         });
       } else {
-        correspondence = await this.prisma.emailCorrespondence.update({
+        correspondence = await this.db.emailCorrespondence.update({
           where: { id: correspondence.id },
           data: {
-            status: PrismaEmailStatus.failed,
+            status: DbEmailStatus.failed,
             errorMessage: result.error,
           },
         });
@@ -239,10 +238,10 @@ export class EmailService {
       return { success: result.success, correspondenceId: correspondence.id };
     } catch (error) {
       const err = error as Error;
-      await this.prisma.emailCorrespondence.update({
+      await this.db.emailCorrespondence.update({
         where: { id: correspondence.id },
         data: {
-          status: PrismaEmailStatus.failed,
+          status: DbEmailStatus.failed,
           errorMessage: err.message,
         },
       });
@@ -262,21 +261,21 @@ export class EmailService {
     userId: string,
     skip: number = 0,
     take: number = 10,
-    emailType?: PrismaEmailType,
+    emailType?: DbEmailType,
   ): Promise<EmailHistoryResult> {
-    const where: { userId: string; emailType?: PrismaEmailType } = { userId };
+    const where: { userId: string; emailType?: DbEmailType } = { userId };
     if (emailType) {
       where.emailType = emailType;
     }
 
     const [items, total] = await Promise.all([
-      this.prisma.emailCorrespondence.findMany({
+      this.db.emailCorrespondence.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: take + 1,
       }),
-      this.prisma.emailCorrespondence.count({ where }),
+      this.db.emailCorrespondence.count({ where }),
     ]);
 
     const hasMore = items.length > take;
@@ -288,8 +287,8 @@ export class EmailService {
   async getEmailById(
     userId: string,
     id: string,
-  ): Promise<PrismaEmailCorrespondence | null> {
-    return this.prisma.emailCorrespondence.findFirst({
+  ): Promise<DbEmailCorrespondence | null> {
+    return this.db.emailCorrespondence.findFirst({
       where: { id, userId },
     });
   }

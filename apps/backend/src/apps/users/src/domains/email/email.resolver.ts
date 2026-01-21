@@ -8,13 +8,13 @@ import {
   ID,
   Int,
 } from '@nestjs/graphql';
-import { EmailType as PrismaEmailType } from '@prisma/client';
+import { EmailType as DbEmailType } from '@qckstrt/relationaldb-provider';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import {
   GqlContext,
   getUserFromContext,
 } from 'src/common/utils/graphql-context';
-import { EmailType } from 'src/db/entities/email-correspondence.entity';
+import { EmailType } from 'src/common/enums/email.enum';
 
 import { EmailService } from './email.service';
 import {
@@ -46,12 +46,12 @@ export class EmailResolver {
     emailType?: EmailType,
   ): Promise<PaginatedEmailCorrespondence> {
     const user = getUserFromContext(context);
-    // Cast Prisma types to GraphQL types - enum values are compatible at runtime
+    // Cast database types to GraphQL types - enum values are compatible at runtime
     const result = await this.emailService.getEmailHistory(
       user.id,
       skip,
       take,
-      emailType as unknown as PrismaEmailType,
+      emailType as unknown as DbEmailType,
     );
     return result as unknown as PaginatedEmailCorrespondence;
   }

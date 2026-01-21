@@ -4,10 +4,7 @@ import { createMock } from '@golevelup/ts-jest';
 
 import { EmailResolver } from './email.resolver';
 import { EmailService } from './email.service';
-import {
-  EmailType,
-  EmailStatus,
-} from 'src/db/entities/email-correspondence.entity';
+import { EmailType, EmailStatus } from 'src/common/enums/email.enum';
 
 describe('EmailResolver', () => {
   let resolver: EmailResolver;

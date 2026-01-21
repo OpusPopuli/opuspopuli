@@ -2,13 +2,13 @@ import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { User } from './models/user.model';
 import { CreateUserDto } from './dto/create-user.dto';
 
-import { PrismaService } from 'src/db/prisma.service';
-import evaluatePrismaError from 'src/db/db.prisma-errors';
+import { DbService } from '@qckstrt/relationaldb-provider';
+import evaluateDbError from 'src/db/db.errors';
 import { AuthService } from '../auth/auth.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
 import { SecureLogger } from 'src/common/services/secure-logger.service';
-import { softDeleteWhere, softDeleteData } from 'src/db/prisma.extensions';
+import { softDeleteWhere, softDeleteData } from 'src/db/soft-delete.utils';
 
 @Injectable()
 export class UsersService {
@@ -17,7 +17,7 @@ export class UsersService {
   private readonly logger = new SecureLogger(UsersService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: DbService,
     @Inject(forwardRef(() => AuthService))
     private readonly authService: AuthService,
   ) {}
@@ -33,10 +33,9 @@ export class UsersService {
   async create(createUserDto: CreateUserDto): Promise<User | null> {
     const { password, ...rest } = createUserDto;
 
-    let prismaUser: Awaited<ReturnType<typeof this.prisma.user.create>> | null =
-      null;
+    let dbUser: Awaited<ReturnType<typeof this.db.user.create>> | null = null;
     try {
-      prismaUser = await this.prisma.user.create({
+      dbUser = await this.db.user.create({
         data: {
           email: rest.email,
           firstName: rest.firstName,
@@ -49,12 +48,12 @@ export class UsersService {
         password,
       });
     } catch (error) {
-      if (prismaUser === null) {
-        /** We hit a Prisma Error, just report back */
-        const dbError = evaluatePrismaError(error);
+      if (dbUser === null) {
+        /** We hit a Database Error, just report back */
+        const dbError = evaluateDbError(error);
 
         this.logger.warn(
-          `prisma error creating (${JSON.stringify(createUserDto)}): ${dbError.message}`,
+          `database error creating (${JSON.stringify(createUserDto)}): ${dbError.message}`,
         );
 
         throw dbError;
@@ -64,8 +63,8 @@ export class UsersService {
           `authService error registering (${JSON.stringify(createUserDto)}): ${error instanceof Error ? error.message : String(error)}`,
         );
 
-        this.prisma.user
-          .delete({ where: { id: prismaUser.id } })
+        this.db.user
+          .delete({ where: { id: dbUser.id } })
           .catch((deleteError: Error) => {
             this.logger.error(
               `Error deleting user after authService error: ${deleteError.message}`,
@@ -76,7 +75,7 @@ export class UsersService {
       }
     }
 
-    return User.fromPrisma(prismaUser);
+    return User.fromDb(dbUser);
   }
 
   /**
@@ -92,14 +91,14 @@ export class UsersService {
     authStrategy: AuthStrategy = AuthStrategy.MAGIC_LINK,
   ): Promise<User> {
     try {
-      const prismaUser = await this.prisma.user.create({
+      const dbUser = await this.db.user.create({
         data: { email, authStrategy },
       });
-      return User.fromPrisma(prismaUser);
+      return User.fromDb(dbUser);
     } catch (error) {
-      const dbError = evaluatePrismaError(error);
+      const dbError = evaluateDbError(error);
       this.logger.warn(
-        `prisma error creating passwordless user (${email}): ${dbError.message}`,
+        `database error creating passwordless user (${email}): ${dbError.message}`,
       );
       throw dbError;
     }
@@ -117,39 +116,39 @@ export class UsersService {
     authStrategy: AuthStrategy,
   ): Promise<boolean> {
     try {
-      await this.prisma.user.update({
+      await this.db.user.update({
         where: { id },
         data: { authStrategy },
       });
       return true;
     } catch (error) {
-      const dbError = evaluatePrismaError(error);
+      const dbError = evaluateDbError(error);
       this.logger.warn(
-        `prisma error updating auth strategy for user ${id}: ${dbError.message}`,
+        `database error updating auth strategy for user ${id}: ${dbError.message}`,
       );
       throw dbError;
     }
   }
 
   async findAll(): Promise<User[]> {
-    const prismaUsers = await this.prisma.user.findMany({
+    const dbUsers = await this.db.user.findMany({
       where: softDeleteWhere,
     });
-    return User.fromPrismaArray(prismaUsers);
+    return User.fromDbArray(dbUsers);
   }
 
   async findById(id: string): Promise<User | null> {
-    const prismaUser = await this.prisma.user.findFirst({
+    const dbUser = await this.db.user.findFirst({
       where: { id, ...softDeleteWhere },
     });
-    return prismaUser ? User.fromPrisma(prismaUser) : null;
+    return dbUser ? User.fromDb(dbUser) : null;
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    const prismaUser = await this.prisma.user.findFirst({
+    const dbUser = await this.db.user.findFirst({
       where: { email, ...softDeleteWhere },
     });
-    return prismaUser ? User.fromPrisma(prismaUser) : null;
+    return dbUser ? User.fromDb(dbUser) : null;
   }
 
   async update(
@@ -157,15 +156,15 @@ export class UsersService {
     user: Partial<User> | UpdateUserDto,
   ): Promise<boolean> {
     try {
-      await this.prisma.user.update({
+      await this.db.user.update({
         where: { id },
         data: user,
       });
     } catch (error) {
-      const dbError = evaluatePrismaError(error);
+      const dbError = evaluateDbError(error);
 
       this.logger.warn(
-        `prisma error updating (${JSON.stringify(user)}): ${dbError.message}`,
+        `database error updating (${JSON.stringify(user)}): ${dbError.message}`,
       );
 
       throw dbError;
@@ -175,7 +174,7 @@ export class UsersService {
   }
 
   async delete(id: string): Promise<boolean> {
-    const user = await this.prisma.user.findFirst({
+    const user = await this.db.user.findFirst({
       where: { id, ...softDeleteWhere },
     });
 
@@ -186,13 +185,13 @@ export class UsersService {
     try {
       await this.authService.deleteUser(user.email);
       // Soft delete instead of hard delete
-      await this.prisma.user.update({
+      await this.db.user.update({
         where: { id: user.id },
         data: softDeleteData(),
       });
     } catch (error) {
       this.logger.warn(
-        `prisma error deleting (${JSON.stringify(user)}): `,
+        `database error deleting (${JSON.stringify(user)}): `,
         error,
       );
 

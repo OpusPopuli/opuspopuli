@@ -4,7 +4,7 @@ import {
   CivicDataType,
   SyncResult,
 } from '@qckstrt/region-provider';
-import { PrismaService } from 'src/db/prisma.service';
+import { DbService } from '@qckstrt/relationaldb-provider';
 import { RegionInfoModel, CivicDataTypeGQL } from './models/region-info.model';
 import {
   PaginatedPropositions,
@@ -16,7 +16,7 @@ import {
   PaginatedRepresentatives,
 } from './models/representative.model';
 
-// Type aliases for Prisma query results (avoids direct Prisma type imports for CI compatibility)
+// Type aliases for database query results
 type ExternalIdRecord = { externalId: string };
 type PropositionRecord = {
   id: string;
@@ -69,7 +69,7 @@ export class RegionDomainService {
 
   constructor(
     private readonly regionService: RegionProviderService,
-    private readonly prisma: PrismaService,
+    private readonly db: DbService,
   ) {
     const info = regionService.getRegionInfo();
     this.logger.log(
@@ -178,7 +178,7 @@ export class RegionDomainService {
 
     // Get existing externalIds in a single query to calculate created vs updated
     const externalIds = propositions.map((p) => p.externalId);
-    const existingRecords = await this.prisma.proposition.findMany({
+    const existingRecords = await this.db.proposition.findMany({
       where: { externalId: { in: externalIds } },
       select: { externalId: true },
     });
@@ -186,10 +186,10 @@ export class RegionDomainService {
       existingRecords.map((r: ExternalIdRecord) => r.externalId),
     );
 
-    // Batch upsert all propositions using Prisma transaction
-    await this.prisma.$transaction(
+    // Batch upsert all propositions using database transaction
+    await this.db.$transaction(
       propositions.map((prop) =>
-        this.prisma.proposition.upsert({
+        this.db.proposition.upsert({
           where: { externalId: prop.externalId },
           update: {
             title: prop.title,
@@ -241,7 +241,7 @@ export class RegionDomainService {
 
     // Get existing externalIds in a single query to calculate created vs updated
     const externalIds = meetings.map((m) => m.externalId);
-    const existingRecords = await this.prisma.meeting.findMany({
+    const existingRecords = await this.db.meeting.findMany({
       where: { externalId: { in: externalIds } },
       select: { externalId: true },
     });
@@ -249,10 +249,10 @@ export class RegionDomainService {
       existingRecords.map((r: ExternalIdRecord) => r.externalId),
     );
 
-    // Batch upsert all meetings using Prisma transaction
-    await this.prisma.$transaction(
+    // Batch upsert all meetings using database transaction
+    await this.db.$transaction(
       meetings.map((meeting) =>
-        this.prisma.meeting.upsert({
+        this.db.meeting.upsert({
           where: { externalId: meeting.externalId },
           update: {
             title: meeting.title,
@@ -304,7 +304,7 @@ export class RegionDomainService {
 
     // Get existing externalIds in a single query to calculate created vs updated
     const externalIds = reps.map((r) => r.externalId);
-    const existingRecords = await this.prisma.representative.findMany({
+    const existingRecords = await this.db.representative.findMany({
       where: { externalId: { in: externalIds } },
       select: { externalId: true },
     });
@@ -312,10 +312,10 @@ export class RegionDomainService {
       existingRecords.map((r: ExternalIdRecord) => r.externalId),
     );
 
-    // Batch upsert all representatives using Prisma transaction
-    await this.prisma.$transaction(
+    // Batch upsert all representatives using database transaction
+    await this.db.$transaction(
       reps.map((rep) =>
-        this.prisma.representative.upsert({
+        this.db.representative.upsert({
           where: { externalId: rep.externalId },
           update: {
             name: rep.name,
@@ -356,18 +356,18 @@ export class RegionDomainService {
     take: number = 10,
   ): Promise<PaginatedPropositions> {
     const [items, total] = await Promise.all([
-      this.prisma.proposition.findMany({
+      this.db.proposition.findMany({
         orderBy: [{ electionDate: 'desc' }, { createdAt: 'desc' }],
         skip,
         take: take + 1,
       }),
-      this.prisma.proposition.count(),
+      this.db.proposition.count(),
     ]);
 
     const hasMore = items.length > take;
     const paginatedItems = items.slice(0, take);
 
-    // Cast Prisma types to GraphQL types - enum values are compatible at runtime
+    // Cast database types to GraphQL types - enum values are compatible at runtime
     return {
       items: paginatedItems.map((item: PropositionRecord) => ({
         ...item,
@@ -385,7 +385,7 @@ export class RegionDomainService {
    * Get a single proposition by ID
    */
   async getProposition(id: string) {
-    return this.prisma.proposition.findUnique({ where: { id } });
+    return this.db.proposition.findUnique({ where: { id } });
   }
 
   /**
@@ -396,18 +396,18 @@ export class RegionDomainService {
     take: number = 10,
   ): Promise<PaginatedMeetings> {
     const [items, total] = await Promise.all([
-      this.prisma.meeting.findMany({
+      this.db.meeting.findMany({
         orderBy: { scheduledAt: 'desc' },
         skip,
         take: take + 1,
       }),
-      this.prisma.meeting.count(),
+      this.db.meeting.count(),
     ]);
 
     const hasMore = items.length > take;
     const paginatedItems = items.slice(0, take);
 
-    // Cast Prisma types to GraphQL types
+    // Cast database types to GraphQL types
     return {
       items: paginatedItems.map((item: MeetingRecord) => ({
         ...item,
@@ -424,7 +424,7 @@ export class RegionDomainService {
    * Get a single meeting by ID
    */
   async getMeeting(id: string) {
-    return this.prisma.meeting.findUnique({ where: { id } });
+    return this.db.meeting.findUnique({ where: { id } });
   }
 
   /**
@@ -438,19 +438,19 @@ export class RegionDomainService {
     const where = chamber ? { chamber } : undefined;
 
     const [items, total] = await Promise.all([
-      this.prisma.representative.findMany({
+      this.db.representative.findMany({
         where,
         orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
         skip,
         take: take + 1,
       }),
-      this.prisma.representative.count({ where }),
+      this.db.representative.count({ where }),
     ]);
 
     const hasMore = items.length > take;
     const paginatedItems = items.slice(0, take);
 
-    // Cast Prisma types to GraphQL types
+    // Cast database types to GraphQL types
     return {
       items: paginatedItems.map((item: RepresentativeRecord) => ({
         ...item,
@@ -467,6 +467,6 @@ export class RegionDomainService {
    * Get a single representative by ID
    */
   async getRepresentative(id: string) {
-    return this.prisma.representative.findUnique({ where: { id } });
+    return this.db.representative.findUnique({ where: { id } });
   }
 }

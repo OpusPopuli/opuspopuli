@@ -2,8 +2,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { RegionDomainService } from './region.service';
-import { PrismaService } from 'src/db/prisma.service';
-import { createMockPrismaService } from 'src/test/prisma-mock';
+import { DbService } from '@qckstrt/relationaldb-provider';
+import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
 import {
   RegionService as RegionProviderService,
   CivicDataType,
@@ -14,13 +14,13 @@ import {
 /**
  * Tests for Region Domain Service
  *
- * PERFORMANCE: Tests updated for bulk upsert implementation with Prisma
+ * PERFORMANCE: Tests updated for bulk upsert implementation
  */
 
 describe('RegionDomainService', () => {
   let service: RegionDomainService;
   let regionProviderService: jest.Mocked<RegionProviderService>;
-  let mockPrisma: ReturnType<typeof createMockPrismaService>;
+  let mockDb: ReturnType<typeof createMockDbService>;
 
   const mockRegionInfo = {
     id: 'test-region',
@@ -67,7 +67,7 @@ describe('RegionDomainService', () => {
   ];
 
   beforeEach(async () => {
-    mockPrisma = createMockPrismaService();
+    mockDb = createMockDbService();
 
     const mockRegionProvider = {
       getProviderName: jest.fn().mockReturnValue('test-provider'),
@@ -85,12 +85,12 @@ describe('RegionDomainService', () => {
     };
 
     // Set up default empty returns for findMany (no existing records)
-    mockPrisma.proposition.findMany.mockResolvedValue([]);
-    mockPrisma.meeting.findMany.mockResolvedValue([]);
-    mockPrisma.representative.findMany.mockResolvedValue([]);
+    mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.meeting.findMany.mockResolvedValue([]);
+    mockDb.representative.findMany.mockResolvedValue([]);
 
     // Set up default $transaction mock
-    (mockPrisma.$transaction as jest.Mock).mockImplementation(
+    (mockDb.$transaction as jest.Mock).mockImplementation(
       async (operations: any[]) => {
         return Promise.all(operations);
       },
@@ -103,7 +103,7 @@ describe('RegionDomainService', () => {
           provide: RegionProviderService,
           useValue: mockRegionProvider,
         },
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: DbService, useValue: mockDb },
       ],
     }).compile();
 
@@ -135,7 +135,7 @@ describe('RegionDomainService', () => {
       expect(results[0].dataType).toBe(CivicDataType.PROPOSITIONS);
       expect(results[1].dataType).toBe(CivicDataType.MEETINGS);
       expect(results[2].dataType).toBe(CivicDataType.REPRESENTATIVES);
-      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(3);
+      expect(mockDb.$transaction).toHaveBeenCalledTimes(3);
     });
 
     it('should handle sync errors gracefully', async () => {
@@ -153,19 +153,19 @@ describe('RegionDomainService', () => {
   describe('syncDataType - PROPOSITIONS', () => {
     it('should create new propositions using bulk upsert', async () => {
       // No existing records
-      mockPrisma.proposition.findMany.mockResolvedValue([]);
+      mockDb.proposition.findMany.mockResolvedValue([]);
 
       const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
 
       expect(result.itemsCreated).toBe(1);
       expect(result.itemsUpdated).toBe(0);
       expect(result.itemsProcessed).toBe(1);
-      expect(mockPrisma.$transaction).toHaveBeenCalled();
+      expect(mockDb.$transaction).toHaveBeenCalled();
     });
 
     it('should update existing propositions using bulk upsert', async () => {
       // Mock existing record found
-      mockPrisma.proposition.findMany.mockResolvedValue([
+      mockDb.proposition.findMany.mockResolvedValue([
         { externalId: 'prop-1' } as any,
       ]);
 
@@ -173,7 +173,7 @@ describe('RegionDomainService', () => {
 
       expect(result.itemsCreated).toBe(0);
       expect(result.itemsUpdated).toBe(1);
-      expect(mockPrisma.$transaction).toHaveBeenCalled();
+      expect(mockDb.$transaction).toHaveBeenCalled();
     });
 
     it('should handle empty propositions list', async () => {
@@ -189,59 +189,59 @@ describe('RegionDomainService', () => {
 
   describe('syncDataType - MEETINGS', () => {
     it('should create new meetings using bulk upsert', async () => {
-      mockPrisma.meeting.findMany.mockResolvedValue([]);
+      mockDb.meeting.findMany.mockResolvedValue([]);
 
       const result = await service.syncDataType(CivicDataType.MEETINGS);
 
       expect(result.itemsCreated).toBe(1);
       expect(result.itemsUpdated).toBe(0);
-      expect(mockPrisma.$transaction).toHaveBeenCalled();
+      expect(mockDb.$transaction).toHaveBeenCalled();
     });
 
     it('should update existing meetings using bulk upsert', async () => {
-      mockPrisma.meeting.findMany.mockResolvedValue([
+      mockDb.meeting.findMany.mockResolvedValue([
         { externalId: 'meeting-1' } as any,
       ]);
 
       const result = await service.syncDataType(CivicDataType.MEETINGS);
 
       expect(result.itemsUpdated).toBe(1);
-      expect(mockPrisma.$transaction).toHaveBeenCalled();
+      expect(mockDb.$transaction).toHaveBeenCalled();
     });
   });
 
   describe('syncDataType - REPRESENTATIVES', () => {
     it('should create new representatives using bulk upsert', async () => {
-      mockPrisma.representative.findMany.mockResolvedValue([]);
+      mockDb.representative.findMany.mockResolvedValue([]);
 
       const result = await service.syncDataType(CivicDataType.REPRESENTATIVES);
 
       expect(result.itemsCreated).toBe(1);
-      expect(mockPrisma.$transaction).toHaveBeenCalled();
+      expect(mockDb.$transaction).toHaveBeenCalled();
     });
 
     it('should update existing representatives using bulk upsert', async () => {
-      mockPrisma.representative.findMany.mockResolvedValue([
+      mockDb.representative.findMany.mockResolvedValue([
         { externalId: 'rep-1' } as any,
       ]);
 
       const result = await service.syncDataType(CivicDataType.REPRESENTATIVES);
 
       expect(result.itemsUpdated).toBe(1);
-      expect(mockPrisma.$transaction).toHaveBeenCalled();
+      expect(mockDb.$transaction).toHaveBeenCalled();
     });
   });
 
   describe('bulk upsert performance', () => {
     it('should use only 2 queries per sync (SELECT existing + transaction)', async () => {
-      mockPrisma.proposition.findMany.mockResolvedValue([]);
+      mockDb.proposition.findMany.mockResolvedValue([]);
 
       await service.syncDataType(CivicDataType.PROPOSITIONS);
 
       // Should call findMany exactly once (for SELECT existing)
-      expect(mockPrisma.proposition.findMany).toHaveBeenCalledTimes(1);
+      expect(mockDb.proposition.findMany).toHaveBeenCalledTimes(1);
       // Should call $transaction exactly once (for bulk upsert)
-      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockDb.$transaction).toHaveBeenCalledTimes(1);
     });
 
     it('should handle large datasets (1000+ records) efficiently', async () => {
@@ -260,7 +260,7 @@ describe('RegionDomainService', () => {
       );
 
       regionProviderService.fetchPropositions.mockResolvedValue(largeDataset);
-      mockPrisma.proposition.findMany.mockResolvedValue([]);
+      mockDb.proposition.findMany.mockResolvedValue([]);
 
       const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
 
@@ -269,8 +269,8 @@ describe('RegionDomainService', () => {
       expect(result.itemsCreated).toBe(1000);
 
       // Verify only 2 database calls (not 2000)
-      expect(mockPrisma.proposition.findMany).toHaveBeenCalledTimes(1);
-      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockDb.proposition.findMany).toHaveBeenCalledTimes(1);
+      expect(mockDb.$transaction).toHaveBeenCalledTimes(1);
     });
 
     it('should correctly identify creates vs updates in mixed batch', async () => {
@@ -291,7 +291,7 @@ describe('RegionDomainService', () => {
       regionProviderService.fetchPropositions.mockResolvedValue(mixedDataset);
 
       // Mock 500 existing records (prop-0 through prop-499)
-      mockPrisma.proposition.findMany.mockResolvedValue(
+      mockDb.proposition.findMany.mockResolvedValue(
         Array.from({ length: 500 }, (_, i) => ({
           externalId: `prop-${i}`,
         })) as any[],
@@ -322,8 +322,8 @@ describe('RegionDomainService', () => {
           deletedAt: null,
         },
       ];
-      mockPrisma.proposition.findMany.mockResolvedValue(mockItems as any);
-      mockPrisma.proposition.count.mockResolvedValue(1);
+      mockDb.proposition.findMany.mockResolvedValue(mockItems as any);
+      mockDb.proposition.count.mockResolvedValue(1);
 
       const result = await service.getPropositions(0, 10);
 
@@ -346,8 +346,8 @@ describe('RegionDomainService', () => {
         updatedAt: new Date(),
         deletedAt: null,
       }));
-      mockPrisma.proposition.findMany.mockResolvedValue(mockItems as any);
-      mockPrisma.proposition.count.mockResolvedValue(15);
+      mockDb.proposition.findMany.mockResolvedValue(mockItems as any);
+      mockDb.proposition.count.mockResolvedValue(15);
 
       const result = await service.getPropositions(0, 10);
 
@@ -359,18 +359,18 @@ describe('RegionDomainService', () => {
   describe('getProposition', () => {
     it('should return a single proposition by ID', async () => {
       const mockProp = { id: '1', title: 'Test Prop' };
-      mockPrisma.proposition.findUnique.mockResolvedValue(mockProp as any);
+      mockDb.proposition.findUnique.mockResolvedValue(mockProp as any);
 
       const result = await service.getProposition('1');
 
       expect(result).toEqual(mockProp);
-      expect(mockPrisma.proposition.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.proposition.findUnique).toHaveBeenCalledWith({
         where: { id: '1' },
       });
     });
 
     it('should return null if proposition not found', async () => {
-      mockPrisma.proposition.findUnique.mockResolvedValue(null);
+      mockDb.proposition.findUnique.mockResolvedValue(null);
 
       const result = await service.getProposition('nonexistent');
 
@@ -395,8 +395,8 @@ describe('RegionDomainService', () => {
           deletedAt: null,
         },
       ];
-      mockPrisma.meeting.findMany.mockResolvedValue(mockItems as any);
-      mockPrisma.meeting.count.mockResolvedValue(1);
+      mockDb.meeting.findMany.mockResolvedValue(mockItems as any);
+      mockDb.meeting.count.mockResolvedValue(1);
 
       const result = await service.getMeetings(0, 10);
 
@@ -409,7 +409,7 @@ describe('RegionDomainService', () => {
   describe('getMeeting', () => {
     it('should return a single meeting by ID', async () => {
       const mockMeeting = { id: '1', title: 'Test Meeting' };
-      mockPrisma.meeting.findUnique.mockResolvedValue(mockMeeting as any);
+      mockDb.meeting.findUnique.mockResolvedValue(mockMeeting as any);
 
       const result = await service.getMeeting('1');
 
@@ -435,8 +435,8 @@ describe('RegionDomainService', () => {
         },
       ];
 
-      mockPrisma.representative.findMany.mockResolvedValue(mockItems as any);
-      mockPrisma.representative.count.mockResolvedValue(1);
+      mockDb.representative.findMany.mockResolvedValue(mockItems as any);
+      mockDb.representative.count.mockResolvedValue(1);
 
       const result = await service.getRepresentatives(0, 10);
 
@@ -446,12 +446,12 @@ describe('RegionDomainService', () => {
     });
 
     it('should filter by chamber when provided', async () => {
-      mockPrisma.representative.findMany.mockResolvedValue([]);
-      mockPrisma.representative.count.mockResolvedValue(0);
+      mockDb.representative.findMany.mockResolvedValue([]);
+      mockDb.representative.count.mockResolvedValue(0);
 
       await service.getRepresentatives(0, 10, 'Senate');
 
-      expect(mockPrisma.representative.findMany).toHaveBeenCalledWith(
+      expect(mockDb.representative.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { chamber: 'Senate' },
         }),
@@ -462,7 +462,7 @@ describe('RegionDomainService', () => {
   describe('getRepresentative', () => {
     it('should return a single representative by ID', async () => {
       const mockRep = { id: '1', name: 'John Doe' };
-      mockPrisma.representative.findUnique.mockResolvedValue(mockRep as any);
+      mockDb.representative.findUnique.mockResolvedValue(mockRep as any);
 
       const result = await service.getRepresentative('1');
 

@@ -5,7 +5,7 @@ import { APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { AuditLogService } from '../services/audit-log.service';
 import { GraphQLAuditInterceptor } from '../interceptors/graphql-audit.interceptor';
 
-// PrismaModule is global, no need to import
+// RelationalDbModule is global, no need to import
 
 export const AUDIT_CONFIG = 'AUDIT_CONFIG';
 

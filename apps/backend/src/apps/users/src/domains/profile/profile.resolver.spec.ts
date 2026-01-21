@@ -5,17 +5,12 @@ import { UserInputError } from '@nestjs/apollo';
 
 import { ProfileResolver } from './profile.resolver';
 import { ProfileService } from './profile.service';
-import { UserProfileEntity } from 'src/db/entities/user-profile.entity';
-import {
-  UserAddressEntity,
-  AddressType,
-} from 'src/db/entities/user-address.entity';
-import { NotificationPreferenceEntity } from 'src/db/entities/notification-preference.entity';
-import {
-  UserConsentEntity,
-  ConsentStatus,
-  ConsentType,
-} from 'src/db/entities/user-consent.entity';
+import { AddressType } from 'src/common/enums/address.enum';
+import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
+import { UserProfileModel } from './models/user-profile.model';
+import { UserAddressModel } from './models/user-address.model';
+import { NotificationPreferenceModel } from './models/notification-preference.model';
+import { UserConsentModel } from './models/user-consent.model';
 
 describe('ProfileResolver', () => {
   let resolver: ProfileResolver;
@@ -59,7 +54,7 @@ describe('ProfileResolver', () => {
     displayName: 'johndoe',
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as UserProfileEntity;
+  } as unknown as UserProfileModel;
 
   const mockAddress = {
     id: 'address-id',
@@ -73,7 +68,7 @@ describe('ProfileResolver', () => {
     isPrimary: true,
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as UserAddressEntity;
+  } as unknown as UserAddressModel;
 
   const mockNotificationPrefs = {
     id: 'notif-id',
@@ -83,7 +78,7 @@ describe('ProfileResolver', () => {
     smsEnabled: false,
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as NotificationPreferenceEntity;
+  } as unknown as NotificationPreferenceModel;
 
   const mockConsent = {
     id: 'consent-id',
@@ -93,7 +88,7 @@ describe('ProfileResolver', () => {
     grantedAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as unknown as UserConsentEntity;
+  } as unknown as UserConsentModel;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({

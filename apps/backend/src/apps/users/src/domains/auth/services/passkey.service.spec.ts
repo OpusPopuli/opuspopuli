@@ -6,8 +6,8 @@ import type {
   AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
 
-import { PrismaService } from 'src/db/prisma.service';
-import { createMockPrismaService } from 'src/test/prisma-mock';
+import { DbService } from '@qckstrt/relationaldb-provider';
+import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
 import { PasskeyService } from './passkey.service';
 
 // Mock @simplewebauthn/server
@@ -22,9 +22,9 @@ import * as simplewebauthn from '@simplewebauthn/server';
 
 describe('PasskeyService', () => {
   let service: PasskeyService;
-  let mockPrisma: ReturnType<typeof createMockPrismaService>;
+  let mockDb: ReturnType<typeof createMockDbService>;
 
-  // Using 'any' type for mock objects to avoid strict Prisma type checking
+  // Using 'any' type for mock objects to avoid strict type checking
   const mockCredential: any = {
     id: 'cred-1',
     userId: 'user-1',
@@ -87,12 +87,12 @@ describe('PasskeyService', () => {
   };
 
   beforeEach(async () => {
-    mockPrisma = createMockPrismaService();
+    mockDb = createMockDbService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PasskeyService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: DbService, useValue: mockDb },
         { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
@@ -122,7 +122,7 @@ describe('PasskeyService', () => {
         Test.createTestingModule({
           providers: [
             PasskeyService,
-            { provide: PrismaService, useValue: createMockPrismaService() },
+            { provide: DbService, useValue: createMockDbService() },
             {
               provide: ConfigService,
               useValue: {
@@ -146,7 +146,7 @@ describe('PasskeyService', () => {
         Test.createTestingModule({
           providers: [
             PasskeyService,
-            { provide: PrismaService, useValue: createMockPrismaService() },
+            { provide: DbService, useValue: createMockDbService() },
             {
               provide: ConfigService,
               useValue: {
@@ -169,7 +169,7 @@ describe('PasskeyService', () => {
       const module = await Test.createTestingModule({
         providers: [
           PasskeyService,
-          { provide: PrismaService, useValue: createMockPrismaService() },
+          { provide: DbService, useValue: createMockDbService() },
           {
             provide: ConfigService,
             useValue: {
@@ -189,7 +189,7 @@ describe('PasskeyService', () => {
       const module = await Test.createTestingModule({
         providers: [
           PasskeyService,
-          { provide: PrismaService, useValue: createMockPrismaService() },
+          { provide: DbService, useValue: createMockDbService() },
           {
             provide: ConfigService,
             useValue: {
@@ -218,12 +218,12 @@ describe('PasskeyService', () => {
         rp: { name: 'TestApp', id: 'localhost' },
       };
 
-      mockPrisma.passkeyCredential.findMany.mockResolvedValue([]);
+      mockDb.passkeyCredential.findMany.mockResolvedValue([]);
       (
         simplewebauthn.generateRegistrationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
-      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
+      mockDb.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       const result = await service.generateRegistrationOptions(
         'user-1',
@@ -238,12 +238,12 @@ describe('PasskeyService', () => {
     it('should exclude existing credentials from registration options', async () => {
       const mockOptions = { challenge: 'test-challenge' };
 
-      mockPrisma.passkeyCredential.findMany.mockResolvedValue([mockCredential]);
+      mockDb.passkeyCredential.findMany.mockResolvedValue([mockCredential]);
       (
         simplewebauthn.generateRegistrationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
-      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
+      mockDb.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       await service.generateRegistrationOptions(
         'user-1',
@@ -274,11 +274,11 @@ describe('PasskeyService', () => {
         },
       };
 
-      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
+      mockDb.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
       (
         simplewebauthn.verifyRegistrationResponse as jest.Mock
       ).mockResolvedValue(mockVerification);
-      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await service.verifyRegistration(
         'test@example.com',
@@ -286,11 +286,11 @@ describe('PasskeyService', () => {
       );
 
       expect(result).toEqual(mockVerification);
-      expect(mockPrisma.webAuthnChallenge.deleteMany).toHaveBeenCalled();
+      expect(mockDb.webAuthnChallenge.deleteMany).toHaveBeenCalled();
     });
 
     it('should throw error when challenge not found', async () => {
-      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(null);
+      mockDb.webAuthnChallenge.findFirst.mockResolvedValue(null);
 
       await expect(
         service.verifyRegistration(
@@ -305,9 +305,7 @@ describe('PasskeyService', () => {
         ...mockChallenge,
         expiresAt: new Date(Date.now() - 1000), // Expired
       };
-      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(
-        expiredChallenge,
-      );
+      mockDb.webAuthnChallenge.findFirst.mockResolvedValue(expiredChallenge);
 
       await expect(
         service.verifyRegistration(
@@ -334,7 +332,7 @@ describe('PasskeyService', () => {
         },
       };
 
-      mockPrisma.passkeyCredential.create.mockResolvedValue(mockCredential);
+      mockDb.passkeyCredential.create.mockResolvedValue(mockCredential);
 
       const result = await service.saveCredential(
         'user-1',
@@ -343,7 +341,7 @@ describe('PasskeyService', () => {
       );
 
       expect(result).toEqual(mockCredential);
-      expect(mockPrisma.passkeyCredential.create).toHaveBeenCalled();
+      expect(mockDb.passkeyCredential.create).toHaveBeenCalled();
     });
 
     it('should use default friendly name when not provided', async () => {
@@ -360,11 +358,11 @@ describe('PasskeyService', () => {
         },
       };
 
-      mockPrisma.passkeyCredential.create.mockResolvedValue(mockCredential);
+      mockDb.passkeyCredential.create.mockResolvedValue(mockCredential);
 
       await service.saveCredential('user-1', mockVerification as any);
 
-      expect(mockPrisma.passkeyCredential.create).toHaveBeenCalledWith({
+      expect(mockDb.passkeyCredential.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           friendlyName: 'This device',
         }),
@@ -385,11 +383,11 @@ describe('PasskeyService', () => {
         },
       };
 
-      mockPrisma.passkeyCredential.create.mockResolvedValue(mockCredential);
+      mockDb.passkeyCredential.create.mockResolvedValue(mockCredential);
 
       await service.saveCredential('user-1', mockVerification as any);
 
-      expect(mockPrisma.passkeyCredential.create).toHaveBeenCalledWith({
+      expect(mockDb.passkeyCredential.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           friendlyName: 'Synced passkey',
         }),
@@ -410,11 +408,11 @@ describe('PasskeyService', () => {
         },
       };
 
-      mockPrisma.passkeyCredential.create.mockResolvedValue(mockCredential);
+      mockDb.passkeyCredential.create.mockResolvedValue(mockCredential);
 
       await service.saveCredential('user-1', mockVerification as any);
 
-      expect(mockPrisma.passkeyCredential.create).toHaveBeenCalledWith({
+      expect(mockDb.passkeyCredential.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           friendlyName: 'Passkey',
         }),
@@ -429,8 +427,8 @@ describe('PasskeyService', () => {
       (
         simplewebauthn.generateAuthenticationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
-      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
+      mockDb.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       const result = await service.generateAuthenticationOptions();
 
@@ -446,12 +444,12 @@ describe('PasskeyService', () => {
         passkeyCredentials: [mockCredential],
       };
 
-      mockPrisma.user.findUnique.mockResolvedValue(mockUser);
+      mockDb.user.findUnique.mockResolvedValue(mockUser);
       (
         simplewebauthn.generateAuthenticationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
-      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
+      mockDb.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       const result =
         await service.generateAuthenticationOptions('test@example.com');
@@ -475,12 +473,12 @@ describe('PasskeyService', () => {
         passkeyCredentials: [],
       };
 
-      mockPrisma.user.findUnique.mockResolvedValue(mockUser);
+      mockDb.user.findUnique.mockResolvedValue(mockUser);
       (
         simplewebauthn.generateAuthenticationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
-      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
+      mockDb.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       await service.generateAuthenticationOptions('test@example.com');
 
@@ -494,12 +492,12 @@ describe('PasskeyService', () => {
     it('should generate options without allowCredentials when user not found', async () => {
       const mockOptions = { challenge: 'auth-challenge' };
 
-      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockDb.user.findUnique.mockResolvedValue(null);
       (
         simplewebauthn.generateAuthenticationOptions as jest.Mock
       ).mockResolvedValue(mockOptions);
-      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
-      mockPrisma.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
+      mockDb.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.webAuthnChallenge.create.mockResolvedValue(mockChallenge);
 
       await service.generateAuthenticationOptions('test@example.com');
 
@@ -518,13 +516,13 @@ describe('PasskeyService', () => {
         authenticationInfo: { newCounter: 1 },
       };
 
-      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
-      mockPrisma.passkeyCredential.findUnique.mockResolvedValue(mockCredential);
+      mockDb.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
+      mockDb.passkeyCredential.findUnique.mockResolvedValue(mockCredential);
       (
         simplewebauthn.verifyAuthenticationResponse as jest.Mock
       ).mockResolvedValue(mockVerification);
-      mockPrisma.passkeyCredential.update.mockResolvedValue(mockCredential);
-      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.passkeyCredential.update.mockResolvedValue(mockCredential);
+      mockDb.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await service.verifyAuthentication(
         'test@example.com',
@@ -533,11 +531,11 @@ describe('PasskeyService', () => {
 
       expect(result.verification).toEqual(mockVerification);
       expect(result.user).toBeDefined();
-      expect(mockPrisma.passkeyCredential.update).toHaveBeenCalled();
+      expect(mockDb.passkeyCredential.update).toHaveBeenCalled();
     });
 
     it('should throw error when challenge not found', async () => {
-      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(null);
+      mockDb.webAuthnChallenge.findFirst.mockResolvedValue(null);
 
       await expect(
         service.verifyAuthentication(
@@ -548,8 +546,8 @@ describe('PasskeyService', () => {
     });
 
     it('should throw error when credential not found', async () => {
-      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
-      mockPrisma.passkeyCredential.findUnique.mockResolvedValue(null);
+      mockDb.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
+      mockDb.passkeyCredential.findUnique.mockResolvedValue(null);
 
       await expect(
         service.verifyAuthentication('test@example.com', {
@@ -565,8 +563,8 @@ describe('PasskeyService', () => {
         authenticationInfo: { newCounter: 1 },
       };
 
-      mockPrisma.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
-      mockPrisma.passkeyCredential.findUnique.mockResolvedValue(mockCredential);
+      mockDb.webAuthnChallenge.findFirst.mockResolvedValue(mockChallenge);
+      mockDb.passkeyCredential.findUnique.mockResolvedValue(mockCredential);
       (
         simplewebauthn.verifyAuthenticationResponse as jest.Mock
       ).mockResolvedValue(mockVerification);
@@ -577,18 +575,18 @@ describe('PasskeyService', () => {
       );
 
       expect(result.verification.verified).toBe(false);
-      expect(mockPrisma.passkeyCredential.update).not.toHaveBeenCalled();
+      expect(mockDb.passkeyCredential.update).not.toHaveBeenCalled();
     });
   });
 
   describe('getUserCredentials', () => {
     it('should return user credentials', async () => {
-      mockPrisma.passkeyCredential.findMany.mockResolvedValue([mockCredential]);
+      mockDb.passkeyCredential.findMany.mockResolvedValue([mockCredential]);
 
       const result = await service.getUserCredentials('user-1');
 
       expect(result).toEqual([mockCredential]);
-      expect(mockPrisma.passkeyCredential.findMany).toHaveBeenCalledWith({
+      expect(mockDb.passkeyCredential.findMany).toHaveBeenCalledWith({
         where: { userId: 'user-1' },
         orderBy: { createdAt: 'desc' },
       });
@@ -597,7 +595,7 @@ describe('PasskeyService', () => {
 
   describe('deleteCredential', () => {
     it('should delete credential successfully', async () => {
-      mockPrisma.passkeyCredential.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.passkeyCredential.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await service.deleteCredential('cred-1', 'user-1');
 
@@ -605,7 +603,7 @@ describe('PasskeyService', () => {
     });
 
     it('should return false when credential not found', async () => {
-      mockPrisma.passkeyCredential.deleteMany.mockResolvedValue({ count: 0 });
+      mockDb.passkeyCredential.deleteMany.mockResolvedValue({ count: 0 });
 
       const result = await service.deleteCredential('unknown-cred', 'user-1');
 
@@ -615,7 +613,7 @@ describe('PasskeyService', () => {
 
   describe('userHasPasskeys', () => {
     it('should return true when user has passkeys', async () => {
-      mockPrisma.passkeyCredential.count.mockResolvedValue(2);
+      mockDb.passkeyCredential.count.mockResolvedValue(2);
 
       const result = await service.userHasPasskeys('user-1');
 
@@ -623,7 +621,7 @@ describe('PasskeyService', () => {
     });
 
     it('should return false when user has no passkeys', async () => {
-      mockPrisma.passkeyCredential.count.mockResolvedValue(0);
+      mockDb.passkeyCredential.count.mockResolvedValue(0);
 
       const result = await service.userHasPasskeys('user-1');
 
@@ -633,7 +631,7 @@ describe('PasskeyService', () => {
 
   describe('cleanupExpiredChallenges', () => {
     it('should cleanup expired challenges', async () => {
-      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 5 });
+      mockDb.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 5 });
 
       const result = await service.cleanupExpiredChallenges();
 
@@ -641,7 +639,7 @@ describe('PasskeyService', () => {
     });
 
     it('should return 0 when no challenges expired', async () => {
-      mockPrisma.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 0 });
+      mockDb.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 0 });
 
       const result = await service.cleanupExpiredChallenges();
 

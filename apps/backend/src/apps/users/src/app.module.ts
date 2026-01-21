@@ -39,17 +39,6 @@ import {
   createLoggingConfig,
 } from 'src/common/config/shared-app.config';
 import { DbModule } from 'src/db/db.module';
-import { UserEntity } from 'src/db/entities/user.entity';
-import { AuditLogEntity } from 'src/db/entities/audit-log.entity';
-import { UserProfileEntity } from 'src/db/entities/user-profile.entity';
-import { UserLoginEntity } from 'src/db/entities/user-login.entity';
-import { UserSessionEntity } from 'src/db/entities/user-session.entity';
-import { UserAddressEntity } from 'src/db/entities/user-address.entity';
-import { NotificationPreferenceEntity } from 'src/db/entities/notification-preference.entity';
-import { UserConsentEntity } from 'src/db/entities/user-consent.entity';
-import { PasskeyCredentialEntity } from 'src/db/entities/passkey-credential.entity';
-import { WebAuthnChallengeEntity } from 'src/db/entities/webauthn-challenge.entity';
-import { EmailCorrespondenceEntity } from 'src/db/entities/email-correspondence.entity';
 import { AuditModule } from 'src/common/audit/audit.module';
 import { CaslModule } from 'src/permissions/casl.module';
 import { HealthModule } from 'src/common/health';
@@ -71,21 +60,7 @@ import { HealthModule } from 'src/common/health';
     }),
     LoggingModule.forRootAsync(createLoggingConfig('users-service')),
     ThrottlerModule.forRoot(THROTTLER_CONFIG),
-    DbModule.forRoot({
-      entities: [
-        UserEntity,
-        AuditLogEntity,
-        UserProfileEntity,
-        UserLoginEntity,
-        UserSessionEntity,
-        UserAddressEntity,
-        NotificationPreferenceEntity,
-        UserConsentEntity,
-        PasskeyCredentialEntity,
-        WebAuthnChallengeEntity,
-        EmailCorrespondenceEntity,
-      ],
-    }),
+    DbModule.forRoot(),
     AuditModule.forRoot(),
     GraphQLModule.forRoot<ApolloFederationDriverConfig>({
       driver: ApolloFederationDriver,

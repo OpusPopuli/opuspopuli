@@ -17,12 +17,11 @@ import type {
   AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
 import {
-  PasskeyCredential as PrismaPasskeyCredential,
-  WebAuthnChallenge as PrismaWebAuthnChallenge,
-  User as PrismaUser,
-} from '@prisma/client';
-
-import { PrismaService } from 'src/db/prisma.service';
+  DbService,
+  PasskeyCredential as DbPasskeyCredential,
+  WebAuthnChallenge as DbWebAuthnChallenge,
+  User as DbUser,
+} from '@qckstrt/relationaldb-provider';
 import { isProduction } from 'src/config/environment.config';
 
 @Injectable()
@@ -35,7 +34,7 @@ export class PasskeyService {
   private readonly origin: string;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: DbService,
     private readonly configService: ConfigService,
   ) {
     const isProd = isProduction();
@@ -86,7 +85,7 @@ export class PasskeyService {
     displayName: string,
   ): Promise<PublicKeyCredentialCreationOptionsJSON> {
     // Get existing credentials to exclude (prevent re-registration of same authenticator)
-    const existingCredentials = await this.prisma.passkeyCredential.findMany({
+    const existingCredentials = await this.db.passkeyCredential.findMany({
       where: { userId },
     });
 
@@ -138,7 +137,7 @@ export class PasskeyService {
     });
 
     // Clear used challenge
-    await this.prisma.webAuthnChallenge.deleteMany({
+    await this.db.webAuthnChallenge.deleteMany({
       where: {
         identifier: email,
         type: 'registration',
@@ -158,11 +157,11 @@ export class PasskeyService {
     userId: string,
     verification: VerifiedRegistrationResponse,
     friendlyName?: string,
-  ): Promise<PrismaPasskeyCredential> {
+  ): Promise<DbPasskeyCredential> {
     const { credential, credentialDeviceType, credentialBackedUp } =
       verification.registrationInfo!;
 
-    const saved = await this.prisma.passkeyCredential.create({
+    const saved = await this.db.passkeyCredential.create({
       data: {
         userId,
         credentialId: credential.id,
@@ -191,8 +190,8 @@ export class PasskeyService {
 
     if (email) {
       // Find credentials for this user by looking up user by email first
-      // Use Prisma include to get credentials via the user relation
-      const user = await this.prisma.user.findUnique({
+      // Use include to get credentials via the user relation
+      const user = await this.db.user.findUnique({
         where: { email },
         include: { passkeyCredentials: true },
       });
@@ -231,7 +230,7 @@ export class PasskeyService {
     response: AuthenticationResponseJSON,
   ): Promise<{
     verification: VerifiedAuthenticationResponse;
-    user: PrismaUser;
+    user: DbUser;
   }> {
     const storedChallenge = await this.getChallenge(
       identifier,
@@ -244,7 +243,7 @@ export class PasskeyService {
 
     // Find credential by ID with user relation
     const credentialId = response.id;
-    const credential = await this.prisma.passkeyCredential.findUnique({
+    const credential = await this.db.passkeyCredential.findUnique({
       where: { credentialId },
       include: { user: true },
     });
@@ -270,7 +269,7 @@ export class PasskeyService {
 
     if (verification.verified) {
       // Update counter and last used timestamp
-      await this.prisma.passkeyCredential.update({
+      await this.db.passkeyCredential.update({
         where: { id: credential.id },
         data: {
           counter: BigInt(verification.authenticationInfo.newCounter),
@@ -279,7 +278,7 @@ export class PasskeyService {
       });
 
       // Clear used challenge
-      await this.prisma.webAuthnChallenge.deleteMany({
+      await this.db.webAuthnChallenge.deleteMany({
         where: { identifier, type: 'authentication' },
       });
 
@@ -294,8 +293,8 @@ export class PasskeyService {
   /**
    * Get all passkey credentials for a user
    */
-  async getUserCredentials(userId: string): Promise<PrismaPasskeyCredential[]> {
-    return this.prisma.passkeyCredential.findMany({
+  async getUserCredentials(userId: string): Promise<DbPasskeyCredential[]> {
+    return this.db.passkeyCredential.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
     });
@@ -308,7 +307,7 @@ export class PasskeyService {
     credentialId: string,
     userId: string,
   ): Promise<boolean> {
-    const result = await this.prisma.passkeyCredential.deleteMany({
+    const result = await this.db.passkeyCredential.deleteMany({
       where: {
         id: credentialId,
         userId,
@@ -329,7 +328,7 @@ export class PasskeyService {
    * Check if a user has any passkeys registered
    */
   async userHasPasskeys(userId: string): Promise<boolean> {
-    const count = await this.prisma.passkeyCredential.count({
+    const count = await this.db.passkeyCredential.count({
       where: { userId },
     });
     return count > 0;
@@ -339,7 +338,7 @@ export class PasskeyService {
    * Cleanup expired challenges (should be run periodically)
    */
   async cleanupExpiredChallenges(): Promise<number> {
-    const result = await this.prisma.webAuthnChallenge.deleteMany({
+    const result = await this.db.webAuthnChallenge.deleteMany({
       where: {
         expiresAt: { lt: new Date() },
       },
@@ -360,13 +359,13 @@ export class PasskeyService {
     type: 'registration' | 'authentication',
   ): Promise<void> {
     // Remove any existing challenge for this identifier and type
-    await this.prisma.webAuthnChallenge.deleteMany({
+    await this.db.webAuthnChallenge.deleteMany({
       where: { identifier, type },
     });
 
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-    await this.prisma.webAuthnChallenge.create({
+    await this.db.webAuthnChallenge.create({
       data: {
         identifier,
         challenge,
@@ -379,8 +378,8 @@ export class PasskeyService {
   private async getChallenge(
     identifier: string,
     type: 'registration' | 'authentication',
-  ): Promise<PrismaWebAuthnChallenge | null> {
-    const challenge = await this.prisma.webAuthnChallenge.findFirst({
+  ): Promise<DbWebAuthnChallenge | null> {
+    const challenge = await this.db.webAuthnChallenge.findFirst({
       where: { identifier, type },
     });
 

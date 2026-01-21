@@ -1,29 +1,30 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getDataSourceToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
 import { DatabaseHealthIndicator } from './database.health';
+import { DbService } from '@qckstrt/relationaldb-provider';
+import {
+  createMockDbClient,
+  MockDbClient,
+} from '@qckstrt/relationaldb-provider/testing';
 
 describe('DatabaseHealthIndicator', () => {
   let indicator: DatabaseHealthIndicator;
-  let dataSource: DataSource;
+  let db: MockDbClient;
 
   beforeEach(async () => {
-    const mockDataSource = {
-      query: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
-    };
+    db = createMockDbClient();
+    db.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DatabaseHealthIndicator,
         {
-          provide: getDataSourceToken(),
-          useValue: mockDataSource,
+          provide: DbService,
+          useValue: db,
         },
       ],
     }).compile();
 
     indicator = module.get<DatabaseHealthIndicator>(DatabaseHealthIndicator);
-    dataSource = module.get<DataSource>(getDataSourceToken());
   });
 
   afterEach(() => {
@@ -42,7 +43,7 @@ describe('DatabaseHealthIndicator', () => {
     it('should execute SELECT 1 query', async () => {
       await indicator.check();
 
-      expect(dataSource.query).toHaveBeenCalledWith('SELECT 1');
+      expect(db.$queryRaw).toHaveBeenCalled();
     });
 
     it('should include response time in result', async () => {
@@ -52,9 +53,7 @@ describe('DatabaseHealthIndicator', () => {
     });
 
     it('should return down status when database query fails', async () => {
-      (dataSource.query as jest.Mock).mockRejectedValue(
-        new Error('Connection refused'),
-      );
+      db.$queryRaw.mockRejectedValue(new Error('Connection refused'));
 
       const result = await indicator.check();
 
@@ -64,7 +63,7 @@ describe('DatabaseHealthIndicator', () => {
     });
 
     it('should handle unknown errors', async () => {
-      (dataSource.query as jest.Mock).mockRejectedValue('Unknown error');
+      db.$queryRaw.mockRejectedValue('Unknown error');
 
       const result = await indicator.check();
 
@@ -73,7 +72,7 @@ describe('DatabaseHealthIndicator', () => {
     });
 
     it('should measure response time even on failure', async () => {
-      (dataSource.query as jest.Mock).mockRejectedValue(new Error('Timeout'));
+      db.$queryRaw.mockRejectedValue(new Error('Timeout'));
 
       const result = await indicator.check();
 

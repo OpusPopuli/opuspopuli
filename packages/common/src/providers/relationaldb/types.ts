@@ -2,10 +2,8 @@
  * Relational Database Types and Interfaces
  *
  * Strategy Pattern for relational database connections.
- * Uses PostgreSQL via Supabase.
+ * Uses PostgreSQL via Supabase with Prisma ORM.
  */
-
-import { DataSourceOptions } from "typeorm";
 
 /**
  * Database types supported
@@ -15,7 +13,42 @@ export enum RelationalDBType {
 }
 
 /**
+ * Environment detection helpers for provider packages
+ */
+export type Environment = "production" | "development" | "test";
+
+export function getEnvironment(): Environment {
+  const nodeEnv = process.env.NODE_ENV?.toLowerCase();
+  switch (nodeEnv) {
+    case "production":
+    case "prod":
+      return "production";
+    case "test":
+      return "test";
+    case "development":
+    case "dev":
+    default:
+      return "development";
+  }
+}
+
+export function isProduction(): boolean {
+  return getEnvironment() === "production";
+}
+
+export function isDevelopment(): boolean {
+  return getEnvironment() === "development";
+}
+
+export function isTest(): boolean {
+  return getEnvironment() === "test";
+}
+
+/**
  * Strategy interface for relational database providers
+ *
+ * This is an ORM-agnostic interface. The actual ORM implementation
+ * (Prisma, TypeORM, Drizzle, etc.) is encapsulated within the provider package.
  */
 export interface IRelationalDBProvider {
   /**
@@ -29,16 +62,19 @@ export interface IRelationalDBProvider {
   getType(): RelationalDBType;
 
   /**
-   * Get TypeORM connection options for this provider
-   */
-  getConnectionOptions(
-    entities: DataSourceOptions["entities"],
-  ): DataSourceOptions;
-
-  /**
    * Check if provider is available (for development warnings)
    */
   isAvailable(): Promise<boolean>;
+
+  /**
+   * Connect to the database
+   */
+  connect(): Promise<void>;
+
+  /**
+   * Disconnect from the database
+   */
+  disconnect(): Promise<void>;
 }
 
 /**
