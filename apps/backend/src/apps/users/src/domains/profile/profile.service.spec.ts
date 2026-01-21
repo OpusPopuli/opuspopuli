@@ -5,15 +5,15 @@ import { NotFoundException } from '@nestjs/common';
 import { ProfileService } from './profile.service';
 import { DbService } from '@qckstrt/relationaldb-provider';
 import {
-  createMockDbService,
-  MockDbService,
+  createMockDbClient,
+  MockDbClient,
 } from '@qckstrt/relationaldb-provider/testing';
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 import { AddressType } from 'src/common/enums/address.enum';
 
 describe('ProfileService', () => {
   let service: ProfileService;
-  let mockDb: MockDbService;
+  let mockDb: MockDbClient;
 
   const mockUserId = 'test-user-id';
 
@@ -131,7 +131,7 @@ describe('ProfileService', () => {
   };
 
   beforeEach(async () => {
-    mockDb = createMockDbService();
+    mockDb = createMockDbClient();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

@@ -2,16 +2,16 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DatabaseHealthIndicator } from './database.health';
 import { DbService } from '@qckstrt/relationaldb-provider';
 import {
-  createMockDbService,
-  MockDbService,
+  createMockDbClient,
+  MockDbClient,
 } from '@qckstrt/relationaldb-provider/testing';
 
 describe('DatabaseHealthIndicator', () => {
   let indicator: DatabaseHealthIndicator;
-  let db: MockDbService;
+  let db: MockDbClient;
 
   beforeEach(async () => {
-    db = createMockDbService();
+    db = createMockDbClient();
     db.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
 
     const module: TestingModule = await Test.createTestingModule({

@@ -21,21 +21,16 @@ export const resetMockDbClient = (mock: MockDbClient): void => {
 };
 
 /**
- * Type alias for DbService mock - exported for test compatibility
+ * Creates a deeply mocked DbService for testing
  * (DbService extends the underlying client, so they share the same mock type)
  */
-export type MockDbService = MockDbClient;
-
-/**
- * Creates a deeply mocked DbService for testing
- */
-export const createMockDbService = (): MockDbService => {
+export const createMockDbService = (): MockDbClient => {
   return createMockDbClient();
 };
 
 /**
  * Resets all mocks on a MockDbService
  */
-export const resetMockDbService = (mock: MockDbService): void => {
+export const resetMockDbService = (mock: MockDbClient): void => {
   resetMockDbClient(mock);
 };

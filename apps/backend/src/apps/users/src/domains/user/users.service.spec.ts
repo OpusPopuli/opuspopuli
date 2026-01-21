@@ -1,13 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
-import { Prisma } from '@qckstrt/relationaldb-provider';
-
-import { DbService } from '@qckstrt/relationaldb-provider';
+import { DbService, Prisma } from '@qckstrt/relationaldb-provider';
 import { DbErrorCodes } from 'src/db/db.errors';
 import {
-  createMockDbService,
-  MockDbService,
+  createMockDbClient,
+  MockDbClient,
 } from '@qckstrt/relationaldb-provider/testing';
 
 import { AuthService } from '../auth/auth.service';
@@ -31,12 +29,12 @@ const createDbUser = (user: (typeof users)[0]) => ({
 });
 
 describe('UsersService', () => {
-  let dbService: MockDbService;
+  let dbService: MockDbClient;
   let usersService: UsersService;
   let authService: AuthService;
 
   beforeEach(async () => {
-    const mockDb = createMockDbService();
+    const mockDb = createMockDbClient();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ForbiddenException } from '@nestjs/common';
 import { IEmailProvider } from '@qckstrt/common';
 import {
+  DbService,
   EmailType as DbEmailType,
   EmailStatus as DbEmailStatus,
   ConsentType as DbConsentType,
@@ -11,7 +12,6 @@ import {
 } from '@qckstrt/relationaldb-provider';
 
 import { EmailService } from './email.service';
-import { DbService } from '@qckstrt/relationaldb-provider';
 import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
 
 describe('EmailService', () => {

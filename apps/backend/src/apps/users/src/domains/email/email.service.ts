@@ -7,14 +7,13 @@ import {
   generateMailtoLink,
 } from '@qckstrt/email-provider';
 import {
+  DbService,
   EmailCorrespondence as DbEmailCorrespondence,
   EmailType as DbEmailType,
   EmailStatus as DbEmailStatus,
   ConsentType as DbConsentType,
   ConsentStatus as DbConsentStatus,
 } from '@qckstrt/relationaldb-provider';
-
-import { DbService } from '@qckstrt/relationaldb-provider';
 import { ContactRepresentativeDto } from './dto/contact-representative.dto';
 
 interface RepresentativeInfo {

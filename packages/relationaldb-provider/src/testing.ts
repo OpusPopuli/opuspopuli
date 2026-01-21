@@ -9,11 +9,11 @@
  * ```typescript
  * import {
  *   createMockDbService,
- *   MockDbService,
+ *   MockDbClient,
  * } from '@qckstrt/relationaldb-provider/testing';
  *
  * describe('MyService', () => {
- *   let db: MockDbService;
+ *   let db: MockDbClient;
  *
  *   beforeEach(() => {
  *     db = createMockDbService();
@@ -28,5 +28,4 @@ export {
   resetMockDbClient,
   resetMockDbService,
   type MockDbClient,
-  type MockDbService,
 } from "./test/db-mock.js";

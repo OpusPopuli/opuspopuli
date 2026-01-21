@@ -1,10 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IStorageProvider } from '@qckstrt/storage-provider';
-import { Document as DbDocument } from '@qckstrt/relationaldb-provider';
+import {
+  DbService,
+  Document as DbDocument,
+} from '@qckstrt/relationaldb-provider';
 
 import { IFileConfig } from 'src/config';
-import { DbService } from '@qckstrt/relationaldb-provider';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 import { File } from './models/file.model';
 

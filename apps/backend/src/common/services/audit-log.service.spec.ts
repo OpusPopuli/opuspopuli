@@ -6,13 +6,13 @@ import { LOGGER } from '@qckstrt/logging-provider';
 import { AUDIT_CONFIG } from '../audit/audit.module';
 import { DbService } from '@qckstrt/relationaldb-provider';
 import {
-  createMockDbService,
-  MockDbService,
+  createMockDbClient,
+  MockDbClient,
 } from '@qckstrt/relationaldb-provider/testing';
 
 describe('AuditLogService', () => {
   let service: AuditLogService;
-  let mockDb: MockDbService;
+  let mockDb: MockDbClient;
 
   const mockLogger = {
     debug: jest.fn(),
@@ -30,7 +30,7 @@ describe('AuditLogService', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
 
-    mockDb = createMockDbService();
+    mockDb = createMockDbClient();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -305,10 +305,10 @@ describe('AuditLogService', () => {
 
   describe('retention cleanup with zero retention', () => {
     let serviceWithNoRetention: AuditLogService;
-    let mockDbNoRetention: MockDbService;
+    let mockDbNoRetention: MockDbClient;
 
     beforeEach(async () => {
-      mockDbNoRetention = createMockDbService();
+      mockDbNoRetention = createMockDbClient();
 
       const module: TestingModule = await Test.createTestingModule({
         providers: [

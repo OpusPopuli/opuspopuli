@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
+  DbService,
   AuditLog as DbAuditLog,
   UserSession as DbUserSession,
 } from '@qckstrt/relationaldb-provider';
-
-import { DbService } from '@qckstrt/relationaldb-provider';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
 
 import {

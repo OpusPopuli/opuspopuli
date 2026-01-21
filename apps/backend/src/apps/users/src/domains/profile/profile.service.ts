@@ -7,14 +7,13 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { IStorageProvider } from '@qckstrt/storage-provider';
 import {
+  DbService,
   UserProfile as DbUserProfile,
   UserAddress as DbUserAddress,
   NotificationPreference as DbNotificationPreference,
   UserConsent as DbUserConsent,
   Prisma,
 } from '@qckstrt/relationaldb-provider';
-
-import { DbService } from '@qckstrt/relationaldb-provider';
 import { IFileConfig } from 'src/config';
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 

@@ -17,12 +17,11 @@ import type {
   AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
 import {
+  DbService,
   PasskeyCredential as DbPasskeyCredential,
   WebAuthnChallenge as DbWebAuthnChallenge,
   User as DbUser,
 } from '@qckstrt/relationaldb-provider';
-
-import { DbService } from '@qckstrt/relationaldb-provider';
 import { isProduction } from 'src/config/environment.config';
 
 @Injectable()
