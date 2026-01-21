@@ -620,7 +620,7 @@ export class AuthResolver {
   ): Promise<PasskeyCredential[]> {
     const user = getUserFromContext(context);
     const credentials = await this.passkeyService.getUserCredentials(user.id);
-    // Map Prisma types (null) to GraphQL types (undefined)
+    // Map database types (null) to GraphQL types (undefined)
     return credentials.map((cred) => ({
       id: cred.id,
       friendlyName: cred.friendlyName ?? undefined,

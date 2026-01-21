@@ -1,12 +1,9 @@
 /**
- * Prisma Extensions for qckstrt Backend
+ * Soft Delete Utilities for qckstrt Backend
  *
- * This file contains Prisma extension definitions for enhanced functionality.
- * Currently provides soft delete model identification utilities.
- *
- * Note: Full soft delete extension implementation requires Prisma's dynamic
- * typing which conflicts with strict TypeScript rules. Soft delete logic
- * is implemented at the service layer for type safety.
+ * Provides utilities for implementing soft delete functionality across
+ * the application. Soft delete logic is implemented at the service layer
+ * for type safety and flexibility.
  */
 
 /**
@@ -35,7 +32,7 @@ export function isSoftDeleteModel(model: string): model is SoftDeleteModel {
  *
  * @example
  * ```typescript
- * const users = await prisma.user.findMany({
+ * const users = await db.user.findMany({
  *   where: { ...softDeleteWhere },
  * });
  * ```
@@ -48,7 +45,7 @@ export const softDeleteWhere = { deletedAt: null } as const;
  *
  * @example
  * ```typescript
- * await prisma.user.update({
+ * await db.user.update({
  *   where: { id },
  *   data: softDeleteData(),
  * });
@@ -63,7 +60,7 @@ export function softDeleteData(): { deletedAt: Date } {
  *
  * @example
  * ```typescript
- * await prisma.user.update({
+ * await db.user.update({
  *   where: { id },
  *   data: restoreData(),
  * });

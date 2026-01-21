@@ -3,21 +3,21 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 
 import { ProfileService } from './profile.service';
-import { PrismaService } from 'src/db/prisma.service';
+import { DbService } from '@qckstrt/relationaldb-provider';
 import {
-  createMockPrismaService,
-  MockPrismaService,
-} from 'src/test/prisma-mock';
+  createMockDbClient,
+  MockDbClient,
+} from '@qckstrt/relationaldb-provider/testing';
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 import { AddressType } from 'src/common/enums/address.enum';
 
 describe('ProfileService', () => {
   let service: ProfileService;
-  let mockPrisma: MockPrismaService;
+  let mockDb: MockDbClient;
 
   const mockUserId = 'test-user-id';
 
-  // Cast mock objects to any to avoid strict Prisma type checking in tests
+  // Cast mock objects to any to avoid strict type checking in tests
   const mockProfile: any = {
     id: 'profile-id',
     userId: mockUserId,
@@ -131,14 +131,14 @@ describe('ProfileService', () => {
   };
 
   beforeEach(async () => {
-    mockPrisma = createMockPrismaService();
+    mockDb = createMockDbClient();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProfileService,
         {
-          provide: PrismaService,
-          useValue: mockPrisma,
+          provide: DbService,
+          useValue: mockDb,
         },
       ],
     }).compile();
@@ -156,18 +156,18 @@ describe('ProfileService', () => {
 
   describe('getProfile', () => {
     it('should return a profile if found', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
 
       const result = await service.getProfile(mockUserId);
 
       expect(result).toEqual(mockProfile);
-      expect(mockPrisma.userProfile.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.userProfile.findUnique).toHaveBeenCalledWith({
         where: { userId: mockUserId },
       });
     });
 
     it('should return null if profile not found', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue(null);
+      mockDb.userProfile.findUnique.mockResolvedValue(null);
 
       const result = await service.getProfile(mockUserId);
 
@@ -177,22 +177,22 @@ describe('ProfileService', () => {
 
   describe('getOrCreateProfile', () => {
     it('should return existing profile if found', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
 
       const result = await service.getOrCreateProfile(mockUserId);
 
       expect(result).toEqual(mockProfile);
-      expect(mockPrisma.userProfile.create).not.toHaveBeenCalled();
+      expect(mockDb.userProfile.create).not.toHaveBeenCalled();
     });
 
     it('should create new profile if not found', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue(null);
-      mockPrisma.userProfile.create.mockResolvedValue(mockProfile);
+      mockDb.userProfile.findUnique.mockResolvedValue(null);
+      mockDb.userProfile.create.mockResolvedValue(mockProfile);
 
       const result = await service.getOrCreateProfile(mockUserId);
 
       expect(result).toEqual(mockProfile);
-      expect(mockPrisma.userProfile.create).toHaveBeenCalledWith({
+      expect(mockDb.userProfile.create).toHaveBeenCalledWith({
         data: { userId: mockUserId },
       });
     });
@@ -203,13 +203,13 @@ describe('ProfileService', () => {
       const updateDto = { firstName: 'Jane' };
       const updatedProfile = { ...mockProfile, ...updateDto };
 
-      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
-      mockPrisma.userProfile.update.mockResolvedValue(updatedProfile);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.userProfile.update.mockResolvedValue(updatedProfile);
 
       const result = await service.updateProfile(mockUserId, updateDto);
 
       expect(result).toEqual(updatedProfile);
-      expect(mockPrisma.userProfile.update).toHaveBeenCalledWith({
+      expect(mockDb.userProfile.update).toHaveBeenCalledWith({
         where: { userId: mockUserId },
         data: updateDto,
       });
@@ -222,12 +222,12 @@ describe('ProfileService', () => {
 
   describe('getAddresses', () => {
     it('should return list of addresses', async () => {
-      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getAddresses(mockUserId);
 
       expect(result).toEqual([mockAddress]);
-      expect(mockPrisma.userAddress.findMany).toHaveBeenCalledWith({
+      expect(mockDb.userAddress.findMany).toHaveBeenCalledWith({
         where: { userId: mockUserId },
         orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
       });
@@ -236,7 +236,7 @@ describe('ProfileService', () => {
 
   describe('getAddress', () => {
     it('should return address if found', async () => {
-      mockPrisma.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
 
       const result = await service.getAddress(mockUserId, mockAddress.id);
 
@@ -244,7 +244,7 @@ describe('ProfileService', () => {
     });
 
     it('should return null if address not found', async () => {
-      mockPrisma.userAddress.findFirst.mockResolvedValue(null);
+      mockDb.userAddress.findFirst.mockResolvedValue(null);
 
       const result = await service.getAddress(mockUserId, 'non-existent');
 
@@ -264,7 +264,7 @@ describe('ProfileService', () => {
         isPrimary: false,
       };
 
-      mockPrisma.userAddress.create.mockResolvedValue(mockAddress);
+      mockDb.userAddress.create.mockResolvedValue(mockAddress);
 
       const result = await service.createAddress(mockUserId, createDto as any);
 
@@ -282,12 +282,12 @@ describe('ProfileService', () => {
         isPrimary: true,
       };
 
-      mockPrisma.userAddress.updateMany.mockResolvedValue({ count: 1 });
-      mockPrisma.userAddress.create.mockResolvedValue(mockAddress);
+      mockDb.userAddress.updateMany.mockResolvedValue({ count: 1 });
+      mockDb.userAddress.create.mockResolvedValue(mockAddress);
 
       await service.createAddress(mockUserId, createDto as any);
 
-      expect(mockPrisma.userAddress.updateMany).toHaveBeenCalledWith({
+      expect(mockDb.userAddress.updateMany).toHaveBeenCalledWith({
         where: { userId: mockUserId, isPrimary: true },
         data: { isPrimary: false },
       });
@@ -299,8 +299,8 @@ describe('ProfileService', () => {
       const updateDto = { id: mockAddress.id, city: 'Boston' };
       const updatedAddress = { ...mockAddress, city: 'Boston' };
 
-      mockPrisma.userAddress.findFirst.mockResolvedValue(mockAddress);
-      mockPrisma.userAddress.update.mockResolvedValue(updatedAddress);
+      mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockDb.userAddress.update.mockResolvedValue(updatedAddress);
 
       const result = await service.updateAddress(mockUserId, updateDto);
 
@@ -308,7 +308,7 @@ describe('ProfileService', () => {
     });
 
     it('should throw NotFoundException if address not found', async () => {
-      mockPrisma.userAddress.findFirst.mockResolvedValue(null);
+      mockDb.userAddress.findFirst.mockResolvedValue(null);
 
       await expect(
         service.updateAddress(mockUserId, { id: 'non-existent' }),
@@ -318,7 +318,7 @@ describe('ProfileService', () => {
 
   describe('deleteAddress', () => {
     it('should delete address and return true', async () => {
-      mockPrisma.userAddress.deleteMany.mockResolvedValue({ count: 1 });
+      mockDb.userAddress.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await service.deleteAddress(mockUserId, mockAddress.id);
 
@@ -326,7 +326,7 @@ describe('ProfileService', () => {
     });
 
     it('should return false if address not found', async () => {
-      mockPrisma.userAddress.deleteMany.mockResolvedValue({ count: 0 });
+      mockDb.userAddress.deleteMany.mockResolvedValue({ count: 0 });
 
       const result = await service.deleteAddress(mockUserId, 'non-existent');
 
@@ -336,9 +336,9 @@ describe('ProfileService', () => {
 
   describe('setPrimaryAddress', () => {
     it('should set address as primary', async () => {
-      mockPrisma.userAddress.findFirst.mockResolvedValue(mockAddress);
-      mockPrisma.userAddress.updateMany.mockResolvedValue({ count: 1 });
-      mockPrisma.userAddress.update.mockResolvedValue({
+      mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockDb.userAddress.updateMany.mockResolvedValue({ count: 1 });
+      mockDb.userAddress.update.mockResolvedValue({
         ...mockAddress,
         isPrimary: true,
       });
@@ -349,11 +349,11 @@ describe('ProfileService', () => {
       );
 
       expect(result.isPrimary).toBe(true);
-      expect(mockPrisma.userAddress.updateMany).toHaveBeenCalled();
+      expect(mockDb.userAddress.updateMany).toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if address not found', async () => {
-      mockPrisma.userAddress.findFirst.mockResolvedValue(null);
+      mockDb.userAddress.findFirst.mockResolvedValue(null);
 
       await expect(
         service.setPrimaryAddress(mockUserId, 'non-existent'),
@@ -367,7 +367,7 @@ describe('ProfileService', () => {
 
   describe('getNotificationPreferences', () => {
     it('should return notification preferences', async () => {
-      mockPrisma.notificationPreference.findUnique.mockResolvedValue(
+      mockDb.notificationPreference.findUnique.mockResolvedValue(
         mockNotificationPrefs,
       );
 
@@ -382,10 +382,10 @@ describe('ProfileService', () => {
       const updateDto = { emailEnabled: false };
       const updatedPrefs = { ...mockNotificationPrefs, emailEnabled: false };
 
-      mockPrisma.notificationPreference.findUnique.mockResolvedValue(
+      mockDb.notificationPreference.findUnique.mockResolvedValue(
         mockNotificationPrefs,
       );
-      mockPrisma.notificationPreference.update.mockResolvedValue(updatedPrefs);
+      mockDb.notificationPreference.update.mockResolvedValue(updatedPrefs);
 
       const result = await service.updateNotificationPreferences(
         mockUserId,
@@ -406,12 +406,10 @@ describe('ProfileService', () => {
         unsubscribedAllAt: expect.any(Date),
       };
 
-      mockPrisma.notificationPreference.findUnique.mockResolvedValue(
+      mockDb.notificationPreference.findUnique.mockResolvedValue(
         mockNotificationPrefs,
       );
-      mockPrisma.notificationPreference.update.mockResolvedValue(
-        unsubscribedPrefs,
-      );
+      mockDb.notificationPreference.update.mockResolvedValue(unsubscribedPrefs);
 
       const result = await service.unsubscribeAll(mockUserId);
 
@@ -427,7 +425,7 @@ describe('ProfileService', () => {
 
   describe('getConsents', () => {
     it('should return list of consents', async () => {
-      mockPrisma.userConsent.findMany.mockResolvedValue([mockConsent]);
+      mockDb.userConsent.findMany.mockResolvedValue([mockConsent]);
 
       const result = await service.getConsents(mockUserId);
 
@@ -437,7 +435,7 @@ describe('ProfileService', () => {
 
   describe('getConsent', () => {
     it('should return consent if found', async () => {
-      mockPrisma.userConsent.findUnique.mockResolvedValue(mockConsent);
+      mockDb.userConsent.findUnique.mockResolvedValue(mockConsent);
 
       const result = await service.getConsent(
         mockUserId,
@@ -455,7 +453,7 @@ describe('ProfileService', () => {
         granted: true,
       };
 
-      mockPrisma.userConsent.upsert.mockResolvedValue({
+      mockDb.userConsent.upsert.mockResolvedValue({
         ...mockConsent,
         consentType: ConsentType.PRIVACY_POLICY,
         status: ConsentStatus.GRANTED,
@@ -465,7 +463,7 @@ describe('ProfileService', () => {
 
       expect(result.consentType).toBe(ConsentType.PRIVACY_POLICY);
       expect(result.status).toBe(ConsentStatus.GRANTED);
-      expect(mockPrisma.userConsent.upsert).toHaveBeenCalled();
+      expect(mockDb.userConsent.upsert).toHaveBeenCalled();
     });
 
     it('should upsert consent when denying', async () => {
@@ -474,7 +472,7 @@ describe('ProfileService', () => {
         granted: false,
       };
 
-      mockPrisma.userConsent.upsert.mockResolvedValue({
+      mockDb.userConsent.upsert.mockResolvedValue({
         ...mockConsent,
         status: ConsentStatus.DENIED,
       });
@@ -487,8 +485,8 @@ describe('ProfileService', () => {
 
   describe('withdrawConsent', () => {
     it('should withdraw consent', async () => {
-      mockPrisma.userConsent.findUnique.mockResolvedValue(mockConsent);
-      mockPrisma.userConsent.update.mockResolvedValue({
+      mockDb.userConsent.findUnique.mockResolvedValue(mockConsent);
+      mockDb.userConsent.update.mockResolvedValue({
         ...mockConsent,
         status: ConsentStatus.WITHDRAWN,
       });
@@ -502,7 +500,7 @@ describe('ProfileService', () => {
     });
 
     it('should throw NotFoundException if consent not found', async () => {
-      mockPrisma.userConsent.findUnique.mockResolvedValue(null);
+      mockDb.userConsent.findUnique.mockResolvedValue(null);
 
       await expect(
         service.withdrawConsent(mockUserId, ConsentType.TERMS_OF_SERVICE),
@@ -512,7 +510,7 @@ describe('ProfileService', () => {
 
   describe('hasValidConsent', () => {
     it('should return true for valid granted consent', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
 
       const result = await service.hasValidConsent(
         mockUserId,
@@ -523,7 +521,7 @@ describe('ProfileService', () => {
     });
 
     it('should return false if consent not found', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(null);
+      mockDb.userConsent.findFirst.mockResolvedValue(null);
 
       const result = await service.hasValidConsent(
         mockUserId,
@@ -538,7 +536,7 @@ describe('ProfileService', () => {
         ...mockConsent,
         expiresAt: new Date(Date.now() - 86400000), // expired yesterday
       };
-      mockPrisma.userConsent.findFirst.mockResolvedValue(expiredConsent);
+      mockDb.userConsent.findFirst.mockResolvedValue(expiredConsent);
 
       const result = await service.hasValidConsent(
         mockUserId,
@@ -556,7 +554,7 @@ describe('ProfileService', () => {
         { consentType: ConsentType.PRIVACY_POLICY, granted: true },
       ];
 
-      mockPrisma.userConsent.upsert.mockResolvedValue({
+      mockDb.userConsent.upsert.mockResolvedValue({
         ...mockConsent,
         status: ConsentStatus.GRANTED,
       });
@@ -564,13 +562,13 @@ describe('ProfileService', () => {
       const result = await service.bulkUpdateConsents(mockUserId, consents);
 
       expect(result).toHaveLength(2);
-      expect(mockPrisma.userConsent.upsert).toHaveBeenCalledTimes(2);
+      expect(mockDb.userConsent.upsert).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('getRequiredConsentsStatus', () => {
     it('should return status of required consents', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
 
       const result = await service.getRequiredConsentsStatus(mockUserId);
 
@@ -586,8 +584,8 @@ describe('ProfileService', () => {
 
   describe('getProfileCompletion', () => {
     it('should return 0% completion for empty profile', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue(null);
-      mockPrisma.userAddress.findMany.mockResolvedValue([]);
+      mockDb.userProfile.findUnique.mockResolvedValue(null);
+      mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -600,13 +598,13 @@ describe('ProfileService', () => {
     });
 
     it('should return 25% for profile with name only', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue({
+      mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: null,
         avatarUrl: null,
       });
-      mockPrisma.userAddress.findMany.mockResolvedValue([]);
+      mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -616,13 +614,13 @@ describe('ProfileService', () => {
     });
 
     it('should return 100% for complete core profile', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue({
+      mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: 'America/New_York',
         avatarUrl: 'https://example.com/avatar.jpg',
       });
-      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -631,7 +629,7 @@ describe('ProfileService', () => {
     });
 
     it('should add civic field bonus percentage', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue({
+      mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: 'America/New_York',
@@ -639,7 +637,7 @@ describe('ProfileService', () => {
         politicalAffiliation: 'independent',
         votingFrequency: 'always',
       });
-      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -647,7 +645,7 @@ describe('ProfileService', () => {
     });
 
     it('should add demographic field bonus percentage', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue({
+      mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: 'America/New_York',
@@ -655,7 +653,7 @@ describe('ProfileService', () => {
         occupation: 'Engineer',
         educationLevel: 'bachelor',
       });
-      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -663,7 +661,7 @@ describe('ProfileService', () => {
     });
 
     it('should cap percentage at 130%', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue({
+      mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: 'America/New_York',
@@ -677,7 +675,7 @@ describe('ProfileService', () => {
         householdSize: '2',
         homeownerStatus: 'own',
       });
-      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -685,8 +683,8 @@ describe('ProfileService', () => {
     });
 
     it('should return suggested steps for incomplete profile', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue(null);
-      mockPrisma.userAddress.findMany.mockResolvedValue([]);
+      mockDb.userProfile.findUnique.mockResolvedValue(null);
+      mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -697,13 +695,13 @@ describe('ProfileService', () => {
     });
 
     it('should suggest civic fields when core is complete', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue({
+      mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: 'America/New_York',
         avatarUrl: 'https://example.com/avatar.jpg',
       });
-      mockPrisma.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -713,14 +711,14 @@ describe('ProfileService', () => {
     });
 
     it('should use displayName if firstName is not set', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue({
+      mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: null,
         displayName: 'johndoe',
         timezone: null,
         avatarUrl: null,
       });
-      mockPrisma.userAddress.findMany.mockResolvedValue([]);
+      mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -728,14 +726,14 @@ describe('ProfileService', () => {
     });
 
     it('should use avatarStorageKey if avatarUrl is not set', async () => {
-      mockPrisma.userProfile.findUnique.mockResolvedValue({
+      mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
         timezone: null,
         avatarUrl: null,
         avatarStorageKey: 'avatars/user-123/photo.jpg',
       });
-      mockPrisma.userAddress.findMany.mockResolvedValue([]);
+      mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
@@ -760,8 +758,8 @@ describe('ProfileService', () => {
       const storageKey = 'avatars/user-123/photo.jpg';
       const updatedProfile = { ...mockProfile, avatarStorageKey: storageKey };
 
-      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
-      mockPrisma.userProfile.update.mockResolvedValue(updatedProfile);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.userProfile.update.mockResolvedValue(updatedProfile);
 
       const result = await service.updateAvatarStorageKey(
         mockUserId,
@@ -769,7 +767,7 @@ describe('ProfileService', () => {
       );
 
       expect(result.avatarStorageKey).toBe(storageKey);
-      expect(mockPrisma.userProfile.update).toHaveBeenCalled();
+      expect(mockDb.userProfile.update).toHaveBeenCalled();
     });
 
     it('should create profile if not exists and update storage key', async () => {
@@ -779,12 +777,12 @@ describe('ProfileService', () => {
         avatarStorageKey: storageKey,
       };
 
-      mockPrisma.userProfile.findUnique.mockResolvedValue(null);
-      mockPrisma.userProfile.create.mockResolvedValue({
+      mockDb.userProfile.findUnique.mockResolvedValue(null);
+      mockDb.userProfile.create.mockResolvedValue({
         ...mockProfile,
         avatarStorageKey: null,
       });
-      mockPrisma.userProfile.update.mockResolvedValue(newProfile);
+      mockDb.userProfile.update.mockResolvedValue(newProfile);
 
       const result = await service.updateAvatarStorageKey(
         mockUserId,
@@ -792,7 +790,7 @@ describe('ProfileService', () => {
       );
 
       expect(result.avatarStorageKey).toBe(storageKey);
-      expect(mockPrisma.userProfile.create).toHaveBeenCalled();
+      expect(mockDb.userProfile.create).toHaveBeenCalled();
     });
   });
 });

@@ -10,7 +10,7 @@ import { UsersModule } from '../user/users.module';
 import { EmailDomainModule } from '../email/email.module';
 import { AuthModule as AuthProviderModule } from '@qckstrt/auth-provider';
 
-// PrismaModule is global, no need to import
+// RelationalDbModule is global, no need to import
 
 @Module({
   imports: [

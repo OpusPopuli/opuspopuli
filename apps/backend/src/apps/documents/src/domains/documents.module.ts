@@ -3,7 +3,7 @@ import { DocumentsService } from './documents.service';
 import { DocumentsResolver } from './documents.resolver';
 import { StorageModule } from '@qckstrt/storage-provider';
 
-// PrismaModule is global, no need to import
+// RelationalDbModule is global, no need to import
 
 /**
  * Documents Module

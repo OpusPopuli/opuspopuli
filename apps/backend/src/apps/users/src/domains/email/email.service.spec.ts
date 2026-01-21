@@ -4,30 +4,30 @@ import { ConfigService } from '@nestjs/config';
 import { ForbiddenException } from '@nestjs/common';
 import { IEmailProvider } from '@qckstrt/common';
 import {
-  EmailType as PrismaEmailType,
-  EmailStatus as PrismaEmailStatus,
-  ConsentType as PrismaConsentType,
-  ConsentStatus as PrismaConsentStatus,
-} from '@prisma/client';
+  DbService,
+  EmailType as DbEmailType,
+  EmailStatus as DbEmailStatus,
+  ConsentType as DbConsentType,
+  ConsentStatus as DbConsentStatus,
+} from '@qckstrt/relationaldb-provider';
 
 import { EmailService } from './email.service';
-import { PrismaService } from 'src/db/prisma.service';
-import { createMockPrismaService } from 'src/test/prisma-mock';
+import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
 
 describe('EmailService', () => {
   let service: EmailService;
   let emailProvider: IEmailProvider;
-  let mockPrisma: ReturnType<typeof createMockPrismaService>;
+  let mockDb: ReturnType<typeof createMockDbService>;
 
   const mockUserId = 'test-user-id';
   const mockUserEmail = 'user@example.com';
 
-  // Using 'any' type for mock objects to avoid strict Prisma type checking
+  // Using 'any' type for mock objects to avoid strict type checking
   const mockCorrespondence: any = {
     id: 'correspondence-id',
     userId: mockUserId,
-    emailType: PrismaEmailType.welcome,
-    status: PrismaEmailStatus.pending,
+    emailType: DbEmailType.welcome,
+    status: DbEmailStatus.pending,
     recipientEmail: 'recipient@example.com',
     recipientName: 'Recipient',
     subject: 'Test Subject',
@@ -61,8 +61,8 @@ describe('EmailService', () => {
   const mockConsent: any = {
     id: 'consent-id',
     userId: mockUserId,
-    consentType: PrismaConsentType.representative_contact,
-    status: PrismaConsentStatus.granted,
+    consentType: DbConsentType.representative_contact,
+    status: DbConsentStatus.granted,
     grantedAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -97,7 +97,7 @@ describe('EmailService', () => {
   };
 
   beforeEach(async () => {
-    mockPrisma = createMockPrismaService();
+    mockDb = createMockDbService();
 
     // Reset email provider mock to default behavior
     mockEmailProvider.send.mockReset();
@@ -113,7 +113,7 @@ describe('EmailService', () => {
           provide: 'EMAIL_PROVIDER',
           useValue: mockEmailProvider,
         },
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: DbService, useValue: mockDb },
         {
           provide: ConfigService,
           useValue: mockConfigService,
@@ -135,12 +135,10 @@ describe('EmailService', () => {
 
   describe('sendWelcomeEmail', () => {
     it('should send welcome email successfully', async () => {
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue({
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue({
         ...mockCorrespondence,
-        status: PrismaEmailStatus.sent,
+        status: DbEmailStatus.sent,
       });
 
       const result = await service.sendWelcomeEmail(
@@ -162,26 +160,22 @@ describe('EmailService', () => {
     });
 
     it('should update correspondence status on success', async () => {
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue({
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue({
         ...mockCorrespondence,
-        status: PrismaEmailStatus.sent,
+        status: DbEmailStatus.sent,
       });
 
       await service.sendWelcomeEmail(mockUserId, mockUserEmail);
 
-      expect(mockPrisma.emailCorrespondence.update).toHaveBeenCalled();
+      expect(mockDb.emailCorrespondence.update).toHaveBeenCalled();
     });
 
     it('should handle send failure gracefully', async () => {
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue({
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue({
         ...mockCorrespondence,
-        status: PrismaEmailStatus.failed,
+        status: DbEmailStatus.failed,
       });
       (emailProvider.send as jest.Mock).mockResolvedValue({
         success: false,
@@ -198,12 +192,8 @@ describe('EmailService', () => {
     });
 
     it('should throw error on provider exception', async () => {
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue(
-        mockCorrespondence,
-      );
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue(mockCorrespondence);
       (emailProvider.send as jest.Mock).mockRejectedValue(
         new Error('Network error'),
       );
@@ -227,17 +217,17 @@ describe('EmailService', () => {
     };
 
     it('should send representative contact email successfully', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
-      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
-      mockPrisma.userAddress.findFirst.mockResolvedValue(mockAddress);
-      mockPrisma.emailCorrespondence.create.mockResolvedValue({
+      mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockDb.emailCorrespondence.create.mockResolvedValue({
         ...mockCorrespondence,
-        emailType: PrismaEmailType.representative_contact,
+        emailType: DbEmailType.representative_contact,
       });
-      mockPrisma.emailCorrespondence.update.mockResolvedValue({
+      mockDb.emailCorrespondence.update.mockResolvedValue({
         ...mockCorrespondence,
-        emailType: PrismaEmailType.representative_contact,
-        status: PrismaEmailStatus.sent,
+        emailType: DbEmailType.representative_contact,
+        status: DbEmailStatus.sent,
       });
 
       const result = await service.contactRepresentative(
@@ -263,7 +253,7 @@ describe('EmailService', () => {
     });
 
     it('should throw ForbiddenException when consent not granted', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(null);
+      mockDb.userConsent.findFirst.mockResolvedValue(null);
 
       await expect(
         service.contactRepresentative(
@@ -276,15 +266,11 @@ describe('EmailService', () => {
     });
 
     it('should include address when requested and available', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
-      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
-      mockPrisma.userAddress.findFirst.mockResolvedValue(mockAddress);
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue(
-        mockCorrespondence,
-      );
+      mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue(mockCorrespondence);
 
       await service.contactRepresentative(
         mockUserId,
@@ -293,20 +279,16 @@ describe('EmailService', () => {
         mockRepresentative,
       );
 
-      expect(mockPrisma.userAddress.findFirst).toHaveBeenCalledWith({
+      expect(mockDb.userAddress.findFirst).toHaveBeenCalledWith({
         where: { userId: mockUserId, isPrimary: true },
       });
     });
 
     it('should not include address when not requested', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
-      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue(
-        mockCorrespondence,
-      );
+      mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue(mockCorrespondence);
 
       await service.contactRepresentative(
         mockUserId,
@@ -315,22 +297,18 @@ describe('EmailService', () => {
         mockRepresentative,
       );
 
-      expect(mockPrisma.userAddress.findFirst).not.toHaveBeenCalled();
+      expect(mockDb.userAddress.findFirst).not.toHaveBeenCalled();
     });
 
     it('should use displayName when firstName not available', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
-      mockPrisma.userProfile.findUnique.mockResolvedValue({
+      mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: null,
         displayName: 'johndoe',
       });
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue(
-        mockCorrespondence,
-      );
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue(mockCorrespondence);
 
       const result = await service.contactRepresentative(
         mockUserId,
@@ -343,18 +321,14 @@ describe('EmailService', () => {
     });
 
     it('should use fallback name when no profile name available', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
-      mockPrisma.userProfile.findUnique.mockResolvedValue({
+      mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: null,
         displayName: null,
       });
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue(
-        mockCorrespondence,
-      );
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue(mockCorrespondence);
 
       const result = await service.contactRepresentative(
         mockUserId,
@@ -367,14 +341,10 @@ describe('EmailService', () => {
     });
 
     it('should handle contact without proposition', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
-      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue(
-        mockCorrespondence,
-      );
+      mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue(mockCorrespondence);
 
       const result = await service.contactRepresentative(
         mockUserId,
@@ -388,14 +358,12 @@ describe('EmailService', () => {
     });
 
     it('should handle email send failure', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
-      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue({
+      mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue({
         ...mockCorrespondence,
-        status: PrismaEmailStatus.failed,
+        status: DbEmailStatus.failed,
       });
       (emailProvider.send as jest.Mock).mockResolvedValue({
         success: false,
@@ -413,14 +381,10 @@ describe('EmailService', () => {
     });
 
     it('should throw error on provider exception', async () => {
-      mockPrisma.userConsent.findFirst.mockResolvedValue(mockConsent);
-      mockPrisma.userProfile.findUnique.mockResolvedValue(mockProfile);
-      mockPrisma.emailCorrespondence.create.mockResolvedValue(
-        mockCorrespondence,
-      );
-      mockPrisma.emailCorrespondence.update.mockResolvedValue(
-        mockCorrespondence,
-      );
+      mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.emailCorrespondence.create.mockResolvedValue(mockCorrespondence);
+      mockDb.emailCorrespondence.update.mockResolvedValue(mockCorrespondence);
       (emailProvider.send as jest.Mock).mockRejectedValue(
         new Error('Network error'),
       );
@@ -443,8 +407,8 @@ describe('EmailService', () => {
   describe('getEmailHistory', () => {
     it('should return paginated email history', async () => {
       const mockItems = [mockCorrespondence, mockCorrespondence];
-      mockPrisma.emailCorrespondence.findMany.mockResolvedValue(mockItems);
-      mockPrisma.emailCorrespondence.count.mockResolvedValue(2);
+      mockDb.emailCorrespondence.findMany.mockResolvedValue(mockItems);
+      mockDb.emailCorrespondence.count.mockResolvedValue(2);
 
       const result = await service.getEmailHistory(mockUserId, 0, 10);
 
@@ -455,8 +419,8 @@ describe('EmailService', () => {
 
     it('should indicate hasMore when more items exist', async () => {
       const mockItems = Array(11).fill(mockCorrespondence);
-      mockPrisma.emailCorrespondence.findMany.mockResolvedValue(mockItems);
-      mockPrisma.emailCorrespondence.count.mockResolvedValue(20);
+      mockDb.emailCorrespondence.findMany.mockResolvedValue(mockItems);
+      mockDb.emailCorrespondence.count.mockResolvedValue(20);
 
       const result = await service.getEmailHistory(mockUserId, 0, 10);
 
@@ -465,29 +429,29 @@ describe('EmailService', () => {
     });
 
     it('should filter by email type when provided', async () => {
-      mockPrisma.emailCorrespondence.findMany.mockResolvedValue([]);
-      mockPrisma.emailCorrespondence.count.mockResolvedValue(0);
+      mockDb.emailCorrespondence.findMany.mockResolvedValue([]);
+      mockDb.emailCorrespondence.count.mockResolvedValue(0);
 
       await service.getEmailHistory(
         mockUserId,
         0,
         10,
-        PrismaEmailType.representative_contact,
+        DbEmailType.representative_contact,
       );
 
-      expect(mockPrisma.emailCorrespondence.findMany).toHaveBeenCalledWith(
+      expect(mockDb.emailCorrespondence.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             userId: mockUserId,
-            emailType: PrismaEmailType.representative_contact,
+            emailType: DbEmailType.representative_contact,
           },
         }),
       );
     });
 
     it('should return empty result when no emails exist', async () => {
-      mockPrisma.emailCorrespondence.findMany.mockResolvedValue([]);
-      mockPrisma.emailCorrespondence.count.mockResolvedValue(0);
+      mockDb.emailCorrespondence.findMany.mockResolvedValue([]);
+      mockDb.emailCorrespondence.count.mockResolvedValue(0);
 
       const result = await service.getEmailHistory(mockUserId);
 
@@ -503,7 +467,7 @@ describe('EmailService', () => {
 
   describe('getEmailById', () => {
     it('should return email if found', async () => {
-      mockPrisma.emailCorrespondence.findFirst.mockResolvedValue(
+      mockDb.emailCorrespondence.findFirst.mockResolvedValue(
         mockCorrespondence,
       );
 
@@ -513,13 +477,13 @@ describe('EmailService', () => {
       );
 
       expect(result).toEqual(mockCorrespondence);
-      expect(mockPrisma.emailCorrespondence.findFirst).toHaveBeenCalledWith({
+      expect(mockDb.emailCorrespondence.findFirst).toHaveBeenCalledWith({
         where: { id: mockCorrespondence.id, userId: mockUserId },
       });
     });
 
     it('should return null if email not found', async () => {
-      mockPrisma.emailCorrespondence.findFirst.mockResolvedValue(null);
+      mockDb.emailCorrespondence.findFirst.mockResolvedValue(null);
 
       const result = await service.getEmailById(mockUserId, 'non-existent');
 

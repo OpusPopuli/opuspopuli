@@ -7,14 +7,13 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { IStorageProvider } from '@qckstrt/storage-provider';
 import {
-  UserProfile as PrismaUserProfile,
-  UserAddress as PrismaUserAddress,
-  NotificationPreference as PrismaNotificationPreference,
-  UserConsent as PrismaUserConsent,
+  DbService,
+  UserProfile as DbUserProfile,
+  UserAddress as DbUserAddress,
+  NotificationPreference as DbNotificationPreference,
+  UserConsent as DbUserConsent,
   Prisma,
-} from '@prisma/client';
-
-import { PrismaService } from 'src/db/prisma.service';
+} from '@qckstrt/relationaldb-provider';
 import { IFileConfig } from 'src/config';
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 
@@ -29,7 +28,7 @@ export class ProfileService {
   private fileConfig?: IFileConfig;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: DbService,
     @Optional()
     @Inject('STORAGE_PROVIDER')
     private readonly storage?: IStorageProvider,
@@ -43,30 +42,28 @@ export class ProfileService {
   // Profile Methods
   // ============================================
 
-  async getProfile(userId: string): Promise<PrismaUserProfile | null> {
-    return this.prisma.userProfile.findUnique({ where: { userId } });
+  async getProfile(userId: string): Promise<DbUserProfile | null> {
+    return this.db.userProfile.findUnique({ where: { userId } });
   }
 
-  async getOrCreateProfile(userId: string): Promise<PrismaUserProfile> {
-    let profile = await this.prisma.userProfile.findUnique({
+  async getOrCreateProfile(userId: string): Promise<DbUserProfile> {
+    let profile = await this.db.userProfile.findUnique({
       where: { userId },
     });
-    if (!profile) {
-      profile = await this.prisma.userProfile.create({
-        data: { userId },
-      });
-    }
+    profile ??= await this.db.userProfile.create({
+      data: { userId },
+    });
     return profile;
   }
 
   async updateProfile(
     userId: string,
     updateDto: UpdateProfileDto,
-  ): Promise<PrismaUserProfile> {
+  ): Promise<DbUserProfile> {
     await this.getOrCreateProfile(userId);
 
-    // Cast to Prisma type - enum values are compatible at runtime
-    return this.prisma.userProfile.update({
+    // Cast to database type - enum values are compatible at runtime
+    return this.db.userProfile.update({
       where: { userId },
       data: updateDto as Prisma.UserProfileUpdateInput,
     });
@@ -131,7 +128,7 @@ export class ProfileService {
       hasTimezone: boolean;
       hasAddress: boolean;
     },
-    profile: PrismaUserProfile | null,
+    profile: DbUserProfile | null,
   ): string[] {
     const steps: string[] = [];
 
@@ -182,7 +179,7 @@ export class ProfileService {
   async updateAvatarStorageKey(
     userId: string,
     storageKey: string,
-  ): Promise<PrismaUserProfile> {
+  ): Promise<DbUserProfile> {
     const profile = await this.getOrCreateProfile(userId);
 
     // Generate a download URL for the avatar
@@ -200,7 +197,7 @@ export class ProfileService {
       }
     }
 
-    return this.prisma.userProfile.update({
+    return this.db.userProfile.update({
       where: { id: profile.id },
       data: {
         avatarStorageKey: storageKey,
@@ -213,8 +210,8 @@ export class ProfileService {
   // Address Methods
   // ============================================
 
-  async getAddresses(userId: string): Promise<PrismaUserAddress[]> {
-    return this.prisma.userAddress.findMany({
+  async getAddresses(userId: string): Promise<DbUserAddress[]> {
+    return this.db.userAddress.findMany({
       where: { userId },
       orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
     });
@@ -223,8 +220,8 @@ export class ProfileService {
   async getAddress(
     userId: string,
     addressId: string,
-  ): Promise<PrismaUserAddress | null> {
-    return this.prisma.userAddress.findFirst({
+  ): Promise<DbUserAddress | null> {
+    return this.db.userAddress.findFirst({
       where: { id: addressId, userId },
     });
   }
@@ -232,16 +229,16 @@ export class ProfileService {
   async createAddress(
     userId: string,
     createDto: CreateAddressDto,
-  ): Promise<PrismaUserAddress> {
+  ): Promise<DbUserAddress> {
     // If this is marked as primary, unset other primary addresses
     if (createDto.isPrimary) {
-      await this.prisma.userAddress.updateMany({
+      await this.db.userAddress.updateMany({
         where: { userId, isPrimary: true },
         data: { isPrimary: false },
       });
     }
 
-    return this.prisma.userAddress.create({
+    return this.db.userAddress.create({
       data: {
         userId,
         ...createDto,
@@ -252,8 +249,8 @@ export class ProfileService {
   async updateAddress(
     userId: string,
     updateDto: UpdateAddressDto,
-  ): Promise<PrismaUserAddress> {
-    const address = await this.prisma.userAddress.findFirst({
+  ): Promise<DbUserAddress> {
+    const address = await this.db.userAddress.findFirst({
       where: { id: updateDto.id, userId },
     });
 
@@ -263,7 +260,7 @@ export class ProfileService {
 
     // If this is being marked as primary, unset other primary addresses
     if (updateDto.isPrimary) {
-      await this.prisma.userAddress.updateMany({
+      await this.db.userAddress.updateMany({
         where: { userId, isPrimary: true },
         data: { isPrimary: false },
       });
@@ -273,14 +270,14 @@ export class ProfileService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _id, ...updateData } = updateDto;
 
-    return this.prisma.userAddress.update({
+    return this.db.userAddress.update({
       where: { id: address.id },
       data: updateData,
     });
   }
 
   async deleteAddress(userId: string, addressId: string): Promise<boolean> {
-    const result = await this.prisma.userAddress.deleteMany({
+    const result = await this.db.userAddress.deleteMany({
       where: { id: addressId, userId },
     });
     return result.count > 0;
@@ -289,8 +286,8 @@ export class ProfileService {
   async setPrimaryAddress(
     userId: string,
     addressId: string,
-  ): Promise<PrismaUserAddress> {
-    const address = await this.prisma.userAddress.findFirst({
+  ): Promise<DbUserAddress> {
+    const address = await this.db.userAddress.findFirst({
       where: { id: addressId, userId },
     });
 
@@ -299,13 +296,13 @@ export class ProfileService {
     }
 
     // Unset all other primary addresses
-    await this.prisma.userAddress.updateMany({
+    await this.db.userAddress.updateMany({
       where: { userId, isPrimary: true },
       data: { isPrimary: false },
     });
 
     // Set this one as primary
-    return this.prisma.userAddress.update({
+    return this.db.userAddress.update({
       where: { id: address.id },
       data: { isPrimary: true },
     });
@@ -317,40 +314,38 @@ export class ProfileService {
 
   async getNotificationPreferences(
     userId: string,
-  ): Promise<PrismaNotificationPreference | null> {
-    return this.prisma.notificationPreference.findUnique({ where: { userId } });
+  ): Promise<DbNotificationPreference | null> {
+    return this.db.notificationPreference.findUnique({ where: { userId } });
   }
 
   async getOrCreateNotificationPreferences(
     userId: string,
-  ): Promise<PrismaNotificationPreference> {
-    let prefs = await this.prisma.notificationPreference.findUnique({
+  ): Promise<DbNotificationPreference> {
+    let prefs = await this.db.notificationPreference.findUnique({
       where: { userId },
     });
-    if (!prefs) {
-      prefs = await this.prisma.notificationPreference.create({
-        data: { userId },
-      });
-    }
+    prefs ??= await this.db.notificationPreference.create({
+      data: { userId },
+    });
     return prefs;
   }
 
   async updateNotificationPreferences(
     userId: string,
     updateDto: UpdateNotificationPreferencesDto,
-  ): Promise<PrismaNotificationPreference> {
+  ): Promise<DbNotificationPreference> {
     await this.getOrCreateNotificationPreferences(userId);
 
-    return this.prisma.notificationPreference.update({
+    return this.db.notificationPreference.update({
       where: { userId },
       data: updateDto,
     });
   }
 
-  async unsubscribeAll(userId: string): Promise<PrismaNotificationPreference> {
+  async unsubscribeAll(userId: string): Promise<DbNotificationPreference> {
     await this.getOrCreateNotificationPreferences(userId);
 
-    return this.prisma.notificationPreference.update({
+    return this.db.notificationPreference.update({
       where: { userId },
       data: {
         emailEnabled: false,
@@ -365,8 +360,8 @@ export class ProfileService {
   // Consent Methods
   // ============================================
 
-  async getConsents(userId: string): Promise<PrismaUserConsent[]> {
-    return this.prisma.userConsent.findMany({
+  async getConsents(userId: string): Promise<DbUserConsent[]> {
+    return this.db.userConsent.findMany({
       where: { userId },
       orderBy: { consentType: 'asc' },
     });
@@ -375,8 +370,8 @@ export class ProfileService {
   async getConsent(
     userId: string,
     consentType: ConsentType,
-  ): Promise<PrismaUserConsent | null> {
-    return this.prisma.userConsent.findUnique({
+  ): Promise<DbUserConsent | null> {
+    return this.db.userConsent.findUnique({
       where: { userId_consentType: { userId, consentType } },
     });
   }
@@ -389,7 +384,7 @@ export class ProfileService {
       userAgent?: string;
       collectionMethod?: string;
     } = {},
-  ): Promise<PrismaUserConsent> {
+  ): Promise<DbUserConsent> {
     const now = new Date();
 
     const data = {
@@ -404,7 +399,7 @@ export class ProfileService {
       collectionMethod: metadata.collectionMethod,
     };
 
-    return this.prisma.userConsent.upsert({
+    return this.db.userConsent.upsert({
       where: {
         userId_consentType: { userId, consentType: updateDto.consentType },
       },
@@ -425,8 +420,8 @@ export class ProfileService {
       userAgent?: string;
       collectionMethod?: string;
     } = {},
-  ): Promise<PrismaUserConsent[]> {
-    const results: PrismaUserConsent[] = [];
+  ): Promise<DbUserConsent[]> {
+    const results: DbUserConsent[] = [];
 
     for (const consentDto of consents) {
       const result = await this.updateConsent(userId, consentDto, metadata);
@@ -440,8 +435,8 @@ export class ProfileService {
     userId: string,
     consentType: ConsentType,
     metadata: { ipAddress?: string; userAgent?: string } = {},
-  ): Promise<PrismaUserConsent> {
-    const consent = await this.prisma.userConsent.findUnique({
+  ): Promise<DbUserConsent> {
+    const consent = await this.db.userConsent.findUnique({
       where: { userId_consentType: { userId, consentType } },
     });
 
@@ -449,7 +444,7 @@ export class ProfileService {
       throw new NotFoundException('Consent record not found');
     }
 
-    return this.prisma.userConsent.update({
+    return this.db.userConsent.update({
       where: { id: consent.id },
       data: {
         status: ConsentStatus.WITHDRAWN,
@@ -464,7 +459,7 @@ export class ProfileService {
     userId: string,
     consentType: ConsentType,
   ): Promise<boolean> {
-    const consent = await this.prisma.userConsent.findFirst({
+    const consent = await this.db.userConsent.findFirst({
       where: { userId, consentType, status: ConsentStatus.GRANTED },
     });
 

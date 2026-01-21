@@ -1,7 +1,7 @@
 {
   "name": "@qckstrt/relationaldb-provider",
-  "version": "0.1.0",
-  "description": "Relational database provider implementations for QCKSTRT platform",
+  "version": "0.2.0",
+  "description": "Relational database provider (Prisma ORM) for QCKSTRT platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -9,43 +9,64 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "require": "./dist/testing.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "testing": [
+        "./dist/testing.d.ts"
+      ]
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "prisma"
   ],
   "scripts": {
+    "prebuild": "npx prisma generate",
     "build": "tsc",
     "clean": "rm -rf dist",
     "test": "jest",
     "test:watch": "jest --watch",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run build",
+    "db:generate": "npx prisma generate",
+    "db:migrate": "npx prisma migrate dev",
+    "db:push": "npx prisma db push",
+    "db:studio": "npx prisma studio"
   },
   "keywords": [
     "qckstrt",
     "relationaldb",
     "postgres",
     "supabase",
+    "prisma",
     "provider"
   ],
   "license": "MIT",
   "dependencies": {
+    "@prisma/client": "5",
     "@qckstrt/common": "workspace:*"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",
-    "@nestjs/config": "^4.0.0",
-    "typeorm": "^0.3.0"
+    "@nestjs/config": "^4.0.0"
   },
   "devDependencies": {
     "@nestjs/common": "^11.1.9",
     "@nestjs/config": "^4.0.2",
+    "@nestjs/testing": "^11.1.9",
     "@types/jest": "^30.0.0",
     "jest": "^30.0.0",
+    "jest-mock-extended": "^4.0.0",
+    "prisma": "5",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "ts-jest": "^29.2.5",
-    "typeorm": "^0.3.20",
     "typescript": "^5.7.2"
   },
   "publishConfig": {

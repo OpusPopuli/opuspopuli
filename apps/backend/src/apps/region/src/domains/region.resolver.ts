@@ -63,7 +63,7 @@ export class RegionResolver {
   ): Promise<PropositionModel | null> {
     const result = await this.regionService.getProposition(id);
     if (!result) return null;
-    // Convert Prisma nulls to GraphQL undefined
+    // Convert database nulls to GraphQL undefined
     return {
       ...result,
       fullText: result.fullText ?? undefined,
@@ -94,7 +94,7 @@ export class RegionResolver {
   ): Promise<MeetingModel | null> {
     const result = await this.regionService.getMeeting(id);
     if (!result) return null;
-    // Convert Prisma nulls to GraphQL undefined
+    // Convert database nulls to GraphQL undefined
     return {
       ...result,
       location: result.location ?? undefined,
@@ -125,7 +125,7 @@ export class RegionResolver {
   ): Promise<RepresentativeModel | null> {
     const result = await this.regionService.getRepresentative(id);
     if (!result) return null;
-    // Convert Prisma nulls to GraphQL undefined
+    // Convert database nulls to GraphQL undefined
     return {
       ...result,
       photoUrl: result.photoUrl ?? undefined,

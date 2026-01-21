@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-// PrismaModule is global, no need to import
+// RelationalDbModule is global, no need to import
 
 import { ActivityService } from './activity.service';
 import { ActivityResolver } from './activity.resolver';

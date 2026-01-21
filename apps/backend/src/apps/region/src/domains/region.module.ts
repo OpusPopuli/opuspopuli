@@ -4,7 +4,7 @@ import { RegionDomainService } from './region.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
 
-// PrismaModule is global, no need to import
+// RelationalDbModule is global, no need to import
 
 /**
  * Region Domain Module

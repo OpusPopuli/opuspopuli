@@ -4,15 +4,15 @@ import { AuditAction } from '../enums/audit-action.enum';
 import { IAuditLogCreate } from '../interfaces/audit.interface';
 import { LOGGER } from '@qckstrt/logging-provider';
 import { AUDIT_CONFIG } from '../audit/audit.module';
-import { PrismaService } from '../../db/prisma.service';
+import { DbService } from '@qckstrt/relationaldb-provider';
 import {
-  createMockPrismaService,
-  MockPrismaService,
-} from '../../test/prisma-mock';
+  createMockDbClient,
+  MockDbClient,
+} from '@qckstrt/relationaldb-provider/testing';
 
 describe('AuditLogService', () => {
   let service: AuditLogService;
-  let mockPrisma: MockPrismaService;
+  let mockDb: MockDbClient;
 
   const mockLogger = {
     debug: jest.fn(),
@@ -30,14 +30,14 @@ describe('AuditLogService', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
 
-    mockPrisma = createMockPrismaService();
+    mockDb = createMockDbClient();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuditLogService,
         {
-          provide: PrismaService,
-          useValue: mockPrisma,
+          provide: DbService,
+          useValue: mockDb,
         },
         {
           provide: LOGGER,
@@ -79,7 +79,7 @@ describe('AuditLogService', () => {
       await service.log(entry);
 
       // Entry should be queued, not immediately persisted
-      expect(mockPrisma.auditLog.createMany).not.toHaveBeenCalled();
+      expect(mockDb.auditLog.createMany).not.toHaveBeenCalled();
     });
 
     it('should mask sensitive data in input variables', async () => {
@@ -91,7 +91,7 @@ describe('AuditLogService', () => {
         },
       });
 
-      mockPrisma.auditLog.createMany.mockResolvedValue({ count: 1 });
+      mockDb.auditLog.createMany.mockResolvedValue({ count: 1 });
 
       await service.log(entry);
 
@@ -99,7 +99,7 @@ describe('AuditLogService', () => {
       jest.advanceTimersByTime(5001);
       await Promise.resolve();
 
-      expect(mockPrisma.auditLog.createMany).toHaveBeenCalledWith({
+      expect(mockDb.auditLog.createMany).toHaveBeenCalledWith({
         data: expect.arrayContaining([
           expect.objectContaining({
             inputVariables: expect.objectContaining({
@@ -112,7 +112,7 @@ describe('AuditLogService', () => {
     });
 
     it('should process queue when batch size is reached', async () => {
-      mockPrisma.auditLog.createMany.mockResolvedValue({ count: 100 });
+      mockDb.auditLog.createMany.mockResolvedValue({ count: 100 });
 
       // Add 100 entries to trigger batch processing
       for (let i = 0; i < 100; i++) {
@@ -121,7 +121,7 @@ describe('AuditLogService', () => {
 
       // Should have triggered createMany
       await Promise.resolve();
-      expect(mockPrisma.auditLog.createMany).toHaveBeenCalled();
+      expect(mockDb.auditLog.createMany).toHaveBeenCalled();
     });
   });
 
@@ -158,11 +158,11 @@ describe('AuditLogService', () => {
         statusCode: null,
         durationMs: null,
       };
-      mockPrisma.auditLog.create.mockResolvedValue(mockEntity);
+      mockDb.auditLog.create.mockResolvedValue(mockEntity);
 
       const result = await service.logSync(entry);
 
-      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+      expect(mockDb.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           requestId: 'req-123',
           serviceName: 'test-service',
@@ -203,11 +203,11 @@ describe('AuditLogService', () => {
         durationMs: null,
         errorMessage: null,
       };
-      mockPrisma.auditLog.create.mockResolvedValue(mockEntity);
+      mockDb.auditLog.create.mockResolvedValue(mockEntity);
 
       await service.logSync(entry);
 
-      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+      expect(mockDb.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           inputVariables: { password: '[REDACTED]' },
         }),
@@ -217,7 +217,7 @@ describe('AuditLogService', () => {
 
   describe('periodic flush', () => {
     it('should flush queue periodically', async () => {
-      mockPrisma.auditLog.createMany.mockResolvedValue({ count: 1 });
+      mockDb.auditLog.createMany.mockResolvedValue({ count: 1 });
 
       await service.log({
         requestId: 'req-1',
@@ -230,13 +230,13 @@ describe('AuditLogService', () => {
       jest.advanceTimersByTime(5001);
       await Promise.resolve();
 
-      expect(mockPrisma.auditLog.createMany).toHaveBeenCalled();
+      expect(mockDb.auditLog.createMany).toHaveBeenCalled();
     });
   });
 
   describe('onModuleDestroy', () => {
     it('should flush remaining entries on shutdown', async () => {
-      mockPrisma.auditLog.createMany.mockResolvedValue({ count: 1 });
+      mockDb.auditLog.createMany.mockResolvedValue({ count: 1 });
 
       await service.log({
         requestId: 'req-1',
@@ -247,17 +247,17 @@ describe('AuditLogService', () => {
 
       await service.onModuleDestroy();
 
-      expect(mockPrisma.auditLog.createMany).toHaveBeenCalled();
+      expect(mockDb.auditLog.createMany).toHaveBeenCalled();
     });
   });
 
   describe('retention cleanup', () => {
     it('should delete records older than retention period', async () => {
-      mockPrisma.auditLog.deleteMany.mockResolvedValue({ count: 50 });
+      mockDb.auditLog.deleteMany.mockResolvedValue({ count: 50 });
 
       const deletedCount = await service.cleanupOldRecords();
 
-      expect(mockPrisma.auditLog.deleteMany).toHaveBeenCalledWith({
+      expect(mockDb.auditLog.deleteMany).toHaveBeenCalledWith({
         where: {
           timestamp: {
             lt: expect.any(Date),
@@ -268,7 +268,7 @@ describe('AuditLogService', () => {
     });
 
     it('should return 0 when no records deleted', async () => {
-      mockPrisma.auditLog.deleteMany.mockResolvedValue({ count: 0 });
+      mockDb.auditLog.deleteMany.mockResolvedValue({ count: 0 });
 
       const deletedCount = await service.cleanupOldRecords();
 
@@ -276,9 +276,7 @@ describe('AuditLogService', () => {
     });
 
     it('should handle delete errors gracefully', async () => {
-      mockPrisma.auditLog.deleteMany.mockRejectedValue(
-        new Error('Database error'),
-      );
+      mockDb.auditLog.deleteMany.mockRejectedValue(new Error('Database error'));
 
       const deletedCount = await service.cleanupOldRecords();
 
@@ -286,15 +284,15 @@ describe('AuditLogService', () => {
     });
 
     it('should run cleanup on module init', async () => {
-      mockPrisma.auditLog.deleteMany.mockResolvedValue({ count: 10 });
+      mockDb.auditLog.deleteMany.mockResolvedValue({ count: 10 });
 
       await service.onModuleInit();
 
-      expect(mockPrisma.auditLog.deleteMany).toHaveBeenCalled();
+      expect(mockDb.auditLog.deleteMany).toHaveBeenCalled();
     });
 
     it('should log cleanup results when records deleted', async () => {
-      mockPrisma.auditLog.deleteMany.mockResolvedValue({ count: 100 });
+      mockDb.auditLog.deleteMany.mockResolvedValue({ count: 100 });
 
       await service.cleanupOldRecords();
 
@@ -307,17 +305,17 @@ describe('AuditLogService', () => {
 
   describe('retention cleanup with zero retention', () => {
     let serviceWithNoRetention: AuditLogService;
-    let mockPrismaNoRetention: MockPrismaService;
+    let mockDbNoRetention: MockDbClient;
 
     beforeEach(async () => {
-      mockPrismaNoRetention = createMockPrismaService();
+      mockDbNoRetention = createMockDbClient();
 
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           AuditLogService,
           {
-            provide: PrismaService,
-            useValue: mockPrismaNoRetention,
+            provide: DbService,
+            useValue: mockDbNoRetention,
           },
           {
             provide: LOGGER,
@@ -340,16 +338,16 @@ describe('AuditLogService', () => {
     it('should skip cleanup when retention is 0 (indefinite)', async () => {
       const deletedCount = await serviceWithNoRetention.cleanupOldRecords();
 
-      expect(mockPrismaNoRetention.auditLog.deleteMany).not.toHaveBeenCalled();
+      expect(mockDbNoRetention.auditLog.deleteMany).not.toHaveBeenCalled();
       expect(deletedCount).toBe(0);
     });
 
     it('should not start cleanup timer on init when retention is 0', async () => {
-      mockPrismaNoRetention.auditLog.deleteMany.mockResolvedValue({ count: 0 });
+      mockDbNoRetention.auditLog.deleteMany.mockResolvedValue({ count: 0 });
 
       await serviceWithNoRetention.onModuleInit();
 
-      expect(mockPrismaNoRetention.auditLog.deleteMany).not.toHaveBeenCalled();
+      expect(mockDbNoRetention.auditLog.deleteMany).not.toHaveBeenCalled();
     });
   });
 });
