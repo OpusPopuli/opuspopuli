@@ -53,10 +53,13 @@ services:
     networks:
       - qckstrt-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # Check that postgres is ready AND the supabase init scripts have completed
+      # by verifying the authenticator role exists (created by supabase init scripts)
+      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -c \"SELECT 1 FROM pg_roles WHERE rolname='authenticator'\" | grep -q 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
     deploy:
       resources:
