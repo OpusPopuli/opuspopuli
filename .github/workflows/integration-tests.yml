@@ -24,39 +24,9 @@ jobs:
       - name: Start all services
         run: |
           echo "Starting docker-compose services..."
-          docker compose -f docker-compose-integration.yml up -d --build
-
-          echo "Waiting for services to be healthy..."
-          # Wait for all services to be healthy (up to 5 minutes)
-          timeout=300
-          elapsed=0
-          while [ $elapsed -lt $timeout ]; do
-            # Check if all required services are healthy
-            all_healthy=true
-
-            for service in supabase-db users documents knowledge region api; do
-              status=$(docker compose -f docker-compose-integration.yml ps --format json | jq -r ".[] | select(.Service==\"$service\") | .Health" 2>/dev/null || echo "unknown")
-              if [ "$status" != "healthy" ]; then
-                all_healthy=false
-                echo "Waiting for $service (status: $status)..."
-              fi
-            done
-
-            if [ "$all_healthy" = "true" ]; then
-              echo "All services are healthy!"
-              break
-            fi
-
-            sleep 5
-            elapsed=$((elapsed + 5))
-          done
-
-          if [ $elapsed -ge $timeout ]; then
-            echo "ERROR: Services did not become healthy within ${timeout}s"
-            docker compose -f docker-compose-integration.yml ps
-            docker compose -f docker-compose-integration.yml logs
-            exit 1
-          fi
+          # Use --wait to let docker compose handle health check waiting
+          # Timeout after 10 minutes for slow CI environments
+          docker compose -f docker-compose-integration.yml up -d --build --wait --wait-timeout 600
 
           echo "Service status:"
           docker compose -f docker-compose-integration.yml ps
