@@ -7,6 +7,7 @@ import type {
   Document,
   Representative,
   Proposition,
+  Meeting,
   ConsentType,
   ConsentStatus,
   DocumentStatus,
@@ -314,6 +315,40 @@ export async function createProposition(
       status: options.status ?? 'pending',
       externalId: options.externalId ?? `prop-${id}`,
       electionDate: options.electionDate,
+    },
+  });
+}
+
+export interface CreateMeetingOptions {
+  id?: string;
+  title?: string;
+  body?: string;
+  scheduledAt?: Date;
+  location?: string;
+  agendaUrl?: string;
+  videoUrl?: string;
+  externalId?: string;
+}
+
+/**
+ * Creates a meeting record.
+ * Matches the actual Prisma Meeting model schema.
+ */
+export async function createMeeting(
+  options: CreateMeetingOptions = {},
+): Promise<Meeting> {
+  const db = await getDbService();
+  const id = options.id ?? generateId();
+  return db.meeting.create({
+    data: {
+      id,
+      title: options.title ?? 'Test Meeting',
+      body: options.body ?? 'City Council',
+      scheduledAt: options.scheduledAt ?? new Date(),
+      location: options.location,
+      agendaUrl: options.agendaUrl,
+      videoUrl: options.videoUrl,
+      externalId: options.externalId ?? `meeting-${id}`,
     },
   });
 }
