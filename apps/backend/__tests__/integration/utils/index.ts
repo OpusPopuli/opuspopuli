@@ -67,6 +67,8 @@ export {
   type CreateRepresentativeOptions,
   createProposition,
   type CreatePropositionOptions,
+  createMeeting,
+  type CreateMeetingOptions,
   // Composite fixtures
   createUserWithProfile,
   type CreateUserWithProfileOptions,
