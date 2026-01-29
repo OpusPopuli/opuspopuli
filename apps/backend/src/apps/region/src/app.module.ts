@@ -37,6 +37,7 @@ import { DbModule } from 'src/db/db.module';
 import { AuditModule } from 'src/common/audit/audit.module';
 import { CaslModule } from 'src/permissions/casl.module';
 import { HealthModule } from 'src/common/health';
+import { MetricsModule } from 'src/common/metrics';
 
 /**
  * Region App Module
@@ -73,6 +74,7 @@ import { HealthModule } from 'src/common/health';
     CaslModule.forRoot(),
     RegionDomainModule,
     HealthModule.forRoot({ serviceName: 'region-service', hasDatabase: true }),
+    MetricsModule.forRoot({ serviceName: 'region-service' }),
   ],
   providers: SHARED_PROVIDERS,
 })

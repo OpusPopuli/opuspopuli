@@ -34,6 +34,7 @@ import { AuthGuard } from 'src/common/guards/auth.guard';
 import { AllExceptionsFilter } from 'src/common/exceptions/all-exceptions.filter';
 import { HttpExceptionFilter } from 'src/common/exceptions/http-exception.filter';
 import { HealthModule } from 'src/common/health';
+import { MetricsModule } from 'src/common/metrics';
 import { HmacSignerService } from 'src/common/services/hmac-signer.service';
 import { GracefulShutdownService } from 'src/common/services/graceful-shutdown.service';
 import { HmacRemoteGraphQLDataSource } from './hmac-data-source';
@@ -68,6 +69,7 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
     // Health check endpoints for Kubernetes probes
     // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/209
     HealthModule.forRoot({ serviceName: 'api-gateway' }),
+    MetricsModule.forRoot({ serviceName: 'api-gateway' }),
     ConfigModule.forRoot({
       load: [
         configuration,
@@ -218,6 +220,8 @@ export class AppModule implements NestModule {
         { path: 'health', method: RequestMethod.GET },
         { path: 'health/live', method: RequestMethod.GET },
         { path: 'health/ready', method: RequestMethod.GET },
+        // Metrics endpoint excluded for Prometheus scraping
+        { path: 'metrics', method: RequestMethod.GET },
       )
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
