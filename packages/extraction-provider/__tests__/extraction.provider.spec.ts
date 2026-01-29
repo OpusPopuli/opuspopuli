@@ -341,7 +341,7 @@ describe("ExtractionProvider", () => {
 
       await provider.fetchUrl("https://example.com");
 
-      const stats = provider.getCacheStats();
+      const stats = await provider.getCacheStats();
       expect(stats.size).toBe(1);
       expect(stats.keys).toHaveLength(1);
     });
@@ -356,22 +356,22 @@ describe("ExtractionProvider", () => {
       });
 
       await provider.fetchUrl("https://example.com");
-      provider.clearCache();
+      await provider.clearCache();
 
-      const stats = provider.getCacheStats();
+      const stats = await provider.getCacheStats();
       expect(stats.size).toBe(0);
     });
   });
 
   describe("rate limiter management", () => {
-    it("should reset rate limiter", () => {
-      expect(() => provider.resetRateLimiter()).not.toThrow();
+    it("should reset rate limiter", async () => {
+      await expect(provider.resetRateLimiter()).resolves.not.toThrow();
     });
   });
 
   describe("onModuleDestroy", () => {
-    it("should cleanup resources", () => {
-      expect(() => provider.onModuleDestroy()).not.toThrow();
+    it("should cleanup resources", async () => {
+      await expect(provider.onModuleDestroy()).resolves.not.toThrow();
     });
   });
 

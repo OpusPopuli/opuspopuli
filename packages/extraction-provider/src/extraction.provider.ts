@@ -20,7 +20,8 @@ import {
   CircuitBreakerHealth,
 } from "@qckstrt/common";
 
-import { MemoryCache } from "./cache/memory-cache.js";
+import type { ICache, IRateLimiter } from "./cache/cache.interface.js";
+import { CacheFactory } from "./cache/cache-factory.js";
 import {
   ExtractionConfig,
   DEFAULT_EXTRACTION_CONFIG,
@@ -31,7 +32,6 @@ import {
   FetchError,
   FetchFunction,
 } from "./types.js";
-import { RateLimiter } from "./utils/rate-limiter.js";
 import { withRetry, RetryPredicates } from "./utils/retry.js";
 
 /**
@@ -59,10 +59,11 @@ export interface SelectedElement {
 export class ExtractionProvider {
   private readonly logger = new Logger(ExtractionProvider.name);
   private readonly config: ExtractionConfig;
-  private readonly cache: MemoryCache<CachedFetchResult>;
-  private readonly rateLimiter: RateLimiter;
+  private readonly cache: ICache<CachedFetchResult>;
+  private readonly rateLimiter: IRateLimiter;
   private readonly circuitBreaker: CircuitBreakerManager;
   private readonly fetchFn: FetchFunction;
+  private readonly cacheProvider: string;
 
   constructor(
     @Optional()
@@ -84,8 +85,20 @@ export class ExtractionProvider {
     // Native fetch respects global dispatcher set via setGlobalHttpPool()
     this.fetchFn = config?.fetchFn ?? fetch;
 
-    this.cache = new MemoryCache<CachedFetchResult>(this.config.cache);
-    this.rateLimiter = new RateLimiter(this.config.rateLimit);
+    // Create cache and rate limiter using factory
+    // Supports Redis for distributed deployments, falls back to memory
+    const cacheConfig = CacheFactory.createConfigFromEnv({
+      provider: config?.cacheProvider,
+      redisUrl: config?.redisUrl,
+      cacheOptions: this.config.cache,
+      rateLimitOptions: this.config.rateLimit,
+      keyPrefix: "extraction:cache:",
+      rateLimiterKey: "extraction:ratelimit",
+    });
+
+    this.cache = CacheFactory.createCache<CachedFetchResult>(cacheConfig);
+    this.rateLimiter = CacheFactory.createRateLimiter(cacheConfig);
+    this.cacheProvider = cacheConfig.provider;
 
     // Initialize circuit breaker for external URL fetching
     this.circuitBreaker = createCircuitBreaker(
@@ -114,6 +127,7 @@ export class ExtractionProvider {
     });
 
     this.logger.log("ExtractionProvider initialized", {
+      cacheProvider: this.cacheProvider,
       cache: this.config.cache,
       rateLimit: this.config.rateLimit,
       retry: this.config.retry,
@@ -135,7 +149,7 @@ export class ExtractionProvider {
 
     // Check cache first (unless bypassed)
     if (!options.bypassCache) {
-      const cached = this.cache.get(cacheKey);
+      const cached = await this.cache.get(cacheKey);
       if (cached) {
         this.logger.debug(`Cache hit for ${url}`);
         return { ...cached, fromCache: true };
@@ -175,7 +189,7 @@ export class ExtractionProvider {
       };
 
       // Cache the result
-      this.cache.set(cacheKey, result);
+      await this.cache.set(cacheKey, result);
 
       return result;
     });
@@ -253,35 +267,43 @@ export class ExtractionProvider {
   /**
    * Get cache statistics
    */
-  getCacheStats(): { size: number; keys: string[] } {
-    return {
-      size: this.cache.size,
-      keys: this.cache.keys(),
-    };
+  async getCacheStats(): Promise<{ size: number; keys: string[] }> {
+    const [size, keys] = await Promise.all([
+      this.cache.size,
+      this.cache.keys(),
+    ]);
+    return { size, keys };
   }
 
   /**
    * Clear the cache
    */
-  clearCache(): void {
-    this.cache.clear();
+  async clearCache(): Promise<void> {
+    await this.cache.clear();
     this.logger.debug("Cache cleared");
   }
 
   /**
    * Reset rate limiter
    */
-  resetRateLimiter(): void {
-    this.rateLimiter.reset();
+  async resetRateLimiter(): Promise<void> {
+    await this.rateLimiter.reset();
     this.logger.debug("Rate limiter reset");
   }
 
   /**
    * Cleanup resources (call on module destroy)
    */
-  onModuleDestroy(): void {
-    this.cache.destroy();
+  async onModuleDestroy(): Promise<void> {
+    await this.cache.destroy();
     this.logger.debug("ExtractionProvider destroyed");
+  }
+
+  /**
+   * Get the cache provider type being used
+   */
+  getCacheProvider(): string {
+    return this.cacheProvider;
   }
 
   /**

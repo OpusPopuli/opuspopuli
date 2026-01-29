@@ -86,6 +86,16 @@ export interface ExtractionConfig {
    * If not provided, uses native fetch (which respects global dispatcher)
    */
   fetchFn?: FetchFunction;
+  /**
+   * Cache provider to use (memory or redis)
+   * Defaults to redis if REDIS_URL env var is set, otherwise memory
+   */
+  cacheProvider?: "memory" | "redis";
+  /**
+   * Redis URL for distributed caching
+   * Can also be set via REDIS_URL environment variable
+   */
+  redisUrl?: string;
 }
 
 /**

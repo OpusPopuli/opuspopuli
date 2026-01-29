@@ -380,6 +380,37 @@ services:
           memory: 64M
 
   # ===========================================
+  # Caching Services
+  # ===========================================
+
+  # Redis - Distributed caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: qckstrt-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - qckstrt-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # ===========================================
   # AI/ML Services
   # ===========================================
 
@@ -420,5 +451,7 @@ volumes:
     name: qckstrt-supabase-db-data
   supabase-storage-data:
     name: qckstrt-supabase-storage-data
+  redis-data:
+    name: qckstrt-redis-data
   ollama-data:
     name: qckstrt-ollama-data

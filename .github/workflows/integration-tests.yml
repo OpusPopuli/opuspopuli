@@ -25,7 +25,7 @@ jobs:
           # Start only the services needed for integration tests
           # (skip supabase-rest, supabase-storage, supabase-studio, supabase-meta, ollama which we don't use)
           docker compose -f docker-compose-integration.yml up -d --build --wait --wait-timeout 600 \
-            supabase-db inbucket db-migrate users documents knowledge region api
+            supabase-db redis inbucket db-migrate users documents knowledge region api
 
           echo "Service status:"
           docker compose -f docker-compose-integration.yml ps
