@@ -34,7 +34,7 @@ import { AuthGuard } from 'src/common/guards/auth.guard';
 import { AllExceptionsFilter } from 'src/common/exceptions/all-exceptions.filter';
 import { HttpExceptionFilter } from 'src/common/exceptions/http-exception.filter';
 import { HealthModule } from 'src/common/health';
-import { MetricsModule } from 'src/common/metrics';
+import { MetricsModule, MetricsService } from 'src/common/metrics';
 import { HmacSignerService } from 'src/common/services/hmac-signer.service';
 import { GracefulShutdownService } from 'src/common/services/graceful-shutdown.service';
 import { HmacRemoteGraphQLDataSource } from './hmac-data-source';
@@ -125,6 +125,7 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
         configService: ConfigService,
         hmacSigner: HmacSignerService,
         wsAuthService: WebSocketAuthService,
+        metricsService: MetricsService,
       ) => {
         const wsConfig = configService.get<IWebSocketConfig>('websocket');
 
@@ -144,7 +145,11 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
               // Use custom data source that signs requests with HMAC
               // SECURITY: This ensures microservices only accept requests from the gateway
               // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/185
-              return new HmacRemoteGraphQLDataSource({ url }, hmacSigner);
+              return new HmacRemoteGraphQLDataSource(
+                { url },
+                hmacSigner,
+                metricsService,
+              );
             },
             supergraphSdl: new IntrospectAndCompose({
               subgraphs: JSON.parse(
@@ -184,7 +189,12 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
             : undefined,
         };
       },
-      inject: [ConfigService, HmacSignerService, WebSocketAuthService],
+      inject: [
+        ConfigService,
+        HmacSignerService,
+        WebSocketAuthService,
+        MetricsService,
+      ],
     }),
   ],
   providers: [

@@ -54,6 +54,10 @@ export class MetricsService {
     // Database Metrics
     @InjectMetric('db_query_duration_seconds')
     private readonly dbQueryDuration: Histogram<string>,
+
+    // Federation Metrics
+    @InjectMetric('federation_subgraph_request_duration_seconds')
+    private readonly subgraphRequestDuration: Histogram<string>,
   ) {}
 
   /**
@@ -137,21 +141,29 @@ export class MetricsService {
   }
 
   /**
+   * Record federation subgraph request duration
+   * Used by the API gateway to track latency to each subgraph service
+   */
+  recordSubgraphRequest(subgraph: string, durationSeconds: number): void {
+    this.subgraphRequestDuration.observe({ subgraph }, durationSeconds);
+  }
+
+  /**
    * Normalize route to reduce cardinality
    * Replace dynamic segments like UUIDs, IDs with placeholders
    */
   private normalizeRoute(route: string): string {
     return (
       route
+        // Remove query strings first (no regex - safe from ReDoS)
+        .split('?')[0]
         // Replace UUIDs
-        .replace(
+        .replaceAll(
           /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
           ':id',
         )
         // Replace numeric IDs
-        .replace(/\/\d+/g, '/:id')
-        // Replace query strings (use [^\n]* instead of .* to avoid ReDoS)
-        .replace(/\?[^\n]*$/, '')
+        .replaceAll(/\/\d+/g, '/:id')
     );
   }
 }

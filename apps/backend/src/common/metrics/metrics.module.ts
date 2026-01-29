@@ -122,6 +122,13 @@ export class MetricsModule {
         labelNames: ['service', 'operation', 'table'],
         buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
       }),
+      // Federation subgraph metrics for measuring gateway-to-subgraph latency
+      makeHistogramProvider({
+        name: 'federation_subgraph_request_duration_seconds',
+        help: 'Duration of federation subgraph requests in seconds',
+        labelNames: ['subgraph'],
+        buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
+      }),
     ];
 
     return {
