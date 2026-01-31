@@ -111,10 +111,14 @@ export class MetricsService {
     circuitName: string,
     state: 'closed' | 'open' | 'half_open',
   ): void {
-    const stateValue = state === 'closed' ? 0 : state === 'open' ? 1 : 0.5;
+    const stateValues: Record<typeof state, number> = {
+      closed: 0,
+      open: 1,
+      half_open: 0.5,
+    };
     this.circuitBreakerState.set(
       { service, circuit_name: circuitName },
-      stateValue,
+      stateValues[state],
     );
   }
 
