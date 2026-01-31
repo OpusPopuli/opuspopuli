@@ -12,7 +12,11 @@ import {
   getDbService,
   generateId,
 } from '../utils';
-import { DocumentStatus, DocumentType } from '@qckstrt/relationaldb-provider';
+import {
+  DocumentStatus,
+  DocumentType,
+  Prisma,
+} from '@qckstrt/relationaldb-provider';
 
 describe('Document Integration Tests', () => {
   beforeEach(async () => {
@@ -558,6 +562,370 @@ describe('Document Integration Tests', () => {
 
       expect(failed.status).toBe(DocumentStatus.text_extraction_failed);
       expect(failed.extractedText).toBeNull();
+    });
+  });
+
+  describe('AI Analysis Status Workflow', () => {
+    it('should track document through AI analysis states', async () => {
+      const user = await createUser({ email: 'analysis-workflow@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        status: DocumentStatus.text_extraction_complete,
+        extractedText: 'This is a petition to increase the minimum wage...',
+        contentHash: 'hash-analysis-test',
+      });
+
+      const db = await getDbService();
+
+      // Start AI analysis
+      await db.document.update({
+        where: { id: doc.id },
+        data: { status: DocumentStatus.ai_analysis_started },
+      });
+
+      let current = await db.document.findUnique({ where: { id: doc.id } });
+      expect(current?.status).toBe(DocumentStatus.ai_analysis_started);
+
+      // Complete analysis
+      const analysisResult = {
+        documentType: 'petition',
+        summary: 'A petition to raise the minimum wage to $20/hour',
+        keyPoints: ['Increase to $20/hour', 'Phased implementation'],
+        entities: ['State Legislature', 'Workers Union'],
+        actualEffect: 'Would mandate higher minimum wage statewide',
+        potentialConcerns: ['Cost impact on small businesses'],
+        beneficiaries: ['Low-wage workers'],
+        potentiallyHarmed: ['Small business owners'],
+        relatedMeasures: ['Prop 15 from 2020'],
+        analyzedAt: new Date().toISOString(),
+        provider: 'Ollama',
+        model: 'llama3.2',
+        processingTimeMs: 1500,
+      };
+
+      await db.document.update({
+        where: { id: doc.id },
+        data: {
+          status: DocumentStatus.ai_analysis_complete,
+          analysis: analysisResult,
+        },
+      });
+
+      current = await db.document.findUnique({ where: { id: doc.id } });
+      expect(current?.status).toBe(DocumentStatus.ai_analysis_complete);
+      expect(current?.analysis).toBeDefined();
+
+      const analysis = current?.analysis as typeof analysisResult;
+      expect(analysis.summary).toBe(
+        'A petition to raise the minimum wage to $20/hour',
+      );
+      expect(analysis.provider).toBe('Ollama');
+    });
+
+    it('should handle AI analysis failure', async () => {
+      const user = await createUser({ email: 'analysis-fail@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        status: DocumentStatus.ai_analysis_started,
+        extractedText: 'Some content',
+      });
+
+      const db = await getDbService();
+      const failed = await db.document.update({
+        where: { id: doc.id },
+        data: { status: DocumentStatus.ai_analysis_failed },
+      });
+
+      expect(failed.status).toBe(DocumentStatus.ai_analysis_failed);
+      expect(failed.analysis).toBeNull();
+    });
+  });
+
+  describe('Analysis Caching by contentHash', () => {
+    it('should find cached analysis by contentHash and type', async () => {
+      const user = await createUser({ email: 'cache-test@example.com' });
+      const sharedHash = `content-hash-${generateId()}`;
+
+      const analysisData = {
+        summary: 'Shared analysis result',
+        keyPoints: ['Key point 1'],
+        entities: ['Entity 1'],
+        documentType: 'petition',
+        analyzedAt: new Date().toISOString(),
+        provider: 'Ollama',
+        model: 'llama3.2',
+        processingTimeMs: 1000,
+      };
+
+      // Create first document with analysis
+      await createDocument({
+        userId: user.id,
+        key: 'original-petition.pdf',
+        type: DocumentType.petition,
+        extractedText: 'Same petition content',
+        contentHash: sharedHash,
+        status: DocumentStatus.ai_analysis_complete,
+        analysis: analysisData,
+      });
+
+      // Create second document with same contentHash, no analysis yet
+      const doc2 = await createDocument({
+        userId: user.id,
+        key: 'duplicate-petition.pdf',
+        type: DocumentType.petition,
+        extractedText: 'Same petition content',
+        contentHash: sharedHash,
+        status: DocumentStatus.text_extraction_complete,
+      });
+
+      const db = await getDbService();
+
+      // Query for cached analysis (same contentHash + type)
+      const cached = await db.document.findFirst({
+        where: {
+          contentHash: sharedHash,
+          type: DocumentType.petition,
+          analysis: { not: Prisma.DbNull },
+        },
+        select: { id: true, analysis: true },
+      });
+
+      expect(cached).toBeDefined();
+      expect(cached?.id).not.toBe(doc2.id);
+      expect((cached?.analysis as typeof analysisData).summary).toBe(
+        'Shared analysis result',
+      );
+    });
+
+    it('should not share analysis between different document types', async () => {
+      const user = await createUser({ email: 'type-isolation@example.com' });
+      const sharedHash = `hash-type-test-${generateId()}`;
+
+      // Create petition with analysis
+      await createDocument({
+        userId: user.id,
+        key: 'petition.pdf',
+        type: DocumentType.petition,
+        extractedText: 'Shared content',
+        contentHash: sharedHash,
+        status: DocumentStatus.ai_analysis_complete,
+        analysis: {
+          summary: 'Petition analysis',
+          documentType: 'petition',
+        },
+      });
+
+      const db = await getDbService();
+
+      // Query for contract type with same hash - should not find
+      const cachedForContract = await db.document.findFirst({
+        where: {
+          contentHash: sharedHash,
+          type: DocumentType.contract,
+          analysis: { not: Prisma.DbNull },
+        },
+      });
+
+      expect(cachedForContract).toBeNull();
+    });
+  });
+
+  describe('Document Analysis by Type', () => {
+    it('should store petition analysis with civic fields', async () => {
+      const user = await createUser({ email: 'petition-analysis@example.com' });
+      const analysisData = {
+        documentType: 'petition',
+        summary: 'Initiative to fund public schools',
+        keyPoints: ['Increase property tax', 'Fund K-12 education'],
+        entities: ['State Board of Education'],
+        actualEffect: 'Would increase property taxes by 1%',
+        potentialConcerns: ['Tax burden on homeowners'],
+        beneficiaries: ['Public school students'],
+        potentiallyHarmed: ['Property owners'],
+        relatedMeasures: ['Prop 30 from 2012'],
+        analyzedAt: new Date().toISOString(),
+        provider: 'Ollama',
+        model: 'llama3.2',
+        processingTimeMs: 1200,
+      };
+
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        extractedText: 'Education funding petition text...',
+        status: DocumentStatus.ai_analysis_complete,
+        analysis: analysisData,
+      });
+
+      const db = await getDbService();
+      const retrieved = await db.document.findUnique({
+        where: { id: doc.id },
+      });
+
+      const analysis = retrieved?.analysis as typeof analysisData;
+      expect(analysis.actualEffect).toBe('Would increase property taxes by 1%');
+      expect(analysis.beneficiaries).toContain('Public school students');
+    });
+
+    it('should store contract analysis with contract-specific fields', async () => {
+      const user = await createUser({
+        email: 'contract-analysis@example.com',
+      });
+      const analysisData = {
+        documentType: 'contract',
+        summary: 'Service agreement between two parties',
+        keyPoints: ['1 year term', 'Auto-renewal'],
+        entities: ['Acme Corp', 'Widget Inc'],
+        parties: ['Acme Corp', 'Widget Inc'],
+        obligations: ['Acme provides services', 'Widget pays monthly'],
+        risks: ['Early termination penalties'],
+        effectiveDate: '2024-01-01',
+        terminationClause: '30 days written notice required',
+        analyzedAt: new Date().toISOString(),
+        provider: 'Ollama',
+        model: 'llama3.2',
+        processingTimeMs: 800,
+      };
+
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.contract,
+        extractedText: 'Contract agreement text...',
+        status: DocumentStatus.ai_analysis_complete,
+        analysis: analysisData,
+      });
+
+      const db = await getDbService();
+      const retrieved = await db.document.findUnique({
+        where: { id: doc.id },
+      });
+
+      const analysis = retrieved?.analysis as typeof analysisData;
+      expect(analysis.parties).toContain('Acme Corp');
+      expect(analysis.terminationClause).toBe(
+        '30 days written notice required',
+      );
+    });
+
+    it('should store form analysis with form-specific fields', async () => {
+      const user = await createUser({ email: 'form-analysis@example.com' });
+      const analysisData = {
+        documentType: 'form',
+        summary: 'Tax filing form for small businesses',
+        keyPoints: ['Annual filing required', 'Due April 15'],
+        entities: ['IRS', 'State Tax Board'],
+        requiredFields: ['Business name', 'EIN', 'Revenue'],
+        purpose: 'Annual business tax reporting',
+        submissionDeadline: 'April 15, 2024',
+        analyzedAt: new Date().toISOString(),
+        provider: 'Ollama',
+        model: 'llama3.2',
+        processingTimeMs: 600,
+      };
+
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.form,
+        extractedText: 'Tax form content...',
+        status: DocumentStatus.ai_analysis_complete,
+        analysis: analysisData,
+      });
+
+      const db = await getDbService();
+      const retrieved = await db.document.findUnique({
+        where: { id: doc.id },
+      });
+
+      const analysis = retrieved?.analysis as typeof analysisData;
+      expect(analysis.requiredFields).toContain('EIN');
+      expect(analysis.submissionDeadline).toBe('April 15, 2024');
+    });
+  });
+
+  describe('Full Document Processing Pipeline', () => {
+    it('should complete full pipeline: upload -> extract -> analyze', async () => {
+      const user = await createUser({ email: 'pipeline@example.com' });
+      const db = await getDbService();
+
+      // Step 1: Create document (simulating upload)
+      const doc = await createDocument({
+        userId: user.id,
+        key: 'petition-scan.png',
+        type: DocumentType.petition,
+        status: DocumentStatus.processing_pending,
+      });
+
+      expect(doc.status).toBe(DocumentStatus.processing_pending);
+
+      // Step 2: Start text extraction
+      await db.document.update({
+        where: { id: doc.id },
+        data: { status: DocumentStatus.text_extraction_started },
+      });
+
+      // Step 3: Complete text extraction
+      const extractedText =
+        'We the undersigned petition for increased funding...';
+      const contentHash = 'sha256-extracted-content-hash';
+
+      await db.document.update({
+        where: { id: doc.id },
+        data: {
+          status: DocumentStatus.text_extraction_complete,
+          extractedText,
+          contentHash,
+          ocrConfidence: 95.5,
+          ocrProvider: 'Tesseract',
+        },
+      });
+
+      let current = await db.document.findUnique({ where: { id: doc.id } });
+      expect(current?.status).toBe(DocumentStatus.text_extraction_complete);
+      expect(current?.extractedText).toBe(extractedText);
+
+      // Step 4: Start AI analysis
+      await db.document.update({
+        where: { id: doc.id },
+        data: { status: DocumentStatus.ai_analysis_started },
+      });
+
+      // Step 5: Complete AI analysis
+      const analysis = {
+        documentType: 'petition',
+        summary: 'Petition for increased education funding',
+        keyPoints: ['Increase state budget allocation'],
+        entities: ['State Education Department'],
+        actualEffect: 'Would require additional $1B in education spending',
+        potentialConcerns: ['Budget constraints'],
+        beneficiaries: ['Public schools'],
+        potentiallyHarmed: ['Taxpayers'],
+        relatedMeasures: [],
+        analyzedAt: new Date().toISOString(),
+        provider: 'Ollama',
+        model: 'llama3.2',
+        processingTimeMs: 2000,
+      };
+
+      await db.document.update({
+        where: { id: doc.id },
+        data: {
+          status: DocumentStatus.ai_analysis_complete,
+          analysis,
+        },
+      });
+
+      // Verify final state
+      current = await db.document.findUnique({ where: { id: doc.id } });
+      expect(current?.status).toBe(DocumentStatus.ai_analysis_complete);
+      expect(current?.extractedText).toBe(extractedText);
+      expect(current?.ocrConfidence).toBe(95.5);
+
+      const finalAnalysis = current?.analysis as typeof analysis;
+      expect(finalAnalysis.summary).toBe(
+        'Petition for increased education funding',
+      );
+      expect(finalAnalysis.provider).toBe('Ollama');
     });
   });
 });

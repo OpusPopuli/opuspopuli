@@ -131,6 +131,9 @@ enum DocumentStatus {
   ai_embeddings_started    @map("AI Embeddings Started")
   ai_embeddings_complete   @map("AI Embeddings Complete")
   ai_embeddings_failed     @map("AI Embeddings Failed")
+  ai_analysis_started      @map("AI Analysis Started")
+  ai_analysis_complete     @map("AI Analysis Complete")
+  ai_analysis_failed       @map("AI Analysis Failed")
   processing_complete      @map("Complete")
 }
 
