@@ -23,6 +23,11 @@ import {
   ExtractTextFromBase64Input,
   ExtractTextResult,
 } from './dto/ocr.dto';
+import {
+  AnalyzeDocumentInput,
+  AnalyzeDocumentResult,
+  DocumentAnalysis,
+} from './dto/analysis.dto';
 
 /**
  * Documents Resolver
@@ -108,5 +113,37 @@ export class DocumentsResolver {
       input.data,
       input.mimeType,
     );
+  }
+
+  /**
+   * Analyze a document using LLM with type-specific prompts
+   * Results are cached by contentHash + document type
+   */
+  @Mutation(() => AnalyzeDocumentResult)
+  @UseGuards(AuthGuard)
+  @Extensions({ complexity: 100 }) // LLM inference is expensive
+  async analyzeDocument(
+    @Args('input') input: AnalyzeDocumentInput,
+    @Context() context: GqlContext,
+  ): Promise<AnalyzeDocumentResult> {
+    const user = getUserFromContext(context);
+    return this.documentsService.analyzeDocument(
+      user.id,
+      input.documentId,
+      input.forceReanalyze ?? false,
+    );
+  }
+
+  /**
+   * Get existing analysis for a document
+   */
+  @Query(() => DocumentAnalysis, { nullable: true })
+  @UseGuards(AuthGuard)
+  async getDocumentAnalysis(
+    @Args('documentId') documentId: string,
+    @Context() context: GqlContext,
+  ): Promise<DocumentAnalysis | null> {
+    const user = getUserFromContext(context);
+    return this.documentsService.getDocumentAnalysis(user.id, documentId);
   }
 }

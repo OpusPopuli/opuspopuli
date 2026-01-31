@@ -8,6 +8,9 @@ export enum DocumentStatus {
   AIEMBEDDINGSSTARTED = 'AI Embeddings Started',
   AIEMBEDDINGSCOMPLETE = 'AI Embeddings Complete',
   AIEMBEDDINGSFAILED = 'AI Embeddings Failed',
+  AIANALYSISSTARTED = 'AI Analysis Started',
+  AIANALYSISCOMPLETE = 'AI Analysis Complete',
+  AIANALYSISFAILED = 'AI Analysis Failed',
   PROCESSINGNCOMPLETE = 'Complete',
 }
 

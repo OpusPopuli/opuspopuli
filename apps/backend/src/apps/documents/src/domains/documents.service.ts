@@ -14,12 +14,18 @@ import {
 } from '@qckstrt/relationaldb-provider';
 import { OcrService } from '@qckstrt/ocr-provider';
 import { ExtractionProvider } from '@qckstrt/extraction-provider';
+import { ILLMProvider } from '@qckstrt/llm-provider';
 import { createHash } from 'node:crypto';
 
 import { IFileConfig } from 'src/config';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 import { File } from './models/file.model';
 import { ExtractTextResult } from './dto/ocr.dto';
+import { DocumentAnalysis, AnalyzeDocumentResult } from './dto/analysis.dto';
+import {
+  buildAnalysisPrompt,
+  parseAnalysisResponse,
+} from './prompts/document-analysis.prompt';
 
 /**
  * Documents Service
@@ -37,6 +43,7 @@ export class DocumentsService {
   constructor(
     private readonly db: DbService,
     @Inject('STORAGE_PROVIDER') private storage: IStorageProvider,
+    @Inject('LLM_PROVIDER') private readonly llm: ILLMProvider,
     private configService: ConfigService,
     private readonly ocrService: OcrService,
     private readonly extractionProvider: ExtractionProvider,
@@ -317,5 +324,126 @@ export class DocumentsService {
   private hashText(text: string): string {
     const normalized = text.toLowerCase().replaceAll(/\s+/g, ' ').trim();
     return createHash('sha256').update(normalized).digest('hex');
+  }
+
+  /**
+   * Analyze a document using LLM with type-specific prompts
+   * Results are cached by contentHash + document type
+   */
+  async analyzeDocument(
+    userId: string,
+    documentId: string,
+    forceReanalyze = false,
+  ): Promise<AnalyzeDocumentResult> {
+    const startTime = Date.now();
+
+    const document = await this.db.document.findFirst({
+      where: { id: documentId, userId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    if (!document.extractedText) {
+      throw new BadRequestException(
+        'Document text not extracted. Extract text first.',
+      );
+    }
+
+    // Check cache by contentHash (same content + type = same analysis)
+    if (!forceReanalyze && document.contentHash) {
+      const cached = await this.db.document.findFirst({
+        where: {
+          contentHash: document.contentHash,
+          type: document.type,
+          analysis: { not: Prisma.DbNull },
+        },
+        select: { id: true, analysis: true },
+      });
+
+      if (cached?.analysis) {
+        this.logger.log(
+          `Cache hit for document ${documentId} (matched ${cached.id})`,
+        );
+        return {
+          analysis: {
+            ...(cached.analysis as object),
+            cachedFrom: cached.id,
+          } as DocumentAnalysis,
+          fromCache: true,
+        };
+      }
+    }
+
+    // Update status to in-progress
+    await this.db.document.update({
+      where: { id: documentId },
+      data: { status: 'ai_analysis_started' },
+    });
+
+    try {
+      const prompt = buildAnalysisPrompt(document.extractedText, document.type);
+      const result = await this.llm.generate(prompt, {
+        maxTokens: 1500,
+        temperature: 0.3,
+      });
+
+      const parsed = parseAnalysisResponse(result.text);
+      const processingTimeMs = Date.now() - startTime;
+
+      const analysis = {
+        ...parsed,
+        documentType: document.type,
+        analyzedAt: new Date().toISOString(),
+        provider: this.llm.getName(),
+        model: this.llm.getModelName(),
+        tokensUsed: result.tokensUsed,
+        processingTimeMs,
+      };
+
+      await this.db.document.update({
+        where: { id: documentId },
+        data: {
+          analysis: analysis as Prisma.InputJsonValue,
+          status: 'ai_analysis_complete',
+        },
+      });
+
+      this.logger.log(
+        `Analyzed document ${documentId} (${document.type}) in ${processingTimeMs}ms`,
+      );
+
+      return {
+        analysis: analysis as unknown as DocumentAnalysis,
+        fromCache: false,
+      };
+    } catch (error) {
+      this.logger.error(`Analysis failed for document ${documentId}:`, error);
+      await this.db.document.update({
+        where: { id: documentId },
+        data: { status: 'ai_analysis_failed' },
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get existing analysis for a document
+   */
+  async getDocumentAnalysis(
+    userId: string,
+    documentId: string,
+  ): Promise<DocumentAnalysis | null> {
+    const document = await this.db.document.findFirst({
+      where: { id: documentId, userId },
+      select: { analysis: true },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    return (document.analysis as unknown as DocumentAnalysis) || null;
   }
 }
