@@ -37,6 +37,7 @@
     "db:generate": "npx prisma generate",
     "db:migrate": "npx prisma migrate dev",
     "db:push": "npx prisma db push",
+    "db:spatial-indexes": "psql $DATABASE_URL -f prisma/spatial-indexes.sql",
     "db:studio": "npx prisma studio"
   },
   "keywords": [

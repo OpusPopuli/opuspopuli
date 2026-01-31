@@ -12,6 +12,10 @@
 -- Enable pgvector extension for embeddings/similarity search
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Enable PostGIS extension for geographic location queries
+-- Used for privacy-preserving petition location tracking (see #290, #296)
+CREATE EXTENSION IF NOT EXISTS postgis;
+
 -- Get password from environment variable
 \set pgpass `echo "$POSTGRES_PASSWORD"`
 
