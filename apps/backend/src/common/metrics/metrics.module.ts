@@ -133,6 +133,7 @@ export class MetricsModule {
 
     return {
       module: MetricsModule,
+      global: true, // Make MetricsService available throughout the application
       imports: [
         PrometheusModule.register({
           path: metricsPath,
