@@ -4,6 +4,7 @@ import {
 } from '@apollo/gateway';
 import type { Response } from 'express';
 import { HmacSignerService } from 'src/common/services/hmac-signer.service';
+import { MetricsService } from 'src/common/metrics';
 
 /**
  * Gateway context passed to data source
@@ -22,25 +23,64 @@ interface GatewayContext {
  * This class ensures:
  * 1. Requests to subgraphs are signed with HMAC for authentication
  * 2. Set-Cookie headers from subgraph responses are propagated to the browser
+ * 3. Subgraph request latency is tracked via Prometheus metrics
  *
  * SECURITY: This replaces the frontend HMAC signing (which exposed secrets
  * in the browser) with gateway-side signing.
  *
  * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/185
  * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/186
+ * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
  */
 export class HmacRemoteGraphQLDataSource extends RemoteGraphQLDataSource<GatewayContext> {
   private readonly hmacSigner: HmacSignerService;
+  private readonly metricsService?: MetricsService;
+  private readonly subgraphName: string;
+  // Track request start times for latency measurement
+  private readonly requestStartTimes = new WeakMap<object, bigint>();
 
-  constructor(config: { url?: string }, hmacSigner: HmacSignerService) {
+  constructor(
+    config: { url?: string },
+    hmacSigner: HmacSignerService,
+    metricsService?: MetricsService,
+  ) {
     super(config);
     this.hmacSigner = hmacSigner;
+    this.metricsService = metricsService;
+    // Extract subgraph name from URL (e.g., http://localhost:4001 -> users-service)
+    this.subgraphName = this.extractSubgraphName(config.url);
+  }
+
+  /**
+   * Extract a readable subgraph name from the URL
+   */
+  private extractSubgraphName(url?: string): string {
+    if (!url) return 'unknown';
+    try {
+      const parsed = new URL(url);
+      // Use port to identify service in local dev, or hostname in production
+      const port = parsed.port;
+      const portToService: Record<string, string> = {
+        '4001': 'users-service',
+        '4002': 'documents-service',
+        '4003': 'knowledge-service',
+        '4004': 'region-service',
+      };
+      return portToService[port] || parsed.hostname || 'unknown';
+    } catch {
+      return 'unknown';
+    }
   }
 
   willSendRequest({
     request,
     context,
   }: GraphQLDataSourceProcessOptions<GatewayContext>) {
+    // Track request start time for latency metrics
+    if (this.metricsService && request) {
+      this.requestStartTimes.set(request, process.hrtime.bigint());
+    }
+
     // Forward authenticated user to microservices
     if (context?.user) {
       request.http?.headers.set('user', context.user);
@@ -67,7 +107,21 @@ export class HmacRemoteGraphQLDataSource extends RemoteGraphQLDataSource<Gateway
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   didReceiveResponse(requestContext: any): any {
-    const { response, context } = requestContext;
+    const { response, context, request } = requestContext;
+
+    // Record subgraph latency metric
+    if (this.metricsService && request) {
+      const startTime = this.requestStartTimes.get(request);
+      if (startTime) {
+        const durationNs = process.hrtime.bigint() - startTime;
+        const durationSeconds = Number(durationNs) / 1e9;
+        this.metricsService.recordSubgraphRequest(
+          this.subgraphName,
+          durationSeconds,
+        );
+        this.requestStartTimes.delete(request);
+      }
+    }
 
     // Get the HTTP response from the subgraph
     const httpResponse = response?.http;

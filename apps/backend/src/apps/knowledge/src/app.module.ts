@@ -36,6 +36,7 @@ import { DbModule } from 'src/db/db.module';
 import { AuditModule } from 'src/common/audit/audit.module';
 import { CaslModule } from 'src/permissions/casl.module';
 import { HealthModule } from 'src/common/health';
+import { MetricsModule } from 'src/common/metrics';
 
 /**
  * Knowledge App Module
@@ -73,6 +74,7 @@ import { HealthModule } from 'src/common/health';
       serviceName: 'knowledge-service',
       hasDatabase: true,
     }),
+    MetricsModule.forRoot({ serviceName: 'knowledge-service' }),
   ],
   providers: SHARED_PROVIDERS,
 })
@@ -88,6 +90,8 @@ export class AppModule implements NestModule {
         { path: 'health', method: RequestMethod.GET },
         { path: 'health/live', method: RequestMethod.GET },
         { path: 'health/ready', method: RequestMethod.GET },
+        // Metrics endpoint excluded for Prometheus scraping
+        { path: 'metrics', method: RequestMethod.GET },
       )
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }

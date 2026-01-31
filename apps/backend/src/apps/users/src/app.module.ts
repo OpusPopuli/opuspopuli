@@ -42,6 +42,7 @@ import { DbModule } from 'src/db/db.module';
 import { AuditModule } from 'src/common/audit/audit.module';
 import { CaslModule } from 'src/permissions/casl.module';
 import { HealthModule } from 'src/common/health';
+import { MetricsModule } from 'src/common/metrics';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { HealthModule } from 'src/common/health';
     ActivityModule,
     EmailDomainModule,
     HealthModule.forRoot({ serviceName: 'users-service', hasDatabase: true }),
+    MetricsModule.forRoot({ serviceName: 'users-service' }),
   ],
   providers: SHARED_PROVIDERS,
 })
@@ -88,10 +90,11 @@ export class AppModule implements NestModule {
       // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/185
       .apply(HMACMiddleware, LoggerMiddleware)
       .exclude(
-        // Health endpoints are excluded from HMAC validation for Kubernetes probes
+        // Health and metrics endpoints are excluded from HMAC validation for Kubernetes probes
         { path: 'health', method: RequestMethod.GET },
         { path: 'health/live', method: RequestMethod.GET },
         { path: 'health/ready', method: RequestMethod.GET },
+        { path: 'metrics', method: RequestMethod.GET },
       )
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }

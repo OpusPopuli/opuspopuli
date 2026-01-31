@@ -6,10 +6,26 @@ This project uses a 100% open-source, self-hosted AI/ML stack for maximum transp
 
 Your `docker-compose.yml` includes:
 
+### Core Services
+
 | Service | Purpose | Port | Image |
 |---------|---------|------|-------|
 | **PostgreSQL + pgvector** | Relational + Vector database | 5432 | Supabase stack |
-| **Ollama** | LLM inference (Falcon 7B) | 11434 | `ollama/ollama:latest` |
+| **Supabase Auth** | Authentication (Passkeys, Magic Links) | - | `supabase/gotrue` |
+| **Supabase Storage** | File storage | - | `supabase/storage-api` |
+| **Supabase Studio** | Admin UI | 3100 | `supabase/studio` |
+| **Ollama** | LLM inference (Falcon 7B) | 11434 | `ollama/ollama` |
+| **Redis** | Caching and rate limiting | 6379 | `redis:7-alpine` |
+| **Inbucket** | Local email testing | 54324 | `inbucket/inbucket` |
+
+### Observability Stack
+
+| Service | Purpose | Port | Image |
+|---------|---------|------|-------|
+| **Prometheus** | Metrics collection | 9090 | `prom/prometheus` |
+| **Loki** | Log aggregation | 3100 | `grafana/loki` |
+| **Promtail** | Log shipper | - | `grafana/promtail` |
+| **Grafana** | Visualization | 3101 | `grafana/grafana` |
 
 ## Quick Start
 
@@ -44,6 +60,70 @@ docker exec qckstrt-supabase-db psql -U postgres -c "SELECT * FROM pg_extension 
 
 # Check Ollama
 docker exec qckstrt-ollama ollama list
+
+# Check Redis
+docker exec qckstrt-redis redis-cli ping
+
+# Check Prometheus
+curl http://localhost:9090/-/healthy
+```
+
+## Access Points
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Supabase API | http://localhost:8000 | - |
+| Supabase Studio | http://localhost:3100 | - |
+| Inbucket (Email) | http://localhost:54324 | - |
+| PostgreSQL | localhost:5432 | `postgres` / from .env |
+| Ollama | http://localhost:11434 | - |
+| Redis | localhost:6379 | - |
+| Prometheus | http://localhost:9090 | - |
+| Grafana | http://localhost:3101 | `admin` / `admin` |
+
+## Observability
+
+### Prometheus Metrics
+
+Each microservice exposes metrics at `/metrics`:
+
+```bash
+# View metrics from users-service
+curl http://localhost:4001/metrics
+
+# View metrics from api-gateway
+curl http://localhost:4000/metrics
+```
+
+Available metrics:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `http_requests_total` | Counter | Total HTTP requests by method, route, status |
+| `http_request_duration_seconds` | Histogram | Request latency (p50, p95, p99) |
+| `graphql_operations_total` | Counter | GraphQL operations by type |
+| `graphql_operation_duration_seconds` | Histogram | GraphQL latency |
+| `circuit_breaker_state` | Gauge | Circuit breaker status |
+| `db_query_duration_seconds` | Histogram | Database query latency |
+
+Default Node.js metrics (heap, GC, event loop) are also included.
+
+### Grafana Dashboards
+
+Pre-configured dashboards are available at http://localhost:3101:
+
+1. **QCKSTRT Services** - Request rates, error rates, latency percentiles
+2. Explore logs via the Loki datasource
+
+### Loki Logs
+
+Container logs are automatically collected by Promtail and sent to Loki:
+
+```bash
+# Query logs in Grafana
+# Go to Explore > Select Loki > Enter query:
+{service="qckstrt-supabase-db"}
+{container=~"qckstrt-.*"} |= "error"
 ```
 
 ## Configuration
@@ -60,6 +140,9 @@ VECTOR_DB_DIMENSIONS=384
 # LLM: Ollama with Falcon 7B
 LLM_URL='http://localhost:11434'
 LLM_MODEL='falcon'
+
+# Redis: Caching and rate limiting
+REDIS_URL='redis://localhost:6379'
 ```
 
 ## Development Workflow
@@ -86,6 +169,8 @@ docker-compose logs -f
 
 # Specific service
 docker-compose logs -f ollama
+
+# Or use Grafana/Loki at http://localhost:3101
 ```
 
 ## Switching Models
@@ -134,12 +219,19 @@ docker-compose up -d ollama
 
 All data is persisted in Docker volumes:
 
-- `qckstrt-supabase-data` - PostgreSQL database (relational + vector data)
-- `qckstrt-ollama-data` - Downloaded Ollama models
+| Volume | Purpose |
+|--------|---------|
+| `qckstrt-supabase-db-data` | PostgreSQL database |
+| `qckstrt-supabase-storage-data` | File uploads |
+| `qckstrt-ollama-data` | Downloaded LLM models |
+| `qckstrt-redis-data` | Cache data |
+| `qckstrt-prometheus-data` | Metrics history (15 days) |
+| `qckstrt-loki-data` | Log history |
+| `qckstrt-grafana-data` | Dashboards and settings |
 
 To backup:
 ```bash
-docker volume inspect qckstrt-supabase-data
+docker volume inspect qckstrt-supabase-db-data
 docker volume inspect qckstrt-ollama-data
 ```
 
@@ -172,20 +264,47 @@ docker exec qckstrt-supabase-db psql -U postgres -c "SELECT * FROM pg_available_
 docker exec qckstrt-supabase-db psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
+### Redis connection issues
+```bash
+# Check Redis is running
+docker exec qckstrt-redis redis-cli ping
+
+# View Redis info
+docker exec qckstrt-redis redis-cli info
+```
+
+### Prometheus not scraping metrics
+```bash
+# Check Prometheus targets
+curl http://localhost:9090/api/v1/targets
+
+# Verify service is exposing metrics
+curl http://localhost:4001/metrics
+```
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│         Your Application                │
-│                                         │
-│  ┌──────────┐  ┌──────────┐  ┌───────┐ │
-│  │ Xenova   │  │PostgreSQL│  │Ollama │ │
-│  │(in-proc) │  │+ pgvector│  │ (LLM) │ │
-│  └──────────┘  └──────────┘  └───────┘ │
-│                 ↓              ↓       │
-│            localhost:5432  localhost:  │
-│                              11434     │
-└─────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                    Your Application                            │
+│                                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌───────┐  ┌───────┐  ┌────────┐ │
+│  │ Xenova   │  │PostgreSQL│  │Ollama │  │ Redis │  │Supabase│ │
+│  │(in-proc) │  │+ pgvector│  │ (LLM) │  │(cache)│  │ (auth) │ │
+│  └──────────┘  └──────────┘  └───────┘  └───────┘  └────────┘ │
+│                     ↓            ↓          ↓          ↓       │
+│              localhost:5432  :11434     :6379      :8000       │
+└────────────────────────────────────────────────────────────────┘
+                              ↓
+┌────────────────────────────────────────────────────────────────┐
+│                    Observability Stack                         │
+│                                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────┐  │
+│  │Prometheus│  │   Loki   │  │ Promtail │  │    Grafana    │  │
+│  │(metrics) │  │  (logs)  │  │(shipper) │  │(visualization)│  │
+│  └──────────┘  └──────────┘  └──────────┘  └───────────────┘  │
+│       :9090        :3100          -              :3101         │
+└────────────────────────────────────────────────────────────────┘
 
 100% OSS • 100% Self-Hosted • 100% Private
 ```
@@ -197,8 +316,11 @@ For production, consider:
 1. **Use managed PostgreSQL with pgvector** (AWS RDS, Supabase Cloud, etc.)
 2. **Deploy Ollama** on GPU instances for better performance
 3. **Use environment-specific configs** (production.env)
+4. **Configure Prometheus federation** for multi-cluster monitoring
+5. **Set up alerting** via Alertmanager
 
 See the platform packages for implementations:
 - `packages/relationaldb-provider/` - PostgreSQL provider
 - `packages/vectordb-provider/` - pgvector provider
 - `packages/llm-provider/` - Ollama provider
+- `packages/extraction-provider/` - Text extraction with Redis caching
