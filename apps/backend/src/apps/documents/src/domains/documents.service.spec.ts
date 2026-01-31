@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 import { DocumentsService } from './documents.service';
-import { DbService } from '@qckstrt/relationaldb-provider';
+import { DbService, DocumentType } from '@qckstrt/relationaldb-provider';
 import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
 import { IStorageProvider } from '@qckstrt/storage-provider';
 import { OcrService } from '@qckstrt/ocr-provider';
@@ -69,6 +69,14 @@ describe('DocumentsService', () => {
     extractFromUrl: jest.fn(),
   };
 
+  const mockLLMProvider = {
+    generate: jest.fn(),
+    chat: jest.fn(),
+    generateStream: jest.fn(),
+    getName: jest.fn().mockReturnValue('Ollama'),
+    getModelName: jest.fn().mockReturnValue('llama3.2'),
+  };
+
   beforeEach(async () => {
     mockDb = createMockDbService();
     jest.clearAllMocks();
@@ -80,6 +88,10 @@ describe('DocumentsService', () => {
         {
           provide: 'STORAGE_PROVIDER',
           useValue: mockStorageProvider,
+        },
+        {
+          provide: 'LLM_PROVIDER',
+          useValue: mockLLMProvider,
         },
         {
           provide: OcrService,
@@ -657,6 +669,221 @@ describe('DocumentsService', () => {
       expect(hash1).toBe(hash2);
     });
   });
+
+  describe('analyzeDocument', () => {
+    const mockDocumentWithText: any = {
+      id: 'doc-1',
+      userId: 'user-1',
+      key: 'petition.pdf',
+      type: DocumentType.petition,
+      extractedText: 'This is a petition to increase minimum wage...',
+      contentHash: 'abc123hash',
+    };
+
+    const mockLLMResponse = {
+      text: JSON.stringify({
+        summary: 'A petition to raise the minimum wage',
+        keyPoints: ['Increase to $20/hour', 'Phased implementation'],
+        entities: ['State Legislature', 'Workers Union'],
+        actualEffect: 'Would mandate higher minimum wage',
+        potentialConcerns: ['Cost to small businesses'],
+        beneficiaries: ['Low-wage workers'],
+        potentiallyHarmed: ['Small business owners'],
+        relatedMeasures: ['Prop 15 from 2020'],
+      }),
+      tokensUsed: 500,
+    };
+
+    it('should analyze document and return structured result', async () => {
+      mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+      mockDb.document.update.mockResolvedValue({} as any);
+      mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
+
+      const result = await documentsService.analyzeDocument('user-1', 'doc-1');
+
+      expect(result.fromCache).toBe(false);
+      expect(result.analysis.summary).toBe(
+        'A petition to raise the minimum wage',
+      );
+      expect(result.analysis.keyPoints).toContain('Increase to $20/hour');
+      expect(result.analysis.provider).toBe('Ollama');
+      expect(result.analysis.model).toBe('llama3.2');
+
+      expect(mockDb.document.update).toHaveBeenCalledWith({
+        where: { id: 'doc-1' },
+        data: { status: 'ai_analysis_started' },
+      });
+
+      expect(mockDb.document.update).toHaveBeenCalledWith({
+        where: { id: 'doc-1' },
+        data: {
+          analysis: expect.objectContaining({
+            summary: 'A petition to raise the minimum wage',
+          }),
+          status: 'ai_analysis_complete',
+        },
+      });
+    });
+
+    it('should return cached analysis when contentHash matches', async () => {
+      const cachedAnalysis = {
+        summary: 'Cached analysis',
+        keyPoints: ['Point 1'],
+        entities: [],
+      };
+
+      // First call returns document without analysis
+      mockDb.document.findFirst
+        .mockResolvedValueOnce(mockDocumentWithText)
+        // Second call finds cached document with same contentHash
+        .mockResolvedValueOnce({
+          id: 'cached-doc',
+          analysis: cachedAnalysis,
+        } as any);
+
+      const result = await documentsService.analyzeDocument('user-1', 'doc-1');
+
+      expect(result.fromCache).toBe(true);
+      expect(result.analysis.cachedFrom).toBe('cached-doc');
+      expect(mockLLMProvider.generate).not.toHaveBeenCalled();
+    });
+
+    it('should bypass cache when forceReanalyze is true', async () => {
+      mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+      mockDb.document.update.mockResolvedValue({} as any);
+      mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
+
+      const result = await documentsService.analyzeDocument(
+        'user-1',
+        'doc-1',
+        true,
+      );
+
+      expect(result.fromCache).toBe(false);
+      expect(mockLLMProvider.generate).toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when document not found', async () => {
+      mockDb.document.findFirst.mockResolvedValue(null);
+
+      await expect(
+        documentsService.analyzeDocument('user-1', 'nonexistent'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when text not extracted', async () => {
+      mockDb.document.findFirst.mockResolvedValue({
+        ...mockDocumentWithText,
+        extractedText: null,
+      });
+
+      await expect(
+        documentsService.analyzeDocument('user-1', 'doc-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should set status to failed when LLM throws error', async () => {
+      mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+      mockDb.document.update.mockResolvedValue({} as any);
+      mockLLMProvider.generate.mockRejectedValue(new Error('LLM timeout'));
+
+      await expect(
+        documentsService.analyzeDocument('user-1', 'doc-1'),
+      ).rejects.toThrow('LLM timeout');
+
+      expect(mockDb.document.update).toHaveBeenLastCalledWith({
+        where: { id: 'doc-1' },
+        data: { status: 'ai_analysis_failed' },
+      });
+    });
+
+    it('should handle LLM response with markdown code blocks', async () => {
+      mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+      mockDb.document.update.mockResolvedValue({} as any);
+      mockLLMProvider.generate.mockResolvedValue({
+        text: '```json\n{"summary":"Test","keyPoints":[],"entities":[]}\n```',
+        tokensUsed: 100,
+      });
+
+      const result = await documentsService.analyzeDocument('user-1', 'doc-1');
+
+      expect(result.analysis.summary).toBe('Test');
+    });
+
+    it('should use correct prompt for different document types', async () => {
+      const contractDoc = {
+        ...mockDocumentWithText,
+        type: DocumentType.contract,
+        extractedText: 'This agreement is between Party A and Party B...',
+      };
+
+      mockDb.document.findFirst.mockResolvedValueOnce(contractDoc);
+      mockDb.document.update.mockResolvedValue({} as any);
+      mockLLMProvider.generate.mockResolvedValue({
+        text: JSON.stringify({
+          summary: 'A service contract',
+          keyPoints: ['Term is 1 year'],
+          entities: ['Party A', 'Party B'],
+          parties: ['Party A', 'Party B'],
+          obligations: ['Deliver services'],
+          risks: ['Liability'],
+          effectiveDate: '2024-01-01',
+          terminationClause: '30 days notice',
+        }),
+        tokensUsed: 400,
+      });
+
+      const result = await documentsService.analyzeDocument('user-1', 'doc-1');
+
+      expect(result.analysis.parties).toContain('Party A');
+      expect(mockLLMProvider.generate).toHaveBeenCalledWith(
+        expect.stringContaining('CONTRACT:'),
+        expect.any(Object),
+      );
+    });
+  });
+
+  describe('getDocumentAnalysis', () => {
+    it('should return existing analysis', async () => {
+      const storedAnalysis = {
+        summary: 'Test summary',
+        keyPoints: ['Point 1'],
+        entities: ['Entity 1'],
+      };
+
+      mockDb.document.findFirst.mockResolvedValue({
+        analysis: storedAnalysis,
+      } as any);
+
+      const result = await documentsService.getDocumentAnalysis(
+        'user-1',
+        'doc-1',
+      );
+
+      expect(result).toEqual(storedAnalysis);
+    });
+
+    it('should return null when no analysis exists', async () => {
+      mockDb.document.findFirst.mockResolvedValue({
+        analysis: null,
+      } as any);
+
+      const result = await documentsService.getDocumentAnalysis(
+        'user-1',
+        'doc-1',
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('should throw NotFoundException when document not found', async () => {
+      mockDb.document.findFirst.mockResolvedValue(null);
+
+      await expect(
+        documentsService.getDocumentAnalysis('user-1', 'nonexistent'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
 });
 
 describe('DocumentsService - config validation', () => {
@@ -671,6 +898,14 @@ describe('DocumentsService - config validation', () => {
             useValue: {
               getSignedUrl: jest.fn(),
               deleteFile: jest.fn(),
+            },
+          },
+          {
+            provide: 'LLM_PROVIDER',
+            useValue: {
+              generate: jest.fn(),
+              getName: jest.fn(),
+              getModelName: jest.fn(),
             },
           },
           {
