@@ -12,7 +12,7 @@ import {
   getDbService,
   generateId,
 } from '../utils';
-import { DocumentStatus } from '@qckstrt/relationaldb-provider';
+import { DocumentStatus, DocumentType } from '@qckstrt/relationaldb-provider';
 
 describe('Document Integration Tests', () => {
   beforeEach(async () => {
@@ -299,6 +299,265 @@ describe('Document Integration Tests', () => {
       expect(updated.updatedAt.getTime()).toBeGreaterThan(
         originalUpdatedAt.getTime(),
       );
+    });
+  });
+
+  describe('Document Type Classification', () => {
+    it('should default to generic type', async () => {
+      const user = await createUser({ email: 'type-default@example.com' });
+      const doc = await createDocument({ userId: user.id });
+
+      expect(doc.type).toBe(DocumentType.generic);
+    });
+
+    it('should create document with petition type', async () => {
+      const user = await createUser({ email: 'type-petition@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        key: 'petition-scan.png',
+      });
+
+      expect(doc.type).toBe(DocumentType.petition);
+    });
+
+    it('should create document with proposition type', async () => {
+      const user = await createUser({ email: 'type-proposition@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.proposition,
+        key: 'proposition-doc.pdf',
+      });
+
+      expect(doc.type).toBe(DocumentType.proposition);
+    });
+
+    it('should filter documents by type', async () => {
+      const user = await createUser({ email: 'type-filter@example.com' });
+
+      await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        key: 'petition1.png',
+      });
+      await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        key: 'petition2.png',
+      });
+      await createDocument({
+        userId: user.id,
+        type: DocumentType.generic,
+        key: 'generic.pdf',
+      });
+
+      const db = await getDbService();
+      const petitions = await db.document.findMany({
+        where: { userId: user.id, type: DocumentType.petition },
+      });
+
+      expect(petitions).toHaveLength(2);
+      expect(petitions.every((d) => d.type === DocumentType.petition)).toBe(
+        true,
+      );
+    });
+  });
+
+  describe('OCR Result Fields', () => {
+    it('should store extracted text', async () => {
+      const user = await createUser({ email: 'ocr-text@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        extractedText: 'This is the extracted text from the document.',
+      });
+
+      expect(doc.extractedText).toBe(
+        'This is the extracted text from the document.',
+      );
+    });
+
+    it('should store OCR confidence and provider', async () => {
+      const user = await createUser({ email: 'ocr-confidence@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        extractedText: 'OCR result text',
+        ocrConfidence: 95.5,
+        ocrProvider: 'Tesseract',
+      });
+
+      expect(doc.ocrConfidence).toBe(95.5);
+      expect(doc.ocrProvider).toBe('Tesseract');
+    });
+
+    it('should store content hash for deduplication', async () => {
+      const user = await createUser({ email: 'ocr-hash@example.com' });
+      const contentHash =
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
+      const doc = await createDocument({
+        userId: user.id,
+        extractedText: 'Some text',
+        contentHash,
+      });
+
+      expect(doc.contentHash).toBe(contentHash);
+    });
+
+    it('should find documents with same content hash', async () => {
+      const user = await createUser({ email: 'ocr-dupe@example.com' });
+      const sharedHash = `sha256-content-${generateId()}`;
+
+      await createDocument({
+        userId: user.id,
+        key: 'original.png',
+        extractedText: 'Duplicate content',
+        contentHash: sharedHash,
+      });
+      await createDocument({
+        userId: user.id,
+        key: 'duplicate.png',
+        extractedText: 'Duplicate content',
+        contentHash: sharedHash,
+      });
+
+      const db = await getDbService();
+      const duplicates = await db.document.findMany({
+        where: { contentHash: sharedHash },
+      });
+
+      expect(duplicates).toHaveLength(2);
+    });
+
+    it('should update document with OCR results', async () => {
+      const user = await createUser({ email: 'ocr-update@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        status: DocumentStatus.text_extraction_started,
+      });
+
+      const db = await getDbService();
+      const updated = await db.document.update({
+        where: { id: doc.id },
+        data: {
+          extractedText: 'Updated OCR text',
+          contentHash: 'new-hash-value',
+          ocrConfidence: 88.5,
+          ocrProvider: 'Tesseract',
+          status: DocumentStatus.text_extraction_complete,
+        },
+      });
+
+      expect(updated.extractedText).toBe('Updated OCR text');
+      expect(updated.ocrConfidence).toBe(88.5);
+      expect(updated.ocrProvider).toBe('Tesseract');
+      expect(updated.status).toBe(DocumentStatus.text_extraction_complete);
+    });
+  });
+
+  describe('Document Analysis JSON Field', () => {
+    it('should store structured analysis data', async () => {
+      const user = await createUser({ email: 'analysis@example.com' });
+      const analysisData = {
+        petitionType: 'initiative',
+        signatureCount: 150,
+        dateCollected: '2024-01-15',
+        jurisdiction: 'California',
+        topics: ['education', 'funding'],
+      };
+
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        analysis: analysisData,
+      });
+
+      expect(doc.analysis).toEqual(analysisData);
+    });
+
+    it('should allow querying by analysis fields', async () => {
+      const user = await createUser({ email: 'analysis-query@example.com' });
+
+      await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        analysis: { jurisdiction: 'California', signatureCount: 100 },
+      });
+      await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        analysis: { jurisdiction: 'Texas', signatureCount: 200 },
+      });
+
+      const db = await getDbService();
+      // Query using Prisma's JSON path filtering
+      const californiaDoc = await db.document.findFirst({
+        where: {
+          userId: user.id,
+          analysis: {
+            path: ['jurisdiction'],
+            equals: 'California',
+          },
+        },
+      });
+
+      expect(californiaDoc).toBeDefined();
+      expect(
+        (californiaDoc?.analysis as { jurisdiction: string }).jurisdiction,
+      ).toBe('California');
+    });
+  });
+
+  describe('OCR Status Workflow', () => {
+    it('should track document through OCR processing states', async () => {
+      const user = await createUser({ email: 'ocr-workflow@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        status: DocumentStatus.processing_pending,
+      });
+
+      const db = await getDbService();
+
+      // Start text extraction
+      await db.document.update({
+        where: { id: doc.id },
+        data: { status: DocumentStatus.text_extraction_started },
+      });
+
+      let current = await db.document.findUnique({ where: { id: doc.id } });
+      expect(current?.status).toBe(DocumentStatus.text_extraction_started);
+
+      // Complete extraction
+      await db.document.update({
+        where: { id: doc.id },
+        data: {
+          status: DocumentStatus.text_extraction_complete,
+          extractedText: 'Petition content here',
+          ocrConfidence: 92,
+          ocrProvider: 'Tesseract',
+        },
+      });
+
+      current = await db.document.findUnique({ where: { id: doc.id } });
+      expect(current?.status).toBe(DocumentStatus.text_extraction_complete);
+      expect(current?.extractedText).toBe('Petition content here');
+    });
+
+    it('should handle extraction failure', async () => {
+      const user = await createUser({ email: 'ocr-fail@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        status: DocumentStatus.text_extraction_started,
+      });
+
+      const db = await getDbService();
+      const failed = await db.document.update({
+        where: { id: doc.id },
+        data: { status: DocumentStatus.text_extraction_failed },
+      });
+
+      expect(failed.status).toBe(DocumentStatus.text_extraction_failed);
+      expect(failed.extractedText).toBeNull();
     });
   });
 });

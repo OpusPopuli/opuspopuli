@@ -25,6 +25,7 @@ import authConfig from 'src/config/auth.config';
 import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
 import fileConfig from 'src/config/file.config';
+import ocrConfig from 'src/config/ocr.config';
 
 import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
 import { HMACMiddleware } from 'src/common/middleware/hmac.middleware';
@@ -59,6 +60,7 @@ import { MetricsModule } from 'src/common/metrics';
         secretsConfig,
         relationaldbConfig,
         fileConfig,
+        ocrConfig,
       ],
       isGlobal: true,
     }),

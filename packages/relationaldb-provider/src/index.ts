@@ -81,6 +81,7 @@ export {
   EmailStatus,
   NotificationFrequency,
   DocumentStatus,
+  DocumentType,
 } from "@prisma/client";
 
 // Test utilities are available from "@qckstrt/relationaldb-provider/testing"
