@@ -1,19 +1,21 @@
-import type {
-  User,
-  UserProfile,
-  UserAddress,
-  UserConsent,
-  NotificationPreference,
-  Document,
-  Representative,
-  Proposition,
-  Meeting,
-  AuditLog,
-  UserSession,
-  UserLogin,
-  ConsentType,
-  ConsentStatus,
-  DocumentStatus,
+import {
+  Prisma,
+  type User,
+  type UserProfile,
+  type UserAddress,
+  type UserConsent,
+  type NotificationPreference,
+  type Document,
+  type Representative,
+  type Proposition,
+  type Meeting,
+  type AuditLog,
+  type UserSession,
+  type UserLogin,
+  type ConsentType,
+  type ConsentStatus,
+  type DocumentStatus,
+  type DocumentType,
 } from '@qckstrt/relationaldb-provider';
 import { getDbService } from './db-cleanup';
 
@@ -229,6 +231,13 @@ export interface CreateDocumentOptions {
   size?: number;
   checksum?: string;
   status?: DocumentStatus;
+  // OCR-related fields
+  type?: DocumentType;
+  extractedText?: string;
+  contentHash?: string;
+  ocrConfidence?: number;
+  ocrProvider?: string;
+  analysis?: Prisma.InputJsonValue;
 }
 
 /**
@@ -248,6 +257,13 @@ export async function createDocument(
       size: options.size ?? 1024,
       checksum: options.checksum ?? `sha256-${generateId()}`,
       status: options.status ?? 'processing_pending',
+      // OCR fields
+      type: options.type,
+      extractedText: options.extractedText,
+      contentHash: options.contentHash,
+      ocrConfidence: options.ocrConfidence,
+      ocrProvider: options.ocrProvider,
+      analysis: options.analysis,
     },
   });
 }

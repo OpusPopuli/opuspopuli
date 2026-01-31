@@ -9,6 +9,9 @@
 --   /docker-entrypoint-initdb.d/zz-custom/99-set-passwords.sql
 -- which runs after init-scripts/ (z > i alphabetically)
 
+-- Enable pgvector extension for embeddings/similarity search
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- Get password from environment variable
 \set pgpass `echo "$POSTGRES_PASSWORD"`
 
