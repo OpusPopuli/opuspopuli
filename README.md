@@ -34,6 +34,7 @@ All documentation is located in the [`docs/`](docs/) directory:
 
 ### For DevOps
 - **[Docker Setup](docs/guides/docker-setup.md)** - Infrastructure services
+- **[Observability](docs/guides/observability.md)** - Metrics, logging, and dashboards
 - **[Database Migration](docs/guides/database-migration.md)** - Migrating between providers
 - **[Provider Pattern](docs/architecture/provider-pattern.md)** - Pluggable architecture
 - **[Audit Logging](docs/guides/audit-logging.md)** - Compliance and security logging
@@ -87,6 +88,12 @@ All documentation is located in the [`docs/`](docs/) directory:
 - [Supabase](https://supabase.com) - Auth (with Passkeys/Magic Links), Storage, and Vault (self-hosted or cloud)
 - [PostgreSQL](https://www.postgresql.org) + [pgvector](https://github.com/pgvector/pgvector) - Database and vector storage
 - [Ollama](https://ollama.ai) - Local LLM inference
+- [Redis](https://redis.io) - Distributed caching and rate limiting
+
+### Observability
+- [Prometheus](https://prometheus.io) - Metrics collection
+- [Loki](https://grafana.com/oss/loki/) - Log aggregation
+- [Grafana](https://grafana.com) - Visualization and dashboards
 
 ## Project Structure
 
@@ -168,6 +175,8 @@ docker-compose logs -f   # View logs
 - ✅ **Pluggable Providers** - Swap databases and AI models via configuration
 - ✅ **GraphQL Federation** - Unified API across microservices
 - ✅ **Audit Logging** - Comprehensive logging with PII masking and retention policies
+- ✅ **Observability** - Prometheus metrics, Loki logging, Grafana dashboards
+- ✅ **Distributed Caching** - Redis for caching and rate limiting
 - ✅ **Internationalization** - English and Spanish with react-i18next
 - ✅ **Accessibility** - WCAG 2.2 Level AA compliant
 - ✅ **100% Self-Hosted** - Complete data control and privacy

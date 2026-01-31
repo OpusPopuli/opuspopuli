@@ -14,6 +14,9 @@
 #   - Inbucket (Email UI): http://localhost:54324
 #   - PostgreSQL: localhost:5432
 #   - Ollama: http://localhost:11434
+#   - Prometheus: http://localhost:9090
+#   - Loki: http://localhost:3100
+#   - Grafana: http://localhost:3101 (admin/admin)
 #
 # Email Configuration:
 #   LOCAL DEV (default): Emails captured in Inbucket at http://localhost:54324
@@ -446,6 +449,130 @@ services:
           #     count: 1
           #     capabilities: [gpu]
 
+  # ===========================================
+  # Observability Services
+  # ===========================================
+
+  # Prometheus - Metrics collection and storage
+  # @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: qckstrt-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - qckstrt-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+
+  # Loki - Log aggregation and storage
+  loki:
+    image: grafana/loki:2.9.5
+    container_name: qckstrt-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./observability/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - qckstrt-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+
+  # Promtail - Log shipper (collects container logs and sends to Loki)
+  promtail:
+    image: grafana/promtail:2.9.5
+    container_name: qckstrt-promtail
+    depends_on:
+      - loki
+    volumes:
+      - ./observability/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - qckstrt-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+  # Grafana - Metrics and logs visualization
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: qckstrt-grafana
+    depends_on:
+      - prometheus
+      - loki
+    ports:
+      - "3101:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - qckstrt-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
 volumes:
   supabase-db-data:
     name: qckstrt-supabase-db-data
@@ -455,3 +582,9 @@ volumes:
     name: qckstrt-redis-data
   ollama-data:
     name: qckstrt-ollama-data
+  prometheus-data:
+    name: qckstrt-prometheus-data
+  loki-data:
+    name: qckstrt-loki-data
+  grafana-data:
+    name: qckstrt-grafana-data

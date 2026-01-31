@@ -113,3 +113,14 @@ export {
   authenticatedFetch,
   generateTestEmail,
 } from '../test-utils';
+
+// Service health check utilities
+export {
+  checkServiceHealth,
+  checkAllServicesHealth,
+  waitForServiceHealth,
+  waitForAllServicesHealth,
+  skipIfServiceUnavailable,
+  logServiceStatus,
+  type ServiceHealthResult,
+} from './service-health';

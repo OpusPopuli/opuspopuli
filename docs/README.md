@@ -28,6 +28,7 @@ Practical guides for common tasks and workflows.
 - [**Audit Logging**](guides/audit-logging.md) - Comprehensive audit logging for compliance and security
 - [**Email Integration**](guides/email-integration.md) - Transactional email with Resend
 - [**Region Provider**](guides/region-provider.md) - Creating custom region providers for civic data
+- [**Observability**](guides/observability.md) - Prometheus metrics and Loki logging
 
 ## Quick Links
 
@@ -51,6 +52,7 @@ Practical guides for common tasks and workflows.
 - [Data Layer Architecture](architecture/data-layer.md)
 - [Database Migration](guides/database-migration.md)
 - [Audit Logging](guides/audit-logging.md)
+- [Observability](guides/observability.md) - Prometheus, Loki, Grafana
 
 ### For AI/ML Engineers
 - [AI/ML Pipeline](architecture/ai-ml-pipeline.md)
@@ -77,6 +79,9 @@ This platform is built on three core principles:
 | **Secrets** | Supabase Vault |
 | **LLM** | Ollama (Falcon 7B) |
 | **Email** | Resend (transactional email) |
+| **Caching** | Redis (distributed cache, rate limiting) |
+| **Metrics** | Prometheus + Grafana |
+| **Logging** | Loki + Promtail |
 | **i18n** | react-i18next (English, Spanish) |
 | **Accessibility** | WCAG 2.2 Level AA compliant |
 | **Profile** | Civic/demographic fields, completion tracking |
