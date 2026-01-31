@@ -2,17 +2,26 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 import { DocumentsService } from './documents.service';
 import { DbService } from '@qckstrt/relationaldb-provider';
 import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
 import { IStorageProvider } from '@qckstrt/storage-provider';
+import { OcrService } from '@qckstrt/ocr-provider';
+import { ExtractionProvider } from '@qckstrt/extraction-provider';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
+
+// Mock global fetch
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
 
 describe('DocumentsService', () => {
   let documentsService: DocumentsService;
   let mockDb: ReturnType<typeof createMockDbService>;
   let storage: IStorageProvider;
+  let ocrService: jest.Mocked<OcrService>;
+  let extractionProvider: jest.Mocked<ExtractionProvider>;
 
   const mockFileConfig = {
     bucket: 'test-bucket',
@@ -47,8 +56,22 @@ describe('DocumentsService', () => {
     uploadFile: jest.fn(),
   };
 
+  const mockOcrService = {
+    extractText: jest.fn(),
+    extractFromBase64: jest.fn(),
+    extractFromBuffer: jest.fn(),
+    supportsMimeType: jest.fn(),
+    getProviderInfo: jest.fn(),
+  };
+
+  const mockExtractionProvider = {
+    extractPdfText: jest.fn(),
+    extractFromUrl: jest.fn(),
+  };
+
   beforeEach(async () => {
     mockDb = createMockDbService();
+    jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -57,6 +80,14 @@ describe('DocumentsService', () => {
         {
           provide: 'STORAGE_PROVIDER',
           useValue: mockStorageProvider,
+        },
+        {
+          provide: OcrService,
+          useValue: mockOcrService,
+        },
+        {
+          provide: ExtractionProvider,
+          useValue: mockExtractionProvider,
         },
         {
           provide: ConfigService,
@@ -69,6 +100,8 @@ describe('DocumentsService', () => {
 
     documentsService = module.get<DocumentsService>(DocumentsService);
     storage = module.get<IStorageProvider>('STORAGE_PROVIDER');
+    ocrService = module.get(OcrService);
+    extractionProvider = module.get(ExtractionProvider);
   });
 
   afterEach(() => {
@@ -78,6 +111,8 @@ describe('DocumentsService', () => {
   it('services should be defined', () => {
     expect(documentsService).toBeDefined();
     expect(storage).toBeDefined();
+    expect(ocrService).toBeDefined();
+    expect(extractionProvider).toBeDefined();
   });
 
   describe('listFiles', () => {
@@ -242,6 +277,386 @@ describe('DocumentsService', () => {
       });
     });
   });
+
+  describe('extractTextFromFile', () => {
+    const mockDocument = {
+      id: 'doc-1',
+      userId: 'user-1',
+      key: 'test-image.png',
+      size: 1024,
+    };
+
+    beforeEach(() => {
+      mockStorageProvider.getSignedUrl.mockResolvedValue(
+        'https://s3.example.com/download-url',
+      );
+    });
+
+    it('should extract text from image file using OCR', async () => {
+      mockDb.document.findFirst.mockResolvedValue(mockDocument as any);
+      mockDb.document.update.mockResolvedValue(mockDocument as any);
+
+      const imageBuffer = Buffer.from('fake-image-data');
+      mockFetch.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(imageBuffer),
+      });
+
+      mockOcrService.extractFromBuffer.mockResolvedValue({
+        text: 'Extracted OCR text',
+        confidence: 95.5,
+        provider: 'Tesseract',
+        blocks: [],
+        processingTimeMs: 150,
+      });
+
+      const result = await documentsService.extractTextFromFile(
+        'user-1',
+        'test-image.png',
+      );
+
+      expect(result.text).toBe('Extracted OCR text');
+      expect(result.confidence).toBe(95.5);
+      expect(result.provider).toBe('Tesseract');
+      expect(result.processingTimeMs).toBeGreaterThanOrEqual(0);
+
+      expect(mockOcrService.extractFromBuffer).toHaveBeenCalledWith(
+        imageBuffer,
+        'image/png',
+      );
+
+      expect(mockDb.document.update).toHaveBeenCalledWith({
+        where: { id: 'doc-1' },
+        data: {
+          extractedText: 'Extracted OCR text',
+          contentHash: expect.any(String),
+          ocrConfidence: 95.5,
+          ocrProvider: 'Tesseract',
+        },
+      });
+    });
+
+    it('should extract text from PDF file using extraction provider', async () => {
+      const pdfDocument = { ...mockDocument, key: 'test-doc.pdf' } as any;
+      mockDb.document.findFirst.mockResolvedValue(pdfDocument);
+      mockDb.document.update.mockResolvedValue(pdfDocument);
+
+      const pdfBuffer = Buffer.from('fake-pdf-data');
+      mockFetch.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(pdfBuffer),
+      });
+
+      mockExtractionProvider.extractPdfText.mockResolvedValue(
+        'Extracted PDF text content',
+      );
+
+      const result = await documentsService.extractTextFromFile(
+        'user-1',
+        'test-doc.pdf',
+      );
+
+      expect(result.text).toBe('Extracted PDF text content');
+      expect(result.confidence).toBe(100);
+      expect(result.provider).toBe('pdf-parse');
+
+      expect(mockExtractionProvider.extractPdfText).toHaveBeenCalledWith(
+        pdfBuffer,
+      );
+      expect(mockOcrService.extractFromBuffer).not.toHaveBeenCalled();
+    });
+
+    it('should extract text from text file directly', async () => {
+      const txtDocument = { ...mockDocument, key: 'readme.txt' } as any;
+      mockDb.document.findFirst.mockResolvedValue(txtDocument);
+      mockDb.document.update.mockResolvedValue(txtDocument);
+
+      const textContent = 'This is plain text content';
+      const textBuffer = Buffer.from(textContent, 'utf-8');
+      mockFetch.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(textBuffer),
+      });
+
+      const result = await documentsService.extractTextFromFile(
+        'user-1',
+        'readme.txt',
+      );
+
+      expect(result.text).toBe(textContent);
+      expect(result.confidence).toBe(100);
+      expect(result.provider).toBe('direct');
+
+      expect(mockOcrService.extractFromBuffer).not.toHaveBeenCalled();
+      expect(mockExtractionProvider.extractPdfText).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when document not found', async () => {
+      mockDb.document.findFirst.mockResolvedValue(null);
+
+      await expect(
+        documentsService.extractTextFromFile('user-1', 'missing.png'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should handle JPEG files correctly', async () => {
+      const jpegDocument = { ...mockDocument, key: 'photo.jpg' } as any;
+      mockDb.document.findFirst.mockResolvedValue(jpegDocument);
+      mockDb.document.update.mockResolvedValue(jpegDocument);
+
+      mockFetch.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(Buffer.from('jpeg-data')),
+      });
+
+      mockOcrService.extractFromBuffer.mockResolvedValue({
+        text: 'JPEG text',
+        confidence: 90,
+        provider: 'Tesseract',
+        blocks: [],
+        processingTimeMs: 100,
+      });
+
+      const result = await documentsService.extractTextFromFile(
+        'user-1',
+        'photo.jpg',
+      );
+
+      expect(mockOcrService.extractFromBuffer).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'image/jpeg',
+      );
+      expect(result.provider).toBe('Tesseract');
+    });
+
+    it('should handle markdown files as text', async () => {
+      const mdDocument = { ...mockDocument, key: 'README.md' } as any;
+      mockDb.document.findFirst.mockResolvedValue(mdDocument);
+      mockDb.document.update.mockResolvedValue(mdDocument);
+
+      const mdContent = '# Heading\n\nSome content';
+      mockFetch.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(Buffer.from(mdContent)),
+      });
+
+      const result = await documentsService.extractTextFromFile(
+        'user-1',
+        'README.md',
+      );
+
+      expect(result.text).toBe(mdContent);
+      expect(result.provider).toBe('direct');
+    });
+  });
+
+  describe('extractTextFromBase64', () => {
+    it('should extract text from base64 image', async () => {
+      const imageData = Buffer.from('fake-image').toString('base64');
+
+      mockOcrService.extractFromBuffer.mockResolvedValue({
+        text: 'Base64 OCR result',
+        confidence: 92,
+        provider: 'Tesseract',
+        blocks: [],
+        processingTimeMs: 120,
+      });
+
+      const result = await documentsService.extractTextFromBase64(
+        'user-1',
+        imageData,
+        'image/png',
+      );
+
+      expect(result.text).toBe('Base64 OCR result');
+      expect(result.confidence).toBe(92);
+      expect(result.provider).toBe('Tesseract');
+      expect(result.processingTimeMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should extract text from base64 PDF', async () => {
+      const pdfData = Buffer.from('fake-pdf').toString('base64');
+
+      mockExtractionProvider.extractPdfText.mockResolvedValue('PDF content');
+
+      const result = await documentsService.extractTextFromBase64(
+        'user-1',
+        pdfData,
+        'application/pdf',
+      );
+
+      expect(result.text).toBe('PDF content');
+      expect(result.confidence).toBe(100);
+      expect(result.provider).toBe('pdf-parse');
+    });
+
+    it('should extract text from base64 text content', async () => {
+      const textContent = 'Plain text content';
+      const textData = Buffer.from(textContent).toString('base64');
+
+      const result = await documentsService.extractTextFromBase64(
+        'user-1',
+        textData,
+        'text/plain',
+      );
+
+      expect(result.text).toBe(textContent);
+      expect(result.confidence).toBe(100);
+      expect(result.provider).toBe('direct');
+    });
+
+    it('should throw BadRequestException for unsupported MIME type', async () => {
+      const data = Buffer.from('some-data').toString('base64');
+
+      await expect(
+        documentsService.extractTextFromBase64('user-1', data, 'video/mp4'),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('MIME type detection', () => {
+    beforeEach(() => {
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        userId: 'user-1',
+        key: 'test.png',
+      } as any);
+      mockDb.document.update.mockResolvedValue({} as any);
+      mockFetch.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(Buffer.from('data')),
+      });
+      mockOcrService.extractFromBuffer.mockResolvedValue({
+        text: 'text',
+        confidence: 90,
+        provider: 'Tesseract',
+        blocks: [],
+        processingTimeMs: 100,
+      });
+      mockExtractionProvider.extractPdfText.mockResolvedValue('pdf text');
+    });
+
+    const testCases = [
+      { ext: 'png', expectedMime: 'image/png', useOcr: true },
+      { ext: 'jpg', expectedMime: 'image/jpeg', useOcr: true },
+      { ext: 'jpeg', expectedMime: 'image/jpeg', useOcr: true },
+      { ext: 'webp', expectedMime: 'image/webp', useOcr: true },
+      { ext: 'bmp', expectedMime: 'image/bmp', useOcr: true },
+      { ext: 'gif', expectedMime: 'image/gif', useOcr: true },
+      { ext: 'tiff', expectedMime: 'image/tiff', useOcr: true },
+      { ext: 'pdf', expectedMime: 'application/pdf', usePdf: true },
+      { ext: 'txt', expectedMime: 'text/plain', useDirect: true },
+      { ext: 'md', expectedMime: 'text/markdown', useDirect: true },
+      { ext: 'csv', expectedMime: 'text/csv', useDirect: true },
+    ];
+
+    testCases.forEach(({ ext, expectedMime, useOcr, usePdf, useDirect }) => {
+      it(`should detect .${ext} as ${expectedMime}`, async () => {
+        mockDb.document.findFirst.mockResolvedValue({
+          id: 'doc-1',
+          userId: 'user-1',
+          key: `test.${ext}`,
+        } as any);
+
+        await documentsService.extractTextFromFile('user-1', `test.${ext}`);
+
+        if (useOcr) {
+          expect(mockOcrService.extractFromBuffer).toHaveBeenCalledWith(
+            expect.any(Buffer),
+            expectedMime,
+          );
+        } else if (usePdf) {
+          expect(mockExtractionProvider.extractPdfText).toHaveBeenCalled();
+        } else if (useDirect) {
+          expect(mockOcrService.extractFromBuffer).not.toHaveBeenCalled();
+          expect(mockExtractionProvider.extractPdfText).not.toHaveBeenCalled();
+        }
+      });
+    });
+
+    it('should return application/octet-stream for unknown extensions', async () => {
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        userId: 'user-1',
+        key: 'file.xyz',
+      } as any);
+
+      await expect(
+        documentsService.extractTextFromFile('user-1', 'file.xyz'),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('content hash generation', () => {
+    it('should generate consistent hash for same content', async () => {
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        userId: 'user-1',
+        key: 'test.txt',
+      } as any);
+      mockDb.document.update.mockResolvedValue({} as any);
+
+      const content = 'Hello World';
+      mockFetch.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(Buffer.from(content)),
+      });
+
+      await documentsService.extractTextFromFile('user-1', 'test.txt');
+
+      const updateCall = mockDb.document.update.mock.calls[0][0];
+      const hash1 = updateCall.data.contentHash;
+
+      // Reset and call again with same content
+      jest.clearAllMocks();
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-2',
+        userId: 'user-1',
+        key: 'test2.txt',
+      } as any);
+      mockDb.document.update.mockResolvedValue({} as any);
+      mockFetch.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(Buffer.from(content)),
+      });
+
+      await documentsService.extractTextFromFile('user-1', 'test2.txt');
+
+      const updateCall2 = mockDb.document.update.mock.calls[0][0];
+      const hash2 = updateCall2.data.contentHash;
+
+      expect(hash1).toBe(hash2);
+    });
+
+    it('should normalize whitespace before hashing', async () => {
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        userId: 'user-1',
+        key: 'test.txt',
+      } as any);
+      mockDb.document.update.mockResolvedValue({} as any);
+
+      // Content with extra whitespace
+      const content1 = '  Hello   World  ';
+      mockFetch.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(Buffer.from(content1)),
+      });
+
+      await documentsService.extractTextFromFile('user-1', 'test.txt');
+      const hash1 = mockDb.document.update.mock.calls[0][0].data.contentHash;
+
+      // Reset and call with normalized content
+      jest.clearAllMocks();
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-2',
+        userId: 'user-1',
+        key: 'test2.txt',
+      } as any);
+      mockDb.document.update.mockResolvedValue({} as any);
+
+      const content2 = 'Hello World';
+      mockFetch.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(Buffer.from(content2)),
+      });
+
+      await documentsService.extractTextFromFile('user-1', 'test2.txt');
+      const hash2 = mockDb.document.update.mock.calls[0][0].data.contentHash;
+
+      expect(hash1).toBe(hash2);
+    });
+  });
 });
 
 describe('DocumentsService - config validation', () => {
@@ -257,6 +672,14 @@ describe('DocumentsService - config validation', () => {
               getSignedUrl: jest.fn(),
               deleteFile: jest.fn(),
             },
+          },
+          {
+            provide: OcrService,
+            useValue: {},
+          },
+          {
+            provide: ExtractionProvider,
+            useValue: {},
           },
           {
             provide: ConfigService,

@@ -69,6 +69,7 @@
     "@qckstrt/extraction-provider": "workspace:*",
     "@qckstrt/llm-provider": "workspace:*",
     "@qckstrt/logging-provider": "workspace:*",
+    "@qckstrt/ocr-provider": "workspace:*",
     "@qckstrt/region-provider": "workspace:*",
     "@qckstrt/relationaldb-provider": "workspace:*",
     "@qckstrt/secrets-provider": "workspace:*",
