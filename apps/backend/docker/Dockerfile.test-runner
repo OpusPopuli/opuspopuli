@@ -26,6 +26,10 @@ COPY apps/backend/__tests__/ ./apps/backend/__tests__/
 COPY apps/backend/docker/scripts/db-migrate.sh /usr/local/bin/db-migrate.sh
 RUN chmod +x /usr/local/bin/db-migrate.sh
 
+# Copy test-runner script for database verification before tests
+COPY apps/backend/docker/scripts/test-runner.sh /usr/local/bin/test-runner.sh
+RUN chmod +x /usr/local/bin/test-runner.sh
+
 # Install dependencies from monorepo root
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 

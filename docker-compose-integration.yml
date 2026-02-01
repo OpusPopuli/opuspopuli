@@ -203,8 +203,8 @@ services:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.test-runner
     container_name: qckstrt-test-runner
-    # Explicitly run tests only (db:push handled by db-migrate service with --accept-data-loss)
-    command: ["pnpm", "test:integration"]
+    # Run test-runner script which verifies database state before running tests
+    command: ["/bin/sh", "/usr/local/bin/test-runner.sh"]
     environment:
       <<: *backend-env
       # Override URLs to use container networking

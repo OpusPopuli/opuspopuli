@@ -95,13 +95,18 @@ export class DbService
       throw new Error("cleanDatabase can only be used in test environment");
     }
 
+    // Tables that should never be truncated:
+    // - _prisma_migrations: Prisma migration history
+    // - spatial_ref_sys: PostGIS spatial reference system (required for SRID lookups)
+    const preservedTables = new Set(["_prisma_migrations", "spatial_ref_sys"]);
+
     // Delete in order respecting foreign key constraints
     const tablenames = await this.$queryRaw<
       Array<{ tablename: string }>
     >`SELECT tablename FROM pg_tables WHERE schemaname='public'`;
 
     for (const { tablename } of tablenames) {
-      if (tablename !== "_prisma_migrations") {
+      if (!preservedTables.has(tablename)) {
         try {
           await this.$executeRawUnsafe(
             `TRUNCATE TABLE "public"."${tablename}" CASCADE;`,
