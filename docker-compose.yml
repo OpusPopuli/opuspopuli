@@ -58,13 +58,14 @@ services:
     networks:
       - qckstrt-network
     healthcheck:
-      # Check that postgres is ready AND the supabase init scripts have completed
-      # by verifying the authenticator role exists (created by supabase init scripts)
-      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -c \"SELECT 1 FROM pg_roles WHERE rolname='authenticator'\" | grep -q 1"]
+      # Check that postgres is ready AND init scripts have completed:
+      # 1. authenticator role exists (created by supabase init scripts)
+      # 2. SRID 4326 exists in spatial_ref_sys (created by our PostGIS init)
+      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -c \"SELECT 1 FROM pg_roles WHERE rolname='authenticator'\" | grep -q 1 && psql -U postgres -c \"SELECT 1 FROM spatial_ref_sys WHERE srid=4326\" | grep -q 1"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 15
+      start_period: 45s
     restart: unless-stopped
     deploy:
       resources:
