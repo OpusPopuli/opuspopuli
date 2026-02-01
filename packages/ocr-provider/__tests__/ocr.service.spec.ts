@@ -1,21 +1,29 @@
 import "reflect-metadata";
 import { OcrService } from "../src/ocr.service";
 import { IOcrProvider, OcrError, OcrResult } from "@qckstrt/common";
+import { ImagePreprocessor } from "../src/preprocessing/image-preprocessor";
+import { PreprocessingResult } from "../src/preprocessing/types";
 
-// Mock NestJS Logger
+// Mock NestJS Logger and decorators
 jest.mock("@nestjs/common", () => ({
   Injectable: () => (target: any) => target,
   Logger: jest.fn().mockImplementation(() => ({
     log: jest.fn(),
     error: jest.fn(),
     warn: jest.fn(),
+    debug: jest.fn(),
   })),
   OnModuleDestroy: () => (target: any) => target,
+  Optional: () => () => undefined,
 }));
+
+// Mock ImagePreprocessor
+jest.mock("../src/preprocessing/image-preprocessor");
 
 describe("OcrService", () => {
   let service: OcrService;
   let mockProvider: jest.Mocked<IOcrProvider>;
+  let mockPreprocessor: jest.Mocked<ImagePreprocessor>;
 
   const mockResult: OcrResult = {
     text: "Hello World",
@@ -129,6 +137,110 @@ describe("OcrService", () => {
 
     it("should not throw if terminate not available", async () => {
       await expect(service.onModuleDestroy()).resolves.not.toThrow();
+    });
+  });
+
+  describe("with preprocessing", () => {
+    const preprocessedBuffer = Buffer.from("preprocessed");
+    const mockPreprocessingResult: PreprocessingResult = {
+      buffer: preprocessedBuffer,
+      mimeType: "image/png",
+      metadata: {
+        enabled: true,
+        stepsApplied: ["grayscale", "sharpen"],
+        processingTimeMs: 50,
+        originalSizeBytes: 100,
+        processedSizeBytes: 120,
+        rotationDegrees: 2.5,
+      },
+    };
+
+    beforeEach(() => {
+      mockPreprocessor = {
+        shouldPreprocess: jest.fn().mockReturnValue(true),
+        preprocess: jest.fn().mockResolvedValue(mockPreprocessingResult),
+      } as unknown as jest.Mocked<ImagePreprocessor>;
+
+      service = new OcrService(mockProvider, mockPreprocessor);
+    });
+
+    it("should preprocess buffer input before OCR", async () => {
+      const inputBuffer = Buffer.from("test image");
+      const input = {
+        type: "buffer" as const,
+        buffer: inputBuffer,
+        mimeType: "image/jpeg",
+      };
+
+      const result = await service.extractText(input);
+
+      expect(mockPreprocessor.shouldPreprocess).toHaveBeenCalled();
+      expect(mockPreprocessor.preprocess).toHaveBeenCalledWith(
+        inputBuffer,
+        "image/jpeg",
+      );
+      expect(mockProvider.extractText).toHaveBeenCalledWith({
+        type: "buffer",
+        buffer: preprocessedBuffer,
+        mimeType: "image/png",
+      });
+      expect(result.preprocessingMetadata).toEqual({
+        enabled: true,
+        stepsApplied: ["grayscale", "sharpen"],
+        processingTimeMs: 50,
+        originalSizeBytes: 100,
+        processedSizeBytes: 120,
+        rotationDegrees: 2.5,
+      });
+    });
+
+    it("should preprocess base64 input before OCR", async () => {
+      const originalData = "test image data";
+      const base64Data = Buffer.from(originalData).toString("base64");
+      const input = {
+        type: "base64" as const,
+        data: base64Data,
+        mimeType: "image/png",
+      };
+
+      const result = await service.extractText(input);
+
+      expect(mockPreprocessor.shouldPreprocess).toHaveBeenCalled();
+      expect(mockPreprocessor.preprocess).toHaveBeenCalledWith(
+        Buffer.from(base64Data, "base64"),
+        "image/png",
+      );
+      expect(result.preprocessingMetadata).toBeDefined();
+    });
+
+    it("should skip preprocessing when shouldPreprocess returns false", async () => {
+      mockPreprocessor.shouldPreprocess.mockReturnValue(false);
+
+      const input = {
+        type: "buffer" as const,
+        buffer: Buffer.from("test"),
+        mimeType: "image/png",
+      };
+
+      const result = await service.extractText(input);
+
+      expect(mockPreprocessor.shouldPreprocess).toHaveBeenCalled();
+      expect(mockPreprocessor.preprocess).not.toHaveBeenCalled();
+      expect(result.preprocessingMetadata).toBeUndefined();
+    });
+
+    it("should report preprocessing enabled in provider info", () => {
+      const info = service.getProviderInfo();
+
+      expect(info.preprocessingEnabled).toBe(true);
+    });
+
+    it("should report preprocessing disabled when shouldPreprocess is false", () => {
+      mockPreprocessor.shouldPreprocess.mockReturnValue(false);
+
+      const info = service.getProviderInfo();
+
+      expect(info.preprocessingEnabled).toBe(false);
     });
   });
 });
