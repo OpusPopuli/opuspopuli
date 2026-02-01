@@ -946,7 +946,7 @@ describe('Document Integration Tests', () => {
       await db.$executeRaw`
         UPDATE documents
         SET scan_location = ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
-        WHERE id = ${doc.id}::uuid
+        WHERE id::text = ${doc.id}
       `;
 
       // Retrieve location
@@ -957,7 +957,7 @@ describe('Document Integration Tests', () => {
           ST_Y(scan_location::geometry) as latitude,
           ST_X(scan_location::geometry) as longitude
         FROM documents
-        WHERE id = ${doc.id}::uuid AND scan_location IS NOT NULL
+        WHERE id::text = ${doc.id} AND scan_location IS NOT NULL
       `;
 
       expect(result).toHaveLength(1);
@@ -978,7 +978,7 @@ describe('Document Integration Tests', () => {
           ST_Y(scan_location::geometry) as latitude,
           ST_X(scan_location::geometry) as longitude
         FROM documents
-        WHERE id = ${doc.id}::uuid AND scan_location IS NOT NULL
+        WHERE id::text = ${doc.id} AND scan_location IS NOT NULL
       `;
 
       expect(result).toHaveLength(0);
@@ -1010,15 +1010,15 @@ describe('Document Integration Tests', () => {
       // Set locations: doc1 at SF, doc2 at Oakland (~15km), doc3 at LA (~600km)
       await db.$executeRaw`
         UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography
-        WHERE id = ${doc1.id}::uuid
+        WHERE id::text = ${doc1.id}
       `;
       await db.$executeRaw`
         UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-122.2711, 37.8044), 4326)::geography
-        WHERE id = ${doc2.id}::uuid
+        WHERE id::text = ${doc2.id}
       `;
       await db.$executeRaw`
         UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-118.2437, 34.0522), 4326)::geography
-        WHERE id = ${doc3.id}::uuid
+        WHERE id::text = ${doc3.id}
       `;
 
       // Query for documents within 20km of SF
@@ -1060,7 +1060,7 @@ describe('Document Integration Tests', () => {
       // Set location at SF
       await db.$executeRaw`
         UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography
-        WHERE id = ${doc.id}::uuid
+        WHERE id::text = ${doc.id}
       `;
 
       // Calculate distance to Oakland (known to be ~13-15km)
@@ -1070,7 +1070,7 @@ describe('Document Integration Tests', () => {
           ST_SetSRID(ST_MakePoint(-122.2711, 37.8044), 4326)::geography
         ) as distance_meters
         FROM documents
-        WHERE id = ${doc.id}::uuid
+        WHERE id::text = ${doc.id}
       `;
 
       // SF to Oakland is approximately 13-15km
@@ -1097,11 +1097,11 @@ describe('Document Integration Tests', () => {
       // Set same location for both
       await db.$executeRaw`
         UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography
-        WHERE id = ${doc1.id}::uuid
+        WHERE id::text = ${doc1.id}
       `;
       await db.$executeRaw`
         UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography
-        WHERE id = ${doc2.id}::uuid
+        WHERE id::text = ${doc2.id}
       `;
 
       // Query for hash-a only
@@ -1131,7 +1131,7 @@ describe('Document Integration Tests', () => {
       // Test near the antimeridian (date line)
       await db.$executeRaw`
         UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(179.9, 0), 4326)::geography
-        WHERE id = ${doc.id}::uuid
+        WHERE id::text = ${doc.id}
       `;
 
       const result = await db.$queryRaw<
@@ -1141,7 +1141,7 @@ describe('Document Integration Tests', () => {
           ST_Y(scan_location::geometry) as latitude,
           ST_X(scan_location::geometry) as longitude
         FROM documents
-        WHERE id = ${doc.id}::uuid
+        WHERE id::text = ${doc.id}
       `;
 
       expect(result[0].latitude).toBeCloseTo(0, 4);
