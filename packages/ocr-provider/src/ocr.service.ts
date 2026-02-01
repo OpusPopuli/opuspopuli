@@ -1,18 +1,31 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
-import { IOcrProvider, OcrInput, OcrResult, OcrError } from "@qckstrt/common";
+import { Injectable, Logger, OnModuleDestroy, Optional } from "@nestjs/common";
+import {
+  IOcrProvider,
+  OcrInput,
+  OcrResult,
+  OcrError,
+  OcrPreprocessingMetadata,
+} from "@qckstrt/common";
+import { ImagePreprocessor } from "./preprocessing/image-preprocessor.js";
 
 /**
  * OCR Service
  *
- * Wraps OCR provider with additional functionality.
+ * Wraps OCR provider with additional functionality including image preprocessing.
  * Provider can be swapped (Tesseract, Textract, etc.) via DI configuration.
  */
 @Injectable()
 export class OcrService implements OnModuleDestroy {
   private readonly logger = new Logger(OcrService.name);
 
-  constructor(private readonly provider: IOcrProvider) {
-    this.logger.log(`Initialized with ${provider.getName()} provider`);
+  constructor(
+    private readonly provider: IOcrProvider,
+    @Optional() private readonly preprocessor?: ImagePreprocessor,
+  ) {
+    this.logger.log(
+      `Initialized with ${provider.getName()} provider` +
+        (preprocessor ? ", preprocessing enabled" : ""),
+    );
   }
 
   /**
@@ -28,7 +41,38 @@ export class OcrService implements OnModuleDestroy {
       );
     }
 
-    return this.provider.extractText(input);
+    // Apply preprocessing if enabled and input is a buffer
+    let processedInput = input;
+    let preprocessingMetadata: OcrPreprocessingMetadata | undefined;
+
+    if (this.preprocessor?.shouldPreprocess()) {
+      const buffer = this.getBufferFromInput(input);
+      const mimeType = input.mimeType;
+
+      if (buffer) {
+        const result = await this.preprocessor.preprocess(buffer, mimeType);
+        processedInput = {
+          type: "buffer",
+          buffer: result.buffer,
+          mimeType: result.mimeType,
+        };
+        preprocessingMetadata = {
+          enabled: result.metadata.enabled,
+          stepsApplied: result.metadata.stepsApplied,
+          processingTimeMs: result.metadata.processingTimeMs,
+          originalSizeBytes: result.metadata.originalSizeBytes,
+          processedSizeBytes: result.metadata.processedSizeBytes,
+          rotationDegrees: result.metadata.rotationDegrees,
+        };
+      }
+    }
+
+    const ocrResult = await this.provider.extractText(processedInput);
+
+    return {
+      ...ocrResult,
+      preprocessingMetadata,
+    };
   }
 
   /**
@@ -73,7 +117,20 @@ export class OcrService implements OnModuleDestroy {
     return {
       name: this.provider.getName(),
       supportedLanguages: this.provider.getSupportedLanguages(),
+      preprocessingEnabled: this.preprocessor?.shouldPreprocess() ?? false,
     };
+  }
+
+  /**
+   * Extract buffer from OcrInput
+   */
+  private getBufferFromInput(input: OcrInput): Buffer | null {
+    if (input.type === "buffer") {
+      return input.buffer;
+    } else if (input.type === "base64") {
+      return Buffer.from(input.data, "base64");
+    }
+    return null;
   }
 
   /**

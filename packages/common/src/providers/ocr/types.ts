@@ -32,6 +32,24 @@ export interface OcrTextBlock {
 }
 
 /**
+ * Metadata about preprocessing operations performed on the image
+ */
+export interface OcrPreprocessingMetadata {
+  /** Whether preprocessing was enabled */
+  enabled: boolean;
+  /** Steps that were applied */
+  stepsApplied: string[];
+  /** Total preprocessing time in milliseconds */
+  processingTimeMs: number;
+  /** Original image size in bytes */
+  originalSizeBytes?: number;
+  /** Processed image size in bytes */
+  processedSizeBytes?: number;
+  /** Rotation angle applied during deskew (if any) */
+  rotationDegrees?: number;
+}
+
+/**
  * Result of OCR operation
  */
 export interface OcrResult {
@@ -45,6 +63,8 @@ export interface OcrResult {
   provider: string;
   /** Processing time in milliseconds */
   processingTimeMs: number;
+  /** Preprocessing metadata (if preprocessing was performed) */
+  preprocessingMetadata?: OcrPreprocessingMetadata;
 }
 
 /**
