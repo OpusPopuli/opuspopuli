@@ -3,8 +3,8 @@
 
 FROM node:20-slim AS base
 
-# Install OpenSSL for Prisma
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+# Install OpenSSL for Prisma, postgresql-client for PostGIS setup
+RUN apt-get update -y && apt-get install -y openssl postgresql-client && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
 WORKDIR /usr/src/app
