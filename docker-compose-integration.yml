@@ -57,10 +57,9 @@ services:
     depends_on:
       supabase-db:
         condition: service_healthy
-    # Run db:push (schema sync) and then spatial-indexes.sql for PostGIS setup
-    # This ensures PostGIS SRID 4326 exists and creates spatial indexes
-    # Use --accept-data-loss for fresh test databases
-    command: ["sh", "-c", "cd /usr/src/app/packages/relationaldb-provider && npx prisma db push --accept-data-loss && PGPASSWORD=your-super-secret-password psql -h supabase-db -U postgres -d postgres -f prisma/spatial-indexes.sql"]
+    # Run the db-migrate script which handles Prisma db:push and PostGIS setup
+    # The script is baked into the Docker image to ensure reliable execution
+    command: ["/usr/local/bin/db-migrate.sh"]
     networks:
       - qckstrt-network
     # This service should exit after migration completes

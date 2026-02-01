@@ -41,6 +41,10 @@ jobs:
           docker compose -f docker-compose-integration.yml ps
 
           echo ""
+          echo "=== Database Migration Logs (CRITICAL - check for SRID 4326 setup) ==="
+          docker compose -f docker-compose-integration.yml logs db-migrate
+
+          echo ""
           echo "=== API Gateway Logs ==="
           docker compose -f docker-compose-integration.yml logs api --tail=100
 
