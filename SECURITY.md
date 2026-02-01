@@ -118,6 +118,31 @@ See [websocket-auth.service.ts](apps/backend/src/common/auth/websocket-auth.serv
 - Secrets managed via Supabase Vault
 - No sensitive data in client-side storage
 
+### Location Privacy Protection
+
+The platform implements privacy-by-design location tracking for civic features (e.g., petition scan locations):
+
+| Protection | Implementation |
+|------------|----------------|
+| **Coordinate Fuzzing** | All locations fuzzed to ~100m accuracy before storage |
+| **No Exact Storage** | Original coordinates are never persisted - only fuzzed values |
+| **Irreversibility** | Fuzzing is one-way; original location cannot be recovered |
+| **Purpose Limitation** | Location data used only for aggregate analytics and proximity features |
+
+**How It Works:**
+1. Device sends exact GPS coordinates
+2. Server applies `fuzzLocation()` with random circular offset (~100m radius)
+3. Only fuzzed coordinates are stored in PostGIS
+4. Original coordinates are immediately discarded
+
+**Why This Matters:**
+- Users can see "where petitions are circulating" without surveillance
+- Individual users cannot be tracked or located
+- Supports civic transparency while protecting participant privacy
+- Compliant with GDPR/CCPA data minimization principles
+
+See [Data Layer Architecture](docs/architecture/data-layer.md#privacy-preserving-location-tracking) for technical details.
+
 ### Health Endpoints (Kubernetes Probes)
 
 Health check endpoints are available on all services for Kubernetes liveness and readiness probes. These endpoints are **intentionally excluded** from HMAC validation to allow direct cluster-internal access.

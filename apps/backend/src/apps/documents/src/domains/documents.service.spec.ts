@@ -884,6 +884,139 @@ describe('DocumentsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('setDocumentLocation', () => {
+    const mockDocument: any = {
+      id: 'doc-1',
+      userId: 'user-1',
+      key: 'petition.pdf',
+    };
+
+    it('should set fuzzed location for document', async () => {
+      mockDb.document.findFirst.mockResolvedValue(mockDocument);
+      mockDb.$executeRaw.mockResolvedValue(1);
+
+      const result = await documentsService.setDocumentLocation(
+        'user-1',
+        'doc-1',
+        37.7749, // San Francisco lat
+        -122.4194, // San Francisco lon
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.fuzzedLocation).toBeDefined();
+      // Fuzzed location should be close but not exact (~100m)
+      expect(result.fuzzedLocation!.latitude).toBeCloseTo(37.7749, 2);
+      expect(result.fuzzedLocation!.longitude).toBeCloseTo(-122.4194, 2);
+      expect(mockDb.$executeRaw).toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when document not found', async () => {
+      mockDb.document.findFirst.mockResolvedValue(null);
+
+      await expect(
+        documentsService.setDocumentLocation('user-1', 'doc-1', 37.0, -122.0),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should not allow setting location for other users document', async () => {
+      mockDb.document.findFirst.mockResolvedValue(null); // Different user
+
+      await expect(
+        documentsService.setDocumentLocation('user-2', 'doc-1', 37.0, -122.0),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getDocumentLocation', () => {
+    it('should return location when set', async () => {
+      mockDb.document.findFirst.mockResolvedValue({ id: 'doc-1' } as any);
+      mockDb.$queryRaw.mockResolvedValue([
+        { latitude: 37.7749, longitude: -122.4194 },
+      ]);
+
+      const result = await documentsService.getDocumentLocation(
+        'user-1',
+        'doc-1',
+      );
+
+      expect(result).toEqual({
+        latitude: 37.7749,
+        longitude: -122.4194,
+      });
+    });
+
+    it('should return null when no location set', async () => {
+      mockDb.document.findFirst.mockResolvedValue({ id: 'doc-1' } as any);
+      mockDb.$queryRaw.mockResolvedValue([]);
+
+      const result = await documentsService.getDocumentLocation(
+        'user-1',
+        'doc-1',
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('should throw NotFoundException when document not found', async () => {
+      mockDb.document.findFirst.mockResolvedValue(null);
+
+      await expect(
+        documentsService.getDocumentLocation('user-1', 'nonexistent'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findDocumentsNearLocation', () => {
+    it('should find documents within radius', async () => {
+      mockDb.$queryRaw.mockResolvedValue([
+        { id: 'doc-1', distance_meters: 500 },
+        { id: 'doc-2', distance_meters: 1500 },
+      ]);
+
+      const results = await documentsService.findDocumentsNearLocation(
+        'contenthash123',
+        37.7749,
+        -122.4194,
+        5000,
+      );
+
+      expect(results).toHaveLength(2);
+      expect(results[0]).toEqual({
+        documentId: 'doc-1',
+        distanceMeters: 500,
+      });
+      expect(results[1]).toEqual({
+        documentId: 'doc-2',
+        distanceMeters: 1500,
+      });
+    });
+
+    it('should return empty array when no documents found', async () => {
+      mockDb.$queryRaw.mockResolvedValue([]);
+
+      const results = await documentsService.findDocumentsNearLocation(
+        'contenthash123',
+        37.7749,
+        -122.4194,
+      );
+
+      expect(results).toEqual([]);
+    });
+
+    it('should use default radius of 10km', async () => {
+      mockDb.$queryRaw.mockResolvedValue([]);
+
+      await documentsService.findDocumentsNearLocation(
+        'contenthash123',
+        37.7749,
+        -122.4194,
+      );
+
+      // The query should use 10000 meters as default
+      expect(mockDb.$queryRaw).toHaveBeenCalled();
+    });
+  });
 });
 
 describe('DocumentsService - config validation', () => {

@@ -3,8 +3,8 @@
 
 FROM node:20-slim AS base
 
-# Install OpenSSL for Prisma
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+# Install OpenSSL for Prisma, postgresql-client for PostGIS setup
+RUN apt-get update -y && apt-get install -y openssl postgresql-client && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
 WORKDIR /usr/src/app
@@ -21,6 +21,14 @@ COPY apps/backend/tsconfig.* ./apps/backend/
 COPY apps/backend/nest-cli.json ./apps/backend/
 COPY apps/backend/src/ ./apps/backend/src/
 COPY apps/backend/__tests__/ ./apps/backend/__tests__/
+
+# Copy migration script for db-migrate service
+COPY apps/backend/docker/scripts/db-migrate.sh /usr/local/bin/db-migrate.sh
+RUN chmod +x /usr/local/bin/db-migrate.sh
+
+# Copy test-runner script for database verification before tests
+COPY apps/backend/docker/scripts/test-runner.sh /usr/local/bin/test-runner.sh
+RUN chmod +x /usr/local/bin/test-runner.sh
 
 # Install dependencies from monorepo root
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile

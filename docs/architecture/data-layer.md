@@ -496,6 +496,86 @@ CREATE INDEX idx_embedding_hnsw
 
 ---
 
+## Privacy-Preserving Location Tracking
+
+The platform includes a privacy-by-design location tracking system for civic applications. This allows features like "see where petitions are circulating" without exposing exact user locations.
+
+### How It Works
+
+When a document scan location is captured (e.g., when a user photographs a petition):
+
+1. **Exact coordinates are received** from the client device
+2. **Coordinates are immediately fuzzed** by the `fuzzLocation()` function before storage
+3. **Only fuzzed coordinates are stored** in PostGIS geography format
+4. **Proximity queries work** but cannot pinpoint exact locations
+
+### Privacy Guarantees
+
+| Aspect | Implementation |
+|--------|----------------|
+| **Accuracy** | ~100 meters (0.001 degrees fuzzing radius) |
+| **Algorithm** | Random offset within circular radius |
+| **Storage** | Only fuzzed coordinates stored - originals discarded |
+| **Reversibility** | Impossible - original coordinates are never persisted |
+
+### Technical Implementation
+
+**Location Fuzzing:**
+```typescript
+// Fuzzing adds random offset within ~100m radius
+export function fuzzLocation(latitude: number, longitude: number): GeoLocation {
+  const FUZZ_RADIUS_DEGREES = 0.001; // ~100 meters at equator
+
+  // Random angle and distance within the radius
+  const angle = Math.random() * 2 * Math.PI;
+  const distance = Math.random() * FUZZ_RADIUS_DEGREES;
+
+  // Apply circular offset for uniform distribution
+  const latOffset = distance * Math.cos(angle);
+  const lonOffset = distance * Math.sin(angle);
+
+  return {
+    latitude: clamp(latitude + latOffset, -90, 90),
+    longitude: clamp(longitude + lonOffset, -180, 180),
+  };
+}
+```
+
+**PostGIS Storage:**
+```sql
+-- Location stored as PostGIS geography point (SRID 4326 = WGS84)
+UPDATE documents
+SET scan_location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
+WHERE id = $1;
+```
+
+**Proximity Queries:**
+```sql
+-- Find documents scanned within 5km of a location
+SELECT * FROM documents
+WHERE ST_DWithin(
+  scan_location,
+  ST_SetSRID(ST_MakePoint($longitude, $latitude), 4326)::geography,
+  5000  -- meters
+);
+```
+
+### Why This Matters for Open Source
+
+This privacy-preserving approach means:
+
+- **Self-hosters protect their users** - Location data cannot be used to track individuals
+- **Civic applications remain trustworthy** - Users can share where they signed petitions without surveillance concerns
+- **Compliance-friendly** - Approximate location satisfies analytics needs without GDPR/CCPA personal data implications
+- **No configuration required** - Privacy protection is built-in, not opt-in
+
+**File Locations:**
+- Location DTOs: `apps/backend/src/apps/documents/src/domains/dto/location.dto.ts`
+- Service implementation: `apps/backend/src/apps/documents/src/domains/documents.service.ts`
+- PostGIS initialization: `supabase/init/99-set-passwords.sql`
+
+---
+
 ## Embedding Dimensions
 
 Vector databases must match the embedding model's output dimensions:

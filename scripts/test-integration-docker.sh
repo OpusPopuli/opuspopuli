@@ -113,9 +113,10 @@ echo -e "${BLUE}  Running Integration Tests${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
-# Run integration tests
+# Run integration tests inside the test-runner container
+# This ensures tests run in the same environment as CI (correct node_modules, container networking)
 TEST_EXIT_CODE=0
-pnpm test:integration || TEST_EXIT_CODE=$?
+docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner || TEST_EXIT_CODE=$?
 
 echo ""
 echo -e "${BLUE}========================================${NC}"

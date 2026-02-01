@@ -494,6 +494,11 @@ model Document {
   // Embeddings for similarity search (pgvector)
   embedding Unsupported("vector(1536)")?
 
+  // Privacy-preserving scan location (PostGIS)
+  // Coordinates are fuzzed to ~100m accuracy before storage
+  // See #290, #296 for details
+  scanLocation Unsupported("geography(Point, 4326)")? @map("scan_location")
+
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz

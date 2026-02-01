@@ -928,4 +928,224 @@ describe('Document Integration Tests', () => {
       expect(finalAnalysis.provider).toBe('Ollama');
     });
   });
+
+  describe('PostGIS Location Tracking', () => {
+    it('should set and retrieve scan location', async () => {
+      const user = await createUser({ email: 'location-test@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        key: 'petition.png',
+      });
+
+      const db = await getDbService();
+
+      // Set location using raw SQL (PostGIS)
+      const latitude = 37.7749;
+      const longitude = -122.4194;
+
+      await db.$executeRaw`
+        UPDATE documents
+        SET scan_location = ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
+        WHERE id::text = ${doc.id}
+      `;
+
+      // Retrieve location
+      const result = await db.$queryRaw<
+        Array<{ latitude: number; longitude: number }>
+      >`
+        SELECT
+          ST_Y(scan_location::geometry) as latitude,
+          ST_X(scan_location::geometry) as longitude
+        FROM documents
+        WHERE id::text = ${doc.id} AND scan_location IS NOT NULL
+      `;
+
+      expect(result).toHaveLength(1);
+      expect(result[0].latitude).toBeCloseTo(latitude, 4);
+      expect(result[0].longitude).toBeCloseTo(longitude, 4);
+    });
+
+    it('should return empty result when location not set', async () => {
+      const user = await createUser({ email: 'no-location@example.com' });
+      const doc = await createDocument({ userId: user.id });
+
+      const db = await getDbService();
+
+      const result = await db.$queryRaw<
+        Array<{ latitude: number; longitude: number }>
+      >`
+        SELECT
+          ST_Y(scan_location::geometry) as latitude,
+          ST_X(scan_location::geometry) as longitude
+        FROM documents
+        WHERE id::text = ${doc.id} AND scan_location IS NOT NULL
+      `;
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('should find documents near a location using ST_DWithin', async () => {
+      const user = await createUser({ email: 'proximity@example.com' });
+      const sharedHash = `proximity-test-${generateId()}`;
+
+      // Create documents at different locations with same content hash
+      const doc1 = await createDocument({
+        userId: user.id,
+        key: 'nearby1.png',
+        contentHash: sharedHash,
+      });
+      const doc2 = await createDocument({
+        userId: user.id,
+        key: 'nearby2.png',
+        contentHash: sharedHash,
+      });
+      const doc3 = await createDocument({
+        userId: user.id,
+        key: 'far-away.png',
+        contentHash: sharedHash,
+      });
+
+      const db = await getDbService();
+
+      // Set locations: doc1 at SF, doc2 at Oakland (~15km), doc3 at LA (~600km)
+      await db.$executeRaw`
+        UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography
+        WHERE id::text = ${doc1.id}
+      `;
+      await db.$executeRaw`
+        UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-122.2711, 37.8044), 4326)::geography
+        WHERE id::text = ${doc2.id}
+      `;
+      await db.$executeRaw`
+        UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-118.2437, 34.0522), 4326)::geography
+        WHERE id::text = ${doc3.id}
+      `;
+
+      // Query for documents within 20km of SF
+      const nearbyResults = await db.$queryRaw<
+        Array<{ id: string; distance_meters: number }>
+      >`
+        SELECT
+          id,
+          ST_Distance(
+            scan_location,
+            ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography
+          ) as distance_meters
+        FROM documents
+        WHERE
+          content_hash = ${sharedHash}
+          AND scan_location IS NOT NULL
+          AND ST_DWithin(
+            scan_location,
+            ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography,
+            20000
+          )
+        ORDER BY distance_meters ASC
+      `;
+
+      // Should find doc1 (at search point) and doc2 (Oakland, ~15km)
+      expect(nearbyResults).toHaveLength(2);
+      expect(nearbyResults[0].id).toBe(doc1.id);
+      expect(nearbyResults[0].distance_meters).toBeLessThan(100); // At search point
+      expect(nearbyResults[1].id).toBe(doc2.id);
+      expect(nearbyResults[1].distance_meters).toBeLessThan(20000); // Within 20km
+    });
+
+    it('should calculate accurate distances between points', async () => {
+      const user = await createUser({ email: 'distance-test@example.com' });
+      const doc = await createDocument({ userId: user.id });
+
+      const db = await getDbService();
+
+      // Set location at SF
+      await db.$executeRaw`
+        UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography
+        WHERE id::text = ${doc.id}
+      `;
+
+      // Calculate distance to Oakland (known to be ~13-15km)
+      const result = await db.$queryRaw<Array<{ distance_meters: number }>>`
+        SELECT ST_Distance(
+          scan_location,
+          ST_SetSRID(ST_MakePoint(-122.2711, 37.8044), 4326)::geography
+        ) as distance_meters
+        FROM documents
+        WHERE id::text = ${doc.id}
+      `;
+
+      // SF to Oakland is approximately 13-15km
+      expect(result[0].distance_meters).toBeGreaterThan(12000);
+      expect(result[0].distance_meters).toBeLessThan(16000);
+    });
+
+    it('should only find documents with matching content hash', async () => {
+      const user = await createUser({ email: 'hash-filter@example.com' });
+
+      const doc1 = await createDocument({
+        userId: user.id,
+        key: 'petition-a.png',
+        contentHash: 'hash-a',
+      });
+      const doc2 = await createDocument({
+        userId: user.id,
+        key: 'petition-b.png',
+        contentHash: 'hash-b',
+      });
+
+      const db = await getDbService();
+
+      // Set same location for both
+      await db.$executeRaw`
+        UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography
+        WHERE id::text = ${doc1.id}
+      `;
+      await db.$executeRaw`
+        UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography
+        WHERE id::text = ${doc2.id}
+      `;
+
+      // Query for hash-a only
+      const results = await db.$queryRaw<Array<{ id: string }>>`
+        SELECT id
+        FROM documents
+        WHERE
+          content_hash = 'hash-a'
+          AND scan_location IS NOT NULL
+          AND ST_DWithin(
+            scan_location,
+            ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography,
+            1000
+          )
+      `;
+
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe(doc1.id);
+    });
+
+    it('should handle edge case coordinates', async () => {
+      const user = await createUser({ email: 'edge-coords@example.com' });
+      const doc = await createDocument({ userId: user.id });
+
+      const db = await getDbService();
+
+      // Test near the antimeridian (date line)
+      await db.$executeRaw`
+        UPDATE documents SET scan_location = ST_SetSRID(ST_MakePoint(179.9, 0), 4326)::geography
+        WHERE id::text = ${doc.id}
+      `;
+
+      const result = await db.$queryRaw<
+        Array<{ latitude: number; longitude: number }>
+      >`
+        SELECT
+          ST_Y(scan_location::geometry) as latitude,
+          ST_X(scan_location::geometry) as longitude
+        FROM documents
+        WHERE id::text = ${doc.id}
+      `;
+
+      expect(result[0].latitude).toBeCloseTo(0, 4);
+      expect(result[0].longitude).toBeCloseTo(179.9, 4);
+    });
+  });
 });

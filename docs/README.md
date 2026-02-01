@@ -74,6 +74,7 @@ This platform is built on three core principles:
 | **Embeddings** | Xenova (in-process) |
 | **Vector DB** | pgvector (PostgreSQL) |
 | **Relational DB** | PostgreSQL (via Supabase) |
+| **Geospatial** | PostGIS (privacy-preserving location tracking) |
 | **Auth** | Supabase Auth (Passkeys, Magic Links, Password) |
 | **Storage** | Supabase Storage (avatars, documents) |
 | **Secrets** | Supabase Vault |
