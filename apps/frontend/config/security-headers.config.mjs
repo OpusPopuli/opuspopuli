@@ -105,6 +105,8 @@ function buildCspDirectives() {
     `img-src ${imgSources.join(" ")}`,
     `connect-src ${connectSources.join(" ")}`,
     `frame-ancestors ${frameAncestors.join(" ")}`,
+    "worker-src 'self' blob:", // Service workers for PWA
+    "manifest-src 'self'", // Web app manifest for PWA
     "base-uri 'self'",
     "form-action 'self'",
     "object-src 'none'", // Prevent plugins like Flash
@@ -161,10 +163,11 @@ export function getSecurityHeaders() {
       key: "Referrer-Policy",
       value: "strict-origin-when-cross-origin",
     },
-    // Opt out of FLoC (Google's tracking)
+    // Permissions policy - enable camera for petition scanning
     {
       key: "Permissions-Policy",
-      value: "camera=(), microphone=(), geolocation=(self), interest-cohort=()",
+      value:
+        "camera=(self), microphone=(), geolocation=(self), interest-cohort=()",
     },
   ];
 
