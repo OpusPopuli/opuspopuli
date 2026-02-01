@@ -47,7 +47,7 @@
     "@casl/ability": "^6.7.1",
     "@codegenie/serverless-express": "^4.17.1",
     "@langchain/community": "^1.1.0",
-    "@langchain/core": "^1.1.5",
+    "@langchain/core": "^1.1.8",
     "@langchain/openai": "^1.2.0",
     "@langchain/textsplitters": "^1.0.1",
     "@nestjs/apollo": "^13.2.1",
