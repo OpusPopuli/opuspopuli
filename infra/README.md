@@ -56,6 +56,57 @@ aws ec2 create-key-pair \
 chmod 400 qckstrt-key.pem
 ```
 
+## Remote State Management (Recommended)
+
+For team collaboration and disaster recovery, migrate Terraform state to S3.
+
+### 1. Create State Backend
+
+```bash
+cd backend-bootstrap
+
+# Initialize and apply
+terraform init
+terraform apply
+
+# Note the output values (bucket name, etc.)
+```
+
+### 2. Enable Remote State
+
+Edit `main.tf` and uncomment the backend block:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket         = "qckstrt-terraform-state-ACCOUNT_ID"  # From bootstrap output
+    key            = "env/dev/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "qckstrt-terraform-locks"
+  }
+  # ...
+}
+```
+
+### 3. Migrate State
+
+```bash
+cd ..  # Back to infra/
+terraform init -migrate-state
+```
+
+When prompted, type `yes` to migrate the state.
+
+### Benefits
+
+- **Team collaboration**: Multiple developers can work safely
+- **State locking**: DynamoDB prevents concurrent modifications
+- **Versioning**: S3 versioning enables state recovery
+- **Security**: Encryption at rest and in transit
+
+---
+
 ## Quick Start
 
 ### 1. Configure Variables
@@ -394,3 +445,4 @@ sudo certbot renew --force-renewal
 | `Makefile` | Convenience commands |
 | `scripts/app-server.sh` | App server bootstrap script |
 | `scripts/gpu-server.sh` | GPU server bootstrap script |
+| `backend-bootstrap/` | S3 + DynamoDB for remote state |

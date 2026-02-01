@@ -1,0 +1,14 @@
+# Terraform state files (bootstrap uses local state)
+*.tfstate
+*.tfstate.*
+
+# Terraform directory
+.terraform/
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Variable files with sensitive data
+*.tfvars
+!*.tfvars.example
