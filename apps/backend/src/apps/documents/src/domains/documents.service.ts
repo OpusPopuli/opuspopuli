@@ -23,6 +23,11 @@ import { File } from './models/file.model';
 import { ExtractTextResult } from './dto/ocr.dto';
 import { DocumentAnalysis, AnalyzeDocumentResult } from './dto/analysis.dto';
 import {
+  GeoLocation,
+  SetDocumentLocationResult,
+  fuzzLocation,
+} from './dto/location.dto';
+import {
   buildAnalysisPrompt,
   parseAnalysisResponse,
 } from './prompts/document-analysis.prompt';
@@ -445,5 +450,125 @@ export class DocumentsService {
     }
 
     return (document.analysis as unknown as DocumentAnalysis) || null;
+  }
+
+  /**
+   * Set privacy-preserving scan location for a document
+   *
+   * Fuzzes coordinates to ~100m accuracy before storage.
+   * See issues #290, #296 for privacy design.
+   */
+  async setDocumentLocation(
+    userId: string,
+    documentId: string,
+    latitude: number,
+    longitude: number,
+  ): Promise<SetDocumentLocationResult> {
+    // Verify document ownership
+    const document = await this.db.document.findFirst({
+      where: { id: documentId, userId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    // Fuzz location for privacy (~100m accuracy)
+    const fuzzedLocation = fuzzLocation(latitude, longitude);
+
+    // Use raw SQL to set PostGIS geography point
+    // PostGIS uses POINT(longitude latitude) format
+    // Note: Cast column to text (not param to uuid) because Prisma passes params as text
+    await this.db.$executeRaw`
+      UPDATE documents
+      SET scan_location = ST_SetSRID(ST_MakePoint(${fuzzedLocation.longitude}, ${fuzzedLocation.latitude}), 4326)::geography
+      WHERE id::text = ${documentId}
+    `;
+
+    this.logger.log(
+      `Set scan location for document ${documentId} (fuzzed to ~100m)`,
+    );
+
+    return {
+      success: true,
+      fuzzedLocation,
+    };
+  }
+
+  /**
+   * Get scan location for a document
+   */
+  async getDocumentLocation(
+    userId: string,
+    documentId: string,
+  ): Promise<GeoLocation | null> {
+    // Verify document ownership
+    const document = await this.db.document.findFirst({
+      where: { id: documentId, userId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    // Use raw SQL to extract coordinates from PostGIS geography
+    // Note: Cast column to text (not param to uuid) because Prisma passes params as text
+    const result = await this.db.$queryRaw<
+      Array<{ latitude: number; longitude: number }>
+    >`
+      SELECT
+        ST_Y(scan_location::geometry) as latitude,
+        ST_X(scan_location::geometry) as longitude
+      FROM documents
+      WHERE id::text = ${documentId} AND scan_location IS NOT NULL
+    `;
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    return {
+      latitude: result[0].latitude,
+      longitude: result[0].longitude,
+    };
+  }
+
+  /**
+   * Find documents scanned near a location
+   *
+   * Returns documents within the specified radius (in meters)
+   * that match the given content hash (same petition/document).
+   */
+  async findDocumentsNearLocation(
+    contentHash: string,
+    latitude: number,
+    longitude: number,
+    radiusMeters: number = 10000, // Default 10km
+  ): Promise<Array<{ documentId: string; distanceMeters: number }>> {
+    const results = await this.db.$queryRaw<
+      Array<{ id: string; distance_meters: number }>
+    >`
+      SELECT
+        id,
+        ST_Distance(
+          scan_location,
+          ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
+        ) as distance_meters
+      FROM documents
+      WHERE
+        content_hash = ${contentHash}
+        AND scan_location IS NOT NULL
+        AND ST_DWithin(
+          scan_location,
+          ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
+          ${radiusMeters}
+        )
+      ORDER BY distance_meters ASC
+    `;
+
+    return results.map((r) => ({
+      documentId: r.id,
+      distanceMeters: r.distance_meters,
+    }));
   }
 }

@@ -28,6 +28,11 @@ import {
   AnalyzeDocumentResult,
   DocumentAnalysis,
 } from './dto/analysis.dto';
+import {
+  GeoLocation,
+  SetDocumentLocationInput,
+  SetDocumentLocationResult,
+} from './dto/location.dto';
 
 /**
  * Documents Resolver
@@ -145,5 +150,37 @@ export class DocumentsResolver {
   ): Promise<DocumentAnalysis | null> {
     const user = getUserFromContext(context);
     return this.documentsService.getDocumentAnalysis(user.id, documentId);
+  }
+
+  /**
+   * Set privacy-preserving scan location for a document
+   * Coordinates are fuzzed to ~100m accuracy before storage
+   */
+  @Mutation(() => SetDocumentLocationResult)
+  @UseGuards(AuthGuard)
+  async setDocumentLocation(
+    @Args('input') input: SetDocumentLocationInput,
+    @Context() context: GqlContext,
+  ): Promise<SetDocumentLocationResult> {
+    const user = getUserFromContext(context);
+    return this.documentsService.setDocumentLocation(
+      user.id,
+      input.documentId,
+      input.location.latitude,
+      input.location.longitude,
+    );
+  }
+
+  /**
+   * Get scan location for a document
+   */
+  @Query(() => GeoLocation, { nullable: true })
+  @UseGuards(AuthGuard)
+  async getDocumentLocation(
+    @Args('documentId') documentId: string,
+    @Context() context: GqlContext,
+  ): Promise<GeoLocation | null> {
+    const user = getUserFromContext(context);
+    return this.documentsService.getDocumentLocation(user.id, documentId);
   }
 }
