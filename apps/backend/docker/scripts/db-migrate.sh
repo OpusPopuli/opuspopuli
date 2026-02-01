@@ -9,15 +9,27 @@ echo "=== Starting database migration ==="
 # Change to the relationaldb-provider package directory
 cd /usr/src/app/packages/relationaldb-provider
 
+# Connection parameters
+export PGPASSWORD="${RELATIONAL_DB_PASSWORD:-your-super-secret-password}"
+PGHOST="${RELATIONAL_DB_HOST:-supabase-db}"
+PGUSER="${RELATIONAL_DB_USERNAME:-postgres}"
+PGDB="${RELATIONAL_DB_DATABASE:-postgres}"
+
 echo "Running Prisma db:push..."
 npx prisma db push --accept-data-loss
 
+echo "Checking spatial_ref_sys BEFORE setup..."
+psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -c "SELECT COUNT(*) as total_srids FROM spatial_ref_sys;"
+psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -c "SELECT srid FROM spatial_ref_sys WHERE srid = 4326;"
+
 echo "Running PostGIS spatial setup..."
-# Use explicit connection parameters since $DATABASE_URL may not work with psql in all environments
-PGPASSWORD="${RELATIONAL_DB_PASSWORD:-your-super-secret-password}" psql \
-  -h "${RELATIONAL_DB_HOST:-supabase-db}" \
-  -U "${RELATIONAL_DB_USERNAME:-postgres}" \
-  -d "${RELATIONAL_DB_DATABASE:-postgres}" \
-  -f prisma/spatial-indexes.sql
+psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -f prisma/spatial-indexes.sql
+
+echo "Checking spatial_ref_sys AFTER setup..."
+psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -c "SELECT COUNT(*) as total_srids FROM spatial_ref_sys;"
+psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -c "SELECT srid FROM spatial_ref_sys WHERE srid = 4326;"
+
+echo "Testing ST_SetSRID with SRID 4326..."
+psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -c "SELECT ST_AsText(ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326));"
 
 echo "=== Database migration complete ==="
