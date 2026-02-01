@@ -58,7 +58,8 @@ services:
       supabase-db:
         condition: service_healthy
     # Only run db:push (schema sync), not tests
-    command: ["sh", "-c", "pnpm --filter @qckstrt/relationaldb-provider db:push"]
+    # Use db:push:ci which includes --accept-data-loss for fresh test databases
+    command: ["sh", "-c", "pnpm --filter @qckstrt/relationaldb-provider db:push:ci"]
     networks:
       - qckstrt-network
     # This service should exit after migration completes
@@ -202,6 +203,8 @@ services:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.test-runner
     container_name: qckstrt-test-runner
+    # Explicitly run tests only (db:push handled by db-migrate service with --accept-data-loss)
+    command: ["pnpm", "test:integration"]
     environment:
       <<: *backend-env
       # Override URLs to use container networking
