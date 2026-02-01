@@ -478,10 +478,11 @@ export class DocumentsService {
 
     // Use raw SQL to set PostGIS geography point
     // PostGIS uses POINT(longitude latitude) format
+    // Note: Cast column to text (not param to uuid) because Prisma passes params as text
     await this.db.$executeRaw`
       UPDATE documents
       SET scan_location = ST_SetSRID(ST_MakePoint(${fuzzedLocation.longitude}, ${fuzzedLocation.latitude}), 4326)::geography
-      WHERE id = ${documentId}::uuid
+      WHERE id::text = ${documentId}
     `;
 
     this.logger.log(
@@ -511,6 +512,7 @@ export class DocumentsService {
     }
 
     // Use raw SQL to extract coordinates from PostGIS geography
+    // Note: Cast column to text (not param to uuid) because Prisma passes params as text
     const result = await this.db.$queryRaw<
       Array<{ latitude: number; longitude: number }>
     >`
@@ -518,7 +520,7 @@ export class DocumentsService {
         ST_Y(scan_location::geometry) as latitude,
         ST_X(scan_location::geometry) as longitude
       FROM documents
-      WHERE id = ${documentId}::uuid AND scan_location IS NOT NULL
+      WHERE id::text = ${documentId} AND scan_location IS NOT NULL
     `;
 
     if (result.length === 0) {
