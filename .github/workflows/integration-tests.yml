@@ -1,8 +1,8 @@
 name: Integration Tests
 
+# Integration tests now run as part of the E2E job in ci.yml
+# This workflow is kept for manual debugging/testing only
 on:
-  pull_request:
-    branches: [main, develop]
   workflow_dispatch:
 
 concurrency:
