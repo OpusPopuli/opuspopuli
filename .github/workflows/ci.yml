@@ -183,6 +183,9 @@ jobs:
 
       - name: Run backend integration tests
         run: pnpm test:integration
+        env:
+          # API gateway runs on port 4000 in E2E docker-compose
+          API_GATEWAY_URL: http://localhost:4000
 
       - name: Build frontend
         run: pnpm --filter frontend build

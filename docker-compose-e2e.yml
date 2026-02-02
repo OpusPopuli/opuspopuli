@@ -76,6 +76,8 @@ services:
       APPLICATION: users
       DESCRIPTION: Users microservice
       PORT: 8080
+    ports:
+      - "3001:8080"
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -99,6 +101,8 @@ services:
       APPLICATION: documents
       DESCRIPTION: Documents microservice
       PORT: 8080
+    ports:
+      - "3002:8080"
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -122,6 +126,8 @@ services:
       APPLICATION: knowledge
       DESCRIPTION: Knowledge microservice
       PORT: 8080
+    ports:
+      - "3003:8080"
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -145,6 +151,8 @@ services:
       APPLICATION: region
       DESCRIPTION: Region microservice
       PORT: 8080
+    ports:
+      - "3004:8080"
     depends_on:
       db-migrate:
         condition: service_completed_successfully
