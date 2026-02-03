@@ -286,7 +286,7 @@ export default function SecurityPage() {
                         {formatDate(passkey.createdAt)}
                       </p>
                       {passkey.lastUsedAt && (
-                        <p className="text-xs text-[#94a3b8]">
+                        <p className="text-xs text-[#4b5563]">
                           {t("security.passkeys.lastUsed")}:{" "}
                           {formatDate(passkey.lastUsedAt)}
                         </p>
@@ -312,7 +312,7 @@ export default function SecurityPage() {
                   ) : (
                     <button
                       onClick={() => setDeleteConfirmId(passkey.id)}
-                      className="text-sm text-red-500 hover:text-red-700 transition-colors"
+                      className="text-sm text-red-700 hover:text-red-800 transition-colors"
                     >
                       {t("common:buttons.remove")}
                     </button>
@@ -392,7 +392,7 @@ export default function SecurityPage() {
             </div>
             <button
               onClick={handleSignOutAllSessions}
-              className="text-sm text-red-500 hover:text-red-700 transition-colors"
+              className="text-sm text-red-700 hover:text-red-800 transition-colors"
             >
               {t("security.sessions.signOutAll")}
             </button>
@@ -417,14 +417,14 @@ export default function SecurityPage() {
                   <p className="text-sm text-[#64748b]">
                     {currentSession.browser}
                   </p>
-                  <p className="text-xs text-[#94a3b8]">
+                  <p className="text-xs text-[#374151]">
                     {currentSession.lastActivity}
                   </p>
                 </div>
               </div>
               <button
                 onClick={handleSignOut}
-                className="text-sm text-red-500 hover:text-red-700 transition-colors"
+                className="text-sm text-red-700 hover:text-red-800 transition-colors"
               >
                 {t("security.sessions.signOut")}
               </button>

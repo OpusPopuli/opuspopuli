@@ -8,6 +8,7 @@ import {
 import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
 import { getMainDefinition } from "@apollo/client/utilities";
 import { createClient } from "graphql-ws";
+import { persistCache, LocalStorageWrapper } from "apollo3-cache-persist";
 
 const GRAPHQL_URL =
   process.env.NEXT_PUBLIC_GRAPHQL_URL || "http://localhost:3000/api";
@@ -152,9 +153,31 @@ function createLink(): ApolloLink {
   );
 }
 
+/**
+ * Create the Apollo cache with optional persistence for offline support
+ *
+ * PWA FEATURE: Cache persistence enables offline-first behavior by storing
+ * GraphQL query results in localStorage. When the app loads offline, it can
+ * serve cached data immediately while attempting to fetch fresh data.
+ */
+const cache = new InMemoryCache();
+
+// Initialize cache persistence for PWA offline support
+if (globalThis.window !== undefined) {
+  persistCache({
+    cache,
+    storage: new LocalStorageWrapper(globalThis.localStorage),
+    maxSize: 1048576 * 5, // 5MB limit
+    debug: process.env.NODE_ENV === "development",
+  }).catch((error) => {
+    // Non-fatal: app works without persistence, just logs warning
+    console.warn("Apollo cache persistence failed:", error);
+  });
+}
+
 export const apolloClient = new ApolloClient({
   link: createLink(),
-  cache: new InMemoryCache(),
+  cache,
   // Enable SSR mode when running on server
   ssrMode: globalThis.window === undefined,
 });

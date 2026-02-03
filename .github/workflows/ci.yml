@@ -147,7 +147,8 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [test]  # Changed from [build] - no need to wait for build since we rebuild frontend here
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -167,10 +168,39 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: pnpm --filter frontend exec playwright install --with-deps chromium
+        run: |
+          # Full browser set on main, Chromium only on PRs
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            pnpm --filter frontend exec playwright install --with-deps
+          else
+            pnpm --filter frontend exec playwright install --with-deps chromium
+          fi
+
+      - name: Start backend services
+        run: |
+          echo "Starting E2E backend services..."
+          docker compose -f docker-compose-e2e.yml up -d --build --wait --wait-timeout 600 \
+            supabase-db redis inbucket db-migrate users documents knowledge region api
+          echo "Service status:"
+          docker compose -f docker-compose-e2e.yml ps
+
+      - name: Build packages
+        run: pnpm -r --filter './packages/*' build
+
+      - name: Run backend integration tests
+        run: pnpm test:integration
+        env:
+          # API gateway runs on port 4000 in E2E docker-compose
+          API_GATEWAY_URL: http://localhost:4000
+          # Database connection for Prisma
+          DATABASE_URL: postgresql://postgres:your-super-secret-password@localhost:5432/postgres
 
       - name: Build frontend
         run: pnpm --filter frontend build
+        env:
+          # API gateway runs on port 4000 in E2E docker-compose
+          # Use /api to match local dev default and test route patterns
+          NEXT_PUBLIC_GRAPHQL_URL: http://localhost:4000/api
 
       - name: Copy static assets for standalone build
         run: |
@@ -180,7 +210,35 @@ jobs:
           cp -r apps/frontend/public apps/frontend/.next/standalone/apps/frontend/public
 
       - name: Run E2E tests
-        run: pnpm --filter frontend e2e
+        run: |
+          # Full browser matrix on main, Chromium only on PRs
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            pnpm --filter frontend e2e
+          else
+            pnpm --filter frontend e2e --project=chromium
+          fi
+
+      - name: Show backend logs on failure
+        if: failure()
+        run: |
+          echo "=== Docker Compose Service Status ==="
+          docker compose -f docker-compose-e2e.yml ps
+
+          echo ""
+          echo "=== API Gateway Logs ==="
+          docker compose -f docker-compose-e2e.yml logs api --tail=100
+
+          echo ""
+          echo "=== Users Service Logs ==="
+          docker compose -f docker-compose-e2e.yml logs users --tail=50
+
+          echo ""
+          echo "=== Database Logs ==="
+          docker compose -f docker-compose-e2e.yml logs supabase-db --tail=50
+
+      - name: Stop backend services
+        if: always()
+        run: docker compose -f docker-compose-e2e.yml down -v
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4
