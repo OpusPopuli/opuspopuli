@@ -199,7 +199,8 @@ jobs:
         run: pnpm --filter frontend build
         env:
           # API gateway runs on port 4000 in E2E docker-compose
-          NEXT_PUBLIC_GRAPHQL_URL: http://localhost:4000/graphql
+          # Use /api to match local dev default and test route patterns
+          NEXT_PUBLIC_GRAPHQL_URL: http://localhost:4000/api
 
       - name: Copy static assets for standalone build
         run: |

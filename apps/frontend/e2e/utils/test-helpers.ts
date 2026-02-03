@@ -64,7 +64,9 @@ export async function checkAccessibility(
 
 /**
  * Mock GraphQL API responses
- * Routes both /api and /graphql endpoints
+ * Routes both /api and /graphql endpoints to handle different environments:
+ * - Local dev: uses /api (default from apollo-client.ts)
+ * - CI: uses /graphql (set via NEXT_PUBLIC_GRAPHQL_URL)
  */
 export async function mockGraphQL(
   page: Page,
