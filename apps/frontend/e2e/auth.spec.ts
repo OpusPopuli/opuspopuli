@@ -142,13 +142,23 @@ test.describe("Login Page", () => {
     });
 
     test("should show error message on login failure", async ({ page }) => {
-      // Mock auth API to return error
-      await page.route("**/api/auth/**", async (route) => {
-        await route.fulfill({
-          status: 401,
-          contentType: "application/json",
-          body: JSON.stringify({ error: "Invalid email or password" }),
-        });
+      // Mock GraphQL API to return error (login uses GraphQL mutation)
+      await page.route("**/api", async (route) => {
+        const request = route.request();
+        const postData = request.postDataJSON();
+
+        // Only intercept loginUser mutation
+        if (postData?.query?.includes("loginUser")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              errors: [{ message: "Invalid email or password" }],
+            }),
+          });
+        } else {
+          await route.continue();
+        }
       });
 
       await page.locator("input#email").fill("test@example.com");
