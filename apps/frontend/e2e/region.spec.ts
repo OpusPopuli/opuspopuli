@@ -112,8 +112,9 @@ const mockRepresentatives = {
 
 // Helper function to mock GraphQL API
 async function mockRegionGraphQL(page: import("@playwright/test").Page) {
-  // Set up auth session first
-  await page.evaluate(() => {
+  // Set up auth session BEFORE page loads using addInitScript
+  // This runs before any page JavaScript, ensuring auth is set before React hydrates
+  await page.addInitScript(() => {
     localStorage.setItem(
       "auth_user",
       JSON.stringify({
@@ -124,7 +125,7 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
     );
   });
 
-  await page.route("**/graphql", async (route) => {
+  await page.route("**/api", async (route) => {
     const request = route.request();
     const postData = request.postDataJSON();
 
@@ -419,7 +420,19 @@ test.describe("Region Pages - Error Handling", () => {
   test("should show error message when region info fails to load", async ({
     page,
   }) => {
-    await page.route("**/graphql", async (route) => {
+    // Set up auth session first
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "auth_user",
+        JSON.stringify({
+          id: "test-user-id",
+          email: "test@example.com",
+          roles: ["user"],
+        }),
+      );
+    });
+
+    await page.route("**/api", async (route) => {
       const request = route.request();
       const postData = request.postDataJSON();
 
@@ -446,7 +459,19 @@ test.describe("Region Pages - Error Handling", () => {
   test("should show error message when propositions fail to load", async ({
     page,
   }) => {
-    await page.route("**/graphql", async (route) => {
+    // Set up auth session first
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "auth_user",
+        JSON.stringify({
+          id: "test-user-id",
+          email: "test@example.com",
+          roles: ["user"],
+        }),
+      );
+    });
+
+    await page.route("**/api", async (route) => {
       const request = route.request();
       const postData = request.postDataJSON();
 
@@ -471,8 +496,20 @@ test.describe("Region Pages - Error Handling", () => {
 
 test.describe("Region Pages - Loading State", () => {
   test("should show loading skeleton on region page", async ({ page }) => {
+    // Set up auth session first
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "auth_user",
+        JSON.stringify({
+          id: "test-user-id",
+          email: "test@example.com",
+          roles: ["user"],
+        }),
+      );
+    });
+
     // Delay the response to show loading state
-    await page.route("**/graphql", async (route) => {
+    await page.route("**/api", async (route) => {
       const request = route.request();
       const postData = request.postDataJSON();
 

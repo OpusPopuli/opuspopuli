@@ -113,8 +113,9 @@ const mockContactResult = {
 
 // Helper function to mock GraphQL API for email tests
 async function mockEmailGraphQL(page: import("@playwright/test").Page) {
-  // Set up auth session first
-  await page.evaluate(() => {
+  // Set up auth session BEFORE page loads using addInitScript
+  // This runs before any page JavaScript, ensuring auth is set before React hydrates
+  await page.addInitScript(() => {
     localStorage.setItem(
       "auth_user",
       JSON.stringify({
@@ -125,7 +126,7 @@ async function mockEmailGraphQL(page: import("@playwright/test").Page) {
     );
   });
 
-  await page.route("**/graphql", async (route) => {
+  await page.route("**/api", async (route) => {
     const request = route.request();
     const postData = request.postDataJSON();
 
@@ -276,7 +277,19 @@ test.describe("Email History Page", () => {
 
 test.describe("Email History Page - Empty State", () => {
   test("should display empty state when no emails exist", async ({ page }) => {
-    await page.route("**/graphql", async (route) => {
+    // Set up auth session first
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "auth_user",
+        JSON.stringify({
+          id: "test-user-id",
+          email: "test@example.com",
+          roles: ["user"],
+        }),
+      );
+    });
+
+    await page.route("**/api", async (route) => {
       const request = route.request();
       const postData = request.postDataJSON();
 
@@ -310,7 +323,19 @@ test.describe("Email History Page - Empty State", () => {
 
 test.describe("Email History Page - Error State", () => {
   test("should display error when API fails", async ({ page }) => {
-    await page.route("**/graphql", async (route) => {
+    // Set up auth session first
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "auth_user",
+        JSON.stringify({
+          id: "test-user-id",
+          email: "test@example.com",
+          roles: ["user"],
+        }),
+      );
+    });
+
+    await page.route("**/api", async (route) => {
       const request = route.request();
       const postData = request.postDataJSON();
 
@@ -335,7 +360,19 @@ test.describe("Email History Page - Error State", () => {
 
 test.describe("Email History Page - Loading State", () => {
   test("should show loading skeleton", async ({ page }) => {
-    await page.route("**/graphql", async (route) => {
+    // Set up auth session first
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "auth_user",
+        JSON.stringify({
+          id: "test-user-id",
+          email: "test@example.com",
+          roles: ["user"],
+        }),
+      );
+    });
+
+    await page.route("**/api", async (route) => {
       const request = route.request();
       const postData = request.postDataJSON();
 

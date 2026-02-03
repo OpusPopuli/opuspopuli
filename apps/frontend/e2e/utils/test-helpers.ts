@@ -70,7 +70,7 @@ export async function mockGraphQL(
   page: Page,
   handlers: Record<string, unknown>,
 ) {
-  await page.route("**/graphql", async (route) => {
+  await page.route("**/api", async (route) => {
     const request = route.request();
     const postData = request.postDataJSON();
 
@@ -97,7 +97,7 @@ export async function mockGraphQLError(
   queryMatch: string,
   errorMessage: string,
 ) {
-  await page.route("**/graphql", async (route) => {
+  await page.route("**/api", async (route) => {
     const request = route.request();
     const postData = request.postDataJSON();
 
@@ -128,9 +128,13 @@ export async function waitForContentLoaded(page: Page) {
  * Set up authenticated session via localStorage
  * Use this for tests requiring authentication
  * Key must match USER_KEY from auth-context.tsx ("auth_user")
+ *
+ * IMPORTANT: This uses addInitScript which runs BEFORE any page JavaScript,
+ * ensuring auth is set before React hydration and auth context checks.
+ * Must be called BEFORE page.goto().
  */
 export async function setupAuthSession(page: Page, user = mockUser) {
-  await page.evaluate((userData) => {
+  await page.addInitScript((userData) => {
     localStorage.setItem("auth_user", JSON.stringify(userData));
   }, user);
 }
