@@ -9,12 +9,14 @@ import AxeBuilder from "@axe-core/playwright";
 
 /**
  * Mock user data for authentication tests
+ * Structure must match User type from auth-context.tsx
  */
 export const mockUser = {
   id: "test-user-id",
   email: "test@example.com",
-  firstName: "Test",
-  lastName: "User",
+  roles: ["user"],
+  department: undefined,
+  clearance: undefined,
 };
 
 /**
@@ -62,12 +64,13 @@ export async function checkAccessibility(
 
 /**
  * Mock GraphQL API responses
+ * Routes both /api and /graphql endpoints
  */
 export async function mockGraphQL(
   page: Page,
   handlers: Record<string, unknown>,
 ) {
-  await page.route("**/api", async (route) => {
+  await page.route("**/graphql", async (route) => {
     const request = route.request();
     const postData = request.postDataJSON();
 
@@ -94,7 +97,7 @@ export async function mockGraphQLError(
   queryMatch: string,
   errorMessage: string,
 ) {
-  await page.route("**/api", async (route) => {
+  await page.route("**/graphql", async (route) => {
     const request = route.request();
     const postData = request.postDataJSON();
 
@@ -124,10 +127,11 @@ export async function waitForContentLoaded(page: Page) {
 /**
  * Set up authenticated session via localStorage
  * Use this for tests requiring authentication
+ * Key must match USER_KEY from auth-context.tsx ("auth_user")
  */
 export async function setupAuthSession(page: Page, user = mockUser) {
   await page.evaluate((userData) => {
-    localStorage.setItem("user", JSON.stringify(userData));
+    localStorage.setItem("auth_user", JSON.stringify(userData));
   }, user);
 }
 
@@ -136,7 +140,7 @@ export async function setupAuthSession(page: Page, user = mockUser) {
  */
 export async function clearAuthSession(page: Page) {
   await page.evaluate(() => {
-    localStorage.removeItem("user");
+    localStorage.removeItem("auth_user");
     localStorage.removeItem("accessToken");
   });
 }

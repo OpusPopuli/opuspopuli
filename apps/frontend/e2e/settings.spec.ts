@@ -149,7 +149,19 @@ const mockPrivacySettings = {
 
 // Helper to mock all settings-related GraphQL queries
 async function mockSettingsGraphQL(page: import("@playwright/test").Page) {
-  await page.route("**/api", async (route) => {
+  // Set up auth session first
+  await page.evaluate(() => {
+    localStorage.setItem(
+      "auth_user",
+      JSON.stringify({
+        id: "test-user-id",
+        email: "test@example.com",
+        roles: ["user"],
+      }),
+    );
+  });
+
+  await page.route("**/graphql", async (route) => {
     const request = route.request();
     const postData = request.postDataJSON();
 
@@ -283,7 +295,7 @@ test.describe("Profile Settings Page", () => {
 
   test("should show loading skeleton initially", async ({ page }) => {
     // Delay the response
-    await page.route("**/api", async (route) => {
+    await page.route("**/graphql", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       await route.continue();
     });
@@ -550,7 +562,7 @@ test.describe("Settings - Responsive Design", () => {
 test.describe("Settings - Error Handling", () => {
   test("should show error when profile fails to load", async ({ page }) => {
     // Mock GraphQL API to return error
-    await page.route("**/api", async (route) => {
+    await page.route("**/graphql", async (route) => {
       const request = route.request();
       const postData = request.postDataJSON();
       if (postData?.query?.includes("myProfile")) {

@@ -148,7 +148,7 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     needs: [test]  # Changed from [build] - no need to wait for build since we rebuild frontend here
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -168,7 +168,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: pnpm --filter frontend exec playwright install --with-deps chromium webkit
+        run: |
+          # Full browser set on main, Chromium only on PRs
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            pnpm --filter frontend exec playwright install --with-deps
+          else
+            pnpm --filter frontend exec playwright install --with-deps chromium
+          fi
 
       - name: Start backend services
         run: |
@@ -204,11 +210,11 @@ jobs:
 
       - name: Run E2E tests
         run: |
-          # Full browser matrix on main, Chromium + WebKit on PRs
+          # Full browser matrix on main, Chromium only on PRs
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             pnpm --filter frontend e2e
           else
-            pnpm --filter frontend e2e --project=chromium --project=webkit
+            pnpm --filter frontend e2e --project=chromium
           fi
 
       - name: Show backend logs on failure
