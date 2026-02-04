@@ -1,0 +1,23 @@
+{
+  "skip": "Omitir",
+  "back": "Atrás",
+  "next": "Siguiente",
+  "getStarted": "Comenzar",
+  "welcome": {
+    "title": "Bienvenido a OPUS",
+    "subtitle": "Tu compañero de participación cívica para seguir peticiones y medidas electorales"
+  },
+  "scan": {
+    "title": "Escanear Peticiones",
+    "description": "Usa tu cámara para escanear y verificar firmas de peticiones en segundos",
+    "permissionNote": "Te pediremos acceso a la cámara cuando estés listo para escanear. No se guardan imágenes en tu dispositivo."
+  },
+  "analyze": {
+    "title": "Análisis Instantáneo",
+    "description": "Nuestra IA verifica firmas y extrae información clave automáticamente"
+  },
+  "track": {
+    "title": "Seguir Progreso",
+    "description": "Ve la actividad de peticiones en tu área y sigue las medidas hasta la votación"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "skip": "Skip",
+  "back": "Back",
+  "next": "Next",
+  "getStarted": "Get Started",
+  "welcome": {
+    "title": "Welcome to OPUS",
+    "subtitle": "Your civic engagement companion for tracking petitions and ballot measures"
+  },
+  "scan": {
+    "title": "Scan Petitions",
+    "description": "Use your camera to quickly scan and verify petition signatures in seconds",
+    "permissionNote": "We'll ask for camera access when you're ready to scan. No images are saved to your device."
+  },
+  "analyze": {
+    "title": "Instant Analysis",
+    "description": "Our AI verifies signatures and extracts key information automatically"
+  },
+  "track": {
+    "title": "Track Progress",
+    "description": "See petition activity in your area and follow measures through to the ballot"
+  }
+}

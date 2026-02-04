@@ -32,7 +32,7 @@ export default function LoginPage() {
     clearError();
     try {
       await loginWithPasskey(email || undefined);
-      router.push("/rag-demo");
+      router.push("/onboarding");
     } catch {
       // Error is handled in context
     }
@@ -49,7 +49,7 @@ export default function LoginPage() {
     clearError();
     try {
       await login({ email, password });
-      router.push("/rag-demo");
+      router.push("/onboarding");
     } catch {
       // Error is handled in context
     }

@@ -3,6 +3,7 @@ import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { ApolloProvider } from "@/lib/apollo-provider";
 import { ToastProvider } from "@/lib/toast";
+import { OnboardingProvider } from "@/lib/onboarding-context";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 
 const ibmPlexSans = IBM_Plex_Sans({
@@ -52,7 +53,7 @@ export default function RootLayout({
       >
         <ApolloProvider>
           <ToastProvider>
-            {children}
+            <OnboardingProvider>{children}</OnboardingProvider>
             <OfflineIndicator />
           </ToastProvider>
         </ApolloProvider>

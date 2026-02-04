@@ -3,8 +3,10 @@ import { initReactI18next } from "react-i18next";
 
 import enCommon from "@/locales/en/common.json";
 import enSettings from "@/locales/en/settings.json";
+import enOnboarding from "@/locales/en/onboarding.json";
 import esCommon from "@/locales/es/common.json";
 import esSettings from "@/locales/es/settings.json";
+import esOnboarding from "@/locales/es/onboarding.json";
 
 export const defaultNS = "common";
 export const supportedLanguages = ["en", "es"] as const;
@@ -14,10 +16,12 @@ export const resources = {
   en: {
     common: enCommon,
     settings: enSettings,
+    onboarding: enOnboarding,
   },
   es: {
     common: esCommon,
     settings: esSettings,
+    onboarding: esOnboarding,
   },
 } as const;
 
