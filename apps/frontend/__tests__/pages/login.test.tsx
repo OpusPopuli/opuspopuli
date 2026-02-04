@@ -147,7 +147,7 @@ describe("LoginPage", () => {
       expect(mockLoginWithPasskey).toHaveBeenCalledWith("test@example.com");
     });
 
-    it("should redirect to rag-demo on successful passkey login", async () => {
+    it("should redirect to onboarding on successful passkey login", async () => {
       mockLoginWithPasskey.mockResolvedValue(undefined);
       render(<LoginPage />);
 
@@ -157,7 +157,7 @@ describe("LoginPage", () => {
       await userEvent.click(button);
 
       await waitFor(() => {
-        expect(mockPush).toHaveBeenCalledWith("/rag-demo");
+        expect(mockPush).toHaveBeenCalledWith("/onboarding");
       });
     });
   });
@@ -337,7 +337,7 @@ describe("LoginPage", () => {
       expect(hideButton).toBeInTheDocument();
     });
 
-    it("should redirect to rag-demo on successful password login", async () => {
+    it("should redirect to onboarding on successful password login", async () => {
       mockLogin.mockResolvedValue(undefined);
       render(<LoginPage />);
 
@@ -354,7 +354,7 @@ describe("LoginPage", () => {
       await userEvent.click(submitButton);
 
       await waitFor(() => {
-        expect(mockPush).toHaveBeenCalledWith("/rag-demo");
+        expect(mockPush).toHaveBeenCalledWith("/onboarding");
       });
     });
   });
