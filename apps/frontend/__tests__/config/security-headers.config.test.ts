@@ -110,7 +110,8 @@ describe("Security Headers Configuration", () => {
       );
 
       expect(header).toBeDefined();
-      expect(header?.value).toContain("camera=()");
+      // Camera enabled for petition scanning feature
+      expect(header?.value).toContain("camera=(self)");
       expect(header?.value).toContain("microphone=()");
       expect(header?.value).toContain("geolocation=(self)");
     });

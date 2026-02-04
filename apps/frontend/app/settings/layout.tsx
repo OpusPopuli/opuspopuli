@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 export default function SettingsLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   const pathname = usePathname();
   const { t } = useTranslation("settings");
 
@@ -136,70 +137,72 @@ export default function SettingsLayout({
   ];
 
   return (
-    <div className="min-h-screen bg-[#f8fafc]">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-3 hover:opacity-80 transition-opacity"
-            >
-              <div className="w-10 h-10 bg-[#1e293b] rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">Q</span>
+    <ProtectedRoute>
+      <div className="min-h-screen bg-[#f8fafc]">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-3 hover:opacity-80 transition-opacity"
+              >
+                <div className="w-10 h-10 bg-[#1e293b] rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">Q</span>
+                </div>
+                <span className="text-[#1e293b] font-semibold text-lg">
+                  Qckstrt
+                </span>
+              </Link>
+              <Link
+                href="/"
+                className="text-sm text-[#64748b] hover:text-[#1e293b] transition-colors"
+              >
+                {t("common:navigation.backToApp")}
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex gap-8">
+            {/* Sidebar Navigation */}
+            <nav className="w-64 flex-shrink-0">
+              <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-2">
+                <h2 className="px-4 py-2 text-xs font-semibold text-[#64748b] uppercase tracking-wider">
+                  {t("nav.settings")}
+                </h2>
+                <ul className="space-y-1">
+                  {navItems.map((item) => {
+                    const isActive =
+                      pathname === item.href ||
+                      (item.href !== "/settings" &&
+                        pathname.startsWith(item.href));
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                            isActive
+                              ? "bg-[#1e293b] text-white"
+                              : "text-[#64748b] hover:bg-gray-100 hover:text-[#1e293b]"
+                          }`}
+                        >
+                          {item.icon}
+                          {item.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-              <span className="text-[#1e293b] font-semibold text-lg">
-                Qckstrt
-              </span>
-            </Link>
-            <Link
-              href="/rag-demo"
-              className="text-sm text-[#64748b] hover:text-[#1e293b] transition-colors"
-            >
-              {t("common:navigation.backToApp")}
-            </Link>
+            </nav>
+
+            {/* Main Content */}
+            <main className="flex-1 min-w-0">{children}</main>
           </div>
         </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex gap-8">
-          {/* Sidebar Navigation */}
-          <nav className="w-64 flex-shrink-0">
-            <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-2">
-              <h2 className="px-4 py-2 text-xs font-semibold text-[#64748b] uppercase tracking-wider">
-                {t("nav.settings")}
-              </h2>
-              <ul className="space-y-1">
-                {navItems.map((item) => {
-                  const isActive =
-                    pathname === item.href ||
-                    (item.href !== "/settings" &&
-                      pathname.startsWith(item.href));
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          isActive
-                            ? "bg-[#1e293b] text-white"
-                            : "text-[#64748b] hover:bg-gray-100 hover:text-[#1e293b]"
-                        }`}
-                      >
-                        {item.icon}
-                        {item.label}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </nav>
-
-          {/* Main Content */}
-          <main className="flex-1 min-w-0">{children}</main>
-        </div>
       </div>
-    </div>
+    </ProtectedRoute>
   );
 }
