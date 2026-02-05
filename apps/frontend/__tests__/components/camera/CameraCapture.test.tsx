@@ -11,11 +11,16 @@ const mockSetTorch = jest.fn();
 const mockSwitchCamera = jest.fn();
 const mockStartContinuousAnalysis = jest.fn();
 const mockStopContinuousAnalysis = jest.fn();
+const mockRequestLocation = jest.fn();
+const mockClearLocation = jest.fn();
 
 let mockPermissionState = "prompt";
 let mockError: { type: string; message: string } | null = null;
 let mockStream: MediaStream | null = null;
 let mockIsLoading = false;
+let mockGeoPermissionState = "prompt";
+let mockGeoIsLoading = false;
+let mockGeoError: { type: string; message: string } | null = null;
 
 jest.mock("@/lib/hooks/useCamera", () => ({
   useCamera: () => ({
@@ -41,6 +46,17 @@ jest.mock("@/lib/hooks/useLightingAnalysis", () => ({
     analyze: jest.fn(),
     startContinuousAnalysis: mockStartContinuousAnalysis,
     stopContinuousAnalysis: mockStopContinuousAnalysis,
+  }),
+}));
+
+jest.mock("@/lib/hooks/useGeolocation", () => ({
+  useGeolocation: () => ({
+    coordinates: null,
+    isLoading: mockGeoIsLoading,
+    error: mockGeoError,
+    permissionState: mockGeoPermissionState,
+    requestLocation: mockRequestLocation,
+    clearLocation: mockClearLocation,
   }),
 }));
 
@@ -78,7 +94,7 @@ jest.mock("@/components/camera/CapturePreview", () => ({
   }) => (
     <div data-testid="capture-preview">
       <button onClick={onRetake}>Retake</button>
-      <button onClick={onConfirm}>Confirm</button>
+      <button onClick={onConfirm}>Use Photo</button>
     </div>
   ),
 }));
@@ -98,6 +114,30 @@ jest.mock("@/components/camera/CameraPermission", () => ({
   ),
 }));
 
+jest.mock("@/components/camera/LocationPrompt", () => ({
+  LocationPrompt: ({
+    permissionState,
+    isLoading,
+    error,
+    onAllow,
+    onSkip,
+  }: {
+    permissionState: string;
+    isLoading: boolean;
+    error: { type: string; message: string } | null;
+    onAllow: () => void;
+    onSkip: () => void;
+  }) => (
+    <div data-testid="location-prompt">
+      <span data-testid="geo-permission">{permissionState}</span>
+      <span data-testid="geo-loading">{isLoading.toString()}</span>
+      <span data-testid="geo-error">{error ? error.message : "none"}</span>
+      <button onClick={onAllow}>Allow Location</button>
+      <button onClick={onSkip}>Skip Location</button>
+    </div>
+  ),
+}));
+
 describe("CameraCapture", () => {
   const mockOnConfirm = jest.fn();
 
@@ -107,6 +147,9 @@ describe("CameraCapture", () => {
     mockError = null;
     mockStream = null;
     mockIsLoading = false;
+    mockGeoPermissionState = "prompt";
+    mockGeoIsLoading = false;
+    mockGeoError = null;
   });
 
   describe("permission state", () => {
@@ -230,8 +273,10 @@ describe("CameraCapture", () => {
       await user.click(screen.getByRole("button", { name: "Retake" }));
       expect(screen.getByTestId("camera-viewfinder")).toBeInTheDocument();
     });
+  });
 
-    it("should call onConfirm when confirm clicked", async () => {
+  describe("location flow", () => {
+    it("should transition to location prompt after use photo", async () => {
       const user = userEvent.setup();
       mockPermissionState = "granted";
 
@@ -239,10 +284,82 @@ describe("CameraCapture", () => {
 
       // Capture
       await user.click(screen.getByRole("button", { name: "Mock Capture" }));
+      expect(screen.getByTestId("capture-preview")).toBeInTheDocument();
 
-      // Confirm
-      await user.click(screen.getByRole("button", { name: "Confirm" }));
-      expect(mockOnConfirm).toHaveBeenCalled();
+      // Use Photo -> location prompt
+      await user.click(screen.getByRole("button", { name: "Use Photo" }));
+      expect(screen.getByTestId("location-prompt")).toBeInTheDocument();
+    });
+
+    it("should call onConfirm with location when allow location clicked", async () => {
+      const user = userEvent.setup();
+      mockPermissionState = "granted";
+      mockRequestLocation.mockResolvedValue({
+        latitude: 37.7749,
+        longitude: -122.4194,
+        accuracy: 50,
+      });
+
+      render(<CameraCapture onConfirm={mockOnConfirm} />);
+
+      // Capture -> Use Photo -> Allow Location
+      await user.click(screen.getByRole("button", { name: "Mock Capture" }));
+      await user.click(screen.getByRole("button", { name: "Use Photo" }));
+      await user.click(screen.getByRole("button", { name: "Allow Location" }));
+
+      expect(mockRequestLocation).toHaveBeenCalled();
+      expect(mockOnConfirm).toHaveBeenCalledWith(expect.any(Object), {
+        latitude: 37.7749,
+        longitude: -122.4194,
+      });
+    });
+
+    it("should call onConfirm without location when skip clicked", async () => {
+      const user = userEvent.setup();
+      mockPermissionState = "granted";
+
+      render(<CameraCapture onConfirm={mockOnConfirm} />);
+
+      // Capture -> Use Photo -> Skip Location
+      await user.click(screen.getByRole("button", { name: "Mock Capture" }));
+      await user.click(screen.getByRole("button", { name: "Use Photo" }));
+      await user.click(screen.getByRole("button", { name: "Skip Location" }));
+
+      expect(mockOnConfirm).toHaveBeenCalledWith(expect.any(Object), undefined);
+    });
+
+    it("should pass geolocation state to LocationPrompt", async () => {
+      const user = userEvent.setup();
+      mockPermissionState = "granted";
+      mockGeoPermissionState = "denied";
+      mockGeoIsLoading = false;
+      mockGeoError = { type: "permission", message: "Denied by user" };
+
+      render(<CameraCapture onConfirm={mockOnConfirm} />);
+
+      await user.click(screen.getByRole("button", { name: "Mock Capture" }));
+      await user.click(screen.getByRole("button", { name: "Use Photo" }));
+
+      expect(screen.getByTestId("geo-permission")).toHaveTextContent("denied");
+      expect(screen.getByTestId("geo-loading")).toHaveTextContent("false");
+      expect(screen.getByTestId("geo-error")).toHaveTextContent(
+        "Denied by user",
+      );
+    });
+
+    it("should call onConfirm without location when requestLocation returns null", async () => {
+      const user = userEvent.setup();
+      mockPermissionState = "granted";
+      mockRequestLocation.mockResolvedValue(null);
+
+      render(<CameraCapture onConfirm={mockOnConfirm} />);
+
+      // Capture -> Use Photo -> Allow Location (but returns null)
+      await user.click(screen.getByRole("button", { name: "Mock Capture" }));
+      await user.click(screen.getByRole("button", { name: "Use Photo" }));
+      await user.click(screen.getByRole("button", { name: "Allow Location" }));
+
+      expect(mockOnConfirm).toHaveBeenCalledWith(expect.any(Object), undefined);
     });
   });
 });

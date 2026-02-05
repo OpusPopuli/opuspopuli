@@ -5,3 +5,4 @@ export { CaptureControls } from "./CaptureControls";
 export { CapturePreview } from "./CapturePreview";
 export { DocumentFrameOverlay } from "./DocumentFrameOverlay";
 export { LightingFeedback } from "./LightingFeedback";
+export { LocationPrompt } from "./LocationPrompt";
