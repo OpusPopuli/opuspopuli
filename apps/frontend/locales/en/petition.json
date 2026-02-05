@@ -1,0 +1,48 @@
+{
+  "home": {
+    "title": "Scan a Petition",
+    "description": "Use your camera to capture petition pages. Images are processed securely and never stored on your device.",
+    "startScanning": "Start Scanning",
+    "backToHome": "Back to Home"
+  },
+  "camera": {
+    "permission": {
+      "title": "Camera Access Needed",
+      "description": "To scan petitions, we need access to your camera. Your images are processed securely and never saved to your device.",
+      "enable": "Enable Camera",
+      "deniedTitle": "Camera Access Denied",
+      "deniedDescription": "Camera access was denied. To scan petitions:",
+      "deniedStep1": "Open your browser settings",
+      "deniedStep2": "Find permissions for this site",
+      "deniedStep3": "Enable camera access",
+      "deniedStep4": "Refresh this page",
+      "refresh": "Refresh Page",
+      "unsupportedTitle": "Camera Not Supported",
+      "unsupportedDescription": "Your browser doesn't support camera access. Try using Chrome, Safari, or Firefox on a mobile device."
+    },
+    "overlay": {
+      "alignGuide": "Align petition within the frame"
+    },
+    "lighting": {
+      "dark": "Move to a brighter area",
+      "good": "Good lighting",
+      "bright": "Too bright — find shade"
+    },
+    "controls": {
+      "capture": "Capture photo",
+      "flashOn": "Turn on flash",
+      "flashOff": "Turn off flash",
+      "switchCamera": "Switch camera"
+    },
+    "preview": {
+      "retake": "Retake",
+      "usePhoto": "Use Photo",
+      "processing": "Processing"
+    },
+    "error": {
+      "title": "Camera Error",
+      "goBack": "Go Back",
+      "tryAgain": "Try Again"
+    }
+  }
+}
