@@ -46,7 +46,7 @@ PostgreSQL (via Supabase)
 ```bash
 # AWS RDS
 aws rds create-db-instance \
-  --db-instance-identifier qckstrt-prod \
+  --db-instance-identifier opuspopuli-prod \
   --db-instance-class db.t3.medium \
   --engine postgres \
   --engine-version 16.1 \
@@ -62,7 +62,7 @@ CREATE EXTENSION vector;
 NODE_ENV=production
 
 RELATIONAL_DB_PROVIDER=postgres
-RELATIONAL_DB_HOST=qckstrt-prod.xxxx.rds.amazonaws.com
+RELATIONAL_DB_HOST=opuspopuli-prod.xxxx.rds.amazonaws.com
 RELATIONAL_DB_PORT=5432
 RELATIONAL_DB_DATABASE=qckstrt
 RELATIONAL_DB_USERNAME=admin
@@ -81,10 +81,10 @@ LLM_MODEL=falcon
 **3. Migrate data**:
 ```bash
 # Export from Supabase PostgreSQL
-docker exec qckstrt-supabase-db pg_dump -U postgres postgres > dev-data.sql
+docker exec opuspopuli-supabase-db pg_dump -U postgres postgres > dev-data.sql
 
 # Import to production RDS PostgreSQL
-psql -h qckstrt-prod.xxxx.rds.amazonaws.com \
+psql -h opuspopuli-prod.xxxx.rds.amazonaws.com \
      -U admin \
      -d qckstrt \
      < dev-data.sql
@@ -126,7 +126,7 @@ npm run build
 
 ```bash
 # Backup PostgreSQL (includes pgvector data)
-docker exec qckstrt-supabase-db pg_dump -U postgres postgres > backup-$(date +%Y%m%d).sql
+docker exec opuspopuli-supabase-db pg_dump -U postgres postgres > backup-$(date +%Y%m%d).sql
 ```
 
 ### 2. Test in Staging First

@@ -39,7 +39,7 @@ Fixes #
 
 ### Fork Model Reminder
 
-> **Important**: This is the upstream qckstrt platform repository.
+> **Important**: This is the upstream opuspopuli platform repository.
 >
 > - **Platform improvements** (bug fixes, new features, providers) belong here
 > - **Region-specific code** (scrapers, data, configs) belongs in your fork

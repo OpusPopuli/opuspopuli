@@ -1,5 +1,5 @@
 /**
- * @qckstrt/storage-provider
+ * @opuspopuli/storage-provider
  *
  * Storage provider implementations for the QCKSTRT platform.
  * Provides pluggable file storage with Supabase Storage.
@@ -13,7 +13,7 @@ export {
   IListFilesResult,
   ISignedUrlOptions,
   StorageError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Providers
 export { SupabaseStorageProvider } from "./providers/supabase.provider.js";

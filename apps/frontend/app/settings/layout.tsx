@@ -151,7 +151,7 @@ export default function SettingsLayout({
                   <span className="text-white font-bold text-sm">Q</span>
                 </div>
                 <span className="text-[#1e293b] font-semibold text-lg">
-                  Qckstrt
+                  Opus Populi
                 </span>
               </Link>
               <Link

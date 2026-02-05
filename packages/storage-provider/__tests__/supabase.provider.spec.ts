@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ConfigService } from "@nestjs/config";
 import { SupabaseStorageProvider } from "../src/providers/supabase.provider";
-import { StorageError } from "@qckstrt/common";
+import { StorageError } from "@opuspopuli/common";
 
 // Mock the Supabase client
 const mockStorage = {

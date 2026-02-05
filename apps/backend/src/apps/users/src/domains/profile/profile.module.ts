@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { StorageModule } from '@qckstrt/storage-provider';
+import { StorageModule } from '@opuspopuli/storage-provider';
 
 // RelationalDbModule is global, no need to import
 

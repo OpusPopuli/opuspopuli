@@ -17,7 +17,7 @@ variable "aws_profile" {
 variable "project" {
   description = "Project name"
   type        = string
-  default     = "qckstrt"
+  default     = "opuspopuli"
 }
 
 variable "stage" {

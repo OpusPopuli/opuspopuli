@@ -1,7 +1,7 @@
 {
-  "name": "@qckstrt/embeddings-provider",
+  "name": "@opuspopuli/embeddings-provider",
   "version": "0.1.0",
-  "description": "Embeddings provider implementations for QCKSTRT platform",
+  "description": "Embeddings provider implementations for OPUSPOPULI platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -22,7 +22,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "embeddings",
     "xenova",
     "ollama",
@@ -30,7 +30,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@qckstrt/common": "workspace:*",
+    "@opuspopuli/common": "workspace:*",
     "@langchain/textsplitters": "^1.0.1",
     "@xenova/transformers": "^2.17.2"
   },

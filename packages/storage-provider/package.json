@@ -1,7 +1,7 @@
 {
-  "name": "@qckstrt/storage-provider",
+  "name": "@opuspopuli/storage-provider",
   "version": "0.1.0",
-  "description": "Storage provider implementations for QCKSTRT platform (Supabase Storage)",
+  "description": "Storage provider implementations for OPUSPOPULI platform (Supabase Storage)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -22,14 +22,14 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "storage",
     "supabase",
     "provider"
   ],
   "license": "MIT",
   "dependencies": {
-    "@qckstrt/common": "workspace:*",
+    "@opuspopuli/common": "workspace:*",
     "@supabase/supabase-js": "^2.49.1"
   },
   "peerDependencies": {

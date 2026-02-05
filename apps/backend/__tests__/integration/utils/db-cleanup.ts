@@ -1,4 +1,4 @@
-import { DbService } from '@qckstrt/relationaldb-provider';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 
 /**
  * Singleton DbService instance for integration tests.

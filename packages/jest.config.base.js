@@ -17,7 +17,7 @@ module.exports = {
     },
   },
   moduleNameMapper: {
-    "^@qckstrt/common$": "<rootDir>/../common/src/index.ts",
+    "^@opuspopuli/common$": "<rootDir>/../common/src/index.ts",
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },
   transform: {

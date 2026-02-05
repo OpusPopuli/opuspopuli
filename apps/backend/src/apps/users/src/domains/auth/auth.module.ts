@@ -8,7 +8,7 @@ import { AccountLockoutService } from './services/account-lockout.service';
 import { JwtStrategy } from 'src/common/auth/jwt.strategy';
 import { UsersModule } from '../user/users.module';
 import { EmailDomainModule } from '../email/email.module';
-import { AuthModule as AuthProviderModule } from '@qckstrt/auth-provider';
+import { AuthModule as AuthProviderModule } from '@opuspopuli/auth-provider';
 
 // RelationalDbModule is global, no need to import
 

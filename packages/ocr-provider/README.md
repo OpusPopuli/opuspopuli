@@ -1,4 +1,4 @@
-# @qckstrt/ocr-provider
+# @opuspopuli/ocr-provider
 
 OCR (Optical Character Recognition) provider package for the qckstrt platform. Provides text extraction from images using Tesseract.js.
 
@@ -13,7 +13,7 @@ OCR (Optical Character Recognition) provider package for the qckstrt platform. P
 ## Installation
 
 ```bash
-pnpm add @qckstrt/ocr-provider
+pnpm add @opuspopuli/ocr-provider
 ```
 
 ## Usage
@@ -22,7 +22,7 @@ pnpm add @qckstrt/ocr-provider
 
 ```typescript
 import { Module } from '@nestjs/common';
-import { OcrModule } from '@qckstrt/ocr-provider';
+import { OcrModule } from '@opuspopuli/ocr-provider';
 
 @Module({
   imports: [OcrModule],
@@ -34,7 +34,7 @@ export class AppModule {}
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { OcrService } from '@qckstrt/ocr-provider';
+import { OcrService } from '@opuspopuli/ocr-provider';
 
 @Injectable()
 export class DocumentService {
@@ -54,7 +54,7 @@ export class DocumentService {
 ### Direct Provider Usage
 
 ```typescript
-import { TesseractOcrProvider } from '@qckstrt/ocr-provider';
+import { TesseractOcrProvider } from '@opuspopuli/ocr-provider';
 
 const provider = new TesseractOcrProvider(['eng', 'spa']);
 
@@ -162,7 +162,7 @@ See [Tesseract Languages](https://tesseract-ocr.github.io/tessdoc/Data-Files-in-
 ## Error Handling
 
 ```typescript
-import { OcrError, UnsupportedMimeTypeError } from '@qckstrt/common';
+import { OcrError, UnsupportedMimeTypeError } from '@opuspopuli/common';
 
 try {
   const result = await ocrService.extractFromBuffer(buffer, mimeType);

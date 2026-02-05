@@ -3,9 +3,9 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { RelationalDbModule } from "../src/db.module";
 import { DbService } from "../src/db.service";
 
-// Mock @qckstrt/common environment functions
-jest.mock("@qckstrt/common", () => ({
-  ...jest.requireActual("@qckstrt/common"),
+// Mock @opuspopuli/common environment functions
+jest.mock("@opuspopuli/common", () => ({
+  ...jest.requireActual("@opuspopuli/common"),
   isDevelopment: jest.fn().mockReturnValue(false),
   isTest: jest.fn().mockReturnValue(true),
 }));

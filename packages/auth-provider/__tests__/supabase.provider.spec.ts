@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ConfigService } from "@nestjs/config";
 import { SupabaseAuthProvider } from "../src/providers/supabase.provider";
-import { AuthError } from "@qckstrt/common";
+import { AuthError } from "@opuspopuli/common";
 
 // Mock the Supabase client
 const mockAuth = {

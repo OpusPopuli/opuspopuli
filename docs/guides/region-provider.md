@@ -44,7 +44,7 @@ Forks only need to create a new provider package that implements `IRegionProvide
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Note**: Region providers should use `ExtractionProvider` from `@qckstrt/extraction-provider` for fetching web content. This provides built-in rate limiting, caching, retry with exponential backoff, and HTML parsing via cheerio.
+**Note**: Region providers should use `ExtractionProvider` from `@opuspopuli/extraction-provider` for fetching web content. This provides built-in rate limiting, caching, retry with exponential backoff, and HTML parsing via cheerio.
 
 ## Creating a Custom Provider
 
@@ -60,7 +60,7 @@ Create `package.json`:
 
 ```json
 {
-  "name": "@qckstrt/region-provider-california",
+  "name": "@opuspopuli/region-provider-california",
   "version": "1.0.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -69,7 +69,7 @@ Create `package.json`:
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@qckstrt/common": "workspace:*"
+    "@opuspopuli/common": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
@@ -89,7 +89,7 @@ import {
   Proposition,
   Meeting,
   Representative,
-} from '@qckstrt/common';
+} from '@opuspopuli/common';
 
 export class CaliforniaRegionProvider implements IRegionProvider {
   getName(): string {
@@ -167,7 +167,7 @@ export { CaliforniaRegionProvider } from './providers/california.provider';
 Update `packages/region-provider/src/region.module.ts` to include your provider:
 
 ```typescript
-import { CaliforniaRegionProvider } from '@qckstrt/region-provider-california';
+import { CaliforniaRegionProvider } from '@opuspopuli/region-provider-california';
 
 // In the factory function:
 switch (config.provider) {
@@ -305,7 +305,7 @@ Always use stable external IDs from your data source. This allows the sync proce
 
 ### 2. Use ExtractionProvider for Web Fetching
 
-**Always** use `ExtractionProvider` from `@qckstrt/extraction-provider` for fetching web content. It provides:
+**Always** use `ExtractionProvider` from `@opuspopuli/extraction-provider` for fetching web content. It provides:
 
 - **Rate Limiting**: Token bucket algorithm prevents overwhelming data sources
 - **Caching**: Automatic caching with configurable TTL
@@ -313,7 +313,7 @@ Always use stable external IDs from your data source. This allows the sync proce
 - **HTML Parsing**: Built-in cheerio integration for DOM selection
 
 ```typescript
-import { ExtractionProvider } from '@qckstrt/extraction-provider';
+import { ExtractionProvider } from '@opuspopuli/extraction-provider';
 
 export class CaliforniaRegionProvider implements IRegionProvider {
   constructor(private readonly extraction: ExtractionProvider) {}

@@ -7,7 +7,7 @@ import { DbService } from "./db.service.js";
  *
  * Usage:
  * ```typescript
- * import { RelationalDbModule } from '@qckstrt/relationaldb-provider';
+ * import { RelationalDbModule } from '@opuspopuli/relationaldb-provider';
  *
  * @Module({
  *   imports: [RelationalDbModule],

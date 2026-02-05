@@ -34,7 +34,7 @@ RUN chmod +x /usr/local/bin/test-runner.sh
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 # Generate database client from provider package
-RUN pnpm --filter @qckstrt/relationaldb-provider db:generate
+RUN pnpm --filter @opuspopuli/relationaldb-provider db:generate
 
 # Build all workspace packages (required for TypeScript resolution)
 RUN pnpm --filter "./packages/*" build

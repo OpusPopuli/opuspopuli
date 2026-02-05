@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
 import { DocumentsResolver } from './documents.resolver';
-import { StorageModule } from '@qckstrt/storage-provider';
-import { OcrModule } from '@qckstrt/ocr-provider';
-import { ExtractionModule } from '@qckstrt/extraction-provider';
-import { LLMModule } from '@qckstrt/llm-provider';
+import { StorageModule } from '@opuspopuli/storage-provider';
+import { OcrModule } from '@opuspopuli/ocr-provider';
+import { ExtractionModule } from '@opuspopuli/extraction-provider';
+import { LLMModule } from '@opuspopuli/llm-provider';
 
 // RelationalDbModule is global, no need to import
 

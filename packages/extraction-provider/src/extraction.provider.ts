@@ -18,7 +18,7 @@ import {
   createCircuitBreaker,
   DEFAULT_CIRCUIT_CONFIGS,
   CircuitBreakerHealth,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 import type { ICache, IRateLimiter } from "./cache/cache.interface.js";
 import { CacheFactory } from "./cache/cache-factory.js";

@@ -8,7 +8,7 @@ export {
   OcrError,
   UnsupportedMimeTypeError,
   OcrPreprocessingMetadata,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Provider implementations
 export { TesseractOcrProvider } from "./providers/tesseract.provider.js";

@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { OllamaEmbeddingProvider } from "../src/providers/ollama.provider";
-import { EmbeddingError } from "@qckstrt/common";
+import { EmbeddingError } from "@opuspopuli/common";
 
 // Mock fetch globally
 const mockFetch = jest.fn();

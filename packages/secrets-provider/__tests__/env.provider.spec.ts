@@ -3,7 +3,7 @@ import {
   getEnvSecret,
   getEnvSecretOrThrow,
 } from "../src/providers/env.provider";
-import { SecretsError } from "@qckstrt/common";
+import { SecretsError } from "@opuspopuli/common";
 
 describe("EnvProvider", () => {
   let provider: EnvProvider;

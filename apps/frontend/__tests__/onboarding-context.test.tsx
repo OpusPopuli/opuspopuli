@@ -44,7 +44,7 @@ describe("OnboardingProvider", () => {
     });
 
     it("should return completed when localStorage flag is set", () => {
-      localStorageMock.setItem("opus_onboarding_completed", "true");
+      localStorageMock.setItem("opuspopuli_onboarding_completed", "true");
 
       const { result } = renderHook(() => useOnboarding(), { wrapper });
 
@@ -126,7 +126,7 @@ describe("OnboardingProvider", () => {
       });
 
       expect(localStorageMock.setItem).toHaveBeenCalledWith(
-        "opus_onboarding_completed",
+        "opuspopuli_onboarding_completed",
         "true",
       );
     });
@@ -153,7 +153,7 @@ describe("OnboardingProvider", () => {
       });
 
       expect(localStorageMock.setItem).toHaveBeenCalledWith(
-        "opus_onboarding_completed",
+        "opuspopuli_onboarding_completed",
         "true",
       );
       expect(result.current.hasCompletedOnboarding).toBe(true);
@@ -180,7 +180,7 @@ describe("OnboardingProvider", () => {
       });
 
       expect(localStorageMock.removeItem).toHaveBeenCalledWith(
-        "opus_onboarding_completed",
+        "opuspopuli_onboarding_completed",
       );
       expect(result.current.currentStep).toBe(0);
       expect(result.current.hasCompletedOnboarding).toBe(false);

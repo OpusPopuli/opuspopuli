@@ -10,7 +10,7 @@ import {
   isTest,
   IRelationalDBProvider,
   RelationalDBType,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 /**
  * DbService extends PrismaClient to provide NestJS lifecycle hooks

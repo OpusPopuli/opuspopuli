@@ -103,7 +103,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 ```typescript
 import { Inject, Injectable } from '@nestjs/common';
-import { SECRETS_PROVIDER, ISecretsProvider } from '@qckstrt/secrets-provider';
+import { SECRETS_PROVIDER, ISecretsProvider } from '@opuspopuli/secrets-provider';
 
 @Injectable()
 export class MyService {
@@ -130,13 +130,13 @@ For scenarios where you need secrets before the NestJS DI container is ready:
 
 ```typescript
 // EnvProvider helper
-import { getEnvSecret, getEnvSecretOrThrow } from '@qckstrt/secrets-provider';
+import { getEnvSecret, getEnvSecretOrThrow } from '@opuspopuli/secrets-provider';
 
 const optionalValue = getEnvSecret('OPTIONAL_SECRET');
 const requiredValue = getEnvSecretOrThrow('REQUIRED_SECRET'); // Throws if missing
 
 // AWS helper
-import { getAWSSecret } from '@qckstrt/secrets-provider';
+import { getAWSSecret } from '@opuspopuli/secrets-provider';
 
 const secret = await getAWSSecret('my-secret', 'us-east-1');
 ```
@@ -151,7 +151,7 @@ To add support for a new secrets backend:
 // packages/secrets-provider/src/providers/my-provider.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ISecretsProvider, SecretsError } from '@qckstrt/common';
+import { ISecretsProvider, SecretsError } from '@opuspopuli/common';
 
 @Injectable()
 export class MySecretsProvider implements ISecretsProvider {

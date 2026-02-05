@@ -415,7 +415,7 @@
   ],
   "refresh": "10s",
   "schemaVersion": 39,
-  "tags": ["qckstrt", "microservices"],
+  "tags": ["opuspopuli", "microservices"],
   "templating": {
     "list": []
   },
@@ -425,8 +425,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "QCKSTRT Services",
-  "uid": "qckstrt-services",
+  "title": "OPUSPOPULI Services",
+  "uid": "opuspopuli-services",
   "version": 1,
   "weekStart": ""
 }

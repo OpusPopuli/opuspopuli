@@ -7,7 +7,7 @@ import {
   IStorageFile,
   ISignedUrlOptions,
   StorageError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 /**
  * Supabase Storage Provider

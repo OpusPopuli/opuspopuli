@@ -700,10 +700,10 @@ CREATE INDEX idx_embedding_hnsw
 ### PostgreSQL (includes pgvector data)
 ```bash
 # Backup (includes relational data + vector embeddings)
-docker exec qckstrt-supabase-db pg_dump -U postgres postgres > backup.sql
+docker exec opuspopuli-supabase-db pg_dump -U postgres postgres > backup.sql
 
 # Restore
-docker exec -i qckstrt-supabase-db psql -U postgres postgres < backup.sql
+docker exec -i opuspopuli-supabase-db psql -U postgres postgres < backup.sql
 ```
 
 **Note**: pg_dump includes pgvector extension and all vector data automatically.

@@ -1,5 +1,5 @@
 /**
- * @qckstrt/embeddings-provider
+ * @opuspopuli/embeddings-provider
  *
  * Embeddings provider implementations for the QCKSTRT platform.
  * Supports Xenova (in-process) and Ollama (local server) providers.
@@ -11,7 +11,7 @@ export {
   ChunkingConfig,
   EmbeddingResult,
   EmbeddingError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Provider implementations
 export { XenovaEmbeddingProvider } from "./providers/xenova.provider.js";

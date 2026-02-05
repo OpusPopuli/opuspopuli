@@ -1,7 +1,7 @@
 {
-  "name": "@qckstrt/region-provider",
+  "name": "@opuspopuli/region-provider",
   "version": "0.1.0",
-  "description": "Region provider implementations for QCKSTRT platform",
+  "description": "Region provider implementations for OPUSPOPULI platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -22,14 +22,14 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "region",
     "civic",
     "provider"
   ],
   "license": "MIT",
   "dependencies": {
-    "@qckstrt/common": "workspace:*"
+    "@opuspopuli/common": "workspace:*"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",

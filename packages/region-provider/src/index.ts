@@ -1,5 +1,5 @@
 /**
- * @qckstrt/region-provider
+ * @opuspopuli/region-provider
  *
  * Region provider implementations for the QCKSTRT platform.
  * Supports pluggable data sources for civic information (propositions, meetings, representatives).
@@ -27,7 +27,7 @@ export {
   ContactInfo,
   SyncResult,
   RegionError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Provider implementations
 export { ExampleRegionProvider } from "./providers/example.provider.js";

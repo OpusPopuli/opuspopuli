@@ -121,7 +121,7 @@ Available to all users:
 - GitHub Issues
 - GitHub Discussions
 - Community documentation
-- Stack Overflow (tag: `qckstrt`)
+- Stack Overflow (tag: `opuspopuli`)
 
 ### Commercial Support
 

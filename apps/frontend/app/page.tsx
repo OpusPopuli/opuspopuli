@@ -8,7 +8,7 @@ export default function Home() {
       <main className="max-w-4xl mx-auto px-8 py-16">
         <div className="text-center mb-16">
           <h1 className="text-5xl font-bold text-gray-900 dark:text-white mb-4">
-            Qckstrt
+            Opus Populi
           </h1>
           <p className="text-xl text-gray-600 dark:text-gray-300">
             Quick start platform for building AI-powered applications

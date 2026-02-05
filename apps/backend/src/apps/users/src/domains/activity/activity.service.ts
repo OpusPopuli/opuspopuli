@@ -3,7 +3,7 @@ import {
   DbService,
   AuditLog as DbAuditLog,
   UserSession as DbUserSession,
-} from '@qckstrt/relationaldb-provider';
+} from '@opuspopuli/relationaldb-provider';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
 
 import {

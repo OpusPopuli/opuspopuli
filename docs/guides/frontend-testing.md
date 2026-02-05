@@ -107,9 +107,9 @@ import { render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import Home from "../app/page";
 
-it("should display Qckstrt title", () => {
+it("should display Opus Populi title", () => {
   render(<Home />);
-  const title = screen.getByText(/Qckstrt/i);
+  const title = screen.getByText(/Opus Populi/i);
   expect(title).toBeInTheDocument();
 });
 ```
@@ -264,8 +264,8 @@ describe("Home Page", () => {
     cy.visit("/");
   });
 
-  it("should display the Qckstrt title", () => {
-    cy.contains("Qckstrt").should("be.visible");
+  it("should display the Opus Populi title", () => {
+    cy.contains("Opus Populi").should("be.visible");
   });
 
   it("should navigate to RAG Demo page", () => {

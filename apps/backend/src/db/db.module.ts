@@ -1,6 +1,6 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { RelationalDbModule } from '@qckstrt/relationaldb-provider';
+import { RelationalDbModule } from '@opuspopuli/relationaldb-provider';
 
 import configuration from 'src/config';
 

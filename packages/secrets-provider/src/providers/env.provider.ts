@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { ISecretsProvider, SecretsError } from "@qckstrt/common";
+import { ISecretsProvider, SecretsError } from "@opuspopuli/common";
 
 /**
  * Environment Variable Secrets Provider

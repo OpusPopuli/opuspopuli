@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { KnowledgeService } from './knowledge.service';
 import { KnowledgeResolver } from './knowledge.resolver';
-import { EmbeddingsModule } from '@qckstrt/embeddings-provider';
-import { VectorDBModule } from '@qckstrt/vectordb-provider';
-import { LLMModule } from '@qckstrt/llm-provider';
+import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
+import { VectorDBModule } from '@opuspopuli/vectordb-provider';
+import { LLMModule } from '@opuspopuli/llm-provider';
 
 /**
  * Knowledge Module

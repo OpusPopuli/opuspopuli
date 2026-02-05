@@ -87,7 +87,7 @@ SUPABASE_URL=http://localhost:8000
 SUPABASE_SERVICE_ROLE_KEY=<your-key>
 
 # WebAuthn/Passkey Configuration
-WEBAUTHN_RP_NAME=Qckstrt
+WEBAUTHN_RP_NAME=Opus Populi
 WEBAUTHN_RP_ID=localhost              # yourdomain.com in production
 WEBAUTHN_ORIGIN=http://localhost:3000  # https://yourdomain.com in production
 
@@ -372,7 +372,7 @@ const dbCredentials = await this.secretsProvider.getSecretJson<{
    SMTP_PORT=587
    SMTP_USER=your-user
    SMTP_PASS=your-password
-   SMTP_SENDER_NAME=Qckstrt
+   SMTP_SENDER_NAME=Opus Populi
    ```
 
 7. **Configure WebAuthn for Production**:

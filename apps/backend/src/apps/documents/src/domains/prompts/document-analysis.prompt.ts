@@ -1,4 +1,4 @@
-import { DocumentType } from '@qckstrt/relationaldb-provider';
+import { DocumentType } from '@opuspopuli/relationaldb-provider';
 
 const BASE_INSTRUCTIONS = `Respond with valid JSON only. No markdown, no explanations.`;
 

@@ -1,6 +1,6 @@
 import { Module, DynamicModule } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { IRegionProvider } from "@qckstrt/common";
+import { IRegionProvider } from "@opuspopuli/common";
 import { RegionService } from "./region.service.js";
 import { ExampleRegionProvider } from "./providers/example.provider.js";
 
@@ -81,7 +81,7 @@ export class RegionModule {
    * Add your custom providers here:
    *
    * case 'california':
-   *   const { CaliforniaRegionProvider } = await import('@qckstrt/region-provider-california');
+   *   const { CaliforniaRegionProvider } = await import('@opuspopuli/region-provider-california');
    *   return new CaliforniaRegionProvider();
    */
   private static async getProviderForRegion(
@@ -91,11 +91,11 @@ export class RegionModule {
       // Add custom providers here:
       //
       // case 'california':
-      //   const { CaliforniaRegionProvider } = await import('@qckstrt/region-provider-california');
+      //   const { CaliforniaRegionProvider } = await import('@opuspopuli/region-provider-california');
       //   return new CaliforniaRegionProvider();
       //
       // case 'texas':
-      //   const { TexasRegionProvider } = await import('@qckstrt/region-provider-texas');
+      //   const { TexasRegionProvider } = await import('@opuspopuli/region-provider-texas');
       //   return new TexasRegionProvider();
 
       case "example":

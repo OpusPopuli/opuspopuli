@@ -9,7 +9,7 @@ import {
   AWSSecretsProvider,
   getAWSSecret,
 } from "../src/providers/aws-secrets.provider";
-import { SecretsError } from "@qckstrt/common";
+import { SecretsError } from "@opuspopuli/common";
 
 const mockSecretsManager = mockClient(SecretsManagerClient);
 

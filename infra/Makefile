@@ -1,5 +1,5 @@
 # =============================================================================
-# QCKSTRT Infrastructure Makefile
+# OPUSPOPULI Infrastructure Makefile
 # =============================================================================
 # Simple commands for deploying and managing AWS infrastructure
 # =============================================================================
@@ -7,12 +7,12 @@
 .PHONY: help init plan apply destroy ssh-app ssh-gpu status outputs clean
 
 # Default values
-PROJECT ?= qckstrt
+PROJECT ?= opuspopuli
 STAGE ?= dev
 AWS_REGION ?= us-east-1
 
 help:
-	@echo "QCKSTRT Infrastructure Commands"
+	@echo "OPUSPOPULI Infrastructure Commands"
 	@echo "================================"
 	@echo ""
 	@echo "Setup:"

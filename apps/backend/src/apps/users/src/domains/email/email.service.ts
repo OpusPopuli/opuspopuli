@@ -1,11 +1,11 @@
 import { Inject, Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { IEmailProvider } from '@qckstrt/common';
+import { IEmailProvider } from '@opuspopuli/common';
 import {
   welcomeEmailTemplate,
   representativeContactTemplate,
   generateMailtoLink,
-} from '@qckstrt/email-provider';
+} from '@opuspopuli/email-provider';
 import {
   DbService,
   EmailCorrespondence as DbEmailCorrespondence,
@@ -13,7 +13,7 @@ import {
   EmailStatus as DbEmailStatus,
   ConsentType as DbConsentType,
   ConsentStatus as DbConsentStatus,
-} from '@qckstrt/relationaldb-provider';
+} from '@opuspopuli/relationaldb-provider';
 import { ContactRepresentativeDto } from './dto/contact-representative.dto';
 
 interface RepresentativeInfo {

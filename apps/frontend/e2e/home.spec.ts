@@ -5,9 +5,9 @@ test.describe("Home Page", () => {
     await page.goto("/");
   });
 
-  test("should display the Qckstrt title", async ({ page }) => {
+  test("should display the Opus Populi title", async ({ page }) => {
     await expect(
-      page.getByRole("heading", { name: /Qckstrt/i, level: 1 }),
+      page.getByRole("heading", { name: /Opus Populi/i, level: 1 }),
     ).toBeVisible();
   });
 

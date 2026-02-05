@@ -2,9 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 
 import { KnowledgeService } from './knowledge.service';
-import { EmbeddingsService } from '@qckstrt/embeddings-provider';
-import { IVectorDBProvider, IVectorDocument } from '@qckstrt/vectordb-provider';
-import { ILLMProvider, GenerateResult } from '@qckstrt/llm-provider';
+import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
+import {
+  IVectorDBProvider,
+  IVectorDocument,
+} from '@opuspopuli/vectordb-provider';
+import { ILLMProvider, GenerateResult } from '@opuspopuli/llm-provider';
 
 describe('KnowledgeService', () => {
   let knowledgeService: KnowledgeService;

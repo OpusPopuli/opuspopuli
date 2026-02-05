@@ -1,6 +1,6 @@
 import { Module, Global } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { IAuthProvider } from "@qckstrt/common";
+import { IAuthProvider } from "@opuspopuli/common";
 import { SupabaseAuthProvider } from "./providers/supabase.provider.js";
 
 /**

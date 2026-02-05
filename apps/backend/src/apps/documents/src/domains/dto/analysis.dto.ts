@@ -6,7 +6,7 @@ import {
   registerEnumType,
 } from '@nestjs/graphql';
 import { IsUUID, IsBoolean, IsOptional } from 'class-validator';
-import { DocumentType } from '@qckstrt/relationaldb-provider';
+import { DocumentType } from '@opuspopuli/relationaldb-provider';
 
 // Register DocumentType enum for GraphQL
 registerEnumType(DocumentType, {

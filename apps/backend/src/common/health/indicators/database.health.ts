@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HealthIndicatorResult } from '@nestjs/terminus';
-import { DbService } from '@qckstrt/relationaldb-provider';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 
 /**
  * Database Health Indicator

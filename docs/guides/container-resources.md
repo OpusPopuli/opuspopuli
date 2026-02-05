@@ -88,7 +88,7 @@ deploy:
 docker stats
 
 # Watch specific containers
-docker stats qckstrt-supabase-db qckstrt-ollama
+docker stats opuspopuli-supabase-db opuspopuli-ollama
 ```
 
 ### Check for OOM Kills

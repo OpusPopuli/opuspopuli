@@ -1,4 +1,4 @@
-# QCKSTRT Frontend
+# OPUSPOPULI Frontend
 
 React + Next.js frontend with GraphQL integration and passwordless authentication.
 

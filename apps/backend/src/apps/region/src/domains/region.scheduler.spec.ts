@@ -4,7 +4,7 @@ import { createMock } from '@golevelup/ts-jest';
 
 import { RegionScheduler } from './region.scheduler';
 import { RegionDomainService } from './region.service';
-import { CivicDataType } from '@qckstrt/region-provider';
+import { CivicDataType } from '@opuspopuli/region-provider';
 
 describe('RegionScheduler', () => {
   let scheduler: RegionScheduler;

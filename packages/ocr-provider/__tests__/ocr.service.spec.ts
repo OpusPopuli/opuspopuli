@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { OcrService } from "../src/ocr.service";
-import { IOcrProvider, OcrError, OcrResult } from "@qckstrt/common";
+import { IOcrProvider, OcrError, OcrResult } from "@opuspopuli/common";
 import { ImagePreprocessor } from "../src/preprocessing/image-preprocessor";
 import { PreprocessingResult } from "../src/preprocessing/types";
 

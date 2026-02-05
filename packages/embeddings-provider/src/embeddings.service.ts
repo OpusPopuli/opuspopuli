@@ -4,7 +4,7 @@ import {
   IEmbeddingProvider,
   EmbeddingResult,
   ChunkingConfig,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 /**
  * Embeddings Service

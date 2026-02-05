@@ -30,12 +30,12 @@ interface CspViolationReport {
  *
  * To enable CSP reporting:
  * 1. Set CSP_REPORT_URI environment variable to the full URL of this endpoint
- * 2. Example: CSP_REPORT_URI=https://app.qckstrt.com/api/csp-report
+ * 2. Example: CSP_REPORT_URI=https://app.opuspopuli.com/api/csp-report
  *
  * In development, violations are logged to console.
  * In production, you may want to forward these to a logging service.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/193
+ * @see https://github.com/CommonwealthLabsCode/opuspopuli/issues/193
  */
 export async function POST(request: NextRequest) {
   try {

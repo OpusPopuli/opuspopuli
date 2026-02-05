@@ -1,4 +1,4 @@
-# QCKSTRT AWS Infrastructure
+# OPUSPOPULI AWS Infrastructure
 
 Simple, cost-effective AWS infrastructure for running QCKSTRT with self-hosted AI services.
 
@@ -48,12 +48,12 @@ Simple, cost-effective AWS infrastructure for running QCKSTRT with self-hosted A
 ```bash
 # Create key pair and save private key
 aws ec2 create-key-pair \
-  --key-name qckstrt-key \
+  --key-name opuspopuli-key \
   --query 'KeyMaterial' \
-  --output text > qckstrt-key.pem
+  --output text > opuspopuli-key.pem
 
 # Set proper permissions
-chmod 400 qckstrt-key.pem
+chmod 400 opuspopuli-key.pem
 ```
 
 ## Remote State Management (Recommended)
@@ -79,11 +79,11 @@ Edit `main.tf` and uncomment the backend block:
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "qckstrt-terraform-state-ACCOUNT_ID"  # From bootstrap output
+    bucket         = "opuspopuli-terraform-state-ACCOUNT_ID"  # From bootstrap output
     key            = "env/dev/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "qckstrt-terraform-locks"
+    dynamodb_table = "opuspopuli-terraform-locks"
   }
   # ...
 }
@@ -278,7 +278,7 @@ Spot instances may be interrupted when AWS needs capacity. The instance is confi
 
 1. Verify `allowed_ssh_cidr` includes your IP
 2. Check security group rules in AWS Console
-3. Ensure SSH key permissions: `chmod 400 qckstrt-key.pem`
+3. Ensure SSH key permissions: `chmod 400 opuspopuli-key.pem`
 
 ## Cleanup
 
@@ -340,7 +340,7 @@ Automated daily EBS snapshots via AWS Backup:
 ```bash
 # List available recovery points
 aws backup list-recovery-points-by-backup-vault \
-  --backup-vault-name qckstrt-dev-backup-vault
+  --backup-vault-name opuspopuli-dev-backup-vault
 
 # Start restore job (creates new EBS volume)
 aws backup start-restore-job \

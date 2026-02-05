@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ConfigService } from "@nestjs/config";
 import { SupabaseVaultProvider } from "../src/providers/supabase-vault.provider";
-import { SecretsError } from "@qckstrt/common";
+import { SecretsError } from "@opuspopuli/common";
 
 // Mock the Supabase client
 const mockRpc = jest.fn();

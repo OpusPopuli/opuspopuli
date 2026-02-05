@@ -1,7 +1,7 @@
 /**
- * Test utilities for @qckstrt/relationaldb-provider
+ * Test utilities for @opuspopuli/relationaldb-provider
  *
- * Import from "@qckstrt/relationaldb-provider/testing" in test files.
+ * Import from "@opuspopuli/relationaldb-provider/testing" in test files.
  * Do NOT import from the main entry point as it will load jest-mock-extended
  * at runtime which fails outside of Jest test environment.
  *
@@ -10,7 +10,7 @@
  * import {
  *   createMockDbService,
  *   MockDbClient,
- * } from '@qckstrt/relationaldb-provider/testing';
+ * } from '@opuspopuli/relationaldb-provider/testing';
  *
  * describe('MyService', () => {
  *   let db: MockDbClient;
