@@ -10,7 +10,7 @@ import {
   createCircuitBreaker,
   DEFAULT_CIRCUIT_CONFIGS,
   CircuitBreakerHealth,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 /**
  * Supabase configuration interface

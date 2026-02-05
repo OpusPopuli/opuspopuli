@@ -1,4 +1,4 @@
-# QCKSTRT Development Stack
+# OPUSPOPULI Development Stack
 #
 # This docker-compose provides all services needed for local development:
 # - Supabase (Auth, Storage, Vault, PostgreSQL with pgvector) - OSS platform
@@ -28,8 +28,8 @@
 #     SMTP_ADMIN_EMAIL=noreply@yourdomain.com
 
 networks:
-  qckstrt-network:
-    name: qckstrt-network
+  opuspopuli-network:
+    name: opuspopuli-network
     external: false
 
 services:
@@ -40,7 +40,7 @@ services:
   # PostgreSQL with Supabase extensions (pgsodium for Vault, etc.)
   supabase-db:
     image: supabase/postgres:15.6.1.139
-    container_name: qckstrt-supabase-db
+    container_name: opuspopuli-supabase-db
     ports:
       - "5432:5432"
     environment:
@@ -56,7 +56,7 @@ services:
       # postgres entrypoint ignores directories, so must mount as a file
       - ./supabase/init/99-set-passwords.sql:/docker-entrypoint-initdb.d/zz-set-passwords.sql:ro
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     healthcheck:
       # Check that postgres is ready AND init scripts have completed:
       # 1. authenticator role exists (created by supabase init scripts)
@@ -79,12 +79,12 @@ services:
   # Inbucket - Local Email Testing (captures emails in web UI)
   inbucket:
     image: inbucket/inbucket:latest
-    container_name: qckstrt-inbucket
+    container_name: opuspopuli-inbucket
     ports:
       - "54324:9000"  # Web UI
       - "2500:2500"   # SMTP
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9000/"]
@@ -104,7 +104,7 @@ services:
   # GoTrue - Authentication Service
   supabase-auth:
     image: supabase/gotrue:v2.164.0
-    container_name: qckstrt-supabase-auth
+    container_name: opuspopuli-supabase-auth
     depends_on:
       supabase-db:
         condition: service_healthy
@@ -142,13 +142,13 @@ services:
       GOTRUE_SMTP_PORT: ${SMTP_PORT:-2500}
       GOTRUE_SMTP_USER: ${SMTP_USER:-}
       GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
-      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-noreply@qckstrt.local}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-noreply@opuspopuli.local}
       GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/callback
       GOTRUE_MAILER_URLPATHS_INVITE: /auth/callback
       GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/callback
       GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/callback
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
@@ -168,7 +168,7 @@ services:
   # PostgREST - RESTful API for PostgreSQL
   supabase-rest:
     image: postgrest/postgrest:v12.2.3
-    container_name: qckstrt-supabase-rest
+    container_name: opuspopuli-supabase-rest
     depends_on:
       supabase-db:
         condition: service_healthy
@@ -181,7 +181,7 @@ services:
       PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters}
       PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXP:-3600}
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
@@ -201,7 +201,7 @@ services:
   # Storage API
   supabase-storage:
     image: supabase/storage-api:v1.11.8
-    container_name: qckstrt-supabase-storage
+    container_name: opuspopuli-supabase-storage
     depends_on:
       supabase-db:
         condition: service_healthy
@@ -224,7 +224,7 @@ services:
     volumes:
       - supabase-storage-data:/var/lib/storage
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/status"]
@@ -244,7 +244,7 @@ services:
   # Image Transformation
   supabase-imgproxy:
     image: darthsim/imgproxy:v3.8.0
-    container_name: qckstrt-supabase-imgproxy
+    container_name: opuspopuli-supabase-imgproxy
     environment:
       IMGPROXY_BIND: ":8080"
       IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
@@ -253,7 +253,7 @@ services:
     volumes:
       - supabase-storage-data:/var/lib/storage:ro
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "imgproxy", "health"]
@@ -273,7 +273,7 @@ services:
   # Kong API Gateway
   supabase-kong:
     image: kong:2.8.1
-    container_name: qckstrt-supabase-kong
+    container_name: opuspopuli-supabase-kong
     depends_on:
       - supabase-auth
       - supabase-rest
@@ -295,7 +295,7 @@ services:
     volumes:
       - ./supabase/volumes/kong/kong.yml:/var/lib/kong/kong.yml:ro
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "kong", "health"]
@@ -315,7 +315,7 @@ services:
   # Supabase Studio (Admin UI)
   supabase-studio:
     image: supabase/studio:20241202-71e5240
-    container_name: qckstrt-supabase-studio
+    container_name: opuspopuli-supabase-studio
     depends_on:
       - supabase-kong
     ports:
@@ -323,7 +323,7 @@ services:
     environment:
       STUDIO_PG_META_URL: http://supabase-meta:8080
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-password}
-      DEFAULT_ORGANIZATION_NAME: ${STUDIO_DEFAULT_ORGANIZATION:-QCKSTRT}
+      DEFAULT_ORGANIZATION_NAME: ${STUDIO_DEFAULT_ORGANIZATION:-OPUSPOPULI}
       DEFAULT_PROJECT_NAME: ${STUDIO_DEFAULT_PROJECT:-qckstrt}
       SUPABASE_URL: http://supabase-kong:8000
       SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:8000}
@@ -334,7 +334,7 @@ services:
       NEXT_PUBLIC_ENABLE_LOGS: "true"
       NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
@@ -354,7 +354,7 @@ services:
   # Postgres Meta (for Studio)
   supabase-meta:
     image: supabase/postgres-meta:v0.83.2
-    container_name: qckstrt-supabase-meta
+    container_name: opuspopuli-supabase-meta
     depends_on:
       supabase-db:
         condition: service_healthy
@@ -366,7 +366,7 @@ services:
       PG_META_DB_USER: supabase_admin
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-password}
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
@@ -390,14 +390,14 @@ services:
   # Redis - Distributed caching and rate limiting
   redis:
     image: redis:7-alpine
-    container_name: qckstrt-redis
+    container_name: opuspopuli-redis
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis-data:/data
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -421,14 +421,14 @@ services:
   # Ollama - LLM Inference
   ollama:
     image: ollama/ollama:latest
-    container_name: qckstrt-ollama
+    container_name: opuspopuli-ollama
     platform: "linux/amd64"
     ports:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:11434/ || exit 1"]
@@ -458,7 +458,7 @@ services:
   # @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
   prometheus:
     image: prom/prometheus:v2.51.0
-    container_name: qckstrt-prometheus
+    container_name: opuspopuli-prometheus
     ports:
       - "9090:9090"
     command:
@@ -470,7 +470,7 @@ services:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -492,7 +492,7 @@ services:
   # Loki - Log aggregation and storage
   loki:
     image: grafana/loki:2.9.5
-    container_name: qckstrt-loki
+    container_name: opuspopuli-loki
     ports:
       - "3102:3100"
     command: -config.file=/etc/loki/local-config.yaml
@@ -500,7 +500,7 @@ services:
       - ./observability/loki.yml:/etc/loki/local-config.yaml:ro
       - loki-data:/loki
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
@@ -520,7 +520,7 @@ services:
   # Promtail - Log shipper (collects container logs and sends to Loki)
   promtail:
     image: grafana/promtail:2.9.5
-    container_name: qckstrt-promtail
+    container_name: opuspopuli-promtail
     depends_on:
       - loki
     volumes:
@@ -529,7 +529,7 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     command: -config.file=/etc/promtail/config.yml
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     deploy:
       resources:
@@ -543,7 +543,7 @@ services:
   # Grafana - Metrics and logs visualization
   grafana:
     image: grafana/grafana:10.4.1
-    container_name: qckstrt-grafana
+    container_name: opuspopuli-grafana
     depends_on:
       - prometheus
       - loki
@@ -557,7 +557,7 @@ services:
       - grafana-data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
     networks:
-      - qckstrt-network
+      - opuspopuli-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
@@ -576,16 +576,16 @@ services:
 
 volumes:
   supabase-db-data:
-    name: qckstrt-supabase-db-data
+    name: opuspopuli-supabase-db-data
   supabase-storage-data:
-    name: qckstrt-supabase-storage-data
+    name: opuspopuli-supabase-storage-data
   redis-data:
-    name: qckstrt-redis-data
+    name: opuspopuli-redis-data
   ollama-data:
-    name: qckstrt-ollama-data
+    name: opuspopuli-ollama-data
   prometheus-data:
-    name: qckstrt-prometheus-data
+    name: opuspopuli-prometheus-data
   loki-data:
-    name: qckstrt-loki-data
+    name: opuspopuli-loki-data
   grafana-data:
-    name: qckstrt-grafana-data
+    name: opuspopuli-grafana-data

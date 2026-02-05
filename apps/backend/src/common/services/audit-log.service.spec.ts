@@ -2,13 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuditLogService } from './audit-log.service';
 import { AuditAction } from '../enums/audit-action.enum';
 import { IAuditLogCreate } from '../interfaces/audit.interface';
-import { LOGGER } from '@qckstrt/logging-provider';
+import { LOGGER } from '@opuspopuli/logging-provider';
 import { AUDIT_CONFIG } from '../audit/audit.module';
-import { DbService } from '@qckstrt/relationaldb-provider';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 import {
   createMockDbClient,
   MockDbClient,
-} from '@qckstrt/relationaldb-provider/testing';
+} from '@opuspopuli/relationaldb-provider/testing';
 
 describe('AuditLogService', () => {
   let service: AuditLogService;

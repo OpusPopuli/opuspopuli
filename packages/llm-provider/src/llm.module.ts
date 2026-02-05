@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ILLMProvider } from "@qckstrt/common";
+import { ILLMProvider } from "@opuspopuli/common";
 import {
   OllamaLLMProvider,
   OllamaConfig,

@@ -28,8 +28,8 @@ export const config = {
   },
   db: {
     config: {
-      database: 'qckstrt',
-      host: 'qckstrt_db',
+      database: 'opuspopuli',
+      host: 'opuspopuli_db',
       password: 'my_password',
       port: 5432,
       type: 'postgres',

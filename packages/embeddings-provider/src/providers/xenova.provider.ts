@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { IEmbeddingProvider, EmbeddingError } from "@qckstrt/common";
+import { IEmbeddingProvider, EmbeddingError } from "@opuspopuli/common";
 
 /**
  * Xenova Embedding Provider (OSS, In-Process)

@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { Test, TestingModule } from "@nestjs/testing";
-import { RelationalDBType } from "@qckstrt/common";
+import { RelationalDBType } from "@opuspopuli/common";
 
 // Mock PrismaClient methods - define mocks before import
 const mockConnect = jest.fn().mockResolvedValue(undefined);
@@ -22,9 +22,9 @@ jest.mock("@prisma/client", () => {
   };
 });
 
-// Mock @qckstrt/common environment functions
-jest.mock("@qckstrt/common", () => ({
-  ...jest.requireActual("@qckstrt/common"),
+// Mock @opuspopuli/common environment functions
+jest.mock("@opuspopuli/common", () => ({
+  ...jest.requireActual("@opuspopuli/common"),
   isDevelopment: jest.fn().mockReturnValue(false),
   isTest: jest.fn().mockReturnValue(true),
 }));
@@ -111,7 +111,7 @@ describe("DbService", () => {
 
   describe("cleanDatabase", () => {
     it("should truncate all tables in test environment", async () => {
-      const { isTest } = require("@qckstrt/common");
+      const { isTest } = require("@opuspopuli/common");
       (isTest as jest.Mock).mockReturnValue(true);
 
       mockQueryRaw.mockResolvedValueOnce([
@@ -134,7 +134,7 @@ describe("DbService", () => {
     });
 
     it("should throw error if not in test environment", async () => {
-      const { isTest } = require("@qckstrt/common");
+      const { isTest } = require("@opuspopuli/common");
       (isTest as jest.Mock).mockReturnValue(false);
 
       await expect(service.cleanDatabase()).rejects.toThrow(
@@ -143,7 +143,7 @@ describe("DbService", () => {
     });
 
     it("should handle truncate errors gracefully", async () => {
-      const { isTest } = require("@qckstrt/common");
+      const { isTest } = require("@opuspopuli/common");
       (isTest as jest.Mock).mockReturnValue(true);
 
       mockQueryRaw.mockResolvedValueOnce([{ tablename: "users" }]);

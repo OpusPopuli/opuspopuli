@@ -411,7 +411,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const askButton = screen.getByRole("button", {
         name: /Ask Question \(RAG\)/i,
@@ -424,13 +426,15 @@ describe("RAG Demo Page", () => {
 
     it("should call answerQuery mutation when Ask Question is clicked", async () => {
       mockAnswerQuery.mockResolvedValue({
-        data: { answerQuery: "QCKSTRT is a platform..." },
+        data: { answerQuery: "OPUSPOPULI is a platform..." },
       });
 
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const askButton = screen.getByRole("button", {
         name: /Ask Question \(RAG\)/i,
@@ -444,13 +448,15 @@ describe("RAG Demo Page", () => {
 
     it("should display answer after successful query", async () => {
       mockAnswerQuery.mockResolvedValue({
-        data: { answerQuery: "QCKSTRT is a platform for AI applications" },
+        data: { answerQuery: "OPUSPOPULI is a platform for AI applications" },
       });
 
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const askButton = screen.getByRole("button", {
         name: /Ask Question \(RAG\)/i,
@@ -459,7 +465,7 @@ describe("RAG Demo Page", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("QCKSTRT is a platform for AI applications"),
+          screen.getByText("OPUSPOPULI is a platform for AI applications"),
         ).toBeInTheDocument();
       });
     });
@@ -472,7 +478,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const askButton = screen.getByRole("button", {
         name: /Ask Question \(RAG\)/i,
@@ -501,7 +509,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const searchButton = screen.getByRole("button", { name: /Search Only/i });
       fireEvent.click(searchButton);
@@ -528,7 +538,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const searchButton = screen.getByRole("button", { name: /Search Only/i });
       fireEvent.click(searchButton);
@@ -554,7 +566,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const searchButton = screen.getByRole("button", { name: /Search Only/i });
       fireEvent.click(searchButton);
@@ -584,7 +598,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const searchButton = screen.getByRole("button", { name: /Search Only/i });
       fireEvent.click(searchButton);
@@ -613,7 +629,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const searchButton = screen.getByRole("button", { name: /Search Only/i });
       fireEvent.click(searchButton);
@@ -649,7 +667,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const askButton = screen.getByRole("button", {
         name: /Ask Question \(RAG\)/i,
@@ -667,7 +687,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const searchButton = screen.getByRole("button", { name: /Search Only/i });
       fireEvent.click(searchButton);
@@ -712,7 +734,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const searchButton = screen.getByRole("button", { name: /Search Only/i });
       fireEvent.click(searchButton);
@@ -989,7 +1013,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const askButton = screen.getByRole("button", {
         name: /Ask Question \(RAG\)/i,
@@ -1024,7 +1050,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const searchButton = screen.getByRole("button", { name: /Search Only/i });
       fireEvent.click(searchButton);
@@ -1124,7 +1152,9 @@ describe("RAG Demo Page", () => {
       const queryInput = screen.getByPlaceholderText(
         "e.g., What are the main topics discussed in the document?",
       );
-      fireEvent.change(queryInput, { target: { value: "What is QCKSTRT?" } });
+      fireEvent.change(queryInput, {
+        target: { value: "What is OPUSPOPULI?" },
+      });
 
       const searchButton = screen.getByRole("button", { name: /Search Only/i });
       fireEvent.click(searchButton);

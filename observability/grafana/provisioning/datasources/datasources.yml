@@ -1,7 +1,7 @@
 # Grafana Datasource Provisioning
 # Auto-configures Prometheus and Loki as datasources
 #
-# @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
+# @see https://github.com/CommonwealthLabsCode/opuspopuli/issues/213
 
 apiVersion: 1
 

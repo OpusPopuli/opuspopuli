@@ -3,7 +3,7 @@ import {
   OllamaLLMProvider,
   OllamaConfig,
 } from "../src/providers/ollama.provider";
-import { LLMError } from "@qckstrt/common";
+import { LLMError } from "@opuspopuli/common";
 
 // Mock fetch globally
 const mockFetch = jest.fn();

@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { RegionService } from "../src/region.service";
-import { IRegionProvider, CivicDataType } from "@qckstrt/common";
+import { IRegionProvider, CivicDataType } from "@opuspopuli/common";
 
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({

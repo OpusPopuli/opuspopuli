@@ -5,7 +5,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { IStorageProvider } from '@qckstrt/storage-provider';
+import { IStorageProvider } from '@opuspopuli/storage-provider';
 import {
   DbService,
   UserProfile as DbUserProfile,
@@ -13,7 +13,7 @@ import {
   NotificationPreference as DbNotificationPreference,
   UserConsent as DbUserConsent,
   Prisma,
-} from '@qckstrt/relationaldb-provider';
+} from '@opuspopuli/relationaldb-provider';
 import { IFileConfig } from 'src/config';
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 

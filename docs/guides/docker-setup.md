@@ -43,7 +43,7 @@ docker-compose up -d
 
 Or manually:
 ```bash
-docker exec qckstrt-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull falcon
 ```
 
 ### 3. Verify everything is running
@@ -53,16 +53,16 @@ docker exec qckstrt-ollama ollama pull falcon
 docker-compose ps
 
 # Check PostgreSQL
-docker exec qckstrt-supabase-db pg_isready -U postgres
+docker exec opuspopuli-supabase-db pg_isready -U postgres
 
 # Check pgvector extension
-docker exec qckstrt-supabase-db psql -U postgres -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+docker exec opuspopuli-supabase-db psql -U postgres -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
 
 # Check Ollama
-docker exec qckstrt-ollama ollama list
+docker exec opuspopuli-ollama ollama list
 
 # Check Redis
-docker exec qckstrt-redis redis-cli ping
+docker exec opuspopuli-redis redis-cli ping
 
 # Check Prometheus
 curl http://localhost:9090/-/healthy
@@ -122,8 +122,8 @@ Container logs are automatically collected by Promtail and sent to Loki:
 ```bash
 # Query logs in Grafana
 # Go to Explore > Select Loki > Enter query:
-{service="qckstrt-supabase-db"}
-{container=~"qckstrt-.*"} |= "error"
+{service="opuspopuli-supabase-db"}
+{container=~"opuspopuli-.*"} |= "error"
 ```
 
 ## Configuration
@@ -179,7 +179,7 @@ To use a different Ollama model:
 
 1. Pull the model:
 ```bash
-docker exec qckstrt-ollama ollama pull mistral
+docker exec opuspopuli-ollama ollama pull mistral
 ```
 
 2. Update `apps/backend/.env`:
@@ -221,18 +221,18 @@ All data is persisted in Docker volumes:
 
 | Volume | Purpose |
 |--------|---------|
-| `qckstrt-supabase-db-data` | PostgreSQL database |
-| `qckstrt-supabase-storage-data` | File uploads |
-| `qckstrt-ollama-data` | Downloaded LLM models |
-| `qckstrt-redis-data` | Cache data |
-| `qckstrt-prometheus-data` | Metrics history (15 days) |
-| `qckstrt-loki-data` | Log history |
-| `qckstrt-grafana-data` | Dashboards and settings |
+| `opuspopuli-supabase-db-data` | PostgreSQL database |
+| `opuspopuli-supabase-storage-data` | File uploads |
+| `opuspopuli-ollama-data` | Downloaded LLM models |
+| `opuspopuli-redis-data` | Cache data |
+| `opuspopuli-prometheus-data` | Metrics history (15 days) |
+| `opuspopuli-loki-data` | Log history |
+| `opuspopuli-grafana-data` | Dashboards and settings |
 
 To backup:
 ```bash
-docker volume inspect qckstrt-supabase-db-data
-docker volume inspect qckstrt-ollama-data
+docker volume inspect opuspopuli-supabase-db-data
+docker volume inspect opuspopuli-ollama-data
 ```
 
 ## Troubleshooting
@@ -240,16 +240,16 @@ docker volume inspect qckstrt-ollama-data
 ### Ollama model not found
 ```bash
 # Pull the model again
-docker exec qckstrt-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull falcon
 
 # Verify it's installed
-docker exec qckstrt-ollama ollama list
+docker exec opuspopuli-ollama ollama list
 ```
 
 ### PostgreSQL connection issues
 ```bash
 # Check if it's ready
-docker exec qckstrt-supabase-db pg_isready -U postgres
+docker exec opuspopuli-supabase-db pg_isready -U postgres
 
 # View logs
 docker-compose logs supabase-db
@@ -258,19 +258,19 @@ docker-compose logs supabase-db
 ### pgvector extension not available
 ```bash
 # Check if extension is installed
-docker exec qckstrt-supabase-db psql -U postgres -c "SELECT * FROM pg_available_extensions WHERE name = 'vector';"
+docker exec opuspopuli-supabase-db psql -U postgres -c "SELECT * FROM pg_available_extensions WHERE name = 'vector';"
 
 # Install if needed
-docker exec qckstrt-supabase-db psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
+docker exec opuspopuli-supabase-db psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
 ### Redis connection issues
 ```bash
 # Check Redis is running
-docker exec qckstrt-redis redis-cli ping
+docker exec opuspopuli-redis redis-cli ping
 
 # View Redis info
-docker exec qckstrt-redis redis-cli info
+docker exec opuspopuli-redis redis-cli info
 ```
 
 ### Prometheus not scraping metrics

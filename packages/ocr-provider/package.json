@@ -1,7 +1,7 @@
 {
-  "name": "@qckstrt/ocr-provider",
+  "name": "@opuspopuli/ocr-provider",
   "version": "0.1.0",
-  "description": "OCR provider implementations for QCKSTRT platform",
+  "description": "OCR provider implementations for OPUSPOPULI platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -22,7 +22,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "ocr",
     "tesseract",
     "text-extraction",
@@ -30,7 +30,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@qckstrt/common": "workspace:*",
+    "@opuspopuli/common": "workspace:*",
     "sharp": "^0.33.5",
     "tesseract.js": "^5.1.1"
   },

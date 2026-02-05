@@ -5,7 +5,7 @@ import {
   OcrResult,
   OcrError,
   OcrPreprocessingMetadata,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 import { ImagePreprocessor } from "./preprocessing/image-preprocessor.js";
 
 /**

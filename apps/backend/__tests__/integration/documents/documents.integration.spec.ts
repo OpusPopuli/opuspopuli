@@ -16,7 +16,7 @@ import {
   DocumentStatus,
   DocumentType,
   Prisma,
-} from '@qckstrt/relationaldb-provider';
+} from '@opuspopuli/relationaldb-provider';
 
 describe('Document Integration Tests', () => {
   beforeEach(async () => {

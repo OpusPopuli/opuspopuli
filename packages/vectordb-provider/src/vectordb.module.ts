@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DataSource } from "typeorm";
-import { IVectorDBProvider } from "@qckstrt/common";
+import { IVectorDBProvider } from "@opuspopuli/common";
 import { PgVectorProvider } from "./providers/pgvector.provider.js";
 
 /**

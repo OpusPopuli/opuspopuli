@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { IEmbeddingProvider, ChunkingConfig } from "@qckstrt/common";
+import { IEmbeddingProvider, ChunkingConfig } from "@opuspopuli/common";
 import { EmbeddingsService } from "./embeddings.service.js";
 import { OllamaEmbeddingProvider } from "./providers/ollama.provider.js";
 import { XenovaEmbeddingProvider } from "./providers/xenova.provider.js";

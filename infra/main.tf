@@ -1,5 +1,5 @@
 # =============================================================================
-# QCKSTRT AWS Infrastructure - Cost-Effective MVP
+# OPUSPOPULI AWS Infrastructure - Cost-Effective MVP
 # =============================================================================
 #
 # This configuration deploys a simple, cost-effective AWS infrastructure:
@@ -38,11 +38,11 @@ terraform {
   #   4. Run: terraform init -migrate-state
   # ---------------------------------------------------------------------------
   # backend "s3" {
-  #   bucket         = "qckstrt-terraform-state-ACCOUNT_ID"
+  #   bucket         = "opuspopuli-terraform-state-ACCOUNT_ID"
   #   key            = "env/dev/terraform.tfstate"
   #   region         = "us-east-1"
   #   encrypt        = true
-  #   dynamodb_table = "qckstrt-terraform-locks"
+  #   dynamodb_table = "opuspopuli-terraform-locks"
   # }
 
   required_providers {

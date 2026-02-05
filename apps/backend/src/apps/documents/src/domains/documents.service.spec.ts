@@ -5,11 +5,11 @@ import { ConfigService } from '@nestjs/config';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 import { DocumentsService } from './documents.service';
-import { DbService, DocumentType } from '@qckstrt/relationaldb-provider';
-import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
-import { IStorageProvider } from '@qckstrt/storage-provider';
-import { OcrService } from '@qckstrt/ocr-provider';
-import { ExtractionProvider } from '@qckstrt/extraction-provider';
+import { DbService, DocumentType } from '@opuspopuli/relationaldb-provider';
+import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
+import { IStorageProvider } from '@opuspopuli/storage-provider';
+import { OcrService } from '@opuspopuli/ocr-provider';
+import { ExtractionProvider } from '@opuspopuli/extraction-provider';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 
 // Mock global fetch

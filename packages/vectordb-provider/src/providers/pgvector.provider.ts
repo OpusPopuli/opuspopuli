@@ -3,7 +3,7 @@ import {
   IVectorDBProvider,
   IVectorDocument,
   VectorDBError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 import { DataSource, QueryRunner } from "typeorm";
 
 /**

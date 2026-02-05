@@ -9,7 +9,7 @@ import {
   createCircuitBreaker,
   DEFAULT_CIRCUIT_CONFIGS,
   CircuitBreakerHealth,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 /**
  * Custom fetch function type for HTTP connection pooling support

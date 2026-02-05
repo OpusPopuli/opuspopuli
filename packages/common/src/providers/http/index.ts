@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { getSharedHttpPool, setGlobalHttpPool } from '@qckstrt/common';
+ * import { getSharedHttpPool, setGlobalHttpPool } from '@opuspopuli/common';
  *
  * // Option 1: Use shared pool directly
  * const pool = getSharedHttpPool();

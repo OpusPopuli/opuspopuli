@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DatabaseHealthIndicator } from './database.health';
-import { DbService } from '@qckstrt/relationaldb-provider';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 import {
   createMockDbClient,
   MockDbClient,
-} from '@qckstrt/relationaldb-provider/testing';
+} from '@opuspopuli/relationaldb-provider/testing';
 
 describe('DatabaseHealthIndicator', () => {
   let indicator: DatabaseHealthIndicator;

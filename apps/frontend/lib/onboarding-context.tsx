@@ -24,7 +24,7 @@ const OnboardingContext = createContext<OnboardingContextType | undefined>(
   undefined,
 );
 
-const STORAGE_KEY = "opus_onboarding_completed";
+const STORAGE_KEY = "opuspopuli_onboarding_completed";
 
 function getSnapshot(): boolean {
   return localStorage.getItem(STORAGE_KEY) === "true";

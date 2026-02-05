@@ -19,7 +19,7 @@ async function setupNewUserSession(page: import("@playwright/test").Page) {
   await setupAuthSession(page);
   // Ensure onboarding flag is NOT set (new user)
   await page.addInitScript(() => {
-    localStorage.removeItem("opus_onboarding_completed");
+    localStorage.removeItem("opuspopuli_onboarding_completed");
   });
 }
 
@@ -32,7 +32,7 @@ async function setupReturningUserSession(
 ) {
   await setupAuthSession(page);
   await page.addInitScript(() => {
-    localStorage.setItem("opus_onboarding_completed", "true");
+    localStorage.setItem("opuspopuli_onboarding_completed", "true");
   });
 }
 
@@ -41,7 +41,7 @@ test.describe("Onboarding Flow", () => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
 
-    await expect(page.getByText("Welcome to OPUS")).toBeVisible();
+    await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
     await expect(page.getByText(/civic engagement companion/i)).toBeVisible();
   });
 
@@ -50,7 +50,7 @@ test.describe("Onboarding Flow", () => {
     await page.goto("/onboarding");
 
     // Step 1: Welcome
-    await expect(page.getByText("Welcome to OPUS")).toBeVisible();
+    await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
     await page.getByRole("button", { name: "Next", exact: true }).click();
 
     // Step 2: Scan
@@ -108,7 +108,7 @@ test.describe("Onboarding Flow", () => {
 
     // Go back to step 1
     await page.getByRole("button", { name: /back/i }).click();
-    await expect(page.getByText("Welcome to OPUS")).toBeVisible();
+    await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
   });
 
   test("back button should be disabled on first step", async ({ page }) => {
@@ -125,7 +125,7 @@ test.describe("Onboarding Flow", () => {
 
     // Verify localStorage is empty before skip
     const before = await page.evaluate(() =>
-      localStorage.getItem("opus_onboarding_completed"),
+      localStorage.getItem("opuspopuli_onboarding_completed"),
     );
     expect(before).toBeNull();
 
@@ -136,7 +136,7 @@ test.describe("Onboarding Flow", () => {
       const origSetItem = localStorage.setItem.bind(localStorage);
       localStorage.setItem = (key: string, value: string) => {
         origSetItem(key, value);
-        if (key === "opus_onboarding_completed") {
+        if (key === "opuspopuli_onboarding_completed") {
           (globalThis as unknown as Record<string, string>).__onboardingSet =
             value;
         }
@@ -178,7 +178,7 @@ test.describe("Onboarding - Responsive Design", () => {
     await page.setViewportSize(viewports.mobile);
     await page.goto("/onboarding");
 
-    await expect(page.getByText("Welcome to OPUS")).toBeVisible();
+    await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
     await expect(page.getByRole("button", { name: /skip/i })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Next", exact: true }),
@@ -190,7 +190,7 @@ test.describe("Onboarding - Responsive Design", () => {
     await page.setViewportSize(viewports.tablet);
     await page.goto("/onboarding");
 
-    await expect(page.getByText("Welcome to OPUS")).toBeVisible();
+    await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
   });
 });
 
@@ -200,7 +200,7 @@ test.describe("Onboarding - Accessibility", () => {
   }) => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
-    await expect(page.getByText("Welcome to OPUS")).toBeVisible();
+    await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
 
     const violations = await checkAccessibility(page);
     expect(violations).toEqual([]);

@@ -3,8 +3,8 @@ import {
   RegionService as RegionProviderService,
   CivicDataType,
   SyncResult,
-} from '@qckstrt/region-provider';
-import { DbService } from '@qckstrt/relationaldb-provider';
+} from '@opuspopuli/region-provider';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, CivicDataTypeGQL } from './models/region-info.model';
 import {
   PaginatedPropositions,

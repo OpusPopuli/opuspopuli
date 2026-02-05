@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest a new feature for qckstrt
+about: Suggest a new feature for opuspopuli
 title: '[FEATURE] '
 labels: enhancement
 assignees: ''
@@ -30,7 +30,7 @@ assignees: ''
 
 <!-- Where does this feature belong? -->
 
-- [ ] Platform Core (belongs in upstream qckstrt)
+- [ ] Platform Core (belongs in upstream opuspopuli)
 - [ ] Region-Specific (belongs in a fork)
 - [ ] Not sure
 

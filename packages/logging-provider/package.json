@@ -1,5 +1,5 @@
 {
-  "name": "@qckstrt/logging-provider",
+  "name": "@opuspopuli/logging-provider",
   "version": "0.1.0",
   "description": "Structured logging provider with CloudWatch Logs support",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "logging",
     "cloudwatch",
     "structured-logging",

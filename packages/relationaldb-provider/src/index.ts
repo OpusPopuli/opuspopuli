@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { RelationalDbModule, DbService } from '@qckstrt/relationaldb-provider';
+ * import { RelationalDbModule, DbService } from '@opuspopuli/relationaldb-provider';
  *
  * // In your module
  * @Module({
@@ -37,7 +37,7 @@ export {
   isProduction,
   isTest,
   type Environment,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Database Service and Module
 export { DbService } from "./db.service.js";
@@ -84,6 +84,6 @@ export {
   DocumentType,
 } from "@prisma/client";
 
-// Test utilities are available from "@qckstrt/relationaldb-provider/testing"
+// Test utilities are available from "@opuspopuli/relationaldb-provider/testing"
 // They are NOT exported from the main entry point to avoid loading
 // jest-mock-extended in production environments.

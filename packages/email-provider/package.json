@@ -1,7 +1,7 @@
 {
-  "name": "@qckstrt/email-provider",
+  "name": "@opuspopuli/email-provider",
   "version": "0.1.0",
-  "description": "Email provider implementations for QCKSTRT platform (Resend)",
+  "description": "Email provider implementations for OPUSPOPULI platform (Resend)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -27,14 +27,14 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "email",
     "resend",
     "provider"
   ],
   "license": "MIT",
   "dependencies": {
-    "@qckstrt/common": "workspace:*",
+    "@opuspopuli/common": "workspace:*",
     "resend": "^4.0.0"
   },
   "peerDependencies": {

@@ -266,7 +266,7 @@ if (!consent) {
 
 ```bash
 # Run email provider tests
-pnpm test --filter @qckstrt/email-provider
+pnpm test --filter @opuspopuli/email-provider
 
 # Run backend email domain tests
 cd apps/backend && pnpm test -- --testPathPatterns="domains/email"

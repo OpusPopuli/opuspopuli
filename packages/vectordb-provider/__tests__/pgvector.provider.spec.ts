@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { PgVectorProvider } from "../src/providers/pgvector.provider";
-import { VectorDBError } from "@qckstrt/common";
+import { VectorDBError } from "@opuspopuli/common";
 import { DataSource, QueryRunner } from "typeorm";
 
 // Mock TypeORM

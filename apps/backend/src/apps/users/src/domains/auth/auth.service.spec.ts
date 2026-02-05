@@ -15,7 +15,7 @@ import {
   changePasswordDto,
   confirmForgotPasswordDto,
 } from '../../../../data.spec';
-import { IAuthProvider } from '@qckstrt/auth-provider';
+import { IAuthProvider } from '@opuspopuli/auth-provider';
 import { Role } from 'src/common/enums/role.enum';
 
 describe('AuthService', () => {

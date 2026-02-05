@@ -1,6 +1,6 @@
 import { Module, DynamicModule } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { IOcrProvider } from "@qckstrt/common";
+import { IOcrProvider } from "@opuspopuli/common";
 import { OcrService } from "./ocr.service.js";
 import { TesseractOcrProvider } from "./providers/tesseract.provider.js";
 import { ImagePreprocessor } from "./preprocessing/image-preprocessor.js";

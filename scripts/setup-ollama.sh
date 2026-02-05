@@ -6,21 +6,21 @@
 echo "🚀 Setting up Ollama with Falcon 7B..."
 
 # Check if Ollama container is running
-if ! docker ps | grep -q qckstrt-ollama; then
+if ! docker ps | grep -q opuspopuli-ollama; then
     echo "❌ Ollama container is not running"
     echo "Please run: docker-compose up -d ollama"
     exit 1
 fi
 
 echo "📥 Pulling Falcon 7B model (this may take a few minutes)..."
-docker exec qckstrt-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull falcon
 
 echo "✅ Falcon 7B model installed!"
 echo ""
 echo "You can now use Falcon 7B for LLM inference."
 echo ""
 echo "To verify, run:"
-echo "  docker exec qckstrt-ollama ollama list"
+echo "  docker exec opuspopuli-ollama ollama list"
 echo ""
 echo "To test the model:"
-echo "  docker exec qckstrt-ollama ollama run falcon 'Hello, how are you?'"
+echo "  docker exec opuspopuli-ollama ollama run falcon 'Hello, how are you?'"

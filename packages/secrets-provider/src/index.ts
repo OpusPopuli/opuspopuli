@@ -1,5 +1,5 @@
 /**
- * @qckstrt/secrets-provider
+ * @opuspopuli/secrets-provider
  *
  * Secrets provider implementations for the QCKSTRT platform.
  * Provides pluggable secrets management with multiple backends.
@@ -15,7 +15,7 @@ export {
   ISecretsProvider,
   ISecretsConfig,
   SecretsError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Module
 export { SecretsModule, SECRETS_PROVIDER } from "./secrets.module.js";

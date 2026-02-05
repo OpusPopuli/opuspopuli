@@ -1,7 +1,7 @@
 {
-  "name": "@qckstrt/auth-provider",
+  "name": "@opuspopuli/auth-provider",
   "version": "0.1.0",
-  "description": "Authentication provider implementations for QCKSTRT platform (Supabase Auth)",
+  "description": "Authentication provider implementations for OPUSPOPULI platform (Supabase Auth)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -22,14 +22,14 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "auth",
     "supabase",
     "provider"
   ],
   "license": "MIT",
   "dependencies": {
-    "@qckstrt/common": "workspace:*",
+    "@opuspopuli/common": "workspace:*",
     "@supabase/supabase-js": "^2.49.1"
   },
   "peerDependencies": {

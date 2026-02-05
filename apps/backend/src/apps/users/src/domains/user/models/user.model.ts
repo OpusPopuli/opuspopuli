@@ -1,5 +1,5 @@
 import { Directive, Field, ID, ObjectType } from '@nestjs/graphql';
-import { User as DbUser } from '@qckstrt/relationaldb-provider';
+import { User as DbUser } from '@opuspopuli/relationaldb-provider';
 
 import { IUser } from 'src/interfaces/user.interface';
 

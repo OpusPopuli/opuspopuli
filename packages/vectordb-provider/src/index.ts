@@ -1,5 +1,5 @@
 /**
- * @qckstrt/vectordb-provider
+ * @opuspopuli/vectordb-provider
  *
  * Vector database provider implementations for the QCKSTRT platform.
  * Uses PostgreSQL with pgvector extension (consolidates with Supabase).
@@ -13,7 +13,7 @@ export {
   IVectorDocument,
   IVectorQueryResult,
   VectorDBError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Provider implementations
 export { PgVectorProvider } from "./providers/pgvector.provider.js";

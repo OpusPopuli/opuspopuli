@@ -1,5 +1,5 @@
 /**
- * @qckstrt/common
+ * @opuspopuli/common
  *
  * Shared types, interfaces, and utilities for the QCKSTRT platform.
  * This package provides the core abstractions that allow pluggable

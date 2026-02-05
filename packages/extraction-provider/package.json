@@ -1,7 +1,7 @@
 {
-  "name": "@qckstrt/extraction-provider",
+  "name": "@opuspopuli/extraction-provider",
   "version": "0.1.0",
-  "description": "Text extraction provider implementations for QCKSTRT platform",
+  "description": "Text extraction provider implementations for OPUSPOPULI platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -23,7 +23,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "extraction",
     "text",
     "url",
@@ -31,7 +31,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@qckstrt/common": "workspace:*",
+    "@opuspopuli/common": "workspace:*",
     "cheerio": "^1.1.2",
     "ioredis": "^5.9.2",
     "pdf-parse": "^2.4.5"

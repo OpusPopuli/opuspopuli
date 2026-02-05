@@ -5,7 +5,7 @@ import {
   LOGGER,
   createLogger,
   LogLevel,
-} from '@qckstrt/logging-provider';
+} from '@opuspopuli/logging-provider';
 import { isProduction } from 'src/config/environment.config';
 
 @Injectable()

@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { OcrError, UnsupportedMimeTypeError } from "@qckstrt/common";
+import { OcrError, UnsupportedMimeTypeError } from "@opuspopuli/common";
 
 // Create mock functions at module level for access in tests
 const mockRecognize = jest.fn();

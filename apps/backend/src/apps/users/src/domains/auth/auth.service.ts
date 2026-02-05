@@ -6,7 +6,7 @@ import { Auth } from './models/auth.model';
 
 import { UsersService } from '../user/users.service';
 import { EmailService } from '../email/email.service';
-import { IAuthProvider, IAuthResult } from '@qckstrt/auth-provider';
+import { IAuthProvider, IAuthResult } from '@opuspopuli/auth-provider';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ConfirmForgotPasswordDto } from './dto/confirm-forgot-password.dto';
 import { Role } from 'src/common/enums/role.enum';

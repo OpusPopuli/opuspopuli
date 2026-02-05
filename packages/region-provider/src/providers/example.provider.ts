@@ -8,7 +8,7 @@ import {
   Representative,
   PropositionStatus,
   RegionError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 /**
  * Example Region Provider
@@ -17,7 +17,7 @@ import {
  * Use this as a template when creating your own region provider.
  *
  * To create a custom provider:
- * 1. Create a new package (e.g., @qckstrt/region-provider-california)
+ * 1. Create a new package (e.g., @opuspopuli/region-provider-california)
  * 2. Implement IRegionProvider interface
  * 3. Add scrapers/API calls for your region's data sources
  * 4. Set REGION_PROVIDER=your-region in .env

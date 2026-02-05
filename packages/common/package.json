@@ -1,7 +1,7 @@
 {
-  "name": "@qckstrt/common",
+  "name": "@opuspopuli/common",
   "version": "0.1.0",
-  "description": "Shared types, interfaces, and utilities for QCKSTRT platform",
+  "description": "Shared types, interfaces, and utilities for OPUSPOPULI platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -57,7 +57,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "types",
     "interfaces",
     "llm",

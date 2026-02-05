@@ -4,7 +4,7 @@ import { createMock } from '@golevelup/ts-jest';
 
 import { RegionResolver } from './region.resolver';
 import { RegionDomainService } from './region.service';
-import { CivicDataType } from '@qckstrt/region-provider';
+import { CivicDataType } from '@opuspopuli/region-provider';
 import { CivicDataTypeGQL } from './models/region-info.model';
 
 describe('RegionResolver', () => {

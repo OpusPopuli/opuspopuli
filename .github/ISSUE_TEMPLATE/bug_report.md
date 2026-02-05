@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug to help us improve qckstrt
+about: Report a bug to help us improve opuspopuli
 title: '[BUG] '
 labels: bug
 assignees: ''

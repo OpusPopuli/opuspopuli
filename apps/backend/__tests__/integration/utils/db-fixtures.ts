@@ -16,7 +16,7 @@ import {
   type ConsentStatus,
   type DocumentStatus,
   type DocumentType,
-} from '@qckstrt/relationaldb-provider';
+} from '@opuspopuli/relationaldb-provider';
 import { getDbService } from './db-cleanup';
 
 /**

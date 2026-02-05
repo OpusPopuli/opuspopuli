@@ -5,7 +5,7 @@ import {
   ISendEmailOptions,
   IEmailResult,
   EmailError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 /**
  * Resend Email Provider

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================================================
-# QCKSTRT Application Server Setup
+# OPUSPOPULI Application Server Setup
 # =============================================================================
 # This script sets up:
 # - Docker and Docker Compose
@@ -20,8 +20,8 @@
 # Configuration
 # -----------------------------------------------------------------------------
 
-SETUP_DIR="/opt/qckstrt"
-MARKER_FILE="/opt/qckstrt/.setup-complete"
+SETUP_DIR="/opt/opuspopuli"
+MARKER_FILE="/opt/opuspopuli/.setup-complete"
 LOG_FILE="/var/log/user-data.log"
 MAX_RETRIES=5
 RETRY_DELAY=10
@@ -104,7 +104,7 @@ wait_for_healthy() {
 # -----------------------------------------------------------------------------
 
 log "=========================================="
-log "Starting QCKSTRT App Server Setup"
+log "Starting OPUSPOPULI App Server Setup"
 log "=========================================="
 
 # Check if setup already completed
@@ -381,7 +381,7 @@ services:
     environment:
       STUDIO_PG_META_URL: http://meta:8080
       POSTGRES_PASSWORD: $${POSTGRES_PASSWORD}
-      DEFAULT_ORGANIZATION_NAME: "QCKSTRT"
+      DEFAULT_ORGANIZATION_NAME: "OPUSPOPULI"
       DEFAULT_PROJECT_NAME: "${project}-${stage}"
       SUPABASE_URL: http://kong:8000
       SUPABASE_PUBLIC_URL: http://localhost
@@ -729,7 +729,7 @@ echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$MARKER_FILE"
 PUBLIC_IP=$(curl -sf http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
 
 log "=========================================="
-log_success "QCKSTRT App Server Setup Complete!"
+log_success "OPUSPOPULI App Server Setup Complete!"
 log "=========================================="
 log ""
 if [ -n "$DOMAIN_NAME" ] && [ "$DOMAIN_NAME" != "" ]; then

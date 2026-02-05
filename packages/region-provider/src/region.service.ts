@@ -7,7 +7,7 @@ import {
   Meeting,
   Representative,
   SyncResult,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 /**
  * Region Service

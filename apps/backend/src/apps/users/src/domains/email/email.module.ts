@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { EmailModule as EmailProviderModule } from '@qckstrt/email-provider';
+import { EmailModule as EmailProviderModule } from '@opuspopuli/email-provider';
 
 import { EmailService } from './email.service';
 import { EmailResolver } from './email.resolver';

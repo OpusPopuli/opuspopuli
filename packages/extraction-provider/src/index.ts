@@ -12,7 +12,7 @@ export {
   TextExtractionResult,
   NoExtractorFoundError,
   ExtractionError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Provider types
 export * from "./types.js";

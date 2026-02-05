@@ -1,7 +1,7 @@
 {
-  "name": "@qckstrt/llm-provider",
+  "name": "@opuspopuli/llm-provider",
   "version": "0.1.0",
-  "description": "LLM provider implementations for QCKSTRT platform",
+  "description": "LLM provider implementations for OPUSPOPULI platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -22,14 +22,14 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "llm",
     "ollama",
     "provider"
   ],
   "license": "MIT",
   "dependencies": {
-    "@qckstrt/common": "workspace:*"
+    "@opuspopuli/common": "workspace:*"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",
