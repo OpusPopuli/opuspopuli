@@ -3,20 +3,26 @@
 import { useState, useCallback } from "react";
 import { useCamera } from "@/lib/hooks/useCamera";
 import { useLightingAnalysis } from "@/lib/hooks/useLightingAnalysis";
+import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import { CameraPermission } from "./CameraPermission";
 import { CameraViewfinder } from "./CameraViewfinder";
 import { CapturePreview } from "./CapturePreview";
+import { LocationPrompt } from "./LocationPrompt";
 
-type CaptureStep = "permission" | "capture" | "preview";
+type CaptureStep = "permission" | "capture" | "preview" | "location";
 
 interface CameraCaptureProps {
-  onConfirm: (imageData: ImageData) => void;
+  onConfirm: (
+    imageData: ImageData,
+    location?: { latitude: number; longitude: number },
+  ) => void;
   onCancel?: () => void;
 }
 
 export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
   const camera = useCamera({ facingMode: "environment", resolution: "high" });
   const lighting = useLightingAnalysis();
+  const geolocation = useGeolocation();
 
   const [step, setStep] = useState<CaptureStep>(
     camera.permissionState === "granted" ? "capture" : "permission",
@@ -44,14 +50,29 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
     setStep("capture");
   }, []);
 
-  const handleConfirm = useCallback(async () => {
+  const handleUsePhoto = useCallback(() => {
+    setStep("location");
+  }, []);
+
+  const handleAllowLocation = useCallback(async () => {
     if (!capturedImage) return;
     setIsProcessing(true);
     try {
-      onConfirm(capturedImage);
+      const coords = await geolocation.requestLocation();
+      onConfirm(
+        capturedImage,
+        coords
+          ? { latitude: coords.latitude, longitude: coords.longitude }
+          : undefined,
+      );
     } finally {
       setIsProcessing(false);
     }
+  }, [capturedImage, geolocation, onConfirm]);
+
+  const handleSkipLocation = useCallback(() => {
+    if (!capturedImage) return;
+    onConfirm(capturedImage, undefined);
   }, [capturedImage, onConfirm]);
 
   const handleToggleTorch = useCallback(async () => {
@@ -144,8 +165,21 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
       <CapturePreview
         imageData={capturedImage}
         onRetake={handleRetake}
-        onConfirm={handleConfirm}
+        onConfirm={handleUsePhoto}
         isProcessing={isProcessing}
+      />
+    );
+  }
+
+  // Location prompt
+  if (step === "location") {
+    return (
+      <LocationPrompt
+        permissionState={geolocation.permissionState}
+        isLoading={geolocation.isLoading || isProcessing}
+        error={geolocation.error}
+        onAllow={handleAllowLocation}
+        onSkip={handleSkipLocation}
       />
     );
   }
