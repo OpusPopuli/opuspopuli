@@ -8,7 +8,7 @@ import {
   ID,
   Int,
 } from '@nestjs/graphql';
-import { EmailType as DbEmailType } from '@qckstrt/relationaldb-provider';
+import { EmailType as DbEmailType } from '@opuspopuli/relationaldb-provider';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import {
   GqlContext,

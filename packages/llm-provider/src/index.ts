@@ -1,5 +1,5 @@
 /**
- * @qckstrt/llm-provider
+ * @opuspopuli/llm-provider
  *
  * LLM provider implementations for the QCKSTRT platform.
  * Currently supports Ollama for self-hosted, open-source inference.
@@ -12,7 +12,7 @@ export {
   GenerateOptions,
   GenerateResult,
   LLMError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Provider implementations
 export {

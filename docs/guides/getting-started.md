@@ -34,10 +34,10 @@ docker-compose ps
 Expected output:
 ```
 NAME                      STATUS          PORTS
-qckstrt-supabase-db       Up              0.0.0.0:5432->5432/tcp
-qckstrt-supabase-kong     Up              0.0.0.0:8000->8000/tcp
-qckstrt-supabase-studio   Up              0.0.0.0:3100->3000/tcp
-qckstrt-ollama            Up              0.0.0.0:11434->11434/tcp
+opuspopuli-supabase-db       Up              0.0.0.0:5432->5432/tcp
+opuspopuli-supabase-kong     Up              0.0.0.0:8000->8000/tcp
+opuspopuli-supabase-studio   Up              0.0.0.0:3100->3000/tcp
+opuspopuli-ollama            Up              0.0.0.0:11434->11434/tcp
 ```
 
 ### 3. Pull the Falcon LLM Model
@@ -47,10 +47,10 @@ qckstrt-ollama            Up              0.0.0.0:11434->11434/tcp
 ./scripts/setup-ollama.sh
 
 # Or manually
-docker exec qckstrt-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull falcon
 
 # Verify
-docker exec qckstrt-ollama ollama list
+docker exec opuspopuli-ollama ollama list
 ```
 
 ### 4. Configure Environment
@@ -215,7 +215,7 @@ QCKSTRT comes with sensible defaults for local development:
 ### WebAuthn Configuration (Passkeys)
 ```bash
 # Required for passkey authentication
-WEBAUTHN_RP_NAME=Qckstrt
+WEBAUTHN_RP_NAME=Opus Populi
 WEBAUTHN_RP_ID=localhost
 WEBAUTHN_ORIGIN=http://localhost:3000
 FRONTEND_URL=http://localhost:3000
@@ -355,10 +355,10 @@ query SearchDocuments {
 **Solution**:
 ```bash
 # Pull the model
-docker exec qckstrt-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull falcon
 
 # Verify
-docker exec qckstrt-ollama ollama list
+docker exec opuspopuli-ollama ollama list
 ```
 
 ### PostgreSQL/pgvector connection error
@@ -377,7 +377,7 @@ docker-compose restart supabase-db
 docker-compose logs supabase-db
 
 # Verify pgvector extension
-docker exec qckstrt-supabase-db psql -U postgres -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+docker exec opuspopuli-supabase-db psql -U postgres -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
 ```
 
 ### Port already in use

@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { DbService } from '@qckstrt/relationaldb-provider';
-import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
+import { DbService } from '@opuspopuli/relationaldb-provider';
+import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
 import { ActivityService } from './activity.service';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
 

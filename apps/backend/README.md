@@ -1,4 +1,4 @@
-# QCKSTRT Backend
+# OPUSPOPULI Backend
 
 NestJS microservices with GraphQL Federation and pluggable provider architecture.
 
@@ -99,7 +99,7 @@ SUPABASE_URL=http://localhost:8000
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 # WebAuthn/Passkeys
-WEBAUTHN_RP_NAME=Qckstrt
+WEBAUTHN_RP_NAME=Opus Populi
 WEBAUTHN_RP_ID=localhost
 WEBAUTHN_ORIGIN=http://localhost:3000
 FRONTEND_URL=http://localhost:3000

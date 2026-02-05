@@ -2,17 +2,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { ForbiddenException } from '@nestjs/common';
-import { IEmailProvider } from '@qckstrt/common';
+import { IEmailProvider } from '@opuspopuli/common';
 import {
   DbService,
   EmailType as DbEmailType,
   EmailStatus as DbEmailStatus,
   ConsentType as DbConsentType,
   ConsentStatus as DbConsentStatus,
-} from '@qckstrt/relationaldb-provider';
+} from '@opuspopuli/relationaldb-provider';
 
 import { EmailService } from './email.service';
-import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
+import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
 
 describe('EmailService', () => {
   let service: EmailService;

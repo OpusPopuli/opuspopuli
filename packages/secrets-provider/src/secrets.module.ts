@@ -1,6 +1,6 @@
 import { Module, Global } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { ISecretsProvider } from "@qckstrt/common";
+import { ISecretsProvider } from "@opuspopuli/common";
 import { EnvProvider } from "./providers/env.provider.js";
 import { AWSSecretsProvider } from "./providers/aws-secrets.provider.js";
 import { SupabaseVaultProvider } from "./providers/supabase-vault.provider.js";

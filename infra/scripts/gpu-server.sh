@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================================================
-# QCKSTRT GPU Server Setup
+# OPUSPOPULI GPU Server Setup
 # =============================================================================
 # This script sets up:
 # - vLLM for LLM inference (OpenAI-compatible API)
@@ -21,8 +21,8 @@
 # Configuration
 # -----------------------------------------------------------------------------
 
-SETUP_DIR="/opt/qckstrt"
-MARKER_FILE="/opt/qckstrt/.setup-complete"
+SETUP_DIR="/opt/opuspopuli"
+MARKER_FILE="/opt/opuspopuli/.setup-complete"
 LOG_FILE="/var/log/user-data.log"
 MAX_RETRIES=5
 RETRY_DELAY=10
@@ -105,7 +105,7 @@ wait_for_healthy() {
 # -----------------------------------------------------------------------------
 
 log "=========================================="
-log "Starting QCKSTRT GPU Server Setup"
+log "Starting OPUSPOPULI GPU Server Setup"
 log "=========================================="
 
 # Check if setup already completed
@@ -448,7 +448,7 @@ echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$MARKER_FILE"
 PUBLIC_IP=$(curl -sf http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
 
 log "=========================================="
-log_success "QCKSTRT GPU Server Setup Complete!"
+log_success "OPUSPOPULI GPU Server Setup Complete!"
 log "=========================================="
 log ""
 if [ -n "$DOMAIN_NAME" ] && [ "$DOMAIN_NAME" != "" ]; then

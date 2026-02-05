@@ -1,7 +1,7 @@
 {
-  "name": "@qckstrt/vectordb-provider",
+  "name": "@opuspopuli/vectordb-provider",
   "version": "0.1.0",
-  "description": "Vector database provider implementations for QCKSTRT platform",
+  "description": "Vector database provider implementations for OPUSPOPULI platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -22,14 +22,14 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "qckstrt",
+    "opuspopuli",
     "vector",
     "pgvector",
     "provider"
   ],
   "license": "MIT",
   "dependencies": {
-    "@qckstrt/common": "workspace:*"
+    "@opuspopuli/common": "workspace:*"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",

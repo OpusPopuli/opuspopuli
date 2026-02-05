@@ -17,5 +17,5 @@ variable "aws_profile" {
 variable "project" {
   description = "Project name (used in resource naming)"
   type        = string
-  default     = "qckstrt"
+  default     = "opuspopuli"
 }

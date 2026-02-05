@@ -30,7 +30,7 @@ LLM_MODEL=falcon
 
 **Pull command**:
 ```bash
-docker exec qckstrt-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull falcon
 ```
 
 ---
@@ -49,7 +49,7 @@ docker exec qckstrt-ollama ollama pull falcon
 
 **Pull command**:
 ```bash
-docker exec qckstrt-ollama ollama pull llama3.2
+docker exec opuspopuli-ollama ollama pull llama3.2
 ```
 
 **Configuration**:
@@ -73,7 +73,7 @@ LLM_MODEL=llama3.2
 
 **Pull command**:
 ```bash
-docker exec qckstrt-ollama ollama pull mistral
+docker exec opuspopuli-ollama ollama pull mistral
 ```
 
 **Configuration**:
@@ -97,7 +97,7 @@ LLM_MODEL=mistral
 
 **Pull command**:
 ```bash
-docker exec qckstrt-ollama ollama pull llama3.1
+docker exec opuspopuli-ollama ollama pull llama3.1
 ```
 
 **Configuration**:
@@ -121,7 +121,7 @@ LLM_MODEL=llama3.1
 
 **Pull command**:
 ```bash
-docker exec qckstrt-ollama ollama pull qwen2.5
+docker exec opuspopuli-ollama ollama pull qwen2.5
 ```
 
 **Configuration**:
@@ -137,10 +137,10 @@ LLM_MODEL=qwen2.5
 
 ```bash
 # Example: Switch to Mistral
-docker exec qckstrt-ollama ollama pull mistral
+docker exec opuspopuli-ollama ollama pull mistral
 
 # Verify it's downloaded
-docker exec qckstrt-ollama ollama list
+docker exec opuspopuli-ollama ollama list
 ```
 
 Expected output:
@@ -268,13 +268,13 @@ topK: 100  // More diverse
 
 ```bash
 # Test Falcon directly
-docker exec qckstrt-ollama ollama run falcon "What is RAG?"
+docker exec opuspopuli-ollama ollama run falcon "What is RAG?"
 
 # Test Mistral
-docker exec qckstrt-ollama ollama run mistral "Explain semantic search"
+docker exec opuspopuli-ollama ollama run mistral "Explain semantic search"
 
 # Test with parameters
-docker exec qckstrt-ollama ollama run falcon \
+docker exec opuspopuli-ollama ollama run falcon \
   --temperature 0.3 \
   --num-predict 100 \
   "What is RAG?"
@@ -334,7 +334,7 @@ docker-compose up -d ollama
 
 4. Verify GPU is detected:
 ```bash
-docker exec qckstrt-ollama nvidia-smi
+docker exec opuspopuli-ollama nvidia-smi
 ```
 
 ### CPU Optimization
@@ -355,8 +355,8 @@ Ollama models are already quantized (GGUF format). For even smaller sizes:
 
 ```bash
 # Pull quantized version
-docker exec qckstrt-ollama ollama pull falcon:7b-q4_0  # 4-bit quantization
-docker exec qckstrt-ollama ollama pull falcon:7b-q8_0  # 8-bit quantization
+docker exec opuspopuli-ollama ollama pull falcon:7b-q4_0  # 4-bit quantization
+docker exec opuspopuli-ollama ollama pull falcon:7b-q8_0  # 8-bit quantization
 ```
 
 **Trade-offs**:
@@ -385,7 +385,7 @@ brew install ollama  # macOS
 ollama pull falcon
 
 # Import to Docker
-docker cp ~/.ollama qckstrt-ollama:/root/.ollama
+docker cp ~/.ollama opuspopuli-ollama:/root/.ollama
 ```
 
 ### Out of Memory
@@ -443,7 +443,7 @@ SYSTEM You are an expert assistant specializing in technical documentation.
 ### Step 2: Build Custom Model
 
 ```bash
-docker exec -i qckstrt-ollama ollama create my-custom-model < Modelfile
+docker exec -i opuspopuli-ollama ollama create my-custom-model < Modelfile
 ```
 
 ### Step 3: Configure

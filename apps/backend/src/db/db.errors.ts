@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { Prisma } from '@qckstrt/relationaldb-provider';
+import { Prisma } from '@opuspopuli/relationaldb-provider';
 import { sanitizeDatabaseError } from '../common/exceptions/error-sanitizer';
 
 const logger = new Logger('DbErrors');

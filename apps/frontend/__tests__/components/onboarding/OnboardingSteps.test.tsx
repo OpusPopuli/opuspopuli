@@ -44,7 +44,7 @@ describe("OnboardingSteps", () => {
     it("should render welcome step initially", () => {
       render(<OnboardingSteps />);
 
-      expect(screen.getByText("Welcome to OPUS")).toBeInTheDocument();
+      expect(screen.getByText("Welcome to Opus Populi")).toBeInTheDocument();
     });
 
     it("should render skip button", () => {

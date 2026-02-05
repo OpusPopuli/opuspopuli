@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { XenovaEmbeddingProvider } from "../src/providers/xenova.provider";
-import { EmbeddingError } from "@qckstrt/common";
+import { EmbeddingError } from "@opuspopuli/common";
 
 // Mock @xenova/transformers
 const mockPipeline = jest.fn();

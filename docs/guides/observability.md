@@ -121,7 +121,7 @@ Database query buckets are tighter:
 
 ### How It Works
 
-1. Services write logs to stdout/stderr (JSON format via `@qckstrt/logging-provider`)
+1. Services write logs to stdout/stderr (JSON format via `@opuspopuli/logging-provider`)
 2. Docker captures container logs
 3. Promtail reads logs and ships to Loki
 4. Grafana queries Loki for visualization
@@ -146,16 +146,16 @@ In Grafana (Explore > Loki):
 
 ```logql
 # All logs from a service
-{service="qckstrt-users-service"}
+{service="opuspopuli-users-service"}
 
 # Error logs only
-{container=~"qckstrt-.*"} |= "error"
+{container=~"opuspopuli-.*"} |= "error"
 
 # Filter by log level
-{service="qckstrt-api-gateway"} | json | level="error"
+{service="opuspopuli-api-gateway"} | json | level="error"
 
 # Search for specific text
-{container=~"qckstrt-.*"} |= "authentication failed"
+{container=~"opuspopuli-.*"} |= "authentication failed"
 ```
 
 ### Log Labels
@@ -164,7 +164,7 @@ Promtail automatically adds these labels:
 
 | Label | Description |
 |-------|-------------|
-| `container` | Container name (e.g., `qckstrt-users-service`) |
+| `container` | Container name (e.g., `opuspopuli-users-service`) |
 | `service` | Service name (stripped prefix) |
 | `compose_service` | Docker Compose service name |
 | `level` | Log level (if JSON parsed) |
@@ -276,7 +276,7 @@ scrape_configs:
       - host: unix:///var/run/docker.sock
     relabel_configs:
       - source_labels: ['__meta_docker_container_name']
-        regex: '/qckstrt-.*'
+        regex: '/opuspopuli-.*'
         action: keep
 ```
 
@@ -296,10 +296,10 @@ curl http://localhost:4001/metrics
 
 ```bash
 # Check Promtail is running
-docker logs qckstrt-promtail
+docker logs opuspopuli-promtail
 
 # Verify Docker socket access
-docker exec qckstrt-promtail ls -la /var/run/docker.sock
+docker exec opuspopuli-promtail ls -la /var/run/docker.sock
 ```
 
 ### Missing default metrics

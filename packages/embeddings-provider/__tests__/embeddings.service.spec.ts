@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { EmbeddingsService } from "../src/embeddings.service";
-import { IEmbeddingProvider, ChunkingConfig } from "@qckstrt/common";
+import { IEmbeddingProvider, ChunkingConfig } from "@opuspopuli/common";
 
 // Mock @langchain/textsplitters
 const mockSplitText = jest.fn();

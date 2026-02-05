@@ -1,4 +1,4 @@
-project := qckstrt
+project := opuspopuli
 stage := dev
 
 api_image := $(project)-$(stage)-api

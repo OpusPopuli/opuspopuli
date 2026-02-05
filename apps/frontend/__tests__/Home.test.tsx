@@ -14,8 +14,8 @@ describe("Home Page", () => {
   });
 
   describe("Header section", () => {
-    it("should display Qckstrt title", () => {
-      const title = screen.getByText(/Qckstrt/i);
+    it("should display Opus Populi title", () => {
+      const title = screen.getByText(/Opus Populi/i);
       expect(title).toBeInTheDocument();
     });
 

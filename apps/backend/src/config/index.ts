@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { createLogger, LogLevel } from '@qckstrt/logging-provider';
+import { createLogger, LogLevel } from '@opuspopuli/logging-provider';
 import { DBConnection, DBType } from 'src/common/enums/db.enums';
 
 /**

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { ISecretsProvider, SecretsError } from "@qckstrt/common";
+import { ISecretsProvider, SecretsError } from "@opuspopuli/common";
 
 /**
  * Helper function to get a secret without dependency injection.

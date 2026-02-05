@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { URLExtractor } from "../src/extractors/url.extractor";
-import { ExtractionError, TextExtractionInput } from "@qckstrt/common";
+import { ExtractionError, TextExtractionInput } from "@opuspopuli/common";
 import { ExtractionProvider } from "../src/extraction.provider";
 import { FetchError } from "../src/types";
 

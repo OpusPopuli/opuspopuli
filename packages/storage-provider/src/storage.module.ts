@@ -1,6 +1,6 @@
 import { Module, Global } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { IStorageProvider } from "@qckstrt/common";
+import { IStorageProvider } from "@opuspopuli/common";
 import { SupabaseStorageProvider } from "./providers/supabase.provider.js";
 
 /**

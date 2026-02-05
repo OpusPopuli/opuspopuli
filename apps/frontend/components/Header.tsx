@@ -13,7 +13,7 @@ export function Header() {
           href="/"
           className="text-xl font-bold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
         >
-          Qckstrt
+          Opus Populi
         </Link>
 
         <nav className="flex items-center gap-4">

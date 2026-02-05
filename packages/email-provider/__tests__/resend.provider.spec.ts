@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ResendEmailProvider } from "../src/providers/resend.provider";
-import { EmailError, IEmailConfig } from "@qckstrt/common";
+import { EmailError, IEmailConfig } from "@opuspopuli/common";
 
 // Mock the Resend client
 const mockEmails = {

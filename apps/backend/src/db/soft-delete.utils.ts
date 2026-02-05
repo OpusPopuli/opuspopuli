@@ -1,5 +1,5 @@
 /**
- * Soft Delete Utilities for qckstrt Backend
+ * Soft Delete Utilities for opuspopuli Backend
  *
  * Provides utilities for implementing soft delete functionality across
  * the application. Soft delete logic is implemented at the service layer

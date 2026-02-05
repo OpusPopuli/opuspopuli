@@ -1,5 +1,5 @@
 /**
- * @qckstrt/auth-provider
+ * @opuspopuli/auth-provider
  *
  * Authentication provider implementations for the QCKSTRT platform.
  * Provides pluggable authentication with Supabase Auth.
@@ -12,7 +12,7 @@ export {
   IAuthResult,
   IRegisterUserInput,
   AuthError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Providers
 export { SupabaseAuthProvider } from "./providers/supabase.provider.js";

@@ -2,7 +2,7 @@ import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { User } from './models/user.model';
 import { CreateUserDto } from './dto/create-user.dto';
 
-import { DbService } from '@qckstrt/relationaldb-provider';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 import evaluateDbError from 'src/db/db.errors';
 import { AuthService } from '../auth/auth.service';
 import { UpdateUserDto } from './dto/update-user.dto';

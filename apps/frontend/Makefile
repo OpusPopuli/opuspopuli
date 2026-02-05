@@ -1,4 +1,4 @@
-project := qckstrt
+project := opuspopuli
 stage := dev
 
 nextjs_image := $(project)-$(stage)-nextjs

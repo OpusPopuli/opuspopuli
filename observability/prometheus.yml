@@ -1,7 +1,7 @@
 # Prometheus Configuration
-# Scrapes metrics from QCKSTRT microservices
+# Scrapes metrics from OPUSPOPULI microservices
 #
-# @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
+# @see https://github.com/CommonwealthLabsCode/opuspopuli/issues/213
 
 global:
   scrape_interval: 15s

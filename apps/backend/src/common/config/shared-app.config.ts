@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { LogLevel } from '@qckstrt/logging-provider';
+import { LogLevel } from '@opuspopuli/logging-provider';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { AllExceptionsFilter } from '../exceptions/all-exceptions.filter';
 import { GraphQLExceptionFilter } from '../exceptions/graphql-exception.filter';

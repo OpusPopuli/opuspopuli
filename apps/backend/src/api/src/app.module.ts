@@ -11,7 +11,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { Request, Response } from 'express';
-import { LoggingModule, LogLevel } from '@qckstrt/logging-provider';
+import { LoggingModule, LogLevel } from '@opuspopuli/logging-provider';
 
 import configuration from 'src/config';
 import supabaseConfig from 'src/config/supabase.config';

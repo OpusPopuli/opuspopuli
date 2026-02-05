@@ -6,10 +6,10 @@ import {
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
-import { DbService } from '@qckstrt/relationaldb-provider';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 import { IAuditLogCreate } from '../interfaces/audit.interface';
 import { maskSensitiveData } from '../utils/pii-masker';
-import { ILogger, LOGGER } from '@qckstrt/logging-provider';
+import { ILogger, LOGGER } from '@opuspopuli/logging-provider';
 import { AUDIT_CONFIG } from '../audit/audit.module';
 
 // Helper to convert Record<string, unknown> to JSON-compatible type

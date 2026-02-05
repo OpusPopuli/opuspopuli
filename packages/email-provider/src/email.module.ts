@@ -1,6 +1,6 @@
 import { Module, Global } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { IEmailProvider, IEmailConfig } from "@qckstrt/common";
+import { IEmailProvider, IEmailConfig } from "@opuspopuli/common";
 import { ResendEmailProvider } from "./providers/resend.provider.js";
 
 /**

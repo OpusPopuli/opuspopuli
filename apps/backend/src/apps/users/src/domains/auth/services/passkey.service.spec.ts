@@ -6,8 +6,8 @@ import type {
   AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
 
-import { DbService } from '@qckstrt/relationaldb-provider';
-import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
+import { DbService } from '@opuspopuli/relationaldb-provider';
+import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
 import { PasskeyService } from './passkey.service';
 
 // Mock @simplewebauthn/server

@@ -1,4 +1,4 @@
-# QCKSTRT Documentation
+# OPUSPOPULI Documentation
 
 Welcome to the QCKSTRT documentation. This directory contains all technical documentation for the platform.
 
@@ -89,21 +89,21 @@ This platform is built on three core principles:
 
 ## Platform Packages
 
-The `packages/` directory contains reusable, publishable npm packages (`@qckstrt/*`) that implement the pluggable provider architecture:
+The `packages/` directory contains reusable, publishable npm packages (`@opuspopuli/*`) that implement the pluggable provider architecture:
 
 | Package | Purpose |
 |---------|---------|
-| `@qckstrt/common` | Shared types and interfaces |
-| `@qckstrt/llm-provider` | Ollama LLM integration |
-| `@qckstrt/embeddings-provider` | Xenova/Ollama embeddings |
-| `@qckstrt/vectordb-provider` | pgvector (PostgreSQL) |
-| `@qckstrt/relationaldb-provider` | PostgreSQL (via Supabase) |
-| `@qckstrt/extraction-provider` | Text extraction from URLs |
-| `@qckstrt/storage-provider` | Supabase Storage |
-| `@qckstrt/auth-provider` | Supabase Auth (Passkeys, Magic Links, Password) |
-| `@qckstrt/secrets-provider` | Supabase Vault |
-| `@qckstrt/email-provider` | Resend transactional email |
-| `@qckstrt/region-provider` | Civic data integration (propositions, meetings, representatives) |
+| `@opuspopuli/common` | Shared types and interfaces |
+| `@opuspopuli/llm-provider` | Ollama LLM integration |
+| `@opuspopuli/embeddings-provider` | Xenova/Ollama embeddings |
+| `@opuspopuli/vectordb-provider` | pgvector (PostgreSQL) |
+| `@opuspopuli/relationaldb-provider` | PostgreSQL (via Supabase) |
+| `@opuspopuli/extraction-provider` | Text extraction from URLs |
+| `@opuspopuli/storage-provider` | Supabase Storage |
+| `@opuspopuli/auth-provider` | Supabase Auth (Passkeys, Magic Links, Password) |
+| `@opuspopuli/secrets-provider` | Supabase Vault |
+| `@opuspopuli/email-provider` | Resend transactional email |
+| `@opuspopuli/region-provider` | Civic data integration (propositions, meetings, representatives) |
 
 See [Provider Pattern](architecture/provider-pattern.md) and [Region Provider Guide](guides/region-provider.md) for implementation details.
 

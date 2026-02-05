@@ -1,5 +1,5 @@
 /**
- * @qckstrt/email-provider
+ * @opuspopuli/email-provider
  *
  * Email provider implementations for the QCKSTRT platform.
  * Provides pluggable email sending with Resend.
@@ -12,7 +12,7 @@ export {
   ISendEmailOptions,
   IEmailResult,
   EmailError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Providers
 export { ResendEmailProvider } from "./providers/resend.provider.js";

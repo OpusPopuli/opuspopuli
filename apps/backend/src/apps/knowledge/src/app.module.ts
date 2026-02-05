@@ -12,7 +12,7 @@ import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ApolloServerPluginInlineTrace } from '@apollo/server/plugin/inlineTrace';
-import { LoggingModule } from '@qckstrt/logging-provider';
+import { LoggingModule } from '@opuspopuli/logging-provider';
 import depthLimit from 'graphql-depth-limit';
 import { createQueryComplexityValidationRule } from 'src/common/graphql/query-complexity.plugin';
 

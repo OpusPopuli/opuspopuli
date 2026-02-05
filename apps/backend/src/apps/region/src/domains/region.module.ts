@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { RegionModule } from '@qckstrt/region-provider';
+import { RegionModule } from '@opuspopuli/region-provider';
 import { RegionDomainService } from './region.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';

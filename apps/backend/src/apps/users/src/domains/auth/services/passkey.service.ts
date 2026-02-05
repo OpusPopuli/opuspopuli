@@ -21,7 +21,7 @@ import {
   PasskeyCredential as DbPasskeyCredential,
   WebAuthnChallenge as DbWebAuthnChallenge,
   User as DbUser,
-} from '@qckstrt/relationaldb-provider';
+} from '@opuspopuli/relationaldb-provider';
 import { isProduction } from 'src/config/environment.config';
 
 @Injectable()
@@ -61,7 +61,7 @@ export class PasskeyService {
     // Use configured values or defaults for development
     this.rpId = rpId || 'localhost';
     this.origin = origin || 'http://localhost:3000';
-    this.rpName = rpName || 'Qckstrt';
+    this.rpName = rpName || 'Opus Populi';
 
     // Log warning if using defaults in non-production
     if (!isProd && (!rpId || !origin)) {

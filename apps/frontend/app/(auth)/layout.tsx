@@ -16,7 +16,9 @@ export default function AuthLayout({
           <div className="w-10 h-10 bg-[#1e293b] rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-sm">Q</span>
           </div>
-          <span className="text-[#1e293b] font-semibold text-lg">Qckstrt</span>
+          <span className="text-[#1e293b] font-semibold text-lg">
+            Opus Populi
+          </span>
         </Link>
       </header>
 

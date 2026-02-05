@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LoggerMiddleware } from './logger.middleware';
 import { Request, Response, NextFunction } from 'express';
-import { ILogger, LOGGER } from '@qckstrt/logging-provider';
+import { ILogger, LOGGER } from '@opuspopuli/logging-provider';
 
 describe('LoggerMiddleware', () => {
   let middleware: LoggerMiddleware;

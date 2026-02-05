@@ -4,7 +4,7 @@ import {
   TextExtractionInput,
   TextExtractionResult,
   ExtractionError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 import { ExtractionProvider } from "../extraction.provider.js";
 

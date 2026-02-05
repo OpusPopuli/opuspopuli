@@ -6,15 +6,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { IStorageProvider } from '@qckstrt/storage-provider';
+import { IStorageProvider } from '@opuspopuli/storage-provider';
 import {
   DbService,
   Document as DbDocument,
   Prisma,
-} from '@qckstrt/relationaldb-provider';
-import { OcrService } from '@qckstrt/ocr-provider';
-import { ExtractionProvider } from '@qckstrt/extraction-provider';
-import { ILLMProvider } from '@qckstrt/llm-provider';
+} from '@opuspopuli/relationaldb-provider';
+import { OcrService } from '@opuspopuli/ocr-provider';
+import { ExtractionProvider } from '@opuspopuli/extraction-provider';
+import { ILLMProvider } from '@opuspopuli/llm-provider';
 import { createHash } from 'node:crypto';
 
 import { IFileConfig } from 'src/config';

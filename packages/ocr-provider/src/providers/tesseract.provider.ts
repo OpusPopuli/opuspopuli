@@ -7,7 +7,7 @@ import {
   OcrTextBlock,
   OcrError,
   UnsupportedMimeTypeError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 /**
  * Tesseract.js OCR Provider

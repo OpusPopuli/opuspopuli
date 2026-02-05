@@ -4,7 +4,7 @@ import {
   TextExtractionInput,
   TextExtractionResult,
   NoExtractorFoundError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 /**
  * Text Extraction Service

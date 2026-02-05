@@ -1,6 +1,6 @@
 import { DynamicModule, Module, Provider } from "@nestjs/common";
 import { TextExtractionService } from "./extraction.service.js";
-import { ITextExtractor } from "@qckstrt/common";
+import { ITextExtractor } from "@opuspopuli/common";
 import { URLExtractor } from "./extractors/url.extractor.js";
 import { ExtractionProvider } from "./extraction.provider.js";
 import {

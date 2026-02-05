@@ -14,7 +14,7 @@ import {
   createNotificationPrefs,
   getDbService,
 } from '../utils';
-import { ConsentType, ConsentStatus } from '@qckstrt/relationaldb-provider';
+import { ConsentType, ConsentStatus } from '@opuspopuli/relationaldb-provider';
 
 describe('Profile Integration Tests', () => {
   beforeEach(async () => {

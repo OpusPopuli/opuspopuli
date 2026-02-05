@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { EmbeddingsService } from '@qckstrt/embeddings-provider';
-import { IVectorDBProvider } from '@qckstrt/vectordb-provider';
-import { ILLMProvider } from '@qckstrt/llm-provider';
+import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
+import { IVectorDBProvider } from '@opuspopuli/vectordb-provider';
+import { ILLMProvider } from '@opuspopuli/llm-provider';
 import {
   SearchResult,
   PaginatedSearchResults,

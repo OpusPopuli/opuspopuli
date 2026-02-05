@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
-import { DbService, Prisma } from '@qckstrt/relationaldb-provider';
+import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { DbErrorCodes } from 'src/db/db.errors';
 import {
   createMockDbClient,
   MockDbClient,
-} from '@qckstrt/relationaldb-provider/testing';
+} from '@opuspopuli/relationaldb-provider/testing';
 
 import { AuthService } from '../auth/auth.service';
 

@@ -5,7 +5,7 @@ import {
   TextExtractionInput,
   TextExtractionResult,
   NoExtractorFoundError,
-} from "@qckstrt/common";
+} from "@opuspopuli/common";
 
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({

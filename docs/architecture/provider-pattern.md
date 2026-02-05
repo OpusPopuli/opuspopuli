@@ -64,7 +64,7 @@ export class MyService {
 
 ### 1. Relational Database Provider
 
-**Package**: `@qckstrt/relationaldb-provider`
+**Package**: `@opuspopuli/relationaldb-provider`
 
 **Purpose**: Abstract relational database connections (PostgreSQL via Supabase)
 
@@ -103,7 +103,7 @@ RELATIONAL_DB_PASSWORD=your-super-secret-password
 
 ### 2. Vector Database Provider
 
-**Package**: `@qckstrt/vectordb-provider`
+**Package**: `@opuspopuli/vectordb-provider`
 
 **Purpose**: Abstract vector storage and similarity search (pgvector on PostgreSQL)
 
@@ -156,7 +156,7 @@ VECTOR_DB_DIMENSIONS=384
 
 ### 3. Embeddings Provider
 
-**Package**: `@qckstrt/embeddings-provider`
+**Package**: `@opuspopuli/embeddings-provider`
 
 **Purpose**: Generate vector embeddings from text (Xenova, Ollama)
 
@@ -216,7 +216,7 @@ export class EmbeddingsService {
 
 ### 4. LLM Provider
 
-**Package**: `@qckstrt/llm-provider`
+**Package**: `@opuspopuli/llm-provider`
 
 **Purpose**: Generate text using language models (Ollama with Falcon/Llama/Mistral)
 
@@ -278,7 +278,7 @@ interface GenerateOptions {
 
 ### 5. Authentication Provider
 
-**Package**: `@qckstrt/auth-provider`
+**Package**: `@opuspopuli/auth-provider`
 
 **Purpose**: Abstract user authentication and management with support for passwordless authentication
 
@@ -364,7 +364,7 @@ const {
 
 ### 6. Storage Provider
 
-**Package**: `@qckstrt/storage-provider`
+**Package**: `@opuspopuli/storage-provider`
 
 **Purpose**: Abstract file storage operations (Supabase Storage)
 
@@ -400,7 +400,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-key
 
 ### 7. Email Provider
 
-**Package**: `@qckstrt/email-provider`
+**Package**: `@opuspopuli/email-provider`
 
 **Purpose**: Abstract email sending via transactional email services (Resend)
 
@@ -458,7 +458,7 @@ EMAIL_REPLY_TO=support@commonwealthlabs.io
 
 ### 8. Extraction Provider
 
-**Package**: `@qckstrt/extraction-provider`
+**Package**: `@opuspopuli/extraction-provider`
 
 **Purpose**: Extract text from URLs and PDFs with caching, rate limiting, and retry logic
 
@@ -551,7 +551,7 @@ export class AppModule {}
 
 ### 9. Secrets Provider
 
-**Package**: `@qckstrt/secrets-provider`
+**Package**: `@opuspopuli/secrets-provider`
 
 **Purpose**: Abstract secrets management (Supabase Vault)
 
@@ -587,7 +587,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-key
 
 ### 10. HTTP Connection Pool (Common Utility)
 
-**Package**: `@qckstrt/common`
+**Package**: `@opuspopuli/common`
 
 **Purpose**: Provide HTTP connection pooling for external requests using undici, reducing TCP connection overhead and improving performance for repeated HTTP calls.
 
@@ -603,7 +603,7 @@ import {
   setGlobalHttpPool,      // Set as Node.js global dispatcher
   getGlobalHttpDispatcher, // Get current global dispatcher
   createPooledFetch,      // Create a fetch function bound to a pool
-} from '@qckstrt/common';
+} from '@opuspopuli/common';
 ```
 
 **Configuration**:
@@ -623,7 +623,7 @@ interface HttpPoolConfig {
 
 1. **Shared Pool (Recommended)** - Single pool instance for entire application:
 ```typescript
-import { getSharedHttpPool } from '@qckstrt/common';
+import { getSharedHttpPool } from '@opuspopuli/common';
 
 // Get shared pool (creates on first call)
 const pool = getSharedHttpPool({ connections: 50 });
@@ -632,13 +632,13 @@ const pool = getSharedHttpPool({ connections: 50 });
 const response = await pool.fetch('https://api.example.com/data');
 
 // On application shutdown
-import { closeSharedHttpPool } from '@qckstrt/common';
+import { closeSharedHttpPool } from '@opuspopuli/common';
 await closeSharedHttpPool();
 ```
 
 2. **Global Dispatcher** - Make all Node.js fetch calls use pooling:
 ```typescript
-import { setGlobalHttpPool } from '@qckstrt/common';
+import { setGlobalHttpPool } from '@opuspopuli/common';
 
 // Set once at application startup
 setGlobalHttpPool({ connections: 100 });
@@ -649,7 +649,7 @@ const response = await fetch('https://api.example.com/data');
 
 3. **Custom Pool** - Dedicated pool for specific use case:
 ```typescript
-import { HttpPoolManager } from '@qckstrt/common';
+import { HttpPoolManager } from '@opuspopuli/common';
 
 const pool = new HttpPoolManager({
   connections: 25,
@@ -665,7 +665,7 @@ await pool.close();
 
 4. **Pooled Fetch Function** - Create a standalone fetch bound to a pool:
 ```typescript
-import { createPooledFetch } from '@qckstrt/common';
+import { createPooledFetch } from '@opuspopuli/common';
 
 // Create a fetch function with pooling
 const pooledFetch = createPooledFetch({ connections: 50 });
@@ -679,7 +679,7 @@ const response = await pooledFetch('https://api.example.com/data');
 Providers that make external HTTP requests can accept a custom `fetchFn` for connection pooling:
 
 ```typescript
-import { getSharedHttpPool, ExtractionProvider } from '@qckstrt/common';
+import { getSharedHttpPool, ExtractionProvider } from '@opuspopuli/common';
 
 // Create extraction provider with pooled fetch
 const pool = getSharedHttpPool();

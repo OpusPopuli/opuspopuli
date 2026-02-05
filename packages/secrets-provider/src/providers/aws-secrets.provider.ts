@@ -5,7 +5,7 @@ import {
   GetSecretValueCommand,
   ResourceNotFoundException,
 } from "@aws-sdk/client-secrets-manager";
-import { ISecretsProvider, SecretsError } from "@qckstrt/common";
+import { ISecretsProvider, SecretsError } from "@opuspopuli/common";
 
 interface CacheEntry {
   value: string;

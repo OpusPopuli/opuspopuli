@@ -1,4 +1,4 @@
-# QCKSTRT
+# OPUSPOPULI
 
 A full-stack platform with 100% open-source AI/ML capabilities for semantic search and RAG (Retrieval-Augmented Generation).
 
@@ -99,7 +99,7 @@ All documentation is located in the [`docs/`](docs/) directory:
 
 ```
 qckstrt/
-├── packages/                 # 📦 Reusable platform packages (@qckstrt/*)
+├── packages/                 # 📦 Reusable platform packages (@opuspopuli/*)
 │   ├── common/               # Shared types and interfaces
 │   ├── llm-provider/         # LLM integration (Ollama)
 │   ├── embeddings-provider/  # Embeddings (Xenova, Ollama)
@@ -128,15 +128,15 @@ The `packages/` directory contains reusable, publishable npm packages that provi
 
 | Package | Purpose | Tests |
 |---------|---------|-------|
-| `@qckstrt/common` | Shared types and interfaces | - |
-| `@qckstrt/llm-provider` | Ollama LLM integration | 16 |
-| `@qckstrt/embeddings-provider` | Xenova/Ollama embeddings | 24 |
-| `@qckstrt/vectordb-provider` | pgvector (PostgreSQL) | 19 |
-| `@qckstrt/relationaldb-provider` | PostgreSQL | 7 |
-| `@qckstrt/extraction-provider` | Text extraction (URLs, PDFs) with caching & rate limiting | 116 |
-| `@qckstrt/storage-provider` | Supabase Storage | 17 |
-| `@qckstrt/auth-provider` | Supabase Auth (Passkeys, Magic Links, Password) | 29 |
-| `@qckstrt/secrets-provider` | Supabase Vault | 10 |
+| `@opuspopuli/common` | Shared types and interfaces | - |
+| `@opuspopuli/llm-provider` | Ollama LLM integration | 16 |
+| `@opuspopuli/embeddings-provider` | Xenova/Ollama embeddings | 24 |
+| `@opuspopuli/vectordb-provider` | pgvector (PostgreSQL) | 19 |
+| `@opuspopuli/relationaldb-provider` | PostgreSQL | 7 |
+| `@opuspopuli/extraction-provider` | Text extraction (URLs, PDFs) with caching & rate limiting | 116 |
+| `@opuspopuli/storage-provider` | Supabase Storage | 17 |
+| `@opuspopuli/auth-provider` | Supabase Auth (Passkeys, Magic Links, Password) | 29 |
+| `@opuspopuli/secrets-provider` | Supabase Vault | 10 |
 
 ## Development
 

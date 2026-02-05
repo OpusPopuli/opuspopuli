@@ -86,17 +86,17 @@ All external dependencies use the **Strategy Pattern + Dependency Injection** fo
 
 | Package | Purpose | Provider Token |
 |---------|---------|----------------|
-| `@qckstrt/relationaldb-provider` | Database connections | `RELATIONAL_DB_PROVIDER` |
-| `@qckstrt/vectordb-provider` | Vector storage & search | `VECTOR_DB_PROVIDER` |
-| `@qckstrt/embeddings-provider` | Text embeddings | `EMBEDDINGS_PROVIDER` |
-| `@qckstrt/llm-provider` | LLM inference | `LLM_PROVIDER` |
-| `@qckstrt/storage-provider` | File storage (Supabase) | `STORAGE_PROVIDER` |
-| `@qckstrt/auth-provider` | Authentication (Supabase) | `AUTH_PROVIDER` |
-| `@qckstrt/secrets-provider` | Secrets management (Supabase Vault) | `SECRETS_PROVIDER` |
-| `@qckstrt/extraction-provider` | Text extraction | `EXTRACTION_PROVIDER` |
+| `@opuspopuli/relationaldb-provider` | Database connections | `RELATIONAL_DB_PROVIDER` |
+| `@opuspopuli/vectordb-provider` | Vector storage & search | `VECTOR_DB_PROVIDER` |
+| `@opuspopuli/embeddings-provider` | Text embeddings | `EMBEDDINGS_PROVIDER` |
+| `@opuspopuli/llm-provider` | LLM inference | `LLM_PROVIDER` |
+| `@opuspopuli/storage-provider` | File storage (Supabase) | `STORAGE_PROVIDER` |
+| `@opuspopuli/auth-provider` | Authentication (Supabase) | `AUTH_PROVIDER` |
+| `@opuspopuli/secrets-provider` | Secrets management (Supabase Vault) | `SECRETS_PROVIDER` |
+| `@opuspopuli/extraction-provider` | Text extraction | `EXTRACTION_PROVIDER` |
 
 ### Relational Database Provider
-**Package**: `@qckstrt/relationaldb-provider`
+**Package**: `@opuspopuli/relationaldb-provider`
 
 ```typescript
 interface IRelationalDBProvider {
@@ -113,7 +113,7 @@ interface IRelationalDBProvider {
 **See**: [Data Layer Architecture](data-layer.md)
 
 ### Vector Database Provider
-**Package**: `@qckstrt/vectordb-provider`
+**Package**: `@opuspopuli/vectordb-provider`
 
 ```typescript
 interface IVectorDBProvider {
@@ -132,7 +132,7 @@ interface IVectorDBProvider {
 **See**: [Data Layer Architecture](data-layer.md)
 
 ### Embeddings Provider
-**Package**: `@qckstrt/embeddings-provider`
+**Package**: `@opuspopuli/embeddings-provider`
 
 ```typescript
 interface IEmbeddingProvider {
@@ -150,7 +150,7 @@ interface IEmbeddingProvider {
 **See**: [AI/ML Pipeline](ai-ml-pipeline.md)
 
 ### LLM Provider
-**Package**: `@qckstrt/llm-provider`
+**Package**: `@opuspopuli/llm-provider`
 
 ```typescript
 interface ILLMProvider {
@@ -283,7 +283,7 @@ STORAGE_PROVIDER=supabase
 SECRETS_PROVIDER=supabase
 
 # WebAuthn/Passkeys (required for passkey authentication)
-WEBAUTHN_RP_NAME=Qckstrt
+WEBAUTHN_RP_NAME=Opus Populi
 WEBAUTHN_RP_ID=localhost
 WEBAUTHN_ORIGIN=http://localhost:3000
 FRONTEND_URL=http://localhost:3000

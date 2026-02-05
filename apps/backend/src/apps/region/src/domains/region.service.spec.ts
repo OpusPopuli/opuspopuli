@@ -2,14 +2,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { RegionDomainService } from './region.service';
-import { DbService } from '@qckstrt/relationaldb-provider';
-import { createMockDbService } from '@qckstrt/relationaldb-provider/testing';
+import { DbService } from '@opuspopuli/relationaldb-provider';
+import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
 import {
   RegionService as RegionProviderService,
   CivicDataType,
   PropositionStatus,
   Proposition,
-} from '@qckstrt/region-provider';
+} from '@opuspopuli/region-provider';
 
 /**
  * Tests for Region Domain Service
