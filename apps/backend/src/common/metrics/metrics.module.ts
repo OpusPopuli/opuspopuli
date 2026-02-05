@@ -12,7 +12,7 @@
  * ## Endpoints:
  * - GET /metrics - Prometheus metrics in text format
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/213
  */
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';

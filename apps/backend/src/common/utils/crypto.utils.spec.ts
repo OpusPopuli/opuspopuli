@@ -2,7 +2,7 @@ import { safeCompare, isNonEmptyString } from './crypto.utils';
 
 /**
  * Tests for constant-time comparison utilities
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/195
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/195
  */
 describe('Crypto Utils', () => {
   describe('safeCompare', () => {

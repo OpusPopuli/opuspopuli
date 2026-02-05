@@ -27,7 +27,7 @@ const DEFAULT_SHUTDOWN_TIMEOUT_MS = 25000;
  * 3. Allow NestJS to clean up modules (OnModuleDestroy hooks)
  * 4. Exit process
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/207
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/207
  */
 @Injectable()
 export class GracefulShutdownService implements OnApplicationShutdown {

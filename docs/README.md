@@ -1,6 +1,6 @@
 # OPUSPOPULI Documentation
 
-Welcome to the QCKSTRT documentation. This directory contains all technical documentation for the platform.
+Welcome to the Opus Populi documentation. This directory contains all technical documentation for the platform.
 
 ## Documentation Structure
 
@@ -107,9 +107,9 @@ The `packages/` directory contains reusable, publishable npm packages (`@opuspop
 
 See [Provider Pattern](architecture/provider-pattern.md) and [Region Provider Guide](guides/region-provider.md) for implementation details.
 
-## Commonwealth Labs Network
+## Opus Populi Network
 
-QCKSTRT is the foundation for the Commonwealth Labs Network. See the root-level documentation:
+Opus Populi is the foundation for the Opus Populi Network. See the root-level documentation:
 
 - [**Network Overview**](../NETWORK.md) - Learn about the network and how to join
 - [**Network Terms**](../NETWORK-TERMS.md) - Terms of service for network members

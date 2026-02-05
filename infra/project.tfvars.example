@@ -1,5 +1,5 @@
 # =============================================================================
-# QCKSTRT Infrastructure Variables
+# OPUSPOPULI Infrastructure Variables
 # =============================================================================
 # Copy this file to terraform.tfvars and fill in your values
 #
@@ -12,12 +12,12 @@ aws_profile = "default"
 aws_region  = "us-east-1"
 
 # Project Configuration
-project = "qckstrt"
+project = "opuspopuli"
 stage   = "dev"  # dev, staging, prod
 
 # SSH Key (must exist in AWS EC2 Key Pairs)
-# Create one with: aws ec2 create-key-pair --key-name qckstrt-key --query 'KeyMaterial' --output text > qckstrt-key.pem
-ssh_key_name = "qckstrt-key"
+# Create one with: aws ec2 create-key-pair --key-name opuspopuli-key --query 'KeyMaterial' --output text > opuspopuli-key.pem
+ssh_key_name = "opuspopuli-key"
 
 # Security - REQUIRED: Set to your IP address
 # Find your IP: curl -s https://ifconfig.me

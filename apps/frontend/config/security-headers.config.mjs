@@ -4,7 +4,7 @@
  * Provides Content Security Policy (CSP) and other security headers
  * to protect against XSS, clickjacking, and other web vulnerabilities.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/193
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/193
  * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
  */
 

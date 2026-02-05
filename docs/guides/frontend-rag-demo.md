@@ -58,7 +58,7 @@ Before using the RAG demo, ensure:
 
 **Example Document**:
 ```
-The QCKSTRT platform is a modern application starter kit built on open-source
+The Opus Populi platform is a modern application starter kit built on open-source
 technologies. It provides a RAG (Retrieval-Augmented Generation) pipeline using
 pgvector for vector storage and Ollama for LLM inference.
 
@@ -92,7 +92,7 @@ Key features include:
 - Useful for debugging retrieval
 
 **Example Questions**:
-- "What is QCKSTRT?"
+- "What is Opus Populi?"
 - "What technologies does the platform use?"
 - "How does the RAG pipeline work?"
 
@@ -100,13 +100,13 @@ Key features include:
 
 **RAG Answer**:
 ```
-Based on the indexed documents, QCKSTRT is a modern application
+Based on the indexed documents, Opus Populi is a modern application
 starter kit that provides a RAG pipeline using pgvector and Ollama...
 ```
 
 **Search Results**:
 ```
-Chunk 1: The QCKSTRT platform is a modern application starter kit...
+Chunk 1: The Opus Populi platform is a modern application starter kit...
 Chunk 2: Key features include: GraphQL Federation for API gateway...
 ```
 
@@ -128,7 +128,7 @@ User Input → Chunking → Embedding → Vector Storage
 Question → Embed Query → Vector Search → Build Prompt → LLM → Answer
     │           │              │              │          │       │
     ↓           ↓              ↓              ↓          ↓       ↓
- "What is   [0.2,0.3]     [chunk1,       "Context:   Falcon   "QCKSTRT
+ "What is   [0.2,0.3]     [chunk1,       "Context:   Falcon   "Opus Populi
   this?"                   chunk2]        ..."        7B       is..."
 ```
 
@@ -221,7 +221,7 @@ query SearchText($userId: String!, $query: String!, $count: Int) {
    ```json
    {
      "userId": "test-user-123",
-     "query": "What is QCKSTRT?"
+     "query": "What is Opus Populi?"
    }
    ```
 

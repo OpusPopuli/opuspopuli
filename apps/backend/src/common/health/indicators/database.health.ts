@@ -8,7 +8,7 @@ import { DbService } from '@opuspopuli/relationaldb-provider';
  * Checks PostgreSQL database connectivity by executing a simple query.
  * Used for readiness probes to ensure the service can handle database operations.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/209
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/209
  */
 @Injectable()
 export class DatabaseHealthIndicator {

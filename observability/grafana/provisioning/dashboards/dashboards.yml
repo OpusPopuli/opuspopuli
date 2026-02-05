@@ -1,7 +1,7 @@
 # Grafana Dashboard Provisioning
 # Auto-loads dashboards from the dashboards folder
 #
-# @see https://github.com/CommonwealthLabsCode/opuspopuli/issues/213
+# @see https://github.com/OpusPopuli/opuspopuli/issues/213
 
 apiVersion: 1
 

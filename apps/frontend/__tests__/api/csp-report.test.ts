@@ -2,7 +2,7 @@
  * CSP Report API Route Tests
  *
  * Tests for the Content Security Policy violation reporting endpoint.
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/193
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/193
  *
  * @jest-environment node
  */

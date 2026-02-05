@@ -14,7 +14,7 @@ const DEFAULT_RSS_THRESHOLD = 300 * 1024 * 1024; // 300MB
  * Checks memory usage against configurable thresholds.
  * Helps detect memory leaks and prevents OOM kills.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/209
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/209
  */
 @Injectable()
 export class MemoryHealthIndicator {

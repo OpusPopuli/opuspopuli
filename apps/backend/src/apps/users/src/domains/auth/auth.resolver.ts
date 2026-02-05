@@ -56,7 +56,7 @@ import {
 @Resolver(() => Boolean)
 export class AuthResolver {
   // Use SecureLogger to automatically redact PII (emails, IPs) from log messages
-  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/192
   private readonly logger = new SecureLogger(AuthResolver.name);
   private readonly serviceName = 'users-service';
 
@@ -71,7 +71,7 @@ export class AuthResolver {
 
   /**
    * Create audit context from GraphQL context
-   * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/191
+   * @see https://github.com/OpusPopuli/opuspopuli/issues/191
    */
   private createAuditContext(
     context: GqlContext,
@@ -93,7 +93,7 @@ export class AuthResolver {
   /**
    * Register a new user account
    * Rate limited: 3 attempts per minute
-   * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/187
+   * @see https://github.com/OpusPopuli/opuspopuli/issues/187
    */
   @Public()
   @Throttle({ default: AUTH_THROTTLE.register })
@@ -142,7 +142,7 @@ export class AuthResolver {
    * Login with email and password
    * Rate limited: 5 attempts per minute
    * Includes account lockout after 5 failed attempts
-   * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/187
+   * @see https://github.com/OpusPopuli/opuspopuli/issues/187
    */
   @Public()
   @Throttle({ default: AUTH_THROTTLE.login })
@@ -284,7 +284,7 @@ export class AuthResolver {
   /**
    * Request password reset email
    * Rate limited: 3 attempts per hour (prevents email bombing)
-   * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/187
+   * @see https://github.com/OpusPopuli/opuspopuli/issues/187
    */
   @Public()
   @Throttle({ default: AUTH_THROTTLE.passwordReset })
@@ -431,7 +431,7 @@ export class AuthResolver {
   // ============================================
   // Passkey (WebAuthn) Mutations
   // Rate limited: 10 attempts per minute
-  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/187
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/187
   // ============================================
 
   @Public()
@@ -660,7 +660,7 @@ export class AuthResolver {
   // ============================================
   // Magic Link Mutations
   // Rate limited: 3 attempts per minute
-  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/187
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/187
   // ============================================
 
   @Public()

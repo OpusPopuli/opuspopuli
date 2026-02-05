@@ -25,7 +25,7 @@ const PARTIAL_MASK_FIELDS = new Set(['email', 'phone', 'phonenumber']);
 /**
  * PII patterns for detecting sensitive data in string values.
  * Used to redact PII that appears in log messages and error strings.
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/192
  */
 export const PII_PATTERNS = {
   // Email: matches standard email format
@@ -134,7 +134,7 @@ export function maskIpAddress(ip: string): string {
 /**
  * Redacts PII patterns from a string value.
  * Used for sanitizing log messages that may contain embedded PII.
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/192
  */
 export function redactPiiFromString(value: string): string {
   if (typeof value !== 'string') {
@@ -176,7 +176,7 @@ export function redactPiiFromString(value: string): string {
  * - Objects are processed with maskSensitiveData
  * - Strings are processed with redactPiiFromString
  * - Other types are passed through unchanged
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/192
  */
 export function sanitizeForLogging(data: unknown): unknown {
   if (data === null || data === undefined) {

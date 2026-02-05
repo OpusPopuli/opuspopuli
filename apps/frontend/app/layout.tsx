@@ -22,7 +22,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "OPUS",
-  description: "Civic engagement platform by Commonwealth Labs",
+  description: "Civic engagement platform by Opus Populi",
   manifest: "/api/manifest",
   appleWebApp: {
     capable: true,

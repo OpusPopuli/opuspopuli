@@ -2,7 +2,7 @@
 
 ## Overview
 
-The QCKSTRT frontend is a modern React application built with Next.js 16, React 19, and Tailwind CSS 4. It provides a responsive web interface for interacting with the RAG (Retrieval-Augmented Generation) pipeline.
+The Opus Populi frontend is a modern React application built with Next.js 16, React 19, and Tailwind CSS 4. It provides a responsive web interface for interacting with the RAG (Retrieval-Augmented Generation) pipeline.
 
 ## Technology Stack
 

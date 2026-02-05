@@ -7,7 +7,7 @@ import { registerAs } from '@nestjs/config';
  * Complex or deeply nested queries can consume excessive server resources.
  *
  * SECURITY: Limits query depth and complexity to prevent resource exhaustion attacks.
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/199
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/199
  */
 export interface IQueryComplexityConfig {
   /** Maximum query depth allowed (default: 10) */

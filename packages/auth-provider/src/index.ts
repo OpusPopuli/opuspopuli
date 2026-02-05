@@ -1,7 +1,7 @@
 /**
  * @opuspopuli/auth-provider
  *
- * Authentication provider implementations for the QCKSTRT platform.
+ * Authentication provider implementations for the Opus Populi platform.
  * Provides pluggable authentication with Supabase Auth.
  */
 

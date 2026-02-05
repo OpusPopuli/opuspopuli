@@ -28,9 +28,9 @@ interface GatewayContext {
  * SECURITY: This replaces the frontend HMAC signing (which exposed secrets
  * in the browser) with gateway-side signing.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/185
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/186
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/185
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/186
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/213
  */
 export class HmacRemoteGraphQLDataSource extends RemoteGraphQLDataSource<GatewayContext> {
   private readonly hmacSigner: HmacSignerService;

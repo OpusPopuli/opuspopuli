@@ -9,7 +9,7 @@
  * - Metrics are registered in MetricsModule via makeXxxProvider()
  * - Default Node.js metrics (heap, GC, event loop) enabled by default
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/213
  */
 import { Injectable } from '@nestjs/common';
 import { InjectMetric } from '@willsoto/nestjs-prometheus';

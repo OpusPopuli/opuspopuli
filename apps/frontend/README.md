@@ -32,7 +32,7 @@ The app runs on http://localhost:3000 with hot module replacement (HMR).
 
 ## Authentication
 
-QCKSTRT uses passwordless-first authentication with three methods:
+Opus Populi uses passwordless-first authentication with three methods:
 
 1. **Passkeys (WebAuthn/FIDO2)** - Primary method using biometric/PIN
 2. **Magic Links** - Email-based passwordless login

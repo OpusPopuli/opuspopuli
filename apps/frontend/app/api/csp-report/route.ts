@@ -35,7 +35,7 @@ interface CspViolationReport {
  * In development, violations are logged to console.
  * In production, you may want to forward these to a logging service.
  *
- * @see https://github.com/CommonwealthLabsCode/opuspopuli/issues/193
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/193
  */
 export async function POST(request: NextRequest) {
   try {

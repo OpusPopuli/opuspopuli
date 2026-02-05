@@ -4,7 +4,7 @@
  * Used by the AuditLogService to track security-relevant events
  * throughout the application for compliance and security monitoring.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/191
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/191
  */
 export enum AuditAction {
   // Authentication - Login/Logout

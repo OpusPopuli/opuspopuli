@@ -2466,35 +2466,35 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`);
       },
       {
         revision: "e6285df036e112485c46326f091ee5ab",
-        url: "/logos/png/cwlabs-horizontal-dark.png",
+        url: "/logos/png/opuspopuli-horizontal-dark.png",
       },
       {
         revision: "60d8913257e3ac2ae4f50f9c7252ebed",
-        url: "/logos/png/cwlabs-horizontal-light.png",
+        url: "/logos/png/opuspopuli-horizontal-light.png",
       },
       {
         revision: "bdf1dca382b8223da2e62cf06f45d1ba",
-        url: "/logos/png/cwlabs-mark-dark.png",
+        url: "/logos/png/opuspopuli-mark-dark.png",
       },
       {
         revision: "3302d748cec89b65d00f7f18dcc6871a",
-        url: "/logos/png/cwlabs-mark-light.png",
+        url: "/logos/png/opuspopuli-mark-light.png",
       },
       {
         revision: "be1cf9e1fa872c0077a7e53f3a374a86",
-        url: "/logos/svg/cwlabs-horizontal-dark.svg",
+        url: "/logos/svg/opuspopuli-horizontal-dark.svg",
       },
       {
         revision: "d6c595ea7f7996a2b337bdfa3d25133c",
-        url: "/logos/svg/cwlabs-horizontal-light.svg",
+        url: "/logos/svg/opuspopuli-horizontal-light.svg",
       },
       {
         revision: "4ec42202d85b2418a66b5caad4bd2fd9",
-        url: "/logos/svg/cwlabs-mark-dark.svg",
+        url: "/logos/svg/opuspopuli-mark-dark.svg",
       },
       {
         revision: "656a4614f042b0121d5a4f70effb9e4b",
-        url: "/logos/svg/cwlabs-mark-light.svg",
+        url: "/logos/svg/opuspopuli-mark-light.svg",
       },
       { revision: "8e061864f388b47f33a1c3780831193e", url: "/next.svg" },
     ],

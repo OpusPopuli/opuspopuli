@@ -106,7 +106,7 @@ export class PoliciesGuard<
 
     // SECURITY: Use request.user set by AuthMiddleware after JWT validation
     // Never trust request.headers.user as it can be spoofed
-    // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/183
+    // @see https://github.com/OpusPopuli/opuspopuli/issues/183
     const user: ILogin | undefined = request.user;
 
     if (user && isLoggedIn(user)) {
@@ -137,7 +137,7 @@ export class PoliciesGuard<
 
       if (!allowed) {
         // Audit: Authorization denied - policy check failed
-        // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/191
+        // @see https://github.com/OpusPopuli/opuspopuli/issues/191
         this.auditLogService?.logSync({
           requestId: randomUUID(),
           serviceName: 'policies-guard',

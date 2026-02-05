@@ -1,7 +1,7 @@
 /**
  * @opuspopuli/embeddings-provider
  *
- * Embeddings provider implementations for the QCKSTRT platform.
+ * Embeddings provider implementations for the Opus Populi platform.
  * Supports Xenova (in-process) and Ollama (local server) providers.
  */
 

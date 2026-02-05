@@ -112,7 +112,7 @@ Default Node.js metrics (heap, GC, event loop) are also included.
 
 Pre-configured dashboards are available at http://localhost:3101:
 
-1. **QCKSTRT Services** - Request rates, error rates, latency percentiles
+1. **Opus Populi Services** - Request rates, error rates, latency percentiles
 2. Explore logs via the Loki datasource
 
 ### Loki Logs

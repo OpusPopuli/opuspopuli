@@ -1,10 +1,10 @@
 # Authentication Security Guide
 
-This guide explains the security architecture for authentication in QCKSTRT, including token management, CSRF protection, and the federated GraphQL architecture.
+This guide explains the security architecture for authentication in Opus Populi, including token management, CSRF protection, and the federated GraphQL architecture.
 
 ## Overview
 
-QCKSTRT implements a layered security architecture:
+Opus Populi implements a layered security architecture:
 
 1. **Browser → API Gateway**: CSRF protection + httpOnly cookies
 2. **API Gateway → Microservices**: HMAC request signing
@@ -351,7 +351,7 @@ Inconsistent environment checks can cause:
 - CORS allowing all origins in production
 - Debug information exposed to users
 
-**See**: [Issue #206](https://github.com/CommonwealthLabsCode/qckstrt/issues/206)
+**See**: [Issue #206](https://github.com/OpusPopuli/opuspopuli/issues/206)
 
 ## GraphQL Query Complexity & Depth Limiting
 

@@ -16,7 +16,7 @@ import { isProduction } from './environment.config';
  * - Allows all origins for easier local development
  * - Still enforces credentials and method restrictions
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/189
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/189
  */
 
 /**

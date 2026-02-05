@@ -1,7 +1,7 @@
 /**
  * @opuspopuli/vectordb-provider
  *
- * Vector database provider implementations for the QCKSTRT platform.
+ * Vector database provider implementations for the Opus Populi platform.
  * Uses PostgreSQL with pgvector extension (consolidates with Supabase).
  *
  * To add custom providers, implement IVectorDBProvider interface.

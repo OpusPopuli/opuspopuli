@@ -4,7 +4,7 @@
  * Wraps cockatiel's circuit breaker for consistent usage across providers.
  * Prevents cascading failures when external services are down.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/198
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/198
  */
 
 import {

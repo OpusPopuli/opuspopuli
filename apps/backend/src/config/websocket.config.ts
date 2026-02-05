@@ -6,7 +6,7 @@ import { registerAs } from '@nestjs/config';
  * Configures WebSocket settings for GraphQL subscriptions.
  *
  * SECURITY: WebSocket connections require JWT authentication via connection params.
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/194
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/194
  */
 export interface IWebSocketConfig {
   /** Enable GraphQL subscriptions via WebSocket */

@@ -94,7 +94,7 @@ export class AppModule implements NestModule {
     consumer
       // SECURITY: Validate HMAC signature from API Gateway
       // Only requests signed by the gateway are accepted
-      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/185
+      // @see https://github.com/OpusPopuli/opuspopuli/issues/185
       .apply(HMACMiddleware, LoggerMiddleware)
       .exclude(
         // Health endpoints are excluded from HMAC validation for Kubernetes probes

@@ -6,7 +6,7 @@
  *
  * Uses a Lua script to atomically check and decrement tokens.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/208
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/208
  */
 
 import Redis from "ioredis";

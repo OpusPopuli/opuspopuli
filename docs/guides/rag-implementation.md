@@ -1,6 +1,6 @@
 # RAG Implementation Guide
 
-This guide explains how to use the RAG (Retrieval-Augmented Generation) system in QCKSTRT.
+This guide explains how to use the RAG (Retrieval-Augmented Generation) system in Opus Populi.
 
 ## What is RAG?
 

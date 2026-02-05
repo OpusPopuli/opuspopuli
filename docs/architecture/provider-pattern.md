@@ -2,7 +2,7 @@
 
 ## Overview
 
-QCKSTRT uses the **Strategy Pattern + Dependency Injection** to create a pluggable provider architecture. This allows swapping implementations via configuration without code changes.
+Opus Populi uses the **Strategy Pattern + Dependency Injection** to create a pluggable provider architecture. This allows swapping implementations via configuration without code changes.
 
 ## Design Pattern
 
@@ -439,9 +439,9 @@ export interface IEmailResult {
 ```bash
 # Resend
 RESEND_API_KEY=re_xxxxxxxxxxxxx
-EMAIL_FROM_ADDRESS=noreply@commonwealthlabs.io
-EMAIL_FROM_NAME=Commonwealth Labs
-EMAIL_REPLY_TO=support@commonwealthlabs.io
+EMAIL_FROM_ADDRESS=noreply@opuspopuli.org
+EMAIL_FROM_NAME=Opus Populi
+EMAIL_REPLY_TO=support@opuspopuli.org
 ```
 
 **Module**: `EmailProviderModule`
@@ -737,7 +737,7 @@ const provider = process.env.RELATIONAL_DB_PROVIDER || 'postgres';
 ### 2. Easy Testing
 ```typescript
 // Use test database on PostgreSQL
-RELATIONAL_DB_DATABASE=qckstrt_test
+RELATIONAL_DB_DATABASE=opuspopuli_test
 ```
 
 ### 3. Consolidated Architecture

@@ -153,7 +153,7 @@ describe('PII Masker', () => {
 
   /**
    * Tests for PII pattern-based redaction in strings
-   * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+   * @see https://github.com/OpusPopuli/opuspopuli/issues/192
    */
   describe('PII_PATTERNS', () => {
     it('should have email pattern that matches valid emails', () => {

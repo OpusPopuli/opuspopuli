@@ -1,7 +1,7 @@
 /**
  * @opuspopuli/email-provider
  *
- * Email provider implementations for the QCKSTRT platform.
+ * Email provider implementations for the Opus Populi platform.
  * Provides pluggable email sending with Resend.
  */
 

@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://github.com/CommonwealthLabsCode/qckstrt/tree/main/docs
+    url: https://github.com/OpusPopuli/opuspopuli/tree/main/docs
     about: Check the documentation before opening an issue
   - name: Discussions
-    url: https://github.com/CommonwealthLabsCode/qckstrt/discussions
+    url: https://github.com/OpusPopuli/opuspopuli/discussions
     about: Ask questions and discuss ideas with the community
   - name: Security Vulnerabilities
-    url: https://github.com/CommonwealthLabsCode/qckstrt/security/policy
+    url: https://github.com/OpusPopuli/opuspopuli/security/policy
     about: Report security vulnerabilities privately (do NOT create public issues)

@@ -1,21 +1,21 @@
-# Commonwealth Labs Network
+# Opus Populi Network
 
-The Commonwealth Labs Network is a collaborative ecosystem of civic technology deployments, each serving their own jurisdiction while contributing to a shared platform.
+The Opus Populi Network is a collaborative ecosystem of civic technology deployments, each serving their own jurisdiction while contributing to a shared platform.
 
 ## Overview
 
-Commonwealth Labs provides the open-source QCKSTRT platform as a foundation for civic engagement applications. Organizations can fork the platform, customize it for their jurisdiction, and optionally join the network to benefit from shared infrastructure and community support.
+Opus Populi provides the open-source Opus Populi platform as a foundation for civic engagement applications. Organizations can fork the platform, customize it for their jurisdiction, and optionally join the network to benefit from shared infrastructure and community support.
 
 ## How the Network Works
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    COMMONWEALTH LABS NETWORK                        │
+│                    OPUS POPULI NETWORK                              │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐     │
 │  │   california.   │  │    texas.       │  │   newyork.      │     │
-│  │ commonwealthlabs│  │ commonwealthlabs│  │ commonwealthlabs│     │
+│  │ opuspopuli│  │ opuspopuli│  │ opuspopuli│     │
 │  │      .io        │  │      .io        │  │      .io        │     │
 │  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘     │
 │           │                    │                    │               │
@@ -31,11 +31,11 @@ Commonwealth Labs provides the open-source QCKSTRT platform as a foundation for 
 
 ### Network Benefits
 
-1. **Subdomain Hosting**: Network members receive a `*.commonwealthlabs.io` subdomain
+1. **Subdomain Hosting**: Network members receive a `*.opuspopuli.org` subdomain
 2. **Shared Infrastructure**: Access to shared services and infrastructure guidance
 3. **Community Support**: Collaboration with other civic tech organizations
 4. **Platform Updates**: Receive upstream improvements and security patches
-5. **Visibility**: Listing in the Commonwealth Labs network directory
+5. **Visibility**: Listing in the Opus Populi network directory
 
 ### Independence
 
@@ -58,9 +58,9 @@ Each deployment maintains full independence:
 
 1. **Fork the Repository**
    ```bash
-   # Fork qckstrt on GitHub
-   git clone https://github.com/your-org/qckstrt.git
-   cd qckstrt
+   # Fork opuspopuli on GitHub
+   git clone https://github.com/your-org/opuspopuli.git
+   cd opuspopuli
    ```
 
 2. **Create Your Region Provider**
@@ -81,10 +81,10 @@ Each deployment maintains full independence:
      - Organization name and type (non-profit, government, etc.)
      - Jurisdiction you'll serve
      - Point of contact information
-     - Desired subdomain (e.g., `california.commonwealthlabs.io`)
+     - Desired subdomain (e.g., `california.opuspopuli.org`)
 
 5. **Review and Onboarding**
-   - Commonwealth Labs team reviews the request
+   - Opus Populi team reviews the request
    - Technical verification of deployment
    - Subdomain configuration
    - Addition to network directory
@@ -118,7 +118,7 @@ Regularly sync your fork with upstream:
 
 ```bash
 # Add upstream remote (one time)
-git remote add upstream https://github.com/commonwealthlabs/qckstrt.git
+git remote add upstream https://github.com/opuspopuli/opuspopuli.git
 
 # Fetch and merge updates
 git fetch upstream
@@ -195,7 +195,7 @@ No. The platform is fully open source under AGPL-3.0. You can fork and deploy in
 
 ### Can I use my own domain instead of a subdomain?
 
-Yes. Network members can use their own domain while still participating in the network. The `*.commonwealthlabs.io` subdomain is optional.
+Yes. Network members can use their own domain while still participating in the network. The `*.opuspopuli.org` subdomain is optional.
 
 ### What if I want to modify the platform significantly?
 

@@ -35,7 +35,7 @@ export const THROTTLER_CONFIG = [
  * Note: AllExceptionsFilter must be registered first (processed last)
  * to catch any unhandled exceptions after more specific filters.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/190
  */
 export const SHARED_PROVIDERS = [
   { provide: APP_FILTER, useClass: AllExceptionsFilter },

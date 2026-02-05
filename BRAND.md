@@ -1,6 +1,6 @@
-# Commonwealth Labs Brand Guidelines
+# Opus Populi Brand Guidelines
 
-Complete visual identity system and brand assets for Commonwealth Labs.
+Complete visual identity system and brand assets for Opus Populi.
 
 ## Brand Assets
 
@@ -22,8 +22,8 @@ All logos available in both **SVG** (vector, infinite scaling) and **PNG** (high
 
 | Logo Type | Light Background | Dark Background |
 |-----------|------------------|-----------------|
-| **Horizontal Lockup** | `logos/svg/cwlabs-horizontal-light.svg` | `logos/svg/cwlabs-horizontal-dark.svg` |
-| **Mark Only** | `logos/svg/cwlabs-mark-light.svg` | `logos/svg/cwlabs-mark-dark.svg` |
+| **Horizontal Lockup** | `logos/svg/opuspopuli-horizontal-light.svg` | `logos/svg/opuspopuli-horizontal-dark.svg` |
+| **Mark Only** | `logos/svg/opuspopuli-mark-light.svg` | `logos/svg/opuspopuli-mark-dark.svg` |
 
 - **Horizontal Lockup** - Use for headers, banners, wide spaces
 - **Mark Only** - Use when space is constrained or brand is established
@@ -69,7 +69,7 @@ Available in both SVG and PNG formats:
 
 ## Accessibility (WCAG 2.2 AA)
 
-All Commonwealth Labs sites must meet WCAG 2.2 Level AA accessibility standards. This section documents color combinations that pass contrast requirements.
+All Opus Populi sites must meet WCAG 2.2 Level AA accessibility standards. This section documents color combinations that pass contrast requirements.
 
 ### Contrast Requirements
 
@@ -151,7 +151,7 @@ Gray backgrounds reduce contrast. Use higher opacity values:
 
 ### Testing
 
-Run accessibility tests in any Commonwealth Labs project:
+Run accessibility tests in any Opus Populi project:
 
 ```bash
 npm run e2e:a11y
@@ -200,10 +200,10 @@ Tests check:
 
 | Use Case | Recommended File |
 |----------|------------------|
-| Website Header | `logos/svg/cwlabs-horizontal-light.svg` |
-| Dark Backgrounds | `logos/svg/cwlabs-horizontal-dark.svg` |
+| Website Header | `logos/svg/opuspopuli-horizontal-light.svg` |
+| Dark Backgrounds | `logos/svg/opuspopuli-horizontal-dark.svg` |
 | Social Profile | `favicons/favicon-512.png` |
-| Presentations | `logos/svg/cwlabs-horizontal-light.svg` or `-dark.svg` |
+| Presentations | `logos/svg/opuspopuli-horizontal-light.svg` or `-dark.svg` |
 | Print | Use SVG files for infinite scalability |
 
 ## Frontend Integration
@@ -219,7 +219,7 @@ In the app, reference these as `/favicons/...` and `/logos/...`.
 
 Example usage in React/Next.js:
 ```tsx
-<img src="/logos/svg/cwlabs-horizontal-light.svg" alt="Commonwealth Labs" />
+<img src="/logos/svg/opuspopuli-horizontal-light.svg" alt="Opus Populi" />
 <link rel="icon" href="/favicons/favicon-32.png" />
 ```
 
@@ -233,4 +233,4 @@ Open [`assets/index.html`](assets/index.html) in your browser for the complete i
 
 ## License
 
-All brand assets are open source and available for use by Commonwealth Labs Network members in accordance with the [Network Terms](NETWORK-TERMS.md).
+All brand assets are open source and available for use by Opus Populi Network members in accordance with the [Network Terms](NETWORK-TERMS.md).

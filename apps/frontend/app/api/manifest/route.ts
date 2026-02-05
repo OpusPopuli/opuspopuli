@@ -14,7 +14,7 @@ const products: Record<string, ProductConfig> = {
   default: {
     name: "OPUS",
     short_name: "OPUS",
-    description: "Civic engagement platform by Commonwealth Labs",
+    description: "Civic engagement platform by Opus Populi",
     theme_color: "#6f42c1",
     background_color: "#ffffff",
     start_url: "/",
