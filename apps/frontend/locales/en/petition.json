@@ -44,5 +44,23 @@
       "goBack": "Go Back",
       "tryAgain": "Try Again"
     }
+  },
+  "location": {
+    "prompt": {
+      "title": "Add Scan Location?",
+      "description": "Adding your location helps track where petitions are being circulated. Your exact position is never stored — we round to roughly a city block (~100m) for privacy.",
+      "allow": "Share Location",
+      "skip": "Skip",
+      "loading": "Getting your location..."
+    },
+    "denied": {
+      "title": "Location Access Denied",
+      "description": "Location access was denied. You can continue without sharing your location.",
+      "continueWithout": "Continue Without Location"
+    },
+    "error": {
+      "title": "Location Unavailable",
+      "continueWithout": "Continue Without Location"
+    }
   }
 }
