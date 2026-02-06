@@ -1,6 +1,6 @@
 # Supabase Setup Guide
 
-This guide explains how to use Supabase as an OSS alternative to AWS services in QCKSTRT.
+This guide explains how to use Supabase as an OSS alternative to AWS services in Opus Populi.
 
 ## Overview
 
@@ -97,7 +97,7 @@ FRONTEND_URL=http://localhost:3000
 
 #### Passwordless Authentication
 
-QCKSTRT supports three authentication methods, with passwordless options as the primary approach:
+Opus Populi supports three authentication methods, with passwordless options as the primary approach:
 
 1. **Passkeys (WebAuthn/FIDO2)** - Biometric/PIN authentication using platform authenticators
 2. **Magic Links** - Email-based passwordless login (like Medium)

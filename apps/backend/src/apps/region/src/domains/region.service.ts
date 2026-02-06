@@ -227,7 +227,7 @@ export class RegionDomainService {
    *
    * PERFORMANCE: Uses batch upsert instead of N+1 queries
    * This reduces database round trips from O(2n) to O(2) queries
-   * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/197
+   * @see https://github.com/OpusPopuli/opuspopuli/issues/197
    */
   private async syncMeetings(): Promise<{
     processed: number;
@@ -290,7 +290,7 @@ export class RegionDomainService {
    *
    * PERFORMANCE: Uses batch upsert instead of N+1 queries
    * This reduces database round trips from O(2n) to O(2) queries
-   * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/197
+   * @see https://github.com/OpusPopuli/opuspopuli/issues/197
    */
   private async syncRepresentatives(): Promise<{
     processed: number;

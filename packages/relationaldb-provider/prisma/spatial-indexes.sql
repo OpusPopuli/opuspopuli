@@ -1,6 +1,6 @@
 -- Spatial setup for PostGIS columns
 -- Run after db:push to create indexes and ensure SRID exists
--- Usage: pnpm --filter @qckstrt/relationaldb-provider db:spatial-indexes
+-- Usage: pnpm --filter @opuspopuli/relationaldb-provider db:spatial-indexes
 
 -- Ensure PostGIS extension is enabled
 CREATE EXTENSION IF NOT EXISTS postgis;

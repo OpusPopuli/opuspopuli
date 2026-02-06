@@ -30,7 +30,7 @@ export class DbConfigError extends DbError {
  * Logs full error details server-side and returns sanitized messages
  * to prevent information disclosure about database schema.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/190
  */
 const handleKnownRequestError = (
   error: Prisma.PrismaClientKnownRequestError,

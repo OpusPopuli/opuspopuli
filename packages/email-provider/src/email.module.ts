@@ -27,7 +27,7 @@ import { ResendEmailProvider } from "./providers/resend.provider.js";
             configService.get<string>("email.fromEmail") ||
             "noreply@example.com",
           fromName:
-            configService.get<string>("email.fromName") || "Commonwealth Labs",
+            configService.get<string>("email.fromName") || "Opus Populi",
           replyToEmail: configService.get<string>("email.replyToEmail"),
         };
 

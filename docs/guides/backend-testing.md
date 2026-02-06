@@ -1,6 +1,6 @@
 # Backend Testing Guide
 
-This guide covers the testing strategy and practices for the QCKSTRT backend services.
+This guide covers the testing strategy and practices for the Opus Populi backend services.
 
 ## Overview
 

@@ -1,7 +1,7 @@
 /**
  * @opuspopuli/secrets-provider
  *
- * Secrets provider implementations for the QCKSTRT platform.
+ * Secrets provider implementations for the Opus Populi platform.
  * Provides pluggable secrets management with multiple backends.
  *
  * Providers:

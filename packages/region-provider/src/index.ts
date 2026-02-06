@@ -1,7 +1,7 @@
 /**
  * @opuspopuli/region-provider
  *
- * Region provider implementations for the QCKSTRT platform.
+ * Region provider implementations for the Opus Populi platform.
  * Supports pluggable data sources for civic information (propositions, meetings, representatives).
  *
  * Usage:

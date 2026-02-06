@@ -47,10 +47,10 @@ export class EmailService {
     private readonly configService: ConfigService,
   ) {
     this.platformName =
-      this.configService.get<string>('email.fromName') || 'Commonwealth Labs';
+      this.configService.get<string>('email.fromName') || 'Opus Populi';
     this.frontendUrl =
       this.configService.get<string>('FRONTEND_URL') ||
-      'https://app.commonwealthlabs.io';
+      'https://app.opuspopuli.org';
   }
 
   // ============================================

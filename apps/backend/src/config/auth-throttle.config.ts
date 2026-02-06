@@ -8,7 +8,7 @@ import { registerAs } from '@nestjs/config';
  * - Account enumeration via registration
  * - Email bombing via password reset
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/187
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/187
  */
 export default registerAs('authThrottle', () => ({
   /**

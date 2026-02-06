@@ -1,6 +1,6 @@
 # Docker Health Checks
 
-This guide explains the Docker HEALTHCHECK configurations for the QCKSTRT platform and how to customize them for your environment.
+This guide explains the Docker HEALTHCHECK configurations for the Opus Populi platform and how to customize them for your environment.
 
 ## Why Health Checks Matter
 

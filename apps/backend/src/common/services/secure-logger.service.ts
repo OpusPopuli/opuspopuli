@@ -25,7 +25,7 @@ import { redactPiiFromString, sanitizeForLogging } from '../utils/pii-masker';
  * this.logger.log(`User data: ${JSON.stringify(userData)}`);
  * ```
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/192
  */
 export class SecureLogger implements LoggerService {
   private readonly logger: Logger;

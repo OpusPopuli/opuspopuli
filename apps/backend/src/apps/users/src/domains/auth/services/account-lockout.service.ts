@@ -17,12 +17,12 @@ interface LockoutRecord {
  * Note: This implementation uses in-memory storage.
  * For production with multiple instances, use Redis instead.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/187
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/187
  */
 @Injectable()
 export class AccountLockoutService {
   // Use SecureLogger to automatically redact PII (emails, IPs) from log messages
-  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/192
   private readonly logger = new SecureLogger(AccountLockoutService.name);
   private readonly lockoutRecords = new Map<string, LockoutRecord>();
 

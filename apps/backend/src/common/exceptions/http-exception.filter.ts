@@ -16,7 +16,7 @@ import '../types/express';
  * Handles HTTP exceptions with error sanitization to prevent
  * information disclosure in production.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/190
  */
 @Catch(HttpException)
 export class HttpExceptionFilter implements ExceptionFilter {

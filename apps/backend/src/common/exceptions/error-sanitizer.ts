@@ -7,7 +7,7 @@ import { isProduction } from 'src/config/environment.config';
  * Prevents information disclosure by sanitizing error messages in production.
  * Full error details are logged server-side for debugging.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/190
  */
 
 const logger = new Logger('ErrorSanitizer');

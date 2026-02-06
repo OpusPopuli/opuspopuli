@@ -3,7 +3,7 @@
   <rect width="1584" height="396" fill="#2C3E50"/>
   <circle cx="792" cy="198" r="250" fill="rgba(127, 156, 142, 0.1)"/>
 
-  <!-- CWLabs Logo centered and scaled -->
+  <!-- Opus Populi Logo centered and scaled -->
   <g transform="translate(375, 130.5) scale(1)">
     <path d="M770.991 70.8182V1H789.946V28.2727H815.037V1H833.991V70.8182H815.037V43.5455H789.946V70.8182H770.991Z" fill="white"/>
     <path d="M703.176 16.2727V1H763.858V16.2727H742.858V70.8182H724.176V16.2727H703.176Z" fill="white"/>

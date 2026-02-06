@@ -11,7 +11,7 @@ import {
 describe("Email Templates", () => {
   describe("welcomeEmailTemplate", () => {
     const baseData: WelcomeTemplateData = {
-      platformName: "Commonwealth Labs",
+      platformName: "Opus Populi",
       loginUrl: "https://app.example.com/login",
     };
 
@@ -21,7 +21,7 @@ describe("Email Templates", () => {
         userName: "John Doe",
       });
 
-      expect(result.subject).toBe("Welcome to Commonwealth Labs!");
+      expect(result.subject).toBe("Welcome to Opus Populi!");
       expect(result.html).toContain("Hello John Doe");
       expect(result.text).toContain("Hello John Doe");
       expect(result.html).toContain("https://app.example.com/login");
@@ -31,7 +31,7 @@ describe("Email Templates", () => {
     it("should generate email without user name", () => {
       const result = welcomeEmailTemplate(baseData);
 
-      expect(result.subject).toBe("Welcome to Commonwealth Labs!");
+      expect(result.subject).toBe("Welcome to Opus Populi!");
       expect(result.html).toContain("Hello!");
       expect(result.text).toContain("Hello!");
       expect(result.html).not.toContain("Hello undefined");
@@ -40,8 +40,8 @@ describe("Email Templates", () => {
     it("should include platform name in content", () => {
       const result = welcomeEmailTemplate(baseData);
 
-      expect(result.html).toContain("Commonwealth Labs");
-      expect(result.text).toContain("Commonwealth Labs");
+      expect(result.html).toContain("Opus Populi");
+      expect(result.text).toContain("Opus Populi");
     });
 
     it("should include feature list", () => {
@@ -75,7 +75,7 @@ describe("Email Templates", () => {
       representativeName: "Rep. Smith",
       subject: "Regarding Education Bill",
       message: "I am writing to express my support for the education bill.",
-      platformName: "Commonwealth Labs",
+      platformName: "Opus Populi",
     };
 
     it("should generate email with basic data", () => {
@@ -129,15 +129,11 @@ describe("Email Templates", () => {
     it("should include platform verification notice", () => {
       const result = representativeContactTemplate(baseData);
 
-      expect(result.html).toContain(
-        "This message was sent via Commonwealth Labs",
-      );
+      expect(result.html).toContain("This message was sent via Opus Populi");
       expect(result.html).toContain(
         "The sender's email address has been verified",
       );
-      expect(result.text).toContain(
-        "This message was sent via Commonwealth Labs",
-      );
+      expect(result.text).toContain("This message was sent via Opus Populi");
     });
 
     it("should preserve message formatting", () => {

@@ -13,7 +13,7 @@ import { timingSafeEqual } from 'node:crypto';
  * - Session tokens
  * - Any cryptographic or security-sensitive comparisons
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/195
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/195
  * @see https://codahale.com/a-lesson-in-timing-attacks/
  *
  * @param a - First string to compare

@@ -102,10 +102,10 @@ export class EmailCorrespondenceEntity {
 RESEND_API_KEY=re_xxxxxxxxxxxxx
 
 # Optional (with defaults)
-EMAIL_FROM_ADDRESS=noreply@commonwealthlabs.io
-EMAIL_FROM_NAME=Commonwealth Labs
-EMAIL_REPLY_TO=support@commonwealthlabs.io
-FRONTEND_URL=https://app.commonwealthlabs.io
+EMAIL_FROM_ADDRESS=noreply@opuspopuli.org
+EMAIL_FROM_NAME=Opus Populi
+EMAIL_REPLY_TO=support@opuspopuli.org
+FRONTEND_URL=https://app.opuspopuli.org
 ```
 
 ### Getting a Resend API Key
@@ -232,7 +232,7 @@ export function generateRepresentativeContactEmail(
   message: string,
   propositionTitle?: string,
   senderAddress?: string,
-  platformName: string = "Commonwealth Labs"
+  platformName: string = "Opus Populi"
 ) {
   return {
     html: `...`, // Professional HTML template

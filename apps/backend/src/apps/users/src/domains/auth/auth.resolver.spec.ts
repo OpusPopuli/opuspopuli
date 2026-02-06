@@ -665,7 +665,7 @@ describe('AuthResolver', () => {
     });
 
     // SECURITY: Tests now use request.user (set by passport) instead of headers.user (spoofable)
-    // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/183
+    // @see https://github.com/OpusPopuli/opuspopuli/issues/183
     it('should return user passkeys', async () => {
       const mockCredentials = [{ id: 'cred-1', friendlyName: 'Device 1' }];
       passkeyService.getUserCredentials = jest
@@ -721,7 +721,7 @@ describe('AuthResolver', () => {
     });
 
     // SECURITY: Tests now use request.user (set by passport) instead of headers.user (spoofable)
-    // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/183
+    // @see https://github.com/OpusPopuli/opuspopuli/issues/183
     it('should delete passkey successfully', async () => {
       passkeyService.deleteCredential = jest.fn().mockResolvedValue(true);
 

@@ -1,7 +1,7 @@
 /**
  * @opuspopuli/storage-provider
  *
- * Storage provider implementations for the QCKSTRT platform.
+ * Storage provider implementations for the Opus Populi platform.
  * Provides pluggable file storage with Supabase Storage.
  */
 

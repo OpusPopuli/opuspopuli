@@ -34,7 +34,7 @@ const mockEmailHistory = {
       status: "DELIVERED",
       recipientEmail: "test@example.com",
       recipientName: "Test User",
-      subject: "Welcome to Commonwealth Labs",
+      subject: "Welcome to Opus Populi",
       bodyPreview: "Welcome to our platform! We're excited to have you...",
       representativeId: null,
       representativeName: null,
@@ -206,7 +206,7 @@ test.describe("Email History Page", () => {
     await page.goto("/settings/email-history");
 
     await expect(page.getByText("Regarding Education Bill")).toBeVisible();
-    await expect(page.getByText("Welcome to Commonwealth Labs")).toBeVisible();
+    await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
     await expect(page.getByText("Climate Policy Concerns")).toBeVisible();
   });
 

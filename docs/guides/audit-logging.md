@@ -1,6 +1,6 @@
 # Audit Logging Guide
 
-QCKSTRT includes a comprehensive audit logging system that automatically captures all GraphQL operations for compliance, security monitoring, and debugging purposes.
+Opus Populi includes a comprehensive audit logging system that automatically captures all GraphQL operations for compliance, security monitoring, and debugging purposes.
 
 ## Overview
 

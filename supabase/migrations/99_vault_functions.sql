@@ -1,4 +1,4 @@
--- Supabase Vault Functions for QCKSTRT
+-- Supabase Vault Functions for Opus Populi
 --
 -- This migration creates functions to read secrets from Supabase Vault
 -- (powered by pgsodium extension).

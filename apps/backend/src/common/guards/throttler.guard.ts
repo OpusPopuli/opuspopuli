@@ -15,7 +15,7 @@ import {
  * a full HTTP context, so we create a mock response if needed.
  *
  * Also logs rate limit violations for security monitoring.
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/187
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/187
  */
 @Injectable()
 export class GqlThrottlerGuard extends ThrottlerGuard {

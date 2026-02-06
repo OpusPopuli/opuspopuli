@@ -1,6 +1,6 @@
 # Brand Assets
 
-This directory contains all Commonwealth Labs brand assets.
+This directory contains all Opus Populi brand assets.
 
 **For complete brand guidelines, see [`BRAND.md`](../BRAND.md) in the repository root.**
 

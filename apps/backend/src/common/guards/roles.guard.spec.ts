@@ -23,7 +23,7 @@ describe('RolesGuard', () => {
   });
 
   // SECURITY: Tests now use request.user (set by passport) instead of headers.user (spoofable)
-  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/183
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/183
   const createMockContext = (
     user: ILogin | null | undefined,
     requiredRoles: Role[] | undefined = undefined,

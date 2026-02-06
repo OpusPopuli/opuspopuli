@@ -1,7 +1,7 @@
 /**
  * @opuspopuli/common
  *
- * Shared types, interfaces, and utilities for the QCKSTRT platform.
+ * Shared types, interfaces, and utilities for the Opus Populi platform.
  * This package provides the core abstractions that allow pluggable
  * provider implementations.
  */

@@ -9,7 +9,7 @@
  * security features being disabled or development features being
  * enabled in production.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/206
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/206
  */
 
 /**

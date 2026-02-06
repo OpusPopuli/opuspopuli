@@ -4,7 +4,7 @@ import { WebSocketAuthService } from './websocket-auth.service';
 
 /**
  * Tests for WebSocket Authentication Service
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/194
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/194
  */
 describe('WebSocketAuthService', () => {
   let service: WebSocketAuthService;

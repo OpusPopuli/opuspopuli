@@ -1,10 +1,10 @@
 # Secrets Management
 
-This guide covers how to configure and use secrets management in QCKSTRT.
+This guide covers how to configure and use secrets management in Opus Populi.
 
 ## Overview
 
-QCKSTRT provides a pluggable secrets management system with multiple provider backends. As a starter kit designed to be forked and customized, we support different infrastructure choices:
+Opus Populi provides a pluggable secrets management system with multiple provider backends. As a starter kit designed to be forked and customized, we support different infrastructure choices:
 
 | Provider | `SECRETS_PROVIDER=` | Use Case |
 |----------|---------------------|----------|

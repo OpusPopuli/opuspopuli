@@ -1,13 +1,13 @@
 # Commercial Licensing
 
-The QCKSTRT platform is available under two licensing options:
+The Opus Populi platform is available under two licensing options:
 
 1. **Open Source License (AGPL-3.0)** - Free for open source and non-commercial use
 2. **Commercial License** - For proprietary/commercial applications
 
 ## Open Source License (AGPL-3.0)
 
-The default license for QCKSTRT is the [GNU Affero General Public License v3.0](LICENSE).
+The default license for Opus Populi is the [GNU Affero General Public License v3.0](LICENSE).
 
 Under AGPL-3.0, you can freely:
 - Use the platform for any purpose
@@ -153,11 +153,11 @@ Yes. You can start with AGPL-3.0 and upgrade to a commercial license at any time
 
 ### What about contributions I make under AGPL-3.0?
 
-Contributions to the upstream repository are made under AGPL-3.0 with a Contributor License Agreement (CLA). This allows Commonwealth Labs to offer commercial licensing while keeping the project open source.
+Contributions to the upstream repository are made under AGPL-3.0 with a Contributor License Agreement (CLA). This allows Opus Populi to offer commercial licensing while keeping the project open source.
 
 ### Does the commercial license apply to my custom code?
 
-The commercial license covers the QCKSTRT platform code. Your custom code (region providers, custom features) can be licensed however you choose.
+The commercial license covers the Opus Populi platform code. Your custom code (region providers, custom features) can be licensed however you choose.
 
 ### Can I get a trial commercial license?
 
@@ -165,9 +165,9 @@ Yes. We offer 90-day evaluation licenses for organizations considering commercia
 
 ## Contributor License Agreement
 
-Contributors to the QCKSTRT platform sign a CLA that:
-- Grants Commonwealth Labs the right to sublicense contributions
-- Allows Commonwealth Labs to offer commercial licenses
+Contributors to the Opus Populi platform sign a CLA that:
+- Grants Opus Populi the right to sublicense contributions
+- Allows Opus Populi to offer commercial licenses
 - Preserves the contributor's rights to their contributions
 - Ensures the project remains open source under AGPL-3.0
 
@@ -181,7 +181,7 @@ This dual-licensing model:
 
 For commercial licensing inquiries:
 
-**Email:** licensing@commonwealthlabs.io
+**Email:** licensing@opuspopuli.org
 
 **Request a Quote:**
 Please include:
@@ -199,7 +199,7 @@ Please include:
 
 ### Trademark
 
-"QCKSTRT," "Commonwealth Labs," and associated logos are trademarks of Commonwealth Labs. Commercial license holders receive limited trademark rights as specified in their license agreement.
+"Opus Populi," "Opus Populi," and associated logos are trademarks of Opus Populi. Commercial license holders receive limited trademark rights as specified in their license agreement.
 
 ### Export Compliance
 

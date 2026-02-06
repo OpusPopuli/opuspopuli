@@ -38,7 +38,7 @@ export interface GqlContext {
  * @returns The authenticated user's ILogin information
  * @throws UserInputError if user is not authenticated
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/183
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/183
  *
  * @example
  * ```typescript

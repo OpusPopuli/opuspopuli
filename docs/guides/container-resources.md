@@ -1,6 +1,6 @@
 # Container Resource Limits
 
-This guide explains the container resource limits configured for the QCKSTRT platform and how to tune them for your environment.
+This guide explains the container resource limits configured for the Opus Populi platform and how to tune them for your environment.
 
 ## Why Resource Limits Matter
 

@@ -6,8 +6,8 @@ A full-stack platform with 100% open-source AI/ML capabilities for semantic sear
 
 ```bash
 # Clone and install
-git clone https://github.com/rodneygagnon/qckstrt.git
-cd qckstrt
+git clone https://github.com/rodneygagnon/opuspopuli.git
+cd opuspopuli
 npm install
 
 # Start infrastructure
@@ -98,7 +98,7 @@ All documentation is located in the [`docs/`](docs/) directory:
 ## Project Structure
 
 ```
-qckstrt/
+opuspopuli/
 ├── packages/                 # 📦 Reusable platform packages (@opuspopuli/*)
 │   ├── common/               # Shared types and interfaces
 │   ├── llm-provider/         # LLM integration (Ollama)
@@ -187,9 +187,9 @@ GNU Affero General Public License v3.0 (AGPL-3.0) - See [LICENSE](LICENSE) file 
 
 For commercial licensing options, see [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
 
-## Commonwealth Labs Network
+## Opus Populi Network
 
-QCKSTRT is the foundation for the Commonwealth Labs Network - a collaborative ecosystem of civic technology deployments serving different jurisdictions.
+Opus Populi is the foundation for the Opus Populi Network - a collaborative ecosystem of civic technology deployments serving different jurisdictions.
 
 - **[Network Overview](NETWORK.md)** - Learn about the network and how to join
 - **[Network Terms](NETWORK-TERMS.md)** - Terms of service for network members
@@ -198,5 +198,5 @@ QCKSTRT is the foundation for the Commonwealth Labs Network - a collaborative ec
 ## Support
 
 - 📖 Documentation: [docs/README.md](docs/README.md)
-- 🐛 Issues: [GitHub Issues](https://github.com/rodneygagnon/qckstrt/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/rodneygagnon/qckstrt/discussions)
+- 🐛 Issues: [GitHub Issues](https://github.com/rodneygagnon/opuspopuli/issues)
+- 💬 Discussions: [GitHub Discussions](https://github.com/rodneygagnon/opuspopuli/discussions)

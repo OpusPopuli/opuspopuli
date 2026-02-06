@@ -1,6 +1,6 @@
-# Contributing to QCKSTRT
+# Contributing to Opus Populi
 
-Thank you for your interest in contributing to QCKSTRT! This document explains how to contribute effectively, with special attention to our **fork model** for jurisdiction deployments.
+Thank you for your interest in contributing to Opus Populi! This document explains how to contribute effectively, with special attention to our **fork model** for jurisdiction deployments.
 
 ## Table of Contents
 
@@ -14,14 +14,14 @@ Thank you for your interest in contributing to QCKSTRT! This document explains h
 
 ## The Fork Model
 
-QCKSTRT is designed as a **forkable platform** for civic technology. This means:
+Opus Populi is designed as a **forkable platform** for civic technology. This means:
 
 - **Upstream (this repository)**: Contains the core platform - authentication, AI/ML pipeline, UI components, infrastructure templates, and provider implementations
 - **Forks**: Contain region-specific implementations - scrapers, local data, custom configurations, and deployment specifics
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    UPSTREAM (qckstrt)                       │
+│                    UPSTREAM (opuspopuli)                       │
 │  Platform Core: Auth, AI/ML, UI, Providers, Infrastructure  │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -40,7 +40,7 @@ QCKSTRT is designed as a **forkable platform** for civic technology. This means:
 1. **Platform improvements benefit everyone**: Bug fixes and new features flow to all regions
 2. **Region data stays local**: Each region controls their own scrapers and data
 3. **Distributed infrastructure**: Each deployment runs on its own infrastructure
-4. **Unified branding**: All deployments share the Commonwealth Labs network identity
+4. **Unified branding**: All deployments share the Opus Populi network identity
 
 ## What Belongs Where
 
@@ -84,8 +84,8 @@ Ask yourself: "Would this benefit ALL regions, or just mine?"
 
 ```bash
 # Clone the repository
-git clone https://github.com/CommonwealthLabsCode/qckstrt.git
-cd qckstrt
+git clone https://github.com/OpusPopuli/opuspopuli.git
+cd opuspopuli
 
 # Install dependencies
 pnpm install
@@ -103,11 +103,11 @@ See [docs/guides/getting-started.md](docs/guides/getting-started.md) for detaile
 
 ```bash
 # Fork the repository on GitHub, then:
-git clone https://github.com/YOUR-ORG/qckstrt.git
-cd qckstrt
+git clone https://github.com/YOUR-ORG/opuspopuli.git
+cd opuspopuli
 
 # Add upstream remote
-git remote add upstream https://github.com/CommonwealthLabsCode/qckstrt.git
+git remote add upstream https://github.com/OpusPopuli/opuspopuli.git
 
 # Create your region from the example template
 cp -r regions/example regions/your-region
@@ -211,13 +211,13 @@ test: add profile completion tests
 - Be respectful and inclusive
 - Follow our [Code of Conduct](CODE_OF_CONDUCT.md)
 - Report security issues privately (see [SECURITY.md](SECURITY.md))
-- Ask questions in [GitHub Discussions](https://github.com/CommonwealthLabsCode/qckstrt/discussions)
+- Ask questions in [GitHub Discussions](https://github.com/OpusPopuli/opuspopuli/discussions)
 
 ## Getting Help
 
 - **Documentation**: [docs/](docs/)
-- **Discussions**: [GitHub Discussions](https://github.com/CommonwealthLabsCode/qckstrt/discussions)
-- **Issues**: [GitHub Issues](https://github.com/CommonwealthLabsCode/qckstrt/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/OpusPopuli/opuspopuli/discussions)
+- **Issues**: [GitHub Issues](https://github.com/OpusPopuli/opuspopuli/issues)
 
 ## License
 
@@ -225,4 +225,4 @@ By contributing, you agree that your contributions will be licensed under the [A
 
 ---
 
-Thank you for contributing to QCKSTRT and helping build better civic technology!
+Thank you for contributing to Opus Populi and helping build better civic technology!

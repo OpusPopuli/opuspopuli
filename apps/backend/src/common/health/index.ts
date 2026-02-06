@@ -24,7 +24,7 @@
  * export class AppModule {}
  * ```
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/209
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/209
  */
 export { HealthModule, HealthModuleOptions } from './health.module';
 export { HealthController } from './health.controller';

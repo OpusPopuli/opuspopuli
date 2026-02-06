@@ -3,7 +3,7 @@ import * as piiMasker from '../utils/pii-masker';
 
 /**
  * Tests for SecureLogger - PII-redacting logger wrapper
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/192
  */
 describe('SecureLogger', () => {
   let logger: SecureLogger;

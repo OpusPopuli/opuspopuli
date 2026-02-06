@@ -13,7 +13,7 @@ import { softDeleteWhere, softDeleteData } from 'src/db/soft-delete.utils';
 @Injectable()
 export class UsersService {
   // Use SecureLogger to automatically redact PII (emails, passwords) from log messages
-  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/192
   private readonly logger = new SecureLogger(UsersService.name);
 
   constructor(
