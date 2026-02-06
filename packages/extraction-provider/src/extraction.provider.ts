@@ -5,7 +5,7 @@
  * Provides URL fetching with caching, rate limiting, circuit breaker,
  * and retry logic, plus PDF text extraction and HTML element selection.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/198
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/198
  */
 
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";

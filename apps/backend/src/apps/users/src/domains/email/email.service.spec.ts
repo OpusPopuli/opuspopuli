@@ -89,8 +89,8 @@ describe('EmailService', () => {
   const mockConfigService = {
     get: jest.fn().mockImplementation((key: string) => {
       const config: Record<string, string> = {
-        'email.fromName': 'Commonwealth Labs',
-        FRONTEND_URL: 'https://app.commonwealthlabs.io',
+        'email.fromName': 'Opus Populi',
+        FRONTEND_URL: 'https://app.opuspopuli.org',
       };
       return config[key];
     }),

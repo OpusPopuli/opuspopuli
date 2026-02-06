@@ -6,7 +6,7 @@ import { registerAs } from '@nestjs/config';
  * Configures circuit breaker settings for external service resilience.
  * Each service has its own threshold and recovery time based on its characteristics.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/198
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/198
  */
 export interface ICircuitBreakerConfig {
   /** Enable circuit breaker logging */

@@ -4,7 +4,7 @@ This guide covers configuring and switching between different LLM models using O
 
 ## Overview
 
-QCKSTRT uses Ollama as the LLM inference engine, which supports running any open-source model locally. The default model is Falcon 7B, but you can easily switch to other models like Llama, Mistral, or Qwen.
+Opus Populi uses Ollama as the LLM inference engine, which supports running any open-source model locally. The default model is Falcon 7B, but you can easily switch to other models like Llama, Mistral, or Qwen.
 
 ## Default Configuration
 

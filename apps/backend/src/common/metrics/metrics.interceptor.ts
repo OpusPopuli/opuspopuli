@@ -4,7 +4,7 @@
  * NestJS interceptor that automatically records HTTP request metrics.
  * Applied globally to capture all incoming requests.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/213
  */
 import {
   Injectable,

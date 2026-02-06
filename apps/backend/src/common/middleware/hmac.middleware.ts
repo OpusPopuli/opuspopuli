@@ -74,7 +74,7 @@ export class HMACMiddleware implements NestMiddleware {
       }
 
       // Use constant-time comparison to prevent timing attacks
-      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/195
+      // @see https://github.com/OpusPopuli/opuspopuli/issues/195
       if (signatureHash && safeCompare(signatureHash, credentials.signature)) {
         return next();
       }

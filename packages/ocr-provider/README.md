@@ -1,6 +1,6 @@
 # @opuspopuli/ocr-provider
 
-OCR (Optical Character Recognition) provider package for the qckstrt platform. Provides text extraction from images using Tesseract.js.
+OCR (Optical Character Recognition) provider package for the Opus Populi platform. Provides text extraction from images using Tesseract.js.
 
 ## Features
 

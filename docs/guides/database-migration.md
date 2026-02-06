@@ -4,7 +4,7 @@ This guide covers migrating between different database configurations.
 
 ## Architecture Overview
 
-QCKSTRT uses PostgreSQL with pgvector for both relational and vector data, consolidating all data in a single database.
+Opus Populi uses PostgreSQL with pgvector for both relational and vector data, consolidating all data in a single database.
 
 ```
 PostgreSQL (via Supabase)
@@ -64,7 +64,7 @@ NODE_ENV=production
 RELATIONAL_DB_PROVIDER=postgres
 RELATIONAL_DB_HOST=opuspopuli-prod.xxxx.rds.amazonaws.com
 RELATIONAL_DB_PORT=5432
-RELATIONAL_DB_DATABASE=qckstrt
+RELATIONAL_DB_DATABASE=opuspopuli
 RELATIONAL_DB_USERNAME=admin
 RELATIONAL_DB_PASSWORD=<secure-password>
 RELATIONAL_DB_SSL=true
@@ -86,7 +86,7 @@ docker exec opuspopuli-supabase-db pg_dump -U postgres postgres > dev-data.sql
 # Import to production RDS PostgreSQL
 psql -h opuspopuli-prod.xxxx.rds.amazonaws.com \
      -U admin \
-     -d qckstrt \
+     -d opuspopuli \
      < dev-data.sql
 ```
 

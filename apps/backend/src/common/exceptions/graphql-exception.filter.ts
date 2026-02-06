@@ -20,7 +20,7 @@ import { isProduction } from 'src/config/environment.config';
  * Handles GraphQL exceptions with error sanitization to prevent
  * information disclosure in production.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/190
  */
 @Catch(GraphQLError)
 export class GraphQLExceptionFilter implements ExceptionFilter {

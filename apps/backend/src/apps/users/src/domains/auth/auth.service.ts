@@ -30,7 +30,7 @@ interface IAuthProviderWithPasswordless extends IAuthProvider {
 @Injectable()
 export class AuthService {
   // Use SecureLogger to automatically redact PII (emails, IPs) from log messages
-  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/192
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/192
   private readonly logger = new SecureLogger(AuthService.name);
 
   constructor(

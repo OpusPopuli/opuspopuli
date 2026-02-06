@@ -31,7 +31,7 @@ export const DEFAULT_QUERY_COMPLEXITY_CONFIG: IQueryComplexityConfig = {
  * Complex queries with many fields or deeply nested structures can consume
  * excessive server resources.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/199
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/199
  *
  * @param config - Complexity configuration (uses defaults if not provided)
  * @returns ValidationRule function to pass to GraphQL validationRules

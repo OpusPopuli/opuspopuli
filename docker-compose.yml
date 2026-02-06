@@ -324,7 +324,7 @@ services:
       STUDIO_PG_META_URL: http://supabase-meta:8080
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-password}
       DEFAULT_ORGANIZATION_NAME: ${STUDIO_DEFAULT_ORGANIZATION:-OPUSPOPULI}
-      DEFAULT_PROJECT_NAME: ${STUDIO_DEFAULT_PROJECT:-qckstrt}
+      DEFAULT_PROJECT_NAME: ${STUDIO_DEFAULT_PROJECT:-opuspopuli}
       SUPABASE_URL: http://supabase-kong:8000
       SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:8000}
       SUPABASE_ANON_KEY: ${ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
@@ -455,7 +455,7 @@ services:
   # ===========================================
 
   # Prometheus - Metrics collection and storage
-  # @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
+  # @see https://github.com/OpusPopuli/opuspopuli/issues/213
   prometheus:
     image: prom/prometheus:v2.51.0
     container_name: opuspopuli-prometheus

@@ -4,7 +4,7 @@
  * Distributed cache using Redis for multi-instance deployments.
  * Provides consistent caching across all service instances.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/208
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/208
  */
 
 import Redis from "ioredis";

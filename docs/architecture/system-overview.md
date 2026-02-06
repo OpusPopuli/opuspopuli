@@ -2,7 +2,7 @@
 
 ## Architecture Principles
 
-QCKSTRT is built on a modular, provider-based architecture with three core principles:
+Opus Populi is built on a modular, provider-based architecture with three core principles:
 
 1. **100% Open Source** - All dependencies use permissive OSS licenses
 2. **Self-Hosted First** - Designed for complete data control and privacy

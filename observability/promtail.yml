@@ -1,7 +1,7 @@
 # Promtail Configuration
 # Ships container logs to Loki
 #
-# @see https://github.com/CommonwealthLabsCode/opuspopuli/issues/213
+# @see https://github.com/OpusPopuli/opuspopuli/issues/213
 
 server:
   http_listen_port: 9080

@@ -49,7 +49,7 @@ import { GatewayServicesModule } from './gateway-services.module';
  * The response object is included in context to allow propagation of Set-Cookie
  * headers from subgraphs back to the browser in a federated architecture.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/182
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/182
  */
 const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
   // Only use the validated user from passport (set by AuthMiddleware after JWT validation)
@@ -67,7 +67,7 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
 @Module({
   imports: [
     // Health check endpoints for Kubernetes probes
-    // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/209
+    // @see https://github.com/OpusPopuli/opuspopuli/issues/209
     HealthModule.forRoot({ serviceName: 'api-gateway' }),
     MetricsModule.forRoot({ serviceName: 'api-gateway' }),
     ConfigModule.forRoot({
@@ -133,7 +133,7 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
           server: {
             // SECURITY: Restrict CORS to allowed origins in production
             // In development, allows all origins for easier testing
-            // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/189
+            // @see https://github.com/OpusPopuli/opuspopuli/issues/189
             cors: getGraphQLCorsConfig(configService),
             path: 'api',
             context: handleAuth,
@@ -144,7 +144,7 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
             buildService: ({ url }) => {
               // Use custom data source that signs requests with HMAC
               // SECURITY: This ensures microservices only accept requests from the gateway
-              // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/185
+              // @see https://github.com/OpusPopuli/opuspopuli/issues/185
               return new HmacRemoteGraphQLDataSource(
                 { url },
                 hmacSigner,
@@ -159,7 +159,7 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
           },
           // SECURITY: WebSocket subscription authentication
           // All WebSocket connections must provide a valid JWT in connection params
-          // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/194
+          // @see https://github.com/OpusPopuli/opuspopuli/issues/194
           subscriptions: wsConfig?.enabled
             ? {
                 'graphql-ws': {
@@ -200,23 +200,23 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
   providers: [
     // SECURITY: Exception filters for error sanitization
     // AllExceptionsFilter must be first (processed last) to catch unhandled exceptions
-    // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/190
+    // @see https://github.com/OpusPopuli/opuspopuli/issues/190
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     // SECURITY: Global auth guard implements "deny by default"
     // All GraphQL operations require authentication unless marked with @Public()
-    // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/183
+    // @see https://github.com/OpusPopuli/opuspopuli/issues/183
     { provide: APP_GUARD, useClass: AuthGuard },
     JwtStrategy,
     // SECURITY: HMAC signer for gateway-to-microservice request authentication
-    // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/185
+    // @see https://github.com/OpusPopuli/opuspopuli/issues/185
     HmacSignerService,
     // SECURITY: WebSocket authentication for GraphQL subscriptions
-    // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/194
+    // @see https://github.com/OpusPopuli/opuspopuli/issues/194
     WebSocketAuthService,
     // INFRA-003: Graceful shutdown service for Kubernetes SIGTERM handling
-    // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/207
+    // @see https://github.com/OpusPopuli/opuspopuli/issues/207
     GracefulShutdownService,
   ],
 })
@@ -225,7 +225,7 @@ export class AppModule implements NestModule {
     consumer
       .apply(CsrfMiddleware, AuthMiddleware)
       // Exclude health check endpoints from auth middleware
-      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/209
+      // @see https://github.com/OpusPopuli/opuspopuli/issues/209
       .exclude(
         { path: 'health', method: RequestMethod.GET },
         { path: 'health/live', method: RequestMethod.GET },

@@ -1,10 +1,10 @@
 # Observability Guide
 
-This guide covers monitoring, metrics, and logging for QCKSTRT services.
+This guide covers monitoring, metrics, and logging for Opus Populi services.
 
 ## Overview
 
-QCKSTRT uses a standard observability stack:
+Opus Populi uses a standard observability stack:
 
 | Tool | Purpose | Port |
 |------|---------|------|
@@ -174,7 +174,7 @@ Promtail automatically adds these labels:
 
 ### Pre-configured Dashboards
 
-1. **QCKSTRT Services** - Overview of all services
+1. **Opus Populi Services** - Overview of all services
    - Request rate by service
    - Error rate (5xx responses)
    - Latency percentiles (p50, p95)

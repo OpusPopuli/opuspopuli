@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide will get you up and running with QCKSTRT in under 10 minutes.
+This guide will get you up and running with Opus Populi in under 10 minutes.
 
 ## Prerequisites
 
@@ -14,8 +14,8 @@ This guide will get you up and running with QCKSTRT in under 10 minutes.
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/qckstrt.git
-cd qckstrt
+git clone https://github.com/your-org/opuspopuli.git
+cd opuspopuli
 
 # Install dependencies
 pnpm install
@@ -99,7 +99,7 @@ mutation {
   indexDocument(
     userId: "test-user"
     documentId: "test-doc"
-    text: "QCKSTRT is a full-stack platform with RAG capabilities."
+    text: "Opus Populi is a full-stack platform with RAG capabilities."
   ) {
     success
     message
@@ -112,7 +112,7 @@ mutation {
 query {
   answerQuery(
     userId: "test-user"
-    query: "What is QCKSTRT?"
+    query: "What is Opus Populi?"
   )
 }
 ```
@@ -152,7 +152,7 @@ query {
 ## Project Structure
 
 ```
-qckstrt/
+opuspopuli/
 ├── apps/
 │   ├── backend/
 │   │   ├── src/
@@ -176,7 +176,7 @@ qckstrt/
 
 ## Default Configuration
 
-QCKSTRT comes with sensible defaults for local development:
+Opus Populi comes with sensible defaults for local development:
 
 ### Embeddings: Xenova (Zero Setup)
 - **Provider**: Xenova/Transformers.js
@@ -227,7 +227,7 @@ FRONTEND_URL=http://localhost:3000
 
 ### Register a New User (Passwordless)
 
-QCKSTRT uses email-first passwordless registration:
+Opus Populi uses email-first passwordless registration:
 
 1. Open http://localhost:3000/register
 2. Enter your email address (no password needed)
@@ -410,7 +410,7 @@ PORT=3010
 
 ## Next Steps
 
-Now that you have QCKSTRT running:
+Now that you have Opus Populi running:
 
 1. **Explore the API**: http://localhost:3000/graphql (GraphQL Playground)
 2. **Upload documents**: Try different file types (TXT, PDF, Markdown)

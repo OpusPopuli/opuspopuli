@@ -19,7 +19,7 @@ interface ISupabaseConfig {
  * SECURITY: This prevents unauthorized access to real-time subscription data.
  * All WebSocket connections must provide a valid JWT in connection params.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/194
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/194
  */
 @Injectable()
 export class WebSocketAuthService {

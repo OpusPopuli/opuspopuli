@@ -1,6 +1,6 @@
 # Frontend Testing Guide
 
-This guide covers the testing strategy and practices for the QCKSTRT frontend application.
+This guide covers the testing strategy and practices for the Opus Populi frontend application.
 
 ## Overview
 

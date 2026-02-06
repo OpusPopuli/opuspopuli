@@ -1,6 +1,6 @@
 # OPUSPOPULI AWS Infrastructure
 
-Simple, cost-effective AWS infrastructure for running QCKSTRT with self-hosted AI services.
+Simple, cost-effective AWS infrastructure for running Opus Populi with self-hosted AI services.
 
 ## Architecture
 
@@ -221,7 +221,7 @@ make status
 
 ## Backend Configuration
 
-Use these environment variables for your QCKSTRT backend:
+Use these environment variables for your Opus Populi backend:
 
 ```bash
 # Get from Terraform outputs

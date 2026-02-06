@@ -2,7 +2,7 @@
  * Security Headers Configuration Tests
  *
  * Tests for Content Security Policy and other security headers.
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/193
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/193
  */
 
 // We need to dynamically import the ESM module

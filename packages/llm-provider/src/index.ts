@@ -1,7 +1,7 @@
 /**
  * @opuspopuli/llm-provider
  *
- * LLM provider implementations for the QCKSTRT platform.
+ * LLM provider implementations for the Opus Populi platform.
  * Currently supports Ollama for self-hosted, open-source inference.
  */
 

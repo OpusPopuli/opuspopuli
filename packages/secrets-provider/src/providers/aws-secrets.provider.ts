@@ -26,7 +26,7 @@ interface CacheEntry {
  * Authentication:
  *   Uses default AWS credential chain (IAM role, env vars, etc.)
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/215
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/215
  */
 @Injectable()
 export class AWSSecretsProvider implements ISecretsProvider {

@@ -42,7 +42,7 @@ const FEDERATION_INTROSPECTION_FIELDS = new Set([
  * Federation/introspection queries are allowed from HMAC-authenticated
  * sources (API Gateway) to support Apollo Federation schema composition.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/183
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/183
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -87,7 +87,7 @@ export class AuthGuard implements CanActivate {
     // No authenticated user - deny access
     if (!user || !isLoggedIn(user)) {
       // Audit: Authorization denied - unauthenticated access attempt
-      // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/191
+      // @see https://github.com/OpusPopuli/opuspopuli/issues/191
       this.auditLogService?.logSync({
         requestId: randomUUID(),
         serviceName: 'auth-guard',

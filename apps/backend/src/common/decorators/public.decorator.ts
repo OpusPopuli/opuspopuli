@@ -18,7 +18,7 @@ import { SetMetadata } from '@nestjs/common';
  * }
  * ```
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/183
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/183
  */
 export const IS_PUBLIC_KEY = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);

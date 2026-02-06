@@ -1,7 +1,7 @@
 # Loki Configuration
 # Log aggregation for OPUSPOPULI services
 #
-# @see https://github.com/CommonwealthLabsCode/opuspopuli/issues/213
+# @see https://github.com/OpusPopuli/opuspopuli/issues/213
 
 auth_enabled: false
 

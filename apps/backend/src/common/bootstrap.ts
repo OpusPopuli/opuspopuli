@@ -54,12 +54,12 @@ export default async function bootstrap(
   const appVersion = configService.get('version');
 
   // SECURITY: Configure helmet with comprehensive security headers
-  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/196
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/196
   app.use(helmet(getHelmetOptions()));
   app.use(cookieParser());
 
   // PERF-005: Enable response compression for bandwidth optimization
-  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/201
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/201
   app.use(
     compression({
       threshold: 1024, // Only compress responses > 1KB
@@ -83,7 +83,7 @@ export default async function bootstrap(
   }
 
   // INFRA-003: Enable graceful shutdown for Kubernetes SIGTERM handling
-  // @see https://github.com/CommonwealthLabsCode/qckstrt/issues/207
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/207
   app.enableShutdownHooks();
 
   // Initialize graceful shutdown service with HTTP server reference

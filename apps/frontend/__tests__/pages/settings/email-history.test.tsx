@@ -43,7 +43,7 @@ const mockEmails = [
     status: "DELIVERED",
     recipientEmail: "test@example.com",
     recipientName: "Test User",
-    subject: "Welcome to Commonwealth Labs",
+    subject: "Welcome to Opus Populi",
     bodyPreview: "Welcome to our platform! We're excited to have you...",
     representativeId: null,
     representativeName: null,
@@ -189,9 +189,7 @@ describe("EmailHistoryPage", () => {
       render(<EmailHistoryPage />);
 
       expect(screen.getByText("Regarding Education Bill")).toBeInTheDocument();
-      expect(
-        screen.getByText("Welcome to Commonwealth Labs"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Welcome to Opus Populi")).toBeInTheDocument();
       expect(screen.getByText("Climate Policy Concerns")).toBeInTheDocument();
     });
 

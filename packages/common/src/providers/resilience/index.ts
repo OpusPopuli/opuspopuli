@@ -3,7 +3,7 @@
  *
  * Provides circuit breaker and resilience patterns for external service calls.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/198
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/198
  */
 
 export * from "./types.js";

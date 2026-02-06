@@ -28,7 +28,7 @@
  * curl http://localhost:3001/metrics
  * ```
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/213
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/213
  */
 export { MetricsModule, MetricsModuleOptions } from './metrics.module';
 export { MetricsService } from './metrics.service';

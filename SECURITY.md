@@ -20,7 +20,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 
 ### How to Report
 
-1. **Email**: Send details to **security@commonwealthlabs.io**
+1. **Email**: Send details to **security@opuspopuli.org**
 2. **Subject**: Use the format `[SECURITY] Brief description`
 3. **Include**:
    - Description of the vulnerability
@@ -294,7 +294,7 @@ Cross-Origin Resource Sharing (CORS) is configured to prevent unauthorized cross
 **Environment Variable:**
 ```bash
 # Production example
-ALLOWED_ORIGINS=https://app.qckstrt.com,https://admin.qckstrt.com
+ALLOWED_ORIGINS=https://app.opuspopuli.com,https://admin.opuspopuli.com
 ```
 
 See [cors.config.ts](apps/backend/src/config/cors.config.ts) for configuration.
@@ -334,7 +334,7 @@ CSP violations can be reported to a dedicated endpoint for monitoring:
 
 ```bash
 # Enable CSP reporting (optional)
-CSP_REPORT_URI=https://app.qckstrt.com/api/csp-report
+CSP_REPORT_URI=https://app.opuspopuli.com/api/csp-report
 ```
 
 See [security-headers.config.mjs](apps/frontend/config/security-headers.config.mjs) for configuration.
@@ -522,8 +522,8 @@ See [crypto.utils.ts](apps/backend/src/common/utils/crypto.utils.ts) for impleme
 
 This security policy applies to:
 
-- The qckstrt core platform repository
-- Official Commonwealth Labs deployments
+- The Opus Populi core platform repository
+- Official Opus Populi deployments
 - Infrastructure code in `/infra`
 
 For region-specific forks, security policies may vary. Contact the fork maintainers directly.
@@ -534,5 +534,5 @@ We appreciate security researchers who help keep our community safe. With your p
 
 ## Contact
 
-- **Security Issues**: security@commonwealthlabs.io
+- **Security Issues**: security@opuspopuli.org
 - **General Questions**: See [CONTRIBUTING.md](CONTRIBUTING.md)

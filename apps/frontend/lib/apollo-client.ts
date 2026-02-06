@@ -72,7 +72,7 @@ const httpLink = new HttpLink({
  * SECURITY: WebSocket connections require JWT authentication via connection params.
  * The access token is extracted from httpOnly cookie or localStorage.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/194
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/194
  */
 function getAuthToken(): string | undefined {
   if (typeof document === "undefined") return undefined;
@@ -101,7 +101,7 @@ function getAuthToken(): string | undefined {
  * SECURITY: All WebSocket connections are authenticated via JWT in connection params.
  * Connections without valid tokens are rejected by the server.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/194
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/194
  */
 function createWsLink(): ApolloLink | null {
   // WebSocket is not available during SSR

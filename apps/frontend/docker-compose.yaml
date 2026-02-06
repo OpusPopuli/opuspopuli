@@ -1,5 +1,5 @@
 x-apps-config: &apps-env
-  PROJECT: ${PROJECT:-qckstrt}
+  PROJECT: ${PROJECT:-opuspopuli}
   NODE_ENV: ${NODE_ENV:-dev}
   AWS_PROFILE: ${AWS_PROFILE:-default}
   SECRETS: ${SECRETS:-secrets}

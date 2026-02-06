@@ -17,7 +17,7 @@ export default tseslint.config(
        * - isDevelopment()
        * - isTest()
        *
-       * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/206
+       * @see https://github.com/OpusPopuli/opuspopuli/issues/206
        */
       'no-restricted-syntax': [
         'warn',

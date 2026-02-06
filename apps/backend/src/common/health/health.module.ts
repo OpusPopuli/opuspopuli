@@ -42,7 +42,7 @@ export interface HealthModuleOptions {
  * - GET /health/live - Liveness probe (is the process running?)
  * - GET /health/ready - Readiness probe (is the service ready to handle requests?)
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/209
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/209
  */
 @Module({})
 export class HealthModule {

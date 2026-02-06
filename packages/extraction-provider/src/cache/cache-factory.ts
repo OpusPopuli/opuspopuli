@@ -4,7 +4,7 @@
  * Creates cache and rate limiter instances based on configuration.
  * Supports Redis for distributed caching with automatic fallback to memory.
  *
- * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/208
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/208
  */
 
 import { Logger } from "@nestjs/common";

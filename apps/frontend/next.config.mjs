@@ -22,7 +22,7 @@ const nextConfig = {
    * Adds Content Security Policy and other security headers to all routes.
    * CSP helps prevent XSS attacks by restricting resource loading.
    *
-   * @see https://github.com/CommonwealthLabsCode/qckstrt/issues/193
+   * @see https://github.com/OpusPopuli/opuspopuli/issues/193
    */
   async headers() {
     return [
