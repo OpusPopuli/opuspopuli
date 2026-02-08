@@ -216,10 +216,10 @@ export default function SecurityPage() {
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-[#1e293b]">
+            <h1 className="text-2xl font-bold text-[#222222]">
               {t("security.title")}
             </h1>
-            <p className="text-[#64748b] mt-1">{t("security.subtitle")}</p>
+            <p className="text-[#555555] mt-1">{t("security.subtitle")}</p>
           </div>
         </div>
 
@@ -227,17 +227,17 @@ export default function SecurityPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-[#1e293b]">
+              <h2 className="text-lg font-semibold text-[#222222]">
                 {t("security.passkeys.title")}
               </h2>
-              <p className="text-sm text-[#64748b]">
+              <p className="text-sm text-[#555555]">
                 {t("security.passkeys.description")}
               </p>
             </div>
             <button
               onClick={() => setShowAddModal(true)}
               disabled={!supportsPasskeys || passkeyActionLoading}
-              className="px-4 py-2 bg-[#1e293b] text-white rounded-lg font-medium hover:bg-[#334155] transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-[#222222] text-white rounded-lg font-medium hover:bg-[#333333] transition-colors disabled:opacity-50"
             >
               {t("security.passkeys.addButton")}
             </button>
@@ -259,8 +259,8 @@ export default function SecurityPage() {
 
           {passkeysLoading ? (
             <div className="text-center py-8">
-              <div className="animate-spin w-8 h-8 border-2 border-[#1e293b] border-t-transparent rounded-full mx-auto" />
-              <p className="text-[#64748b] mt-2">
+              <div className="animate-spin w-8 h-8 border-2 border-[#222222] border-t-transparent rounded-full mx-auto" />
+              <p className="text-[#555555] mt-2">
                 {t("common:status.loading")}
               </p>
             </div>
@@ -272,14 +272,14 @@ export default function SecurityPage() {
                   className="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="p-2 bg-gray-100 rounded-lg text-[#64748b]">
+                    <div className="p-2 bg-gray-100 rounded-lg text-[#555555]">
                       <PasskeyIcon />
                     </div>
                     <div>
-                      <p className="font-medium text-[#1e293b]">
+                      <p className="font-medium text-[#222222]">
                         {passkey.friendlyName || t("security.passkeys.unnamed")}
                       </p>
-                      <p className="text-sm text-[#64748b]">
+                      <p className="text-sm text-[#555555]">
                         {passkey.deviceType ||
                           t("security.passkeys.unknownDevice")}{" "}
                         • {t("security.passkeys.created")}:{" "}
@@ -304,7 +304,7 @@ export default function SecurityPage() {
                       </button>
                       <button
                         onClick={() => setDeleteConfirmId(null)}
-                        className="text-sm text-[#64748b] hover:text-[#1e293b] transition-colors"
+                        className="text-sm text-[#555555] hover:text-[#222222] transition-colors"
                       >
                         {t("common:buttons.cancel")}
                       </button>
@@ -322,7 +322,7 @@ export default function SecurityPage() {
             </div>
           ) : (
             <div className="text-center py-8 border border-dashed border-gray-200 rounded-lg">
-              <div className="text-[#64748b] mb-4">
+              <div className="text-[#555555] mb-4">
                 <svg
                   className="w-12 h-12 mx-auto opacity-50"
                   fill="none"
@@ -338,10 +338,10 @@ export default function SecurityPage() {
                   />
                 </svg>
               </div>
-              <p className="text-[#1e293b] font-medium">
+              <p className="text-[#222222] font-medium">
                 {t("security.passkeys.empty")}
               </p>
-              <p className="text-sm text-[#64748b] mt-1">
+              <p className="text-sm text-[#555555] mt-1">
                 {t("security.passkeys.emptyHint")}
               </p>
             </div>
@@ -383,10 +383,10 @@ export default function SecurityPage() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-[#1e293b]">
+              <h2 className="text-lg font-semibold text-[#222222]">
                 {t("security.sessions.title")}
               </h2>
-              <p className="text-sm text-[#64748b]">
+              <p className="text-sm text-[#555555]">
                 {t("security.sessions.description")}
               </p>
             </div>
@@ -407,14 +407,14 @@ export default function SecurityPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="font-medium text-[#1e293b]">
+                    <p className="font-medium text-[#222222]">
                       {currentSession.deviceName}
                     </p>
                     <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
                       {t("common:status.current")}
                     </span>
                   </div>
-                  <p className="text-sm text-[#64748b]">
+                  <p className="text-sm text-[#555555]">
                     {currentSession.browser}
                   </p>
                   <p className="text-xs text-[#374151]">
@@ -432,7 +432,7 @@ export default function SecurityPage() {
 
             {/* Info about other sessions */}
             <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-              <p className="text-sm text-[#64748b]">
+              <p className="text-sm text-[#555555]">
                 {t("security.sessions.otherSessionsNote")}
               </p>
             </div>
@@ -442,16 +442,16 @@ export default function SecurityPage() {
 
       {/* Two-Factor Authentication */}
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        <h2 className="text-lg font-semibold text-[#1e293b] mb-2">
+        <h2 className="text-lg font-semibold text-[#222222] mb-2">
           {t("security.twoFactor.title")}
         </h2>
-        <p className="text-[#64748b] text-sm mb-6">
+        <p className="text-[#555555] text-sm mb-6">
           {t("security.twoFactor.description")}
         </p>
 
         <div className="flex items-center justify-between py-4 border-b border-gray-100">
           <div className="flex items-center gap-4">
-            <div className="p-2 bg-gray-100 rounded-lg text-[#64748b]">
+            <div className="p-2 bg-gray-100 rounded-lg text-[#555555]">
               <svg
                 className="w-6 h-6"
                 fill="none"
@@ -468,22 +468,22 @@ export default function SecurityPage() {
               </svg>
             </div>
             <div>
-              <p className="font-medium text-[#1e293b]">
+              <p className="font-medium text-[#222222]">
                 {t("security.twoFactor.authenticator.title")}
               </p>
-              <p className="text-sm text-[#64748b]">
+              <p className="text-sm text-[#555555]">
                 {t("security.twoFactor.authenticator.description")}
               </p>
             </div>
           </div>
-          <button className="px-4 py-2 text-sm font-medium border border-gray-200 text-[#1e293b] rounded-lg hover:bg-gray-50 transition-colors">
+          <button className="px-4 py-2 text-sm font-medium border border-gray-200 text-[#222222] rounded-lg hover:bg-gray-50 transition-colors">
             {t("security.twoFactor.authenticator.setupButton")}
           </button>
         </div>
 
         <div className="flex items-center justify-between py-4">
           <div className="flex items-center gap-4">
-            <div className="p-2 bg-gray-100 rounded-lg text-[#64748b]">
+            <div className="p-2 bg-gray-100 rounded-lg text-[#555555]">
               <svg
                 className="w-6 h-6"
                 fill="none"
@@ -500,10 +500,10 @@ export default function SecurityPage() {
               </svg>
             </div>
             <div>
-              <p className="font-medium text-[#1e293b]">
+              <p className="font-medium text-[#222222]">
                 {t("security.twoFactor.recovery.title")}
               </p>
-              <p className="text-sm text-[#64748b]">
+              <p className="text-sm text-[#555555]">
                 {t("security.twoFactor.recovery.description")}
               </p>
             </div>
@@ -519,23 +519,23 @@ export default function SecurityPage() {
 
       {/* Password Section (Legacy) */}
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        <h2 className="text-lg font-semibold text-[#1e293b] mb-2">
+        <h2 className="text-lg font-semibold text-[#222222] mb-2">
           {t("security.password.title")}
         </h2>
-        <p className="text-[#64748b] text-sm mb-6">
+        <p className="text-[#555555] text-sm mb-6">
           {t("security.password.description")}
         </p>
 
         <div className="flex items-center justify-between py-4">
           <div>
-            <p className="font-medium text-[#1e293b]">
+            <p className="font-medium text-[#222222]">
               {t("security.password.changeTitle")}
             </p>
-            <p className="text-sm text-[#64748b]">
+            <p className="text-sm text-[#555555]">
               {t("security.password.changeDescription")}
             </p>
           </div>
-          <button className="px-4 py-2 text-sm font-medium border border-gray-200 text-[#1e293b] rounded-lg hover:bg-gray-50 transition-colors">
+          <button className="px-4 py-2 text-sm font-medium border border-gray-200 text-[#222222] rounded-lg hover:bg-gray-50 transition-colors">
             {t("security.password.changeButton")}
           </button>
         </div>
@@ -545,17 +545,17 @@ export default function SecurityPage() {
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
-            <h3 className="text-xl font-semibold text-[#1e293b] mb-2">
+            <h3 className="text-xl font-semibold text-[#222222] mb-2">
               {t("security.passkeys.addTitle")}
             </h3>
-            <p className="text-[#64748b] text-sm mb-6">
+            <p className="text-[#555555] text-sm mb-6">
               {t("security.passkeys.addDescription")}
             </p>
 
             <div className="mb-6">
               <label
                 htmlFor="friendlyName"
-                className="block text-sm font-medium text-[#1e293b] mb-2"
+                className="block text-sm font-medium text-[#222222] mb-2"
               >
                 {t("security.passkeys.friendlyNameLabel")}
               </label>
@@ -565,9 +565,9 @@ export default function SecurityPage() {
                 value={friendlyName}
                 onChange={(e) => setFriendlyName(e.target.value)}
                 placeholder={t("security.passkeys.friendlyNamePlaceholder")}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent"
               />
-              <p className="text-xs text-[#64748b] mt-1">
+              <p className="text-xs text-[#555555] mt-1">
                 {t("security.passkeys.friendlyNameHint")}
               </p>
             </div>
@@ -586,14 +586,14 @@ export default function SecurityPage() {
                   clearError();
                 }}
                 disabled={passkeyActionLoading}
-                className="px-4 py-2 text-sm font-medium text-[#64748b] hover:text-[#1e293b] transition-colors"
+                className="px-4 py-2 text-sm font-medium text-[#555555] hover:text-[#222222] transition-colors"
               >
                 {t("common:buttons.cancel")}
               </button>
               <button
                 onClick={handleAddPasskey}
                 disabled={passkeyActionLoading}
-                className="px-4 py-2 bg-[#1e293b] text-white rounded-lg font-medium hover:bg-[#334155] transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-[#222222] text-white rounded-lg font-medium hover:bg-[#333333] transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 {passkeyActionLoading && (
                   <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />

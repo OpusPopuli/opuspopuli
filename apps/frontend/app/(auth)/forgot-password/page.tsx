@@ -57,24 +57,24 @@ export default function ForgotPasswordPage() {
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Check your email
         </h1>
-        <p className="text-[#64748b] mb-6">
+        <p className="text-[#555555] mb-6">
           We&apos;ve sent a password reset code to{" "}
-          <span className="font-medium text-[#1e293b]">{email}</span>
+          <span className="font-medium text-[#222222]">{email}</span>
         </p>
         <button
           onClick={() => router.push("/reset-password")}
-          className="inline-block py-3 px-6 bg-[#1e293b] text-white font-semibold rounded-lg hover:bg-[#334155] transition-colors"
+          className="inline-block py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
         >
           Enter reset code
         </button>
-        <p className="mt-4 text-sm text-[#64748b]">
+        <p className="mt-4 text-sm text-[#555555]">
           Didn&apos;t receive the email?{" "}
           <button
             onClick={() => setSuccess(false)}
-            className="text-[#1e293b] font-medium hover:underline"
+            className="text-[#222222] font-medium hover:underline"
           >
             Try again
           </button>
@@ -87,10 +87,10 @@ export default function ForgotPasswordPage() {
     <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
       {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Reset your password
         </h1>
-        <p className="text-[#64748b]">
+        <p className="text-[#555555]">
           Enter your email and we&apos;ll send you a reset code
         </p>
       </div>
@@ -108,7 +108,7 @@ export default function ForgotPasswordPage() {
         <div>
           <label
             htmlFor="email"
-            className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
           >
             Email Address
           </label>
@@ -117,9 +117,9 @@ export default function ForgotPasswordPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg
-                     text-[#1e293b] placeholder-[#94a3b8]
-                     focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+            className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
+                     text-[#222222] placeholder-[#888888]
+                     focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                      transition-all duration-200"
             placeholder="you@example.com"
             required
@@ -131,8 +131,8 @@ export default function ForgotPasswordPage() {
         <button
           type="submit"
           disabled={email.length === 0 || loading}
-          className="w-full py-3 px-4 bg-[#1e293b] text-white font-semibold rounded-lg
-                   hover:bg-[#334155] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1e293b]
+          className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
+                   hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
                    disabled:opacity-50 disabled:cursor-not-allowed
                    transition-all duration-200"
         >
@@ -148,11 +148,11 @@ export default function ForgotPasswordPage() {
       </form>
 
       {/* Back to Login Link */}
-      <p className="mt-8 text-center text-[#64748b]">
+      <p className="mt-8 text-center text-[#555555]">
         Remember your password?{" "}
         <Link
           href="/login"
-          className="text-[#1e293b] font-semibold hover:underline"
+          className="text-[#222222] font-semibold hover:underline"
         >
           Sign in
         </Link>

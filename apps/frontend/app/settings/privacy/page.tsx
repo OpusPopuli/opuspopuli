@@ -79,7 +79,7 @@ function ConsentItem({
     <div className="flex items-start justify-between py-4 border-b border-gray-100 last:border-0">
       <div className="flex-1 pr-4">
         <div className="flex items-center gap-2 mb-1">
-          <p className="text-sm font-medium text-[#1e293b]">
+          <p className="text-sm font-medium text-[#222222]">
             {t(`privacy.consents.${consentType}.title`)}
           </p>
           {required && (
@@ -89,11 +89,11 @@ function ConsentItem({
           )}
           {getStatusBadge(consent?.status)}
         </div>
-        <p className="text-sm text-[#64748b]">
+        <p className="text-sm text-[#555555]">
           {t(`privacy.consents.${consentType}.description`)}
         </p>
         {statusDate && (
-          <p className="text-xs text-[#94a3b8] mt-1">
+          <p className="text-xs text-[#888888] mt-1">
             {consent?.status === "granted"
               ? t("privacy.status.grantedOn")
               : t("privacy.status.updatedOn")}{" "}
@@ -118,7 +118,7 @@ function ConsentItem({
           <button
             onClick={() => onUpdate(consentType, true)}
             disabled={loading}
-            className="px-3 py-1.5 text-sm font-medium bg-[#1e293b] text-white rounded-lg hover:bg-[#334155] transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-sm font-medium bg-[#222222] text-white rounded-lg hover:bg-[#333333] transition-colors disabled:opacity-50"
           >
             {loading ? "..." : t("common:buttons.grant")}
           </button>
@@ -233,10 +233,10 @@ export default function PrivacyPage() {
       {/* Header */}
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[#1e293b]">
+          <h1 className="text-2xl font-bold text-[#222222]">
             {t("privacy.title")}
           </h1>
-          <p className="text-[#64748b] mt-1">{t("privacy.subtitle")}</p>
+          <p className="text-[#555555] mt-1">{t("privacy.subtitle")}</p>
         </div>
 
         {/* GDPR/CCPA Notice */}
@@ -271,10 +271,10 @@ export default function PrivacyPage() {
         {CONSENT_GROUPS.map((group) => (
           <div key={group.groupKey} className="mb-8 last:mb-0">
             <div className="mb-4">
-              <h2 className="text-lg font-semibold text-[#1e293b]">
+              <h2 className="text-lg font-semibold text-[#222222]">
                 {t(`privacy.groups.${group.groupKey}.title`)}
               </h2>
-              <p className="text-sm text-[#64748b]">
+              <p className="text-sm text-[#555555]">
                 {t(`privacy.groups.${group.groupKey}.description`)}
               </p>
             </div>
@@ -296,31 +296,31 @@ export default function PrivacyPage() {
 
       {/* Data Export Section */}
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        <h2 className="text-lg font-semibold text-[#1e293b] mb-6">
+        <h2 className="text-lg font-semibold text-[#222222] mb-6">
           {t("privacy.dataManagement.title")}
         </h2>
 
         <div className="space-y-4">
           <div className="flex items-center justify-between py-4 border-b border-gray-100">
             <div>
-              <p className="text-sm font-medium text-[#1e293b]">
+              <p className="text-sm font-medium text-[#222222]">
                 {t("privacy.dataManagement.exportTitle")}
               </p>
-              <p className="text-sm text-[#64748b]">
+              <p className="text-sm text-[#555555]">
                 {t("privacy.dataManagement.exportDesc")}
               </p>
             </div>
-            <button className="px-4 py-2 text-sm font-medium border border-gray-200 text-[#1e293b] rounded-lg hover:bg-gray-50 transition-colors">
+            <button className="px-4 py-2 text-sm font-medium border border-gray-200 text-[#222222] rounded-lg hover:bg-gray-50 transition-colors">
               {t("privacy.dataManagement.exportButton")}
             </button>
           </div>
 
           <div className="flex items-center justify-between py-4">
             <div>
-              <p className="text-sm font-medium text-[#1e293b]">
+              <p className="text-sm font-medium text-[#222222]">
                 {t("privacy.dataManagement.deleteTitle")}
               </p>
-              <p className="text-sm text-[#64748b]">
+              <p className="text-sm text-[#555555]">
                 {t("privacy.dataManagement.deleteDesc")}
               </p>
             </div>

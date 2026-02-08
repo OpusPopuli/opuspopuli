@@ -238,15 +238,15 @@ export default function AddressesPage() {
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-2xl font-bold text-[#1e293b]">
+            <h1 className="text-2xl font-bold text-[#222222]">
               {t("addresses.title")}
             </h1>
-            <p className="text-[#64748b] mt-1">{t("addresses.subtitle")}</p>
+            <p className="text-[#555555] mt-1">{t("addresses.subtitle")}</p>
           </div>
           {!showForm && (
             <button
               onClick={() => setShowForm(true)}
-              className="px-4 py-2 bg-[#1e293b] text-white rounded-lg font-medium hover:bg-[#334155] transition-colors"
+              className="px-4 py-2 bg-[#222222] text-white rounded-lg font-medium hover:bg-[#333333] transition-colors"
             >
               {t("addresses.addAddress")}
             </button>
@@ -256,7 +256,7 @@ export default function AddressesPage() {
         {/* Add/Edit Form */}
         {showForm && (
           <form onSubmit={handleSubmit} className="mt-8 border-t pt-8">
-            <h2 className="text-lg font-semibold text-[#1e293b] mb-6">
+            <h2 className="text-lg font-semibold text-[#222222] mb-6">
               {editingId
                 ? t("addresses.editAddress")
                 : t("addresses.addNewAddress")}
@@ -270,14 +270,14 @@ export default function AddressesPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-[#1e293b] mb-2">
+                <label className="block text-sm font-medium text-[#222222] mb-2">
                   {t("addresses.addressType")}
                 </label>
                 <select
                   name="addressType"
                   value={formData.addressType}
                   onChange={handleChange}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none bg-white"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none bg-white"
                 >
                   {ADDRESS_TYPES.map((type) => (
                     <option key={type.value} value={type.value}>
@@ -287,7 +287,7 @@ export default function AddressesPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#1e293b] mb-2">
+                <label className="block text-sm font-medium text-[#222222] mb-2">
                   {t("addresses.label")}
                 </label>
                 <input
@@ -296,13 +296,13 @@ export default function AddressesPage() {
                   value={formData.label}
                   onChange={handleChange}
                   placeholder={t("addresses.labelPlaceholder")}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
                 />
               </div>
             </div>
 
             <div className="mt-6">
-              <label className="block text-sm font-medium text-[#1e293b] mb-2">
+              <label className="block text-sm font-medium text-[#222222] mb-2">
                 {t("addresses.streetAddress")} *
               </label>
               <input
@@ -311,13 +311,13 @@ export default function AddressesPage() {
                 value={formData.addressLine1}
                 onChange={handleChange}
                 placeholder={t("addresses.streetAddressPlaceholder")}
-                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none"
+                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
                 required
               />
             </div>
 
             <div className="mt-4">
-              <label className="block text-sm font-medium text-[#1e293b] mb-2">
+              <label className="block text-sm font-medium text-[#222222] mb-2">
                 {t("addresses.aptSuite")}
               </label>
               <input
@@ -326,13 +326,13 @@ export default function AddressesPage() {
                 value={formData.addressLine2}
                 onChange={handleChange}
                 placeholder={t("addresses.aptSuitePlaceholder")}
-                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none"
+                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
               />
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-[#1e293b] mb-2">
+                <label className="block text-sm font-medium text-[#222222] mb-2">
                   {t("addresses.city")} *
                 </label>
                 <input
@@ -341,19 +341,19 @@ export default function AddressesPage() {
                   value={formData.city}
                   onChange={handleChange}
                   placeholder={t("addresses.cityPlaceholder")}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#1e293b] mb-2">
+                <label className="block text-sm font-medium text-[#222222] mb-2">
                   {t("addresses.state")} *
                 </label>
                 <select
                   name="state"
                   value={formData.state}
                   onChange={handleChange}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none bg-white"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none bg-white"
                   required
                 >
                   <option value="">{t("addresses.selectState")}</option>
@@ -365,7 +365,7 @@ export default function AddressesPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#1e293b] mb-2">
+                <label className="block text-sm font-medium text-[#222222] mb-2">
                   {t("addresses.zipCode")} *
                 </label>
                 <input
@@ -374,7 +374,7 @@ export default function AddressesPage() {
                   value={formData.postalCode}
                   onChange={handleChange}
                   placeholder={t("addresses.zipCodePlaceholder")}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
                   required
                 />
               </div>
@@ -384,14 +384,14 @@ export default function AddressesPage() {
               <button
                 type="submit"
                 disabled={creating || updating}
-                className="px-6 py-3 bg-[#1e293b] text-white rounded-lg font-medium hover:bg-[#334155] transition-colors disabled:opacity-50"
+                className="px-6 py-3 bg-[#222222] text-white rounded-lg font-medium hover:bg-[#333333] transition-colors disabled:opacity-50"
               >
                 {getSubmitButtonText()}
               </button>
               <button
                 type="button"
                 onClick={handleCancel}
-                className="px-6 py-3 border border-gray-200 text-[#64748b] rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                className="px-6 py-3 border border-gray-200 text-[#555555] rounded-lg font-medium hover:bg-gray-50 transition-colors"
               >
                 {t("common:buttons.cancel")}
               </button>
@@ -411,7 +411,7 @@ export default function AddressesPage() {
               <div className="flex justify-between items-start">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-sm font-medium text-[#1e293b] capitalize">
+                    <span className="text-sm font-medium text-[#222222] capitalize">
                       {address.label ||
                         t(`addresses.types.${address.addressType}`)}
                     </span>
@@ -426,15 +426,15 @@ export default function AddressesPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-[#1e293b]">
+                  <p className="text-[#222222]">
                     {address.addressLine1}
                     {address.addressLine2 && `, ${address.addressLine2}`}
                   </p>
-                  <p className="text-[#64748b]">
+                  <p className="text-[#555555]">
                     {address.city}, {address.state} {address.postalCode}
                   </p>
                   {address.congressionalDistrict && (
-                    <p className="text-sm text-[#64748b] mt-2">
+                    <p className="text-sm text-[#555555] mt-2">
                       {t("addresses.congressionalDistrict")}:{" "}
                       {address.congressionalDistrict}
                     </p>
@@ -444,14 +444,14 @@ export default function AddressesPage() {
                   {!address.isPrimary && (
                     <button
                       onClick={() => handleSetPrimary(address.id)}
-                      className="text-sm text-[#64748b] hover:text-[#1e293b] transition-colors"
+                      className="text-sm text-[#555555] hover:text-[#222222] transition-colors"
                     >
                       {t("addresses.setPrimary")}
                     </button>
                   )}
                   <button
                     onClick={() => handleEdit(address)}
-                    className="p-2 text-[#64748b] hover:text-[#1e293b] transition-colors"
+                    className="p-2 text-[#555555] hover:text-[#222222] transition-colors"
                     aria-label={t("common:buttons.edit")}
                   >
                     <svg
@@ -498,7 +498,7 @@ export default function AddressesPage() {
       ) : (
         !showForm && (
           <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
-            <div className="text-[#64748b]">
+            <div className="text-[#555555]">
               <svg
                 className="w-12 h-12 mx-auto mb-4 opacity-50"
                 fill="none"

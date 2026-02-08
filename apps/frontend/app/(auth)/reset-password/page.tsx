@@ -124,16 +124,16 @@ export default function ResetPasswordPage() {
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Password reset successful
         </h1>
-        <p className="text-[#64748b] mb-6">
+        <p className="text-[#555555] mb-6">
           Your password has been updated. You can now sign in with your new
           password.
         </p>
         <Link
           href="/login"
-          className="inline-block py-3 px-6 bg-[#1e293b] text-white font-semibold rounded-lg hover:bg-[#334155] transition-colors"
+          className="inline-block py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
         >
           Sign in
         </Link>
@@ -145,10 +145,10 @@ export default function ResetPasswordPage() {
     <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
       {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Create new password
         </h1>
-        <p className="text-[#64748b]">
+        <p className="text-[#555555]">
           Enter the code from your email and your new password
         </p>
       </div>
@@ -166,7 +166,7 @@ export default function ResetPasswordPage() {
         <div>
           <label
             htmlFor="email"
-            className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
           >
             Email Address
           </label>
@@ -175,9 +175,9 @@ export default function ResetPasswordPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg
-                     text-[#1e293b] placeholder-[#94a3b8]
-                     focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+            className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
+                     text-[#222222] placeholder-[#888888]
+                     focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                      transition-all duration-200"
             placeholder="you@example.com"
             required
@@ -189,7 +189,7 @@ export default function ResetPasswordPage() {
         <div>
           <label
             htmlFor="code"
-            className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
           >
             Reset Code
           </label>
@@ -198,9 +198,9 @@ export default function ResetPasswordPage() {
             type="text"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="w-full px-4 py-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg
-                     text-[#1e293b] placeholder-[#94a3b8]
-                     focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+            className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
+                     text-[#222222] placeholder-[#888888]
+                     focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                      transition-all duration-200 font-mono tracking-widest text-center text-lg"
             placeholder="Enter code"
             required
@@ -212,7 +212,7 @@ export default function ResetPasswordPage() {
         <div>
           <label
             htmlFor="password"
-            className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
           >
             New Password
           </label>
@@ -222,9 +222,9 @@ export default function ResetPasswordPage() {
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg
-                       text-[#1e293b] placeholder-[#94a3b8]
-                       focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+              className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
+                       text-[#222222] placeholder-[#888888]
+                       focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                        transition-all duration-200 pr-12"
               placeholder="Create a strong password"
               required
@@ -233,7 +233,7 @@ export default function ResetPasswordPage() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-[#1e293b] transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#555555] hover:text-[#222222] transition-colors"
             >
               {showPassword ? (
                 <svg
@@ -277,7 +277,7 @@ export default function ResetPasswordPage() {
           {password.length > 0 && (
             <div className="mt-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-[#64748b]">
+                <span className="text-xs text-[#555555]">
                   Password strength
                 </span>
                 <span
@@ -287,7 +287,7 @@ export default function ResetPasswordPage() {
                   {passwordStrength.label}
                 </span>
               </div>
-              <div className="h-1.5 bg-[#e2e8f0] rounded-full overflow-hidden">
+              <div className="h-1.5 bg-[#DDDDDD] rounded-full overflow-hidden">
                 <div
                   className="h-full transition-all duration-300"
                   style={{
@@ -301,7 +301,7 @@ export default function ResetPasswordPage() {
                   <li
                     key={req.text}
                     className={`text-xs flex items-center gap-2 ${
-                      req.met ? "text-green-600" : "text-[#94a3b8]"
+                      req.met ? "text-green-600" : "text-[#888888]"
                     }`}
                   >
                     {req.met ? (
@@ -337,7 +337,7 @@ export default function ResetPasswordPage() {
         <div>
           <label
             htmlFor="confirmPassword"
-            className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
           >
             Confirm Password
           </label>
@@ -346,14 +346,14 @@ export default function ResetPasswordPage() {
             type={showPassword ? "text" : "password"}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className={`w-full px-4 py-3 bg-[#f8fafc] border rounded-lg
-                     text-[#1e293b] placeholder-[#94a3b8]
-                     focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+            className={`w-full px-4 py-3 bg-[#FFFFFF] border rounded-lg
+                     text-[#222222] placeholder-[#888888]
+                     focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                      transition-all duration-200
                      ${
                        confirmPassword.length > 0 && !passwordsMatch
                          ? "border-red-300"
-                         : "border-[#e2e8f0]"
+                         : "border-[#DDDDDD]"
                      }`}
             placeholder="Confirm your new password"
             required
@@ -370,8 +370,8 @@ export default function ResetPasswordPage() {
         <button
           type="submit"
           disabled={!isFormValid || loading}
-          className="w-full py-3 px-4 bg-[#1e293b] text-white font-semibold rounded-lg
-                   hover:bg-[#334155] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1e293b]
+          className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
+                   hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
                    disabled:opacity-50 disabled:cursor-not-allowed
                    transition-all duration-200"
         >
@@ -388,20 +388,20 @@ export default function ResetPasswordPage() {
 
       {/* Back Links */}
       <div className="mt-8 text-center space-y-2">
-        <p className="text-[#64748b]">
+        <p className="text-[#555555]">
           Need a new code?{" "}
           <Link
             href="/forgot-password"
-            className="text-[#1e293b] font-semibold hover:underline"
+            className="text-[#222222] font-semibold hover:underline"
           >
             Request again
           </Link>
         </p>
-        <p className="text-[#64748b]">
+        <p className="text-[#555555]">
           Remember your password?{" "}
           <Link
             href="/login"
-            className="text-[#1e293b] font-semibold hover:underline"
+            className="text-[#222222] font-semibold hover:underline"
           >
             Sign in
           </Link>

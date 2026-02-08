@@ -40,14 +40,14 @@ export default function RegisterPage() {
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Check your email
         </h1>
-        <p className="text-[#64748b] mb-2">
+        <p className="text-[#555555] mb-2">
           We&apos;ve sent a verification link to
         </p>
-        <p className="font-medium text-[#1e293b] mb-4">{email}</p>
-        <p className="text-[#64748b] text-sm mb-6">
+        <p className="font-medium text-[#222222] mb-4">{email}</p>
+        <p className="text-[#555555] text-sm mb-6">
           Click the link in your email to complete your registration.
           <br />
           The link expires in 2 hours.
@@ -55,14 +55,14 @@ export default function RegisterPage() {
         <div className="space-y-3">
           <Link
             href="/login"
-            className="inline-block w-full py-3 px-6 bg-[#1e293b] text-white font-semibold rounded-lg hover:bg-[#334155] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
           >
             Back to Sign in
           </Link>
           <button
             type="button"
             onClick={() => globalThis.location.reload()}
-            className="inline-block w-full py-3 px-6 bg-white text-[#1e293b] font-semibold rounded-lg border border-[#e2e8f0] hover:bg-[#f8fafc] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-white text-[#222222] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
           >
             Use a different email
           </button>
@@ -75,10 +75,10 @@ export default function RegisterPage() {
     <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
       {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Create an account
         </h1>
-        <p className="text-[#64748b]">Get started with your free account</p>
+        <p className="text-[#555555]">Get started with your free account</p>
       </div>
 
       {/* Benefits */}
@@ -125,7 +125,7 @@ export default function RegisterPage() {
         <div>
           <label
             htmlFor="email"
-            className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
           >
             Email Address
           </label>
@@ -134,9 +134,9 @@ export default function RegisterPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg
-                     text-[#1e293b] placeholder-[#94a3b8]
-                     focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+            className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
+                     text-[#222222] placeholder-[#888888]
+                     focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                      transition-all duration-200"
             placeholder="you@example.com"
             required
@@ -149,8 +149,8 @@ export default function RegisterPage() {
         <button
           type="submit"
           disabled={!isEmailValid || isLoading}
-          className="w-full py-3 px-4 bg-[#1e293b] text-white font-semibold rounded-lg
-                   hover:bg-[#334155] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1e293b]
+          className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
+                   hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
                    disabled:opacity-50 disabled:cursor-not-allowed
                    transition-all duration-200 flex items-center justify-center gap-2"
         >
@@ -198,18 +198,18 @@ export default function RegisterPage() {
         </button>
 
         {/* Terms */}
-        <p className="text-xs text-[#64748b] text-center">
+        <p className="text-xs text-[#555555] text-center">
           By creating an account, you agree to our{" "}
           <Link
             href="/terms"
-            className="text-[#1e293b] underline hover:no-underline"
+            className="text-[#222222] underline hover:no-underline"
           >
             Terms of Service
           </Link>{" "}
           and{" "}
           <Link
             href="/privacy"
-            className="text-[#1e293b] underline hover:no-underline"
+            className="text-[#222222] underline hover:no-underline"
           >
             Privacy Policy
           </Link>
@@ -218,17 +218,17 @@ export default function RegisterPage() {
 
       {/* Divider */}
       <div className="my-8 flex items-center">
-        <div className="flex-1 border-t border-[#e2e8f0]" />
-        <span className="px-4 text-sm text-[#64748b]">or</span>
-        <div className="flex-1 border-t border-[#e2e8f0]" />
+        <div className="flex-1 border-t border-[#DDDDDD]" />
+        <span className="px-4 text-sm text-[#555555]">or</span>
+        <div className="flex-1 border-t border-[#DDDDDD]" />
       </div>
 
       {/* Login Link */}
-      <p className="text-center text-[#64748b]">
+      <p className="text-center text-[#555555]">
         Already have an account?{" "}
         <Link
           href="/login"
-          className="text-[#1e293b] font-semibold hover:underline"
+          className="text-[#222222] font-semibold hover:underline"
         >
           Sign in
         </Link>

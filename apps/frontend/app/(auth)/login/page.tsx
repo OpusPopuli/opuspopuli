@@ -67,8 +67,8 @@ export default function LoginPage() {
     <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
       {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-[#1e293b] mb-2">Welcome back</h1>
-        <p className="text-[#64748b]">Sign in to your account to continue</p>
+        <h1 className="text-2xl font-bold text-[#222222] mb-2">Welcome back</h1>
+        <p className="text-[#555555]">Sign in to your account to continue</p>
       </div>
 
       {/* Error Message */}
@@ -79,7 +79,7 @@ export default function LoginPage() {
       )}
 
       {/* Auth Mode Tabs */}
-      <div className="flex mb-6 border-b border-[#e2e8f0]">
+      <div className="flex mb-6 border-b border-[#DDDDDD]">
         {supportsPasskeys && (
           <button
             type="button"
@@ -87,8 +87,8 @@ export default function LoginPage() {
             className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
               ${
                 authMode === "passkey"
-                  ? "text-[#1e293b] border-[#1e293b]"
-                  : "text-[#64748b] border-transparent hover:text-[#1e293b]"
+                  ? "text-[#222222] border-[#222222]"
+                  : "text-[#555555] border-transparent hover:text-[#222222]"
               }`}
           >
             Passkey
@@ -100,8 +100,8 @@ export default function LoginPage() {
           className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
             ${
               authMode === "magic-link"
-                ? "text-[#1e293b] border-[#1e293b]"
-                : "text-[#64748b] border-transparent hover:text-[#1e293b]"
+                ? "text-[#222222] border-[#222222]"
+                : "text-[#555555] border-transparent hover:text-[#222222]"
             }`}
         >
           Email Link
@@ -112,8 +112,8 @@ export default function LoginPage() {
           className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
             ${
               authMode === "password"
-                ? "text-[#1e293b] border-[#1e293b]"
-                : "text-[#64748b] border-transparent hover:text-[#1e293b]"
+                ? "text-[#222222] border-[#222222]"
+                : "text-[#555555] border-transparent hover:text-[#222222]"
             }`}
         >
           Password
@@ -140,7 +140,7 @@ export default function LoginPage() {
                 />
               </svg>
             </div>
-            <p className="text-[#64748b] text-sm mb-4">
+            <p className="text-[#555555] text-sm mb-4">
               Sign in instantly with your fingerprint, face, or device PIN
             </p>
           </div>
@@ -149,7 +149,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="passkey-email"
-              className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+              className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
             >
               Email (Optional)
             </label>
@@ -158,9 +158,9 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg
-                       text-[#1e293b] placeholder-[#94a3b8]
-                       focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+              className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
+                       text-[#222222] placeholder-[#888888]
+                       focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                        transition-all duration-200"
               placeholder="you@example.com"
               autoComplete="email webauthn"
@@ -171,8 +171,8 @@ export default function LoginPage() {
             type="button"
             onClick={handlePasskeyLogin}
             disabled={isLoading}
-            className="w-full py-3 px-4 bg-[#1e293b] text-white font-semibold rounded-lg
-                     hover:bg-[#334155] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1e293b]
+            className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
+                     hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
                      disabled:opacity-50 disabled:cursor-not-allowed
                      transition-all duration-200 flex items-center justify-center gap-2"
           >
@@ -244,20 +244,20 @@ export default function LoginPage() {
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-[#1e293b] mb-2">
+              <h3 className="text-lg font-semibold text-[#222222] mb-2">
                 Check your email
               </h3>
-              <p className="text-[#64748b] text-sm">
+              <p className="text-[#555555] text-sm">
                 We sent a sign-in link to <strong>{email}</strong>
               </p>
-              <p className="text-[#94a3b8] text-xs mt-2">
+              <p className="text-[#888888] text-xs mt-2">
                 The link expires in 2 hours
               </p>
             </div>
           ) : (
             <form onSubmit={handleMagicLinkLogin} className="space-y-5">
               <div className="text-center py-2">
-                <p className="text-[#64748b] text-sm">
+                <p className="text-[#555555] text-sm">
                   We&apos;ll send you a magic link to sign in instantly
                 </p>
               </div>
@@ -265,7 +265,7 @@ export default function LoginPage() {
               <div>
                 <label
                   htmlFor="magic-email"
-                  className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+                  className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
                 >
                   Email Address
                 </label>
@@ -274,9 +274,9 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg
-                           text-[#1e293b] placeholder-[#94a3b8]
-                           focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+                  className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
+                           text-[#222222] placeholder-[#888888]
+                           focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                            transition-all duration-200"
                   placeholder="you@example.com"
                   required
@@ -287,8 +287,8 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={!isEmailValid || isLoading}
-                className="w-full py-3 px-4 bg-[#1e293b] text-white font-semibold rounded-lg
-                         hover:bg-[#334155] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1e293b]
+                className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
+                         hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
                          disabled:opacity-50 disabled:cursor-not-allowed
                          transition-all duration-200 flex items-center justify-center gap-2"
               >
@@ -347,7 +347,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="email"
-              className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+              className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
             >
               Email Address
             </label>
@@ -356,9 +356,9 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg
-                       text-[#1e293b] placeholder-[#94a3b8]
-                       focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+              className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
+                       text-[#222222] placeholder-[#888888]
+                       focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                        transition-all duration-200"
               placeholder="you@example.com"
               required
@@ -369,7 +369,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="password"
-              className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+              className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
             >
               Password
             </label>
@@ -379,9 +379,9 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg
-                         text-[#1e293b] placeholder-[#94a3b8]
-                         focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+                className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
+                         text-[#222222] placeholder-[#888888]
+                         focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                          transition-all duration-200 pr-12"
                 placeholder="Enter your password"
                 required
@@ -391,7 +391,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-[#1e293b] transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#555555] hover:text-[#222222] transition-colors"
               >
                 {showPassword ? (
                   <svg
@@ -437,7 +437,7 @@ export default function LoginPage() {
           <div className="text-right">
             <Link
               href="/forgot-password"
-              className="text-sm text-[#64748b] hover:text-[#1e293b] transition-colors"
+              className="text-sm text-[#555555] hover:text-[#222222] transition-colors"
             >
               Forgot your password?
             </Link>
@@ -446,8 +446,8 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={!isPasswordFormValid || isLoading}
-            className="w-full py-3 px-4 bg-[#1e293b] text-white font-semibold rounded-lg
-                     hover:bg-[#334155] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1e293b]
+            className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
+                     hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
                      disabled:opacity-50 disabled:cursor-not-allowed
                      transition-all duration-200"
           >
@@ -484,17 +484,17 @@ export default function LoginPage() {
 
       {/* Divider */}
       <div className="my-8 flex items-center">
-        <div className="flex-1 border-t border-[#e2e8f0]" />
-        <span className="px-4 text-sm text-[#64748b]">or</span>
-        <div className="flex-1 border-t border-[#e2e8f0]" />
+        <div className="flex-1 border-t border-[#DDDDDD]" />
+        <span className="px-4 text-sm text-[#555555]">or</span>
+        <div className="flex-1 border-t border-[#DDDDDD]" />
       </div>
 
       {/* Register Link */}
-      <p className="text-center text-[#64748b]">
+      <p className="text-center text-[#555555]">
         Don&apos;t have an account?{" "}
         <Link
           href="/register"
-          className="text-[#1e293b] font-semibold hover:underline"
+          className="text-[#222222] font-semibold hover:underline"
         >
           Create one
         </Link>

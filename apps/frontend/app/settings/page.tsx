@@ -191,7 +191,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <div>
             <label
               htmlFor="firstName"
-              className="block text-sm font-medium text-[#1e293b] mb-2"
+              className="block text-sm font-medium text-[#222222] mb-2"
             >
               {t("profile.firstName")}
             </label>
@@ -201,14 +201,14 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
               name="firstName"
               value={formData.firstName}
               onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none transition-colors"
+              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors"
               placeholder={t("profile.firstNamePlaceholder")}
             />
           </div>
           <div>
             <label
               htmlFor="lastName"
-              className="block text-sm font-medium text-[#1e293b] mb-2"
+              className="block text-sm font-medium text-[#222222] mb-2"
             >
               {t("profile.lastName")}
             </label>
@@ -218,7 +218,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
               name="lastName"
               value={formData.lastName}
               onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none transition-colors"
+              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors"
               placeholder={t("profile.lastNamePlaceholder")}
             />
           </div>
@@ -228,7 +228,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
         <div>
           <label
             htmlFor="displayName"
-            className="block text-sm font-medium text-[#1e293b] mb-2"
+            className="block text-sm font-medium text-[#222222] mb-2"
           >
             {t("profile.displayName")}
           </label>
@@ -238,10 +238,10 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
             name="displayName"
             value={formData.displayName}
             onChange={handleChange}
-            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none transition-colors"
+            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors"
             placeholder={t("profile.displayNamePlaceholder")}
           />
-          <p className="mt-1 text-sm text-[#64748b]">
+          <p className="mt-1 text-sm text-[#555555]">
             {t("profile.displayNameHint")}
           </p>
         </div>
@@ -259,7 +259,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
         <div>
           <label
             htmlFor="phone"
-            className="block text-sm font-medium text-[#1e293b] mb-2"
+            className="block text-sm font-medium text-[#222222] mb-2"
           >
             {t("profile.phone")}
           </label>
@@ -269,7 +269,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
             name="phone"
             value={formData.phone}
             onChange={handleChange}
-            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none transition-colors"
+            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors"
             placeholder={t("profile.phonePlaceholder")}
           />
         </div>
@@ -279,7 +279,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <div>
             <label
               htmlFor="timezone"
-              className="block text-sm font-medium text-[#1e293b] mb-2"
+              className="block text-sm font-medium text-[#222222] mb-2"
             >
               {t("profile.timezone")}
             </label>
@@ -288,7 +288,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
               name="timezone"
               value={formData.timezone}
               onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none transition-colors bg-white"
+              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors bg-white"
             >
               {TIMEZONES.map((tz) => (
                 <option key={tz.value} value={tz.value}>
@@ -300,7 +300,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <div>
             <label
               htmlFor="preferredLanguage"
-              className="block text-sm font-medium text-[#1e293b] mb-2"
+              className="block text-sm font-medium text-[#222222] mb-2"
             >
               {t("profile.language")}
             </label>
@@ -309,7 +309,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
               name="preferredLanguage"
               value={formData.preferredLanguage}
               onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none transition-colors bg-white"
+              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors bg-white"
             >
               {LANGUAGES.map((lang) => (
                 <option key={lang.value} value={lang.value}>
@@ -317,7 +317,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-sm text-[#64748b]">
+            <p className="mt-1 text-sm text-[#555555]">
               {t("profile.languageHint")}
             </p>
           </div>
@@ -327,7 +327,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
         <div>
           <label
             htmlFor="bio"
-            className="block text-sm font-medium text-[#1e293b] mb-2"
+            className="block text-sm font-medium text-[#222222] mb-2"
           >
             {t("profile.bio")}
           </label>
@@ -337,10 +337,10 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
             value={formData.bio}
             onChange={handleChange}
             rows={4}
-            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none transition-colors resize-none"
+            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors resize-none"
             placeholder={t("profile.bioPlaceholder")}
           />
-          <p className="mt-1 text-sm text-[#64748b]">{t("profile.bioHint")}</p>
+          <p className="mt-1 text-sm text-[#555555]">{t("profile.bioHint")}</p>
         </div>
 
         {/* Civic Fields Section */}
@@ -368,7 +368,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <button
             type="submit"
             disabled={updating}
-            className="px-6 py-3 bg-[#1e293b] text-white rounded-lg font-medium hover:bg-[#334155] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-3 bg-[#222222] text-white rounded-lg font-medium hover:bg-[#333333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {updating ? t("common:buttons.saving") : t("common:buttons.save")}
           </button>
@@ -451,10 +451,10 @@ export default function ProfileSettingsPage() {
       {/* Profile Form */}
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[#1e293b]">
+          <h1 className="text-2xl font-bold text-[#222222]">
             {t("profile.title")}
           </h1>
-          <p className="text-[#64748b] mt-1">{t("profile.subtitle")}</p>
+          <p className="text-[#555555] mt-1">{t("profile.subtitle")}</p>
         </div>
 
         {profileData?.myProfile && (

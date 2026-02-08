@@ -51,7 +51,7 @@ function MeetingCard({ meeting }: Readonly<{ meeting: Meeting }>) {
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold text-[#1e293b] line-clamp-1">
+            <h3 className="text-lg font-semibold text-[#222222] line-clamp-1">
               {meeting.title}
             </h3>
             {isPast && (
@@ -60,8 +60,8 @@ function MeetingCard({ meeting }: Readonly<{ meeting: Meeting }>) {
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-[#64748b]">{meeting.body}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#64748b]">
+          <p className="mt-1 text-sm text-[#555555]">{meeting.body}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#555555]">
             <span>{formattedDate}</span>
             <span>{formattedTime}</span>
             {meeting.location && <span>{meeting.location}</span>}
@@ -156,7 +156,7 @@ export default function MeetingsPage() {
     if (data?.meetings.items.length === 0) {
       return (
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#64748b]">No meetings found.</p>
+          <p className="text-[#555555]">No meetings found.</p>
         </div>
       );
     }
@@ -171,7 +171,7 @@ export default function MeetingsPage() {
 
         {/* Pagination */}
         <div className="mt-8 flex items-center justify-between">
-          <p className="text-sm text-[#64748b]">
+          <p className="text-sm text-[#555555]">
             Showing {page * PAGE_SIZE + 1} -{" "}
             {Math.min((page + 1) * PAGE_SIZE, data?.meetings.total || 0)} of{" "}
             {data?.meetings.total || 0}
@@ -180,14 +180,14 @@ export default function MeetingsPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-4 py-2 text-sm font-medium text-[#1e293b] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Previous
             </button>
             <button
               onClick={() => setPage((p) => p + 1)}
               disabled={!data?.meetings.hasMore}
-              className="px-4 py-2 text-sm font-medium text-[#1e293b] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Next
             </button>
@@ -207,14 +207,14 @@ export default function MeetingsPage() {
         >
           Region
         </Link>
-        <span className="mx-2 text-[#64748b]">/</span>
-        <span className="text-sm text-[#64748b]">Meetings</span>
+        <span className="mx-2 text-[#555555]">/</span>
+        <span className="text-sm text-[#555555]">Meetings</span>
       </nav>
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#1e293b]">Meetings</h1>
-        <p className="mt-2 text-[#64748b]">
+        <h1 className="text-3xl font-bold text-[#222222]">Meetings</h1>
+        <p className="mt-2 text-[#555555]">
           Legislative sessions and public hearings
         </p>
       </div>

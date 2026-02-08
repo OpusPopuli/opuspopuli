@@ -48,21 +48,21 @@ function EmailCard({ email }: { readonly email: EmailCorrespondence }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <StatusBadge status={email.status} />
-            <span className="text-xs text-[#64748b]">
+            <span className="text-xs text-[#555555]">
               {EMAIL_TYPE_LABELS[email.emailType]}
             </span>
-            <span className="text-xs text-[#64748b]">
+            <span className="text-xs text-[#555555]">
               {new Date(email.createdAt).toLocaleDateString()}
             </span>
           </div>
-          <h3 className="font-medium text-[#1e293b] truncate">
+          <h3 className="font-medium text-[#222222] truncate">
             {email.subject}
           </h3>
-          <p className="text-sm text-[#64748b] mt-1">
+          <p className="text-sm text-[#555555] mt-1">
             To: {email.recipientName || email.recipientEmail}
           </p>
           {email.bodyPreview && (
-            <p className="text-sm text-[#64748b] mt-2 line-clamp-2">
+            <p className="text-sm text-[#555555] mt-2 line-clamp-2">
               {email.bodyPreview}
             </p>
           )}
@@ -141,8 +141,8 @@ export default function EmailHistoryPage() {
               d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
             />
           </svg>
-          <p className="text-[#64748b]">No emails found.</p>
-          <p className="text-sm text-[#64748b] mt-1">
+          <p className="text-[#555555]">No emails found.</p>
+          <p className="text-sm text-[#555555] mt-1">
             Emails you send will appear here.
           </p>
         </div>
@@ -159,7 +159,7 @@ export default function EmailHistoryPage() {
 
         {/* Pagination */}
         <div className="mt-8 flex items-center justify-between">
-          <p className="text-sm text-[#64748b]">
+          <p className="text-sm text-[#555555]">
             Showing {page * PAGE_SIZE + 1} -{" "}
             {Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </p>
@@ -167,14 +167,14 @@ export default function EmailHistoryPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-4 py-2 text-sm font-medium text-[#1e293b] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Previous
             </button>
             <button
               onClick={() => setPage((p) => p + 1)}
               disabled={!hasMore}
-              className="px-4 py-2 text-sm font-medium text-[#1e293b] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Next
             </button>
@@ -194,21 +194,21 @@ export default function EmailHistoryPage() {
         >
           Settings
         </Link>
-        <span className="mx-2 text-[#64748b]">/</span>
-        <span className="text-sm text-[#64748b]">Email History</span>
+        <span className="mx-2 text-[#555555]">/</span>
+        <span className="text-sm text-[#555555]">Email History</span>
       </nav>
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#1e293b]">Email History</h1>
-        <p className="mt-2 text-[#64748b]">
+        <h1 className="text-3xl font-bold text-[#222222]">Email History</h1>
+        <p className="mt-2 text-[#555555]">
           View your sent emails and correspondence
         </p>
       </div>
 
       {/* Filter */}
       <div className="mb-6 flex items-center gap-2">
-        <label htmlFor="email-type-filter" className="text-sm text-[#64748b]">
+        <label htmlFor="email-type-filter" className="text-sm text-[#555555]">
           Filter by type:
         </label>
         <select
@@ -218,7 +218,7 @@ export default function EmailHistoryPage() {
             setTypeFilter(e.target.value as EmailType | "");
             setPage(0);
           }}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none"
+          className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
         >
           <option value="">All Types</option>
           <option value="REPRESENTATIVE_CONTACT">Representative Contact</option>

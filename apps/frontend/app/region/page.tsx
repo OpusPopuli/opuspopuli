@@ -126,14 +126,14 @@ export default function RegionPage() {
     <div className="max-w-4xl mx-auto px-8 py-12">
       {/* Region Header */}
       <div className="mb-10">
-        <h1 className="text-3xl font-bold text-[#1e293b]">
+        <h1 className="text-3xl font-bold text-[#222222]">
           {regionInfo?.name || "Region"}
         </h1>
-        <p className="mt-2 text-[#64748b]">
+        <p className="mt-2 text-[#555555]">
           {regionInfo?.description || "Explore civic data for your region"}
         </p>
         {regionInfo?.timezone && (
-          <p className="mt-1 text-sm text-[#64748b]">
+          <p className="mt-1 text-sm text-[#555555]">
             Timezone: {regionInfo.timezone}
           </p>
         )}
@@ -151,13 +151,13 @@ export default function RegionPage() {
               href={card.href}
               className="group bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-all duration-200"
             >
-              <div className="text-[#64748b] group-hover:text-[#1e293b] transition-colors mb-4">
+              <div className="text-[#555555] group-hover:text-[#222222] transition-colors mb-4">
                 <DataTypeIcon type={card.icon} />
               </div>
-              <h2 className="text-lg font-semibold text-[#1e293b] group-hover:text-blue-600 transition-colors">
+              <h2 className="text-lg font-semibold text-[#222222] group-hover:text-blue-600 transition-colors">
                 {card.title}
               </h2>
-              <p className="mt-1 text-sm text-[#64748b]">{card.description}</p>
+              <p className="mt-1 text-sm text-[#555555]">{card.description}</p>
             </Link>
           );
         })}
@@ -166,7 +166,7 @@ export default function RegionPage() {
       {/* Data Sources */}
       {regionInfo?.dataSourceUrls && regionInfo.dataSourceUrls.length > 0 && (
         <div className="mt-12 pt-8 border-t border-gray-100">
-          <h3 className="text-sm font-medium text-[#64748b] uppercase tracking-wider mb-3">
+          <h3 className="text-sm font-medium text-[#555555] uppercase tracking-wider mb-3">
             Data Sources
           </h3>
           <ul className="space-y-2">

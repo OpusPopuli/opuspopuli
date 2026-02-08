@@ -64,10 +64,10 @@ function PropositionCard({
     <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-[#1e293b] line-clamp-2">
+          <h3 className="text-lg font-semibold text-[#222222] line-clamp-2">
             {proposition.title}
           </h3>
-          <p className="mt-2 text-sm text-[#64748b] line-clamp-3">
+          <p className="mt-2 text-sm text-[#555555] line-clamp-3">
             {proposition.summary}
           </p>
         </div>
@@ -75,7 +75,7 @@ function PropositionCard({
       </div>
 
       <div className="mt-4 flex items-center justify-between text-sm">
-        <div className="text-[#64748b]">
+        <div className="text-[#555555]">
           {electionDate && <span>Election: {electionDate}</span>}
         </div>
         <div className="flex items-center gap-3">
@@ -130,7 +130,7 @@ export default function PropositionsPage() {
     if (data?.propositions.items.length === 0) {
       return (
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#64748b]">No propositions found.</p>
+          <p className="text-[#555555]">No propositions found.</p>
         </div>
       );
     }
@@ -145,7 +145,7 @@ export default function PropositionsPage() {
 
         {/* Pagination */}
         <div className="mt-8 flex items-center justify-between">
-          <p className="text-sm text-[#64748b]">
+          <p className="text-sm text-[#555555]">
             Showing {page * PAGE_SIZE + 1} -{" "}
             {Math.min((page + 1) * PAGE_SIZE, data?.propositions.total || 0)} of{" "}
             {data?.propositions.total || 0}
@@ -154,14 +154,14 @@ export default function PropositionsPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-4 py-2 text-sm font-medium text-[#1e293b] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Previous
             </button>
             <button
               onClick={() => setPage((p) => p + 1)}
               disabled={!data?.propositions.hasMore}
-              className="px-4 py-2 text-sm font-medium text-[#1e293b] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Next
             </button>
@@ -181,14 +181,14 @@ export default function PropositionsPage() {
         >
           Region
         </Link>
-        <span className="mx-2 text-[#64748b]">/</span>
-        <span className="text-sm text-[#64748b]">Propositions</span>
+        <span className="mx-2 text-[#555555]">/</span>
+        <span className="text-sm text-[#555555]">Propositions</span>
       </nav>
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#1e293b]">Propositions</h1>
-        <p className="mt-2 text-[#64748b]">
+        <h1 className="text-3xl font-bold text-[#222222]">Propositions</h1>
+        <p className="mt-2 text-[#555555]">
           Ballot measures and initiatives for your region
         </p>
       </div>

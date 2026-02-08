@@ -110,11 +110,11 @@ export function ContactRepresentativeForm({
   return (
     <form onSubmit={handlePlatformSubmit} className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-[#1e293b]">
+        <h2 className="text-xl font-semibold text-[#222222]">
           Contact {representative.name}
         </h2>
         {representative.chamber && (
-          <p className="text-sm text-[#64748b] mt-1">
+          <p className="text-sm text-[#555555] mt-1">
             {representative.chamber}
           </p>
         )}
@@ -139,7 +139,7 @@ export function ContactRepresentativeForm({
                 value="platform"
                 checked={sendMethod === "platform"}
                 onChange={() => setSendMethod("platform")}
-                className="text-[#1e293b]"
+                className="text-[#222222]"
               />
               <span className="text-sm">Send via Platform</span>
             </label>
@@ -150,7 +150,7 @@ export function ContactRepresentativeForm({
                 value="mailto"
                 checked={sendMethod === "mailto"}
                 onChange={() => setSendMethod("mailto")}
-                className="text-[#1e293b]"
+                className="text-[#222222]"
               />
               <span className="text-sm">Open in Email Client</span>
             </label>
@@ -160,7 +160,7 @@ export function ContactRepresentativeForm({
           <div>
             <label
               htmlFor="subject"
-              className="block text-sm font-medium text-[#1e293b] mb-2"
+              className="block text-sm font-medium text-[#222222] mb-2"
             >
               Subject
             </label>
@@ -171,7 +171,7 @@ export function ContactRepresentativeForm({
               onChange={(e) => setSubject(e.target.value)}
               required
               maxLength={200}
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none"
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
               placeholder="Subject of your message"
             />
           </div>
@@ -180,7 +180,7 @@ export function ContactRepresentativeForm({
           <div>
             <label
               htmlFor="message"
-              className="block text-sm font-medium text-[#1e293b] mb-2"
+              className="block text-sm font-medium text-[#222222] mb-2"
             >
               Message
             </label>
@@ -192,10 +192,10 @@ export function ContactRepresentativeForm({
               minLength={10}
               maxLength={5000}
               rows={8}
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none resize-y"
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none resize-y"
               placeholder="Write your message here..."
             />
-            <p className="text-xs text-[#64748b] mt-1">
+            <p className="text-xs text-[#555555] mt-1">
               {message.length}/5000 characters
             </p>
           </div>
@@ -207,9 +207,9 @@ export function ContactRepresentativeForm({
                 type="checkbox"
                 checked={includeAddress}
                 onChange={(e) => setIncludeAddress(e.target.checked)}
-                className="rounded text-[#1e293b]"
+                className="rounded text-[#222222]"
               />
-              <span className="text-sm text-[#64748b]">
+              <span className="text-sm text-[#555555]">
                 Include my address (helps verify you are a constituent)
               </span>
             </label>
@@ -228,7 +228,7 @@ export function ContactRepresentativeForm({
               <button
                 type="button"
                 onClick={onCancel}
-                className="px-4 py-2 text-sm font-medium text-[#64748b] hover:text-[#1e293b] transition-colors"
+                className="px-4 py-2 text-sm font-medium text-[#555555] hover:text-[#222222] transition-colors"
               >
                 Cancel
               </button>
@@ -237,7 +237,7 @@ export function ContactRepresentativeForm({
               <button
                 type="submit"
                 disabled={loading || !subject || message.length < 10}
-                className="px-6 py-2 text-sm font-medium text-white bg-[#1e293b] rounded-lg hover:bg-[#334155] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-6 py-2 text-sm font-medium text-white bg-[#222222] rounded-lg hover:bg-[#333333] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? "Sending..." : "Send Message"}
               </button>
@@ -246,7 +246,7 @@ export function ContactRepresentativeForm({
                 type="button"
                 onClick={handleMailtoClick}
                 disabled={!subject || message.length < 10}
-                className="px-6 py-2 text-sm font-medium text-white bg-[#1e293b] rounded-lg hover:bg-[#334155] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-6 py-2 text-sm font-medium text-white bg-[#222222] rounded-lg hover:bg-[#333333] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Open in Email Client
               </button>
