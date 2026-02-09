@@ -138,7 +138,7 @@ export default function SettingsLayout({
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-[#f8fafc]">
+      <div className="min-h-screen bg-[#FFFFFF]">
         {/* Header */}
         <header className="bg-white border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -147,16 +147,16 @@ export default function SettingsLayout({
                 href="/"
                 className="inline-flex items-center gap-3 hover:opacity-80 transition-opacity"
               >
-                <div className="w-10 h-10 bg-[#1e293b] rounded-lg flex items-center justify-center">
+                <div className="w-10 h-10 bg-[#222222] rounded-lg flex items-center justify-center">
                   <span className="text-white font-bold text-sm">Q</span>
                 </div>
-                <span className="text-[#1e293b] font-semibold text-lg">
+                <span className="text-[#222222] font-semibold text-lg">
                   Opus Populi
                 </span>
               </Link>
               <Link
                 href="/"
-                className="text-sm text-[#64748b] hover:text-[#1e293b] transition-colors"
+                className="text-sm text-[#555555] hover:text-[#222222] transition-colors"
               >
                 {t("common:navigation.backToApp")}
               </Link>
@@ -169,7 +169,7 @@ export default function SettingsLayout({
             {/* Sidebar Navigation */}
             <nav className="w-64 flex-shrink-0">
               <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-2">
-                <h2 className="px-4 py-2 text-xs font-semibold text-[#64748b] uppercase tracking-wider">
+                <h2 className="px-4 py-2 text-xs font-semibold text-[#555555] uppercase tracking-wider">
                   {t("nav.settings")}
                 </h2>
                 <ul className="space-y-1">
@@ -184,8 +184,8 @@ export default function SettingsLayout({
                           href={item.href}
                           className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                             isActive
-                              ? "bg-[#1e293b] text-white"
-                              : "text-[#64748b] hover:bg-gray-100 hover:text-[#1e293b]"
+                              ? "bg-[#222222] text-white"
+                              : "text-[#555555] hover:bg-gray-100 hover:text-[#222222]"
                           }`}
                         >
                           {item.icon}

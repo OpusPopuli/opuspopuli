@@ -48,24 +48,21 @@ Available in both SVG and PNG formats:
 
 ## Brand Colors
 
-### Primary
+### Neutral Palette
 
-| Color | Hex | RGB | Usage |
-|-------|-----|-----|-------|
-| **Slate Dark** | `#2C3E50` | 44, 62, 80 | Primary text, logos, dark backgrounds |
+| Role | Light Mode | Dark Mode |
+|------|-----------|-----------|
+| **Primary text / logo** | `#222222` | `#F0F0F0` |
+| **Secondary text** | `#555555` | `#C2C2C2` |
+| **Muted text** | `#888888` | `#9A9A9A` |
+| **Background** | `#FFFFFF` | `#111111` |
+| **Borders / dividers** | `#DDDDDD` | `#2A2A2A` |
 
 ### Accent
 
 | Color | Hex | RGB | Usage |
 |-------|-----|-----|-------|
 | **Sage Green** | `#7F9C8E` | 127, 156, 142 | Highlights, accents, CTAs |
-
-### Backgrounds
-
-| Color | Hex | RGB | Usage |
-|-------|-----|-----|-------|
-| **Light** | `#FAFAFA` | 250, 250, 250 | Light mode backgrounds |
-| **Dark** | `#1E1E1E` | 30, 30, 30 | Dark mode backgrounds |
 
 ## Accessibility (WCAG 2.2 AA)
 
@@ -79,50 +76,41 @@ All Opus Populi sites must meet WCAG 2.2 Level AA accessibility standards. This 
 | Large text (≥ 18pt or 14pt bold) | 3:1 | Headings |
 | UI components | 3:1 | Buttons, form inputs |
 
-### Text on White (`#FFFFFF`) or Light (`#FAFAFA`) Backgrounds
+### Text on White (`#FFFFFF`) Background
 
-| Color | Opacity | Contrast | Status |
-|-------|---------|----------|--------|
-| Slate Dark | 100% | 12.6:1 | ✅ Pass |
-| Slate Dark | 80% | 7.2:1 | ✅ Pass |
-| Slate Dark | 70% | 5.5:1 | ✅ Pass |
-| Slate Dark | 60% | 4.2:1 | ❌ Fail (use on white only) |
-| Slate Dark | 50% | 3.2:1 | ❌ Fail |
-| **Sage Green** | 100% | 3.0:1 | ❌ Fail for text |
+| Color | Hex | Contrast | Status |
+|-------|-----|----------|--------|
+| Primary | `#222222` | 14.7:1 | ✅ Pass |
+| Secondary | `#555555` | 7.5:1 | ✅ Pass |
+| Muted | `#888888` | 3.5:1 | ✅ Pass (large text / UI only) |
+| **Sage Green** | `#7F9C8E` | 3.0:1 | ❌ Fail for text |
 
 > **Important:** Sage Green (#7F9C8E) does not meet WCAG AA contrast requirements for text on light backgrounds. Use it only for decorative elements, borders, or hover states—never as the primary text color.
 
-### Text on Slate Dark (`#2C3E50`) Backgrounds
+> **Note:** Muted text (`#888888`) at 3.5:1 passes for large text (≥ 18pt / 14pt bold) and UI components, but fails for normal body text. Use `#555555` as minimum for body copy.
 
-| Color | Opacity | Contrast | Status |
-|-------|---------|----------|--------|
-| White | 100% | 12.6:1 | ✅ Pass |
-| White | 80% | 8.1:1 | ✅ Pass |
-| White | 70% | 6.3:1 | ✅ Pass |
-| White | 60% | 4.7:1 | ✅ Pass (barely) |
-| White | 50% | 3.6:1 | ❌ Fail |
+### Text on Dark (`#111111`) Background
 
-### Text on Gray (`#F9FAFB`) Backgrounds
-
-Gray backgrounds reduce contrast. Use higher opacity values:
-
-| Color | Opacity | Contrast | Status |
-|-------|---------|----------|--------|
-| Slate Dark | 100% | 11.8:1 | ✅ Pass |
-| Slate Dark | 80% | 6.7:1 | ✅ Pass |
-| Slate Dark | 70% | 5.1:1 | ✅ Pass |
-| Slate Dark | 60% | 3.9:1 | ❌ Fail |
+| Color | Hex | Contrast | Status |
+|-------|-----|----------|--------|
+| Primary | `#F0F0F0` | 15.4:1 | ✅ Pass |
+| Secondary | `#C2C2C2` | 10.3:1 | ✅ Pass |
+| Muted | `#9A9A9A` | 6.3:1 | ✅ Pass |
 
 ### Recommended Usage
 
 ```css
-/* Primary text - always use full opacity or 80% */
-.text-primary { color: #2C3E50; }           /* On light backgrounds */
-.text-primary { color: rgba(255,255,255,0.8); } /* On dark backgrounds */
+/* Light mode */
+.text-primary   { color: #222222; }  /* Headings, body */
+.text-secondary { color: #555555; }  /* Captions, labels */
+.text-muted     { color: #888888; }  /* Placeholders, hints (large text only) */
+.border         { border-color: #DDDDDD; }
 
-/* Secondary/muted text - use 80% minimum */
-.text-secondary { color: rgba(44,62,80,0.8); }  /* On white/light */
-.text-secondary { color: rgba(255,255,255,0.7); } /* On dark */
+/* Dark mode */
+.text-primary   { color: #F0F0F0; }
+.text-secondary { color: #C2C2C2; }
+.text-muted     { color: #9A9A9A; }
+.border         { border-color: #2A2A2A; }
 
 /* Sage green - accent only, never for body text */
 .accent { color: #7F9C8E; }  /* Only for: borders, hover states, icons */
@@ -132,22 +120,21 @@ Gray backgrounds reduce contrast. Use higher opacity values:
 
 | Pattern | Tailwind Class | Use For |
 |---------|----------------|---------|
-| Primary text on light | `text-slate-dark` | Headings, body |
-| Secondary text on light | `text-slate-dark/80` | Captions, muted |
-| Primary text on dark | `text-white` | Headings |
-| Secondary text on dark | `text-white/70` or `text-white/80` | Body, captions |
-| Accent (decorative only) | `text-sage` | Hover states, links in content |
-| Borders/dividers | `border-sage` or `border-slate-dark/10` | Decorative |
+| Primary text on light | `text-primary` or `text-[#222222]` | Headings, body |
+| Secondary text on light | `text-secondary` or `text-[#555555]` | Captions, labels |
+| Muted text on light | `text-muted` or `text-[#888888]` | Placeholders, hints |
+| Primary text on dark | `text-primary-dark` or `text-[#F0F0F0]` | Headings |
+| Secondary text on dark | `text-secondary-dark` or `text-[#C2C2C2]` | Body, captions |
+| Borders/dividers | `border-border` or `border-[#DDDDDD]` | Separators |
+| Accent (decorative only) | `text-sage` or `text-[#7F9C8E]` | Hover states, links |
 
 ### Patterns to Avoid
 
 | ❌ Don't Use | Why | ✅ Use Instead |
 |-------------|-----|----------------|
-| `text-slate-dark/50` | 3.2:1 contrast fails | `text-slate-dark/80` |
-| `text-slate-dark/60` on gray | 3.9:1 contrast fails | `text-slate-dark` |
-| `text-white/50` | 3.6:1 contrast fails | `text-white/70` |
-| `text-sage` for body text | 3.0:1 contrast fails | `text-slate-dark/80` |
-| Sage on sage backgrounds | Poor contrast | `text-slate-dark/80 bg-slate-dark/5` |
+| `text-[#888888]` for body text | 3.5:1 fails for normal text | `text-[#555555]` |
+| `text-sage` for body text | 3.0:1 contrast fails | `text-[#555555]` |
+| Sage on sage backgrounds | Poor contrast | `text-[#222222]` on light bg |
 
 ### Testing
 
@@ -183,7 +170,7 @@ Tests check:
 
 - Use provided logo files without modification
 - Maintain clear space around logo (minimum 2x mark height)
-- Use slate dark (#2C3E50) or white for logo colors
+- Use primary (`#222222`) or white for logo colors
 - Scale logos proportionally
 - Choose appropriate lockup for context
 

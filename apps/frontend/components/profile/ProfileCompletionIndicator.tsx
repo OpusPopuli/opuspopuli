@@ -25,7 +25,7 @@ export function ProfileCompletionIndicator({
     <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 mb-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-[#1e293b]">
+          <h3 className="text-lg font-semibold text-[#222222]">
             {t("profile.completion.title", "Profile Completion")}
           </h3>
           {isComplete && (
@@ -35,7 +35,7 @@ export function ProfileCompletionIndicator({
           )}
         </div>
         <div className="text-right">
-          <span className="text-3xl font-bold text-[#1e293b]">
+          <span className="text-3xl font-bold text-[#222222]">
             {Math.min(percentage, 100)}%
           </span>
           {percentage > 100 && (
@@ -77,14 +77,14 @@ export function ProfileCompletionIndicator({
       {/* Suggested Next Steps */}
       {!isComplete && suggestedNextSteps.length > 0 && (
         <div className="border-t border-gray-100 pt-4">
-          <p className="text-sm font-medium text-[#64748b] mb-2">
+          <p className="text-sm font-medium text-[#555555] mb-2">
             {t("profile.completion.nextSteps", "Suggested next steps:")}
           </p>
           <ul className="space-y-2">
             {suggestedNextSteps.map((step, idx) => (
               <li
                 key={idx}
-                className="text-sm text-[#1e293b] flex items-start gap-2"
+                className="text-sm text-[#222222] flex items-start gap-2"
               >
                 <span className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-1.5 flex-shrink-0" />
                 {step}

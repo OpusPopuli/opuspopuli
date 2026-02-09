@@ -24,7 +24,7 @@ export function representativeContactTemplate(
   text: string;
 } {
   const propositionSection = data.propositionTitle
-    ? `<p style="color: #475569; margin-bottom: 16px;"><strong>Regarding:</strong> ${data.propositionTitle}</p>`
+    ? `<p style="color: #555555; margin-bottom: 16px;"><strong>Regarding:</strong> ${data.propositionTitle}</p>`
     : "";
 
   const propositionTextSection = data.propositionTitle
@@ -47,27 +47,27 @@ export function representativeContactTemplate(
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
   </head>
-  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1e293b;">
-    <p style="color: #475569; line-height: 1.6;">
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #222222;">
+    <p style="color: #555555; line-height: 1.6;">
       Dear ${data.representativeName},
     </p>
 
     ${propositionSection}
 
-    <div style="white-space: pre-wrap; color: #475569; line-height: 1.6; background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+    <div style="white-space: pre-wrap; color: #555555; line-height: 1.6; background-color: #FFFFFF; padding: 20px; border-radius: 8px; margin: 20px 0;">
 ${data.message}
     </div>
 
-    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+    <hr style="border: none; border-top: 1px solid #DDDDDD; margin: 24px 0;">
 
-    <div style="color: #64748b; font-size: 14px;">
+    <div style="color: #555555; font-size: 14px;">
       <p style="margin: 4px 0;"><strong>From:</strong> ${data.senderName}</p>
       <p style="margin: 4px 0;"><strong>Email:</strong> ${data.senderEmail}${addressSection}</p>
     </div>
 
-    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+    <hr style="border: none; border-top: 1px solid #DDDDDD; margin: 24px 0;">
 
-    <p style="color: #94a3b8; font-size: 11px; text-align: center;">
+    <p style="color: #888888; font-size: 11px; text-align: center;">
       This message was sent via ${data.platformName}. The sender's email address has been verified.
     </p>
   </body>
