@@ -4,6 +4,14 @@ import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import {
+  AuthCard,
+  AuthHeader,
+  AuthErrorAlert,
+  AuthInput,
+  AuthSubmitButton,
+  AuthDivider,
+} from "@/components/auth/AuthUI";
 
 type AuthMode = "passkey" | "magic-link" | "password";
 
@@ -64,19 +72,13 @@ export default function LoginPage() {
   const isEmailValid = email.length > 0 && email.includes("@");
 
   return (
-    <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-[#222222] mb-2">Welcome back</h1>
-        <p className="text-[#555555]">Sign in to your account to continue</p>
-      </div>
+    <AuthCard>
+      <AuthHeader
+        title="Welcome back"
+        subtitle="Sign in to your account to continue"
+      />
 
-      {/* Error Message */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      )}
+      <AuthErrorAlert error={error} />
 
       {/* Auth Mode Tabs */}
       <div className="flex mb-6 border-b border-[#DDDDDD]">
@@ -145,81 +147,38 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Optional email for filtering passkeys */}
-          <div>
-            <label
-              htmlFor="passkey-email"
-              className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
-            >
-              Email (Optional)
-            </label>
-            <input
-              id="passkey-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
-                       text-[#222222] placeholder-[#888888]
-                       focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
-                       transition-all duration-200"
-              placeholder="you@example.com"
-              autoComplete="email webauthn"
-            />
-          </div>
+          <AuthInput
+            id="passkey-email"
+            label="Email (Optional)"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            placeholder="you@example.com"
+            autoComplete="email webauthn"
+          />
 
-          <button
+          <AuthSubmitButton
             type="button"
             onClick={handlePasskeyLogin}
-            disabled={isLoading}
-            className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
-                     hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     transition-all duration-200 flex items-center justify-center gap-2"
+            loading={isLoading}
+            loadingText="Authenticating..."
           >
-            {isLoading ? (
-              <span className="inline-flex items-center gap-2">
-                <svg
-                  className="animate-spin h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                Authenticating...
-              </span>
-            ) : (
-              <>
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"
-                  />
-                </svg>
-                Sign in with Passkey
-              </>
-            )}
-          </button>
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"
+              />
+            </svg>
+            Sign in with Passkey
+          </AuthSubmitButton>
         </div>
       )}
 
@@ -262,80 +221,38 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <div>
-                <label
-                  htmlFor="magic-email"
-                  className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
-                >
-                  Email Address
-                </label>
-                <input
-                  id="magic-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
-                           text-[#222222] placeholder-[#888888]
-                           focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
-                           transition-all duration-200"
-                  placeholder="you@example.com"
-                  required
-                  autoComplete="email"
-                />
-              </div>
+              <AuthInput
+                id="magic-email"
+                label="Email Address"
+                type="email"
+                value={email}
+                onChange={setEmail}
+                placeholder="you@example.com"
+                required
+                autoComplete="email"
+              />
 
-              <button
-                type="submit"
-                disabled={!isEmailValid || isLoading}
-                className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
-                         hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
-                         disabled:opacity-50 disabled:cursor-not-allowed
-                         transition-all duration-200 flex items-center justify-center gap-2"
+              <AuthSubmitButton
+                disabled={!isEmailValid}
+                loading={isLoading}
+                loadingText="Sending..."
               >
-                {isLoading ? (
-                  <span className="inline-flex items-center gap-2">
-                    <svg
-                      className="animate-spin h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Sending...
-                  </span>
-                ) : (
-                  <>
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                      />
-                    </svg>
-                    Send Magic Link
-                  </>
-                )}
-              </button>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+                Send Magic Link
+              </AuthSubmitButton>
             </form>
           )}
         </div>
@@ -344,27 +261,16 @@ export default function LoginPage() {
       {/* Password Mode */}
       {authMode === "password" && (
         <form onSubmit={handlePasswordLogin} className="space-y-5">
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
-            >
-              Email Address
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
-                       text-[#222222] placeholder-[#888888]
-                       focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
-                       transition-all duration-200"
-              placeholder="you@example.com"
-              required
-              autoComplete="email"
-            />
-          </div>
+          <AuthInput
+            id="email"
+            label="Email Address"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            placeholder="you@example.com"
+            required
+            autoComplete="email"
+          />
 
           <div>
             <label
@@ -443,51 +349,17 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          <button
-            type="submit"
-            disabled={!isPasswordFormValid || isLoading}
-            className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
-                     hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     transition-all duration-200"
+          <AuthSubmitButton
+            disabled={!isPasswordFormValid}
+            loading={isLoading}
+            loadingText="Signing in..."
           >
-            {isLoading ? (
-              <span className="inline-flex items-center gap-2">
-                <svg
-                  className="animate-spin h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                Signing in...
-              </span>
-            ) : (
-              "Sign in"
-            )}
-          </button>
+            Sign in
+          </AuthSubmitButton>
         </form>
       )}
 
-      {/* Divider */}
-      <div className="my-8 flex items-center">
-        <div className="flex-1 border-t border-[#DDDDDD]" />
-        <span className="px-4 text-sm text-[#555555]">or</span>
-        <div className="flex-1 border-t border-[#DDDDDD]" />
-      </div>
+      <AuthDivider />
 
       {/* Register Link */}
       <p className="text-center text-[#555555]">
@@ -499,6 +371,6 @@ export default function LoginPage() {
           Create one
         </Link>
       </p>
-    </div>
+    </AuthCard>
   );
 }

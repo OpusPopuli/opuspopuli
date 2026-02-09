@@ -7,7 +7,13 @@ import {
   CONFIRM_FORGOT_PASSWORD,
   ConfirmForgotPasswordData,
 } from "@/lib/graphql/auth";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
+import {
+  AuthCard,
+  AuthHeader,
+  AuthErrorAlert,
+  AuthInput,
+  AuthSubmitButton,
+} from "@/components/auth/AuthUI";
 
 interface PasswordStrength {
   score: number;
@@ -108,7 +114,7 @@ export default function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
+      <AuthCard className="text-center">
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <svg
             className="w-8 h-8 text-green-600"
@@ -137,76 +143,41 @@ export default function ResetPasswordPage() {
         >
           Sign in
         </Link>
-      </div>
+      </AuthCard>
     );
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-[#222222] mb-2">
-          Create new password
-        </h1>
-        <p className="text-[#555555]">
-          Enter the code from your email and your new password
-        </p>
-      </div>
+    <AuthCard>
+      <AuthHeader
+        title="Create new password"
+        subtitle="Enter the code from your email and your new password"
+      />
 
-      {/* Error Message */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      )}
+      <AuthErrorAlert error={error} />
 
-      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Email */}
-        <div>
-          <label
-            htmlFor="email"
-            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
-          >
-            Email Address
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
-                     text-[#222222] placeholder-[#888888]
-                     focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
-                     transition-all duration-200"
-            placeholder="you@example.com"
-            required
-            autoComplete="email"
-          />
-        </div>
+        <AuthInput
+          id="email"
+          label="Email Address"
+          type="email"
+          value={email}
+          onChange={setEmail}
+          placeholder="you@example.com"
+          required
+          autoComplete="email"
+        />
 
-        {/* Confirmation Code */}
-        <div>
-          <label
-            htmlFor="code"
-            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
-          >
-            Reset Code
-          </label>
-          <input
-            id="code"
-            type="text"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
-                     text-[#222222] placeholder-[#888888]
-                     focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
-                     transition-all duration-200 font-mono tracking-widest text-center text-lg"
-            placeholder="Enter code"
-            required
-            autoComplete="one-time-code"
-          />
-        </div>
+        <AuthInput
+          id="code"
+          label="Reset Code"
+          value={code}
+          onChange={setCode}
+          placeholder="Enter code"
+          required
+          autoComplete="one-time-code"
+          className="font-mono tracking-widest text-center text-lg"
+        />
 
         {/* New Password */}
         <div>
@@ -366,24 +337,13 @@ export default function ResetPasswordPage() {
           )}
         </div>
 
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={!isFormValid || loading}
-          className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
-                   hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
-                   disabled:opacity-50 disabled:cursor-not-allowed
-                   transition-all duration-200"
+        <AuthSubmitButton
+          disabled={!isFormValid}
+          loading={loading}
+          loadingText="Resetting..."
         >
-          {loading ? (
-            <span className="inline-flex items-center gap-2">
-              <LoadingSpinner />
-              Resetting...
-            </span>
-          ) : (
-            "Reset password"
-          )}
-        </button>
+          Reset password
+        </AuthSubmitButton>
       </form>
 
       {/* Back Links */}
@@ -407,6 +367,6 @@ export default function ResetPasswordPage() {
           </Link>
         </p>
       </div>
-    </div>
+    </AuthCard>
   );
 }

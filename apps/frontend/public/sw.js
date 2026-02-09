@@ -2153,7 +2153,7 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`);
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/forgot-password/page-eeaaebba8245f30f.js",
+        url: "/_next/static/chunks/app/(auth)/forgot-password/page-fe3cfe658409d539.js",
       },
       {
         revision: null,
@@ -2161,7 +2161,7 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`);
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/login/page-3b6a1d370feb3c75.js",
+        url: "/_next/static/chunks/app/(auth)/login/page-61a4047524d9b3da.js",
       },
       {
         revision: null,
@@ -2169,11 +2169,11 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`);
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/register/page-22a7cde55c4641bb.js",
+        url: "/_next/static/chunks/app/(auth)/register/page-8da060375d36c0ea.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/reset-password/page-b197c158f1745f5c.js",
+        url: "/_next/static/chunks/app/(auth)/reset-password/page-b0c03a922141c32c.js",
       },
       {
         revision: null,
@@ -2395,11 +2395,11 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`);
       },
       {
         revision: "cbd5d356832cab0a97503717f8ebadae",
-        url: "/_next/static/x-yhSsrSZmYDgvxQE9gAa/_buildManifest.js",
+        url: "/_next/static/zSHkVwrz4FbIH0JqWvLcz/_buildManifest.js",
       },
       {
         revision: "b6652df95db52feb4daf4eca35380933",
-        url: "/_next/static/x-yhSsrSZmYDgvxQE9gAa/_ssgManifest.js",
+        url: "/_next/static/zSHkVwrz4FbIH0JqWvLcz/_ssgManifest.js",
       },
       {
         revision: "06749209bd1bf24ff6297fc6eb5b462a",

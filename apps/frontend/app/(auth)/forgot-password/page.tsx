@@ -5,7 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@apollo/client/react";
 import { FORGOT_PASSWORD, ForgotPasswordData } from "@/lib/graphql/auth";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
+import {
+  AuthCard,
+  AuthHeader,
+  AuthErrorAlert,
+  AuthInput,
+  AuthSubmitButton,
+} from "@/components/auth/AuthUI";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -41,7 +47,7 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
+      <AuthCard className="text-center">
         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <svg
             className="w-8 h-8 text-blue-600"
@@ -79,72 +85,38 @@ export default function ForgotPasswordPage() {
             Try again
           </button>
         </p>
-      </div>
+      </AuthCard>
     );
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-[#222222] mb-2">
-          Reset your password
-        </h1>
-        <p className="text-[#555555]">
-          Enter your email and we&apos;ll send you a reset code
-        </p>
-      </div>
+    <AuthCard>
+      <AuthHeader
+        title="Reset your password"
+        subtitle="Enter your email and we'll send you a reset code"
+      />
 
-      {/* Error Message */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      )}
+      <AuthErrorAlert error={error} />
 
-      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Email */}
-        <div>
-          <label
-            htmlFor="email"
-            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
-          >
-            Email Address
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
-                     text-[#222222] placeholder-[#888888]
-                     focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
-                     transition-all duration-200"
-            placeholder="you@example.com"
-            required
-            autoComplete="email"
-          />
-        </div>
+        <AuthInput
+          id="email"
+          label="Email Address"
+          type="email"
+          value={email}
+          onChange={setEmail}
+          placeholder="you@example.com"
+          required
+          autoComplete="email"
+        />
 
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={email.length === 0 || loading}
-          className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
-                   hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
-                   disabled:opacity-50 disabled:cursor-not-allowed
-                   transition-all duration-200"
+        <AuthSubmitButton
+          disabled={email.length === 0}
+          loading={loading}
+          loadingText="Sending..."
         >
-          {loading ? (
-            <span className="inline-flex items-center gap-2">
-              <LoadingSpinner />
-              Sending...
-            </span>
-          ) : (
-            "Send reset code"
-          )}
-        </button>
+          Send reset code
+        </AuthSubmitButton>
       </form>
 
       {/* Back to Login Link */}
@@ -157,6 +129,6 @@ export default function ForgotPasswordPage() {
           Sign in
         </Link>
       </p>
-    </div>
+    </AuthCard>
   );
 }
