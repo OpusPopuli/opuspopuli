@@ -2131,161 +2131,174 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`);
   ];
   new eS({
     precacheEntries: [
-      {
-        revision: "2a34a28194f3242d5936536316f6fac7",
-        url: "/_next/static/X9FbiZjI5s_6L-iJO-ptd/_buildManifest.js",
-      },
-      {
-        revision: "b6652df95db52feb4daf4eca35380933",
-        url: "/_next/static/X9FbiZjI5s_6L-iJO-ptd/_ssgManifest.js",
-      },
-      { revision: null, url: "/_next/static/chunks/105-a162d93a1431f2cd.js" },
+      { revision: null, url: "/_next/static/chunks/1241-41876851089a6525.js" },
       {
         revision: null,
-        url: "/_next/static/chunks/23c7563c-7ff45c855a84f1b3.js",
+        url: "/_next/static/chunks/23c7563c-3fea904ce157228f.js",
       },
-      { revision: null, url: "/_next/static/chunks/241-3a397d8d6a351806.js" },
-      { revision: null, url: "/_next/static/chunks/395-9501ec99a8c7b13a.js" },
-      { revision: null, url: "/_next/static/chunks/478-4e6364c744ed30ce.js" },
-      { revision: null, url: "/_next/static/chunks/525-f91d9f25916b5d62.js" },
-      { revision: null, url: "/_next/static/chunks/598-69d5de27dcf40a2d.js" },
-      { revision: null, url: "/_next/static/chunks/730-411df3f666530590.js" },
-      { revision: null, url: "/_next/static/chunks/752-2abefb793183783a.js" },
-      { revision: null, url: "/_next/static/chunks/801-122231aef5b24b47.js" },
-      { revision: null, url: "/_next/static/chunks/826-59cb861e09db829d.js" },
+      { revision: null, url: "/_next/static/chunks/3826-4eaecb7acd304891.js" },
+      { revision: null, url: "/_next/static/chunks/4303-dbfab9b17f58d5a9.js" },
+      { revision: null, url: "/_next/static/chunks/4598-12af45139fc40f84.js" },
+      { revision: null, url: "/_next/static/chunks/5395-c48d5b164e027b71.js" },
+      { revision: null, url: "/_next/static/chunks/5752-6830550fb68f2bf3.js" },
+      { revision: null, url: "/_next/static/chunks/6478-ce7c24b32509301d.js" },
+      { revision: null, url: "/_next/static/chunks/8525-a5acb790b706811a.js" },
       { revision: null, url: "/_next/static/chunks/868-cb1c085bf3bafd20.js" },
+      { revision: null, url: "/_next/static/chunks/9105-e12320c29db1f7a7.js" },
+      { revision: null, url: "/_next/static/chunks/9172-ff3b55ecb5763434.js" },
+      { revision: null, url: "/_next/static/chunks/9730-70a154866179a268.js" },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/auth/callback/page-cfdc79fb699785b8.js",
+        url: "/_next/static/chunks/app/(auth)/auth/callback/page-deca5aeb04584dc0.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/forgot-password/page-d3727ee049fd6820.js",
+        url: "/_next/static/chunks/app/(auth)/forgot-password/page-fe3cfe658409d539.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/layout-f103e822ee8cf7de.js",
+        url: "/_next/static/chunks/app/(auth)/layout-aeacc844ba303caf.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/login/page-6b0e9710de8d5eee.js",
+        url: "/_next/static/chunks/app/(auth)/login/page-61a4047524d9b3da.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/register/add-passkey/page-a2e8c7bfa69df8f6.js",
+        url: "/_next/static/chunks/app/(auth)/register/add-passkey/page-3be246b4f6ccfffd.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/register/page-faa76fdf8db08f4a.js",
+        url: "/_next/static/chunks/app/(auth)/register/page-8da060375d36c0ea.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/(auth)/reset-password/page-7f9f6d48ca1b78b6.js",
+        url: "/_next/static/chunks/app/(auth)/reset-password/page-b0c03a922141c32c.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/_global-error/page-1e15a38d63f254ec.js",
+        url: "/_next/static/chunks/app/_global-error/page-c20c72c5944d8e7b.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/_not-found/page-58c9df18bb1557a7.js",
+        url: "/_next/static/chunks/app/_not-found/page-2eb8e2f1f58e6d1e.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/api/csp-report/route-1e15a38d63f254ec.js",
+        url: "/_next/static/chunks/app/api/csp-report/route-c20c72c5944d8e7b.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/api/manifest/route-1e15a38d63f254ec.js",
+        url: "/_next/static/chunks/app/api/manifest/route-c20c72c5944d8e7b.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/layout-0725cdd9e2032e6c.js",
+        url: "/_next/static/chunks/app/layout-d0d35360ea1b3860.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/page-d02be0504450edbb.js",
+        url: "/_next/static/chunks/app/onboarding/page-cb87dac2fb7d7cb1.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/rag-demo/page-86aeb218e94b7e9c.js",
+        url: "/_next/static/chunks/app/page-b4f73a0a235c940e.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/region/meetings/page-117fcbb3bc711c82.js",
+        url: "/_next/static/chunks/app/petition/capture/page-f8d19010e2bdbb5b.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/region/page-c90f37233b5709e2.js",
+        url: "/_next/static/chunks/app/petition/layout-6efcc2531dfb35a3.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/region/propositions/page-35f73d98c51d37f7.js",
+        url: "/_next/static/chunks/app/petition/page-10d3b45e8f520f7f.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/region/representatives/page-a878426dfe3b1c87.js",
+        url: "/_next/static/chunks/app/rag-demo/page-09912a25a2a7de15.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/settings/activity/page-a1ee122c8fe1f13b.js",
+        url: "/_next/static/chunks/app/region/layout-91e58db8e9c9067e.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/settings/addresses/page-ba2f4f2afcf8873d.js",
+        url: "/_next/static/chunks/app/region/meetings/page-821f0ca7577b5143.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/settings/email-history/page-f92a9a1713845d5a.js",
+        url: "/_next/static/chunks/app/region/page-b39bd13840889151.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/settings/layout-3aabfbc0ff965c47.js",
+        url: "/_next/static/chunks/app/region/propositions/page-8bbb7b181b938737.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/settings/notifications/page-3c4b53a99f3e3696.js",
+        url: "/_next/static/chunks/app/region/representatives/page-927ef2650fee944a.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/settings/page-29d79ffc57a9fc22.js",
+        url: "/_next/static/chunks/app/settings/activity/page-5b1a32be4f9954b7.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/settings/privacy/page-520b70d2d5e69098.js",
+        url: "/_next/static/chunks/app/settings/addresses/page-5a76db90e0e734ac.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/app/settings/security/page-0dec06d199f3c1cc.js",
+        url: "/_next/static/chunks/app/settings/email-history/page-f6f12fa93f61a029.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/framework-0f76b9300ef52d93.js",
-      },
-      { revision: null, url: "/_next/static/chunks/main-a25d29bc1f1f239c.js" },
-      {
-        revision: null,
-        url: "/_next/static/chunks/main-app-d96a1e7c0985686f.js",
+        url: "/_next/static/chunks/app/settings/layout-313a220c8bc97ae7.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/next/dist/client/components/builtin/app-error-1e15a38d63f254ec.js",
+        url: "/_next/static/chunks/app/settings/notifications/page-c3676a88f662bf15.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/next/dist/client/components/builtin/forbidden-1e15a38d63f254ec.js",
+        url: "/_next/static/chunks/app/settings/page-8b3d104bba25b63b.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/next/dist/client/components/builtin/global-error-ae8e8c6fc0724ef7.js",
+        url: "/_next/static/chunks/app/settings/privacy/page-785c270f16ca2319.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/next/dist/client/components/builtin/not-found-1e15a38d63f254ec.js",
+        url: "/_next/static/chunks/app/settings/security/page-8962e04d2f7dc75c.js",
       },
       {
         revision: null,
-        url: "/_next/static/chunks/next/dist/client/components/builtin/unauthorized-1e15a38d63f254ec.js",
+        url: "/_next/static/chunks/framework-ce4cb192f89a326d.js",
+      },
+      { revision: null, url: "/_next/static/chunks/main-6c4541bbedc6d89e.js" },
+      {
+        revision: null,
+        url: "/_next/static/chunks/main-app-09dee0d52ff90269.js",
+      },
+      {
+        revision: null,
+        url: "/_next/static/chunks/next/dist/client/components/builtin/app-error-c20c72c5944d8e7b.js",
+      },
+      {
+        revision: null,
+        url: "/_next/static/chunks/next/dist/client/components/builtin/forbidden-c20c72c5944d8e7b.js",
+      },
+      {
+        revision: null,
+        url: "/_next/static/chunks/next/dist/client/components/builtin/global-error-4e6877df94e16099.js",
+      },
+      {
+        revision: null,
+        url: "/_next/static/chunks/next/dist/client/components/builtin/not-found-c20c72c5944d8e7b.js",
+      },
+      {
+        revision: null,
+        url: "/_next/static/chunks/next/dist/client/components/builtin/unauthorized-c20c72c5944d8e7b.js",
       },
       {
         revision: "846118c33b2c0e922d7b3a7676f81f6f",
@@ -2293,9 +2306,9 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`);
       },
       {
         revision: null,
-        url: "/_next/static/chunks/webpack-ad7e31d3014dfe13.js",
+        url: "/_next/static/chunks/webpack-d160efa9aca78a44.js",
       },
-      { revision: null, url: "/_next/static/css/cbc10ca76c0ed021.css" },
+      { revision: null, url: "/_next/static/css/a94eb3aef31fea0a.css" },
       {
         revision: "cd34c7793d9776838308cfbe5d93922b",
         url: "/_next/static/media/011e180705008d6f-s.woff2",
@@ -2381,27 +2394,35 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`);
         url: "/_next/static/media/ef4d5661765d0e49-s.woff2",
       },
       {
-        revision: "e879bd931d756b8a60bc6486004a37d1",
+        revision: "cbd5d356832cab0a97503717f8ebadae",
+        url: "/_next/static/zSHkVwrz4FbIH0JqWvLcz/_buildManifest.js",
+      },
+      {
+        revision: "b6652df95db52feb4daf4eca35380933",
+        url: "/_next/static/zSHkVwrz4FbIH0JqWvLcz/_ssgManifest.js",
+      },
+      {
+        revision: "06749209bd1bf24ff6297fc6eb5b462a",
         url: "/favicons/favicon-16.png",
       },
       {
-        revision: "01049cfdf6d211bb457a118ab4474c9d",
+        revision: "1311229859d0bff3fc5e523c1a88b8e2",
         url: "/favicons/favicon-16.svg",
       },
       {
-        revision: "1653bc886a2ae1b9cd3155362ac8bfbb",
+        revision: "be9f261575c809a8e2c50385c9d23017",
         url: "/favicons/favicon-32.png",
       },
       {
-        revision: "2763983af427f9de68eec7dd33ef3aa2",
+        revision: "b9836cb0a50681365fef7dbbedebbe3a",
         url: "/favicons/favicon-32.svg",
       },
       {
-        revision: "662bf675df5d321eaa26d7f608669f96",
+        revision: "42b170a1be24dab5c06988ec94b90bb4",
         url: "/favicons/favicon-512.png",
       },
       {
-        revision: "f949574333c6abfef9e83be59085e9f2",
+        revision: "7fde0c47219359c1b467ab2eb01c5b4a",
         url: "/favicons/favicon-512.svg",
       },
       {
@@ -2465,36 +2486,36 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`);
         url: "/icons/record-96.svg",
       },
       {
-        revision: "e6285df036e112485c46326f091ee5ab",
-        url: "/logos/png/opuspopuli-horizontal-dark.png",
+        revision: "087bc59cf565cf5b39fe85162fa447ef",
+        url: "/logos/png/op-horizontal-dark.png",
       },
       {
-        revision: "60d8913257e3ac2ae4f50f9c7252ebed",
-        url: "/logos/png/opuspopuli-horizontal-light.png",
+        revision: "058b11a8b6e5a62d92e8387f1ba5d706",
+        url: "/logos/png/op-horizontal-light.png",
       },
       {
-        revision: "bdf1dca382b8223da2e62cf06f45d1ba",
-        url: "/logos/png/opuspopuli-mark-dark.png",
+        revision: "0e3dc0b5f19bb72033ea0c909304f3fc",
+        url: "/logos/png/op-mark-dark.png",
       },
       {
-        revision: "3302d748cec89b65d00f7f18dcc6871a",
-        url: "/logos/png/opuspopuli-mark-light.png",
+        revision: "7bf8c153c4e16a9ce2fc10af8f1d0651",
+        url: "/logos/png/op-mark-light.png",
       },
       {
-        revision: "be1cf9e1fa872c0077a7e53f3a374a86",
-        url: "/logos/svg/opuspopuli-horizontal-dark.svg",
+        revision: "fc0a9f86fc3a1ba06e6e1a08b8740b28",
+        url: "/logos/svg/op-horizontal-dark.svg",
       },
       {
-        revision: "d6c595ea7f7996a2b337bdfa3d25133c",
-        url: "/logos/svg/opuspopuli-horizontal-light.svg",
+        revision: "e05b42d93f1ad6f410b4363cbde207f6",
+        url: "/logos/svg/op-horizontal-light.svg",
       },
       {
-        revision: "4ec42202d85b2418a66b5caad4bd2fd9",
-        url: "/logos/svg/opuspopuli-mark-dark.svg",
+        revision: "8e020d8b352ea449afeda8b9c697ac6f",
+        url: "/logos/svg/op-mark-dark.svg",
       },
       {
-        revision: "656a4614f042b0121d5a4f70effb9e4b",
-        url: "/logos/svg/opuspopuli-mark-light.svg",
+        revision: "f441cca3ba0df2e61f3107447ff07181",
+        url: "/logos/svg/op-mark-light.svg",
       },
       { revision: "8e061864f388b47f33a1c3780831193e", url: "/next.svg" },
     ],

@@ -74,16 +74,16 @@ function RepresentativeCard({
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-[#1e293b]">
+          <h3 className="text-lg font-semibold text-[#222222]">
             {representative.name}
           </h3>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <PartyBadge party={representative.party} />
-            <span className="text-sm text-[#64748b]">
+            <span className="text-sm text-[#555555]">
               {representative.chamber}
             </span>
           </div>
-          <p className="mt-1 text-sm text-[#64748b]">
+          <p className="mt-1 text-sm text-[#555555]">
             District {representative.district}
           </p>
         </div>
@@ -109,7 +109,7 @@ function RepresentativeCard({
             </a>
           )}
           {representative.contactInfo.office && (
-            <span className="text-[#64748b] col-span-2 truncate">
+            <span className="text-[#555555] col-span-2 truncate">
               {representative.contactInfo.office}
             </span>
           )}
@@ -131,7 +131,7 @@ function RepresentativeCard({
         <div className="mt-4 pt-4 border-t border-gray-100">
           <button
             onClick={onContact}
-            className="w-full px-4 py-2 text-sm font-medium text-white bg-[#1e293b] rounded-lg hover:bg-[#334155] transition-colors"
+            className="w-full px-4 py-2 text-sm font-medium text-white bg-[#222222] rounded-lg hover:bg-[#333333] transition-colors"
           >
             Contact {representative.name.split(" ")[0]}
           </button>
@@ -184,7 +184,7 @@ export default function RepresentativesPage() {
     if (data?.representatives.items.length === 0) {
       return (
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#64748b]">No representatives found.</p>
+          <p className="text-[#555555]">No representatives found.</p>
         </div>
       );
     }
@@ -203,7 +203,7 @@ export default function RepresentativesPage() {
 
         {/* Pagination */}
         <div className="mt-8 flex items-center justify-between">
-          <p className="text-sm text-[#64748b]">
+          <p className="text-sm text-[#555555]">
             Showing {page * PAGE_SIZE + 1} -{" "}
             {Math.min((page + 1) * PAGE_SIZE, data?.representatives.total || 0)}{" "}
             of {data?.representatives.total || 0}
@@ -212,14 +212,14 @@ export default function RepresentativesPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-4 py-2 text-sm font-medium text-[#1e293b] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Previous
             </button>
             <button
               onClick={() => setPage((p) => p + 1)}
               disabled={!data?.representatives.hasMore}
-              className="px-4 py-2 text-sm font-medium text-[#1e293b] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Next
             </button>
@@ -239,15 +239,15 @@ export default function RepresentativesPage() {
         >
           Region
         </Link>
-        <span className="mx-2 text-[#64748b]">/</span>
-        <span className="text-sm text-[#64748b]">Representatives</span>
+        <span className="mx-2 text-[#555555]">/</span>
+        <span className="text-sm text-[#555555]">Representatives</span>
       </nav>
 
       {/* Header */}
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-[#1e293b]">Representatives</h1>
-          <p className="mt-2 text-[#64748b]">
+          <h1 className="text-3xl font-bold text-[#222222]">Representatives</h1>
+          <p className="mt-2 text-[#555555]">
             Elected officials and legislators
           </p>
         </div>
@@ -257,7 +257,7 @@ export default function RepresentativesPage() {
           <div className="flex items-center gap-2">
             <label
               htmlFor="chamber"
-              className="text-sm font-medium text-[#64748b]"
+              className="text-sm font-medium text-[#555555]"
             >
               Filter:
             </label>
@@ -268,7 +268,7 @@ export default function RepresentativesPage() {
                 setChamber(e.target.value || undefined);
                 setPage(0);
               }}
-              className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] outline-none"
+              className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
             >
               <option value="">All Chambers</option>
               {chambers.map((c) => (

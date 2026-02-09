@@ -36,7 +36,7 @@ export function ProfileVisibilityToggle({
   return (
     <div className="flex items-center justify-between py-3">
       <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-[#1e293b]">
+        <span className="text-sm font-medium text-[#222222]">
           {t("profile.visibility.label", "Profile Visibility")}
         </span>
 

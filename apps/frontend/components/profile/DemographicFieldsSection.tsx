@@ -134,7 +134,7 @@ export function DemographicFieldsSection({
               d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
             />
           </svg>
-          <span className="font-medium text-[#1e293b]">
+          <span className="font-medium text-[#222222]">
             {t("profile.demographic.title", "Demographic Information")}
           </span>
           <span className="text-xs text-gray-500 ml-2">
@@ -173,7 +173,7 @@ export function DemographicFieldsSection({
           <div>
             <label
               htmlFor="occupation"
-              className="block text-sm font-medium text-[#1e293b] mb-1"
+              className="block text-sm font-medium text-[#222222] mb-1"
             >
               {t("profile.demographic.occupation", "Occupation")}
             </label>
@@ -197,7 +197,7 @@ export function DemographicFieldsSection({
             <div>
               <label
                 htmlFor="educationLevel"
-                className="block text-sm font-medium text-[#1e293b] mb-1"
+                className="block text-sm font-medium text-[#222222] mb-1"
               >
                 {t("profile.demographic.educationLevel", "Education Level")}
               </label>
@@ -226,7 +226,7 @@ export function DemographicFieldsSection({
             <div>
               <label
                 htmlFor="incomeRange"
-                className="block text-sm font-medium text-[#1e293b] mb-1"
+                className="block text-sm font-medium text-[#222222] mb-1"
               >
                 {t(
                   "profile.demographic.incomeRange",
@@ -258,7 +258,7 @@ export function DemographicFieldsSection({
             <div>
               <label
                 htmlFor="householdSize"
-                className="block text-sm font-medium text-[#1e293b] mb-1"
+                className="block text-sm font-medium text-[#222222] mb-1"
               >
                 {t("profile.demographic.householdSize", "Household Size")}
               </label>
@@ -292,7 +292,7 @@ export function DemographicFieldsSection({
             <div>
               <label
                 htmlFor="homeownerStatus"
-                className="block text-sm font-medium text-[#1e293b] mb-1"
+                className="block text-sm font-medium text-[#222222] mb-1"
               >
                 {t("profile.demographic.homeownerStatus", "Housing Status")}
               </label>

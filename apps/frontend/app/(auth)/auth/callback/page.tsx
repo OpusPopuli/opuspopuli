@@ -11,7 +11,7 @@ function CallbackLoading() {
     <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
       <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
         <svg
-          className="animate-spin h-10 w-10 text-[#1e293b]"
+          className="animate-spin h-10 w-10 text-[#222222]"
           fill="none"
           viewBox="0 0 24 24"
         >
@@ -30,8 +30,8 @@ function CallbackLoading() {
           />
         </svg>
       </div>
-      <h1 className="text-xl font-bold text-[#1e293b] mb-2">Loading...</h1>
-      <p className="text-[#64748b]">Please wait.</p>
+      <h1 className="text-xl font-bold text-[#222222] mb-2">Loading...</h1>
+      <p className="text-[#555555]">Please wait.</p>
     </div>
   );
 }
@@ -108,7 +108,7 @@ function AuthCallbackContent() {
       <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
         <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
           <svg
-            className="animate-spin h-10 w-10 text-[#1e293b]"
+            className="animate-spin h-10 w-10 text-[#222222]"
             fill="none"
             viewBox="0 0 24 24"
           >
@@ -127,10 +127,10 @@ function AuthCallbackContent() {
             />
           </svg>
         </div>
-        <h1 className="text-xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-xl font-bold text-[#222222] mb-2">
           Verifying your link...
         </h1>
-        <p className="text-[#64748b]">Please wait while we sign you in.</p>
+        <p className="text-[#555555]">Please wait while we sign you in.</p>
       </div>
     );
   }
@@ -154,17 +154,17 @@ function AuthCallbackContent() {
             />
           </svg>
         </div>
-        <h1 className="text-xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-xl font-bold text-[#222222] mb-2">
           Link expired or invalid
         </h1>
-        <p className="text-[#64748b] mb-6">
+        <p className="text-[#555555] mb-6">
           {error ||
             "This magic link has expired or is invalid. Please request a new one."}
         </p>
         <div className="space-y-3">
           <Link
             href="/login"
-            className="inline-block w-full py-3 px-6 bg-[#1e293b] text-white font-semibold rounded-lg hover:bg-[#334155] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
           >
             Back to Sign in
           </Link>
@@ -192,10 +192,10 @@ function AuthCallbackContent() {
             />
           </svg>
         </div>
-        <h1 className="text-xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-xl font-bold text-[#222222] mb-2">
           Welcome! Your account is ready
         </h1>
-        <p className="text-[#64748b] mb-6">
+        <p className="text-[#555555] mb-6">
           Would you like to add a passkey for faster sign-in next time?
         </p>
 
@@ -232,14 +232,14 @@ function AuthCallbackContent() {
         <div className="space-y-3">
           <Link
             href="/register/add-passkey"
-            className="inline-block w-full py-3 px-6 bg-[#1e293b] text-white font-semibold rounded-lg hover:bg-[#334155] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
           >
             Add a Passkey
           </Link>
           <button
             type="button"
             onClick={() => router.push("/rag-demo")}
-            className="inline-block w-full py-3 px-6 bg-white text-[#64748b] font-semibold rounded-lg border border-[#e2e8f0] hover:bg-[#f8fafc] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-white text-[#555555] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
           >
             Skip for now
           </button>
@@ -266,14 +266,14 @@ function AuthCallbackContent() {
           />
         </svg>
       </div>
-      <h1 className="text-xl font-bold text-[#1e293b] mb-2">
+      <h1 className="text-xl font-bold text-[#222222] mb-2">
         You&apos;re signed in!
       </h1>
-      <p className="text-[#64748b] mb-6">Redirecting you to the app...</p>
+      <p className="text-[#555555] mb-6">Redirecting you to the app...</p>
       <button
         type="button"
         onClick={() => router.push("/rag-demo")}
-        className="inline-block w-full py-3 px-6 bg-[#1e293b] text-white font-semibold rounded-lg hover:bg-[#334155] transition-colors"
+        className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
       >
         Continue to App
       </button>

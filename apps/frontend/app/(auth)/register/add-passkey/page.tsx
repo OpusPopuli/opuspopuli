@@ -50,17 +50,17 @@ export default function AddPasskeyPage() {
             />
           </svg>
         </div>
-        <h1 className="text-xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-xl font-bold text-[#222222] mb-2">
           Passkeys not supported
         </h1>
-        <p className="text-[#64748b] mb-6">
+        <p className="text-[#555555] mb-6">
           Your browser or device doesn&apos;t support passkeys yet. You can
           still use magic links to sign in.
         </p>
         <button
           type="button"
           onClick={() => router.push("/rag-demo")}
-          className="inline-block w-full py-3 px-6 bg-[#1e293b] text-white font-semibold rounded-lg hover:bg-[#334155] transition-colors"
+          className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
         >
           Continue to App
         </button>
@@ -87,17 +87,17 @@ export default function AddPasskeyPage() {
             />
           </svg>
         </div>
-        <h1 className="text-xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-xl font-bold text-[#222222] mb-2">
           Passkey added!
         </h1>
-        <p className="text-[#64748b] mb-6">
+        <p className="text-[#555555] mb-6">
           You can now sign in instantly with your fingerprint, face, or device
           PIN.
         </p>
         <button
           type="button"
           onClick={() => router.push("/rag-demo")}
-          className="inline-block w-full py-3 px-6 bg-[#1e293b] text-white font-semibold rounded-lg hover:bg-[#334155] transition-colors"
+          className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
         >
           Continue to App
         </button>
@@ -124,10 +124,10 @@ export default function AddPasskeyPage() {
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-[#1e293b] mb-2">
+        <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Add a Passkey
         </h1>
-        <p className="text-[#64748b]">
+        <p className="text-[#555555]">
           Set up faster, more secure sign-in for your account
         </p>
       </div>
@@ -141,7 +141,7 @@ export default function AddPasskeyPage() {
 
       {/* Benefits */}
       <div className="mb-6 space-y-3">
-        <div className="flex items-start gap-3 p-3 bg-[#f8fafc] rounded-lg">
+        <div className="flex items-start gap-3 p-3 bg-[#FFFFFF] rounded-lg">
           <svg
             className="w-5 h-5 text-[#22c55e] mt-0.5"
             fill="none"
@@ -156,13 +156,13 @@ export default function AddPasskeyPage() {
             />
           </svg>
           <div>
-            <p className="text-sm font-medium text-[#1e293b]">More secure</p>
-            <p className="text-xs text-[#64748b]">
+            <p className="text-sm font-medium text-[#222222]">More secure</p>
+            <p className="text-xs text-[#555555]">
               Passkeys can&apos;t be phished or leaked in data breaches
             </p>
           </div>
         </div>
-        <div className="flex items-start gap-3 p-3 bg-[#f8fafc] rounded-lg">
+        <div className="flex items-start gap-3 p-3 bg-[#FFFFFF] rounded-lg">
           <svg
             className="w-5 h-5 text-[#22c55e] mt-0.5"
             fill="none"
@@ -177,15 +177,15 @@ export default function AddPasskeyPage() {
             />
           </svg>
           <div>
-            <p className="text-sm font-medium text-[#1e293b]">
+            <p className="text-sm font-medium text-[#222222]">
               Instant sign-in
             </p>
-            <p className="text-xs text-[#64748b]">
+            <p className="text-xs text-[#555555]">
               Use your fingerprint, face, or device PIN
             </p>
           </div>
         </div>
-        <div className="flex items-start gap-3 p-3 bg-[#f8fafc] rounded-lg">
+        <div className="flex items-start gap-3 p-3 bg-[#FFFFFF] rounded-lg">
           <svg
             className="w-5 h-5 text-[#22c55e] mt-0.5"
             fill="none"
@@ -200,10 +200,10 @@ export default function AddPasskeyPage() {
             />
           </svg>
           <div>
-            <p className="text-sm font-medium text-[#1e293b]">
+            <p className="text-sm font-medium text-[#222222]">
               Works across devices
             </p>
-            <p className="text-xs text-[#64748b]">
+            <p className="text-xs text-[#555555]">
               Synced passkeys work on all your Apple, Google, or Microsoft
               devices
             </p>
@@ -215,7 +215,7 @@ export default function AddPasskeyPage() {
       <div className="mb-6">
         <label
           htmlFor="friendlyName"
-          className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2"
+          className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
         >
           Passkey Name (Optional)
         </label>
@@ -224,9 +224,9 @@ export default function AddPasskeyPage() {
           type="text"
           value={friendlyName}
           onChange={(e) => setFriendlyName(e.target.value)}
-          className="w-full px-4 py-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg
-                   text-[#1e293b] placeholder-[#94a3b8]
-                   focus:outline-none focus:ring-2 focus:ring-[#1e293b] focus:border-transparent
+          className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
+                   text-[#222222] placeholder-[#888888]
+                   focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
                    transition-all duration-200"
           placeholder="e.g., MacBook Pro, iPhone"
         />
@@ -238,8 +238,8 @@ export default function AddPasskeyPage() {
           type="button"
           onClick={handleAddPasskey}
           disabled={isLoading}
-          className="w-full py-3 px-4 bg-[#1e293b] text-white font-semibold rounded-lg
-                   hover:bg-[#334155] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1e293b]
+          className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
+                   hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
                    disabled:opacity-50 disabled:cursor-not-allowed
                    transition-all duration-200 flex items-center justify-center gap-2"
         >
@@ -288,13 +288,13 @@ export default function AddPasskeyPage() {
         <button
           type="button"
           onClick={() => router.push("/rag-demo")}
-          className="w-full py-3 px-6 bg-white text-[#64748b] font-semibold rounded-lg border border-[#e2e8f0] hover:bg-[#f8fafc] transition-colors"
+          className="w-full py-3 px-6 bg-white text-[#555555] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
         >
           Skip for now
         </button>
       </div>
 
-      <p className="mt-6 text-xs text-[#94a3b8] text-center">
+      <p className="mt-6 text-xs text-[#888888] text-center">
         You can add more passkeys later in your account settings.
       </p>
     </div>

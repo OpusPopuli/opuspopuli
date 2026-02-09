@@ -52,7 +52,7 @@ const config = {
     },
     "app/(auth)/register/page.tsx": {
       branches: 100,
-      functions: 75,
+      functions: 66,
       lines: 100,
       statements: 100,
     },

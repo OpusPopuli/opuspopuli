@@ -6,17 +6,17 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-[#f8fafc] flex flex-col">
+    <div className="min-h-screen bg-[#FFFFFF] flex flex-col">
       {/* Header */}
       <header className="p-6">
         <Link
           href="/"
           className="inline-flex items-center gap-3 hover:opacity-80 transition-opacity"
         >
-          <div className="w-10 h-10 bg-[#1e293b] rounded-lg flex items-center justify-center">
+          <div className="w-10 h-10 bg-[#222222] rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-sm">Q</span>
           </div>
-          <span className="text-[#1e293b] font-semibold text-lg">
+          <span className="text-[#222222] font-semibold text-lg">
             Opus Populi
           </span>
         </Link>
@@ -29,15 +29,15 @@ export default function AuthLayout({
 
       {/* Footer */}
       <footer className="p-6 text-center">
-        <p className="text-sm text-[#64748b]">
+        <p className="text-sm text-[#555555]">
           Powered by{" "}
           <a
-            href="https://murmur.network"
+            href="https://opuspopuli.org"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[#1e293b] font-medium hover:underline"
+            className="text-[#222222] font-medium hover:underline"
           >
-            Murmur Network
+            Opus Populi
           </a>
         </p>
       </footer>
