@@ -56,6 +56,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.test-runner
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-e2e-db-migrate
     environment:
       <<: *backend-env
@@ -70,6 +72,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.users
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-e2e-users
     environment:
       <<: *backend-env
@@ -95,6 +99,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.documents
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-e2e-documents
     environment:
       <<: *backend-env
@@ -120,6 +126,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.knowledge
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-e2e-knowledge
     environment:
       <<: *backend-env
@@ -145,6 +153,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.region
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-e2e-region
     environment:
       <<: *backend-env
@@ -171,6 +181,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.api
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-e2e-api
     environment:
       <<: *backend-env

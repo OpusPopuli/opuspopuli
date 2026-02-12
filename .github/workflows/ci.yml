@@ -197,6 +197,8 @@ jobs:
             supabase-db redis inbucket db-migrate users documents knowledge region api
           echo "Service status:"
           docker compose -f docker-compose-e2e.yml ps
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build packages
         run: pnpm -r --filter './packages/*' build
