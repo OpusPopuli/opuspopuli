@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Opus Populi frontend is a modern React application built with Next.js 16, React 19, and Tailwind CSS 4. It provides a responsive web interface for interacting with the RAG (Retrieval-Augmented Generation) pipeline.
+The Opus Populi frontend is a modern React application built with Next.js 16, React 19, and Tailwind CSS 4. It provides a responsive, accessible web interface for civic engagement — including petition scanning, region-specific civic data browsing, document management with RAG, and passwordless authentication.
 
 ## Technology Stack
 
@@ -13,52 +13,112 @@ The Opus Populi frontend is a modern React application built with Next.js 16, Re
 | **Styling** | Tailwind CSS | 4.x | Utility-first CSS framework |
 | **GraphQL Client** | Apollo Client | 4.x | GraphQL state management |
 | **Language** | TypeScript | 5.x | Type-safe JavaScript |
+| **i18n** | react-i18next | - | Internationalization (en, es) |
+| **Auth** | @simplewebauthn/browser | - | WebAuthn passkey support |
+| **Testing** | Jest + Playwright | 30.x / 1.57.x | Unit + E2E tests |
+| **Fonts** | IBM Plex Sans / Mono | - | Typography (Next.js Font) |
 
 ## Project Structure
 
 ```
 apps/frontend/
-├── app/                    # Next.js App Router pages
-│   ├── layout.tsx         # Root layout with providers
-│   ├── page.tsx           # Home page
-│   ├── (auth)/            # Authentication pages (grouped)
-│   │   ├── login/         # Login page (multi-mode: passkey/magic-link/password)
-│   │   ├── register/      # Registration page (email-first)
-│   │   │   └── add-passkey/ # Post-registration passkey setup
-│   │   └── auth/
-│   │       └── callback/  # Magic link verification callback
-│   ├── settings/          # User settings
-│   │   └── page.tsx       # Profile, addresses, notifications, privacy
-│   └── rag-demo/          # RAG Demo feature
-│       └── page.tsx       # RAG Demo page
-├── components/             # Reusable UI components
-│   └── profile/           # Profile management components
-│       ├── AvatarUpload.tsx             # Avatar photo upload
-│       ├── ProfileCompletionIndicator.tsx # Progress bar with suggestions
-│       ├── ProfileVisibilityToggle.tsx   # Public/private toggle
-│       ├── CivicFieldsSection.tsx        # Civic data fields
-│       └── DemographicFieldsSection.tsx  # Demographic fields
-├── lib/                    # Shared utilities
-│   ├── apollo-client.ts   # Apollo Client configuration
-│   ├── apollo-provider.tsx # Apollo Provider wrapper
-│   ├── auth-context.tsx   # Authentication context and provider
-│   ├── hooks/             # Custom React hooks
-│   │   ├── usePasskey.ts  # WebAuthn passkey operations
-│   │   └── useMagicLink.ts # Magic link operations
-│   └── graphql/           # GraphQL operations
-│       ├── auth.ts        # Auth queries/mutations
-│       ├── profile.ts     # Profile queries/mutations
-│       └── knowledge.ts   # Knowledge service queries/mutations
-├── __tests__/             # Jest unit tests
-├── playwright/            # Playwright E2E tests
-│   ├── e2e/              # E2E test specs
-│   └── fixtures/         # Test fixtures
-├── public/               # Static assets
-├── next.config.ts        # Next.js configuration
-├── tailwind.config.ts    # Tailwind CSS configuration
-├── tsconfig.json         # TypeScript configuration
-├── jest.config.js        # Jest configuration
-└── playwright.config.ts  # Playwright configuration
+├── app/                       # Next.js App Router pages
+│   ├── layout.tsx            # Root layout with providers
+│   ├── page.tsx              # Home page
+│   ├── (auth)/               # Authentication pages (grouped)
+│   │   ├── login/            # Login (multi-mode: passkey/magic-link/password)
+│   │   ├── register/         # Registration (email-first)
+│   │   │   └── add-passkey/  # Post-registration passkey setup
+│   │   ├── auth/
+│   │   │   └── callback/     # Magic link verification callback
+│   │   ├── forgot-password/  # Password reset request
+│   │   └── reset-password/   # Password reset form
+│   ├── onboarding/           # First-time user onboarding (4 steps)
+│   ├── petition/             # Petition feature
+│   │   └── capture/          # Camera-based petition scanning
+│   ├── rag-demo/             # RAG Demo (document indexing & querying)
+│   ├── region/               # Civic data browsing
+│   │   ├── meetings/         # Public meeting agendas & minutes
+│   │   ├── propositions/     # Ballot propositions & measures
+│   │   └── representatives/  # Elected officials directory
+│   ├── settings/             # User settings pages
+│   │   ├── page.tsx          # Profile settings
+│   │   ├── activity/         # Activity log & session management
+│   │   ├── addresses/        # Address management
+│   │   ├── email-history/    # Email correspondence history
+│   │   ├── notifications/    # Notification preferences
+│   │   ├── privacy/          # Privacy consent management
+│   │   └── security/         # Security & credential management
+│   └── api/                  # API routes
+│       ├── csp-report/       # CSP violation reporting
+│       └── manifest/         # PWA manifest
+├── components/                # Reusable UI components
+│   ├── Header.tsx            # App header/navigation
+│   ├── LoadingSpinner.tsx    # Loading indicator
+│   ├── OfflineIndicator.tsx  # Offline status banner
+│   ├── ProtectedRoute.tsx    # Auth-gated route wrapper
+│   ├── Toast.tsx             # Toast notification display
+│   ├── auth/
+│   │   └── AuthUI.tsx        # Shared auth UI components
+│   ├── camera/               # Camera/document scanning
+│   │   ├── CameraCapture.tsx          # Main capture orchestrator
+│   │   ├── CameraPermission.tsx       # Permission request UI
+│   │   ├── CameraViewfinder.tsx       # Live camera preview
+│   │   ├── CaptureControls.tsx        # Shutter/torch/flip controls
+│   │   ├── CapturePreview.tsx         # Photo review before submit
+│   │   ├── DocumentFrameOverlay.tsx   # Document alignment guide
+│   │   ├── LightingFeedback.tsx       # Lighting quality indicator
+│   │   └── LocationPrompt.tsx         # Geolocation permission prompt
+│   ├── email/
+│   │   └── ContactRepresentativeForm.tsx # Email representative form
+│   ├── onboarding/
+│   │   ├── OnboardingSteps.tsx        # Step container/navigation
+│   │   └── steps/
+│   │       ├── WelcomeStep.tsx        # Step 1: Welcome
+│   │       ├── ScanStep.tsx           # Step 2: Scan petitions
+│   │       ├── TrackStep.tsx          # Step 3: Track civic data
+│   │       └── AnalyzeStep.tsx        # Step 4: AI analysis
+│   └── profile/              # Profile management
+│       ├── AvatarUpload.tsx
+│       ├── CivicFieldsSection.tsx
+│       ├── DemographicFieldsSection.tsx
+│       ├── ProfileCompletionIndicator.tsx
+│       └── ProfileVisibilityToggle.tsx
+├── lib/                       # Shared utilities
+│   ├── apollo-client.ts      # Apollo Client configuration
+│   ├── apollo-provider.tsx   # Apollo Provider wrapper
+│   ├── auth-context.tsx      # Authentication context and provider
+│   ├── onboarding-context.tsx # Onboarding state (localStorage + useSyncExternalStore)
+│   ├── hooks/                # Custom React hooks
+│   │   ├── usePasskey.ts     # WebAuthn passkey operations
+│   │   ├── useMagicLink.ts   # Magic link operations
+│   │   ├── useCamera.ts      # Camera access, frame capture, torch control
+│   │   ├── useLightingAnalysis.ts # Image lighting analysis (luminance)
+│   │   └── useGeolocation.ts # Geolocation with permission handling
+│   ├── toast/                # Toast notification system
+│   │   ├── context.tsx       # ToastProvider and useToast hook
+│   │   └── index.ts
+│   ├── i18n/                 # Internationalization
+│   │   ├── index.ts          # i18n config (react-i18next)
+│   │   └── context.tsx       # I18nProvider with locale sync
+│   └── graphql/              # GraphQL operations
+│       ├── auth.ts           # Auth queries/mutations
+│       ├── profile.ts        # Profile, addresses, notifications, consents
+│       ├── knowledge.ts      # RAG: index, query, search
+│       ├── activity.ts       # Activity log & session management
+│       ├── email.ts          # Email correspondence & representative contact
+│       ├── region.ts         # Civic data: propositions, meetings, representatives
+│       └── documents.ts      # Document location management
+├── locales/                   # Translation files
+│   ├── en/                   # English
+│   └── es/                   # Spanish
+├── __tests__/                # Jest unit tests
+├── e2e/                      # Playwright E2E tests
+├── public/                   # Static assets (icons, sw.js)
+├── next.config.ts            # Next.js configuration
+├── tsconfig.json             # TypeScript configuration
+├── jest.config.js            # Jest configuration
+└── playwright.config.ts      # Playwright configuration
 ```
 
 ## Core Architecture
@@ -69,16 +129,21 @@ The frontend uses Next.js 16 with the App Router pattern:
 
 ```
 app/
-├── layout.tsx          # Root layout (applies to all pages)
-├── page.tsx            # Home page (/)
-└── rag-demo/
-    └── page.tsx        # RAG Demo page (/rag-demo)
+├── layout.tsx             # Root layout (applies to all pages)
+├── page.tsx               # Home page (/)
+├── (auth)/                # Auth route group (login, register, callback)
+├── onboarding/            # First-time user flow (/onboarding)
+├── petition/capture/      # Petition scanning (/petition/capture)
+├── rag-demo/              # RAG Demo (/rag-demo)
+├── region/                # Civic data (/region, /region/meetings, etc.)
+└── settings/              # User settings (/settings, /settings/security, etc.)
 ```
 
 **Key Features**:
 - Server Components by default for improved performance
 - Client Components with `"use client"` directive for interactivity
 - File-based routing with nested layouts
+- Route groups `(auth)` for shared auth layout without URL prefix
 
 ### Apollo Client Integration
 
@@ -101,6 +166,16 @@ const apolloClient = new ApolloClient({
 
 All GraphQL queries and mutations are centralized in `lib/graphql/`:
 
+| Module | Operations |
+|--------|-----------|
+| **auth.ts** | Login, Register, Passkey registration/authentication, Magic link send/verify, Logout, MyPasskeys |
+| **profile.ts** | MyProfile, MyProfileCompletion, UpdateMyProfile, Addresses (CRUD), NotificationPreferences, Consents, AvatarUpload |
+| **knowledge.ts** | IndexDocument, AnswerQuery, SearchText |
+| **activity.ts** | GetMyActivityLog, GetMyActivitySummary, GetMySessions, RevokeSession, RevokeAllOtherSessions |
+| **email.ts** | GetEmailHistory, GetEmail, ContactRepresentative, GetMailtoLink |
+| **region.ts** | GetRegionInfo, GetPropositions, GetMeetings, GetRepresentatives, SyncAll, SyncDataType |
+| **documents.ts** | SetDocumentLocation |
+
 ```typescript
 // lib/graphql/knowledge.ts
 export const INDEX_DOCUMENT = gql`
@@ -114,41 +189,55 @@ export const ANSWER_QUERY = gql`
     answerQuery(userId: $userId, query: $query)
   }
 `;
-```
 
-**Operations Available**:
-- `INDEX_DOCUMENT` - Index text into vector database
-- `ANSWER_QUERY` - Ask question with RAG
-- `SEARCH_TEXT` - Semantic search without LLM
+export const SEARCH_TEXT = gql`
+  query SearchText($userId: String!, $query: String!, $skip: Int, $take: Int) {
+    searchText(userId: $userId, query: $query, skip: $skip, take: $take) {
+      results { content documentId score }
+      total
+      hasMore
+    }
+  }
+`;
+```
 
 ## State Management
 
 ### Client-Side State
 
-The frontend uses a combination of:
+The frontend uses a combination of state management approaches:
+
 - **React useState** - Local component state
 - **Apollo Client Cache** - Server state (GraphQL responses)
-- **localStorage** - Persistent demo user session
+- **React Context** - Global client state (auth, toast, onboarding)
+- **localStorage** - Persistent state (user metadata, onboarding completion)
 
-### Demo User Management
+### Context Providers
 
-For the RAG demo, user sessions are managed via localStorage:
-
+**Toast Context** — Manages toast notifications across the app:
 ```typescript
-interface DemoUser {
-  id: string;
-  email: string;
-  roles: string[];
-  department: string;
-  clearance: string;
+interface ToastContextType {
+  toasts: ToastMessage[];
+  showToast: (message: string, type?: "success" | "error" | "warning" | "info", duration?: number) => string;
+  dismissToast: (id: string) => void;
+  clearAllToasts: () => void;
 }
-
-// Store user
-localStorage.setItem("user", JSON.stringify(demoUser));
-
-// Retrieve user
-const user = JSON.parse(localStorage.getItem("user") || "null");
 ```
+
+**Onboarding Context** — Tracks first-time user onboarding progress:
+```typescript
+interface OnboardingContextType {
+  hasCompletedOnboarding: boolean;
+  currentStep: number;
+  totalSteps: number;         // 4 steps: Welcome, Scan, Track, Analyze
+  nextStep: () => void;
+  prevStep: () => void;
+  skipOnboarding: () => void;
+  completeOnboarding: () => void;
+  resetOnboarding: () => void;
+}
+```
+Uses `useSyncExternalStore` with localStorage for cross-tab synchronization.
 
 ## Component Architecture
 
@@ -188,18 +277,23 @@ The root layout establishes the provider hierarchy:
 // app/layout.tsx
 export default function RootLayout({ children }) {
   return (
-    <html>
+    <html lang="en">
       <body>
         <ApolloProvider>
-          <AuthProvider>
-            {children}
-          </AuthProvider>
+          <ToastProvider>
+            <OnboardingProvider>
+              {children}
+              <OfflineIndicator />
+            </OnboardingProvider>
+          </ToastProvider>
         </ApolloProvider>
       </body>
     </html>
   );
 }
 ```
+
+Auth state is managed via `AuthContext` within individual pages/components that need it, rather than wrapping the entire app.
 
 ## Authentication
 
@@ -212,23 +306,34 @@ The `AuthContext` provides global authentication state and methods:
 interface AuthContextType {
   // State
   user: User | null;
+  tokens: AuthTokens | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
   supportsPasskeys: boolean;
+  hasPlatformAuthenticator: boolean;
+  magicLinkSent: boolean;
 
   // Passwordless methods
-  loginWithPasskey: (email?: string) => Promise<boolean>;
+  loginWithPasskey: (email?: string) => Promise<void>;
   registerPasskey: (email: string, friendlyName?: string) => Promise<boolean>;
   sendMagicLink: (email: string, redirectTo?: string) => Promise<boolean>;
-  verifyMagicLink: (email: string, token: string) => Promise<AuthTokens | null>;
+  verifyMagicLink: (email: string, token: string) => Promise<void>;
   registerWithMagicLink: (email: string, redirectTo?: string) => Promise<boolean>;
 
   // Legacy methods
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  login: (input: LoginUserInput) => Promise<void>;
+  register: (input: RegisterUserInput) => Promise<boolean>;
+  logout: () => Promise<void>;
   clearError: () => void;
+}
+
+interface User {
+  id: string;
+  email: string;
+  roles: string[];
+  department?: string;
+  clearance?: string;
 }
 ```
 
@@ -262,6 +367,38 @@ interface UseMagicLinkResult {
   sendMagicLink: (email: string, redirectTo?: string) => Promise<boolean>;
   verifyMagicLink: (email: string, token: string) => Promise<AuthTokens | null>;
   registerWithMagicLink: (email: string, redirectTo?: string) => Promise<boolean>;
+}
+```
+
+### Camera & Scanning Hooks
+
+**useCamera Hook** — Camera access and frame capture:
+```typescript
+interface UseCameraOptions {
+  facingMode?: "user" | "environment";
+  resolution?: "low" | "medium" | "high";  // 720p / 1080p / 1440p
+}
+// Returns: stream, permissionState, error, startCamera, stopCamera, captureFrame, toggleTorch, switchCamera
+```
+
+**useLightingAnalysis Hook** — Real-time lighting quality analysis:
+```typescript
+interface UseLightingAnalysisReturn {
+  analysis: { level: "dark" | "good" | "bright"; luminance: number };
+  analyze: (imageData: ImageData) => LightingAnalysis;
+  startContinuousAnalysis: (captureFrame: () => ImageData | null) => void;
+  stopContinuousAnalysis: () => void;
+}
+```
+
+**useGeolocation Hook** — Location with permission handling:
+```typescript
+interface UseGeolocationReturn {
+  coordinates: { latitude: number; longitude: number; accuracy: number } | null;
+  isLoading: boolean;
+  permissionState: "prompt" | "granted" | "denied" | "unsupported";
+  error: GeolocationError | null;
+  requestLocation: () => Promise<void>;
 }
 ```
 
@@ -429,10 +566,12 @@ The frontend supports multiple languages using **react-i18next**, with English (
 
 ```
 ApolloProvider
-  └── AuthProvider
-        └── I18nProvider (syncs with user's preferredLanguage)
-              └── App Components (use useTranslation hook)
+  └── ToastProvider
+        └── OnboardingProvider
+              └── App Components (use useTranslation hook, useLocale for language sync)
 ```
+
+The i18n system is initialized globally via `lib/i18n/index.ts` (imported in `jest.setup.js` and the app). Language sync with the user's `preferredLanguage` profile field is managed by `lib/i18n/context.tsx`.
 
 ### Translation Files
 
@@ -627,7 +766,7 @@ Frontend (Next.js)
     ↓ GraphQL
 API Gateway (Port 3000)
     ↓ Federation
-Microservices (Users, Documents, Knowledge, Files)
+Microservices (Users, Documents, Knowledge, Region)
 ```
 
 ### Request Flow
@@ -675,12 +814,12 @@ The frontend uses **passwordless-first authentication** with three methods:
 3. **Password** - Legacy fallback for compatibility
 
 **Token Storage**:
-```typescript
-// JWT tokens stored securely
-localStorage.setItem('accessToken', tokens.accessToken);
-localStorage.setItem('refreshToken', tokens.refreshToken);
+- JWT tokens are managed via httpOnly cookies (secure backend storage)
+- Only user metadata is stored in localStorage
+- Tokens are decoded client-side with `jwtDecode` for extracting user info
 
-// Headers sent with each GraphQL request
+```typescript
+// Headers sent with each GraphQL request via auth link
 headers: {
   Authorization: `Bearer ${accessToken}`,
 }
@@ -688,7 +827,7 @@ headers: {
 
 **WebAuthn Browser Support**:
 ```typescript
-// Check for passkey support on mount
+// Check for passkey support on mount (via @simplewebauthn/browser)
 const webAuthnSupported = browserSupportsWebAuthn();
 const platformAvailable = await platformAuthenticatorIsAvailable();
 ```
@@ -739,7 +878,7 @@ NEXT_PUBLIC_GRAPHQL_URL=https://api.yourapp.com/graphql
 ### Development Server
 
 ```bash
-pnpm dev          # Start dev server on port 3000
+pnpm dev          # Start dev server on port 3200
 ```
 
 ### Production Build
@@ -767,7 +906,6 @@ CMD ["pnpm", "start"]
 ## Related Documentation
 
 - [System Overview](system-overview.md) - Overall architecture
-- [RAG Demo Guide](../guides/frontend-rag-demo.md) - Using the RAG demo
 - [Frontend Testing](../guides/frontend-testing.md) - Testing guide
 - [Getting Started](../guides/getting-started.md) - Development setup
 - [WCAG 2.2 Quick Reference](https://www.w3.org/WAI/WCAG22/quickref/) - Full accessibility guidelines

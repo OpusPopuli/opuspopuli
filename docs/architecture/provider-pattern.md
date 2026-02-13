@@ -585,7 +585,127 @@ SUPABASE_SERVICE_ROLE_KEY=your-key
 
 ---
 
-### 10. HTTP Connection Pool (Common Utility)
+### 10. Logging Provider
+
+**Package**: `@opuspopuli/logging-provider`
+
+**Purpose**: Structured logging with PII redaction, request tracing, and NestJS integration
+
+**Interface**:
+```typescript
+export interface ILogger {
+  debug(message: string, context?: string, meta?: Record<string, unknown>): void;
+  log(message: string, context?: string, meta?: Record<string, unknown>): void;
+  info(message: string, context?: string, meta?: Record<string, unknown>): void;
+  warn(message: string, context?: string, meta?: Record<string, unknown>): void;
+  error(message: string, trace?: string, context?: string, meta?: Record<string, unknown>): void;
+  setRequestId(requestId: string): void;
+  setUserId(userId: string): void;
+  child(context: string): ILogger;
+}
+```
+
+**Implementation**:
+
+| Provider | File | Use Case | Features |
+|----------|------|----------|----------|
+| StructuredLogger | `packages/logging-provider/src/logger.ts` | Default | PII redaction, JSON/pretty output, request tracing |
+
+**Configuration**:
+```typescript
+interface LoggingConfig {
+  serviceName: string;         // Service name in all logs (required)
+  level?: LogLevel;            // DEBUG | INFO | WARN | ERROR (default: INFO)
+  format?: 'json' | 'pretty'; // JSON for production, pretty for dev
+  redactPii?: boolean;         // Redact PII patterns (default: true in prod)
+}
+```
+
+**PII Redaction**: Automatically redacts email addresses, IP addresses, credit card numbers, SSNs, phone numbers, and JWT/Bearer tokens.
+
+**Module**: `LoggingModule` (supports `forRoot` and `forRootAsync`)
+
+**Consumed By**: All microservices (API Gateway, Users, Documents, Knowledge, Region)
+
+---
+
+### 11. OCR Provider
+
+**Package**: `@opuspopuli/ocr-provider`
+
+**Purpose**: Image text extraction using Tesseract.js (in-process, no external services)
+
+**Interface**:
+```typescript
+export interface IOcrProvider {
+  getName(): string;
+  getSupportedLanguages(): string[];
+  supports(input: OcrInput): boolean;
+  supportsMimeType(mimeType: string): boolean;
+  extractText(input: OcrInput): Promise<OcrResult>;
+  terminate(): Promise<void>;
+}
+```
+
+**Implementation**:
+
+| Provider | File | Use Case | Features |
+|----------|------|----------|----------|
+| Tesseract | `packages/ocr-provider/src/providers/tesseract.provider.ts` | Default | In-process, 100+ languages, offline capable |
+
+**Supported MIME types**: `image/png`, `image/jpeg`, `image/webp`, `image/bmp`, `image/gif`, `image/tiff`
+
+**Configuration**:
+```bash
+OCR_PROVIDER=tesseract              # Provider selection (default: tesseract)
+OCR_LANGUAGES=eng,spa,fra           # ISO 639-3 codes (default: eng)
+OCR_PREPROCESSING_ENABLED=true      # Enable image preprocessing (default: true)
+OCR_PREPROCESSING_PRESET=balanced   # fast | balanced | quality (default: balanced)
+```
+
+**Module**: `OcrModule` (exports `OcrService`, `OCR_PROVIDER`, `ImagePreprocessor`)
+
+**Consumed By**: Documents Service (for image-based document text extraction)
+
+---
+
+### 12. Region Provider & Plugin SDK
+
+**Package**: `@opuspopuli/region-provider` + `@opuspopuli/region-plugin-sdk`
+
+**Purpose**: Civic data integration via dynamically-loaded region plugins
+
+**Plugin Interface**:
+```typescript
+export interface IRegionPlugin extends IRegionProvider {
+  initialize(config?: Record<string, unknown>): Promise<void>;
+  healthCheck(): Promise<PluginHealth>;
+  destroy(): Promise<void>;
+  getVersion(): string;
+}
+```
+
+**Base Class**: `BaseRegionPlugin` (abstract base with default lifecycle implementations)
+
+**Data Types**:
+- `Proposition` - Ballot measures with status, summary, election date
+- `Meeting` - Legislative meetings with location, agenda, video URLs
+- `Representative` - Elected officials with contact info, party, district
+
+**Plugin Loading**:
+```
+Platform startup → reads region_plugins table → import(packageName) → plugin.initialize()
+```
+
+**Module**: `RegionProviderModule` (manages plugin lifecycle)
+
+**Consumed By**: Region Service (port 3004)
+
+**See**: [Region Provider Guide](../guides/region-provider.md)
+
+---
+
+### 13. HTTP Connection Pool (Common Utility)
 
 **Package**: `@opuspopuli/common`
 

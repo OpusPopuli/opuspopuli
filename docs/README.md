@@ -21,7 +21,6 @@ Practical guides for common tasks and workflows.
 - [**Docker Setup**](guides/docker-setup.md) - Running services with Docker
 - [**LLM Configuration**](guides/llm-configuration.md) - Configuring and switching LLM models
 - [**RAG Implementation**](guides/rag-implementation.md) - Using the RAG system (backend)
-- [**RAG Demo Guide**](guides/frontend-rag-demo.md) - Using the RAG demo (frontend)
 - [**Frontend Testing**](guides/frontend-testing.md) - Testing the frontend application
 - [**Backend Testing**](guides/backend-testing.md) - Unit and integration testing for backend services
 - [**Database Migration**](guides/database-migration.md) - Migrating between database providers
@@ -39,7 +38,6 @@ Practical guides for common tasks and workflows.
 
 ### For Frontend Developers
 - [Frontend Architecture](architecture/frontend-architecture.md) - Includes i18n and WCAG 2.2 AA accessibility
-- [RAG Demo Guide](guides/frontend-rag-demo.md)
 - [Frontend Testing](guides/frontend-testing.md)
 
 ### For Backend Developers
@@ -103,7 +101,10 @@ The `packages/` directory contains reusable, publishable npm packages (`@opuspop
 | `@opuspopuli/auth-provider` | Supabase Auth (Passkeys, Magic Links, Password) |
 | `@opuspopuli/secrets-provider` | Supabase Vault |
 | `@opuspopuli/email-provider` | Resend transactional email |
+| `@opuspopuli/logging-provider` | Structured logging with PII redaction |
+| `@opuspopuli/ocr-provider` | Image text extraction (Tesseract.js) |
 | `@opuspopuli/region-provider` | Civic data integration (propositions, meetings, representatives) |
+| `@opuspopuli/region-plugin-sdk` | SDK for building region plugins |
 
 See [Provider Pattern](architecture/provider-pattern.md) and [Region Provider Guide](guides/region-provider.md) for implementation details.
 

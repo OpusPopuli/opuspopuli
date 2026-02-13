@@ -14,7 +14,7 @@ This guide will get you up and running with Opus Populi in under 10 minutes.
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/opuspopuli.git
+git clone https://github.com/rodneygagnon/opuspopuli.git
 cd opuspopuli
 
 # Install dependencies
@@ -33,11 +33,13 @@ docker-compose ps
 
 Expected output:
 ```
-NAME                      STATUS          PORTS
+NAME                         STATUS          PORTS
 opuspopuli-supabase-db       Up              0.0.0.0:5432->5432/tcp
 opuspopuli-supabase-kong     Up              0.0.0.0:8000->8000/tcp
 opuspopuli-supabase-studio   Up              0.0.0.0:3100->3000/tcp
 opuspopuli-ollama            Up              0.0.0.0:11434->11434/tcp
+opuspopuli-inbucket          Up              0.0.0.0:54324->9000/tcp
+opuspopuli-redis             Up              0.0.0.0:6379->6379/tcp
 ```
 
 ### 3. Pull the Falcon LLM Model
@@ -73,7 +75,7 @@ cp apps/backend/.env.example apps/backend/.env
 # Backend services (in one terminal)
 cd apps/backend
 pnpm start
-# This starts all microservices concurrently (API Gateway, Users, Documents, Knowledge)
+# This starts all microservices concurrently (API Gateway, Users, Documents, Knowledge, Region)
 
 # Frontend (in another terminal)
 cd apps/frontend
@@ -84,9 +86,10 @@ pnpm dev
 
 Open your browser to:
 - **API Gateway (GraphQL Playground)**: http://localhost:3000/graphql
-- **Frontend**: http://localhost:5173
+- **Frontend**: http://localhost:3200
 - **Supabase Studio**: http://localhost:3100
 - **Supabase API**: http://localhost:8000
+- **Inbucket (Email Testing)**: http://localhost:54324
 - **Ollama**: http://localhost:11434
 
 **Test the RAG Pipeline**:
@@ -100,24 +103,21 @@ mutation {
     userId: "test-user"
     documentId: "test-doc"
     text: "Opus Populi is a full-stack platform with RAG capabilities."
-  ) {
-    success
-    message
-  }
+  )
 }
 ```
+Returns `true` on success.
 
 3. Ask a question:
 ```graphql
-query {
+mutation {
   answerQuery(
     userId: "test-user"
     query: "What is Opus Populi?"
   )
 }
 ```
-
-4. You should get an AI-generated answer based on the indexed document!
+Returns an AI-generated answer string based on the indexed document.
 
 ---
 
@@ -125,20 +125,20 @@ query {
 
 ```
 ┌──────────────────────────────────────────────────┐
-│          Frontend (React + Vite)                 │
-│          http://localhost:5173                   │
+│          Frontend (React + Next.js)              │
+│          http://localhost:3200                   │
 └──────────────────────────────────────────────────┘
                       ↓ GraphQL
 ┌──────────────────────────────────────────────────┐
 │         API Gateway (Apollo Federation)          │
 │          http://localhost:3000                   │
 └──────────────────────────────────────────────────┘
-          ↓           ↓           ↓
-    ┌─────────┐ ┌──────────┐ ┌──────────┐
-    │ Users   │ │Documents │ │Knowledge │
-    │  :3001  │ │  :3002   │ │  :3003   │
-    └─────────┘ └──────────┘ └──────────┘
-          ↓           ↓           ↓
+          ↓           ↓           ↓           ↓
+    ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐
+    │ Users   │ │Documents │ │Knowledge │ │Region  │
+    │  :3001  │ │  :3002   │ │  :3003   │ │ :3004  │
+    └─────────┘ └──────────┘ └──────────┘ └────────┘
+          ↓           ↓           ↓           ↓
 ┌────────────────────────────────────────────────────┐
 │              Provider Layer                        │
 ├────────────────────────────────────────────────────┤
@@ -159,7 +159,8 @@ opuspopuli/
 │   │   │   ├── apps/          # Microservices
 │   │   │   │   ├── users/     # Users Service (port 3001)
 │   │   │   │   ├── documents/ # Documents Service (port 3002)
-│   │   │   │   └── knowledge/ # Knowledge/RAG Service (port 3003)
+│   │   │   │   ├── knowledge/ # Knowledge/RAG Service (port 3003)
+│   │   │   │   └── region/    # Region Service (port 3004)
 │   │   │   ├── api/           # GraphQL Gateway (port 3000)
 │   │   │   ├── db/            # Database module
 │   │   │   └── config/        # Configuration
@@ -217,8 +218,8 @@ Opus Populi comes with sensible defaults for local development:
 # Required for passkey authentication
 WEBAUTHN_RP_NAME=Opus Populi
 WEBAUTHN_RP_ID=localhost
-WEBAUTHN_ORIGIN=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
+WEBAUTHN_ORIGIN=http://localhost:3200
+FRONTEND_URL=http://localhost:3200
 ```
 
 ---
@@ -229,7 +230,7 @@ FRONTEND_URL=http://localhost:3000
 
 Opus Populi uses email-first passwordless registration:
 
-1. Open http://localhost:3000/register
+1. Open http://localhost:3200/register
 2. Enter your email address (no password needed)
 3. Click "Send Magic Link"
 4. Check your email and click the magic link
@@ -276,10 +277,7 @@ mutation IndexDocument {
     - Launch mobile app
     - Hire 5 more engineers
     """
-  ) {
-    success
-    message
-  }
+  )
 }
 ```
 
@@ -287,10 +285,7 @@ mutation IndexDocument {
 ```json
 {
   "data": {
-    "indexDocument": {
-      "success": true,
-      "message": "Document indexed successfully with 3 chunks"
-    }
+    "indexDocument": true
   }
 }
 ```
@@ -300,7 +295,7 @@ mutation IndexDocument {
 Query your indexed documents using natural language:
 
 ```graphql
-query AskQuestion {
+mutation AskQuestion {
   answerQuery(
     userId: "user-123"
     query: "What was the Q4 revenue and what are the Q1 goals?"
@@ -326,8 +321,16 @@ query SearchDocuments {
   searchText(
     userId: "user-123"
     query: "revenue growth"
-    count: 3
-  )
+    take: 3
+  ) {
+    results {
+      content
+      documentId
+      score
+    }
+    total
+    hasMore
+  }
 }
 ```
 
@@ -335,11 +338,15 @@ query SearchDocuments {
 ```json
 {
   "data": {
-    "searchText": [
-      "Revenue: $1.2M (up 25% from Q3)",
-      "Goals for Q1 2025: Reach $1.5M revenue",
-      "Q4 2024 Financial Report"
-    ]
+    "searchText": {
+      "results": [
+        { "content": "Revenue: $1.2M (up 25% from Q3)", "documentId": "quarterly-report-q4", "score": 0.92 },
+        { "content": "Goals for Q1 2025: Reach $1.5M revenue", "documentId": "quarterly-report-q4", "score": 0.87 },
+        { "content": "Q4 2024 Financial Report", "documentId": "quarterly-report-q4", "score": 0.81 }
+      ],
+      "total": 3,
+      "hasMore": false
+    }
   }
 }
 ```
@@ -435,6 +442,7 @@ pnpm start:api        # API Gateway only (port 3000)
 pnpm start:users      # Users service only (port 3001)
 pnpm start:documents  # Documents service only (port 3002)
 pnpm start:knowledge  # Knowledge service only (port 3003)
+pnpm start:region     # Region service only (port 3004)
 
 # Build for production
 pnpm build
@@ -511,4 +519,4 @@ For production deployment, see:
 
 ## License
 
-Apache 2.0 - See LICENSE file for details
+AGPL-3.0 - See LICENSE file for details
