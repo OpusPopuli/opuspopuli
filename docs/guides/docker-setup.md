@@ -23,7 +23,7 @@ Your `docker-compose.yml` includes:
 | Service | Purpose | Port | Image |
 |---------|---------|------|-------|
 | **Prometheus** | Metrics collection | 9090 | `prom/prometheus` |
-| **Loki** | Log aggregation | 3100 | `grafana/loki` |
+| **Loki** | Log aggregation | 3102 | `grafana/loki` |
 | **Promtail** | Log shipper | - | `grafana/promtail` |
 | **Grafana** | Visualization | 3101 | `grafana/grafana` |
 
@@ -303,7 +303,7 @@ curl http://localhost:4001/metrics
 │  │Prometheus│  │   Loki   │  │ Promtail │  │    Grafana    │  │
 │  │(metrics) │  │  (logs)  │  │(shipper) │  │(visualization)│  │
 │  └──────────┘  └──────────┘  └──────────┘  └───────────────┘  │
-│       :9090        :3100          -              :3101         │
+│       :9090        :3102          -              :3101         │
 └────────────────────────────────────────────────────────────────┘
 
 100% OSS • 100% Self-Hosted • 100% Private

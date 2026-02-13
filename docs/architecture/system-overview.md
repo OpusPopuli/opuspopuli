@@ -12,20 +12,20 @@ Opus Populi is built on a modular, provider-based architecture with three core p
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Frontend (React/Vite)                    │
+│                  Frontend (React/Next.js)                   │
 └─────────────────────────────────────────────────────────────┘
                             ↓ GraphQL
 ┌─────────────────────────────────────────────────────────────┐
 │              API Gateway (GraphQL Federation)               │
 └─────────────────────────────────────────────────────────────┘
                             ↓
-        ┌──────────────┬─────────────┬──────────────┐
-        ↓              ↓             ↓
-   ┌────────┐    ┌──────────┐  ┌──────────┐
-   │ Users  │    │Documents │  │Knowledge │
-   │Service │    │ Service  │  │ Service  │
-   └────────┘    └──────────┘  └──────────┘
-        │              │             │
+        ┌──────────────┬─────────────┬──────────────┬──────────┐
+        ↓              ↓             ↓              ↓
+   ┌────────┐    ┌──────────┐  ┌──────────┐  ┌──────────┐
+   │ Users  │    │Documents │  │Knowledge │  │ Region   │
+   │Service │    │ Service  │  │ Service  │  │ Service  │
+   └────────┘    └──────────┘  └──────────┘  └──────────┘
+        │              │             │              │
         ↓              ↓             ↓
    ┌────────────────────────────────────────────────────┐
    │              Provider Layer (Pluggable)            │
@@ -41,7 +41,7 @@ Opus Populi is built on a modular, provider-based architecture with three core p
 - **Technology**: Apollo Gateway (GraphQL Federation)
 - **Port**: 3000
 - **Purpose**: Unified GraphQL endpoint for frontend
-- **Location**: `apps/backend/src/apps/api`
+- **Location**: `apps/backend/src/api`
 
 ### Users Service
 - **Technology**: NestJS + Apollo Federation
@@ -78,6 +78,16 @@ Opus Populi is built on a modular, provider-based architecture with three core p
   - Vector search (pgvector on PostgreSQL)
   - LLM inference (Ollama with Falcon 7B)
 
+### Region Service
+- **Technology**: NestJS + Apollo Federation
+- **Port**: 3004
+- **Purpose**: Civic data integration (propositions, meetings, representatives)
+- **Location**: `apps/backend/src/apps/region`
+- **Components**:
+  - Dynamic region plugin loading via `@opuspopuli/region-plugin-sdk`
+  - Propositions, meetings, and representatives data
+  - Plugin lifecycle management (initialize, health check, destroy)
+
 ## Provider Architecture
 
 All external dependencies use the **Strategy Pattern + Dependency Injection** for maximum flexibility. Providers are implemented as reusable npm packages in the `packages/` directory.
@@ -94,6 +104,11 @@ All external dependencies use the **Strategy Pattern + Dependency Injection** fo
 | `@opuspopuli/auth-provider` | Authentication (Supabase) | `AUTH_PROVIDER` |
 | `@opuspopuli/secrets-provider` | Secrets management (Supabase Vault) | `SECRETS_PROVIDER` |
 | `@opuspopuli/extraction-provider` | Text extraction | `EXTRACTION_PROVIDER` |
+| `@opuspopuli/email-provider` | Transactional email (Resend) | `EMAIL_PROVIDER` |
+| `@opuspopuli/logging-provider` | Audit logging | `LOGGING_PROVIDER` |
+| `@opuspopuli/ocr-provider` | OCR functionality | `OCR_PROVIDER` |
+| `@opuspopuli/region-provider` | Civic data integration | `REGION_PROVIDER` |
+| `@opuspopuli/region-plugin-sdk` | SDK for region plugins | - |
 
 ### Relational Database Provider
 **Package**: `@opuspopuli/relationaldb-provider`
@@ -285,8 +300,8 @@ SECRETS_PROVIDER=supabase
 # WebAuthn/Passkeys (required for passkey authentication)
 WEBAUTHN_RP_NAME=Opus Populi
 WEBAUTHN_RP_ID=localhost
-WEBAUTHN_ORIGIN=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
+WEBAUTHN_ORIGIN=http://localhost:3200
+FRONTEND_URL=http://localhost:3200
 ```
 
 ### Configuration Files
@@ -305,7 +320,7 @@ Local Machine
 ├── Docker Compose (docker-compose up)
 │   ├── Supabase (Auth, Storage, Vault, PostgreSQL + pgvector)
 │   └── Ollama (port 11434)
-└── Vite Dev Server (Frontend)
+└── Next.js Dev Server (Frontend, port 3200)
 ```
 
 ### Production
@@ -323,7 +338,7 @@ AWS/Cloud Infrastructure
 |-----------|-----------|---------|---------|
 | **Backend Framework** | NestJS | 11.x | MIT |
 | **API Layer** | GraphQL (Apollo Federation) | 5.x | MIT |
-| **Frontend** | React + Vite | 18.x | MIT |
+| **Frontend** | React + Next.js | 19.x / 16.x | MIT |
 | **Relational DB** | PostgreSQL (via Supabase) | 15.x | PostgreSQL |
 | **Auth/Storage/Secrets** | Supabase | Latest | Apache 2.0 |
 | **Vector DB** | pgvector (PostgreSQL) | Latest | PostgreSQL |

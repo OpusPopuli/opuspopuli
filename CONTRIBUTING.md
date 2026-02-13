@@ -1,10 +1,10 @@
 # Contributing to Opus Populi
 
-Thank you for your interest in contributing to Opus Populi! This document explains how to contribute effectively, with special attention to our **fork model** for jurisdiction deployments.
+Thank you for your interest in contributing to Opus Populi! This document explains how to contribute effectively, with special attention to our **plugin architecture** for region-specific civic data.
 
 ## Table of Contents
 
-- [The Fork Model](#the-fork-model)
+- [The Plugin Architecture](#the-plugin-architecture)
 - [What Belongs Where](#what-belongs-where)
 - [Getting Started](#getting-started)
 - [Development Workflow](#development-workflow)
@@ -12,39 +12,37 @@ Thank you for your interest in contributing to Opus Populi! This document explai
 - [Pull Request Process](#pull-request-process)
 - [Community Guidelines](#community-guidelines)
 
-## The Fork Model
+## The Plugin Architecture
 
-Opus Populi is designed as a **forkable platform** for civic technology. This means:
-
-- **Upstream (this repository)**: Contains the core platform - authentication, AI/ML pipeline, UI components, infrastructure templates, and provider implementations
-- **Forks**: Contain region-specific implementations - scrapers, local data, custom configurations, and deployment specifics
+Opus Populi uses a **plugin architecture** — the core platform is a single shared codebase, and region-specific civic data is provided by separate plugin packages. No forking required.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    UPSTREAM (opuspopuli)                       │
-│  Platform Core: Auth, AI/ML, UI, Providers, Infrastructure  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              │               │               │
-              ▼               ▼               ▼
-        ┌──────────┐    ┌──────────┐    ┌──────────┐
-        │ Fork: CA │    │ Fork: TX │    │ Fork: NY │
-        │ Scrapers │    │ Scrapers │    │ Scrapers │
-        │ CA Data  │    │ TX Data  │    │ NY Data  │
-        └──────────┘    └──────────┘    └──────────┘
+┌──────────────────────────────────────────────────────────────┐
+│              CORE PLATFORM (this repository)                 │
+│  Auth, AI/ML, UI, Providers, Plugin SDK, Infrastructure     │
+└──────────────────────────────────────────────────────────────┘
+        ↑ imports          ↑ imports          ↑ imports
+  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+  │ region-      │  │ region-      │  │ region-      │
+  │ california   │  │ texas        │  │ new-york     │
+  │ (plugin)     │  │ (plugin)     │  │ (plugin)     │
+  │ Scrapers     │  │ Scrapers     │  │ Scrapers     │
+  │ CA Data      │  │ TX Data      │  │ NY Data      │
+  └──────────────┘  └──────────────┘  └──────────────┘
+   separate repo     separate repo     separate repo
 ```
 
 ### Why This Model?
 
-1. **Platform improvements benefit everyone**: Bug fixes and new features flow to all regions
-2. **Region data stays local**: Each region controls their own scrapers and data
-3. **Distributed infrastructure**: Each deployment runs on its own infrastructure
-4. **Unified branding**: All deployments share the Opus Populi network identity
+1. **No fork maintenance** — Region developers don't need to merge upstream changes; they just update the SDK dependency
+2. **Platform improvements benefit everyone** — Bug fixes and features ship to all regions automatically
+3. **Region data stays local** — Each region controls their own scrapers, data sources, and validation rules
+4. **Clean separation of concerns** — The platform knows nothing about California law; the CA plugin knows nothing about authentication
+5. **Plugin ecosystem** — Community-built region plugins extend the platform's reach without centralized effort
 
 ## What Belongs Where
 
-### Contribute to Upstream (this repo)
+### Contribute to This Repo (Core Platform)
 
 - Bug fixes in core platform code
 - New authentication methods or improvements
@@ -53,23 +51,22 @@ Opus Populi is designed as a **forkable platform** for civic technology. This me
 - New provider implementations (databases, LLMs, embeddings)
 - Documentation improvements
 - Infrastructure template improvements
-- The `regions/example/` template (reference implementation only)
+- The `@opuspopuli/region-plugin-sdk` and `@opuspopuli/region-provider` packages
 
-### Keep in Your Fork
+### Build as a Region Plugin (Separate Repo)
 
-- Region-specific scrapers (e.g., CA ballot proposition scraper)
-- Local data and fixtures
-- Custom environment configurations
-- Region-specific UI customizations
-- Deployment-specific Terraform variables
-- Any code that references specific region data sources
+- Region-specific data source scrapers (e.g., CA Secretary of State)
+- Entity resolvers (districts, representatives, jurisdictions)
+- Civic data parsers (ballot propositions, meeting transcripts, petitions)
+- Region-specific validation rules (petition signature requirements, etc.)
+- Seed data (initial districts, jurisdictions)
 
 ### Not Sure?
 
 Ask yourself: "Would this benefit ALL regions, or just mine?"
 
-- **All regions** → Contribute upstream
-- **Just mine** → Keep in fork
+- **All regions** → Contribute to this repo
+- **Just mine** → Build it in your region plugin
 
 ## Getting Started
 
@@ -90,7 +87,7 @@ cd opuspopuli
 # Install dependencies
 pnpm install
 
-# Start infrastructure (Supabase, Ollama)
+# Start infrastructure (Supabase, Ollama, Redis, Inbucket)
 docker-compose up -d
 
 # Start development servers
@@ -99,22 +96,17 @@ pnpm dev
 
 See [docs/guides/getting-started.md](docs/guides/getting-started.md) for detailed instructions.
 
-### Creating a Region Fork
+### Creating a Region Plugin
 
-```bash
-# Fork the repository on GitHub, then:
-git clone https://github.com/YOUR-ORG/opuspopuli.git
-cd opuspopuli
+Region-specific civic data is provided via separate plugin packages that implement the `@opuspopuli/region-plugin-sdk` interface:
 
-# Add upstream remote
-git remote add upstream https://github.com/OpusPopuli/opuspopuli.git
+1. Use the [region-template](https://github.com/OpusPopuli/region-template) GitHub template to create your repo (e.g., `region-california`)
+2. Follow the customization checklist in the template README
+3. Implement the `IRegionPlugin` interface — data sources, scanners, entity resolvers
+4. Publish to GitHub Packages as `@opuspopuli/region-yourregion`
+5. Register the plugin in your platform's database configuration
 
-# Create your region from the example template
-cp -r regions/example regions/your-region
-
-# Customize for your region
-# Edit regions/your-region/...
-```
+See the [Region Provider Guide](docs/guides/region-provider.md) for detailed instructions.
 
 ## Development Workflow
 
@@ -140,19 +132,28 @@ cp -r regions/example regions/your-region
    ```
 6. **Push** and create a Pull Request to `develop`
 
-### For Region Development
+### For Region Plugin Development
 
-Work in your fork. To sync platform updates:
+Work in your own region plugin repo. The plugin SDK provides everything you need:
 
 ```bash
-# Fetch upstream changes
-git fetch upstream
+# Create from template
+gh repo create my-org/region-mystate --template OpusPopuli/region-template
 
-# Merge platform updates into your fork
-git checkout main
-git merge upstream/main
+# Install dependencies (includes @opuspopuli/region-plugin-sdk)
+cd region-mystate
+pnpm install
 
-# Resolve any conflicts in your region code
+# Implement your data sources, build, test, publish
+pnpm build
+pnpm test
+pnpm publish
+```
+
+To pick up platform improvements, update the SDK dependency:
+
+```bash
+pnpm update @opuspopuli/region-plugin-sdk
 ```
 
 ## Code Standards

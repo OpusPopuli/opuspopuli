@@ -1,16 +1,17 @@
 # PR Validation Workflow
 #
-# This workflow prevents jurisdiction-specific region providers from being
-# added to the upstream repository. The base platform should only contain
-# the example provider. Forks should add their own providers in their fork.
+# This workflow prevents region-specific provider packages from being
+# added to the core repository. Region-specific civic data should be
+# built as separate plugin packages using the region-plugin-sdk.
 #
 # Allowed:
-# - packages/region-provider/ (base package with example provider)
+# - packages/region-provider/ (core plugin loader)
+# - packages/region-plugin-sdk/ (SDK for building plugins)
 #
 # Blocked:
 # - packages/region-provider-california/
 # - packages/region-provider-texas/
-# - packages/region-provider-*/ (any other region provider)
+# - packages/region-provider-*/ (any region-specific provider package)
 
 name: PR Validation
 
@@ -50,16 +51,19 @@ jobs:
           if [ -n "$BLOCKED_PROVIDERS" ]; then
             echo ""
             echo "================================================================"
-            echo "ERROR: Jurisdiction-specific region providers detected!"
+            echo "ERROR: Region-specific provider packages detected!"
             echo "================================================================"
             echo ""
             echo "The following region provider packages were found in this PR:"
             echo "$BLOCKED_PROVIDERS" | tr ' ' '\n' | grep -v '^$' | sed 's/^/  - /'
             echo ""
-            echo "The upstream repository should only contain the base platform"
-            echo "with the example region provider (packages/region-provider/)."
+            echo "The core repository should only contain the base platform,"
+            echo "the region-plugin-sdk, and the region-provider (plugin loader)."
             echo ""
-            echo "Jurisdiction-specific providers should be added to your fork."
+            echo "Region-specific providers should be built as separate plugin"
+            echo "packages using the region-template repository:"
+            echo "  https://github.com/OpusPopuli/region-template"
+            echo ""
             echo "See docs/guides/region-provider.md for instructions."
             echo ""
             echo "If you believe this is an error, please contact the maintainers."
@@ -67,5 +71,5 @@ jobs:
             exit 1
           fi
 
-          echo "No jurisdiction-specific region providers found."
+          echo "No region-specific provider packages found."
           echo "PR validation passed."

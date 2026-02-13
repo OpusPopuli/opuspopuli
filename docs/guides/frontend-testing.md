@@ -16,24 +16,75 @@ The frontend uses a comprehensive testing approach:
 
 ```
 apps/frontend/
-├── __tests__/              # Jest unit tests
+├── __tests__/                  # Jest unit tests
+│   ├── Home.test.tsx
 │   ├── apollo-client.test.ts
 │   ├── apollo-provider.test.tsx
-│   ├── Home.test.tsx
-│   └── knowledge.test.ts
-├── cypress/                # Cypress E2E tests
-│   ├── e2e/
-│   │   ├── home.cy.ts
-│   │   └── rag-demo.cy.ts
-│   ├── fixtures/
-│   │   └── example.json
-│   ├── support/
-│   │   ├── commands.ts
-│   │   └── e2e.ts
-│   └── tsconfig.json
-├── jest.config.js          # Jest configuration
-├── jest.setup.js           # Jest setup file
-└── cypress.config.ts       # Cypress configuration
+│   ├── auth-context.test.tsx
+│   ├── onboarding-context.test.tsx
+│   ├── knowledge.test.ts
+│   ├── toast.test.tsx
+│   ├── useMagicLink.test.ts
+│   ├── usePasskey.test.ts
+│   ├── rag-demo.test.tsx
+│   ├── accessibility/
+│   │   └── settings.a11y.test.tsx
+│   ├── api/
+│   │   └── csp-report.test.ts
+│   ├── components/
+│   │   ├── Header.test.tsx
+│   │   ├── LoadingSpinner.test.tsx
+│   │   ├── OfflineIndicator.test.tsx
+│   │   ├── ProtectedRoute.test.tsx
+│   │   ├── auth/
+│   │   │   └── AuthUI.test.tsx
+│   │   ├── camera/
+│   │   │   ├── CameraCapture.test.tsx
+│   │   │   ├── CameraPermission.test.tsx
+│   │   │   ├── CameraViewfinder.test.tsx
+│   │   │   ├── CaptureControls.test.tsx
+│   │   │   ├── CapturePreview.test.tsx
+│   │   │   ├── DocumentFrameOverlay.test.tsx
+│   │   │   ├── LightingFeedback.test.tsx
+│   │   │   └── LocationPrompt.test.tsx
+│   │   ├── onboarding/
+│   │   │   └── OnboardingSteps.test.tsx
+│   │   └── profile/
+│   │       ├── CivicFieldsSection.test.tsx
+│   │       ├── DemographicFieldsSection.test.tsx
+│   │       ├── ProfileCompletionIndicator.test.tsx
+│   │       └── ProfileVisibilityToggle.test.tsx
+│   ├── config/
+│   │   └── security-headers.config.test.ts
+│   ├── hooks/
+│   │   ├── useCamera.test.ts
+│   │   ├── useGeolocation.test.ts
+│   │   └── useLightingAnalysis.test.ts
+│   ├── pages/
+│   │   ├── login.test.tsx
+│   │   ├── register.test.tsx
+│   │   ├── add-passkey.test.tsx
+│   │   ├── auth-callback.test.tsx
+│   │   ├── onboarding.test.tsx
+│   │   ├── petition-capture.test.tsx
+│   │   ├── region/
+│   │   ├── settings/
+│   │   └── ...
+│   └── utils/
+│       └── a11y-utils.tsx
+├── e2e/                        # Playwright E2E tests
+│   ├── accessibility.spec.ts
+│   ├── auth.spec.ts
+│   ├── email.spec.ts
+│   ├── home.spec.ts
+│   ├── onboarding.spec.ts
+│   ├── petition-capture.spec.ts
+│   ├── pwa.spec.ts
+│   ├── region.spec.ts
+│   └── settings.spec.ts
+├── jest.config.js              # Jest configuration
+├── jest.setup.js               # Jest setup file
+└── playwright.config.ts        # Playwright configuration
 ```
 
 ## Running Tests
@@ -52,21 +103,28 @@ pnpm test:watch
 
 # Run specific test file
 pnpm test -- apollo-client.test.ts
+
+# Run accessibility unit tests only
+pnpm test:a11y
 ```
 
-### E2E Tests (Cypress)
+### E2E Tests (Playwright)
 
 ```bash
-# Open Cypress interactive mode
-pnpm cypress:open
-
-# Run headless (CI mode)
-pnpm cypress:run
-# or
+# Run all E2E tests
 pnpm e2e
+
+# Open Playwright interactive UI
+pnpm e2e:ui
+
+# View HTML test report
+pnpm e2e:report
+
+# Run accessibility E2E tests only
+pnpm e2e:a11y
 ```
 
-> **Note**: E2E tests require the frontend to be running (`pnpm dev`)
+> **Note**: In development, E2E tests automatically start the dev server on port 3200. In CI, tests run against a production build on port 3000.
 
 ## Unit Testing
 
@@ -84,18 +142,29 @@ const config = {
     "app/**/*.{ts,tsx}",
     "lib/**/*.{ts,tsx}",
     "!app/**/layout.tsx",
-    "!app/rag-demo/**",  // Complex Apollo hooks - tested via E2E
+    "!app/(auth)/forgot-password/**",
+    "!app/(auth)/reset-password/**",
+    "!lib/**/index.ts",
     "!**/*.d.ts",
+    "!**/node_modules/**",
   ],
   coverageThreshold: {
     global: {
-      branches: 80,
-      functions: 80,
-      lines: 80,
-      statements: 80,
+      branches: 60,
+      functions: 60,
+      lines: 35,
+      statements: 35,
     },
   },
 };
+```
+
+Per-file thresholds are also configured for critical pages (auth flows, RAG demo) with higher requirements.
+
+**jest.setup.js**:
+```javascript
+import "@testing-library/jest-dom";
+import "@/lib/i18n";
 ```
 
 ### Testing Components
@@ -174,17 +243,6 @@ describe("GraphQL operations", () => {
 
 ### Mocking
 
-**Mock localStorage**:
-```typescript
-// jest.setup.js (automatically configured)
-const localStorageMock = {
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  clear: jest.fn(),
-};
-global.localStorage = localStorageMock;
-```
-
 **Mock Apollo Client**:
 ```typescript
 import { MockedProvider } from "@apollo/client/testing";
@@ -208,49 +266,60 @@ render(
 );
 ```
 
+**Mock localStorage** (done per-test, not in global setup):
+```typescript
+const localStorageMock = {
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  clear: jest.fn(),
+  removeItem: jest.fn(),
+};
+Object.defineProperty(window, "localStorage", { value: localStorageMock });
+```
+
 ## E2E Testing
 
 ### Configuration
 
-**cypress.config.ts**:
+**playwright.config.ts**:
 ```typescript
-import { defineConfig } from "cypress";
+import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  e2e: {
-    baseUrl: "http://localhost:3000",
-    setupNodeEvents(on, config) {
-      // implement node event listeners here
-    },
+  testDir: "./e2e",
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: [
+    ["html", { open: process.env.CI ? "never" : "on-failure" }],
+    ["list"],
+    ...(process.env.CI ? [["github" as const]] : []),
+  ],
+  use: {
+    baseURL: process.env.CI ? "http://localhost:3000" : "http://localhost:3200",
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
   },
-});
-```
-
-### Custom Commands
-
-**cypress/support/commands.ts**:
-```typescript
-// Login command
-Cypress.Commands.add("demoLogin", (email = "demo@example.com") => {
-  const demoUser = {
-    id: crypto.randomUUID(),
-    email,
-    roles: ["user"],
-    department: "demo",
-    clearance: "public",
-  };
-  cy.window().then((win) => {
-    win.localStorage.setItem("user", JSON.stringify(demoUser));
-  });
-});
-
-// GraphQL mock command
-Cypress.Commands.add("mockGraphQL", (operationName, response) => {
-  cy.intercept("POST", "**/graphql", (req) => {
-    if (req.body.query?.includes(operationName)) {
-      req.reply({ data: response });
-    }
-  }).as(operationName);
+  projects: [
+    // Desktop browsers
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    // Mobile devices
+    { name: "mobile-chrome", use: { ...devices["Pixel 5"] } },
+    { name: "mobile-safari", use: { ...devices["iPhone 12"] } },
+    { name: "tablet", use: { ...devices["iPad (gen 7)"] } },
+  ],
+  webServer: {
+    command: process.env.CI
+      ? "node .next/standalone/apps/frontend/server.js"
+      : "pnpm run dev",
+    port: process.env.CI ? 3000 : 3200,
+    timeout: 120000,
+    reuseExistingServer: !process.env.CI,
+  },
 });
 ```
 
@@ -258,101 +327,101 @@ Cypress.Commands.add("mockGraphQL", (operationName, response) => {
 
 **Home Page Tests**:
 ```typescript
-// cypress/e2e/home.cy.ts
-describe("Home Page", () => {
-  beforeEach(() => {
-    cy.visit("/");
+// e2e/home.spec.ts
+import { test, expect } from "@playwright/test";
+
+test.describe("Home Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/");
   });
 
-  it("should display the Opus Populi title", () => {
-    cy.contains("Opus Populi").should("be.visible");
+  test("should display the Opus Populi title", async ({ page }) => {
+    await expect(page.getByRole("heading", { name: /Opus Populi/i })).toBeVisible();
   });
 
-  it("should navigate to RAG Demo page", () => {
-    cy.contains("RAG Demo").click();
-    cy.url().should("include", "/rag-demo");
-  });
-});
-```
-
-**RAG Demo Tests**:
-```typescript
-// cypress/e2e/rag-demo.cy.ts
-describe("RAG Demo Page", () => {
-  beforeEach(() => {
-    cy.clearLocalStorage();
-    cy.visit("/rag-demo");
-  });
-
-  describe("Login Flow", () => {
-    it("should login successfully", () => {
-      cy.get('input[type="email"]').type("test@example.com");
-      cy.contains("button", "Start Demo Session").click();
-      cy.contains("RAG Pipeline Demo").should("be.visible");
-    });
-  });
-
-  describe("With Mocked API", () => {
-    beforeEach(() => {
-      // Login first
-      cy.get('input[type="email"]').type("demo@example.com");
-      cy.contains("Start Demo Session").click();
-    });
-
-    it("should handle answer query", () => {
-      cy.intercept("POST", "**/graphql", (req) => {
-        if (req.body.query?.includes("answerQuery")) {
-          req.reply({
-            data: { answerQuery: "Mocked answer from RAG" },
-          });
-        }
-      }).as("answerQuery");
-
-      cy.contains("Query Knowledge Base").click();
-      cy.get('input[placeholder*="main topics"]').type("Test question");
-      cy.contains("Ask Question (RAG)").click();
-      cy.wait("@answerQuery");
-      cy.contains("Mocked answer from RAG").should("be.visible");
-    });
+  test("should have a sign in link", async ({ page }) => {
+    await expect(page.getByRole("link", { name: /sign in/i })).toBeVisible();
   });
 });
 ```
 
-### Testing Patterns
-
-**Waiting for API Calls**:
+**Auth Flow Tests**:
 ```typescript
-cy.intercept("POST", "**/graphql").as("graphql");
-cy.contains("button", "Submit").click();
-cy.wait("@graphql");
-cy.contains("Success").should("be.visible");
-```
+// e2e/auth.spec.ts
+import { test, expect } from "@playwright/test";
 
-**Testing Forms**:
-```typescript
-cy.get('input[name="email"]').type("user@example.com");
-cy.get('textarea').type("Document content here");
-cy.get('button[type="submit"]').click();
-```
+test.describe("Login Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/login");
+  });
 
-**Testing localStorage**:
-```typescript
-cy.window().then((win) => {
-  const user = JSON.parse(win.localStorage.getItem("user"));
-  expect(user.email).to.equal("test@example.com");
+  test("should display login form", async ({ page }) => {
+    await expect(page.getByRole("textbox", { name: /email/i })).toBeVisible();
+  });
 });
 ```
+
+**Onboarding Tests** (with localStorage setup):
+```typescript
+// e2e/onboarding.spec.ts
+import { test, expect } from "@playwright/test";
+
+test.describe("Onboarding", () => {
+  test("should show onboarding for new users", async ({ page }) => {
+    // Set up new user session via localStorage before navigation
+    await page.addInitScript(() => {
+      localStorage.removeItem("opuspopuli_onboarding_completed");
+    });
+    await page.goto("/onboarding");
+    await expect(page.getByText(/Welcome/i)).toBeVisible();
+  });
+});
+```
+
+**PWA Tests** (API validation):
+```typescript
+// e2e/pwa.spec.ts
+import { test, expect } from "@playwright/test";
+
+test("manifest should have correct structure", async ({ request }) => {
+  const response = await request.get("/api/manifest");
+  expect(response.ok()).toBeTruthy();
+  const manifest = await response.json();
+  expect(manifest.name).toBeDefined();
+  expect(manifest.display).toBe("standalone");
+});
+```
+
+### E2E Test Coverage
+
+The E2E test suite covers the following user flows:
+
+| Test File | Coverage |
+|-----------|----------|
+| `home.spec.ts` | Home page rendering and navigation |
+| `auth.spec.ts` | Login, registration, passkey, and magic link flows |
+| `onboarding.spec.ts` | First-time user onboarding steps |
+| `petition-capture.spec.ts` | Petition scanning with camera |
+| `region.spec.ts` | Civic data browsing (propositions, meetings, representatives) |
+| `settings.spec.ts` | User settings pages (profile, security, privacy, etc.) |
+| `email.spec.ts` | Email history and representative contact |
+| `pwa.spec.ts` | Progressive Web App manifest and service worker |
+| `accessibility.spec.ts` | WCAG 2.2 AA compliance across pages |
 
 ## Coverage Requirements
 
 ### Current Thresholds
 
+**Global**:
+
 | Metric | Threshold |
 |--------|-----------|
-| Statements | 80% |
-| Branches | 80% |
-| Functions | 80% |
-| Lines | 80% |
+| Statements | 35% |
+| Branches | 60% |
+| Functions | 60% |
+| Lines | 35% |
+
+Per-file thresholds are configured for critical pages with higher requirements (e.g., auth pages, RAG demo page).
 
 ### Viewing Coverage
 
@@ -367,7 +436,9 @@ Coverage report is generated in `apps/frontend/coverage/`:
 ### Excluded from Coverage
 
 - `app/**/layout.tsx` - Root layout files
-- `app/rag-demo/**` - Complex Apollo hooks tested via E2E
+- `app/(auth)/forgot-password/**` - Legacy password flows
+- `app/(auth)/reset-password/**` - Legacy password flows
+- `lib/**/index.ts` - Re-export barrel files
 - `**/*.d.ts` - TypeScript declaration files
 
 ## CI/CD Integration
@@ -401,10 +472,9 @@ jobs:
       - uses: actions/setup-node@v4
 
       - run: pnpm install
+      - run: npx playwright install --with-deps
       - run: pnpm --filter frontend build
-      - run: pnpm --filter frontend start &
-      - run: npx wait-on http://localhost:3000
-      - run: pnpm --filter frontend cypress:run
+      - run: pnpm --filter frontend e2e
 ```
 
 ## Best Practices
@@ -419,9 +489,9 @@ jobs:
 ### E2E Tests
 
 1. **Test User Flows** - Focus on complete user journeys
-2. **Mock API Responses** - Don't depend on backend for E2E tests
-3. **Clear State Between Tests** - Use `beforeEach` to reset localStorage
-4. **Use Custom Commands** - DRY up common operations
+2. **Mock API Responses** - Use `page.route()` to intercept network requests
+3. **Use `addInitScript`** - Set up localStorage/session state before navigation
+4. **Use Accessible Selectors** - Prefer `getByRole`, `getByText` over CSS selectors
 
 ### General
 
@@ -442,15 +512,23 @@ pnpm test -- --verbose apollo-client.test.ts
 node --inspect-brk node_modules/.bin/jest --runInBand
 ```
 
-### Cypress Debugging
+### Playwright Debugging
 
 ```bash
-# Open Cypress in debug mode
-DEBUG=cypress:* pnpm cypress:open
+# Open Playwright interactive UI mode
+pnpm e2e:ui
 
-# Take screenshots on failure (automatic in CI)
-# Check cypress/screenshots/ after failures
+# Run with headed browsers (visible)
+pnpm e2e -- --headed
+
+# Run with Playwright inspector
+PWDEBUG=1 pnpm e2e
+
+# View HTML report after test run
+pnpm e2e:report
 ```
+
+Test artifacts (screenshots, videos, traces) are saved on failure and can be viewed in the HTML report.
 
 ## Accessibility Testing
 
@@ -489,27 +567,56 @@ describe("Profile Settings Accessibility", () => {
 
 ### Playwright Accessibility Tests
 
-E2E accessibility tests use `@axe-core/playwright`:
+E2E accessibility tests use `@axe-core/playwright` with a `checkAccessibility()` helper that scans pages against WCAG 2.2 AA criteria:
 
 ```typescript
 // e2e/accessibility.spec.ts
-import { test, expect } from "@playwright/test";
+import { test, expect, Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-test("page should have no WCAG 2.2 AA violations", async ({ page }) => {
-  await page.goto("/");
-
-  const accessibilityScanResults = await new AxeBuilder({ page })
+async function checkAccessibility(page: Page) {
+  const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
 
-  expect(accessibilityScanResults.violations).toEqual([]);
+  const violations = results.violations.filter(
+    (v) => v.impact === "critical" || v.impact === "serious"
+  );
+
+  expect(violations).toEqual([]);
+}
+
+test.describe("Public Pages Accessibility", () => {
+  test("home page should have no violations", async ({ page }) => {
+    await page.goto("/");
+    await checkAccessibility(page);
+  });
+
+  test("login page should have no violations", async ({ page }) => {
+    await page.goto("/login");
+    await checkAccessibility(page);
+  });
+});
+
+test.describe("Keyboard Navigation", () => {
+  test("should be able to tab through form elements", async ({ page }) => {
+    await page.goto("/login");
+    await page.keyboard.press("Tab");
+    const activeElement = page.locator(":focus");
+    await expect(activeElement).toBeTruthy();
+  });
+});
+
+test.describe("HTML Structure", () => {
+  test("should have lang attribute", async ({ page }) => {
+    await page.goto("/");
+    const lang = await page.getAttribute("html", "lang");
+    expect(["en", "es"]).toContain(lang);
+  });
 });
 ```
 
-### What Gets Tested
-
-The accessibility tests verify:
+The E2E accessibility tests cover:
 
 | Check | WCAG Criterion |
 |-------|----------------|
@@ -519,15 +626,6 @@ The accessibility tests verify:
 | Color contrast meets requirements | 1.4.3 Contrast (Minimum) |
 | HTML `lang` attribute is set | 3.1.1 Language of Page |
 | Focus is visible on interactive elements | 2.4.7 Focus Visible |
-
-### Adding Accessibility Tests
-
-When adding new components, include accessibility tests:
-
-1. **Check for axe violations** - Use `jest-axe` to scan the rendered component
-2. **Verify ARIA attributes** - Ensure decorative elements have `aria-hidden`
-3. **Test keyboard navigation** - Verify focusable elements are accessible
-4. **Check accessible names** - Buttons and links should have clear labels
 
 ### Accessibility Test Utilities
 
@@ -550,5 +648,4 @@ export const axe = configureAxe({
 ## Related Documentation
 
 - [Frontend Architecture](../architecture/frontend-architecture.md) - Includes accessibility patterns
-- [RAG Demo Guide](frontend-rag-demo.md)
 - [Getting Started](getting-started.md)
