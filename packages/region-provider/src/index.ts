@@ -4,15 +4,15 @@
  * Region provider implementations for the Opus Populi platform.
  * Supports pluggable data sources for civic information (propositions, meetings, representatives).
  *
- * Usage:
- * 1. Import RegionModule in your app module
- * 2. Set REGION_PROVIDER environment variable to select provider
- * 3. Inject RegionService to access civic data
+ * Usage (recommended - plugin mode):
+ * 1. Import RegionModule.forPlugins() in your app module
+ * 2. Configure the region plugin in the region_plugins database table
+ * 3. The domain service loads the plugin at startup
  *
- * Creating custom providers:
- * 1. Create a new package implementing IRegionProvider
- * 2. Register in RegionModule.getProviderForRegion()
- * 3. Set REGION_PROVIDER=your-region in .env
+ * Usage (legacy - env var mode):
+ * 1. Import RegionModule.forRootAsync() in your app module
+ * 2. Set REGION_PROVIDER environment variable
+ * 3. Inject RegionService to access civic data
  */
 
 // Re-export types from common
@@ -35,3 +35,9 @@ export { ExampleRegionProvider } from "./providers/example.provider.js";
 // Service and module
 export { RegionService } from "./region.service.js";
 export { RegionModule } from "./region.module.js";
+
+// Plugin infrastructure
+export { PluginRegistryService } from "./registry/plugin-registry.service.js";
+export type { RegisteredPlugin } from "./registry/plugin-registry.service.js";
+export { PluginLoaderService } from "./loader/plugin-loader.service.js";
+export type { PluginDefinition } from "./loader/plugin-loader.service.js";

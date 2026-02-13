@@ -10,10 +10,10 @@ import { RegionScheduler } from './region.scheduler';
  * Region Domain Module
  *
  * Provides civic data management for the region.
- * Uses the region provider to fetch and sync data.
+ * Uses the plugin architecture to dynamically load region providers from DB config.
  */
 @Module({
-  imports: [RegionModule.forRootAsync()],
+  imports: [RegionModule.forPlugins()],
   providers: [RegionDomainService, RegionResolver, RegionScheduler],
   exports: [RegionDomainService],
 })

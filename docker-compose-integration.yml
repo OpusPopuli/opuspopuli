@@ -51,6 +51,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.test-runner
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-db-migrate
     environment:
       <<: *backend-env
@@ -68,6 +70,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.users
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-integration-users
     environment:
       <<: *backend-env
@@ -93,6 +97,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.documents
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-integration-documents
     environment:
       <<: *backend-env
@@ -118,6 +124,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.knowledge
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-integration-knowledge
     environment:
       <<: *backend-env
@@ -143,6 +151,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.region
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-integration-region
     environment:
       <<: *backend-env
@@ -168,6 +178,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.api
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-integration-api
     environment:
       <<: *backend-env
@@ -202,6 +214,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/docker/Dockerfile.test-runner
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-test-runner
     # Run test-runner script which verifies database state before running tests
     command: ["/bin/sh", "/usr/local/bin/test-runner.sh"]

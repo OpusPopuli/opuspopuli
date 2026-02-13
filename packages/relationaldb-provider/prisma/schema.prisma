@@ -573,3 +573,30 @@ model Meeting {
   @@index([scheduledAt])
   @@map("meetings")
 }
+
+// ============================================
+// REGION PLUGINS
+// ============================================
+
+/// Region plugin configuration for the federation plugin ecosystem.
+/// Each row represents an installable region plugin (npm package).
+/// The enabled plugin is dynamically loaded at startup.
+model RegionPlugin {
+  id             String    @id @default(uuid())
+  name           String    @unique                            /// Plugin identifier: "example", "california"
+  displayName    String    @map("display_name")
+  description    String?   @db.Text
+  packageName    String    @map("package_name")               /// npm package: "@opuspopuli/region-example"
+  version        String    @db.VarChar(50)
+  enabled        Boolean   @default(false)
+  config         Json?                                        /// Plugin-specific configuration
+  lastSyncAt     DateTime? @map("last_sync_at") @db.Timestamptz
+  lastSyncStatus String?   @map("last_sync_status") @db.VarChar(50)
+  lastError      String?   @map("last_error") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([name])
+  @@index([enabled])
+  @@map("region_plugins")
+}

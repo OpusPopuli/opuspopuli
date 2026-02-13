@@ -1,7 +1,7 @@
 {
-  "name": "@opuspopuli/region-provider",
+  "name": "@opuspopuli/region-plugin-sdk",
   "version": "0.1.0",
-  "description": "Region provider implementations for OPUSPOPULI platform",
+  "description": "SDK for building Opus Populi region plugins",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -24,21 +24,19 @@
   "keywords": [
     "opuspopuli",
     "region",
-    "civic",
-    "provider"
+    "plugin",
+    "sdk",
+    "civic"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "dependencies": {
-    "@opuspopuli/common": "workspace:*",
-    "@opuspopuli/region-plugin-sdk": "workspace:*"
+    "@opuspopuli/common": "workspace:*"
   },
   "peerDependencies": {
-    "@nestjs/common": "^11.0.0",
-    "@nestjs/config": "^4.0.0"
+    "@nestjs/common": "^11.0.0"
   },
   "devDependencies": {
     "@nestjs/common": "^11.1.9",
-    "@nestjs/config": "^4.0.2",
     "@types/jest": "^30.0.0",
     "jest": "^30.0.0",
     "reflect-metadata": "^0.2.2",
