@@ -51,14 +51,13 @@ describe("PluginLoaderService", () => {
 
   describe("loadPlugin", () => {
     it("should load a plugin from a package with default export", async () => {
-      // Mock dynamic import
-      jest
-        .spyOn(loader as any, "loadPlugin")
-        .mockImplementation(async (definition: any) => {
-          const plugin = new MockRegionPlugin();
-          await registry.register(definition.name, plugin, definition.config);
-          return plugin;
-        });
+      // Mock the loadPlugin to simulate a successful dynamic import
+      loader.loadPlugin = async (definition) => {
+        // Simulate what loadPlugin does with a successful import
+        const plugin = new MockRegionPlugin();
+        await registry.register(definition.name, plugin, definition.config);
+        return plugin;
+      };
 
       const plugin = await loader.loadPlugin({
         name: "mock",
@@ -67,18 +66,18 @@ describe("PluginLoaderService", () => {
 
       expect(plugin).toBeDefined();
       expect(registry.hasActive()).toBe(true);
+      expect(registry.getActiveName()).toBe("mock");
     });
 
-    it("should pass config to the plugin", async () => {
+    it("should pass config to the registry during registration", async () => {
       const config = { apiKey: "test-key" };
+      const registerSpy = jest.spyOn(registry, "register");
 
-      jest
-        .spyOn(loader as any, "loadPlugin")
-        .mockImplementation(async (definition: any) => {
-          const plugin = new MockRegionPlugin();
-          await registry.register(definition.name, plugin, definition.config);
-          return plugin;
-        });
+      loader.loadPlugin = async (definition) => {
+        const plugin = new MockRegionPlugin();
+        await registry.register(definition.name, plugin, definition.config);
+        return plugin;
+      };
 
       await loader.loadPlugin({
         name: "mock",
@@ -86,13 +85,27 @@ describe("PluginLoaderService", () => {
         config,
       });
 
-      expect(registry.hasActive()).toBe(true);
+      expect(registerSpy).toHaveBeenCalledWith(
+        "mock",
+        expect.any(Object),
+        config,
+      );
+    });
+
+    it("should throw when package has no valid export", async () => {
+      // Test the error path by directly calling the real method
+      // with a non-existent package
+      await expect(
+        loader.loadPlugin({
+          name: "nonexistent",
+          packageName: "@opuspopuli/does-not-exist",
+        }),
+      ).rejects.toThrow();
     });
   });
 
   describe("unloadPlugin", () => {
-    it("should unload the active plugin", async () => {
-      // Register a plugin directly
+    it("should unload the active plugin via registry", async () => {
       const plugin = new MockRegionPlugin();
       await registry.register("mock", plugin);
 
@@ -100,6 +113,10 @@ describe("PluginLoaderService", () => {
 
       expect(registry.hasActive()).toBe(false);
       expect(plugin.destroy).toHaveBeenCalled();
+    });
+
+    it("should not throw when no plugin is loaded", async () => {
+      await expect(loader.unloadPlugin()).resolves.not.toThrow();
     });
   });
 
@@ -110,6 +127,12 @@ describe("PluginLoaderService", () => {
       expect(getClassName("california")).toBe("CaliforniaRegionPlugin");
       expect(getClassName("texas")).toBe("TexasRegionPlugin");
       expect(getClassName("example")).toBe("ExampleRegionPlugin");
+    });
+
+    it("should handle single character names", () => {
+      const getClassName = (loader as any).getPluginClassName.bind(loader);
+
+      expect(getClassName("a")).toBe("ARegionPlugin");
     });
   });
 });

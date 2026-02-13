@@ -132,5 +132,52 @@ describe("BaseRegionPlugin", () => {
       expect(props).toHaveLength(1);
       expect(props[0].externalId).toBe("test-prop-1");
     });
+
+    it("should fetch meetings", async () => {
+      const meetings = await plugin.fetchMeetings();
+      expect(meetings).toEqual([]);
+    });
+
+    it("should fetch representatives", async () => {
+      const reps = await plugin.fetchRepresentatives();
+      expect(reps).toEqual([]);
+    });
+  });
+
+  describe("edge cases", () => {
+    it("should allow re-initialization with new config", async () => {
+      await plugin.initialize({ key: "first" });
+      let health = await plugin.healthCheck();
+      expect(health.healthy).toBe(true);
+
+      await plugin.initialize({ key: "second" });
+      health = await plugin.healthCheck();
+      expect(health.healthy).toBe(true);
+    });
+
+    it("should allow destroy without prior initialization", async () => {
+      await plugin.destroy();
+
+      const health = await plugin.healthCheck();
+      expect(health.healthy).toBe(false);
+      expect(health.message).toBe("Plugin not initialized");
+    });
+
+    it("should store config when initialized with config", async () => {
+      const config = { apiKey: "test-key", baseUrl: "https://api.test.com" };
+      await plugin.initialize(config);
+
+      expect((plugin as any).config).toEqual(config);
+    });
+
+    it("should have undefined config when initialized without config", async () => {
+      await plugin.initialize();
+
+      expect((plugin as any).config).toBeUndefined();
+    });
+
+    it("should set pluginName from constructor", () => {
+      expect((plugin as any).pluginName).toBe("test");
+    });
   });
 });
