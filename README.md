@@ -8,7 +8,7 @@ A full-stack platform with 100% open-source AI/ML capabilities for semantic sear
 # Clone and install
 git clone https://github.com/rodneygagnon/opuspopuli.git
 cd opuspopuli
-npm install
+pnpm install
 
 # Start infrastructure
 docker-compose up -d
@@ -16,9 +16,8 @@ docker-compose up -d
 # Pull LLM model
 ./scripts/setup-ollama.sh
 
-# Start application
-cd apps/backend && npm run start:dev
-cd apps/frontend && npm run dev
+# Start application (from project root)
+pnpm dev
 ```
 
 **See [Getting Started Guide](docs/guides/getting-started.md) for detailed setup instructions.**
@@ -52,7 +51,7 @@ All documentation is located in the [`docs/`](docs/) directory:
 
 ## Prerequisites
 
-- **Node.js** 18+ and npm/pnpm
+- **Node.js** 20+ and pnpm
 - **Docker** and Docker Compose
 - **Git**
 - **AWS Account** (for production deployment)
@@ -60,9 +59,9 @@ All documentation is located in the [`docs/`](docs/) directory:
 ## Technology Stack
 
 ### Frontend
-- [React](https://react.dev) + [Vite](https://vitejs.dev) - Modern web UI
-- [TailwindCSS](https://tailwindcss.com) - Utility-first CSS
-- [GraphQL Client](https://www.apollographql.com) - API integration
+- [React](https://react.dev) 19 + [Next.js](https://nextjs.org) 16 - Modern web UI with App Router
+- [TailwindCSS](https://tailwindcss.com) 4 - Utility-first CSS
+- [Apollo Client](https://www.apollographql.com) - GraphQL state management
 
 ### Backend (Microservices)
 - [NestJS](https://nestjs.com) - Node.js framework
@@ -108,12 +107,18 @@ opuspopuli/
 │   ├── extraction-provider/  # Text extraction
 │   ├── storage-provider/     # File storage (Supabase Storage)
 │   ├── auth-provider/        # Authentication (Supabase Auth)
-│   └── secrets-provider/     # Secrets management (Supabase Vault)
+│   ├── secrets-provider/     # Secrets management (Supabase Vault)
+│   ├── email-provider/       # Transactional email (Resend)
+│   ├── logging-provider/     # Audit logging
+│   ├── ocr-provider/         # OCR functionality
+│   ├── region-provider/      # Civic data integration
+│   └── region-plugin-sdk/    # SDK for region plugins
 ├── apps/
 │   ├── backend/              # NestJS microservices
 │   │   └── src/
-│   │       └── apps/         # Services (API Gateway, Users, Documents, Knowledge, Files)
-│   └── frontend/             # React + Next.js application
+│   │       ├── api/           # GraphQL Gateway (port 3000)
+│   │       └── apps/         # Services (Users, Documents, Knowledge, Region)
+│   └── frontend/             # React + Next.js application (port 3200)
 ├── docs/                     # 📚 All documentation
 │   ├── architecture/         # As-built architecture documentation
 │   └── guides/               # How-to guides
@@ -128,7 +133,7 @@ The `packages/` directory contains reusable, publishable npm packages that provi
 
 | Package | Purpose | Tests |
 |---------|---------|-------|
-| `@opuspopuli/common` | Shared types and interfaces | - |
+| `@opuspopuli/common` | Shared types, interfaces, and HTTP connection pooling | - |
 | `@opuspopuli/llm-provider` | Ollama LLM integration | 16 |
 | `@opuspopuli/embeddings-provider` | Xenova/Ollama embeddings | 24 |
 | `@opuspopuli/vectordb-provider` | pgvector (PostgreSQL) | 19 |
@@ -137,24 +142,38 @@ The `packages/` directory contains reusable, publishable npm packages that provi
 | `@opuspopuli/storage-provider` | Supabase Storage | 17 |
 | `@opuspopuli/auth-provider` | Supabase Auth (Passkeys, Magic Links, Password) | 29 |
 | `@opuspopuli/secrets-provider` | Supabase Vault | 10 |
+| `@opuspopuli/email-provider` | Resend transactional email | - |
+| `@opuspopuli/logging-provider` | Audit logging | - |
+| `@opuspopuli/ocr-provider` | OCR functionality | - |
+| `@opuspopuli/region-provider` | Civic data integration (propositions, meetings, representatives) | - |
+| `@opuspopuli/region-plugin-sdk` | SDK for building region plugins | - |
 
 ## Development
+
+### All Services (from project root)
+```bash
+pnpm dev                 # Start all services in parallel (backend + frontend)
+```
 
 ### Backend
 ```bash
 cd apps/backend
-npm run start:dev        # All microservices with hot-reload
-npm run start:dev -- api # API Gateway only
-npm run build           # Production build
-npm run test            # Run tests
+pnpm start               # All microservices concurrently (with watch mode)
+pnpm start:api           # API Gateway only (port 3000)
+pnpm start:users         # Users service only (port 3001)
+pnpm start:documents     # Documents service only (port 3002)
+pnpm start:knowledge     # Knowledge service only (port 3003)
+pnpm start:region        # Region service only (port 3004)
+pnpm build               # Production build
+pnpm test                # Run tests
 ```
 
 ### Frontend
 ```bash
 cd apps/frontend
-npm run dev             # Dev server with HMR
-npm run build           # Production build
-npm run preview         # Preview production build
+pnpm dev                 # Dev server on port 3200
+pnpm build               # Production build
+pnpm test                # Run tests
 ```
 
 ### Infrastructure Services
