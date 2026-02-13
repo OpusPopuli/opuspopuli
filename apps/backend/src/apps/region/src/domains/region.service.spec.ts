@@ -5,83 +5,119 @@ import { RegionDomainService } from './region.service';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
 import {
-  RegionService as RegionProviderService,
   CivicDataType,
   PropositionStatus,
   Proposition,
+  PluginLoaderService,
+  PluginRegistryService,
 } from '@opuspopuli/region-provider';
+import type { IRegionPlugin } from '@opuspopuli/region-plugin-sdk';
 
 /**
  * Tests for Region Domain Service
  *
- * PERFORMANCE: Tests updated for bulk upsert implementation
+ * Updated for plugin architecture: the service loads a region plugin
+ * from DB config during onModuleInit.
  */
+
+const mockRegionInfo = {
+  id: 'test-region',
+  name: 'Test Region',
+  description: 'A test region for testing',
+  timezone: 'America/Los_Angeles',
+  dataSourceUrls: ['https://example.com'],
+};
+
+const mockPropositions = [
+  {
+    externalId: 'prop-1',
+    title: 'Test Proposition 1',
+    summary: 'Summary 1',
+    fullText: 'Full text 1',
+    status: 'pending',
+    electionDate: new Date('2024-11-05'),
+    sourceUrl: 'https://example.com/prop-1',
+  },
+];
+
+const mockMeetings = [
+  {
+    externalId: 'meeting-1',
+    title: 'City Council Meeting',
+    body: 'City Council',
+    scheduledAt: new Date('2024-01-15T10:00:00Z'),
+    location: 'City Hall',
+    agendaUrl: 'https://example.com/agenda',
+    videoUrl: 'https://example.com/video',
+  },
+];
+
+const mockRepresentatives = [
+  {
+    externalId: 'rep-1',
+    name: 'John Doe',
+    chamber: 'Senate',
+    district: 'District 1',
+    party: 'Independent',
+    photoUrl: 'https://example.com/photo.jpg',
+    contactInfo: { email: 'john@example.com' },
+  },
+];
+
+function createMockPlugin(): jest.Mocked<IRegionPlugin> {
+  return {
+    getName: jest.fn().mockReturnValue('test-provider'),
+    getVersion: jest.fn().mockReturnValue('1.0.0'),
+    getRegionInfo: jest.fn().mockReturnValue(mockRegionInfo),
+    getSupportedDataTypes: jest
+      .fn()
+      .mockReturnValue([
+        CivicDataType.PROPOSITIONS,
+        CivicDataType.MEETINGS,
+        CivicDataType.REPRESENTATIVES,
+      ]),
+    fetchPropositions: jest.fn().mockResolvedValue(mockPropositions),
+    fetchMeetings: jest.fn().mockResolvedValue(mockMeetings),
+    fetchRepresentatives: jest.fn().mockResolvedValue(mockRepresentatives),
+    initialize: jest.fn().mockResolvedValue(undefined),
+    healthCheck: jest.fn().mockResolvedValue({
+      healthy: true,
+      message: 'OK',
+      lastCheck: new Date(),
+    }),
+    destroy: jest.fn().mockResolvedValue(undefined),
+  };
+}
 
 describe('RegionDomainService', () => {
   let service: RegionDomainService;
-  let regionProviderService: jest.Mocked<RegionProviderService>;
   let mockDb: ReturnType<typeof createMockDbService>;
-
-  const mockRegionInfo = {
-    id: 'test-region',
-    name: 'Test Region',
-    description: 'A test region for testing',
-    timezone: 'America/Los_Angeles',
-    dataSourceUrls: ['https://example.com'],
-  };
-
-  const mockPropositions = [
-    {
-      externalId: 'prop-1',
-      title: 'Test Proposition 1',
-      summary: 'Summary 1',
-      fullText: 'Full text 1',
-      status: 'pending',
-      electionDate: new Date('2024-11-05'),
-      sourceUrl: 'https://example.com/prop-1',
-    },
-  ];
-
-  const mockMeetings = [
-    {
-      externalId: 'meeting-1',
-      title: 'City Council Meeting',
-      body: 'City Council',
-      scheduledAt: new Date('2024-01-15T10:00:00Z'),
-      location: 'City Hall',
-      agendaUrl: 'https://example.com/agenda',
-      videoUrl: 'https://example.com/video',
-    },
-  ];
-
-  const mockRepresentatives = [
-    {
-      externalId: 'rep-1',
-      name: 'John Doe',
-      chamber: 'Senate',
-      district: 'District 1',
-      party: 'Independent',
-      photoUrl: 'https://example.com/photo.jpg',
-      contactInfo: { email: 'john@example.com' },
-    },
-  ];
+  let mockPlugin: jest.Mocked<IRegionPlugin>;
 
   beforeEach(async () => {
     mockDb = createMockDbService();
+    mockPlugin = createMockPlugin();
 
-    const mockRegionProvider = {
-      getProviderName: jest.fn().mockReturnValue('test-provider'),
-      getRegionInfo: jest.fn().mockReturnValue(mockRegionInfo),
-      getSupportedDataTypes: jest
-        .fn()
-        .mockReturnValue([
-          CivicDataType.PROPOSITIONS,
-          CivicDataType.MEETINGS,
-          CivicDataType.REPRESENTATIVES,
-        ]),
-      fetchPropositions: jest.fn().mockResolvedValue(mockPropositions),
-      fetchMeetings: jest.fn().mockResolvedValue(mockMeetings),
-      fetchRepresentatives: jest.fn().mockResolvedValue(mockRepresentatives),
+    const mockRegistry: any = {
+      register: jest.fn().mockResolvedValue(undefined),
+      unregister: jest.fn().mockResolvedValue(undefined),
+      getActive: jest.fn().mockReturnValue(mockPlugin),
+      getActiveName: jest.fn().mockReturnValue('test-provider'),
+      hasActive: jest.fn().mockReturnValue(true),
+      getHealth: jest.fn(),
+      getStatus: jest.fn(),
+      onModuleDestroy: jest.fn(),
+    };
+
+    const mockLoader: any = {
+      loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      unloadPlugin: jest.fn().mockResolvedValue(undefined),
+    };
+
+    // Mock DB: no enabled plugin -> falls back to ExampleRegionProvider
+    // But registry.getActive() returns our mockPlugin
+    (mockDb as any).regionPlugin = {
+      findFirst: jest.fn().mockResolvedValue(null),
     };
 
     // Set up default empty returns for findMany (no existing records)
@@ -99,16 +135,16 @@ describe('RegionDomainService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RegionDomainService,
-        {
-          provide: RegionProviderService,
-          useValue: mockRegionProvider,
-        },
+        { provide: PluginLoaderService, useValue: mockLoader },
+        { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: DbService, useValue: mockDb },
       ],
     }).compile();
 
     service = module.get<RegionDomainService>(RegionDomainService);
-    regionProviderService = module.get(RegionProviderService);
+
+    // Trigger plugin loading (normally done by NestJS lifecycle)
+    await service.onModuleInit();
   });
 
   it('should be defined', () => {
@@ -139,7 +175,7 @@ describe('RegionDomainService', () => {
     });
 
     it('should handle sync errors gracefully', async () => {
-      regionProviderService.fetchPropositions.mockRejectedValue(
+      mockPlugin.fetchPropositions.mockRejectedValue(
         new Error('Network error'),
       );
 
@@ -177,7 +213,7 @@ describe('RegionDomainService', () => {
     });
 
     it('should handle empty propositions list', async () => {
-      regionProviderService.fetchPropositions.mockResolvedValue([]);
+      mockPlugin.fetchPropositions.mockResolvedValue([]);
 
       const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
 
@@ -259,7 +295,7 @@ describe('RegionDomainService', () => {
         }),
       );
 
-      regionProviderService.fetchPropositions.mockResolvedValue(largeDataset);
+      mockPlugin.fetchPropositions.mockResolvedValue(largeDataset);
       mockDb.proposition.findMany.mockResolvedValue([]);
 
       const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
@@ -288,7 +324,7 @@ describe('RegionDomainService', () => {
         }),
       );
 
-      regionProviderService.fetchPropositions.mockResolvedValue(mixedDataset);
+      mockPlugin.fetchPropositions.mockResolvedValue(mixedDataset);
 
       // Mock 500 existing records (prop-0 through prop-499)
       mockDb.proposition.findMany.mockResolvedValue(

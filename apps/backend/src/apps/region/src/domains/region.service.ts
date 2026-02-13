@@ -1,9 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
   RegionService as RegionProviderService,
   CivicDataType,
   SyncResult,
+  PluginLoaderService,
+  PluginRegistryService,
 } from '@opuspopuli/region-provider';
+import { ExampleRegionPlugin } from '@opuspopuli/region-template';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, CivicDataTypeGQL } from './models/region-info.model';
 import {
@@ -59,21 +62,65 @@ type RepresentativeRecord = {
  * Region Domain Service
  *
  * Handles civic data management for the region.
- * Syncs data from the provider and stores in the database.
+ * Loads the region plugin from DB config at startup,
+ * then syncs data from the plugin and stores in the database.
  */
 @Injectable()
-export class RegionDomainService {
+export class RegionDomainService implements OnModuleInit {
   private readonly logger = new Logger(RegionDomainService.name, {
     timestamp: true,
   });
+  private regionService!: RegionProviderService;
 
   constructor(
-    private readonly regionService: RegionProviderService,
+    private readonly pluginLoader: PluginLoaderService,
+    private readonly pluginRegistry: PluginRegistryService,
     private readonly db: DbService,
-  ) {
-    const info = regionService.getRegionInfo();
+  ) {}
+
+  /**
+   * Load the enabled region plugin from the database at startup.
+   * Falls back to the built-in ExampleRegionPlugin if no plugin is configured.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const pluginConfig = await this.db.regionPlugin.findFirst({
+        where: { enabled: true },
+      });
+
+      if (pluginConfig) {
+        this.logger.log(
+          `Loading region plugin "${pluginConfig.name}" from ${pluginConfig.packageName}`,
+        );
+        await this.pluginLoader.loadPlugin({
+          name: pluginConfig.name,
+          packageName: pluginConfig.packageName,
+          config: pluginConfig.config as Record<string, unknown> | undefined,
+        });
+      } else {
+        this.logger.warn(
+          'No enabled region plugin found in database, falling back to ExampleRegionPlugin',
+        );
+        const fallback = new ExampleRegionPlugin();
+        await this.pluginRegistry.register('example', fallback);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to load region plugin, falling back to ExampleRegionPlugin: ${(error as Error).message}`,
+      );
+      const fallback = new ExampleRegionPlugin();
+      await this.pluginRegistry.register('example', fallback);
+    }
+
+    const plugin = this.pluginRegistry.getActive();
+    if (!plugin) {
+      throw new Error('No region plugin available after initialization');
+    }
+
+    this.regionService = new RegionProviderService(plugin);
+    const info = this.regionService.getRegionInfo();
     this.logger.log(
-      `RegionDomainService initialized with provider: ${regionService.getProviderName()} (${info.name})`,
+      `RegionDomainService initialized with plugin: ${this.regionService.getProviderName()} (${info.name})`,
     );
   }
 

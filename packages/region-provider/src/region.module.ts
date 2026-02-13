@@ -3,24 +3,43 @@ import { ConfigService } from "@nestjs/config";
 import { IRegionProvider } from "@opuspopuli/common";
 import { RegionService } from "./region.service.js";
 import { ExampleRegionProvider } from "./providers/example.provider.js";
+import { PluginRegistryService } from "./registry/plugin-registry.service.js";
+import { PluginLoaderService } from "./loader/plugin-loader.service.js";
 
 /**
  * Region Module
  *
  * Configures Dependency Injection for region providers.
  *
- * To swap providers, set the REGION_PROVIDER environment variable:
- * - example (default): Mock data for development
- * - california: California civic data (requires region-provider-california package)
- * - Add your own implementation of IRegionProvider
+ * Three modes of operation:
  *
- * For custom providers:
- * 1. Create a package implementing IRegionProvider
- * 2. Register it in getProviderForRegion() below
- * 3. Set REGION_PROVIDER=your-region in .env
+ * 1. forPlugins() [recommended] - DB-driven plugin loading
+ *    The domain service loads the enabled plugin from the database at startup.
+ *    Plugins are npm packages that implement IRegionPlugin.
+ *
+ * 2. forRootAsync() [legacy] - ENV-driven provider selection
+ *    Uses REGION_PROVIDER environment variable with a switch statement.
+ *
+ * 3. forRoot() [legacy] - Default example provider
+ *    Uses the built-in ExampleRegionProvider directly.
  */
 @Module({})
 export class RegionModule {
+  /**
+   * Plugin-based registration (recommended).
+   *
+   * Provides the PluginRegistryService and PluginLoaderService.
+   * The domain service is responsible for reading the DB config
+   * and calling pluginLoader.loadPlugin() during onModuleInit.
+   */
+  static forPlugins(): DynamicModule {
+    return {
+      module: RegionModule,
+      providers: [PluginRegistryService, PluginLoaderService],
+      exports: [PluginRegistryService, PluginLoaderService],
+    };
+  }
+
   /**
    * Static registration with default example provider
    */

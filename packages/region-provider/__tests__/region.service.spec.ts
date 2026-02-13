@@ -170,4 +170,82 @@ describe("RegionService", () => {
       );
     });
   });
+
+  describe("syncDataType", () => {
+    it("should sync propositions", async () => {
+      const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
+
+      expect(result.dataType).toBe(CivicDataType.PROPOSITIONS);
+      expect(result.itemsProcessed).toBe(mockPropositions.length);
+      expect(result.errors).toEqual([]);
+      expect(result.syncedAt).toBeInstanceOf(Date);
+      expect(mockProvider.fetchPropositions).toHaveBeenCalled();
+    });
+
+    it("should sync meetings", async () => {
+      const result = await service.syncDataType(CivicDataType.MEETINGS);
+
+      expect(result.dataType).toBe(CivicDataType.MEETINGS);
+      expect(result.itemsProcessed).toBe(mockMeetings.length);
+      expect(mockProvider.fetchMeetings).toHaveBeenCalled();
+    });
+
+    it("should sync representatives", async () => {
+      const result = await service.syncDataType(CivicDataType.REPRESENTATIVES);
+
+      expect(result.dataType).toBe(CivicDataType.REPRESENTATIVES);
+      expect(result.itemsProcessed).toBe(mockRepresentatives.length);
+      expect(mockProvider.fetchRepresentatives).toHaveBeenCalled();
+    });
+  });
+
+  describe("syncAll", () => {
+    it("should sync all supported data types", async () => {
+      const results = await service.syncAll();
+
+      expect(results).toHaveLength(3);
+      expect(results[0].dataType).toBe(CivicDataType.PROPOSITIONS);
+      expect(results[1].dataType).toBe(CivicDataType.MEETINGS);
+      expect(results[2].dataType).toBe(CivicDataType.REPRESENTATIVES);
+      expect(mockProvider.fetchPropositions).toHaveBeenCalled();
+      expect(mockProvider.fetchMeetings).toHaveBeenCalled();
+      expect(mockProvider.fetchRepresentatives).toHaveBeenCalled();
+    });
+
+    it("should capture errors for failed data types without stopping", async () => {
+      mockProvider.fetchMeetings.mockRejectedValue(
+        new Error("Meetings unavailable"),
+      );
+
+      const results = await service.syncAll();
+
+      expect(results).toHaveLength(3);
+      // Propositions succeeded
+      expect(results[0].dataType).toBe(CivicDataType.PROPOSITIONS);
+      expect(results[0].itemsProcessed).toBe(mockPropositions.length);
+      expect(results[0].errors).toEqual([]);
+      // Meetings failed
+      expect(results[1].dataType).toBe(CivicDataType.MEETINGS);
+      expect(results[1].itemsProcessed).toBe(0);
+      expect(results[1].errors).toEqual(["Meetings unavailable"]);
+      // Representatives succeeded
+      expect(results[2].dataType).toBe(CivicDataType.REPRESENTATIVES);
+      expect(results[2].itemsProcessed).toBe(mockRepresentatives.length);
+    });
+  });
+
+  describe("getServiceInfo", () => {
+    it("should return service information", () => {
+      const info = service.getServiceInfo();
+
+      expect(info.provider).toBe("test-provider");
+      expect(info.region).toBe("Test Region");
+      expect(info.timezone).toBe("America/New_York");
+      expect(info.supportedDataTypes).toEqual([
+        CivicDataType.PROPOSITIONS,
+        CivicDataType.MEETINGS,
+        CivicDataType.REPRESENTATIVES,
+      ]);
+    });
+  });
 });
