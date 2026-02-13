@@ -8,8 +8,7 @@
  */
 
 import Redis from "ioredis";
-import type { ICache } from "./cache.interface.js";
-import type { CacheOptions } from "../types.js";
+import type { ICache, CacheOptions } from "@opuspopuli/common";
 
 /**
  * Redis cache configuration options

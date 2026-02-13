@@ -1,9 +1,18 @@
 /**
- * Cache Interface
+ * Caching Types
  *
- * Common interface for cache implementations (Memory, Redis).
- * Enables switching between implementations without changing consumer code.
+ * Types and interfaces for cache implementations.
  */
+
+/**
+ * Configuration options for the in-memory cache
+ */
+export interface CacheOptions {
+  /** Time-to-live in milliseconds for cache entries (default: 300000 = 5 min) */
+  ttlMs?: number;
+  /** Maximum number of entries in the cache (default: 100) */
+  maxSize?: number;
+}
 
 /**
  * Cache interface for key-value storage with TTL support
@@ -57,37 +66,4 @@ export interface ICache<T = string> {
    * Cleanup resources (call on module destroy)
    */
   destroy(): Promise<void> | void;
-}
-
-/**
- * Rate limiter interface for distributed rate limiting
- */
-export interface IRateLimiter {
-  /**
-   * Acquire a token, waiting if necessary
-   * @returns Promise that resolves when a token is available
-   */
-  acquire(): Promise<void>;
-
-  /**
-   * Try to acquire a token without waiting
-   * @returns True if token was acquired, false otherwise
-   */
-  tryAcquire(): Promise<boolean> | boolean;
-
-  /**
-   * Get the time in milliseconds until the next token is available
-   * @returns 0 if a token is immediately available
-   */
-  getWaitTimeMs(): Promise<number> | number;
-
-  /**
-   * Get the current number of available tokens
-   */
-  getAvailableTokens(): Promise<number> | number;
-
-  /**
-   * Reset the limiter to its initial state
-   */
-  reset(): Promise<void> | void;
 }

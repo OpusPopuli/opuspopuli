@@ -12,3 +12,6 @@ export * from "./email/index.js";
 export * from "./resilience/index.js";
 export * from "./http/index.js";
 export * from "./ocr/index.js";
+export * from "./rate-limiting/index.js";
+export * from "./retry/index.js";
+export * from "./caching/index.js";

@@ -10,8 +10,7 @@
  */
 
 import Redis from "ioredis";
-import type { IRateLimiter } from "../cache/cache.interface.js";
-import type { RateLimitOptions } from "../types.js";
+import type { IRateLimiter, RateLimitOptions } from "@opuspopuli/common";
 
 /**
  * Redis rate limiter configuration options

@@ -3,8 +3,8 @@ import {
   calculateDelay,
   RetryPredicates,
   DEFAULT_RETRY_CONFIG,
-} from "../../src/utils/retry";
-import { RetryExhaustedError } from "../../src/types";
+} from "../src/providers/retry/retry";
+import { RetryExhaustedError } from "../src/providers/retry/types";
 
 describe("retry utility", () => {
   beforeEach(() => {

@@ -2,8 +2,23 @@
  * Extraction Provider Types
  *
  * Types and interfaces for the extraction provider infrastructure layer.
- * Includes configuration for caching, rate limiting, and retry logic.
+ * Shared types (CacheOptions, RateLimitOptions, RetryConfig, etc.) are
+ * re-exported from @opuspopuli/common for backwards compatibility.
  */
+
+// Re-export shared types from common for backwards compatibility
+export type { CacheOptions, ICache } from "@opuspopuli/common";
+export type { RateLimitOptions, IRateLimiter } from "@opuspopuli/common";
+export type { RetryConfig } from "@opuspopuli/common";
+export { RateLimitExceededError } from "@opuspopuli/common";
+export { RetryExhaustedError } from "@opuspopuli/common";
+
+// Local import for use in this file's interfaces
+import type {
+  CacheOptions,
+  RateLimitOptions,
+  RetryConfig,
+} from "@opuspopuli/common";
 
 /**
  * Options for HTTP fetch requests
@@ -27,38 +42,6 @@ export interface RetryOptions extends FetchOptions {
   baseDelayMs?: number;
   /** Maximum delay in milliseconds between retries (default: 30000) */
   maxDelayMs?: number;
-}
-
-/**
- * Configuration options for the in-memory cache
- */
-export interface CacheOptions {
-  /** Time-to-live in milliseconds for cache entries (default: 300000 = 5 min) */
-  ttlMs?: number;
-  /** Maximum number of entries in the cache (default: 100) */
-  maxSize?: number;
-}
-
-/**
- * Configuration options for rate limiting
- */
-export interface RateLimitOptions {
-  /** Maximum requests per second (default: 2) */
-  requestsPerSecond?: number;
-  /** Burst size for token bucket algorithm (default: 5) */
-  burstSize?: number;
-}
-
-/**
- * Retry configuration options
- */
-export interface RetryConfig {
-  /** Maximum number of retry attempts */
-  maxAttempts: number;
-  /** Base delay in milliseconds for exponential backoff */
-  baseDelayMs: number;
-  /** Maximum delay in milliseconds between retries */
-  maxDelayMs: number;
 }
 
 /**
@@ -144,29 +127,6 @@ export class FetchError extends Error {
   ) {
     super(`Failed to fetch ${url}: ${message}`);
     this.name = "FetchError";
-  }
-}
-
-/**
- * Error thrown when rate limit is exceeded
- */
-export class RateLimitExceededError extends Error {
-  constructor(public readonly waitTimeMs: number) {
-    super(`Rate limit exceeded. Try again in ${waitTimeMs}ms`);
-    this.name = "RateLimitExceededError";
-  }
-}
-
-/**
- * Error thrown when all retry attempts are exhausted
- */
-export class RetryExhaustedError extends Error {
-  constructor(
-    public readonly attempts: number,
-    public readonly lastError: Error,
-  ) {
-    super(`All ${attempts} retry attempts exhausted: ${lastError.message}`);
-    this.name = "RetryExhaustedError";
   }
 }
 
