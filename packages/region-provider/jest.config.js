@@ -1,12 +1,12 @@
 /** @type {import('jest').Config} */
+const baseConfig = require("../jest.config.base.js");
+
 module.exports = {
-  preset: "ts-jest",
-  testEnvironment: "node",
-  roots: ["<rootDir>/src", "<rootDir>/__tests__"],
-  testMatch: ["**/*.spec.ts"],
-  collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
-  coverageDirectory: "coverage",
+  ...baseConfig,
   moduleNameMapper: {
+    ...baseConfig.moduleNameMapper,
+    "^@opuspopuli/region-plugin-sdk$":
+      "<rootDir>/../region-plugin-sdk/src/index.ts",
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },
 };
