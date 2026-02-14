@@ -14,13 +14,15 @@ import type { CheerioAPI, Cheerio } from "cheerio";
 import type { Element } from "domhandler";
 import { PDFParse } from "pdf-parse";
 import {
+  type ICache,
+  type IRateLimiter,
+  type CircuitBreakerHealth,
   CircuitBreakerManager,
   createCircuitBreaker,
   DEFAULT_CIRCUIT_CONFIGS,
-  CircuitBreakerHealth,
+  withRetry,
+  RetryPredicates,
 } from "@opuspopuli/common";
-
-import type { ICache, IRateLimiter } from "./cache/cache.interface.js";
 import { CacheFactory } from "./cache/cache-factory.js";
 import {
   ExtractionConfig,
@@ -32,7 +34,6 @@ import {
   FetchError,
   FetchFunction,
 } from "./types.js";
-import { withRetry, RetryPredicates } from "./utils/retry.js";
 
 /**
  * Selected element from HTML parsing

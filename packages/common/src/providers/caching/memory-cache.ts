@@ -5,7 +5,7 @@
  * Uses LRU-style eviction when max size is reached.
  */
 
-import { CacheOptions } from "../types.js";
+import { CacheOptions } from "./types.js";
 
 /**
  * Cache entry with value and expiration time

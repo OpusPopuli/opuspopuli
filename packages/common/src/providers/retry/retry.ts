@@ -7,7 +7,7 @@
 
 import { randomInt } from "node:crypto";
 
-import { RetryConfig, RetryExhaustedError } from "../types.js";
+import { RetryConfig, RetryExhaustedError } from "./types.js";
 
 /**
  * Default retry configuration

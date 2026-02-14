@@ -5,7 +5,7 @@
  * Tokens are added at a steady rate, and each request consumes one token.
  */
 
-import { RateLimitOptions } from "../types.js";
+import { RateLimitOptions } from "./types.js";
 
 /**
  * Token bucket rate limiter

@@ -8,15 +8,18 @@
  */
 
 import { Logger } from "@nestjs/common";
-import type { ICache, IRateLimiter } from "./cache.interface.js";
-import { MemoryCache } from "./memory-cache.js";
+import type {
+  ICache,
+  IRateLimiter,
+  CacheOptions,
+  RateLimitOptions,
+} from "@opuspopuli/common";
+import { MemoryCache, RateLimiter } from "@opuspopuli/common";
 import { RedisCache, type RedisCacheOptions } from "./redis-cache.js";
-import { RateLimiter } from "../utils/rate-limiter.js";
 import {
   RedisRateLimiter,
   type RedisRateLimiterOptions,
 } from "../utils/redis-rate-limiter.js";
-import type { CacheOptions, RateLimitOptions } from "../types.js";
 
 /**
  * Cache provider type
