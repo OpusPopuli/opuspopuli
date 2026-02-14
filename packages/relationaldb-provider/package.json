@@ -50,7 +50,7 @@
     "prisma",
     "provider"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "dependencies": {
     "@prisma/client": "5",
     "@opuspopuli/common": "workspace:*"

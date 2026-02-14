@@ -4,7 +4,7 @@
   "description": "",
   "author": "",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0",
   "scripts": {
     "prebuild": "rimraf dist && pnpm --filter @opuspopuli/relationaldb-provider db:generate",
     "build": "pnpm build:api && pnpm build:users && pnpm build:documents && pnpm build:knowledge && pnpm build:region",
