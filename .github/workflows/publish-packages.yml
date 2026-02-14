@@ -1,8 +1,11 @@
 name: Publish Packages
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - 'packages/common/package.json'
+      - 'packages/region-plugin-sdk/package.json'
   workflow_dispatch:
     inputs:
       packages:
@@ -35,13 +38,36 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build packages
         run: pnpm -r --filter './packages/*' build
 
-      - name: Publish packages
+      - name: Check and publish @opuspopuli/common
         run: |
-          pnpm --filter @opuspopuli/common publish --no-git-checks
-          pnpm --filter @opuspopuli/region-plugin-sdk publish --no-git-checks
+          LOCAL_VERSION=$(node -p "require('./packages/common/package.json').version")
+          PUBLISHED_VERSION=$(npm view @opuspopuli/common version 2>/dev/null || echo "0.0.0")
+          echo "common: local=$LOCAL_VERSION published=$PUBLISHED_VERSION"
+          if [ "$LOCAL_VERSION" != "$PUBLISHED_VERSION" ]; then
+            echo "Publishing @opuspopuli/common@$LOCAL_VERSION"
+            pnpm --filter @opuspopuli/common publish --no-git-checks
+          else
+            echo "Skipping @opuspopuli/common — version $LOCAL_VERSION already published"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check and publish @opuspopuli/region-plugin-sdk
+        run: |
+          LOCAL_VERSION=$(node -p "require('./packages/region-plugin-sdk/package.json').version")
+          PUBLISHED_VERSION=$(npm view @opuspopuli/region-plugin-sdk version 2>/dev/null || echo "0.0.0")
+          echo "region-plugin-sdk: local=$LOCAL_VERSION published=$PUBLISHED_VERSION"
+          if [ "$LOCAL_VERSION" != "$PUBLISHED_VERSION" ]; then
+            echo "Publishing @opuspopuli/region-plugin-sdk@$LOCAL_VERSION"
+            pnpm --filter @opuspopuli/region-plugin-sdk publish --no-git-checks
+          else
+            echo "Skipping @opuspopuli/region-plugin-sdk — version $LOCAL_VERSION already published"
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

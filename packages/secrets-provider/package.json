@@ -28,7 +28,7 @@
     "vault",
     "provider"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.700.0",
     "@opuspopuli/common": "workspace:*",
