@@ -27,7 +27,7 @@
     "civic",
     "provider"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "dependencies": {
     "@opuspopuli/common": "workspace:*",
     "@opuspopuli/region-plugin-sdk": "workspace:*"

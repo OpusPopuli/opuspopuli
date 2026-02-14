@@ -27,7 +27,7 @@
     "supabase",
     "provider"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "dependencies": {
     "@opuspopuli/common": "workspace:*",
     "@supabase/supabase-js": "^2.49.1"

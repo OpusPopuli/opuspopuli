@@ -27,7 +27,7 @@
     "ollama",
     "provider"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "dependencies": {
     "@opuspopuli/common": "workspace:*"
   },

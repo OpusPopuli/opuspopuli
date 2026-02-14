@@ -28,7 +28,7 @@
     "text-extraction",
     "provider"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "dependencies": {
     "@opuspopuli/common": "workspace:*",
     "sharp": "^0.33.5",
