@@ -59,7 +59,19 @@ export class FieldTransformer {
    * Strip HTML tags from a string, returning only text content.
    */
   private static stripHtml(value: string): string {
-    return value.replace(/<[^>]*>/g, "").trim();
+    // Use iterative parsing instead of regex to avoid ReDoS concerns
+    let result = "";
+    let inTag = false;
+    for (const ch of value) {
+      if (ch === "<") {
+        inTag = true;
+      } else if (ch === ">") {
+        inTag = false;
+      } else if (!inTag) {
+        result += ch;
+      }
+    }
+    return result.trim();
   }
 
   /**

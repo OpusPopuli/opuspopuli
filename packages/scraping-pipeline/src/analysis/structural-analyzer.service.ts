@@ -197,10 +197,16 @@ export class StructuralAnalyzerService {
     // Extract JSON from the response (LLM might wrap in markdown code blocks)
     let jsonStr = llmOutput.trim();
 
-    // Strip markdown code block if present
-    const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1].trim();
+    // Strip markdown code block if present (uses indexOf instead of regex
+    // to avoid potential ReDoS with unbounded patterns)
+    const openFence = jsonStr.indexOf("```");
+    if (openFence !== -1) {
+      const afterFence = jsonStr.indexOf("\n", openFence);
+      const closeFence =
+        afterFence !== -1 ? jsonStr.indexOf("```", afterFence) : -1;
+      if (afterFence !== -1 && closeFence !== -1) {
+        jsonStr = jsonStr.substring(afterFence + 1, closeFence).trim();
+      }
     }
 
     // Try to find JSON object boundaries
