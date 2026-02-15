@@ -572,19 +572,18 @@ model Meeting {
 // REGION PLUGINS
 // ============================================
 
-/// Region plugin configuration for the federation plugin ecosystem.
-/// Each row represents an installable region plugin (npm package).
+/// Region plugin configuration for the declarative plugin ecosystem.
+/// Each row represents a region whose config is auto-synced from JSON files.
 /// The enabled plugin is dynamically loaded at startup.
 model RegionPlugin {
   id             String    @id @default(uuid())
-  name           String    @unique                            /// Plugin identifier: "example", "california"
+  name           String    @unique                            /// Plugin identifier: "california", "texas"
   displayName    String    @map("display_name")
   description    String?   @db.Text
-  packageName    String?   @map("package_name")               /// npm package: "@opuspopuli/region-example" (optional for declarative plugins)
-  pluginType     String    @default("code") @map("plugin_type") @db.VarChar(20) /// "code" or "declarative"
+  pluginType     String    @default("declarative") @map("plugin_type") @db.VarChar(20)
   version        String    @db.VarChar(50)
   enabled        Boolean   @default(false)
-  config         Json?                                        /// Plugin-specific configuration
+  config         Json?                                        /// DeclarativeRegionConfig JSON
   lastSyncAt     DateTime? @map("last_sync_at") @db.Timestamptz
   lastSyncStatus String?   @map("last_sync_status") @db.VarChar(50)
   lastError      String?   @map("last_error") @db.Text

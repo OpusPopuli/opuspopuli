@@ -25,12 +25,12 @@ Opus Populi uses a **declarative plugin architecture** — the core platform is 
 │  plugin bridge) + Scraping Pipeline (AI analysis,            │
 │  manifest caching, Cheerio extraction, domain mapping)       │
 └──────────────────────────────────────────────────────────────┘
-        ↑ reads config from database
+        ↑ auto-discovers JSON files, syncs to DB at startup
   ┌──────────────────────────────────────────────────────┐
-  │              region_plugins table                      │
+  │    packages/region-provider/regions/                   │
   │  ┌────────────┐ ┌────────────┐ ┌────────────┐        │
-  │  │ California │ │ Texas      │ │ New York   │  ...   │
-  │  │ JSON config│ │ JSON config│ │ JSON config│        │
+  │  │california  │ │texas.json  │ │new-york    │  ...   │
+  │  │.json       │ │            │ │.json       │        │
   │  │ URLs +     │ │ URLs +     │ │ URLs +     │        │
   │  │ goals      │ │ goals      │ │ goals      │        │
   │  └────────────┘ └────────────┘ └────────────┘        │
@@ -60,9 +60,9 @@ Opus Populi uses a **declarative plugin architecture** — the core platform is 
 
 ### Add a New Region (Declarative Config)
 
-- Region-specific data source URLs and content goals
-- Configured as declarative JSON in the database
-- No separate repo or code package needed — the scraping pipeline handles extraction
+- Create a JSON config file in `packages/region-provider/regions/`
+- Describes data source URLs and content goals — no scraper code needed
+- Auto-discovered and synced to the database on service startup
 
 ## Getting Started
 
@@ -94,11 +94,11 @@ See [docs/guides/getting-started.md](docs/guides/getting-started.md) for detaile
 
 ### Adding a Region
 
-Region-specific civic data is configured as declarative plugins — JSON config in the database that describes data sources and content goals. The scraping pipeline handles extraction automatically.
+Region-specific civic data is configured as JSON files — no scraper code needed. The scraping pipeline handles extraction automatically.
 
-1. Create a `DeclarativeRegionConfig` with your region's data source URLs and content goals
-2. Insert the config into the `region_plugins` database table
-3. The platform loads and activates the plugin at startup
+1. Create a JSON config file in `packages/region-provider/regions/` (see `california.json` for an example)
+2. Restart the service — configs are auto-synced to the database
+3. Enable the plugin: `UPDATE region_plugins SET enabled = true WHERE name = 'my-region';`
 
 See the [Region Provider Guide](docs/guides/region-provider.md) for detailed instructions.
 

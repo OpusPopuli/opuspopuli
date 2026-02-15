@@ -34,8 +34,7 @@
     "db:push": "npx prisma db push",
     "db:push:ci": "npx prisma db push --accept-data-loss",
     "db:spatial-indexes": "psql $DATABASE_URL -f prisma/spatial-indexes.sql",
-    "db:studio": "npx prisma studio",
-    "db:seed:region-plugins": "npx ts-node prisma/seeds/region-plugins.seed.ts"
+    "db:studio": "npx prisma studio"
   },
   "keywords": [
     "opuspopuli",
