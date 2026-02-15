@@ -482,7 +482,7 @@ importers:
         version: 4.1.18
       ts-jest:
         specifier: ^29.2.5
-        version: 29.4.6(@babel/core@7.28.5)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.28.5))(jest-util@30.2.0)(jest@30.2.0)(typescript@5.9.3)
+        version: 29.4.6(@babel/core@7.28.5)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.28.5))(jest-util@30.2.0)(jest@30.2.0(@types/node@25.0.1))(typescript@5.9.3)
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -976,6 +976,9 @@ importers:
       '@opuspopuli/common':
         specifier: workspace:*
         version: link:../common
+      '@opuspopuli/relationaldb-provider':
+        specifier: workspace:*
+        version: link:../relationaldb-provider
     devDependencies:
       '@nestjs/common':
         specifier: ^11.1.9
@@ -983,30 +986,18 @@ importers:
       '@nestjs/config':
         specifier: ^4.0.2
         version: 4.0.2(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
-      '@nestjs/typeorm':
-        specifier: ^11.0.0
-        version: 11.0.0(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.9)(reflect-metadata@0.2.2)(rxjs@7.8.2)(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1))))
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
       jest:
         specifier: ^30.0.0
-        version: 30.2.0(@types/node@25.0.1)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))
-      pg:
-        specifier: ^8.13.1
-        version: 8.16.3
-      reflect-metadata:
-        specifier: ^0.2.2
-        version: 0.2.2
+        version: 30.2.0(@types/node@25.0.1)
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
       ts-jest:
         specifier: ^29.2.5
-        version: 29.4.6(@babel/core@7.28.5)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.28.5))(jest-util@30.2.0)(jest@30.2.0(@types/node@25.0.1)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3)))(typescript@5.9.3)
-      typeorm:
-        specifier: ^0.3.20
-        version: 0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1)))
+        version: 29.4.6(@babel/core@7.28.5)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.28.5))(jest-util@30.2.0)(jest@30.2.0)(typescript@5.9.3)
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -10152,12 +10143,12 @@ snapshots:
       '@smithy/util-utf8': 2.3.0
       tslib: 2.8.1
 
-  '@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1)':
+  '@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/core': 3.947.0
-      '@aws-sdk/credential-provider-node': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/credential-provider-node': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/middleware-host-header': 3.936.0
       '@aws-sdk/middleware-logger': 3.936.0
       '@aws-sdk/middleware-recursion-detection': 3.948.0
@@ -10166,7 +10157,7 @@ snapshots:
       '@aws-sdk/types': 3.936.0
       '@aws-sdk/util-endpoints': 3.936.0
       '@aws-sdk/util-user-agent-browser': 3.936.0
-      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1)
+      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@smithy/config-resolver': 4.4.6
       '@smithy/core': 3.20.7
       '@smithy/fetch-http-handler': 5.3.9
@@ -10203,7 +10194,7 @@ snapshots:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/core': 3.947.0
-      '@aws-sdk/credential-provider-node': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/credential-provider-node': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/middleware-bucket-endpoint': 3.936.0
       '@aws-sdk/middleware-expect-continue': 3.936.0
       '@aws-sdk/middleware-flexible-checksums': 3.947.0
@@ -10219,7 +10210,7 @@ snapshots:
       '@aws-sdk/types': 3.936.0
       '@aws-sdk/util-endpoints': 3.936.0
       '@aws-sdk/util-user-agent-browser': 3.936.0
-      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1)
+      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@smithy/config-resolver': 4.4.6
       '@smithy/core': 3.20.7
       '@smithy/eventstream-serde-browser': 4.2.5
@@ -10307,7 +10298,7 @@ snapshots:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/core': 3.947.0
-      '@aws-sdk/credential-provider-node': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/credential-provider-node': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/middleware-host-header': 3.936.0
       '@aws-sdk/middleware-logger': 3.936.0
       '@aws-sdk/middleware-recursion-detection': 3.948.0
@@ -10317,7 +10308,7 @@ snapshots:
       '@aws-sdk/types': 3.936.0
       '@aws-sdk/util-endpoints': 3.936.0
       '@aws-sdk/util-user-agent-browser': 3.936.0
-      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1)
+      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@smithy/config-resolver': 4.4.3
       '@smithy/core': 3.18.7
       '@smithy/fetch-http-handler': 5.3.6
@@ -10348,7 +10339,7 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-sso@3.948.0(aws-crt@1.28.1)':
+  '@aws-sdk/client-sso@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
@@ -10361,7 +10352,7 @@ snapshots:
       '@aws-sdk/types': 3.936.0
       '@aws-sdk/util-endpoints': 3.936.0
       '@aws-sdk/util-user-agent-browser': 3.936.0
-      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1)
+      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@smithy/config-resolver': 4.4.3
       '@smithy/core': 3.18.7
       '@smithy/fetch-http-handler': 5.3.6
@@ -10439,7 +10430,7 @@ snapshots:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/core': 3.947.0
-      '@aws-sdk/credential-provider-node': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/credential-provider-node': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/middleware-host-header': 3.936.0
       '@aws-sdk/middleware-logger': 3.936.0
       '@aws-sdk/middleware-recursion-detection': 3.948.0
@@ -10448,7 +10439,7 @@ snapshots:
       '@aws-sdk/types': 3.936.0
       '@aws-sdk/util-endpoints': 3.936.0
       '@aws-sdk/util-user-agent-browser': 3.936.0
-      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1)
+      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@smithy/config-resolver': 4.4.3
       '@smithy/core': 3.18.7
       '@smithy/fetch-http-handler': 5.3.6
@@ -10552,16 +10543,16 @@ snapshots:
       '@smithy/util-stream': 4.5.10
       tslib: 2.8.1
 
-  '@aws-sdk/credential-provider-ini@3.948.0(aws-crt@1.28.1)':
+  '@aws-sdk/credential-provider-ini@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))':
     dependencies:
       '@aws-sdk/core': 3.947.0
       '@aws-sdk/credential-provider-env': 3.947.0
       '@aws-sdk/credential-provider-http': 3.947.0
-      '@aws-sdk/credential-provider-login': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/credential-provider-login': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/credential-provider-process': 3.947.0
-      '@aws-sdk/credential-provider-sso': 3.948.0(aws-crt@1.28.1)
-      '@aws-sdk/credential-provider-web-identity': 3.948.0(aws-crt@1.28.1)
-      '@aws-sdk/nested-clients': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/credential-provider-sso': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
+      '@aws-sdk/credential-provider-web-identity': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
+      '@aws-sdk/nested-clients': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/types': 3.936.0
       '@smithy/credential-provider-imds': 4.2.5
       '@smithy/property-provider': 4.2.5
@@ -10590,10 +10581,10 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/credential-provider-login@3.948.0(aws-crt@1.28.1)':
+  '@aws-sdk/credential-provider-login@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))':
     dependencies:
       '@aws-sdk/core': 3.947.0
-      '@aws-sdk/nested-clients': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/nested-clients': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/types': 3.936.0
       '@smithy/property-provider': 4.2.5
       '@smithy/protocol-http': 5.3.5
@@ -10616,14 +10607,14 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/credential-provider-node@3.948.0(aws-crt@1.28.1)':
+  '@aws-sdk/credential-provider-node@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))':
     dependencies:
       '@aws-sdk/credential-provider-env': 3.947.0
       '@aws-sdk/credential-provider-http': 3.947.0
-      '@aws-sdk/credential-provider-ini': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/credential-provider-ini': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/credential-provider-process': 3.947.0
-      '@aws-sdk/credential-provider-sso': 3.948.0(aws-crt@1.28.1)
-      '@aws-sdk/credential-provider-web-identity': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/credential-provider-sso': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
+      '@aws-sdk/credential-provider-web-identity': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/types': 3.936.0
       '@smithy/credential-provider-imds': 4.2.5
       '@smithy/property-provider': 4.2.5
@@ -10668,11 +10659,11 @@ snapshots:
       '@smithy/types': 4.12.0
       tslib: 2.8.1
 
-  '@aws-sdk/credential-provider-sso@3.948.0(aws-crt@1.28.1)':
+  '@aws-sdk/credential-provider-sso@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))':
     dependencies:
-      '@aws-sdk/client-sso': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/client-sso': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/core': 3.947.0
-      '@aws-sdk/token-providers': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/token-providers': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/types': 3.936.0
       '@smithy/property-provider': 4.2.5
       '@smithy/shared-ini-file-loader': 4.4.0
@@ -10694,10 +10685,10 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/credential-provider-web-identity@3.948.0(aws-crt@1.28.1)':
+  '@aws-sdk/credential-provider-web-identity@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))':
     dependencies:
       '@aws-sdk/core': 3.947.0
-      '@aws-sdk/nested-clients': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/nested-clients': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/types': 3.936.0
       '@smithy/property-provider': 4.2.5
       '@smithy/shared-ini-file-loader': 4.4.0
@@ -10857,7 +10848,7 @@ snapshots:
       '@smithy/types': 4.12.0
       tslib: 2.8.1
 
-  '@aws-sdk/nested-clients@3.948.0(aws-crt@1.28.1)':
+  '@aws-sdk/nested-clients@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
@@ -10870,7 +10861,7 @@ snapshots:
       '@aws-sdk/types': 3.936.0
       '@aws-sdk/util-endpoints': 3.936.0
       '@aws-sdk/util-user-agent-browser': 3.936.0
-      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1)
+      '@aws-sdk/util-user-agent-node': 3.947.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@smithy/config-resolver': 4.4.3
       '@smithy/core': 3.18.7
       '@smithy/fetch-http-handler': 5.3.6
@@ -10969,10 +10960,10 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@aws-sdk/token-providers@3.948.0(aws-crt@1.28.1)':
+  '@aws-sdk/token-providers@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))':
     dependencies:
       '@aws-sdk/core': 3.947.0
-      '@aws-sdk/nested-clients': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/nested-clients': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       '@aws-sdk/types': 3.936.0
       '@smithy/property-provider': 4.2.5
       '@smithy/shared-ini-file-loader': 4.4.0
@@ -11042,7 +11033,7 @@ snapshots:
       bowser: 2.13.1
       tslib: 2.8.1
 
-  '@aws-sdk/util-user-agent-node@3.947.0(aws-crt@1.28.1)':
+  '@aws-sdk/util-user-agent-node@3.947.0(aws-crt@1.28.1(bufferutil@4.0.9))':
     dependencies:
       '@aws-sdk/middleware-user-agent': 3.947.0
       '@aws-sdk/types': 3.936.0
@@ -11528,7 +11519,7 @@ snapshots:
       '@types/ws': 8.18.1
       duplexify: 3.7.1
       inherits: 2.0.4
-      isomorphic-ws: 4.0.1(ws@8.18.3)
+      isomorphic-ws: 4.0.1(ws@8.18.3(bufferutil@4.0.9))
       readable-stream: 2.3.8
       safe-buffer: 5.2.1
       ws: 8.18.3(bufferutil@4.0.9)
@@ -12301,7 +12292,7 @@ snapshots:
     optionalDependencies:
       cheerio: 1.1.2
       langsmith: 0.3.87(@opentelemetry/api@1.9.0)(openai@6.10.0(ws@8.18.3(bufferutil@4.0.9))(zod@4.1.13))
-      typeorm: 0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1)))
+      typeorm: 0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))))
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
@@ -12347,7 +12338,7 @@ snapshots:
       mysql2: 3.15.3
       pg: 8.16.3
       playwright: 1.57.0
-      typeorm: 0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1)))
+      typeorm: 0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))))
       ws: 8.18.3(bufferutil@4.0.9)
     transitivePeerDependencies:
       - '@opentelemetry/api'
@@ -12695,9 +12686,9 @@ snapshots:
       reflect-metadata: 0.2.2
       rxjs: 7.8.2
     optionalDependencies:
-      '@nestjs/typeorm': 11.0.0(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.9)(reflect-metadata@0.2.2)(rxjs@7.8.2)(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1))))
+      '@nestjs/typeorm': 11.0.0(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.9)(reflect-metadata@0.2.2)(rxjs@7.8.2)(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9)))))
       '@prisma/client': 5.22.0(prisma@5.22.0)
-      typeorm: 0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1)))
+      typeorm: 0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))))
 
   '@nestjs/testing@11.1.9(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.9)(@nestjs/platform-express@11.1.9)':
     dependencies:
@@ -12713,13 +12704,14 @@ snapshots:
       '@nestjs/core': 11.1.9(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.9)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       reflect-metadata: 0.2.2
 
-  '@nestjs/typeorm@11.0.0(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.9)(reflect-metadata@0.2.2)(rxjs@7.8.2)(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1))))':
+  '@nestjs/typeorm@11.0.0(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.9)(reflect-metadata@0.2.2)(rxjs@7.8.2)(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9)))))':
     dependencies:
       '@nestjs/common': 11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.1.9(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.9)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       reflect-metadata: 0.2.2
       rxjs: 7.8.2
-      typeorm: 0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1)))
+      typeorm: 0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))))
+    optional: true
 
   '@next/env@16.1.6': {}
 
@@ -13631,7 +13623,8 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@sqltools/formatter@1.2.5': {}
+  '@sqltools/formatter@1.2.5':
+    optional: true
 
   '@standard-schema/spec@1.0.0': {}
 
@@ -14477,7 +14470,8 @@ snapshots:
     dependencies:
       '@apollo/client': 4.0.10(graphql-ws@6.0.6(graphql@16.12.0)(ws@8.18.3(bufferutil@4.0.9)))(graphql@16.12.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(rxjs@7.8.2)(subscriptions-transport-ws@0.11.0(bufferutil@4.0.9)(graphql@16.12.0))
 
-  app-root-path@3.1.0: {}
+  app-root-path@3.1.0:
+    optional: true
 
   append-field@1.0.0: {}
 
@@ -15308,7 +15302,8 @@ snapshots:
 
   dateformat@4.6.3: {}
 
-  dayjs@1.11.19: {}
+  dayjs@1.11.19:
+    optional: true
 
   debug@2.6.9:
     dependencies:
@@ -16837,7 +16832,7 @@ snapshots:
 
   isexe@2.0.0: {}
 
-  isomorphic-ws@4.0.1(ws@8.18.3):
+  isomorphic-ws@4.0.1(ws@8.18.3(bufferutil@4.0.9)):
     dependencies:
       ws: 8.18.3(bufferutil@4.0.9)
     optional: true
@@ -17353,7 +17348,7 @@ snapshots:
   jest-mock-extended@4.0.0(@jest/globals@30.2.0)(jest@30.2.0)(typescript@5.9.3):
     dependencies:
       '@jest/globals': 30.2.0
-      jest: 30.2.0(@types/node@25.0.1)
+      jest: 30.2.0
       ts-essentials: 10.1.1(typescript@5.9.3)
       typescript: 5.9.3
 
@@ -17664,6 +17659,19 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
       - babel-plugin-macros
+      - supports-color
+      - ts-node
+
+  jest@30.2.0:
+    dependencies:
+      '@jest/core': 30.2.0(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))
+      '@jest/types': 30.2.0
+      import-local: 3.2.0
+      jest-cli: 30.2.0(@types/node@25.0.1)
+    transitivePeerDependencies:
+      - '@types/node'
+      - babel-plugin-macros
+      - esbuild-register
       - supports-color
       - ts-node
 
@@ -19635,7 +19643,8 @@ snapshots:
 
   sprintf-js@1.0.3: {}
 
-  sql-highlight@6.1.0: {}
+  sql-highlight@6.1.0:
+    optional: true
 
   sqlstring@2.3.3:
     optional: true
@@ -20116,12 +20125,32 @@ snapshots:
       babel-jest: 30.2.0(@babel/core@7.28.5)
       jest-util: 30.2.0
 
-  ts-jest@29.4.6(@babel/core@7.28.5)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.28.5))(jest-util@30.2.0)(jest@30.2.0)(typescript@5.9.3):
+  ts-jest@29.4.6(@babel/core@7.28.5)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.28.5))(jest-util@30.2.0)(jest@30.2.0(@types/node@25.0.1))(typescript@5.9.3):
     dependencies:
       bs-logger: 0.2.6
       fast-json-stable-stringify: 2.1.0
       handlebars: 4.7.8
       jest: 30.2.0(@types/node@25.0.1)
+      json5: 2.2.3
+      lodash.memoize: 4.1.2
+      make-error: 1.3.6
+      semver: 7.7.3
+      type-fest: 4.41.0
+      typescript: 5.9.3
+      yargs-parser: 21.1.1
+    optionalDependencies:
+      '@babel/core': 7.28.5
+      '@jest/transform': 30.2.0
+      '@jest/types': 30.2.0
+      babel-jest: 30.2.0(@babel/core@7.28.5)
+      jest-util: 30.2.0
+
+  ts-jest@29.4.6(@babel/core@7.28.5)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.28.5))(jest-util@30.2.0)(jest@30.2.0)(typescript@5.9.3):
+    dependencies:
+      bs-logger: 0.2.6
+      fast-json-stable-stringify: 2.1.0
+      handlebars: 4.7.8
+      jest: 30.2.0
       json5: 2.2.3
       lodash.memoize: 4.1.2
       make-error: 1.3.6
@@ -20275,13 +20304,13 @@ snapshots:
 
   typedarray@0.0.6: {}
 
-  typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1)):
+  typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))):
     dependencies:
-      '@aws-sdk/client-rds-data': 3.948.0(aws-crt@1.28.1)
+      '@aws-sdk/client-rds-data': 3.948.0(aws-crt@1.28.1(bufferutil@4.0.9))
       sqlstring: 2.3.3
     optional: true
 
-  typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1))):
+  typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9)))):
     dependencies:
       '@sqltools/formatter': 1.2.5
       ansis: 4.2.0
@@ -20304,10 +20333,11 @@ snapshots:
       mysql2: 3.15.3
       pg: 8.16.3
       ts-node: 10.9.2(@types/node@25.0.1)(typescript@5.9.3)
-      typeorm-aurora-data-api-driver: 3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1))
+      typeorm-aurora-data-api-driver: 3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9)))
     transitivePeerDependencies:
       - babel-plugin-macros
       - supports-color
+    optional: true
 
   typescript-eslint@8.49.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3):
     dependencies:

@@ -1,7 +1,7 @@
 /**
  * Seed script for region plugins.
  *
- * Creates the default example plugin and the California declarative plugin.
+ * Creates the California declarative plugin.
  *
  * Usage: npx ts-node prisma/seeds/region-plugins.seed.ts
  */
@@ -11,24 +11,6 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function seedRegionPlugins() {
-  // Example plugin (code-based, for development/testing)
-  const example = await prisma.regionPlugin.upsert({
-    where: { name: "example" },
-    update: {},
-    create: {
-      name: "example",
-      displayName: "Example Region",
-      description:
-        "Sample region with mock civic data for development and testing",
-      packageName: "@opuspopuli/region-template",
-      pluginType: "code",
-      version: "0.1.0",
-      enabled: true,
-    },
-  });
-
-  console.log(`Seeded region plugin: ${example.name} (${example.id})`);
-
   // California plugin (declarative, uses scraping pipeline)
   const california = await prisma.regionPlugin.upsert({
     where: { name: "california" },
