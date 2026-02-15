@@ -14,7 +14,6 @@ import { Injectable, Logger } from "@nestjs/common";
 import type {
   DataSourceConfig,
   ExtractionResult,
-  StructuralManifest,
   StructuralAnalysisResult,
   CivicDataType,
 } from "@opuspopuli/common";
@@ -95,11 +94,11 @@ export class ScrapingPipelineService {
         undefined,
         true,
       );
-      if (!secondCheck.shouldHeal) {
+      if (secondCheck.shouldHeal) {
+        await this.manifestStore.incrementFailure(newManifest.id);
+      } else {
         // New manifest worked — record success
         await this.manifestStore.incrementSuccess(newManifest.id);
-      } else {
-        await this.manifestStore.incrementFailure(newManifest.id);
       }
     } else {
       // Original manifest worked — record success and update timestamps

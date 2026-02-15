@@ -130,7 +130,7 @@ export class FieldTransformer {
     }
 
     // Normalize whitespace
-    return trimmed.replace(/\s+/g, " ");
+    return trimmed.replaceAll(/\s+/g, " ");
   }
 
   /**

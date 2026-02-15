@@ -8,9 +8,9 @@
 
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import * as cheerio from "cheerio";
-import { createHash, randomUUID } from "node:crypto";
-import type { ILLMProvider } from "@opuspopuli/common";
+import { randomUUID } from "node:crypto";
 import type {
+  ILLMProvider,
   CivicDataType,
   DataSourceConfig,
   ExtractionRuleSet,
@@ -203,8 +203,8 @@ export class StructuralAnalyzerService {
     if (openFence !== -1) {
       const afterFence = jsonStr.indexOf("\n", openFence);
       const closeFence =
-        afterFence !== -1 ? jsonStr.indexOf("```", afterFence) : -1;
-      if (afterFence !== -1 && closeFence !== -1) {
+        afterFence >= 0 ? jsonStr.indexOf("```", afterFence) : -1;
+      if (afterFence >= 0 && closeFence >= 0) {
         jsonStr = jsonStr.substring(afterFence + 1, closeFence).trim();
       }
     }
@@ -268,6 +268,6 @@ export class StructuralAnalyzerService {
     // Analysis notes suggest the LLM understood the structure
     if (rules.analysisNotes && rules.analysisNotes.length > 20) score += 0.1;
 
-    return Math.min(score, 1.0);
+    return Math.min(score, 1);
   }
 }
