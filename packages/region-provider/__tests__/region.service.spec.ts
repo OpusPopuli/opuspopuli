@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { RegionService } from "../src/region.service";
-import { IRegionProvider, CivicDataType } from "@opuspopuli/common";
+import { IRegionProvider, DataType } from "@opuspopuli/common";
 
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({
@@ -79,9 +79,9 @@ describe("RegionService", () => {
       getSupportedDataTypes: jest
         .fn()
         .mockReturnValue([
-          CivicDataType.PROPOSITIONS,
-          CivicDataType.MEETINGS,
-          CivicDataType.REPRESENTATIVES,
+          DataType.PROPOSITIONS,
+          DataType.MEETINGS,
+          DataType.REPRESENTATIVES,
         ]),
       fetchPropositions: jest.fn().mockResolvedValue(mockPropositions),
       fetchMeetings: jest.fn().mockResolvedValue(mockMeetings),
@@ -112,9 +112,9 @@ describe("RegionService", () => {
       const types = service.getSupportedDataTypes();
 
       expect(types).toEqual([
-        CivicDataType.PROPOSITIONS,
-        CivicDataType.MEETINGS,
-        CivicDataType.REPRESENTATIVES,
+        DataType.PROPOSITIONS,
+        DataType.MEETINGS,
+        DataType.REPRESENTATIVES,
       ]);
       expect(mockProvider.getSupportedDataTypes).toHaveBeenCalled();
     });
@@ -173,9 +173,9 @@ describe("RegionService", () => {
 
   describe("syncDataType", () => {
     it("should sync propositions", async () => {
-      const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
+      const result = await service.syncDataType(DataType.PROPOSITIONS);
 
-      expect(result.dataType).toBe(CivicDataType.PROPOSITIONS);
+      expect(result.dataType).toBe(DataType.PROPOSITIONS);
       expect(result.itemsProcessed).toBe(mockPropositions.length);
       expect(result.errors).toEqual([]);
       expect(result.syncedAt).toBeInstanceOf(Date);
@@ -183,17 +183,17 @@ describe("RegionService", () => {
     });
 
     it("should sync meetings", async () => {
-      const result = await service.syncDataType(CivicDataType.MEETINGS);
+      const result = await service.syncDataType(DataType.MEETINGS);
 
-      expect(result.dataType).toBe(CivicDataType.MEETINGS);
+      expect(result.dataType).toBe(DataType.MEETINGS);
       expect(result.itemsProcessed).toBe(mockMeetings.length);
       expect(mockProvider.fetchMeetings).toHaveBeenCalled();
     });
 
     it("should sync representatives", async () => {
-      const result = await service.syncDataType(CivicDataType.REPRESENTATIVES);
+      const result = await service.syncDataType(DataType.REPRESENTATIVES);
 
-      expect(result.dataType).toBe(CivicDataType.REPRESENTATIVES);
+      expect(result.dataType).toBe(DataType.REPRESENTATIVES);
       expect(result.itemsProcessed).toBe(mockRepresentatives.length);
       expect(mockProvider.fetchRepresentatives).toHaveBeenCalled();
     });
@@ -204,9 +204,9 @@ describe("RegionService", () => {
       const results = await service.syncAll();
 
       expect(results).toHaveLength(3);
-      expect(results[0].dataType).toBe(CivicDataType.PROPOSITIONS);
-      expect(results[1].dataType).toBe(CivicDataType.MEETINGS);
-      expect(results[2].dataType).toBe(CivicDataType.REPRESENTATIVES);
+      expect(results[0].dataType).toBe(DataType.PROPOSITIONS);
+      expect(results[1].dataType).toBe(DataType.MEETINGS);
+      expect(results[2].dataType).toBe(DataType.REPRESENTATIVES);
       expect(mockProvider.fetchPropositions).toHaveBeenCalled();
       expect(mockProvider.fetchMeetings).toHaveBeenCalled();
       expect(mockProvider.fetchRepresentatives).toHaveBeenCalled();
@@ -221,15 +221,15 @@ describe("RegionService", () => {
 
       expect(results).toHaveLength(3);
       // Propositions succeeded
-      expect(results[0].dataType).toBe(CivicDataType.PROPOSITIONS);
+      expect(results[0].dataType).toBe(DataType.PROPOSITIONS);
       expect(results[0].itemsProcessed).toBe(mockPropositions.length);
       expect(results[0].errors).toEqual([]);
       // Meetings failed
-      expect(results[1].dataType).toBe(CivicDataType.MEETINGS);
+      expect(results[1].dataType).toBe(DataType.MEETINGS);
       expect(results[1].itemsProcessed).toBe(0);
       expect(results[1].errors).toEqual(["Meetings unavailable"]);
       // Representatives succeeded
-      expect(results[2].dataType).toBe(CivicDataType.REPRESENTATIVES);
+      expect(results[2].dataType).toBe(DataType.REPRESENTATIVES);
       expect(results[2].itemsProcessed).toBe(mockRepresentatives.length);
     });
   });
@@ -242,9 +242,9 @@ describe("RegionService", () => {
       expect(info.region).toBe("Test Region");
       expect(info.timezone).toBe("America/New_York");
       expect(info.supportedDataTypes).toEqual([
-        CivicDataType.PROPOSITIONS,
-        CivicDataType.MEETINGS,
-        CivicDataType.REPRESENTATIVES,
+        DataType.PROPOSITIONS,
+        DataType.MEETINGS,
+        DataType.REPRESENTATIVES,
       ]);
     });
   });

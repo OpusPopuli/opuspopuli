@@ -4,7 +4,7 @@ import type {
   IRegionPlugin,
   PluginHealth,
 } from "@opuspopuli/region-plugin-sdk";
-import { CivicDataType } from "@opuspopuli/common";
+import { DataType } from "@opuspopuli/common";
 
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({
@@ -28,9 +28,7 @@ function createMockPlugin(
       description: "Test",
       timezone: "UTC",
     }),
-    getSupportedDataTypes: jest
-      .fn()
-      .mockReturnValue([CivicDataType.PROPOSITIONS]),
+    getSupportedDataTypes: jest.fn().mockReturnValue([DataType.PROPOSITIONS]),
     fetchPropositions: jest.fn().mockResolvedValue([]),
     fetchMeetings: jest.fn().mockResolvedValue([]),
     fetchRepresentatives: jest.fn().mockResolvedValue([]),

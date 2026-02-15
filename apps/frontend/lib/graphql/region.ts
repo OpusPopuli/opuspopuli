@@ -5,7 +5,7 @@ import { gql } from "@apollo/client";
 // ============================================
 
 export type PropositionStatus = "PENDING" | "PASSED" | "FAILED" | "WITHDRAWN";
-export type CivicDataType = "PROPOSITIONS" | "MEETINGS" | "REPRESENTATIVES";
+export type DataType = "PROPOSITIONS" | "MEETINGS" | "REPRESENTATIVES";
 
 export interface RegionInfo {
   id: string;
@@ -13,7 +13,7 @@ export interface RegionInfo {
   description: string;
   timezone: string;
   dataSourceUrls?: string[];
-  supportedDataTypes: CivicDataType[];
+  supportedDataTypes: DataType[];
 }
 
 export interface Proposition {
@@ -81,7 +81,7 @@ export interface PaginatedRepresentatives {
 }
 
 export interface SyncResult {
-  dataType: CivicDataType;
+  dataType: DataType;
   itemsProcessed: number;
   itemsCreated: number;
   itemsUpdated: number;
@@ -147,7 +147,7 @@ export interface IdVars {
 }
 
 export interface SyncDataTypeVars {
-  dataType: CivicDataType;
+  dataType: DataType;
 }
 
 // ============================================
@@ -308,7 +308,7 @@ export const SYNC_ALL = gql`
 `;
 
 export const SYNC_DATA_TYPE = gql`
-  mutation SyncDataType($dataType: CivicDataType!) {
+  mutation SyncDataType($dataType: DataType!) {
     syncDataType(dataType: $dataType) {
       dataType
       itemsProcessed

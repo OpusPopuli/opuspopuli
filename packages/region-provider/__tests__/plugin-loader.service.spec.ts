@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { PluginLoaderService } from "../src/loader/plugin-loader.service";
 import { PluginRegistryService } from "../src/registry/plugin-registry.service";
 import type { IRegionPlugin } from "@opuspopuli/region-plugin-sdk";
-import { CivicDataType } from "@opuspopuli/common";
+import { DataType } from "@opuspopuli/common";
 
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({
@@ -24,9 +24,7 @@ class MockRegionPlugin implements IRegionPlugin {
     description: "Mock",
     timezone: "UTC",
   });
-  getSupportedDataTypes = jest
-    .fn()
-    .mockReturnValue([CivicDataType.PROPOSITIONS]);
+  getSupportedDataTypes = jest.fn().mockReturnValue([DataType.PROPOSITIONS]);
   fetchPropositions = jest.fn().mockResolvedValue([]);
   fetchMeetings = jest.fn().mockResolvedValue([]);
   fetchRepresentatives = jest.fn().mockResolvedValue([]);

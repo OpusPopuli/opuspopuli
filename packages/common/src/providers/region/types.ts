@@ -7,13 +7,18 @@
  */
 
 /**
- * Supported civic data types
+ * Supported data types for region content
  */
-export enum CivicDataType {
+export enum DataType {
   PROPOSITIONS = "propositions",
   MEETINGS = "meetings",
   REPRESENTATIVES = "representatives",
 }
+
+/** @deprecated Use DataType instead */
+export const CivicDataType = DataType;
+/** @deprecated Use DataType instead */
+export type CivicDataType = DataType;
 
 /**
  * Proposition status values
@@ -89,7 +94,7 @@ export interface Representative {
  * Sync result metadata
  */
 export interface SyncResult {
-  dataType: CivicDataType;
+  dataType: DataType;
   itemsProcessed: number;
   itemsCreated: number;
   itemsUpdated: number;
@@ -114,7 +119,7 @@ export interface IRegionProvider {
   /**
    * Get the list of data types this provider supports
    */
-  getSupportedDataTypes(): CivicDataType[];
+  getSupportedDataTypes(): DataType[];
 
   /**
    * Fetch propositions from the region's data sources
@@ -138,7 +143,7 @@ export interface IRegionProvider {
 export class RegionError extends Error {
   constructor(
     public provider: string,
-    public dataType: CivicDataType | string,
+    public dataType: DataType | string,
     public originalError: Error,
   ) {
     super(

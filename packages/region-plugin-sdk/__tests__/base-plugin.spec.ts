@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import {
-  CivicDataType,
+  DataType,
   RegionInfo,
   Proposition,
   Meeting,
@@ -42,8 +42,8 @@ class TestPlugin extends BaseRegionPlugin {
     };
   }
 
-  getSupportedDataTypes(): CivicDataType[] {
-    return [CivicDataType.PROPOSITIONS];
+  getSupportedDataTypes(): DataType[] {
+    return [DataType.PROPOSITIONS];
   }
 
   async fetchPropositions(): Promise<Proposition[]> {
@@ -124,7 +124,7 @@ describe("BaseRegionPlugin", () => {
 
     it("should return supported data types", () => {
       const types = plugin.getSupportedDataTypes();
-      expect(types).toContain(CivicDataType.PROPOSITIONS);
+      expect(types).toContain(DataType.PROPOSITIONS);
     });
 
     it("should fetch propositions", async () => {
