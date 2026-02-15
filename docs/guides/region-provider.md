@@ -4,62 +4,83 @@ This guide explains how the declarative region plugin system works and how to ad
 
 ## Overview
 
-The platform uses **declarative region plugins** — JSON configuration that describes where civic data lives on the web and what to extract. There is no scraper code to write. The AI-powered scraping pipeline analyzes page structure, derives extraction rules, and maps raw data to typed domain models.
+The platform uses **declarative region plugins** — JSON configuration that describes where civic data lives on the web and what to extract. There is no scraper code to write. The AI-powered scraping pipeline analyzes page structure, derives extraction rules, and maps raw data to typed domain models. Structured data sources (REST APIs, bulk CSV/TSV downloads) are ingested directly without AI — the schema is declared in the config.
 
 ### Key Components
 
 - **Region microservice** (`apps/backend/src/apps/region/`) — Data sync, storage, and GraphQL API
 - **Region provider package** (`packages/region-provider/`) — Plugin loader, registry, declarative plugin bridge, example provider
-- **Scraping pipeline** (`packages/scraping-pipeline/`) — AI structural analysis, manifest caching, Cheerio extraction, domain mapping
-- **Common types** (`packages/common/src/providers/`) — `DeclarativeRegionConfig`, `DataSourceConfig`, `DataType`, and domain models
+- **Scraping pipeline** (`packages/scraping-pipeline/`) — AI structural analysis, manifest caching, Cheerio extraction, API ingest, bulk download, domain mapping
+- **Common types** (`packages/common/src/providers/`) — `DeclarativeRegionConfig`, `DataSourceConfig`, `DataType`, domain models, and config utilities
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         PLATFORM                                     │
+│                         PLATFORM                                    │
 ├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  packages/region-provider/regions/                                   │
-│  └── california.json, texas.json, ...  (config files)               │
-│       ↓ auto-discovered and synced to DB at startup                  │
-│                                                                      │
-│  Database (region_plugins table)                                     │
+│                                                                     │
+│  packages/region-provider/regions/                                  │
+│  ├── federal.json    (always loaded — federal campaign finance)     │
+│  ├── california.json (local plugin — state-specific civic data)     │
+│  └── texas.json, ... (other regions)                                │
+│       ↓ auto-discovered and synced to DB at startup                 │
+│                                                                     │
+│  Database (region_plugins table)                                    │
 │  └── DeclarativeRegionConfig JSON + enabled flag + sync state       │
-│                                                                      │
-│  packages/region-provider/                                           │
-│  ├── discoverRegionConfigs() (reads + validates JSON files)          │
-│  ├── PluginLoaderService (loads config, creates plugin)              │
-│  ├── PluginRegistryService (tracks active plugin)                    │
-│  ├── DeclarativeRegionPlugin (bridges config → IRegionPlugin)        │
-│  └── ExampleRegionProvider (built-in mock data for development)      │
-│                                                                      │
-│  packages/scraping-pipeline/                                         │
-│  ├── StructuralAnalyzerService (AI analyzes page → manifest)         │
-│  ├── ManifestStoreService (caches versioned manifests in DB)         │
-│  ├── ManifestExtractorService (Cheerio extraction using rules)       │
-│  ├── DomainMapperService (raw records → typed models)                │
-│  ├── SelfHealingService (re-analyzes when extraction fails)          │
-│  └── PipelineService (orchestrates the above)                        │
-│                                                                      │
-│  apps/backend/src/apps/region/                                       │
-│  ├── RegionDomainService (loads plugin at startup, syncs data)       │
-│  ├── GraphQL resolvers (queries + mutations)                         │
-│  └── Database (propositions, meetings, representatives)              │
-│                                                                      │
+│                                                                     │
+│  packages/region-provider/                                          │
+│  ├── discoverRegionConfigs() (reads + validates JSON files)         │
+│  ├── PluginLoaderService (loads config, creates plugins)            │
+│  │   ├── loadPlugin() — local region plugin                        │
+│  │   └── loadFederalPlugin() — federal plugin (always loaded)      │
+│  ├── PluginRegistryService (dual-slot: federal + local)             │
+│  │   ├── registerFederal() / getFederal()                          │
+│  │   ├── registerLocal() / getLocal()                              │
+│  │   └── getAll() — returns all active plugins                     │
+│  ├── DeclarativeRegionPlugin (bridges config → IRegionPlugin)       │
+│  └── ExampleRegionProvider (built-in mock data for development)     │
+│                                                                     │
+│  packages/scraping-pipeline/                                        │
+│  ├── PipelineService (routes by sourceType)                         │
+│  │   ├── html_scrape → StructuralAnalyzerService → Cheerio         │
+│  │   ├── api → ApiIngestHandler (paginated REST)                   │
+│  │   └── bulk_download → BulkDownloadHandler (ZIP/CSV/TSV)         │
+│  ├── DomainMapperService (raw records → typed models)               │
+│  └── SelfHealingService (re-analyzes when extraction fails)         │
+│                                                                     │
+│  packages/common/src/providers/config/                              │
+│  └── resolveConfigPlaceholders() — resolve ${var} in configs        │
+│                                                                     │
+│  apps/backend/src/apps/region/                                      │
+│  ├── RegionDomainService (loads plugins at startup, syncs data)     │
+│  │   └── onModuleInit: read local stateCode → resolve federal      │
+│  │       placeholders → load federal plugin → load local plugin     │
+│  ├── GraphQL resolvers (queries + mutations)                        │
+│  └── Database tables:                                               │
+│      propositions, meetings, representatives,                       │
+│      committees, contributions, expenditures,                       │
+│      independent_expenditures                                       │
+│                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## How It Works
 
 1. **Config Discovery**: `RegionDomainService.onModuleInit()` auto-discovers JSON files from `packages/region-provider/regions/` and upserts them into the `region_plugins` table (config changes propagate on every restart; the `enabled` flag is never overwritten)
-2. **Plugin Loading**: `PluginLoaderService.loadPlugin()` reads the enabled plugin from the DB, validates the config, and creates a `DeclarativeRegionPlugin`
-3. **Registration**: The plugin is registered in `PluginRegistryService` and wrapped in a `RegionService`
-4. **Sync**: When data sync runs, the plugin calls `pipeline.execute()` for each data source
-5. **Pipeline**: The scraping pipeline fetches the page, finds/creates a structural manifest via AI, extracts data with Cheerio, and maps it to typed domain models
-6. **Storage**: Extracted data is upserted into the database (propositions, meetings, representatives)
+2. **Local Config Read**: The service reads the enabled local region's `stateCode` (e.g., `"CA"`) from the database
+3. **Placeholder Resolution**: Federal config `${stateCode}` placeholders are resolved using `resolveConfigPlaceholders()` (e.g., `contributor_state: "${stateCode}"` becomes `contributor_state: "CA"`)
+4. **Federal Plugin Loading**: `PluginLoaderService.loadFederalPlugin()` creates a `DeclarativeRegionPlugin` from the resolved federal config and registers it in the `federal` slot
+5. **Local Plugin Loading**: `PluginLoaderService.loadPlugin()` creates a plugin from the enabled local config (e.g., California) and registers it in the `local` slot
+6. **Sync**: When data sync runs, `getAll()` returns both plugins. Each plugin calls `pipeline.execute()` for its data sources
+7. **Pipeline Routing**: The pipeline routes each data source by `sourceType`:
+   - `html_scrape` (default) — AI structural analysis → Cheerio extraction
+   - `api` — Paginated REST API calls → JSON response parsing
+   - `bulk_download` — File download → ZIP extraction → delimited parsing with filters
+8. **Domain Mapping**: Raw records are mapped to typed domain models (`Proposition`, `Meeting`, `Representative`, `Committee`, `Contribution`, `Expenditure`, `IndependentExpenditure`)
+9. **Storage**: Extracted data is upserted into the database
 
-If no plugin is configured in the database, the platform falls back to the built-in `ExampleRegionProvider` with mock data.
+If no local plugin is configured in the database, the platform falls back to the built-in `ExampleRegionProvider` with mock data. The federal plugin always loads if its config exists.
 
 ## Adding a Region
 
@@ -80,6 +101,7 @@ See `california.json` for a complete example:
     "regionName": "My State",
     "description": "Civic data for My State",
     "timezone": "America/New_York",
+    "stateCode": "NY",
     "dataSources": [
       {
         "url": "https://www.example.gov/ballot-measures",
@@ -98,6 +120,24 @@ See `california.json` for a complete example:
         "dataType": "representatives",
         "contentGoal": "Extract legislators with name, district, party, and photo",
         "category": "Legislature"
+      },
+      {
+        "url": "https://data.example.gov/contributions.zip",
+        "dataType": "campaign_finance",
+        "contentGoal": "Campaign contribution records",
+        "category": "campaign_finance",
+        "sourceType": "bulk_download",
+        "bulk": {
+          "format": "zip_csv",
+          "filePattern": "contributions.csv",
+          "columnMappings": {
+            "COMMITTEE_ID": "committeeId",
+            "DONOR_NAME": "donorName",
+            "AMOUNT": "amount",
+            "DATE": "date"
+          },
+          "filters": { "STATE": "NY" }
+        }
       }
     ],
     "rateLimit": { "requestsPerSecond": 1, "burstSize": 3 },
@@ -119,7 +159,11 @@ See `california.json` for a complete example:
 | `config.regionName` | Human-readable name |
 | `config.dataSources` | At least one data source |
 
-Each data source requires `url`, `dataType` (`"propositions"`, `"meetings"`, or `"representatives"`), and `contentGoal`.
+**Important fields:**
+
+| Field | Description |
+|-------|-------------|
+| `config.stateCode` | Two-letter US state code (e.g., `"CA"`). Used to scope federal data to this region — the federal plugin's `${stateCode}` placeholders are resolved to this value at startup. |
 
 ### Step 2: Enable the Plugin
 
@@ -129,11 +173,11 @@ On startup, the service auto-discovers JSON config files and syncs them to the d
 UPDATE region_plugins SET enabled = true WHERE name = 'my-state';
 ```
 
-Only one region can be enabled at a time. The platform falls back to the built-in `ExampleRegionProvider` if no plugin is enabled.
+Only one local region can be enabled at a time. The federal plugin is always loaded alongside the active local plugin.
 
 ### Step 3: Restart and Sync
 
-Restart the region service. It auto-syncs config files to the DB, loads the enabled plugin, and is ready:
+Restart the region service. It auto-syncs config files to the DB, resolves federal placeholders using the local region's `stateCode`, loads both plugins, and is ready:
 
 ```bash
 pnpm start:region
@@ -158,6 +202,30 @@ mutation {
 
 Edit the JSON file and restart the service. Config changes propagate automatically on every restart (the `enabled` flag and sync tracking fields are preserved).
 
+## Federal Plugin
+
+The `federal.json` config is special — it is **always loaded** alongside the active local region plugin. It provides federal-level data (FEC campaign finance) scoped to the local region's state.
+
+### Placeholder Resolution
+
+Federal config uses `${stateCode}` placeholders that are resolved at startup using the local region's `stateCode`:
+
+```json
+{
+  "api": {
+    "queryParams": {
+      "contributor_state": "${stateCode}"
+    }
+  }
+}
+```
+
+When California (`stateCode: "CA"`) is the active local region, the federal plugin's API calls send `contributor_state=CA`, and bulk download filters compare against `STATE=CA`.
+
+If no local region has a `stateCode`, the federal config loads with unresolved placeholders and a warning is logged.
+
+The resolution utility (`resolveConfigPlaceholders()` from `@opuspopuli/common`) supports any `${variableName}` pattern, making it extensible for future variables like `${countyFips}`.
+
 ## DeclarativeRegionConfig Reference
 
 ### Top-Level Fields
@@ -168,6 +236,7 @@ Edit the JSON file and restart the service. Config changes propagate automatical
 | `regionName` | `string` | Yes | Human-readable name (e.g., `"California"`) |
 | `description` | `string` | Yes | Short description of the region |
 | `timezone` | `string` | Yes | IANA timezone (e.g., `"America/Los_Angeles"`) |
+| `stateCode` | `string` | No | Two-letter US state code (e.g., `"CA"`). Used to scope federal data. |
 | `dataSources` | `DataSourceConfig[]` | Yes | Array of data source definitions |
 | `rateLimit` | `object` | No | `{ requestsPerSecond, burstSize }` |
 | `cacheTtlMs` | `number` | No | Cache TTL in milliseconds |
@@ -177,12 +246,46 @@ Edit the JSON file and restart the service. Config changes propagate automatical
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `url` | `string` | Yes | URL of the page to scrape |
-| `dataType` | `DataType` | Yes | `"propositions"`, `"meetings"`, or `"representatives"` |
+| `url` | `string` | Yes | URL of the data source |
+| `dataType` | `DataType` | Yes | `"propositions"`, `"meetings"`, `"representatives"`, `"campaign_finance"`, or `"lobbying"` |
 | `contentGoal` | `string` | Yes | Natural language description of what to extract |
-| `category` | `string` | No | Sub-grouping (e.g., `"Assembly"`, `"Senate"`) |
+| `sourceType` | `string` | No | `"html_scrape"` (default), `"bulk_download"`, or `"api"` |
+| `category` | `string` | No | Sub-grouping (e.g., `"Assembly"`, `"campaign_finance"`) |
 | `hints` | `string[]` | No | Additional hints for the AI structural analyzer |
 | `rateLimitOverride` | `number` | No | Override the default rate limit for this source |
+| `bulk` | `BulkDownloadConfig` | No | Configuration for `bulk_download` sources |
+| `api` | `ApiSourceConfig` | No | Configuration for `api` sources |
+
+### BulkDownloadConfig Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `format` | `string` | Yes | `"tsv"`, `"csv"`, `"zip_tsv"`, or `"zip_csv"` |
+| `filePattern` | `string` | No | For ZIP archives: filename to extract (e.g., `"itcont.txt"`) |
+| `delimiter` | `string` | No | Column delimiter override (default: tab for tsv, comma for csv) |
+| `headerLines` | `number` | No | Number of header lines to skip |
+| `columnMappings` | `Record<string, string>` | Yes | Source column name to domain field name |
+| `filters` | `Record<string, string>` | No | Row filter expressions (e.g., `{ "STATE": "CA" }`) |
+
+### ApiSourceConfig Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `method` | `string` | No | HTTP method: `"GET"` (default) or `"POST"` |
+| `apiKeyEnvVar` | `string` | No | Environment variable name containing the API key |
+| `apiKeyHeader` | `string` | No | Query parameter name for the API key |
+| `pagination` | `ApiPaginationConfig` | No | Pagination strategy |
+| `resultsPath` | `string` | No | JSON path to items array (e.g., `"results"`, `"data.items"`) |
+| `queryParams` | `Record<string, string>` | No | Static query parameters appended to every request |
+
+### ApiPaginationConfig Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | `string` | Yes | `"offset"`, `"cursor"`, or `"page"` |
+| `pageParam` | `string` | No | Query param name for page/offset |
+| `limitParam` | `string` | No | Query param name for page size |
+| `limit` | `number` | No | Items per page (default: 100) |
 
 ## Data Types
 
@@ -235,19 +338,115 @@ interface ContactInfo {
 }
 ```
 
-## The Scraping Pipeline
+### Committee
 
-The `@opuspopuli/scraping-pipeline` package handles all data extraction using a **schema-on-read** pattern:
+```typescript
+interface Committee {
+  externalId: string;
+  name: string;
+  type: CommitteeType;            // 'candidate' | 'ballot_measure' | 'pac' | 'super_pac' | 'party' | 'small_contributor' | 'other'
+  candidateName?: string;
+  candidateOffice?: string;
+  propositionId?: string;
+  party?: string;
+  status: "active" | "terminated";
+  sourceSystem: "cal_access" | "fec";
+  sourceUrl?: string;
+}
+```
 
-1. **Structural Analysis** — AI (via Ollama LLM) analyzes a web page's HTML structure and produces a `StructuralManifest` containing CSS selectors and field mappings
-2. **Manifest Caching** — Manifests are versioned and stored in the database. If the page structure hasn't changed, the cached manifest is reused (no LLM call)
-3. **Cheerio Extraction** — The manifest's CSS selectors are applied with Cheerio to extract raw records from the page
-4. **Domain Mapping** — Raw records are mapped to typed domain models (`Proposition`, `Meeting`, `Representative`)
-5. **Self-Healing** — If extraction fails (e.g., the website changed its layout), the pipeline re-analyzes the page and creates a new manifest version
+### Contribution
 
-### Writing Good Content Goals
+```typescript
+interface Contribution {
+  externalId: string;
+  committeeId: string;
+  donorName: string;
+  donorType: "individual" | "committee" | "party" | "self" | "other";
+  donorEmployer?: string;
+  donorOccupation?: string;
+  donorCity?: string;
+  donorState?: string;
+  donorZip?: string;
+  amount: number;
+  date: Date;
+  electionType?: string;
+  contributionType?: string;
+  sourceSystem: "cal_access" | "fec";
+}
+```
 
-The `contentGoal` field in `DataSourceConfig` is the primary input to the AI structural analyzer. Good content goals are:
+### Expenditure
+
+```typescript
+interface Expenditure {
+  externalId: string;
+  committeeId: string;
+  payeeName: string;
+  amount: number;
+  date: Date;
+  purposeDescription?: string;
+  expenditureCode?: string;
+  candidateName?: string;
+  propositionTitle?: string;
+  supportOrOppose?: "support" | "oppose";
+  sourceSystem: "cal_access" | "fec";
+}
+```
+
+### IndependentExpenditure
+
+```typescript
+interface IndependentExpenditure {
+  externalId: string;
+  committeeId: string;
+  committeeName: string;
+  candidateName?: string;
+  propositionTitle?: string;
+  supportOrOppose: "support" | "oppose";
+  amount: number;
+  date: Date;
+  electionDate?: Date;
+  description?: string;
+  sourceSystem: "cal_access" | "fec";
+}
+```
+
+## Source Types
+
+The `sourceType` field on `DataSourceConfig` determines the extraction strategy:
+
+### html_scrape (default)
+
+The AI-powered scraping pipeline for web pages. Use for government websites with HTML content.
+
+1. **Structural Analysis** — AI (via Ollama LLM) analyzes the page's HTML structure and produces a `StructuralManifest` with CSS selectors and field mappings
+2. **Manifest Caching** — Manifests are versioned and stored in the database. Cached manifests are reused when the page structure hasn't changed
+3. **Cheerio Extraction** — The manifest's CSS selectors extract raw records from the HTML
+4. **Self-Healing** — If extraction fails (e.g., the website changed its layout), the pipeline re-analyzes and creates a new manifest version
+
+### api
+
+Paginated REST API ingestion. Use for structured JSON APIs (e.g., FEC API).
+
+- Supports `offset`, `cursor`, and `page` pagination strategies
+- API keys are resolved from environment variables at runtime
+- Extracts items from JSON responses using configurable `resultsPath`
+- No AI needed — the response schema is defined in the config
+
+### bulk_download
+
+File download and parsing. Use for bulk data exports (ZIP archives, CSV/TSV files).
+
+- Downloads files with a 5-minute timeout for large archives
+- Extracts target files from ZIP archives using `filePattern`
+- Parses delimited rows using `columnMappings`
+- Applies row-level `filters` during parsing (e.g., filter by state)
+- No AI needed — the file schema is declared in the config
+
+## Writing Good Content Goals
+
+The `contentGoal` field in `DataSourceConfig` is the primary input to the AI structural analyzer (used for `html_scrape` sources). Good content goals are:
 
 - **Specific**: "Extract Assembly members with name, district number, party affiliation, and photo URL"
 - **Descriptive**: Mention the expected HTML structure if you know it (tables, lists, cards)
@@ -255,12 +454,12 @@ The `contentGoal` field in `DataSourceConfig` is the primary input to the AI str
 
 Use the `hints` array for additional context:
 
-```typescript
+```json
 {
-  url: "https://example.gov/members",
-  dataType: "representatives",
-  contentGoal: "Extract legislators with name, district, party, and photo",
-  hints: [
+  "url": "https://example.gov/members",
+  "dataType": "representatives",
+  "contentGoal": "Extract legislators with name, district, party, and photo",
+  "hints": [
     "Members are displayed in a card grid layout",
     "District numbers are prefixed with 'District'",
     "Party is shown as (D) or (R) after the name"
@@ -268,9 +467,11 @@ Use the `hints` array for additional context:
 }
 ```
 
+For `api` and `bulk_download` sources, the `contentGoal` is documentation-only — extraction is driven by the `api` or `bulk` config.
+
 ## Data Sync
 
-The region microservice syncs data from the plugin to the database using bulk upsert operations (batched in a database transaction for performance).
+The region microservice syncs data from all active plugins to the database using bulk upsert operations (batched in a database transaction for performance).
 
 You can trigger a sync via GraphQL:
 
@@ -355,12 +556,20 @@ query {
 3. Check the region service logs for loader errors
 4. Ensure `ScrapingPipelineModule` is imported in the region module
 
+### Federal Data Not Scoped to State
+
+1. Verify the local region config has a `stateCode` field (e.g., `"CA"`)
+2. Check the region service logs for "Resolving federal config placeholders" message
+3. If no local config is enabled, federal data loads without state filtering
+
 ### Sync Returning Empty Results
 
 1. Check the sync mutation response for errors
 2. Review the region service logs for pipeline errors
 3. Verify the data source URLs are accessible
-4. Check the structural manifest in the database — the AI may need better `contentGoal` or `hints`
+4. For `html_scrape`: Check the structural manifest in the database — the AI may need better `contentGoal` or `hints`
+5. For `bulk_download`: Verify `columnMappings` match the file's actual column names
+6. For `api`: Check that `apiKeyEnvVar` is set in the environment and `resultsPath` matches the response structure
 
 ### Data Not Appearing in Frontend
 
@@ -370,4 +579,4 @@ query {
 
 ## Example Provider
 
-The built-in `ExampleRegionProvider` (`packages/region-provider/src/providers/example.provider.ts`) returns mock data for development. It is automatically used when no plugin is configured in the database.
+The built-in `ExampleRegionProvider` (`packages/region-provider/src/providers/example.provider.ts`) returns mock data for development. It is automatically used when no local plugin is configured in the database.

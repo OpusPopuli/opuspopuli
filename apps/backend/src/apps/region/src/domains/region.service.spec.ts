@@ -11,13 +11,14 @@ import {
   PluginLoaderService,
   PluginRegistryService,
   type IRegionPlugin,
+  type RegisteredPlugin,
 } from '@opuspopuli/region-provider';
 
 /**
  * Tests for Region Domain Service
  *
- * Updated for plugin architecture: the service loads a region plugin
- * from DB config during onModuleInit.
+ * Updated for dual-plugin architecture: the service loads a federal plugin
+ * (always) and a local region plugin (user-selected) during onModuleInit.
  */
 
 const mockRegionInfo = {
@@ -93,15 +94,31 @@ describe('RegionDomainService', () => {
   let service: RegionDomainService;
   let mockDb: ReturnType<typeof createMockDbService>;
   let mockPlugin: jest.Mocked<IRegionPlugin>;
+  let mockRegistry: any;
 
   beforeEach(async () => {
     mockDb = createMockDbService();
     mockPlugin = createMockPlugin();
 
-    const mockRegistry: any = {
+    // The local registered plugin entry returned by getAll()
+    const localRegistered: RegisteredPlugin = {
+      name: 'test-provider',
+      instance: mockPlugin,
+      status: 'active',
+      loadedAt: new Date(),
+    };
+
+    mockRegistry = {
+      // Backward-compat aliases
       register: jest.fn().mockResolvedValue(undefined),
       unregister: jest.fn().mockResolvedValue(undefined),
       getActive: jest.fn().mockReturnValue(mockPlugin),
+      // New dual-slot API
+      registerLocal: jest.fn().mockResolvedValue(undefined),
+      registerFederal: jest.fn().mockResolvedValue(undefined),
+      getLocal: jest.fn().mockReturnValue(mockPlugin),
+      getFederal: jest.fn().mockReturnValue(undefined),
+      getAll: jest.fn().mockReturnValue([localRegistered]),
       getActiveName: jest.fn().mockReturnValue('test-provider'),
       hasActive: jest.fn().mockReturnValue(true),
       getHealth: jest.fn(),
@@ -111,13 +128,17 @@ describe('RegionDomainService', () => {
 
     const mockLoader: any = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
 
-    // Mock DB: no enabled plugin -> falls back to ExampleRegionProvider
-    // But registry.getActive() returns our mockPlugin
+    // Mock DB regionPlugin: no federal config, no enabled local plugin
+    // → service falls back to ExampleRegionProvider via registerLocal('example', ...)
+    // But registry.getLocal() returns our mockPlugin regardless
     (mockDb as any).regionPlugin = {
       findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn().mockResolvedValue({}),
     };
 
     // Set up default empty returns for findMany (no existing records)
@@ -164,14 +185,16 @@ describe('RegionDomainService', () => {
   });
 
   describe('syncAll', () => {
-    it('should sync all data types and return results', async () => {
+    it('should sync all data types from all plugins and return results', async () => {
       const results = await service.syncAll();
 
+      // getAll() returns only the local plugin (3 data types)
       expect(results).toHaveLength(3);
       expect(results[0].dataType).toBe(DataType.PROPOSITIONS);
       expect(results[1].dataType).toBe(DataType.MEETINGS);
       expect(results[2].dataType).toBe(DataType.REPRESENTATIVES);
       expect(mockDb.$transaction).toHaveBeenCalledTimes(3);
+      expect(mockRegistry.getAll).toHaveBeenCalled();
     });
 
     it('should handle sync errors gracefully', async () => {
@@ -504,5 +527,202 @@ describe('RegionDomainService', () => {
 
       expect(result).toEqual(mockRep);
     });
+  });
+});
+
+/**
+ * Tests for federal config placeholder resolution.
+ * These need different mock setup (local config with stateCode, federal config with placeholders).
+ */
+describe('RegionDomainService — federal placeholder resolution', () => {
+  it('should resolve ${stateCode} in federal config when local config has stateCode', async () => {
+    const mockDb = createMockDbService();
+    const mockPlugin = createMockPlugin();
+
+    const localRegistered: RegisteredPlugin = {
+      name: 'test-provider',
+      instance: mockPlugin,
+      status: 'active',
+      loadedAt: new Date(),
+    };
+
+    const mockRegistry: any = {
+      register: jest.fn().mockResolvedValue(undefined),
+      unregister: jest.fn().mockResolvedValue(undefined),
+      getActive: jest.fn().mockReturnValue(mockPlugin),
+      registerLocal: jest.fn().mockResolvedValue(undefined),
+      registerFederal: jest.fn().mockResolvedValue(undefined),
+      getLocal: jest.fn().mockReturnValue(mockPlugin),
+      getFederal: jest.fn().mockReturnValue(mockPlugin),
+      getAll: jest.fn().mockReturnValue([localRegistered]),
+      getActiveName: jest.fn().mockReturnValue('test-provider'),
+      hasActive: jest.fn().mockReturnValue(true),
+      getHealth: jest.fn(),
+      getStatus: jest.fn(),
+      onModuleDestroy: jest.fn(),
+    };
+
+    const mockLoader: any = {
+      loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      unloadPlugin: jest.fn().mockResolvedValue(undefined),
+    };
+
+    // Local config with stateCode
+    const localConfig = {
+      name: 'california',
+      enabled: true,
+      config: {
+        regionId: 'california',
+        stateCode: 'CA',
+        dataSources: [],
+      },
+    };
+
+    // Federal config with ${stateCode} placeholders
+    const federalConfig = {
+      name: 'federal',
+      config: {
+        regionId: 'federal',
+        dataSources: [
+          {
+            url: 'https://api.open.fec.gov/v1/schedules/schedule_a/',
+            dataType: 'campaign_finance',
+            sourceType: 'api',
+            api: {
+              queryParams: {
+                contributor_state: '${stateCode}',
+                sort: '-date',
+              },
+            },
+          },
+          {
+            url: 'https://www.fec.gov/files/bulk-downloads/2026/indiv26.zip',
+            dataType: 'campaign_finance',
+            sourceType: 'bulk_download',
+            bulk: {
+              filters: { STATE: '${stateCode}' },
+            },
+          },
+        ],
+      },
+    };
+
+    (mockDb as any).regionPlugin = {
+      findFirst: jest.fn().mockResolvedValue(localConfig),
+      findUnique: jest.fn().mockResolvedValue(federalConfig),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+
+    mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.meeting.findMany.mockResolvedValue([]);
+    mockDb.representative.findMany.mockResolvedValue([]);
+    (mockDb.$transaction as jest.Mock).mockImplementation(
+      async (operations: any[]) => Promise.all(operations),
+    );
+
+    const module = await Test.createTestingModule({
+      providers: [
+        RegionDomainService,
+        { provide: PluginLoaderService, useValue: mockLoader },
+        { provide: PluginRegistryService, useValue: mockRegistry },
+        { provide: DbService, useValue: mockDb },
+      ],
+    }).compile();
+
+    const service = module.get<RegionDomainService>(RegionDomainService);
+    await service.onModuleInit();
+
+    // Verify loadFederalPlugin was called with resolved config
+    expect(mockLoader.loadFederalPlugin).toHaveBeenCalledTimes(1);
+
+    const resolvedConfig = mockLoader.loadFederalPlugin.mock.calls[0][0];
+    const ds = resolvedConfig.dataSources;
+
+    // ${stateCode} should be resolved to "CA"
+    expect(ds[0].api.queryParams.contributor_state).toBe('CA');
+    expect(ds[0].api.queryParams.sort).toBe('-date'); // unchanged
+    expect(ds[1].bulk.filters.STATE).toBe('CA');
+  });
+
+  it('should warn and load unresolved federal config when no local config exists', async () => {
+    const mockDb = createMockDbService();
+    const mockPlugin = createMockPlugin();
+
+    const localRegistered: RegisteredPlugin = {
+      name: 'example',
+      instance: mockPlugin,
+      status: 'active',
+      loadedAt: new Date(),
+    };
+
+    const mockRegistry: any = {
+      register: jest.fn().mockResolvedValue(undefined),
+      unregister: jest.fn().mockResolvedValue(undefined),
+      getActive: jest.fn().mockReturnValue(mockPlugin),
+      registerLocal: jest.fn().mockResolvedValue(undefined),
+      registerFederal: jest.fn().mockResolvedValue(undefined),
+      getLocal: jest.fn().mockReturnValue(mockPlugin),
+      getFederal: jest.fn().mockReturnValue(mockPlugin),
+      getAll: jest.fn().mockReturnValue([localRegistered]),
+      getActiveName: jest.fn().mockReturnValue('example'),
+      hasActive: jest.fn().mockReturnValue(true),
+      getHealth: jest.fn(),
+      getStatus: jest.fn(),
+      onModuleDestroy: jest.fn(),
+    };
+
+    const mockLoader: any = {
+      loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      unloadPlugin: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const federalConfig = {
+      name: 'federal',
+      config: {
+        regionId: 'federal',
+        dataSources: [
+          {
+            url: 'https://api.open.fec.gov/v1/',
+            dataType: 'campaign_finance',
+            sourceType: 'api',
+            api: { queryParams: { contributor_state: '${stateCode}' } },
+          },
+        ],
+      },
+    };
+
+    (mockDb as any).regionPlugin = {
+      findFirst: jest.fn().mockResolvedValue(null), // no local config
+      findUnique: jest.fn().mockResolvedValue(federalConfig),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+
+    mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.meeting.findMany.mockResolvedValue([]);
+    mockDb.representative.findMany.mockResolvedValue([]);
+    (mockDb.$transaction as jest.Mock).mockImplementation(
+      async (operations: any[]) => Promise.all(operations),
+    );
+
+    const module = await Test.createTestingModule({
+      providers: [
+        RegionDomainService,
+        { provide: PluginLoaderService, useValue: mockLoader },
+        { provide: PluginRegistryService, useValue: mockRegistry },
+        { provide: DbService, useValue: mockDb },
+      ],
+    }).compile();
+
+    const service = module.get<RegionDomainService>(RegionDomainService);
+    await service.onModuleInit();
+
+    // Federal config should be loaded with unresolved placeholders
+    expect(mockLoader.loadFederalPlugin).toHaveBeenCalledTimes(1);
+    const resolvedConfig = mockLoader.loadFederalPlugin.mock.calls[0][0];
+    expect(
+      resolvedConfig.dataSources[0].api.queryParams.contributor_state,
+    ).toBe('${stateCode}');
   });
 });

@@ -1,33 +1,36 @@
 {
   "name": "california",
   "displayName": "California",
-  "description": "California civic data from official state government websites",
-  "version": "1.0.0",
+  "description": "California civic and campaign finance data from official state government websites",
+  "version": "1.1.0",
   "config": {
     "regionId": "california",
     "regionName": "California",
-    "description": "California civic data from official state government websites",
+    "description": "California civic and campaign finance data from official state government websites",
     "timezone": "America/Los_Angeles",
+    "stateCode": "CA",
     "dataSources": [
       {
         "url": "https://www.sos.ca.gov/elections/ballot-measures/qualified-ballot-measures",
         "dataType": "propositions",
-        "contentGoal": "Extract qualified ballot measures with measure ID, title, description, and election date",
+        "contentGoal": "Extract qualified ballot measures with measure ID, title, brief description, and election date",
         "category": "Secretary of State",
         "hints": [
           "Measures are grouped under election date headings",
           "Each measure has an identifier like ACA 13 or SB 1234",
-          "Link text contains the measure title"
+          "Link text contains the measure title",
+          "Full descriptions are in linked PDFs; the page only shows brief titles and legislative designations"
         ]
       },
       {
-        "url": "https://www.assembly.ca.gov/schedules-publications/assembly-daily-file",
+        "url": "https://www.assembly.ca.gov/dailyfile",
         "dataType": "meetings",
         "contentGoal": "Extract scheduled Assembly committee meetings with date, time, location, and committee name",
         "category": "Assembly",
         "hints": [
-          "Daily file contains committee hearing schedules",
-          "Look for tables or structured lists with date, time, and room info"
+          "Data is in structured HTML tables with embedded JSON metadata",
+          "Content is divided into committee hearings and floor calendar sections",
+          "Tables include date, time, committee name, and room location columns"
         ]
       },
       {
@@ -36,8 +39,9 @@
         "contentGoal": "Extract scheduled Senate committee meetings with date, time, location, and committee name",
         "category": "Senate",
         "hints": [
-          "Senate daily file format may differ from Assembly",
-          "Look for committee names, dates, times, and locations"
+          "This is a gateway page — actual schedule data is in a linked PDF download, not inline HTML",
+          "The page provides a link to the current Senate Daily File PDF",
+          "Alternative: https://www.senate.ca.gov/committees may have HTML committee schedules"
         ]
       },
       {
@@ -54,12 +58,101 @@
       {
         "url": "https://www.senate.ca.gov/senators",
         "dataType": "representatives",
-        "contentGoal": "Extract Senators with name, district number, party affiliation, and photo",
+        "contentGoal": "Extract Senators with name, district number, party affiliation, photo, and Capitol/district office contact information",
         "category": "Senate",
         "hints": [
-          "Senator cards with expandable details",
-          "Each has name, district, party, and photo",
-          "40 Senators total"
+          "Senator cards with expandable details including office addresses and phone numbers",
+          "Each has name, district, party, photo, Capitol office, and district office(s)",
+          "40 Senators total",
+          "Page uses lazy-loading for images"
+        ]
+      },
+      {
+        "url": "https://campaignfinance.cdn.sos.ca.gov/dbwebexport.zip",
+        "dataType": "campaign_finance",
+        "sourceType": "bulk_download",
+        "contentGoal": "Extract campaign contributions from the RCPT_CD table: donor name, employer, occupation, amount, date, recipient committee, candidate/measure info",
+        "category": "CAL-ACCESS Contributions",
+        "bulk": {
+          "format": "zip_tsv",
+          "filePattern": "RCPT_CD.TSV",
+          "columnMappings": {
+            "FILING_ID": "externalId",
+            "FILER_ID": "committeeId",
+            "ENTITY_CD": "donorType",
+            "CTRIB_NAMF": "donorFirstName",
+            "CTRIB_NAML": "donorLastName",
+            "CTRIB_EMP": "donorEmployer",
+            "CTRIB_OCC": "donorOccupation",
+            "CTRIB_CITY": "donorCity",
+            "CTRIB_ST": "donorState",
+            "CTRIB_ZIP4": "donorZip",
+            "AMOUNT": "amount",
+            "RCPT_DATE": "date",
+            "CAND_NAML": "candidateName",
+            "OFFICE_CD": "candidateOffice",
+            "BAL_NAME": "propositionTitle",
+            "SUP_OPP_CD": "supportOrOppose"
+          }
+        },
+        "hints": [
+          "ZIP file updated daily from CA Secretary of State, ~1GB uncompressed",
+          "RCPT_CD has 64 columns; map only the essential ones",
+          "ENTITY_CD values: IND=individual, COM=committee, OTH=other, PTY=party, SCC=small contributor",
+          "Filter to recent election cycles to manage data volume"
+        ]
+      },
+      {
+        "url": "https://campaignfinance.cdn.sos.ca.gov/dbwebexport.zip",
+        "dataType": "campaign_finance",
+        "sourceType": "bulk_download",
+        "contentGoal": "Extract campaign expenditures from the EXPN_CD table: payee, amount, date, purpose, candidate/measure info",
+        "category": "CAL-ACCESS Expenditures",
+        "bulk": {
+          "format": "zip_tsv",
+          "filePattern": "EXPN_CD.TSV",
+          "columnMappings": {
+            "FILING_ID": "externalId",
+            "FILER_ID": "committeeId",
+            "PAYEE_NAML": "payeeName",
+            "AMOUNT": "amount",
+            "EXPN_DATE": "date",
+            "EXPN_DSCR": "purposeDescription",
+            "EXPN_CODE": "expenditureCode",
+            "CAND_NAML": "candidateName",
+            "BAL_NAME": "propositionTitle",
+            "SUP_OPP_CD": "supportOrOppose"
+          }
+        },
+        "hints": [
+          "Same ZIP archive as contributions — download once, extract both tables",
+          "EXPN_CODE values: CMP=campaign paraphernalia, CNS=consulting, CTB=contribution to other committee, FIL=candidate filing fees, FND=fundraising, LIT=campaign literature, etc."
+        ]
+      },
+      {
+        "url": "https://campaignfinance.cdn.sos.ca.gov/dbwebexport.zip",
+        "dataType": "campaign_finance",
+        "sourceType": "bulk_download",
+        "contentGoal": "Extract late independent expenditures from S496_CD: committee spending for/against candidates and measures near elections",
+        "category": "CAL-ACCESS Independent Expenditures",
+        "bulk": {
+          "format": "zip_tsv",
+          "filePattern": "S496_CD.TSV",
+          "columnMappings": {
+            "FILING_ID": "externalId",
+            "FILER_ID": "committeeId",
+            "FILER_NAML": "committeeName",
+            "CAND_NAML": "candidateName",
+            "BAL_NAME": "propositionTitle",
+            "SUP_OPP_CD": "supportOrOppose",
+            "AMOUNT": "amount",
+            "EXP_DATE": "date",
+            "ELEC_DATE": "electionDate"
+          }
+        },
+        "hints": [
+          "S496 = Form 496 late independent expenditure reports",
+          "Filed within 24 hours of making an IE of $1,000+ in the 90 days before an election"
         ]
       }
     ],

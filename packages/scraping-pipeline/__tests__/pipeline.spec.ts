@@ -4,6 +4,8 @@ import type { ManifestStoreService } from "../src/manifest/manifest-store.servic
 import type { ManifestExtractorService } from "../src/extraction/manifest-extractor.service";
 import type { DomainMapperService } from "../src/mapping/domain-mapper.service";
 import type { SelfHealingService } from "../src/healing/self-healing.service";
+import type { BulkDownloadHandler } from "../src/handlers/bulk-download.handler";
+import type { ApiIngestHandler } from "../src/handlers/api-ingest.handler";
 import type { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { computeStructureHash } from "../src/analysis/structure-hasher";
 import {
@@ -128,6 +130,8 @@ describe("ScrapingPipelineService", () => {
       mockExtractor,
       mockMapper,
       mockHealing,
+      {} as unknown as BulkDownloadHandler,
+      {} as unknown as ApiIngestHandler,
     );
   });
 

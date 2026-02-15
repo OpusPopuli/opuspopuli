@@ -17,6 +17,7 @@ import type {
   Proposition,
   Meeting,
   Representative,
+  CampaignFinanceResult,
   DeclarativeRegionConfig,
   DataSourceConfig,
   ExtractionResult,
@@ -80,6 +81,44 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
 
   async fetchRepresentatives(): Promise<Representative[]> {
     return this.fetchByDataType<Representative>("representatives");
+  }
+
+  async fetchCampaignFinance(): Promise<CampaignFinanceResult> {
+    // All campaign finance sources are fetched as a flat array,
+    // then routed by the domain mapper based on category.
+    const allItems =
+      await this.fetchByDataType<Record<string, unknown>>("campaign_finance");
+
+    // The domain mapper already routes by category, but items come back
+    // as a mixed bag. Separate them by checking known fields.
+    const committees: CampaignFinanceResult["committees"] = [];
+    const contributions: CampaignFinanceResult["contributions"] = [];
+    const expenditures: CampaignFinanceResult["expenditures"] = [];
+    const independentExpenditures: CampaignFinanceResult["independentExpenditures"] =
+      [];
+
+    for (const item of allItems) {
+      const rec = item;
+      if ("donorName" in rec && "amount" in rec) {
+        contributions.push(
+          rec as unknown as CampaignFinanceResult["contributions"][0],
+        );
+      } else if ("payeeName" in rec && "amount" in rec) {
+        expenditures.push(
+          rec as unknown as CampaignFinanceResult["expenditures"][0],
+        );
+      } else if ("supportOrOppose" in rec && "committeeName" in rec) {
+        independentExpenditures.push(
+          rec as unknown as CampaignFinanceResult["independentExpenditures"][0],
+        );
+      } else if ("sourceSystem" in rec && "type" in rec) {
+        committees.push(
+          rec as unknown as CampaignFinanceResult["committees"][0],
+        );
+      }
+    }
+
+    return { committees, contributions, expenditures, independentExpenditures };
   }
 
   override async healthCheck() {

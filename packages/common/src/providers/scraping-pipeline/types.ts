@@ -159,11 +159,11 @@ export interface PreprocessingStep {
  * This is what region plugin authors provide instead of scraper code.
  */
 export interface DataSourceConfig {
-  /** URL to scrape */
+  /** URL to fetch data from */
   url: string;
   /** What type of content this source provides */
   dataType: DataType;
-  /** Natural language description of what to find on this page */
+  /** Natural language description of what to find/extract */
   contentGoal: string;
   /** Optional: sub-category for grouping (e.g., "Assembly", "Senate") */
   category?: string;
@@ -171,6 +171,65 @@ export interface DataSourceConfig {
   hints?: string[];
   /** Optional: override rate limit for this specific source */
   rateLimitOverride?: number;
+
+  /** Source type determines the extraction strategy. Defaults to 'html_scrape'. */
+  sourceType?: "html_scrape" | "bulk_download" | "api";
+
+  /** Configuration for bulk_download sources (ZIP/CSV/TSV files) */
+  bulk?: BulkDownloadConfig;
+
+  /** Configuration for API sources (REST endpoints with pagination) */
+  api?: ApiSourceConfig;
+}
+
+/**
+ * Configuration for bulk data download sources (ZIP archives, CSV/TSV files).
+ */
+export interface BulkDownloadConfig {
+  /** File format */
+  format: "tsv" | "csv" | "zip_tsv" | "zip_csv";
+  /** For ZIP archives: path/glob of target file(s) within the ZIP */
+  filePattern?: string;
+  /** Column delimiter override (default: tab for tsv, comma for csv) */
+  delimiter?: string;
+  /** Number of header lines to skip */
+  headerLines?: number;
+  /** Column name mappings: source column name → domain field name */
+  columnMappings: Record<string, string>;
+  /** Filter expressions applied during parse (e.g., { "STATE": "CA" }) */
+  filters?: Record<string, string>;
+}
+
+/**
+ * Configuration for REST API data sources with pagination.
+ */
+export interface ApiSourceConfig {
+  /** HTTP method (default: GET) */
+  method?: "GET" | "POST";
+  /** Environment variable name containing the API key */
+  apiKeyEnvVar?: string;
+  /** Header name for the API key (e.g., "api_key", "Authorization") */
+  apiKeyHeader?: string;
+  /** Pagination strategy */
+  pagination?: ApiPaginationConfig;
+  /** JSON path to the items array in the response (e.g., "results" or "data.items") */
+  resultsPath?: string;
+  /** Static query parameters appended to every request */
+  queryParams?: Record<string, string>;
+}
+
+/**
+ * Pagination configuration for API sources.
+ */
+export interface ApiPaginationConfig {
+  /** Pagination strategy type */
+  type: "offset" | "cursor" | "page";
+  /** Query parameter name for page/offset (e.g., "page", "offset") */
+  pageParam?: string;
+  /** Query parameter name for page size (e.g., "per_page", "limit") */
+  limitParam?: string;
+  /** Number of items per page */
+  limit?: number;
 }
 
 /**
@@ -186,6 +245,8 @@ export interface DeclarativeRegionConfig {
   description: string;
   /** IANA timezone */
   timezone: string;
+  /** Two-letter US state code (e.g., "CA"). Used to scope federal data to this region. */
+  stateCode?: string;
   /** Data sources to scrape */
   dataSources: DataSourceConfig[];
   /** Rate limiting defaults */

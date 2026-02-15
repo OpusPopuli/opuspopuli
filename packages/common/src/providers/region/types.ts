@@ -13,6 +13,8 @@ export enum DataType {
   PROPOSITIONS = "propositions",
   MEETINGS = "meetings",
   REPRESENTATIVES = "representatives",
+  CAMPAIGN_FINANCE = "campaign_finance",
+  LOBBYING = "lobbying",
 }
 
 /**
@@ -85,6 +87,103 @@ export interface Representative {
   contactInfo?: ContactInfo;
 }
 
+// ============================================
+// CAMPAIGN FINANCE
+// ============================================
+
+/**
+ * Committee types for campaign finance tracking
+ */
+export enum CommitteeType {
+  CANDIDATE = "candidate",
+  BALLOT_MEASURE = "ballot_measure",
+  PAC = "pac",
+  SUPER_PAC = "super_pac",
+  PARTY = "party",
+  SMALL_CONTRIBUTOR = "small_contributor",
+  OTHER = "other",
+}
+
+/**
+ * Campaign committee (fundraising entity)
+ */
+export interface Committee {
+  externalId: string;
+  name: string;
+  type: CommitteeType;
+  candidateName?: string;
+  candidateOffice?: string;
+  propositionId?: string;
+  party?: string;
+  status: "active" | "terminated";
+  sourceSystem: "cal_access" | "fec";
+  sourceUrl?: string;
+}
+
+/**
+ * Campaign contribution (money received by a committee)
+ */
+export interface Contribution {
+  externalId: string;
+  committeeId: string;
+  donorName: string;
+  donorType: "individual" | "committee" | "party" | "self" | "other";
+  donorEmployer?: string;
+  donorOccupation?: string;
+  donorCity?: string;
+  donorState?: string;
+  donorZip?: string;
+  amount: number;
+  date: Date;
+  electionType?: string;
+  contributionType?: string;
+  sourceSystem: "cal_access" | "fec";
+}
+
+/**
+ * Campaign expenditure (money spent by a committee)
+ */
+export interface Expenditure {
+  externalId: string;
+  committeeId: string;
+  payeeName: string;
+  amount: number;
+  date: Date;
+  purposeDescription?: string;
+  expenditureCode?: string;
+  candidateName?: string;
+  propositionTitle?: string;
+  supportOrOppose?: "support" | "oppose";
+  sourceSystem: "cal_access" | "fec";
+}
+
+/**
+ * Independent expenditure (outside spending for/against candidate or measure)
+ */
+export interface IndependentExpenditure {
+  externalId: string;
+  committeeId: string;
+  committeeName: string;
+  candidateName?: string;
+  propositionTitle?: string;
+  supportOrOppose: "support" | "oppose";
+  amount: number;
+  date: Date;
+  electionDate?: Date;
+  description?: string;
+  sourceSystem: "cal_access" | "fec";
+}
+
+/**
+ * Aggregated result from campaign finance data fetch
+ */
+export interface CampaignFinanceResult {
+  committees: Committee[];
+  contributions: Contribution[];
+  expenditures: Expenditure[];
+  independentExpenditures: IndependentExpenditure[];
+}
+
 /**
  * Sync result metadata
  */
@@ -130,6 +229,12 @@ export interface IRegionProvider {
    * Fetch representatives from the region's data sources
    */
   fetchRepresentatives(): Promise<Representative[]>;
+
+  /**
+   * Fetch campaign finance data from the region's data sources.
+   * Optional — only implemented by plugins with campaign_finance data sources.
+   */
+  fetchCampaignFinance?(): Promise<CampaignFinanceResult>;
 }
 
 /**

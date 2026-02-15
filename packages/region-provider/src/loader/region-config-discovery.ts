@@ -51,7 +51,7 @@ export async function discoverRegionConfigs(
     try {
       parsed = JSON.parse(raw);
     } catch {
-      throw new Error(`Invalid JSON in region config file: ${file}`);
+      throw new TypeError(`Invalid JSON in region config file: ${file}`);
     }
 
     const pluginFile = validateRegionPluginFile(parsed, file);
@@ -66,7 +66,7 @@ function validateRegionPluginFile(
   fileName: string,
 ): RegionPluginFile {
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
-    throw new Error(`Region config "${fileName}" must be a JSON object`);
+    throw new TypeError(`Region config "${fileName}" must be a JSON object`);
   }
 
   const obj = data as Record<string, unknown>;
@@ -74,21 +74,21 @@ function validateRegionPluginFile(
   // Validate outer fields
   for (const field of ["name", "displayName", "version"] as const) {
     if (typeof obj[field] !== "string" || (obj[field] as string).length === 0) {
-      throw new Error(
+      throw new TypeError(
         `Region config "${fileName}" is missing required field "${field}"`,
       );
     }
   }
 
   if (typeof obj.description !== "string") {
-    throw new Error(
+    throw new TypeError(
       `Region config "${fileName}" is missing required field "description"`,
     );
   }
 
   // Validate config object
   if (typeof obj.config !== "object" || obj.config === null) {
-    throw new Error(
+    throw new TypeError(
       `Region config "${fileName}" is missing required field "config"`,
     );
   }
@@ -96,13 +96,13 @@ function validateRegionPluginFile(
   const config = obj.config as Record<string, unknown>;
 
   if (typeof config.regionId !== "string" || config.regionId.length === 0) {
-    throw new Error(
+    throw new TypeError(
       `Region config "${fileName}" is missing required field "config.regionId"`,
     );
   }
 
   if (!Array.isArray(config.dataSources) || config.dataSources.length === 0) {
-    throw new Error(
+    throw new TypeError(
       `Region config "${fileName}" must have at least one entry in "config.dataSources"`,
     );
   }
@@ -112,7 +112,7 @@ function validateRegionPluginFile(
     const ds = config.dataSources[i] as Record<string, unknown>;
     for (const field of ["url", "dataType", "contentGoal"] as const) {
       if (typeof ds[field] !== "string" || (ds[field] as string).length === 0) {
-        throw new Error(
+        throw new TypeError(
           `Region config "${fileName}" dataSources[${i}] is missing required field "${field}"`,
         );
       }
