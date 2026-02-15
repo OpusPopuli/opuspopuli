@@ -46,6 +46,10 @@ import {
   ContactInfoModel,
   PaginatedRepresentatives,
 } from './models/representative.model';
+import { PaginatedCommittees } from './models/committee.model';
+import { PaginatedContributions } from './models/contribution.model';
+import { PaginatedExpenditures } from './models/expenditure.model';
+import { PaginatedIndependentExpenditures } from './models/independent-expenditure.model';
 
 // Type aliases for database query results
 type ExternalIdRecord = { externalId: string };
@@ -82,6 +86,73 @@ type RepresentativeRecord = {
   party: string | null;
   photoUrl: string | null;
   contactInfo: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+};
+type CommitteeRecord = {
+  id: string;
+  externalId: string;
+  name: string;
+  type: string;
+  candidateName: string | null;
+  candidateOffice: string | null;
+  propositionId: string | null;
+  party: string | null;
+  status: string;
+  sourceSystem: string;
+  sourceUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+};
+type ContributionRecord = {
+  id: string;
+  externalId: string;
+  committeeId: string;
+  donorName: string;
+  donorType: string;
+  donorEmployer: string | null;
+  donorOccupation: string | null;
+  donorCity: string | null;
+  donorState: string | null;
+  donorZip: string | null;
+  amount: Prisma.Decimal;
+  date: Date;
+  electionType: string | null;
+  contributionType: string | null;
+  sourceSystem: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+type ExpenditureRecord = {
+  id: string;
+  externalId: string;
+  committeeId: string;
+  payeeName: string;
+  amount: Prisma.Decimal;
+  date: Date;
+  purposeDescription: string | null;
+  expenditureCode: string | null;
+  candidateName: string | null;
+  propositionTitle: string | null;
+  supportOrOppose: string | null;
+  sourceSystem: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+type IndependentExpenditureRecord = {
+  id: string;
+  externalId: string;
+  committeeId: string;
+  committeeName: string;
+  candidateName: string | null;
+  propositionTitle: string | null;
+  supportOrOppose: string;
+  amount: Prisma.Decimal;
+  date: Date;
+  electionDate: Date | null;
+  description: string | null;
+  sourceSystem: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -846,6 +917,206 @@ export class RegionDomainService implements OnModuleInit {
    */
   async getRepresentative(id: string) {
     return this.db.representative.findUnique({ where: { id } });
+  }
+
+  // ==========================================
+  // CAMPAIGN FINANCE GETTERS
+  // ==========================================
+
+  /**
+   * Get committees with pagination
+   */
+  async getCommittees(
+    skip: number = 0,
+    take: number = 10,
+    sourceSystem?: string,
+  ): Promise<PaginatedCommittees> {
+    const where: Record<string, unknown> = {};
+    if (sourceSystem) where.sourceSystem = sourceSystem;
+    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+
+    const [items, total] = await Promise.all([
+      this.db.committee.findMany({
+        where: whereClause,
+        orderBy: [{ name: 'asc' }],
+        skip,
+        take: take + 1,
+      }),
+      this.db.committee.count({ where: whereClause }),
+    ]);
+
+    const hasMore = items.length > take;
+    const paginatedItems = items.slice(0, take);
+
+    return {
+      items: paginatedItems.map((item: CommitteeRecord) => ({
+        ...item,
+        candidateName: item.candidateName ?? undefined,
+        candidateOffice: item.candidateOffice ?? undefined,
+        propositionId: item.propositionId ?? undefined,
+        party: item.party ?? undefined,
+        sourceUrl: item.sourceUrl ?? undefined,
+      })),
+      total,
+      hasMore,
+    };
+  }
+
+  /**
+   * Get a single committee by ID
+   */
+  async getCommittee(id: string) {
+    return this.db.committee.findUnique({ where: { id } });
+  }
+
+  /**
+   * Get contributions with pagination
+   */
+  async getContributions(
+    skip: number = 0,
+    take: number = 10,
+    committeeId?: string,
+    sourceSystem?: string,
+  ): Promise<PaginatedContributions> {
+    const where: Record<string, unknown> = {};
+    if (committeeId) where.committeeId = committeeId;
+    if (sourceSystem) where.sourceSystem = sourceSystem;
+    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+
+    const [items, total] = await Promise.all([
+      this.db.contribution.findMany({
+        where: whereClause,
+        orderBy: [{ date: 'desc' }, { amount: 'desc' }],
+        skip,
+        take: take + 1,
+      }),
+      this.db.contribution.count({ where: whereClause }),
+    ]);
+
+    const hasMore = items.length > take;
+    const paginatedItems = items.slice(0, take);
+
+    return {
+      items: paginatedItems.map((item: ContributionRecord) => ({
+        ...item,
+        amount: Number(item.amount),
+        donorEmployer: item.donorEmployer ?? undefined,
+        donorOccupation: item.donorOccupation ?? undefined,
+        donorCity: item.donorCity ?? undefined,
+        donorState: item.donorState ?? undefined,
+        donorZip: item.donorZip ?? undefined,
+        electionType: item.electionType ?? undefined,
+        contributionType: item.contributionType ?? undefined,
+      })),
+      total,
+      hasMore,
+    };
+  }
+
+  /**
+   * Get a single contribution by ID
+   */
+  async getContribution(id: string) {
+    return this.db.contribution.findUnique({ where: { id } });
+  }
+
+  /**
+   * Get expenditures with pagination
+   */
+  async getExpenditures(
+    skip: number = 0,
+    take: number = 10,
+    committeeId?: string,
+    sourceSystem?: string,
+  ): Promise<PaginatedExpenditures> {
+    const where: Record<string, unknown> = {};
+    if (committeeId) where.committeeId = committeeId;
+    if (sourceSystem) where.sourceSystem = sourceSystem;
+    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+
+    const [items, total] = await Promise.all([
+      this.db.expenditure.findMany({
+        where: whereClause,
+        orderBy: [{ date: 'desc' }, { amount: 'desc' }],
+        skip,
+        take: take + 1,
+      }),
+      this.db.expenditure.count({ where: whereClause }),
+    ]);
+
+    const hasMore = items.length > take;
+    const paginatedItems = items.slice(0, take);
+
+    return {
+      items: paginatedItems.map((item: ExpenditureRecord) => ({
+        ...item,
+        amount: Number(item.amount),
+        purposeDescription: item.purposeDescription ?? undefined,
+        expenditureCode: item.expenditureCode ?? undefined,
+        candidateName: item.candidateName ?? undefined,
+        propositionTitle: item.propositionTitle ?? undefined,
+        supportOrOppose: item.supportOrOppose ?? undefined,
+      })),
+      total,
+      hasMore,
+    };
+  }
+
+  /**
+   * Get a single expenditure by ID
+   */
+  async getExpenditure(id: string) {
+    return this.db.expenditure.findUnique({ where: { id } });
+  }
+
+  /**
+   * Get independent expenditures with pagination
+   */
+  async getIndependentExpenditures(
+    skip: number = 0,
+    take: number = 10,
+    committeeId?: string,
+    supportOrOppose?: string,
+    sourceSystem?: string,
+  ): Promise<PaginatedIndependentExpenditures> {
+    const where: Record<string, unknown> = {};
+    if (committeeId) where.committeeId = committeeId;
+    if (supportOrOppose) where.supportOrOppose = supportOrOppose;
+    if (sourceSystem) where.sourceSystem = sourceSystem;
+    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+
+    const [items, total] = await Promise.all([
+      this.db.independentExpenditure.findMany({
+        where: whereClause,
+        orderBy: [{ date: 'desc' }, { amount: 'desc' }],
+        skip,
+        take: take + 1,
+      }),
+      this.db.independentExpenditure.count({ where: whereClause }),
+    ]);
+
+    const hasMore = items.length > take;
+    const paginatedItems = items.slice(0, take);
+
+    return {
+      items: paginatedItems.map((item: IndependentExpenditureRecord) => ({
+        ...item,
+        amount: Number(item.amount),
+        candidateName: item.candidateName ?? undefined,
+        propositionTitle: item.propositionTitle ?? undefined,
+        electionDate: item.electionDate ?? undefined,
+        description: item.description ?? undefined,
+      })),
+      total,
+      hasMore,
+    };
+  }
+
+  /**
+   * Get a single independent expenditure by ID
+   */
+  async getIndependentExpenditure(id: string) {
+    return this.db.independentExpenditure.findUnique({ where: { id } });
   }
 
   /**

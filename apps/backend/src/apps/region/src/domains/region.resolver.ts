@@ -24,6 +24,19 @@ import {
   RepresentativeModel,
   PaginatedRepresentatives,
 } from './models/representative.model';
+import { CommitteeModel, PaginatedCommittees } from './models/committee.model';
+import {
+  ContributionModel,
+  PaginatedContributions,
+} from './models/contribution.model';
+import {
+  ExpenditureModel,
+  PaginatedExpenditures,
+} from './models/expenditure.model';
+import {
+  IndependentExpenditureModel,
+  PaginatedIndependentExpenditures,
+} from './models/independent-expenditure.model';
 
 /**
  * Region Resolver
@@ -130,6 +143,163 @@ export class RegionResolver {
       ...result,
       photoUrl: result.photoUrl ?? undefined,
       contactInfo: (result.contactInfo as ContactInfoModel) ?? undefined,
+    };
+  }
+
+  // ==========================================
+  // CAMPAIGN FINANCE QUERIES
+  // ==========================================
+
+  /**
+   * Get paginated committees
+   */
+  @Query(() => PaginatedCommittees)
+  @Extensions({ complexity: 15 })
+  async committees(
+    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
+    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args({ name: 'sourceSystem', nullable: true }) sourceSystem?: string,
+  ): Promise<PaginatedCommittees> {
+    return this.regionService.getCommittees(skip, take, sourceSystem);
+  }
+
+  /**
+   * Get a single committee by ID
+   */
+  @Query(() => CommitteeModel, { nullable: true })
+  async committee(
+    @Args({ name: 'id', type: () => ID }) id: string,
+  ): Promise<CommitteeModel | null> {
+    const result = await this.regionService.getCommittee(id);
+    if (!result) return null;
+    return {
+      ...result,
+      candidateName: result.candidateName ?? undefined,
+      candidateOffice: result.candidateOffice ?? undefined,
+      propositionId: result.propositionId ?? undefined,
+      party: result.party ?? undefined,
+      sourceUrl: result.sourceUrl ?? undefined,
+    };
+  }
+
+  /**
+   * Get paginated contributions
+   */
+  @Query(() => PaginatedContributions)
+  @Extensions({ complexity: 15 })
+  async contributions(
+    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
+    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args({ name: 'committeeId', nullable: true }) committeeId?: string,
+    @Args({ name: 'sourceSystem', nullable: true }) sourceSystem?: string,
+  ): Promise<PaginatedContributions> {
+    return this.regionService.getContributions(
+      skip,
+      take,
+      committeeId,
+      sourceSystem,
+    );
+  }
+
+  /**
+   * Get a single contribution by ID
+   */
+  @Query(() => ContributionModel, { nullable: true })
+  async contribution(
+    @Args({ name: 'id', type: () => ID }) id: string,
+  ): Promise<ContributionModel | null> {
+    const result = await this.regionService.getContribution(id);
+    if (!result) return null;
+    return {
+      ...result,
+      amount: Number(result.amount),
+      donorEmployer: result.donorEmployer ?? undefined,
+      donorOccupation: result.donorOccupation ?? undefined,
+      donorCity: result.donorCity ?? undefined,
+      donorState: result.donorState ?? undefined,
+      donorZip: result.donorZip ?? undefined,
+      electionType: result.electionType ?? undefined,
+      contributionType: result.contributionType ?? undefined,
+    };
+  }
+
+  /**
+   * Get paginated expenditures
+   */
+  @Query(() => PaginatedExpenditures)
+  @Extensions({ complexity: 15 })
+  async expenditures(
+    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
+    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args({ name: 'committeeId', nullable: true }) committeeId?: string,
+    @Args({ name: 'sourceSystem', nullable: true }) sourceSystem?: string,
+  ): Promise<PaginatedExpenditures> {
+    return this.regionService.getExpenditures(
+      skip,
+      take,
+      committeeId,
+      sourceSystem,
+    );
+  }
+
+  /**
+   * Get a single expenditure by ID
+   */
+  @Query(() => ExpenditureModel, { nullable: true })
+  async expenditure(
+    @Args({ name: 'id', type: () => ID }) id: string,
+  ): Promise<ExpenditureModel | null> {
+    const result = await this.regionService.getExpenditure(id);
+    if (!result) return null;
+    return {
+      ...result,
+      amount: Number(result.amount),
+      purposeDescription: result.purposeDescription ?? undefined,
+      expenditureCode: result.expenditureCode ?? undefined,
+      candidateName: result.candidateName ?? undefined,
+      propositionTitle: result.propositionTitle ?? undefined,
+      supportOrOppose: result.supportOrOppose ?? undefined,
+    };
+  }
+
+  /**
+   * Get paginated independent expenditures
+   */
+  @Query(() => PaginatedIndependentExpenditures)
+  @Extensions({ complexity: 15 })
+  async independentExpenditures(
+    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
+    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args({ name: 'committeeId', nullable: true }) committeeId?: string,
+    @Args({ name: 'supportOrOppose', nullable: true })
+    supportOrOppose?: string,
+    @Args({ name: 'sourceSystem', nullable: true }) sourceSystem?: string,
+  ): Promise<PaginatedIndependentExpenditures> {
+    return this.regionService.getIndependentExpenditures(
+      skip,
+      take,
+      committeeId,
+      supportOrOppose,
+      sourceSystem,
+    );
+  }
+
+  /**
+   * Get a single independent expenditure by ID
+   */
+  @Query(() => IndependentExpenditureModel, { nullable: true })
+  async independentExpenditure(
+    @Args({ name: 'id', type: () => ID }) id: string,
+  ): Promise<IndependentExpenditureModel | null> {
+    const result = await this.regionService.getIndependentExpenditure(id);
+    if (!result) return null;
+    return {
+      ...result,
+      amount: Number(result.amount),
+      candidateName: result.candidateName ?? undefined,
+      propositionTitle: result.propositionTitle ?? undefined,
+      electionDate: result.electionDate ?? undefined,
+      description: result.description ?? undefined,
     };
   }
 
