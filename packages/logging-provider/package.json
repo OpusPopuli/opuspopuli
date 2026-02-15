@@ -11,16 +11,12 @@
       "require": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "prepublishOnly": "pnpm run build"
+    "test:coverage": "jest --coverage"
   },
   "keywords": [
     "opuspopuli",
@@ -43,8 +39,5 @@
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
   }
 }

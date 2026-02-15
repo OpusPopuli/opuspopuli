@@ -13,8 +13,8 @@ import {
   PluginRegistryService,
   ExampleRegionProvider,
   type IPipelineService,
+  type IRegionPlugin,
 } from '@opuspopuli/region-provider';
-import type { IRegionPlugin } from '@opuspopuli/region-plugin-sdk';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import {
@@ -100,24 +100,12 @@ export class RegionDomainService implements OnModuleInit {
       });
 
       if (pluginConfig) {
-        const pluginType =
-          (pluginConfig.pluginType as 'code' | 'declarative') ?? 'code';
-        const source = pluginConfig.packageName
-          ? ' from ' + pluginConfig.packageName
-          : '';
         this.logger.log(
-          'Loading ' +
-            pluginType +
-            ' region plugin "' +
-            pluginConfig.name +
-            '"' +
-            source,
+          `Loading declarative region plugin "${pluginConfig.name}"`,
         );
         await this.pluginLoader.loadPlugin(
           {
             name: pluginConfig.name,
-            packageName: pluginConfig.packageName ?? undefined,
-            pluginType,
             config: pluginConfig.config as Record<string, unknown> | undefined,
           },
           this.pipeline,

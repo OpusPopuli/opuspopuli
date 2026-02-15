@@ -10,15 +10,13 @@
  */
 
 import { Logger } from "@nestjs/common";
-import {
-  BaseRegionPlugin,
-  type DataType,
-  type RegionInfo,
-  type Proposition,
-  type Meeting,
-  type Representative,
-} from "@opuspopuli/region-plugin-sdk";
+import { BaseRegionPlugin } from "../base/base-plugin.js";
 import type {
+  DataType,
+  RegionInfo,
+  Proposition,
+  Meeting,
+  Representative,
   DeclarativeRegionConfig,
   DataSourceConfig,
   ExtractionResult,

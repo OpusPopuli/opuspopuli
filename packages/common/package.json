@@ -46,15 +46,11 @@
       "require": "./dist/providers/http/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
     "test": "jest",
-    "test:watch": "jest --watch",
-    "prepublishOnly": "pnpm run build"
+    "test:watch": "jest --watch"
   },
   "keywords": [
     "opuspopuli",

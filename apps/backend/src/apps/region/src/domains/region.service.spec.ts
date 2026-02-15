@@ -10,8 +10,8 @@ import {
   Proposition,
   PluginLoaderService,
   PluginRegistryService,
+  type IRegionPlugin,
 } from '@opuspopuli/region-provider';
-import type { IRegionPlugin } from '@opuspopuli/region-plugin-sdk';
 
 /**
  * Tests for Region Domain Service

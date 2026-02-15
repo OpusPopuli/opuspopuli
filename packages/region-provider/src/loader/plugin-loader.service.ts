@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import type { IRegionPlugin } from "@opuspopuli/region-plugin-sdk";
+import type { IRegionPlugin } from "../interfaces/plugin.interface.js";
 import type { DeclarativeRegionConfig } from "@opuspopuli/common";
 import { PluginRegistryService } from "../registry/plugin-registry.service.js";
 import {
@@ -9,16 +9,13 @@ import {
 
 export interface PluginDefinition {
   name: string;
-  packageName?: string;
-  pluginType?: "code" | "declarative";
   config?: Record<string, unknown>;
 }
 
 /**
  * Plugin Loader
  *
- * Dynamically loads region plugins — either code-based (npm packages)
- * or declarative (JSON config + scraping pipeline).
+ * Loads declarative region plugins from JSON config + scraping pipeline.
  */
 @Injectable()
 export class PluginLoaderService {
@@ -27,80 +24,12 @@ export class PluginLoaderService {
   constructor(private readonly registry: PluginRegistryService) {}
 
   /**
-   * Load a plugin and register it.
+   * Load a declarative plugin and register it.
    *
-   * For code plugins: imports an npm package with a default or named export.
-   * For declarative plugins: wraps a DeclarativeRegionConfig with the pipeline.
+   * Wraps a DeclarativeRegionConfig with the ScrapingPipelineService
+   * to provide the IRegionPlugin interface.
    */
   async loadPlugin(
-    definition: PluginDefinition,
-    pipeline?: IPipelineService,
-  ): Promise<IRegionPlugin> {
-    const pluginType = definition.pluginType ?? "code";
-
-    if (pluginType === "declarative") {
-      return this.loadDeclarativePlugin(definition, pipeline);
-    }
-
-    return this.loadCodePlugin(definition);
-  }
-
-  /**
-   * Unload the active plugin.
-   */
-  async unloadPlugin(): Promise<void> {
-    await this.registry.unregister();
-  }
-
-  /**
-   * Load a code-based plugin from an npm package.
-   *
-   * Convention: the package should have a default export that is the plugin class,
-   * or a named export matching PascalCase(name) + "RegionPlugin".
-   */
-  private async loadCodePlugin(
-    definition: PluginDefinition,
-  ): Promise<IRegionPlugin> {
-    const { name, packageName, config } = definition;
-
-    if (!packageName) {
-      throw new Error(`Code plugin "${name}" requires a packageName`);
-    }
-
-    this.logger.log(`Loading code plugin "${name}" from ${packageName}`);
-
-    try {
-      const pluginModule = await import(packageName);
-
-      // Try default export first, then named export by convention
-      const PluginClass =
-        pluginModule.default || pluginModule[this.getPluginClassName(name)];
-
-      if (!PluginClass) {
-        throw new Error(
-          `Plugin package ${packageName} must have a default export or a named export "${this.getPluginClassName(name)}"`,
-        );
-      }
-
-      const plugin: IRegionPlugin = new PluginClass();
-      await this.registry.register(name, plugin, config);
-
-      this.logger.log(
-        `Code plugin "${name}" loaded successfully (v${plugin.getVersion()})`,
-      );
-      return plugin;
-    } catch (error) {
-      this.logger.error(
-        `Failed to load code plugin "${name}" from ${packageName}: ${(error as Error).message}`,
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * Load a declarative plugin from JSON config + scraping pipeline.
-   */
-  private async loadDeclarativePlugin(
     definition: PluginDefinition,
     pipeline?: IPipelineService,
   ): Promise<IRegionPlugin> {
@@ -133,11 +62,9 @@ export class PluginLoaderService {
   }
 
   /**
-   * Convert plugin name to expected class name.
-   * e.g., "california" -> "CaliforniaRegionPlugin"
+   * Unload the active plugin.
    */
-  private getPluginClassName(name: string): string {
-    const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
-    return `${capitalized}RegionPlugin`;
+  async unloadPlugin(): Promise<void> {
+    await this.registry.unregister();
   }
 }

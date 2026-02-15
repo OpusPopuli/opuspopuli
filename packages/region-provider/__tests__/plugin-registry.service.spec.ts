@@ -3,7 +3,7 @@ import { PluginRegistryService } from "../src/registry/plugin-registry.service";
 import type {
   IRegionPlugin,
   PluginHealth,
-} from "@opuspopuli/region-plugin-sdk";
+} from "../src/interfaces/plugin.interface";
 import { DataType } from "@opuspopuli/common";
 
 // Mock NestJS Logger

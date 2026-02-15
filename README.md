@@ -111,8 +111,7 @@ opuspopuli/
 │   ├── email-provider/       # Transactional email (Resend)
 │   ├── logging-provider/     # Audit logging
 │   ├── ocr-provider/         # OCR functionality
-│   ├── region-provider/      # Civic data integration
-│   └── region-plugin-sdk/    # SDK for region plugins
+│   └── region-provider/      # Civic data integration (declarative plugins)
 ├── apps/
 │   ├── backend/              # NestJS microservices
 │   │   └── src/
@@ -129,7 +128,7 @@ opuspopuli/
 
 ### Platform Packages
 
-The `packages/` directory contains reusable, publishable npm packages that provide pluggable provider implementations:
+The `packages/` directory contains reusable workspace packages that provide pluggable provider implementations:
 
 | Package | Purpose | Tests |
 |---------|---------|-------|
@@ -145,8 +144,7 @@ The `packages/` directory contains reusable, publishable npm packages that provi
 | `@opuspopuli/email-provider` | Resend transactional email | - |
 | `@opuspopuli/logging-provider` | Audit logging | - |
 | `@opuspopuli/ocr-provider` | OCR functionality | - |
-| `@opuspopuli/region-provider` | Civic data integration (propositions, meetings, representatives) | - |
-| `@opuspopuli/region-plugin-sdk` | SDK for building region plugins | - |
+| `@opuspopuli/region-provider` | Civic data integration (declarative plugins, propositions, meetings, representatives) | - |
 
 ## Development
 

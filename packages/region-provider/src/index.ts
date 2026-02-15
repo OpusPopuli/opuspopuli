@@ -20,7 +20,6 @@ export {
   IRegionProvider,
   RegionInfo,
   DataType,
-  CivicDataType,
   PropositionStatus,
   Proposition,
   Meeting,
@@ -29,6 +28,13 @@ export {
   SyncResult,
   RegionError,
 } from "@opuspopuli/common";
+
+// Plugin interfaces (formerly @opuspopuli/region-plugin-sdk)
+export type {
+  IRegionPlugin,
+  PluginHealth,
+} from "./interfaces/plugin.interface.js";
+export { BaseRegionPlugin } from "./base/base-plugin.js";
 
 // Provider implementations
 export { ExampleRegionProvider } from "./providers/example.provider.js";

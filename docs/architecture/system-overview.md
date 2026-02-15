@@ -84,7 +84,7 @@ Opus Populi is built on a modular, provider-based architecture with three core p
 - **Purpose**: Civic data integration (propositions, meetings, representatives)
 - **Location**: `apps/backend/src/apps/region`
 - **Components**:
-  - Dynamic region plugin loading via `@opuspopuli/region-plugin-sdk`
+  - Declarative region plugin loading via `@opuspopuli/region-provider`
   - Propositions, meetings, and representatives data
   - Plugin lifecycle management (initialize, health check, destroy)
 
@@ -108,7 +108,6 @@ All external dependencies use the **Strategy Pattern + Dependency Injection** fo
 | `@opuspopuli/logging-provider` | Audit logging | `LOGGING_PROVIDER` |
 | `@opuspopuli/ocr-provider` | OCR functionality | `OCR_PROVIDER` |
 | `@opuspopuli/region-provider` | Civic data integration | `REGION_PROVIDER` |
-| `@opuspopuli/region-plugin-sdk` | SDK for region plugins | - |
 
 ### Relational Database Provider
 **Package**: `@opuspopuli/relationaldb-provider`

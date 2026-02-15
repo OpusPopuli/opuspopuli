@@ -19,7 +19,7 @@ Forks only need to create a new provider package that implements `IRegionProvide
 │                         BASE PLATFORM                               │
 ├─────────────────────────────────────────────────────────────────────┤
 │  packages/common/src/providers/region/                              │
-│  └── types.ts (IRegionProvider, CivicDataTypes)                     │
+│  └── types.ts (IRegionProvider, DataType)                           │
 │                                                                     │
 │  packages/extraction-provider/                                      │
 │  ├── src/extraction.provider.ts (fetch, parse, rate limit, cache)  │
@@ -85,7 +85,7 @@ Create `src/providers/california.provider.ts`:
 import {
   IRegionProvider,
   RegionInfo,
-  CivicDataType,
+  DataType,
   Proposition,
   Meeting,
   Representative,
@@ -109,11 +109,11 @@ export class CaliforniaRegionProvider implements IRegionProvider {
     };
   }
 
-  getSupportedDataTypes(): CivicDataType[] {
+  getSupportedDataTypes(): DataType[] {
     return [
-      CivicDataType.PROPOSITIONS,
-      CivicDataType.MEETINGS,
-      CivicDataType.REPRESENTATIVES,
+      DataType.PROPOSITIONS,
+      DataType.MEETINGS,
+      DataType.REPRESENTATIVES,
     ];
   }
 

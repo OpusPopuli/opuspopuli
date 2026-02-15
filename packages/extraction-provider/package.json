@@ -11,16 +11,12 @@
       "require": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:integration": "jest --config jest.integration.config.js",
-    "prepublishOnly": "pnpm run build"
+    "test:integration": "jest --config jest.integration.config.js"
   },
   "keywords": [
     "opuspopuli",
@@ -51,8 +47,5 @@
     "rxjs": "^7.8.1",
     "ts-jest": "^29.2.5",
     "typescript": "^5.7.2"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
   }
 }
