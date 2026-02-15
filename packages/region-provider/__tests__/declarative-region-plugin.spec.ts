@@ -56,6 +56,31 @@ const createMockConfig = (
   ...overrides,
 });
 
+const createCampaignFinanceConfig = (): DeclarativeRegionConfig =>
+  createMockConfig({
+    dataSources: [
+      {
+        url: "https://api.fec.gov/contributions",
+        dataType: DataType.CAMPAIGN_FINANCE,
+        contentGoal: "Extract contributions",
+        category: "fec-contributions",
+        sourceType: "api",
+      },
+      {
+        url: "https://api.fec.gov/expenditures",
+        dataType: DataType.CAMPAIGN_FINANCE,
+        contentGoal: "Extract expenditures",
+        category: "fec-expenditures",
+        sourceType: "api",
+      },
+      {
+        url: "https://example.com/propositions",
+        dataType: DataType.PROPOSITIONS,
+        contentGoal: "Extract ballot measures",
+      },
+    ],
+  });
+
 const createMockPipeline = (): jest.Mocked<IPipelineService> => ({
   execute: jest.fn(),
 });
@@ -239,6 +264,174 @@ describe("DeclarativeRegionPlugin", () => {
           DataType.REPRESENTATIVES,
         ]),
       });
+    });
+  });
+
+  describe("fetchCampaignFinance", () => {
+    let cfPlugin: DeclarativeRegionPlugin;
+    let cfPipeline: jest.Mocked<IPipelineService>;
+
+    beforeEach(() => {
+      cfPipeline = createMockPipeline();
+      cfPlugin = new DeclarativeRegionPlugin(
+        createCampaignFinanceConfig(),
+        cfPipeline,
+      );
+    });
+
+    it("should separate mixed items into committees, contributions, expenditures, and independentExpenditures", async () => {
+      const mixedItems = [
+        { donorName: "Jane Smith", amount: 500, committeeId: "C001" },
+        { payeeName: "Ad Agency", amount: 1000, committeeId: "C001" },
+        {
+          supportOrOppose: "S",
+          committeeName: "PAC-1",
+          amount: 5000,
+          committeeId: "C002",
+        },
+        {
+          sourceSystem: "fec",
+          type: "pac",
+          externalId: "COM-1",
+          name: "Citizens PAC",
+        },
+      ];
+
+      cfPipeline.execute
+        .mockResolvedValueOnce(createExtractionResult(mixedItems.slice(0, 2)))
+        .mockResolvedValueOnce(createExtractionResult(mixedItems.slice(2)));
+
+      const result = await cfPlugin.fetchCampaignFinance();
+
+      expect(result.contributions).toHaveLength(1);
+      expect(result.contributions[0]).toMatchObject({
+        donorName: "Jane Smith",
+        amount: 500,
+      });
+      expect(result.expenditures).toHaveLength(1);
+      expect(result.expenditures[0]).toMatchObject({
+        payeeName: "Ad Agency",
+      });
+      expect(result.independentExpenditures).toHaveLength(1);
+      expect(result.independentExpenditures[0]).toMatchObject({
+        supportOrOppose: "S",
+        committeeName: "PAC-1",
+      });
+      expect(result.committees).toHaveLength(1);
+      expect(result.committees[0]).toMatchObject({
+        sourceSystem: "fec",
+        type: "pac",
+      });
+    });
+
+    it("should return empty arrays when pipeline returns no items", async () => {
+      cfPipeline.execute.mockResolvedValue(createExtractionResult([]));
+
+      const result = await cfPlugin.fetchCampaignFinance();
+
+      expect(result.committees).toEqual([]);
+      expect(result.contributions).toEqual([]);
+      expect(result.expenditures).toEqual([]);
+      expect(result.independentExpenditures).toEqual([]);
+    });
+
+    it("should return empty result when no campaign finance sources configured", async () => {
+      // Use the original config which has no campaign_finance sources
+      const result = await plugin.fetchCampaignFinance();
+
+      expect(result.committees).toEqual([]);
+      expect(result.contributions).toEqual([]);
+      expect(result.expenditures).toEqual([]);
+      expect(result.independentExpenditures).toEqual([]);
+      expect(pipeline.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("fetchByDataType — multi-source", () => {
+    it("should concatenate results from multiple sources of the same dataType", async () => {
+      const meeting1 = [{ externalId: "M-1", title: "Assembly Meeting" }];
+      const meeting2 = [{ externalId: "M-2", title: "Senate Meeting" }];
+
+      pipeline.execute
+        .mockResolvedValueOnce(createExtractionResult(meeting1))
+        .mockResolvedValueOnce(createExtractionResult(meeting2));
+
+      const result = await plugin.fetchMeetings();
+
+      expect(result).toHaveLength(2);
+      expect(pipeline.execute).toHaveBeenCalledTimes(2);
+    });
+
+    it("should continue on error from one source and still return items from others", async () => {
+      pipeline.execute
+        .mockRejectedValueOnce(new Error("Timeout"))
+        .mockResolvedValueOnce(
+          createExtractionResult([{ externalId: "M-2", title: "Senate" }]),
+        );
+
+      const result = await plugin.fetchMeetings();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ externalId: "M-2" });
+    });
+
+    it("should log warnings from pipeline results", async () => {
+      pipeline.execute.mockResolvedValue({
+        items: [{ externalId: "P-1", title: "Test" }],
+        manifestVersion: 1,
+        success: true,
+        warnings: ["Partial data"],
+        errors: [],
+        extractionTimeMs: 100,
+      });
+
+      const result = await plugin.fetchPropositions();
+
+      expect(result).toHaveLength(1);
+    });
+
+    it("should log errors from pipeline results", async () => {
+      pipeline.execute.mockResolvedValue({
+        items: [{ externalId: "P-1", title: "Test" }],
+        manifestVersion: 1,
+        success: true,
+        warnings: [],
+        errors: ["Non-fatal error"],
+        extractionTimeMs: 100,
+      });
+
+      const result = await plugin.fetchPropositions();
+
+      expect(result).toHaveLength(1);
+    });
+  });
+
+  describe("getSupportedDataTypes", () => {
+    it("should include campaign_finance when configured", () => {
+      const cfPlugin = new DeclarativeRegionPlugin(
+        createCampaignFinanceConfig(),
+        createMockPipeline(),
+      );
+
+      const types = cfPlugin.getSupportedDataTypes();
+
+      expect(types).toContain(DataType.CAMPAIGN_FINANCE);
+      expect(types).toContain(DataType.PROPOSITIONS);
+    });
+
+    it("should deduplicate data types from multiple sources", () => {
+      const cfPlugin = new DeclarativeRegionPlugin(
+        createCampaignFinanceConfig(),
+        createMockPipeline(),
+      );
+
+      const types = cfPlugin.getSupportedDataTypes();
+
+      // campaign_finance appears in 2 sources, but should be deduplicated
+      const campaignFinanceCount = types.filter(
+        (t) => t === DataType.CAMPAIGN_FINANCE,
+      ).length;
+      expect(campaignFinanceCount).toBe(1);
     });
   });
 });

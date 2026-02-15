@@ -274,4 +274,125 @@ describe("ScrapingPipelineService", () => {
       expect(savedManifest.version).toBe(4);
     });
   });
+
+  describe("sourceType routing", () => {
+    let mockBulkDownload: jest.Mocked<BulkDownloadHandler>;
+    let mockApiIngest: jest.Mocked<ApiIngestHandler>;
+
+    beforeEach(() => {
+      mockBulkDownload = {
+        execute: jest.fn().mockResolvedValue({
+          items: [{ committeeId: "C001" }],
+          manifestVersion: 0,
+          success: true,
+          warnings: [],
+          errors: [],
+          extractionTimeMs: 50,
+        }),
+      } as unknown as jest.Mocked<BulkDownloadHandler>;
+
+      mockApiIngest = {
+        execute: jest.fn().mockResolvedValue({
+          items: [{ committeeId: "C002" }],
+          manifestVersion: 0,
+          success: true,
+          warnings: [],
+          errors: [],
+          extractionTimeMs: 50,
+        }),
+      } as unknown as jest.Mocked<ApiIngestHandler>;
+
+      pipeline = new ScrapingPipelineService(
+        mockExtraction,
+        mockAnalyzer,
+        mockStore,
+        mockExtractor,
+        mockMapper,
+        mockHealing,
+        mockBulkDownload,
+        mockApiIngest,
+      );
+    });
+
+    it("should route sourceType: 'bulk_download' to BulkDownloadHandler", async () => {
+      const source = createSource({
+        sourceType: "bulk_download",
+        bulk: {
+          format: "csv",
+          columnMappings: { CMTE_ID: "committeeId" },
+        },
+      });
+
+      const result = await pipeline.execute(source, "california");
+
+      expect(mockBulkDownload.execute).toHaveBeenCalledWith(
+        source,
+        "california",
+      );
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      // Should NOT call extraction provider or analyzer
+      expect(mockExtraction.fetchWithRetry).not.toHaveBeenCalled();
+      expect(mockAnalyzer.analyze).not.toHaveBeenCalled();
+    });
+
+    it("should route sourceType: 'api' to ApiIngestHandler", async () => {
+      const source = createSource({
+        sourceType: "api",
+        api: {
+          resultsPath: "results",
+          pagination: { type: "cursor", limit: 100 },
+        },
+      });
+
+      const result = await pipeline.execute(source, "california");
+
+      expect(mockApiIngest.execute).toHaveBeenCalledWith(source, "california");
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(mockExtraction.fetchWithRetry).not.toHaveBeenCalled();
+    });
+
+    it("should route sourceType: undefined to HTML scraping pipeline", async () => {
+      const source = createSource(); // no sourceType
+
+      await pipeline.execute(source, "california");
+
+      expect(mockExtraction.fetchWithRetry).toHaveBeenCalled();
+      expect(mockBulkDownload.execute).not.toHaveBeenCalled();
+      expect(mockApiIngest.execute).not.toHaveBeenCalled();
+    });
+
+    it("should return error when bulk_download source missing 'bulk' config", async () => {
+      const source = createSource({ sourceType: "bulk_download" });
+      // Remove bulk config
+      delete source.bulk;
+
+      const result = await pipeline.execute(source, "california");
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("missing 'bulk' configuration"),
+        ]),
+      );
+      expect(mockBulkDownload.execute).not.toHaveBeenCalled();
+    });
+
+    it("should return error when api source missing 'api' config", async () => {
+      const source = createSource({ sourceType: "api" });
+      // Remove api config
+      delete source.api;
+
+      const result = await pipeline.execute(source, "california");
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("missing 'api' configuration"),
+        ]),
+      );
+      expect(mockApiIngest.execute).not.toHaveBeenCalled();
+    });
+  });
 });

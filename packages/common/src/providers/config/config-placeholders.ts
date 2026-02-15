@@ -25,12 +25,12 @@ export function resolveConfigPlaceholders<T>(
 ): T {
   if (Object.keys(variables).length === 0) {
     // No variables to resolve — return a clone to maintain the contract
-    return JSON.parse(JSON.stringify(config)) as T;
+    return structuredClone(config);
   }
 
-  const cloned = JSON.parse(JSON.stringify(config));
+  const cloned = structuredClone(config);
   resolveRecursive(cloned, variables);
-  return cloned as T;
+  return cloned;
 }
 
 function resolveRecursive(
@@ -67,7 +67,7 @@ function resolveString(
   value: string,
   variables: Record<string, string>,
 ): string {
-  return value.replace(PLACEHOLDER_REGEX, (match, varName: string) => {
+  return value.replaceAll(PLACEHOLDER_REGEX, (match, varName: string) => {
     return varName in variables ? variables[varName] : match;
   });
 }

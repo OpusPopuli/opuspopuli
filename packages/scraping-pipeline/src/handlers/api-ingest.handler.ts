@@ -115,32 +115,17 @@ export class ApiIngestHandler {
     warnings: string[],
   ): Promise<Record<string, unknown>[]> {
     const allItems: Record<string, unknown>[] = [];
-    const pagination = api.pagination;
     let page = 0;
     let cursor: string | undefined;
 
     while (page < MAX_PAGES) {
-      const url = this.buildPageUrl(baseUrl, api, apiKey, page, cursor);
-
-      this.logger.debug(`Fetching page ${page + 1}: ${url.toString()}`);
-
-      const response = await fetch(url.toString(), {
-        method: api.method ?? "GET",
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `API error HTTP ${response.status}: ${response.statusText}`,
-        );
-      }
-
-      const body = (await response.json()) as Record<string, unknown>;
-
-      // Extract items array from response
-      const resultsPath = api.resultsPath ?? "results";
-      const items = this.extractItems(body, resultsPath);
+      const { items, body } = await this.fetchPage(
+        baseUrl,
+        api,
+        apiKey,
+        page,
+        cursor,
+      );
 
       if (items.length === 0) {
         this.logger.debug(`No more items on page ${page + 1}`);
@@ -150,19 +135,10 @@ export class ApiIngestHandler {
       allItems.push(...items);
       page++;
 
-      // Check for next page
-      if (!pagination) break;
+      const nextCursor = this.shouldContinue(api, items, body);
+      if (nextCursor === false) break;
+      cursor = nextCursor || undefined;
 
-      if (pagination.type === "cursor") {
-        cursor = this.extractCursor(body);
-        if (!cursor) break;
-      } else {
-        // For offset/page pagination, stop if we got fewer items than the limit
-        const limit = pagination.limit ?? 100;
-        if (items.length < limit) break;
-      }
-
-      // Polite delay between requests
       await this.delay(PAGE_DELAY_MS);
     }
 
@@ -173,6 +149,63 @@ export class ApiIngestHandler {
     }
 
     return allItems;
+  }
+
+  /**
+   * Fetch a single page from the API.
+   */
+  private async fetchPage(
+    baseUrl: string,
+    api: ApiSourceConfig,
+    apiKey: string | undefined,
+    page: number,
+    cursor: string | undefined,
+  ): Promise<{
+    items: Record<string, unknown>[];
+    body: Record<string, unknown>;
+  }> {
+    const url = this.buildPageUrl(baseUrl, api, apiKey, page, cursor);
+    this.logger.debug(`Fetching page ${page + 1}: ${url.toString()}`);
+
+    const response = await fetch(url.toString(), {
+      method: api.method ?? "GET",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `API error HTTP ${response.status}: ${response.statusText}`,
+      );
+    }
+
+    const body = (await response.json()) as Record<string, unknown>;
+    const resultsPath = api.resultsPath ?? "results";
+    const items = this.extractItems(body, resultsPath);
+
+    return { items, body };
+  }
+
+  /**
+   * Determine whether to continue pagination.
+   * Returns false to stop, or the cursor string for cursor-based pagination.
+   */
+  private shouldContinue(
+    api: ApiSourceConfig,
+    items: Record<string, unknown>[],
+    body: Record<string, unknown>,
+  ): string | false {
+    const pagination = api.pagination;
+    if (!pagination) return false;
+
+    if (pagination.type === "cursor") {
+      const cursor = this.extractCursor(body);
+      return cursor || false;
+    }
+
+    // For offset/page pagination, stop if we got fewer items than the limit
+    const limit = pagination.limit ?? 100;
+    return items.length < limit ? false : "";
   }
 
   /**

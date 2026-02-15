@@ -134,8 +134,72 @@ export class BulkDownloadHandler {
    */
   private getDelimiter(bulk: BulkDownloadConfig): string {
     if (bulk.delimiter) return bulk.delimiter;
-    const format = bulk.format.replace("zip_", "");
+    const format = bulk.format.replaceAll("zip_", "");
     return format === "tsv" ? "\t" : ",";
+  }
+
+  /**
+   * Strip surrounding double quotes and trim whitespace from a CSV cell value.
+   */
+  private static stripQuotes(val: string): string {
+    return val.trim().replaceAll(/(^"|"$)/g, "");
+  }
+
+  /**
+   * Build a column-index lookup map from headers.
+   * Logs warnings for mapped columns not found in the file.
+   */
+  private buildColumnIndices(
+    headers: string[],
+    columns: Record<string, string>,
+  ): Record<string, number> {
+    const indices: Record<string, number> = {};
+    for (const col of Object.keys(columns)) {
+      const idx = headers.indexOf(col);
+      if (idx !== -1) {
+        indices[col] = idx;
+      } else {
+        this.logger.warn(
+          `Column '${col}' not found in file headers. Available: ${headers.slice(0, 10).join(", ")}`,
+        );
+      }
+    }
+    return indices;
+  }
+
+  /**
+   * Check if a row passes all filter criteria.
+   */
+  private passesFilters(
+    values: string[],
+    filters: Record<string, string>,
+    filterIndices: Record<string, number>,
+  ): boolean {
+    for (const [filterCol, filterVal] of Object.entries(filters)) {
+      const idx = filterIndices[filterCol];
+      if (idx === undefined) continue;
+      const cellVal = BulkDownloadHandler.stripQuotes(values[idx] ?? "");
+      if (cellVal !== filterVal) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Map a row's values to a domain record using column mappings.
+   */
+  private mapRow(
+    values: string[],
+    mappings: Record<string, string>,
+    colIndices: Record<string, number>,
+  ): Record<string, unknown> {
+    const record: Record<string, unknown> = {};
+    for (const [sourceCol, targetField] of Object.entries(mappings)) {
+      const idx = colIndices[sourceCol];
+      if (idx === undefined) continue;
+      const val = BulkDownloadHandler.stripQuotes(values[idx] ?? "");
+      if (val) record[targetField] = val;
+    }
+    return record;
   }
 
   /**
@@ -158,75 +222,36 @@ export class BulkDownloadHandler {
 
     const headers = headerLine
       .split(delimiter)
-      .map((h) => h.trim().replace(/^"|"$/g, ""));
+      .map((h) => BulkDownloadHandler.stripQuotes(h));
 
-    const records: Record<string, unknown>[] = [];
     const mappings = bulk.columnMappings;
     const filters = bulk.filters ?? {};
-
-    // Build column index maps for efficient lookups
-    const colIndices: Record<string, number> = {};
-    for (const header of Object.keys(mappings)) {
-      const idx = headers.indexOf(header);
-      if (idx !== -1) {
-        colIndices[header] = idx;
-      } else {
-        this.logger.warn(
-          `Column '${header}' not found in file headers. Available: ${headers.slice(0, 10).join(", ")}`,
-        );
-      }
-    }
-
-    const filterIndices: Record<string, number> = {};
-    for (const filterCol of Object.keys(filters)) {
-      const idx = headers.indexOf(filterCol);
-      if (idx !== -1) filterIndices[filterCol] = idx;
-    }
-
-    // Inject sourceSystem based on category
+    const colIndices = this.buildColumnIndices(headers, mappings);
+    const filterIndices = this.buildColumnIndices(
+      headers,
+      filters as Record<string, string>,
+    );
     const sourceSystem = this.inferSourceSystem(source);
 
-    // Parse data rows
+    const records: Record<string, unknown>[] = [];
+
     for (let i = headerSkip + 1; i < lines.length; i++) {
       const line = lines[i];
-      if (!line || !line.trim()) continue;
+      if (!line?.trim()) continue;
 
       const values = line.split(delimiter);
 
-      // Apply filters — skip rows that don't match
-      let passesFilter = true;
-      for (const [filterCol, filterVal] of Object.entries(filters)) {
-        const idx = filterIndices[filterCol];
-        if (idx !== undefined) {
-          const cellVal = (values[idx] ?? "").trim().replace(/^"|"$/g, "");
-          if (cellVal !== filterVal) {
-            passesFilter = false;
-            break;
-          }
-        }
-      }
-      if (!passesFilter) continue;
+      if (!this.passesFilters(values, filters, filterIndices)) continue;
 
-      // Map columns to domain field names
-      const record: Record<string, unknown> = {};
-      for (const [sourceCol, targetField] of Object.entries(mappings)) {
-        const idx = colIndices[sourceCol];
-        if (idx !== undefined) {
-          const val = (values[idx] ?? "").trim().replace(/^"|"$/g, "");
-          if (val) record[targetField] = val;
-        }
-      }
+      const record = this.mapRow(values, mappings, colIndices);
 
-      // Inject sourceSystem if determinable
       if (sourceSystem && !record["sourceSystem"]) {
         record["sourceSystem"] = sourceSystem;
       }
 
-      // Only add records that have at least some mapped fields
-      if (
-        Object.keys(record).length > 1 ||
-        (!sourceSystem && Object.keys(record).length > 0)
-      ) {
+      const fieldCount = Object.keys(record).length;
+      const minFields = sourceSystem ? 2 : 1;
+      if (fieldCount >= minFields) {
         records.push(record);
       }
     }

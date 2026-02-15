@@ -726,3 +726,205 @@ describe('RegionDomainService — federal placeholder resolution', () => {
     ).toBe('${stateCode}');
   });
 });
+
+/**
+ * Tests for campaign finance sync.
+ * These need a mock plugin that supports fetchCampaignFinance().
+ */
+describe('RegionDomainService — campaign finance sync', () => {
+  let service: RegionDomainService;
+  let mockDb: ReturnType<typeof createMockDbService>;
+  let mockPlugin: jest.Mocked<IRegionPlugin> & {
+    fetchCampaignFinance: jest.Mock;
+  };
+
+  const mockCampaignFinanceResult = {
+    committees: [],
+    contributions: [
+      {
+        externalId: 'CONT-1',
+        committeeId: 'C001',
+        donorName: 'Jane Smith',
+        donorType: 'individual',
+        amount: 500,
+        date: new Date('2026-01-15'),
+        sourceSystem: 'fec',
+      },
+      {
+        externalId: 'CONT-2',
+        committeeId: 'C001',
+        donorName: 'John Doe',
+        donorType: 'individual',
+        amount: 250,
+        date: new Date('2026-02-01'),
+        sourceSystem: 'fec',
+      },
+    ],
+    expenditures: [
+      {
+        externalId: 'EXP-1',
+        committeeId: 'C001',
+        payeeName: 'Ad Agency LLC',
+        amount: 10000,
+        date: new Date('2026-03-01'),
+        sourceSystem: 'fec',
+      },
+    ],
+    independentExpenditures: [
+      {
+        externalId: 'IE-1',
+        committeeId: 'C002',
+        committeeName: 'Super PAC',
+        supportOrOppose: 'support',
+        amount: 50000,
+        date: new Date('2026-06-01'),
+        sourceSystem: 'fec',
+      },
+    ],
+  };
+
+  beforeEach(async () => {
+    mockDb = createMockDbService();
+    mockPlugin = {
+      ...createMockPlugin(),
+      fetchCampaignFinance: jest
+        .fn()
+        .mockResolvedValue(mockCampaignFinanceResult),
+      getSupportedDataTypes: jest
+        .fn()
+        .mockReturnValue([
+          DataType.PROPOSITIONS,
+          DataType.MEETINGS,
+          DataType.REPRESENTATIVES,
+          DataType.CAMPAIGN_FINANCE,
+        ]),
+    };
+
+    const localRegistered: RegisteredPlugin = {
+      name: 'test-provider',
+      instance: mockPlugin as unknown as IRegionPlugin,
+      status: 'active',
+      loadedAt: new Date(),
+    };
+
+    const mockRegistry: any = {
+      register: jest.fn().mockResolvedValue(undefined),
+      unregister: jest.fn().mockResolvedValue(undefined),
+      getActive: jest.fn().mockReturnValue(mockPlugin),
+      registerLocal: jest.fn().mockResolvedValue(undefined),
+      registerFederal: jest.fn().mockResolvedValue(undefined),
+      getLocal: jest.fn().mockReturnValue(mockPlugin),
+      getFederal: jest.fn().mockReturnValue(undefined),
+      getAll: jest.fn().mockReturnValue([localRegistered]),
+      getActiveName: jest.fn().mockReturnValue('test-provider'),
+      hasActive: jest.fn().mockReturnValue(true),
+      getHealth: jest.fn(),
+      getStatus: jest.fn(),
+      onModuleDestroy: jest.fn(),
+    };
+
+    const mockLoader: any = {
+      loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      unloadPlugin: jest.fn().mockResolvedValue(undefined),
+    };
+
+    (mockDb as any).regionPlugin = {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+
+    // Set up campaign finance mocks
+    (mockDb as any).contribution = {
+      findMany: jest.fn().mockResolvedValue([]),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+    (mockDb as any).expenditure = {
+      findMany: jest.fn().mockResolvedValue([]),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+    (mockDb as any).independentExpenditure = {
+      findMany: jest.fn().mockResolvedValue([]),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+
+    mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.meeting.findMany.mockResolvedValue([]);
+    mockDb.representative.findMany.mockResolvedValue([]);
+
+    (mockDb.$transaction as jest.Mock).mockImplementation(
+      async (operations: any[]) => Promise.all(operations),
+    );
+
+    const module = await Test.createTestingModule({
+      providers: [
+        RegionDomainService,
+        { provide: PluginLoaderService, useValue: mockLoader },
+        { provide: PluginRegistryService, useValue: mockRegistry },
+        { provide: DbService, useValue: mockDb },
+      ],
+    }).compile();
+
+    service = module.get<RegionDomainService>(RegionDomainService);
+    await service.onModuleInit();
+  });
+
+  it('should create contributions, expenditures, and independent expenditures via syncAll', async () => {
+    // syncAll() passes plugin instances directly (not through RegionService wrapper)
+    const results = await service.syncAll();
+
+    // Find the campaign_finance result
+    const cfResult = results.find(
+      (r) => r.dataType === DataType.CAMPAIGN_FINANCE,
+    );
+    expect(cfResult).toBeDefined();
+    expect(cfResult!.itemsProcessed).toBe(4); // 2 contributions + 1 expenditure + 1 IE
+    expect(cfResult!.itemsCreated).toBe(4);
+    expect(cfResult!.itemsUpdated).toBe(0);
+  });
+
+  it('should update existing records matched by externalId via syncAll', async () => {
+    // Mock one existing contribution
+    (mockDb as any).contribution.findMany.mockResolvedValue([
+      { externalId: 'CONT-1' },
+    ]);
+
+    const results = await service.syncAll();
+
+    const cfResult = results.find(
+      (r) => r.dataType === DataType.CAMPAIGN_FINANCE,
+    );
+    expect(cfResult).toBeDefined();
+    expect(cfResult!.itemsProcessed).toBe(4);
+    expect(cfResult!.itemsCreated).toBe(3); // 1 new contribution + 1 expenditure + 1 IE
+    expect(cfResult!.itemsUpdated).toBe(1); // 1 existing contribution
+  });
+
+  it('should handle provider without fetchCampaignFinance (returns 0 processed)', async () => {
+    // syncDataType uses RegionService wrapper which doesn't have fetchCampaignFinance
+    const result = await service.syncDataType(DataType.CAMPAIGN_FINANCE);
+
+    expect(result.itemsProcessed).toBe(0);
+    expect(result.itemsCreated).toBe(0);
+    expect(result.itemsUpdated).toBe(0);
+  });
+
+  it('should handle empty campaign finance result via syncAll', async () => {
+    mockPlugin.fetchCampaignFinance.mockResolvedValue({
+      committees: [],
+      contributions: [],
+      expenditures: [],
+      independentExpenditures: [],
+    });
+
+    const results = await service.syncAll();
+
+    const cfResult = results.find(
+      (r) => r.dataType === DataType.CAMPAIGN_FINANCE,
+    );
+    expect(cfResult).toBeDefined();
+    expect(cfResult!.itemsProcessed).toBe(0);
+    expect(cfResult!.itemsCreated).toBe(0);
+  });
+});
