@@ -115,13 +115,11 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     }
 
     const allItems: T[] = [];
-    const errors: string[] = [];
 
     for (const source of sources) {
       try {
-        this.logger.log(
-          `Fetching ${dataType} from ${source.url}${source.category ? ` (${source.category})` : ""}`,
-        );
+        const category = source.category ? " (" + source.category + ")" : "";
+        this.logger.log(`Fetching ${dataType} from ${source.url}` + category);
         const result = await this.pipeline.execute<T>(
           source,
           this.regionConfig.regionId,
@@ -135,15 +133,14 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
           );
         }
         if (result.errors.length > 0) {
-          errors.push(...result.errors);
           this.logger.error(
             `Errors from ${source.url}: ${result.errors.join(", ")}`,
           );
         }
       } catch (error) {
-        const message = `Failed to fetch ${dataType} from ${source.url}: ${(error as Error).message}`;
-        this.logger.error(message);
-        errors.push(message);
+        this.logger.error(
+          `Failed to fetch ${dataType} from ${source.url}: ${(error as Error).message}`,
+        );
         // Continue with remaining sources — partial results are acceptable
       }
     }

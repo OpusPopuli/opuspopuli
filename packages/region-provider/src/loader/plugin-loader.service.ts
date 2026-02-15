@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional, Inject } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import type { IRegionPlugin } from "@opuspopuli/region-plugin-sdk";
 import type { DeclarativeRegionConfig } from "@opuspopuli/common";
 import { PluginRegistryService } from "../registry/plugin-registry.service.js";
@@ -24,12 +24,7 @@ export interface PluginDefinition {
 export class PluginLoaderService {
   private readonly logger = new Logger(PluginLoaderService.name);
 
-  constructor(
-    private readonly registry: PluginRegistryService,
-    @Optional()
-    @Inject("SCRAPING_PIPELINE")
-    private readonly pipeline?: IPipelineService,
-  ) {}
+  constructor(private readonly registry: PluginRegistryService) {}
 
   /**
    * Load a plugin and register it.
@@ -37,11 +32,14 @@ export class PluginLoaderService {
    * For code plugins: imports an npm package with a default or named export.
    * For declarative plugins: wraps a DeclarativeRegionConfig with the pipeline.
    */
-  async loadPlugin(definition: PluginDefinition): Promise<IRegionPlugin> {
+  async loadPlugin(
+    definition: PluginDefinition,
+    pipeline?: IPipelineService,
+  ): Promise<IRegionPlugin> {
     const pluginType = definition.pluginType ?? "code";
 
     if (pluginType === "declarative") {
-      return this.loadDeclarativePlugin(definition);
+      return this.loadDeclarativePlugin(definition, pipeline);
     }
 
     return this.loadCodePlugin(definition);
@@ -104,10 +102,11 @@ export class PluginLoaderService {
    */
   private async loadDeclarativePlugin(
     definition: PluginDefinition,
+    pipeline?: IPipelineService,
   ): Promise<IRegionPlugin> {
     const { name, config } = definition;
 
-    if (!this.pipeline) {
+    if (!pipeline) {
       throw new Error(
         `Cannot load declarative plugin "${name}": ScrapingPipelineService is not available. ` +
           `Ensure ScrapingPipelineModule is imported and SCRAPING_PIPELINE is provided.`,
@@ -124,7 +123,7 @@ export class PluginLoaderService {
       );
     }
 
-    const plugin = new DeclarativeRegionPlugin(regionConfig, this.pipeline);
+    const plugin = new DeclarativeRegionPlugin(regionConfig, pipeline);
     await this.registry.register(name, plugin, config);
 
     this.logger.log(

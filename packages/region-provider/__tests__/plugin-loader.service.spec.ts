@@ -8,8 +8,6 @@ import type { IPipelineService } from "../src/declarative/declarative-region-plu
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({
   Injectable: () => (target: any) => target,
-  Optional: () => () => {},
-  Inject: () => () => {},
   Logger: jest.fn().mockImplementation(() => ({
     log: jest.fn(),
     error: jest.fn(),
@@ -138,27 +136,29 @@ describe("PluginLoaderService", () => {
           extractionTimeMs: 0,
         }),
       };
-      loader = new PluginLoaderService(registry, pipeline);
     });
 
     it("should create a DeclarativeRegionPlugin when pluginType is declarative", async () => {
-      const plugin = await loader.loadPlugin({
-        name: "california",
-        pluginType: "declarative",
-        config: {
-          regionId: "california",
-          regionName: "California",
-          description: "CA civic data",
-          timezone: "America/Los_Angeles",
-          dataSources: [
-            {
-              url: "https://example.com/props",
-              dataType: "propositions",
-              contentGoal: "Extract propositions",
-            },
-          ],
+      const plugin = await loader.loadPlugin(
+        {
+          name: "california",
+          pluginType: "declarative",
+          config: {
+            regionId: "california",
+            regionName: "California",
+            description: "CA civic data",
+            timezone: "America/Los_Angeles",
+            dataSources: [
+              {
+                url: "https://example.com/props",
+                dataType: "propositions",
+                contentGoal: "Extract propositions",
+              },
+            ],
+          },
         },
-      });
+        pipeline,
+      );
 
       expect(plugin).toBeDefined();
       expect(plugin.getName()).toBe("california");
@@ -168,10 +168,8 @@ describe("PluginLoaderService", () => {
     });
 
     it("should throw when pipeline is not available for declarative plugin", async () => {
-      const loaderWithoutPipeline = new PluginLoaderService(registry);
-
       await expect(
-        loaderWithoutPipeline.loadPlugin({
+        loader.loadPlugin({
           name: "california",
           pluginType: "declarative",
           config: {
@@ -187,13 +185,16 @@ describe("PluginLoaderService", () => {
 
     it("should throw when declarative config is missing regionId", async () => {
       await expect(
-        loader.loadPlugin({
-          name: "bad-config",
-          pluginType: "declarative",
-          config: {
-            regionName: "Bad Config",
-          } as any,
-        }),
+        loader.loadPlugin(
+          {
+            name: "bad-config",
+            pluginType: "declarative",
+            config: {
+              regionName: "Bad Config",
+            } as any,
+          },
+          pipeline,
+        ),
       ).rejects.toThrow(
         "requires a valid DeclarativeRegionConfig with regionId and dataSources",
       );
@@ -201,13 +202,16 @@ describe("PluginLoaderService", () => {
 
     it("should throw when declarative config is missing dataSources", async () => {
       await expect(
-        loader.loadPlugin({
-          name: "bad-config",
-          pluginType: "declarative",
-          config: {
-            regionId: "test",
-          } as any,
-        }),
+        loader.loadPlugin(
+          {
+            name: "bad-config",
+            pluginType: "declarative",
+            config: {
+              regionId: "test",
+            } as any,
+          },
+          pipeline,
+        ),
       ).rejects.toThrow(
         "requires a valid DeclarativeRegionConfig with regionId and dataSources",
       );
@@ -215,10 +219,13 @@ describe("PluginLoaderService", () => {
 
     it("should throw when config is undefined for declarative plugin", async () => {
       await expect(
-        loader.loadPlugin({
-          name: "bad-config",
-          pluginType: "declarative",
-        }),
+        loader.loadPlugin(
+          {
+            name: "bad-config",
+            pluginType: "declarative",
+          },
+          pipeline,
+        ),
       ).rejects.toThrow(
         "requires a valid DeclarativeRegionConfig with regionId and dataSources",
       );
