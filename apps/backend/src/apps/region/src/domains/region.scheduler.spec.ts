@@ -4,7 +4,7 @@ import { createMock } from '@golevelup/ts-jest';
 
 import { RegionScheduler } from './region.scheduler';
 import { RegionDomainService } from './region.service';
-import { CivicDataType } from '@opuspopuli/region-provider';
+import { DataType } from '@opuspopuli/region-provider';
 
 describe('RegionScheduler', () => {
   let scheduler: RegionScheduler;
@@ -13,7 +13,7 @@ describe('RegionScheduler', () => {
 
   const mockSyncResults = [
     {
-      dataType: CivicDataType.PROPOSITIONS,
+      dataType: DataType.PROPOSITIONS,
       itemsProcessed: 10,
       itemsCreated: 5,
       itemsUpdated: 5,
@@ -21,7 +21,7 @@ describe('RegionScheduler', () => {
       syncedAt: new Date(),
     },
     {
-      dataType: CivicDataType.MEETINGS,
+      dataType: DataType.MEETINGS,
       itemsProcessed: 5,
       itemsCreated: 3,
       itemsUpdated: 2,
@@ -29,7 +29,7 @@ describe('RegionScheduler', () => {
       syncedAt: new Date(),
     },
     {
-      dataType: CivicDataType.REPRESENTATIVES,
+      dataType: DataType.REPRESENTATIVES,
       itemsProcessed: 8,
       itemsCreated: 2,
       itemsUpdated: 6,
@@ -168,7 +168,7 @@ describe('RegionScheduler', () => {
     it('should log warnings when sync has errors', async () => {
       const resultsWithErrors = [
         {
-          dataType: CivicDataType.PROPOSITIONS,
+          dataType: DataType.PROPOSITIONS,
           itemsProcessed: 10,
           itemsCreated: 5,
           itemsUpdated: 5,

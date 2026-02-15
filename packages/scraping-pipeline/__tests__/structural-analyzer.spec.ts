@@ -1,7 +1,7 @@
 import { StructuralAnalyzerService } from "../src/analysis/structural-analyzer.service";
 import { PromptClientService } from "../src/analysis/prompt-client.service";
 import {
-  CivicDataType,
+  DataType,
   type ILLMProvider,
   type DataSourceConfig,
 } from "@opuspopuli/common";
@@ -45,7 +45,7 @@ function createSource(
 ): DataSourceConfig {
   return {
     url: "https://www.assembly.ca.gov/members",
-    dataType: CivicDataType.REPRESENTATIVES,
+    dataType: DataType.REPRESENTATIVES,
     contentGoal: "Extract all assembly members",
     ...overrides,
   };
@@ -288,9 +288,7 @@ describe("StructuralAnalyzerService", () => {
 
   describe("getCurrentPromptHash", () => {
     it("should return a SHA-256 hash", async () => {
-      const hash = await analyzer.getCurrentPromptHash(
-        CivicDataType.PROPOSITIONS,
-      );
+      const hash = await analyzer.getCurrentPromptHash(DataType.PROPOSITIONS);
       expect(hash).toMatch(/^[a-f0-9]{64}$/);
     });
   });

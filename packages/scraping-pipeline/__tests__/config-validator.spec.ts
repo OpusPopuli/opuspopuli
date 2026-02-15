@@ -1,5 +1,5 @@
 import { ConfigValidator } from "../src/validation/config-validator";
-import { CivicDataType } from "@opuspopuli/common";
+import { DataType } from "@opuspopuli/common";
 import type { DeclarativeRegionConfig } from "@opuspopuli/common";
 
 function createValidConfig(
@@ -13,7 +13,7 @@ function createValidConfig(
     dataSources: [
       {
         url: "https://www.sos.ca.gov/elections/ballot-measures",
-        dataType: CivicDataType.PROPOSITIONS,
+        dataType: DataType.PROPOSITIONS,
         contentGoal:
           "Extract qualified ballot measures with ID, title, summary",
       },
@@ -39,7 +39,7 @@ describe("ConfigValidator", () => {
           dataSources: [
             {
               url: "https://www.sos.ca.gov/elections",
-              dataType: CivicDataType.PROPOSITIONS,
+              dataType: DataType.PROPOSITIONS,
               contentGoal: "Extract ballot measures with full details",
               category: "State",
               hints: ["Measures are grouped by election date"],
@@ -57,18 +57,18 @@ describe("ConfigValidator", () => {
           dataSources: [
             {
               url: "https://www.sos.ca.gov/elections",
-              dataType: CivicDataType.PROPOSITIONS,
+              dataType: DataType.PROPOSITIONS,
               contentGoal: "Extract ballot measures from SoS",
             },
             {
               url: "https://www.assembly.ca.gov/members",
-              dataType: CivicDataType.REPRESENTATIVES,
+              dataType: DataType.REPRESENTATIVES,
               contentGoal: "Extract assembly members from official directory",
               category: "Assembly",
             },
             {
               url: "https://www.senate.ca.gov/senators",
-              dataType: CivicDataType.REPRESENTATIVES,
+              dataType: DataType.REPRESENTATIVES,
               contentGoal: "Extract senators from official directory",
               category: "Senate",
             },
@@ -118,7 +118,7 @@ describe("ConfigValidator", () => {
           dataSources: [
             {
               url: "not-a-url",
-              dataType: CivicDataType.PROPOSITIONS,
+              dataType: DataType.PROPOSITIONS,
               contentGoal: "Some content goal here that is long enough",
             },
           ],
@@ -134,7 +134,7 @@ describe("ConfigValidator", () => {
           dataSources: [
             {
               url: "https://example.com",
-              dataType: CivicDataType.PROPOSITIONS,
+              dataType: DataType.PROPOSITIONS,
               contentGoal: "short",
             },
           ],
@@ -157,7 +157,7 @@ describe("ConfigValidator", () => {
           dataSources: [
             {
               url: "http://www.example.com/page",
-              dataType: CivicDataType.PROPOSITIONS,
+              dataType: DataType.PROPOSITIONS,
               contentGoal: "Extract data from this insecure page source",
             },
           ],
@@ -173,12 +173,12 @@ describe("ConfigValidator", () => {
           dataSources: [
             {
               url: "https://example.com/page",
-              dataType: CivicDataType.PROPOSITIONS,
+              dataType: DataType.PROPOSITIONS,
               contentGoal: "Extract data from this source page first time",
             },
             {
               url: "https://example.com/page",
-              dataType: CivicDataType.PROPOSITIONS,
+              dataType: DataType.PROPOSITIONS,
               contentGoal: "Extract data from this source page second time",
             },
           ],
@@ -196,12 +196,12 @@ describe("ConfigValidator", () => {
           dataSources: [
             {
               url: "https://example.com/page",
-              dataType: CivicDataType.PROPOSITIONS,
+              dataType: DataType.PROPOSITIONS,
               contentGoal: "Extract propositions from this shared page",
             },
             {
               url: "https://example.com/page",
-              dataType: CivicDataType.MEETINGS,
+              dataType: DataType.MEETINGS,
               contentGoal: "Extract meetings from this shared page also",
             },
           ],
@@ -216,13 +216,13 @@ describe("ConfigValidator", () => {
           dataSources: [
             {
               url: "https://example.com/reps",
-              dataType: CivicDataType.REPRESENTATIVES,
+              dataType: DataType.REPRESENTATIVES,
               contentGoal: "Extract assembly members from directory page",
               category: "Assembly",
             },
             {
               url: "https://example.com/reps",
-              dataType: CivicDataType.REPRESENTATIVES,
+              dataType: DataType.REPRESENTATIVES,
               contentGoal: "Extract senate members from directory page also",
               category: "Senate",
             },

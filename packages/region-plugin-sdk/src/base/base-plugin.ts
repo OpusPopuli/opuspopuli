@@ -17,7 +17,7 @@
 import { Logger } from "@nestjs/common";
 import type {
   RegionInfo,
-  CivicDataType,
+  DataType,
   Proposition,
   Meeting,
   Representative,
@@ -40,7 +40,7 @@ export abstract class BaseRegionPlugin implements IRegionPlugin {
   abstract getName(): string;
   abstract getVersion(): string;
   abstract getRegionInfo(): RegionInfo;
-  abstract getSupportedDataTypes(): CivicDataType[];
+  abstract getSupportedDataTypes(): DataType[];
   abstract fetchPropositions(): Promise<Proposition[]>;
   abstract fetchMeetings(): Promise<Meeting[]>;
   abstract fetchRepresentatives(): Promise<Representative[]>;

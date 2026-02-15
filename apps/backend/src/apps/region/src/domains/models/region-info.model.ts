@@ -1,17 +1,17 @@
 import { ObjectType, Field, registerEnumType } from '@nestjs/graphql';
 
 /**
- * Civic data types enum for GraphQL
+ * Data types enum for GraphQL
  */
-export enum CivicDataTypeGQL {
+export enum DataTypeGQL {
   PROPOSITIONS = 'propositions',
   MEETINGS = 'meetings',
   REPRESENTATIVES = 'representatives',
 }
 
-registerEnumType(CivicDataTypeGQL, {
-  name: 'CivicDataType',
-  description: 'Types of civic data available in the region',
+registerEnumType(DataTypeGQL, {
+  name: 'DataType',
+  description: 'Types of data available in the region',
 });
 
 /**
@@ -34,8 +34,8 @@ export class RegionInfoModel {
   @Field(() => [String], { nullable: true })
   dataSourceUrls?: string[];
 
-  @Field(() => [CivicDataTypeGQL])
-  supportedDataTypes!: CivicDataTypeGQL[];
+  @Field(() => [DataTypeGQL])
+  supportedDataTypes!: DataTypeGQL[];
 }
 
 /**
@@ -43,8 +43,8 @@ export class RegionInfoModel {
  */
 @ObjectType()
 export class SyncResultModel {
-  @Field(() => CivicDataTypeGQL)
-  dataType!: CivicDataTypeGQL;
+  @Field(() => DataTypeGQL)
+  dataType!: DataTypeGQL;
 
   @Field()
   itemsProcessed!: number;

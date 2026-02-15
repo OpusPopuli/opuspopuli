@@ -1,5 +1,5 @@
 import { ManifestComparator } from "../src/manifest/manifest-comparator";
-import type { StructuralManifest, CivicDataType } from "@opuspopuli/common";
+import type { StructuralManifest, DataType } from "@opuspopuli/common";
 
 function createManifest(
   overrides?: Partial<StructuralManifest>,
@@ -8,7 +8,7 @@ function createManifest(
     id: "test-id",
     regionId: "california",
     sourceUrl: "https://example.com",
-    dataType: "propositions" as CivicDataType,
+    dataType: "propositions" as DataType,
     version: 1,
     structureHash: "struct-hash-abc",
     promptHash: "prompt-hash-xyz",

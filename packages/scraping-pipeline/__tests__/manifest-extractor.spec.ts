@@ -1,5 +1,5 @@
 import { ManifestExtractorService } from "../src/extraction/manifest-extractor.service";
-import type { StructuralManifest, CivicDataType } from "@opuspopuli/common";
+import type { StructuralManifest, DataType } from "@opuspopuli/common";
 
 // Helper to create a minimal manifest for testing
 function createTestManifest(
@@ -9,7 +9,7 @@ function createTestManifest(
     id: "test-manifest",
     regionId: "test-region",
     sourceUrl: "https://example.com",
-    dataType: "representatives" as CivicDataType,
+    dataType: "representatives" as DataType,
     version: 1,
     structureHash: "abc123",
     promptHash: "def456",

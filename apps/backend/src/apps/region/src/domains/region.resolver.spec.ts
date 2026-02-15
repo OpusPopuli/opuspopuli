@@ -4,8 +4,8 @@ import { createMock } from '@golevelup/ts-jest';
 
 import { RegionResolver } from './region.resolver';
 import { RegionDomainService } from './region.service';
-import { CivicDataType } from '@opuspopuli/region-provider';
-import { CivicDataTypeGQL } from './models/region-info.model';
+import { DataType } from '@opuspopuli/region-provider';
+import { DataTypeGQL } from './models/region-info.model';
 
 describe('RegionResolver', () => {
   let resolver: RegionResolver;
@@ -18,9 +18,9 @@ describe('RegionResolver', () => {
     timezone: 'America/Los_Angeles',
     dataSourceUrls: ['https://example.com'],
     supportedDataTypes: [
-      CivicDataTypeGQL.PROPOSITIONS,
-      CivicDataTypeGQL.MEETINGS,
-      CivicDataTypeGQL.REPRESENTATIVES,
+      DataTypeGQL.PROPOSITIONS,
+      DataTypeGQL.MEETINGS,
+      DataTypeGQL.REPRESENTATIVES,
     ],
   };
 
@@ -253,7 +253,7 @@ describe('RegionResolver', () => {
     it('should trigger sync and return results', async () => {
       const mockSyncResults = [
         {
-          dataType: CivicDataType.PROPOSITIONS,
+          dataType: DataType.PROPOSITIONS,
           itemsProcessed: 10,
           itemsCreated: 5,
           itemsUpdated: 5,
@@ -261,7 +261,7 @@ describe('RegionResolver', () => {
           syncedAt: new Date(),
         },
         {
-          dataType: CivicDataType.MEETINGS,
+          dataType: DataType.MEETINGS,
           itemsProcessed: 5,
           itemsCreated: 3,
           itemsUpdated: 2,
@@ -281,7 +281,7 @@ describe('RegionResolver', () => {
     it('should include errors in sync results', async () => {
       const mockSyncResults = [
         {
-          dataType: CivicDataType.PROPOSITIONS,
+          dataType: DataType.PROPOSITIONS,
           itemsProcessed: 0,
           itemsCreated: 0,
           itemsUpdated: 0,

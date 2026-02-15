@@ -19,6 +19,7 @@
 export {
   IRegionProvider,
   RegionInfo,
+  DataType,
   CivicDataType,
   PropositionStatus,
   Proposition,

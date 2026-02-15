@@ -5,7 +5,7 @@
  * 1. Structural Analysis (AI, cached) → manifest
  * 2. Manifest Comparison (hash check) → reuse or re-derive
  * 3. Content Extraction (Cheerio, deterministic) → raw records
- * 4. Domain Mapping (Zod validation) → typed civic data
+ * 4. Domain Mapping (Zod validation) → typed domain objects
  *
  * Plus self-healing: if extraction fails, re-trigger analysis once.
  */
@@ -15,7 +15,7 @@ import type {
   DataSourceConfig,
   ExtractionResult,
   StructuralAnalysisResult,
-  CivicDataType,
+  DataType,
 } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { StructuralAnalyzerService } from "../analysis/structural-analyzer.service.js";
@@ -132,14 +132,14 @@ export class ScrapingPipelineService {
 
     // Compute current prompt hash
     const currentPromptHash = await this.analyzer.getCurrentPromptHash(
-      source.dataType as CivicDataType,
+      source.dataType as DataType,
     );
 
     // Look up existing manifest
     const existing = await this.manifestStore.findLatest(
       regionId,
       source.url,
-      source.dataType as CivicDataType,
+      source.dataType as DataType,
     );
 
     // Compare hashes

@@ -5,7 +5,7 @@ import { RegionDomainService } from './region.service';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
 import {
-  CivicDataType,
+  DataType,
   PropositionStatus,
   Proposition,
   PluginLoaderService,
@@ -72,9 +72,9 @@ function createMockPlugin(): jest.Mocked<IRegionPlugin> {
     getSupportedDataTypes: jest
       .fn()
       .mockReturnValue([
-        CivicDataType.PROPOSITIONS,
-        CivicDataType.MEETINGS,
-        CivicDataType.REPRESENTATIVES,
+        DataType.PROPOSITIONS,
+        DataType.MEETINGS,
+        DataType.REPRESENTATIVES,
       ]),
     fetchPropositions: jest.fn().mockResolvedValue(mockPropositions),
     fetchMeetings: jest.fn().mockResolvedValue(mockMeetings),
@@ -168,9 +168,9 @@ describe('RegionDomainService', () => {
       const results = await service.syncAll();
 
       expect(results).toHaveLength(3);
-      expect(results[0].dataType).toBe(CivicDataType.PROPOSITIONS);
-      expect(results[1].dataType).toBe(CivicDataType.MEETINGS);
-      expect(results[2].dataType).toBe(CivicDataType.REPRESENTATIVES);
+      expect(results[0].dataType).toBe(DataType.PROPOSITIONS);
+      expect(results[1].dataType).toBe(DataType.MEETINGS);
+      expect(results[2].dataType).toBe(DataType.REPRESENTATIVES);
       expect(mockDb.$transaction).toHaveBeenCalledTimes(3);
     });
 
@@ -191,7 +191,7 @@ describe('RegionDomainService', () => {
       // No existing records
       mockDb.proposition.findMany.mockResolvedValue([]);
 
-      const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
+      const result = await service.syncDataType(DataType.PROPOSITIONS);
 
       expect(result.itemsCreated).toBe(1);
       expect(result.itemsUpdated).toBe(0);
@@ -205,7 +205,7 @@ describe('RegionDomainService', () => {
         { externalId: 'prop-1' } as any,
       ]);
 
-      const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
+      const result = await service.syncDataType(DataType.PROPOSITIONS);
 
       expect(result.itemsCreated).toBe(0);
       expect(result.itemsUpdated).toBe(1);
@@ -215,7 +215,7 @@ describe('RegionDomainService', () => {
     it('should handle empty propositions list', async () => {
       mockPlugin.fetchPropositions.mockResolvedValue([]);
 
-      const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
+      const result = await service.syncDataType(DataType.PROPOSITIONS);
 
       expect(result.itemsProcessed).toBe(0);
       expect(result.itemsCreated).toBe(0);
@@ -227,7 +227,7 @@ describe('RegionDomainService', () => {
     it('should create new meetings using bulk upsert', async () => {
       mockDb.meeting.findMany.mockResolvedValue([]);
 
-      const result = await service.syncDataType(CivicDataType.MEETINGS);
+      const result = await service.syncDataType(DataType.MEETINGS);
 
       expect(result.itemsCreated).toBe(1);
       expect(result.itemsUpdated).toBe(0);
@@ -239,7 +239,7 @@ describe('RegionDomainService', () => {
         { externalId: 'meeting-1' } as any,
       ]);
 
-      const result = await service.syncDataType(CivicDataType.MEETINGS);
+      const result = await service.syncDataType(DataType.MEETINGS);
 
       expect(result.itemsUpdated).toBe(1);
       expect(mockDb.$transaction).toHaveBeenCalled();
@@ -250,7 +250,7 @@ describe('RegionDomainService', () => {
     it('should create new representatives using bulk upsert', async () => {
       mockDb.representative.findMany.mockResolvedValue([]);
 
-      const result = await service.syncDataType(CivicDataType.REPRESENTATIVES);
+      const result = await service.syncDataType(DataType.REPRESENTATIVES);
 
       expect(result.itemsCreated).toBe(1);
       expect(mockDb.$transaction).toHaveBeenCalled();
@@ -261,7 +261,7 @@ describe('RegionDomainService', () => {
         { externalId: 'rep-1' } as any,
       ]);
 
-      const result = await service.syncDataType(CivicDataType.REPRESENTATIVES);
+      const result = await service.syncDataType(DataType.REPRESENTATIVES);
 
       expect(result.itemsUpdated).toBe(1);
       expect(mockDb.$transaction).toHaveBeenCalled();
@@ -272,7 +272,7 @@ describe('RegionDomainService', () => {
     it('should use only 2 queries per sync (SELECT existing + transaction)', async () => {
       mockDb.proposition.findMany.mockResolvedValue([]);
 
-      await service.syncDataType(CivicDataType.PROPOSITIONS);
+      await service.syncDataType(DataType.PROPOSITIONS);
 
       // Should call findMany exactly once (for SELECT existing)
       expect(mockDb.proposition.findMany).toHaveBeenCalledTimes(1);
@@ -298,7 +298,7 @@ describe('RegionDomainService', () => {
       mockPlugin.fetchPropositions.mockResolvedValue(largeDataset);
       mockDb.proposition.findMany.mockResolvedValue([]);
 
-      const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
+      const result = await service.syncDataType(DataType.PROPOSITIONS);
 
       // Verify all 1000 items processed
       expect(result.itemsProcessed).toBe(1000);
@@ -333,7 +333,7 @@ describe('RegionDomainService', () => {
         })) as any[],
       );
 
-      const result = await service.syncDataType(CivicDataType.PROPOSITIONS);
+      const result = await service.syncDataType(DataType.PROPOSITIONS);
 
       expect(result.itemsProcessed).toBe(1000);
       expect(result.itemsCreated).toBe(500); // prop-500 through prop-999

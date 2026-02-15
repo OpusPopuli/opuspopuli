@@ -9,7 +9,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type {
-  CivicDataType,
+  DataType,
   DataSourceConfig,
   PromptServiceResponse,
 } from "@opuspopuli/common";
@@ -66,7 +66,7 @@ export class PromptClientService {
    * Get the current prompt hash for a data type.
    * Used to detect prompt version changes for cache invalidation.
    */
-  async getPromptHash(dataType: CivicDataType): Promise<string> {
+  async getPromptHash(dataType: DataType): Promise<string> {
     // For local prompts, hash the template
     const template = this.getLocalTemplate(dataType);
     return createHash("sha256").update(template).digest("hex");
@@ -147,14 +147,14 @@ export class PromptClientService {
   /**
    * Get the local template for a data type.
    */
-  private getLocalTemplate(dataType: CivicDataType): string {
+  private getLocalTemplate(dataType: DataType): string {
     return LOCAL_BASE_TEMPLATE;
   }
 
   /**
    * Get the schema description for a data type.
    */
-  private getSchemaDescription(dataType: CivicDataType): string {
+  private getSchemaDescription(dataType: DataType): string {
     return SCHEMA_DESCRIPTIONS[dataType] ?? SCHEMA_DESCRIPTIONS.default;
   }
 }
@@ -166,7 +166,7 @@ export class PromptClientService {
 const LOCAL_BASE_TEMPLATE = `You are a web scraping expert. Analyze the following HTML and produce extraction rules as JSON.
 
 ## Task
-Given the HTML from a government website, derive CSS selectors and extraction rules to extract {{DATA_TYPE}} data.
+Given the HTML from a web page, derive CSS selectors and extraction rules to extract {{DATA_TYPE}} data.
 
 ## Content Goal
 {{CONTENT_GOAL}}

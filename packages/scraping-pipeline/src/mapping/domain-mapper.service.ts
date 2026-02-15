@@ -1,7 +1,7 @@
 /**
  * Domain Mapper Service
  *
- * Maps raw extracted records to typed civic data models
+ * Maps raw extracted records to typed domain models
  * (Proposition, Meeting, Representative).
  * Validates with Zod schemas and handles type coercion.
  */
@@ -9,7 +9,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { z } from "zod";
 import {
-  CivicDataType,
+  DataType,
   PropositionStatus,
   type Proposition,
   type Meeting,
@@ -67,11 +67,11 @@ export class DomainMapperService {
     source: DataSourceConfig,
   ): Proposition | Meeting | Representative | null {
     switch (source.dataType) {
-      case CivicDataType.PROPOSITIONS:
+      case DataType.PROPOSITIONS:
         return this.mapProposition(record);
-      case CivicDataType.MEETINGS:
+      case DataType.MEETINGS:
         return this.mapMeeting(record, source.category);
-      case CivicDataType.REPRESENTATIVES:
+      case DataType.REPRESENTATIVES:
         return this.mapRepresentative(record, source.category);
       default:
         return null;

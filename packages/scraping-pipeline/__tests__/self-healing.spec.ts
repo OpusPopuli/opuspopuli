@@ -2,7 +2,7 @@ import { SelfHealingService } from "../src/healing/self-healing.service";
 import type {
   RawExtractionResult,
   StructuralManifest,
-  CivicDataType,
+  DataType,
 } from "@opuspopuli/common";
 
 function createManifest(
@@ -12,7 +12,7 @@ function createManifest(
     id: "test-manifest",
     regionId: "test-region",
     sourceUrl: "https://example.com",
-    dataType: "representatives" as CivicDataType,
+    dataType: "representatives" as DataType,
     version: 1,
     structureHash: "abc123",
     promptHash: "def456",

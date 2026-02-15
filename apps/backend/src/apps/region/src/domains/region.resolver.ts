@@ -11,7 +11,7 @@ import { RegionDomainService } from './region.service';
 import {
   RegionInfoModel,
   SyncResultModel,
-  CivicDataTypeGQL,
+  DataTypeGQL,
 } from './models/region-info.model';
 import {
   PropositionModel,
@@ -143,7 +143,7 @@ export class RegionResolver {
     const results = await this.regionService.syncAll();
     return results.map((r) => ({
       ...r,
-      dataType: r.dataType as unknown as CivicDataTypeGQL,
+      dataType: r.dataType as unknown as DataTypeGQL,
     }));
   }
 }

@@ -7,7 +7,7 @@ import type { SelfHealingService } from "../src/healing/self-healing.service";
 import type { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { computeStructureHash } from "../src/analysis/structure-hasher";
 import {
-  CivicDataType,
+  DataType,
   type StructuralManifest,
   type DataSourceConfig,
 } from "@opuspopuli/common";
@@ -25,7 +25,7 @@ function createManifest(
     id: "manifest-1",
     regionId: "california",
     sourceUrl: "https://example.com",
-    dataType: CivicDataType.PROPOSITIONS,
+    dataType: DataType.PROPOSITIONS,
     version: 1,
     structureHash: STRUCTURE_HASH,
     promptHash: "prompt-hash",
@@ -55,7 +55,7 @@ function createSource(
 ): DataSourceConfig {
   return {
     url: "https://example.com",
-    dataType: CivicDataType.PROPOSITIONS,
+    dataType: DataType.PROPOSITIONS,
     contentGoal: "Extract data",
     ...overrides,
   };

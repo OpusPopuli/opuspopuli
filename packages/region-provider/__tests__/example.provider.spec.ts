@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { ExampleRegionProvider } from "../src/providers/example.provider";
-import { CivicDataType } from "@opuspopuli/common";
+import { DataType } from "@opuspopuli/common";
 
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({
@@ -43,9 +43,9 @@ describe("ExampleRegionProvider", () => {
     it("should return all civic data types", () => {
       const types = provider.getSupportedDataTypes();
 
-      expect(types).toContain(CivicDataType.PROPOSITIONS);
-      expect(types).toContain(CivicDataType.MEETINGS);
-      expect(types).toContain(CivicDataType.REPRESENTATIVES);
+      expect(types).toContain(DataType.PROPOSITIONS);
+      expect(types).toContain(DataType.MEETINGS);
+      expect(types).toContain(DataType.REPRESENTATIVES);
       expect(types).toHaveLength(3);
     });
   });

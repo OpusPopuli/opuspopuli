@@ -8,18 +8,18 @@ type RegionInfoModel {
   description: String!
   timezone: String!
   dataSourceUrls: [String!]
-  supportedDataTypes: [CivicDataType!]!
+  supportedDataTypes: [DataType!]!
 }
 
 """Types of civic data available in the region"""
-enum CivicDataType {
+enum DataType {
   PROPOSITIONS
   MEETINGS
   REPRESENTATIVES
 }
 
 type SyncResultModel {
-  dataType: CivicDataType!
+  dataType: DataType!
   itemsProcessed: Float!
   itemsCreated: Float!
   itemsUpdated: Float!

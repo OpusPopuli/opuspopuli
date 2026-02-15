@@ -3,7 +3,7 @@ import {
   type ManifestRepository,
   type ManifestRecord,
 } from "../src/manifest/manifest-store.service";
-import { CivicDataType, type StructuralManifest } from "@opuspopuli/common";
+import { DataType, type StructuralManifest } from "@opuspopuli/common";
 
 function createMockRepository(): jest.Mocked<ManifestRepository> {
   return {
@@ -22,7 +22,7 @@ function createManifest(
     id: "manifest-1",
     regionId: "california",
     sourceUrl: "https://example.com",
-    dataType: CivicDataType.PROPOSITIONS,
+    dataType: DataType.PROPOSITIONS,
     version: 1,
     structureHash: "hash-abc",
     promptHash: "hash-def",
@@ -86,13 +86,13 @@ describe("ManifestStoreService", () => {
       const result = await store.findLatest(
         "california",
         "https://example.com",
-        CivicDataType.PROPOSITIONS,
+        DataType.PROPOSITIONS,
       );
 
       expect(result).toBeDefined();
       expect(result!.id).toBe("manifest-1");
       expect(result!.regionId).toBe("california");
-      expect(result!.dataType).toBe(CivicDataType.PROPOSITIONS);
+      expect(result!.dataType).toBe(DataType.PROPOSITIONS);
       expect(repo.findFirst).toHaveBeenCalledWith({
         where: {
           regionId: "california",
@@ -110,7 +110,7 @@ describe("ManifestStoreService", () => {
       const result = await store.findLatest(
         "california",
         "https://example.com",
-        CivicDataType.PROPOSITIONS,
+        DataType.PROPOSITIONS,
       );
 
       expect(result).toBeUndefined();
@@ -131,7 +131,7 @@ describe("ManifestStoreService", () => {
       const result = await store.findLatest(
         "california",
         "https://example.com",
-        CivicDataType.PROPOSITIONS,
+        DataType.PROPOSITIONS,
       );
 
       expect(result!.llmProvider).toBeUndefined();
@@ -231,7 +231,7 @@ describe("ManifestStoreService", () => {
       const history = await store.getHistory(
         "california",
         "https://example.com",
-        CivicDataType.PROPOSITIONS,
+        DataType.PROPOSITIONS,
       );
 
       expect(history).toHaveLength(3);
@@ -253,7 +253,7 @@ describe("ManifestStoreService", () => {
       await store.getHistory(
         "california",
         "https://example.com",
-        CivicDataType.PROPOSITIONS,
+        DataType.PROPOSITIONS,
         5,
       );
 

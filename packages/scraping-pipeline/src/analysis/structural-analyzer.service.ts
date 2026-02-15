@@ -11,7 +11,7 @@ import * as cheerio from "cheerio";
 import { randomUUID } from "node:crypto";
 import type {
   ILLMProvider,
-  CivicDataType,
+  DataType,
   DataSourceConfig,
   ExtractionRuleSet,
   StructuralManifest,
@@ -112,7 +112,7 @@ export class StructuralAnalyzerService {
   /**
    * Get the current prompt hash for cache invalidation.
    */
-  async getCurrentPromptHash(dataType: CivicDataType): Promise<string> {
+  async getCurrentPromptHash(dataType: DataType): Promise<string> {
     return this.promptClient.getPromptHash(dataType);
   }
 

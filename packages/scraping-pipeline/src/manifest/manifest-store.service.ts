@@ -6,7 +6,7 @@
  */
 
 import { Injectable, Logger } from "@nestjs/common";
-import type { StructuralManifest, CivicDataType } from "@opuspopuli/common";
+import type { StructuralManifest, DataType } from "@opuspopuli/common";
 
 /**
  * Database interface for manifest persistence.
@@ -74,7 +74,7 @@ export class ManifestStoreService {
   async findLatest(
     regionId: string,
     sourceUrl: string,
-    dataType: CivicDataType,
+    dataType: DataType,
   ): Promise<StructuralManifest | undefined> {
     const record = await this.repository.findFirst({
       where: {
@@ -178,7 +178,7 @@ export class ManifestStoreService {
   async getHistory(
     regionId: string,
     sourceUrl: string,
-    dataType: CivicDataType,
+    dataType: DataType,
     limit: number = 10,
   ): Promise<StructuralManifest[]> {
     const records = await this.repository.findMany({
@@ -212,7 +212,7 @@ export class ManifestStoreService {
       id: record.id,
       regionId: record.regionId,
       sourceUrl: record.sourceUrl,
-      dataType: record.dataType as CivicDataType,
+      dataType: record.dataType as DataType,
       version: record.version,
       structureHash: record.structureHash,
       promptHash: record.promptHash,

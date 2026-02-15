@@ -2,14 +2,14 @@
  * Scraping Pipeline Types
  *
  * Types for AI-derived structural manifests that describe
- * how to extract civic data from web pages.
+ * how to extract structured data from web pages.
  *
  * The pipeline uses a "schema-on-read" pattern where AI analyzes
  * website structure to produce versioned extraction rules, rather
  * than relying on hardcoded CSS selectors.
  */
 
-import { CivicDataType } from "../region/types.js";
+import type { DataType } from "../region/types.js";
 
 // ============================================
 // STRUCTURAL MANIFEST
@@ -17,7 +17,7 @@ import { CivicDataType } from "../region/types.js";
 
 /**
  * A structural manifest describes how to extract a specific type
- * of civic data from a specific URL. Derived by AI analysis.
+ * of content from a specific URL. Derived by AI analysis.
  */
 export interface StructuralManifest {
   /** Unique identifier */
@@ -26,8 +26,8 @@ export interface StructuralManifest {
   regionId: string;
   /** The URL this manifest describes */
   sourceUrl: string;
-  /** What civic data type this extracts */
-  dataType: CivicDataType;
+  /** What data type this extracts */
+  dataType: DataType;
   /** Version number (incremented on re-analysis) */
   version: number;
   /** SHA-256 hash of the HTML structure (stripped of content) */
@@ -161,11 +161,11 @@ export interface PreprocessingStep {
 export interface DataSourceConfig {
   /** URL to scrape */
   url: string;
-  /** What type of civic data this source provides */
-  dataType: CivicDataType;
+  /** What type of content this source provides */
+  dataType: DataType;
   /** Natural language description of what to find on this page */
   contentGoal: string;
-  /** Optional: chamber or sub-category (e.g., "Assembly", "Senate") */
+  /** Optional: sub-category for grouping (e.g., "Assembly", "Senate") */
   category?: string;
   /** Optional: hints to help the AI find the right content */
   hints?: string[];
@@ -254,7 +254,7 @@ export interface RawExtractionResult {
  */
 export interface PipelineMetrics {
   sourceUrl: string;
-  dataType: CivicDataType;
+  dataType: DataType;
   structureAnalysisMs?: number;
   manifestCacheHit: boolean;
   structureChanged: boolean;

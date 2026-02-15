@@ -6,16 +6,13 @@
  */
 
 import { z } from "zod";
-import {
-  CivicDataType,
-  type DeclarativeRegionConfig,
-} from "@opuspopuli/common";
+import { DataType, type DeclarativeRegionConfig } from "@opuspopuli/common";
 
 const DataSourceConfigSchema = z.object({
   url: z.string().url("Invalid URL format"),
-  dataType: z.nativeEnum(CivicDataType, {
+  dataType: z.nativeEnum(DataType, {
     errorMap: () => ({
-      message: `Must be one of: ${Object.values(CivicDataType).join(", ")}`,
+      message: `Must be one of: ${Object.values(DataType).join(", ")}`,
     }),
   }),
   contentGoal: z
@@ -127,7 +124,7 @@ export class ConfigValidator {
       if (source.url.startsWith("http://")) {
         errors.push({
           path: "dataSources[" + i + "].url",
-          message: "URL should use HTTPS for government websites",
+          message: "URL should use HTTPS for data source websites",
         });
       }
     }

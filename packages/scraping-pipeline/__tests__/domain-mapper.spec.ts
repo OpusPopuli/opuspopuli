@@ -1,6 +1,6 @@
 import { DomainMapperService } from "../src/mapping/domain-mapper.service";
 import {
-  CivicDataType,
+  DataType,
   type RawExtractionResult,
   type DataSourceConfig,
 } from "@opuspopuli/common";
@@ -10,7 +10,7 @@ function createSource(
 ): DataSourceConfig {
   return {
     url: "https://example.com",
-    dataType: CivicDataType.PROPOSITIONS,
+    dataType: DataType.PROPOSITIONS,
     contentGoal: "Extract data",
     ...overrides,
   };
@@ -47,7 +47,7 @@ describe("DomainMapperService", () => {
             },
           ],
         }),
-        createSource({ dataType: CivicDataType.PROPOSITIONS }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
       );
 
       expect(result.success).toBe(true);
@@ -63,7 +63,7 @@ describe("DomainMapperService", () => {
         createRawResult({
           items: [{ summary: "No ID or title" }],
         }),
-        createSource({ dataType: CivicDataType.PROPOSITIONS }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
       );
 
       expect(result.success).toBe(false);
@@ -81,7 +81,7 @@ describe("DomainMapperService", () => {
             },
           ],
         }),
-        createSource({ dataType: CivicDataType.PROPOSITIONS }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
       );
 
       expect(result.items[0]).toMatchObject({
@@ -100,7 +100,7 @@ describe("DomainMapperService", () => {
             },
           ],
         }),
-        createSource({ dataType: CivicDataType.PROPOSITIONS }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
       );
 
       expect(result.items[0]).toHaveProperty("electionDate");
@@ -120,7 +120,7 @@ describe("DomainMapperService", () => {
             },
           ],
         }),
-        createSource({ dataType: CivicDataType.MEETINGS }),
+        createSource({ dataType: DataType.MEETINGS }),
       );
 
       expect(result.success).toBe(true);
@@ -143,7 +143,7 @@ describe("DomainMapperService", () => {
           ],
         }),
         createSource({
-          dataType: CivicDataType.MEETINGS,
+          dataType: DataType.MEETINGS,
           category: "Assembly",
         }),
       );
@@ -156,7 +156,7 @@ describe("DomainMapperService", () => {
         createRawResult({
           items: [{ externalId: "MTG-003", title: "No Date" }],
         }),
-        createSource({ dataType: CivicDataType.MEETINGS }),
+        createSource({ dataType: DataType.MEETINGS }),
       );
 
       expect(result.items).toHaveLength(0);
@@ -176,7 +176,7 @@ describe("DomainMapperService", () => {
             },
           ],
         }),
-        createSource({ dataType: CivicDataType.REPRESENTATIVES }),
+        createSource({ dataType: DataType.REPRESENTATIVES }),
       );
 
       expect(result.success).toBe(true);
@@ -201,7 +201,7 @@ describe("DomainMapperService", () => {
           ],
         }),
         createSource({
-          dataType: CivicDataType.REPRESENTATIVES,
+          dataType: DataType.REPRESENTATIVES,
           category: "Senate",
         }),
       );
@@ -214,7 +214,7 @@ describe("DomainMapperService", () => {
         createRawResult({
           items: [{ externalId: "ca-1", district: "1", party: "D" }],
         }),
-        createSource({ dataType: CivicDataType.REPRESENTATIVES }),
+        createSource({ dataType: DataType.REPRESENTATIVES }),
       );
 
       expect(result.items).toHaveLength(0);
@@ -231,7 +231,7 @@ describe("DomainMapperService", () => {
             { externalId: "PROP-2", title: "Also Valid" },
           ],
         }),
-        createSource({ dataType: CivicDataType.PROPOSITIONS }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
       );
 
       expect(result.items).toHaveLength(2);
@@ -243,7 +243,7 @@ describe("DomainMapperService", () => {
         createRawResult({
           items: [{ bad: true }, { also: "bad" }],
         }),
-        createSource({ dataType: CivicDataType.PROPOSITIONS }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
       );
 
       expect(result.success).toBe(false);
@@ -257,7 +257,7 @@ describe("DomainMapperService", () => {
           warnings: ["existing warning"],
           errors: ["existing error"],
         }),
-        createSource({ dataType: CivicDataType.PROPOSITIONS }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
       );
 
       expect(result.warnings).toContain("existing warning");
@@ -269,7 +269,7 @@ describe("DomainMapperService", () => {
         createRawResult({
           items: [{ externalId: "X", name: "Test" }],
         }),
-        createSource({ dataType: "unknown" as CivicDataType }),
+        createSource({ dataType: "unknown" as DataType }),
       );
 
       expect(result.items).toHaveLength(0);

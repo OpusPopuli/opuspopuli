@@ -8,7 +8,7 @@
  * and all necessary types for civic data.
  *
  * Quick start:
- *   import { BaseRegionPlugin, CivicDataType } from '@opuspopuli/region-plugin-sdk';
+ *   import { BaseRegionPlugin, DataType } from '@opuspopuli/region-plugin-sdk';
  *
  *   export default class MyRegionPlugin extends BaseRegionPlugin {
  *     constructor() { super('my-region'); }
@@ -25,11 +25,12 @@ export type {
 // Base class for plugin developers
 export { BaseRegionPlugin } from "./base/base-plugin.js";
 
-// Re-export all civic data types from common
+// Re-export all data types from common
 // so plugin developers only need @opuspopuli/region-plugin-sdk
 export {
   IRegionProvider,
   RegionInfo,
+  DataType,
   CivicDataType,
   PropositionStatus,
   Proposition,

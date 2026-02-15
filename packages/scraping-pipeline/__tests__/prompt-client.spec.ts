@@ -1,12 +1,12 @@
 import { PromptClientService } from "../src/analysis/prompt-client.service";
-import { CivicDataType, type DataSourceConfig } from "@opuspopuli/common";
+import { DataType, type DataSourceConfig } from "@opuspopuli/common";
 
 function createSource(
   overrides: Partial<DataSourceConfig> = {},
 ): DataSourceConfig {
   return {
     url: "https://www.assembly.ca.gov/members",
-    dataType: CivicDataType.REPRESENTATIVES,
+    dataType: DataType.REPRESENTATIVES,
     contentGoal: "Extract all assembly members with name, district, and party",
     ...overrides,
   };
@@ -55,7 +55,7 @@ describe("PromptClientService", () => {
 
     it("should include schema description for propositions", async () => {
       const response = await client.getStructuralAnalysisPrompt(
-        createSource({ dataType: CivicDataType.PROPOSITIONS }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
         "<div>HTML</div>",
       );
 
@@ -65,7 +65,7 @@ describe("PromptClientService", () => {
 
     it("should include schema description for meetings", async () => {
       const response = await client.getStructuralAnalysisPrompt(
-        createSource({ dataType: CivicDataType.MEETINGS }),
+        createSource({ dataType: DataType.MEETINGS }),
         "<div>HTML</div>",
       );
 
@@ -74,7 +74,7 @@ describe("PromptClientService", () => {
 
     it("should include schema description for representatives", async () => {
       const response = await client.getStructuralAnalysisPrompt(
-        createSource({ dataType: CivicDataType.REPRESENTATIVES }),
+        createSource({ dataType: DataType.REPRESENTATIVES }),
         "<div>HTML</div>",
       );
 
@@ -127,15 +127,15 @@ describe("PromptClientService", () => {
   describe("getPromptHash", () => {
     it("should return a SHA-256 hash", async () => {
       const client = new PromptClientService();
-      const hash = await client.getPromptHash(CivicDataType.PROPOSITIONS);
+      const hash = await client.getPromptHash(DataType.PROPOSITIONS);
 
       expect(hash).toMatch(/^[a-f0-9]{64}$/);
     });
 
     it("should return consistent hash for same data type", async () => {
       const client = new PromptClientService();
-      const h1 = await client.getPromptHash(CivicDataType.PROPOSITIONS);
-      const h2 = await client.getPromptHash(CivicDataType.PROPOSITIONS);
+      const h1 = await client.getPromptHash(DataType.PROPOSITIONS);
+      const h2 = await client.getPromptHash(DataType.PROPOSITIONS);
 
       expect(h1).toBe(h2);
     });
