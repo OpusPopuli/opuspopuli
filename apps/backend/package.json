@@ -73,6 +73,7 @@
     "@opuspopuli/region-template": "^0.1.0",
     "@opuspopuli/region-plugin-sdk": "workspace:*",
     "@opuspopuli/region-provider": "workspace:*",
+    "@opuspopuli/scraping-pipeline": "workspace:*",
     "@opuspopuli/relationaldb-provider": "workspace:*",
     "@opuspopuli/secrets-provider": "workspace:*",
     "@opuspopuli/storage-provider": "workspace:*",

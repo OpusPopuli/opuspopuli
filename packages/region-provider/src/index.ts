@@ -42,3 +42,7 @@ export { PluginRegistryService } from "./registry/plugin-registry.service.js";
 export type { RegisteredPlugin } from "./registry/plugin-registry.service.js";
 export { PluginLoaderService } from "./loader/plugin-loader.service.js";
 export type { PluginDefinition } from "./loader/plugin-loader.service.js";
+
+// Declarative plugin support
+export { DeclarativeRegionPlugin } from "./declarative/declarative-region-plugin.js";
+export type { IPipelineService } from "./declarative/declarative-region-plugin.js";

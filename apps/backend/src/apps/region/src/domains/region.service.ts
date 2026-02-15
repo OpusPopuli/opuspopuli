@@ -90,12 +90,23 @@ export class RegionDomainService implements OnModuleInit {
       });
 
       if (pluginConfig) {
+        const pluginType =
+          (pluginConfig.pluginType as 'code' | 'declarative') ?? 'code';
+        const source = pluginConfig.packageName
+          ? ' from ' + pluginConfig.packageName
+          : '';
         this.logger.log(
-          `Loading region plugin "${pluginConfig.name}" from ${pluginConfig.packageName}`,
+          'Loading ' +
+            pluginType +
+            ' region plugin "' +
+            pluginConfig.name +
+            '"' +
+            source,
         );
         await this.pluginLoader.loadPlugin({
           name: pluginConfig.name,
-          packageName: pluginConfig.packageName,
+          packageName: pluginConfig.packageName ?? undefined,
+          pluginType,
           config: pluginConfig.config as Record<string, unknown> | undefined,
         });
       } else {

@@ -379,7 +379,8 @@ CREATE TABLE "region_plugins" (
     "name" TEXT NOT NULL,
     "display_name" TEXT NOT NULL,
     "description" TEXT,
-    "package_name" TEXT NOT NULL,
+    "package_name" TEXT,
+    "plugin_type" VARCHAR(20) NOT NULL DEFAULT 'code',
     "version" VARCHAR(50) NOT NULL,
     "enabled" BOOLEAN NOT NULL DEFAULT false,
     "config" JSONB,
@@ -394,9 +395,6 @@ CREATE TABLE "region_plugins" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
-
--- CreateIndex
-CREATE INDEX "idx_users_email" ON "users"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_profiles_user_id_key" ON "user_profiles"("user_id");
@@ -415,9 +413,6 @@ CREATE UNIQUE INDEX "passkey_credentials_credential_id_key" ON "passkey_credenti
 
 -- CreateIndex
 CREATE INDEX "passkey_credentials_user_id_idx" ON "passkey_credentials"("user_id");
-
--- CreateIndex
-CREATE INDEX "passkey_credentials_credential_id_idx" ON "passkey_credentials"("credential_id");
 
 -- CreateIndex
 CREATE INDEX "idx_webauthn_challenges_lookup" ON "webauthn_challenges"("identifier", "type");
@@ -474,9 +469,6 @@ CREATE INDEX "email_correspondence_proposition_id_idx" ON "email_correspondence"
 CREATE UNIQUE INDEX "notification_preferences_user_id_key" ON "notification_preferences"("user_id");
 
 -- CreateIndex
-CREATE INDEX "notification_preferences_user_id_idx" ON "notification_preferences"("user_id");
-
--- CreateIndex
 CREATE INDEX "audit_logs_user_id_idx" ON "audit_logs"("user_id");
 
 -- CreateIndex
@@ -507,9 +499,6 @@ CREATE INDEX "documents_content_hash_idx" ON "documents"("content_hash");
 CREATE UNIQUE INDEX "representatives_external_id_key" ON "representatives"("external_id");
 
 -- CreateIndex
-CREATE INDEX "representatives_external_id_idx" ON "representatives"("external_id");
-
--- CreateIndex
 CREATE INDEX "representatives_name_idx" ON "representatives"("name");
 
 -- CreateIndex
@@ -522,9 +511,6 @@ CREATE INDEX "representatives_party_idx" ON "representatives"("party");
 CREATE UNIQUE INDEX "propositions_external_id_key" ON "propositions"("external_id");
 
 -- CreateIndex
-CREATE INDEX "propositions_external_id_idx" ON "propositions"("external_id");
-
--- CreateIndex
 CREATE INDEX "propositions_status_idx" ON "propositions"("status");
 
 -- CreateIndex
@@ -534,9 +520,6 @@ CREATE INDEX "propositions_election_date_idx" ON "propositions"("election_date")
 CREATE UNIQUE INDEX "meetings_external_id_key" ON "meetings"("external_id");
 
 -- CreateIndex
-CREATE INDEX "meetings_external_id_idx" ON "meetings"("external_id");
-
--- CreateIndex
 CREATE INDEX "meetings_body_idx" ON "meetings"("body");
 
 -- CreateIndex
@@ -544,9 +527,6 @@ CREATE INDEX "meetings_scheduled_at_idx" ON "meetings"("scheduled_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "region_plugins_name_key" ON "region_plugins"("name");
-
--- CreateIndex
-CREATE INDEX "region_plugins_name_idx" ON "region_plugins"("name");
 
 -- CreateIndex
 CREATE INDEX "region_plugins_enabled_idx" ON "region_plugins"("enabled");
@@ -577,3 +557,76 @@ ALTER TABLE "notification_preferences" ADD CONSTRAINT "notification_preferences_
 
 -- AddForeignKey
 ALTER TABLE "documents" ADD CONSTRAINT "documents_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- CreateTable
+CREATE TABLE "structural_manifests" (
+    "id" TEXT NOT NULL,
+    "region_id" VARCHAR(100) NOT NULL,
+    "source_url" VARCHAR(1000) NOT NULL,
+    "data_type" VARCHAR(50) NOT NULL,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "structure_hash" VARCHAR(64) NOT NULL,
+    "prompt_hash" VARCHAR(64) NOT NULL,
+    "extraction_rules" JSONB NOT NULL,
+    "confidence" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "success_count" INTEGER NOT NULL DEFAULT 0,
+    "failure_count" INTEGER NOT NULL DEFAULT 0,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "llm_provider" VARCHAR(50),
+    "llm_model" VARCHAR(100),
+    "llm_tokens_used" INTEGER,
+    "analysis_time_ms" INTEGER,
+    "last_used_at" TIMESTAMPTZ,
+    "last_checked_at" TIMESTAMPTZ,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "structural_manifests_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "pipeline_executions" (
+    "id" TEXT NOT NULL,
+    "region_id" VARCHAR(100) NOT NULL,
+    "source_url" VARCHAR(1000) NOT NULL,
+    "data_type" VARCHAR(50) NOT NULL,
+    "manifest_id" TEXT,
+    "manifest_version" INTEGER,
+    "manifest_cache_hit" BOOLEAN NOT NULL DEFAULT false,
+    "structure_changed" BOOLEAN NOT NULL DEFAULT false,
+    "self_heal_triggered" BOOLEAN NOT NULL DEFAULT false,
+    "items_extracted" INTEGER NOT NULL DEFAULT 0,
+    "items_failed" INTEGER NOT NULL DEFAULT 0,
+    "analysis_time_ms" INTEGER,
+    "extraction_time_ms" INTEGER NOT NULL DEFAULT 0,
+    "total_time_ms" INTEGER NOT NULL DEFAULT 0,
+    "success" BOOLEAN NOT NULL DEFAULT true,
+    "error_message" TEXT,
+    "llm_provider" VARCHAR(50),
+    "llm_model" VARCHAR(100),
+    "llm_tokens_used" INTEGER,
+    "executed_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "pipeline_executions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "uq_manifest_version" ON "structural_manifests"("region_id", "source_url", "data_type", "version");
+
+-- CreateIndex
+CREATE INDEX "idx_manifest_active_lookup" ON "structural_manifests"("region_id", "source_url", "data_type", "is_active");
+
+-- CreateIndex
+CREATE INDEX "structural_manifests_structure_hash_idx" ON "structural_manifests"("structure_hash");
+
+-- CreateIndex
+CREATE INDEX "structural_manifests_created_at_idx" ON "structural_manifests"("created_at");
+
+-- CreateIndex
+CREATE INDEX "pipeline_executions_region_id_data_type_executed_at_idx" ON "pipeline_executions"("region_id", "data_type", "executed_at");
+
+-- CreateIndex
+CREATE INDEX "pipeline_executions_manifest_id_idx" ON "pipeline_executions"("manifest_id");
+
+-- CreateIndex
+CREATE INDEX "pipeline_executions_executed_at_idx" ON "pipeline_executions"("executed_at");
