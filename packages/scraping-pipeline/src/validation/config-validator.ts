@@ -102,11 +102,20 @@ export class ConfigValidator {
     const seen = new Set<string>();
     for (let i = 0; i < config.dataSources.length; i++) {
       const source = config.dataSources[i];
-      const key = `${source.url}|${source.dataType}|${source.category ?? ""}`;
+      const key =
+        source.url + "|" + source.dataType + "|" + (source.category ?? "");
       if (seen.has(key)) {
+        const categorySuffix = source.category
+          ? " (" + source.category + ")"
+          : "";
         errors.push({
-          path: `dataSources[${i}]`,
-          message: `Duplicate data source: ${source.url} for ${source.dataType}${source.category ? ` (${source.category})` : ""}`,
+          path: "dataSources[" + i + "]",
+          message:
+            "Duplicate data source: " +
+            source.url +
+            " for " +
+            source.dataType +
+            categorySuffix,
         });
       }
       seen.add(key);
@@ -117,7 +126,7 @@ export class ConfigValidator {
       const source = config.dataSources[i];
       if (source.url.startsWith("http://")) {
         errors.push({
-          path: `dataSources[${i}].url`,
+          path: "dataSources[" + i + "].url",
           message: "URL should use HTTPS for government websites",
         });
       }
