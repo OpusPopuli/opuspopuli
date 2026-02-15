@@ -25,6 +25,8 @@ import { ManifestComparator } from "../manifest/manifest-comparator.js";
 import { ManifestExtractorService } from "../extraction/manifest-extractor.service.js";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
 import { SelfHealingService } from "../healing/self-healing.service.js";
+import { BulkDownloadHandler } from "../handlers/bulk-download.handler.js";
+import { ApiIngestHandler } from "../handlers/api-ingest.handler.js";
 
 @Injectable()
 export class ScrapingPipelineService {
@@ -37,10 +39,13 @@ export class ScrapingPipelineService {
     private readonly extractor: ManifestExtractorService,
     private readonly mapper: DomainMapperService,
     private readonly healing: SelfHealingService,
+    private readonly bulkDownload: BulkDownloadHandler,
+    private readonly apiIngest: ApiIngestHandler,
   ) {}
 
   /**
-   * Execute the full pipeline for a data source.
+   * Execute the pipeline for a data source.
+   * Routes to the appropriate handler based on sourceType.
    *
    * @param source - Data source configuration
    * @param regionId - The region this source belongs to
@@ -50,9 +55,30 @@ export class ScrapingPipelineService {
     source: DataSourceConfig,
     regionId: string,
   ): Promise<ExtractionResult<T>> {
+    const sourceType = source.sourceType ?? "html_scrape";
+
+    switch (sourceType) {
+      case "bulk_download":
+        return this.executeBulkDownload<T>(source, regionId);
+      case "api":
+        return this.executeApiIngest<T>(source, regionId);
+      case "html_scrape":
+      default:
+        return this.executeHtmlScrape<T>(source, regionId);
+    }
+  }
+
+  /**
+   * Execute the HTML scraping pipeline (original behavior).
+   * AI structural analysis → Cheerio extraction → domain mapping.
+   */
+  private async executeHtmlScrape<T>(
+    source: DataSourceConfig,
+    regionId: string,
+  ): Promise<ExtractionResult<T>> {
     const pipelineStart = Date.now();
     this.logger.log(
-      `Pipeline started: ${regionId}/${source.dataType} from ${source.url}`,
+      `Pipeline started [html_scrape]: ${regionId}/${source.dataType} from ${source.url}`,
     );
 
     // Fetch HTML
@@ -186,5 +212,57 @@ export class ScrapingPipelineService {
       structureChanged: comparison.structureChanged,
       analysisTimeMs,
     };
+  }
+
+  /**
+   * Execute bulk download pipeline.
+   * Delegates to BulkDownloadHandler for ZIP/CSV/TSV parsing.
+   */
+  private async executeBulkDownload<T>(
+    source: DataSourceConfig,
+    regionId: string,
+  ): Promise<ExtractionResult<T>> {
+    this.logger.log(
+      `Pipeline started [bulk_download]: ${regionId}/${source.dataType} from ${source.url}`,
+    );
+
+    if (!source.bulk) {
+      return {
+        items: [],
+        manifestVersion: 0,
+        success: false,
+        warnings: [],
+        errors: ["bulk_download source missing 'bulk' configuration"],
+        extractionTimeMs: 0,
+      };
+    }
+
+    return this.bulkDownload.execute<T>(source, regionId);
+  }
+
+  /**
+   * Execute API ingestion pipeline.
+   * Delegates to ApiIngestHandler for paginated REST API requests.
+   */
+  private async executeApiIngest<T>(
+    source: DataSourceConfig,
+    regionId: string,
+  ): Promise<ExtractionResult<T>> {
+    this.logger.log(
+      `Pipeline started [api]: ${regionId}/${source.dataType} from ${source.url}`,
+    );
+
+    if (!source.api) {
+      return {
+        items: [],
+        manifestVersion: 0,
+        success: false,
+        warnings: [],
+        errors: ["api source missing 'api' configuration"],
+        extractionTimeMs: 0,
+      };
+    }
+
+    return this.apiIngest.execute<T>(source, regionId);
   }
 }

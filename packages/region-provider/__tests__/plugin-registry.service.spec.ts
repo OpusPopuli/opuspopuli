@@ -190,5 +190,144 @@ describe("PluginRegistryService", () => {
       expect(plugin.destroy).toHaveBeenCalled();
       expect(registry.hasActive()).toBe(false);
     });
+
+    it("should destroy both federal and local plugins on module destroy", async () => {
+      const federalPlugin = createMockPlugin();
+      const localPlugin = createMockPlugin();
+
+      await registry.registerFederal("federal", federalPlugin);
+      await registry.registerLocal("california", localPlugin);
+
+      await registry.onModuleDestroy();
+
+      expect(federalPlugin.destroy).toHaveBeenCalled();
+      expect(localPlugin.destroy).toHaveBeenCalled();
+      expect(registry.getFederal()).toBeUndefined();
+      expect(registry.getLocal()).toBeUndefined();
+    });
+  });
+
+  describe("registerFederal", () => {
+    it("should register a plugin in the federal slot", async () => {
+      const plugin = createMockPlugin();
+
+      await registry.registerFederal("federal", plugin);
+
+      expect(plugin.initialize).toHaveBeenCalled();
+      expect(registry.getFederal()).toBe(plugin);
+    });
+
+    it("should replace existing federal plugin", async () => {
+      const plugin1 = createMockPlugin();
+      const plugin2 = createMockPlugin();
+
+      await registry.registerFederal("federal-v1", plugin1);
+      await registry.registerFederal("federal-v2", plugin2);
+
+      expect(plugin1.destroy).toHaveBeenCalled();
+      expect(registry.getFederal()).toBe(plugin2);
+    });
+
+    it("should not affect local plugin slot", async () => {
+      const localPlugin = createMockPlugin();
+      const federalPlugin = createMockPlugin();
+
+      await registry.registerLocal("california", localPlugin);
+      await registry.registerFederal("federal", federalPlugin);
+
+      expect(registry.getLocal()).toBe(localPlugin);
+      expect(registry.getFederal()).toBe(federalPlugin);
+    });
+  });
+
+  describe("getFederal", () => {
+    it("should return undefined when no federal plugin registered", () => {
+      expect(registry.getFederal()).toBeUndefined();
+    });
+
+    it("should return federal plugin instance when registered", async () => {
+      const plugin = createMockPlugin();
+      await registry.registerFederal("federal", plugin);
+
+      expect(registry.getFederal()).toBe(plugin);
+    });
+  });
+
+  describe("getAll", () => {
+    it("should return both federal and local plugins when both registered", async () => {
+      const federalPlugin = createMockPlugin();
+      const localPlugin = createMockPlugin();
+
+      await registry.registerFederal("federal", federalPlugin);
+      await registry.registerLocal("california", localPlugin);
+
+      const all = registry.getAll();
+
+      expect(all).toHaveLength(2);
+      expect(all[0].name).toBe("federal");
+      expect(all[0].instance).toBe(federalPlugin);
+      expect(all[1].name).toBe("california");
+      expect(all[1].instance).toBe(localPlugin);
+    });
+
+    it("should return only federal when no local plugin", async () => {
+      const federalPlugin = createMockPlugin();
+      await registry.registerFederal("federal", federalPlugin);
+
+      const all = registry.getAll();
+
+      expect(all).toHaveLength(1);
+      expect(all[0].name).toBe("federal");
+    });
+
+    it("should return only local when no federal plugin", async () => {
+      const localPlugin = createMockPlugin();
+      await registry.registerLocal("california", localPlugin);
+
+      const all = registry.getAll();
+
+      expect(all).toHaveLength(1);
+      expect(all[0].name).toBe("california");
+    });
+
+    it("should return empty array when no plugins registered", () => {
+      const all = registry.getAll();
+      expect(all).toHaveLength(0);
+    });
+  });
+
+  describe("getStatus — dual-slot", () => {
+    it("should include federal slot info when federal is registered", async () => {
+      const federalPlugin = createMockPlugin();
+      await registry.registerFederal("federal", federalPlugin);
+
+      const status = registry.getStatus();
+
+      expect(status.federalLoaded).toBe(true);
+      expect(status.federalName).toBe("federal");
+    });
+
+    it("should report federalLoaded: false when no federal plugin", () => {
+      const status = registry.getStatus();
+
+      expect(status.federalLoaded).toBe(false);
+      expect(status.federalName).toBeUndefined();
+    });
+
+    it("should include both local and federal info", async () => {
+      const federalPlugin = createMockPlugin();
+      const localPlugin = createMockPlugin();
+
+      await registry.registerFederal("federal", federalPlugin);
+      await registry.registerLocal("california", localPlugin);
+
+      const status = registry.getStatus();
+
+      expect(status.hasPlugin).toBe(true);
+      expect(status.pluginName).toBe("california");
+      expect(status.pluginStatus).toBe("active");
+      expect(status.federalLoaded).toBe(true);
+      expect(status.federalName).toBe("federal");
+    });
   });
 });

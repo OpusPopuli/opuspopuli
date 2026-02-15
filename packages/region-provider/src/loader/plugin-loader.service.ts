@@ -16,6 +16,8 @@ export interface PluginDefinition {
  * Plugin Loader
  *
  * Loads declarative region plugins from JSON config + scraping pipeline.
+ * Supports loading both a local plugin (user-selected region) and the
+ * federal plugin (always loaded for FEC data).
  */
 @Injectable()
 export class PluginLoaderService {
@@ -24,7 +26,7 @@ export class PluginLoaderService {
   constructor(private readonly registry: PluginRegistryService) {}
 
   /**
-   * Load a declarative plugin and register it.
+   * Load a local declarative plugin and register it.
    *
    * Wraps a DeclarativeRegionConfig with the ScrapingPipelineService
    * to provide the IRegionPlugin interface.
@@ -53,7 +55,7 @@ export class PluginLoaderService {
     }
 
     const plugin = new DeclarativeRegionPlugin(regionConfig, pipeline);
-    await this.registry.register(name, plugin, config);
+    await this.registry.registerLocal(name, plugin, config);
 
     this.logger.log(
       `Declarative plugin "${name}" loaded (v${plugin.getVersion()}, ${regionConfig.dataSources.length} data sources)`,
@@ -62,7 +64,44 @@ export class PluginLoaderService {
   }
 
   /**
-   * Unload the active plugin.
+   * Load the federal plugin and register it in the federal slot.
+   * The federal plugin is always loaded — it provides FEC campaign finance
+   * data scoped to the active local region's state.
+   */
+  async loadFederalPlugin(
+    config: Record<string, unknown>,
+    pipeline?: IPipelineService,
+  ): Promise<IRegionPlugin> {
+    if (!pipeline) {
+      throw new Error(
+        `Cannot load federal plugin: ScrapingPipelineService is not available. ` +
+          `Ensure ScrapingPipelineModule is imported and SCRAPING_PIPELINE is provided.`,
+      );
+    }
+
+    const regionConfig = config as unknown as DeclarativeRegionConfig;
+
+    if (!regionConfig?.regionId || !regionConfig?.dataSources) {
+      throw new Error(
+        `Federal plugin requires a valid DeclarativeRegionConfig with regionId and dataSources`,
+      );
+    }
+
+    this.logger.log(
+      `Loading federal plugin (${regionConfig.dataSources.length} data sources)`,
+    );
+
+    const plugin = new DeclarativeRegionPlugin(regionConfig, pipeline);
+    await this.registry.registerFederal("federal", plugin, config);
+
+    this.logger.log(
+      `Federal plugin loaded (v${plugin.getVersion()}, ${regionConfig.dataSources.length} data sources)`,
+    );
+    return plugin;
+  }
+
+  /**
+   * Unload the active local plugin.
    */
   async unloadPlugin(): Promise<void> {
     await this.registry.unregister();

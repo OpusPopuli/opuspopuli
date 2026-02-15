@@ -275,4 +275,301 @@ describe("DomainMapperService", () => {
       expect(result.items).toHaveLength(0);
     });
   });
+
+  describe("campaign finance — committees", () => {
+    it("should map valid committee records", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "C001",
+              name: "Citizens for Progress",
+              type: "pac",
+              status: "active",
+              sourceSystem: "fec",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "committee",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        externalId: "C001",
+        name: "Citizens for Progress",
+        sourceSystem: "fec",
+      });
+    });
+  });
+
+  describe("campaign finance — contributions", () => {
+    it("should map valid contribution records", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "CONT-1",
+              committeeId: "C001",
+              donorName: "Jane Smith",
+              donorType: "IND",
+              amount: "500",
+              date: "2026-01-15",
+              sourceSystem: "fec",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "contribution",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        externalId: "CONT-1",
+        donorName: "Jane Smith",
+        amount: 500,
+      });
+    });
+
+    it("should construct donorName from firstName+lastName", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "CONT-2",
+              committeeId: "C001",
+              donorLastName: "Smith",
+              donorFirstName: "Jane",
+              amount: "250",
+              date: "2026-02-01",
+              sourceSystem: "fec",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "contribution",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        donorName: "Smith, Jane",
+      });
+    });
+
+    it("should normalize donor type abbreviations", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "CONT-3",
+              committeeId: "C001",
+              donorName: "Test Donor",
+              donorType: "IND",
+              amount: "100",
+              date: "2026-01-01",
+              sourceSystem: "cal_access",
+            },
+            {
+              externalId: "CONT-4",
+              committeeId: "C001",
+              donorName: "Test PAC",
+              donorType: "COM",
+              amount: "5000",
+              date: "2026-01-01",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "contribution",
+        }),
+      );
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]).toMatchObject({ donorType: "individual" });
+      expect(result.items[1]).toMatchObject({ donorType: "committee" });
+    });
+
+    it("should reject contributions missing required fields", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              // Missing committeeId, donorName, amount, date
+              externalId: "CONT-BAD",
+              sourceSystem: "fec",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "contribution",
+        }),
+      );
+
+      expect(result.items).toHaveLength(0);
+    });
+  });
+
+  describe("campaign finance — expenditures", () => {
+    it("should map valid expenditure records", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "EXP-1",
+              committeeId: "C001",
+              payeeName: "Ad Agency LLC",
+              amount: "10000",
+              date: "2026-03-01",
+              purposeDescription: "TV ads",
+              sourceSystem: "fec",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "expenditure",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        payeeName: "Ad Agency LLC",
+        amount: 10000,
+      });
+    });
+
+    it("should normalize support/oppose values", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "EXP-2",
+              committeeId: "C001",
+              payeeName: "Firm",
+              amount: "5000",
+              date: "2026-01-01",
+              supportOrOppose: "S",
+              sourceSystem: "cal_access",
+            },
+            {
+              externalId: "EXP-3",
+              committeeId: "C001",
+              payeeName: "Other Firm",
+              amount: "3000",
+              date: "2026-01-01",
+              supportOrOppose: "O",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "expenditure",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({ supportOrOppose: "support" });
+      expect(result.items[1]).toMatchObject({ supportOrOppose: "oppose" });
+    });
+  });
+
+  describe("campaign finance — independent expenditures", () => {
+    it("should map valid independent expenditure records", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "IE-1",
+              committeeId: "C001",
+              committeeName: "Super PAC",
+              candidateName: "Jane Doe",
+              supportOrOppose: "S",
+              amount: "50000",
+              date: "2026-06-01",
+              sourceSystem: "fec",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "independent-expenditure",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        committeeName: "Super PAC",
+        candidateName: "Jane Doe",
+        supportOrOppose: "support",
+        amount: 50000,
+      });
+    });
+  });
+
+  describe("campaign finance — category routing", () => {
+    it("should default to contribution mapping when category is unrecognized", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "X-1",
+              committeeId: "C001",
+              donorName: "Default Donor",
+              amount: "100",
+              date: "2026-01-01",
+              sourceSystem: "fec",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "unknown-category",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        donorName: "Default Donor",
+      });
+    });
+
+    it("should route s496 category to independent expenditures", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "IE-S496",
+              committeeId: "C001",
+              committeeName: "Late IE PAC",
+              supportOrOppose: "O",
+              amount: "25000",
+              date: "2026-10-01",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "cal-access-s496",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        committeeName: "Late IE PAC",
+        supportOrOppose: "oppose",
+      });
+    });
+  });
 });

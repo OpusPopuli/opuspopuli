@@ -475,6 +475,119 @@ export class WebAuthnChallengeEntity {
 }
 ```
 
+### Civic Data Tables
+
+#### Region Plugins
+Stores declarative region configs synced from JSON files. Each row holds the full `DeclarativeRegionConfig` as JSON, along with enabled/sync state.
+
+```
+region_plugins
+  id              UUID PRIMARY KEY
+  name            VARCHAR UNIQUE         -- e.g., "california", "federal"
+  display_name    VARCHAR
+  description     TEXT
+  version         VARCHAR
+  config          JSONB                  -- DeclarativeRegionConfig
+  enabled         BOOLEAN DEFAULT false
+  last_synced_at  TIMESTAMPTZ
+  created_at      TIMESTAMPTZ
+  updated_at      TIMESTAMPTZ
+```
+
+#### Propositions, Meetings, Representatives
+Standard civic data tables for ballot measures, legislative meetings, and elected officials. See the [Region Provider Guide](../guides/region-provider.md) for field details.
+
+#### Campaign Finance Tables
+
+Four tables store campaign finance data from both state (CAL-ACCESS) and federal (FEC) sources. All records have a `source_system` column (`"cal_access"` or `"fec"`) for provenance tracking. Committees are the central entity — contributions, expenditures, and independent expenditures reference committees via foreign key.
+
+**committees** — Political committees (PACs, candidate committees, ballot measure committees):
+
+```
+committees
+  id                UUID PRIMARY KEY
+  external_id       VARCHAR UNIQUE       -- Source system identifier
+  name              VARCHAR
+  type              VARCHAR(50)          -- candidate, ballot_measure, pac, super_pac, party, small_contributor, other
+  candidate_name    VARCHAR NULL
+  candidate_office  VARCHAR NULL
+  proposition_id    VARCHAR NULL
+  party             VARCHAR(50) NULL
+  status            VARCHAR(20) DEFAULT 'active'
+  source_system     VARCHAR(20)          -- cal_access, fec
+  source_url        VARCHAR NULL
+  created_at        TIMESTAMPTZ
+  updated_at        TIMESTAMPTZ
+  deleted_at        TIMESTAMPTZ NULL     -- Soft delete
+  INDEXES: name, type, source_system, proposition_id
+```
+
+**contributions** — Money received by a committee from a donor:
+
+```
+contributions
+  id                 UUID PRIMARY KEY
+  external_id        VARCHAR UNIQUE
+  committee_id       UUID REFERENCES committees(id)
+  donor_name         VARCHAR
+  donor_type         VARCHAR(20)         -- individual, committee, party, self, other
+  donor_employer     VARCHAR NULL
+  donor_occupation   VARCHAR NULL
+  donor_city         VARCHAR(100) NULL
+  donor_state        VARCHAR(2) NULL
+  donor_zip          VARCHAR(10) NULL
+  amount             DECIMAL(12,2)
+  date               DATE
+  election_type      VARCHAR(20) NULL
+  contribution_type  VARCHAR(30) NULL
+  source_system      VARCHAR(20)
+  created_at         TIMESTAMPTZ
+  updated_at         TIMESTAMPTZ
+  INDEXES: committee_id, donor_name, date, amount, source_system
+```
+
+**expenditures** — Money spent by a committee:
+
+```
+expenditures
+  id                  UUID PRIMARY KEY
+  external_id         VARCHAR UNIQUE
+  committee_id        UUID REFERENCES committees(id)
+  payee_name          VARCHAR
+  amount              DECIMAL(12,2)
+  date                DATE
+  purpose_description TEXT NULL
+  expenditure_code    VARCHAR(10) NULL
+  candidate_name      VARCHAR NULL
+  proposition_title   VARCHAR NULL
+  support_or_oppose   VARCHAR(10) NULL
+  source_system       VARCHAR(20)
+  created_at          TIMESTAMPTZ
+  updated_at          TIMESTAMPTZ
+  INDEXES: committee_id, payee_name, date, source_system
+```
+
+**independent_expenditures** — Outside spending for/against candidates or ballot measures (typically by Super PACs):
+
+```
+independent_expenditures
+  id                UUID PRIMARY KEY
+  external_id       VARCHAR UNIQUE
+  committee_id      UUID REFERENCES committees(id)
+  committee_name    VARCHAR
+  candidate_name    VARCHAR NULL
+  proposition_title VARCHAR NULL
+  support_or_oppose VARCHAR(10)          -- support, oppose
+  amount            DECIMAL(12,2)
+  date              DATE
+  election_date     DATE NULL
+  description       TEXT NULL
+  source_system     VARCHAR(20)
+  created_at        TIMESTAMPTZ
+  updated_at        TIMESTAMPTZ
+  INDEXES: committee_id, candidate_name, proposition_title, date, support_or_oppose, source_system
+```
+
 ### Vector Records
 
 #### pgvector Table

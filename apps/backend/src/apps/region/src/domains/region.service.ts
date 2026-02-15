@@ -17,6 +17,24 @@ import {
   type IPipelineService,
   type IRegionPlugin,
 } from '@opuspopuli/region-provider';
+import {
+  resolveConfigPlaceholders,
+  type Proposition,
+  type Meeting,
+  type Representative,
+  type CampaignFinanceResult,
+} from '@opuspopuli/common';
+
+/**
+ * Minimal interface for data fetching used by sync methods.
+ * Satisfied by both RegionProviderService and IRegionPlugin.
+ */
+interface DataFetcher {
+  fetchPropositions(): Promise<Proposition[]>;
+  fetchMeetings(): Promise<Meeting[]>;
+  fetchRepresentatives(): Promise<Representative[]>;
+  fetchCampaignFinance?(): Promise<CampaignFinanceResult>;
+}
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import {
@@ -72,8 +90,11 @@ type RepresentativeRecord = {
  * Region Domain Service
  *
  * Handles civic data management for the region.
- * Loads the region plugin from DB config at startup,
- * then syncs data from the plugin and stores in the database.
+ * Loads two plugins at startup:
+ * - Federal plugin (always loaded): FEC campaign finance data
+ * - Local plugin (user-selected): state civic data + state campaign finance
+ *
+ * Syncs data from both plugins and stores in the database.
  */
 @Injectable()
 export class RegionDomainService implements OnModuleInit {
@@ -92,58 +113,111 @@ export class RegionDomainService implements OnModuleInit {
   ) {}
 
   /**
-   * Load the enabled region plugin from the database at startup.
-   * Auto-syncs JSON config files to the database first,
-   * then loads the enabled plugin.
-   * Falls back to the built-in ExampleRegionPlugin if no plugin is configured.
+   * Load region plugins at startup:
+   * 1. Sync JSON config files to the database
+   * 2. Always load the federal plugin (FEC data)
+   * 3. Load the enabled local plugin (state civic data)
+   * Falls back to ExampleRegionProvider if no local plugin is configured.
    */
   async onModuleInit(): Promise<void> {
     await this.syncRegionConfigs();
 
+    // Read the local config's stateCode for resolving federal config placeholders.
+    // This is a lightweight read — we only need stateCode, not the full plugin load.
+    const localConfigRow = await this.db.regionPlugin.findFirst({
+      where: { enabled: true, name: { not: 'federal' } },
+    });
+
+    const localConfigData = localConfigRow?.config as
+      | Record<string, unknown>
+      | undefined;
+    const stateCode = localConfigData?.stateCode as string | undefined;
+
+    // Build variable map for placeholder resolution (e.g., ${stateCode} → "CA")
+    const variables: Record<string, string> = {};
+    if (stateCode) {
+      variables['stateCode'] = stateCode;
+    }
+
+    // 1. ALWAYS load federal (not gated by DB enabled flag)
     try {
-      const pluginConfig = await this.db.regionPlugin.findFirst({
-        where: { enabled: true },
+      const federalConfig = await this.db.regionPlugin.findUnique({
+        where: { name: 'federal' },
       });
 
-      if (pluginConfig) {
+      if (federalConfig) {
+        let config = federalConfig.config as Record<string, unknown>;
+
+        // Resolve ${stateCode} (and any future placeholders) in federal config
+        if (Object.keys(variables).length > 0) {
+          config = resolveConfigPlaceholders(config, variables);
+          this.logger.log(
+            `Resolved federal config placeholders (stateCode="${stateCode}")`,
+          );
+        } else {
+          this.logger.warn(
+            'No local region stateCode available — federal config placeholders will not be resolved',
+          );
+        }
+
+        this.logger.log('Loading federal plugin');
+        await this.pluginLoader.loadFederalPlugin(config, this.pipeline);
+      } else {
+        this.logger.warn(
+          'Federal region config not found in database — FEC data will not be available',
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to load federal plugin: ${(error as Error).message}`,
+      );
+    }
+
+    // 2. Load the enabled LOCAL plugin (reuse the row already read above)
+    try {
+      const localConfig = localConfigRow;
+
+      if (localConfig) {
         this.logger.log(
-          `Loading declarative region plugin "${pluginConfig.name}"`,
+          `Loading local declarative region plugin "${localConfig.name}"`,
         );
         await this.pluginLoader.loadPlugin(
           {
-            name: pluginConfig.name,
-            config: pluginConfig.config as Record<string, unknown> | undefined,
+            name: localConfig.name,
+            config: localConfig.config as Record<string, unknown> | undefined,
           },
           this.pipeline,
         );
       } else {
         this.logger.warn(
-          'No enabled region plugin found in database, falling back to ExampleRegionProvider',
+          'No enabled local region plugin found in database, falling back to ExampleRegionProvider',
         );
-        await this.pluginRegistry.register(
+        await this.pluginRegistry.registerLocal(
           'example',
           this.createFallbackPlugin(),
         );
       }
     } catch (error) {
       this.logger.error(
-        `Failed to load region plugin, falling back to ExampleRegionProvider: ${(error as Error).message}`,
+        `Failed to load local region plugin, falling back to ExampleRegionProvider: ${(error as Error).message}`,
       );
-      await this.pluginRegistry.register(
+      await this.pluginRegistry.registerLocal(
         'example',
         this.createFallbackPlugin(),
       );
     }
 
-    const plugin = this.pluginRegistry.getActive();
-    if (!plugin) {
-      throw new Error('No region plugin available after initialization');
+    // Set up the local region service for GraphQL resolvers (propositions, meetings, reps)
+    const localPlugin = this.pluginRegistry.getLocal();
+    if (!localPlugin) {
+      throw new Error('No local region plugin available after initialization');
     }
 
-    this.regionService = new RegionProviderService(plugin);
+    this.regionService = new RegionProviderService(localPlugin);
     const info = this.regionService.getRegionInfo();
     this.logger.log(
-      `RegionDomainService initialized with plugin: ${this.regionService.getProviderName()} (${info.name})`,
+      `RegionDomainService initialized — local: ${this.regionService.getProviderName()} (${info.name}), ` +
+        `federal: ${this.pluginRegistry.getFederal() ? 'loaded' : 'not loaded'}`,
     );
   }
 
@@ -167,28 +241,37 @@ export class RegionDomainService implements OnModuleInit {
   }
 
   /**
-   * Sync all data types from the provider
+   * Sync all data types from all loaded plugins (federal + local).
    */
   async syncAll(): Promise<SyncResult[]> {
     this.logger.log('Starting full data sync');
     const results: SyncResult[] = [];
 
-    const supportedTypes = this.regionService.getSupportedDataTypes();
+    for (const registered of this.pluginRegistry.getAll()) {
+      const supported = registered.instance.getSupportedDataTypes();
 
-    for (const dataType of supportedTypes) {
-      try {
-        const result = await this.syncDataType(dataType);
-        results.push(result);
-      } catch (error) {
-        this.logger.error(`Failed to sync ${dataType}:`, error);
-        results.push({
-          dataType,
-          itemsProcessed: 0,
-          itemsCreated: 0,
-          itemsUpdated: 0,
-          errors: [(error as Error).message],
-          syncedAt: new Date(),
-        });
+      for (const dataType of supported) {
+        try {
+          const result = await this.syncDataTypeFrom(
+            registered.instance,
+            registered.name,
+            dataType,
+          );
+          results.push(result);
+        } catch (error) {
+          this.logger.error(
+            `Failed to sync ${dataType} from ${registered.name}:`,
+            error,
+          );
+          results.push({
+            dataType,
+            itemsProcessed: 0,
+            itemsCreated: 0,
+            itemsUpdated: 0,
+            errors: [(error as Error).message],
+            syncedAt: new Date(),
+          });
+        }
       }
     }
 
@@ -197,27 +280,57 @@ export class RegionDomainService implements OnModuleInit {
   }
 
   /**
-   * Sync a specific data type
+   * Sync a specific data type from the local plugin.
+   * Backward-compatible entry point used by the scheduler.
    */
   async syncDataType(dataType: DataType): Promise<SyncResult> {
-    this.logger.log(`Syncing ${dataType}`);
+    return this.syncDataTypeFrom(
+      this.regionService,
+      this.pluginRegistry.getActiveName() ?? 'local',
+      dataType,
+    );
+  }
+
+  /**
+   * Sync a specific data type from a given provider.
+   */
+  private async syncDataTypeFrom(
+    provider: DataFetcher,
+    pluginName: string,
+    dataType: DataType,
+  ): Promise<SyncResult> {
+    this.logger.log(`Syncing ${dataType} from ${pluginName}`);
     const startTime = Date.now();
 
-    const syncHandlers: Record<
-      DataType,
-      () => Promise<{ processed: number; created: number; updated: number }>
+    const syncHandlers: Partial<
+      Record<
+        DataType,
+        () => Promise<{ processed: number; created: number; updated: number }>
+      >
     > = {
-      [DataType.PROPOSITIONS]: () => this.syncPropositions(),
-      [DataType.MEETINGS]: () => this.syncMeetings(),
-      [DataType.REPRESENTATIVES]: () => this.syncRepresentatives(),
+      [DataType.PROPOSITIONS]: () => this.syncPropositions(provider),
+      [DataType.MEETINGS]: () => this.syncMeetings(provider),
+      [DataType.REPRESENTATIVES]: () => this.syncRepresentatives(provider),
+      [DataType.CAMPAIGN_FINANCE]: () => this.syncCampaignFinance(provider),
     };
 
     const handler = syncHandlers[dataType];
+    if (!handler) {
+      this.logger.warn(`No sync handler for data type: ${dataType}`);
+      return {
+        dataType,
+        itemsProcessed: 0,
+        itemsCreated: 0,
+        itemsUpdated: 0,
+        errors: [`No sync handler for data type: ${dataType}`],
+        syncedAt: new Date(),
+      };
+    }
     const { processed, created, updated } = await handler();
 
     const duration = Date.now() - startTime;
     this.logger.log(
-      `Synced ${dataType}: ${processed} items (${created} created, ${updated} updated) in ${duration}ms`,
+      `Synced ${dataType} from ${pluginName}: ${processed} items (${created} created, ${updated} updated) in ${duration}ms`,
     );
 
     return {
@@ -236,12 +349,14 @@ export class RegionDomainService implements OnModuleInit {
    * PERFORMANCE: Uses batch upsert instead of N+1 queries
    * This reduces database round trips from O(2n) to O(2) queries
    */
-  private async syncPropositions(): Promise<{
+  private async syncPropositions(
+    provider: DataFetcher = this.regionService,
+  ): Promise<{
     processed: number;
     created: number;
     updated: number;
   }> {
-    const propositions = await this.regionService.fetchPropositions();
+    const propositions = await provider.fetchPropositions();
     if (propositions.length === 0) {
       return { processed: 0, created: 0, updated: 0 };
     }
@@ -299,12 +414,14 @@ export class RegionDomainService implements OnModuleInit {
    * This reduces database round trips from O(2n) to O(2) queries
    * @see https://github.com/OpusPopuli/opuspopuli/issues/197
    */
-  private async syncMeetings(): Promise<{
+  private async syncMeetings(
+    provider: DataFetcher = this.regionService,
+  ): Promise<{
     processed: number;
     created: number;
     updated: number;
   }> {
-    const meetings = await this.regionService.fetchMeetings();
+    const meetings = await provider.fetchMeetings();
     if (meetings.length === 0) {
       return { processed: 0, created: 0, updated: 0 };
     }
@@ -362,12 +479,14 @@ export class RegionDomainService implements OnModuleInit {
    * This reduces database round trips from O(2n) to O(2) queries
    * @see https://github.com/OpusPopuli/opuspopuli/issues/197
    */
-  private async syncRepresentatives(): Promise<{
+  private async syncRepresentatives(
+    provider: DataFetcher = this.regionService,
+  ): Promise<{
     processed: number;
     created: number;
     updated: number;
   }> {
-    const reps = await this.regionService.fetchRepresentatives();
+    const reps = await provider.fetchRepresentatives();
     if (reps.length === 0) {
       return { processed: 0, created: 0, updated: 0 };
     }
@@ -416,6 +535,195 @@ export class RegionDomainService implements OnModuleInit {
     ).length;
 
     return { processed: reps.length, created, updated };
+  }
+
+  /**
+   * Sync campaign finance data (contributions, expenditures, independent expenditures).
+   * Called for both federal and local plugins — data is distinguished by sourceSystem.
+   */
+  private async syncCampaignFinance(provider: DataFetcher): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+  }> {
+    if (!provider.fetchCampaignFinance) {
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const data = await provider.fetchCampaignFinance();
+    let totalProcessed = 0;
+    let totalCreated = 0;
+    let totalUpdated = 0;
+
+    // Sync contributions
+    if (data.contributions.length > 0) {
+      const externalIds = data.contributions.map((c) => c.externalId);
+      const existing = await this.db.contribution.findMany({
+        where: { externalId: { in: externalIds } },
+        select: { externalId: true },
+      });
+      const existingSet = new Set(
+        existing.map((r: ExternalIdRecord) => r.externalId),
+      );
+
+      await this.db.$transaction(
+        data.contributions.map((c) =>
+          this.db.contribution.upsert({
+            where: { externalId: c.externalId },
+            update: {
+              committeeId: c.committeeId,
+              donorName: c.donorName,
+              donorType: c.donorType,
+              donorEmployer: c.donorEmployer,
+              donorOccupation: c.donorOccupation,
+              donorCity: c.donorCity,
+              donorState: c.donorState,
+              donorZip: c.donorZip,
+              amount: c.amount,
+              date: c.date,
+              electionType: c.electionType,
+              contributionType: c.contributionType,
+              sourceSystem: c.sourceSystem,
+            },
+            create: {
+              externalId: c.externalId,
+              committeeId: c.committeeId,
+              donorName: c.donorName,
+              donorType: c.donorType,
+              donorEmployer: c.donorEmployer,
+              donorOccupation: c.donorOccupation,
+              donorCity: c.donorCity,
+              donorState: c.donorState,
+              donorZip: c.donorZip,
+              amount: c.amount,
+              date: c.date,
+              electionType: c.electionType,
+              contributionType: c.contributionType,
+              sourceSystem: c.sourceSystem,
+            },
+          }),
+        ),
+      );
+
+      const created = data.contributions.filter(
+        (c) => !existingSet.has(c.externalId),
+      ).length;
+      totalProcessed += data.contributions.length;
+      totalCreated += created;
+      totalUpdated += data.contributions.length - created;
+    }
+
+    // Sync expenditures
+    if (data.expenditures.length > 0) {
+      const externalIds = data.expenditures.map((e) => e.externalId);
+      const existing = await this.db.expenditure.findMany({
+        where: { externalId: { in: externalIds } },
+        select: { externalId: true },
+      });
+      const existingSet = new Set(
+        existing.map((r: ExternalIdRecord) => r.externalId),
+      );
+
+      await this.db.$transaction(
+        data.expenditures.map((e) =>
+          this.db.expenditure.upsert({
+            where: { externalId: e.externalId },
+            update: {
+              committeeId: e.committeeId,
+              payeeName: e.payeeName,
+              amount: e.amount,
+              date: e.date,
+              purposeDescription: e.purposeDescription,
+              expenditureCode: e.expenditureCode,
+              candidateName: e.candidateName,
+              propositionTitle: e.propositionTitle,
+              supportOrOppose: e.supportOrOppose,
+              sourceSystem: e.sourceSystem,
+            },
+            create: {
+              externalId: e.externalId,
+              committeeId: e.committeeId,
+              payeeName: e.payeeName,
+              amount: e.amount,
+              date: e.date,
+              purposeDescription: e.purposeDescription,
+              expenditureCode: e.expenditureCode,
+              candidateName: e.candidateName,
+              propositionTitle: e.propositionTitle,
+              supportOrOppose: e.supportOrOppose,
+              sourceSystem: e.sourceSystem,
+            },
+          }),
+        ),
+      );
+
+      const created = data.expenditures.filter(
+        (e) => !existingSet.has(e.externalId),
+      ).length;
+      totalProcessed += data.expenditures.length;
+      totalCreated += created;
+      totalUpdated += data.expenditures.length - created;
+    }
+
+    // Sync independent expenditures
+    if (data.independentExpenditures.length > 0) {
+      const externalIds = data.independentExpenditures.map(
+        (ie) => ie.externalId,
+      );
+      const existing = await this.db.independentExpenditure.findMany({
+        where: { externalId: { in: externalIds } },
+        select: { externalId: true },
+      });
+      const existingSet = new Set(
+        existing.map((r: ExternalIdRecord) => r.externalId),
+      );
+
+      await this.db.$transaction(
+        data.independentExpenditures.map((ie) =>
+          this.db.independentExpenditure.upsert({
+            where: { externalId: ie.externalId },
+            update: {
+              committeeId: ie.committeeId,
+              committeeName: ie.committeeName,
+              candidateName: ie.candidateName,
+              propositionTitle: ie.propositionTitle,
+              supportOrOppose: ie.supportOrOppose,
+              amount: ie.amount,
+              date: ie.date,
+              electionDate: ie.electionDate,
+              description: ie.description,
+              sourceSystem: ie.sourceSystem,
+            },
+            create: {
+              externalId: ie.externalId,
+              committeeId: ie.committeeId,
+              committeeName: ie.committeeName,
+              candidateName: ie.candidateName,
+              propositionTitle: ie.propositionTitle,
+              supportOrOppose: ie.supportOrOppose,
+              amount: ie.amount,
+              date: ie.date,
+              electionDate: ie.electionDate,
+              description: ie.description,
+              sourceSystem: ie.sourceSystem,
+            },
+          }),
+        ),
+      );
+
+      const created = data.independentExpenditures.filter(
+        (ie) => !existingSet.has(ie.externalId),
+      ).length;
+      totalProcessed += data.independentExpenditures.length;
+      totalCreated += created;
+      totalUpdated += data.independentExpenditures.length - created;
+    }
+
+    return {
+      processed: totalProcessed,
+      created: totalCreated,
+      updated: totalUpdated,
+    };
   }
 
   /**
@@ -546,6 +854,7 @@ export class RegionDomainService implements OnModuleInit {
    *
    * Config changes propagate on every restart. The `enabled` flag
    * is never overwritten — it's runtime state managed in the DB.
+   * Exception: federal is always enabled on create.
    */
   private async syncRegionConfigs(): Promise<void> {
     const regionsDir =
@@ -571,7 +880,8 @@ export class RegionDomainService implements OnModuleInit {
             description: file.description,
             version: file.version,
             pluginType: 'declarative',
-            enabled: false,
+            // Federal always enabled; local defaults to false
+            enabled: file.name === 'federal',
             config: file.config as unknown as Prisma.InputJsonValue,
           },
         });
@@ -591,7 +901,7 @@ export class RegionDomainService implements OnModuleInit {
   }
 
   /**
-   * Adapt ExampleRegionProvider (IRegionProvider) to IRegionPlugin
+   * Adapt ExampleRegionProvider (DataFetcher) to IRegionPlugin
    * by adding the required lifecycle methods.
    */
   private createFallbackPlugin(): IRegionPlugin {
