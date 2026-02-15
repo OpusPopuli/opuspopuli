@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import {
   IRegionProvider,
   RegionInfo,
-  CivicDataType,
+  DataType,
   Proposition,
   Meeting,
   Representative,
@@ -45,12 +45,8 @@ export class ExampleRegionProvider implements IRegionProvider {
     };
   }
 
-  getSupportedDataTypes(): CivicDataType[] {
-    return [
-      CivicDataType.PROPOSITIONS,
-      CivicDataType.MEETINGS,
-      CivicDataType.REPRESENTATIVES,
-    ];
+  getSupportedDataTypes(): DataType[] {
+    return [DataType.PROPOSITIONS, DataType.MEETINGS, DataType.REPRESENTATIVES];
   }
 
   async fetchPropositions(): Promise<Proposition[]> {
@@ -101,7 +97,7 @@ export class ExampleRegionProvider implements IRegionProvider {
     } catch (error) {
       throw new RegionError(
         this.getName(),
-        CivicDataType.PROPOSITIONS,
+        DataType.PROPOSITIONS,
         error as Error,
       );
     }
@@ -150,11 +146,7 @@ export class ExampleRegionProvider implements IRegionProvider {
       this.logger.log(`Fetched ${meetings.length} example meetings`);
       return meetings;
     } catch (error) {
-      throw new RegionError(
-        this.getName(),
-        CivicDataType.MEETINGS,
-        error as Error,
-      );
+      throw new RegionError(this.getName(), DataType.MEETINGS, error as Error);
     }
   }
 
@@ -231,7 +223,7 @@ export class ExampleRegionProvider implements IRegionProvider {
     } catch (error) {
       throw new RegionError(
         this.getName(),
-        CivicDataType.REPRESENTATIVES,
+        DataType.REPRESENTATIVES,
         error as Error,
       );
     }

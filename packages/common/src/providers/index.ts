@@ -15,3 +15,4 @@ export * from "./ocr/index.js";
 export * from "./rate-limiting/index.js";
 export * from "./retry/index.js";
 export * from "./caching/index.js";
+export * from "./scraping-pipeline/index.js";

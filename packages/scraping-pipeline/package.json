@@ -1,0 +1,61 @@
+{
+  "name": "@opuspopuli/scraping-pipeline",
+  "version": "0.1.0",
+  "description": "AI-powered schema-on-read scraping pipeline for Opus Populi",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "prepublishOnly": "pnpm run build"
+  },
+  "keywords": [
+    "opuspopuli",
+    "scraping",
+    "pipeline",
+    "structural-analysis",
+    "ai"
+  ],
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "@opuspopuli/common": "workspace:*",
+    "cheerio": "^1.1.2",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@opuspopuli/llm-provider": "workspace:*",
+    "@opuspopuli/extraction-provider": "workspace:*",
+    "@opuspopuli/relationaldb-provider": "workspace:*"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/testing": "^11.1.9",
+    "@opuspopuli/extraction-provider": "workspace:*",
+    "@opuspopuli/llm-provider": "workspace:*",
+    "@opuspopuli/relationaldb-provider": "workspace:*",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "domhandler": "^5.0.3",
+    "jest": "^30.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

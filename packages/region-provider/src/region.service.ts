@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import {
   IRegionProvider,
   RegionInfo,
-  CivicDataType,
+  DataType,
   Proposition,
   Meeting,
   Representative,
@@ -43,7 +43,7 @@ export class RegionService {
   /**
    * Get supported data types
    */
-  getSupportedDataTypes(): CivicDataType[] {
+  getSupportedDataTypes(): DataType[] {
     return this.provider.getSupportedDataTypes();
   }
 
@@ -129,24 +129,24 @@ export class RegionService {
   /**
    * Sync a specific data type
    */
-  async syncDataType(dataType: CivicDataType): Promise<SyncResult> {
+  async syncDataType(dataType: DataType): Promise<SyncResult> {
     this.logger.log(`Syncing ${dataType}`);
     const startTime = Date.now();
 
     let itemsProcessed = 0;
 
     switch (dataType) {
-      case CivicDataType.PROPOSITIONS:
+      case DataType.PROPOSITIONS:
         const propositions = await this.fetchPropositions();
         itemsProcessed = propositions.length;
         break;
 
-      case CivicDataType.MEETINGS:
+      case DataType.MEETINGS:
         const meetings = await this.fetchMeetings();
         itemsProcessed = meetings.length;
         break;
 
-      case CivicDataType.REPRESENTATIVES:
+      case DataType.REPRESENTATIVES:
         const representatives = await this.fetchRepresentatives();
         itemsProcessed = representatives.length;
         break;

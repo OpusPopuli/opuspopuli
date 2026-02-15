@@ -1,14 +1,15 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
   RegionService as RegionProviderService,
-  CivicDataType,
+  DataType,
   SyncResult,
   PluginLoaderService,
   PluginRegistryService,
 } from '@opuspopuli/region-provider';
 import { ExampleRegionPlugin } from '@opuspopuli/region-template';
+import type { IRegionPlugin } from '@opuspopuli/region-plugin-sdk';
 import { DbService } from '@opuspopuli/relationaldb-provider';
-import { RegionInfoModel, CivicDataTypeGQL } from './models/region-info.model';
+import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import {
   PaginatedPropositions,
   PropositionStatusGQL,
@@ -101,14 +102,16 @@ export class RegionDomainService implements OnModuleInit {
         this.logger.warn(
           'No enabled region plugin found in database, falling back to ExampleRegionPlugin',
         );
-        const fallback = new ExampleRegionPlugin();
+        // Cast needed: published region-template@0.1.0 uses CivicDataType from old SDK
+        const fallback = new ExampleRegionPlugin() as unknown as IRegionPlugin;
         await this.pluginRegistry.register('example', fallback);
       }
     } catch (error) {
       this.logger.error(
         `Failed to load region plugin, falling back to ExampleRegionPlugin: ${(error as Error).message}`,
       );
-      const fallback = new ExampleRegionPlugin();
+      // Cast needed: published region-template@0.1.0 uses CivicDataType from old SDK
+      const fallback = new ExampleRegionPlugin() as unknown as IRegionPlugin;
       await this.pluginRegistry.register('example', fallback);
     }
 
@@ -138,7 +141,7 @@ export class RegionDomainService implements OnModuleInit {
       timezone: info.timezone,
       dataSourceUrls: info.dataSourceUrls,
       supportedDataTypes: supportedTypes.map(
-        (t) => t as unknown as CivicDataTypeGQL,
+        (t) => t as unknown as DataTypeGQL,
       ),
     };
   }
@@ -176,17 +179,17 @@ export class RegionDomainService implements OnModuleInit {
   /**
    * Sync a specific data type
    */
-  async syncDataType(dataType: CivicDataType): Promise<SyncResult> {
+  async syncDataType(dataType: DataType): Promise<SyncResult> {
     this.logger.log(`Syncing ${dataType}`);
     const startTime = Date.now();
 
     const syncHandlers: Record<
-      CivicDataType,
+      DataType,
       () => Promise<{ processed: number; created: number; updated: number }>
     > = {
-      [CivicDataType.PROPOSITIONS]: () => this.syncPropositions(),
-      [CivicDataType.MEETINGS]: () => this.syncMeetings(),
-      [CivicDataType.REPRESENTATIVES]: () => this.syncRepresentatives(),
+      [DataType.PROPOSITIONS]: () => this.syncPropositions(),
+      [DataType.MEETINGS]: () => this.syncMeetings(),
+      [DataType.REPRESENTATIVES]: () => this.syncRepresentatives(),
     };
 
     const handler = syncHandlers[dataType];

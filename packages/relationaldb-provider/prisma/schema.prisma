@@ -600,3 +600,68 @@ model RegionPlugin {
   @@index([enabled])
   @@map("region_plugins")
 }
+
+// ============================================
+// SCRAPING PIPELINE - STRUCTURAL MANIFESTS
+// ============================================
+
+/// AI-derived structural manifests for scraping civic data.
+/// Each manifest describes how to extract a specific data type from a specific URL.
+/// Versioned with structure hashing for change detection.
+model StructuralManifest {
+  id              String    @id @default(uuid())
+  regionId        String    @map("region_id") @db.VarChar(100)
+  sourceUrl       String    @map("source_url") @db.VarChar(1000)
+  dataType        String    @map("data_type") @db.VarChar(50)      /// propositions, meetings, representatives
+  version         Int       @default(1)
+  structureHash   String    @map("structure_hash") @db.VarChar(64)  /// SHA-256 of HTML skeleton
+  promptHash      String    @map("prompt_hash") @db.VarChar(64)     /// SHA-256 of analysis prompt
+  extractionRules Json      @map("extraction_rules")                 /// ExtractionRuleSet as JSON
+  confidence      Float     @default(0)
+  successCount    Int       @default(0) @map("success_count")
+  failureCount    Int       @default(0) @map("failure_count")
+  isActive        Boolean   @default(true) @map("is_active")        /// Only one active per (regionId, sourceUrl, dataType)
+  llmProvider     String?   @map("llm_provider") @db.VarChar(50)
+  llmModel        String?   @map("llm_model") @db.VarChar(100)
+  llmTokensUsed   Int?      @map("llm_tokens_used")
+  analysisTimeMs  Int?      @map("analysis_time_ms")
+  lastUsedAt      DateTime? @map("last_used_at") @db.Timestamptz
+  lastCheckedAt   DateTime? @map("last_checked_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([regionId, sourceUrl, dataType, version], name: "uq_manifest_version")
+  @@index([regionId, sourceUrl, dataType, isActive], name: "idx_manifest_active_lookup")
+  @@index([structureHash])
+  @@index([createdAt])
+  @@map("structural_manifests")
+}
+
+/// Pipeline execution metrics for monitoring and debugging.
+model PipelineExecution {
+  id                  String   @id @default(uuid())
+  regionId            String   @map("region_id") @db.VarChar(100)
+  sourceUrl           String   @map("source_url") @db.VarChar(1000)
+  dataType            String   @map("data_type") @db.VarChar(50)
+  manifestId          String?  @map("manifest_id")
+  manifestVersion     Int?     @map("manifest_version")
+  manifestCacheHit    Boolean  @default(false) @map("manifest_cache_hit")
+  structureChanged    Boolean  @default(false) @map("structure_changed")
+  selfHealTriggered   Boolean  @default(false) @map("self_heal_triggered")
+  itemsExtracted      Int      @default(0) @map("items_extracted")
+  itemsFailed         Int      @default(0) @map("items_failed")
+  analysisTimeMs      Int?     @map("analysis_time_ms")
+  extractionTimeMs    Int      @default(0) @map("extraction_time_ms")
+  totalTimeMs         Int      @default(0) @map("total_time_ms")
+  success             Boolean  @default(true)
+  errorMessage        String?  @map("error_message") @db.Text
+  llmProvider         String?  @map("llm_provider") @db.VarChar(50)
+  llmModel            String?  @map("llm_model") @db.VarChar(100)
+  llmTokensUsed       Int?     @map("llm_tokens_used")
+  executedAt          DateTime @default(now()) @map("executed_at") @db.Timestamptz
+
+  @@index([regionId, dataType, executedAt])
+  @@index([manifestId])
+  @@index([executedAt])
+  @@map("pipeline_executions")
+}

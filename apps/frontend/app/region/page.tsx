@@ -5,11 +5,11 @@ import { useQuery } from "@apollo/client/react";
 import {
   GET_REGION_INFO,
   RegionInfoData,
-  CivicDataType,
+  DataType,
 } from "@/lib/graphql/region";
 
 const DATA_TYPE_CARDS: Record<
-  CivicDataType,
+  DataType,
   { title: string; description: string; href: string; icon: string }
 > = {
   PROPOSITIONS: {
