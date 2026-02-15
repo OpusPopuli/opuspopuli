@@ -1,8 +1,9 @@
 import "reflect-metadata";
 import { PluginLoaderService } from "../src/loader/plugin-loader.service";
 import { PluginRegistryService } from "../src/registry/plugin-registry.service";
-import type { IRegionPlugin } from "@opuspopuli/region-plugin-sdk";
+import type { IRegionPlugin } from "../src/interfaces/plugin.interface";
 import { DataType } from "@opuspopuli/common";
+import type { IPipelineService } from "../src/declarative/declarative-region-plugin";
 
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({
@@ -40,65 +41,111 @@ class MockRegionPlugin implements IRegionPlugin {
 describe("PluginLoaderService", () => {
   let loader: PluginLoaderService;
   let registry: PluginRegistryService;
+  let pipeline: jest.Mocked<IPipelineService>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     registry = new PluginRegistryService();
     loader = new PluginLoaderService(registry);
+    pipeline = {
+      execute: jest.fn().mockResolvedValue({
+        items: [],
+        manifestVersion: 1,
+        success: true,
+        warnings: [],
+        errors: [],
+        extractionTimeMs: 0,
+      }),
+    };
   });
 
   describe("loadPlugin", () => {
-    it("should load a plugin from a package with default export", async () => {
-      // Mock the loadPlugin to simulate a successful dynamic import
-      loader.loadPlugin = async (definition) => {
-        // Simulate what loadPlugin does with a successful import
-        const plugin = new MockRegionPlugin();
-        await registry.register(definition.name, plugin, definition.config);
-        return plugin;
-      };
-
-      const plugin = await loader.loadPlugin({
-        name: "mock",
-        packageName: "@opuspopuli/region-mock",
-      });
+    it("should create a DeclarativeRegionPlugin with valid config", async () => {
+      const plugin = await loader.loadPlugin(
+        {
+          name: "california",
+          config: {
+            regionId: "california",
+            regionName: "California",
+            description: "CA civic data",
+            timezone: "America/Los_Angeles",
+            dataSources: [
+              {
+                url: "https://example.com/props",
+                dataType: "propositions",
+                contentGoal: "Extract propositions",
+              },
+            ],
+          },
+        },
+        pipeline,
+      );
 
       expect(plugin).toBeDefined();
+      expect(plugin.getName()).toBe("california");
+      expect(plugin.getVersion()).toBe("1.0.0-declarative");
       expect(registry.hasActive()).toBe(true);
-      expect(registry.getActiveName()).toBe("mock");
+      expect(registry.getActiveName()).toBe("california");
     });
 
-    it("should pass config to the registry during registration", async () => {
-      const config = { apiKey: "test-key" };
-      const registerSpy = jest.spyOn(registry, "register");
+    it("should throw when pipeline is not available", async () => {
+      await expect(
+        loader.loadPlugin({
+          name: "california",
+          config: {
+            regionId: "california",
+            regionName: "California",
+            description: "CA",
+            timezone: "America/Los_Angeles",
+            dataSources: [],
+          },
+        }),
+      ).rejects.toThrow("ScrapingPipelineService is not available");
+    });
 
-      loader.loadPlugin = async (definition) => {
-        const plugin = new MockRegionPlugin();
-        await registry.register(definition.name, plugin, definition.config);
-        return plugin;
-      };
-
-      await loader.loadPlugin({
-        name: "mock",
-        packageName: "@opuspopuli/region-mock",
-        config,
-      });
-
-      expect(registerSpy).toHaveBeenCalledWith(
-        "mock",
-        expect.any(Object),
-        config,
+    it("should throw when config is missing regionId", async () => {
+      await expect(
+        loader.loadPlugin(
+          {
+            name: "bad-config",
+            config: {
+              regionName: "Bad Config",
+            } as any,
+          },
+          pipeline,
+        ),
+      ).rejects.toThrow(
+        "requires a valid DeclarativeRegionConfig with regionId and dataSources",
       );
     });
 
-    it("should throw when package has no valid export", async () => {
-      // Test the error path by directly calling the real method
-      // with a non-existent package
+    it("should throw when config is missing dataSources", async () => {
       await expect(
-        loader.loadPlugin({
-          name: "nonexistent",
-          packageName: "@opuspopuli/does-not-exist",
-        }),
-      ).rejects.toThrow();
+        loader.loadPlugin(
+          {
+            name: "bad-config",
+            config: {
+              regionId: "test",
+            } as any,
+          },
+          pipeline,
+        ),
+      ).rejects.toThrow(
+        "requires a valid DeclarativeRegionConfig with regionId and dataSources",
+      );
+    });
+
+    it("should throw when config is undefined", async () => {
+      await expect(
+        loader.loadPlugin(
+          {
+            name: "bad-config",
+          },
+          pipeline,
+        ),
+      ).rejects.toThrow(
+        "requires a valid DeclarativeRegionConfig with regionId and dataSources",
+      );
     });
   });
 
@@ -115,22 +162,6 @@ describe("PluginLoaderService", () => {
 
     it("should not throw when no plugin is loaded", async () => {
       await expect(loader.unloadPlugin()).resolves.not.toThrow();
-    });
-  });
-
-  describe("getPluginClassName", () => {
-    it("should convert plugin name to PascalCase class name", () => {
-      const getClassName = (loader as any).getPluginClassName.bind(loader);
-
-      expect(getClassName("california")).toBe("CaliforniaRegionPlugin");
-      expect(getClassName("texas")).toBe("TexasRegionPlugin");
-      expect(getClassName("example")).toBe("ExampleRegionPlugin");
-    });
-
-    it("should handle single character names", () => {
-      const getClassName = (loader as any).getPluginClassName.bind(loader);
-
-      expect(getClassName("a")).toBe("ARegionPlugin");
     });
   });
 });

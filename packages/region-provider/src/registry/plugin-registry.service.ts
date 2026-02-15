@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import type {
   IRegionPlugin,
   PluginHealth,
-} from "@opuspopuli/region-plugin-sdk";
+} from "../interfaces/plugin.interface.js";
 
 export interface RegisteredPlugin {
   name: string;

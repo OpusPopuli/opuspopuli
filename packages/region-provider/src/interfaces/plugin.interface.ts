@@ -2,8 +2,6 @@
  * Region Plugin Interface
  *
  * Extends IRegionProvider with lifecycle hooks for the plugin ecosystem.
- * Plugin developers implement this interface (or extend BaseRegionPlugin)
- * to create region-specific data providers.
  */
 
 import { IRegionProvider } from "@opuspopuli/common";

@@ -51,22 +51,13 @@ Opus Populi uses a **plugin architecture** — the core platform is a single sha
 - New provider implementations (databases, LLMs, embeddings)
 - Documentation improvements
 - Infrastructure template improvements
-- The `@opuspopuli/region-plugin-sdk` and `@opuspopuli/region-provider` packages
+- The `@opuspopuli/region-provider` package (declarative plugin system)
 
-### Build as a Region Plugin (Separate Repo)
+### Add a New Region (Declarative Config)
 
-- Region-specific data source scrapers (e.g., CA Secretary of State)
-- Entity resolvers (districts, representatives, jurisdictions)
-- Civic data parsers (ballot propositions, meeting transcripts, petitions)
-- Region-specific validation rules (petition signature requirements, etc.)
-- Seed data (initial districts, jurisdictions)
-
-### Not Sure?
-
-Ask yourself: "Would this benefit ALL regions, or just mine?"
-
-- **All regions** → Contribute to this repo
-- **Just mine** → Build it in your region plugin
+- Region-specific data source URLs and content goals
+- Configured as declarative JSON in the database
+- No separate repo or code package needed — the scraping pipeline handles extraction
 
 ## Getting Started
 
@@ -96,15 +87,13 @@ pnpm dev
 
 See [docs/guides/getting-started.md](docs/guides/getting-started.md) for detailed instructions.
 
-### Creating a Region Plugin
+### Adding a Region
 
-Region-specific civic data is provided via separate plugin packages that implement the `@opuspopuli/region-plugin-sdk` interface:
+Region-specific civic data is configured as declarative plugins — JSON config in the database that describes data sources and content goals. The scraping pipeline handles extraction automatically.
 
-1. Use the [region-template](https://github.com/OpusPopuli/region-template) GitHub template to create your repo (e.g., `region-california`)
-2. Follow the customization checklist in the template README
-3. Implement the `IRegionPlugin` interface — data sources, scanners, entity resolvers
-4. Publish to GitHub Packages as `@opuspopuli/region-yourregion`
-5. Register the plugin in your platform's database configuration
+1. Create a `DeclarativeRegionConfig` with your region's data source URLs and content goals
+2. Insert the config into the `region_plugins` database table
+3. The platform loads and activates the plugin at startup
 
 See the [Region Provider Guide](docs/guides/region-provider.md) for detailed instructions.
 
@@ -132,29 +121,9 @@ See the [Region Provider Guide](docs/guides/region-provider.md) for detailed ins
    ```
 6. **Push** and create a Pull Request to `develop`
 
-### For Region Plugin Development
+### For Region Configuration
 
-Work in your own region plugin repo. The plugin SDK provides everything you need:
-
-```bash
-# Create from template
-gh repo create my-org/region-mystate --template OpusPopuli/region-template
-
-# Install dependencies (includes @opuspopuli/region-plugin-sdk)
-cd region-mystate
-pnpm install
-
-# Implement your data sources, build, test, publish
-pnpm build
-pnpm test
-pnpm publish
-```
-
-To pick up platform improvements, update the SDK dependency:
-
-```bash
-pnpm update @opuspopuli/region-plugin-sdk
-```
+Regions are configured as declarative plugins in the database — no separate repos needed. See the [Region Provider Guide](docs/guides/region-provider.md) for details.
 
 ## Code Standards
 

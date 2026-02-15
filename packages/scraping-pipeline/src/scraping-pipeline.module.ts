@@ -24,6 +24,10 @@ import { SelfHealingService } from "./healing/self-healing.service.js";
 export interface ScrapingPipelineModuleOptions {
   /** Configuration for the prompt client (remote or local) */
   promptClientConfig?: PromptClientConfig;
+  /** Modules that provide required tokens (LLM_PROVIDER, ExtractionProvider, etc.) */
+  imports?: any[];
+  /** Additional providers (e.g., MANIFEST_REPOSITORY) */
+  providers?: any[];
 }
 
 @Module({})
@@ -31,15 +35,17 @@ export class ScrapingPipelineModule {
   /**
    * Register the scraping pipeline module.
    *
-   * Requires the following to be available in the parent module:
-   * - LLM_PROVIDER: ILLMProvider implementation
-   * - ExtractionProvider: for fetching HTML
+   * Required dependencies (pass via options.imports / options.providers):
+   * - LLM_PROVIDER: ILLMProvider implementation (from LLMModule)
+   * - ExtractionProvider: for fetching HTML (from ExtractionModule)
    * - MANIFEST_REPOSITORY: ManifestRepository implementation (Prisma adapter)
    */
   static forRoot(options?: ScrapingPipelineModuleOptions): DynamicModule {
     return {
       module: ScrapingPipelineModule,
+      imports: options?.imports || [],
       providers: [
+        ...(options?.providers || []),
         // Prompt client (connects to AI Prompt Service or uses local fallback)
         {
           provide: PromptClientService,

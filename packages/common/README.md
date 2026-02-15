@@ -43,7 +43,7 @@ npm install @opuspopuli/common --registry https://npm.pkg.github.com
 | Module | Key Exports | Description |
 |--------|-------------|-------------|
 | **Region** | `IRegionProvider`, `RegionInfo`, `Proposition`, `Meeting`, `Representative` | Civic data types and region provider interface |
-| | `CivicDataType`, `PropositionStatus`, `ContactInfo`, `SyncResult`, `RegionError` | Enums and supporting types |
+| | `DataType`, `PropositionStatus`, `ContactInfo`, `SyncResult`, `RegionError` | Enums and supporting types |
 
 ### Infrastructure Utilities
 
@@ -67,7 +67,7 @@ import {
   Proposition,
   Meeting,
   Representative,
-  CivicDataType,
+  DataType,
 
   // Infrastructure utilities
   RateLimiter,

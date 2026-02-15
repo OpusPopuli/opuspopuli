@@ -170,7 +170,6 @@ model User {
   emailCorrespondence    EmailCorrespondence[]
   notificationPreference NotificationPreference?
 
-  @@index([email], name: "idx_users_email")
   @@map("users")
 }
 
@@ -247,7 +246,6 @@ model PasskeyCredential {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([credentialId])
   @@map("passkey_credentials")
 }
 
@@ -427,7 +425,6 @@ model NotificationPreference {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
   @@map("notification_preferences")
 }
 
@@ -529,7 +526,6 @@ model Representative {
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
-  @@index([externalId])
   @@index([name])
   @@index([chamber])
   @@index([party])
@@ -549,7 +545,6 @@ model Proposition {
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
 
-  @@index([externalId])
   @@index([status])
   @@index([electionDate])
   @@map("propositions")
@@ -568,7 +563,6 @@ model Meeting {
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
-  @@index([externalId])
   @@index([body])
   @@index([scheduledAt])
   @@map("meetings")
@@ -586,7 +580,8 @@ model RegionPlugin {
   name           String    @unique                            /// Plugin identifier: "example", "california"
   displayName    String    @map("display_name")
   description    String?   @db.Text
-  packageName    String    @map("package_name")               /// npm package: "@opuspopuli/region-example"
+  packageName    String?   @map("package_name")               /// npm package: "@opuspopuli/region-example" (optional for declarative plugins)
+  pluginType     String    @default("code") @map("plugin_type") @db.VarChar(20) /// "code" or "declarative"
   version        String    @db.VarChar(50)
   enabled        Boolean   @default(false)
   config         Json?                                        /// Plugin-specific configuration
@@ -596,7 +591,6 @@ model RegionPlugin {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  @@index([name])
   @@index([enabled])
   @@map("region_plugins")
 }

@@ -1,12 +1,11 @@
 # PR Validation Workflow
 #
 # This workflow prevents region-specific provider packages from being
-# added to the core repository. Region-specific civic data should be
-# built as separate plugin packages using the region-plugin-sdk.
+# added to the core repository. Region-specific civic data is configured
+# as declarative plugins (JSON config in the database).
 #
 # Allowed:
-# - packages/region-provider/ (core plugin loader)
-# - packages/region-plugin-sdk/ (SDK for building plugins)
+# - packages/region-provider/ (core plugin loader + declarative plugin support)
 #
 # Blocked:
 # - packages/region-provider-california/
@@ -57,12 +56,11 @@ jobs:
             echo "The following region provider packages were found in this PR:"
             echo "$BLOCKED_PROVIDERS" | tr ' ' '\n' | grep -v '^$' | sed 's/^/  - /'
             echo ""
-            echo "The core repository should only contain the base platform,"
-            echo "the region-plugin-sdk, and the region-provider (plugin loader)."
+            echo "The core repository should only contain the base platform"
+            echo "and the region-provider (declarative plugin loader)."
             echo ""
-            echo "Region-specific providers should be built as separate plugin"
-            echo "packages using the region-template repository:"
-            echo "  https://github.com/OpusPopuli/region-template"
+            echo "Region-specific data is configured as declarative plugins"
+            echo "(JSON config in the database), not as code packages."
             echo ""
             echo "See docs/guides/region-provider.md for instructions."
             echo ""

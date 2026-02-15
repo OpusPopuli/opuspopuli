@@ -103,8 +103,7 @@ The `packages/` directory contains reusable, publishable npm packages (`@opuspop
 | `@opuspopuli/email-provider` | Resend transactional email |
 | `@opuspopuli/logging-provider` | Structured logging with PII redaction |
 | `@opuspopuli/ocr-provider` | Image text extraction (Tesseract.js) |
-| `@opuspopuli/region-provider` | Civic data integration (propositions, meetings, representatives) |
-| `@opuspopuli/region-plugin-sdk` | SDK for building region plugins |
+| `@opuspopuli/region-provider` | Civic data integration (declarative plugins, propositions, meetings, representatives) |
 
 See [Provider Pattern](architecture/provider-pattern.md) and [Region Provider Guide](guides/region-provider.md) for implementation details.
 
