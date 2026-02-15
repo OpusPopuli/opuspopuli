@@ -1,0 +1,106 @@
+{
+  "name": "federal",
+  "displayName": "Federal",
+  "description": "US federal campaign finance data from the Federal Election Commission (FEC), scoped to the active local region",
+  "version": "1.0.0",
+  "config": {
+    "regionId": "federal",
+    "regionName": "Federal",
+    "description": "US federal campaign finance data from the Federal Election Commission, filtered to the active local region's state",
+    "timezone": "America/New_York",
+    "dataSources": [
+      {
+        "url": "https://api.open.fec.gov/v1/schedules/schedule_a/",
+        "dataType": "campaign_finance",
+        "sourceType": "api",
+        "contentGoal": "Fetch itemized individual contributions to federal candidates and committees within the local region's state",
+        "category": "FEC Contributions",
+        "api": {
+          "apiKeyEnvVar": "FEC_API_KEY",
+          "apiKeyHeader": "api_key",
+          "pagination": {
+            "type": "cursor",
+            "limitParam": "per_page",
+            "limit": 100
+          },
+          "resultsPath": "results",
+          "queryParams": {
+            "sort": "-contribution_receipt_date",
+            "is_individual": "true",
+            "contributor_state": "${stateCode}"
+          }
+        },
+        "hints": [
+          "Free API key from api.open.fec.gov/developers (DEMO_KEY for testing)",
+          "1,000 calls/hour default rate limit; 7,200/hr available on request",
+          "${stateCode} placeholder is resolved at runtime from the active local region's stateCode",
+          "Use two_year_transaction_period to scope by election cycle"
+        ]
+      },
+      {
+        "url": "https://api.open.fec.gov/v1/schedules/schedule_e/",
+        "dataType": "campaign_finance",
+        "sourceType": "api",
+        "contentGoal": "Fetch independent expenditures for/against federal candidates by PACs and Super PACs",
+        "category": "FEC Independent Expenditures",
+        "api": {
+          "apiKeyEnvVar": "FEC_API_KEY",
+          "apiKeyHeader": "api_key",
+          "pagination": {
+            "type": "cursor",
+            "limitParam": "per_page",
+            "limit": 100
+          },
+          "resultsPath": "results",
+          "queryParams": {
+            "sort": "-expenditure_date"
+          }
+        },
+        "hints": [
+          "Schedule E = independent expenditures by PACs/Super PACs",
+          "support_oppose_indicator: S=support, O=oppose",
+          "Note: IEs are harder to filter by state — they target candidates who represent a state"
+        ]
+      },
+      {
+        "url": "https://www.fec.gov/files/bulk-downloads/2026/indiv26.zip",
+        "dataType": "campaign_finance",
+        "sourceType": "bulk_download",
+        "contentGoal": "Bulk download of individual contributions for the 2025-2026 election cycle, filtered to the local region's state",
+        "category": "FEC Bulk Contributions",
+        "bulk": {
+          "format": "zip_csv",
+          "filePattern": "itcont.txt",
+          "delimiter": "|",
+          "columnMappings": {
+            "CMTE_ID": "committeeId",
+            "NAME": "donorName",
+            "CITY": "donorCity",
+            "STATE": "donorState",
+            "ZIP_CODE": "donorZip",
+            "EMPLOYER": "donorEmployer",
+            "OCCUPATION": "donorOccupation",
+            "TRANSACTION_DT": "date",
+            "TRANSACTION_AMT": "amount",
+            "SUB_ID": "externalId"
+          },
+          "filters": {
+            "STATE": "${stateCode}"
+          }
+        },
+        "hints": [
+          "Very large file (~4GB for a full cycle) but filtered by STATE during parse",
+          "Pipe-delimited, not comma-delimited",
+          "${stateCode} placeholder is resolved at runtime from the active local region's stateCode",
+          "SUB_ID is the unique transaction identifier"
+        ]
+      }
+    ],
+    "rateLimit": {
+      "requestsPerSecond": 0.25,
+      "burstSize": 1
+    },
+    "cacheTtlMs": 86400000,
+    "requestTimeoutMs": 120000
+  }
+}

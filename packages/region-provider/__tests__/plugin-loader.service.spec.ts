@@ -164,4 +164,53 @@ describe("PluginLoaderService", () => {
       await expect(loader.unloadPlugin()).resolves.not.toThrow();
     });
   });
+
+  describe("loadFederalPlugin", () => {
+    const federalConfig: Record<string, unknown> = {
+      regionId: "federal",
+      regionName: "Federal",
+      description: "FEC campaign finance",
+      timezone: "America/New_York",
+      dataSources: [
+        {
+          url: "https://api.open.fec.gov/v1/schedules/schedule_a/",
+          dataType: "campaign_finance",
+          sourceType: "api",
+          contentGoal: "Extract contributions",
+        },
+      ],
+    };
+
+    it("should create a DeclarativeRegionPlugin and register via registerFederal", async () => {
+      const plugin = await loader.loadFederalPlugin(federalConfig, pipeline);
+
+      expect(plugin).toBeDefined();
+      expect(plugin.getName()).toBe("federal");
+      expect(plugin.getVersion()).toBe("1.0.0-declarative");
+      // Check it's in the federal slot
+      expect(registry.getFederal()).toBe(plugin);
+    });
+
+    it("should throw if pipeline is not available", async () => {
+      await expect(loader.loadFederalPlugin(federalConfig)).rejects.toThrow(
+        "ScrapingPipelineService is not available",
+      );
+    });
+
+    it("should throw if config is missing regionId", async () => {
+      await expect(
+        loader.loadFederalPlugin({ regionName: "Bad" } as any, pipeline),
+      ).rejects.toThrow(
+        "requires a valid DeclarativeRegionConfig with regionId and dataSources",
+      );
+    });
+
+    it("should throw if config is missing dataSources", async () => {
+      await expect(
+        loader.loadFederalPlugin({ regionId: "federal" } as any, pipeline),
+      ).rejects.toThrow(
+        "requires a valid DeclarativeRegionConfig with regionId and dataSources",
+      );
+    });
+  });
 });

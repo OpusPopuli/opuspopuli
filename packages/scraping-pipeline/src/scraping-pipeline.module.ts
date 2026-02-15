@@ -20,6 +20,8 @@ import { ManifestExtractorService } from "./extraction/manifest-extractor.servic
 import { ExtractionValidator } from "./extraction/extraction-validator.js";
 import { DomainMapperService } from "./mapping/domain-mapper.service.js";
 import { SelfHealingService } from "./healing/self-healing.service.js";
+import { BulkDownloadHandler } from "./handlers/bulk-download.handler.js";
+import { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
 
 export interface ScrapingPipelineModuleOptions {
   /** Configuration for the prompt client (remote or local) */
@@ -65,6 +67,9 @@ export class ScrapingPipelineModule {
         ExtractionValidator,
         DomainMapperService,
         SelfHealingService,
+        // Source type handlers
+        BulkDownloadHandler,
+        ApiIngestHandler,
         ScrapingPipelineService,
       ],
       exports: [

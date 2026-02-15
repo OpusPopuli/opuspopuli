@@ -595,6 +595,124 @@ model RegionPlugin {
 }
 
 // ============================================
+// CAMPAIGN FINANCE
+// ============================================
+
+/// Campaign committee — the entity that raises and spends money.
+/// Covers candidate committees, ballot measure committees, PACs, Super PACs, and party committees.
+model Committee {
+  id              String    @id @default(uuid())
+  externalId      String    @unique @map("external_id")
+  name            String
+  type            String    @db.VarChar(50) /// candidate, ballot_measure, pac, super_pac, party, small_contributor, other
+  candidateName   String?   @map("candidate_name")
+  candidateOffice String?   @map("candidate_office")
+  propositionId   String?   @map("proposition_id")
+  party           String?   @db.VarChar(50)
+  status          String    @default("active") @db.VarChar(20)
+  sourceSystem    String    @map("source_system") @db.VarChar(20) /// cal_access, fec
+  sourceUrl       String?   @map("source_url")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  contributions           Contribution[]
+  expenditures            Expenditure[]
+  independentExpenditures IndependentExpenditure[]
+
+  @@index([name])
+  @@index([type])
+  @@index([sourceSystem])
+  @@index([propositionId])
+  @@map("committees")
+}
+
+/// Campaign contribution — money received by a committee from a donor.
+model Contribution {
+  id               String   @id @default(uuid())
+  externalId       String   @unique @map("external_id")
+  committeeId      String   @map("committee_id")
+  donorName        String   @map("donor_name")
+  donorType        String   @map("donor_type") @db.VarChar(20) /// individual, committee, party, self, other
+  donorEmployer    String?  @map("donor_employer")
+  donorOccupation  String?  @map("donor_occupation")
+  donorCity        String?  @map("donor_city") @db.VarChar(100)
+  donorState       String?  @map("donor_state") @db.VarChar(2)
+  donorZip         String?  @map("donor_zip") @db.VarChar(10)
+  amount           Decimal  @db.Decimal(12, 2)
+  date             DateTime @db.Date
+  electionType     String?  @map("election_type") @db.VarChar(20)
+  contributionType String?  @map("contribution_type") @db.VarChar(30)
+  sourceSystem     String   @map("source_system") @db.VarChar(20)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  committee Committee @relation(fields: [committeeId], references: [id])
+
+  @@index([committeeId])
+  @@index([donorName])
+  @@index([date])
+  @@index([amount])
+  @@index([sourceSystem])
+  @@map("contributions")
+}
+
+/// Campaign expenditure — money spent by a committee.
+model Expenditure {
+  id                 String   @id @default(uuid())
+  externalId         String   @unique @map("external_id")
+  committeeId        String   @map("committee_id")
+  payeeName          String   @map("payee_name")
+  amount             Decimal  @db.Decimal(12, 2)
+  date               DateTime @db.Date
+  purposeDescription String?  @map("purpose_description") @db.Text
+  expenditureCode    String?  @map("expenditure_code") @db.VarChar(10)
+  candidateName      String?  @map("candidate_name")
+  propositionTitle   String?  @map("proposition_title")
+  supportOrOppose    String?  @map("support_or_oppose") @db.VarChar(10)
+  sourceSystem       String   @map("source_system") @db.VarChar(20)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  committee Committee @relation(fields: [committeeId], references: [id])
+
+  @@index([committeeId])
+  @@index([payeeName])
+  @@index([date])
+  @@index([sourceSystem])
+  @@map("expenditures")
+}
+
+/// Independent expenditure — outside spending for/against a candidate or ballot measure.
+/// Typically by Super PACs and other independent committees.
+model IndependentExpenditure {
+  id               String    @id @default(uuid())
+  externalId       String    @unique @map("external_id")
+  committeeId      String    @map("committee_id")
+  committeeName    String    @map("committee_name")
+  candidateName    String?   @map("candidate_name")
+  propositionTitle String?   @map("proposition_title")
+  supportOrOppose  String    @map("support_or_oppose") @db.VarChar(10)
+  amount           Decimal   @db.Decimal(12, 2)
+  date             DateTime  @db.Date
+  electionDate     DateTime? @map("election_date") @db.Date
+  description      String?   @db.Text
+  sourceSystem     String    @map("source_system") @db.VarChar(20)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  committee Committee @relation(fields: [committeeId], references: [id])
+
+  @@index([committeeId])
+  @@index([candidateName])
+  @@index([propositionTitle])
+  @@index([date])
+  @@index([supportOrOppose])
+  @@index([sourceSystem])
+  @@map("independent_expenditures")
+}
+
+// ============================================
 // SCRAPING PIPELINE - STRUCTURAL MANIFESTS
 // ============================================
 

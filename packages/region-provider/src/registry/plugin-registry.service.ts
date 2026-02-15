@@ -15,45 +15,61 @@ export interface RegisteredPlugin {
 /**
  * Plugin Registry
  *
- * Manages the active region plugin and its lifecycle.
- * Single-region: holds at most one plugin at a time.
+ * Manages two plugin slots: federal (always loaded) and local (user-selectable).
+ * Federal provides FEC campaign finance data scoped to the local region's state.
+ * Local provides civic data (propositions, meetings, representatives) + state-level campaign finance.
  */
 @Injectable()
 export class PluginRegistryService implements OnModuleDestroy {
   private readonly logger = new Logger(PluginRegistryService.name);
-  private plugin: RegisteredPlugin | undefined;
+  private federalPlugin: RegisteredPlugin | undefined;
+  private localPlugin: RegisteredPlugin | undefined;
 
   /**
-   * Register a plugin instance. Replaces any previously registered plugin.
+   * Register a local plugin. Replaces any previously registered local plugin.
+   * Backward-compatible alias for registerLocal().
    */
   async register(
     name: string,
     instance: IRegionPlugin,
     config?: Record<string, unknown>,
   ): Promise<void> {
-    // Unregister existing plugin if any
-    if (this.plugin) {
-      await this.unregister();
+    return this.registerLocal(name, instance, config);
+  }
+
+  /**
+   * Register the local region plugin (e.g., California).
+   * Replaces any previously registered local plugin.
+   */
+  async registerLocal(
+    name: string,
+    instance: IRegionPlugin,
+    config?: Record<string, unknown>,
+  ): Promise<void> {
+    if (this.localPlugin) {
+      await this.unregisterSlot("local");
     }
 
-    this.logger.log(`Registering plugin: ${name}`);
+    this.logger.log(`Registering local plugin: ${name}`);
 
     try {
       await instance.initialize(config);
 
-      this.plugin = {
+      this.localPlugin = {
         name,
         instance,
         status: "active",
         loadedAt: new Date(),
       };
 
-      this.logger.log(`Plugin registered successfully: ${name}`);
+      this.logger.log(`Local plugin registered successfully: ${name}`);
     } catch (error) {
       const errorMessage = (error as Error).message;
-      this.logger.error(`Failed to initialize plugin ${name}: ${errorMessage}`);
+      this.logger.error(
+        `Failed to initialize local plugin ${name}: ${errorMessage}`,
+      );
 
-      this.plugin = {
+      this.localPlugin = {
         name,
         instance,
         status: "error",
@@ -66,52 +82,118 @@ export class PluginRegistryService implements OnModuleDestroy {
   }
 
   /**
-   * Unregister and cleanup the active plugin.
+   * Register the federal plugin (loaded unconditionally at startup).
    */
-  async unregister(): Promise<void> {
-    if (!this.plugin) return;
-
-    const { name } = this.plugin;
-    this.logger.log(`Unregistering plugin: ${name}`);
-
-    try {
-      await this.plugin.instance.destroy();
-    } catch (error) {
-      this.logger.error(`Error destroying plugin ${name}:`, error);
+  async registerFederal(
+    name: string,
+    instance: IRegionPlugin,
+    config?: Record<string, unknown>,
+  ): Promise<void> {
+    if (this.federalPlugin) {
+      await this.unregisterSlot("federal");
     }
 
-    this.plugin = undefined;
+    this.logger.log(`Registering federal plugin: ${name}`);
+
+    try {
+      await instance.initialize(config);
+
+      this.federalPlugin = {
+        name,
+        instance,
+        status: "active",
+        loadedAt: new Date(),
+      };
+
+      this.logger.log(`Federal plugin registered successfully: ${name}`);
+    } catch (error) {
+      const errorMessage = (error as Error).message;
+      this.logger.error(
+        `Failed to initialize federal plugin ${name}: ${errorMessage}`,
+      );
+
+      this.federalPlugin = {
+        name,
+        instance,
+        status: "error",
+        lastError: errorMessage,
+        loadedAt: new Date(),
+      };
+
+      throw error;
+    }
   }
 
   /**
-   * Get the active plugin instance, or undefined if none loaded.
+   * Unregister and cleanup the local plugin.
+   * Backward-compatible: unregister() only affects the local slot.
    */
-  getActive(): IRegionPlugin | undefined {
-    if (this.plugin?.status === "active") {
-      return this.plugin.instance;
+  async unregister(): Promise<void> {
+    await this.unregisterSlot("local");
+  }
+
+  /**
+   * Get the local plugin instance, or undefined if none loaded.
+   */
+  getLocal(): IRegionPlugin | undefined {
+    if (this.localPlugin?.status === "active") {
+      return this.localPlugin.instance;
     }
     return undefined;
   }
 
   /**
-   * Get the active plugin name, or undefined if none loaded.
+   * Get the federal plugin instance, or undefined if none loaded.
+   */
+  getFederal(): IRegionPlugin | undefined {
+    if (this.federalPlugin?.status === "active") {
+      return this.federalPlugin.instance;
+    }
+    return undefined;
+  }
+
+  /**
+   * Get the active local plugin instance.
+   * Backward-compatible alias for getLocal().
+   */
+  getActive(): IRegionPlugin | undefined {
+    return this.getLocal();
+  }
+
+  /**
+   * Get all registered plugins (federal + local).
+   * Returns only active plugins.
+   */
+  getAll(): RegisteredPlugin[] {
+    const plugins: RegisteredPlugin[] = [];
+    if (this.federalPlugin?.status === "active") {
+      plugins.push(this.federalPlugin);
+    }
+    if (this.localPlugin?.status === "active") {
+      plugins.push(this.localPlugin);
+    }
+    return plugins;
+  }
+
+  /**
+   * Get the active local plugin name, or undefined if none loaded.
    */
   getActiveName(): string | undefined {
-    return this.plugin?.name;
+    return this.localPlugin?.name;
   }
 
   /**
-   * Check if a plugin is registered and active.
+   * Check if a local plugin is registered and active.
    */
   hasActive(): boolean {
-    return this.plugin?.status === "active";
+    return this.localPlugin?.status === "active";
   }
 
   /**
-   * Get health status of the active plugin.
+   * Get health status of the local plugin.
    */
   async getHealth(): Promise<PluginHealth | undefined> {
-    const active = this.getActive();
+    const active = this.getLocal();
     if (!active) return undefined;
 
     try {
@@ -135,16 +217,17 @@ export class PluginRegistryService implements OnModuleDestroy {
     pluginStatus?: string;
     lastError?: string;
     loadedAt?: Date;
+    federalLoaded: boolean;
+    federalName?: string;
   } {
-    if (!this.plugin) {
-      return { hasPlugin: false };
-    }
     return {
-      hasPlugin: true,
-      pluginName: this.plugin.name,
-      pluginStatus: this.plugin.status,
-      lastError: this.plugin.lastError,
-      loadedAt: this.plugin.loadedAt,
+      hasPlugin: this.localPlugin !== undefined,
+      pluginName: this.localPlugin?.name,
+      pluginStatus: this.localPlugin?.status,
+      lastError: this.localPlugin?.lastError,
+      loadedAt: this.localPlugin?.loadedAt,
+      federalLoaded: this.federalPlugin?.status === "active",
+      federalName: this.federalPlugin?.name,
     };
   }
 
@@ -152,6 +235,32 @@ export class PluginRegistryService implements OnModuleDestroy {
    * Cleanup on module destroy.
    */
   async onModuleDestroy(): Promise<void> {
-    await this.unregister();
+    await this.unregisterSlot("federal");
+    await this.unregisterSlot("local");
+  }
+
+  /**
+   * Unregister and cleanup a specific plugin slot.
+   */
+  private async unregisterSlot(slot: "federal" | "local"): Promise<void> {
+    const plugin = slot === "federal" ? this.federalPlugin : this.localPlugin;
+    if (!plugin) return;
+
+    this.logger.log(`Unregistering ${slot} plugin: ${plugin.name}`);
+
+    try {
+      await plugin.instance.destroy();
+    } catch (error) {
+      this.logger.error(
+        `Error destroying ${slot} plugin ${plugin.name}:`,
+        error,
+      );
+    }
+
+    if (slot === "federal") {
+      this.federalPlugin = undefined;
+    } else {
+      this.localPlugin = undefined;
+    }
   }
 }

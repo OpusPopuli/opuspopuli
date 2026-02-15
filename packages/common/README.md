@@ -43,7 +43,21 @@ npm install @opuspopuli/common --registry https://npm.pkg.github.com
 | Module | Key Exports | Description |
 |--------|-------------|-------------|
 | **Region** | `IRegionProvider`, `RegionInfo`, `Proposition`, `Meeting`, `Representative` | Civic data types and region provider interface |
-| | `DataType`, `PropositionStatus`, `ContactInfo`, `SyncResult`, `RegionError` | Enums and supporting types |
+| | `Committee`, `Contribution`, `Expenditure`, `IndependentExpenditure` | Campaign finance domain models |
+| | `CommitteeType`, `DataType`, `PropositionStatus`, `ContactInfo`, `SyncResult`, `RegionError` | Enums and supporting types |
+
+### Scraping Pipeline
+
+| Module | Key Exports | Description |
+|--------|-------------|-------------|
+| **Scraping Pipeline** | `DeclarativeRegionConfig`, `DataSourceConfig`, `BulkDownloadConfig`, `ApiSourceConfig` | Declarative region config types |
+| | `ExtractionResult`, `RawExtractionResult`, `StructuralManifest`, `IPipelineService` | Pipeline interfaces and result types |
+
+### Config Utilities
+
+| Module | Key Exports | Description |
+|--------|-------------|-------------|
+| **Config** | `resolveConfigPlaceholders()` | Resolve `${variableName}` placeholders in config objects |
 
 ### Infrastructure Utilities
 
@@ -68,6 +82,17 @@ import {
   Meeting,
   Representative,
   DataType,
+
+  // Campaign finance types
+  Committee,
+  Contribution,
+  Expenditure,
+  IndependentExpenditure,
+
+  // Config types and utilities
+  DeclarativeRegionConfig,
+  DataSourceConfig,
+  resolveConfigPlaceholders,
 
   // Infrastructure utilities
   RateLimiter,

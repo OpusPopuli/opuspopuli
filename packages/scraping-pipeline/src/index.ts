@@ -36,6 +36,10 @@ export { DomainMapperService } from "./mapping/domain-mapper.service.js";
 // Self-healing
 export { SelfHealingService } from "./healing/self-healing.service.js";
 
+// Source type handlers
+export { BulkDownloadHandler } from "./handlers/bulk-download.handler.js";
+export { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
+
 // Validation
 export { ConfigValidator } from "./validation/config-validator.js";
 
