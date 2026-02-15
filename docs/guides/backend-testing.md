@@ -332,7 +332,7 @@ Coverage reports are uploaded to SonarCloud in CI.
 ### Excluded from Coverage
 
 - `src/db/migrations/` - Generated migration files
-- `src/db/entities/` - TypeORM entity definitions
+- `src/db/entities/` - Entity definitions
 - `main.ts` - Bootstrap files
 - `*.dto.ts` - Data transfer objects (type definitions)
 

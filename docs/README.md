@@ -26,7 +26,7 @@ Practical guides for common tasks and workflows.
 - [**Database Migration**](guides/database-migration.md) - Migrating between database providers
 - [**Audit Logging**](guides/audit-logging.md) - Comprehensive audit logging for compliance and security
 - [**Email Integration**](guides/email-integration.md) - Transactional email with Resend
-- [**Region Provider**](guides/region-provider.md) - Creating custom region providers for civic data
+- [**Region Provider**](guides/region-provider.md) - Declarative region plugins for civic data
 - [**Observability**](guides/observability.md) - Prometheus metrics and Loki logging
 
 ## Quick Links
@@ -87,7 +87,7 @@ This platform is built on three core principles:
 
 ## Platform Packages
 
-The `packages/` directory contains reusable, publishable npm packages (`@opuspopuli/*`) that implement the pluggable provider architecture:
+The `packages/` directory contains workspace packages (`@opuspopuli/*`) that implement the pluggable provider architecture:
 
 | Package | Purpose |
 |---------|---------|
@@ -103,6 +103,7 @@ The `packages/` directory contains reusable, publishable npm packages (`@opuspop
 | `@opuspopuli/email-provider` | Resend transactional email |
 | `@opuspopuli/logging-provider` | Structured logging with PII redaction |
 | `@opuspopuli/ocr-provider` | Image text extraction (Tesseract.js) |
+| `@opuspopuli/scraping-pipeline` | AI-powered schema-on-read web scraping with structural manifests |
 | `@opuspopuli/region-provider` | Civic data integration (declarative plugins, propositions, meetings, representatives) |
 
 See [Provider Pattern](architecture/provider-pattern.md) and [Region Provider Guide](guides/region-provider.md) for implementation details.

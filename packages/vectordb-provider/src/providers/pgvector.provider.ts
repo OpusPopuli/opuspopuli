@@ -4,7 +4,7 @@ import {
   IVectorDocument,
   VectorDBError,
 } from "@opuspopuli/common";
-import { DataSource, QueryRunner } from "typeorm";
+import { IRawQueryClient } from "../types.js";
 
 /**
  * PostgreSQL pgvector Vector Database Provider
@@ -30,12 +30,11 @@ import { DataSource, QueryRunner } from "typeorm";
 @Injectable()
 export class PgVectorProvider implements IVectorDBProvider {
   private readonly logger = new Logger(PgVectorProvider.name);
-  private queryRunner: QueryRunner | null = null;
   private dimensions: number;
   private tableName: string;
 
   constructor(
-    private readonly dataSource: DataSource,
+    private readonly client: IRawQueryClient,
     private readonly collectionName: string,
     dimensions: number = 384, // Default for Xenova/all-MiniLM-L6-v2
   ) {
@@ -60,14 +59,13 @@ export class PgVectorProvider implements IVectorDBProvider {
     try {
       this.logger.log(`Initializing pgvector table: ${this.tableName}`);
 
-      this.queryRunner = this.dataSource.createQueryRunner();
-      await this.queryRunner.connect();
-
       // Ensure pgvector extension is enabled
-      await this.queryRunner.query(`CREATE EXTENSION IF NOT EXISTS vector`);
+      await this.client.$executeRawUnsafe(
+        `CREATE EXTENSION IF NOT EXISTS vector`,
+      );
 
       // Create the embeddings table if it doesn't exist
-      await this.queryRunner.query(`
+      await this.client.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS "${this.tableName}" (
           id VARCHAR(255) PRIMARY KEY,
           document_id VARCHAR(255) NOT NULL,
@@ -80,19 +78,19 @@ export class PgVectorProvider implements IVectorDBProvider {
 
       // Create indexes for efficient querying
       // Using ivfflat for approximate nearest neighbor search
-      await this.queryRunner.query(`
+      await this.client.$executeRawUnsafe(`
         CREATE INDEX IF NOT EXISTS "${this.tableName}_embedding_idx"
         ON "${this.tableName}"
         USING ivfflat (embedding vector_cosine_ops)
         WITH (lists = 100)
       `);
 
-      await this.queryRunner.query(`
+      await this.client.$executeRawUnsafe(`
         CREATE INDEX IF NOT EXISTS "${this.tableName}_document_id_idx"
         ON "${this.tableName}" (document_id)
       `);
 
-      await this.queryRunner.query(`
+      await this.client.$executeRawUnsafe(`
         CREATE INDEX IF NOT EXISTS "${this.tableName}_user_id_idx"
         ON "${this.tableName}" (user_id)
       `);
@@ -112,14 +110,6 @@ export class PgVectorProvider implements IVectorDBProvider {
     embeddings: number[][],
     content: string[],
   ): Promise<boolean> {
-    if (!this.queryRunner) {
-      throw new VectorDBError(
-        this.getName(),
-        "createEmbeddings",
-        new Error("PgVector not initialized"),
-      );
-    }
-
     try {
       this.logger.log(
         `Creating ${embeddings.length} embeddings for document ${documentId}`,
@@ -150,7 +140,7 @@ export class PgVectorProvider implements IVectorDBProvider {
           paramIndex += 5;
         }
 
-        await this.queryRunner.query(
+        await this.client.$executeRawUnsafe(
           `
           INSERT INTO "${this.tableName}" (id, document_id, user_id, content, embedding)
           VALUES ${values.join(", ")}
@@ -159,7 +149,7 @@ export class PgVectorProvider implements IVectorDBProvider {
             embedding = EXCLUDED.embedding,
             created_at = NOW()
         `,
-          params,
+          ...params,
         );
       }
 
@@ -183,14 +173,6 @@ export class PgVectorProvider implements IVectorDBProvider {
     userId: string,
     nResults: number = 5,
   ): Promise<IVectorDocument[]> {
-    if (!this.queryRunner) {
-      throw new VectorDBError(
-        this.getName(),
-        "queryEmbeddings",
-        new Error("PgVector not initialized"),
-      );
-    }
-
     try {
       this.logger.log(`Querying pgvector for top ${nResults} results`);
 
@@ -198,7 +180,14 @@ export class PgVectorProvider implements IVectorDBProvider {
 
       // Use cosine distance for similarity search
       // pgvector uses <=> for cosine distance (lower is more similar)
-      const results = await this.queryRunner.query(
+      const results = await this.client.$queryRawUnsafe<{
+        id: string;
+        document_id: string;
+        user_id: string;
+        content: string;
+        embedding_text: string;
+        similarity: number;
+      }>(
         `
         SELECT
           id,
@@ -212,29 +201,22 @@ export class PgVectorProvider implements IVectorDBProvider {
         ORDER BY embedding <=> $1::vector
         LIMIT $3
       `,
-        [embeddingStr, userId, nResults],
+        embeddingStr,
+        userId,
+        nResults,
       );
 
       // Transform results into IVectorDocument format
-      const documents: IVectorDocument[] = results.map(
-        (row: {
-          id: string;
-          document_id: string;
-          user_id: string;
-          content: string;
-          embedding_text: string;
-          similarity: number;
-        }) => ({
-          id: row.id,
-          embedding: this.parseEmbedding(row.embedding_text),
-          metadata: {
-            source: row.document_id,
-            userId: row.user_id,
-          },
-          content: row.content,
-          score: row.similarity,
-        }),
-      );
+      const documents: IVectorDocument[] = results.map((row) => ({
+        id: row.id,
+        embedding: this.parseEmbedding(row.embedding_text),
+        metadata: {
+          source: row.document_id,
+          userId: row.user_id,
+        },
+        content: row.content,
+        score: row.similarity,
+      }));
 
       this.logger.log(`Found ${documents.length} matching documents`);
       return documents;
@@ -249,20 +231,12 @@ export class PgVectorProvider implements IVectorDBProvider {
   }
 
   async deleteEmbeddingsByDocumentId(documentId: string): Promise<void> {
-    if (!this.queryRunner) {
-      throw new VectorDBError(
-        this.getName(),
-        "deleteEmbeddingsByDocumentId",
-        new Error("PgVector not initialized"),
-      );
-    }
-
     try {
       this.logger.log(`Deleting embeddings for document ${documentId}`);
 
-      await this.queryRunner.query(
+      await this.client.$executeRawUnsafe(
         `DELETE FROM "${this.tableName}" WHERE document_id = $1`,
-        [documentId],
+        documentId,
       );
 
       this.logger.log(`Deleted embeddings for document ${documentId}`);
@@ -277,20 +251,12 @@ export class PgVectorProvider implements IVectorDBProvider {
   }
 
   async deleteEmbeddingById(id: string): Promise<void> {
-    if (!this.queryRunner) {
-      throw new VectorDBError(
-        this.getName(),
-        "deleteEmbeddingById",
-        new Error("PgVector not initialized"),
-      );
-    }
-
     try {
       this.logger.log(`Deleting embedding ${id}`);
 
-      await this.queryRunner.query(
+      await this.client.$executeRawUnsafe(
         `DELETE FROM "${this.tableName}" WHERE id = $1`,
-        [id],
+        id,
       );
 
       this.logger.log(`Deleted embedding ${id}`);
