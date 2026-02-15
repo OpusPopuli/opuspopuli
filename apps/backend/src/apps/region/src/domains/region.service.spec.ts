@@ -146,6 +146,32 @@ describe('RegionDomainService', () => {
     mockDb.meeting.findMany.mockResolvedValue([]);
     mockDb.representative.findMany.mockResolvedValue([]);
 
+    // Set up campaign finance DB mocks
+    (mockDb as any).committee = {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+    (mockDb as any).contribution = {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+    (mockDb as any).expenditure = {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+    (mockDb as any).independentExpenditure = {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+
     // Set up default $transaction mock
     (mockDb.$transaction as jest.Mock).mockImplementation(
       async (operations: any[]) => {
@@ -526,6 +552,336 @@ describe('RegionDomainService', () => {
       const result = await service.getRepresentative('1');
 
       expect(result).toEqual(mockRep);
+    });
+  });
+
+  // ==========================================
+  // CAMPAIGN FINANCE GETTER TESTS
+  // ==========================================
+
+  describe('getCommittees', () => {
+    it('should return paginated committees', async () => {
+      const mockItems = [
+        {
+          id: '1',
+          externalId: 'comm-1',
+          name: 'Test Committee',
+          type: 'pac',
+          candidateName: null,
+          candidateOffice: null,
+          propositionId: null,
+          party: null,
+          status: 'active',
+          sourceSystem: 'cal-access',
+          sourceUrl: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ];
+      (mockDb as any).committee.findMany.mockResolvedValue(mockItems);
+      (mockDb as any).committee.count.mockResolvedValue(1);
+
+      const result = await service.getCommittees(0, 10);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.total).toBe(1);
+      expect(result.hasMore).toBe(false);
+      // Null fields should be converted to undefined
+      expect(result.items[0].candidateName).toBeUndefined();
+      expect(result.items[0].sourceUrl).toBeUndefined();
+    });
+
+    it('should filter by sourceSystem when provided', async () => {
+      (mockDb as any).committee.findMany.mockResolvedValue([]);
+      (mockDb as any).committee.count.mockResolvedValue(0);
+
+      await service.getCommittees(0, 10, 'cal-access');
+
+      expect((mockDb as any).committee.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { sourceSystem: 'cal-access' },
+        }),
+      );
+    });
+
+    it('should indicate hasMore when more items exist', async () => {
+      const mockItems = Array.from({ length: 11 }, (_, i) => ({
+        id: String(i),
+        externalId: `comm-${i}`,
+        name: `Committee ${i}`,
+        type: 'pac',
+        candidateName: null,
+        candidateOffice: null,
+        propositionId: null,
+        party: null,
+        status: 'active',
+        sourceSystem: 'cal-access',
+        sourceUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+      (mockDb as any).committee.findMany.mockResolvedValue(mockItems);
+      (mockDb as any).committee.count.mockResolvedValue(15);
+
+      const result = await service.getCommittees(0, 10);
+
+      expect(result.items).toHaveLength(10);
+      expect(result.hasMore).toBe(true);
+    });
+  });
+
+  describe('getCommittee', () => {
+    it('should return a single committee by ID', async () => {
+      const mockComm = { id: '1', name: 'Test Committee' };
+      (mockDb as any).committee.findUnique.mockResolvedValue(mockComm);
+
+      const result = await service.getCommittee('1');
+
+      expect(result).toEqual(mockComm);
+      expect((mockDb as any).committee.findUnique).toHaveBeenCalledWith({
+        where: { id: '1' },
+      });
+    });
+
+    it('should return null if committee not found', async () => {
+      (mockDb as any).committee.findUnique.mockResolvedValue(null);
+
+      const result = await service.getCommittee('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getContributions', () => {
+    it('should return paginated contributions with Decimal-to-number conversion', async () => {
+      const mockItems = [
+        {
+          id: '1',
+          externalId: 'contrib-1',
+          committeeId: 'comm-1',
+          donorName: 'Jane Smith',
+          donorType: 'individual',
+          donorEmployer: null,
+          donorOccupation: null,
+          donorCity: null,
+          donorState: null,
+          donorZip: null,
+          amount: { toNumber: () => 500 } as any, // Prisma Decimal
+          date: new Date(),
+          electionType: null,
+          contributionType: null,
+          sourceSystem: 'cal-access',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ];
+      (mockDb as any).contribution.findMany.mockResolvedValue(mockItems);
+      (mockDb as any).contribution.count.mockResolvedValue(1);
+
+      const result = await service.getContributions(0, 10);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.total).toBe(1);
+      expect(result.hasMore).toBe(false);
+      expect(typeof result.items[0].amount).toBe('number');
+      // Null fields should be converted to undefined
+      expect(result.items[0].donorEmployer).toBeUndefined();
+      expect(result.items[0].electionType).toBeUndefined();
+    });
+
+    it('should filter by committeeId and sourceSystem', async () => {
+      (mockDb as any).contribution.findMany.mockResolvedValue([]);
+      (mockDb as any).contribution.count.mockResolvedValue(0);
+
+      await service.getContributions(0, 10, 'comm-1', 'cal-access');
+
+      expect((mockDb as any).contribution.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { committeeId: 'comm-1', sourceSystem: 'cal-access' },
+        }),
+      );
+    });
+  });
+
+  describe('getContribution', () => {
+    it('should return a single contribution by ID', async () => {
+      const mockContrib = { id: '1', donorName: 'Jane Smith' };
+      (mockDb as any).contribution.findUnique.mockResolvedValue(mockContrib);
+
+      const result = await service.getContribution('1');
+
+      expect(result).toEqual(mockContrib);
+      expect((mockDb as any).contribution.findUnique).toHaveBeenCalledWith({
+        where: { id: '1' },
+      });
+    });
+
+    it('should return null if contribution not found', async () => {
+      (mockDb as any).contribution.findUnique.mockResolvedValue(null);
+
+      const result = await service.getContribution('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getExpenditures', () => {
+    it('should return paginated expenditures with Decimal-to-number conversion', async () => {
+      const mockItems = [
+        {
+          id: '1',
+          externalId: 'exp-1',
+          committeeId: 'comm-1',
+          payeeName: 'Ad Agency Inc',
+          amount: { toNumber: () => 1500 } as any, // Prisma Decimal
+          date: new Date(),
+          purposeDescription: null,
+          expenditureCode: null,
+          candidateName: null,
+          propositionTitle: null,
+          supportOrOppose: null,
+          sourceSystem: 'cal-access',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ];
+      (mockDb as any).expenditure.findMany.mockResolvedValue(mockItems);
+      (mockDb as any).expenditure.count.mockResolvedValue(1);
+
+      const result = await service.getExpenditures(0, 10);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.total).toBe(1);
+      expect(result.hasMore).toBe(false);
+      expect(typeof result.items[0].amount).toBe('number');
+      // Null fields should be converted to undefined
+      expect(result.items[0].purposeDescription).toBeUndefined();
+      expect(result.items[0].supportOrOppose).toBeUndefined();
+    });
+
+    it('should filter by committeeId and sourceSystem', async () => {
+      (mockDb as any).expenditure.findMany.mockResolvedValue([]);
+      (mockDb as any).expenditure.count.mockResolvedValue(0);
+
+      await service.getExpenditures(0, 10, 'comm-1', 'cal-access');
+
+      expect((mockDb as any).expenditure.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { committeeId: 'comm-1', sourceSystem: 'cal-access' },
+        }),
+      );
+    });
+  });
+
+  describe('getExpenditure', () => {
+    it('should return a single expenditure by ID', async () => {
+      const mockExp = { id: '1', payeeName: 'Ad Agency Inc' };
+      (mockDb as any).expenditure.findUnique.mockResolvedValue(mockExp);
+
+      const result = await service.getExpenditure('1');
+
+      expect(result).toEqual(mockExp);
+      expect((mockDb as any).expenditure.findUnique).toHaveBeenCalledWith({
+        where: { id: '1' },
+      });
+    });
+
+    it('should return null if expenditure not found', async () => {
+      (mockDb as any).expenditure.findUnique.mockResolvedValue(null);
+
+      const result = await service.getExpenditure('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getIndependentExpenditures', () => {
+    it('should return paginated independent expenditures with Decimal-to-number conversion', async () => {
+      const mockItems = [
+        {
+          id: '1',
+          externalId: 'ie-1',
+          committeeId: 'comm-1',
+          committeeName: 'Test IE Committee',
+          candidateName: null,
+          propositionTitle: null,
+          supportOrOppose: 'support',
+          amount: { toNumber: () => 25000 } as any, // Prisma Decimal
+          date: new Date(),
+          electionDate: null,
+          description: null,
+          sourceSystem: 'cal-access',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ];
+      (mockDb as any).independentExpenditure.findMany.mockResolvedValue(
+        mockItems,
+      );
+      (mockDb as any).independentExpenditure.count.mockResolvedValue(1);
+
+      const result = await service.getIndependentExpenditures(0, 10);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.total).toBe(1);
+      expect(result.hasMore).toBe(false);
+      expect(typeof result.items[0].amount).toBe('number');
+      // Null fields should be converted to undefined
+      expect(result.items[0].candidateName).toBeUndefined();
+      expect(result.items[0].description).toBeUndefined();
+      // Required field should remain
+      expect(result.items[0].supportOrOppose).toBe('support');
+    });
+
+    it('should filter by committeeId, supportOrOppose, and sourceSystem', async () => {
+      (mockDb as any).independentExpenditure.findMany.mockResolvedValue([]);
+      (mockDb as any).independentExpenditure.count.mockResolvedValue(0);
+
+      await service.getIndependentExpenditures(
+        0,
+        10,
+        'comm-1',
+        'support',
+        'cal-access',
+      );
+
+      expect(
+        (mockDb as any).independentExpenditure.findMany,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            committeeId: 'comm-1',
+            supportOrOppose: 'support',
+            sourceSystem: 'cal-access',
+          },
+        }),
+      );
+    });
+  });
+
+  describe('getIndependentExpenditure', () => {
+    it('should return a single independent expenditure by ID', async () => {
+      const mockIE = { id: '1', committeeName: 'Test IE Committee' };
+      (mockDb as any).independentExpenditure.findUnique.mockResolvedValue(
+        mockIE,
+      );
+
+      const result = await service.getIndependentExpenditure('1');
+
+      expect(result).toEqual(mockIE);
+      expect(
+        (mockDb as any).independentExpenditure.findUnique,
+      ).toHaveBeenCalledWith({
+        where: { id: '1' },
+      });
+    });
+
+    it('should return null if independent expenditure not found', async () => {
+      (mockDb as any).independentExpenditure.findUnique.mockResolvedValue(null);
+
+      const result = await service.getIndependentExpenditure('nonexistent');
+
+      expect(result).toBeNull();
     });
   });
 });

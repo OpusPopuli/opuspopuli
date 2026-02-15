@@ -7,6 +7,7 @@ export enum DataTypeGQL {
   PROPOSITIONS = 'propositions',
   MEETINGS = 'meetings',
   REPRESENTATIVES = 'representatives',
+  CAMPAIGN_FINANCE = 'campaign_finance',
 }
 
 registerEnumType(DataTypeGQL, {
