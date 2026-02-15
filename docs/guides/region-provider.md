@@ -20,10 +20,15 @@ The platform uses **declarative region plugins** — JSON configuration that des
 │                         PLATFORM                                     │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
+│  packages/region-provider/regions/                                   │
+│  └── california.json, texas.json, ...  (config files)               │
+│       ↓ auto-discovered and synced to DB at startup                  │
+│                                                                      │
 │  Database (region_plugins table)                                     │
-│  └── DeclarativeRegionConfig JSON (data sources + content goals)     │
+│  └── DeclarativeRegionConfig JSON + enabled flag + sync state       │
 │                                                                      │
 │  packages/region-provider/                                           │
+│  ├── discoverRegionConfigs() (reads + validates JSON files)          │
 │  ├── PluginLoaderService (loads config, creates plugin)              │
 │  ├── PluginRegistryService (tracks active plugin)                    │
 │  ├── DeclarativeRegionPlugin (bridges config → IRegionPlugin)        │
@@ -47,8 +52,8 @@ The platform uses **declarative region plugins** — JSON configuration that des
 
 ## How It Works
 
-1. **Startup**: `RegionDomainService.onModuleInit()` reads the `region_plugins` table for an enabled plugin
-2. **Loading**: `PluginLoaderService.loadPlugin()` validates the config and creates a `DeclarativeRegionPlugin`
+1. **Config Discovery**: `RegionDomainService.onModuleInit()` auto-discovers JSON files from `packages/region-provider/regions/` and upserts them into the `region_plugins` table (config changes propagate on every restart; the `enabled` flag is never overwritten)
+2. **Plugin Loading**: `PluginLoaderService.loadPlugin()` reads the enabled plugin from the DB, validates the config, and creates a `DeclarativeRegionPlugin`
 3. **Registration**: The plugin is registered in `PluginRegistryService` and wrapped in a `RegionService`
 4. **Sync**: When data sync runs, the plugin calls `pipeline.execute()` for each data source
 5. **Pipeline**: The scraping pipeline fetches the page, finds/creates a structural manifest via AI, extracts data with Cheerio, and maps it to typed domain models
@@ -58,99 +63,83 @@ If no plugin is configured in the database, the platform falls back to the built
 
 ## Adding a Region
 
-### Step 1: Define the Configuration
+### Step 1: Create a JSON Config File
 
-Create a `DeclarativeRegionConfig` describing your region's data sources:
+Create a new file in `packages/region-provider/regions/`. The filename should match the region name (e.g., `my-state.json`).
 
-```typescript
-// DeclarativeRegionConfig (from @opuspopuli/common)
+See `california.json` for a complete example:
+
+```json
 {
-  regionId: "california",
-  regionName: "California",
-  description: "Civic data for the State of California",
-  timezone: "America/Los_Angeles",
-  dataSources: [
-    {
-      url: "https://www.sos.ca.gov/elections/ballot-measures/qualified-ballot-measures",
-      dataType: "propositions",
-      contentGoal: "Extract qualified ballot measures with measure ID, title, and election date",
-      hints: ["Table with ballot measure details", "Look for measure numbers like 'Prop 1'"]
-    },
-    {
-      url: "https://assembly.ca.gov/schedules-publications/assembly-daily-file",
-      dataType: "meetings",
-      contentGoal: "Extract scheduled committee meetings with date, time, location, and committee name",
-      category: "Assembly"
-    },
-    {
-      url: "https://senate.ca.gov/publications/senate-daily-file",
-      dataType: "meetings",
-      contentGoal: "Extract scheduled committee meetings with date, time, location, and committee name",
-      category: "Senate"
-    },
-    {
-      url: "https://assembly.ca.gov/assemblymembers",
-      dataType: "representatives",
-      contentGoal: "Extract Assembly members with name, district number, party affiliation, and photo URL",
-      category: "Assembly"
-    },
-    {
-      url: "https://senate.ca.gov/senators",
-      dataType: "representatives",
-      contentGoal: "Extract Senators with name, district number, party affiliation, and photo URL",
-      category: "Senate"
-    }
-  ],
-  rateLimit: { requestsPerSecond: 1, burstSize: 3 },
-  cacheTtlMs: 3600000,
-  requestTimeoutMs: 30000
+  "name": "my-state",
+  "displayName": "My State",
+  "description": "Civic data for My State from official government websites",
+  "version": "1.0.0",
+  "config": {
+    "regionId": "my-state",
+    "regionName": "My State",
+    "description": "Civic data for My State",
+    "timezone": "America/New_York",
+    "dataSources": [
+      {
+        "url": "https://www.example.gov/ballot-measures",
+        "dataType": "propositions",
+        "contentGoal": "Extract ballot measures with title, description, and election date",
+        "hints": ["Look for a table of measures", "Each row has a measure number"]
+      },
+      {
+        "url": "https://www.example.gov/meetings",
+        "dataType": "meetings",
+        "contentGoal": "Extract scheduled committee meetings with date, time, and location",
+        "category": "Legislature"
+      },
+      {
+        "url": "https://www.example.gov/representatives",
+        "dataType": "representatives",
+        "contentGoal": "Extract legislators with name, district, party, and photo",
+        "category": "Legislature"
+      }
+    ],
+    "rateLimit": { "requestsPerSecond": 1, "burstSize": 3 },
+    "cacheTtlMs": 900000,
+    "requestTimeoutMs": 30000
+  }
 }
 ```
 
-### Step 2: Insert into the Database
+**Required fields:**
 
-Add a row to the `region_plugins` table with your config as JSON:
+| Field | Description |
+|-------|-------------|
+| `name` | Unique identifier (matches filename without `.json`) |
+| `displayName` | Human-readable name |
+| `description` | Short description |
+| `version` | Semver version string |
+| `config.regionId` | Must match `name` |
+| `config.regionName` | Human-readable name |
+| `config.dataSources` | At least one data source |
+
+Each data source requires `url`, `dataType` (`"propositions"`, `"meetings"`, or `"representatives"`), and `contentGoal`.
+
+### Step 2: Enable the Plugin
+
+On startup, the service auto-discovers JSON config files and syncs them to the database. New regions start **disabled** by default. Enable the plugin:
 
 ```sql
-INSERT INTO region_plugins (name, enabled, config, plugin_type)
-VALUES (
-  'california',
-  true,
-  '{ "regionId": "california", "regionName": "California", ... }',
-  'declarative'
-);
+UPDATE region_plugins SET enabled = true WHERE name = 'my-state';
 ```
 
-Or add it to a Prisma seed script:
-
-```typescript
-await prisma.regionPlugin.create({
-  data: {
-    name: 'california',
-    enabled: true,
-    pluginType: 'declarative',
-    config: {
-      regionId: 'california',
-      regionName: 'California',
-      description: 'Civic data for the State of California',
-      timezone: 'America/Los_Angeles',
-      dataSources: [
-        // ... data sources as above
-      ],
-    },
-  },
-});
-```
+Only one region can be enabled at a time. The platform falls back to the built-in `ExampleRegionProvider` if no plugin is enabled.
 
 ### Step 3: Restart and Sync
 
-Restart the region service. It reads the enabled plugin from the database and loads it:
+Restart the region service. It auto-syncs config files to the DB, loads the enabled plugin, and is ready:
 
 ```bash
 pnpm start:region
 ```
 
-Trigger a sync via GraphQL:
+Trigger a data sync via GraphQL:
 
 ```graphql
 mutation {
@@ -164,6 +153,10 @@ mutation {
   }
 }
 ```
+
+### Updating Config
+
+Edit the JSON file and restart the service. Config changes propagate automatically on every restart (the `enabled` flag and sync tracking fields are preserved).
 
 ## DeclarativeRegionConfig Reference
 

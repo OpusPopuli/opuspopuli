@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import {
   Inject,
   Injectable,
@@ -12,10 +13,11 @@ import {
   PluginLoaderService,
   PluginRegistryService,
   ExampleRegionProvider,
+  discoverRegionConfigs,
   type IPipelineService,
   type IRegionPlugin,
 } from '@opuspopuli/region-provider';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import {
   PaginatedPropositions,
@@ -91,9 +93,13 @@ export class RegionDomainService implements OnModuleInit {
 
   /**
    * Load the enabled region plugin from the database at startup.
+   * Auto-syncs JSON config files to the database first,
+   * then loads the enabled plugin.
    * Falls back to the built-in ExampleRegionPlugin if no plugin is configured.
    */
   async onModuleInit(): Promise<void> {
+    await this.syncRegionConfigs();
+
     try {
       const pluginConfig = await this.db.regionPlugin.findFirst({
         where: { enabled: true },
@@ -532,6 +538,56 @@ export class RegionDomainService implements OnModuleInit {
    */
   async getRepresentative(id: string) {
     return this.db.representative.findUnique({ where: { id } });
+  }
+
+  /**
+   * Discover JSON config files from packages/region-provider/regions/
+   * and upsert them into the region_plugins table.
+   *
+   * Config changes propagate on every restart. The `enabled` flag
+   * is never overwritten — it's runtime state managed in the DB.
+   */
+  private async syncRegionConfigs(): Promise<void> {
+    const regionsDir =
+      process.env.REGION_CONFIGS_DIR ??
+      join(process.cwd(), 'packages', 'region-provider', 'regions');
+
+    try {
+      const configs = await discoverRegionConfigs(regionsDir);
+
+      for (const file of configs) {
+        await this.db.regionPlugin.upsert({
+          where: { name: file.name },
+          update: {
+            displayName: file.displayName,
+            description: file.description,
+            version: file.version,
+            pluginType: 'declarative',
+            config: file.config as unknown as Prisma.InputJsonValue,
+          },
+          create: {
+            name: file.name,
+            displayName: file.displayName,
+            description: file.description,
+            version: file.version,
+            pluginType: 'declarative',
+            enabled: false,
+            config: file.config as unknown as Prisma.InputJsonValue,
+          },
+        });
+        this.logger.log(`Synced region config "${file.name}" v${file.version}`);
+      }
+
+      if (configs.length > 0) {
+        this.logger.log(
+          `Auto-synced ${configs.length} region config(s) from ${regionsDir}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to sync region configs from ${regionsDir}: ${(error as Error).message}`,
+      );
+    }
   }
 
   /**

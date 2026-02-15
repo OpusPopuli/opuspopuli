@@ -52,3 +52,7 @@ export type { PluginDefinition } from "./loader/plugin-loader.service.js";
 // Declarative plugin support
 export { DeclarativeRegionPlugin } from "./declarative/declarative-region-plugin.js";
 export type { IPipelineService } from "./declarative/declarative-region-plugin.js";
+
+// Region config discovery
+export { discoverRegionConfigs } from "./loader/region-config-discovery.js";
+export type { RegionPluginFile } from "./loader/region-config-discovery.js";
