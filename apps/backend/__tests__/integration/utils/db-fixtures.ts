@@ -9,6 +9,10 @@ import {
   type Representative,
   type Proposition,
   type Meeting,
+  type Committee,
+  type Contribution,
+  type Expenditure,
+  type IndependentExpenditure,
   type AuditLog,
   type UserSession,
   type UserLogin,
@@ -368,6 +372,182 @@ export async function createMeeting(
       agendaUrl: options.agendaUrl,
       videoUrl: options.videoUrl,
       externalId: options.externalId ?? `meeting-${id}`,
+    },
+  });
+}
+
+// ============================================
+// Campaign Finance Fixtures
+// ============================================
+
+export interface CreateCommitteeOptions {
+  id?: string;
+  externalId?: string;
+  name?: string;
+  type?: string;
+  candidateName?: string;
+  candidateOffice?: string;
+  propositionId?: string;
+  party?: string;
+  status?: string;
+  sourceSystem?: string;
+  sourceUrl?: string;
+}
+
+/**
+ * Creates a committee record.
+ * Matches the actual Prisma Committee model schema.
+ */
+export async function createCommittee(
+  options: CreateCommitteeOptions = {},
+): Promise<Committee> {
+  const db = await getDbService();
+  const id = options.id ?? generateId();
+  return db.committee.create({
+    data: {
+      id,
+      externalId: options.externalId ?? `comm-${id}`,
+      name: options.name ?? 'Test Committee',
+      type: options.type ?? 'pac',
+      candidateName: options.candidateName,
+      candidateOffice: options.candidateOffice,
+      propositionId: options.propositionId,
+      party: options.party,
+      status: options.status ?? 'active',
+      sourceSystem: options.sourceSystem ?? 'cal_access',
+      sourceUrl: options.sourceUrl,
+    },
+  });
+}
+
+export interface CreateContributionOptions {
+  id?: string;
+  externalId?: string;
+  committeeId: string;
+  donorName?: string;
+  donorType?: string;
+  donorEmployer?: string;
+  donorOccupation?: string;
+  donorCity?: string;
+  donorState?: string;
+  donorZip?: string;
+  amount?: number;
+  date?: Date;
+  electionType?: string;
+  contributionType?: string;
+  sourceSystem?: string;
+}
+
+/**
+ * Creates a contribution record.
+ * Matches the actual Prisma Contribution model schema.
+ */
+export async function createContribution(
+  options: CreateContributionOptions,
+): Promise<Contribution> {
+  const db = await getDbService();
+  const id = options.id ?? generateId();
+  return db.contribution.create({
+    data: {
+      id,
+      externalId: options.externalId ?? `contrib-${id}`,
+      committeeId: options.committeeId,
+      donorName: options.donorName ?? 'Test Donor',
+      donorType: options.donorType ?? 'individual',
+      donorEmployer: options.donorEmployer,
+      donorOccupation: options.donorOccupation,
+      donorCity: options.donorCity,
+      donorState: options.donorState,
+      donorZip: options.donorZip,
+      amount: options.amount ?? 500,
+      date: options.date ?? new Date(),
+      electionType: options.electionType,
+      contributionType: options.contributionType,
+      sourceSystem: options.sourceSystem ?? 'cal_access',
+    },
+  });
+}
+
+export interface CreateExpenditureOptions {
+  id?: string;
+  externalId?: string;
+  committeeId: string;
+  payeeName?: string;
+  amount?: number;
+  date?: Date;
+  purposeDescription?: string;
+  expenditureCode?: string;
+  candidateName?: string;
+  propositionTitle?: string;
+  supportOrOppose?: string;
+  sourceSystem?: string;
+}
+
+/**
+ * Creates an expenditure record.
+ * Matches the actual Prisma Expenditure model schema.
+ */
+export async function createExpenditure(
+  options: CreateExpenditureOptions,
+): Promise<Expenditure> {
+  const db = await getDbService();
+  const id = options.id ?? generateId();
+  return db.expenditure.create({
+    data: {
+      id,
+      externalId: options.externalId ?? `exp-${id}`,
+      committeeId: options.committeeId,
+      payeeName: options.payeeName ?? 'Test Payee',
+      amount: options.amount ?? 1000,
+      date: options.date ?? new Date(),
+      purposeDescription: options.purposeDescription,
+      expenditureCode: options.expenditureCode,
+      candidateName: options.candidateName,
+      propositionTitle: options.propositionTitle,
+      supportOrOppose: options.supportOrOppose,
+      sourceSystem: options.sourceSystem ?? 'cal_access',
+    },
+  });
+}
+
+export interface CreateIndependentExpenditureOptions {
+  id?: string;
+  externalId?: string;
+  committeeId: string;
+  committeeName?: string;
+  candidateName?: string;
+  propositionTitle?: string;
+  supportOrOppose?: string;
+  amount?: number;
+  date?: Date;
+  electionDate?: Date;
+  description?: string;
+  sourceSystem?: string;
+}
+
+/**
+ * Creates an independent expenditure record.
+ * Matches the actual Prisma IndependentExpenditure model schema.
+ */
+export async function createIndependentExpenditure(
+  options: CreateIndependentExpenditureOptions,
+): Promise<IndependentExpenditure> {
+  const db = await getDbService();
+  const id = options.id ?? generateId();
+  return db.independentExpenditure.create({
+    data: {
+      id,
+      externalId: options.externalId ?? `ie-${id}`,
+      committeeId: options.committeeId,
+      committeeName: options.committeeName ?? 'Test IE Committee',
+      candidateName: options.candidateName,
+      propositionTitle: options.propositionTitle,
+      supportOrOppose: options.supportOrOppose ?? 'support',
+      amount: options.amount ?? 5000,
+      date: options.date ?? new Date(),
+      electionDate: options.electionDate,
+      description: options.description,
+      sourceSystem: options.sourceSystem ?? 'cal_access',
     },
   });
 }

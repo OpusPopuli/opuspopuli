@@ -2,7 +2,7 @@
  * Region Integration Tests
  *
  * Tests region/civic data operations against real database and GraphQL endpoints.
- * Covers Representatives, Propositions, and Meetings.
+ * Covers Representatives, Propositions, Meetings, and Campaign Finance entities.
  */
 import {
   cleanDatabase,
@@ -10,6 +10,10 @@ import {
   createRepresentative,
   createProposition,
   createMeeting,
+  createCommittee,
+  createContribution,
+  createExpenditure,
+  createIndependentExpenditure,
   getDbService,
   graphqlRequest,
   assertNoErrors,
@@ -122,6 +126,160 @@ const buildMeetingByIdQuery = (id: string) => `
       body
       scheduledAt
       location
+    }
+  }
+`;
+
+// Campaign Finance Query Builders
+const buildCommitteesQuery = (skip = 0, take = 10, sourceSystem?: string) => `
+  query {
+    committees(skip: ${skip}, take: ${take}${sourceSystem ? `, sourceSystem: "${sourceSystem}"` : ''}) {
+      items {
+        id
+        externalId
+        name
+        type
+        candidateName
+        candidateOffice
+        propositionId
+        party
+        status
+        sourceSystem
+        sourceUrl
+      }
+      total
+      hasMore
+    }
+  }
+`;
+
+const buildCommitteeByIdQuery = (id: string) => `
+  query {
+    committee(id: "${id}") {
+      id
+      externalId
+      name
+      type
+      status
+      sourceSystem
+    }
+  }
+`;
+
+const buildContributionsQuery = (
+  skip = 0,
+  take = 10,
+  committeeId?: string,
+  sourceSystem?: string,
+) => `
+  query {
+    contributions(skip: ${skip}, take: ${take}${committeeId ? `, committeeId: "${committeeId}"` : ''}${sourceSystem ? `, sourceSystem: "${sourceSystem}"` : ''}) {
+      items {
+        id
+        externalId
+        committeeId
+        donorName
+        donorType
+        amount
+        date
+        sourceSystem
+      }
+      total
+      hasMore
+    }
+  }
+`;
+
+const buildContributionByIdQuery = (id: string) => `
+  query {
+    contribution(id: "${id}") {
+      id
+      externalId
+      committeeId
+      donorName
+      donorType
+      amount
+      date
+      sourceSystem
+    }
+  }
+`;
+
+const buildExpendituresQuery = (
+  skip = 0,
+  take = 10,
+  committeeId?: string,
+  sourceSystem?: string,
+) => `
+  query {
+    expenditures(skip: ${skip}, take: ${take}${committeeId ? `, committeeId: "${committeeId}"` : ''}${sourceSystem ? `, sourceSystem: "${sourceSystem}"` : ''}) {
+      items {
+        id
+        externalId
+        committeeId
+        payeeName
+        amount
+        date
+        sourceSystem
+      }
+      total
+      hasMore
+    }
+  }
+`;
+
+const buildExpenditureByIdQuery = (id: string) => `
+  query {
+    expenditure(id: "${id}") {
+      id
+      externalId
+      committeeId
+      payeeName
+      amount
+      date
+      sourceSystem
+    }
+  }
+`;
+
+const buildIndependentExpendituresQuery = (
+  skip = 0,
+  take = 10,
+  committeeId?: string,
+  supportOrOppose?: string,
+  sourceSystem?: string,
+) => `
+  query {
+    independentExpenditures(skip: ${skip}, take: ${take}${committeeId ? `, committeeId: "${committeeId}"` : ''}${supportOrOppose ? `, supportOrOppose: "${supportOrOppose}"` : ''}${sourceSystem ? `, sourceSystem: "${sourceSystem}"` : ''}) {
+      items {
+        id
+        externalId
+        committeeId
+        committeeName
+        candidateName
+        propositionTitle
+        supportOrOppose
+        amount
+        date
+        sourceSystem
+      }
+      total
+      hasMore
+    }
+  }
+`;
+
+const buildIndependentExpenditureByIdQuery = (id: string) => `
+  query {
+    independentExpenditure(id: "${id}") {
+      id
+      externalId
+      committeeId
+      committeeName
+      supportOrOppose
+      amount
+      date
+      sourceSystem
     }
   }
 `;
@@ -562,6 +720,642 @@ describe('Region Integration Tests', () => {
     });
   });
 
+  // ==========================================
+  // CAMPAIGN FINANCE: DATABASE OPERATIONS
+  // ==========================================
+
+  describe('Database Operations: Committees', () => {
+    it('should create a committee in the database', async () => {
+      const committee = await createCommittee({
+        name: 'Citizens for Progress',
+        type: 'pac',
+        status: 'active',
+        sourceSystem: 'cal_access',
+      });
+
+      expect(committee).toBeDefined();
+      expect(committee.id).toBeDefined();
+      expect(committee.name).toBe('Citizens for Progress');
+      expect(committee.type).toBe('pac');
+      expect(committee.status).toBe('active');
+      expect(committee.sourceSystem).toBe('cal_access');
+    });
+
+    it('should find a committee by ID', async () => {
+      const created = await createCommittee({
+        name: 'Findable Committee',
+      });
+
+      const db = await getDbService();
+      const found = await db.committee.findUnique({
+        where: { id: created.id },
+      });
+
+      expect(found).toBeDefined();
+      expect(found?.id).toBe(created.id);
+      expect(found?.name).toBe('Findable Committee');
+    });
+
+    it('should list committees filtered by sourceSystem', async () => {
+      await createCommittee({
+        name: 'Cal Committee',
+        sourceSystem: 'cal_access',
+      });
+      await createCommittee({ name: 'FEC Committee', sourceSystem: 'fec' });
+      await createCommittee({
+        name: 'Another Cal Committee',
+        sourceSystem: 'cal_access',
+      });
+
+      const db = await getDbService();
+      const calCommittees = await db.committee.findMany({
+        where: { sourceSystem: 'cal_access' },
+      });
+
+      expect(calCommittees).toHaveLength(2);
+      calCommittees.forEach((c) => expect(c.sourceSystem).toBe('cal_access'));
+    });
+  });
+
+  describe('Database Operations: Contributions', () => {
+    it('should create a contribution with committee reference', async () => {
+      const committee = await createCommittee({ name: 'Test PAC' });
+      const contribution = await createContribution({
+        committeeId: committee.id,
+        donorName: 'Jane Donor',
+        donorType: 'individual',
+        amount: 250,
+      });
+
+      expect(contribution).toBeDefined();
+      expect(contribution.id).toBeDefined();
+      expect(contribution.committeeId).toBe(committee.id);
+      expect(contribution.donorName).toBe('Jane Donor');
+      expect(Number(contribution.amount)).toBe(250);
+    });
+
+    it('should find a contribution by ID', async () => {
+      const committee = await createCommittee();
+      const created = await createContribution({
+        committeeId: committee.id,
+        donorName: 'Findable Donor',
+      });
+
+      const db = await getDbService();
+      const found = await db.contribution.findUnique({
+        where: { id: created.id },
+      });
+
+      expect(found).toBeDefined();
+      expect(found?.donorName).toBe('Findable Donor');
+    });
+
+    it('should list contributions filtered by committeeId', async () => {
+      const committee1 = await createCommittee({ name: 'Committee A' });
+      const committee2 = await createCommittee({ name: 'Committee B' });
+      await createContribution({
+        committeeId: committee1.id,
+        donorName: 'Donor 1',
+      });
+      await createContribution({
+        committeeId: committee1.id,
+        donorName: 'Donor 2',
+      });
+      await createContribution({
+        committeeId: committee2.id,
+        donorName: 'Donor 3',
+      });
+
+      const db = await getDbService();
+      const contributions = await db.contribution.findMany({
+        where: { committeeId: committee1.id },
+      });
+
+      expect(contributions).toHaveLength(2);
+      contributions.forEach((c) => expect(c.committeeId).toBe(committee1.id));
+    });
+  });
+
+  describe('Database Operations: Expenditures', () => {
+    it('should create an expenditure with committee reference', async () => {
+      const committee = await createCommittee();
+      const expenditure = await createExpenditure({
+        committeeId: committee.id,
+        payeeName: 'Ad Agency Inc',
+        amount: 15000,
+      });
+
+      expect(expenditure).toBeDefined();
+      expect(expenditure.committeeId).toBe(committee.id);
+      expect(expenditure.payeeName).toBe('Ad Agency Inc');
+      expect(Number(expenditure.amount)).toBe(15000);
+    });
+
+    it('should find an expenditure by ID', async () => {
+      const committee = await createCommittee();
+      const created = await createExpenditure({
+        committeeId: committee.id,
+        payeeName: 'Findable Payee',
+      });
+
+      const db = await getDbService();
+      const found = await db.expenditure.findUnique({
+        where: { id: created.id },
+      });
+
+      expect(found).toBeDefined();
+      expect(found?.payeeName).toBe('Findable Payee');
+    });
+
+    it('should store Decimal amount correctly', async () => {
+      const committee = await createCommittee();
+      const created = await createExpenditure({
+        committeeId: committee.id,
+        amount: 12345.67,
+      });
+
+      const db = await getDbService();
+      const found = await db.expenditure.findUnique({
+        where: { id: created.id },
+      });
+
+      expect(Number(found?.amount)).toBeCloseTo(12345.67, 2);
+    });
+  });
+
+  describe('Database Operations: Independent Expenditures', () => {
+    it('should create an independent expenditure', async () => {
+      const committee = await createCommittee();
+      const ie = await createIndependentExpenditure({
+        committeeId: committee.id,
+        committeeName: 'Super PAC for Justice',
+        supportOrOppose: 'support',
+        amount: 50000,
+      });
+
+      expect(ie).toBeDefined();
+      expect(ie.committeeName).toBe('Super PAC for Justice');
+      expect(ie.supportOrOppose).toBe('support');
+      expect(Number(ie.amount)).toBe(50000);
+    });
+
+    it('should find an independent expenditure by ID', async () => {
+      const committee = await createCommittee();
+      const created = await createIndependentExpenditure({
+        committeeId: committee.id,
+        committeeName: 'Findable IE',
+      });
+
+      const db = await getDbService();
+      const found = await db.independentExpenditure.findUnique({
+        where: { id: created.id },
+      });
+
+      expect(found).toBeDefined();
+      expect(found?.committeeName).toBe('Findable IE');
+    });
+
+    it('should list independent expenditures filtered by supportOrOppose', async () => {
+      const committee = await createCommittee();
+      await createIndependentExpenditure({
+        committeeId: committee.id,
+        supportOrOppose: 'support',
+      });
+      await createIndependentExpenditure({
+        committeeId: committee.id,
+        supportOrOppose: 'oppose',
+      });
+      await createIndependentExpenditure({
+        committeeId: committee.id,
+        supportOrOppose: 'support',
+      });
+
+      const db = await getDbService();
+      const supportIEs = await db.independentExpenditure.findMany({
+        where: { supportOrOppose: 'support' },
+      });
+
+      expect(supportIEs).toHaveLength(2);
+      supportIEs.forEach((ie) => expect(ie.supportOrOppose).toBe('support'));
+    });
+  });
+
+  // ==========================================
+  // CAMPAIGN FINANCE: GRAPHQL QUERIES
+  // ==========================================
+
+  describe('GraphQL: committees Query', () => {
+    it('should return paginated committees', async () => {
+      await createCommittee({ name: 'Committee A' });
+      await createCommittee({ name: 'Committee B' });
+
+      const result = await graphqlRequest<{
+        committees: {
+          items: Array<{ id: string; name: string; sourceSystem: string }>;
+          total: number;
+          hasMore: boolean;
+        };
+      }>(buildCommitteesQuery(0, 10));
+
+      assertNoErrors(result);
+      expect(result.data.committees.items).toHaveLength(2);
+      expect(result.data.committees.total).toBe(2);
+      expect(result.data.committees.hasMore).toBe(false);
+    });
+
+    it('should filter committees by sourceSystem', async () => {
+      await createCommittee({
+        name: 'Cal Committee',
+        sourceSystem: 'cal_access',
+      });
+      await createCommittee({ name: 'FEC Committee', sourceSystem: 'fec' });
+
+      const result = await graphqlRequest<{
+        committees: {
+          items: Array<{ name: string; sourceSystem: string }>;
+          total: number;
+        };
+      }>(buildCommitteesQuery(0, 10, 'fec'));
+
+      assertNoErrors(result);
+      expect(result.data.committees.items).toHaveLength(1);
+      expect(result.data.committees.items[0].sourceSystem).toBe('fec');
+      expect(result.data.committees.total).toBe(1);
+    });
+
+    it('should paginate committees correctly', async () => {
+      for (let i = 1; i <= 5; i++) {
+        await createCommittee({ name: `Committee ${i}` });
+      }
+
+      const result = await graphqlRequest<{
+        committees: {
+          items: Array<{ name: string }>;
+          total: number;
+          hasMore: boolean;
+        };
+      }>(buildCommitteesQuery(0, 2));
+
+      assertNoErrors(result);
+      expect(result.data.committees.items).toHaveLength(2);
+      expect(result.data.committees.total).toBe(5);
+      expect(result.data.committees.hasMore).toBe(true);
+    });
+  });
+
+  describe('GraphQL: committee Query', () => {
+    it('should find committee by ID', async () => {
+      const committee = await createCommittee({
+        name: 'Specific Committee',
+        type: 'candidate',
+        status: 'active',
+      });
+
+      const result = await graphqlRequest<{
+        committee: {
+          id: string;
+          name: string;
+          type: string;
+          status: string;
+          sourceSystem: string;
+        };
+      }>(buildCommitteeByIdQuery(committee.id));
+
+      assertNoErrors(result);
+      expect(result.data.committee).toBeDefined();
+      expect(result.data.committee.name).toBe('Specific Committee');
+      expect(result.data.committee.type).toBe('candidate');
+    });
+
+    it('should return null for non-existent committee', async () => {
+      const result = await graphqlRequest<{
+        committee: null;
+      }>(buildCommitteeByIdQuery('non-existent-id'));
+
+      assertNoErrors(result);
+      expect(result.data.committee).toBeNull();
+    });
+  });
+
+  describe('GraphQL: contributions Query', () => {
+    it('should return paginated contributions with Float amounts', async () => {
+      const committee = await createCommittee();
+      await createContribution({ committeeId: committee.id, amount: 250.5 });
+      await createContribution({ committeeId: committee.id, amount: 1000 });
+
+      const result = await graphqlRequest<{
+        contributions: {
+          items: Array<{ id: string; donorName: string; amount: number }>;
+          total: number;
+          hasMore: boolean;
+        };
+      }>(buildContributionsQuery(0, 10));
+
+      assertNoErrors(result);
+      expect(result.data.contributions.items).toHaveLength(2);
+      expect(result.data.contributions.total).toBe(2);
+      // Verify amounts are numbers (Float), not strings
+      result.data.contributions.items.forEach((item) => {
+        expect(typeof item.amount).toBe('number');
+      });
+    });
+
+    it('should filter contributions by committeeId', async () => {
+      const committee1 = await createCommittee({ name: 'Committee 1' });
+      const committee2 = await createCommittee({ name: 'Committee 2' });
+      await createContribution({ committeeId: committee1.id });
+      await createContribution({ committeeId: committee1.id });
+      await createContribution({ committeeId: committee2.id });
+
+      const result = await graphqlRequest<{
+        contributions: {
+          items: Array<{ committeeId: string }>;
+          total: number;
+        };
+      }>(buildContributionsQuery(0, 10, committee1.id));
+
+      assertNoErrors(result);
+      expect(result.data.contributions.items).toHaveLength(2);
+      expect(result.data.contributions.total).toBe(2);
+    });
+
+    it('should filter contributions by sourceSystem', async () => {
+      const calCommittee = await createCommittee({
+        sourceSystem: 'cal_access',
+      });
+      const fecCommittee = await createCommittee({ sourceSystem: 'fec' });
+      await createContribution({
+        committeeId: calCommittee.id,
+        sourceSystem: 'cal_access',
+      });
+      await createContribution({
+        committeeId: fecCommittee.id,
+        sourceSystem: 'fec',
+      });
+
+      const result = await graphqlRequest<{
+        contributions: {
+          items: Array<{ sourceSystem: string }>;
+          total: number;
+        };
+      }>(buildContributionsQuery(0, 10, undefined, 'fec'));
+
+      assertNoErrors(result);
+      expect(result.data.contributions.items).toHaveLength(1);
+      expect(result.data.contributions.items[0].sourceSystem).toBe('fec');
+    });
+  });
+
+  describe('GraphQL: contribution Query', () => {
+    it('should find contribution by ID', async () => {
+      const committee = await createCommittee();
+      const contribution = await createContribution({
+        committeeId: committee.id,
+        donorName: 'Specific Donor',
+        amount: 750,
+      });
+
+      const result = await graphqlRequest<{
+        contribution: {
+          id: string;
+          donorName: string;
+          amount: number;
+        };
+      }>(buildContributionByIdQuery(contribution.id));
+
+      assertNoErrors(result);
+      expect(result.data.contribution).toBeDefined();
+      expect(result.data.contribution.donorName).toBe('Specific Donor');
+      expect(result.data.contribution.amount).toBe(750);
+    });
+
+    it('should return null for non-existent contribution', async () => {
+      const result = await graphqlRequest<{
+        contribution: null;
+      }>(buildContributionByIdQuery('non-existent-id'));
+
+      assertNoErrors(result);
+      expect(result.data.contribution).toBeNull();
+    });
+  });
+
+  describe('GraphQL: expenditures Query', () => {
+    it('should return paginated expenditures', async () => {
+      const committee = await createCommittee();
+      await createExpenditure({
+        committeeId: committee.id,
+        payeeName: 'Payee A',
+      });
+      await createExpenditure({
+        committeeId: committee.id,
+        payeeName: 'Payee B',
+      });
+
+      const result = await graphqlRequest<{
+        expenditures: {
+          items: Array<{ id: string; payeeName: string; amount: number }>;
+          total: number;
+          hasMore: boolean;
+        };
+      }>(buildExpendituresQuery(0, 10));
+
+      assertNoErrors(result);
+      expect(result.data.expenditures.items).toHaveLength(2);
+      expect(result.data.expenditures.total).toBe(2);
+    });
+
+    it('should filter expenditures by committeeId', async () => {
+      const committee1 = await createCommittee({ name: 'Exp Committee 1' });
+      const committee2 = await createCommittee({ name: 'Exp Committee 2' });
+      await createExpenditure({ committeeId: committee1.id });
+      await createExpenditure({ committeeId: committee2.id });
+      await createExpenditure({ committeeId: committee2.id });
+
+      const result = await graphqlRequest<{
+        expenditures: {
+          items: Array<{ committeeId: string }>;
+          total: number;
+        };
+      }>(buildExpendituresQuery(0, 10, committee2.id));
+
+      assertNoErrors(result);
+      expect(result.data.expenditures.items).toHaveLength(2);
+      expect(result.data.expenditures.total).toBe(2);
+    });
+
+    it('should paginate expenditures correctly', async () => {
+      const committee = await createCommittee();
+      for (let i = 1; i <= 5; i++) {
+        await createExpenditure({
+          committeeId: committee.id,
+          payeeName: `Payee ${i}`,
+        });
+      }
+
+      const result = await graphqlRequest<{
+        expenditures: {
+          items: Array<{ payeeName: string }>;
+          total: number;
+          hasMore: boolean;
+        };
+      }>(buildExpendituresQuery(0, 3));
+
+      assertNoErrors(result);
+      expect(result.data.expenditures.items).toHaveLength(3);
+      expect(result.data.expenditures.total).toBe(5);
+      expect(result.data.expenditures.hasMore).toBe(true);
+    });
+  });
+
+  describe('GraphQL: expenditure Query', () => {
+    it('should find expenditure by ID', async () => {
+      const committee = await createCommittee();
+      const expenditure = await createExpenditure({
+        committeeId: committee.id,
+        payeeName: 'Specific Payee',
+        amount: 3000,
+      });
+
+      const result = await graphqlRequest<{
+        expenditure: {
+          id: string;
+          payeeName: string;
+          amount: number;
+        };
+      }>(buildExpenditureByIdQuery(expenditure.id));
+
+      assertNoErrors(result);
+      expect(result.data.expenditure).toBeDefined();
+      expect(result.data.expenditure.payeeName).toBe('Specific Payee');
+      expect(result.data.expenditure.amount).toBe(3000);
+    });
+
+    it('should return null for non-existent expenditure', async () => {
+      const result = await graphqlRequest<{
+        expenditure: null;
+      }>(buildExpenditureByIdQuery('non-existent-id'));
+
+      assertNoErrors(result);
+      expect(result.data.expenditure).toBeNull();
+    });
+  });
+
+  describe('GraphQL: independentExpenditures Query', () => {
+    it('should return paginated independent expenditures', async () => {
+      const committee = await createCommittee();
+      await createIndependentExpenditure({
+        committeeId: committee.id,
+        supportOrOppose: 'support',
+      });
+      await createIndependentExpenditure({
+        committeeId: committee.id,
+        supportOrOppose: 'oppose',
+      });
+
+      const result = await graphqlRequest<{
+        independentExpenditures: {
+          items: Array<{ id: string; supportOrOppose: string; amount: number }>;
+          total: number;
+          hasMore: boolean;
+        };
+      }>(buildIndependentExpendituresQuery(0, 10));
+
+      assertNoErrors(result);
+      expect(result.data.independentExpenditures.items).toHaveLength(2);
+      expect(result.data.independentExpenditures.total).toBe(2);
+    });
+
+    it('should filter independent expenditures by supportOrOppose', async () => {
+      const committee = await createCommittee();
+      await createIndependentExpenditure({
+        committeeId: committee.id,
+        supportOrOppose: 'support',
+      });
+      await createIndependentExpenditure({
+        committeeId: committee.id,
+        supportOrOppose: 'oppose',
+      });
+      await createIndependentExpenditure({
+        committeeId: committee.id,
+        supportOrOppose: 'support',
+      });
+
+      const result = await graphqlRequest<{
+        independentExpenditures: {
+          items: Array<{ supportOrOppose: string }>;
+          total: number;
+        };
+      }>(buildIndependentExpendituresQuery(0, 10, undefined, 'oppose'));
+
+      assertNoErrors(result);
+      expect(result.data.independentExpenditures.items).toHaveLength(1);
+      expect(result.data.independentExpenditures.items[0].supportOrOppose).toBe(
+        'oppose',
+      );
+    });
+
+    it('should filter independent expenditures by committeeId', async () => {
+      const committee1 = await createCommittee({ name: 'IE Committee 1' });
+      const committee2 = await createCommittee({ name: 'IE Committee 2' });
+      await createIndependentExpenditure({ committeeId: committee1.id });
+      await createIndependentExpenditure({ committeeId: committee2.id });
+      await createIndependentExpenditure({ committeeId: committee2.id });
+
+      const result = await graphqlRequest<{
+        independentExpenditures: {
+          items: Array<{ committeeId: string }>;
+          total: number;
+        };
+      }>(buildIndependentExpendituresQuery(0, 10, committee2.id));
+
+      assertNoErrors(result);
+      expect(result.data.independentExpenditures.items).toHaveLength(2);
+      expect(result.data.independentExpenditures.total).toBe(2);
+    });
+  });
+
+  describe('GraphQL: independentExpenditure Query', () => {
+    it('should find independent expenditure by ID', async () => {
+      const committee = await createCommittee();
+      const ie = await createIndependentExpenditure({
+        committeeId: committee.id,
+        committeeName: 'Specific IE PAC',
+        supportOrOppose: 'oppose',
+        amount: 25000,
+      });
+
+      const result = await graphqlRequest<{
+        independentExpenditure: {
+          id: string;
+          committeeName: string;
+          supportOrOppose: string;
+          amount: number;
+        };
+      }>(buildIndependentExpenditureByIdQuery(ie.id));
+
+      assertNoErrors(result);
+      expect(result.data.independentExpenditure).toBeDefined();
+      expect(result.data.independentExpenditure.committeeName).toBe(
+        'Specific IE PAC',
+      );
+      expect(result.data.independentExpenditure.supportOrOppose).toBe('oppose');
+      expect(result.data.independentExpenditure.amount).toBe(25000);
+    });
+
+    it('should return null for non-existent independent expenditure', async () => {
+      const result = await graphqlRequest<{
+        independentExpenditure: null;
+      }>(buildIndependentExpenditureByIdQuery('non-existent-id'));
+
+      assertNoErrors(result);
+      expect(result.data.independentExpenditure).toBeNull();
+    });
+  });
+
+  // ==========================================
+  // DATABASE CLEANUP
+  // ==========================================
+
   describe('Database cleanup', () => {
     it('should have clean database at start of each test', async () => {
       await createRepresentative({ name: 'Cleanup Test Rep' });
@@ -587,6 +1381,27 @@ describe('Region Integration Tests', () => {
       expect(reps).toHaveLength(0);
       expect(props).toHaveLength(0);
       expect(meetings).toHaveLength(0);
+    });
+
+    it('should clean campaign finance tables between tests', async () => {
+      const committee = await createCommittee({ name: 'Cleanup Committee' });
+      await createContribution({ committeeId: committee.id });
+      await createExpenditure({ committeeId: committee.id });
+      await createIndependentExpenditure({ committeeId: committee.id });
+
+      const db = await getDbService();
+      expect(await db.committee.findMany()).toHaveLength(1);
+      expect(await db.contribution.findMany()).toHaveLength(1);
+      expect(await db.expenditure.findMany()).toHaveLength(1);
+      expect(await db.independentExpenditure.findMany()).toHaveLength(1);
+    });
+
+    it('should not see campaign finance data from previous tests', async () => {
+      const db = await getDbService();
+      expect(await db.committee.findMany()).toHaveLength(0);
+      expect(await db.contribution.findMany()).toHaveLength(0);
+      expect(await db.expenditure.findMany()).toHaveLength(0);
+      expect(await db.independentExpenditure.findMany()).toHaveLength(0);
     });
   });
 });

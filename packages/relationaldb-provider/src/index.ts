@@ -64,6 +64,10 @@ export type {
   Representative,
   Proposition,
   Meeting,
+  Committee,
+  Contribution,
+  Expenditure,
+  IndependentExpenditure,
 } from "@prisma/client";
 
 // Re-export database enums
