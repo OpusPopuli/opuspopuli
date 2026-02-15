@@ -69,6 +69,15 @@ export {
   type CreatePropositionOptions,
   createMeeting,
   type CreateMeetingOptions,
+  // Campaign finance fixtures
+  createCommittee,
+  type CreateCommitteeOptions,
+  createContribution,
+  type CreateContributionOptions,
+  createExpenditure,
+  type CreateExpenditureOptions,
+  createIndependentExpenditure,
+  type CreateIndependentExpenditureOptions,
   // Activity/Audit fixtures
   createAuditLog,
   type CreateAuditLogOptions,
