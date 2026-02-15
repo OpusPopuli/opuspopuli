@@ -14,31 +14,36 @@ Thank you for your interest in contributing to Opus Populi! This document explai
 
 ## The Plugin Architecture
 
-Opus Populi uses a **plugin architecture** — the core platform is a single shared codebase, and region-specific civic data is provided by separate plugin packages. No forking required.
+Opus Populi uses a **declarative plugin architecture** — the core platform is a single shared codebase, and region-specific civic data is configured as JSON in the database. No forking, no separate repositories, no scraper code.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │              CORE PLATFORM (this repository)                 │
-│  Auth, AI/ML, UI, Providers, Plugin SDK, Infrastructure     │
+│  Auth, AI/ML, UI, Providers, Scraping Pipeline, Infra       │
+├──────────────────────────────────────────────────────────────┤
+│  Region Provider (plugin loader, registry, declarative       │
+│  plugin bridge) + Scraping Pipeline (AI analysis,            │
+│  manifest caching, Cheerio extraction, domain mapping)       │
 └──────────────────────────────────────────────────────────────┘
-        ↑ imports          ↑ imports          ↑ imports
-  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-  │ region-      │  │ region-      │  │ region-      │
-  │ california   │  │ texas        │  │ new-york     │
-  │ (plugin)     │  │ (plugin)     │  │ (plugin)     │
-  │ Scrapers     │  │ Scrapers     │  │ Scrapers     │
-  │ CA Data      │  │ TX Data      │  │ NY Data      │
-  └──────────────┘  └──────────────┘  └──────────────┘
-   separate repo     separate repo     separate repo
+        ↑ reads config from database
+  ┌──────────────────────────────────────────────────────┐
+  │              region_plugins table                      │
+  │  ┌────────────┐ ┌────────────┐ ┌────────────┐        │
+  │  │ California │ │ Texas      │ │ New York   │  ...   │
+  │  │ JSON config│ │ JSON config│ │ JSON config│        │
+  │  │ URLs +     │ │ URLs +     │ │ URLs +     │        │
+  │  │ goals      │ │ goals      │ │ goals      │        │
+  │  └────────────┘ └────────────┘ └────────────┘        │
+  └──────────────────────────────────────────────────────┘
 ```
 
 ### Why This Model?
 
-1. **No fork maintenance** — Region developers don't need to merge upstream changes; they just update the SDK dependency
+1. **No code required** — Region developers describe data sources and content goals in JSON; the AI-powered pipeline handles extraction
 2. **Platform improvements benefit everyone** — Bug fixes and features ship to all regions automatically
-3. **Region data stays local** — Each region controls their own scrapers, data sources, and validation rules
-4. **Clean separation of concerns** — The platform knows nothing about California law; the CA plugin knows nothing about authentication
-5. **Plugin ecosystem** — Community-built region plugins extend the platform's reach without centralized effort
+3. **Self-healing extraction** — When websites change their layout, the pipeline re-analyzes and adapts
+4. **Clean separation of concerns** — The platform knows nothing about California law; the CA config only describes where to find CA data
+5. **Low barrier to entry** — Adding a new region means inserting a database row with URLs and natural language descriptions
 
 ## What Belongs Where
 

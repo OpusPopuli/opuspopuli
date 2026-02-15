@@ -97,7 +97,7 @@ RELATIONAL_DB_PASSWORD=your-super-secret-password
 
 **Module**: `RelationalDBModule`
 
-**Consumed By**: `DbModule` (TypeORM integration)
+**Consumed By**: `DbModule` (Prisma integration)
 
 ---
 
@@ -141,10 +141,7 @@ export interface IVectorDBProvider {
 
 **Configuration**:
 ```bash
-# pgvector (uses same PostgreSQL instance)
-# Falls back to RELATIONAL_DB_* config if not specified
-VECTOR_DB_HOST=localhost
-VECTOR_DB_PORT=5432
+# pgvector (uses same PostgreSQL instance via DbService)
 VECTOR_DB_DIMENSIONS=384
 ```
 
@@ -673,7 +670,7 @@ OCR_PREPROCESSING_PRESET=balanced   # fast | balanced | quality (default: balanc
 
 **Package**: `@opuspopuli/region-provider`
 
-**Purpose**: Civic data integration via dynamically-loaded region plugins
+**Purpose**: Civic data integration via declarative region plugins
 
 **Plugin Interface**:
 ```typescript
@@ -694,8 +691,16 @@ export interface IRegionPlugin extends IRegionProvider {
 
 **Plugin Loading**:
 ```
-Platform startup → reads region_plugins table → import(packageName) → plugin.initialize()
+Platform startup → reads region_plugins table → validates DeclarativeRegionConfig
+  → creates DeclarativeRegionPlugin(config, pipeline) → registers in PluginRegistry
 ```
+
+Region plugins are configured as JSON (`DeclarativeRegionConfig`) in the `region_plugins` database table. The `PluginLoaderService` validates the config and wraps it in a `DeclarativeRegionPlugin`, which delegates data fetching to the scraping pipeline.
+
+**Key Services**:
+- `PluginLoaderService` - Validates config, creates `DeclarativeRegionPlugin`, registers in registry
+- `PluginRegistryService` - Tracks the active plugin
+- `DeclarativeRegionPlugin` - Bridges `DeclarativeRegionConfig` to `IRegionPlugin` via the pipeline
 
 **Module**: `RegionProviderModule` (manages plugin lifecycle)
 
@@ -705,7 +710,43 @@ Platform startup → reads region_plugins table → import(packageName) → plug
 
 ---
 
-### 13. HTTP Connection Pool (Common Utility)
+### 13. Scraping Pipeline
+
+**Package**: `@opuspopuli/scraping-pipeline`
+
+**Purpose**: AI-powered schema-on-read web scraping with structural manifests and self-healing
+
+**Pipeline Interface**:
+```typescript
+export interface IPipelineService {
+  execute<T>(source: DataSourceConfig, regionId: string): Promise<ExtractionResult<T>>;
+}
+```
+
+**How It Works**:
+1. **Structural Analysis** — AI (Ollama LLM) analyzes page HTML and produces a `StructuralManifest` with CSS selectors and field mappings
+2. **Manifest Caching** — Manifests are versioned and stored in the database; reused when page structure hasn't changed
+3. **Cheerio Extraction** — CSS selectors from the manifest extract raw records from the page
+4. **Domain Mapping** — Raw records are mapped to typed domain models (`Proposition`, `Meeting`, `Representative`)
+5. **Self-Healing** — When extraction fails (website layout changed), the pipeline re-analyzes and creates a new manifest version
+
+**Key Services**:
+- `StructuralAnalyzerService` - AI structural analysis, manifest generation
+- `ManifestStoreService` - Versioned manifest persistence and caching
+- `ManifestExtractorService` - Cheerio-based data extraction using manifests
+- `DomainMapperService` - Maps raw extracted records to typed domain models
+- `SelfHealingService` - Detects extraction failures and triggers re-analysis
+- `PipelineService` - Orchestrates the full extraction pipeline
+
+**Peer Dependencies**: `@opuspopuli/llm-provider`, `@opuspopuli/extraction-provider`, `@opuspopuli/relationaldb-provider`
+
+**Module**: `ScrapingPipelineModule` (supports `forRoot` with custom imports and providers)
+
+**Consumed By**: `DeclarativeRegionPlugin` (via `IPipelineService` interface)
+
+---
+
+### 14. HTTP Connection Pool (Common Utility)
 
 **Package**: `@opuspopuli/common`
 
@@ -938,9 +979,8 @@ const provider = process.env.RELATIONAL_DB_PROVIDER || 'postgres';
 
 ### Vector Database
 ```typescript
-// pgvector on PostgreSQL (default)
+// pgvector on PostgreSQL (uses shared DbService connection)
 const dimensions = process.env.VECTOR_DB_DIMENSIONS || 384;
-// Uses VECTOR_DB_* or falls back to RELATIONAL_DB_*
 ```
 
 ### Embeddings

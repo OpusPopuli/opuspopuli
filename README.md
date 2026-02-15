@@ -66,7 +66,7 @@ All documentation is located in the [`docs/`](docs/) directory:
 ### Backend (Microservices)
 - [NestJS](https://nestjs.com) - Node.js framework
 - [GraphQL Federation](https://www.apollographql.com/docs/federation/) - Unified API gateway
-- [TypeORM](https://typeorm.io) - Database ORM
+- [Prisma](https://www.prisma.io) - Database ORM
 
 ### AI/ML Stack (100% OSS)
 
@@ -111,6 +111,7 @@ opuspopuli/
 │   ├── email-provider/       # Transactional email (Resend)
 │   ├── logging-provider/     # Audit logging
 │   ├── ocr-provider/         # OCR functionality
+│   ├── scraping-pipeline/   # AI-powered web scraping (schema-on-read)
 │   └── region-provider/      # Civic data integration (declarative plugins)
 ├── apps/
 │   ├── backend/              # NestJS microservices
@@ -135,7 +136,7 @@ The `packages/` directory contains reusable workspace packages that provide plug
 | `@opuspopuli/common` | Shared types, interfaces, and HTTP connection pooling | - |
 | `@opuspopuli/llm-provider` | Ollama LLM integration | 16 |
 | `@opuspopuli/embeddings-provider` | Xenova/Ollama embeddings | 24 |
-| `@opuspopuli/vectordb-provider` | pgvector (PostgreSQL) | 19 |
+| `@opuspopuli/vectordb-provider` | pgvector (PostgreSQL) | 15 |
 | `@opuspopuli/relationaldb-provider` | PostgreSQL | 7 |
 | `@opuspopuli/extraction-provider` | Text extraction (URLs, PDFs) with caching & rate limiting | 116 |
 | `@opuspopuli/storage-provider` | Supabase Storage | 17 |
@@ -144,6 +145,7 @@ The `packages/` directory contains reusable workspace packages that provide plug
 | `@opuspopuli/email-provider` | Resend transactional email | - |
 | `@opuspopuli/logging-provider` | Audit logging | - |
 | `@opuspopuli/ocr-provider` | OCR functionality | - |
+| `@opuspopuli/scraping-pipeline` | AI-powered schema-on-read web scraping with structural manifests | - |
 | `@opuspopuli/region-provider` | Civic data integration (declarative plugins, propositions, meetings, representatives) | - |
 
 ## Development
@@ -195,6 +197,8 @@ docker-compose logs -f   # View logs
 - ✅ **Observability** - Prometheus metrics, Loki logging, Grafana dashboards
 - ✅ **Distributed Caching** - Redis for caching and rate limiting
 - ✅ **Internationalization** - English and Spanish with react-i18next
+- ✅ **Civic Data Integration** - Declarative region plugins for propositions, meetings, and representatives
+- ✅ **AI-Powered Scraping** - Schema-on-read pipeline with structural manifests and self-healing
 - ✅ **Accessibility** - WCAG 2.2 Level AA compliant
 - ✅ **100% Self-Hosted** - Complete data control and privacy
 
@@ -210,7 +214,7 @@ Opus Populi is the foundation for the Opus Populi Network - a collaborative ecos
 
 - **[Network Overview](NETWORK.md)** - Learn about the network and how to join
 - **[Network Terms](NETWORK-TERMS.md)** - Terms of service for network members
-- **[Region Provider Guide](docs/guides/region-provider.md)** - Create a custom region provider for your jurisdiction
+- **[Region Provider Guide](docs/guides/region-provider.md)** - Add civic data for your jurisdiction via declarative plugins
 
 ## Support
 

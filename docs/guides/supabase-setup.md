@@ -181,7 +181,7 @@ const tokens = await this.authProvider.authenticateUser(
 
 #### Passkey Database Schema
 
-Passkeys require two database tables (auto-created via TypeORM migrations):
+Passkeys require two database tables (auto-created via Prisma migrations):
 
 **passkey_credentials**:
 | Column | Type | Description |

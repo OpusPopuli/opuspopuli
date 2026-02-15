@@ -512,7 +512,7 @@ See [crypto.utils.ts](apps/backend/src/common/utils/crypto.utils.ts) for impleme
 ### Code Security
 
 - Input validation on all user inputs via class-validator
-- Parameterized queries (TypeORM)
+- Parameterized queries (Prisma)
 - Strict CORS configuration for API endpoints
 - Rate limiting on authentication endpoints
 - Error sanitization prevents information disclosure

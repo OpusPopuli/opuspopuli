@@ -99,7 +99,7 @@ SELECT * FROM pg_extension WHERE extname = 'vector';
 
 ## Data Models
 
-### Relational Tables (TypeORM Entities)
+### Relational Tables (Prisma Models)
 
 #### User Entity
 ```typescript

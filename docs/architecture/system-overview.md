@@ -90,7 +90,7 @@ Opus Populi is built on a modular, provider-based architecture with three core p
 
 ## Provider Architecture
 
-All external dependencies use the **Strategy Pattern + Dependency Injection** for maximum flexibility. Providers are implemented as reusable npm packages in the `packages/` directory.
+All external dependencies use the **Strategy Pattern + Dependency Injection** for maximum flexibility. Providers are implemented as workspace packages in the `packages/` directory.
 
 ### Platform Packages
 
@@ -107,7 +107,8 @@ All external dependencies use the **Strategy Pattern + Dependency Injection** fo
 | `@opuspopuli/email-provider` | Transactional email (Resend) | `EMAIL_PROVIDER` |
 | `@opuspopuli/logging-provider` | Audit logging | `LOGGING_PROVIDER` |
 | `@opuspopuli/ocr-provider` | OCR functionality | `OCR_PROVIDER` |
-| `@opuspopuli/region-provider` | Civic data integration | `REGION_PROVIDER` |
+| `@opuspopuli/scraping-pipeline` | AI-powered schema-on-read web scraping | `SCRAPING_PIPELINE` |
+| `@opuspopuli/region-provider` | Civic data integration (declarative plugins) | `REGION_PROVIDER` |
 
 ### Relational Database Provider
 **Package**: `@opuspopuli/relationaldb-provider`
@@ -442,11 +443,6 @@ See [Authentication Security Guide](../guides/auth-security.md) for implementati
 ### Planned Providers
 - **LLM**: vLLM, Text Generation Inference
 - **Embeddings**: Custom fine-tuned models
-
-### Recently Implemented
-- **Profile Enhancements**: Avatar upload, civic/demographic fields, profile completion tracking, visibility controls
-- **WCAG 2.2 AA Accessibility**: Keyboard navigation, screen reader support, focus management
-- **Internationalization**: English and Spanish translations with react-i18next
 
 ### Planned Features
 - Multi-modal RAG (images, PDFs)
