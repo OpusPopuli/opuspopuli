@@ -669,9 +669,9 @@ OCR_PREPROCESSING_PRESET=balanced   # fast | balanced | quality (default: balanc
 
 ---
 
-### 12. Region Provider & Plugin SDK
+### 12. Region Provider
 
-**Package**: `@opuspopuli/region-provider` + `@opuspopuli/region-plugin-sdk`
+**Package**: `@opuspopuli/region-provider`
 
 **Purpose**: Civic data integration via dynamically-loaded region plugins
 

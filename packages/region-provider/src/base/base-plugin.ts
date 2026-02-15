@@ -4,14 +4,6 @@
  * Abstract base class for region plugins.
  * Provides default lifecycle implementations so plugin developers
  * only need to implement the data-fetching methods.
- *
- * Usage:
- *   export class CaliforniaRegionPlugin extends BaseRegionPlugin {
- *     constructor() { super('california'); }
- *     getName() { return 'california'; }
- *     getVersion() { return '0.1.0'; }
- *     // ... implement abstract methods
- *   }
  */
 
 import { Logger } from "@nestjs/common";

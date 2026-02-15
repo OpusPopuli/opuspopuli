@@ -46,15 +46,11 @@
       "require": "./dist/providers/http/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
     "test": "jest",
-    "test:watch": "jest --watch",
-    "prepublishOnly": "pnpm run build"
+    "test:watch": "jest --watch"
   },
   "keywords": [
     "opuspopuli",
@@ -74,9 +70,6 @@
     "jest": "^30.0.0",
     "ts-jest": "^29.2.5",
     "typescript": "^5.7.2"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
   },
   "dependencies": {
     "cockatiel": "^3.2.1",

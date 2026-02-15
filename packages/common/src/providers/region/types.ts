@@ -15,11 +15,6 @@ export enum DataType {
   REPRESENTATIVES = "representatives",
 }
 
-/** @deprecated Use DataType instead */
-export const CivicDataType = DataType;
-/** @deprecated Use DataType instead */
-export type CivicDataType = DataType;
-
 /**
  * Proposition status values
  */

@@ -127,18 +127,15 @@ importers:
       '@opuspopuli/ocr-provider':
         specifier: workspace:*
         version: link:../../packages/ocr-provider
-      '@opuspopuli/region-plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/region-plugin-sdk
       '@opuspopuli/region-provider':
         specifier: workspace:*
         version: link:../../packages/region-provider
-      '@opuspopuli/region-template':
-        specifier: ^0.1.0
-        version: 0.1.0(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9)))))
       '@opuspopuli/relationaldb-provider':
         specifier: workspace:*
         version: link:../../packages/relationaldb-provider
+      '@opuspopuli/scraping-pipeline':
+        specifier: workspace:*
+        version: link:../../packages/scraping-pipeline
       '@opuspopuli/secrets-provider':
         specifier: workspace:*
         version: link:../../packages/secrets-provider
@@ -768,42 +765,11 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
-  packages/region-plugin-sdk:
-    dependencies:
-      '@opuspopuli/common':
-        specifier: workspace:*
-        version: link:../common
-    devDependencies:
-      '@nestjs/common':
-        specifier: ^11.1.9
-        version: 11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@types/jest':
-        specifier: ^30.0.0
-        version: 30.0.0
-      jest:
-        specifier: ^30.0.0
-        version: 30.2.0(@types/node@25.0.1)
-      reflect-metadata:
-        specifier: ^0.2.2
-        version: 0.2.2
-      rxjs:
-        specifier: ^7.8.1
-        version: 7.8.2
-      ts-jest:
-        specifier: ^29.2.5
-        version: 29.4.6(@babel/core@7.28.5)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.28.5))(jest-util@30.2.0)(jest@30.2.0)(typescript@5.9.3)
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-
   packages/region-provider:
     dependencies:
       '@opuspopuli/common':
         specifier: workspace:*
         version: link:../common
-      '@opuspopuli/region-plugin-sdk':
-        specifier: workspace:*
-        version: link:../region-plugin-sdk
     devDependencies:
       '@nestjs/common':
         specifier: ^11.1.9
@@ -3431,24 +3397,6 @@ packages:
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
     engines: {node: '>=8.0.0'}
-
-  '@opuspopuli/common@0.1.0':
-    resolution: {integrity: sha512-dsuPIVJGX+BcegphQ1nNBXK0g/T0aGBeoqc8Vf/US0TFxZo/sDnA8WQ4u8evF7pulsquk/adywFT5WDxNGXocw==, tarball: https://npm.pkg.github.com/download/@opuspopuli/common/0.1.0/cbf221993f3bad8a9f2167e24eb0e7fdf4abd5c4}
-    peerDependencies:
-      typeorm: ^0.3.0
-    peerDependenciesMeta:
-      typeorm:
-        optional: true
-
-  '@opuspopuli/region-plugin-sdk@0.1.0':
-    resolution: {integrity: sha512-AmUS8365wtqppMXH/5ROF2lfW2uKH5pVGQETE2LURENLHMmmpc775n4vP8k17tC7Mb8HHYtANRf2H7fRMjUlQw==, tarball: https://npm.pkg.github.com/download/@opuspopuli/region-plugin-sdk/0.1.0/b2e03f725be3546eed03b61b1fbc4df6eb185eab}
-    peerDependencies:
-      '@nestjs/common': ^11.0.0
-
-  '@opuspopuli/region-template@0.1.0':
-    resolution: {integrity: sha512-lBR45hHYqdeGCg22V1kQX1/QH3io2FTNBPE+N3HkBJNRg7yFIUQ4kAkpMc7PFc9iGIY+ayjOIxhAVxRD+WvScQ==, tarball: https://npm.pkg.github.com/download/@opuspopuli/region-template/0.1.0/e3d75aeee38f73f34ad712a8d361bf4fec38fcf5}
-    peerDependencies:
-      '@nestjs/common': ^11.0.0
 
   '@paralleldrive/cuid2@2.3.1':
     resolution: {integrity: sha512-XO7cAxhnTZl0Yggq6jOgjiOHhbgcO4NqFqwSmQpjK3b6TEE6Uj/jfSk6wzYyemh3+I0sHirKSetjQwn5cZktFw==}
@@ -12829,27 +12777,6 @@ snapshots:
 
   '@opentelemetry/api@1.9.0': {}
 
-  '@opuspopuli/common@0.1.0(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9)))))':
-    dependencies:
-      cockatiel: 3.2.1
-      undici: 7.19.2
-    optionalDependencies:
-      typeorm: 0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1)))
-
-  '@opuspopuli/region-plugin-sdk@0.1.0(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9)))))':
-    dependencies:
-      '@nestjs/common': 11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@opuspopuli/common': 0.1.0(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9)))))
-    transitivePeerDependencies:
-      - typeorm
-
-  '@opuspopuli/region-template@0.1.0(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9)))))':
-    dependencies:
-      '@nestjs/common': 11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@opuspopuli/region-plugin-sdk': 0.1.0(@nestjs/common@11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(typeorm@0.3.28(better-sqlite3@12.5.0)(ioredis@5.9.2)(mysql2@3.15.3)(pg@8.16.3)(ts-node@10.9.2(@types/node@25.0.1)(typescript@5.9.3))(typeorm-aurora-data-api-driver@3.0.2(@aws-sdk/client-rds-data@3.948.0(aws-crt@1.28.1(bufferutil@4.0.9)))))
-    transitivePeerDependencies:
-      - typeorm
-
   '@paralleldrive/cuid2@2.3.1':
     dependencies:
       '@noble/hashes': 1.8.0
@@ -16671,7 +16598,7 @@ snapshots:
       isstream: 0.1.2
       jsonwebtoken: 9.0.3
       mime-types: 2.1.35
-      retry-axios: 2.6.0(axios@1.13.2(debug@4.4.3))
+      retry-axios: 2.6.0(axios@1.13.2)
       tough-cookie: 4.1.4
     transitivePeerDependencies:
       - supports-color
@@ -19324,7 +19251,7 @@ snapshots:
       onetime: 7.0.0
       signal-exit: 4.1.0
 
-  retry-axios@2.6.0(axios@1.13.2(debug@4.4.3)):
+  retry-axios@2.6.0(axios@1.13.2):
     dependencies:
       axios: 1.13.2(debug@4.4.3)
 

@@ -1,13 +1,20 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import {
   RegionService as RegionProviderService,
   DataType,
   SyncResult,
   PluginLoaderService,
   PluginRegistryService,
+  ExampleRegionProvider,
+  type IPipelineService,
+  type IRegionPlugin,
 } from '@opuspopuli/region-provider';
-import { ExampleRegionPlugin } from '@opuspopuli/region-template';
-import type { IRegionPlugin } from '@opuspopuli/region-plugin-sdk';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import {
@@ -77,6 +84,9 @@ export class RegionDomainService implements OnModuleInit {
     private readonly pluginLoader: PluginLoaderService,
     private readonly pluginRegistry: PluginRegistryService,
     private readonly db: DbService,
+    @Optional()
+    @Inject('SCRAPING_PIPELINE')
+    private readonly pipeline?: IPipelineService,
   ) {}
 
   /**
@@ -91,28 +101,32 @@ export class RegionDomainService implements OnModuleInit {
 
       if (pluginConfig) {
         this.logger.log(
-          `Loading region plugin "${pluginConfig.name}" from ${pluginConfig.packageName}`,
+          `Loading declarative region plugin "${pluginConfig.name}"`,
         );
-        await this.pluginLoader.loadPlugin({
-          name: pluginConfig.name,
-          packageName: pluginConfig.packageName,
-          config: pluginConfig.config as Record<string, unknown> | undefined,
-        });
+        await this.pluginLoader.loadPlugin(
+          {
+            name: pluginConfig.name,
+            config: pluginConfig.config as Record<string, unknown> | undefined,
+          },
+          this.pipeline,
+        );
       } else {
         this.logger.warn(
-          'No enabled region plugin found in database, falling back to ExampleRegionPlugin',
+          'No enabled region plugin found in database, falling back to ExampleRegionProvider',
         );
-        // Cast needed: published region-template@0.1.0 uses CivicDataType from old SDK
-        const fallback = new ExampleRegionPlugin() as unknown as IRegionPlugin;
-        await this.pluginRegistry.register('example', fallback);
+        await this.pluginRegistry.register(
+          'example',
+          this.createFallbackPlugin(),
+        );
       }
     } catch (error) {
       this.logger.error(
-        `Failed to load region plugin, falling back to ExampleRegionPlugin: ${(error as Error).message}`,
+        `Failed to load region plugin, falling back to ExampleRegionProvider: ${(error as Error).message}`,
       );
-      // Cast needed: published region-template@0.1.0 uses CivicDataType from old SDK
-      const fallback = new ExampleRegionPlugin() as unknown as IRegionPlugin;
-      await this.pluginRegistry.register('example', fallback);
+      await this.pluginRegistry.register(
+        'example',
+        this.createFallbackPlugin(),
+      );
     }
 
     const plugin = this.pluginRegistry.getActive();
@@ -518,5 +532,23 @@ export class RegionDomainService implements OnModuleInit {
    */
   async getRepresentative(id: string) {
     return this.db.representative.findUnique({ where: { id } });
+  }
+
+  /**
+   * Adapt ExampleRegionProvider (IRegionProvider) to IRegionPlugin
+   * by adding the required lifecycle methods.
+   */
+  private createFallbackPlugin(): IRegionPlugin {
+    const provider = new ExampleRegionProvider();
+    return Object.assign(Object.create(provider), {
+      getVersion: () => '0.0.0-fallback',
+      initialize: async () => {},
+      healthCheck: async () => ({
+        healthy: true,
+        message: 'Example fallback provider',
+        lastCheck: new Date(),
+      }),
+      destroy: async () => {},
+    }) as IRegionPlugin;
   }
 }
