@@ -147,17 +147,9 @@ export class FieldTransformer {
     const trimmed = value.trim();
 
     // Try long format: "January 1, 2026" or "Feb 17, 2026"
-    const longMatch = trimmed.match(
-      /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(\d{4})\b/i,
-    );
+    const longMatch = FieldTransformer.matchLongDate(trimmed);
     if (longMatch) {
-      const monthStr = longMatch[1];
-      const day = longMatch[2];
-      const year = longMatch[3];
-      const month = FieldTransformer.monthToNumber(monthStr);
-      if (month >= 0) {
-        return new Date(Number(year), month, Number(day)).toISOString();
-      }
+      return longMatch;
     }
 
     // Try US format: MM/DD/YY or MM/DD/YYYY
@@ -180,12 +172,29 @@ export class FieldTransformer {
 
     // Fallback: try native Date parsing
     const parsed = new Date(trimmed);
-    if (!isNaN(parsed.getTime())) {
+    if (!Number.isNaN(parsed.getTime())) {
       return parsed.toISOString();
     }
 
     // Return as-is if unparseable
     return trimmed;
+  }
+
+  /**
+   * Try to match a long-form date like "January 1, 2026" or "Feb 17, 2026".
+   * Returns ISO string on success, undefined on failure.
+   */
+  private static matchLongDate(value: string): string | undefined {
+    // Match: word followed by 1-2 digits, optional comma, then 4-digit year
+    const match = /\b([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})\b/.exec(value);
+    if (!match) {
+      return undefined;
+    }
+    const month = FieldTransformer.monthToNumber(match[1]);
+    if (month < 0) {
+      return undefined;
+    }
+    return new Date(Number(match[3]), month, Number(match[2])).toISOString();
   }
 
   /**

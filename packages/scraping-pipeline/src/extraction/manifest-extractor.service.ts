@@ -52,20 +52,23 @@ export class ManifestExtractorService {
     // Find the container element
     const container = $(rules.containerSelector);
     if (container.length === 0) {
-      this.logger.warn(
-        `Container not found: "${rules.containerSelector}" for ${manifest.sourceUrl}`,
-      );
+      const msg = 'Container not found: "' + rules.containerSelector + '"';
+      this.logger.warn(msg + " for " + manifest.sourceUrl);
       return {
         items: [],
         success: false,
         warnings: [],
-        errors: [`Container not found: ${rules.containerSelector}`],
+        errors: ["Container not found: " + rules.containerSelector],
       };
     }
 
     if (container.length > 1) {
       warnings.push(
-        `Multiple containers found (${container.length}) for "${rules.containerSelector}", using first`,
+        "Multiple containers found (" +
+          container.length +
+          ') for "' +
+          rules.containerSelector +
+          '", using first',
       );
     }
 
@@ -74,14 +77,22 @@ export class ManifestExtractorService {
 
     if (itemElements.length === 0) {
       this.logger.warn(
-        `No items found: "${rules.itemSelector}" within "${rules.containerSelector}" for ${manifest.sourceUrl}`,
+        'No items found: "' +
+          rules.itemSelector +
+          '" within "' +
+          rules.containerSelector +
+          '" for ' +
+          manifest.sourceUrl,
       );
       return {
         items: [],
         success: false,
         warnings,
         errors: [
-          `No items found: ${rules.itemSelector} within ${rules.containerSelector}`,
+          "No items found: " +
+            rules.itemSelector +
+            " within " +
+            rules.containerSelector,
         ],
       };
     }
@@ -104,7 +115,13 @@ export class ManifestExtractorService {
 
     const duration = Date.now() - startTime;
     this.logger.debug(
-      `Extracted ${items.length} items from ${manifest.sourceUrl} in ${duration}ms`,
+      "Extracted " +
+        items.length +
+        " items from " +
+        manifest.sourceUrl +
+        " in " +
+        duration +
+        "ms",
     );
 
     return {
@@ -134,22 +151,11 @@ export class ManifestExtractorService {
         requiredTotal++;
       }
 
-      let value = this.extractFieldValue($, element, mapping);
+      const value = this.resolveFieldValue($, element, mapping, baseUrl);
 
-      // Apply transform
-      if (value && mapping.transform) {
-        value = FieldTransformer.apply(value, mapping.transform, baseUrl);
-      }
-
-      // Apply default
-      if (!value && mapping.defaultValue !== undefined) {
-        value = mapping.defaultValue;
-      }
-
-      // Check required
       if (!value && mapping.required) {
         requiredMissing++;
-        warnings.push(`Required field "${mapping.fieldName}" missing`);
+        warnings.push('Required field "' + mapping.fieldName + '" missing');
       }
 
       if (value !== undefined && value !== null) {
@@ -163,6 +169,28 @@ export class ManifestExtractorService {
     }
 
     return { data, warnings };
+  }
+
+  /**
+   * Extract, transform, and apply defaults for a single field.
+   */
+  private resolveFieldValue(
+    $: CheerioAPI,
+    element: Cheerio<Element>,
+    mapping: FieldMapping,
+    baseUrl?: string,
+  ): string | undefined {
+    let value = this.extractFieldValue($, element, mapping);
+
+    if (value && mapping.transform) {
+      value = FieldTransformer.apply(value, mapping.transform, baseUrl);
+    }
+
+    if (!value && mapping.defaultValue !== undefined) {
+      value = mapping.defaultValue;
+    }
+
+    return value;
   }
 
   /**
@@ -227,20 +255,24 @@ export class ManifestExtractorService {
         });
         break;
 
-      case "merge_tables":
+      case "merge_tables": {
         // Merge multiple tables matching the selector into one
         const tables = $(step.selector);
         if (tables.length > 1) {
           const firstTable = tables.first();
           tables.slice(1).each(function () {
             const rows = $(this).find("tbody tr, tr");
-            firstTable.find("tbody").length > 0
-              ? firstTable.find("tbody").append(rows)
-              : firstTable.append(rows);
+            const tbody = firstTable.find("tbody");
+            if (tbody.length > 0) {
+              tbody.append(rows);
+            } else {
+              firstTable.append(rows);
+            }
             $(this).remove();
           });
         }
         break;
+      }
     }
   }
 }

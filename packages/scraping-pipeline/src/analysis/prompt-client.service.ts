@@ -122,7 +122,9 @@ export class PromptClientService {
     const template = this.getLocalTemplate(source.dataType);
     const schemaDescription = this.getSchemaDescription(source.dataType);
     const hintsSection = source.hints?.length
-      ? `## Hints from the region author\n${source.hints.map((h) => `- ${h}`).join("\n")}\n`
+      ? "## Hints from the region author\n" +
+        source.hints.map((h) => "- " + h).join("\n") +
+        "\n"
       : "";
 
     const promptText = template
