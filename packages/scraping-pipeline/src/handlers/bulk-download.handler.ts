@@ -156,12 +156,12 @@ export class BulkDownloadHandler {
     const indices: Record<string, number> = {};
     for (const col of Object.keys(columns)) {
       const idx = headers.indexOf(col);
-      if (idx !== -1) {
-        indices[col] = idx;
-      } else {
+      if (idx === -1) {
         this.logger.warn(
           `Column '${col}' not found in file headers. Available: ${headers.slice(0, 10).join(", ")}`,
         );
+      } else {
+        indices[col] = idx;
       }
     }
     return indices;

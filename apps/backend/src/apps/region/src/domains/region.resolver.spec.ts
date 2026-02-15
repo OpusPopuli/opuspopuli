@@ -66,6 +66,76 @@ describe('RegionResolver', () => {
     deletedAt: null,
   };
 
+  const mockCommittee: any = {
+    id: '1',
+    externalId: 'comm-1',
+    name: 'Test Committee',
+    type: 'pac',
+    candidateName: null,
+    candidateOffice: null,
+    propositionId: null,
+    party: null,
+    status: 'active',
+    sourceSystem: 'cal-access',
+    sourceUrl: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockContribution: any = {
+    id: '1',
+    externalId: 'contrib-1',
+    committeeId: 'comm-1',
+    donorName: 'Jane Smith',
+    donorType: 'individual',
+    donorEmployer: null,
+    donorOccupation: null,
+    donorCity: null,
+    donorState: null,
+    donorZip: null,
+    amount: 500,
+    date: new Date(),
+    electionType: null,
+    contributionType: null,
+    sourceSystem: 'cal-access',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockExpenditure: any = {
+    id: '1',
+    externalId: 'exp-1',
+    committeeId: 'comm-1',
+    payeeName: 'Ad Agency Inc',
+    amount: 1500,
+    date: new Date(),
+    purposeDescription: null,
+    expenditureCode: null,
+    candidateName: null,
+    propositionTitle: null,
+    supportOrOppose: null,
+    sourceSystem: 'cal-access',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockIndependentExpenditure: any = {
+    id: '1',
+    externalId: 'ie-1',
+    committeeId: 'comm-1',
+    committeeName: 'Test IE Committee',
+    candidateName: null,
+    propositionTitle: null,
+    supportOrOppose: 'support',
+    amount: 25000,
+    date: new Date(),
+    electionDate: null,
+    description: null,
+    sourceSystem: 'cal-access',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
   beforeEach(async () => {
     const mockRegionService = createMock<RegionDomainService>();
 
@@ -244,6 +314,286 @@ describe('RegionResolver', () => {
       regionService.getRepresentative.mockResolvedValue(null);
 
       const result = await resolver.representative('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  // ==========================================
+  // CAMPAIGN FINANCE QUERIES
+  // ==========================================
+
+  describe('committees', () => {
+    it('should return paginated committees', async () => {
+      const mockPaginatedResult = {
+        items: [mockCommittee],
+        total: 1,
+        hasMore: false,
+      };
+      regionService.getCommittees.mockResolvedValue(mockPaginatedResult);
+
+      const result = await resolver.committees(0, 10);
+
+      expect(result).toEqual(mockPaginatedResult);
+      expect(regionService.getCommittees).toHaveBeenCalledWith(
+        0,
+        10,
+        undefined,
+      );
+    });
+
+    it('should filter by sourceSystem when provided', async () => {
+      const mockPaginatedResult = {
+        items: [mockCommittee],
+        total: 1,
+        hasMore: false,
+      };
+      regionService.getCommittees.mockResolvedValue(mockPaginatedResult);
+
+      await resolver.committees(0, 10, 'cal-access');
+
+      expect(regionService.getCommittees).toHaveBeenCalledWith(
+        0,
+        10,
+        'cal-access',
+      );
+    });
+  });
+
+  describe('committee', () => {
+    it('should return a single committee', async () => {
+      regionService.getCommittee.mockResolvedValue(mockCommittee);
+
+      const result = await resolver.committee('1');
+
+      expect(result).toEqual({
+        ...mockCommittee,
+        candidateName: undefined,
+        candidateOffice: undefined,
+        propositionId: undefined,
+        party: undefined,
+        sourceUrl: undefined,
+      });
+      expect(regionService.getCommittee).toHaveBeenCalledWith('1');
+    });
+
+    it('should return null if committee not found', async () => {
+      regionService.getCommittee.mockResolvedValue(null);
+
+      const result = await resolver.committee('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('contributions', () => {
+    it('should return paginated contributions', async () => {
+      const mockPaginatedResult = {
+        items: [mockContribution],
+        total: 1,
+        hasMore: false,
+      };
+      regionService.getContributions.mockResolvedValue(mockPaginatedResult);
+
+      const result = await resolver.contributions(0, 10);
+
+      expect(result).toEqual(mockPaginatedResult);
+      expect(regionService.getContributions).toHaveBeenCalledWith(
+        0,
+        10,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('should filter by committeeId and sourceSystem', async () => {
+      const mockPaginatedResult = {
+        items: [mockContribution],
+        total: 1,
+        hasMore: false,
+      };
+      regionService.getContributions.mockResolvedValue(mockPaginatedResult);
+
+      await resolver.contributions(0, 10, 'comm-1', 'cal-access');
+
+      expect(regionService.getContributions).toHaveBeenCalledWith(
+        0,
+        10,
+        'comm-1',
+        'cal-access',
+      );
+    });
+  });
+
+  describe('contribution', () => {
+    it('should return a single contribution with amount as number', async () => {
+      regionService.getContribution.mockResolvedValue(mockContribution);
+
+      const result = await resolver.contribution('1');
+
+      expect(result).toEqual({
+        ...mockContribution,
+        amount: 500,
+        donorEmployer: undefined,
+        donorOccupation: undefined,
+        donorCity: undefined,
+        donorState: undefined,
+        donorZip: undefined,
+        electionType: undefined,
+        contributionType: undefined,
+      });
+      expect(regionService.getContribution).toHaveBeenCalledWith('1');
+    });
+
+    it('should return null if contribution not found', async () => {
+      regionService.getContribution.mockResolvedValue(null);
+
+      const result = await resolver.contribution('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('expenditures', () => {
+    it('should return paginated expenditures', async () => {
+      const mockPaginatedResult = {
+        items: [mockExpenditure],
+        total: 1,
+        hasMore: false,
+      };
+      regionService.getExpenditures.mockResolvedValue(mockPaginatedResult);
+
+      const result = await resolver.expenditures(0, 10);
+
+      expect(result).toEqual(mockPaginatedResult);
+      expect(regionService.getExpenditures).toHaveBeenCalledWith(
+        0,
+        10,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('should filter by committeeId and sourceSystem', async () => {
+      const mockPaginatedResult = {
+        items: [mockExpenditure],
+        total: 1,
+        hasMore: false,
+      };
+      regionService.getExpenditures.mockResolvedValue(mockPaginatedResult);
+
+      await resolver.expenditures(0, 10, 'comm-1', 'cal-access');
+
+      expect(regionService.getExpenditures).toHaveBeenCalledWith(
+        0,
+        10,
+        'comm-1',
+        'cal-access',
+      );
+    });
+  });
+
+  describe('expenditure', () => {
+    it('should return a single expenditure with amount as number', async () => {
+      regionService.getExpenditure.mockResolvedValue(mockExpenditure);
+
+      const result = await resolver.expenditure('1');
+
+      expect(result).toEqual({
+        ...mockExpenditure,
+        amount: 1500,
+        purposeDescription: undefined,
+        expenditureCode: undefined,
+        candidateName: undefined,
+        propositionTitle: undefined,
+        supportOrOppose: undefined,
+      });
+      expect(regionService.getExpenditure).toHaveBeenCalledWith('1');
+    });
+
+    it('should return null if expenditure not found', async () => {
+      regionService.getExpenditure.mockResolvedValue(null);
+
+      const result = await resolver.expenditure('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('independentExpenditures', () => {
+    it('should return paginated independent expenditures', async () => {
+      const mockPaginatedResult = {
+        items: [mockIndependentExpenditure],
+        total: 1,
+        hasMore: false,
+      };
+      regionService.getIndependentExpenditures.mockResolvedValue(
+        mockPaginatedResult,
+      );
+
+      const result = await resolver.independentExpenditures(0, 10);
+
+      expect(result).toEqual(mockPaginatedResult);
+      expect(regionService.getIndependentExpenditures).toHaveBeenCalledWith(
+        0,
+        10,
+        undefined,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('should filter by committeeId, supportOrOppose, and sourceSystem', async () => {
+      const mockPaginatedResult = {
+        items: [mockIndependentExpenditure],
+        total: 1,
+        hasMore: false,
+      };
+      regionService.getIndependentExpenditures.mockResolvedValue(
+        mockPaginatedResult,
+      );
+
+      await resolver.independentExpenditures(
+        0,
+        10,
+        'comm-1',
+        'support',
+        'cal-access',
+      );
+
+      expect(regionService.getIndependentExpenditures).toHaveBeenCalledWith(
+        0,
+        10,
+        'comm-1',
+        'support',
+        'cal-access',
+      );
+    });
+  });
+
+  describe('independentExpenditure', () => {
+    it('should return a single independent expenditure with amount as number', async () => {
+      regionService.getIndependentExpenditure.mockResolvedValue(
+        mockIndependentExpenditure,
+      );
+
+      const result = await resolver.independentExpenditure('1');
+
+      expect(result).toEqual({
+        ...mockIndependentExpenditure,
+        amount: 25000,
+        candidateName: undefined,
+        propositionTitle: undefined,
+        electionDate: undefined,
+        description: undefined,
+      });
+      expect(regionService.getIndependentExpenditure).toHaveBeenCalledWith('1');
+    });
+
+    it('should return null if independent expenditure not found', async () => {
+      regionService.getIndependentExpenditure.mockResolvedValue(null);
+
+      const result = await resolver.independentExpenditure('nonexistent');
 
       expect(result).toBeNull();
     });
