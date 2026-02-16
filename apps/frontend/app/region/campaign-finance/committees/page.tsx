@@ -1,13 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
 import {
   GET_COMMITTEES,
   CommitteesData,
   Committee,
 } from "@/lib/graphql/region";
+import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { Pagination } from "@/components/region/Pagination";
+import {
+  LoadingSkeleton,
+  ErrorState,
+  EmptyState,
+} from "@/components/region/ListStates";
 
 const PAGE_SIZE = 10;
 
@@ -89,35 +95,10 @@ export default function CommitteesPage() {
   });
 
   const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="animate-pulse">
-              <div className="bg-gray-200 rounded-xl h-32"></div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (error) {
-      return (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <p className="text-red-600">
-            Failed to load committees. Please try again later.
-          </p>
-        </div>
-      );
-    }
-
-    if (data?.committees.items.length === 0) {
-      return (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#555555]">No committees found.</p>
-        </div>
-      );
-    }
+    if (loading) return <LoadingSkeleton />;
+    if (error) return <ErrorState entity="committees" />;
+    if (data?.committees.items.length === 0)
+      return <EmptyState entity="committees" />;
 
     return (
       <>
@@ -126,61 +107,32 @@ export default function CommitteesPage() {
             <CommitteeCard key={committee.id} committee={committee} />
           ))}
         </div>
-
-        <div className="mt-8 flex items-center justify-between">
-          <p className="text-sm text-[#555555]">
-            Showing {page * PAGE_SIZE + 1} -{" "}
-            {Math.min((page + 1) * PAGE_SIZE, data?.committees.total || 0)} of{" "}
-            {data?.committees.total || 0}
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={!data?.committees.hasMore}
-              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={data?.committees.total || 0}
+          hasMore={data?.committees.hasMore || false}
+          onPageChange={setPage}
+        />
       </>
     );
   };
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <nav className="mb-6">
-        <Link
-          href="/region"
-          className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
-        >
-          Region
-        </Link>
-        <span className="mx-2 text-[#555555]">/</span>
-        <Link
-          href="/region/campaign-finance"
-          className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
-        >
-          Campaign Finance
-        </Link>
-        <span className="mx-2 text-[#555555]">/</span>
-        <span className="text-sm text-[#555555]">Committees</span>
-      </nav>
-
+      <Breadcrumb
+        segments={[
+          { label: "Region", href: "/region" },
+          { label: "Campaign Finance", href: "/region/campaign-finance" },
+          { label: "Committees" },
+        ]}
+      />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#222222]">Committees</h1>
         <p className="mt-2 text-[#555555]">
           Campaign committees and PACs for your region
         </p>
       </div>
-
       {renderContent()}
     </div>
   );
