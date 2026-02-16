@@ -8,7 +8,12 @@ const mockRegionInfo = {
   description: "A test region for civic data",
   timezone: "America/Los_Angeles",
   dataSourceUrls: ["https://example.com/data"],
-  supportedDataTypes: ["PROPOSITIONS", "MEETINGS", "REPRESENTATIVES"],
+  supportedDataTypes: [
+    "PROPOSITIONS",
+    "MEETINGS",
+    "REPRESENTATIVES",
+    "CAMPAIGN_FINANCE",
+  ],
 };
 
 const mockPropositions = {
@@ -110,6 +115,142 @@ const mockRepresentatives = {
   hasMore: false,
 };
 
+const mockCommittees = {
+  items: [
+    {
+      id: "1",
+      externalId: "comm-1",
+      name: "Citizens for Progress",
+      type: "pac",
+      candidateName: null,
+      candidateOffice: null,
+      propositionId: null,
+      party: null,
+      status: "active",
+      sourceSystem: "cal_access",
+      sourceUrl: "https://example.com/comm-1",
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "2",
+      externalId: "comm-2",
+      name: "Smith for Governor",
+      type: "candidate",
+      candidateName: "Jane Smith",
+      candidateOffice: "Governor",
+      propositionId: null,
+      party: "Democrat",
+      status: "terminated",
+      sourceSystem: "fec",
+      sourceUrl: null,
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ],
+  total: 2,
+  hasMore: false,
+};
+
+const mockContributions = {
+  items: [
+    {
+      id: "1",
+      externalId: "contrib-1",
+      committeeId: "comm-1",
+      donorName: "Jane Doe",
+      donorType: "individual",
+      amount: 500.5,
+      date: "2024-06-15T00:00:00Z",
+      sourceSystem: "cal_access",
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "2",
+      externalId: "contrib-2",
+      committeeId: "comm-2",
+      donorName: "ACME Corp PAC",
+      donorType: "committee",
+      amount: 10000,
+      date: "2024-07-20T00:00:00Z",
+      sourceSystem: "fec",
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ],
+  total: 2,
+  hasMore: false,
+};
+
+const mockExpenditures = {
+  items: [
+    {
+      id: "1",
+      externalId: "exp-1",
+      committeeId: "comm-1",
+      payeeName: "Ad Agency Inc",
+      amount: 15000,
+      date: "2024-08-01T00:00:00Z",
+      purposeDescription: "Television advertising",
+      supportOrOppose: "support",
+      sourceSystem: "cal_access",
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "2",
+      externalId: "exp-2",
+      committeeId: "comm-2",
+      payeeName: "Consulting Group LLC",
+      amount: 5000,
+      date: "2024-09-15T00:00:00Z",
+      purposeDescription: null,
+      supportOrOppose: "oppose",
+      sourceSystem: "fec",
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ],
+  total: 2,
+  hasMore: false,
+};
+
+const mockIndependentExpenditures = {
+  items: [
+    {
+      id: "1",
+      externalId: "ie-1",
+      committeeId: "comm-1",
+      committeeName: "Super PAC for Justice",
+      candidateName: "Jane Smith",
+      propositionTitle: null,
+      supportOrOppose: "support",
+      amount: 50000,
+      date: "2024-10-01T00:00:00Z",
+      sourceSystem: "cal_access",
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "2",
+      externalId: "ie-2",
+      committeeId: "comm-2",
+      committeeName: "Citizens Against Prop X",
+      candidateName: null,
+      propositionTitle: "Proposition X",
+      supportOrOppose: "oppose",
+      amount: 25000,
+      date: "2024-10-15T00:00:00Z",
+      sourceSystem: "fec",
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ],
+  total: 2,
+  hasMore: false,
+};
+
 // Helper function to mock GraphQL API
 async function mockRegionGraphQL(page: import("@playwright/test").Page) {
   // Set up auth session BEFORE page loads using addInitScript
@@ -137,6 +278,24 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
           data: { regionInfo: mockRegionInfo },
         }),
       });
+    } else if (
+      postData?.query?.includes("proposition(") ||
+      postData?.query?.includes("proposition (")
+    ) {
+      // Single proposition query — return first mock with fullText
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: {
+            proposition: {
+              ...mockPropositions.items[0],
+              fullText:
+                "This proposition would amend the California Constitution to require commercial and industrial properties worth more than $3 million to be reassessed at current market value.",
+            },
+          },
+        }),
+      });
     } else if (postData?.query?.includes("propositions")) {
       await route.fulfill({
         status: 200,
@@ -159,6 +318,38 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
         contentType: "application/json",
         body: JSON.stringify({
           data: { representatives: mockRepresentatives },
+        }),
+      });
+    } else if (postData?.query?.includes("independentExpenditures")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { independentExpenditures: mockIndependentExpenditures },
+        }),
+      });
+    } else if (postData?.query?.includes("expenditures")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { expenditures: mockExpenditures },
+        }),
+      });
+    } else if (postData?.query?.includes("contributions")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { contributions: mockContributions },
+        }),
+      });
+    } else if (postData?.query?.includes("committees")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { committees: mockCommittees },
         }),
       });
     } else {
@@ -193,12 +384,15 @@ test.describe("Region Page", () => {
     ).toBeVisible();
   });
 
-  test("should display data type cards", async ({ page }) => {
+  test("should display data type cards including campaign finance", async ({
+    page,
+  }) => {
     await page.goto("/region");
 
     await expect(page.getByText("Propositions")).toBeVisible();
     await expect(page.getByText("Meetings")).toBeVisible();
     await expect(page.getByText("Representatives")).toBeVisible();
+    await expect(page.getByText("Campaign Finance")).toBeVisible();
   });
 
   test("should display data source URLs", async ({ page }) => {
@@ -287,6 +481,143 @@ test.describe("Propositions Page", () => {
 
     await page.getByRole("link", { name: /Region/i }).click();
     await expect(page).toHaveURL(/\/region$/);
+  });
+});
+
+test.describe("Proposition Detail Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockRegionGraphQL(page);
+  });
+
+  test("should navigate from list to detail page", async ({ page }) => {
+    await page.goto("/region/propositions");
+
+    await page
+      .getByRole("link", { name: /Proposition 1: Test Measure/ })
+      .click();
+    await expect(page).toHaveURL(/\/region\/propositions\/1/);
+  });
+
+  test("should display proposition header", async ({ page }) => {
+    await page.goto("/region/propositions/1");
+
+    await expect(
+      page.getByRole("paragraph").filter({ hasText: "prop-1" }),
+    ).toBeVisible();
+    await expect(page.getByText("Proposition 1: Test Measure")).toBeVisible();
+    await expect(page.getByText("Pending", { exact: true })).toBeVisible();
+  });
+
+  test("should display Layer 1 by default with summary and Learn More", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await expect(
+      page.getByText("This is a test proposition summary."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Learn More" }),
+    ).toBeVisible();
+    await expect(page.getByText("Impact analysis coming soon")).toBeVisible();
+  });
+
+  test("should show layer indicator at position 1", async ({ page }) => {
+    await page.goto("/region/propositions/1");
+
+    const quickViewBtn = page.getByRole("button", { name: /Quick View/ });
+    await expect(quickViewBtn).toBeVisible();
+    await expect(quickViewBtn).toHaveAttribute("aria-current", "step");
+  });
+
+  test("should navigate to Layer 2 when Learn More is clicked", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await page.getByRole("button", { name: "Learn More" }).click();
+
+    await expect(page.getByText("What This Does")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Key Facts" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "See Both Sides" }),
+    ).toBeVisible();
+  });
+
+  test("should show fullText in Layer 2", async ({ page }) => {
+    await page.goto("/region/propositions/1");
+
+    await page.getByRole("button", { name: "Learn More" }).click();
+
+    await expect(
+      page.getByText(/amend the California Constitution/),
+    ).toBeVisible();
+  });
+
+  test("should navigate to Layer 3 when See Both Sides is clicked", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await page.getByRole("button", { name: "Learn More" }).click();
+    await page.getByRole("button", { name: "See Both Sides" }).click();
+
+    await expect(page.getByText("Best Arguments From Each Side")).toBeVisible();
+    await expect(page.getByText("Arguments For")).toBeVisible();
+    await expect(page.getByText("Arguments Against")).toBeVisible();
+  });
+
+  test("should navigate to Layer 4 when Full Details & Sources is clicked", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await page.getByRole("button", { name: /Both Sides/ }).click();
+    await page.getByRole("button", { name: "Full Details & Sources" }).click();
+
+    await expect(page.getByText("Full Documentation")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Official Source/ }),
+    ).toBeVisible();
+  });
+
+  test("should return to Layer 1 when Back to Summary is clicked", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await page.getByRole("button", { name: /Both Sides/ }).click();
+    await page.getByRole("button", { name: "Back to Summary" }).click();
+
+    await expect(
+      page.getByRole("button", { name: "Learn More" }),
+    ).toBeVisible();
+  });
+
+  test("should navigate via layer indicator dots", async ({ page }) => {
+    await page.goto("/region/propositions/1");
+
+    // Jump directly to Deep Dive
+    await page.getByRole("button", { name: /Deep Dive/ }).click();
+    await expect(page.getByText("Full Documentation")).toBeVisible();
+
+    // Jump back to Quick View
+    await page.getByRole("button", { name: /Quick View/ }).click();
+    await expect(
+      page.getByRole("button", { name: "Learn More" }),
+    ).toBeVisible();
+  });
+
+  test("should display breadcrumb with links", async ({ page }) => {
+    await page.goto("/region/propositions/1");
+
+    const propositionsLink = page.getByRole("link", { name: "Propositions" });
+    await expect(propositionsLink).toBeVisible();
+
+    await propositionsLink.click();
+    await expect(page).toHaveURL(/\/region\/propositions$/);
   });
 });
 
@@ -553,6 +884,31 @@ test.describe("Region Pages - Accessibility", () => {
     expect(violations).toEqual([]);
   });
 
+  test("Proposition detail page Layer 1 should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+    await expect(page.getByText("Proposition 1: Test Measure")).toBeVisible();
+    // Wait for layer-enter animation (250ms) to complete so colors are fully rendered
+    await page.waitForTimeout(400);
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
+  test("Proposition detail page Layer 2 should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+    await page.getByRole("button", { name: "Learn More" }).click();
+    await expect(page.getByText("What This Does")).toBeVisible();
+    // Wait for layer-enter animation (250ms) to complete so colors are fully rendered
+    await page.waitForTimeout(400);
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
   test("Propositions page should have no WCAG 2.2 AA violations", async ({
     page,
   }) => {
@@ -584,6 +940,66 @@ test.describe("Region Pages - Accessibility", () => {
     // Wait for content to load
     await expect(
       page.getByRole("heading", { name: "Representatives" }),
+    ).toBeVisible();
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
+  test("Campaign Finance hub page should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/campaign-finance");
+    await expect(
+      page.getByRole("heading", { name: "Campaign Finance" }),
+    ).toBeVisible();
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
+  test("Committees page should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/campaign-finance/committees");
+    await expect(
+      page.getByRole("heading", { name: "Committees" }),
+    ).toBeVisible();
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
+  test("Contributions page should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/campaign-finance/contributions");
+    await expect(
+      page.getByRole("heading", { name: "Contributions" }),
+    ).toBeVisible();
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
+  test("Expenditures page should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/campaign-finance/expenditures");
+    await expect(
+      page.getByRole("heading", { name: "Expenditures" }),
+    ).toBeVisible();
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
+  test("Independent Expenditures page should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/campaign-finance/independent-expenditures");
+    await expect(
+      page.getByRole("heading", { name: "Independent Expenditures" }),
     ).toBeVisible();
 
     const violations = await checkAccessibility(page);
@@ -698,5 +1114,270 @@ test.describe("Region Pages - Responsive Design", () => {
     await expect(
       page.getByRole("heading", { name: "Test Region" }),
     ).toBeVisible();
+  });
+
+  test("proposition detail page should display correctly on mobile", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto("/region/propositions/1");
+
+    await expect(page.getByText("Proposition 1: Test Measure")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Learn More" }),
+    ).toBeVisible();
+
+    // Navigate to Layer 3 to check two-column layout stacks on mobile
+    await page.getByRole("button", { name: /Both Sides/ }).click();
+    await expect(page.getByText("Arguments For")).toBeVisible();
+    await expect(page.getByText("Arguments Against")).toBeVisible();
+  });
+
+  test("campaign finance hub should display correctly on mobile", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto("/region/campaign-finance");
+
+    await expect(
+      page.getByRole("heading", { name: "Campaign Finance" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Committees" }),
+    ).toBeVisible();
+  });
+});
+
+// ==========================================
+// CAMPAIGN FINANCE PAGES
+// ==========================================
+
+test.describe("Campaign Finance Hub Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockRegionGraphQL(page);
+  });
+
+  test("should display page header", async ({ page }) => {
+    await page.goto("/region/campaign-finance");
+
+    await expect(
+      page.getByRole("heading", { name: "Campaign Finance" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Committees, contributions, and expenditures for your region",
+      ),
+    ).toBeVisible();
+  });
+
+  test("should display breadcrumb navigation", async ({ page }) => {
+    await page.goto("/region/campaign-finance");
+
+    await expect(page.getByRole("link", { name: /Region/i })).toBeVisible();
+  });
+
+  test("should display four sub-category cards", async ({ page }) => {
+    await page.goto("/region/campaign-finance");
+
+    await expect(
+      page.getByRole("heading", { name: "Committees" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Contributions" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Expenditures", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Independent Expenditures" }),
+    ).toBeVisible();
+  });
+
+  test("should navigate to committees page", async ({ page }) => {
+    await page.goto("/region/campaign-finance");
+
+    await page
+      .getByRole("link", { name: /Committees/i })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/region\/campaign-finance\/committees/);
+  });
+
+  test("should navigate back to region page via breadcrumb", async ({
+    page,
+  }) => {
+    await page.goto("/region/campaign-finance");
+
+    await page.getByRole("link", { name: /Region/i }).click();
+    await expect(page).toHaveURL(/\/region$/);
+  });
+});
+
+test.describe("Committees Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockRegionGraphQL(page);
+  });
+
+  test("should display page header", async ({ page }) => {
+    await page.goto("/region/campaign-finance/committees");
+
+    await expect(
+      page.getByRole("heading", { name: "Committees" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Campaign committees and PACs for your region"),
+    ).toBeVisible();
+  });
+
+  test("should display committee cards", async ({ page }) => {
+    await page.goto("/region/campaign-finance/committees");
+
+    await expect(page.getByText("Citizens for Progress")).toBeVisible();
+    await expect(page.getByText("Smith for Governor")).toBeVisible();
+  });
+
+  test("should display type and status badges", async ({ page }) => {
+    await page.goto("/region/campaign-finance/committees");
+
+    await expect(page.getByText("pac", { exact: true })).toBeVisible();
+    await expect(page.getByText("candidate", { exact: true })).toBeVisible();
+    await expect(page.getByText("active", { exact: true })).toBeVisible();
+    await expect(page.getByText("terminated", { exact: true })).toBeVisible();
+  });
+
+  test("should display pagination info", async ({ page }) => {
+    await page.goto("/region/campaign-finance/committees");
+
+    await expect(page.getByText(/Showing 1 - 2 of 2/)).toBeVisible();
+  });
+
+  test("should have breadcrumb with Campaign Finance link", async ({
+    page,
+  }) => {
+    await page.goto("/region/campaign-finance/committees");
+
+    await expect(
+      page.getByRole("link", { name: /Campaign Finance/i }),
+    ).toBeVisible();
+  });
+});
+
+test.describe("Contributions Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockRegionGraphQL(page);
+  });
+
+  test("should display page header", async ({ page }) => {
+    await page.goto("/region/campaign-finance/contributions");
+
+    await expect(
+      page.getByRole("heading", { name: "Contributions" }),
+    ).toBeVisible();
+  });
+
+  test("should display contribution cards with donor names", async ({
+    page,
+  }) => {
+    await page.goto("/region/campaign-finance/contributions");
+
+    await expect(page.getByText("Jane Doe")).toBeVisible();
+    await expect(page.getByText("ACME Corp PAC")).toBeVisible();
+  });
+
+  test("should format currency amounts", async ({ page }) => {
+    await page.goto("/region/campaign-finance/contributions");
+
+    await expect(page.getByText("$500.50")).toBeVisible();
+    await expect(page.getByText("$10,000.00")).toBeVisible();
+  });
+
+  test("should display donor type badges", async ({ page }) => {
+    await page.goto("/region/campaign-finance/contributions");
+
+    await expect(page.getByText("individual")).toBeVisible();
+    await expect(page.getByText("committee", { exact: true })).toBeVisible();
+  });
+
+  test("should display pagination info", async ({ page }) => {
+    await page.goto("/region/campaign-finance/contributions");
+
+    await expect(page.getByText(/Showing 1 - 2 of 2/)).toBeVisible();
+  });
+});
+
+test.describe("Expenditures Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockRegionGraphQL(page);
+  });
+
+  test("should display page header", async ({ page }) => {
+    await page.goto("/region/campaign-finance/expenditures");
+
+    await expect(
+      page.getByRole("heading", { name: "Expenditures" }),
+    ).toBeVisible();
+  });
+
+  test("should display expenditure cards", async ({ page }) => {
+    await page.goto("/region/campaign-finance/expenditures");
+
+    await expect(page.getByText("Ad Agency Inc")).toBeVisible();
+    await expect(page.getByText("Consulting Group LLC")).toBeVisible();
+  });
+
+  test("should format currency amounts", async ({ page }) => {
+    await page.goto("/region/campaign-finance/expenditures");
+
+    await expect(page.getByText("$15,000.00")).toBeVisible();
+    await expect(page.getByText("$5,000.00")).toBeVisible();
+  });
+
+  test("should display support/oppose badges", async ({ page }) => {
+    await page.goto("/region/campaign-finance/expenditures");
+
+    await expect(page.getByText("support")).toBeVisible();
+    await expect(page.getByText("oppose")).toBeVisible();
+  });
+});
+
+test.describe("Independent Expenditures Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockRegionGraphQL(page);
+  });
+
+  test("should display page header", async ({ page }) => {
+    await page.goto("/region/campaign-finance/independent-expenditures");
+
+    await expect(
+      page.getByRole("heading", { name: "Independent Expenditures" }),
+    ).toBeVisible();
+  });
+
+  test("should display committee names", async ({ page }) => {
+    await page.goto("/region/campaign-finance/independent-expenditures");
+
+    await expect(page.getByText("Super PAC for Justice")).toBeVisible();
+    await expect(page.getByText("Citizens Against Prop X")).toBeVisible();
+  });
+
+  test("should format currency amounts", async ({ page }) => {
+    await page.goto("/region/campaign-finance/independent-expenditures");
+
+    await expect(page.getByText("$50,000.00")).toBeVisible();
+    await expect(page.getByText("$25,000.00")).toBeVisible();
+  });
+
+  test("should display support/oppose badges", async ({ page }) => {
+    await page.goto("/region/campaign-finance/independent-expenditures");
+
+    await expect(page.getByText("support")).toBeVisible();
+    await expect(page.getByText("oppose")).toBeVisible();
+  });
+
+  test("should display candidate and proposition targets", async ({ page }) => {
+    await page.goto("/region/campaign-finance/independent-expenditures");
+
+    await expect(page.getByText("Candidate: Jane Smith")).toBeVisible();
+    await expect(page.getByText("Proposition: Proposition X")).toBeVisible();
   });
 });

@@ -183,13 +183,6 @@ describe("PropositionsPage", () => {
         screen.getByText(/Election: November \d+, 2024/),
       ).toBeInTheDocument();
     });
-
-    it("should render source links when available", () => {
-      render(<PropositionsPage />);
-
-      const sourceLinks = screen.getAllByText("Source");
-      expect(sourceLinks.length).toBeGreaterThan(0);
-    });
   });
 
   describe("pagination", () => {
@@ -251,6 +244,22 @@ describe("PropositionsPage", () => {
       await waitFor(() => {
         expect(screen.getByText("Previous")).not.toBeDisabled();
       });
+    });
+  });
+
+  describe("card links", () => {
+    it("should render proposition cards as links to detail pages", () => {
+      render(<PropositionsPage />);
+
+      const link1 = screen.getByRole("link", {
+        name: /Proposition 1: Test Measure/,
+      });
+      expect(link1).toHaveAttribute("href", "/region/propositions/1");
+
+      const link2 = screen.getByRole("link", {
+        name: /Proposition 2: Passed Measure/,
+      });
+      expect(link2).toHaveAttribute("href", "/region/propositions/2");
     });
   });
 

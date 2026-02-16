@@ -9,6 +9,13 @@ import {
   Proposition,
   PropositionStatus,
 } from "@/lib/graphql/region";
+import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { Pagination } from "@/components/region/Pagination";
+import {
+  LoadingSkeleton,
+  ErrorState,
+  EmptyState,
+} from "@/components/region/ListStates";
 
 const PAGE_SIZE = 10;
 
@@ -61,7 +68,10 @@ function PropositionCard({
     : null;
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow">
+    <Link
+      href={`/region/propositions/${proposition.id}`}
+      className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow"
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-semibold text-[#222222] line-clamp-2">
@@ -74,24 +84,12 @@ function PropositionCard({
         <StatusBadge status={proposition.status} />
       </div>
 
-      <div className="mt-4 flex items-center justify-between text-sm">
-        <div className="text-[#555555]">
-          {electionDate && <span>Election: {electionDate}</span>}
+      {electionDate && (
+        <div className="mt-4 text-sm text-[#555555]">
+          Election: {electionDate}
         </div>
-        <div className="flex items-center gap-3">
-          {proposition.sourceUrl && (
-            <a
-              href={proposition.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-700 hover:underline"
-            >
-              Source
-            </a>
-          )}
-        </div>
-      </div>
-    </div>
+      )}
+    </Link>
   );
 }
 
@@ -105,35 +103,10 @@ export default function PropositionsPage() {
   );
 
   const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="animate-pulse">
-              <div className="bg-gray-200 rounded-xl h-32"></div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (error) {
-      return (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <p className="text-red-600">
-            Failed to load propositions. Please try again later.
-          </p>
-        </div>
-      );
-    }
-
-    if (data?.propositions.items.length === 0) {
-      return (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#555555]">No propositions found.</p>
-        </div>
-      );
-    }
+    if (loading) return <LoadingSkeleton />;
+    if (error) return <ErrorState entity="propositions" />;
+    if (data?.propositions.items.length === 0)
+      return <EmptyState entity="propositions" />;
 
     return (
       <>
@@ -142,58 +115,31 @@ export default function PropositionsPage() {
             <PropositionCard key={prop.id} proposition={prop} />
           ))}
         </div>
-
-        {/* Pagination */}
-        <div className="mt-8 flex items-center justify-between">
-          <p className="text-sm text-[#555555]">
-            Showing {page * PAGE_SIZE + 1} -{" "}
-            {Math.min((page + 1) * PAGE_SIZE, data?.propositions.total || 0)} of{" "}
-            {data?.propositions.total || 0}
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={!data?.propositions.hasMore}
-              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={data?.propositions.total || 0}
+          hasMore={data?.propositions.hasMore || false}
+          onPageChange={setPage}
+        />
       </>
     );
   };
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      {/* Breadcrumb */}
-      <nav className="mb-6">
-        <Link
-          href="/region"
-          className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
-        >
-          Region
-        </Link>
-        <span className="mx-2 text-[#555555]">/</span>
-        <span className="text-sm text-[#555555]">Propositions</span>
-      </nav>
-
-      {/* Header */}
+      <Breadcrumb
+        segments={[
+          { label: "Region", href: "/region" },
+          { label: "Propositions" },
+        ]}
+      />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#222222]">Propositions</h1>
         <p className="mt-2 text-[#555555]">
           Ballot measures and initiatives for your region
         </p>
       </div>
-
-      {/* Content */}
       {renderContent()}
     </div>
   );
