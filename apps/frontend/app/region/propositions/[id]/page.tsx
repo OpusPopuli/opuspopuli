@@ -137,8 +137,8 @@ function QuickView({
       <p className="text-lg text-[#475569] leading-relaxed mb-6">{summary}</p>
 
       <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-100 rounded-lg text-sm font-semibold text-[#334155] mb-6">
-        <span className="w-3 h-3 rounded-full bg-slate-300" />
-        Impact analysis coming soon
+        <span className="w-3 h-3 rounded-full bg-slate-300" /> Impact analysis
+        coming soon
       </div>
 
       <div className="mt-6">
@@ -214,7 +214,7 @@ function BothSides({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div className="border-2 border-gray-200 rounded-xl p-5">
             <h4 className="flex items-center gap-2 text-xs uppercase tracking-[1.5px] font-extrabold mb-4">
-              <span className="w-5 h-5 rounded-full bg-blue-100 border-2 border-blue-500" />
+              <span className="w-5 h-5 rounded-full bg-blue-100 border-2 border-blue-500" />{" "}
               Arguments For
             </h4>
             <div className="text-sm text-slate-700 italic">
@@ -223,7 +223,7 @@ function BothSides({
           </div>
           <div className="border-2 border-gray-200 rounded-xl p-5">
             <h4 className="flex items-center gap-2 text-xs uppercase tracking-[1.5px] font-extrabold mb-4">
-              <span className="w-5 h-5 rounded-full bg-red-100 border-2 border-red-500" />
+              <span className="w-5 h-5 rounded-full bg-red-100 border-2 border-red-500" />{" "}
               Arguments Against
             </h4>
             <div className="text-sm text-slate-700 italic">
