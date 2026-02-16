@@ -33,7 +33,7 @@
     "db:migrate": "npx prisma migrate dev",
     "db:push": "npx prisma db push",
     "db:push:ci": "npx prisma db push --accept-data-loss",
-    "db:seed-prompts": "npx ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed-prompts.ts",
+    "db:seed-prompts": "npx tsx prisma/seed-prompts.ts",
     "db:spatial-indexes": "psql $DATABASE_URL -f prisma/spatial-indexes.sql",
     "db:studio": "npx prisma studio"
   },

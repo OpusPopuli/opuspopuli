@@ -19,7 +19,7 @@ echo "Running Prisma db:push..."
 npx prisma db push --accept-data-loss
 
 echo "Seeding prompt templates..."
-npx ts-node --compiler-options '{"module":"CommonJS"}' prisma/seed-prompts.ts
+npx tsx prisma/seed-prompts.ts
 
 echo "Checking spatial_ref_sys BEFORE setup..."
 psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -c "SELECT schemaname, tablename FROM pg_tables WHERE tablename = 'spatial_ref_sys';"
