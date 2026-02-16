@@ -10,6 +10,7 @@ import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
 import { IStorageProvider } from '@opuspopuli/storage-provider';
 import { OcrService } from '@opuspopuli/ocr-provider';
 import { ExtractionProvider } from '@opuspopuli/extraction-provider';
+import { PromptClientService } from '@opuspopuli/prompt-client';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 
 // Mock global fetch
@@ -77,6 +78,14 @@ describe('DocumentsService', () => {
     getModelName: jest.fn().mockReturnValue('llama3.2'),
   };
 
+  const mockPromptClient = {
+    getDocumentAnalysisPrompt: jest.fn().mockResolvedValue({
+      promptText: 'mock analysis prompt',
+      promptHash: 'mock-hash',
+      promptVersion: 'v1',
+    }),
+  };
+
   beforeEach(async () => {
     mockDb = createMockDbService();
     jest.clearAllMocks();
@@ -106,6 +115,10 @@ describe('DocumentsService', () => {
           useValue: {
             get: jest.fn().mockReturnValue(mockFileConfig),
           },
+        },
+        {
+          provide: PromptClientService,
+          useValue: mockPromptClient,
         },
       ],
     }).compile();
@@ -836,10 +849,10 @@ describe('DocumentsService', () => {
       const result = await documentsService.analyzeDocument('user-1', 'doc-1');
 
       expect(result.analysis.parties).toContain('Party A');
-      expect(mockLLMProvider.generate).toHaveBeenCalledWith(
-        expect.stringContaining('CONTRACT:'),
-        expect.any(Object),
-      );
+      expect(mockPromptClient.getDocumentAnalysisPrompt).toHaveBeenCalledWith({
+        documentType: DocumentType.contract,
+        text: 'This agreement is between Party A and Party B...',
+      });
     });
   });
 
@@ -1054,6 +1067,10 @@ describe('DocumentsService - config validation', () => {
             useValue: {
               get: jest.fn().mockReturnValue(undefined),
             },
+          },
+          {
+            provide: PromptClientService,
+            useValue: {},
           },
         ],
       }).compile(),

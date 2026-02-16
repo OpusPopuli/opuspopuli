@@ -10,6 +10,7 @@ module.exports = {
     "^@opuspopuli/llm-provider$": "<rootDir>/../llm-provider/src/index.ts",
     "^@opuspopuli/relationaldb-provider$":
       "<rootDir>/../relationaldb-provider/src/index.ts",
+    "^@opuspopuli/prompt-client$": "<rootDir>/../prompt-client/src/index.ts",
   },
   // Relax coverage thresholds for Phase 1 — not all code paths
   // are tested at unit level (pipeline service needs integration tests)

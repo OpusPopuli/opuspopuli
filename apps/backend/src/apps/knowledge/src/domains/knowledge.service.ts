@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
 import { IVectorDBProvider } from '@opuspopuli/vectordb-provider';
 import { ILLMProvider } from '@opuspopuli/llm-provider';
+import { PromptClientService } from '@opuspopuli/prompt-client';
 import {
   SearchResult,
   PaginatedSearchResults,
@@ -23,6 +24,7 @@ export class KnowledgeService {
     @Inject() private embeddingsService: EmbeddingsService,
     @Inject('VECTOR_DB_PROVIDER') private vectorDB: IVectorDBProvider,
     @Inject('LLM_PROVIDER') private llm: ILLMProvider,
+    private readonly promptClient: PromptClientService,
   ) {
     this.logger.log(
       `KnowledgeService initialized with vector DB: ${this.vectorDB.getName()}, LLM: ${this.llm.getName()}/${this.llm.getModelName()}`,
@@ -83,9 +85,12 @@ export class KnowledgeService {
         return 'I could not find any relevant information to answer your question.';
       }
 
-      // Step 2: Build RAG prompt with context
+      // Step 2: Get RAG prompt from database templates
       const context = contextChunks.join('\n\n');
-      const prompt = this.buildRAGPrompt(context, query);
+      const { promptText } = await this.promptClient.getRAGPrompt({
+        context,
+        query,
+      });
 
       this.logger.log(
         `Generating answer with ${this.llm.getName()}/${this.llm.getModelName()}`,
@@ -93,7 +98,7 @@ export class KnowledgeService {
 
       // Step 3: Generate answer with LLM
       // Lower temperature (0.3) for more factual, consistent responses
-      const result = await this.llm.generate(prompt, {
+      const result = await this.llm.generate(promptText, {
         maxTokens: 500,
         temperature: 0.3,
         topP: 0.9,
@@ -108,27 +113,6 @@ export class KnowledgeService {
       this.logger.error('RAG answer generation failed:', error);
       throw error;
     }
-  }
-
-  /**
-   * Build RAG prompt with context and query
-   */
-  private buildRAGPrompt(context: string, query: string): string {
-    return `You are a helpful assistant that answers questions based only on the provided context.
-
-Instructions:
-- Answer the question using ONLY information from the context below
-- Be concise and direct - avoid unnecessary repetition
-- If listing items, list each item exactly once
-- If the context doesn't contain enough information, say so
-- Do not make up information not present in the context
-
-Context:
-${context}
-
-Question: ${query}
-
-Answer:`;
   }
 
   /**

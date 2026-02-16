@@ -27,10 +27,8 @@ import {
   SetDocumentLocationResult,
   fuzzLocation,
 } from './dto/location.dto';
-import {
-  buildAnalysisPrompt,
-  parseAnalysisResponse,
-} from './prompts/document-analysis.prompt';
+import { parseAnalysisResponse } from './prompts/document-analysis.prompt';
+import { PromptClientService } from '@opuspopuli/prompt-client';
 
 /**
  * Documents Service
@@ -52,6 +50,7 @@ export class DocumentsService {
     private configService: ConfigService,
     private readonly ocrService: OcrService,
     private readonly extractionProvider: ExtractionProvider,
+    private readonly promptClient: PromptClientService,
   ) {
     const fileConfig: IFileConfig | undefined =
       configService.get<IFileConfig>('file');
@@ -388,8 +387,11 @@ export class DocumentsService {
     });
 
     try {
-      const prompt = buildAnalysisPrompt(document.extractedText, document.type);
-      const result = await this.llm.generate(prompt, {
+      const { promptText } = await this.promptClient.getDocumentAnalysisPrompt({
+        documentType: document.type,
+        text: document.extractedText,
+      });
+      const result = await this.llm.generate(promptText, {
         maxTokens: 1500,
         temperature: 0.3,
       });
