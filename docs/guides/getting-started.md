@@ -170,7 +170,11 @@ opuspopuli/
 │   ├── architecture/          # As-built architecture docs
 │   └── guides/                # How-to guides
 ├── scripts/                   # Utility scripts
-└── docker-compose.yml         # Infrastructure services
+├── docker-compose.yml         # Base infrastructure (Supabase, Redis, Ollama, observability)
+├── docker-compose-services.yml # Shared backend microservices (used by overlays below)
+├── docker-compose-integration.yml # Integration testing overlay
+├── docker-compose-e2e.yml     # E2E testing overlay (API on port 4000)
+└── docker-compose-uat.yml     # UAT / manual validation overlay
 ```
 
 ---
@@ -470,21 +474,36 @@ pnpm test
 ### Docker Services
 
 ```bash
-# Start all services
-docker-compose up -d
+# Start infrastructure only (for development with local backend)
+docker compose up -d
 
 # Stop all services
-docker-compose down
+docker compose down
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Restart specific service
-docker-compose restart ollama
+docker compose restart ollama
 
 # Remove all data (fresh start)
-docker-compose down -v
+docker compose down -v
 ```
+
+For running with containerized backend services, use the overlay compose files:
+
+```bash
+# Integration testing (all services + test runner)
+docker compose -f docker-compose-integration.yml up -d --build
+
+# E2E testing (API on port 4000 for Playwright)
+docker compose -f docker-compose-e2e.yml up -d --build
+
+# UAT / manual region validation (LLM + region config)
+docker compose -f docker-compose-uat.yml up -d --build
+```
+
+See [Docker Setup](docker-setup.md) for the full compose file architecture.
 
 ---
 

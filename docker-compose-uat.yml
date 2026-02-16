@@ -1,0 +1,60 @@
+# Docker Compose for UAT / Manual Validation
+#
+# Thin overlay on docker-compose-services.yml that adds:
+#   - Container name prefixes (opuspopuli-uat-*)
+#   - API Gateway on port 3000
+#   - LLM configuration (Ollama URL for AI-powered scraping)
+#   - Region sync disabled (manual trigger via GraphQL Playground)
+#
+# Use this for manual testing and validation of region data, user onboarding,
+# and end-to-end feature verification.
+#
+# See: docs/guides/region-setup-and-validation-guide.md
+#
+# Usage:
+#   # Start all services:
+#   docker compose -f docker-compose-uat.yml up -d --build
+#
+#   # Start frontend (separate terminal):
+#   cd apps/frontend && pnpm dev
+#
+#   # Stop services (keep data):
+#   docker compose -f docker-compose-uat.yml down
+#
+#   # Stop services (delete data):
+#   docker compose -f docker-compose-uat.yml down -v
+
+include:
+  - docker-compose-services.yml  # Infrastructure + backend microservices
+
+services:
+  # Set container names for UAT environment
+  db-migrate:
+    container_name: opuspopuli-uat-db-migrate
+
+  users:
+    container_name: opuspopuli-uat-users
+
+  documents:
+    container_name: opuspopuli-uat-documents
+
+  knowledge:
+    container_name: opuspopuli-uat-knowledge
+    environment:
+      # LLM for RAG queries during manual testing
+      LLM_URL: http://ollama:11434
+      LLM_MODEL: falcon
+
+  region:
+    container_name: opuspopuli-uat-region
+    environment:
+      # LLM for AI-powered structural analysis during data scraping
+      LLM_URL: http://ollama:11434
+      LLM_MODEL: falcon
+      # Disable automatic sync scheduler — trigger manually via GraphQL Playground
+      REGION_SYNC_ENABLED: "false"
+
+  api:
+    container_name: opuspopuli-uat-api
+    ports:
+      - "3000:8080"
