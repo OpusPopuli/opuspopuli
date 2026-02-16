@@ -288,24 +288,13 @@ Answer:`,
 async function main() {
   console.log("Seeding prompt templates...");
 
-  for (const prompt of prompts) {
+  for (const { name, ...data } of prompts) {
     await prisma.promptTemplate.upsert({
-      where: { name: prompt.name },
-      update: {
-        category: prompt.category,
-        description: prompt.description,
-        templateText: prompt.templateText,
-        variables: prompt.variables,
-      },
-      create: {
-        name: prompt.name,
-        category: prompt.category,
-        description: prompt.description,
-        templateText: prompt.templateText,
-        variables: prompt.variables,
-      },
+      where: { name },
+      update: data,
+      create: { name, ...data },
     });
-    console.log(`  ✓ ${prompt.name}`);
+    console.log(`  ✓ ${name}`);
   }
 
   console.log(`\nSeeded ${prompts.length} prompt templates.`);
