@@ -1,16 +1,25 @@
-# Docker Compose for Integration Testing
+# Docker Compose for UAT / Manual Validation
 #
 # Self-contained compose file that includes base infrastructure and defines
-# all backend microservices for running integration tests.
+# all backend microservices for manual testing and validation.
+#
+# Includes LLM configuration for AI-powered features and disables automatic
+# region sync so data ingestion can be triggered manually via GraphQL Playground.
+#
+# See: docs/guides/region-setup-and-validation-guide.md
 #
 # Usage:
-#   # One command (builds, tests, cleans up):
-#   pnpm test:integration:docker
+#   # Start all services:
+#   docker compose -f docker-compose-uat.yml up -d --build
 #
-#   # Or manually:
-#   docker compose -f docker-compose-integration.yml up -d --build
-#   pnpm test:integration
-#   docker compose -f docker-compose-integration.yml down -v
+#   # Start frontend (separate terminal):
+#   cd apps/frontend && pnpm dev
+#
+#   # Stop services (keep data):
+#   docker compose -f docker-compose-uat.yml down
+#
+#   # Stop services (delete data):
+#   docker compose -f docker-compose-uat.yml down -v
 
 include:
   - docker-compose.yml  # Base: Supabase, Redis, Ollama, observability
@@ -44,7 +53,7 @@ services:
       dockerfile: apps/backend/docker/Dockerfile.test-runner
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
-    container_name: opuspopuli-db-migrate
+    container_name: opuspopuli-uat-db-migrate
     environment:
       <<: *backend-env
     depends_on:
@@ -60,7 +69,7 @@ services:
       dockerfile: apps/backend/docker/Dockerfile.users
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
-    container_name: opuspopuli-integration-users
+    container_name: opuspopuli-uat-users
     environment:
       <<: *backend-env
       APPLICATION: users
@@ -87,7 +96,7 @@ services:
       dockerfile: apps/backend/docker/Dockerfile.documents
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
-    container_name: opuspopuli-integration-documents
+    container_name: opuspopuli-uat-documents
     environment:
       <<: *backend-env
       APPLICATION: documents
@@ -114,12 +123,15 @@ services:
       dockerfile: apps/backend/docker/Dockerfile.knowledge
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
-    container_name: opuspopuli-integration-knowledge
+    container_name: opuspopuli-uat-knowledge
     environment:
       <<: *backend-env
       APPLICATION: knowledge
       DESCRIPTION: Knowledge microservice
       PORT: 8080
+      # LLM for RAG queries during manual testing
+      LLM_URL: http://ollama:11434
+      LLM_MODEL: mistral
     ports:
       - "3003:8080"
     depends_on:
@@ -141,12 +153,17 @@ services:
       dockerfile: apps/backend/docker/Dockerfile.region
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
-    container_name: opuspopuli-integration-region
+    container_name: opuspopuli-uat-region
     environment:
       <<: *backend-env
       APPLICATION: region
       DESCRIPTION: Region microservice
       PORT: 8080
+      # LLM for AI-powered structural analysis during data scraping
+      LLM_URL: http://ollama:11434
+      LLM_MODEL: mistral
+      # Disable automatic sync scheduler — trigger manually via GraphQL Playground
+      REGION_SYNC_ENABLED: "false"
     ports:
       - "3004:8080"
     depends_on:
@@ -168,7 +185,7 @@ services:
       dockerfile: apps/backend/docker/Dockerfile.api
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
-    container_name: opuspopuli-integration-api
+    container_name: opuspopuli-uat-api
     environment:
       <<: *backend-env
       APPLICATION: api
@@ -195,30 +212,3 @@ services:
     networks:
       - opuspopuli-network
     restart: unless-stopped
-
-  # Test runner container - runs integration tests inside Docker
-  # Builds its own node_modules to ensure correct platform bindings
-  test-runner:
-    build:
-      context: .
-      dockerfile: apps/backend/docker/Dockerfile.test-runner
-      args:
-        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
-    container_name: opuspopuli-test-runner
-    command: ["/bin/sh", "/usr/local/bin/test-runner.sh"]
-    environment:
-      <<: *backend-env
-      # Container networking URLs
-      INBUCKET_URL: http://inbucket:9000
-      API_GATEWAY_URL: http://api:8080
-      USERS_SERVICE_URL: http://users:8080
-      DOCUMENTS_SERVICE_URL: http://documents:8080
-      KNOWLEDGE_SERVICE_URL: http://knowledge:8080
-      REGION_SERVICE_URL: http://region:8080
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - opuspopuli-network
-    profiles:
-      - test

@@ -252,7 +252,7 @@ export interface ILLMProvider {
 ```bash
 # Ollama (self-hosted)
 LLM_URL=http://localhost:11434
-LLM_MODEL=falcon  # or llama3.2, mistral, etc.
+LLM_MODEL=mistral  # or llama3.2, llama3.1, falcon, etc.
 ```
 
 **Module**: `LLMModule`
@@ -993,7 +993,7 @@ const provider = process.env.EMBEDDINGS_PROVIDER || 'xenova';
 ```typescript
 // Ollama only (model is configurable)
 const url = process.env.LLM_URL || 'http://localhost:11434';
-const model = process.env.LLM_MODEL || 'falcon';
+const model = process.env.LLM_MODEL || 'mistral';
 ```
 
 ## Adding a New Provider

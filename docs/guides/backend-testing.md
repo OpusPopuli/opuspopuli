@@ -48,30 +48,21 @@ pnpm test -- audit-log.service.spec.ts
 
 ### Integration Tests
 
-Integration tests run against real docker-compose services (Supabase, PostgreSQL, etc.).
+Integration tests run against real services (Supabase, PostgreSQL, Redis, etc.) inside Docker.
 
 ```bash
-# 1. Start docker-compose services
-docker compose up -d
+# Option A: Fully containerized (recommended — matches CI)
+pnpm test:integration:docker
 
-# 2. Wait for services to be healthy
-docker compose ps
-
-# 3. Start all backend services (in separate terminals or background)
-cd apps/backend
-pnpm start
-
-# 4. Run integration tests
+# Option B: Manual steps
+docker compose -f docker-compose-integration.yml up -d --build
+docker compose -f docker-compose-integration.yml ps          # Wait for all services to be healthy
 pnpm test:integration
+docker compose -f docker-compose-integration.yml down -v     # Cleanup
 ```
 
-Or run from the monorepo root:
-
-```bash
-docker compose up -d
-cd apps/backend && pnpm start &
-pnpm test:integration
-```
+> **Note:** `docker-compose-integration.yml` includes infrastructure + all backend microservices.
+> See [Docker Setup](docker-setup.md) for the full compose file architecture.
 
 ## Unit Testing
 
@@ -160,12 +151,12 @@ Integration tests use a separate Jest config:
 
 ### Global Setup
 
-The setup verifies docker-compose and backend services are running:
+The setup verifies infrastructure and backend services are running:
 
 ```typescript
 // apps/backend/__tests__/integration/setup.ts
 export default async function globalSetup() {
-  // Verify docker-compose services
+  // Verify infrastructure services (from docker-compose-integration.yml)
   execSync('docker compose ps --status running | grep supabase-db');
 
   // Verify backend services are running
@@ -242,80 +233,51 @@ export async function getMagicLinkFromInbucket(email: string): Promise<string | 
 
 ## Backend Services
 
-Integration tests can target any of the backend services:
+Integration tests target the backend services running in Docker via `docker-compose-integration.yml`:
 
-| Service | Port | Start Command |
-|---------|------|---------------|
-| Users | 3001 | `pnpm start:users` |
-| Documents | 3002 | `pnpm start:documents` |
-| Knowledge | 3003 | `pnpm start:knowledge` |
-| Region | 3004 | `pnpm start:region` |
-| API Gateway | 3000 | `pnpm start:api` |
+| Service | Port | Docker Container |
+|---------|------|-----------------|
+| Users | 3001 | `opuspopuli-integration-users` |
+| Documents | 3002 | `opuspopuli-integration-documents` |
+| Knowledge | 3003 | `opuspopuli-integration-knowledge` |
+| Region | 3004 | `opuspopuli-integration-region` |
+| API Gateway | 3000 | `opuspopuli-integration-api` |
 
-Start all services at once:
-
-```bash
-cd apps/backend
-pnpm start  # Starts all services + API gateway
-```
+> For local development without Docker, you can also run services directly:
+> ```bash
+> cd apps/backend && pnpm start  # Starts all services + API gateway
+> ```
 
 ## CI/CD Integration
 
-Integration tests run in a dedicated GitHub Actions workflow:
+Integration tests run as part of the E2E job in `ci.yml`. A separate `integration-tests.yml` workflow is available for manual debugging.
 
-### Workflow: `.github/workflows/integration-tests.yml`
+### How It Works in CI
+
+1. `docker compose -f docker-compose-integration.yml` (or `-e2e.yml`) starts all infrastructure + microservices
+2. The `--profile test` flag activates the `test-runner` container which runs integration tests inside Docker
+3. All services share the `opuspopuli-network` for container-to-container communication
 
 ```yaml
-name: Integration Tests
+# .github/workflows/integration-tests.yml (manual trigger)
+- name: Start all services
+  run: |
+    docker compose -f docker-compose-integration.yml up -d --build --wait --wait-timeout 600 \
+      supabase-db redis inbucket db-migrate users documents knowledge region api
 
-on:
-  pull_request:
-    branches: [main, develop]
-  push:
-    branches: [main, develop]
+- name: Run integration tests
+  run: |
+    docker compose -f docker-compose-integration.yml --profile test run --rm test-runner
 
-jobs:
-  integration:
-    name: Backend Integration Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm -r --filter './packages/*' build
-
-      # Start docker-compose (Supabase stack)
-      - name: Start docker-compose services
-        run: |
-          docker compose up -d
-          # Wait for PostgreSQL and Supabase Auth...
-
-      # Start all backend services
-      - name: Start all backend services
-        run: |
-          cd apps/backend
-          pnpm start:users &
-          pnpm start:documents &
-          pnpm start:knowledge &
-          pnpm start:region &
-          # Wait for services, then start API gateway...
-          pnpm start:api &
-
-      - run: pnpm test:integration
-
-      - name: Stop docker-compose
-        if: always()
-        run: docker compose down -v
+- name: Stop all services
+  if: always()
+  run: docker compose -f docker-compose-integration.yml --profile test down -v
 ```
 
 ### Separate from Unit Tests
 
 - **Unit tests** run in `ci.yml` (fast, no external deps)
-- **Integration tests** run in `integration-tests.yml` (slower, needs docker-compose)
+- **Integration tests** run in `ci.yml` E2E job and `integration-tests.yml` (slower, fully containerized)
 
 ## Coverage Requirements
 
@@ -364,8 +326,9 @@ curl http://localhost:3000/health
 # View captured emails (Inbucket)
 open http://localhost:54324
 
-# Check docker-compose logs
-docker compose logs -f supabase-db
+# Check service logs
+docker compose -f docker-compose-integration.yml logs -f supabase-db
+docker compose -f docker-compose-integration.yml logs -f api
 ```
 
 ## Best Practices

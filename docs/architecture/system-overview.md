@@ -292,7 +292,7 @@ All services use environment variables with sensible defaults:
 RELATIONAL_DB_PROVIDER=postgres
 VECTOR_DB_DIMENSIONS=384
 EMBEDDINGS_PROVIDER=xenova
-LLM_MODEL=falcon
+LLM_MODEL=mistral
 AUTH_PROVIDER=supabase
 STORAGE_PROVIDER=supabase
 SECRETS_PROVIDER=supabase

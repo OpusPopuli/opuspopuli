@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Setup Ollama with Falcon 7B model
+# Setup Ollama with Mistral 7B model
 # This script pulls the required model into the Ollama container
 
-echo "🚀 Setting up Ollama with Falcon 7B..."
+echo "🚀 Setting up Ollama with Mistral 7B..."
 
 # Check if Ollama container is running
 if ! docker ps | grep -q opuspopuli-ollama; then
@@ -12,15 +12,15 @@ if ! docker ps | grep -q opuspopuli-ollama; then
     exit 1
 fi
 
-echo "📥 Pulling Falcon 7B model (this may take a few minutes)..."
-docker exec opuspopuli-ollama ollama pull falcon
+echo "📥 Pulling Mistral 7B model (this may take a few minutes)..."
+docker exec opuspopuli-ollama ollama pull mistral
 
-echo "✅ Falcon 7B model installed!"
+echo "✅ Mistral 7B model installed!"
 echo ""
-echo "You can now use Falcon 7B for LLM inference."
+echo "You can now use Mistral 7B for LLM inference."
 echo ""
 echo "To verify, run:"
 echo "  docker exec opuspopuli-ollama ollama list"
 echo ""
 echo "To test the model:"
-echo "  docker exec opuspopuli-ollama ollama run falcon 'Hello, how are you?'"
+echo "  docker exec opuspopuli-ollama ollama run mistral 'Hello, how are you?'"

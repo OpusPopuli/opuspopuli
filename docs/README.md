@@ -27,6 +27,7 @@ Practical guides for common tasks and workflows.
 - [**Audit Logging**](guides/audit-logging.md) - Comprehensive audit logging for compliance and security
 - [**Email Integration**](guides/email-integration.md) - Transactional email with Resend
 - [**Region Provider**](guides/region-provider.md) - Declarative region plugins for civic data
+- [**Region Setup and Validation**](guides/region-setup-and-validation-guide.md) - Step-by-step guide for standing up and validating a new region
 - [**Observability**](guides/observability.md) - Prometheus metrics and Loki logging
 
 ## Quick Links
@@ -51,6 +52,7 @@ Practical guides for common tasks and workflows.
 - [Database Migration](guides/database-migration.md)
 - [Audit Logging](guides/audit-logging.md)
 - [Observability](guides/observability.md) - Prometheus, Loki, Grafana
+- [Region Setup and Validation](guides/region-setup-and-validation-guide.md) - Full region standup and UAT
 
 ### For AI/ML Engineers
 - [AI/ML Pipeline](architecture/ai-ml-pipeline.md)
