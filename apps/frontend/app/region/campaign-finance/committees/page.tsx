@@ -29,7 +29,7 @@ const TYPE_STYLES: Record<string, { bg: string; text: string }> = {
 
 function TypeBadge({ type }: { readonly type: string }) {
   const style = TYPE_STYLES[type] || TYPE_STYLES.other;
-  const label = type.replace(/_/g, " ");
+  const label = type.replaceAll("_", " ");
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${style.bg} ${style.text}`}

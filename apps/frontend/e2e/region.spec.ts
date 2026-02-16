@@ -278,6 +278,24 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
           data: { regionInfo: mockRegionInfo },
         }),
       });
+    } else if (
+      postData?.query?.includes("proposition(") ||
+      postData?.query?.includes("proposition (")
+    ) {
+      // Single proposition query — return first mock with fullText
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: {
+            proposition: {
+              ...mockPropositions.items[0],
+              fullText:
+                "This proposition would amend the California Constitution to require commercial and industrial properties worth more than $3 million to be reassessed at current market value.",
+            },
+          },
+        }),
+      });
     } else if (postData?.query?.includes("propositions")) {
       await route.fulfill({
         status: 200,
@@ -463,6 +481,143 @@ test.describe("Propositions Page", () => {
 
     await page.getByRole("link", { name: /Region/i }).click();
     await expect(page).toHaveURL(/\/region$/);
+  });
+});
+
+test.describe("Proposition Detail Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockRegionGraphQL(page);
+  });
+
+  test("should navigate from list to detail page", async ({ page }) => {
+    await page.goto("/region/propositions");
+
+    await page
+      .getByRole("link", { name: /Proposition 1: Test Measure/ })
+      .click();
+    await expect(page).toHaveURL(/\/region\/propositions\/1/);
+  });
+
+  test("should display proposition header", async ({ page }) => {
+    await page.goto("/region/propositions/1");
+
+    await expect(
+      page.getByRole("paragraph").filter({ hasText: "prop-1" }),
+    ).toBeVisible();
+    await expect(page.getByText("Proposition 1: Test Measure")).toBeVisible();
+    await expect(page.getByText("Pending", { exact: true })).toBeVisible();
+  });
+
+  test("should display Layer 1 by default with summary and Learn More", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await expect(
+      page.getByText("This is a test proposition summary."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Learn More" }),
+    ).toBeVisible();
+    await expect(page.getByText("Impact analysis coming soon")).toBeVisible();
+  });
+
+  test("should show layer indicator at position 1", async ({ page }) => {
+    await page.goto("/region/propositions/1");
+
+    const quickViewBtn = page.getByRole("button", { name: /Quick View/ });
+    await expect(quickViewBtn).toBeVisible();
+    await expect(quickViewBtn).toHaveAttribute("aria-current", "step");
+  });
+
+  test("should navigate to Layer 2 when Learn More is clicked", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await page.getByRole("button", { name: "Learn More" }).click();
+
+    await expect(page.getByText("What This Does")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Key Facts" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "See Both Sides" }),
+    ).toBeVisible();
+  });
+
+  test("should show fullText in Layer 2", async ({ page }) => {
+    await page.goto("/region/propositions/1");
+
+    await page.getByRole("button", { name: "Learn More" }).click();
+
+    await expect(
+      page.getByText(/amend the California Constitution/),
+    ).toBeVisible();
+  });
+
+  test("should navigate to Layer 3 when See Both Sides is clicked", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await page.getByRole("button", { name: "Learn More" }).click();
+    await page.getByRole("button", { name: "See Both Sides" }).click();
+
+    await expect(page.getByText("Best Arguments From Each Side")).toBeVisible();
+    await expect(page.getByText("Arguments For")).toBeVisible();
+    await expect(page.getByText("Arguments Against")).toBeVisible();
+  });
+
+  test("should navigate to Layer 4 when Full Details & Sources is clicked", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await page.getByRole("button", { name: /Both Sides/ }).click();
+    await page.getByRole("button", { name: "Full Details & Sources" }).click();
+
+    await expect(page.getByText("Full Documentation")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Official Source/ }),
+    ).toBeVisible();
+  });
+
+  test("should return to Layer 1 when Back to Summary is clicked", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await page.getByRole("button", { name: /Both Sides/ }).click();
+    await page.getByRole("button", { name: "Back to Summary" }).click();
+
+    await expect(
+      page.getByRole("button", { name: "Learn More" }),
+    ).toBeVisible();
+  });
+
+  test("should navigate via layer indicator dots", async ({ page }) => {
+    await page.goto("/region/propositions/1");
+
+    // Jump directly to Deep Dive
+    await page.getByRole("button", { name: /Deep Dive/ }).click();
+    await expect(page.getByText("Full Documentation")).toBeVisible();
+
+    // Jump back to Quick View
+    await page.getByRole("button", { name: /Quick View/ }).click();
+    await expect(
+      page.getByRole("button", { name: "Learn More" }),
+    ).toBeVisible();
+  });
+
+  test("should display breadcrumb with links", async ({ page }) => {
+    await page.goto("/region/propositions/1");
+
+    const propositionsLink = page.getByRole("link", { name: "Propositions" });
+    await expect(propositionsLink).toBeVisible();
+
+    await propositionsLink.click();
+    await expect(page).toHaveURL(/\/region\/propositions$/);
   });
 });
 
@@ -729,6 +884,31 @@ test.describe("Region Pages - Accessibility", () => {
     expect(violations).toEqual([]);
   });
 
+  test("Proposition detail page Layer 1 should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+    await expect(page.getByText("Proposition 1: Test Measure")).toBeVisible();
+    // Wait for layer-enter animation (250ms) to complete so colors are fully rendered
+    await page.waitForTimeout(400);
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
+  test("Proposition detail page Layer 2 should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+    await page.getByRole("button", { name: "Learn More" }).click();
+    await expect(page.getByText("What This Does")).toBeVisible();
+    // Wait for layer-enter animation (250ms) to complete so colors are fully rendered
+    await page.waitForTimeout(400);
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
   test("Propositions page should have no WCAG 2.2 AA violations", async ({
     page,
   }) => {
@@ -934,6 +1114,23 @@ test.describe("Region Pages - Responsive Design", () => {
     await expect(
       page.getByRole("heading", { name: "Test Region" }),
     ).toBeVisible();
+  });
+
+  test("proposition detail page should display correctly on mobile", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto("/region/propositions/1");
+
+    await expect(page.getByText("Proposition 1: Test Measure")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Learn More" }),
+    ).toBeVisible();
+
+    // Navigate to Layer 3 to check two-column layout stacks on mobile
+    await page.getByRole("button", { name: /Both Sides/ }).click();
+    await expect(page.getByText("Arguments For")).toBeVisible();
+    await expect(page.getByText("Arguments Against")).toBeVisible();
   });
 
   test("campaign finance hub should display correctly on mobile", async ({
