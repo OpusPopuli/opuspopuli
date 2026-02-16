@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
 import {
   GET_PROPOSITIONS,
@@ -9,6 +8,13 @@ import {
   Proposition,
   PropositionStatus,
 } from "@/lib/graphql/region";
+import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { Pagination } from "@/components/region/Pagination";
+import {
+  LoadingSkeleton,
+  ErrorState,
+  EmptyState,
+} from "@/components/region/ListStates";
 
 const PAGE_SIZE = 10;
 
@@ -105,35 +111,10 @@ export default function PropositionsPage() {
   );
 
   const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="animate-pulse">
-              <div className="bg-gray-200 rounded-xl h-32"></div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (error) {
-      return (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <p className="text-red-600">
-            Failed to load propositions. Please try again later.
-          </p>
-        </div>
-      );
-    }
-
-    if (data?.propositions.items.length === 0) {
-      return (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#555555]">No propositions found.</p>
-        </div>
-      );
-    }
+    if (loading) return <LoadingSkeleton />;
+    if (error) return <ErrorState entity="propositions" />;
+    if (data?.propositions.items.length === 0)
+      return <EmptyState entity="propositions" />;
 
     return (
       <>
@@ -142,58 +123,31 @@ export default function PropositionsPage() {
             <PropositionCard key={prop.id} proposition={prop} />
           ))}
         </div>
-
-        {/* Pagination */}
-        <div className="mt-8 flex items-center justify-between">
-          <p className="text-sm text-[#555555]">
-            Showing {page * PAGE_SIZE + 1} -{" "}
-            {Math.min((page + 1) * PAGE_SIZE, data?.propositions.total || 0)} of{" "}
-            {data?.propositions.total || 0}
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={!data?.propositions.hasMore}
-              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={data?.propositions.total || 0}
+          hasMore={data?.propositions.hasMore || false}
+          onPageChange={setPage}
+        />
       </>
     );
   };
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      {/* Breadcrumb */}
-      <nav className="mb-6">
-        <Link
-          href="/region"
-          className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
-        >
-          Region
-        </Link>
-        <span className="mx-2 text-[#555555]">/</span>
-        <span className="text-sm text-[#555555]">Propositions</span>
-      </nav>
-
-      {/* Header */}
+      <Breadcrumb
+        segments={[
+          { label: "Region", href: "/region" },
+          { label: "Propositions" },
+        ]}
+      />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#222222]">Propositions</h1>
         <p className="mt-2 text-[#555555]">
           Ballot measures and initiatives for your region
         </p>
       </div>
-
-      {/* Content */}
       {renderContent()}
     </div>
   );

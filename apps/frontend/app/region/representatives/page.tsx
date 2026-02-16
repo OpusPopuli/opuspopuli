@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import Image from "next/image";
 import { useQuery } from "@apollo/client/react";
 import {
@@ -10,6 +9,13 @@ import {
   Representative,
 } from "@/lib/graphql/region";
 import { ContactRepresentativeForm } from "@/components/email/ContactRepresentativeForm";
+import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { Pagination } from "@/components/region/Pagination";
+import {
+  LoadingSkeleton,
+  ErrorState,
+  EmptyState,
+} from "@/components/region/ListStates";
 
 const PAGE_SIZE = 12;
 
@@ -159,35 +165,10 @@ export default function RepresentativesPage() {
     : [];
 
   const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="animate-pulse">
-              <div className="bg-gray-200 rounded-xl h-40"></div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (error) {
-      return (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <p className="text-red-600">
-            Failed to load representatives. Please try again later.
-          </p>
-        </div>
-      );
-    }
-
-    if (data?.representatives.items.length === 0) {
-      return (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#555555]">No representatives found.</p>
-        </div>
-      );
-    }
+    if (loading) return <LoadingSkeleton count={4} height="h-40" grid />;
+    if (error) return <ErrorState entity="representatives" />;
+    if (data?.representatives.items.length === 0)
+      return <EmptyState entity="representatives" />;
 
     return (
       <>
@@ -200,48 +181,25 @@ export default function RepresentativesPage() {
             />
           ))}
         </div>
-
-        {/* Pagination */}
-        <div className="mt-8 flex items-center justify-between">
-          <p className="text-sm text-[#555555]">
-            Showing {page * PAGE_SIZE + 1} -{" "}
-            {Math.min((page + 1) * PAGE_SIZE, data?.representatives.total || 0)}{" "}
-            of {data?.representatives.total || 0}
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={!data?.representatives.hasMore}
-              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={data?.representatives.total || 0}
+          hasMore={data?.representatives.hasMore || false}
+          onPageChange={setPage}
+        />
       </>
     );
   };
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      {/* Breadcrumb */}
-      <nav className="mb-6">
-        <Link
-          href="/region"
-          className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
-        >
-          Region
-        </Link>
-        <span className="mx-2 text-[#555555]">/</span>
-        <span className="text-sm text-[#555555]">Representatives</span>
-      </nav>
+      <Breadcrumb
+        segments={[
+          { label: "Region", href: "/region" },
+          { label: "Representatives" },
+        ]}
+      />
 
       {/* Header */}
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

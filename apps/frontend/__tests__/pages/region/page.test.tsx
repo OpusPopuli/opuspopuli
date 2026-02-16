@@ -9,7 +9,12 @@ const mockRegionInfo = {
   description: "A test region for civic data",
   timezone: "America/Los_Angeles",
   dataSourceUrls: ["https://example.com/data"],
-  supportedDataTypes: ["PROPOSITIONS", "MEETINGS", "REPRESENTATIVES"],
+  supportedDataTypes: [
+    "PROPOSITIONS",
+    "MEETINGS",
+    "REPRESENTATIVES",
+    "CAMPAIGN_FINANCE",
+  ],
 };
 
 let mockQueryResult = {
@@ -101,6 +106,7 @@ describe("RegionPage", () => {
       expect(screen.getByText("Propositions")).toBeInTheDocument();
       expect(screen.getByText("Meetings")).toBeInTheDocument();
       expect(screen.getByText("Representatives")).toBeInTheDocument();
+      expect(screen.getByText("Campaign Finance")).toBeInTheDocument();
     });
 
     it("should render data type descriptions", () => {
@@ -114,6 +120,9 @@ describe("RegionPage", () => {
       ).toBeInTheDocument();
       expect(
         screen.getByText("Elected officials and legislators"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Committees, contributions, and expenditures"),
       ).toBeInTheDocument();
     });
 
@@ -133,6 +142,14 @@ describe("RegionPage", () => {
       expect(representativesLink).toHaveAttribute(
         "href",
         "/region/representatives",
+      );
+
+      const campaignFinanceLink = screen.getByRole("link", {
+        name: /Campaign Finance/i,
+      });
+      expect(campaignFinanceLink).toHaveAttribute(
+        "href",
+        "/region/campaign-finance",
       );
     });
 
@@ -196,6 +213,7 @@ describe("RegionPage", () => {
       expect(screen.getByText("Propositions")).toBeInTheDocument();
       expect(screen.queryByText("Meetings")).not.toBeInTheDocument();
       expect(screen.queryByText("Representatives")).not.toBeInTheDocument();
+      expect(screen.queryByText("Campaign Finance")).not.toBeInTheDocument();
     });
   });
 });
