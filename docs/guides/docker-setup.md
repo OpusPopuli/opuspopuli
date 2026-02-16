@@ -29,14 +29,13 @@ Your `docker-compose.yml` includes:
 
 ## Compose File Architecture
 
-The project uses a layered Docker Compose architecture. A shared services file eliminates duplication across environments.
+The project uses a layered Docker Compose architecture. Each environment-specific file is self-contained: it includes the base infrastructure and defines all backend microservices inline.
 
 ```
-docker-compose.yml                  ← Base infrastructure (Supabase, Redis, Ollama, observability)
-  └── docker-compose-services.yml   ← Shared backend microservices (Users, Documents, Knowledge, Region, API)
-        ├── docker-compose-integration.yml  ← Integration testing (adds test-runner)
-        ├── docker-compose-e2e.yml          ← E2E testing (API on port 4000 for Playwright)
-        └── docker-compose-uat.yml          ← Manual UAT (LLM config, region sync disabled)
+docker-compose.yml                       ← Base infrastructure (Supabase, Redis, Ollama, observability)
+  ├── docker-compose-integration.yml     ← Integration testing (API on port 3000, test-runner)
+  ├── docker-compose-e2e.yml             ← E2E testing (API on port 4000 for Playwright)
+  └── docker-compose-uat.yml             ← Manual UAT (LLM config, region sync disabled)
 ```
 
 | File | When to Use | Command |
@@ -45,8 +44,6 @@ docker-compose.yml                  ← Base infrastructure (Supabase, Redis, Ol
 | `docker-compose-integration.yml` | Running integration tests | `pnpm test:integration:docker` |
 | `docker-compose-e2e.yml` | Running E2E tests with Playwright | `docker compose -f docker-compose-e2e.yml up -d --build` |
 | `docker-compose-uat.yml` | Manual region validation and UAT | `docker compose -f docker-compose-uat.yml up -d --build` |
-
-> **Note:** `docker-compose-services.yml` is not used directly — it is included by the overlay files above.
 
 ## Quick Start
 

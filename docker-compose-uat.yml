@@ -1,13 +1,10 @@
 # Docker Compose for UAT / Manual Validation
 #
-# Thin overlay on docker-compose-services.yml that adds:
-#   - Container name prefixes (opuspopuli-uat-*)
-#   - API Gateway on port 3000
-#   - LLM configuration (Ollama URL for AI-powered scraping)
-#   - Region sync disabled (manual trigger via GraphQL Playground)
+# Self-contained compose file that includes base infrastructure and defines
+# all backend microservices for manual testing and validation.
 #
-# Use this for manual testing and validation of region data, user onboarding,
-# and end-to-end feature verification.
+# Includes LLM configuration for AI-powered features and disables automatic
+# region sync so data ingestion can be triggered manually via GraphQL Playground.
 #
 # See: docs/guides/region-setup-and-validation-guide.md
 #
@@ -25,36 +22,193 @@
 #   docker compose -f docker-compose-uat.yml down -v
 
 include:
-  - docker-compose-services.yml  # Infrastructure + backend microservices
+  - docker-compose.yml  # Base: Supabase, Redis, Ollama, observability
+
+x-backend-env: &backend-env
+  NODE_ENV: test
+  PROJECT: opuspopuli
+  VERSION: 1.0.0
+  RESEND_API_KEY: re_test_placeholder_key
+  RELATIONAL_DB_PROVIDER: postgres
+  RELATIONAL_DB_HOST: supabase-db
+  RELATIONAL_DB_PORT: 5432
+  RELATIONAL_DB_USERNAME: postgres
+  RELATIONAL_DB_PASSWORD: your-super-secret-password
+  RELATIONAL_DB_DATABASE: postgres
+  DATABASE_URL: postgresql://postgres:your-super-secret-password@supabase-db:5432/postgres
+  REDIS_URL: redis://redis:6379
+  SUPABASE_URL: http://supabase-kong:8000
+  SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+  SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+  GATEWAY_CLIENT_ID: api-gateway
+  GATEWAY_HMAC_SECRET: integration-test-hmac-secret
+  API_KEYS: '{"api-gateway":"integration-test-hmac-secret"}'
+  JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
+  AUTH_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
 
 services:
-  # Set container names for UAT environment
   db-migrate:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.test-runner
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-uat-db-migrate
+    environment:
+      <<: *backend-env
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    command: ["/usr/local/bin/db-migrate.sh"]
+    networks:
+      - opuspopuli-network
 
   users:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.users
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-uat-users
+    environment:
+      <<: *backend-env
+      APPLICATION: users
+      DESCRIPTION: Users microservice
+      PORT: 8080
+    ports:
+      - "3001:8080"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - opuspopuli-network
+    restart: unless-stopped
 
   documents:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.documents
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-uat-documents
+    environment:
+      <<: *backend-env
+      APPLICATION: documents
+      DESCRIPTION: Documents microservice
+      PORT: 8080
+    ports:
+      - "3002:8080"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - opuspopuli-network
+    restart: unless-stopped
 
   knowledge:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.knowledge
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-uat-knowledge
     environment:
+      <<: *backend-env
+      APPLICATION: knowledge
+      DESCRIPTION: Knowledge microservice
+      PORT: 8080
       # LLM for RAG queries during manual testing
       LLM_URL: http://ollama:11434
       LLM_MODEL: mistral
+    ports:
+      - "3003:8080"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - opuspopuli-network
+    restart: unless-stopped
 
   region:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.region
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-uat-region
     environment:
+      <<: *backend-env
+      APPLICATION: region
+      DESCRIPTION: Region microservice
+      PORT: 8080
       # LLM for AI-powered structural analysis during data scraping
       LLM_URL: http://ollama:11434
       LLM_MODEL: mistral
       # Disable automatic sync scheduler — trigger manually via GraphQL Playground
       REGION_SYNC_ENABLED: "false"
+    ports:
+      - "3004:8080"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - opuspopuli-network
+    restart: unless-stopped
 
   api:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.api
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-uat-api
+    environment:
+      <<: *backend-env
+      APPLICATION: api
+      DESCRIPTION: API Gateway
+      PORT: 8080
+      MICROSERVICES: '[{"name":"users","url":"http://users:8080/graphql"},{"name":"documents","url":"http://documents:8080/graphql"},{"name":"knowledge","url":"http://knowledge:8080/graphql"},{"name":"region","url":"http://region:8080/graphql"}]'
     ports:
       - "3000:8080"
+    depends_on:
+      users:
+        condition: service_healthy
+      documents:
+        condition: service_healthy
+      knowledge:
+        condition: service_healthy
+      region:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - opuspopuli-network
+    restart: unless-stopped

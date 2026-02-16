@@ -171,10 +171,9 @@ opuspopuli/
 │   └── guides/                # How-to guides
 ├── scripts/                   # Utility scripts
 ├── docker-compose.yml         # Base infrastructure (Supabase, Redis, Ollama, observability)
-├── docker-compose-services.yml # Shared backend microservices (used by overlays below)
-├── docker-compose-integration.yml # Integration testing overlay
-├── docker-compose-e2e.yml     # E2E testing overlay (API on port 4000)
-└── docker-compose-uat.yml     # UAT / manual validation overlay
+├── docker-compose-integration.yml # Integration testing (API on port 3000, test-runner)
+├── docker-compose-e2e.yml     # E2E testing (API on port 4000 for Playwright)
+└── docker-compose-uat.yml     # UAT / manual validation (LLM config, region sync disabled)
 ```
 
 ---
