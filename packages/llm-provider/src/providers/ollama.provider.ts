@@ -24,7 +24,7 @@ export type FetchFunction = (
  */
 export interface OllamaConfig {
   url: string; // Ollama server URL
-  model: string; // Model name (e.g., 'llama3.2', 'mistral', 'falcon')
+  model: string; // Model name (e.g., 'mistral', 'llama3.2', 'falcon')
   /**
    * Overall request timeout in milliseconds
    * Default: 60000 (60 seconds)
@@ -60,9 +60,9 @@ const DEFAULT_CHUNK_TIMEOUT_MS = 30000; // 30 seconds
  * 3. Run server: ollama serve (default port 11434)
  *
  * Recommended Models:
+ * - mistral (7B) - Default, excellent instruction following and JSON output
  * - llama3.2 (3B) - Fast, good quality, runs on laptop
- * - mistral (7B) - Excellent quality, moderate speed
- * - falcon (7B) - Alternative to Mistral
+ * - falcon (7B) - General purpose alternative
  * - llama3.1 (8B) - Latest Llama, great performance
  *
  * Pros:

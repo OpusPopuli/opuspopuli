@@ -14,15 +14,15 @@ import {
  * Provider: Ollama (self-hosted, OSS, full privacy)
  *
  * Supports any Ollama model:
- * - falcon (default, 7B, TII's open-source model)
+ * - mistral (default, 7B, excellent instruction following and JSON output)
  * - llama3.2 (3B, fast and efficient)
- * - mistral (7B, excellent quality)
- * - llama3.1 (8B, latest Llama)
+ * - llama3.1 (8B, long context)
+ * - falcon (7B, TII's open-source model)
  * - Or any other model from ollama.ai/library
  *
  * Setup:
  * 1. Install Ollama: https://ollama.ai
- * 2. Pull model: ollama pull falcon
+ * 2. Pull model: ollama pull mistral
  * 3. Start server: ollama serve
  */
 @Module({
@@ -40,7 +40,7 @@ import {
           model:
             configService.get<string>("llm.ollama.model") ||
             configService.get<string>("llm.model") ||
-            "falcon",
+            "mistral",
         };
 
         return new OllamaLLMProvider(ollamaConfig);

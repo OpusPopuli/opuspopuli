@@ -4,33 +4,33 @@ This guide covers configuring and switching between different LLM models using O
 
 ## Overview
 
-Opus Populi uses Ollama as the LLM inference engine, which supports running any open-source model locally. The default model is Falcon 7B, but you can easily switch to other models like Llama, Mistral, or Qwen.
+Opus Populi uses Ollama as the LLM inference engine, which supports running any open-source model locally. The default model is Mistral 7B Instruct, chosen for its excellent instruction following and reliable JSON output — both critical for the structural analysis pipeline.
 
 ## Default Configuration
 
 ```bash
 # apps/backend/.env
 LLM_URL=http://localhost:11434
-LLM_MODEL=falcon
+LLM_MODEL=mistral
 ```
 
 ## Available Models
 
-### Falcon 7B (Default)
+### Mistral 7B Instruct (Default)
 
-**Model**: `falcon` or `falcon:7b`
+**Model**: `mistral` or `mistral:7b`
 
 **Details**:
 - Size: 7 billion parameters
-- Context: 2048 tokens
+- Context: 8192 tokens
 - License: Apache 2.0
-- Developer: TII (Technology Innovation Institute)
+- Developer: Mistral AI
 
-**Best for**: General-purpose tasks, balanced speed and quality
+**Best for**: Structural analysis, JSON output, instruction following (default)
 
 **Pull command**:
 ```bash
-docker exec opuspopuli-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull mistral
 ```
 
 ---
@@ -59,26 +59,26 @@ LLM_MODEL=llama3.2
 
 ---
 
-### Mistral (High Quality)
+### Falcon 7B
 
-**Model**: `mistral` or `mistral:7b`
+**Model**: `falcon` or `falcon:7b`
 
 **Details**:
 - Size: 7 billion parameters
-- Context: 8192 tokens
+- Context: 2048 tokens
 - License: Apache 2.0
-- Developer: Mistral AI
+- Developer: TII (Technology Innovation Institute)
 
-**Best for**: High-quality answers, complex queries
+**Best for**: General-purpose tasks
 
 **Pull command**:
 ```bash
-docker exec opuspopuli-ollama ollama pull mistral
+docker exec opuspopuli-ollama ollama pull falcon
 ```
 
 **Configuration**:
 ```bash
-LLM_MODEL=mistral
+LLM_MODEL=falcon
 ```
 
 ---
@@ -147,7 +147,7 @@ Expected output:
 ```
 NAME                ID              SIZE      MODIFIED
 mistral:latest      abc123def456    4.1 GB    2 minutes ago
-falcon:latest       def456abc123    4.0 GB    1 day ago
+falcon:latest       def456abc123    4.0 GB    3 months ago
 ```
 
 ### Step 2: Update Configuration
@@ -155,10 +155,10 @@ falcon:latest       def456abc123    4.0 GB    1 day ago
 Edit `apps/backend/.env`:
 ```bash
 # Change this line
-LLM_MODEL=falcon
-
-# To this
 LLM_MODEL=mistral
+
+# To the new model
+LLM_MODEL=llama3.1
 ```
 
 ### Step 3: Restart Backend
@@ -186,9 +186,9 @@ Ask a question and verify the new model is being used. Check the logs for:
 
 | Model | Size | Context | Speed (GPU) | Quality | Best For |
 |-------|------|---------|------------|---------|----------|
-| **Falcon 7B** | 7B | 2K | Medium | Good | Balanced (default) |
+| **Mistral** | 7B | 8K | Medium | Excellent | Structural analysis, JSON (default) |
 | **Llama 3.2** | 3B | 8K | Fast | Good | Quick responses |
-| **Mistral** | 7B | 8K | Medium | Excellent | High quality |
+| **Falcon 7B** | 7B | 2K | Medium | Good | General purpose |
 | **Llama 3.1** | 8B | 128K | Slow | Excellent | Long context |
 | **Qwen 2.5** | 7B | 32K | Medium | Excellent | Multilingual, code |
 
@@ -267,14 +267,14 @@ topK: 100  // More diverse
 ### Command Line Test
 
 ```bash
-# Test Falcon directly
-docker exec opuspopuli-ollama ollama run falcon "What is RAG?"
+# Test Mistral (default)
+docker exec opuspopuli-ollama ollama run mistral "What is RAG?"
 
-# Test Mistral
-docker exec opuspopuli-ollama ollama run mistral "Explain semantic search"
+# Test Llama 3.1
+docker exec opuspopuli-ollama ollama run llama3.1 "Explain semantic search"
 
 # Test with parameters
-docker exec opuspopuli-ollama ollama run falcon \
+docker exec opuspopuli-ollama ollama run mistral \
   --temperature 0.3 \
   --num-predict 100 \
   "What is RAG?"
@@ -341,7 +341,7 @@ docker exec opuspopuli-ollama nvidia-smi
 
 If running on CPU only:
 
-1. **Use smaller models**: Llama 3.2 (3B) instead of Falcon (7B)
+1. **Use smaller models**: Llama 3.2 (3B) instead of Mistral (7B)
 2. **Reduce maxTokens**: Generate shorter responses
 3. **Increase resources**: Give Docker more CPU cores
 
@@ -355,8 +355,8 @@ Ollama models are already quantized (GGUF format). For even smaller sizes:
 
 ```bash
 # Pull quantized version
-docker exec opuspopuli-ollama ollama pull falcon:7b-q4_0  # 4-bit quantization
-docker exec opuspopuli-ollama ollama pull falcon:7b-q8_0  # 8-bit quantization
+docker exec opuspopuli-ollama ollama pull mistral:7b-q4_0  # 4-bit quantization
+docker exec opuspopuli-ollama ollama pull mistral:7b-q8_0  # 8-bit quantization
 ```
 
 **Trade-offs**:
@@ -382,7 +382,7 @@ brew install ollama  # macOS
 # or download from https://ollama.ai
 
 # Pull model
-ollama pull falcon
+ollama pull mistral
 
 # Import to Docker
 docker cp ~/.ollama opuspopuli-ollama:/root/.ollama
@@ -417,7 +417,7 @@ docker cp ~/.ollama opuspopuli-ollama:/root/.ollama
 2. Restart backend completely (not just hot-reload)
 3. Check logs for model initialization:
 ```
-[KnowledgeService] KnowledgeService initialized with ... LLM: Ollama/falcon
+[KnowledgeService] KnowledgeService initialized with ... LLM: Ollama/mistral
 ```
 
 ---
@@ -430,7 +430,7 @@ You can use custom fine-tuned models with Ollama:
 
 ```dockerfile
 # Modelfile
-FROM falcon:7b
+FROM mistral:7b
 
 # Set custom parameters
 PARAMETER temperature 0.5
@@ -456,7 +456,7 @@ LLM_MODEL=my-custom-model
 
 ## Best Practices
 
-1. **Start with Falcon 7B**: Good balance of quality and speed
+1. **Start with Mistral 7B**: Excellent instruction following and JSON output reliability
 2. **Test multiple models**: Each has strengths/weaknesses
 3. **Monitor performance**: Track latency and quality
 4. **Use temperature wisely**: Lower for factual, higher for creative

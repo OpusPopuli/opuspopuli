@@ -122,7 +122,7 @@ The AI model is needed for analyzing web pages during data ingestion. First-time
 ./scripts/setup-ollama.sh
 
 # Option B: Pull manually
-docker exec opuspopuli-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull mistral
 ```
 
 Verify the model is ready:
@@ -131,12 +131,7 @@ Verify the model is ready:
 docker exec opuspopuli-ollama ollama list
 ```
 
-You should see `falcon:latest` (or `mistral:latest` if you chose that model) in the output.
-
-> **Tip:** For better structural analysis quality, use `mistral` instead of `falcon`:
-> ```bash
-> docker exec opuspopuli-ollama ollama pull mistral
-> ```
+You should see `mistral:latest` in the output.
 
 ### 2.4 Start the Frontend
 
@@ -799,9 +794,9 @@ Use this to re-test the registration and onboarding flow without re-ingesting al
 | Problem | Cause | Solution |
 |---------|-------|----------|
 | Sync returns 0 items for propositions | Source website changed layout | Check that https://www.sos.ca.gov/elections/ballot-measures/qualified-ballot-measures is accessible and hasn't changed |
-| AI analysis takes too long | Ollama model too slow | Try `mistral` model for better reliability, or increase Docker CPU allocation |
+| AI analysis takes too long | Ollama model too slow | Increase Docker CPU allocation, or try `llama3.2` (3B) for faster but lower-quality results |
 | Campaign finance sync times out | Large file download | The CAL-ACCESS ZIP is ~1 GB. Ensure stable internet. Try again if it times out. |
-| "Model not found" error | AI model not downloaded | Run `docker exec opuspopuli-ollama ollama pull falcon` |
+| "Model not found" error | AI model not downloaded | Run `docker exec opuspopuli-ollama ollama pull mistral` |
 | Sync shows errors in response | Individual source failed | Check the `errors` array for details. Some sources may fail independently. |
 
 ### Authentication Issues

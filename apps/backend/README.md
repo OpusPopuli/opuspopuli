@@ -113,7 +113,7 @@ VECTOR_DB_DIMENSIONS=384
 
 # LLM
 LLM_URL=http://localhost:11434
-LLM_MODEL=falcon
+LLM_MODEL=mistral
 
 # Relational Database (PostgreSQL via Supabase)
 RELATIONAL_DB_PROVIDER=postgres

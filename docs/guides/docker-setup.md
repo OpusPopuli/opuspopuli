@@ -56,7 +56,7 @@ docker-compose.yml                  ← Base infrastructure (Supabase, Redis, Ol
 docker-compose up -d
 ```
 
-### 2. Pull the Falcon 7B model
+### 2. Pull the Mistral 7B model
 
 ```bash
 ./scripts/setup-ollama.sh
@@ -64,7 +64,7 @@ docker-compose up -d
 
 Or manually:
 ```bash
-docker exec opuspopuli-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull mistral
 ```
 
 ### 3. Verify everything is running
@@ -158,9 +158,9 @@ EMBEDDINGS_PROVIDER='xenova'
 # Vector DB: pgvector (uses same PostgreSQL instance)
 VECTOR_DB_DIMENSIONS=384
 
-# LLM: Ollama with Falcon 7B
+# LLM: Ollama with Mistral 7B
 LLM_URL='http://localhost:11434'
-LLM_MODEL='falcon'
+LLM_MODEL='mistral'
 
 # Redis: Caching and rate limiting
 REDIS_URL='redis://localhost:6379'
@@ -261,7 +261,7 @@ docker volume inspect opuspopuli-ollama-data
 ### Ollama model not found
 ```bash
 # Pull the model again
-docker exec opuspopuli-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull mistral
 
 # Verify it's installed
 docker exec opuspopuli-ollama ollama list

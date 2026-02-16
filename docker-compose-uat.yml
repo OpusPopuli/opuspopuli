@@ -43,14 +43,14 @@ services:
     environment:
       # LLM for RAG queries during manual testing
       LLM_URL: http://ollama:11434
-      LLM_MODEL: falcon
+      LLM_MODEL: mistral
 
   region:
     container_name: opuspopuli-uat-region
     environment:
       # LLM for AI-powered structural analysis during data scraping
       LLM_URL: http://ollama:11434
-      LLM_MODEL: falcon
+      LLM_MODEL: mistral
       # Disable automatic sync scheduler — trigger manually via GraphQL Playground
       REGION_SYNC_ENABLED: "false"
 

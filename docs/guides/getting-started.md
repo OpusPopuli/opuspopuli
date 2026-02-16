@@ -49,7 +49,7 @@ opuspopuli-redis             Up              0.0.0.0:6379->6379/tcp
 ./scripts/setup-ollama.sh
 
 # Or manually
-docker exec opuspopuli-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull mistral
 
 # Verify
 docker exec opuspopuli-ollama ollama list
@@ -198,8 +198,8 @@ Opus Populi comes with sensible defaults for local development:
 ### LLM: Ollama with Falcon 7B
 - **Provider**: Ollama
 - **URL**: http://localhost:11434
-- **Model**: Falcon 7B (TII, Apache 2.0 license)
-- **Setup**: Requires `ollama pull falcon`
+- **Model**: Mistral 7B Instruct (Mistral AI, Apache 2.0 license)
+- **Setup**: Requires `ollama pull mistral`
 
 ### Relational Database: PostgreSQL via Supabase
 - **Provider**: PostgreSQL
@@ -361,12 +361,12 @@ query SearchDocuments {
 
 ### Ollama model not found
 
-**Error**: `Error: model 'falcon' not found`
+**Error**: `Error: model 'mistral' not found`
 
 **Solution**:
 ```bash
 # Pull the model
-docker exec opuspopuli-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull mistral
 
 # Verify
 docker exec opuspopuli-ollama ollama list
