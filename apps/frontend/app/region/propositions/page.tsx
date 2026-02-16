@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
 import {
   GET_PROPOSITIONS,
@@ -67,7 +68,10 @@ function PropositionCard({
     : null;
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow">
+    <Link
+      href={`/region/propositions/${proposition.id}`}
+      className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow"
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-semibold text-[#222222] line-clamp-2">
@@ -80,24 +84,12 @@ function PropositionCard({
         <StatusBadge status={proposition.status} />
       </div>
 
-      <div className="mt-4 flex items-center justify-between text-sm">
-        <div className="text-[#555555]">
-          {electionDate && <span>Election: {electionDate}</span>}
+      {electionDate && (
+        <div className="mt-4 text-sm text-[#555555]">
+          Election: {electionDate}
         </div>
-        <div className="flex items-center gap-3">
-          {proposition.sourceUrl && (
-            <a
-              href={proposition.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-700 hover:underline"
-            >
-              Source
-            </a>
-          )}
-        </div>
-      </div>
-    </div>
+      )}
+    </Link>
   );
 }
 

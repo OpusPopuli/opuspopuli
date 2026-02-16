@@ -5,7 +5,14 @@ const config = [
   ...nextPlugin,
   prettierConfigRecommended, // Last since it disables some previously set rules
   {
-    ignores: [".next/*", "jest.config.js", "cypress.config.ts", "public/sw.js"],
+    ignores: [
+      ".next/*",
+      "jest.config.js",
+      "cypress.config.ts",
+      "public/sw.js",
+      "playwright-report/*",
+      "test-results/*",
+    ],
   },
 ];
 
