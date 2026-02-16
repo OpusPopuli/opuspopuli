@@ -13,6 +13,10 @@
     "integration:up": "docker compose -f docker-compose-integration.yml up -d --build",
     "integration:down": "docker compose -f docker-compose-integration.yml down -v",
     "integration:logs": "docker compose -f docker-compose-integration.yml logs -f",
+    "uat:up": "docker compose -f docker-compose-uat.yml up -d --build",
+    "uat:down": "docker compose -f docker-compose-uat.yml down",
+    "uat:down:clean": "docker compose -f docker-compose-uat.yml down -v",
+    "uat:logs": "docker compose -f docker-compose-uat.yml logs -f",
     "prepare": "husky"
   },
   "keywords": [],

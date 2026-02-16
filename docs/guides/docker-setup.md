@@ -27,6 +27,24 @@ Your `docker-compose.yml` includes:
 | **Promtail** | Log shipper | - | `grafana/promtail` |
 | **Grafana** | Visualization | 3101 | `grafana/grafana` |
 
+## Compose File Architecture
+
+The project uses a layered Docker Compose architecture. Each environment-specific file is self-contained: it includes the base infrastructure and defines all backend microservices inline.
+
+```
+docker-compose.yml                       ← Base infrastructure (Supabase, Redis, Ollama, observability)
+  ├── docker-compose-integration.yml     ← Integration testing (API on port 3000, test-runner)
+  ├── docker-compose-e2e.yml             ← E2E testing (API on port 4000 for Playwright)
+  └── docker-compose-uat.yml             ← Manual UAT (LLM config, region sync disabled)
+```
+
+| File | When to Use | Command |
+|------|-------------|---------|
+| `docker-compose.yml` | Infrastructure only (dev without backend containers) | `docker compose up -d` |
+| `docker-compose-integration.yml` | Running integration tests | `pnpm test:integration:docker` |
+| `docker-compose-e2e.yml` | Running E2E tests with Playwright | `docker compose -f docker-compose-e2e.yml up -d --build` |
+| `docker-compose-uat.yml` | Manual region validation and UAT | `docker compose -f docker-compose-uat.yml up -d --build` |
+
 ## Quick Start
 
 ### 1. Start all services
@@ -35,7 +53,7 @@ Your `docker-compose.yml` includes:
 docker-compose up -d
 ```
 
-### 2. Pull the Falcon 7B model
+### 2. Pull the Mistral 7B model
 
 ```bash
 ./scripts/setup-ollama.sh
@@ -43,7 +61,7 @@ docker-compose up -d
 
 Or manually:
 ```bash
-docker exec opuspopuli-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull mistral
 ```
 
 ### 3. Verify everything is running
@@ -137,9 +155,9 @@ EMBEDDINGS_PROVIDER='xenova'
 # Vector DB: pgvector (uses same PostgreSQL instance)
 VECTOR_DB_DIMENSIONS=384
 
-# LLM: Ollama with Falcon 7B
+# LLM: Ollama with Mistral 7B
 LLM_URL='http://localhost:11434'
-LLM_MODEL='falcon'
+LLM_MODEL='mistral'
 
 # Redis: Caching and rate limiting
 REDIS_URL='redis://localhost:6379'
@@ -240,7 +258,7 @@ docker volume inspect opuspopuli-ollama-data
 ### Ollama model not found
 ```bash
 # Pull the model again
-docker exec opuspopuli-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull mistral
 
 # Verify it's installed
 docker exec opuspopuli-ollama ollama list

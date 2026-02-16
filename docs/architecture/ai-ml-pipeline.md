@@ -233,25 +233,25 @@ LIMIT 3;
 **Configuration**:
 ```bash
 LLM_URL=http://localhost:11434
-LLM_MODEL=falcon  # Default model
+LLM_MODEL=mistral  # Default model
 ```
 
-**Model: Falcon 7B (Default)**
+**Model: Mistral 7B Instruct (Default)**
 
 **Details**:
 - **Size**: 7 billion parameters
-- **Context**: 2048 tokens
+- **Context**: 8192 tokens
 - **License**: Apache 2.0 (fully open source)
-- **Developer**: TII (Technology Innovation Institute)
-- **Quality**: Competitive with GPT-3.5 for many tasks
+- **Developer**: Mistral AI
+- **Quality**: Excellent instruction following and JSON output reliability
 
 **Alternative Models** (via Ollama):
 | Model | Size | Context | Speed | Quality | Use Case |
 |-------|------|---------|-------|---------|----------|
-| falcon | 7B | 2048 | Medium | Good | General purpose (default) |
+| mistral | 7B | 8192 | Medium | Excellent | Structural analysis, JSON (default) |
 | llama3.2 | 3B | 8192 | Fast | Good | Quick responses |
-| mistral | 7B | 8192 | Medium | Excellent | High quality answers |
 | llama3.1 | 8B | 128K | Slow | Excellent | Long context |
+| falcon | 7B | 2048 | Medium | Good | General purpose |
 
 **Generation Process**:
 ```typescript

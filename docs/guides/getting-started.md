@@ -49,7 +49,7 @@ opuspopuli-redis             Up              0.0.0.0:6379->6379/tcp
 ./scripts/setup-ollama.sh
 
 # Or manually
-docker exec opuspopuli-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull mistral
 
 # Verify
 docker exec opuspopuli-ollama ollama list
@@ -170,7 +170,10 @@ opuspopuli/
 │   ├── architecture/          # As-built architecture docs
 │   └── guides/                # How-to guides
 ├── scripts/                   # Utility scripts
-└── docker-compose.yml         # Infrastructure services
+├── docker-compose.yml         # Base infrastructure (Supabase, Redis, Ollama, observability)
+├── docker-compose-integration.yml # Integration testing (API on port 3000, test-runner)
+├── docker-compose-e2e.yml     # E2E testing (API on port 4000 for Playwright)
+└── docker-compose-uat.yml     # UAT / manual validation (LLM config, region sync disabled)
 ```
 
 ---
@@ -194,8 +197,8 @@ Opus Populi comes with sensible defaults for local development:
 ### LLM: Ollama with Falcon 7B
 - **Provider**: Ollama
 - **URL**: http://localhost:11434
-- **Model**: Falcon 7B (TII, Apache 2.0 license)
-- **Setup**: Requires `ollama pull falcon`
+- **Model**: Mistral 7B Instruct (Mistral AI, Apache 2.0 license)
+- **Setup**: Requires `ollama pull mistral`
 
 ### Relational Database: PostgreSQL via Supabase
 - **Provider**: PostgreSQL
@@ -357,12 +360,12 @@ query SearchDocuments {
 
 ### Ollama model not found
 
-**Error**: `Error: model 'falcon' not found`
+**Error**: `Error: model 'mistral' not found`
 
 **Solution**:
 ```bash
 # Pull the model
-docker exec opuspopuli-ollama ollama pull falcon
+docker exec opuspopuli-ollama ollama pull mistral
 
 # Verify
 docker exec opuspopuli-ollama ollama list
@@ -470,21 +473,36 @@ pnpm test
 ### Docker Services
 
 ```bash
-# Start all services
-docker-compose up -d
+# Start infrastructure only (for development with local backend)
+docker compose up -d
 
 # Stop all services
-docker-compose down
+docker compose down
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Restart specific service
-docker-compose restart ollama
+docker compose restart ollama
 
 # Remove all data (fresh start)
-docker-compose down -v
+docker compose down -v
 ```
+
+For running with containerized backend services, use the overlay compose files:
+
+```bash
+# Integration testing (all services + test runner)
+docker compose -f docker-compose-integration.yml up -d --build
+
+# E2E testing (API on port 4000 for Playwright)
+docker compose -f docker-compose-e2e.yml up -d --build
+
+# UAT / manual region validation (LLM + region config)
+docker compose -f docker-compose-uat.yml up -d --build
+```
+
+See [Docker Setup](docker-setup.md) for the full compose file architecture.
 
 ---
 

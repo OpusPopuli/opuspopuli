@@ -1,11 +1,10 @@
 # Docker Compose for E2E Testing
 #
-# This file extends the base docker-compose.yml (Supabase stack) and adds
-# backend microservices for running E2E tests with Playwright.
+# Self-contained compose file that includes base infrastructure and defines
+# all backend microservices for running E2E tests with Playwright.
 #
-# Key difference from docker-compose-integration.yml:
-# - API gateway runs on port 4000 (not 3000) to avoid conflict with frontend
-# - Frontend runs on port 3000 via Playwright's webServer config
+# Key difference from integration: API gateway runs on port 4000 (not 3000)
+# to avoid conflict with frontend on port 3000.
 #
 # Usage:
 #   # Start services:
@@ -18,40 +17,31 @@
 #   docker compose -f docker-compose-e2e.yml down -v
 
 include:
-  - docker-compose.yml  # Base Supabase services (db, auth, kong, inbucket)
+  - docker-compose.yml  # Base: Supabase, Redis, Ollama, observability
 
 x-backend-env: &backend-env
   NODE_ENV: test
-  # Service metadata
   PROJECT: opuspopuli
   VERSION: 1.0.0
-  # Email (placeholder for testing - won't actually send)
   RESEND_API_KEY: re_test_placeholder_key
-  # Database
   RELATIONAL_DB_PROVIDER: postgres
   RELATIONAL_DB_HOST: supabase-db
   RELATIONAL_DB_PORT: 5432
   RELATIONAL_DB_USERNAME: postgres
   RELATIONAL_DB_PASSWORD: your-super-secret-password
   RELATIONAL_DB_DATABASE: postgres
-  # Prisma DATABASE_URL (required for Prisma ORM)
   DATABASE_URL: postgresql://postgres:your-super-secret-password@supabase-db:5432/postgres
-  # Redis (distributed caching)
   REDIS_URL: redis://redis:6379
-  # Supabase
   SUPABASE_URL: http://supabase-kong:8000
   SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
   SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
-  # HMAC Authentication (API Gateway <-> Microservices)
   GATEWAY_CLIENT_ID: api-gateway
   GATEWAY_HMAC_SECRET: integration-test-hmac-secret
   API_KEYS: '{"api-gateway":"integration-test-hmac-secret"}'
-  # JWT
   JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
   AUTH_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
 
 services:
-  # Database migration service - runs before microservices to create tables
   db-migrate:
     build:
       context: .
@@ -191,7 +181,7 @@ services:
       PORT: 8080
       MICROSERVICES: '[{"name":"users","url":"http://users:8080/graphql"},{"name":"documents","url":"http://documents:8080/graphql"},{"name":"knowledge","url":"http://knowledge:8080/graphql"},{"name":"region","url":"http://region:8080/graphql"}]'
     ports:
-      - "4000:8080"  # Port 4000 for E2E (frontend uses 3000)
+      - "4000:8080"
     depends_on:
       users:
         condition: service_healthy

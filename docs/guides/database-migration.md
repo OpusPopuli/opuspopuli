@@ -75,7 +75,7 @@ EMBEDDINGS_PROVIDER=xenova
 EMBEDDINGS_XENOVA_MODEL=Xenova/all-MiniLM-L6-v2
 
 LLM_URL=http://ollama-gpu-instance:11434
-LLM_MODEL=falcon
+LLM_MODEL=mistral
 ```
 
 **3. Migrate data**:
