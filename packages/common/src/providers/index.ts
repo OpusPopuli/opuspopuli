@@ -16,4 +16,5 @@ export * from "./rate-limiting/index.js";
 export * from "./retry/index.js";
 export * from "./caching/index.js";
 export * from "./scraping-pipeline/index.js";
+export * from "./prompt-service/index.js";
 export * from "./config/index.js";

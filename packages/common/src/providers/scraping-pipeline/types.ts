@@ -328,15 +328,3 @@ export interface PipelineMetrics {
   llmTokensUsed?: number;
   timestamp: Date;
 }
-
-/**
- * Response from the AI Prompt Service.
- */
-export interface PromptServiceResponse {
-  /** The composed prompt text */
-  promptText: string;
-  /** Hash of the prompt template version */
-  promptHash: string;
-  /** Version identifier of the prompt template */
-  promptVersion: string;
-}

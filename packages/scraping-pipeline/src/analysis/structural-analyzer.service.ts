@@ -61,11 +61,14 @@ export class StructuralAnalyzerService {
     // 2. Truncate to fit context window
     const truncated = this.smartTruncate(simplified, MAX_HTML_SIZE);
 
-    // 3. Get prompt from the prompt service (remote or local)
-    const promptResponse = await this.promptClient.getStructuralAnalysisPrompt(
-      source,
-      truncated,
-    );
+    // 3. Get prompt from the prompt service (DB-backed or remote)
+    const promptResponse = await this.promptClient.getStructuralAnalysisPrompt({
+      dataType: source.dataType,
+      contentGoal: source.contentGoal,
+      category: source.category,
+      hints: source.hints,
+      html: truncated,
+    });
 
     // 4. Call LLM with low temperature for deterministic JSON output
     this.logger.log(
@@ -113,7 +116,7 @@ export class StructuralAnalyzerService {
    * Get the current prompt hash for cache invalidation.
    */
   async getCurrentPromptHash(dataType: DataType): Promise<string> {
-    return this.promptClient.getPromptHash(dataType);
+    return this.promptClient.getPromptHash("structural-analysis");
   }
 
   /**
