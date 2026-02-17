@@ -5,6 +5,7 @@ import { StorageModule } from '@opuspopuli/storage-provider';
 import { OcrModule } from '@opuspopuli/ocr-provider';
 import { ExtractionModule } from '@opuspopuli/extraction-provider';
 import { LLMModule } from '@opuspopuli/llm-provider';
+import { PromptClientModule } from '@opuspopuli/prompt-client';
 
 // RelationalDbModule is global, no need to import
 
@@ -17,7 +18,13 @@ import { LLMModule } from '@opuspopuli/llm-provider';
  * Supports AI analysis with type-specific prompts.
  */
 @Module({
-  imports: [StorageModule, OcrModule, ExtractionModule, LLMModule],
+  imports: [
+    StorageModule,
+    OcrModule,
+    ExtractionModule,
+    LLMModule,
+    PromptClientModule,
+  ],
   providers: [DocumentsService, DocumentsResolver],
   exports: [DocumentsService],
 })

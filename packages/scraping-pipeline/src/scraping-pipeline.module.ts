@@ -8,10 +8,7 @@
 import { Module, type DynamicModule } from "@nestjs/common";
 import { ScrapingPipelineService } from "./pipeline/pipeline.service.js";
 import { StructuralAnalyzerService } from "./analysis/structural-analyzer.service.js";
-import {
-  PromptClientService,
-  type PromptClientConfig,
-} from "./analysis/prompt-client.service.js";
+import { PromptClientModule } from "@opuspopuli/prompt-client";
 import {
   ManifestStoreService,
   type ManifestRepository,
@@ -24,8 +21,6 @@ import { BulkDownloadHandler } from "./handlers/bulk-download.handler.js";
 import { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
 
 export interface ScrapingPipelineModuleOptions {
-  /** Configuration for the prompt client (remote or local) */
-  promptClientConfig?: PromptClientConfig;
   /** Modules that provide required tokens (LLM_PROVIDER, ExtractionProvider, etc.) */
   imports?: any[];
   /** Additional providers (e.g., MANIFEST_REPOSITORY) */
@@ -41,19 +36,15 @@ export class ScrapingPipelineModule {
    * - LLM_PROVIDER: ILLMProvider implementation (from LLMModule)
    * - ExtractionProvider: for fetching HTML (from ExtractionModule)
    * - MANIFEST_REPOSITORY: ManifestRepository implementation (Prisma adapter)
+   *
+   * PromptClientModule is imported automatically (reads prompt templates from DB).
    */
   static forRoot(options?: ScrapingPipelineModuleOptions): DynamicModule {
     return {
       module: ScrapingPipelineModule,
-      imports: options?.imports || [],
+      imports: [...(options?.imports || []), PromptClientModule],
       providers: [
         ...(options?.providers || []),
-        // Prompt client (connects to AI Prompt Service or uses local fallback)
-        {
-          provide: PromptClientService,
-          useFactory: () =>
-            new PromptClientService(options?.promptClientConfig),
-        },
         // Manifest store (wraps the injected repository)
         {
           provide: ManifestStoreService,

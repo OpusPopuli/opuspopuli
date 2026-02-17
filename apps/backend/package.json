@@ -70,6 +70,7 @@
     "@opuspopuli/llm-provider": "workspace:*",
     "@opuspopuli/logging-provider": "workspace:*",
     "@opuspopuli/ocr-provider": "workspace:*",
+    "@opuspopuli/prompt-client": "workspace:*",
     "@opuspopuli/region-provider": "workspace:*",
     "@opuspopuli/scraping-pipeline": "workspace:*",
     "@opuspopuli/relationaldb-provider": "workspace:*",

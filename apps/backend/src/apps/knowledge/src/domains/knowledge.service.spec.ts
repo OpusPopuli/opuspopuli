@@ -8,6 +8,7 @@ import {
   IVectorDocument,
 } from '@opuspopuli/vectordb-provider';
 import { ILLMProvider, GenerateResult } from '@opuspopuli/llm-provider';
+import { PromptClientService } from '@opuspopuli/prompt-client';
 
 describe('KnowledgeService', () => {
   let knowledgeService: KnowledgeService;
@@ -50,6 +51,16 @@ describe('KnowledgeService', () => {
         {
           provide: 'LLM_PROVIDER',
           useValue: mockLLM,
+        },
+        {
+          provide: PromptClientService,
+          useValue: {
+            getRAGPrompt: jest.fn().mockResolvedValue({
+              promptText: 'mock RAG prompt',
+              promptHash: 'mock-hash',
+              promptVersion: 'v1',
+            }),
+          },
         },
       ],
     }).compile();

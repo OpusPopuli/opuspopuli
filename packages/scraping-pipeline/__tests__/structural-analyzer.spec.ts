@@ -40,6 +40,23 @@ function createMockLLM(responseText?: string): jest.Mocked<ILLMProvider> {
   } as unknown as jest.Mocked<ILLMProvider>;
 }
 
+function createMockPromptClient(): jest.Mocked<
+  Pick<
+    PromptClientService,
+    "getStructuralAnalysisPrompt" | "getPromptHash" | "clearCache"
+  >
+> {
+  return {
+    getStructuralAnalysisPrompt: jest.fn().mockResolvedValue({
+      promptText: "Mocked structural analysis prompt",
+      promptHash: "a".repeat(64),
+      promptVersion: "v1",
+    }),
+    getPromptHash: jest.fn().mockResolvedValue("b".repeat(64)),
+    clearCache: jest.fn(),
+  } as any;
+}
+
 function createSource(
   overrides: Partial<DataSourceConfig> = {},
 ): DataSourceConfig {
@@ -71,12 +88,15 @@ const SIMPLE_HTML = `
 describe("StructuralAnalyzerService", () => {
   let analyzer: StructuralAnalyzerService;
   let mockLLM: jest.Mocked<ILLMProvider>;
-  let promptClient: PromptClientService;
+  let mockPromptClient: ReturnType<typeof createMockPromptClient>;
 
   beforeEach(() => {
     mockLLM = createMockLLM();
-    promptClient = new PromptClientService();
-    analyzer = new StructuralAnalyzerService(mockLLM, promptClient);
+    mockPromptClient = createMockPromptClient();
+    analyzer = new StructuralAnalyzerService(
+      mockLLM,
+      mockPromptClient as unknown as PromptClientService,
+    );
   });
 
   describe("analyze", () => {
@@ -86,6 +106,17 @@ describe("StructuralAnalyzerService", () => {
       expect(manifest.extractionRules.containerSelector).toBe(".members-list");
       expect(manifest.extractionRules.itemSelector).toBe(".member-card");
       expect(manifest.extractionRules.fieldMappings).toHaveLength(2);
+    });
+
+    it("should call prompt client with correct params", async () => {
+      await analyzer.analyze(SIMPLE_HTML, createSource());
+
+      expect(mockPromptClient.getStructuralAnalysisPrompt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dataType: DataType.REPRESENTATIVES,
+          contentGoal: "Extract all assembly members",
+        }),
+      );
     });
 
     it("should set LLM metadata on the manifest", async () => {
@@ -106,7 +137,7 @@ describe("StructuralAnalyzerService", () => {
     it("should set prompt hash from prompt service response", async () => {
       const manifest = await analyzer.analyze(SIMPLE_HTML, createSource());
 
-      expect(manifest.promptHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(manifest.promptHash).toBe("a".repeat(64));
     });
 
     it("should set sourceUrl from the data source", async () => {
@@ -128,7 +159,10 @@ describe("StructuralAnalyzerService", () => {
       const wrappedJson =
         '```json\n{"containerSelector":".list","itemSelector":".item","fieldMappings":[{"fieldName":"name","selector":".name","extractionMethod":"text","required":true}]}\n```';
       mockLLM = createMockLLM(wrappedJson);
-      analyzer = new StructuralAnalyzerService(mockLLM, promptClient);
+      analyzer = new StructuralAnalyzerService(
+        mockLLM,
+        mockPromptClient as unknown as PromptClientService,
+      );
 
       const manifest = await analyzer.analyze(SIMPLE_HTML, createSource());
 
@@ -137,7 +171,10 @@ describe("StructuralAnalyzerService", () => {
 
     it("should throw on invalid JSON from LLM", async () => {
       mockLLM = createMockLLM("This is not JSON at all");
-      analyzer = new StructuralAnalyzerService(mockLLM, promptClient);
+      analyzer = new StructuralAnalyzerService(
+        mockLLM,
+        mockPromptClient as unknown as PromptClientService,
+      );
 
       await expect(
         analyzer.analyze(SIMPLE_HTML, createSource()),
@@ -152,7 +189,10 @@ describe("StructuralAnalyzerService", () => {
         ],
       });
       mockLLM = createMockLLM(badJson);
-      analyzer = new StructuralAnalyzerService(mockLLM, promptClient);
+      analyzer = new StructuralAnalyzerService(
+        mockLLM,
+        mockPromptClient as unknown as PromptClientService,
+      );
 
       await expect(
         analyzer.analyze(SIMPLE_HTML, createSource()),
@@ -167,7 +207,10 @@ describe("StructuralAnalyzerService", () => {
         ],
       });
       mockLLM = createMockLLM(badJson);
-      analyzer = new StructuralAnalyzerService(mockLLM, promptClient);
+      analyzer = new StructuralAnalyzerService(
+        mockLLM,
+        mockPromptClient as unknown as PromptClientService,
+      );
 
       await expect(
         analyzer.analyze(SIMPLE_HTML, createSource()),
@@ -181,7 +224,10 @@ describe("StructuralAnalyzerService", () => {
         fieldMappings: [],
       });
       mockLLM = createMockLLM(badJson);
-      analyzer = new StructuralAnalyzerService(mockLLM, promptClient);
+      analyzer = new StructuralAnalyzerService(
+        mockLLM,
+        mockPromptClient as unknown as PromptClientService,
+      );
 
       await expect(
         analyzer.analyze(SIMPLE_HTML, createSource()),
@@ -201,10 +247,12 @@ describe("StructuralAnalyzerService", () => {
 
       await analyzer.analyze(htmlWithScripts, createSource());
 
-      const prompt = mockLLM.generate.mock.calls[0][0];
-      expect(prompt).not.toContain("alert('hi')");
-      expect(prompt).not.toContain("color: red");
-      expect(prompt).toContain("Real content");
+      // Verify the HTML passed to prompt client has scripts/styles stripped
+      const params =
+        mockPromptClient.getStructuralAnalysisPrompt.mock.calls[0][0];
+      expect(params.html).not.toContain("alert('hi')");
+      expect(params.html).not.toContain("color: red");
+      expect(params.html).toContain("Real content");
     });
 
     it("should strip data-* attributes", async () => {
@@ -218,10 +266,12 @@ describe("StructuralAnalyzerService", () => {
 
       await analyzer.analyze(htmlWithData, createSource());
 
-      const prompt = mockLLM.generate.mock.calls[0][0];
-      expect(prompt).not.toContain("data-track");
-      expect(prompt).not.toContain("data-id");
-      expect(prompt).toContain('class="content"');
+      // Verify the HTML passed to prompt client has data-* attrs stripped
+      const params =
+        mockPromptClient.getStructuralAnalysisPrompt.mock.calls[0][0];
+      expect(params.html).not.toContain("data-track");
+      expect(params.html).not.toContain("data-id");
+      expect(params.html).toContain('class="content"');
     });
   });
 
@@ -231,9 +281,10 @@ describe("StructuralAnalyzerService", () => {
 
       await analyzer.analyze(longHtml, createSource());
 
-      const prompt = mockLLM.generate.mock.calls[0][0];
-      // The HTML in the prompt should be truncated
-      expect(prompt.length).toBeLessThan(longHtml.length);
+      // Verify the HTML passed to prompt client is truncated
+      const params =
+        mockPromptClient.getStructuralAnalysisPrompt.mock.calls[0][0];
+      expect(params.html.length).toBeLessThan(longHtml.length);
     });
   });
 
@@ -278,7 +329,10 @@ describe("StructuralAnalyzerService", () => {
           "A detailed analysis of the page structure and layout patterns.",
       });
       mockLLM = createMockLLM(manyFields);
-      analyzer = new StructuralAnalyzerService(mockLLM, promptClient);
+      analyzer = new StructuralAnalyzerService(
+        mockLLM,
+        mockPromptClient as unknown as PromptClientService,
+      );
 
       const manifest = await analyzer.analyze(SIMPLE_HTML, createSource());
 
@@ -290,6 +344,13 @@ describe("StructuralAnalyzerService", () => {
     it("should return a SHA-256 hash", async () => {
       const hash = await analyzer.getCurrentPromptHash(DataType.PROPOSITIONS);
       expect(hash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("should call prompt client with template name", async () => {
+      await analyzer.getCurrentPromptHash(DataType.PROPOSITIONS);
+      expect(mockPromptClient.getPromptHash).toHaveBeenCalledWith(
+        "structural-analysis",
+      );
     });
   });
 });

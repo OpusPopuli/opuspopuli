@@ -4,6 +4,7 @@ import { KnowledgeResolver } from './knowledge.resolver';
 import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
 import { VectorDBModule } from '@opuspopuli/vectordb-provider';
 import { LLMModule } from '@opuspopuli/llm-provider';
+import { PromptClientModule } from '@opuspopuli/prompt-client';
 
 /**
  * Knowledge Module
@@ -15,7 +16,7 @@ import { LLMModule } from '@opuspopuli/llm-provider';
  * All components are self-hosted OSS for full transparency and privacy.
  */
 @Module({
-  imports: [EmbeddingsModule, VectorDBModule, LLMModule],
+  imports: [EmbeddingsModule, VectorDBModule, LLMModule, PromptClientModule],
   providers: [KnowledgeService, KnowledgeResolver],
   exports: [KnowledgeService],
 })

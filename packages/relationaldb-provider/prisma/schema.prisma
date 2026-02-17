@@ -145,6 +145,12 @@ enum DocumentType {
   form        @map("form")
 }
 
+enum PromptCategory {
+  structural_analysis @map("structural_analysis")
+  document_analysis   @map("document_analysis")
+  rag                 @map("rag")
+}
+
 // ============================================
 // USER CORE
 // ============================================
@@ -775,4 +781,25 @@ model PipelineExecution {
   @@index([manifestId])
   @@index([executedAt])
   @@map("pipeline_executions")
+}
+
+// ============================================
+// AI PROMPT TEMPLATES
+// ============================================
+
+model PromptTemplate {
+  id           String         @id @default(uuid())
+  name         String         @unique @db.VarChar(255)
+  category     PromptCategory
+  description  String?        @db.Text
+  templateText String         @map("template_text") @db.Text
+  variables    String[]       @default([])
+  version      Int            @default(1)
+  isActive     Boolean        @default(true) @map("is_active")
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([category, isActive])
+  @@index([name])
+  @@map("prompt_templates")
 }
