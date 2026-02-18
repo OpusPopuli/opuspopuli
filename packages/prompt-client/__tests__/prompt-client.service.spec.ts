@@ -209,12 +209,128 @@ describe("PromptClientService", () => {
   });
 
   describe("error handling", () => {
-    it("should throw when template not found", async () => {
+    it("should throw when non-core template not found", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValue(null);
 
+      // getPromptHash calls getTemplate with no fallbackName,
+      // and "nonexistent-template" has no hardcoded fallback
       await expect(
-        service.getRAGPrompt({ context: "a", query: "b" }),
-      ).rejects.toThrow('Prompt template "rag" not found in database');
+        service.getPromptHash("nonexistent-template"),
+      ).rejects.toThrow(
+        'Prompt template "nonexistent-template" not found in database',
+      );
+    });
+  });
+
+  describe("fallback templates", () => {
+    it("should return fallback when DB template missing for core template", async () => {
+      // All DB lookups return null
+      mockDb.promptTemplate.findFirst.mockResolvedValue(null);
+
+      const result = await service.getRAGPrompt({
+        context: "The sky is blue.",
+        query: "What color?",
+      });
+
+      expect(result.promptText).toContain("The sky is blue.");
+      expect(result.promptText).toContain("What color?");
+      expect(result.promptVersion).toBe("v0");
+    });
+
+    it("should use fallbackName's hardcoded fallback when primary not in DB", async () => {
+      // structural-analysis found in DB, but schema type not found
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(
+          mockTemplate(
+            "structural-analysis",
+            "Schema: {{SCHEMA_DESCRIPTION}} {{DATA_TYPE}} {{CONTENT_GOAL}} {{HINTS_SECTION}} {{HTML}}",
+          ),
+        )
+        // structural-schema-exotic: not in DB
+        .mockResolvedValueOnce(null)
+        // structural-schema-default: not in DB either
+        .mockResolvedValueOnce(null);
+
+      const result = await service.getStructuralAnalysisPrompt({
+        dataType: "exotic" as any,
+        contentGoal: "test",
+        html: "<div/>",
+      });
+
+      // Should use the hardcoded structural-schema-default fallback
+      expect(result.promptText).toContain(
+        "Extract all relevant structured data fields",
+      );
+    });
+
+    it("should cache fallback templates after first use", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValue(null);
+
+      await service.getRAGPrompt({ context: "a", query: "b" });
+      await service.getRAGPrompt({ context: "c", query: "d" });
+
+      // DB queried only once for "rag" (cached after fallback returned)
+      expect(mockDb.promptTemplate.findFirst).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("validateTemplates", () => {
+    it("should return healthy when all core templates exist", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValue({ id: "exists" });
+
+      const result = await service.validateTemplates();
+
+      expect(result.healthy).toBe(true);
+      expect(result.missing).toEqual([]);
+    });
+
+    it("should report missing templates", async () => {
+      // First 3 exist, last 2 don't
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce({ id: "1" })
+        .mockResolvedValueOnce({ id: "2" })
+        .mockResolvedValueOnce({ id: "3" })
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+
+      const result = await service.validateTemplates();
+
+      expect(result.healthy).toBe(false);
+      expect(result.missing).toEqual([
+        "document-analysis-base-instructions",
+        "rag",
+      ]);
+    });
+  });
+
+  describe("onModuleInit", () => {
+    it("should skip validation when remote URL configured", async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PromptClientService,
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: PROMPT_CLIENT_CONFIG,
+            useValue: {
+              promptServiceUrl: "http://prompt-service:3005",
+              promptServiceApiKey: "test-key",
+            },
+          },
+        ],
+      }).compile();
+
+      const remoteService = module.get(PromptClientService);
+      await remoteService.onModuleInit();
+
+      // DB should not have been called for validation
+      expect(mockDb.promptTemplate.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("should complete without throwing when templates are missing", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValue(null);
+
+      // Should warn but not throw
+      await expect(service.onModuleInit()).resolves.toBeUndefined();
     });
   });
 
