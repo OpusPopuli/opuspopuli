@@ -6,16 +6,7 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Install dependencies based on the preferred package manager
-# COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
-# RUN \
-#   if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-#   elif [ -f package-lock.json ]; then npm ci; \
-#   elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile; \
-#   else echo "Lockfile not found." && exit 1; \
-#   fi
-
-COPY package.json ./
+COPY apps/frontend/package.json ./
 
 RUN corepack enable
 
@@ -24,20 +15,25 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --lockfile=false 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
+COPY apps/frontend/ .
+# Overlay node_modules from deps AFTER copying frontend source
+# (COPY apps/frontend/ . replaces the node_modules directory otherwise)
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+
+# Resolve asset symlinks: replace dangling symlinks with actual directories
+# (public/logos, public/icons, public/favicons symlink to ../../../assets/ which is outside Docker context)
+RUN rm -f public/logos public/icons public/favicons
+COPY assets/logos/ ./public/logos/
+COPY assets/icons/ ./public/icons/
+COPY assets/favicons/ ./public/favicons/
 
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
 # Uncomment the following line in case you want to disable telemetry during the build.
 ENV NEXT_TELEMETRY_DISABLED=1
+# Enable standalone output for Docker (Cloudflare Pages builds without this)
+ENV NEXT_OUTPUT=standalone
 
-# RUN \
-#   if [ -f yarn.lock ]; then yarn run build; \
-#   elif [ -f package-lock.json ]; then npm run build; \
-#   elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm run build; \
-#   else echo "Lockfile not found." && exit 1; \
-#   fi
 RUN corepack enable
 RUN pnpm build
 

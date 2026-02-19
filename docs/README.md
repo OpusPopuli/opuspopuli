@@ -12,6 +12,7 @@ As-built documentation describing how the system is designed and implemented.
 - [**Data Layer**](architecture/data-layer.md) - Database, vector storage, and user profile data architecture
 - [**AI/ML Pipeline**](architecture/ai-ml-pipeline.md) - Embeddings, RAG, and LLM architecture
 - [**Frontend Architecture**](architecture/frontend-architecture.md) - React/Next.js frontend design
+- [**Deployment Architecture**](architecture/deployment.md) - Deployment topology, networking, and multi-environment strategy
 
 ### 📚 How-To Guides (`guides/`)
 Practical guides for common tasks and workflows.
@@ -28,6 +29,7 @@ Practical guides for common tasks and workflows.
 - [**Email Integration**](guides/email-integration.md) - Transactional email with Resend
 - [**Region Provider**](guides/region-provider.md) - Declarative region plugins for civic data
 - [**Region Setup and Validation**](guides/region-setup-and-validation-guide.md) - Step-by-step guide for standing up and validating a new region
+- [**Deployment**](guides/deployment.md) - Deploy a region node (home server + Cloudflare reference implementation)
 - [**Observability**](guides/observability.md) - Prometheus metrics and Loki logging
 
 ## Quick Links
@@ -47,6 +49,8 @@ Practical guides for common tasks and workflows.
 - [Audit Logging](guides/audit-logging.md)
 
 ### For DevOps/Infrastructure
+- [Deployment Architecture](architecture/deployment.md) - Topology, networking, multi-environment strategy
+- [Deployment Guide](guides/deployment.md) - Step-by-step node deployment
 - [Provider Pattern](architecture/provider-pattern.md)
 - [Data Layer Architecture](architecture/data-layer.md)
 - [Database Migration](guides/database-migration.md)
@@ -61,11 +65,12 @@ Practical guides for common tasks and workflows.
 
 ## Core Principles
 
-This platform is built on three core principles:
+This platform is built on four core principles:
 
 1. **100% Open Source** - All components use OSS licenses (Apache 2.0, MIT, etc.)
 2. **Self-Hosted** - Complete control over data and infrastructure
 3. **Pluggable Architecture** - Swap implementations without code changes
+4. **Network of Nodes** - Each region operator runs their own independent node
 
 ## Technology Stack
 
@@ -78,7 +83,7 @@ This platform is built on three core principles:
 | **Auth** | Supabase Auth (Passkeys, Magic Links, Password) |
 | **Storage** | Supabase Storage (avatars, documents) |
 | **Secrets** | Supabase Vault |
-| **LLM** | Ollama (Falcon 7B) |
+| **LLM** | Ollama (Mistral, Llama 3.1) |
 | **Email** | Resend (transactional email) |
 | **Caching** | Redis (distributed cache, rate limiting) |
 | **Metrics** | Prometheus + Grafana |

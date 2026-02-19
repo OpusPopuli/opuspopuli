@@ -19,6 +19,9 @@
 # production
 /build
 
+# cloudflare (opennextjs build output)
+/.open-next/
+
 # misc
 .DS_Store
 *.pem
