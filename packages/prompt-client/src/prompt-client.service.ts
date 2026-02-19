@@ -5,7 +5,13 @@
  * In the future, can switch to a remote AI Prompt Service by setting the URL.
  */
 
-import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Optional,
+} from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { DbService } from "@opuspopuli/relationaldb-provider";
 import type { PromptTemplate } from "@opuspopuli/relationaldb-provider";
@@ -18,8 +24,96 @@ import type {
 } from "./types.js";
 import { PROMPT_CLIENT_CONFIG } from "./types.js";
 
+/** Core template names that have hardcoded fallbacks. */
+const CORE_TEMPLATE_NAMES = [
+  "structural-analysis",
+  "structural-schema-default",
+  "document-analysis-generic",
+  "document-analysis-base-instructions",
+  "rag",
+] as const;
+
+/** Minimal fallback defaults so services can function without seeded DB. */
+function buildFallbackTemplate(
+  name: string,
+  category: "structural_analysis" | "document_analysis" | "rag",
+  templateText: string,
+): PromptTemplate {
+  return {
+    id: `fallback-${name}`,
+    name,
+    category,
+    description: "Hardcoded fallback — run db:seed-prompts for full version",
+    templateText,
+    variables: [],
+    version: 0,
+    isActive: true,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  };
+}
+
+const FALLBACK_TEMPLATES = new Map<string, PromptTemplate>([
+  [
+    "structural-analysis",
+    buildFallbackTemplate(
+      "structural-analysis",
+      "structural_analysis",
+      `You are a web scraping expert. Analyze the following HTML and produce extraction rules as JSON.
+Given HTML from a web page, derive CSS selectors to extract {{DATA_TYPE}} data.
+Content goal: {{CONTENT_GOAL}}
+{{HINTS_SECTION}}
+Target schema: {{SCHEMA_DESCRIPTION}}
+Respond with ONLY valid JSON: {"containerSelector":"...","itemSelector":"...","fieldMappings":[{"fieldName":"...","selector":"...","extractionMethod":"text"}],"analysisNotes":"..."}
+HTML:
+\`\`\`html
+{{HTML}}
+\`\`\``,
+    ),
+  ],
+  [
+    "structural-schema-default",
+    buildFallbackTemplate(
+      "structural-schema-default",
+      "structural_analysis",
+      "Extract all relevant structured data fields from each item.",
+    ),
+  ],
+  [
+    "document-analysis-generic",
+    buildFallbackTemplate(
+      "document-analysis-generic",
+      "document_analysis",
+      `Analyze this document and extract key information.
+DOCUMENT:
+{{TEXT}}
+Respond with JSON: {"summary":"...","keyPoints":["..."],"entities":["..."]}`,
+    ),
+  ],
+  [
+    "document-analysis-base-instructions",
+    buildFallbackTemplate(
+      "document-analysis-base-instructions",
+      "document_analysis",
+      "Respond with valid JSON only. No markdown, no explanations.",
+    ),
+  ],
+  [
+    "rag",
+    buildFallbackTemplate(
+      "rag",
+      "rag",
+      `Answer the question using ONLY information from the context below. If the context doesn't contain enough information, say so.
+Context:
+{{CONTEXT}}
+Question: {{QUERY}}
+Answer:`,
+    ),
+  ],
+]);
+
 @Injectable()
-export class PromptClientService {
+export class PromptClientService implements OnModuleInit {
   private readonly logger = new Logger(PromptClientService.name);
   private readonly cache = new Map<string, PromptTemplate>();
 
@@ -36,6 +130,40 @@ export class PromptClientService {
     } else {
       this.logger.log("Prompt client using database templates");
     }
+  }
+
+  async onModuleInit(): Promise<void> {
+    if (this.config?.promptServiceUrl) return;
+
+    const { missing } = await this.validateTemplates();
+    if (missing.length === 0) {
+      this.logger.log(
+        `All ${CORE_TEMPLATE_NAMES.length} core prompt templates found in database`,
+      );
+    } else {
+      this.logger.warn(
+        `Missing ${missing.length} core prompt template(s) in database: ${missing.join(", ")}. ` +
+          "Hardcoded fallbacks will be used. Run db:seed-prompts to populate.",
+      );
+    }
+  }
+
+  /**
+   * Check which core templates are present in the database.
+   */
+  async validateTemplates(): Promise<{
+    healthy: boolean;
+    missing: string[];
+  }> {
+    const missing: string[] = [];
+    for (const name of CORE_TEMPLATE_NAMES) {
+      const exists = await this.db.promptTemplate.findFirst({
+        where: { name, isActive: true },
+        select: { id: true },
+      });
+      if (!exists) missing.push(name);
+    }
+    return { healthy: missing.length === 0, missing };
   }
 
   /**
@@ -171,6 +299,17 @@ export class PromptClientService {
     }
 
     if (!template) {
+      // Check hardcoded fallbacks for core templates
+      const fallback =
+        FALLBACK_TEMPLATES.get(name) ??
+        (fallbackName ? FALLBACK_TEMPLATES.get(fallbackName) : undefined);
+      if (fallback) {
+        this.logger.warn(
+          `Using hardcoded fallback for "${name}" — run db:seed-prompts`,
+        );
+        this.cache.set(name, fallback);
+        return fallback;
+      }
       throw new Error(`Prompt template "${name}" not found in database`);
     }
 
