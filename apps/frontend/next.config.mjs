@@ -9,7 +9,9 @@ const withSerwist = withSerwistInit({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
+  // Note: "standalone" output removed for Cloudflare Pages compatibility.
+  // For Docker deployments, set NEXT_OUTPUT=standalone in the Dockerfile build args.
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" } : {}),
 
   // Empty turbopack config silences the webpack/turbopack warning
   // Serwist requires webpack for building the service worker (--webpack flag in build)

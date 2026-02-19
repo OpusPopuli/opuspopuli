@@ -217,6 +217,8 @@ jobs:
           # API gateway runs on port 4000 in E2E docker-compose
           # Use /api to match local dev default and test route patterns
           NEXT_PUBLIC_GRAPHQL_URL: http://localhost:4000/api
+          # Produce standalone output for E2E server (node server.js)
+          NEXT_OUTPUT: standalone
 
       - name: Copy static assets for standalone build
         run: |

@@ -1,0 +1,21 @@
+# =============================================================================
+# Cloudflare Workers Configuration (via @opennextjs/cloudflare)
+# =============================================================================
+#
+# Deploys the Next.js frontend to Cloudflare Workers.
+#
+# Local preview: pnpm cf:preview
+# Deploy:        pnpm cf:deploy
+# =============================================================================
+
+main = ".open-next/worker.js"
+name = "opuspopuli-frontend"
+compatibility_date = "2024-12-30"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+# Environment variables are set via Cloudflare dashboard or wrangler CLI.
+# Example: NEXT_PUBLIC_GRAPHQL_URL = "https://api.opuspopuli.org/graphql"
