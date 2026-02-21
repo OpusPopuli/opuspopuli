@@ -12,7 +12,6 @@ import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ApolloServerPluginInlineTrace } from '@apollo/server/plugin/inlineTrace';
 import { LoggingModule } from '@opuspopuli/logging-provider';
 import depthLimit from 'graphql-depth-limit';
 import { createQueryComplexityValidationRule } from 'src/common/graphql/query-complexity.plugin';
@@ -32,7 +31,9 @@ import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
 import {
   THROTTLER_CONFIG,
   SHARED_PROVIDERS,
+  GRAPHQL_INTROSPECTION_ENABLED,
   createLoggingConfig,
+  createSubgraphPlugins,
 } from 'src/common/config/shared-app.config';
 import { DbModule } from 'src/db/db.module';
 import { AuditModule } from 'src/common/audit/audit.module';
@@ -70,8 +71,9 @@ import { MetricsModule } from 'src/common/metrics';
     GraphQLModule.forRoot<ApolloFederationDriverConfig>({
       driver: ApolloFederationDriver,
       autoSchemaFile: { path: 'region-schema.gql', federation: 2 },
-      plugins: [ApolloServerPluginInlineTrace()],
+      plugins: createSubgraphPlugins('region-service'),
       validationRules: [depthLimit(10), createQueryComplexityValidationRule()],
+      introspection: GRAPHQL_INTROSPECTION_ENABLED,
       context: ({ req, res }: { req: unknown; res: unknown }) => ({ req, res }),
     }),
     CaslModule.forRoot(),

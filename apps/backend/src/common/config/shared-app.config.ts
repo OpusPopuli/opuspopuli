@@ -1,4 +1,6 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ApolloServerPluginInlineTrace } from '@apollo/server/plugin/inlineTrace';
 import { LogLevel } from '@opuspopuli/logging-provider';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { AllExceptionsFilter } from '../exceptions/all-exceptions.filter';
@@ -7,6 +9,33 @@ import { RolesGuard } from '../guards/roles.guard';
 import { GqlThrottlerGuard } from '../guards/throttler.guard';
 import { PoliciesGuard } from '../guards/policies.guard';
 import { GracefulShutdownService } from '../services/graceful-shutdown.service';
+
+/**
+ * Whether introspection should be enabled for GraphQL services.
+ * Disabled in production to prevent schema enumeration attacks.
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/378
+ */
+export const GRAPHQL_INTROSPECTION_ENABLED =
+  process.env.NODE_ENV !== 'production';
+
+/**
+ * Shared Apollo Server plugins for all subgraph services.
+ * Includes inline tracing and an introspection audit log plugin.
+ */
+export function createSubgraphPlugins(serviceName: string) {
+  return [
+    ApolloServerPluginInlineTrace(),
+    {
+      async serverWillStart() {
+        if (!GRAPHQL_INTROSPECTION_ENABLED) {
+          new Logger(serviceName).log(
+            'GraphQL introspection is disabled (production mode)',
+          );
+        }
+      },
+    },
+  ];
+}
 
 /**
  * Shared throttler configuration for all microservices
