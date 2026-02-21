@@ -6,7 +6,6 @@
  *
  * Providers:
  * - EnvProvider (default): Read from process.env
- * - AWSSecretsProvider: AWS Secrets Manager
  * - SupabaseVaultProvider: Supabase Vault
  */
 
@@ -26,11 +25,6 @@ export {
   getEnvSecret,
   getEnvSecretOrThrow,
 } from "./providers/env.provider.js";
-
-export {
-  AWSSecretsProvider,
-  getAWSSecret,
-} from "./providers/aws-secrets.provider.js";
 
 export {
   SupabaseVaultProvider,
