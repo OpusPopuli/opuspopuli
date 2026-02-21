@@ -82,7 +82,7 @@ export class AuthService {
       await this.authProvider.confirmUser(username);
     }
 
-    // Use AWS Cognito User ID as our ID and set auth strategy
+    // Use auth provider User ID as our ID and set auth strategy
     await this.usersService.update(user.id, { id: userId });
     await this.usersService.updateAuthStrategy(userId, AuthStrategy.PASSWORD);
 

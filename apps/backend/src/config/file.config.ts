@@ -8,7 +8,4 @@ import { registerAs } from '@nestjs/config';
  */
 export default registerAs('file', () => ({
   bucket: process.env.FILE_BUCKET || 'documents',
-  sqsUrl: process.env.FILE_SQS_URL || '',
-  snsTopicArn: process.env.FILE_SNS_TOPIC_ARN || '',
-  snsRoleArn: process.env.FILE_SNS_ROLE_ARN || '',
 }));

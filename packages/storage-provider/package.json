@@ -1,7 +1,7 @@
 {
   "name": "@opuspopuli/storage-provider",
   "version": "0.1.0",
-  "description": "Storage provider implementations for OPUSPOPULI platform (Supabase Storage)",
+  "description": "Storage provider implementations for OPUSPOPULI platform (Supabase Storage, Cloudflare R2)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -21,10 +21,14 @@
     "opuspopuli",
     "storage",
     "supabase",
+    "cloudflare",
+    "r2",
     "provider"
   ],
   "license": "AGPL-3.0",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.709.0",
+    "@aws-sdk/s3-request-presigner": "^3.709.0",
     "@opuspopuli/common": "workspace:*",
     "@supabase/supabase-js": "^2.49.1"
   },

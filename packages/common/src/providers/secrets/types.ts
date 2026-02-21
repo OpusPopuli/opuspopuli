@@ -1,7 +1,7 @@
 /**
  * Secrets Provider Types
  *
- * Interfaces for secrets management operations (AWS Secrets Manager, etc.)
+ * Interfaces for secrets management operations (env vars, Supabase Vault, etc.)
  */
 
 /**

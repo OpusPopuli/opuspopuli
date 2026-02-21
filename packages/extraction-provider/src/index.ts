@@ -2,7 +2,7 @@
  * Text Extraction Provider Package
  *
  * Strategy Pattern + Dependency Injection for text extraction.
- * Supports multiple sources: URLs, local files, S3, etc.
+ * Supports multiple sources: URLs, local files, object storage, etc.
  */
 
 // Re-export types from common

@@ -1,17 +1,18 @@
 # Supabase Setup Guide
 
-This guide explains how to use Supabase as an OSS alternative to AWS services in Opus Populi.
+This guide explains how to set up Supabase services in Opus Populi.
 
 ## Overview
 
-Supabase provides open-source alternatives to several AWS services:
+Supabase provides the core platform services for Opus Populi:
 
-| AWS Service | Supabase Alternative | Provider |
-|-------------|---------------------|----------|
-| AWS Cognito | Supabase Auth (GoTrue) | `SupabaseAuthProvider` |
-| AWS S3 | Supabase Storage | `SupabaseStorageProvider` |
-| AWS Secrets Manager | Supabase Vault (pgsodium) | `SupabaseVaultProvider` |
-| Amazon RDS | Supabase PostgreSQL | `PostgresProvider` (existing) |
+| Service | Provider | Description |
+|---------|----------|-------------|
+| Authentication | `SupabaseAuthProvider` | Supabase Auth (GoTrue) with Passkeys and Magic Links |
+| Storage (dev) | `SupabaseStorageProvider` | Supabase Storage for local development |
+| Storage (prod) | `R2StorageProvider` | Cloudflare R2 for production |
+| Secrets | `EnvProvider` | Environment variable injection (default) |
+| Database | PostgreSQL (via Supabase) | Relational + vector data via pgvector |
 
 ## Quick Start
 
@@ -302,8 +303,8 @@ const dbCredentials = await this.secretsProvider.getSecretJson<{
         ▼                   ▼                   ▼
 ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
 │ AuthProvider │   │StorageProvider│   │SecretsProvider│
-│  - Cognito   │   │    - S3      │   │    - AWS     │
-│  - Supabase ◄│   │  - Supabase ◄│   │  - Supabase ◄│
+│  - Supabase ◄│   │  - Supabase ◄│   │    - Env   ◄ │
+│              │   │  - R2        │   │  - Supabase  │
 └──────────────┘   └──────────────┘   └──────────────┘
         │                   │                   │
         └───────────────────┼───────────────────┘
@@ -390,20 +391,19 @@ const dbCredentials = await this.secretsProvider.getSecretJson<{
    - Links are single-use and invalidated after verification
    - Always use HTTPS for redirect URLs in production
 
-## Switching Providers
+## Switching Storage Providers
 
-To switch between AWS and Supabase providers, simply change the environment variables:
+To switch between storage providers, change the environment variable:
 
 ```bash
-# Use AWS (default)
-AUTH_PROVIDER=cognito
-STORAGE_PROVIDER=s3
-SECRETS_PROVIDER=aws
-
-# Use Supabase
-AUTH_PROVIDER=supabase
+# Use Supabase Storage (default, for local dev)
 STORAGE_PROVIDER=supabase
-SECRETS_PROVIDER=supabase
+
+# Use Cloudflare R2 (for production)
+STORAGE_PROVIDER=r2
+R2_ACCOUNT_ID=<your-account-id>
+R2_ACCESS_KEY_ID=<your-access-key>
+R2_SECRET_ACCESS_KEY=<your-secret-key>
 ```
 
 No code changes required - the provider pattern handles the abstraction.

@@ -25,7 +25,7 @@ interface ISupabaseAuthConfig {
  * Supabase Auth Provider
  *
  * Implements authentication operations using Supabase Auth (GoTrue).
- * This is an OSS alternative to AWS Cognito.
+ * Provides passwordless auth via Passkeys, Magic Links, and password fallback.
  *
  * Requires:
  * - SUPABASE_URL: The Supabase project URL

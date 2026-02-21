@@ -29,30 +29,23 @@ PostgreSQL (via Supabase)
 - Secrets: Supabase Vault
 ```
 
-### Production Stack (AWS)
+### Production Stack
 ```
-- Relational DB: RDS PostgreSQL
+- Relational DB: Supabase Cloud PostgreSQL (or any managed PostgreSQL)
 - Vector DB: pgvector (same PostgreSQL)
 - Embeddings: Xenova (same, in-process)
-- LLM: Ollama on GPU instance
-- Auth: Supabase Auth or AWS Cognito
-- Storage: Supabase Storage or AWS S3
-- Secrets: Supabase Vault or AWS Secrets Manager
+- LLM: Ollama (local or GPU instance)
+- Auth: Supabase Auth
+- Storage: Cloudflare R2 or Supabase Storage
+- Secrets: Environment variables (via SECRETS_PROVIDER=env)
 ```
 
 ### Migration Steps
 
 **1. Set up PostgreSQL with pgvector**:
 ```bash
-# AWS RDS
-aws rds create-db-instance \
-  --db-instance-identifier opuspopuli-prod \
-  --db-instance-class db.t3.medium \
-  --engine postgres \
-  --engine-version 16.1 \
-  --allocated-storage 100
-
-# Install pgvector (once connected)
+# Use Supabase Cloud (recommended) or any managed PostgreSQL with pgvector
+# Install pgvector (once connected, if not pre-installed)
 CREATE EXTENSION vector;
 ```
 
@@ -62,10 +55,10 @@ CREATE EXTENSION vector;
 NODE_ENV=production
 
 RELATIONAL_DB_PROVIDER=postgres
-RELATIONAL_DB_HOST=opuspopuli-prod.xxxx.rds.amazonaws.com
+RELATIONAL_DB_HOST=db.your-project.supabase.co
 RELATIONAL_DB_PORT=5432
-RELATIONAL_DB_DATABASE=opuspopuli
-RELATIONAL_DB_USERNAME=admin
+RELATIONAL_DB_DATABASE=postgres
+RELATIONAL_DB_USERNAME=postgres
 RELATIONAL_DB_PASSWORD=<secure-password>
 RELATIONAL_DB_SSL=true
 
@@ -74,19 +67,19 @@ VECTOR_DB_DIMENSIONS=384
 EMBEDDINGS_PROVIDER=xenova
 EMBEDDINGS_XENOVA_MODEL=Xenova/all-MiniLM-L6-v2
 
-LLM_URL=http://ollama-gpu-instance:11434
+LLM_URL=http://localhost:11434
 LLM_MODEL=mistral
 ```
 
 **3. Migrate data**:
 ```bash
-# Export from Supabase PostgreSQL
+# Export from Supabase PostgreSQL (dev)
 docker exec opuspopuli-supabase-db pg_dump -U postgres postgres > dev-data.sql
 
-# Import to production RDS PostgreSQL
-psql -h opuspopuli-prod.xxxx.rds.amazonaws.com \
-     -U admin \
-     -d opuspopuli \
+# Import to production PostgreSQL
+psql -h db.your-project.supabase.co \
+     -U postgres \
+     -d postgres \
      < dev-data.sql
 ```
 
@@ -224,7 +217,7 @@ CREATE INDEX IF NOT EXISTS idx_embedding_hnsw
 SELECT * FROM pg_available_extensions WHERE name = 'vector';
 
 -- If not available, you need to install it on the database server
--- For AWS RDS, use a PostgreSQL version that supports pgvector
+-- For managed PostgreSQL, use a version that supports pgvector
 -- For self-hosted, install pgvector from source or package manager
 ```
 

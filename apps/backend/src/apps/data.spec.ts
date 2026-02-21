@@ -39,9 +39,6 @@ export const config = {
   },
   file: {
     bucket: 'myBucket',
-    snsRoleArn: 'mySnsRoleArn',
-    snsTopicArn: 'mySnsTopicArn',
-    sqsUrl: 'mySqsUrl',
   },
 };
 

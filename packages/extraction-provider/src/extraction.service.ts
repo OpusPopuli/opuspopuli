@@ -61,7 +61,7 @@ export class TextExtractionService {
     // Test each extractor with dummy inputs
     const testInputs: TextExtractionInput[] = [
       { type: "url", url: "", userId: "" },
-      { type: "s3", bucket: "", key: "", userId: "" },
+      { type: "storage", bucket: "", key: "", userId: "" },
       { type: "file", buffer: Buffer.from(""), mimeType: "", userId: "" },
     ];
 

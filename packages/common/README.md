@@ -27,7 +27,7 @@ npm install @opuspopuli/common --registry https://npm.pkg.github.com
 |--------|-------------|-------------|
 | **VectorDB** | `IVectorDBProvider`, `IVectorDocument`, `IVectorQueryResult` | Vector database operations |
 | **RelationalDB** | `IRelationalDBProvider`, `RelationalDBType` | ORM-agnostic relational database interface |
-| **Storage** | `IStorageProvider`, `IStorageFile`, `ISignedUrlOptions` | File/object storage (S3-compatible) |
+| **Storage** | `IStorageProvider`, `IStorageFile`, `ISignedUrlOptions` | File/object storage (Supabase Storage, Cloudflare R2) |
 
 ### Platform Services
 

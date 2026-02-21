@@ -21,7 +21,7 @@
       "groupName": "GraphQL packages"
     },
     {
-      "description": "AWS SDK packages",
+      "description": "AWS SDK packages (used for R2 S3-compatible API)",
       "matchPackagePatterns": ["^@aws-sdk/"],
       "groupName": "AWS SDK packages"
     },
