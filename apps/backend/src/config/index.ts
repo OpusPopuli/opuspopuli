@@ -39,9 +39,6 @@ export interface IDBConfig {
 
 export interface IFileConfig {
   bucket: string;
-  sqsUrl: string;
-  snsTopicArn: string;
-  snsRoleArn: string;
 }
 
 export interface IAIConfig {
@@ -74,7 +71,7 @@ export interface IAppConfig {
  * With the federated secrets provider pattern, all secrets are available
  * as environment variables regardless of the underlying provider:
  * - Local dev: .env file
- * - AWS: Bootstrap script or ECS secrets injection
+ * - Kubernetes: Platform-native env var injection
  * - Other platforms: Platform-native env var injection
  */
 export default async (): Promise<Partial<IAppConfig>> => {
@@ -112,7 +109,7 @@ export default async (): Promise<Partial<IAppConfig>> => {
     version,
     description,
     port: typeof port === 'string' ? Number.parseInt(port, 10) : port,
-    region: region || 'us-east-1',
+    region: region || '',
     apiKeys,
   };
 };

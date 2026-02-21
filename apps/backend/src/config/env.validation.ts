@@ -77,9 +77,33 @@ export const usersValidationSchema = Joi.object({
 
 /**
  * Validation schema for the Documents service.
+ * Includes optional R2 vars (required only when STORAGE_PROVIDER=r2).
  */
 export const documentsValidationSchema = Joi.object({
   ...baseSchema,
+  STORAGE_PROVIDER: Joi.string().valid('supabase', 'r2').default('supabase'),
+  R2_ACCOUNT_ID: Joi.string().when('STORAGE_PROVIDER', {
+    is: 'r2',
+    then: Joi.string().required().messages({
+      'any.required': 'R2_ACCOUNT_ID is required when STORAGE_PROVIDER=r2.',
+    }),
+    otherwise: Joi.string().optional().allow(''),
+  }),
+  R2_ACCESS_KEY_ID: Joi.string().when('STORAGE_PROVIDER', {
+    is: 'r2',
+    then: Joi.string().required().messages({
+      'any.required': 'R2_ACCESS_KEY_ID is required when STORAGE_PROVIDER=r2.',
+    }),
+    otherwise: Joi.string().optional().allow(''),
+  }),
+  R2_SECRET_ACCESS_KEY: Joi.string().when('STORAGE_PROVIDER', {
+    is: 'r2',
+    then: Joi.string().required().messages({
+      'any.required':
+        'R2_SECRET_ACCESS_KEY is required when STORAGE_PROVIDER=r2.',
+    }),
+    otherwise: Joi.string().optional().allow(''),
+  }),
 }).unknown(true);
 
 /**

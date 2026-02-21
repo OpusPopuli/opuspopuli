@@ -25,6 +25,7 @@ import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
 import fileConfig from 'src/config/file.config';
 import ocrConfig from 'src/config/ocr.config';
+import r2Config from 'src/config/r2.config';
 import { documentsValidationSchema } from 'src/config/env.validation';
 
 import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
@@ -49,7 +50,7 @@ import { MetricsModule } from 'src/common/metrics';
  * Documents App Module
  *
  * Handles document metadata and file storage operations.
- * Manages documents in PostgreSQL and files in S3.
+ * Manages documents in PostgreSQL and files in object storage.
  */
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { MetricsModule } from 'src/common/metrics';
         relationaldbConfig,
         fileConfig,
         ocrConfig,
+        r2Config,
       ],
       validationSchema: documentsValidationSchema,
       validationOptions: { abortEarly: false },

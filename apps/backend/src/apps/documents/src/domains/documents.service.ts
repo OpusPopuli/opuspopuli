@@ -34,7 +34,7 @@ import { PromptClientService } from '@opuspopuli/prompt-client';
  * Documents Service
  *
  * Handles document metadata management and file storage operations.
- * Manages Document in PostgreSQL and file storage in S3.
+ * Manages documents in PostgreSQL and files in object storage.
  */
 @Injectable()
 export class DocumentsService {
@@ -98,7 +98,7 @@ export class DocumentsService {
   }
 
   /**
-   * Get S3 signed URL
+   * Get signed URL for file access
    */
   private getSignedUrl(
     userId: string,
@@ -116,7 +116,7 @@ export class DocumentsService {
     this.logger.log(`Deleting file ${filename} for user ${userId}`);
 
     try {
-      // Delete from S3
+      // Delete from storage
       const key = `${userId}/${filename}`;
       const deleted = await this.storage.deleteFile(
         this.fileConfig.bucket,

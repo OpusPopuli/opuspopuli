@@ -1,7 +1,7 @@
 /**
  * Storage Provider Types
  *
- * Interfaces for file storage operations (S3, local filesystem, etc.)
+ * Interfaces for file storage operations (Supabase Storage, Cloudflare R2, etc.)
  */
 
 /**
