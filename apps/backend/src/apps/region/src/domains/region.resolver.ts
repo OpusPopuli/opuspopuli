@@ -7,6 +7,11 @@ import {
   Query,
   Resolver,
 } from '@nestjs/graphql';
+import { UseGuards } from '@nestjs/common';
+import { AuthGuard } from 'src/common/guards/auth.guard';
+import { Public } from 'src/common/decorators/public.decorator';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/enums/role.enum';
 import { RegionDomainService } from './region.service';
 import {
   RegionInfoModel,
@@ -50,6 +55,7 @@ export class RegionResolver {
   /**
    * Get region information
    */
+  @Public()
   @Query(() => RegionInfoModel)
   async regionInfo(): Promise<RegionInfoModel> {
     return this.regionService.getRegionInfo();
@@ -58,6 +64,7 @@ export class RegionResolver {
   /**
    * Get paginated propositions
    */
+  @Public()
   @Query(() => PaginatedPropositions)
   @Extensions({ complexity: 15 }) // Paginated list query
   async propositions(
@@ -70,6 +77,7 @@ export class RegionResolver {
   /**
    * Get a single proposition by ID
    */
+  @Public()
   @Query(() => PropositionModel, { nullable: true })
   async proposition(
     @Args({ name: 'id', type: () => ID }) id: string,
@@ -89,6 +97,7 @@ export class RegionResolver {
   /**
    * Get paginated meetings
    */
+  @Public()
   @Query(() => PaginatedMeetings)
   @Extensions({ complexity: 15 }) // Paginated list query
   async meetings(
@@ -101,6 +110,7 @@ export class RegionResolver {
   /**
    * Get a single meeting by ID
    */
+  @Public()
   @Query(() => MeetingModel, { nullable: true })
   async meeting(
     @Args({ name: 'id', type: () => ID }) id: string,
@@ -119,6 +129,7 @@ export class RegionResolver {
   /**
    * Get paginated representatives
    */
+  @Public()
   @Query(() => PaginatedRepresentatives)
   @Extensions({ complexity: 15 }) // Paginated list query
   async representatives(
@@ -132,6 +143,7 @@ export class RegionResolver {
   /**
    * Get a single representative by ID
    */
+  @Public()
   @Query(() => RepresentativeModel, { nullable: true })
   async representative(
     @Args({ name: 'id', type: () => ID }) id: string,
@@ -153,6 +165,7 @@ export class RegionResolver {
   /**
    * Get paginated committees
    */
+  @Public()
   @Query(() => PaginatedCommittees)
   @Extensions({ complexity: 15 })
   async committees(
@@ -166,6 +179,7 @@ export class RegionResolver {
   /**
    * Get a single committee by ID
    */
+  @Public()
   @Query(() => CommitteeModel, { nullable: true })
   async committee(
     @Args({ name: 'id', type: () => ID }) id: string,
@@ -185,6 +199,7 @@ export class RegionResolver {
   /**
    * Get paginated contributions
    */
+  @Public()
   @Query(() => PaginatedContributions)
   @Extensions({ complexity: 15 })
   async contributions(
@@ -204,6 +219,7 @@ export class RegionResolver {
   /**
    * Get a single contribution by ID
    */
+  @Public()
   @Query(() => ContributionModel, { nullable: true })
   async contribution(
     @Args({ name: 'id', type: () => ID }) id: string,
@@ -226,6 +242,7 @@ export class RegionResolver {
   /**
    * Get paginated expenditures
    */
+  @Public()
   @Query(() => PaginatedExpenditures)
   @Extensions({ complexity: 15 })
   async expenditures(
@@ -245,6 +262,7 @@ export class RegionResolver {
   /**
    * Get a single expenditure by ID
    */
+  @Public()
   @Query(() => ExpenditureModel, { nullable: true })
   async expenditure(
     @Args({ name: 'id', type: () => ID }) id: string,
@@ -265,6 +283,7 @@ export class RegionResolver {
   /**
    * Get paginated independent expenditures
    */
+  @Public()
   @Query(() => PaginatedIndependentExpenditures)
   @Extensions({ complexity: 15 })
   async independentExpenditures(
@@ -287,6 +306,7 @@ export class RegionResolver {
   /**
    * Get a single independent expenditure by ID
    */
+  @Public()
   @Query(() => IndependentExpenditureModel, { nullable: true })
   async independentExpenditure(
     @Args({ name: 'id', type: () => ID }) id: string,
@@ -304,10 +324,11 @@ export class RegionResolver {
   }
 
   /**
-   * Trigger a full data sync
-   * Note: In production, this should be protected with admin auth
+   * Trigger a full data sync (admin only)
    */
   @Mutation(() => [SyncResultModel])
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
   @Extensions({ complexity: 100 }) // Full data sync - expensive operation
   async syncRegionData(): Promise<SyncResultModel[]> {
     const results = await this.regionService.syncAll();
