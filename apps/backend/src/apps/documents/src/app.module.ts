@@ -26,6 +26,7 @@ import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
 import fileConfig from 'src/config/file.config';
 import ocrConfig from 'src/config/ocr.config';
+import { documentsValidationSchema } from 'src/config/env.validation';
 
 import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
 import { HMACMiddleware } from 'src/common/middleware/hmac.middleware';
@@ -62,6 +63,8 @@ import { MetricsModule } from 'src/common/metrics';
         fileConfig,
         ocrConfig,
       ],
+      validationSchema: documentsValidationSchema,
+      validationOptions: { abortEarly: false },
       isGlobal: true,
     }),
     LoggingModule.forRootAsync(createLoggingConfig('documents-service')),

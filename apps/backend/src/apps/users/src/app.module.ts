@@ -30,6 +30,7 @@ import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
 import emailConfig from 'src/config/email.config';
 import authThrottleConfig from 'src/config/auth-throttle.config';
+import { usersValidationSchema } from 'src/config/env.validation';
 
 import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
 import { HMACMiddleware } from 'src/common/middleware/hmac.middleware';
@@ -57,6 +58,8 @@ import { MetricsModule } from 'src/common/metrics';
         emailConfig,
         authThrottleConfig,
       ],
+      validationSchema: usersValidationSchema,
+      validationOptions: { abortEarly: false },
       isGlobal: true,
     }),
     LoggingModule.forRootAsync(createLoggingConfig('users-service')),

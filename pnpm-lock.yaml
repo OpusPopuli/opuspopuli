@@ -193,6 +193,9 @@ importers:
       helmet:
         specifier: ^8.1.0
         version: 8.1.0
+      joi:
+        specifier: ^18.0.2
+        version: 18.0.2
       jsonwebtoken:
         specifier: ^9.0.2
         version: 9.0.3
@@ -2567,6 +2570,26 @@ packages:
     resolution: {integrity: sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ==}
     peerDependencies:
       graphql: ^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
+
+  '@hapi/address@5.1.1':
+    resolution: {integrity: sha512-A+po2d/dVoY7cYajycYI43ZbYMXukuopIsqCjh5QzsBCipDtdofHntljDlpccMjIfTy6UOkg+5KPriwYch2bXA==}
+    engines: {node: '>=14.0.0'}
+
+  '@hapi/formula@3.0.2':
+    resolution: {integrity: sha512-hY5YPNXzw1He7s0iqkRQi+uMGh383CGdyyIGYtB+W5N3KHPXoqychklvHhKCC9M3Xtv0OCs/IHw+r4dcHtBYWw==}
+
+  '@hapi/hoek@11.0.7':
+    resolution: {integrity: sha512-HV5undWkKzcB4RZUusqOpcgxOaq6VOAH7zhhIr2g3G8NF/MlFO75SjOr2NfuSx0Mh40+1FqCkagKLJRykUWoFQ==}
+
+  '@hapi/pinpoint@2.0.1':
+    resolution: {integrity: sha512-EKQmr16tM8s16vTT3cA5L0kZZcTMU5DUOZTuvpnY738m+jyP3JIUj+Mm1xc1rsLkGBQ/gVnfKYPwOmPg1tUR4Q==}
+
+  '@hapi/tlds@1.1.6':
+    resolution: {integrity: sha512-xdi7A/4NZokvV0ewovme3aUO5kQhW9pQ2YD1hRqZGhhSi5rBv4usHYidVocXSi9eihYsznZxLtAiEYYUL6VBGw==}
+    engines: {node: '>=14.0.0'}
+
+  '@hapi/topo@6.0.2':
+    resolution: {integrity: sha512-KR3rD5inZbGMrHmgPxsJ9dbi6zEK+C3ZwUwTa+eMwWLz7oijWUTWD2pMSNNYJAU6Qq+65NkxXjqHr/7LM2Xkqg==}
 
   '@hexagon/base64@1.1.28':
     resolution: {integrity: sha512-lhqDEAvWixy3bZ+UOYbPwUbBkwBq5C1LAJ/xPC8Oi+lL54oyakv/npbA0aU2hgCsx/1NUd4IBvV03+aUBWxerw==}
@@ -6985,6 +7008,7 @@ packages:
 
   glob@10.5.0:
     resolution: {integrity: sha512-DfXN8DfhJ7NH3Oe7cFmu3NCu1wKbkReJ8TorzSAFbSKrlNaQSKfIzqYqVY8zlbs2NLBbWpRiU52GX2PbaBVNkg==}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@12.0.0:
@@ -6998,7 +7022,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   glob@9.3.5:
     resolution: {integrity: sha512-e1LleDykUz2Iu+MTYdkSsuWX8lvAjAcs0Xef0lNIu0S2wOAzuTxCJtcd9S3cijlwYF18EsU3rzb8jPVobxDh9Q==}
@@ -7816,6 +7840,10 @@ packages:
   jiti@2.6.1:
     resolution: {integrity: sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==}
     hasBin: true
+
+  joi@18.0.2:
+    resolution: {integrity: sha512-RuCOQMIt78LWnktPoeBL0GErkNaJPTBGcYuyaBvUOQSpcpcLfWrHPPihYdOGbV5pam9VTWbeoF7TsGiHugcjGA==}
+    engines: {node: '>= 20'}
 
   jose@4.15.9:
     resolution: {integrity: sha512-1vUQX+IdDMVPj4k8kOxgUqlcK518yluMuGZwqlr44FS1ppZB/5GWh4rZG89erpOBOJjU/OBsnCVFfapsRz6nEA==}
@@ -13128,6 +13156,22 @@ snapshots:
   '@graphql-typed-document-node/core@3.2.0(graphql@16.12.0)':
     dependencies:
       graphql: 16.12.0
+
+  '@hapi/address@5.1.1':
+    dependencies:
+      '@hapi/hoek': 11.0.7
+
+  '@hapi/formula@3.0.2': {}
+
+  '@hapi/hoek@11.0.7': {}
+
+  '@hapi/pinpoint@2.0.1': {}
+
+  '@hapi/tlds@1.1.6': {}
+
+  '@hapi/topo@6.0.2':
+    dependencies:
+      '@hapi/hoek': 11.0.7
 
   '@hexagon/base64@1.1.28': {}
 
@@ -19628,6 +19672,16 @@ snapshots:
       - ts-node
 
   jiti@2.6.1: {}
+
+  joi@18.0.2:
+    dependencies:
+      '@hapi/address': 5.1.1
+      '@hapi/formula': 3.0.2
+      '@hapi/hoek': 11.0.7
+      '@hapi/pinpoint': 2.0.1
+      '@hapi/tlds': 1.1.6
+      '@hapi/topo': 6.0.2
+      '@standard-schema/spec': 1.0.0
 
   jose@4.15.9: {}
 
