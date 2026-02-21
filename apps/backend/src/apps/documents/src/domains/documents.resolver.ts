@@ -13,6 +13,8 @@ import { User } from './models/user.model';
 import { DocumentsService } from './documents.service';
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from 'src/common/guards/auth.guard';
+import { Permissions } from 'src/common/decorators/permissions.decorator';
+import { Action } from 'src/common/enums/action.enum';
 import {
   GqlContext,
   getUserFromContext,
@@ -47,6 +49,7 @@ export class DocumentsResolver {
 
   @Query(() => [File])
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
   @Extensions({ complexity: 15 }) // List operation
   listFiles(@Context() context: GqlContext): Promise<File[]> {
     const user = getUserFromContext(context);
@@ -55,6 +58,7 @@ export class DocumentsResolver {
 
   @Query(() => String)
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Create, subject: 'File' })
   getUploadUrl(
     @Args('input') input: FilenameInput,
     @Context() context: GqlContext,
@@ -65,6 +69,7 @@ export class DocumentsResolver {
 
   @Query(() => String)
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
   getDownloadUrl(
     @Args('input') input: FilenameInput,
     @Context() context: GqlContext,
@@ -75,6 +80,7 @@ export class DocumentsResolver {
 
   @Mutation(() => Boolean)
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Delete, subject: 'File' })
   async deleteFile(
     @Args('input') input: FilenameInput,
     @Context() context: GqlContext,
@@ -93,6 +99,7 @@ export class DocumentsResolver {
    */
   @Mutation(() => ExtractTextResult)
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Update, subject: 'File' })
   @Extensions({ complexity: 50 }) // OCR is computationally expensive
   async extractTextFromFile(
     @Args('input') input: ExtractTextFromFileInput,
@@ -107,6 +114,7 @@ export class DocumentsResolver {
    */
   @Mutation(() => ExtractTextResult)
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Update, subject: 'File' })
   @Extensions({ complexity: 50 }) // OCR is computationally expensive
   async extractTextFromBase64(
     @Args('input') input: ExtractTextFromBase64Input,
@@ -126,6 +134,7 @@ export class DocumentsResolver {
    */
   @Mutation(() => AnalyzeDocumentResult)
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Update, subject: 'File' })
   @Extensions({ complexity: 100 }) // LLM inference is expensive
   async analyzeDocument(
     @Args('input') input: AnalyzeDocumentInput,
@@ -144,6 +153,7 @@ export class DocumentsResolver {
    */
   @Query(() => DocumentAnalysis, { nullable: true })
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
   async getDocumentAnalysis(
     @Args('documentId') documentId: string,
     @Context() context: GqlContext,
@@ -158,6 +168,7 @@ export class DocumentsResolver {
    */
   @Mutation(() => SetDocumentLocationResult)
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Update, subject: 'File' })
   async setDocumentLocation(
     @Args('input') input: SetDocumentLocationInput,
     @Context() context: GqlContext,
@@ -176,6 +187,7 @@ export class DocumentsResolver {
    */
   @Query(() => GeoLocation, { nullable: true })
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
   async getDocumentLocation(
     @Args('documentId') documentId: string,
     @Context() context: GqlContext,

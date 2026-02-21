@@ -15,6 +15,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UserInputError } from '@nestjs/apollo';
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from 'src/common/guards/auth.guard';
+import { Public } from 'src/common/decorators/public.decorator';
 
 import { Role } from 'src/common/enums/role.enum';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -28,6 +29,7 @@ export class UsersResolver {
     private usersService: UsersService,
   ) {}
 
+  @Public()
   @Mutation(() => User)
   async createUser(
     @Args('createUserDto') createUserDto: CreateUserDto,
@@ -89,6 +91,7 @@ export class UsersResolver {
     return this.usersService.findById(id);
   }
 
+  @Public()
   @Query(() => User)
   findUser(@Args('email') email: string): Promise<User | null> {
     return this.usersService.findByEmail(email);
