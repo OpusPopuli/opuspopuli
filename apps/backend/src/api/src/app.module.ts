@@ -10,6 +10,7 @@ import {
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { IncomingMessage } from 'node:http';
 import { Request, Response } from 'express';
 import { LoggingModule, LogLevel } from '@opuspopuli/logging-provider';
 
@@ -22,7 +23,10 @@ import relationaldbConfig from 'src/config/relationaldb.config';
 import csrfConfig from 'src/config/csrf.config';
 import cookieConfig from 'src/config/cookie.config';
 import websocketConfig, { IWebSocketConfig } from 'src/config/websocket.config';
-import { getGraphQLCorsConfig } from 'src/config/cors.config';
+import {
+  getGraphQLCorsConfig,
+  parseAllowedOrigins,
+} from 'src/config/cors.config';
 import { gatewayValidationSchema } from 'src/config/env.validation';
 
 import { CsrfMiddleware } from 'src/common/middleware/csrf.middleware';
@@ -132,6 +136,13 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
       ) => {
         const wsConfig = configService.get<IWebSocketConfig>('websocket');
 
+        // SECURITY: Parse allowed origins once at startup for WebSocket origin validation
+        // @see https://github.com/OpusPopuli/opuspopuli/issues/381
+        const allowedOrigins = parseAllowedOrigins(configService);
+        const allowedOriginSet = allowedOrigins
+          ? new Set(allowedOrigins)
+          : null;
+
         return {
           server: {
             // SECURITY: Restrict CORS to allowed origins in production
@@ -169,10 +180,22 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
                   path: `/${wsConfig.path || 'api'}`,
                   onConnect: async (context: {
                     connectionParams?: Record<string, unknown>;
+                    extra: { request: IncomingMessage };
                   }) => {
-                    const { connectionParams } = context;
+                    const { connectionParams, extra } = context;
                     if (!connectionParams) {
                       throw new Error('Missing connection parameters');
+                    }
+
+                    // SECURITY: Validate WebSocket origin against allowed origins
+                    // @see https://github.com/OpusPopuli/opuspopuli/issues/381
+                    if (allowedOriginSet) {
+                      const origin = extra?.request?.headers?.origin;
+                      if (!origin || !allowedOriginSet.has(origin)) {
+                        throw new Error(
+                          `WebSocket connection rejected: origin "${origin || 'none'}" is not allowed`,
+                        );
+                      }
                     }
 
                     // Validate JWT and get authenticated user
