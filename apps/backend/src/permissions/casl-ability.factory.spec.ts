@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { subject as an } from '@casl/ability';
+import { AnyMongoAbility, subject as an } from '@casl/ability';
 import { CaslAbilityFactory } from './casl-ability.factory';
 import { ILogin } from 'src/interfaces/login.interface';
 import { IUser } from 'src/interfaces/user.interface';
@@ -135,6 +135,92 @@ describe('CaslAbilityFactory', () => {
       expect(ability.can(Action.Update, an('User', ownUser))).toBe(true);
       // Should not be able to update other users
       expect(ability.can(Action.Update, an('User', otherUser))).toBe(false);
+    });
+
+    it('should process File subject policies', async () => {
+      const regularUser = createUser([Role.User]);
+      const permissions = [
+        {
+          subject: 'File',
+          policies: [
+            createPolicy({
+              effect: Effect.Allow,
+              actions: [
+                Action.Create,
+                Action.Read,
+                Action.Update,
+                Action.Delete,
+              ],
+              subjects: ['File'],
+              conditions: { userId: '{{id}}' },
+            }),
+          ],
+        },
+      ];
+
+      const ability = (await factory.defineAbility(
+        permissions,
+        regularUser,
+      )) as unknown as AnyMongoAbility;
+
+      expect(ability.can(Action.Read, an('File', { userId: 'user-123' }))).toBe(
+        true,
+      );
+      expect(
+        ability.can(Action.Create, an('File', { userId: 'user-123' })),
+      ).toBe(true);
+      expect(
+        ability.can(Action.Read, an('File', { userId: 'other-user' })),
+      ).toBe(false);
+    });
+
+    it('should process Knowledge subject policies', async () => {
+      const regularUser = createUser([Role.User]);
+      const permissions = [
+        {
+          subject: 'Knowledge',
+          policies: [
+            createPolicy({
+              effect: Effect.Allow,
+              actions: [Action.Create, Action.Read],
+              subjects: ['Knowledge'],
+              conditions: { userId: '{{id}}' },
+            }),
+          ],
+        },
+      ];
+
+      const ability = (await factory.defineAbility(
+        permissions,
+        regularUser,
+      )) as unknown as AnyMongoAbility;
+
+      expect(
+        ability.can(Action.Read, an('Knowledge', { userId: 'user-123' })),
+      ).toBe(true);
+      expect(
+        ability.can(Action.Create, an('Knowledge', { userId: 'user-123' })),
+      ).toBe(true);
+      expect(
+        ability.can(Action.Delete, an('Knowledge', { userId: 'user-123' })),
+      ).toBe(false);
+      expect(
+        ability.can(Action.Read, an('Knowledge', { userId: 'other-user' })),
+      ).toBe(false);
+    });
+
+    it('should grant admin access to all subjects including File and Knowledge', async () => {
+      const adminUser = createUser([Role.Admin]);
+      const permissions: { subject: string; policies: IPolicy[] }[] = [];
+
+      const ability = (await factory.defineAbility(
+        permissions,
+        adminUser,
+      )) as unknown as AnyMongoAbility;
+
+      expect(ability.can(Action.Manage, 'File')).toBe(true);
+      expect(ability.can(Action.Manage, 'Knowledge')).toBe(true);
+      expect(ability.can(Action.Delete, 'Knowledge')).toBe(true);
     });
 
     it('should handle empty permissions array', async () => {

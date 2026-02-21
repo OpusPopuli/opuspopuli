@@ -15,7 +15,7 @@ import { Effect } from 'src/common/enums/effect.enum';
 
 import { IPolicy } from 'src/interfaces/policy.interface';
 
-export type Subject = User | 'User' | 'all';
+export type Subject = User | 'User' | 'File' | 'Knowledge' | 'all';
 
 import { get, isEmpty } from 'lodash';
 

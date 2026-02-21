@@ -10,6 +10,8 @@ import { KnowledgeService } from './knowledge.service';
 import { Logger, UseGuards } from '@nestjs/common';
 import { UserInputError } from '@nestjs/apollo';
 import { AuthGuard } from 'src/common/guards/auth.guard';
+import { Permissions } from 'src/common/decorators/permissions.decorator';
+import { Action } from 'src/common/enums/action.enum';
 import { PaginatedSearchResults } from './models/search-result.model';
 import {
   GqlContext,
@@ -37,6 +39,7 @@ export class KnowledgeResolver {
 
   @Mutation(() => String)
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'Knowledge' })
   @Extensions({ complexity: 100 }) // LLM call - expensive operation
   async answerQuery(
     @Args('input') input: QueryInput,
@@ -48,6 +51,7 @@ export class KnowledgeResolver {
 
   @Query(() => PaginatedSearchResults)
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'Knowledge' })
   @Extensions({ complexity: 50 }) // Vector search with embeddings
   async searchText(
     @Args('input') input: SearchInput,
@@ -64,6 +68,7 @@ export class KnowledgeResolver {
 
   @Mutation(() => Boolean)
   @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Create, subject: 'Knowledge' })
   @Extensions({ complexity: 50 }) // Document embedding generation
   async indexDocument(
     @Args('input') input: IndexDocumentInput,

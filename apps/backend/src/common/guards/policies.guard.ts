@@ -33,6 +33,7 @@ import { AuditAction } from '../enums/audit-action.enum';
 import { IPolicy } from 'src/interfaces/policy.interface';
 import { IUserPolicies } from 'src/interfaces/user.interface';
 import { IFilePolicies } from 'src/interfaces/file.interface';
+import { IKnowledgePolicies } from 'src/interfaces/knowledge.interface';
 import { AuditLogService } from 'src/common/services/audit-log.service';
 
 /**
@@ -55,6 +56,7 @@ interface IPermissions {
 export const permissions: IPermissions[] = [
   { subject: 'User', policies: IUserPolicies },
   { subject: 'File', policies: IFilePolicies },
+  { subject: 'Knowledge', policies: IKnowledgePolicies },
 ];
 
 @Injectable()
