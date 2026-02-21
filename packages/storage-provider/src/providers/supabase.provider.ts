@@ -13,7 +13,7 @@ import {
  * Supabase Storage Provider
  *
  * Implements file storage operations using Supabase Storage.
- * Provides an OSS alternative to AWS S3.
+ * Used for local development and Supabase Cloud deployments.
  */
 @Injectable()
 export class SupabaseStorageProvider implements IStorageProvider {

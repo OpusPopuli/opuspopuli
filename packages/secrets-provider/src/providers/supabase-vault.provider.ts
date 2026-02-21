@@ -56,7 +56,7 @@ export async function getSecrets(
  * Supabase Vault Provider
  *
  * Implements secrets retrieval using Supabase Vault (pgsodium).
- * Provides an OSS alternative to AWS Secrets Manager.
+ * Used for Supabase Cloud deployments.
  *
  * Prerequisites:
  * - Supabase project with Vault enabled

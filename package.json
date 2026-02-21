@@ -1,7 +1,7 @@
 {
   "name": "opuspopuli",
   "version": "1.0.0",
-  "description": "Quick Start NextJs / NestJs Full-Stack running on AWS",
+  "description": "Full-stack civic technology platform with Next.js, NestJS, and 100% OSS AI/ML",
   "main": "index.js",
   "scripts": {
     "dev": "pnpm run --parallel dev",

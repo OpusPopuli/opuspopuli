@@ -10,7 +10,7 @@
  */
 export type TextExtractionInput =
   | { type: "url"; url: string; userId: string }
-  | { type: "s3"; bucket: string; key: string; userId: string }
+  | { type: "storage"; bucket: string; key: string; userId: string }
   | { type: "file"; buffer: Buffer; mimeType: string; userId: string };
 
 /**
@@ -30,7 +30,7 @@ export interface TextExtractionResult {
  * Strategy interface for text extractors
  *
  * Implementations should handle specific input types
- * (e.g., URLs, S3 files, uploaded files)
+ * (e.g., URLs, storage files, uploaded files)
  */
 export interface ITextExtractor {
   /**

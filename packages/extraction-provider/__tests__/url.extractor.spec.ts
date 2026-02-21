@@ -56,9 +56,9 @@ describe("URLExtractor", () => {
       expect(extractor.supports(input)).toBe(true);
     });
 
-    it("should return false for s3 input type", () => {
+    it("should return false for storage input type", () => {
       const input: TextExtractionInput = {
-        type: "s3",
+        type: "storage",
         bucket: "bucket",
         key: "key",
         userId: "user-1",
@@ -121,7 +121,7 @@ describe("URLExtractor", () => {
 
     it("should throw error for non-url input type", async () => {
       const input: TextExtractionInput = {
-        type: "s3",
+        type: "storage",
         bucket: "bucket",
         key: "key",
         userId: "user-1",

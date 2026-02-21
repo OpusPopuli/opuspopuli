@@ -1,8 +1,6 @@
-import serverlessExpress from '@codegenie/serverless-express';
 import { INestApplication, Logger, Type, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { Handler } from 'aws-lambda';
 
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -39,7 +37,7 @@ interface BootstrapOptions {
 export default async function bootstrap(
   AppModule: Type<unknown>,
   options: BootstrapOptions = {},
-): Promise<Handler> {
+): Promise<void> {
   const startTime = Date.now();
 
   const app = await NestFactory.create(AppModule);
@@ -93,7 +91,4 @@ export default async function bootstrap(
   await app.listen(port);
   const bootupTime = Date.now() - startTime;
   logger.log(`Now listening on port ${port} (bootup time: ${bootupTime}ms)`);
-
-  const expressApp = app.getHttpAdapter().getInstance();
-  return serverlessExpress({ app: expressApp });
 }

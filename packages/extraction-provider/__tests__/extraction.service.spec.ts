@@ -33,7 +33,7 @@ describe("TextExtractionService", () => {
 
     mockS3Extractor = {
       getName: jest.fn().mockReturnValue("S3Extractor"),
-      supports: jest.fn((input) => input.type === "s3"),
+      supports: jest.fn((input) => input.type === "storage"),
       extractText: jest.fn(),
     };
 
@@ -74,7 +74,7 @@ describe("TextExtractionService", () => {
 
     it("should delegate to S3 extractor for s3 input", async () => {
       const input: TextExtractionInput = {
-        type: "s3",
+        type: "storage",
         bucket: "bucket",
         key: "key",
         userId: "user-1",
@@ -140,7 +140,7 @@ describe("TextExtractionService", () => {
       const types = service.getSupportedTypes();
 
       expect(types).toContain("url");
-      expect(types).toContain("s3");
+      expect(types).toContain("storage");
       expect(types).not.toContain("file");
     });
 

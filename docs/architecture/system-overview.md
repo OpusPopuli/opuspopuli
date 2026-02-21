@@ -325,11 +325,12 @@ Local Machine
 
 ### Production
 ```
-AWS/Cloud Infrastructure
-├── ECS/Kubernetes (Backend services)
-├── RDS PostgreSQL (Relational + Vectors via pgvector)
-├── EC2 GPU Instance (Ollama)
-└── CloudFront + S3 (Frontend)
+Cloud/Self-Hosted Infrastructure
+├── Docker/Kubernetes (Backend services)
+├── Supabase Cloud PostgreSQL (Relational + Vectors via pgvector)
+├── Ollama (Local or GPU instance)
+├── Cloudflare R2 (Object storage)
+└── Cloudflare Workers/Pages (Frontend)
 ```
 
 ## Technology Stack Summary
@@ -344,7 +345,7 @@ AWS/Cloud Infrastructure
 | **Vector DB** | pgvector (PostgreSQL) | Latest | PostgreSQL |
 | **Embeddings** | Xenova/Transformers.js | Latest | Apache 2.0 |
 | **LLM Runtime** | Ollama | Latest | MIT |
-| **LLM Model** | Falcon 7B | Latest | Apache 2.0 |
+| **LLM Model** | Mistral / Llama 3.1 | Latest | Apache 2.0 |
 
 ## Security Considerations
 

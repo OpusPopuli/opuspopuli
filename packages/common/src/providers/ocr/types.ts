@@ -2,7 +2,7 @@
  * OCR Types and Interfaces
  *
  * Strategy Pattern for Optical Character Recognition.
- * Supports swapping between Tesseract.js, AWS Textract, Google Vision, etc.
+ * Supports swapping between Tesseract.js, Google Vision, etc.
  */
 
 /**
