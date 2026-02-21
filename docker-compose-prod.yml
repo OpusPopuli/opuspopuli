@@ -1,0 +1,315 @@
+# =============================================================================
+# Docker Compose — Production (Mac Studio M4 Max + Cloudflare)
+# =============================================================================
+#
+# Runs on the Mac Studio behind a Cloudflare Tunnel. Frontend is hosted on
+# Cloudflare Pages (not in this compose file).
+#
+# Architecture:
+#   - cloudflared: Encrypted tunnel to Cloudflare edge
+#   - NestJS microservices: API Gateway + 4 subgraph services
+#   - Local PostgreSQL: AI scratch data (manifests, pipeline state, prompts)
+#   - Redis: Caching
+#   - Observability: Prometheus + Loki + Grafana
+#   - Ollama: Runs NATIVELY on macOS (not Docker) for Metal GPU access
+#
+# User-facing data (users, documents, auth, storage) lives in Supabase Cloud.
+# Configure via .env.production (see .env.production.example).
+#
+# Usage:
+#   docker compose -f docker-compose-prod.yml up -d --build
+#   docker compose -f docker-compose-prod.yml down
+#   docker compose -f docker-compose-prod.yml logs -f api
+#
+# =============================================================================
+
+x-backend-env: &backend-env
+  NODE_ENV: production
+  PROJECT: opuspopuli
+  VERSION: ${VERSION:-1.0.0}
+  # Supabase Cloud (user-facing data)
+  SUPABASE_URL: ${SUPABASE_URL}
+  SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+  SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+  # Local PostgreSQL (AI scratch data)
+  DATABASE_URL: postgresql://postgres:${LOCAL_DB_PASSWORD:-opuspopuli}@db:5432/opuspopuli
+  RELATIONAL_DB_PROVIDER: postgres
+  RELATIONAL_DB_HOST: db
+  RELATIONAL_DB_PORT: 5432
+  RELATIONAL_DB_USERNAME: postgres
+  RELATIONAL_DB_PASSWORD: ${LOCAL_DB_PASSWORD:-opuspopuli}
+  RELATIONAL_DB_DATABASE: opuspopuli
+  # Redis
+  REDIS_URL: redis://redis:6379
+  # Auth & Security
+  JWT_SECRET: ${JWT_SECRET}
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+  GATEWAY_CLIENT_ID: api-gateway
+  GATEWAY_HMAC_SECRET: ${GATEWAY_HMAC_SECRET}
+  API_KEYS: ${API_KEYS}
+  # Secrets via env (not AWS)
+  SECRETS_PROVIDER: env
+  # Email
+  RESEND_API_KEY: ${RESEND_API_KEY}
+
+x-healthcheck: &healthcheck
+  test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 30s
+
+services:
+  # ---------------------------------------------------------------------------
+  # Cloudflare Tunnel
+  # ---------------------------------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: opuspopuli-prod-cloudflared
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Local PostgreSQL — AI scratch data
+  # ---------------------------------------------------------------------------
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: opuspopuli-prod-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-opuspopuli}
+      POSTGRES_DB: opuspopuli
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: opuspopuli-prod-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Database Migrations
+  # ---------------------------------------------------------------------------
+  db-migrate:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.test-runner
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-prod-db-migrate
+    environment:
+      <<: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["/usr/local/bin/db-migrate.sh"]
+    networks:
+      - opuspopuli-prod
+
+  # ---------------------------------------------------------------------------
+  # NestJS Microservices
+  # ---------------------------------------------------------------------------
+  users:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.users
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-prod-users
+    environment:
+      <<: *backend-env
+      APPLICATION: users
+      DESCRIPTION: Users microservice
+      PORT: 8080
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck: *healthcheck
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  documents:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.documents
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-prod-documents
+    environment:
+      <<: *backend-env
+      APPLICATION: documents
+      DESCRIPTION: Documents microservice
+      PORT: 8080
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck: *healthcheck
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  knowledge:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.knowledge
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-prod-knowledge
+    environment:
+      <<: *backend-env
+      APPLICATION: knowledge
+      DESCRIPTION: Knowledge microservice
+      PORT: 8080
+      # Ollama runs natively on macOS for Metal GPU acceleration
+      LLM_URL: http://host.docker.internal:11434
+      LLM_MODEL: ${LLM_MODEL:-mistral}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck: *healthcheck
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  region:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.region
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-prod-region
+    environment:
+      <<: *backend-env
+      APPLICATION: region
+      DESCRIPTION: Region microservice
+      PORT: 8080
+      LLM_URL: http://host.docker.internal:11434
+      LLM_MODEL: ${LLM_MODEL:-mistral}
+      REGION_SYNC_ENABLED: "true"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck: *healthcheck
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.api
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-prod-api
+    environment:
+      <<: *backend-env
+      APPLICATION: api
+      DESCRIPTION: API Gateway
+      PORT: 8080
+      MICROSERVICES: '[{"name":"users","url":"http://users:8080/graphql"},{"name":"documents","url":"http://documents:8080/graphql"},{"name":"knowledge","url":"http://knowledge:8080/graphql"},{"name":"region","url":"http://region:8080/graphql"}]'
+    ports:
+      - "8080:8080"
+    depends_on:
+      users:
+        condition: service_healthy
+      documents:
+        condition: service_healthy
+      knowledge:
+        condition: service_healthy
+      region:
+        condition: service_healthy
+    healthcheck: *healthcheck
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Observability
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: opuspopuli-prod-prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.5
+    container_name: opuspopuli-prod-loki
+    volumes:
+      - ./observability/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.5
+    container_name: opuspopuli-prod-promtail
+    volumes:
+      - ./observability/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: opuspopuli-prod-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3101:3000"  # Local access only
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+
+networks:
+  opuspopuli-prod:
+    name: opuspopuli-prod
+
+volumes:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+  loki-data:
+  grafana-data:
