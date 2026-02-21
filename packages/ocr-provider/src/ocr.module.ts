@@ -27,7 +27,6 @@ export interface OcrModuleConfig {
  *
  * To swap providers, change the OCR_PROVIDER factory:
  * - Tesseract (default, OSS, in-process, no external services)
- * - AWS Textract (cloud, paid, high accuracy) - future
  * - Google Vision (cloud, paid, high accuracy) - future
  *
  * Preprocessing can be enabled via configuration:

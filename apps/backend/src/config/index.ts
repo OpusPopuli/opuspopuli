@@ -82,7 +82,7 @@ export default async (): Promise<Partial<IAppConfig>> => {
   const version = configService.get('VERSION');
   const description = configService.get('DESCRIPTION');
   const port = configService.get('PORT');
-  const region = configService.get('AWS_REGION');
+  const region = configService.get('REGION');
 
   if (!project || !application || !version || !description || !port) {
     throw new Error(

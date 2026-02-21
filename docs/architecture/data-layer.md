@@ -136,7 +136,7 @@ export class Document {
   filename: string;
 
   @Column()
-  s3Key: string;
+  storageKey: string;
 
   @Column('text')
   content: string;
@@ -712,7 +712,7 @@ Vector databases must match the embedding model's output dimensions:
 const document = await documentRepo.save({
   userId: 'user-1',
   filename: 'report.pdf',
-  s3Key: 's3://bucket/report.pdf',
+  storageKey: 'user-1/report.pdf',
   content: 'Full text...',
 });
 

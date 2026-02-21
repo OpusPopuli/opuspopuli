@@ -54,7 +54,7 @@ All documentation is located in the [`docs/`](docs/) directory:
 - **Node.js** 20+ and pnpm
 - **Docker** and Docker Compose
 - **Git**
-- **AWS Account** (for production deployment)
+- **Cloudflare Account** (for production deployment)
 
 ## Technology Stack
 
@@ -74,13 +74,13 @@ All documentation is located in the [`docs/`](docs/) directory:
 |-----------|-----------------|---------------------|
 | **Embeddings** | Xenova (in-process) | Ollama |
 | **Vector DB** | pgvector (PostgreSQL) | Custom implementations |
-| **Relational DB** | PostgreSQL (via Supabase) | RDS PostgreSQL |
-| **LLM** | Ollama (Falcon 7B) | Any Ollama model |
+| **Relational DB** | PostgreSQL (via Supabase) | Any PostgreSQL |
+| **LLM** | Ollama (Mistral, Llama 3.1) | Any Ollama model |
 
 ### Infrastructure
 - [Docker](https://www.docker.com) - Containerization
 - [Docker Compose](https://docs.docker.com/compose/) - Local orchestration
-- [Terraform](https://www.terraform.io) - AWS infrastructure as code
+- [Terraform](https://www.terraform.io) - Cloudflare infrastructure as code
 - [Kubernetes](https://kubernetes.io) - Production orchestration
 
 ### Platform Services
@@ -105,7 +105,7 @@ opuspopuli/
 │   ├── vectordb-provider/    # Vector DB (pgvector)
 │   ├── relationaldb-provider/# Relational DB (PostgreSQL)
 │   ├── extraction-provider/  # Text extraction
-│   ├── storage-provider/     # File storage (Supabase Storage)
+│   ├── storage-provider/     # File storage (Supabase Storage, Cloudflare R2)
 │   ├── auth-provider/        # Authentication (Supabase Auth)
 │   ├── secrets-provider/     # Secrets management (Supabase Vault)
 │   ├── email-provider/       # Transactional email (Resend)
@@ -122,7 +122,7 @@ opuspopuli/
 ├── docs/                     # 📚 All documentation
 │   ├── architecture/         # As-built architecture documentation
 │   └── guides/               # How-to guides
-├── infra/                    # Terraform AWS infrastructure
+├── infra/                    # Terraform Cloudflare infrastructure
 ├── scripts/                  # Utility scripts
 └── docker-compose.yml        # Local development services
 ```
@@ -139,7 +139,7 @@ The `packages/` directory contains reusable workspace packages that provide plug
 | `@opuspopuli/vectordb-provider` | pgvector (PostgreSQL) | 15 |
 | `@opuspopuli/relationaldb-provider` | PostgreSQL | 7 |
 | `@opuspopuli/extraction-provider` | Text extraction (URLs, PDFs) with caching & rate limiting | 116 |
-| `@opuspopuli/storage-provider` | Supabase Storage | 17 |
+| `@opuspopuli/storage-provider` | Supabase Storage, Cloudflare R2 | 41 |
 | `@opuspopuli/auth-provider` | Supabase Auth (Passkeys, Magic Links, Password) | 29 |
 | `@opuspopuli/secrets-provider` | Supabase Vault | 10 |
 | `@opuspopuli/email-provider` | Resend transactional email | - |

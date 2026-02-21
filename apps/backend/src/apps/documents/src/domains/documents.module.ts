@@ -13,7 +13,7 @@ import { PromptClientModule } from '@opuspopuli/prompt-client';
  * Documents Module
  *
  * Provides document metadata management and file storage operations.
- * Manages documents in PostgreSQL and files in S3.
+ * Manages documents in PostgreSQL and files in object storage.
  * Supports text extraction from images (OCR) and PDFs.
  * Supports AI analysis with type-specific prompts.
  */
