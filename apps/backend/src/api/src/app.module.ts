@@ -23,6 +23,7 @@ import csrfConfig from 'src/config/csrf.config';
 import cookieConfig from 'src/config/cookie.config';
 import websocketConfig, { IWebSocketConfig } from 'src/config/websocket.config';
 import { getGraphQLCorsConfig } from 'src/config/cors.config';
+import { gatewayValidationSchema } from 'src/config/env.validation';
 
 import { CsrfMiddleware } from 'src/common/middleware/csrf.middleware';
 import { PassportModule } from '@nestjs/passport';
@@ -82,6 +83,8 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
         cookieConfig,
         websocketConfig,
       ],
+      validationSchema: gatewayValidationSchema,
+      validationOptions: { abortEarly: false },
       isGlobal: true,
     }),
     LoggingModule.forRootAsync({

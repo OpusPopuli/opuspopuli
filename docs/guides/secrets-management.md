@@ -4,12 +4,11 @@ This guide covers how to configure and use secrets management in Opus Populi.
 
 ## Overview
 
-Opus Populi provides a pluggable secrets management system with multiple provider backends. As a starter kit designed to be forked and customized, we support different infrastructure choices:
+Opus Populi provides a pluggable secrets management system with multiple provider backends:
 
 | Provider | `SECRETS_PROVIDER=` | Use Case |
 |----------|---------------------|----------|
 | EnvProvider | `env` (default) | Local dev, Docker, K8s, GCP, Azure |
-| AWSSecretsProvider | `aws` | AWS deployments |
 | SupabaseVaultProvider | `supabase` | Supabase Cloud users |
 
 **Key Insight**: The `EnvProvider` is the universal adapter. Most cloud platforms (GCP Cloud Run, Azure App Service, Kubernetes, etc.) inject secrets as environment variables, so `SECRETS_PROVIDER=env` works everywhere.
@@ -17,12 +16,11 @@ Opus Populi provides a pluggable secrets management system with multiple provide
 ## Architecture
 
 ```
-Fork users choose their infrastructure:
+Operators choose their infrastructure:
 
-  AWS user:      SECRETS_PROVIDER=aws
+  Kubernetes:    K8s secrets → SECRETS_PROVIDER=env
   GCP user:      GCP injects env → SECRETS_PROVIDER=env
   Azure user:    Azure injects env → SECRETS_PROVIDER=env
-  Kubernetes:    K8s secrets → SECRETS_PROVIDER=env
   Supabase:      SECRETS_PROVIDER=supabase
   Simple/Local:  SECRETS_PROVIDER=env (default)
 ```
@@ -34,10 +32,6 @@ Fork users choose their infrastructure:
 ```bash
 # Select your provider (default: env)
 SECRETS_PROVIDER=env
-
-# AWS-specific (only needed for SECRETS_PROVIDER=aws)
-AWS_REGION=us-east-1
-SECRETS_CACHE_TTL=300  # Cache TTL in seconds
 ```
 
 ### Provider Details
@@ -63,28 +57,6 @@ API_KEYS={"client1":"key1","client2":"key2"}
 - GCP Cloud Run (secrets injected as env vars)
 - Azure App Service (configuration as env vars)
 - Any platform that supports environment variable injection
-
-#### AWSSecretsProvider
-
-Retrieves secrets from AWS Secrets Manager with automatic caching to minimize API calls and costs.
-
-**Configuration:**
-```bash
-SECRETS_PROVIDER=aws
-AWS_REGION=us-east-1
-SECRETS_CACHE_TTL=300  # Optional, defaults to 300 seconds
-```
-
-**Authentication:**
-Uses the default AWS credential chain:
-- IAM role (recommended for EC2/ECS/Lambda)
-- Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
-- AWS credentials file (`~/.aws/credentials`)
-
-**Caching:**
-- Secrets are cached locally to reduce API calls
-- Default TTL: 5 minutes (configurable via `SECRETS_CACHE_TTL`)
-- Cache can be cleared programmatically
 
 #### SupabaseVaultProvider
 
@@ -134,11 +106,6 @@ import { getEnvSecret, getEnvSecretOrThrow } from '@opuspopuli/secrets-provider'
 
 const optionalValue = getEnvSecret('OPTIONAL_SECRET');
 const requiredValue = getEnvSecretOrThrow('REQUIRED_SECRET'); // Throws if missing
-
-// AWS helper
-import { getAWSSecret } from '@opuspopuli/secrets-provider';
-
-const secret = await getAWSSecret('my-secret', 'us-east-1');
 ```
 
 ## Adding a New Provider
@@ -201,33 +168,21 @@ export { MySecretsProvider } from './providers/my-provider.js';
 
 ### Production
 
-- **AWS**: Use IAM roles for authentication (no access keys)
 - **Kubernetes**: Mount secrets as environment variables, use `SECRETS_PROVIDER=env`
 - **GCP/Azure**: Use platform secret injection, use `SECRETS_PROVIDER=env`
+- **Supabase**: Use `SECRETS_PROVIDER=supabase` with Supabase Vault
 
 ### General
 
-- Cache secrets when possible (AWS provider does this automatically)
 - Use `getSecretJson` for structured configuration
 - Validate required secrets at startup, not at runtime
 
 ## Troubleshooting
 
-### "AWS_REGION is required"
-
-Set the `AWS_REGION` environment variable when using `SECRETS_PROVIDER=aws`.
-
 ### "Secret not found"
 
 - **EnvProvider**: Check that the environment variable is set
-- **AWSSecretsProvider**: Verify the secret exists in AWS Secrets Manager and IAM permissions allow access
 - **SupabaseVaultProvider**: Check the secret exists in Supabase Vault
-
-### Slow Startup with AWS Provider
-
-This is usually due to initial cache population. Consider:
-- Pre-warming the cache with frequently-used secrets
-- Using `SECRETS_CACHE_TTL` to balance freshness vs. performance
 
 ## API Reference
 
@@ -247,11 +202,4 @@ interface ISecretsProvider {
   /** Retrieve and parse a JSON secret */
   getSecretJson<T>(secretId: string): Promise<T | undefined>;
 }
-```
-
-### AWSSecretsProvider Additional Methods
-
-```typescript
-/** Clear cached secrets */
-clearCache(secretId?: string): void;
 ```

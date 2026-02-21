@@ -29,7 +29,7 @@ Practical guides for common tasks and workflows.
 - [**Email Integration**](guides/email-integration.md) - Transactional email with Resend
 - [**Region Provider**](guides/region-provider.md) - Declarative region plugins for civic data
 - [**Region Setup and Validation**](guides/region-setup-and-validation-guide.md) - Step-by-step guide for standing up and validating a new region
-- [**Deployment**](guides/deployment.md) - Deploy a region node (home server + Cloudflare reference implementation)
+- [**Deployment**](guides/deployment.md) - Deploy a region node (on-premise + Cloudflare reference implementation)
 - [**Observability**](guides/observability.md) - Prometheus metrics and Loki logging
 
 ## Quick Links

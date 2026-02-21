@@ -26,6 +26,7 @@ import authConfig from 'src/config/auth.config';
 import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
 import regionConfig from 'src/config/region.config';
+import { regionValidationSchema } from 'src/config/env.validation';
 
 import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
 import {
@@ -57,6 +58,8 @@ import { MetricsModule } from 'src/common/metrics';
         relationaldbConfig,
         regionConfig,
       ],
+      validationSchema: regionValidationSchema,
+      validationOptions: { abortEarly: false },
       isGlobal: true,
     }),
     LoggingModule.forRootAsync(createLoggingConfig('region-service')),
