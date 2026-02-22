@@ -142,12 +142,10 @@ test.describe("PWA - HTML Meta Tags", () => {
     expect(href).toContain("/icons/opus");
   });
 
-  test("should have apple-mobile-web-app-capable meta tag", async ({
-    page,
-  }) => {
+  test("should have mobile-web-app-capable meta tag", async ({ page }) => {
     await page.goto("/");
 
-    const metaTag = await page.$('meta[name="apple-mobile-web-app-capable"]');
+    const metaTag = await page.$('meta[name="mobile-web-app-capable"]');
     expect(metaTag).not.toBeNull();
 
     const content = await metaTag?.getAttribute("content");

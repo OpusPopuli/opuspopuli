@@ -17,6 +17,8 @@ const config = {
     "app/**/*.{ts,tsx}",
     "lib/**/*.{ts,tsx}",
     "!app/**/layout.tsx",
+    "!app/robots.ts",
+    "!app/sitemap.ts",
     // Exclude legacy password-based flows (not part of passwordless auth)
     "!app/(auth)/forgot-password/**",
     "!app/(auth)/reset-password/**",
