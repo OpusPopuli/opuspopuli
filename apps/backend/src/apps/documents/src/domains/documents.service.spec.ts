@@ -303,6 +303,165 @@ describe('DocumentsService', () => {
     });
   });
 
+  describe('processScan', () => {
+    const base64Data = Buffer.from('fake-image-data').toString('base64');
+    const createdDoc: any = {
+      id: 'scan-doc-1',
+      userId: 'user-1',
+      key: 'scan-123.png',
+      size: 100,
+      status: 'text_extraction_started',
+      type: DocumentType.petition,
+    };
+
+    beforeEach(() => {
+      mockStorageProvider.getSignedUrl.mockResolvedValue(
+        'https://storage.example.com/upload-url',
+      );
+      mockFetch.mockResolvedValue({ ok: true });
+      mockOcrService.extractFromBuffer.mockResolvedValue({
+        text: 'Petition text here',
+        confidence: 95.5,
+        provider: 'Tesseract',
+        blocks: [],
+        processingTimeMs: 150,
+      });
+    });
+
+    it('should create document, upload, extract text, and return result', async () => {
+      mockDb.document.create.mockResolvedValue(createdDoc);
+      mockDb.document.update.mockResolvedValue(createdDoc);
+
+      const result = await documentsService.processScan(
+        'user-1',
+        base64Data,
+        'image/png',
+      );
+
+      expect(result.documentId).toBe('scan-doc-1');
+      expect(result.text).toBe('Petition text here');
+      expect(result.confidence).toBe(95.5);
+      expect(result.provider).toBe('Tesseract');
+      expect(result.processingTimeMs).toBeGreaterThanOrEqual(0);
+
+      // Verify document was created with correct fields
+      expect(mockDb.document.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user-1',
+          status: 'text_extraction_started',
+          type: DocumentType.petition,
+        }),
+      });
+
+      // Verify storage upload was called
+      expect(mockStorageProvider.getSignedUrl).toHaveBeenCalledWith(
+        'test-bucket',
+        expect.stringContaining('user-1/scan-'),
+        true,
+      );
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://storage.example.com/upload-url',
+        expect.objectContaining({
+          method: 'PUT',
+          headers: { 'Content-Type': 'image/png' },
+        }),
+      );
+
+      // Verify document was updated with extracted text
+      expect(mockDb.document.update).toHaveBeenCalledWith({
+        where: { id: 'scan-doc-1' },
+        data: expect.objectContaining({
+          extractedText: 'Petition text here',
+          contentHash: expect.any(String),
+          ocrConfidence: 95.5,
+          ocrProvider: 'Tesseract',
+          status: 'text_extraction_complete',
+        }),
+      });
+    });
+
+    it('should default documentType to petition', async () => {
+      mockDb.document.create.mockResolvedValue(createdDoc);
+      mockDb.document.update.mockResolvedValue(createdDoc);
+
+      await documentsService.processScan('user-1', base64Data, 'image/png');
+
+      expect(mockDb.document.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          type: DocumentType.petition,
+        }),
+      });
+    });
+
+    it('should accept custom documentType', async () => {
+      mockDb.document.create.mockResolvedValue({
+        ...createdDoc,
+        type: DocumentType.contract,
+      });
+      mockDb.document.update.mockResolvedValue(createdDoc);
+
+      await documentsService.processScan(
+        'user-1',
+        base64Data,
+        'image/png',
+        DocumentType.contract,
+      );
+
+      expect(mockDb.document.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          type: DocumentType.contract,
+        }),
+      });
+    });
+
+    it('should generate correct filename extension for jpeg', async () => {
+      mockDb.document.create.mockResolvedValue(createdDoc);
+      mockDb.document.update.mockResolvedValue(createdDoc);
+
+      await documentsService.processScan('user-1', base64Data, 'image/jpeg');
+
+      expect(mockDb.document.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          key: expect.stringMatching(/\.jpeg$/),
+        }),
+      });
+    });
+
+    it('should set status to failed on OCR error', async () => {
+      mockDb.document.create.mockResolvedValue(createdDoc);
+      mockDb.document.update.mockResolvedValue(createdDoc);
+      mockOcrService.extractFromBuffer.mockRejectedValue(
+        new Error('OCR failed'),
+      );
+
+      await expect(
+        documentsService.processScan('user-1', base64Data, 'image/png'),
+      ).rejects.toThrow('OCR failed');
+
+      expect(mockDb.document.update).toHaveBeenCalledWith({
+        where: { id: 'scan-doc-1' },
+        data: { status: 'text_extraction_failed' },
+      });
+    });
+
+    it('should set status to failed on storage upload error', async () => {
+      mockDb.document.create.mockResolvedValue(createdDoc);
+      mockDb.document.update.mockResolvedValue(createdDoc);
+      mockStorageProvider.getSignedUrl.mockRejectedValue(
+        new Error('Storage error'),
+      );
+
+      await expect(
+        documentsService.processScan('user-1', base64Data, 'image/png'),
+      ).rejects.toThrow('Storage error');
+
+      expect(mockDb.document.update).toHaveBeenCalledWith({
+        where: { id: 'scan-doc-1' },
+        data: { status: 'text_extraction_failed' },
+      });
+    });
+  });
+
   describe('extractTextFromFile', () => {
     const mockDocument = {
       id: 'doc-1',

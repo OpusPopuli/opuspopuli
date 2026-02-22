@@ -9,6 +9,28 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
+// Mock canvas for imageDataToBase64
+const mockPutImageData = jest.fn();
+const mockToDataURL = jest
+  .fn()
+  .mockReturnValue("data:image/png;base64,dGVzdA==");
+const mockGetContext = jest.fn().mockReturnValue({
+  putImageData: mockPutImageData,
+});
+
+const originalCreateElement = document.createElement.bind(document);
+jest.spyOn(document, "createElement").mockImplementation((tag: string) => {
+  if (tag === "canvas") {
+    return {
+      width: 0,
+      height: 0,
+      getContext: mockGetContext,
+      toDataURL: mockToDataURL,
+    } as unknown as HTMLCanvasElement;
+  }
+  return originalCreateElement(tag);
+});
+
 // Mock CameraCapture component
 let capturedOnConfirm:
   | ((
@@ -71,6 +93,12 @@ describe("PetitionCapturePage", () => {
     jest.clearAllMocks();
     capturedOnConfirm = null;
     capturedOnCancel = null;
+    sessionStorage.clear();
+    // Restore default mock return values
+    mockGetContext.mockReturnValue({
+      putImageData: mockPutImageData,
+    });
+    mockToDataURL.mockReturnValue("data:image/png;base64,dGVzdA==");
   });
 
   it("should render CameraCapture component", () => {
@@ -79,7 +107,7 @@ describe("PetitionCapturePage", () => {
     expect(screen.getByTestId("camera-capture")).toBeInTheDocument();
   });
 
-  it("should navigate to petition page on confirm with location", async () => {
+  it("should store image in sessionStorage and navigate to results on confirm with location", async () => {
     const user = userEvent.setup();
 
     render(<PetitionCapturePage />);
@@ -88,10 +116,14 @@ describe("PetitionCapturePage", () => {
       screen.getByRole("button", { name: "Confirm With Location" }),
     );
 
-    expect(mockPush).toHaveBeenCalledWith("/petition");
+    expect(sessionStorage.getItem("petition-scan-data")).toBe("dGVzdA==");
+    expect(sessionStorage.getItem("petition-scan-location")).toBe(
+      JSON.stringify({ latitude: 37.7749, longitude: -122.4194 }),
+    );
+    expect(mockPush).toHaveBeenCalledWith("/petition/results");
   });
 
-  it("should navigate to petition page on confirm without location", async () => {
+  it("should store image without location and navigate to results on confirm without location", async () => {
     const user = userEvent.setup();
 
     render(<PetitionCapturePage />);
@@ -100,7 +132,9 @@ describe("PetitionCapturePage", () => {
       screen.getByRole("button", { name: "Confirm Without Location" }),
     );
 
-    expect(mockPush).toHaveBeenCalledWith("/petition");
+    expect(sessionStorage.getItem("petition-scan-data")).toBe("dGVzdA==");
+    expect(sessionStorage.getItem("petition-scan-location")).toBeNull();
+    expect(mockPush).toHaveBeenCalledWith("/petition/results");
   });
 
   it("should navigate to petition page on cancel", async () => {
@@ -118,5 +152,20 @@ describe("PetitionCapturePage", () => {
 
     expect(capturedOnConfirm).toBeInstanceOf(Function);
     expect(capturedOnCancel).toBeInstanceOf(Function);
+  });
+
+  it("should navigate to petition on imageDataToBase64 failure", async () => {
+    // Make canvas context return null to trigger error
+    mockGetContext.mockReturnValueOnce(null);
+
+    const user = userEvent.setup();
+
+    render(<PetitionCapturePage />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Confirm Without Location" }),
+    );
+
+    expect(mockPush).toHaveBeenCalledWith("/petition");
   });
 });
