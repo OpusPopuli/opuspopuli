@@ -25,7 +25,7 @@
     "e2e:a11y": "playwright test e2e/accessibility.spec.ts"
   },
   "lint-staged": {
-    "**/*": "prettier --write --ignore-unknown"
+    "**/*.{js,jsx,ts,tsx,css,json,md,html,yml,yaml,svg}": "prettier --write --ignore-unknown"
   },
   "dependencies": {
     "@apollo/client": "^4.0.10",

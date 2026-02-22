@@ -1,0 +1,5 @@
+# Symlinks to shared assets (Prettier cannot process symlinks)
+public/logos
+public/icons
+public/favicons
+public/social

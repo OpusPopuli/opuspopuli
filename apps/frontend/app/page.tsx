@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Header } from "@/components/Header";
+
+export const metadata: Metadata = {
+  title: {
+    absolute: "OPUS - Civic Engagement Platform | Opus Populi",
+  },
+};
 
 export default function Home() {
   return (

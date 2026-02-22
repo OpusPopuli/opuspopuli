@@ -22,10 +22,11 @@ COPY --from=deps /app/node_modules ./node_modules
 
 # Resolve asset symlinks: replace dangling symlinks with actual directories
 # (public/logos, public/icons, public/favicons symlink to ../../../assets/ which is outside Docker context)
-RUN rm -f public/logos public/icons public/favicons
+RUN rm -f public/logos public/icons public/favicons public/social
 COPY assets/logos/ ./public/logos/
 COPY assets/icons/ ./public/icons/
 COPY assets/favicons/ ./public/favicons/
+COPY assets/social/ ./public/social/
 
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
