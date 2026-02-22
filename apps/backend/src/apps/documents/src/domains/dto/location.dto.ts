@@ -1,5 +1,5 @@
-import { Field, Float, InputType, ObjectType } from '@nestjs/graphql';
-import { IsUUID, IsNumber, Min, Max } from 'class-validator';
+import { Field, Float, InputType, Int, ObjectType } from '@nestjs/graphql';
+import { IsUUID, IsNumber, IsOptional, Min, Max } from 'class-validator';
 
 /**
  * Geographic coordinate types for location tracking
@@ -50,6 +50,82 @@ export class SetDocumentLocationResult {
 
   @Field(() => GeoLocation, { nullable: true })
   fuzzedLocation?: GeoLocation;
+}
+
+@ObjectType()
+export class PetitionMapMarker {
+  @Field()
+  id!: string;
+
+  @Field(() => Float)
+  latitude!: number;
+
+  @Field(() => Float)
+  longitude!: number;
+
+  @Field({ nullable: true })
+  documentType?: string;
+
+  @Field()
+  createdAt!: Date;
+}
+
+@ObjectType()
+export class PetitionMapStats {
+  @Field(() => Int)
+  totalPetitions!: number;
+
+  @Field(() => Int)
+  totalWithLocation!: number;
+
+  @Field(() => Int)
+  recentPetitions!: number;
+}
+
+@InputType()
+export class MapBoundsInput {
+  @Field(() => Float)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  swLat!: number;
+
+  @Field(() => Float)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  swLng!: number;
+
+  @Field(() => Float)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  neLat!: number;
+
+  @Field(() => Float)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  neLng!: number;
+}
+
+@InputType()
+export class MapFiltersInput {
+  @Field(() => MapBoundsInput, { nullable: true })
+  @IsOptional()
+  bounds?: MapBoundsInput;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  documentType?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  startDate?: Date;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  endDate?: Date;
 }
 
 /**

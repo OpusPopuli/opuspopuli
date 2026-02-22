@@ -67,6 +67,34 @@ export interface AnalyzeDocumentResult {
   fromCache: boolean;
 }
 
+export interface PetitionMapMarker {
+  id: string;
+  latitude: number;
+  longitude: number;
+  documentType?: string;
+  createdAt: string;
+}
+
+export interface PetitionMapStats {
+  totalPetitions: number;
+  totalWithLocation: number;
+  recentPetitions: number;
+}
+
+export interface MapBoundsInput {
+  swLat: number;
+  swLng: number;
+  neLat: number;
+  neLng: number;
+}
+
+export interface MapFiltersInput {
+  bounds?: MapBoundsInput;
+  documentType?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
 // ============================================
 // Mutations
 // ============================================
@@ -121,6 +149,32 @@ export const ANALYZE_DOCUMENT = gql`
 `;
 
 // ============================================
+// Queries
+// ============================================
+
+export const GET_PETITION_MAP_LOCATIONS = gql`
+  query PetitionMapLocations($filters: MapFiltersInput) {
+    petitionMapLocations(filters: $filters) {
+      id
+      latitude
+      longitude
+      documentType
+      createdAt
+    }
+  }
+`;
+
+export const GET_PETITION_MAP_STATS = gql`
+  query PetitionMapStats {
+    petitionMapStats {
+      totalPetitions
+      totalWithLocation
+      recentPetitions
+    }
+  }
+`;
+
+// ============================================
 // Response Types
 // ============================================
 
@@ -134,4 +188,12 @@ export interface ProcessScanData {
 
 export interface AnalyzeDocumentData {
   analyzeDocument: AnalyzeDocumentResult;
+}
+
+export interface PetitionMapLocationsData {
+  petitionMapLocations: PetitionMapMarker[];
+}
+
+export interface PetitionMapStatsData {
+  petitionMapStats: PetitionMapStats;
 }
