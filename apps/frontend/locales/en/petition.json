@@ -62,5 +62,33 @@
       "title": "Location Unavailable",
       "continueWithout": "Continue Without Location"
     }
+  },
+  "results": {
+    "title": "Scan Results",
+    "back": "Go back",
+    "extractingText": "Reading your petition...",
+    "extractingDescription": "Using AI to extract text from your image",
+    "analyzingDocument": "Analyzing petition...",
+    "analyzingDescription": "Our AI is reviewing the petition content",
+    "extractedText": "Extracted Text",
+    "extractedTextLabel": "Extracted petition text (editable if OCR errors)",
+    "confidence": "confidence",
+    "summary": "Summary",
+    "keyPoints": "Key Points",
+    "actualEffect": "What This Actually Does",
+    "concerns": "Potential Concerns",
+    "beneficiaries": "Who Benefits",
+    "potentiallyHarmed": "Who May Be Affected",
+    "relatedMeasures": "Related Measures",
+    "entities": "Mentioned Entities",
+    "analyzedBy": "Analyzed by {{provider}} ({{model}})",
+    "cachedResult": "cached result",
+    "share": "Share Analysis",
+    "saveToTrack": "Save to Track",
+    "saveComingSoon": "Coming soon: Save to your ballot tracker",
+    "errorTitle": "Processing Failed",
+    "backToHome": "Back to Home",
+    "tryAgain": "Scan Again",
+    "copiedToClipboard": "Analysis copied to clipboard"
   }
 }
