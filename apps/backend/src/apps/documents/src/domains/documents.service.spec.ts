@@ -1139,6 +1139,131 @@ describe('DocumentsService', () => {
     });
   });
 
+  describe('getPetitionMapLocations', () => {
+    it('should return markers for documents with scan locations', async () => {
+      mockDb.$queryRawUnsafe.mockResolvedValue([
+        {
+          id: 'doc-1',
+          latitude: 37.7749,
+          longitude: -122.4194,
+          document_type: 'petition',
+          created_at: new Date('2024-06-01'),
+        },
+        {
+          id: 'doc-2',
+          latitude: 34.0522,
+          longitude: -118.2437,
+          document_type: 'proposition',
+          created_at: new Date('2024-06-02'),
+        },
+      ]);
+
+      const markers = await documentsService.getPetitionMapLocations();
+
+      expect(markers).toHaveLength(2);
+      expect(markers[0]).toEqual({
+        id: 'doc-1',
+        latitude: 37.7749,
+        longitude: -122.4194,
+        documentType: 'petition',
+        createdAt: new Date('2024-06-01'),
+      });
+      expect(markers[1].id).toBe('doc-2');
+      expect(mockDb.$queryRawUnsafe).toHaveBeenCalled();
+    });
+
+    it('should pass bounds filter to query', async () => {
+      mockDb.$queryRawUnsafe.mockResolvedValue([]);
+
+      await documentsService.getPetitionMapLocations({
+        bounds: { swLat: 34, swLng: -119, neLat: 38, neLng: -117 },
+      });
+
+      const query = mockDb.$queryRawUnsafe.mock.calls[0][0] as string;
+      expect(query).toContain('ST_Within');
+      expect(query).toContain('ST_MakeEnvelope');
+      // Verify params are passed: swLng, swLat, neLng, neLat
+      expect(mockDb.$queryRawUnsafe.mock.calls[0][1]).toBe(-119);
+      expect(mockDb.$queryRawUnsafe.mock.calls[0][2]).toBe(34);
+      expect(mockDb.$queryRawUnsafe.mock.calls[0][3]).toBe(-117);
+      expect(mockDb.$queryRawUnsafe.mock.calls[0][4]).toBe(38);
+    });
+
+    it('should pass documentType filter to query', async () => {
+      mockDb.$queryRawUnsafe.mockResolvedValue([]);
+
+      await documentsService.getPetitionMapLocations({
+        documentType: 'petition',
+      });
+
+      const query = mockDb.$queryRawUnsafe.mock.calls[0][0] as string;
+      expect(query).toContain('type = $1');
+      expect(mockDb.$queryRawUnsafe.mock.calls[0][1]).toBe('petition');
+    });
+
+    it('should return empty array when no documents found', async () => {
+      mockDb.$queryRawUnsafe.mockResolvedValue([]);
+
+      const markers = await documentsService.getPetitionMapLocations();
+
+      expect(markers).toEqual([]);
+    });
+
+    it('should handle null document_type', async () => {
+      mockDb.$queryRawUnsafe.mockResolvedValue([
+        {
+          id: 'doc-1',
+          latitude: 37.0,
+          longitude: -122.0,
+          document_type: null,
+          created_at: new Date(),
+        },
+      ]);
+
+      const markers = await documentsService.getPetitionMapLocations();
+
+      expect(markers[0].documentType).toBeUndefined();
+    });
+  });
+
+  describe('getPetitionMapStats', () => {
+    it('should return aggregated petition stats', async () => {
+      mockDb.$queryRaw.mockResolvedValue([
+        {
+          total_petitions: BigInt(42),
+          total_with_location: BigInt(35),
+          recent_petitions: BigInt(8),
+        },
+      ]);
+
+      const stats = await documentsService.getPetitionMapStats();
+
+      expect(stats).toEqual({
+        totalPetitions: 42,
+        totalWithLocation: 35,
+        recentPetitions: 8,
+      });
+    });
+
+    it('should return zeros when no documents exist', async () => {
+      mockDb.$queryRaw.mockResolvedValue([
+        {
+          total_petitions: BigInt(0),
+          total_with_location: BigInt(0),
+          recent_petitions: BigInt(0),
+        },
+      ]);
+
+      const stats = await documentsService.getPetitionMapStats();
+
+      expect(stats).toEqual({
+        totalPetitions: 0,
+        totalWithLocation: 0,
+        recentPetitions: 0,
+      });
+    });
+  });
+
   describe('findDocumentsNearLocation', () => {
     it('should find documents within radius', async () => {
       mockDb.$queryRaw.mockResolvedValue([
