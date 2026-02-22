@@ -1,4 +1,5 @@
 import { Counter, Histogram, Gauge } from 'prom-client';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 import { MetricsService } from './metrics.service';
 
 describe('MetricsService', () => {
@@ -11,6 +12,11 @@ describe('MetricsService', () => {
   let mockCircuitBreakerFailures: jest.Mocked<Counter<string>>;
   let mockDbQueryDuration: jest.Mocked<Histogram<string>>;
   let mockSubgraphRequestDuration: jest.Mocked<Histogram<string>>;
+  let mockDbPoolOpen: jest.Mocked<Gauge<string>>;
+  let mockDbPoolIdle: jest.Mocked<Gauge<string>>;
+  let mockDbPoolBusy: jest.Mocked<Gauge<string>>;
+
+  const mockOptions = { serviceName: 'test-service' };
 
   beforeEach(() => {
     // Create mock metrics
@@ -46,8 +52,21 @@ describe('MetricsService', () => {
       observe: jest.fn(),
     } as unknown as jest.Mocked<Histogram<string>>;
 
+    mockDbPoolOpen = {
+      set: jest.fn(),
+    } as unknown as jest.Mocked<Gauge<string>>;
+
+    mockDbPoolIdle = {
+      set: jest.fn(),
+    } as unknown as jest.Mocked<Gauge<string>>;
+
+    mockDbPoolBusy = {
+      set: jest.fn(),
+    } as unknown as jest.Mocked<Gauge<string>>;
+
     // Instantiate service directly with mocks (bypasses NestJS DI token issues)
     service = new MetricsService(
+      mockOptions,
       mockHttpRequestDuration,
       mockHttpRequestsTotal,
       mockGraphqlOperationsTotal,
@@ -56,7 +75,14 @@ describe('MetricsService', () => {
       mockCircuitBreakerFailures,
       mockDbQueryDuration,
       mockSubgraphRequestDuration,
+      mockDbPoolOpen,
+      mockDbPoolIdle,
+      mockDbPoolBusy,
     );
+  });
+
+  afterEach(() => {
+    service.onModuleDestroy();
   });
 
   describe('recordHttpRequest', () => {
@@ -251,6 +277,147 @@ describe('MetricsService', () => {
         { subgraph: 'users' },
         0.025,
       );
+    });
+  });
+
+  describe('pool metrics collection', () => {
+    it('should not start interval when dbService is not provided', () => {
+      jest.useFakeTimers();
+
+      service.onModuleInit();
+
+      jest.advanceTimersByTime(15_000);
+
+      expect(mockDbPoolOpen.set).not.toHaveBeenCalled();
+
+      jest.useRealTimers();
+    });
+
+    it('should collect pool metrics when dbService is provided', async () => {
+      jest.useFakeTimers();
+
+      const mockDbService = {
+        getPoolMetrics: jest.fn().mockResolvedValue({
+          open: 10,
+          idle: 7,
+          busy: 3,
+        }),
+      };
+
+      const serviceWithDb = new MetricsService(
+        mockOptions,
+        mockHttpRequestDuration,
+        mockHttpRequestsTotal,
+        mockGraphqlOperationsTotal,
+        mockGraphqlOperationDuration,
+        mockCircuitBreakerState,
+        mockCircuitBreakerFailures,
+        mockDbQueryDuration,
+        mockSubgraphRequestDuration,
+        mockDbPoolOpen,
+        mockDbPoolIdle,
+        mockDbPoolBusy,
+        mockDbService as unknown as DbService,
+      );
+
+      serviceWithDb.onModuleInit();
+
+      // Advance timer to trigger the interval
+      jest.advanceTimersByTime(15_000);
+
+      // Wait for the async callback to resolve
+      await Promise.resolve();
+
+      expect(mockDbService.getPoolMetrics).toHaveBeenCalled();
+      expect(mockDbPoolOpen.set).toHaveBeenCalledWith(
+        { service: 'test-service' },
+        10,
+      );
+      expect(mockDbPoolIdle.set).toHaveBeenCalledWith(
+        { service: 'test-service' },
+        7,
+      );
+      expect(mockDbPoolBusy.set).toHaveBeenCalledWith(
+        { service: 'test-service' },
+        3,
+      );
+
+      serviceWithDb.onModuleDestroy();
+      jest.useRealTimers();
+    });
+
+    it('should handle pool metrics errors gracefully', async () => {
+      jest.useFakeTimers();
+
+      const mockDbService = {
+        getPoolMetrics: jest.fn().mockRejectedValue(new Error('fail')),
+      };
+
+      const serviceWithDb = new MetricsService(
+        mockOptions,
+        mockHttpRequestDuration,
+        mockHttpRequestsTotal,
+        mockGraphqlOperationsTotal,
+        mockGraphqlOperationDuration,
+        mockCircuitBreakerState,
+        mockCircuitBreakerFailures,
+        mockDbQueryDuration,
+        mockSubgraphRequestDuration,
+        mockDbPoolOpen,
+        mockDbPoolIdle,
+        mockDbPoolBusy,
+        mockDbService as unknown as DbService,
+      );
+
+      serviceWithDb.onModuleInit();
+
+      jest.advanceTimersByTime(15_000);
+      await Promise.resolve();
+
+      // Should not throw, gauges should not be set
+      expect(mockDbPoolOpen.set).not.toHaveBeenCalled();
+
+      serviceWithDb.onModuleDestroy();
+      jest.useRealTimers();
+    });
+
+    it('should clear interval on module destroy', () => {
+      jest.useFakeTimers();
+
+      const mockDbService = {
+        getPoolMetrics: jest.fn().mockResolvedValue({
+          open: 5,
+          idle: 3,
+          busy: 2,
+        }),
+      };
+
+      const serviceWithDb = new MetricsService(
+        mockOptions,
+        mockHttpRequestDuration,
+        mockHttpRequestsTotal,
+        mockGraphqlOperationsTotal,
+        mockGraphqlOperationDuration,
+        mockCircuitBreakerState,
+        mockCircuitBreakerFailures,
+        mockDbQueryDuration,
+        mockSubgraphRequestDuration,
+        mockDbPoolOpen,
+        mockDbPoolIdle,
+        mockDbPoolBusy,
+        mockDbService as unknown as DbService,
+      );
+
+      serviceWithDb.onModuleInit();
+      serviceWithDb.onModuleDestroy();
+
+      // After destroy, advancing time should not trigger any calls
+      mockDbService.getPoolMetrics.mockClear();
+      jest.advanceTimersByTime(15_000);
+
+      expect(mockDbService.getPoolMetrics).not.toHaveBeenCalled();
+
+      jest.useRealTimers();
     });
   });
 });

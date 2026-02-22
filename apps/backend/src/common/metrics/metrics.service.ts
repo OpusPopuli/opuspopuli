@@ -8,12 +8,21 @@
  * - Uses singleton registry via @willsoto/nestjs-prometheus
  * - Metrics are registered in MetricsModule via makeXxxProvider()
  * - Default Node.js metrics (heap, GC, event loop) enabled by default
+ * - Database pool metrics collected every 15s via Prisma metrics API
  *
  * @see https://github.com/OpusPopuli/opuspopuli/issues/213
  */
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  Optional,
+  OnModuleInit,
+  OnModuleDestroy,
+  Inject,
+} from '@nestjs/common';
 import { InjectMetric } from '@willsoto/nestjs-prometheus';
 import { Counter, Histogram, Gauge } from 'prom-client';
+import { DbService } from '@opuspopuli/relationaldb-provider';
+import { MetricsModuleOptions } from './metrics.module';
 
 /**
  * Service for managing Prometheus metrics
@@ -21,15 +30,20 @@ import { Counter, Histogram, Gauge } from 'prom-client';
  * ## Metric Types:
  * - **Counter**: Values that only go up (requests, errors)
  * - **Histogram**: Distribution of values (latency percentiles)
- * - **Gauge**: Values that can go up or down (circuit breaker state)
+ * - **Gauge**: Values that can go up or down (circuit breaker state, pool size)
  *
  * ## Label Guidelines:
  * - Keep cardinality low (avoid user IDs, request IDs)
  * - Use bounded values (HTTP methods, status codes, service names)
  */
 @Injectable()
-export class MetricsService {
+export class MetricsService implements OnModuleInit, OnModuleDestroy {
+  private poolMetricsInterval: ReturnType<typeof setInterval> | null = null;
+
   constructor(
+    @Inject('METRICS_OPTIONS')
+    private readonly options: MetricsModuleOptions,
+
     // HTTP Metrics - injected from module registration
     @InjectMetric('http_request_duration_seconds')
     private readonly httpRequestDuration: Histogram<string>,
@@ -58,7 +72,46 @@ export class MetricsService {
     // Federation Metrics
     @InjectMetric('federation_subgraph_request_duration_seconds')
     private readonly subgraphRequestDuration: Histogram<string>,
+
+    // Database Pool Metrics
+    @InjectMetric('db_pool_connections_open')
+    private readonly dbPoolOpen: Gauge<string>,
+
+    @InjectMetric('db_pool_connections_idle')
+    private readonly dbPoolIdle: Gauge<string>,
+
+    @InjectMetric('db_pool_connections_busy')
+    private readonly dbPoolBusy: Gauge<string>,
+
+    // Optional: DbService for pool metrics collection
+    @Optional()
+    private readonly dbService?: DbService,
   ) {}
+
+  onModuleInit() {
+    if (this.dbService) {
+      this.poolMetricsInterval = setInterval(async () => {
+        try {
+          const metrics = await this.dbService!.getPoolMetrics();
+          if (metrics) {
+            const service = this.options.serviceName;
+            this.dbPoolOpen.set({ service }, metrics.open);
+            this.dbPoolIdle.set({ service }, metrics.idle);
+            this.dbPoolBusy.set({ service }, metrics.busy);
+          }
+        } catch {
+          // Silently ignore collection errors
+        }
+      }, 15_000);
+    }
+  }
+
+  onModuleDestroy() {
+    if (this.poolMetricsInterval) {
+      clearInterval(this.poolMetricsInterval);
+      this.poolMetricsInterval = null;
+    }
+  }
 
   /**
    * Record HTTP request metrics
