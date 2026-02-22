@@ -262,6 +262,7 @@ services:
     container_name: opuspopuli-prod-prometheus
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus-alerts.yml:/etc/prometheus/alerts/prometheus-alerts.yml:ro
       - prometheus-data:/prometheus
     networks:
       - opuspopuli-prod
