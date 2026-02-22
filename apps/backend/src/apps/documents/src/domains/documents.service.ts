@@ -10,6 +10,7 @@ import { IStorageProvider } from '@opuspopuli/storage-provider';
 import {
   DbService,
   Document as DbDocument,
+  DocumentType,
   Prisma,
 } from '@opuspopuli/relationaldb-provider';
 import { OcrService } from '@opuspopuli/ocr-provider';
@@ -21,6 +22,7 @@ import { IFileConfig } from 'src/config';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 import { File } from './models/file.model';
 import { ExtractTextResult } from './dto/ocr.dto';
+import { ProcessScanResult } from './dto/scan.dto';
 import { DocumentAnalysis, AnalyzeDocumentResult } from './dto/analysis.dto';
 import {
   GeoLocation,
@@ -179,6 +181,94 @@ export class DocumentsService {
       where: { id },
       data: updates,
     });
+  }
+
+  /**
+   * Process a camera scan: create document, store file, extract text via OCR
+   * Bridges the gap between camera capture and the analyzeDocument pipeline
+   */
+  async processScan(
+    userId: string,
+    data: string,
+    mimeType: string,
+    documentType: DocumentType = DocumentType.petition,
+  ): Promise<ProcessScanResult> {
+    const startTime = Date.now();
+    this.logger.log(
+      `Processing scan for user ${userId} (type: ${documentType})`,
+    );
+
+    const buffer = Buffer.from(data, 'base64');
+    const checksum = createHash('sha256').update(buffer).digest('hex');
+
+    // Generate filename from timestamp + checksum prefix
+    const extension = mimeType.split('/')[1] || 'png';
+    const filename = `scan-${Date.now()}-${checksum.substring(0, 8)}.${extension}`;
+    const storageKey = `${userId}/${filename}`;
+
+    // Create document record in DB
+    const document = await this.db.document.create({
+      data: {
+        location: `${this.fileConfig.bucket}/${storageKey}`,
+        userId,
+        key: filename,
+        size: buffer.length,
+        checksum,
+        status: 'text_extraction_started',
+        type: documentType,
+      },
+    });
+
+    try {
+      // Upload to object storage via signed URL
+      const uploadUrl = await this.storage.getSignedUrl(
+        this.fileConfig.bucket,
+        storageKey,
+        true,
+      );
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        body: buffer,
+        headers: { 'Content-Type': mimeType },
+      });
+
+      // Extract text via OCR
+      const extractedText = await this.extractTextFromBuffer(buffer, mimeType);
+
+      // Calculate content hash for deduplication
+      const contentHash = this.hashText(extractedText.text);
+
+      // Update document with extracted text
+      await this.db.document.update({
+        where: { id: document.id },
+        data: {
+          extractedText: extractedText.text,
+          contentHash,
+          ocrConfidence: extractedText.confidence,
+          ocrProvider: extractedText.provider,
+          status: 'text_extraction_complete',
+        },
+      });
+
+      this.logger.log(
+        `Scan processed: document ${document.id}, ${extractedText.text.length} chars, ${extractedText.confidence.toFixed(1)}% confidence`,
+      );
+
+      return {
+        documentId: document.id,
+        text: extractedText.text,
+        confidence: extractedText.confidence,
+        provider: extractedText.provider,
+        processingTimeMs: Date.now() - startTime,
+      };
+    } catch (error) {
+      // Update status to failed on error
+      await this.db.document.update({
+        where: { id: document.id },
+        data: { status: 'text_extraction_failed' },
+      });
+      throw error;
+    }
   }
 
   /**

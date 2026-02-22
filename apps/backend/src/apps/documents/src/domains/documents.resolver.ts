@@ -35,6 +35,7 @@ import {
   SetDocumentLocationInput,
   SetDocumentLocationResult,
 } from './dto/location.dto';
+import { ProcessScanInput, ProcessScanResult } from './dto/scan.dto';
 
 /**
  * Documents Resolver
@@ -87,6 +88,27 @@ export class DocumentsResolver {
   ): Promise<boolean> {
     const user = getUserFromContext(context);
     return this.documentsService.deleteFile(user.id, input.filename);
+  }
+
+  /**
+   * Process a camera scan: create document, store file, extract text via OCR
+   * Bridges the gap between camera capture and the analyzeDocument pipeline
+   */
+  @Mutation(() => ProcessScanResult)
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Create, subject: 'File' })
+  @Extensions({ complexity: 75 }) // Storage upload + OCR
+  async processScan(
+    @Args('input') input: ProcessScanInput,
+    @Context() context: GqlContext,
+  ): Promise<ProcessScanResult> {
+    const user = getUserFromContext(context);
+    return this.documentsService.processScan(
+      user.id,
+      input.data,
+      input.mimeType,
+      input.documentType,
+    );
   }
 
   @ResolveField(() => User)
