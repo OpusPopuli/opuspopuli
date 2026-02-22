@@ -547,6 +547,33 @@ query {
 }
 ```
 
+## Version Compatibility
+
+### Config Format Versions
+
+Region config files use a `version` field (semver) to track the config format. The platform validates required fields on startup and rejects invalid configs.
+
+| Config Version | Platform Version | Changes |
+|----------------|-----------------|---------|
+| `1.0.0` | 0.1.0+ | Initial format: `regionId`, `dataSources`, `contentGoal`, `sourceType` (`html_scrape`, `api`, `bulk_download`) |
+| `1.1.0` | 0.1.0+ | Added `stateCode` for federal placeholder resolution, `category` field on data sources |
+
+### Required Fields (all versions)
+
+**Outer envelope:** `name`, `displayName`, `version`, `config.regionId`, `config.dataSources` (at least 1)
+
+**Each data source:** `url`, `dataType`, `contentGoal`
+
+### Forward Compatibility
+
+- New optional fields may be added in minor versions (1.x.0) — older configs continue to work
+- Required field changes increment the major version — migration notes will be provided
+- The platform logs warnings for unrecognized fields but does not reject them
+
+### Updating Config Versions
+
+When the config format changes, update the `version` field in your JSON file. The platform reads the config on every restart, so no migration tool is needed — just update the file and restart.
+
 ## Troubleshooting
 
 ### Plugin Not Loading
