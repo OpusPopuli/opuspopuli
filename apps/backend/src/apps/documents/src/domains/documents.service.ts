@@ -27,6 +27,9 @@ import { DocumentAnalysis, AnalyzeDocumentResult } from './dto/analysis.dto';
 import {
   GeoLocation,
   SetDocumentLocationResult,
+  PetitionMapMarker,
+  PetitionMapStats,
+  MapFiltersInput,
   fuzzLocation,
 } from './dto/location.dto';
 import { parseAnalysisResponse } from './prompts/document-analysis.prompt';
@@ -622,6 +625,104 @@ export class DocumentsService {
     return {
       latitude: result[0].latitude,
       longitude: result[0].longitude,
+    };
+  }
+
+  /**
+   * Get petition locations for map display
+   * Returns documents with scan locations, optionally filtered by bounds/type/date
+   * Coordinates are already fuzzed at write time, safe to return directly
+   */
+  async getPetitionMapLocations(
+    filters?: MapFiltersInput,
+  ): Promise<PetitionMapMarker[]> {
+    const conditions: string[] = ['scan_location IS NOT NULL'];
+    const params: unknown[] = [];
+
+    if (filters?.bounds) {
+      const i = params.length + 1;
+      conditions.push(
+        `ST_Within(scan_location::geometry, ST_MakeEnvelope($${i}, $${i + 1}, $${i + 2}, $${i + 3}, 4326))`,
+      );
+      params.push(
+        filters.bounds.swLng,
+        filters.bounds.swLat,
+        filters.bounds.neLng,
+        filters.bounds.neLat,
+      );
+    }
+
+    if (filters?.documentType) {
+      conditions.push(`type = $${params.length + 1}`);
+      params.push(filters.documentType);
+    }
+
+    if (filters?.startDate) {
+      conditions.push(`created_at >= $${params.length + 1}`);
+      params.push(filters.startDate);
+    }
+
+    if (filters?.endDate) {
+      conditions.push(`created_at <= $${params.length + 1}`);
+      params.push(filters.endDate);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    const results = await this.db.$queryRawUnsafe<
+      Array<{
+        id: string;
+        latitude: number;
+        longitude: number;
+        document_type: string | null;
+        created_at: Date;
+      }>
+    >(
+      `SELECT
+        id::text as id,
+        ST_Y(scan_location::geometry) as latitude,
+        ST_X(scan_location::geometry) as longitude,
+        type as document_type,
+        created_at
+      FROM documents
+      WHERE ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT 5000`,
+      ...params,
+    );
+
+    return results.map((r) => ({
+      id: r.id,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      documentType: r.document_type ?? undefined,
+      createdAt: r.created_at,
+    }));
+  }
+
+  /**
+   * Get aggregated stats for the petition map sidebar
+   */
+  async getPetitionMapStats(): Promise<PetitionMapStats> {
+    const results = await this.db.$queryRaw<
+      Array<{
+        total_petitions: bigint;
+        total_with_location: bigint;
+        recent_petitions: bigint;
+      }>
+    >`
+      SELECT
+        COUNT(*) as total_petitions,
+        COUNT(scan_location) as total_with_location,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') as recent_petitions
+      FROM documents
+    `;
+
+    const stats = results[0];
+    return {
+      totalPetitions: Number(stats?.total_petitions ?? 0),
+      totalWithLocation: Number(stats?.total_with_location ?? 0),
+      recentPetitions: Number(stats?.recent_petitions ?? 0),
     };
   }
 

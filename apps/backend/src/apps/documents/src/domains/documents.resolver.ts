@@ -34,6 +34,9 @@ import {
   GeoLocation,
   SetDocumentLocationInput,
   SetDocumentLocationResult,
+  PetitionMapMarker,
+  PetitionMapStats,
+  MapFiltersInput,
 } from './dto/location.dto';
 import { ProcessScanInput, ProcessScanResult } from './dto/scan.dto';
 
@@ -216,5 +219,29 @@ export class DocumentsResolver {
   ): Promise<GeoLocation | null> {
     const user = getUserFromContext(context);
     return this.documentsService.getDocumentLocation(user.id, documentId);
+  }
+
+  /**
+   * Get petition locations for map display
+   * Returns fuzzed coordinates for all documents with scan locations
+   */
+  @Query(() => [PetitionMapMarker])
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
+  @Extensions({ complexity: 25 })
+  async petitionMapLocations(
+    @Args('filters', { nullable: true }) filters?: MapFiltersInput,
+  ): Promise<PetitionMapMarker[]> {
+    return this.documentsService.getPetitionMapLocations(filters);
+  }
+
+  /**
+   * Get aggregated stats for the petition map sidebar
+   */
+  @Query(() => PetitionMapStats)
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
+  async petitionMapStats(): Promise<PetitionMapStats> {
+    return this.documentsService.getPetitionMapStats();
   }
 }

@@ -31,6 +31,12 @@ export default function PetitionPage() {
         Start Scanning
       </Link>
       <Link
+        href="/petition/map"
+        className="mt-4 px-8 py-3 border border-gray-600 hover:border-gray-400 text-gray-300 font-medium rounded-lg transition-colors"
+      >
+        View Map
+      </Link>
+      <Link
         href="/"
         className="mt-4 text-sm text-gray-400 hover:text-gray-300 transition-colors"
       >
