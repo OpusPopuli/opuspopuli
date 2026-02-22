@@ -34,6 +34,7 @@ import {
 } from './dto/location.dto';
 import { parseAnalysisResponse } from './prompts/document-analysis.prompt';
 import { PromptClientService } from '@opuspopuli/prompt-client';
+import { MetricsService } from 'src/common/metrics';
 
 /**
  * Documents Service
@@ -56,6 +57,7 @@ export class DocumentsService {
     private readonly ocrService: OcrService,
     private readonly extractionProvider: ExtractionProvider,
     private readonly promptClient: PromptClientService,
+    private readonly metricsService: MetricsService,
   ) {
     const fileConfig: IFileConfig | undefined =
       configService.get<IFileConfig>('file');
@@ -257,6 +259,19 @@ export class DocumentsService {
         `Scan processed: document ${document.id}, ${extractedText.text.length} chars, ${extractedText.confidence.toFixed(1)}% confidence`,
       );
 
+      this.metricsService.recordScanProcessed(
+        'documents-service',
+        documentType,
+        'success',
+        (Date.now() - startTime) / 1000,
+      );
+      this.metricsService.recordOcrExtraction(
+        'documents-service',
+        extractedText.provider,
+        'success',
+        extractedText.confidence,
+      );
+
       return {
         documentId: document.id,
         text: extractedText.text,
@@ -270,6 +285,17 @@ export class DocumentsService {
         where: { id: document.id },
         data: { status: 'text_extraction_failed' },
       });
+      this.metricsService.recordScanProcessed(
+        'documents-service',
+        documentType,
+        'failure',
+        (Date.now() - startTime) / 1000,
+      );
+      this.metricsService.recordOcrExtraction(
+        'documents-service',
+        'unknown',
+        'failure',
+      );
       throw error;
     }
   }
@@ -463,6 +489,7 @@ export class DocumentsService {
         this.logger.log(
           `Cache hit for document ${documentId} (matched ${cached.id})`,
         );
+        this.metricsService.recordAnalysisCacheHit('documents-service');
         return {
           analysis: {
             ...(cached.analysis as object),
@@ -514,6 +541,14 @@ export class DocumentsService {
         `Analyzed document ${documentId} (${document.type}) in ${processingTimeMs}ms`,
       );
 
+      this.metricsService.recordAnalysisCacheMiss('documents-service');
+      this.metricsService.recordAnalysis(
+        'documents-service',
+        document.type,
+        'success',
+        processingTimeMs / 1000,
+      );
+
       return {
         analysis: analysis as unknown as DocumentAnalysis,
         fromCache: false,
@@ -524,6 +559,13 @@ export class DocumentsService {
         where: { id: documentId },
         data: { status: 'ai_analysis_failed' },
       });
+      this.metricsService.recordAnalysisCacheMiss('documents-service');
+      this.metricsService.recordAnalysis(
+        'documents-service',
+        document.type,
+        'failure',
+        (Date.now() - startTime) / 1000,
+      );
       throw error;
     }
   }

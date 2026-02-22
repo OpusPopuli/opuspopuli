@@ -15,6 +15,14 @@ describe('MetricsService', () => {
   let mockDbPoolOpen: jest.Mocked<Gauge<string>>;
   let mockDbPoolIdle: jest.Mocked<Gauge<string>>;
   let mockDbPoolBusy: jest.Mocked<Gauge<string>>;
+  let mockDocumentScansTotal: jest.Mocked<Counter<string>>;
+  let mockDocumentScanDuration: jest.Mocked<Histogram<string>>;
+  let mockOcrExtractionsTotal: jest.Mocked<Counter<string>>;
+  let mockOcrConfidence: jest.Mocked<Histogram<string>>;
+  let mockDocumentAnalysesTotal: jest.Mocked<Counter<string>>;
+  let mockDocumentAnalysisDuration: jest.Mocked<Histogram<string>>;
+  let mockAnalysisCacheHits: jest.Mocked<Counter<string>>;
+  let mockAnalysisCacheMisses: jest.Mocked<Counter<string>>;
 
   const mockOptions = { serviceName: 'test-service' };
 
@@ -64,6 +72,31 @@ describe('MetricsService', () => {
       set: jest.fn(),
     } as unknown as jest.Mocked<Gauge<string>>;
 
+    mockDocumentScansTotal = { inc: jest.fn() } as unknown as jest.Mocked<
+      Counter<string>
+    >;
+    mockDocumentScanDuration = { observe: jest.fn() } as unknown as jest.Mocked<
+      Histogram<string>
+    >;
+    mockOcrExtractionsTotal = { inc: jest.fn() } as unknown as jest.Mocked<
+      Counter<string>
+    >;
+    mockOcrConfidence = { observe: jest.fn() } as unknown as jest.Mocked<
+      Histogram<string>
+    >;
+    mockDocumentAnalysesTotal = { inc: jest.fn() } as unknown as jest.Mocked<
+      Counter<string>
+    >;
+    mockDocumentAnalysisDuration = {
+      observe: jest.fn(),
+    } as unknown as jest.Mocked<Histogram<string>>;
+    mockAnalysisCacheHits = { inc: jest.fn() } as unknown as jest.Mocked<
+      Counter<string>
+    >;
+    mockAnalysisCacheMisses = { inc: jest.fn() } as unknown as jest.Mocked<
+      Counter<string>
+    >;
+
     // Instantiate service directly with mocks (bypasses NestJS DI token issues)
     service = new MetricsService(
       mockOptions,
@@ -78,6 +111,14 @@ describe('MetricsService', () => {
       mockDbPoolOpen,
       mockDbPoolIdle,
       mockDbPoolBusy,
+      mockDocumentScansTotal,
+      mockDocumentScanDuration,
+      mockOcrExtractionsTotal,
+      mockOcrConfidence,
+      mockDocumentAnalysesTotal,
+      mockDocumentAnalysisDuration,
+      mockAnalysisCacheHits,
+      mockAnalysisCacheMisses,
     );
   });
 
@@ -317,6 +358,14 @@ describe('MetricsService', () => {
         mockDbPoolOpen,
         mockDbPoolIdle,
         mockDbPoolBusy,
+        mockDocumentScansTotal,
+        mockDocumentScanDuration,
+        mockOcrExtractionsTotal,
+        mockOcrConfidence,
+        mockDocumentAnalysesTotal,
+        mockDocumentAnalysisDuration,
+        mockAnalysisCacheHits,
+        mockAnalysisCacheMisses,
         mockDbService as unknown as DbService,
       );
 
@@ -366,6 +415,14 @@ describe('MetricsService', () => {
         mockDbPoolOpen,
         mockDbPoolIdle,
         mockDbPoolBusy,
+        mockDocumentScansTotal,
+        mockDocumentScanDuration,
+        mockOcrExtractionsTotal,
+        mockOcrConfidence,
+        mockDocumentAnalysesTotal,
+        mockDocumentAnalysisDuration,
+        mockAnalysisCacheHits,
+        mockAnalysisCacheMisses,
         mockDbService as unknown as DbService,
       );
 
@@ -405,6 +462,14 @@ describe('MetricsService', () => {
         mockDbPoolOpen,
         mockDbPoolIdle,
         mockDbPoolBusy,
+        mockDocumentScansTotal,
+        mockDocumentScanDuration,
+        mockOcrExtractionsTotal,
+        mockOcrConfidence,
+        mockDocumentAnalysesTotal,
+        mockDocumentAnalysisDuration,
+        mockAnalysisCacheHits,
+        mockAnalysisCacheMisses,
         mockDbService as unknown as DbService,
       );
 
@@ -418,6 +483,120 @@ describe('MetricsService', () => {
       expect(mockDbService.getPoolMetrics).not.toHaveBeenCalled();
 
       jest.useRealTimers();
+    });
+  });
+
+  describe('recordScanProcessed', () => {
+    it('should record successful scan with duration', () => {
+      service.recordScanProcessed(
+        'documents-service',
+        'petition',
+        'success',
+        2.5,
+      );
+
+      expect(mockDocumentScansTotal.inc).toHaveBeenCalledWith({
+        service: 'documents-service',
+        document_type: 'petition',
+        status: 'success',
+      });
+      expect(mockDocumentScanDuration.observe).toHaveBeenCalledWith(
+        { service: 'documents-service', document_type: 'petition' },
+        2.5,
+      );
+    });
+
+    it('should record failed scan without duration observation', () => {
+      service.recordScanProcessed(
+        'documents-service',
+        'petition',
+        'failure',
+        1,
+      );
+
+      expect(mockDocumentScansTotal.inc).toHaveBeenCalledWith({
+        service: 'documents-service',
+        document_type: 'petition',
+        status: 'failure',
+      });
+      expect(mockDocumentScanDuration.observe).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordOcrExtraction', () => {
+    it('should record successful OCR with confidence', () => {
+      service.recordOcrExtraction(
+        'documents-service',
+        'Tesseract',
+        'success',
+        95.5,
+      );
+
+      expect(mockOcrExtractionsTotal.inc).toHaveBeenCalledWith({
+        service: 'documents-service',
+        provider: 'Tesseract',
+        status: 'success',
+      });
+      expect(mockOcrConfidence.observe).toHaveBeenCalledWith(
+        { service: 'documents-service', provider: 'Tesseract' },
+        95.5,
+      );
+    });
+
+    it('should record failed OCR without confidence', () => {
+      service.recordOcrExtraction('documents-service', 'unknown', 'failure');
+
+      expect(mockOcrExtractionsTotal.inc).toHaveBeenCalledWith({
+        service: 'documents-service',
+        provider: 'unknown',
+        status: 'failure',
+      });
+      expect(mockOcrConfidence.observe).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordAnalysis', () => {
+    it('should record successful analysis with duration', () => {
+      service.recordAnalysis('documents-service', 'petition', 'success', 5);
+
+      expect(mockDocumentAnalysesTotal.inc).toHaveBeenCalledWith({
+        service: 'documents-service',
+        document_type: 'petition',
+        status: 'success',
+      });
+      expect(mockDocumentAnalysisDuration.observe).toHaveBeenCalledWith(
+        { service: 'documents-service', document_type: 'petition' },
+        5,
+      );
+    });
+
+    it('should record failed analysis without duration observation', () => {
+      service.recordAnalysis('documents-service', 'petition', 'failure', 1);
+
+      expect(mockDocumentAnalysesTotal.inc).toHaveBeenCalledWith({
+        service: 'documents-service',
+        document_type: 'petition',
+        status: 'failure',
+      });
+      expect(mockDocumentAnalysisDuration.observe).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordAnalysisCacheHit/Miss', () => {
+    it('should increment cache hit counter', () => {
+      service.recordAnalysisCacheHit('documents-service');
+
+      expect(mockAnalysisCacheHits.inc).toHaveBeenCalledWith({
+        service: 'documents-service',
+      });
+    });
+
+    it('should increment cache miss counter', () => {
+      service.recordAnalysisCacheMiss('documents-service');
+
+      expect(mockAnalysisCacheMisses.inc).toHaveBeenCalledWith({
+        service: 'documents-service',
+      });
     });
   });
 });

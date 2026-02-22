@@ -83,6 +83,32 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     @InjectMetric('db_pool_connections_busy')
     private readonly dbPoolBusy: Gauge<string>,
 
+    // Business Metrics: Document Processing Pipeline
+    // @see https://github.com/OpusPopuli/opuspopuli/issues/308
+    @InjectMetric('document_scans_total')
+    private readonly documentScansTotal: Counter<string>,
+
+    @InjectMetric('document_scan_duration_seconds')
+    private readonly documentScanDuration: Histogram<string>,
+
+    @InjectMetric('ocr_extractions_total')
+    private readonly ocrExtractionsTotal: Counter<string>,
+
+    @InjectMetric('ocr_confidence')
+    private readonly ocrConfidenceHistogram: Histogram<string>,
+
+    @InjectMetric('document_analyses_total')
+    private readonly documentAnalysesTotal: Counter<string>,
+
+    @InjectMetric('document_analysis_duration_seconds')
+    private readonly documentAnalysisDuration: Histogram<string>,
+
+    @InjectMetric('document_analysis_cache_hits_total')
+    private readonly analysisCacheHits: Counter<string>,
+
+    @InjectMetric('document_analysis_cache_misses_total')
+    private readonly analysisCacheMisses: Counter<string>,
+
     // Optional: DbService for pool metrics collection
     @Optional()
     private readonly dbService?: DbService,
@@ -203,6 +229,85 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
    */
   recordSubgraphRequest(subgraph: string, durationSeconds: number): void {
     this.subgraphRequestDuration.observe({ subgraph }, durationSeconds);
+  }
+
+  // === Business Metrics: Document Processing Pipeline ===
+  // @see https://github.com/OpusPopuli/opuspopuli/issues/308
+
+  /**
+   * Record a document scan completion (success or failure)
+   * Duration is only observed on success — failed scans may abort early.
+   */
+  recordScanProcessed(
+    service: string,
+    documentType: string,
+    status: 'success' | 'failure',
+    durationSeconds: number,
+  ): void {
+    this.documentScansTotal.inc({
+      service,
+      document_type: documentType,
+      status,
+    });
+    if (status === 'success') {
+      this.documentScanDuration.observe(
+        { service, document_type: documentType },
+        durationSeconds,
+      );
+    }
+  }
+
+  /**
+   * Record OCR extraction outcome
+   * Confidence is only observed on success.
+   */
+  recordOcrExtraction(
+    service: string,
+    provider: string,
+    status: 'success' | 'failure',
+    confidence?: number,
+  ): void {
+    this.ocrExtractionsTotal.inc({ service, provider, status });
+    if (status === 'success' && confidence !== undefined) {
+      this.ocrConfidenceHistogram.observe({ service, provider }, confidence);
+    }
+  }
+
+  /**
+   * Record document analysis outcome
+   * Duration is only observed on success.
+   */
+  recordAnalysis(
+    service: string,
+    documentType: string,
+    status: 'success' | 'failure',
+    durationSeconds: number,
+  ): void {
+    this.documentAnalysesTotal.inc({
+      service,
+      document_type: documentType,
+      status,
+    });
+    if (status === 'success') {
+      this.documentAnalysisDuration.observe(
+        { service, document_type: documentType },
+        durationSeconds,
+      );
+    }
+  }
+
+  /**
+   * Record analysis cache hit
+   */
+  recordAnalysisCacheHit(service: string): void {
+    this.analysisCacheHits.inc({ service });
+  }
+
+  /**
+   * Record analysis cache miss
+   */
+  recordAnalysisCacheMiss(service: string): void {
+    this.analysisCacheMisses.inc({ service });
   }
 
   /**
