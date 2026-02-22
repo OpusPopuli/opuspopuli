@@ -55,8 +55,7 @@
       "@isaacs/brace-expansion": ">=5.0.1",
       "minimatch": ">=10.2.1",
       "langsmith": ">=0.4.6",
-      "@langchain/community": ">=1.1.14",
-      "ajv": ">=8.18.0"
+      "@langchain/community": ">=1.1.14"
     }
   }
 }
