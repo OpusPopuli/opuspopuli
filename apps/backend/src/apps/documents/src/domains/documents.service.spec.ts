@@ -11,6 +11,7 @@ import { IStorageProvider } from '@opuspopuli/storage-provider';
 import { OcrService } from '@opuspopuli/ocr-provider';
 import { ExtractionProvider } from '@opuspopuli/extraction-provider';
 import { PromptClientService } from '@opuspopuli/prompt-client';
+import { MetricsService } from 'src/common/metrics';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 
 // Mock global fetch
@@ -86,6 +87,14 @@ describe('DocumentsService', () => {
     }),
   };
 
+  const mockMetricsService = {
+    recordScanProcessed: jest.fn(),
+    recordOcrExtraction: jest.fn(),
+    recordAnalysis: jest.fn(),
+    recordAnalysisCacheHit: jest.fn(),
+    recordAnalysisCacheMiss: jest.fn(),
+  };
+
   beforeEach(async () => {
     mockDb = createMockDbService();
     jest.clearAllMocks();
@@ -119,6 +128,10 @@ describe('DocumentsService', () => {
         {
           provide: PromptClientService,
           useValue: mockPromptClient,
+        },
+        {
+          provide: MetricsService,
+          useValue: mockMetricsService,
         },
       ],
     }).compile();
@@ -378,6 +391,20 @@ describe('DocumentsService', () => {
           status: 'text_extraction_complete',
         }),
       });
+
+      // Verify metrics were recorded
+      expect(mockMetricsService.recordScanProcessed).toHaveBeenCalledWith(
+        'documents-service',
+        DocumentType.petition,
+        'success',
+        expect.any(Number),
+      );
+      expect(mockMetricsService.recordOcrExtraction).toHaveBeenCalledWith(
+        'documents-service',
+        'Tesseract',
+        'success',
+        95.5,
+      );
     });
 
     it('should default documentType to petition', async () => {
@@ -442,6 +469,19 @@ describe('DocumentsService', () => {
         where: { id: 'scan-doc-1' },
         data: { status: 'text_extraction_failed' },
       });
+
+      // Verify failure metrics were recorded
+      expect(mockMetricsService.recordScanProcessed).toHaveBeenCalledWith(
+        'documents-service',
+        DocumentType.petition,
+        'failure',
+        expect.any(Number),
+      );
+      expect(mockMetricsService.recordOcrExtraction).toHaveBeenCalledWith(
+        'documents-service',
+        'unknown',
+        'failure',
+      );
     });
 
     it('should set status to failed on storage upload error', async () => {
@@ -459,6 +499,14 @@ describe('DocumentsService', () => {
         where: { id: 'scan-doc-1' },
         data: { status: 'text_extraction_failed' },
       });
+
+      // Verify failure metrics were recorded
+      expect(mockMetricsService.recordScanProcessed).toHaveBeenCalledWith(
+        'documents-service',
+        DocumentType.petition,
+        'failure',
+        expect.any(Number),
+      );
     });
   });
 
@@ -895,6 +943,17 @@ describe('DocumentsService', () => {
           status: 'ai_analysis_complete',
         },
       });
+
+      // Verify metrics were recorded
+      expect(mockMetricsService.recordAnalysisCacheMiss).toHaveBeenCalledWith(
+        'documents-service',
+      );
+      expect(mockMetricsService.recordAnalysis).toHaveBeenCalledWith(
+        'documents-service',
+        DocumentType.petition,
+        'success',
+        expect.any(Number),
+      );
     });
 
     it('should return cached analysis when contentHash matches', async () => {
@@ -918,6 +977,12 @@ describe('DocumentsService', () => {
       expect(result.fromCache).toBe(true);
       expect(result.analysis.cachedFrom).toBe('cached-doc');
       expect(mockLLMProvider.generate).not.toHaveBeenCalled();
+
+      // Verify cache hit metric was recorded
+      expect(mockMetricsService.recordAnalysisCacheHit).toHaveBeenCalledWith(
+        'documents-service',
+      );
+      expect(mockMetricsService.recordAnalysisCacheMiss).not.toHaveBeenCalled();
     });
 
     it('should bypass cache when forceReanalyze is true', async () => {
@@ -967,6 +1032,17 @@ describe('DocumentsService', () => {
         where: { id: 'doc-1' },
         data: { status: 'ai_analysis_failed' },
       });
+
+      // Verify failure metrics were recorded
+      expect(mockMetricsService.recordAnalysisCacheMiss).toHaveBeenCalledWith(
+        'documents-service',
+      );
+      expect(mockMetricsService.recordAnalysis).toHaveBeenCalledWith(
+        'documents-service',
+        DocumentType.petition,
+        'failure',
+        expect.any(Number),
+      );
     });
 
     it('should handle LLM response with markdown code blocks', async () => {
@@ -1354,6 +1430,10 @@ describe('DocumentsService - config validation', () => {
           },
           {
             provide: PromptClientService,
+            useValue: {},
+          },
+          {
+            provide: MetricsService,
             useValue: {},
           },
         ],

@@ -145,6 +145,51 @@ export class MetricsModule {
         help: 'Number of busy database connections',
         labelNames: ['service'],
       }),
+      // === Business Metrics: Document Processing Pipeline ===
+      // @see https://github.com/OpusPopuli/opuspopuli/issues/308
+      makeCounterProvider({
+        name: 'document_scans_total',
+        help: 'Total number of document scans processed',
+        labelNames: ['service', 'document_type', 'status'],
+      }),
+      makeHistogramProvider({
+        name: 'document_scan_duration_seconds',
+        help: 'Duration of scan processing (upload + OCR) in seconds',
+        labelNames: ['service', 'document_type'],
+        buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30],
+      }),
+      makeCounterProvider({
+        name: 'ocr_extractions_total',
+        help: 'Total OCR extraction attempts',
+        labelNames: ['service', 'provider', 'status'],
+      }),
+      makeHistogramProvider({
+        name: 'ocr_confidence',
+        help: 'Distribution of OCR confidence scores (0-100)',
+        labelNames: ['service', 'provider'],
+        buckets: [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100],
+      }),
+      makeCounterProvider({
+        name: 'document_analyses_total',
+        help: 'Total document analysis attempts',
+        labelNames: ['service', 'document_type', 'status'],
+      }),
+      makeHistogramProvider({
+        name: 'document_analysis_duration_seconds',
+        help: 'Duration of AI document analysis in seconds',
+        labelNames: ['service', 'document_type'],
+        buckets: [0.5, 1, 2.5, 5, 10, 30, 60],
+      }),
+      makeCounterProvider({
+        name: 'document_analysis_cache_hits_total',
+        help: 'Total analysis cache hits',
+        labelNames: ['service'],
+      }),
+      makeCounterProvider({
+        name: 'document_analysis_cache_misses_total',
+        help: 'Total analysis cache misses',
+        labelNames: ['service'],
+      }),
     ];
 
     return {
