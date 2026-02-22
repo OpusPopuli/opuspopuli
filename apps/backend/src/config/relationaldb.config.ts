@@ -22,12 +22,9 @@ function parseOptionalBool(value: string | undefined): boolean | undefined {
  *
  * Maps RELATIONAL_DB_* environment variables to nested config.
  *
- * Connection pool settings:
- * - RELATIONAL_DB_POOL_MAX: Maximum connections (default: 20)
- * - RELATIONAL_DB_POOL_MIN: Minimum connections (default: 5)
- * - RELATIONAL_DB_IDLE_TIMEOUT_MS: Idle timeout in ms (default: 30000)
- * - RELATIONAL_DB_CONNECTION_TIMEOUT_MS: Connection timeout in ms (default: 5000)
- * - RELATIONAL_DB_ACQUIRE_TIMEOUT_MS: Acquire timeout in ms (default: 10000)
+ * Connection pool settings are handled directly by Prisma via DATABASE_URL
+ * query parameters. See DbService.buildDatasourceUrl() for details.
+ * Env vars: PRISMA_CONNECTION_LIMIT, PRISMA_POOL_TIMEOUT
  *
  * Connection retry settings (exponential backoff):
  * - RELATIONAL_DB_RETRY_MAX_ATTEMPTS: Max retry attempts (default: 5)
@@ -44,19 +41,6 @@ export default registerAs('relationaldb', () => ({
     username: process.env.RELATIONAL_DB_USERNAME || 'postgres',
     password: process.env.RELATIONAL_DB_PASSWORD || 'postgres',
     ssl: process.env.RELATIONAL_DB_SSL === 'true',
-    pool: {
-      max: parseOptionalInt(process.env.RELATIONAL_DB_POOL_MAX),
-      min: parseOptionalInt(process.env.RELATIONAL_DB_POOL_MIN),
-      idleTimeoutMs: parseOptionalInt(
-        process.env.RELATIONAL_DB_IDLE_TIMEOUT_MS,
-      ),
-      connectionTimeoutMs: parseOptionalInt(
-        process.env.RELATIONAL_DB_CONNECTION_TIMEOUT_MS,
-      ),
-      acquireTimeoutMs: parseOptionalInt(
-        process.env.RELATIONAL_DB_ACQUIRE_TIMEOUT_MS,
-      ),
-    },
     retry: {
       maxAttempts: parseOptionalInt(
         process.env.RELATIONAL_DB_RETRY_MAX_ATTEMPTS,

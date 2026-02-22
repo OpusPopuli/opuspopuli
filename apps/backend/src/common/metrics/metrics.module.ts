@@ -129,6 +129,22 @@ export class MetricsModule {
         labelNames: ['subgraph'],
         buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
       }),
+      // Database connection pool metrics (from Prisma metrics preview feature)
+      makeGaugeProvider({
+        name: 'db_pool_connections_open',
+        help: 'Number of open database connections',
+        labelNames: ['service'],
+      }),
+      makeGaugeProvider({
+        name: 'db_pool_connections_idle',
+        help: 'Number of idle database connections',
+        labelNames: ['service'],
+      }),
+      makeGaugeProvider({
+        name: 'db_pool_connections_busy',
+        help: 'Number of busy database connections',
+        labelNames: ['service'],
+      }),
     ];
 
     return {
