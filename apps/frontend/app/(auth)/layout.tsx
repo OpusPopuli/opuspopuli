@@ -45,7 +45,7 @@ export default function AuthLayout({
             Opus Populi
           </a>
         </p>
-        <p className="text-xs text-[#888888]">
+        <p className="text-xs text-[#666666]">
           <Link href="/privacy" className="hover:underline">
             Privacy Policy
           </Link>
