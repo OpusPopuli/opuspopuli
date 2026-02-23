@@ -608,6 +608,19 @@ export const HAS_VALID_CONSENT = gql`
 `;
 
 // ============================================
+// Data Export Mutations
+// ============================================
+
+export const EXPORT_MY_DATA = gql`
+  mutation ExportMyData {
+    exportMyData {
+      exportedAt
+      data
+    }
+  }
+`;
+
+// ============================================
 // Response Types
 // ============================================
 
@@ -665,6 +678,13 @@ export interface WithdrawConsentData {
 
 export interface HasValidConsentData {
   hasValidConsent: boolean;
+}
+
+export interface ExportMyDataData {
+  exportMyData: {
+    exportedAt: string;
+    data: Record<string, unknown>;
+  };
 }
 
 export interface MyProfileCompletionData {
