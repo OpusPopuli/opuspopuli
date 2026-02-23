@@ -7,6 +7,7 @@ import PrivacyPage from "@/app/settings/privacy/page";
 const mockRefetch = jest.fn();
 const mockUpdateConsent = jest.fn();
 const mockWithdrawConsent = jest.fn();
+const mockExportMyData = jest.fn();
 
 let mockQueryResult = {
   data: null as { myConsents: unknown[] } | null,
@@ -18,6 +19,7 @@ let mockQueryResult = {
 const mockMutationResults = {
   update: { loading: false },
   withdraw: { loading: false },
+  export: { loading: false },
 };
 
 jest.mock("@apollo/client/react", () => ({
@@ -28,6 +30,9 @@ jest.mock("@apollo/client/react", () => ({
     }
     if (mutation === require("@/lib/graphql/profile").WITHDRAW_CONSENT) {
       return [mockWithdrawConsent, mockMutationResults.withdraw];
+    }
+    if (mutation === require("@/lib/graphql/profile").EXPORT_MY_DATA) {
+      return [mockExportMyData, mockMutationResults.export];
     }
     return [jest.fn(), { loading: false }];
   },
@@ -321,6 +326,67 @@ describe("PrivacyPage", () => {
       expect(
         screen.getByRole("button", { name: "Delete Account" }),
       ).toBeInTheDocument();
+    });
+
+    it("should call exportMyData and trigger download on export click", async () => {
+      const user = userEvent.setup();
+      const mockExportResult = {
+        data: {
+          exportMyData: {
+            exportedAt: "2026-02-16T00:00:00.000Z",
+            data: { account: { email: "test@example.com" } },
+          },
+        },
+      };
+      mockExportMyData.mockResolvedValueOnce(mockExportResult);
+
+      // Mock URL.createObjectURL and URL.revokeObjectURL
+      const mockUrl = "blob:http://localhost/mock-blob";
+      globalThis.URL.createObjectURL = jest.fn().mockReturnValue(mockUrl);
+      globalThis.URL.revokeObjectURL = jest.fn();
+
+      // Mock createElement to capture the download link
+      const mockClick = jest.fn();
+      const originalCreateElement = document.createElement.bind(document);
+      jest.spyOn(document, "createElement").mockImplementation((tag) => {
+        if (tag === "a") {
+          const el = originalCreateElement("a");
+          el.click = mockClick;
+          return el;
+        }
+        return originalCreateElement(tag);
+      });
+
+      render(<PrivacyPage />);
+
+      const exportButton = screen.getByRole("button", {
+        name: "Request Export",
+      });
+      await user.click(exportButton);
+
+      await waitFor(() => {
+        expect(mockExportMyData).toHaveBeenCalled();
+        expect(mockClick).toHaveBeenCalled();
+        expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith(mockUrl);
+      });
+
+      jest.restoreAllMocks();
+    });
+
+    it("should show error alert when export fails", async () => {
+      const user = userEvent.setup();
+      mockExportMyData.mockRejectedValueOnce(new Error("Export failed"));
+
+      render(<PrivacyPage />);
+
+      const exportButton = screen.getByRole("button", {
+        name: "Request Export",
+      });
+      await user.click(exportButton);
+
+      await waitFor(() => {
+        expect(globalThis.alert).toHaveBeenCalledWith("Export failed");
+      });
     });
   });
 

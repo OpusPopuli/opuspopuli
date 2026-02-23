@@ -11,6 +11,7 @@ import { UserProfileModel } from './models/user-profile.model';
 import { UserAddressModel } from './models/user-address.model';
 import { NotificationPreferenceModel } from './models/notification-preference.model';
 import { UserConsentModel } from './models/user-consent.model';
+import { DataExportResult } from './models/data-export-result.model';
 
 describe('ProfileResolver', () => {
   let resolver: ProfileResolver;
@@ -430,6 +431,43 @@ describe('ProfileResolver', () => {
           userAgent: 'test-agent',
         }),
       );
+    });
+  });
+
+  // ============================================
+  // Data Export Tests
+  // ============================================
+
+  describe('exportMyData', () => {
+    const mockExportResult: DataExportResult = {
+      exportedAt: '2026-02-16T00:00:00.000Z',
+      data: {
+        account: { id: mockUserId, email: mockUserEmail },
+        profile: { firstName: 'John' },
+        addresses: [],
+        consents: [],
+        sessions: [],
+        notificationPreferences: null,
+        emailCorrespondence: [],
+        passkeyCredentials: [],
+      },
+    };
+
+    it('should return exported data for authenticated user', async () => {
+      profileService.exportUserData = jest
+        .fn()
+        .mockResolvedValue(mockExportResult);
+
+      const result = await resolver.exportMyData(mockContext as any);
+
+      expect(result).toEqual(mockExportResult);
+      expect(profileService.exportUserData).toHaveBeenCalledWith(mockUserId);
+    });
+
+    it('should throw UserInputError if user not authenticated', async () => {
+      await expect(
+        resolver.exportMyData(mockContextNoUser as any),
+      ).rejects.toThrow(UserInputError);
     });
   });
 

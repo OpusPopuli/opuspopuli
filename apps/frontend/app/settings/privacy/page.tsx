@@ -6,9 +6,11 @@ import {
   GET_MY_CONSENTS,
   UPDATE_CONSENT,
   WITHDRAW_CONSENT,
+  EXPORT_MY_DATA,
   MyConsentsData,
   UpdateConsentData,
   WithdrawConsentData,
+  ExportMyDataData,
   UserConsent,
   ConsentType,
   ConsentStatus,
@@ -177,6 +179,8 @@ export default function PrivacyPage() {
     useMutation<UpdateConsentData>(UPDATE_CONSENT);
   const [withdrawConsent, { loading: withdrawing }] =
     useMutation<WithdrawConsentData>(WITHDRAW_CONSENT);
+  const [exportMyData, { loading: exporting }] =
+    useMutation<ExportMyDataData>(EXPORT_MY_DATA);
 
   const consents = data?.myConsents || [];
   const getConsent = (type: ConsentType) =>
@@ -197,6 +201,25 @@ export default function PrivacyPage() {
         });
       }
       refetch();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("common:errors.generic"));
+    }
+  };
+
+  const handleExportData = async () => {
+    try {
+      const { data: exportData } = await exportMyData();
+      if (exportData?.exportMyData) {
+        const json = JSON.stringify(exportData.exportMyData.data, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const date = new Date().toISOString().split("T")[0];
+        a.href = url;
+        a.download = `opuspopuli-data-export-${date}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : t("common:errors.generic"));
     }
@@ -310,8 +333,12 @@ export default function PrivacyPage() {
                 {t("privacy.dataManagement.exportDesc")}
               </p>
             </div>
-            <button className="px-4 py-2 text-sm font-medium border border-gray-200 text-[#222222] rounded-lg hover:bg-gray-50 transition-colors">
-              {t("privacy.dataManagement.exportButton")}
+            <button
+              onClick={handleExportData}
+              disabled={exporting}
+              className="px-4 py-2 text-sm font-medium border border-gray-200 text-[#222222] rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              {exporting ? "..." : t("privacy.dataManagement.exportButton")}
             </button>
           </div>
 

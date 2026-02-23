@@ -17,6 +17,7 @@ import {
   WithdrawConsentDto,
 } from './dto/consent.dto';
 import { ProfileCompletionResult } from './models/profile-completion.model';
+import { DataExportResult } from './models/data-export-result.model';
 import { UserProfileModel } from './models/user-profile.model';
 import { UserAddressModel } from './models/user-address.model';
 import { NotificationPreferenceModel } from './models/notification-preference.model';
@@ -264,6 +265,18 @@ export class ProfileResolver {
       metadata,
     );
     return consent as unknown as UserConsentModel;
+  }
+
+  // ============================================
+  // Data Export Mutations
+  // ============================================
+
+  @Mutation(() => DataExportResult)
+  async exportMyData(
+    @Context() context: GqlContext,
+  ): Promise<DataExportResult> {
+    const user = getUserFromContext(context);
+    return this.profileService.exportUserData(user.id);
   }
 
   @Query(() => Boolean)
