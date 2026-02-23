@@ -214,7 +214,7 @@ export default function PrivacyPolicyPage() {
                 >
                   Cloudflare&apos;s Privacy Policy
                 </a>
-                .
+                {"."}
               </li>
               <li>
                 <strong>Supabase:</strong> Database and authentication
@@ -227,7 +227,7 @@ export default function PrivacyPolicyPage() {
                 >
                   Supabase&apos;s Privacy Policy
                 </a>
-                .
+                {"."}
               </li>
               <li>
                 <strong>AI/LLM Processing:</strong> We use locally-hosted AI
@@ -280,7 +280,7 @@ export default function PrivacyPolicyPage() {
               >
                 privacy@opuspopuli.org
               </a>
-              .
+              {"."}
             </p>
           </section>
         </div>
