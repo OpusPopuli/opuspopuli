@@ -6,11 +6,21 @@ jest.mock("@/components/Header", () => ({
   Header: () => <header data-testid="mock-header">Mock Header</header>,
 }));
 
+jest.mock("@/components/Footer", () => ({
+  Footer: () => <footer data-testid="mock-footer">Mock Footer</footer>,
+}));
+
 import Home from "../app/page";
 
 describe("Home Page", () => {
   beforeEach(() => {
     render(<Home />);
+  });
+
+  describe("Layout", () => {
+    it("should render the footer", () => {
+      expect(screen.getByTestId("mock-footer")).toBeInTheDocument();
+    });
   });
 
   describe("Header section", () => {

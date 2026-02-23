@@ -473,6 +473,114 @@ export class ProfileService {
     return true;
   }
 
+  // ============================================
+  // Data Export Methods
+  // ============================================
+
+  async exportUserData(
+    userId: string,
+  ): Promise<{ exportedAt: string; data: Record<string, unknown> }> {
+    const [
+      user,
+      profile,
+      addresses,
+      consents,
+      sessions,
+      notifications,
+      emails,
+      passkeys,
+    ] = await Promise.all([
+      this.db.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          authStrategy: true,
+          created: true,
+          updated: true,
+        },
+      }),
+      this.db.userProfile.findUnique({ where: { userId } }),
+      this.db.userAddress.findMany({ where: { userId } }),
+      this.db.userConsent.findMany({ where: { userId } }),
+      this.db.userSession.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          deviceType: true,
+          deviceName: true,
+          browser: true,
+          operatingSystem: true,
+          city: true,
+          region: true,
+          country: true,
+          isActive: true,
+          lastActivityAt: true,
+          createdAt: true,
+        },
+      }),
+      this.db.notificationPreference.findUnique({ where: { userId } }),
+      this.db.emailCorrespondence.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          emailType: true,
+          status: true,
+          recipientEmail: true,
+          subject: true,
+          representativeName: true,
+          propositionTitle: true,
+          sentAt: true,
+          createdAt: true,
+        },
+      }),
+      this.db.passkeyCredential.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          deviceType: true,
+          friendlyName: true,
+          createdAt: true,
+          lastUsedAt: true,
+        },
+      }),
+    ]);
+
+    // Redact sensitive fields from addresses and consents
+    const sanitizedAddresses = addresses.map((addr) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { latitude, longitude, placeId, ...safe } = addr;
+      return safe;
+    });
+
+    const sanitizedConsents = consents.map((c) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { ipAddress, userAgent, ...safe } = c;
+      return safe;
+    });
+
+    return {
+      exportedAt: new Date().toISOString(),
+      data: {
+        account: user,
+        profile: profile
+          ? {
+              ...profile,
+              avatarStorageKey: undefined,
+            }
+          : null,
+        addresses: sanitizedAddresses,
+        consents: sanitizedConsents,
+        sessions,
+        notificationPreferences: notifications,
+        emailCorrespondence: emails,
+        passkeyCredentials: passkeys,
+      },
+    };
+  }
+
   async getRequiredConsentsStatus(
     userId: string,
   ): Promise<{ type: ConsentType; granted: boolean }[]> {

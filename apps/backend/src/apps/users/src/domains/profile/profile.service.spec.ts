@@ -566,6 +566,132 @@ describe('ProfileService', () => {
     });
   });
 
+  // ============================================
+  // Data Export Tests
+  // ============================================
+
+  describe('exportUserData', () => {
+    const mockUser: any = {
+      id: mockUserId,
+      email: 'test@example.com',
+      firstName: 'John',
+      lastName: 'Doe',
+      authStrategy: 'passkey',
+      created: new Date(),
+      updated: new Date(),
+    };
+
+    const mockSession: any = {
+      id: 'session-id',
+      deviceType: 'desktop',
+      deviceName: 'Chrome on macOS',
+      browser: 'Chrome',
+      operatingSystem: 'macOS',
+      city: 'San Francisco',
+      region: 'CA',
+      country: 'US',
+      isActive: true,
+      lastActivityAt: new Date(),
+      createdAt: new Date(),
+    };
+
+    const mockEmail: any = {
+      id: 'email-id',
+      emailType: 'representative_contact',
+      status: 'sent',
+      recipientEmail: 'rep@example.com',
+      subject: 'Test Subject',
+      representativeName: 'Rep Name',
+      propositionTitle: null,
+      sentAt: new Date(),
+      createdAt: new Date(),
+    };
+
+    const mockPasskey: any = {
+      id: 'passkey-id',
+      deviceType: 'platform',
+      friendlyName: 'MacBook Pro',
+      createdAt: new Date(),
+      lastUsedAt: new Date(),
+    };
+
+    beforeEach(() => {
+      mockDb.user.findUnique.mockResolvedValue(mockUser);
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.userConsent.findMany.mockResolvedValue([mockConsent]);
+      mockDb.userSession.findMany.mockResolvedValue([mockSession]);
+      mockDb.notificationPreference.findUnique.mockResolvedValue(
+        mockNotificationPrefs,
+      );
+      mockDb.emailCorrespondence.findMany.mockResolvedValue([mockEmail]);
+      mockDb.passkeyCredential.findMany.mockResolvedValue([mockPasskey]);
+    });
+
+    it('should return exported data with all sections', async () => {
+      const result = await service.exportUserData(mockUserId);
+
+      expect(result.exportedAt).toBeDefined();
+      expect(result.data.account).toEqual(mockUser);
+      expect(result.data.profile).toBeDefined();
+      expect(result.data.addresses).toHaveLength(1);
+      expect(result.data.consents).toHaveLength(1);
+      expect(result.data.sessions).toHaveLength(1);
+      expect(result.data.notificationPreferences).toEqual(
+        mockNotificationPrefs,
+      );
+      expect(result.data.emailCorrespondence).toHaveLength(1);
+      expect(result.data.passkeyCredentials).toHaveLength(1);
+    });
+
+    it('should exclude sensitive address fields', async () => {
+      const result = await service.exportUserData(mockUserId);
+      const exportedAddress = (result.data.addresses as any[])[0];
+
+      expect(exportedAddress.latitude).toBeUndefined();
+      expect(exportedAddress.longitude).toBeUndefined();
+      expect(exportedAddress.placeId).toBeUndefined();
+      expect(exportedAddress.city).toBe('New York');
+    });
+
+    it('should exclude sensitive consent metadata', async () => {
+      const consentWithMeta = {
+        ...mockConsent,
+        ipAddress: '192.168.1.1',
+        userAgent: 'Mozilla/5.0',
+      };
+      mockDb.userConsent.findMany.mockResolvedValue([consentWithMeta]);
+
+      const result = await service.exportUserData(mockUserId);
+      const exportedConsent = (result.data.consents as any[])[0];
+
+      expect(exportedConsent.ipAddress).toBeUndefined();
+      expect(exportedConsent.userAgent).toBeUndefined();
+      expect(exportedConsent.consentType).toBe(ConsentType.TERMS_OF_SERVICE);
+    });
+
+    it('should exclude avatarStorageKey from profile', async () => {
+      const profileWithKey = {
+        ...mockProfile,
+        avatarStorageKey: 'avatars/user-123/photo.jpg',
+      };
+      mockDb.userProfile.findUnique.mockResolvedValue(profileWithKey);
+
+      const result = await service.exportUserData(mockUserId);
+      const exportedProfile = result.data.profile as any;
+
+      expect(exportedProfile.avatarStorageKey).toBeUndefined();
+    });
+
+    it('should handle null profile gracefully', async () => {
+      mockDb.userProfile.findUnique.mockResolvedValue(null);
+
+      const result = await service.exportUserData(mockUserId);
+
+      expect(result.data.profile).toBeNull();
+    });
+  });
+
   describe('getRequiredConsentsStatus', () => {
     it('should return status of required consents', async () => {
       mockDb.userConsent.findFirst.mockResolvedValue(mockConsent);
