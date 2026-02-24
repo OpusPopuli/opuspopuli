@@ -5,6 +5,7 @@ import { DocumentsResolver } from './documents.resolver';
 import { DocumentsService } from './documents.service';
 import { File } from './models/file.model';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
+import { SubmitAbuseReportInput } from './dto/abuse-report.dto';
 
 describe('DocumentsResolver', () => {
   let documentsResolver: DocumentsResolver;
@@ -164,6 +165,48 @@ describe('DocumentsResolver', () => {
       const result = documentsResolver.user(file);
 
       expect(result).toEqual({ id: 'user-1' });
+    });
+  });
+
+  describe('submitAbuseReport', () => {
+    it('should call service with correct arguments', async () => {
+      const mockResult = { success: true, reportId: 'report-1' };
+      documentsService.submitAbuseReport = jest
+        .fn()
+        .mockResolvedValue(mockResult);
+
+      const input: SubmitAbuseReportInput = {
+        documentId: 'doc-1',
+        reason: 'incorrect_analysis' as SubmitAbuseReportInput['reason'],
+        description: 'Summary is wrong',
+      };
+
+      const result = await documentsResolver.submitAbuseReport(
+        input,
+        mockContext,
+      );
+
+      expect(result).toEqual(mockResult);
+      expect(documentsService.submitAbuseReport).toHaveBeenCalledWith(
+        'user-1',
+        'doc-1',
+        'incorrect_analysis',
+        'Summary is wrong',
+      );
+    });
+
+    it('should throw error when user not authenticated', async () => {
+      const noUserContext = { req: { user: undefined, headers: {} } };
+
+      await expect(
+        documentsResolver.submitAbuseReport(
+          {
+            documentId: 'doc-1',
+            reason: 'other' as SubmitAbuseReportInput['reason'],
+          },
+          noUserContext,
+        ),
+      ).rejects.toThrow('User not authenticated');
     });
   });
 });

@@ -26,6 +26,11 @@ jest.mock("react-i18next", () => ({
   }),
 }));
 
+// Mock toast
+jest.mock("@/lib/toast", () => ({
+  useToast: () => ({ showToast: jest.fn() }),
+}));
+
 // Mock Apollo Client mutations
 const mockProcessScan = jest.fn();
 const mockAnalyzeDocument = jest.fn();
@@ -286,6 +291,16 @@ describe("PetitionResultsPage", () => {
     await user.click(backButton);
 
     expect(mockPush).toHaveBeenCalledWith("/petition");
+  });
+
+  it("should show Report Issue button when analysis is complete", async () => {
+    sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+
+    render(<PetitionResultsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("report.button")).toBeInTheDocument();
+    });
   });
 
   it("should navigate to /petition/capture when try again is clicked", async () => {

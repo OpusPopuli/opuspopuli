@@ -90,5 +90,24 @@
     "backToHome": "Back to Home",
     "tryAgain": "Scan Again",
     "copiedToClipboard": "Analysis copied to clipboard"
+  },
+  "report": {
+    "button": "Report Issue",
+    "buttonLabel": "Report an issue with this analysis",
+    "title": "What's wrong with this analysis?",
+    "reasons": {
+      "incorrectAnalysis": "Analysis is incorrect or misleading",
+      "offensiveContent": "Contains offensive content",
+      "wrongDocumentType": "Wrong document type detected",
+      "privacyConcern": "Contains private information",
+      "other": "Other issue"
+    },
+    "descriptionPlaceholder": "Additional details (optional)",
+    "submit": "Submit Report",
+    "submitting": "Submitting...",
+    "success": "Report submitted. Thank you for your feedback.",
+    "error": "Failed to submit report. Please try again.",
+    "alreadyReported": "You have already reported this document.",
+    "submitted": "Reported"
   }
 }
