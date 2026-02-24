@@ -69,6 +69,7 @@ export type {
   Expenditure,
   IndependentExpenditure,
   PromptTemplate,
+  AbuseReport,
 } from "@prisma/client";
 
 // Re-export database enums
@@ -88,6 +89,8 @@ export {
   DocumentStatus,
   DocumentType,
   PromptCategory,
+  AbuseReportReason,
+  AbuseReportStatus,
 } from "@prisma/client";
 
 // Test utilities are available from "@opuspopuli/relationaldb-provider/testing"

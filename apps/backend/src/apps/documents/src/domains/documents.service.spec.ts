@@ -1390,6 +1390,122 @@ describe('DocumentsService', () => {
       expect(mockDb.$queryRaw).toHaveBeenCalled();
     });
   });
+
+  describe('submitAbuseReport', () => {
+    it('should create abuse report successfully', async () => {
+      mockDb.document.findUnique.mockResolvedValue({
+        id: 'doc-1',
+        userId: 'user-1',
+      } as any);
+      mockDb.abuseReport.findFirst.mockResolvedValue(null);
+      mockDb.abuseReport.create.mockResolvedValue({
+        id: 'report-1',
+        documentId: 'doc-1',
+        reporterId: 'user-2',
+        reason: 'incorrect_analysis',
+        description: 'The summary is wrong',
+        status: 'pending',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
+
+      const result = await documentsService.submitAbuseReport(
+        'user-2',
+        'doc-1',
+        'incorrect_analysis' as any,
+        'The summary is wrong',
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.reportId).toBe('report-1');
+      expect(mockDb.abuseReport.create).toHaveBeenCalledWith({
+        data: {
+          documentId: 'doc-1',
+          reporterId: 'user-2',
+          reason: 'incorrect_analysis',
+          description: 'The summary is wrong',
+        },
+      });
+    });
+
+    it('should throw NotFoundException when document does not exist', async () => {
+      mockDb.document.findUnique.mockResolvedValue(null);
+
+      await expect(
+        documentsService.submitAbuseReport(
+          'user-2',
+          'nonexistent',
+          'incorrect_analysis' as any,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException for duplicate report', async () => {
+      mockDb.document.findUnique.mockResolvedValue({ id: 'doc-1' } as any);
+      mockDb.abuseReport.findFirst.mockResolvedValue({
+        id: 'existing-report',
+      } as any);
+
+      await expect(
+        documentsService.submitAbuseReport(
+          'user-2',
+          'doc-1',
+          'incorrect_analysis' as any,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should allow report without description', async () => {
+      mockDb.document.findUnique.mockResolvedValue({ id: 'doc-1' } as any);
+      mockDb.abuseReport.findFirst.mockResolvedValue(null);
+      mockDb.abuseReport.create.mockResolvedValue({
+        id: 'report-2',
+        documentId: 'doc-1',
+        reporterId: 'user-2',
+        reason: 'privacy_concern',
+        description: null,
+        status: 'pending',
+      } as any);
+
+      const result = await documentsService.submitAbuseReport(
+        'user-2',
+        'doc-1',
+        'privacy_concern' as any,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockDb.abuseReport.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          description: null,
+        }),
+      });
+    });
+
+    it('should allow any authenticated user to report', async () => {
+      mockDb.document.findUnique.mockResolvedValue({
+        id: 'doc-1',
+        userId: 'user-1',
+      } as any);
+      mockDb.abuseReport.findFirst.mockResolvedValue(null);
+      mockDb.abuseReport.create.mockResolvedValue({
+        id: 'report-3',
+        documentId: 'doc-1',
+        reporterId: 'user-3',
+        reason: 'offensive_content',
+      } as any);
+
+      const result = await documentsService.submitAbuseReport(
+        'user-3',
+        'doc-1',
+        'offensive_content' as any,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockDb.document.findUnique).toHaveBeenCalledWith({
+        where: { id: 'doc-1' },
+      });
+    });
+  });
 });
 
 describe('DocumentsService - config validation', () => {
