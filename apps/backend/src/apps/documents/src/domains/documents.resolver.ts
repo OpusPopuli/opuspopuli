@@ -39,6 +39,10 @@ import {
   MapFiltersInput,
 } from './dto/location.dto';
 import { ProcessScanInput, ProcessScanResult } from './dto/scan.dto';
+import {
+  SubmitAbuseReportInput,
+  SubmitAbuseReportResult,
+} from './dto/abuse-report.dto';
 
 /**
  * Documents Resolver
@@ -243,5 +247,24 @@ export class DocumentsResolver {
   @Permissions({ action: Action.Read, subject: 'File' })
   async petitionMapStats(): Promise<PetitionMapStats> {
     return this.documentsService.getPetitionMapStats();
+  }
+
+  /**
+   * Submit an abuse report for incorrect or problematic scan results
+   */
+  @Mutation(() => SubmitAbuseReportResult)
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Create, subject: 'File' })
+  async submitAbuseReport(
+    @Args('input') input: SubmitAbuseReportInput,
+    @Context() context: GqlContext,
+  ): Promise<SubmitAbuseReportResult> {
+    const user = getUserFromContext(context);
+    return this.documentsService.submitAbuseReport(
+      user.id,
+      input.documentId,
+      input.reason,
+      input.description,
+    );
   }
 }

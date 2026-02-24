@@ -95,6 +95,18 @@ export interface MapFiltersInput {
   endDate?: string;
 }
 
+export type AbuseReportReason =
+  | "incorrect_analysis"
+  | "offensive_content"
+  | "wrong_document_type"
+  | "privacy_concern"
+  | "other";
+
+export interface SubmitAbuseReportResult {
+  success: boolean;
+  reportId: string;
+}
+
 // ============================================
 // Mutations
 // ============================================
@@ -148,6 +160,15 @@ export const ANALYZE_DOCUMENT = gql`
   }
 `;
 
+export const SUBMIT_ABUSE_REPORT = gql`
+  mutation SubmitAbuseReport($input: SubmitAbuseReportInput!) {
+    submitAbuseReport(input: $input) {
+      success
+      reportId
+    }
+  }
+`;
+
 // ============================================
 // Queries
 // ============================================
@@ -196,4 +217,8 @@ export interface PetitionMapLocationsData {
 
 export interface PetitionMapStatsData {
   petitionMapStats: PetitionMapStats;
+}
+
+export interface SubmitAbuseReportData {
+  submitAbuseReport: SubmitAbuseReportResult;
 }

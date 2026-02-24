@@ -11,6 +11,7 @@ import {
   DbService,
   Document as DbDocument,
   DocumentType,
+  AbuseReportReason,
   Prisma,
 } from '@opuspopuli/relationaldb-provider';
 import { OcrService } from '@opuspopuli/ocr-provider';
@@ -23,6 +24,7 @@ import { DocumentStatus } from 'src/common/enums/document.status.enum';
 import { File } from './models/file.model';
 import { ExtractTextResult } from './dto/ocr.dto';
 import { ProcessScanResult } from './dto/scan.dto';
+import { SubmitAbuseReportResult } from './dto/abuse-report.dto';
 import { DocumentAnalysis, AnalyzeDocumentResult } from './dto/analysis.dto';
 import {
   GeoLocation,
@@ -805,5 +807,50 @@ export class DocumentsService {
       documentId: r.id,
       distanceMeters: r.distance_meters,
     }));
+  }
+
+  /**
+   * Submit an abuse report for a document analysis.
+   * Any authenticated user can report any document.
+   */
+  async submitAbuseReport(
+    reporterId: string,
+    documentId: string,
+    reason: AbuseReportReason,
+    description?: string,
+  ): Promise<SubmitAbuseReportResult> {
+    const document = await this.db.document.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    const existing = await this.db.abuseReport.findFirst({
+      where: { documentId, reporterId },
+    });
+
+    if (existing) {
+      throw new BadRequestException('You have already reported this document');
+    }
+
+    const report = await this.db.abuseReport.create({
+      data: {
+        documentId,
+        reporterId,
+        reason,
+        description: description ?? null,
+      },
+    });
+
+    this.logger.log(
+      `Abuse report ${report.id} created: document=${documentId}, reporter=${reporterId}, reason=${reason}`,
+    );
+
+    return {
+      success: true,
+      reportId: report.id,
+    };
   }
 }

@@ -14,6 +14,7 @@ import {
   type SetDocumentLocationData,
   type DocumentAnalysis,
 } from "@/lib/graphql/documents";
+import { ReportIssueButton } from "@/components/ReportIssueButton";
 
 type ProcessingStep = "extracting" | "analyzing" | "complete" | "error";
 
@@ -34,6 +35,7 @@ export default function PetitionResultsPage() {
   const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null);
   const [fromCache, setFromCache] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [documentId, setDocumentId] = useState<string | null>(null);
 
   const [processScan] = useMutation<ProcessScanData>(PROCESS_SCAN);
   const [analyzeDocument] = useMutation<AnalyzeDocumentData>(ANALYZE_DOCUMENT);
@@ -64,6 +66,7 @@ export default function PetitionResultsPage() {
 
         setOcrText(scan.text);
         setOcrConfidence(scan.confidence);
+        setDocumentId(scan.documentId);
 
         // Step 2: Set location (fire-and-forget)
         if (location) {
@@ -386,6 +389,13 @@ export default function PetitionResultsPage() {
           >
             {t("results.saveToTrack")}
           </button>
+        </div>
+      )}
+
+      {/* Report Issue */}
+      {step === "complete" && documentId && (
+        <div className="px-4 pb-6 flex justify-end">
+          <ReportIssueButton documentId={documentId} />
         </div>
       )}
 

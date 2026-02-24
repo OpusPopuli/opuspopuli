@@ -176,6 +176,7 @@ model User {
   passkeyCredentials     PasskeyCredential[]
   emailCorrespondence    EmailCorrespondence[]
   notificationPreference NotificationPreference?
+  abuseReports           AbuseReport[]
 
   @@map("users")
 }
@@ -507,13 +508,52 @@ model Document {
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  abuseReports AbuseReport[]
 
   @@index([userId])
   @@index([checksum])
   @@index([type])
   @@index([contentHash])
   @@map("documents")
+}
+
+// ============================================
+// ABUSE REPORTING
+// ============================================
+
+enum AbuseReportReason {
+  incorrect_analysis  @map("incorrect_analysis")
+  offensive_content   @map("offensive_content")
+  wrong_document_type @map("wrong_document_type")
+  privacy_concern     @map("privacy_concern")
+  other               @map("other")
+}
+
+enum AbuseReportStatus {
+  pending   @map("pending")
+  reviewed  @map("reviewed")
+  resolved  @map("resolved")
+  dismissed @map("dismissed")
+}
+
+model AbuseReport {
+  id          String            @id @default(uuid())
+  documentId  String            @map("document_id")
+  reporterId  String            @map("reporter_id")
+  reason      AbuseReportReason
+  description String?           @db.Text
+  status      AbuseReportStatus @default(pending)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  reporter User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([reporterId])
+  @@index([status])
+  @@map("abuse_reports")
 }
 
 // ============================================
