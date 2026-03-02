@@ -19,7 +19,6 @@ import {
 import { createHash } from "node:crypto";
 import { DbService } from "@opuspopuli/relationaldb-provider";
 import type { PromptTemplate } from "@opuspopuli/relationaldb-provider";
-import type { PromptServiceResponse, ICache } from "@opuspopuli/common";
 import {
   CircuitBreakerManager,
   CircuitOpenError,
@@ -29,8 +28,10 @@ import {
   MemoryCache,
   withRetry,
   RetryPredicates,
+  type CircuitBreakerHealth,
+  type ICache,
+  type PromptServiceResponse,
 } from "@opuspopuli/common";
-import type { CircuitBreakerHealth } from "@opuspopuli/common";
 import { signRequest, type HmacSigningConfig } from "./hmac-signer.js";
 import { MetricsCollector, type PromptClientMetrics } from "./metrics.js";
 import type {
