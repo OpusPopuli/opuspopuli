@@ -41,3 +41,6 @@ export type {
   PromptServiceResponse,
 } from "./types.js";
 export { PROMPT_CLIENT_CONFIG } from "./types.js";
+export { signRequest } from "./hmac-signer.js";
+export type { HmacSigningConfig, HmacHeaders } from "./hmac-signer.js";
+export type { PromptClientMetrics } from "./metrics.js";

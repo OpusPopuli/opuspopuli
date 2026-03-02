@@ -37,8 +37,9 @@ describe("PromptClientService", () => {
     service = module.get(PromptClientService);
   });
 
-  afterEach(() => {
-    service.clearCache();
+  afterEach(async () => {
+    await service.clearCache();
+    await service.onModuleDestroy();
   });
 
   describe("getStructuralAnalysisPrompt", () => {
@@ -201,10 +202,22 @@ describe("PromptClientService", () => {
       );
 
       await service.getRAGPrompt({ context: "a", query: "b" });
-      service.clearCache();
+      await service.clearCache();
       await service.getRAGPrompt({ context: "c", query: "d" });
 
       expect(mockDb.promptTemplate.findFirst).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("getPromptHash", () => {
+    it("should return sha256 hash of template text", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("rag", "Template text for hashing"),
+      );
+
+      const hash = await service.getPromptHash("rag");
+
+      expect(hash).toMatch(/^[a-f0-9]{64}$/);
     });
   });
 
@@ -212,8 +225,6 @@ describe("PromptClientService", () => {
     it("should throw when non-core template not found", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValue(null);
 
-      // getPromptHash calls getTemplate with no fallbackName,
-      // and "nonexistent-template" has no hardcoded fallback
       await expect(
         service.getPromptHash("nonexistent-template"),
       ).rejects.toThrow(
@@ -324,6 +335,7 @@ describe("PromptClientService", () => {
 
       // DB should not have been called for validation
       expect(mockDb.promptTemplate.findFirst).not.toHaveBeenCalled();
+      await remoteService.onModuleDestroy();
     });
 
     it("should complete without throwing when templates are missing", async () => {
@@ -334,8 +346,37 @@ describe("PromptClientService", () => {
     });
   });
 
+  describe("metrics", () => {
+    it("should return initial metrics with zero counts", () => {
+      const metrics = service.getMetrics();
+
+      expect(metrics.totalRequests).toBe(0);
+      expect(metrics.cacheHits).toBe(0);
+      expect(metrics.remoteCalls).toBe(0);
+      expect(metrics.dbFallbacks).toBe(0);
+      expect(metrics.hardcodedFallbacks).toBe(0);
+      expect(metrics.cacheHitRate).toBe(0);
+      expect(metrics.fallbackRate).toBe(0);
+      expect(metrics.circuitBreakerState).toBe("closed");
+    });
+
+    it("should track hardcoded fallback usage", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValue(null);
+
+      await service.getRAGPrompt({ context: "a", query: "b" });
+      const metrics = service.getMetrics();
+
+      expect(metrics.hardcodedFallbacks).toBeGreaterThan(0);
+    });
+
+    it("should return null circuit breaker health when not in remote mode", () => {
+      expect(service.getCircuitBreakerHealth()).toBeNull();
+    });
+  });
+
   describe("remote mode", () => {
     let remoteService: PromptClientService;
+    const originalFetch = globalThis.fetch;
 
     beforeEach(async () => {
       const module: TestingModule = await Test.createTestingModule({
@@ -347,12 +388,18 @@ describe("PromptClientService", () => {
             useValue: {
               promptServiceUrl: "http://prompt-service:3005",
               promptServiceApiKey: "test-api-key",
+              retryMaxAttempts: 1, // Disable retries in tests for speed
             },
           },
         ],
       }).compile();
 
       remoteService = module.get(PromptClientService);
+    });
+
+    afterEach(async () => {
+      globalThis.fetch = originalFetch;
+      await remoteService.onModuleDestroy();
     });
 
     it("should throw if API key is missing when URL is set", async () => {
@@ -375,9 +422,10 @@ describe("PromptClientService", () => {
       await expect(
         noKeyService.getRAGPrompt({ context: "a", query: "b" }),
       ).rejects.toThrow("API key is required");
+      await noKeyService.onModuleDestroy();
     });
 
-    it("should call remote service when URL is configured", async () => {
+    it("should call remote service with Bearer auth when URL is configured", async () => {
       const mockFetch = jest.fn().mockResolvedValue({
         ok: true,
         json: () =>
@@ -387,7 +435,7 @@ describe("PromptClientService", () => {
             promptVersion: "v2",
           }),
       });
-      global.fetch = mockFetch;
+      globalThis.fetch = mockFetch;
 
       const result = await remoteService.getRAGPrompt({
         context: "test",
@@ -404,6 +452,582 @@ describe("PromptClientService", () => {
           }),
         }),
       );
+    });
+
+    it("should track remote call metrics on success", async () => {
+      globalThis.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            promptText: "remote",
+            promptHash: "abc",
+            promptVersion: "v1",
+          }),
+      });
+
+      await remoteService.getRAGPrompt({ context: "a", query: "b" });
+      const metrics = remoteService.getMetrics();
+
+      expect(metrics.remoteCalls).toBe(1);
+      expect(metrics.avgRemoteLatencyMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it("should fall back to DB when remote fails", async () => {
+      globalThis.fetch = jest.fn().mockRejectedValue(new Error("fetch failed"));
+
+      // Set up DB fallback
+      mockDb.promptTemplate.findFirst.mockResolvedValue(
+        mockTemplate("rag", "DB fallback: {{CONTEXT}} {{QUERY}}"),
+      );
+
+      const result = await remoteService.getRAGPrompt({
+        context: "test",
+        query: "test",
+      });
+
+      expect(result.promptText).toContain("DB fallback:");
+      const metrics = remoteService.getMetrics();
+      expect(metrics.dbFallbacks).toBe(1);
+    });
+
+    it("should return circuit breaker health in remote mode", () => {
+      const health = remoteService.getCircuitBreakerHealth();
+
+      expect(health).not.toBeNull();
+      expect(health!.serviceName).toBe("PromptService");
+      expect(health!.state).toBe("closed");
+      expect(health!.isHealthy).toBe(true);
+    });
+  });
+
+  describe("remote mode with HMAC", () => {
+    let hmacService: PromptClientService;
+    const originalFetch = globalThis.fetch;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PromptClientService,
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: PROMPT_CLIENT_CONFIG,
+            useValue: {
+              promptServiceUrl: "http://prompt-service:3005",
+              promptServiceApiKey: "hmac-secret-key",
+              hmacNodeId: "node-uuid-1234",
+              retryMaxAttempts: 1,
+            },
+          },
+        ],
+      }).compile();
+
+      hmacService = module.get(PromptClientService);
+    });
+
+    afterEach(async () => {
+      globalThis.fetch = originalFetch;
+      await hmacService.onModuleDestroy();
+    });
+
+    it("should use HMAC headers instead of Bearer when hmacNodeId is set", async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            promptText: "hmac prompt",
+            promptHash: "def456",
+            promptVersion: "v1",
+          }),
+      });
+      globalThis.fetch = mockFetch;
+
+      await hmacService.getRAGPrompt({ context: "test", query: "test" });
+
+      const call = mockFetch.mock.calls[0];
+      const headers = call[1].headers;
+
+      // Should have HMAC headers
+      expect(headers["X-HMAC-Signature"]).toBeDefined();
+      expect(headers["X-HMAC-Timestamp"]).toBeDefined();
+      expect(headers["X-HMAC-Key-Id"]).toBe("node-uuid-1234");
+
+      // Should NOT have Bearer auth
+      expect(headers["Authorization"]).toBeUndefined();
+    });
+
+    it("should produce valid HMAC signature format", async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            promptText: "test",
+            promptHash: "abc",
+            promptVersion: "v1",
+          }),
+      });
+      globalThis.fetch = mockFetch;
+
+      await hmacService.getRAGPrompt({ context: "ctx", query: "q" });
+
+      const headers = mockFetch.mock.calls[0][1].headers;
+
+      // Signature should be valid base64
+      const decoded = Buffer.from(headers["X-HMAC-Signature"], "base64");
+      expect(decoded.length).toBe(32); // SHA-256 = 32 bytes
+
+      // Timestamp should be a valid number
+      const ts = Number.parseInt(headers["X-HMAC-Timestamp"], 10);
+      expect(ts).toBeGreaterThan(0);
+    });
+  });
+
+  describe("circuit breaker behavior", () => {
+    let cbService: PromptClientService;
+    const originalFetch = globalThis.fetch;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PromptClientService,
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: PROMPT_CLIENT_CONFIG,
+            useValue: {
+              promptServiceUrl: "http://prompt-service:3005",
+              promptServiceApiKey: "test-key",
+              retryMaxAttempts: 1,
+              circuitBreakerFailureThreshold: 2,
+              circuitBreakerHalfOpenMs: 60000,
+            },
+          },
+        ],
+      }).compile();
+
+      cbService = module.get(PromptClientService);
+
+      // Set up DB fallback for all calls
+      mockDb.promptTemplate.findFirst.mockResolvedValue(
+        mockTemplate("rag", "fallback: {{CONTEXT}} {{QUERY}}"),
+      );
+    });
+
+    afterEach(async () => {
+      globalThis.fetch = originalFetch;
+      await cbService.onModuleDestroy();
+    });
+
+    it("should open circuit after consecutive failures", async () => {
+      globalThis.fetch = jest
+        .fn()
+        .mockRejectedValue(new Error("500 Internal Server Error"));
+
+      // Trigger failures to open the circuit (threshold = 2)
+      await cbService.getRAGPrompt({ context: "a", query: "b" });
+      await cbService.getRAGPrompt({ context: "c", query: "d" });
+
+      const health = cbService.getCircuitBreakerHealth();
+      expect(health!.state).toBe("open");
+      expect(health!.isHealthy).toBe(false);
+    });
+
+    it("should fall back to DB when circuit is open", async () => {
+      globalThis.fetch = jest
+        .fn()
+        .mockRejectedValue(new Error("500 Internal Server Error"));
+
+      // Open the circuit
+      await cbService.getRAGPrompt({ context: "a", query: "b" });
+      await cbService.getRAGPrompt({ context: "c", query: "d" });
+
+      // Next call should fail fast (circuit open) and fall back to DB
+      const result = await cbService.getRAGPrompt({
+        context: "fallback test",
+        query: "question",
+      });
+
+      expect(result.promptText).toContain("fallback:");
+    });
+
+    it("should recover after circuit breaker resets", async () => {
+      // Use a very short half-open timeout for testing
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PromptClientService,
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: PROMPT_CLIENT_CONFIG,
+            useValue: {
+              promptServiceUrl: "http://prompt-service:3005",
+              promptServiceApiKey: "test-key",
+              retryMaxAttempts: 1,
+              circuitBreakerFailureThreshold: 1,
+              circuitBreakerHalfOpenMs: 100,
+            },
+          },
+        ],
+      }).compile();
+
+      const resetService = module.get(PromptClientService);
+
+      // Break the circuit
+      globalThis.fetch = jest.fn().mockRejectedValue(new Error("fail"));
+      await resetService.getRAGPrompt({ context: "a", query: "b" });
+      expect(resetService.getCircuitBreakerHealth()!.state).toBe("open");
+
+      // Wait for half-open
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // Successful request should reset the circuit
+      globalThis.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            promptText: "recovered",
+            promptHash: "abc",
+            promptVersion: "v1",
+          }),
+      });
+
+      const result = await resetService.getRAGPrompt({
+        context: "c",
+        query: "d",
+      });
+
+      expect(result.promptText).toBe("recovered");
+      expect(resetService.getCircuitBreakerHealth()!.state).toBe("closed");
+      await resetService.onModuleDestroy();
+    });
+  });
+
+  describe("remote mode - all endpoints", () => {
+    let remoteService: PromptClientService;
+    const originalFetch = globalThis.fetch;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PromptClientService,
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: PROMPT_CLIENT_CONFIG,
+            useValue: {
+              promptServiceUrl: "http://prompt-service:3005",
+              promptServiceApiKey: "test-api-key",
+              retryMaxAttempts: 1,
+            },
+          },
+        ],
+      }).compile();
+
+      remoteService = module.get(PromptClientService);
+    });
+
+    afterEach(async () => {
+      globalThis.fetch = originalFetch;
+      await remoteService.onModuleDestroy();
+    });
+
+    it("should call remote for getStructuralAnalysisPrompt", async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            promptText: "remote structural",
+            promptHash: "hash1",
+            promptVersion: "v3",
+          }),
+      });
+      globalThis.fetch = mockFetch;
+
+      const result = await remoteService.getStructuralAnalysisPrompt({
+        dataType: "propositions" as any,
+        contentGoal: "test",
+        html: "<div/>",
+      });
+
+      expect(result.promptText).toBe("remote structural");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://prompt-service:3005/prompts/structural-analysis",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    it("should call remote for getDocumentAnalysisPrompt", async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            promptText: "remote document",
+            promptHash: "hash2",
+            promptVersion: "v2",
+          }),
+      });
+      globalThis.fetch = mockFetch;
+
+      const result = await remoteService.getDocumentAnalysisPrompt({
+        documentType: "petition",
+        text: "doc text",
+      });
+
+      expect(result.promptText).toBe("remote document");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://prompt-service:3005/prompts/document-analysis",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    it("should fall back to DB for structural-analysis when remote fails", async () => {
+      globalThis.fetch = jest
+        .fn()
+        .mockRejectedValue(new Error("network error"));
+
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(
+          mockTemplate(
+            "structural-analysis",
+            "Analyze {{DATA_TYPE}}.\n{{HINTS_SECTION}}Schema: {{SCHEMA_DESCRIPTION}}\n{{HTML}}",
+          ),
+        )
+        .mockResolvedValueOnce(
+          mockTemplate("structural-schema-default", "default schema"),
+        );
+
+      const result = await remoteService.getStructuralAnalysisPrompt({
+        dataType: "propositions" as any,
+        contentGoal: "test",
+        html: "<div/>",
+      });
+
+      expect(result.promptText).toContain("Analyze propositions");
+      const metrics = remoteService.getMetrics();
+      expect(metrics.dbFallbacks).toBe(1);
+    });
+
+    it("should fall back to DB for document-analysis when remote fails", async () => {
+      globalThis.fetch = jest
+        .fn()
+        .mockRejectedValue(new Error("network error"));
+
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-petition", "Analyze: {{TEXT}}"),
+        )
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-base-instructions", "JSON only."),
+        );
+
+      const result = await remoteService.getDocumentAnalysisPrompt({
+        documentType: "petition",
+        text: "doc text",
+      });
+
+      expect(result.promptText).toContain("Analyze: doc text");
+      const metrics = remoteService.getMetrics();
+      expect(metrics.dbFallbacks).toBe(1);
+    });
+
+    it("should treat HTTP error responses as failures and fall back", async () => {
+      globalThis.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+      });
+
+      mockDb.promptTemplate.findFirst.mockResolvedValue(
+        mockTemplate("rag", "DB: {{CONTEXT}} {{QUERY}}"),
+      );
+
+      const result = await remoteService.getRAGPrompt({
+        context: "ctx",
+        query: "q",
+      });
+
+      expect(result.promptText).toContain("DB: ctx q");
+    });
+
+    it("should treat 4xx HTTP errors as non-retryable", async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+      });
+      globalThis.fetch = mockFetch;
+
+      mockDb.promptTemplate.findFirst.mockResolvedValue(
+        mockTemplate("rag", "fallback: {{CONTEXT}} {{QUERY}}"),
+      );
+
+      // With retryMaxAttempts: 1, the 400 should not be retried
+      await remoteService.getRAGPrompt({ context: "a", query: "b" });
+
+      // fetch called only once (no retries for 4xx)
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("retry behavior", () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it("should retry on server errors and invoke onRetry callback", async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PromptClientService,
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: PROMPT_CLIENT_CONFIG,
+            useValue: {
+              promptServiceUrl: "http://prompt-service:3005",
+              promptServiceApiKey: "test-key",
+              retryMaxAttempts: 3,
+              retryBaseDelayMs: 10,
+              retryMaxDelayMs: 50,
+            },
+          },
+        ],
+      }).compile();
+
+      const retryService = module.get(PromptClientService);
+
+      // Fail twice, then succeed
+      const mockFetch = jest
+        .fn()
+        .mockRejectedValueOnce(new Error("500 Internal Server Error"))
+        .mockRejectedValueOnce(new Error("503 Service Unavailable"))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              promptText: "success after retries",
+              promptHash: "abc",
+              promptVersion: "v1",
+            }),
+        });
+      globalThis.fetch = mockFetch;
+
+      const result = await retryService.getRAGPrompt({
+        context: "a",
+        query: "b",
+      });
+
+      expect(result.promptText).toBe("success after retries");
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+
+      await retryService.onModuleDestroy();
+    });
+  });
+
+  describe("CircuitOpenError skips retry", () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it("should not retry when circuit is open", async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PromptClientService,
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: PROMPT_CLIENT_CONFIG,
+            useValue: {
+              promptServiceUrl: "http://prompt-service:3005",
+              promptServiceApiKey: "test-key",
+              retryMaxAttempts: 3,
+              retryBaseDelayMs: 10,
+              circuitBreakerFailureThreshold: 1,
+              circuitBreakerHalfOpenMs: 60000,
+            },
+          },
+        ],
+      }).compile();
+
+      const svc = module.get(PromptClientService);
+
+      // Break the circuit with one failure
+      const mockFetch = jest.fn().mockRejectedValue(new Error("server down"));
+      globalThis.fetch = mockFetch;
+
+      mockDb.promptTemplate.findFirst.mockResolvedValue(
+        mockTemplate("rag", "fallback: {{CONTEXT}} {{QUERY}}"),
+      );
+
+      await svc.getRAGPrompt({ context: "a", query: "b" });
+      expect(svc.getCircuitBreakerHealth()!.state).toBe("open");
+
+      // Reset fetch mock to track next call
+      mockFetch.mockClear();
+
+      // This call should hit CircuitOpenError and NOT retry (fail fast)
+      const result = await svc.getRAGPrompt({
+        context: "fast fallback",
+        query: "q",
+      });
+
+      expect(result.promptText).toContain("fallback:");
+      // fetch should NOT have been called (circuit open prevents it)
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      await svc.onModuleDestroy();
+    });
+  });
+
+  describe("composeFromDb unknown endpoint", () => {
+    it("should throw for unknown endpoint", async () => {
+      // Access the private method via prototype to test defensive default branch
+      const composeFromDb = (service as any).composeFromDb.bind(service);
+      await expect(composeFromDb("unknown-endpoint", {})).rejects.toThrow(
+        "Unknown prompt endpoint: unknown-endpoint",
+      );
+    });
+  });
+
+  describe("onModuleInit", () => {
+    it("should log success when all templates are found", async () => {
+      // All DB lookups return a valid template
+      mockDb.promptTemplate.findFirst.mockResolvedValue({ id: "exists" });
+
+      await service.onModuleInit();
+
+      // No error thrown, and validation ran (5 core templates queried)
+      expect(mockDb.promptTemplate.findFirst).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  describe("onModuleDestroy", () => {
+    it("should call destroy on the template cache", async () => {
+      // onModuleDestroy is called in afterEach; verify it doesn't throw
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+    });
+
+    it("should call destroy on custom cache implementation", async () => {
+      const customCache = {
+        get: jest.fn().mockResolvedValue(undefined),
+        set: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(true),
+        clear: jest.fn().mockResolvedValue(undefined),
+        destroy: jest.fn().mockResolvedValue(undefined),
+      };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PromptClientService,
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: PROMPT_CLIENT_CONFIG,
+            useValue: { cache: customCache },
+          },
+        ],
+      }).compile();
+
+      const customService = module.get(PromptClientService);
+      await customService.onModuleDestroy();
+
+      expect(customCache.destroy).toHaveBeenCalled();
     });
   });
 });

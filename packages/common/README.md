@@ -66,7 +66,7 @@ npm install @opuspopuli/common --registry https://npm.pkg.github.com
 | **Rate Limiting** | `RateLimiter`, `IRateLimiter`, `RateLimitOptions` | Token bucket rate limiter |
 | **Retry** | `withRetry()`, `RetryPredicates`, `calculateDelay()`, `RetryConfig` | Exponential backoff with jitter |
 | **Caching** | `MemoryCache<T>`, `ICache<T>`, `CacheOptions` | In-memory cache with TTL and LRU eviction |
-| **Resilience** | `CircuitBreakerManager`, `createCircuitBreaker()`, `CircuitBreakerConfig` | Circuit breaker pattern |
+| **Resilience** | `CircuitBreakerManager`, `createCircuitBreaker()`, `CircuitBreakerConfig`, `DEFAULT_CIRCUIT_CONFIGS` | Circuit breaker pattern (Ollama, Supabase, Extraction, PromptService) |
 | **HTTP** | `HttpPoolManager`, `getSharedHttpPool()`, `createPooledFetch()` | HTTP connection pooling via undici |
 
 ## Usage
