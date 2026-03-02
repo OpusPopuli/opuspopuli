@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { KnowledgeService } from './knowledge.service';
 import { KnowledgeResolver } from './knowledge.resolver';
 import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
@@ -16,7 +17,21 @@ import { PromptClientModule } from '@opuspopuli/prompt-client';
  * All components are self-hosted OSS for full transparency and privacy.
  */
 @Module({
-  imports: [EmbeddingsModule, VectorDBModule, LLMModule, PromptClientModule],
+  imports: [
+    EmbeddingsModule,
+    VectorDBModule,
+    LLMModule,
+    PromptClientModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        config: {
+          promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+          promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
+          hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
+        },
+      }),
+    }),
+  ],
   providers: [KnowledgeService, KnowledgeResolver],
   exports: [KnowledgeService],
 })

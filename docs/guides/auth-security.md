@@ -216,6 +216,57 @@ export class HMACMiddleware implements NestMiddleware {
 }
 ```
 
+## Prompt Service HMAC Authentication
+
+The `@opuspopuli/prompt-client` package supports HMAC request signing for authenticating with a remote [AI Prompt Service](https://github.com/OpusPopuli/prompt-service). This is a **separate protocol** from the gateway HMAC above.
+
+### Protocol Differences
+
+| | Gateway HMAC | Prompt Service HMAC |
+|---|---|---|
+| **Header** | `X-HMAC-Auth` (JSON payload) | `X-HMAC-Signature` + `X-HMAC-Timestamp` + `X-HMAC-Key-Id` |
+| **Signature input** | `${timestamp}:${url}` | `${timestamp}\n${method}\n${path}\n${bodyHash}` |
+| **Body included** | No | Yes (SHA-256 hash) |
+| **Use case** | Gateway → microservices | Nodes → prompt-service |
+
+### How It Works
+
+When `PROMPT_SERVICE_NODE_ID` is configured, the prompt-client signs every request:
+
+```typescript
+// packages/prompt-client/src/hmac-signer.ts
+const timestamp = Math.floor(Date.now() / 1000).toString();
+const bodyHash = createHash('sha256').update(body).digest('hex');
+const signatureString = `${timestamp}\n${method}\n${path}\n${bodyHash}`;
+const signature = createHmac('sha256', apiKey)
+  .update(signatureString)
+  .digest('base64');
+
+// Headers sent:
+// X-HMAC-Signature: <base64 signature>
+// X-HMAC-Timestamp: <unix seconds>
+// X-HMAC-Key-Id: <node UUID>
+```
+
+The prompt-service validates the signature, checks the timestamp window (5 minutes), and verifies the node's API key from its database.
+
+### Configuration
+
+```bash
+PROMPT_SERVICE_URL='http://localhost:3200'
+PROMPT_SERVICE_API_KEY='your-node-api-key'
+PROMPT_SERVICE_NODE_ID='your-node-uuid'    # Enables HMAC (omit for Bearer auth)
+```
+
+### Resilience
+
+The prompt-client wraps remote calls with:
+- **Circuit breaker** — opens after 3 consecutive failures, half-open after 15s
+- **Retry with backoff** — retries on network/5xx errors, skips retry on circuit open
+- **Fallback chain** — remote → database → hardcoded defaults
+
+See the [prompt-client README](../../packages/prompt-client/README.md) for full details.
+
 ## Cookie Propagation in Federated GraphQL
 
 In Apollo Federation, subgraphs respond to the gateway, not directly to the browser. This means cookies set by subgraphs (like the Users service during login) need to be propagated through the gateway.
@@ -301,6 +352,7 @@ GATEWAY_CLIENT_ID='api-gateway'
 - [ ] GraphQL depth limiting enabled (default: 10)
 - [ ] GraphQL complexity limiting enabled (default: 1000)
 - [ ] `NODE_ENV=production` (not 'prod' or 'dev')
+- [ ] Prompt service nodes use HMAC auth (`PROMPT_SERVICE_NODE_ID` set)
 
 ## Environment Configuration
 

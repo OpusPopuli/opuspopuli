@@ -83,4 +83,10 @@ export const DEFAULT_CIRCUIT_CONFIGS: Record<string, CircuitBreakerConfig> = {
     halfOpenAfterMs: 60000, // 60 seconds
     serviceName: "Extraction",
   },
+  /** Prompt Service - fast recovery (internal infrastructure) */
+  promptService: {
+    failureThreshold: 3,
+    halfOpenAfterMs: 15000, // 15 seconds
+    serviceName: "PromptService",
+  },
 };

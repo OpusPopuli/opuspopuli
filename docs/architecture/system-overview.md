@@ -109,6 +109,7 @@ All external dependencies use the **Strategy Pattern + Dependency Injection** fo
 | `@opuspopuli/ocr-provider` | OCR functionality | `OCR_PROVIDER` |
 | `@opuspopuli/scraping-pipeline` | AI-powered schema-on-read web scraping | `SCRAPING_PIPELINE` |
 | `@opuspopuli/region-provider` | Civic data integration (declarative plugins) | `REGION_PROVIDER` |
+| `@opuspopuli/prompt-client` | AI prompt templates with remote delegation, HMAC, circuit breaker | `PROMPT_CLIENT_CONFIG` |
 
 ### Relational Database Provider
 **Package**: `@opuspopuli/relationaldb-provider`

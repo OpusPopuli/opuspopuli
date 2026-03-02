@@ -2,7 +2,10 @@
  * Prompt Client Service
  *
  * Reads AI prompt templates from the database and composes them with variables.
- * In the future, can switch to a remote AI Prompt Service by setting the URL.
+ * When configured with a remote AI Prompt Service URL, delegates to the service
+ * with HMAC request signing, circuit breaker protection, and retry logic.
+ *
+ * Fallback chain: remote → database → hardcoded defaults
  */
 
 import {
@@ -10,12 +13,26 @@ import {
   Injectable,
   Logger,
   OnModuleInit,
+  OnModuleDestroy,
   Optional,
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { DbService } from "@opuspopuli/relationaldb-provider";
 import type { PromptTemplate } from "@opuspopuli/relationaldb-provider";
-import type { PromptServiceResponse } from "@opuspopuli/common";
+import type { PromptServiceResponse, ICache } from "@opuspopuli/common";
+import {
+  CircuitBreakerManager,
+  CircuitOpenError,
+  CircuitState,
+  createCircuitBreaker,
+  DEFAULT_CIRCUIT_CONFIGS,
+  MemoryCache,
+  withRetry,
+  RetryPredicates,
+} from "@opuspopuli/common";
+import type { CircuitBreakerHealth } from "@opuspopuli/common";
+import { signRequest, type HmacSigningConfig } from "./hmac-signer.js";
+import { MetricsCollector, type PromptClientMetrics } from "./metrics.js";
 import type {
   PromptClientConfig,
   StructuralAnalysisParams,
@@ -113,9 +130,17 @@ Answer:`,
 ]);
 
 @Injectable()
-export class PromptClientService implements OnModuleInit {
+export class PromptClientService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PromptClientService.name);
-  private readonly cache = new Map<string, PromptTemplate>();
+  private readonly templateCache: ICache<PromptTemplate>;
+  private readonly circuitBreaker?: CircuitBreakerManager;
+  private readonly hmacConfig?: HmacSigningConfig;
+  private readonly metrics = new MetricsCollector();
+  private readonly retryConfig: {
+    maxAttempts: number;
+    baseDelayMs: number;
+    maxDelayMs: number;
+  };
 
   constructor(
     private readonly db: DbService,
@@ -123,13 +148,61 @@ export class PromptClientService implements OnModuleInit {
     @Inject(PROMPT_CLIENT_CONFIG)
     private readonly config?: PromptClientConfig,
   ) {
-    if (this.config?.promptServiceUrl) {
+    // Initialize template cache
+    this.templateCache =
+      config?.cache ??
+      new MemoryCache<PromptTemplate>({
+        ttlMs: config?.cacheTtlMs ?? 300000,
+        maxSize: config?.cacheMaxSize ?? 50,
+      });
+
+    // Initialize circuit breaker (only when remote URL is configured)
+    if (config?.promptServiceUrl) {
+      const defaultCb = DEFAULT_CIRCUIT_CONFIGS.promptService;
+      this.circuitBreaker = createCircuitBreaker({
+        failureThreshold:
+          config.circuitBreakerFailureThreshold ?? defaultCb.failureThreshold,
+        halfOpenAfterMs:
+          config.circuitBreakerHalfOpenMs ?? defaultCb.halfOpenAfterMs,
+        serviceName: defaultCb.serviceName,
+      });
+
+      this.circuitBreaker.addListener((event) => {
+        switch (event) {
+          case "break":
+            this.logger.warn("Circuit breaker OPENED for PromptService");
+            break;
+          case "reset":
+            this.logger.log("Circuit breaker RESET for PromptService");
+            break;
+          case "half_open":
+            this.logger.log("Circuit breaker HALF-OPEN for PromptService");
+            break;
+        }
+      });
+
       this.logger.log(
-        `Prompt client configured for remote service: ${this.config.promptServiceUrl}`,
+        `Prompt client configured for remote service: ${config.promptServiceUrl}` +
+          (config.hmacNodeId ? " (HMAC auth)" : " (Bearer auth)"),
       );
     } else {
       this.logger.log("Prompt client using database templates");
     }
+
+    // Initialize HMAC config
+    if (config?.hmacNodeId && config?.promptServiceApiKey) {
+      this.hmacConfig = {
+        apiKey: config.promptServiceApiKey,
+        nodeId: config.hmacNodeId,
+      };
+    }
+
+    // Initialize retry config
+    this.retryConfig = {
+      maxAttempts: config?.retryMaxAttempts ?? 3,
+      baseDelayMs: config?.retryBaseDelayMs ?? 1000,
+      maxDelayMs: config?.retryMaxDelayMs ?? 10000,
+    };
   }
 
   async onModuleInit(): Promise<void> {
@@ -146,6 +219,10 @@ export class PromptClientService implements OnModuleInit {
           "Hardcoded fallbacks will be used. Run db:seed-prompts to populate.",
       );
     }
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.templateCache.destroy();
   }
 
   /**
@@ -175,11 +252,178 @@ export class PromptClientService implements OnModuleInit {
     if (this.config?.promptServiceUrl) {
       return this.fetchRemotePrompt("structural-analysis", params);
     }
+    return this.composeStructuralAnalysis(params);
+  }
 
-    // Read base template
+  /**
+   * Get a document analysis prompt.
+   */
+  async getDocumentAnalysisPrompt(
+    params: DocumentAnalysisParams,
+  ): Promise<PromptServiceResponse> {
+    if (this.config?.promptServiceUrl) {
+      return this.fetchRemotePrompt("document-analysis", params);
+    }
+    return this.composeDocumentAnalysis(params);
+  }
+
+  /**
+   * Get a RAG prompt.
+   */
+  async getRAGPrompt(params: RAGParams): Promise<PromptServiceResponse> {
+    if (this.config?.promptServiceUrl) {
+      return this.fetchRemotePrompt("rag", params);
+    }
+    return this.composeRag(params);
+  }
+
+  /**
+   * Get the current prompt hash for cache invalidation.
+   */
+  async getPromptHash(templateName: string): Promise<string> {
+    const template = await this.getTemplate(templateName);
+    return this.hash(template.templateText);
+  }
+
+  /**
+   * Get current metrics snapshot.
+   */
+  getMetrics(): PromptClientMetrics {
+    const state = this.circuitBreaker?.getState() ?? CircuitState.CLOSED;
+    return this.metrics.getMetrics(state);
+  }
+
+  /**
+   * Get circuit breaker health (null if remote mode is not configured).
+   */
+  getCircuitBreakerHealth(): CircuitBreakerHealth | null {
+    return this.circuitBreaker?.getHealth() ?? null;
+  }
+
+  /**
+   * Clear the template cache.
+   */
+  async clearCache(): Promise<void> {
+    await this.templateCache.clear();
+    this.logger.log("Template cache cleared");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: Remote fetch with resilience
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fetch prompt from the remote AI Prompt Service with retry and circuit breaker.
+   * Falls back to DB-based composition on failure.
+   */
+  private async fetchRemotePrompt(
+    endpoint: string,
+    params: StructuralAnalysisParams | DocumentAnalysisParams | RAGParams,
+  ): Promise<PromptServiceResponse> {
+    const url = this.config!.promptServiceUrl!;
+    const timeout = this.config?.timeoutMs ?? 10000;
+    const body = JSON.stringify(params);
+    const path = `/prompts/${endpoint}`;
+
+    // Build headers: HMAC or Bearer
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (this.hmacConfig) {
+      Object.assign(headers, signRequest(this.hmacConfig, "POST", path, body));
+    } else {
+      const apiKey = this.config!.promptServiceApiKey;
+      if (!apiKey) {
+        throw new Error(
+          "API key is required when prompt service URL is configured",
+        );
+      }
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
+    const startMs = Date.now();
+
+    try {
+      const result = await withRetry(
+        () =>
+          this.circuitBreaker!.execute(async () => {
+            const response = await fetch(`${url}${path}`, {
+              method: "POST",
+              headers,
+              body,
+              signal: AbortSignal.timeout(timeout),
+            });
+
+            if (!response.ok) {
+              throw new Error(
+                `Prompt service returned ${response.status}: ${response.statusText}`,
+              );
+            }
+
+            return (await response.json()) as PromptServiceResponse;
+          }),
+        {
+          maxAttempts: this.retryConfig.maxAttempts,
+          baseDelayMs: this.retryConfig.baseDelayMs,
+          maxDelayMs: this.retryConfig.maxDelayMs,
+          isRetryable: (error) => {
+            // Never retry when circuit is open — fail fast to DB fallback
+            if (error instanceof CircuitOpenError) return false;
+            // Only retry transient errors (network failures, 5xx)
+            return (
+              RetryPredicates.isNetworkError(error) ||
+              RetryPredicates.isServerError(error)
+            );
+          },
+          onRetry: (error, attempt, delayMs) => {
+            this.logger.warn(
+              `Retry attempt ${attempt} for ${endpoint} after ${delayMs}ms: ${error.message}`,
+            );
+          },
+        },
+      );
+
+      this.metrics.recordRemoteCall(Date.now() - startMs);
+      return result;
+    } catch (error) {
+      this.logger.warn(
+        `Remote prompt service failed for ${endpoint}, falling back to DB: ${(error as Error).message}`,
+      );
+      return this.composeFromDb(endpoint, params);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: DB-based composition (fallback path)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Route to the correct DB composition method based on endpoint.
+   */
+  private async composeFromDb(
+    endpoint: string,
+    params: StructuralAnalysisParams | DocumentAnalysisParams | RAGParams,
+  ): Promise<PromptServiceResponse> {
+    this.metrics.recordDbFallback();
+    switch (endpoint) {
+      case "structural-analysis":
+        return this.composeStructuralAnalysis(
+          params as StructuralAnalysisParams,
+        );
+      case "document-analysis":
+        return this.composeDocumentAnalysis(params as DocumentAnalysisParams);
+      case "rag":
+        return this.composeRag(params as RAGParams);
+      default:
+        throw new Error(`Unknown prompt endpoint: ${endpoint}`);
+    }
+  }
+
+  private async composeStructuralAnalysis(
+    params: StructuralAnalysisParams,
+  ): Promise<PromptServiceResponse> {
     const template = await this.getTemplate("structural-analysis");
-
-    // Read schema description for this data type
     const schemaTemplate = await this.getTemplate(
       `structural-schema-${params.dataType}`,
       `structural-schema-default`,
@@ -207,16 +451,9 @@ export class PromptClientService implements OnModuleInit {
     };
   }
 
-  /**
-   * Get a document analysis prompt.
-   */
-  async getDocumentAnalysisPrompt(
+  private async composeDocumentAnalysis(
     params: DocumentAnalysisParams,
   ): Promise<PromptServiceResponse> {
-    if (this.config?.promptServiceUrl) {
-      return this.fetchRemotePrompt("document-analysis", params);
-    }
-
     const template = await this.getTemplate(
       `document-analysis-${params.documentType}`,
       "document-analysis-generic",
@@ -237,14 +474,7 @@ export class PromptClientService implements OnModuleInit {
     };
   }
 
-  /**
-   * Get a RAG prompt.
-   */
-  async getRAGPrompt(params: RAGParams): Promise<PromptServiceResponse> {
-    if (this.config?.promptServiceUrl) {
-      return this.fetchRemotePrompt("rag", params);
-    }
-
+  private async composeRag(params: RAGParams): Promise<PromptServiceResponse> {
     const template = await this.getTemplate("rag");
 
     const promptText = this.interpolate(template.templateText, {
@@ -259,32 +489,19 @@ export class PromptClientService implements OnModuleInit {
     };
   }
 
-  /**
-   * Get the current prompt hash for cache invalidation.
-   */
-  async getPromptHash(templateName: string): Promise<string> {
-    const template = await this.getTemplate(templateName);
-    return this.hash(template.templateText);
-  }
+  // ---------------------------------------------------------------------------
+  // Private: Template loading with caching
+  // ---------------------------------------------------------------------------
 
   /**
-   * Clear the in-memory template cache.
-   */
-  clearCache(): void {
-    this.cache.clear();
-    this.logger.log("Template cache cleared");
-  }
-
-  /**
-   * Fetch a template from the database with in-memory caching.
-   * Falls back to a default template name if the primary is not found.
+   * Fetch a template from the database with caching and fallbacks.
    */
   private async getTemplate(
     name: string,
     fallbackName?: string,
   ): Promise<PromptTemplate> {
     // Check cache
-    const cached = this.cache.get(name);
+    const cached = await this.templateCache.get(name);
     if (cached) return cached;
 
     // Query database
@@ -307,20 +524,22 @@ export class PromptClientService implements OnModuleInit {
         this.logger.warn(
           `Using hardcoded fallback for "${name}" — run db:seed-prompts`,
         );
-        this.cache.set(name, fallback);
+        this.metrics.recordHardcodedFallback();
+        await this.templateCache.set(name, fallback);
         return fallback;
       }
       throw new Error(`Prompt template "${name}" not found in database`);
     }
 
     // Cache for future reads
-    this.cache.set(name, template);
+    await this.templateCache.set(name, template);
     return template;
   }
 
-  /**
-   * Interpolate {{VARIABLE}} placeholders in a template.
-   */
+  // ---------------------------------------------------------------------------
+  // Private: Utilities
+  // ---------------------------------------------------------------------------
+
   private interpolate(
     template: string,
     variables: Record<string, string>,
@@ -332,46 +551,7 @@ export class PromptClientService implements OnModuleInit {
     return result;
   }
 
-  /**
-   * Hash a template string for cache invalidation tracking.
-   */
   private hash(text: string): string {
     return createHash("sha256").update(text).digest("hex");
-  }
-
-  /**
-   * Fetch prompt from a remote AI Prompt Service.
-   */
-  private async fetchRemotePrompt(
-    endpoint: string,
-    params: StructuralAnalysisParams | DocumentAnalysisParams | RAGParams,
-  ): Promise<PromptServiceResponse> {
-    const url = this.config!.promptServiceUrl!;
-    const apiKey = this.config!.promptServiceApiKey;
-    const timeout = this.config?.timeoutMs ?? 10000;
-
-    if (!apiKey) {
-      throw new Error(
-        "API key is required when prompt service URL is configured",
-      );
-    }
-
-    const response = await fetch(`${url}/prompts/${endpoint}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(params),
-      signal: AbortSignal.timeout(timeout),
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Prompt service returned ${response.status}: ${response.statusText}`,
-      );
-    }
-
-    return (await response.json()) as PromptServiceResponse;
   }
 }
