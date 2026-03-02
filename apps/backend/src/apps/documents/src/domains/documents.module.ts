@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DocumentsService } from './documents.service';
 import { DocumentsResolver } from './documents.resolver';
 import { StorageModule } from '@opuspopuli/storage-provider';
@@ -23,7 +24,16 @@ import { PromptClientModule } from '@opuspopuli/prompt-client';
     OcrModule,
     ExtractionModule,
     LLMModule,
-    PromptClientModule,
+    PromptClientModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        config: {
+          promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+          promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
+          hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
+        },
+      }),
+    }),
   ],
   providers: [DocumentsService, DocumentsResolver],
   exports: [DocumentsService],

@@ -56,6 +56,24 @@ open http://localhost:3101
 | `circuit_breaker_state` | Gauge | service, circuit_name | 0=closed, 0.5=half-open, 1=open |
 | `circuit_breaker_failures_total` | Counter | service, circuit_name | Failure count |
 
+#### Prompt Client Metrics
+
+The `@opuspopuli/prompt-client` exposes built-in metrics via `promptClient.getMetrics()`:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `totalRequests` | Counter | Total prompt requests across all sources |
+| `cacheHits` | Counter | Requests served from template cache |
+| `remoteCalls` | Counter | Requests sent to remote prompt service |
+| `dbFallbacks` | Counter | Requests that fell back to database after remote failure |
+| `hardcodedFallbacks` | Counter | Requests that used hardcoded fallback templates |
+| `avgRemoteLatencyMs` | Gauge | Average latency for remote prompt service calls |
+| `circuitBreakerState` | String | Current circuit breaker state (closed/open/half_open) |
+| `cacheHitRate` | Gauge | Cache hit rate (0-1) |
+| `fallbackRate` | Gauge | Fallback rate (0-1), includes DB + hardcoded fallbacks |
+
+Circuit breaker health is also available via `promptClient.getCircuitBreakerHealth()`.
+
 #### Database Metrics
 
 | Metric | Type | Labels | Description |

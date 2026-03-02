@@ -409,22 +409,39 @@ async answerQuery(userId: string, query: string): Promise<string> {
 
 ---
 
-## Prompt Engineering
+## Prompt Management
 
-### RAG Prompt Template
+### @opuspopuli/prompt-client
+
+All AI prompt construction is managed by `@opuspopuli/prompt-client`, which provides:
+
+- **Database-backed templates** — prompt templates stored in PostgreSQL, editable without code changes
+- **Remote delegation** — optionally delegates to a federated [AI Prompt Service](https://github.com/OpusPopuli/prompt-service)
+- **3-tier fallback** — remote service → database → hardcoded defaults
+- **Resilience** — circuit breaker, retry with backoff, TTL-based caching, HMAC authentication
 
 ```typescript
-private buildRAGPrompt(context: string, query: string): string {
-  return `You are a helpful assistant. Answer the question based on the context provided below.
+// Knowledge Service uses prompt-client for RAG prompts
+const { promptText, promptHash, promptVersion } =
+  await this.promptClient.getRAGPrompt({
+    context: contextChunks.join('\n\n'),
+    query: userQuery,
+  });
 
-Context:
-${context}
-
-Question: ${query}
-
-Answer:`;
-}
+const result = await this.llm.generate(promptText, options);
 ```
+
+### Template Types
+
+| Method | Templates | Use Case |
+|--------|-----------|----------|
+| `getStructuralAnalysisPrompt()` | `structural-analysis`, `structural-schema-*` | Web scraping schema extraction |
+| `getDocumentAnalysisPrompt()` | `document-analysis-*`, `document-analysis-base-instructions` | Document AI analysis |
+| `getRAGPrompt()` | `rag` | Retrieval-augmented generation |
+
+Each template uses `{{VARIABLE}}` placeholders that are interpolated at runtime.
+
+**See**: [prompt-client README](../../packages/prompt-client/README.md) for full configuration and resilience details.
 
 ### Best Practices
 
