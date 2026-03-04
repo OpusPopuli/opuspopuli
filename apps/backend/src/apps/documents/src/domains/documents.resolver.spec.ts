@@ -168,6 +168,91 @@ describe('DocumentsResolver', () => {
     });
   });
 
+  describe('analyzeDocument', () => {
+    it('should call service and return analysis with provenance fields', async () => {
+      const mockResult = {
+        analysis: {
+          documentType: 'petition',
+          summary: 'Petition summary',
+          keyPoints: ['Point 1'],
+          entities: ['Entity 1'],
+          analyzedAt: new Date().toISOString(),
+          provider: 'Ollama',
+          model: 'llama3.2',
+          processingTimeMs: 1000,
+          promptVersion: 'v2',
+          promptHash: 'abc123hash',
+          sources: [
+            {
+              name: 'Scanned Document (OCR)',
+              accessedAt: new Date().toISOString(),
+              dataCompleteness: 100,
+            },
+          ],
+          completenessScore: 80,
+          completenessDetails: {
+            availableCount: 4,
+            idealCount: 5,
+            missingItems: ['Financial impact data'],
+            explanation: 'Based on 4 of 5 sources.',
+          },
+        },
+        fromCache: false,
+      };
+
+      documentsService.analyzeDocument = jest
+        .fn()
+        .mockResolvedValue(mockResult);
+
+      const result = await documentsResolver.analyzeDocument(
+        { documentId: 'doc-1' },
+        mockContext,
+      );
+
+      expect(result).toEqual(mockResult);
+      expect(documentsService.analyzeDocument).toHaveBeenCalledWith(
+        'user-1',
+        'doc-1',
+        false,
+      );
+      expect(result.analysis.promptVersion).toBe('v2');
+      expect(result.analysis.promptHash).toBe('abc123hash');
+      expect(result.analysis.sources).toHaveLength(1);
+      expect(result.analysis.completenessScore).toBe(80);
+      expect(result.analysis.completenessDetails!.missingItems).toContain(
+        'Financial impact data',
+      );
+    });
+
+    it('should pass through forceReanalyze flag', async () => {
+      documentsService.analyzeDocument = jest
+        .fn()
+        .mockResolvedValue({ analysis: {}, fromCache: false });
+
+      await documentsResolver.analyzeDocument(
+        { documentId: 'doc-1', forceReanalyze: true },
+        mockContext,
+      );
+
+      expect(documentsService.analyzeDocument).toHaveBeenCalledWith(
+        'user-1',
+        'doc-1',
+        true,
+      );
+    });
+
+    it('should throw error when user not authenticated', async () => {
+      const noUserContext = { req: { user: undefined, headers: {} } };
+
+      await expect(
+        documentsResolver.analyzeDocument(
+          { documentId: 'doc-1' },
+          noUserContext,
+        ),
+      ).rejects.toThrow('User not authenticated');
+    });
+  });
+
   describe('submitAbuseReport', () => {
     it('should call service with correct arguments', async () => {
       const mockResult = { success: true, reportId: 'report-1' };
