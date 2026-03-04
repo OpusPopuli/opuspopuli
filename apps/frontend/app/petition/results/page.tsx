@@ -362,13 +362,148 @@ export default function PetitionResultsPage() {
             </div>
           )}
 
+          {/* Data Completeness (#425) */}
+          {analysis.completenessScore != null && (
+            <div>
+              <h3 className="text-md font-semibold text-gray-400 mb-2">
+                {t("results.dataCompleteness")}
+              </h3>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex-1 bg-gray-800 rounded-full h-2.5">
+                  <div
+                    className={`h-2.5 rounded-full ${
+                      analysis.completenessScore > 80
+                        ? "bg-green-500"
+                        : analysis.completenessScore >= 50
+                          ? "bg-yellow-500"
+                          : "bg-red-500"
+                    }`}
+                    style={{ width: `${analysis.completenessScore}%` }}
+                  />
+                </div>
+                <span
+                  className={`text-sm font-medium ${
+                    analysis.completenessScore > 80
+                      ? "text-green-400"
+                      : analysis.completenessScore >= 50
+                        ? "text-yellow-400"
+                        : "text-red-400"
+                  }`}
+                >
+                  {t("results.completenessScore", {
+                    score: analysis.completenessScore,
+                  })}
+                </span>
+              </div>
+              {analysis.completenessDetails && (
+                <p className="text-xs text-gray-500 mb-2">
+                  {t("results.completenessExplanation", {
+                    available: analysis.completenessDetails.availableCount,
+                    ideal: analysis.completenessDetails.idealCount,
+                  })}
+                </p>
+              )}
+              {analysis.completenessDetails &&
+                analysis.completenessDetails.missingItems.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="text-xs text-amber-400 cursor-pointer hover:text-amber-300">
+                      {t("results.whatWouldImprove")}
+                    </summary>
+                    <ul className="mt-1 space-y-1 pl-4">
+                      {analysis.completenessDetails.missingItems.map((item) => (
+                        <li
+                          key={item}
+                          className="text-xs text-gray-500 list-disc"
+                        >
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+            </div>
+          )}
+
+          {/* Data Sources (#423) */}
+          {analysis.sources && analysis.sources.length > 0 && (
+            <details>
+              <summary className="text-md font-semibold text-gray-400 cursor-pointer hover:text-gray-300">
+                {t("results.dataSources")}
+              </summary>
+              <div className="mt-2 space-y-2">
+                {analysis.sources.map((source) => {
+                  const accessedDate = new Date(source.accessedAt);
+                  const ageMs = Date.now() - accessedDate.getTime();
+                  const ageDays = ageMs / (1000 * 60 * 60 * 24);
+                  const freshnessClass =
+                    ageDays < 1
+                      ? "bg-green-900 text-green-300"
+                      : ageDays < 7
+                        ? "bg-yellow-900 text-yellow-300"
+                        : "bg-red-900 text-red-300";
+                  const freshnessLabel =
+                    ageDays < 1
+                      ? t("results.sourceFresh")
+                      : ageDays < 7
+                        ? t("results.sourceAging")
+                        : t("results.sourceStale");
+
+                  return (
+                    <div
+                      key={source.name}
+                      className="flex items-center justify-between bg-gray-900 rounded-lg px-3 py-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-300 truncate">
+                          {source.name}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {t("results.sourceAccessedAt", {
+                            date: accessedDate.toLocaleDateString(),
+                          })}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full ml-2 flex-shrink-0 ${freshnessClass}`}
+                      >
+                        {freshnessLabel}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          )}
+
           {/* Provider info footer */}
           <div className="text-xs text-gray-500 pt-4 border-t border-gray-800">
-            {t("results.analyzedBy", {
-              provider: analysis.provider,
-              model: analysis.model,
-            })}
-            {fromCache && ` (${t("results.cachedResult")})`}
+            <p>
+              {t("results.analyzedBy", {
+                provider: analysis.provider,
+                model: analysis.model,
+              })}
+              {fromCache && ` (${t("results.cachedResult")})`}
+            </p>
+            {/* Prompt version (#424) */}
+            {analysis.promptHash && (
+              <p
+                className="mt-1"
+                title={t("results.promptVersionTooltip", {
+                  version: analysis.promptVersion ?? "unknown",
+                  hash: analysis.promptHash.slice(0, 8),
+                })}
+              >
+                {t("results.promptVersion", {
+                  hash: analysis.promptHash.slice(0, 8),
+                })}{" "}
+                <a
+                  href="/transparency/prompt-charter"
+                  className="text-blue-400 hover:text-blue-300 underline"
+                >
+                  {t("results.promptCharter")}
+                </a>
+              </p>
+            )}
           </div>
         </section>
       )}

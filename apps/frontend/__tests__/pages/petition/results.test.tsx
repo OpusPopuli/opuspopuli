@@ -78,6 +78,33 @@ const mockAnalysisResult = {
         model: "mistral:7b",
         tokensUsed: 500,
         processingTimeMs: 3000,
+        promptVersion: "v3",
+        promptHash: "abc123def456789012345678",
+        sources: [
+          {
+            name: "Scanned Document (OCR)",
+            accessedAt: new Date().toISOString(),
+            dataCompleteness: 100,
+          },
+          {
+            name: "Ollama LLM Analysis (mistral:7b)",
+            accessedAt: new Date().toISOString(),
+            dataCompleteness: 100,
+          },
+          {
+            name: "Entity Extraction",
+            accessedAt: new Date().toISOString(),
+            dataCompleteness: 100,
+          },
+        ],
+        completenessScore: 80,
+        completenessDetails: {
+          availableCount: 4,
+          idealCount: 5,
+          missingItems: ["Financial impact data"],
+          explanation:
+            "This analysis is based on 4 of 5 available data sources for this document type.",
+        },
         actualEffect: "Would mandate new park maintenance standards",
         potentialConcerns: ["Budget impact unclear"],
         beneficiaries: ["Local residents"],
@@ -318,5 +345,396 @@ describe("PetitionResultsPage", () => {
     await user.click(screen.getByText("results.tryAgain"));
 
     expect(mockPush).toHaveBeenCalledWith("/petition/capture");
+  });
+
+  it("should display prompt version in footer (#424)", async () => {
+    sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+
+    render(<PetitionResultsPage />);
+
+    await waitFor(() => {
+      // The i18n mock returns the key with {{hash}} replaced
+      // t("results.promptVersion", { hash: "abc123de" }) → "results.promptVersion" (key returned as-is since {{hash}} not in key)
+      // So look for the key text
+      expect(screen.getByText(/results\.promptVersion/)).toBeInTheDocument();
+    });
+
+    // Prompt Charter link should be present
+    expect(screen.getByText("results.promptCharter")).toBeInTheDocument();
+    expect(
+      screen.getByText("results.promptCharter").closest("a"),
+    ).toHaveAttribute("href", "/transparency/prompt-charter");
+  });
+
+  it("should display data sources section (#423)", async () => {
+    sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+
+    render(<PetitionResultsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("results.dataSources")).toBeInTheDocument();
+    });
+
+    // Expand the collapsible sources section
+    fireEvent.click(screen.getByText("results.dataSources"));
+
+    // Should show source names
+    expect(screen.getByText("Scanned Document (OCR)")).toBeInTheDocument();
+    expect(
+      screen.getByText("Ollama LLM Analysis (mistral:7b)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Entity Extraction")).toBeInTheDocument();
+  });
+
+  it("should display completeness score and progress bar (#425)", async () => {
+    sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+
+    render(<PetitionResultsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("results.dataCompleteness")).toBeInTheDocument();
+    });
+
+    // Score should be shown
+    expect(screen.getByText("results.completenessScore")).toBeInTheDocument();
+
+    // Missing items should be in a collapsible
+    expect(screen.getByText("results.whatWouldImprove")).toBeInTheDocument();
+
+    // Expand and check missing items
+    fireEvent.click(screen.getByText("results.whatWouldImprove"));
+    expect(screen.getByText("Financial impact data")).toBeInTheDocument();
+  });
+
+  describe("completeness color branches (#425)", () => {
+    const makeAnalysisWithScore = (score: number) => ({
+      data: {
+        analyzeDocument: {
+          analysis: {
+            ...mockAnalysisResult.data.analyzeDocument.analysis,
+            completenessScore: score,
+            completenessDetails: {
+              availableCount: Math.round((score / 100) * 5),
+              idealCount: 5,
+              missingItems: score < 100 ? ["Missing item"] : [],
+              explanation: "test",
+            },
+          },
+          fromCache: false,
+        },
+      },
+    });
+
+    it("should show green progress bar when completeness > 80%", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockAnalyzeDocument.mockResolvedValue(makeAnalysisWithScore(90));
+
+      const { container } = render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("results.dataCompleteness"),
+        ).toBeInTheDocument();
+      });
+
+      // Check for green class on progress bar
+      const progressBar = container.querySelector(".bg-green-500");
+      expect(progressBar).toBeInTheDocument();
+      // Check for green text
+      const scoreText = container.querySelector(".text-green-400");
+      expect(scoreText).toBeInTheDocument();
+    });
+
+    it("should show yellow progress bar when completeness is 50-80%", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockAnalyzeDocument.mockResolvedValue(makeAnalysisWithScore(60));
+
+      const { container } = render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("results.dataCompleteness"),
+        ).toBeInTheDocument();
+      });
+
+      const progressBar = container.querySelector(".bg-yellow-500");
+      expect(progressBar).toBeInTheDocument();
+      const scoreText = container.querySelector(".text-yellow-400");
+      expect(scoreText).toBeInTheDocument();
+    });
+
+    it("should show red progress bar when completeness < 50%", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockAnalyzeDocument.mockResolvedValue(makeAnalysisWithScore(30));
+
+      const { container } = render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("results.dataCompleteness"),
+        ).toBeInTheDocument();
+      });
+
+      const progressBar = container.querySelector(".bg-red-500");
+      expect(progressBar).toBeInTheDocument();
+      const scoreText = container.querySelector(".text-red-400");
+      expect(scoreText).toBeInTheDocument();
+    });
+
+    it("should not show completeness section when score is null", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockAnalyzeDocument.mockResolvedValue({
+        data: {
+          analyzeDocument: {
+            analysis: {
+              ...mockAnalysisResult.data.analyzeDocument.analysis,
+              completenessScore: null,
+              completenessDetails: null,
+            },
+            fromCache: false,
+          },
+        },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.summary")).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByText("results.dataCompleteness"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("should not show 'what would improve' when no missing items", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockAnalyzeDocument.mockResolvedValue(makeAnalysisWithScore(100));
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("results.dataCompleteness"),
+        ).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByText("results.whatWouldImprove"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("source freshness branches (#423)", () => {
+    it("should show 'Aging' badge for sources accessed 2-7 days ago", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      const threeDaysAgo = new Date(
+        Date.now() - 3 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      mockAnalyzeDocument.mockResolvedValue({
+        data: {
+          analyzeDocument: {
+            analysis: {
+              ...mockAnalysisResult.data.analyzeDocument.analysis,
+              sources: [
+                {
+                  name: "Old OCR Source",
+                  accessedAt: threeDaysAgo,
+                  dataCompleteness: 100,
+                },
+              ],
+            },
+            fromCache: false,
+          },
+        },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.dataSources")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText("results.dataSources"));
+      expect(screen.getByText("results.sourceAging")).toBeInTheDocument();
+    });
+
+    it("should show 'Stale' badge for sources accessed more than 7 days ago", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      const tenDaysAgo = new Date(
+        Date.now() - 10 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      mockAnalyzeDocument.mockResolvedValue({
+        data: {
+          analyzeDocument: {
+            analysis: {
+              ...mockAnalysisResult.data.analyzeDocument.analysis,
+              sources: [
+                {
+                  name: "Stale Source",
+                  accessedAt: tenDaysAgo,
+                  dataCompleteness: 50,
+                },
+              ],
+            },
+            fromCache: false,
+          },
+        },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.dataSources")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText("results.dataSources"));
+      expect(screen.getByText("results.sourceStale")).toBeInTheDocument();
+    });
+
+    it("should not show sources section when sources array is empty", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockAnalyzeDocument.mockResolvedValue({
+        data: {
+          analyzeDocument: {
+            analysis: {
+              ...mockAnalysisResult.data.analyzeDocument.analysis,
+              sources: [],
+            },
+            fromCache: false,
+          },
+        },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.summary")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText("results.dataSources")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("share functionality with analysis data", () => {
+    it("should share analysis summary via navigator.share including key points", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      const mockShare = jest.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "share", {
+        value: mockShare,
+        writable: true,
+        configurable: true,
+      });
+
+      const user = userEvent.setup();
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.share")).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText("results.share"));
+
+      expect(mockShare).toHaveBeenCalledWith({
+        title: "Petition Analysis",
+        text: expect.stringContaining("A petition calling for policy change"),
+      });
+      // Verify key points are included in shared text
+      const sharedText = mockShare.mock.calls[0][0].text;
+      expect(sharedText).toContain("Key Points");
+      expect(sharedText).toContain("Requests new regulation");
+    });
+
+    it("should gracefully handle share cancellation", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      // Simulate user cancelling share dialog
+      Object.defineProperty(navigator, "share", {
+        value: jest
+          .fn()
+          .mockRejectedValue(new DOMException("Share canceled", "AbortError")),
+        writable: true,
+        configurable: true,
+      });
+
+      const user = userEvent.setup();
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.share")).toBeInTheDocument();
+      });
+
+      // Should not throw
+      await user.click(screen.getByText("results.share"));
+
+      // Page should still be in complete state (no error)
+      expect(screen.queryByText("results.errorTitle")).not.toBeInTheDocument();
+    });
+
+    it("should not show share button in error state", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockAnalyzeDocument.mockRejectedValue(new Error("LLM timeout"));
+      mockProcessScan.mockResolvedValue(mockScanResult);
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.errorTitle")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText("results.share")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("prompt version edge cases (#424)", () => {
+    it("should not show prompt version when promptHash is null", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockAnalyzeDocument.mockResolvedValue({
+        data: {
+          analyzeDocument: {
+            analysis: {
+              ...mockAnalysisResult.data.analyzeDocument.analysis,
+              promptHash: null,
+              promptVersion: null,
+            },
+            fromCache: false,
+          },
+        },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.summary")).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByText(/results\.promptVersion/),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("results.promptCharter"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("cached result display", () => {
+    it("should show cached result indicator when fromCache is true", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockAnalyzeDocument.mockResolvedValue({
+        data: {
+          analyzeDocument: {
+            ...mockAnalysisResult.data.analyzeDocument,
+            fromCache: true,
+          },
+        },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/results\.cachedResult/)).toBeInTheDocument();
+      });
+    });
   });
 });

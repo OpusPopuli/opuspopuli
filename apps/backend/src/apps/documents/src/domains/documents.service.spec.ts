@@ -956,6 +956,66 @@ describe('DocumentsService', () => {
       );
     });
 
+    it('should include prompt version and hash in analysis result (#424)', async () => {
+      mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+      mockDb.document.update.mockResolvedValue({} as any);
+      mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
+
+      const result = await documentsService.analyzeDocument('user-1', 'doc-1');
+
+      expect(result.analysis.promptVersion).toBe('v1');
+      expect(result.analysis.promptHash).toBe('mock-hash');
+    });
+
+    it('should include source provenance in analysis result (#423)', async () => {
+      mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+      mockDb.document.update.mockResolvedValue({} as any);
+      mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
+
+      const result = await documentsService.analyzeDocument('user-1', 'doc-1');
+
+      expect(result.analysis.sources).toBeDefined();
+      expect(result.analysis.sources!.length).toBeGreaterThanOrEqual(2);
+      // Should always have OCR and LLM sources
+      expect(result.analysis.sources![0].name).toBe('Scanned Document (OCR)');
+      expect(result.analysis.sources![1].name).toContain('LLM Analysis');
+      // Entities were returned, so entity extraction source should be present
+      expect(
+        result.analysis.sources!.some(
+          (s: any) => s.name === 'Entity Extraction',
+        ),
+      ).toBe(true);
+      // Related measures were returned for a petition
+      expect(
+        result.analysis.sources!.some(
+          (s: any) => s.name === 'Related Measures Database',
+        ),
+      ).toBe(true);
+    });
+
+    it('should include completeness score in analysis result (#425)', async () => {
+      mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+      mockDb.document.update.mockResolvedValue({} as any);
+      mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
+
+      const result = await documentsService.analyzeDocument('user-1', 'doc-1');
+
+      expect(result.analysis.completenessScore).toBeDefined();
+      expect(typeof result.analysis.completenessScore).toBe('number');
+      expect(result.analysis.completenessScore).toBeGreaterThan(0);
+      expect(result.analysis.completenessScore).toBeLessThanOrEqual(100);
+
+      expect(result.analysis.completenessDetails).toBeDefined();
+      expect(result.analysis.completenessDetails!.idealCount).toBe(5); // petition has 5 ideal sources
+      expect(
+        result.analysis.completenessDetails!.availableCount,
+      ).toBeGreaterThan(0);
+      // Financial impact data is not available
+      expect(result.analysis.completenessDetails!.missingItems).toContain(
+        'Financial impact data',
+      );
+    });
+
     it('should return cached analysis when contentHash matches', async () => {
       const cachedAnalysis = {
         summary: 'Cached analysis',
@@ -1087,6 +1147,249 @@ describe('DocumentsService', () => {
       expect(mockPromptClient.getDocumentAnalysisPrompt).toHaveBeenCalledWith({
         documentType: DocumentType.contract,
         text: 'This agreement is between Party A and Party B...',
+      });
+    });
+
+    describe('source provenance (#423)', () => {
+      it('should not include Entity Extraction source when no entities', async () => {
+        mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+        mockDb.document.update.mockResolvedValue({} as any);
+        mockLLMProvider.generate.mockResolvedValue({
+          text: JSON.stringify({
+            summary: 'No entities found',
+            keyPoints: ['Point 1'],
+            entities: [],
+          }),
+          tokensUsed: 100,
+        });
+
+        const result = await documentsService.analyzeDocument(
+          'user-1',
+          'doc-1',
+        );
+
+        expect(
+          result.analysis.sources!.some(
+            (s: any) => s.name === 'Entity Extraction',
+          ),
+        ).toBe(false);
+        expect(result.analysis.sources!.length).toBe(2); // Only OCR + LLM
+      });
+
+      it('should not include Related Measures source for non-petition types', async () => {
+        const contractDoc = {
+          ...mockDocumentWithText,
+          type: DocumentType.contract,
+        };
+        mockDb.document.findFirst.mockResolvedValueOnce(contractDoc);
+        mockDb.document.update.mockResolvedValue({} as any);
+        mockLLMProvider.generate.mockResolvedValue({
+          text: JSON.stringify({
+            summary: 'Contract summary',
+            keyPoints: ['Point'],
+            entities: ['Party A'],
+            relatedMeasures: ['Some measure'], // present but irrelevant for contracts
+          }),
+          tokensUsed: 100,
+        });
+
+        const result = await documentsService.analyzeDocument(
+          'user-1',
+          'doc-1',
+        );
+
+        expect(
+          result.analysis.sources!.some(
+            (s: any) => s.name === 'Related Measures Database',
+          ),
+        ).toBe(false);
+      });
+
+      it('should not include Related Measures source when petition has no related measures', async () => {
+        mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+        mockDb.document.update.mockResolvedValue({} as any);
+        mockLLMProvider.generate.mockResolvedValue({
+          text: JSON.stringify({
+            summary: 'Petition summary',
+            keyPoints: ['Point'],
+            entities: ['City'],
+            relatedMeasures: [],
+          }),
+          tokensUsed: 100,
+        });
+
+        const result = await documentsService.analyzeDocument(
+          'user-1',
+          'doc-1',
+        );
+
+        expect(
+          result.analysis.sources!.some(
+            (s: any) => s.name === 'Related Measures Database',
+          ),
+        ).toBe(false);
+      });
+
+      it('should include LLM provider name in source', async () => {
+        mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+        mockDb.document.update.mockResolvedValue({} as any);
+        mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
+
+        const result = await documentsService.analyzeDocument(
+          'user-1',
+          'doc-1',
+        );
+
+        expect(result.analysis.sources![1].name).toBe(
+          'Ollama LLM Analysis (llama3.2)',
+        );
+        expect(result.analysis.sources![1].dataCompleteness).toBe(100);
+      });
+
+      it('should set dataCompleteness to 60 for Related Measures (LLM knowledge)', async () => {
+        mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+        mockDb.document.update.mockResolvedValue({} as any);
+        mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
+
+        const result = await documentsService.analyzeDocument(
+          'user-1',
+          'doc-1',
+        );
+
+        const relatedSource = result.analysis.sources!.find(
+          (s: any) => s.name === 'Related Measures Database',
+        );
+        expect(relatedSource).toBeDefined();
+        expect(relatedSource!.dataCompleteness).toBe(60);
+      });
+    });
+
+    describe('data completeness (#425)', () => {
+      it('should calculate completeness for contract type', async () => {
+        const contractDoc = {
+          ...mockDocumentWithText,
+          type: DocumentType.contract,
+        };
+        mockDb.document.findFirst.mockResolvedValueOnce(contractDoc);
+        mockDb.document.update.mockResolvedValue({} as any);
+        mockLLMProvider.generate.mockResolvedValue({
+          text: JSON.stringify({
+            summary: 'Contract summary',
+            keyPoints: ['Point'],
+            entities: ['Party A', 'Party B'],
+            parties: ['Party A', 'Party B'],
+            obligations: ['Deliver services'],
+            risks: ['Liability'],
+            terminationClause: '30 days notice',
+          }),
+          tokensUsed: 100,
+        });
+
+        const result = await documentsService.analyzeDocument(
+          'user-1',
+          'doc-1',
+        );
+
+        // Contract has 5 ideal sources, all should be present
+        expect(result.analysis.completenessScore).toBe(100);
+        expect(result.analysis.completenessDetails!.idealCount).toBe(5);
+        expect(result.analysis.completenessDetails!.availableCount).toBe(5);
+        expect(result.analysis.completenessDetails!.missingItems).toEqual([]);
+        expect(result.analysis.completenessDetails!.explanation).toContain(
+          'All expected',
+        );
+      });
+
+      it('should calculate completeness for form type', async () => {
+        const formDoc = {
+          ...mockDocumentWithText,
+          type: DocumentType.form,
+        };
+        mockDb.document.findFirst.mockResolvedValueOnce(formDoc);
+        mockDb.document.update.mockResolvedValue({} as any);
+        mockLLMProvider.generate.mockResolvedValue({
+          text: JSON.stringify({
+            summary: 'Form summary',
+            keyPoints: ['Point'],
+            entities: [],
+            requiredFields: ['Name', 'Date'],
+            // No submissionDeadline — missing source
+          }),
+          tokensUsed: 100,
+        });
+
+        const result = await documentsService.analyzeDocument(
+          'user-1',
+          'doc-1',
+        );
+
+        // Form has 3 ideal sources; 2 available (text + required fields), 1 missing (submission)
+        expect(result.analysis.completenessScore).toBe(67); // 2/3 = 66.7 → rounded to 67
+        expect(result.analysis.completenessDetails!.idealCount).toBe(3);
+        expect(result.analysis.completenessDetails!.missingItems).toContain(
+          'Submission requirements',
+        );
+      });
+
+      it('should fall back to petition ideal sources for unknown document types', async () => {
+        const otherDoc = {
+          ...mockDocumentWithText,
+          type: 'unknown_type' as DocumentType,
+        };
+        mockDb.document.findFirst.mockResolvedValueOnce(otherDoc);
+        mockDb.document.update.mockResolvedValue({} as any);
+        mockLLMProvider.generate.mockResolvedValue({
+          text: JSON.stringify({
+            summary: 'Summary',
+            keyPoints: [],
+            entities: [],
+          }),
+          tokensUsed: 100,
+        });
+
+        const result = await documentsService.analyzeDocument(
+          'user-1',
+          'doc-1',
+        );
+
+        // Falls back to petition: 5 ideal sources, only 1 available (document text)
+        expect(result.analysis.completenessDetails!.idealCount).toBe(5);
+        expect(result.analysis.completenessDetails!.availableCount).toBe(1);
+      });
+
+      it('should include partial explanation when not all sources available', async () => {
+        mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+        mockDb.document.update.mockResolvedValue({} as any);
+        mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
+
+        const result = await documentsService.analyzeDocument(
+          'user-1',
+          'doc-1',
+        );
+
+        // Petition: has text, entities, related measures, legal analysis (actualEffect) = 4
+        // Missing: Financial impact data = 1
+        expect(result.analysis.completenessDetails!.explanation).toContain(
+          '4 of 5',
+        );
+      });
+
+      it('should report Financial impact data as always missing for petitions', async () => {
+        mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
+        mockDb.document.update.mockResolvedValue({} as any);
+        mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
+
+        const result = await documentsService.analyzeDocument(
+          'user-1',
+          'doc-1',
+        );
+
+        expect(result.analysis.completenessDetails!.missingItems).toContain(
+          'Financial impact data',
+        );
+        expect(result.analysis.completenessDetails!.missingItems).not.toContain(
+          'Document text content',
+        );
       });
     });
   });

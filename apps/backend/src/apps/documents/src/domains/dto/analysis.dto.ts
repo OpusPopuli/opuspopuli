@@ -1,5 +1,6 @@
 import {
   Field,
+  Float,
   ObjectType,
   InputType,
   Int,
@@ -13,6 +14,42 @@ registerEnumType(DocumentType, {
   name: 'DocumentType',
   description: 'Type of document for analysis routing',
 });
+
+/**
+ * Source provenance for an analysis data source (#423)
+ */
+@ObjectType()
+export class AnalysisSource {
+  @Field()
+  name!: string;
+
+  @Field({ nullable: true })
+  url?: string;
+
+  @Field()
+  accessedAt!: string;
+
+  @Field(() => Float)
+  dataCompleteness!: number;
+}
+
+/**
+ * Data completeness details for an analysis (#425)
+ */
+@ObjectType()
+export class CompletenessDetails {
+  @Field(() => Int)
+  availableCount!: number;
+
+  @Field(() => Int)
+  idealCount!: number;
+
+  @Field(() => [String])
+  missingItems!: string[];
+
+  @Field()
+  explanation!: string;
+}
 
 /**
  * Analysis result for all document types
@@ -50,6 +87,24 @@ export class DocumentAnalysis {
 
   @Field({ nullable: true })
   cachedFrom?: string;
+
+  // Prompt provenance (#424)
+  @Field({ nullable: true })
+  promptVersion?: string;
+
+  @Field({ nullable: true })
+  promptHash?: string;
+
+  // Source provenance (#423)
+  @Field(() => [AnalysisSource], { nullable: true })
+  sources?: AnalysisSource[];
+
+  // Data completeness (#425)
+  @Field(() => Int, { nullable: true })
+  completenessScore?: number;
+
+  @Field(() => CompletenessDetails, { nullable: true })
+  completenessDetails?: CompletenessDetails;
 
   // Petition/Proposition fields
   @Field({ nullable: true })
