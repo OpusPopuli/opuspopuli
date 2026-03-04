@@ -707,7 +707,7 @@ export class DocumentsService {
 
     for (const idealItem of idealSources) {
       const check = checks.find(([name]) => name === idealItem);
-      if (check && check[1]) {
+      if (check?.[1]) {
         available.push(idealItem);
       } else {
         missing.push(idealItem);

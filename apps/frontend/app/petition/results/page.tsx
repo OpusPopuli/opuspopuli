@@ -24,6 +24,18 @@ function getConfidenceBadgeClass(confidence: number): string {
   return "bg-red-900 text-red-300";
 }
 
+function getCompletenessBarColor(score: number): string {
+  if (score > 80) return "bg-green-500";
+  if (score >= 50) return "bg-yellow-500";
+  return "bg-red-500";
+}
+
+function getCompletenessTextColor(score: number): string {
+  if (score > 80) return "text-green-400";
+  if (score >= 50) return "text-yellow-400";
+  return "text-red-400";
+}
+
 export default function PetitionResultsPage() {
   const router = useRouter();
   const { t } = useTranslation("petition");
@@ -371,24 +383,12 @@ export default function PetitionResultsPage() {
               <div className="flex items-center gap-3 mb-2">
                 <div className="flex-1 bg-gray-800 rounded-full h-2.5">
                   <div
-                    className={`h-2.5 rounded-full ${
-                      analysis.completenessScore > 80
-                        ? "bg-green-500"
-                        : analysis.completenessScore >= 50
-                          ? "bg-yellow-500"
-                          : "bg-red-500"
-                    }`}
+                    className={`h-2.5 rounded-full ${getCompletenessBarColor(analysis.completenessScore)}`}
                     style={{ width: `${analysis.completenessScore}%` }}
                   />
                 </div>
                 <span
-                  className={`text-sm font-medium ${
-                    analysis.completenessScore > 80
-                      ? "text-green-400"
-                      : analysis.completenessScore >= 50
-                        ? "text-yellow-400"
-                        : "text-red-400"
-                  }`}
+                  className={`text-sm font-medium ${getCompletenessTextColor(analysis.completenessScore)}`}
                 >
                   {t("results.completenessScore", {
                     score: analysis.completenessScore,
@@ -435,18 +435,18 @@ export default function PetitionResultsPage() {
                   const accessedDate = new Date(source.accessedAt);
                   const ageMs = Date.now() - accessedDate.getTime();
                   const ageDays = ageMs / (1000 * 60 * 60 * 24);
-                  const freshnessClass =
-                    ageDays < 1
-                      ? "bg-green-900 text-green-300"
-                      : ageDays < 7
-                        ? "bg-yellow-900 text-yellow-300"
-                        : "bg-red-900 text-red-300";
-                  const freshnessLabel =
-                    ageDays < 1
-                      ? t("results.sourceFresh")
-                      : ageDays < 7
-                        ? t("results.sourceAging")
-                        : t("results.sourceStale");
+                  const getFreshnessStyle = (days: number) => {
+                    if (days < 1) return "bg-green-900 text-green-300";
+                    if (days < 7) return "bg-yellow-900 text-yellow-300";
+                    return "bg-red-900 text-red-300";
+                  };
+                  const getFreshnessLabel = (days: number) => {
+                    if (days < 1) return t("results.sourceFresh");
+                    if (days < 7) return t("results.sourceAging");
+                    return t("results.sourceStale");
+                  };
+                  const freshnessClass = getFreshnessStyle(ageDays);
+                  const freshnessLabel = getFreshnessLabel(ageDays);
 
                   return (
                     <div
