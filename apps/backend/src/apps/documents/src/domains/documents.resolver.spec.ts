@@ -253,6 +253,25 @@ describe('DocumentsResolver', () => {
     });
   });
 
+  describe('petitionActivityFeed', () => {
+    it('should call service and return feed', async () => {
+      const mockFeed = {
+        items: [],
+        hourlyTrend: [],
+        totalScansLast24h: 10,
+        activePetitionsLast24h: 3,
+      };
+      documentsService.getPetitionActivityFeed = jest
+        .fn()
+        .mockResolvedValue(mockFeed);
+
+      const result = await documentsResolver.petitionActivityFeed();
+
+      expect(result).toEqual(mockFeed);
+      expect(documentsService.getPetitionActivityFeed).toHaveBeenCalled();
+    });
+  });
+
   describe('submitAbuseReport', () => {
     it('should call service with correct arguments', async () => {
       const mockResult = { success: true, reportId: 'report-1' };

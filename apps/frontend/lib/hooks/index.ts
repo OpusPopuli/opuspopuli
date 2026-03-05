@@ -4,3 +4,4 @@ export { useCamera } from "./useCamera";
 export { useLightingAnalysis } from "./useLightingAnalysis";
 export { useGeolocation } from "./useGeolocation";
 export { useMapPetitions } from "./useMapPetitions";
+export { useActivityFeed } from "./useActivityFeed";

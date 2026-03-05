@@ -1694,6 +1694,167 @@ describe('DocumentsService', () => {
     });
   });
 
+  describe('getPetitionActivityFeed', () => {
+    it('should return aggregated items above privacy threshold', async () => {
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            content_hash: 'hash-1',
+            summary: 'A petition about parks',
+            document_type: 'petition',
+            scan_count: BigInt(5),
+            location_count: BigInt(3),
+            latest_scan_at: new Date('2024-06-01T12:00:00Z'),
+            earliest_scan_at: new Date('2024-06-01T08:00:00Z'),
+          },
+        ])
+        .mockResolvedValueOnce([
+          { hour: new Date('2024-06-01T08:00:00Z'), scan_count: BigInt(2) },
+          { hour: new Date('2024-06-01T09:00:00Z'), scan_count: BigInt(3) },
+        ])
+        .mockResolvedValueOnce([
+          { total_scans: BigInt(5), active_petitions: BigInt(1) },
+        ]);
+
+      const feed = await documentsService.getPetitionActivityFeed();
+
+      expect(feed.items).toHaveLength(1);
+      expect(feed.items[0]).toEqual({
+        contentHash: 'hash-1',
+        summary: 'A petition about parks',
+        documentType: 'petition',
+        scanCount: 5,
+        locationCount: 3,
+        latestScanAt: new Date('2024-06-01T12:00:00Z'),
+        earliestScanAt: new Date('2024-06-01T08:00:00Z'),
+      });
+      expect(feed.hourlyTrend).toHaveLength(2);
+      expect(feed.hourlyTrend[0].scanCount).toBe(2);
+      expect(feed.totalScansLast24h).toBe(5);
+      expect(feed.activePetitionsLast24h).toBe(1);
+    });
+
+    it('should return empty feed when no scans above threshold', async () => {
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { total_scans: BigInt(0), active_petitions: BigInt(0) },
+        ]);
+
+      const feed = await documentsService.getPetitionActivityFeed();
+
+      expect(feed.items).toEqual([]);
+      expect(feed.hourlyTrend).toEqual([]);
+      expect(feed.totalScansLast24h).toBe(0);
+      expect(feed.activePetitionsLast24h).toBe(0);
+    });
+
+    it('should convert bigint values to numbers', async () => {
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            content_hash: 'hash-2',
+            summary: 'Test',
+            document_type: null,
+            scan_count: BigInt(10),
+            location_count: BigInt(7),
+            latest_scan_at: new Date(),
+            earliest_scan_at: new Date(),
+          },
+        ])
+        .mockResolvedValueOnce([{ hour: new Date(), scan_count: BigInt(10) }])
+        .mockResolvedValueOnce([
+          { total_scans: BigInt(10), active_petitions: BigInt(1) },
+        ]);
+
+      const feed = await documentsService.getPetitionActivityFeed();
+
+      expect(typeof feed.items[0].scanCount).toBe('number');
+      expect(typeof feed.items[0].locationCount).toBe('number');
+      expect(typeof feed.hourlyTrend[0].scanCount).toBe('number');
+      expect(typeof feed.totalScansLast24h).toBe('number');
+    });
+
+    it('should handle null summary gracefully', async () => {
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            content_hash: 'hash-3',
+            summary: null,
+            document_type: 'petition',
+            scan_count: BigInt(4),
+            location_count: BigInt(1),
+            latest_scan_at: new Date(),
+            earliest_scan_at: new Date(),
+          },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { total_scans: BigInt(4), active_petitions: BigInt(1) },
+        ]);
+
+      const feed = await documentsService.getPetitionActivityFeed();
+
+      expect(feed.items[0].summary).toBe('Petition scan recorded');
+    });
+
+    it('should handle empty summaryStats array', async () => {
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const feed = await documentsService.getPetitionActivityFeed();
+
+      expect(feed.totalScansLast24h).toBe(0);
+      expect(feed.activePetitionsLast24h).toBe(0);
+    });
+
+    it('should handle null document_type', async () => {
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            content_hash: 'hash-4',
+            summary: 'Test petition',
+            document_type: null,
+            scan_count: BigInt(3),
+            location_count: BigInt(1),
+            latest_scan_at: new Date(),
+            earliest_scan_at: new Date(),
+          },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { total_scans: BigInt(3), active_petitions: BigInt(1) },
+        ]);
+
+      const feed = await documentsService.getPetitionActivityFeed();
+
+      expect(feed.items[0].documentType).toBeUndefined();
+    });
+
+    it('should return multiple hourly trend buckets in order', async () => {
+      const buckets = Array.from({ length: 24 }, (_, i) => ({
+        hour: new Date(`2024-06-01T${String(i).padStart(2, '0')}:00:00Z`),
+        scan_count: BigInt(i + 1),
+      }));
+
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(buckets)
+        .mockResolvedValueOnce([
+          { total_scans: BigInt(300), active_petitions: BigInt(5) },
+        ]);
+
+      const feed = await documentsService.getPetitionActivityFeed();
+
+      expect(feed.hourlyTrend).toHaveLength(24);
+      expect(feed.hourlyTrend[0].scanCount).toBe(1);
+      expect(feed.hourlyTrend[23].scanCount).toBe(24);
+    });
+  });
+
   describe('submitAbuseReport', () => {
     it('should create abuse report successfully', async () => {
       mockDb.document.findUnique.mockResolvedValue({

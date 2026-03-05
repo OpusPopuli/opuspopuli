@@ -17,6 +17,7 @@ import {
   DocumentType,
   Prisma,
 } from '@opuspopuli/relationaldb-provider';
+import { PRIVACY_THRESHOLD } from 'src/apps/documents/src/domains/dto/activity-feed.dto';
 
 describe('Document Integration Tests', () => {
   beforeEach(async () => {
@@ -1274,6 +1275,166 @@ describe('Document Integration Tests', () => {
 
       expect(result[0].latitude).toBeCloseTo(0, 4);
       expect(result[0].longitude).toBeCloseTo(179.9, 4);
+    });
+  });
+
+  describe('Activity Feed Aggregation', () => {
+    it('should aggregate petition scans above privacy threshold', async () => {
+      const user = await createUser({ email: 'activity-feed@example.com' });
+      const contentHash = `feed-hash-${generateId()}`;
+      const db = await getDbService();
+
+      // Create PRIVACY_THRESHOLD documents with same content hash
+      for (let i = 0; i < PRIVACY_THRESHOLD; i++) {
+        const doc = await createDocument({
+          userId: user.id,
+          key: `feed-petition-${i}.png`,
+          contentHash,
+          type: DocumentType.petition,
+          analysis: { summary: 'Test petition for parks' },
+        });
+
+        // Set scan locations at slightly different city-level positions
+        await db.$executeRaw`
+          UPDATE documents
+          SET scan_location = ST_SetSRID(ST_MakePoint(${-122.4194 + i * 0.01}, ${37.7749 + i * 0.01}), 4326)::geography
+          WHERE id::text = ${doc.id}
+        `;
+      }
+
+      // Query the activity feed using the same SQL pattern as the service
+      const items = await db.$queryRaw<
+        Array<{
+          content_hash: string;
+          summary: string | null;
+          scan_count: bigint;
+          location_count: bigint;
+        }>
+      >`
+        SELECT
+          content_hash,
+          (MAX(analysis::json->>'summary'))::text as summary,
+          COUNT(*) as scan_count,
+          COUNT(DISTINCT CONCAT(
+            ROUND(ST_Y(scan_location::geometry)::numeric, 2),
+            ',',
+            ROUND(ST_X(scan_location::geometry)::numeric, 2)
+          )) FILTER (WHERE scan_location IS NOT NULL) as location_count
+        FROM documents
+        WHERE
+          content_hash IS NOT NULL
+          AND type = 'petition'
+          AND deleted_at IS NULL
+          AND created_at >= NOW() - INTERVAL '24 hours'
+        GROUP BY content_hash
+        HAVING COUNT(*) >= ${PRIVACY_THRESHOLD}
+        ORDER BY MAX(created_at) DESC
+      `;
+
+      expect(items.length).toBeGreaterThanOrEqual(1);
+      const item = items.find((i) => i.content_hash === contentHash);
+      expect(item).toBeDefined();
+      expect(Number(item!.scan_count)).toBe(PRIVACY_THRESHOLD);
+      expect(item!.summary).toBe('Test petition for parks');
+    });
+
+    it('should NOT include petitions below privacy threshold', async () => {
+      const user = await createUser({ email: 'below-threshold@example.com' });
+      const belowHash = `below-${generateId()}`;
+      const db = await getDbService();
+
+      // Create fewer than PRIVACY_THRESHOLD documents
+      for (let i = 0; i < PRIVACY_THRESHOLD - 1; i++) {
+        await createDocument({
+          userId: user.id,
+          key: `below-${i}.png`,
+          contentHash: belowHash,
+          type: DocumentType.petition,
+        });
+      }
+
+      const items = await db.$queryRaw<
+        Array<{ content_hash: string; scan_count: bigint }>
+      >`
+        SELECT content_hash, COUNT(*) as scan_count
+        FROM documents
+        WHERE
+          content_hash = ${belowHash}
+          AND type = 'petition'
+          AND deleted_at IS NULL
+          AND created_at >= NOW() - INTERVAL '24 hours'
+        GROUP BY content_hash
+        HAVING COUNT(*) >= ${PRIVACY_THRESHOLD}
+      `;
+
+      expect(items).toHaveLength(0);
+    });
+
+    it('should return hourly trend buckets', async () => {
+      const user = await createUser({ email: 'hourly-trend@example.com' });
+      const db = await getDbService();
+
+      await createDocument({
+        userId: user.id,
+        key: 'trend-1.png',
+        type: DocumentType.petition,
+      });
+
+      const trend = await db.$queryRaw<
+        Array<{ hour: Date; scan_count: bigint }>
+      >`
+        SELECT
+          date_trunc('hour', created_at) as hour,
+          COUNT(*) as scan_count
+        FROM documents
+        WHERE
+          type = 'petition'
+          AND deleted_at IS NULL
+          AND created_at >= NOW() - INTERVAL '24 hours'
+        GROUP BY date_trunc('hour', created_at)
+        ORDER BY hour ASC
+      `;
+
+      expect(trend.length).toBeGreaterThanOrEqual(1);
+      expect(Number(trend[0].scan_count)).toBeGreaterThanOrEqual(1);
+      expect(trend[0].hour).toBeInstanceOf(Date);
+    });
+
+    it('should aggregate city-level locations for privacy', async () => {
+      const user = await createUser({ email: 'privacy-locs@example.com' });
+      const hash = `priv-loc-${generateId()}`;
+      const db = await getDbService();
+
+      // Create 3 docs at same city-level location (within 0.01 degree)
+      for (let i = 0; i < 3; i++) {
+        const doc = await createDocument({
+          userId: user.id,
+          key: `priv-${i}.png`,
+          contentHash: hash,
+          type: DocumentType.petition,
+        });
+
+        // All within same city-level grid cell (ROUND to 2 decimals)
+        await db.$executeRaw`
+          UPDATE documents
+          SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, ${37.7749 + i * 0.001}), 4326)::geography
+          WHERE id::text = ${doc.id}
+        `;
+      }
+
+      const result = await db.$queryRaw<Array<{ location_count: bigint }>>`
+        SELECT
+          COUNT(DISTINCT CONCAT(
+            ROUND(ST_Y(scan_location::geometry)::numeric, 2),
+            ',',
+            ROUND(ST_X(scan_location::geometry)::numeric, 2)
+          )) FILTER (WHERE scan_location IS NOT NULL) as location_count
+        FROM documents
+        WHERE content_hash = ${hash} AND deleted_at IS NULL
+      `;
+
+      // All 3 are within 0.001 degrees, so ROUND(x, 2) groups them as 1 location
+      expect(Number(result[0].location_count)).toBe(1);
     });
   });
 });
