@@ -122,7 +122,7 @@ export function ActivityFeed() {
       {feed.hourlyTrend.length > 0 && (
         <div className="mb-4">
           <Sparkline hourlyTrend={feed.hourlyTrend} />
-          <p className="text-xs text-gray-500 mt-1">Last 24 hours</p>
+          <p className="text-xs text-gray-400 mt-1">Last 24 hours</p>
         </div>
       )}
 
