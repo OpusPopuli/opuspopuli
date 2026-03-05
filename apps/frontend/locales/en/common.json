@@ -42,6 +42,11 @@
   "toast": {
     "closeNotification": "Close notification"
   },
+  "footer": {
+    "privacyPolicy": "Privacy Policy",
+    "termsOfService": "Terms of Service",
+    "transparency": "Transparency"
+  },
   "states": {
     "AL": "Alabama",
     "AK": "Alaska",
