@@ -1406,7 +1406,7 @@ describe('Document Integration Tests', () => {
       const hash = `priv-loc-${generateId()}`;
       const db = await getDbService();
 
-      // Create 3 docs at same city-level location (within 0.01 degree)
+      // Create 3 docs at same city-level location (within 0.005 degree, all ROUND to 37.77)
       for (let i = 0; i < 3; i++) {
         const doc = await createDocument({
           userId: user.id,
@@ -1418,7 +1418,7 @@ describe('Document Integration Tests', () => {
         // All within same city-level grid cell (ROUND to 2 decimals)
         await db.$executeRaw`
           UPDATE documents
-          SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, ${37.7749 + i * 0.001}), 4326)::geography
+          SET scan_location = ST_SetSRID(ST_MakePoint(-122.4194, ${37.771 + i * 0.001}), 4326)::geography
           WHERE id::text = ${doc.id}
         `;
       }

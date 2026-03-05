@@ -22,7 +22,7 @@ export function truncate(text: string, max: number): string {
 function Sparkline({
   hourlyTrend,
 }: {
-  hourlyTrend: { hour: Date; scanCount: number }[];
+  hourlyTrend: { hour: Date | string; scanCount: number }[];
 }) {
   const maxCount = Math.max(...hourlyTrend.map((b) => b.scanCount), 1);
   return (
