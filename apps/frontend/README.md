@@ -28,7 +28,7 @@ pnpm test
 
 ## Development
 
-The app runs on http://localhost:3000 with hot module replacement (HMR).
+The app runs on http://localhost:3200 with hot module replacement (HMR).
 
 ## Authentication
 
@@ -64,6 +64,8 @@ const { sendMagicLink, verifyMagicLink, emailSent } = useMagicLink();
 | `/register`             | Email-first passwordless registration            |
 | `/register/add-passkey` | Post-registration passkey setup                  |
 | `/auth/callback`        | Magic link verification                          |
+| `/forgot-password`      | Request password reset email                     |
+| `/reset-password`       | Set new password from reset link                 |
 
 ## User Settings
 
@@ -76,6 +78,7 @@ The settings pages provide comprehensive user profile and preference management:
 | `/settings/notifications` | Email, push, and civic notification preferences |
 | `/settings/privacy`       | GDPR/CCPA consent management                    |
 | `/settings/security`      | Passkeys, sessions, and 2FA settings            |
+| `/settings/activity`      | Activity log and session management             |
 
 ### Settings Features
 
@@ -84,6 +87,7 @@ The settings pages provide comprehensive user profile and preference management:
 - **Notifications**: Toggle email, push, SMS, and civic notifications with frequency controls
 - **Privacy**: Manage consent for marketing, analytics, and data sharing with GDPR/CCPA compliance
 - **Security**: Passkey management (placeholder), active session viewing, 2FA setup
+- **Activity**: Activity log with filtering, audit trail visualization, and session management
 
 All settings pages use Apollo Client for GraphQL operations with optimistic UI updates.
 
@@ -126,6 +130,37 @@ The frontend is designed to meet WCAG 2.2 Level AA accessibility standards:
 - **Keyboard Navigation**: All interactive elements are keyboard accessible
 
 See [Frontend Architecture](../../docs/architecture/frontend-architecture.md) for detailed accessibility patterns.
+
+## Petition Scanning
+
+Mobile-friendly petition capture with camera integration:
+
+- **Camera Capture**: Real-time camera with lighting analysis for optimal scan quality
+- **OCR Processing**: Automatic text extraction from captured petition images
+- **Geolocation**: Location tagging for petition scans
+- **Activity Feed**: Real-time petition scanning activity with hourly trends and location counts
+- **Map View**: Interactive map showing petition scan locations with clustering
+
+### Petition Hooks
+
+```typescript
+import { useCamera } from "@/lib/hooks/useCamera";
+import { useLightingAnalysis } from "@/lib/hooks/useLightingAnalysis";
+import { useGeolocation } from "@/lib/hooks/useGeolocation";
+import { useActivityFeed } from "@/lib/hooks/useActivityFeed";
+import { useMapPetitions } from "@/lib/hooks/useMapPetitions";
+```
+
+## Transparency Pages
+
+Public-facing transparency documentation:
+
+| Route                          | Purpose                       |
+| ------------------------------ | ----------------------------- |
+| `/transparency`                | Transparency hub overview     |
+| `/transparency/system-card`    | AI system card                |
+| `/transparency/ai-commitments` | AI commitments and principles |
+| `/transparency/prompt-charter` | Prompt service charter        |
 
 ## GraphQL API
 

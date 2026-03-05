@@ -112,7 +112,8 @@ opuspopuli/
 │   ├── logging-provider/     # Audit logging
 │   ├── ocr-provider/         # OCR functionality
 │   ├── scraping-pipeline/   # AI-powered web scraping (schema-on-read)
-│   └── region-provider/      # Civic data integration (declarative plugins)
+│   ├── region-provider/      # Civic data integration (declarative plugins)
+│   └── prompt-client/        # AI prompt template client (circuit breaker, HMAC)
 ├── apps/
 │   ├── backend/              # NestJS microservices
 │   │   └── src/
@@ -147,6 +148,7 @@ The `packages/` directory contains reusable workspace packages that provide plug
 | `@opuspopuli/ocr-provider` | OCR functionality | - |
 | `@opuspopuli/scraping-pipeline` | AI-powered schema-on-read web scraping with structural manifests | - |
 | `@opuspopuli/region-provider` | Civic data integration (declarative plugins, propositions, meetings, representatives) | - |
+| `@opuspopuli/prompt-client` | AI prompt template client with circuit breaker, HMAC auth, and caching | - |
 
 ## Development
 
@@ -199,6 +201,9 @@ docker-compose logs -f   # View logs
 - ✅ **Internationalization** - English and Spanish with react-i18next
 - ✅ **Civic Data Integration** - Declarative region plugins for propositions, meetings, and representatives
 - ✅ **AI-Powered Scraping** - Schema-on-read pipeline with structural manifests and self-healing
+- ✅ **Petition Scanning** - Mobile-friendly petition capture with OCR, geolocation, and real-time activity feed
+- ✅ **Transparency Pages** - AI system card, commitments, and prompt charter
+- ✅ **Campaign Finance** - Committees, contributions, expenditures, and independent expenditures
 - ✅ **Accessibility** - WCAG 2.2 Level AA compliant
 - ✅ **100% Self-Hosted** - Complete data control and privacy
 

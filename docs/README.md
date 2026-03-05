@@ -31,6 +31,10 @@ Practical guides for common tasks and workflows.
 - [**Region Setup and Validation**](guides/region-setup-and-validation-guide.md) - Step-by-step guide for standing up and validating a new region
 - [**Deployment**](guides/deployment.md) - Deploy a region node (on-premise + Cloudflare reference implementation)
 - [**Observability**](guides/observability.md) - Prometheus metrics and Loki logging
+- [**Auth Security**](guides/auth-security.md) - Authentication security patterns and best practices
+- [**Secrets Management**](guides/secrets-management.md) - Secrets management with Supabase Vault
+- [**Container Resources**](guides/container-resources.md) - Container CPU/memory resource requirements
+- [**Docker Health Checks**](guides/docker-healthchecks.md) - Health check configuration for services
 
 ## Quick Links
 
@@ -55,7 +59,11 @@ Practical guides for common tasks and workflows.
 - [Data Layer Architecture](architecture/data-layer.md)
 - [Database Migration](guides/database-migration.md)
 - [Audit Logging](guides/audit-logging.md)
+- [Auth Security](guides/auth-security.md) - Authentication security patterns
+- [Secrets Management](guides/secrets-management.md) - Secrets management with Supabase Vault
 - [Observability](guides/observability.md) - Prometheus, Loki, Grafana
+- [Container Resources](guides/container-resources.md) - Container resource requirements
+- [Docker Health Checks](guides/docker-healthchecks.md) - Health check configuration
 - [Region Setup and Validation](guides/region-setup-and-validation-guide.md) - Full region standup and UAT
 
 ### For AI/ML Engineers
@@ -112,6 +120,7 @@ The `packages/` directory contains workspace packages (`@opuspopuli/*`) that imp
 | `@opuspopuli/ocr-provider` | Image text extraction (Tesseract.js) |
 | `@opuspopuli/scraping-pipeline` | AI-powered schema-on-read web scraping with structural manifests |
 | `@opuspopuli/region-provider` | Civic data integration (declarative plugins, propositions, meetings, representatives) |
+| `@opuspopuli/prompt-client` | AI prompt template client with circuit breaker, HMAC auth, and caching |
 
 See [Provider Pattern](architecture/provider-pattern.md) and [Region Provider Guide](guides/region-provider.md) for implementation details.
 
