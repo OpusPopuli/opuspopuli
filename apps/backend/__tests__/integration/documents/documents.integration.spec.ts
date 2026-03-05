@@ -17,7 +17,8 @@ import {
   DocumentType,
   Prisma,
 } from '@opuspopuli/relationaldb-provider';
-import { PRIVACY_THRESHOLD } from 'src/apps/documents/src/domains/dto/activity-feed.dto';
+/** Privacy threshold — must match PRIVACY_THRESHOLD from activity-feed.dto.ts */
+const PRIVACY_THRESHOLD = 3;
 
 describe('Document Integration Tests', () => {
   beforeEach(async () => {

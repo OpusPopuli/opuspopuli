@@ -3,7 +3,7 @@
 import { useActivityFeed } from "@/lib/hooks";
 import { PetitionActivityItem } from "@/lib/graphql/documents";
 
-export function formatRelativeTime(date: Date): string {
+export function formatRelativeTime(date: Date | string): string {
   const now = Date.now();
   const diffMs = now - new Date(date).getTime();
   const diffMin = Math.floor(diffMs / 60_000);
