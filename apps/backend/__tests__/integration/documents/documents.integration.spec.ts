@@ -768,6 +768,134 @@ describe('Document Integration Tests', () => {
       expect(analysis.beneficiaries).toContain('Public school students');
     });
 
+    it('should store analysis with transparency metadata (#423, #424, #425)', async () => {
+      const user = await createUser({ email: 'transparency@example.com' });
+      const now = new Date().toISOString();
+      const analysisData = {
+        documentType: 'petition',
+        summary: 'Petition with full transparency metadata',
+        keyPoints: ['Point 1'],
+        entities: ['City Council'],
+        analyzedAt: now,
+        provider: 'Ollama',
+        model: 'llama3.2',
+        processingTimeMs: 1500,
+        // Prompt provenance (#424)
+        promptVersion: 'v3',
+        promptHash:
+          'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6abcd',
+        // Source provenance (#423)
+        sources: [
+          {
+            name: 'Scanned Document (OCR)',
+            accessedAt: now,
+            dataCompleteness: 100,
+          },
+          {
+            name: 'Ollama LLM Analysis (llama3.2)',
+            accessedAt: now,
+            dataCompleteness: 100,
+          },
+          { name: 'Entity Extraction', accessedAt: now, dataCompleteness: 100 },
+        ],
+        // Data completeness (#425)
+        completenessScore: 80,
+        completenessDetails: {
+          availableCount: 4,
+          idealCount: 5,
+          missingItems: ['Financial impact data'],
+          explanation:
+            'This analysis is based on 4 of 5 available data sources for this document type.',
+        },
+        // Petition fields
+        actualEffect: 'Would require new zoning laws',
+        beneficiaries: ['Local residents'],
+      };
+
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        extractedText: 'Petition with transparency...',
+        status: DocumentStatus.ai_analysis_complete,
+        analysis: analysisData,
+      });
+
+      const db = await getDbService();
+      const retrieved = await db.document.findUnique({
+        where: { id: doc.id },
+      });
+
+      const analysis = retrieved?.analysis as typeof analysisData;
+
+      // Prompt provenance (#424)
+      expect(analysis.promptVersion).toBe('v3');
+      expect(analysis.promptHash).toHaveLength(64);
+
+      // Source provenance (#423)
+      expect(analysis.sources).toHaveLength(3);
+      expect(analysis.sources[0].name).toBe('Scanned Document (OCR)');
+      expect(analysis.sources[0].dataCompleteness).toBe(100);
+      expect(analysis.sources[1].name).toContain('LLM Analysis');
+
+      // Data completeness (#425)
+      expect(analysis.completenessScore).toBe(80);
+      expect(analysis.completenessDetails.availableCount).toBe(4);
+      expect(analysis.completenessDetails.idealCount).toBe(5);
+      expect(analysis.completenessDetails.missingItems).toContain(
+        'Financial impact data',
+      );
+      expect(analysis.completenessDetails.explanation).toContain('4 of 5');
+    });
+
+    it('should query documents by transparency metadata fields (#423, #424, #425)', async () => {
+      const user = await createUser({
+        email: 'transparency-query@example.com',
+      });
+
+      // Create two documents with different prompt versions
+      await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        status: DocumentStatus.ai_analysis_complete,
+        analysis: {
+          summary: 'Analysis v2',
+          promptVersion: 'v2',
+          promptHash: 'hash-v2',
+          completenessScore: 60,
+        },
+      });
+
+      await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        status: DocumentStatus.ai_analysis_complete,
+        analysis: {
+          summary: 'Analysis v3',
+          promptVersion: 'v3',
+          promptHash: 'hash-v3',
+          completenessScore: 80,
+        },
+      });
+
+      const db = await getDbService();
+
+      // Query using Prisma's JSON filtering for prompt version
+      const v3Docs = await db.document.findMany({
+        where: {
+          userId: user.id,
+          analysis: {
+            path: ['promptVersion'],
+            equals: 'v3',
+          },
+        },
+      });
+
+      expect(v3Docs).toHaveLength(1);
+      expect((v3Docs[0].analysis as Record<string, unknown>).summary).toBe(
+        'Analysis v3',
+      );
+    });
+
     it('should store contract analysis with contract-specific fields', async () => {
       const user = await createUser({
         email: 'contract-analysis@example.com',

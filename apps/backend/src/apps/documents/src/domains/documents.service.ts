@@ -509,10 +509,11 @@ export class DocumentsService {
     });
 
     try {
-      const { promptText } = await this.promptClient.getDocumentAnalysisPrompt({
-        documentType: document.type,
-        text: document.extractedText,
-      });
+      const { promptText, promptHash, promptVersion } =
+        await this.promptClient.getDocumentAnalysisPrompt({
+          documentType: document.type,
+          text: document.extractedText,
+        });
       const result = await this.llm.generate(promptText, {
         maxTokens: 1500,
         temperature: 0.3,
@@ -520,15 +521,28 @@ export class DocumentsService {
 
       const parsed = parseAnalysisResponse(result.text);
       const processingTimeMs = Date.now() - startTime;
+      const now = new Date().toISOString();
+
+      // Build source provenance (#423)
+      const sources = this.buildAnalysisSources(document.type, now, parsed);
+
+      // Calculate data completeness (#425)
+      const { completenessScore, completenessDetails } =
+        this.calculateCompleteness(document.type, parsed);
 
       const analysis = {
         ...parsed,
         documentType: document.type,
-        analyzedAt: new Date().toISOString(),
+        analyzedAt: now,
         provider: this.llm.getName(),
         model: this.llm.getModelName(),
         tokensUsed: result.tokensUsed,
         processingTimeMs,
+        promptVersion,
+        promptHash,
+        sources,
+        completenessScore,
+        completenessDetails,
       };
 
       await this.db.document.update({
@@ -570,6 +584,155 @@ export class DocumentsService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Build source provenance for an analysis (#423)
+   * Describes what data sources contributed to the analysis.
+   */
+  private buildAnalysisSources(
+    documentType: string,
+    accessedAt: string,
+    parsed: Record<string, unknown>,
+  ) {
+    const sources = [
+      {
+        name: 'Scanned Document (OCR)',
+        accessedAt,
+        dataCompleteness: 100,
+      },
+      {
+        name: `${this.llm.getName()} LLM Analysis (${this.llm.getModelName()})`,
+        accessedAt,
+        dataCompleteness: 100,
+      },
+    ];
+
+    // Check if entity data was returned
+    const entities = parsed.entities as string[] | undefined;
+    if (entities && entities.length > 0) {
+      sources.push({
+        name: 'Entity Extraction',
+        accessedAt,
+        dataCompleteness: 100,
+      });
+    }
+
+    // Related measures are a key provenance signal for petitions
+    const relatedMeasures = parsed.relatedMeasures as string[] | undefined;
+    if (
+      documentType === 'petition' &&
+      relatedMeasures &&
+      relatedMeasures.length > 0
+    ) {
+      sources.push({
+        name: 'Related Measures Database',
+        accessedAt,
+        dataCompleteness: 60, // LLM knowledge, not live DB lookup
+      });
+    }
+
+    return sources;
+  }
+
+  /**
+   * Ideal data source expectations per document type (#425)
+   */
+  private static readonly IDEAL_SOURCES: Record<string, string[]> = {
+    petition: [
+      'Document text content',
+      'Entity data',
+      'Related measures',
+      'Financial impact data',
+      'Legal analysis',
+    ],
+    contract: [
+      'Document text content',
+      'Entity data',
+      'Party obligations',
+      'Risk assessment',
+      'Termination clauses',
+    ],
+    form: [
+      'Document text content',
+      'Required fields',
+      'Submission requirements',
+    ],
+  };
+
+  /**
+   * Calculate data completeness for analysis results (#425)
+   */
+  private calculateCompleteness(
+    documentType: string,
+    parsed: Record<string, unknown>,
+  ): {
+    completenessScore: number;
+    completenessDetails: {
+      availableCount: number;
+      idealCount: number;
+      missingItems: string[];
+      explanation: string;
+    };
+  } {
+    const idealSources =
+      DocumentsService.IDEAL_SOURCES[documentType] ??
+      DocumentsService.IDEAL_SOURCES['petition'];
+
+    const available: string[] = [];
+    const missing: string[] = [];
+
+    // Check what data we actually have
+    const checks: [string, unknown][] = [
+      ['Document text content', true], // Always present if we got here
+      ['Entity data', (parsed.entities as string[] | undefined)?.length],
+      [
+        'Related measures',
+        (parsed.relatedMeasures as string[] | undefined)?.length,
+      ],
+      ['Financial impact data', null], // Not yet available
+      ['Legal analysis', parsed.actualEffect],
+      [
+        'Party obligations',
+        (parsed.obligations as string[] | undefined)?.length,
+      ],
+      ['Risk assessment', (parsed.risks as string[] | undefined)?.length],
+      ['Termination clauses', parsed.terminationClause],
+      [
+        'Required fields',
+        (parsed.requiredFields as string[] | undefined)?.length,
+      ],
+      ['Submission requirements', parsed.submissionDeadline],
+    ];
+
+    for (const idealItem of idealSources) {
+      const check = checks.find(([name]) => name === idealItem);
+      if (check?.[1]) {
+        available.push(idealItem);
+      } else {
+        missing.push(idealItem);
+      }
+    }
+
+    const idealCount = idealSources.length;
+    const availableCount = available.length;
+    const score =
+      idealCount > 0 ? Math.round((availableCount / idealCount) * 100) : 100;
+
+    const explanation =
+      availableCount === idealCount
+        ? 'All expected data sources are available for this analysis.'
+        : `This analysis is based on ${availableCount} of ${idealCount} available data sources for this document type.`;
+
+    return {
+      completenessScore: score,
+      completenessDetails: {
+        availableCount,
+        idealCount,
+        missingItems: missing,
+        explanation,
+      },
+    };
   }
 
   /**

@@ -43,6 +43,20 @@ export interface AnalyzeDocumentInput {
   forceReanalyze?: boolean;
 }
 
+export interface AnalysisSource {
+  name: string;
+  url?: string;
+  accessedAt: string;
+  dataCompleteness: number;
+}
+
+export interface CompletenessDetails {
+  availableCount: number;
+  idealCount: number;
+  missingItems: string[];
+  explanation: string;
+}
+
 export interface DocumentAnalysis {
   documentType: string;
   summary: string;
@@ -54,6 +68,14 @@ export interface DocumentAnalysis {
   tokensUsed?: number;
   processingTimeMs: number;
   cachedFrom?: string;
+  // Prompt provenance (#424)
+  promptVersion?: string;
+  promptHash?: string;
+  // Source provenance (#423)
+  sources?: AnalysisSource[];
+  // Data completeness (#425)
+  completenessScore?: number;
+  completenessDetails?: CompletenessDetails;
   // Petition/proposition fields
   actualEffect?: string;
   potentialConcerns?: string[];
@@ -149,6 +171,21 @@ export const ANALYZE_DOCUMENT = gql`
         tokensUsed
         processingTimeMs
         cachedFrom
+        promptVersion
+        promptHash
+        sources {
+          name
+          url
+          accessedAt
+          dataCompleteness
+        }
+        completenessScore
+        completenessDetails {
+          availableCount
+          idealCount
+          missingItems
+          explanation
+        }
         actualEffect
         potentialConcerns
         beneficiaries
