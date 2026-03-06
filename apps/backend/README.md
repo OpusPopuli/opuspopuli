@@ -36,10 +36,10 @@ pnpm test
 | Service | Port | Purpose |
 |---------|------|---------|
 | API Gateway | 3000 | GraphQL Federation gateway |
-| Users | 3001 | User management, authentication (Passkeys, Magic Links, Password), profiles, consents |
-| Documents | 3002 | Document storage |
+| Users | 3001 | User management, authentication (Passkeys, Magic Links, Password), profiles, consents, activity logging |
+| Documents | 3002 | Document storage, petition scanning, OCR, document analysis, activity feed |
 | Knowledge | 3003 | RAG/semantic search |
-| Files | 3004 | File processing |
+| Region | 3004 | Civic data (propositions, meetings, representatives, campaign finance) |
 
 ## Health Endpoints
 
@@ -87,6 +87,36 @@ The Users service includes a comprehensive profile management API:
 - `bulkUpdateConsents` - Update multiple consents at once
 - `hasValidConsent` - Check if specific consent is valid
 - Full audit trail with IP, user agent, timestamps
+
+## Documents GraphQL API
+
+### Petition Scanning
+- `processScan` - Process a captured petition image (OCR + analysis)
+- `extractTextFromFile` / `extractTextFromBase64` - Text extraction from images
+- `analyzeDocument` - AI-powered document analysis
+- `setDocumentLocation` / `getDocumentLocation` - Geolocation for petition scans
+- `submitAbuseReport` - Report abuse on petition content
+
+### Petition Activity Feed
+- `petitionActivityFeed` - Real-time activity feed with hourly trends and location counts
+- `petitionMapLocations` - Map markers for petition scan locations
+- `petitionMapStats` - Aggregate statistics for the petition map
+
+### File Storage
+- `listFiles` / `getUploadUrl` / `getDownloadUrl` / `deleteFile` - Supabase Storage operations
+
+## Region GraphQL API
+
+### Civic Data
+- `propositions` / `proposition` - Ballot propositions with filtering and pagination
+- `meetings` / `meeting` - Government meetings
+- `representatives` / `representative` - Elected representatives
+
+### Campaign Finance (Transparency)
+- `committees` / `committee` - Campaign committees
+- `contributions` / `contribution` - Campaign contributions
+- `expenditures` / `expenditure` - Campaign expenditures
+- `independentExpenditures` / `independentExpenditure` - Independent expenditures
 
 ## Configuration
 

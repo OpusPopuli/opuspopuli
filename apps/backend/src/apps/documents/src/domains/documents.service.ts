@@ -25,6 +25,10 @@ import { File } from './models/file.model';
 import { ExtractTextResult } from './dto/ocr.dto';
 import { ProcessScanResult } from './dto/scan.dto';
 import { SubmitAbuseReportResult } from './dto/abuse-report.dto';
+import {
+  PetitionActivityFeed,
+  PRIVACY_THRESHOLD,
+} from './dto/activity-feed.dto';
 import { DocumentAnalysis, AnalyzeDocumentResult } from './dto/analysis.dto';
 import {
   GeoLocation,
@@ -1014,6 +1018,103 @@ export class DocumentsService {
     return {
       success: true,
       reportId: report.id,
+    };
+  }
+
+  /**
+   * Get aggregated petition activity feed for the last 24 hours.
+   *
+   * Privacy: Only petitions with >= PRIVACY_THRESHOLD scans are included.
+   * Location counts use city-level precision (rounded to 0.01 degrees).
+   * No individual user information is returned.
+   */
+  async getPetitionActivityFeed(): Promise<PetitionActivityFeed> {
+    const items = await this.db.$queryRaw<
+      Array<{
+        content_hash: string;
+        summary: string | null;
+        document_type: string | null;
+        scan_count: bigint;
+        location_count: bigint;
+        latest_scan_at: Date;
+        earliest_scan_at: Date;
+      }>
+    >`
+      SELECT
+        content_hash,
+        (MAX(analysis::json->>'summary'))::text as summary,
+        MAX(type::text) as document_type,
+        COUNT(*) as scan_count,
+        COUNT(DISTINCT CONCAT(
+          ROUND(ST_Y(scan_location::geometry)::numeric, 2),
+          ',',
+          ROUND(ST_X(scan_location::geometry)::numeric, 2)
+        )) FILTER (WHERE scan_location IS NOT NULL) as location_count,
+        MAX(created_at) as latest_scan_at,
+        MIN(created_at) as earliest_scan_at
+      FROM documents
+      WHERE
+        content_hash IS NOT NULL
+        AND type = 'petition'
+        AND deleted_at IS NULL
+        AND created_at >= NOW() - INTERVAL '24 hours'
+      GROUP BY content_hash
+      HAVING COUNT(*) >= ${PRIVACY_THRESHOLD}
+      ORDER BY MAX(created_at) DESC
+      LIMIT 50
+    `;
+
+    const hourlyTrend = await this.db.$queryRaw<
+      Array<{
+        hour: Date;
+        scan_count: bigint;
+      }>
+    >`
+      SELECT
+        date_trunc('hour', created_at) as hour,
+        COUNT(*) as scan_count
+      FROM documents
+      WHERE
+        type = 'petition'
+        AND deleted_at IS NULL
+        AND created_at >= NOW() - INTERVAL '24 hours'
+      GROUP BY date_trunc('hour', created_at)
+      ORDER BY hour ASC
+    `;
+
+    const summaryStats = await this.db.$queryRaw<
+      Array<{
+        total_scans: bigint;
+        active_petitions: bigint;
+      }>
+    >`
+      SELECT
+        COUNT(*) as total_scans,
+        COUNT(DISTINCT content_hash) as active_petitions
+      FROM documents
+      WHERE
+        type = 'petition'
+        AND content_hash IS NOT NULL
+        AND deleted_at IS NULL
+        AND created_at >= NOW() - INTERVAL '24 hours'
+    `;
+
+    return {
+      items: items.map((item) => ({
+        contentHash: item.content_hash,
+        summary: item.summary || 'Petition scan recorded',
+        documentType: item.document_type ?? undefined,
+        scanCount: Number(item.scan_count),
+        locationCount: Number(item.location_count),
+        latestScanAt: item.latest_scan_at,
+        earliestScanAt: item.earliest_scan_at,
+      })),
+      hourlyTrend: hourlyTrend.map((bucket) => ({
+        hour: bucket.hour,
+        scanCount: Number(bucket.scan_count),
+      })),
+      totalScansLast24h: Number(summaryStats[0]?.total_scans ?? 0),
+      activePetitionsLast24h: Number(summaryStats[0]?.active_petitions ?? 0),
     };
   }
 }

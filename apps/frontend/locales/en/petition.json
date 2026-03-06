@@ -103,6 +103,16 @@
     "tryAgain": "Scan Again",
     "copiedToClipboard": "Analysis copied to clipboard"
   },
+  "activityFeed": {
+    "live": "Live",
+    "scansLast24h": "{{count}} scans in the last 24 hours",
+    "activePetitions": "across {{count}} petitions",
+    "scannedTimes": "Scanned {{count}} times in {{locations}} locations",
+    "lastScanned": "Last scanned {{time}}",
+    "noActivity": "No petition activity in the last 24 hours. Be the first to scan!",
+    "hourlyTrend": "Last 24 hours",
+    "loading": "Loading activity..."
+  },
   "report": {
     "button": "Report Issue",
     "buttonLabel": "Report an issue with this analysis",

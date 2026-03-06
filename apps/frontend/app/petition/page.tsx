@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ActivityFeed } from "@/components/petition/ActivityFeed";
 
 export default function PetitionPage() {
   return (
@@ -36,6 +37,7 @@ export default function PetitionPage() {
       >
         View Map
       </Link>
+      <ActivityFeed />
       <Link
         href="/"
         className="mt-4 text-sm text-gray-400 hover:text-gray-300 transition-colors"
