@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 import {
   setupAuthSession,
+  mockGraphQL,
+  mockGraphQLError,
   checkAccessibility,
   viewports,
 } from "./utils/test-helpers";
@@ -296,6 +298,108 @@ test.describe("Petition Capture", () => {
       // covered by unit tests in LocationPrompt.test.tsx
       const container = page.locator(".fixed.inset-0.bg-black");
       await expect(container).toBeVisible();
+    });
+  });
+
+  test.describe("Activity Feed", () => {
+    test("should show activity feed with data", async ({ page }) => {
+      await setupAuthSession(page);
+      await mockGraphQL(page, {
+        petitionActivityFeed: {
+          petitionActivityFeed: {
+            items: [
+              {
+                contentHash: "hash-1",
+                summary: "A petition about improving local parks",
+                documentType: "petition",
+                scanCount: 5,
+                locationCount: 3,
+                latestScanAt: new Date().toISOString(),
+                earliestScanAt: new Date().toISOString(),
+              },
+            ],
+            hourlyTrend: [{ hour: new Date().toISOString(), scanCount: 5 }],
+            totalScansLast24h: 5,
+            activePetitionsLast24h: 1,
+          },
+        },
+      });
+
+      await page.goto("/petition");
+
+      await expect(page.getByTestId("activity-feed")).toBeVisible();
+      await expect(page.getByText("Live")).toBeVisible();
+      await expect(page.getByText(/scans in the last 24 hours/)).toBeVisible();
+      await expect(page.getByText(/improving local parks/)).toBeVisible();
+    });
+
+    test("should show empty state when no activity", async ({ page }) => {
+      await setupAuthSession(page);
+      await mockGraphQL(page, {
+        petitionActivityFeed: {
+          petitionActivityFeed: {
+            items: [],
+            hourlyTrend: [],
+            totalScansLast24h: 0,
+            activePetitionsLast24h: 0,
+          },
+        },
+      });
+
+      await page.goto("/petition");
+
+      await expect(
+        page.getByText(/No petition activity in the last 24 hours/),
+      ).toBeVisible();
+    });
+
+    test("should hide feed gracefully on error", async ({ page }) => {
+      await setupAuthSession(page);
+      await mockGraphQLError(
+        page,
+        "petitionActivityFeed",
+        "Internal server error",
+      );
+
+      await page.goto("/petition");
+
+      // Page should still work — feed just hides
+      await expect(page.getByText("Scan a Petition")).toBeVisible();
+      await expect(page.getByTestId("activity-feed")).not.toBeVisible();
+    });
+
+    test("activity feed should have no critical accessibility violations", async ({
+      page,
+    }) => {
+      await setupAuthSession(page);
+      await mockGraphQL(page, {
+        petitionActivityFeed: {
+          petitionActivityFeed: {
+            items: [
+              {
+                contentHash: "hash-a11y",
+                summary: "Accessibility test petition",
+                documentType: "petition",
+                scanCount: 4,
+                locationCount: 2,
+                latestScanAt: new Date().toISOString(),
+                earliestScanAt: new Date().toISOString(),
+              },
+            ],
+            hourlyTrend: [{ hour: new Date().toISOString(), scanCount: 4 }],
+            totalScansLast24h: 4,
+            activePetitionsLast24h: 1,
+          },
+        },
+      });
+
+      await page.goto("/petition");
+      await expect(page.getByTestId("activity-feed")).toBeVisible();
+
+      const violations = await checkAccessibility(page, {
+        includedImpacts: ["critical", "serious"],
+      });
+      expect(violations).toEqual([]);
     });
   });
 

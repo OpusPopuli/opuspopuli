@@ -63,10 +63,17 @@ Opus Populi is built on a modular, provider-based architecture with three core p
 ### Documents Service
 - **Technology**: NestJS + Apollo Federation
 - **Port**: 3002
-- **Purpose**: Document storage, metadata management, and file processing
+- **Purpose**: Document storage, petition scanning, OCR, document analysis, and activity feed
 - **Location**: `apps/backend/src/apps/documents`
 - **Database**: Relational (Document metadata)
 - **Storage**: Supabase Storage
+- **Features**:
+  - Petition image capture and OCR processing
+  - AI-powered document analysis
+  - Geolocation tagging for petition scans
+  - Real-time petition activity feed with hourly trends
+  - Map-based petition location visualization
+  - Abuse reporting
 
 ### Knowledge Service
 - **Technology**: NestJS + Apollo Federation
@@ -76,16 +83,17 @@ Opus Populi is built on a modular, provider-based architecture with three core p
 - **Components**:
   - Embeddings generation (Xenova/Ollama)
   - Vector search (pgvector on PostgreSQL)
-  - LLM inference (Ollama with Falcon 7B)
+  - LLM inference (Ollama with Mistral, Llama 3.1)
 
 ### Region Service
 - **Technology**: NestJS + Apollo Federation
 - **Port**: 3004
-- **Purpose**: Civic data integration (propositions, meetings, representatives)
+- **Purpose**: Civic data integration (propositions, meetings, representatives, campaign finance)
 - **Location**: `apps/backend/src/apps/region`
 - **Components**:
   - Declarative region plugin loading via `@opuspopuli/region-provider`
   - Propositions, meetings, and representatives data
+  - Campaign finance data (committees, contributions, expenditures, independent expenditures)
   - Plugin lifecycle management (initialize, health check, destroy)
 
 ## Provider Architecture

@@ -233,6 +233,54 @@ export const GET_PETITION_MAP_STATS = gql`
 `;
 
 // ============================================
+// Activity Feed Types
+// ============================================
+
+export interface PetitionActivityItem {
+  contentHash: string;
+  summary: string;
+  documentType?: string;
+  scanCount: number;
+  locationCount: number;
+  latestScanAt: string;
+  earliestScanAt: string;
+}
+
+export interface ActivityHourBucket {
+  hour: string;
+  scanCount: number;
+}
+
+export interface PetitionActivityFeed {
+  items: PetitionActivityItem[];
+  hourlyTrend: ActivityHourBucket[];
+  totalScansLast24h: number;
+  activePetitionsLast24h: number;
+}
+
+export const GET_PETITION_ACTIVITY_FEED = gql`
+  query PetitionActivityFeed {
+    petitionActivityFeed {
+      items {
+        contentHash
+        summary
+        documentType
+        scanCount
+        locationCount
+        latestScanAt
+        earliestScanAt
+      }
+      hourlyTrend {
+        hour
+        scanCount
+      }
+      totalScansLast24h
+      activePetitionsLast24h
+    }
+  }
+`;
+
+// ============================================
 // Response Types
 // ============================================
 
@@ -258,4 +306,8 @@ export interface PetitionMapStatsData {
 
 export interface SubmitAbuseReportData {
   submitAbuseReport: SubmitAbuseReportResult;
+}
+
+export interface PetitionActivityFeedData {
+  petitionActivityFeed: PetitionActivityFeed;
 }

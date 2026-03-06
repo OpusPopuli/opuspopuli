@@ -19,6 +19,7 @@ import {
   GqlContext,
   getUserFromContext,
 } from 'src/common/utils/graphql-context';
+import { PetitionActivityFeed } from './dto/activity-feed.dto';
 import { FilenameInput } from './dto/documents.dto';
 import {
   ExtractTextFromFileInput,
@@ -247,6 +248,17 @@ export class DocumentsResolver {
   @Permissions({ action: Action.Read, subject: 'File' })
   async petitionMapStats(): Promise<PetitionMapStats> {
     return this.documentsService.getPetitionMapStats();
+  }
+
+  /**
+   * Get real-time petition activity feed (aggregated, privacy-preserving)
+   */
+  @Query(() => PetitionActivityFeed)
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
+  @Extensions({ complexity: 30 })
+  async petitionActivityFeed(): Promise<PetitionActivityFeed> {
+    return this.documentsService.getPetitionActivityFeed();
   }
 
   /**
