@@ -497,6 +497,30 @@ region_plugins
 #### Propositions, Meetings, Representatives
 Standard civic data tables for ballot measures, legislative meetings, and elected officials. See the [Region Provider Guide](../guides/region-provider.md) for field details.
 
+#### Document-Proposition Junction Table
+
+Links scanned petition documents to ballot measure propositions (many-to-many). Links can be created automatically during AI analysis or manually by users via the "Track on Ballot" UI.
+
+```
+document_propositions
+  id              UUID PRIMARY KEY
+  document_id     UUID REFERENCES documents(id) ON DELETE CASCADE
+  proposition_id  UUID REFERENCES propositions(id) ON DELETE CASCADE
+  link_source     LinkSource                  -- How the link was created
+  confidence      FLOAT NULL                  -- AI match confidence (auto links only)
+  matched_text    VARCHAR NULL                -- LLM text that triggered the match
+  created_at      TIMESTAMPTZ
+  updated_at      TIMESTAMPTZ
+  UNIQUE(document_id, proposition_id)
+  INDEXES: document_id, proposition_id
+```
+
+**LinkSource Enum**:
+- `auto_analysis` — Created automatically when the AI analysis identifies related ballot measures
+- `user_manual` — Created manually by a user via the "Track on Ballot" search-and-link flow
+
+**Cascade Behavior**: Deleting either the document or the proposition automatically removes the junction record.
+
 #### Campaign Finance Tables
 
 Four tables store campaign finance data from both state (CAL-ACCESS) and federal (FEC) sources. All records have a `source_system` column (`"cal_access"` or `"fec"`) for provenance tracking. Committees are the central entity — contributions, expenditures, and independent expenditures reference committees via foreign key.

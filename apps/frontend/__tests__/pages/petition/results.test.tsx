@@ -31,10 +31,11 @@ jest.mock("@/lib/toast", () => ({
   useToast: () => ({ showToast: jest.fn() }),
 }));
 
-// Mock Apollo Client mutations
+// Mock Apollo Client mutations and lazy queries
 const mockProcessScan = jest.fn();
 const mockAnalyzeDocument = jest.fn();
 const mockSetDocumentLocation = jest.fn();
+const mockFetchLinkedPropositions = jest.fn();
 
 jest.mock("@apollo/client/react", () => ({
   ...jest.requireActual("@apollo/client/react"),
@@ -51,6 +52,25 @@ jest.mock("@apollo/client/react", () => ({
     }
     return [jest.fn(), { loading: false }];
   }),
+  useLazyQuery: jest.fn(() => [mockFetchLinkedPropositions]),
+}));
+
+// Mock TrackOnBallotButton to isolate page tests
+jest.mock("@/components/petition/TrackOnBallotButton", () => ({
+  TrackOnBallotButton: ({
+    documentId,
+    linkedCount,
+  }: {
+    documentId: string;
+    linkedCount: number;
+    onLinked?: () => void;
+  }) => (
+    <button data-testid="track-on-ballot" data-doc-id={documentId}>
+      {linkedCount > 0
+        ? `Tracking ${linkedCount} measure(s)`
+        : "Track on Ballot"}
+    </button>
+  ),
 }));
 
 const mockScanResult = {
@@ -130,6 +150,9 @@ describe("PetitionResultsPage", () => {
         },
       },
     });
+    mockFetchLinkedPropositions.mockResolvedValue({
+      data: { linkedPropositions: [] },
+    });
   });
 
   it("should redirect to /petition when no scan data in sessionStorage", () => {
@@ -208,7 +231,7 @@ describe("PetitionResultsPage", () => {
       expect(screen.getByText("results.share")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("results.saveToTrack")).toBeInTheDocument();
+    expect(screen.getByTestId("track-on-ballot")).toBeInTheDocument();
   });
 
   it("should show error state when processScan fails", async () => {
@@ -735,6 +758,181 @@ describe("PetitionResultsPage", () => {
       await waitFor(() => {
         expect(screen.getByText(/results\.cachedResult/)).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("petition-ballot linking (#310)", () => {
+    const mockLinkedPropositions = [
+      {
+        id: "link-1",
+        propositionId: "prop-1",
+        title: "Proposition 47: Criminal Sentencing",
+        summary: "Reform criminal sentencing guidelines",
+        status: "PENDING",
+        electionDate: "2024-11-05T00:00:00Z",
+        linkSource: "auto_analysis",
+        confidence: 0.8,
+        matchedText: "Proposition 15",
+        linkedAt: new Date().toISOString(),
+      },
+    ];
+
+    it("should fetch linked propositions after analysis completes", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockFetchLinkedPropositions.mockResolvedValue({
+        data: { linkedPropositions: [] },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.summary")).toBeInTheDocument();
+      });
+
+      expect(mockFetchLinkedPropositions).toHaveBeenCalledWith({
+        variables: { documentId: "doc-123" },
+      });
+    });
+
+    it("should display linked propositions as clickable cards", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockFetchLinkedPropositions.mockResolvedValue({
+        data: { linkedPropositions: mockLinkedPropositions },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Proposition 47: Criminal Sentencing"),
+        ).toBeInTheDocument();
+      });
+
+      // Verify it's a link to proposition detail page
+      const propLink = screen
+        .getByText("Proposition 47: Criminal Sentencing")
+        .closest("a");
+      expect(propLink).toHaveAttribute("href", "/region/propositions/prop-1");
+    });
+
+    it("should show AI-matched badge for auto-analysis links", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockFetchLinkedPropositions.mockResolvedValue({
+        data: { linkedPropositions: mockLinkedPropositions },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("results.linkedAutomatically"),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("should show User-linked badge for manual links", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockFetchLinkedPropositions.mockResolvedValue({
+        data: {
+          linkedPropositions: [
+            { ...mockLinkedPropositions[0], linkSource: "user_manual" },
+          ],
+        },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.linkedManually")).toBeInTheDocument();
+      });
+    });
+
+    it("should show unmatched related measures as text when no linked propositions", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockFetchLinkedPropositions.mockResolvedValue({
+        data: { linkedPropositions: [] },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.summary")).toBeInTheDocument();
+      });
+
+      // relatedMeasures from analysis: ["Proposition 15"]
+      expect(screen.getByText(/Proposition 15/)).toBeInTheDocument();
+    });
+
+    it("should filter out matched measures from unmatched list", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      // matchedText matches "Proposition 15" from relatedMeasures
+      mockFetchLinkedPropositions.mockResolvedValue({
+        data: { linkedPropositions: mockLinkedPropositions },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Proposition 47: Criminal Sentencing"),
+        ).toBeInTheDocument();
+      });
+
+      // The linked proposition card is shown, but the unmatched text item
+      // "Proposition 15" should be filtered out since matchedText matches it
+      // (The card's matchedText is "Proposition 15" which matches case-insensitively)
+      const allElements = screen.queryAllByText(/Proposition 15/);
+      // Should not appear as a standalone text item (only in the card if at all)
+      // Since the filter uses matchedText.toLowerCase() === m.toLowerCase()
+      // and matchedText is "Proposition 15" and related measure is "Proposition 15"
+      // it should be filtered out from the unmatched list
+      expect(allElements.length).toBe(0);
+    });
+
+    it("should pass linkedCount to TrackOnBallotButton", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockFetchLinkedPropositions.mockResolvedValue({
+        data: { linkedPropositions: mockLinkedPropositions },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("track-on-ballot")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("Tracking 1 measure(s)")).toBeInTheDocument();
+    });
+
+    it("should show Track on Ballot button with 0 count when no links", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockFetchLinkedPropositions.mockResolvedValue({
+        data: { linkedPropositions: [] },
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("track-on-ballot")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("Track on Ballot")).toBeInTheDocument();
+    });
+
+    it("should handle fetchLinkedPropositions failure gracefully", async () => {
+      sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+      mockFetchLinkedPropositions.mockResolvedValue({
+        data: null,
+      });
+
+      render(<PetitionResultsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("results.summary")).toBeInTheDocument();
+      });
+
+      // Should still show the page without errors
+      expect(screen.queryByText("results.errorTitle")).not.toBeInTheDocument();
     });
   });
 });

@@ -278,6 +278,14 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
           data: { regionInfo: mockRegionInfo },
         }),
       });
+    } else if (postData?.query?.includes("petitionDocumentsForProposition")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { petitionDocumentsForProposition: [] },
+        }),
+      });
     } else if (
       postData?.query?.includes("proposition(") ||
       postData?.query?.includes("proposition (")

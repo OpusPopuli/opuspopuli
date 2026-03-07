@@ -10,6 +10,10 @@ import {
   PropositionStatus,
   IdVars,
 } from "@/lib/graphql/region";
+import {
+  GET_PETITION_DOCUMENTS_FOR_PROPOSITION,
+  type PetitionDocumentsForPropositionData,
+} from "@/lib/graphql/documents";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
 import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
 import { formatDate } from "@/lib/format";
@@ -148,11 +152,74 @@ function QuickView({
   );
 }
 
+function LinkedPetitionScans({
+  propositionId,
+}: {
+  readonly propositionId: string;
+}) {
+  const { data, loading } = useQuery<PetitionDocumentsForPropositionData>(
+    GET_PETITION_DOCUMENTS_FOR_PROPOSITION,
+    { variables: { propositionId } },
+  );
+
+  const docs = data?.petitionDocumentsForProposition ?? [];
+
+  return (
+    <div className="mb-8">
+      <SectionTitle>Community Petition Scans</SectionTitle>
+      {loading && (
+        <div className="bg-slate-50 rounded-xl p-4 text-center text-sm text-slate-500">
+          Loading petition scans...
+        </div>
+      )}
+
+      {!loading && docs.length === 0 && (
+        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-6 text-center">
+          <p className="text-sm text-slate-700">
+            Petition scans related to this measure will appear here as they are
+            scanned.
+          </p>
+        </div>
+      )}
+
+      {!loading && docs.length > 0 && (
+        <div className="space-y-3">
+          {docs.map((doc) => (
+            <div key={doc.id} className="border border-gray-200 rounded-xl p-4">
+              <p className="text-sm text-[#334155] leading-relaxed">
+                {doc.summary}
+              </p>
+              <div className="flex items-center gap-3 mt-2">
+                <span
+                  className={`text-xs px-2 py-0.5 rounded-full ${
+                    doc.linkSource === "auto_analysis"
+                      ? "bg-blue-100 text-blue-700"
+                      : "bg-purple-100 text-purple-700"
+                  }`}
+                >
+                  {doc.linkSource === "auto_analysis"
+                    ? "AI-matched"
+                    : "User-linked"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  {formatDate(doc.linkedAt)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Details({
   fullText,
+  propositionId,
   onNext,
 }: {
   readonly fullText?: string;
+  readonly propositionId: string;
   readonly onNext: () => void;
 }) {
   return (
@@ -176,6 +243,8 @@ function Details({
           description="AI-extracted key facts and figures"
         />
       </div>
+
+      <LinkedPetitionScans propositionId={propositionId} />
 
       <div className="mb-8">
         <SectionTitle>Who&apos;s Funding This</SectionTitle>
@@ -403,7 +472,11 @@ export default function PropositionDetailPage() {
           <QuickView summary={proposition.summary} onNext={() => setLayer(2)} />
         )}
         {layer === 2 && (
-          <Details fullText={proposition.fullText} onNext={() => setLayer(3)} />
+          <Details
+            fullText={proposition.fullText}
+            propositionId={id}
+            onNext={() => setLayer(3)}
+          />
         )}
         {layer === 3 && (
           <BothSides onNext={() => setLayer(4)} onBack={() => setLayer(1)} />

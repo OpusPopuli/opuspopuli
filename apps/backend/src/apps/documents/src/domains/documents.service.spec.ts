@@ -1970,6 +1970,339 @@ describe('DocumentsService', () => {
       });
     });
   });
+
+  // ============================================
+  // PETITION-BALLOT LINKING
+  // ============================================
+
+  describe('matchAndLinkPropositions', () => {
+    it('should match by title substring and upsert', async () => {
+      mockDb.proposition.findMany.mockResolvedValue([
+        {
+          id: 'prop-1',
+          title: 'Proposition 47: Criminal Sentencing',
+          externalId: 'Prop 47',
+        },
+        {
+          id: 'prop-2',
+          title: 'Proposition 36: Three Strikes Reform',
+          externalId: 'Prop 36',
+        },
+      ] as any);
+      mockDb.documentProposition.upsert.mockResolvedValue({
+        id: 'link-1',
+      } as any);
+
+      const result = await documentsService.matchAndLinkPropositions('doc-1', [
+        'Proposition 47: Criminal Sentencing',
+      ]);
+
+      expect(result.matched).toBe(1);
+      expect(result.propositionIds).toContain('prop-1');
+      expect(mockDb.documentProposition.upsert).toHaveBeenCalledWith({
+        where: {
+          documentId_propositionId: {
+            documentId: 'doc-1',
+            propositionId: 'prop-1',
+          },
+        },
+        update: {},
+        create: expect.objectContaining({
+          documentId: 'doc-1',
+          propositionId: 'prop-1',
+          linkSource: 'auto_analysis',
+          confidence: 0.8,
+        }),
+      });
+    });
+
+    it('should match by externalId', async () => {
+      mockDb.proposition.findMany.mockResolvedValue([
+        { id: 'prop-1', title: 'Some Long Title', externalId: 'Prop 47' },
+      ] as any);
+      mockDb.documentProposition.upsert.mockResolvedValue({
+        id: 'link-1',
+      } as any);
+
+      const result = await documentsService.matchAndLinkPropositions('doc-1', [
+        'Changes related to Prop 47',
+      ]);
+
+      expect(result.matched).toBe(1);
+      expect(result.propositionIds).toContain('prop-1');
+    });
+
+    it('should return empty when no matches', async () => {
+      mockDb.proposition.findMany.mockResolvedValue([
+        { id: 'prop-1', title: 'Proposition 47', externalId: 'Prop 47' },
+      ] as any);
+
+      const result = await documentsService.matchAndLinkPropositions('doc-1', [
+        'Something Completely Unrelated',
+      ]);
+
+      expect(result.matched).toBe(0);
+      expect(result.propositionIds).toEqual([]);
+      expect(mockDb.documentProposition.upsert).not.toHaveBeenCalled();
+    });
+
+    it('should skip "none identified" measures', async () => {
+      mockDb.proposition.findMany.mockResolvedValue([
+        { id: 'prop-1', title: 'None Identified', externalId: 'Prop 1' },
+      ] as any);
+
+      const result = await documentsService.matchAndLinkPropositions('doc-1', [
+        'None identified',
+      ]);
+
+      expect(result.matched).toBe(0);
+    });
+
+    it('should return empty for empty measures array', async () => {
+      const result = await documentsService.matchAndLinkPropositions(
+        'doc-1',
+        [],
+      );
+
+      expect(result.matched).toBe(0);
+      expect(result.propositionIds).toEqual([]);
+      expect(mockDb.proposition.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should handle upsert errors gracefully', async () => {
+      mockDb.proposition.findMany.mockResolvedValue([
+        { id: 'prop-1', title: 'Proposition 47', externalId: 'Prop 47' },
+      ] as any);
+      mockDb.documentProposition.upsert.mockRejectedValue(
+        new Error('DB error'),
+      );
+
+      const result = await documentsService.matchAndLinkPropositions('doc-1', [
+        'Proposition 47',
+      ]);
+
+      expect(result.matched).toBe(0);
+    });
+  });
+
+  describe('linkDocumentToProposition', () => {
+    it('should link successfully', async () => {
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        userId: 'user-1',
+      } as any);
+      mockDb.proposition.findUnique.mockResolvedValue({ id: 'prop-1' } as any);
+      mockDb.documentProposition.upsert.mockResolvedValue({
+        id: 'link-1',
+        documentId: 'doc-1',
+        propositionId: 'prop-1',
+      } as any);
+
+      const result = await documentsService.linkDocumentToProposition(
+        'user-1',
+        'doc-1',
+        'prop-1',
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.linkId).toBe('link-1');
+      expect(mockDb.documentProposition.upsert).toHaveBeenCalledWith({
+        where: {
+          documentId_propositionId: {
+            documentId: 'doc-1',
+            propositionId: 'prop-1',
+          },
+        },
+        update: {},
+        create: expect.objectContaining({
+          linkSource: 'user_manual',
+        }),
+      });
+    });
+
+    it('should throw NotFoundException when document not found', async () => {
+      mockDb.document.findFirst.mockResolvedValue(null);
+
+      await expect(
+        documentsService.linkDocumentToProposition('user-1', 'doc-1', 'prop-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when proposition not found', async () => {
+      mockDb.document.findFirst.mockResolvedValue({ id: 'doc-1' } as any);
+      mockDb.proposition.findUnique.mockResolvedValue(null);
+
+      await expect(
+        documentsService.linkDocumentToProposition('user-1', 'doc-1', 'prop-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('unlinkDocumentFromProposition', () => {
+    it('should unlink successfully', async () => {
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        userId: 'user-1',
+      } as any);
+      mockDb.documentProposition.deleteMany.mockResolvedValue({ count: 1 });
+
+      const result = await documentsService.unlinkDocumentFromProposition(
+        'user-1',
+        'doc-1',
+        'prop-1',
+      );
+
+      expect(result).toBe(true);
+      expect(mockDb.documentProposition.deleteMany).toHaveBeenCalledWith({
+        where: { documentId: 'doc-1', propositionId: 'prop-1' },
+      });
+    });
+
+    it('should throw NotFoundException for non-owned document', async () => {
+      mockDb.document.findFirst.mockResolvedValue(null);
+
+      await expect(
+        documentsService.unlinkDocumentFromProposition(
+          'user-2',
+          'doc-1',
+          'prop-1',
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getLinkedPropositions', () => {
+    it('should return linked propositions with details', async () => {
+      const now = new Date();
+      mockDb.documentProposition.findMany.mockResolvedValue([
+        {
+          id: 'link-1',
+          linkSource: 'auto_analysis',
+          confidence: 0.8,
+          matchedText: 'Prop 47',
+          createdAt: now,
+          proposition: {
+            id: 'prop-1',
+            title: 'Proposition 47',
+            summary: 'Criminal sentencing reform',
+            status: 'PENDING',
+            electionDate: new Date('2024-11-05'),
+          },
+        },
+      ] as any);
+
+      const result = await documentsService.getLinkedPropositions('doc-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        id: 'link-1',
+        propositionId: 'prop-1',
+        title: 'Proposition 47',
+        summary: 'Criminal sentencing reform',
+        status: 'PENDING',
+        electionDate: new Date('2024-11-05'),
+        linkSource: 'auto_analysis',
+        confidence: 0.8,
+        matchedText: 'Prop 47',
+        linkedAt: now,
+      });
+    });
+
+    it('should return empty array when no links exist', async () => {
+      mockDb.documentProposition.findMany.mockResolvedValue([]);
+
+      const result = await documentsService.getLinkedPropositions('doc-1');
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('getLinkedPetitionDocuments', () => {
+    it('should return petition documents with analysis summary', async () => {
+      const now = new Date();
+      mockDb.documentProposition.findMany.mockResolvedValue([
+        {
+          id: 'link-1',
+          linkSource: 'user_manual',
+          confidence: null,
+          createdAt: now,
+          document: {
+            id: 'doc-1',
+            analysis: { summary: 'A petition about parks' },
+          },
+        },
+      ] as any);
+
+      const result =
+        await documentsService.getLinkedPetitionDocuments('prop-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        id: 'link-1',
+        documentId: 'doc-1',
+        summary: 'A petition about parks',
+        linkSource: 'user_manual',
+        confidence: undefined,
+        linkedAt: now,
+      });
+    });
+
+    it('should handle null analysis gracefully', async () => {
+      mockDb.documentProposition.findMany.mockResolvedValue([
+        {
+          id: 'link-1',
+          linkSource: 'auto_analysis',
+          confidence: 0.8,
+          createdAt: new Date(),
+          document: { id: 'doc-1', analysis: null },
+        },
+      ] as any);
+
+      const result =
+        await documentsService.getLinkedPetitionDocuments('prop-1');
+
+      expect(result[0].summary).toBe('Petition scan');
+    });
+  });
+
+  describe('searchPropositions', () => {
+    it('should search by title case-insensitively', async () => {
+      mockDb.proposition.findMany.mockResolvedValue([
+        {
+          id: 'prop-1',
+          title: 'Proposition 47',
+          externalId: 'Prop 47',
+          status: 'PENDING',
+        },
+      ] as any);
+
+      const result = await documentsService.searchPropositions('proposition');
+
+      expect(result).toHaveLength(1);
+      expect(mockDb.proposition.findMany).toHaveBeenCalledWith({
+        where: {
+          deletedAt: null,
+          title: { contains: 'proposition', mode: 'insensitive' },
+        },
+        select: { id: true, title: true, externalId: true, status: true },
+        take: 10,
+        orderBy: { electionDate: 'desc' },
+      });
+    });
+
+    it('should return empty for short query', async () => {
+      const result = await documentsService.searchPropositions('a');
+
+      expect(result).toEqual([]);
+      expect(mockDb.proposition.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should return empty for empty query', async () => {
+      const result = await documentsService.searchPropositions('');
+
+      expect(result).toEqual([]);
+    });
+  });
 });
 
 describe('DocumentsService - config validation', () => {
