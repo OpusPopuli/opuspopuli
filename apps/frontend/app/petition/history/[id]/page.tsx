@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery, useLazyQuery, useMutation } from "@apollo/client/react";
+import { useQuery, useMutation } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import {
