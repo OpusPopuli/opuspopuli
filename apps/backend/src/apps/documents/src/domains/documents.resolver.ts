@@ -52,6 +52,12 @@ import {
   UnlinkDocumentFromPropositionInput,
   LinkDocumentResult,
 } from './dto/document-proposition.dto';
+import {
+  PaginatedScanHistory,
+  ScanDetailResult,
+  ScanHistoryFiltersInput,
+  DeleteAllScansResult,
+} from './dto/scan-history.dto';
 import { Public } from 'src/common/decorators/public.decorator';
 
 /**
@@ -287,6 +293,71 @@ export class DocumentsResolver {
       input.reason,
       input.description,
     );
+  }
+
+  // ============================================
+  // SCAN HISTORY
+  // ============================================
+
+  /**
+   * Get paginated scan history for the authenticated user
+   */
+  @Query(() => PaginatedScanHistory)
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
+  @Extensions({ complexity: 20 })
+  async myScanHistory(
+    @Args('skip', { type: () => Number, defaultValue: 0 }) skip: number,
+    @Args('take', { type: () => Number, defaultValue: 10 }) take: number,
+    @Args('filters', { nullable: true }) filters?: ScanHistoryFiltersInput,
+    @Context() context?: GqlContext,
+  ): Promise<PaginatedScanHistory> {
+    const user = getUserFromContext(context!);
+    return this.documentsService.getScanHistory(user.id, skip, take, filters);
+  }
+
+  /**
+   * Get detailed scan result for a single document
+   */
+  @Query(() => ScanDetailResult, { nullable: true })
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
+  async scanDetail(
+    @Args('documentId') documentId: string,
+    @Context() context: GqlContext,
+  ): Promise<ScanDetailResult> {
+    const user = getUserFromContext(context);
+    return this.documentsService.getScanDetail(user.id, documentId);
+  }
+
+  /**
+   * Soft-delete a single scan
+   */
+  @Mutation(() => Boolean)
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Delete, subject: 'File' })
+  async softDeleteScan(
+    @Args('documentId') documentId: string,
+    @Context() context: GqlContext,
+  ): Promise<boolean> {
+    const user = getUserFromContext(context);
+    return this.documentsService.softDeleteDocument(user.id, documentId);
+  }
+
+  /**
+   * Soft-delete all scans for the authenticated user
+   */
+  @Mutation(() => DeleteAllScansResult)
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Delete, subject: 'File' })
+  async deleteAllMyScans(
+    @Context() context: GqlContext,
+  ): Promise<DeleteAllScansResult> {
+    const user = getUserFromContext(context);
+    const deletedCount = await this.documentsService.deleteAllUserScans(
+      user.id,
+    );
+    return { deletedCount };
   }
 
   // ============================================
