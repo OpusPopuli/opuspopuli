@@ -77,6 +77,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
 
   # ---------------------------------------------------------------------------
   # Local PostgreSQL — AI scratch data
@@ -98,6 +106,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # ---------------------------------------------------------------------------
   # Redis
@@ -116,6 +132,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
 
   # ---------------------------------------------------------------------------
   # Database Migrations
@@ -135,6 +159,14 @@ services:
     command: ["/usr/local/bin/db-migrate.sh"]
     networks:
       - opuspopuli-prod
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   # ---------------------------------------------------------------------------
   # NestJS Microservices
@@ -158,6 +190,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   documents:
     build:
@@ -178,6 +218,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   knowledge:
     build:
@@ -201,6 +249,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   region:
     build:
@@ -224,6 +280,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   api:
     build:
@@ -253,6 +317,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   # ---------------------------------------------------------------------------
   # Observability
@@ -267,6 +339,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
 
   loki:
     image: grafana/loki:2.9.5
@@ -277,6 +357,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
 
   promtail:
     image: grafana/promtail:2.9.5
@@ -289,6 +377,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
 
   grafana:
     image: grafana/grafana:10.4.1
@@ -305,6 +401,14 @@ services:
     networks:
       - opuspopuli-prod
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
 networks:
   opuspopuli-prod:
