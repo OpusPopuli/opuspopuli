@@ -1972,6 +1972,189 @@ describe('DocumentsService', () => {
   });
 
   // ============================================
+  // SCAN HISTORY
+  // ============================================
+
+  describe('getScanHistory', () => {
+    const mockDocs: any[] = [
+      {
+        id: 'doc-1',
+        type: 'petition',
+        status: 'ai_analysis_complete',
+        analysis: { summary: 'Test petition summary' },
+        ocrConfidence: 95.5,
+        createdAt: new Date('2024-06-01'),
+      },
+      {
+        id: 'doc-2',
+        type: 'petition',
+        status: 'text_extraction_complete',
+        analysis: null,
+        ocrConfidence: 80.0,
+        createdAt: new Date('2024-05-15'),
+      },
+    ];
+
+    it('should return paginated scan history', async () => {
+      mockDb.document.findMany.mockResolvedValue(mockDocs);
+      mockDb.document.count.mockResolvedValue(2);
+
+      const result = await documentsService.getScanHistory('user-1', 0, 10);
+
+      expect(result.items).toHaveLength(2);
+      expect(result.total).toBe(2);
+      expect(result.hasMore).toBe(false);
+      expect(result.items[0].summary).toBe('Test petition summary');
+      expect(result.items[0].hasAnalysis).toBe(true);
+      expect(result.items[1].hasAnalysis).toBe(false);
+    });
+
+    it('should calculate hasMore correctly', async () => {
+      mockDb.document.findMany.mockResolvedValue(mockDocs);
+      mockDb.document.count.mockResolvedValue(15);
+
+      const result = await documentsService.getScanHistory('user-1', 0, 10);
+
+      expect(result.hasMore).toBe(true);
+    });
+
+    it('should apply search filter', async () => {
+      mockDb.document.findMany.mockResolvedValue([]);
+      mockDb.document.count.mockResolvedValue(0);
+
+      await documentsService.getScanHistory('user-1', 0, 10, {
+        search: 'parks',
+      });
+
+      expect(mockDb.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            extractedText: { contains: 'parks', mode: 'insensitive' },
+          }),
+        }),
+      );
+    });
+
+    it('should apply date filters', async () => {
+      mockDb.document.findMany.mockResolvedValue([]);
+      mockDb.document.count.mockResolvedValue(0);
+
+      await documentsService.getScanHistory('user-1', 0, 10, {
+        startDate: '2024-01-01',
+        endDate: '2024-12-31',
+      });
+
+      expect(mockDb.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            createdAt: {
+              gte: new Date('2024-01-01'),
+              lte: new Date('2024-12-31'),
+            },
+          }),
+        }),
+      );
+    });
+
+    it('should return empty list when no documents', async () => {
+      mockDb.document.findMany.mockResolvedValue([]);
+      mockDb.document.count.mockResolvedValue(0);
+
+      const result = await documentsService.getScanHistory('user-1', 0, 10);
+
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
+      expect(result.hasMore).toBe(false);
+    });
+  });
+
+  describe('getScanDetail', () => {
+    it('should return scan detail for owned document', async () => {
+      const mockDoc: any = {
+        id: 'doc-1',
+        type: 'petition',
+        status: 'ai_analysis_complete',
+        extractedText: 'Some petition text',
+        ocrConfidence: 95.5,
+        ocrProvider: 'tesseract',
+        analysis: { summary: 'Test summary', keyPoints: ['Point 1'] },
+        createdAt: new Date('2024-06-01'),
+        updatedAt: new Date('2024-06-01'),
+      };
+
+      mockDb.document.findFirst.mockResolvedValue(mockDoc);
+
+      const result = await documentsService.getScanDetail('user-1', 'doc-1');
+
+      expect(result.id).toBe('doc-1');
+      expect(result.extractedText).toBe('Some petition text');
+      expect(result.analysis).toBeDefined();
+      expect(mockDb.document.findFirst).toHaveBeenCalledWith({
+        where: { id: 'doc-1', userId: 'user-1', deletedAt: null },
+      });
+    });
+
+    it('should throw NotFoundException when document not found', async () => {
+      mockDb.document.findFirst.mockResolvedValue(null);
+
+      await expect(
+        documentsService.getScanDetail('user-1', 'nonexistent'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('softDeleteDocument', () => {
+    it('should soft-delete an owned document', async () => {
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        userId: 'user-1',
+      } as any);
+      mockDb.document.update.mockResolvedValue({} as any);
+
+      const result = await documentsService.softDeleteDocument(
+        'user-1',
+        'doc-1',
+      );
+
+      expect(result).toBe(true);
+      expect(mockDb.document.update).toHaveBeenCalledWith({
+        where: { id: 'doc-1' },
+        data: { deletedAt: expect.any(Date) },
+      });
+    });
+
+    it('should throw NotFoundException for non-owned document', async () => {
+      mockDb.document.findFirst.mockResolvedValue(null);
+
+      await expect(
+        documentsService.softDeleteDocument('user-2', 'doc-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('deleteAllUserScans', () => {
+    it('should soft-delete all user documents and return count', async () => {
+      mockDb.document.updateMany.mockResolvedValue({ count: 5 });
+
+      const result = await documentsService.deleteAllUserScans('user-1');
+
+      expect(result).toBe(5);
+      expect(mockDb.document.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
+    });
+
+    it('should return 0 when no documents to delete', async () => {
+      mockDb.document.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await documentsService.deleteAllUserScans('user-1');
+
+      expect(result).toBe(0);
+    });
+  });
+
+  // ============================================
   // PETITION-BALLOT LINKING
   // ============================================
 

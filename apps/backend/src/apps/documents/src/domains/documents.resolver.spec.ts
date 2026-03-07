@@ -315,6 +315,123 @@ describe('DocumentsResolver', () => {
   });
 
   // ============================================
+  // SCAN HISTORY
+  // ============================================
+
+  describe('myScanHistory', () => {
+    it('should return paginated scan history', async () => {
+      const mockResult = {
+        items: [
+          {
+            id: 'doc-1',
+            type: 'petition',
+            status: 'ai_analysis_complete',
+            summary: 'Test summary',
+            ocrConfidence: 95.5,
+            hasAnalysis: true,
+            createdAt: new Date(),
+          },
+        ],
+        total: 1,
+        hasMore: false,
+      };
+      documentsService.getScanHistory = jest.fn().mockResolvedValue(mockResult);
+
+      const result = await documentsResolver.myScanHistory(
+        0,
+        10,
+        undefined,
+        mockContext,
+      );
+
+      expect(result).toEqual(mockResult);
+      expect(documentsService.getScanHistory).toHaveBeenCalledWith(
+        'user-1',
+        0,
+        10,
+        undefined,
+      );
+    });
+
+    it('should pass filters through', async () => {
+      const mockResult = { items: [], total: 0, hasMore: false };
+      documentsService.getScanHistory = jest.fn().mockResolvedValue(mockResult);
+
+      const filters = { search: 'parks' };
+      await documentsResolver.myScanHistory(0, 10, filters, mockContext);
+
+      expect(documentsService.getScanHistory).toHaveBeenCalledWith(
+        'user-1',
+        0,
+        10,
+        filters,
+      );
+    });
+  });
+
+  describe('scanDetail', () => {
+    it('should return scan detail for a document', async () => {
+      const mockDetail = {
+        id: 'doc-1',
+        type: 'petition',
+        status: 'ai_analysis_complete',
+        extractedText: 'Some text',
+        ocrConfidence: 95.5,
+        analysis: { summary: 'Test' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      documentsService.getScanDetail = jest.fn().mockResolvedValue(mockDetail);
+
+      const result = await documentsResolver.scanDetail('doc-1', mockContext);
+
+      expect(result).toEqual(mockDetail);
+      expect(documentsService.getScanDetail).toHaveBeenCalledWith(
+        'user-1',
+        'doc-1',
+      );
+    });
+
+    it('should throw error when user not authenticated', async () => {
+      const noUserContext = { req: { user: undefined, headers: {} } };
+
+      await expect(
+        documentsResolver.scanDetail('doc-1', noUserContext),
+      ).rejects.toThrow('User not authenticated');
+    });
+  });
+
+  describe('softDeleteScan', () => {
+    it('should soft-delete and return true', async () => {
+      documentsService.softDeleteDocument = jest.fn().mockResolvedValue(true);
+
+      const result = await documentsResolver.softDeleteScan(
+        'doc-1',
+        mockContext,
+      );
+
+      expect(result).toBe(true);
+      expect(documentsService.softDeleteDocument).toHaveBeenCalledWith(
+        'user-1',
+        'doc-1',
+      );
+    });
+  });
+
+  describe('deleteAllMyScans', () => {
+    it('should delete all scans and return count', async () => {
+      documentsService.deleteAllUserScans = jest.fn().mockResolvedValue(5);
+
+      const result = await documentsResolver.deleteAllMyScans(mockContext);
+
+      expect(result).toEqual({ deletedCount: 5 });
+      expect(documentsService.deleteAllUserScans).toHaveBeenCalledWith(
+        'user-1',
+      );
+    });
+  });
+
+  // ============================================
   // PETITION-BALLOT LINKING
   // ============================================
 
