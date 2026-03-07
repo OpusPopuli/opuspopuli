@@ -65,6 +65,7 @@ export default function PetitionResultsPage() {
   );
   const [fetchLinkedPropositions] = useLazyQuery<LinkedPropositionsData>(
     GET_LINKED_PROPOSITIONS,
+    { fetchPolicy: "no-cache" },
   );
 
   const runPipeline = useCallback(

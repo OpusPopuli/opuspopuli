@@ -219,27 +219,13 @@ test.describe("Petition-Ballot Linking", () => {
       page,
     }) => {
       await mockPetitionResultsGraphQL(page);
-
-      // Listen for linkedPropositions response before navigating
-      const linkedPropsResponse = page.waitForResponse(
-        (resp) =>
-          resp.request().postData()?.includes("linkedPropositions") ?? false,
-        { timeout: 15000 },
-      );
-
       await page.goto("/petition/results");
 
-      // Wait for analysis to complete
-      await expect(page.getByText("Summary")).toBeVisible({ timeout: 10000 });
-
-      // Wait for linked propositions query to complete
-      await linkedPropsResponse;
-
-      // Check linked proposition card appears
+      // Wait for the linked proposition card to appear (after full pipeline)
       const propCard = page.getByRole("link", {
         name: /Proposition 47/i,
       });
-      await expect(propCard).toBeVisible({ timeout: 5000 });
+      await expect(propCard).toBeVisible({ timeout: 15000 });
 
       // Verify it links to the proposition detail page
       await expect(propCard).toHaveAttribute(
@@ -255,20 +241,12 @@ test.describe("Petition-Ballot Linking", () => {
       page,
     }) => {
       await mockPetitionResultsGraphQL(page);
-
-      const linkedPropsResponse = page.waitForResponse(
-        (resp) =>
-          resp.request().postData()?.includes("linkedPropositions") ?? false,
-        { timeout: 15000 },
-      );
-
       await page.goto("/petition/results");
 
-      await expect(page.getByText("Summary")).toBeVisible({ timeout: 10000 });
-      await linkedPropsResponse;
-
-      // Should show tracking count since there's a linked proposition
-      await expect(page.getByText(/Tracking 1 measure/i)).toBeVisible();
+      // Should show tracking count once linked propositions load
+      await expect(page.getByText(/Tracking 1 measure/i)).toBeVisible({
+        timeout: 15000,
+      });
     });
   });
 
@@ -364,20 +342,11 @@ test.describe("Petition-Ballot Linking", () => {
       page,
     }) => {
       await mockPetitionResultsGraphQL(page);
-
-      const linkedPropsResponse = page.waitForResponse(
-        (resp) =>
-          resp.request().postData()?.includes("linkedPropositions") ?? false,
-        { timeout: 15000 },
-      );
-
       await page.goto("/petition/results");
-      await expect(page.getByText("Summary")).toBeVisible({ timeout: 10000 });
-      await linkedPropsResponse;
 
-      // Click Track on Ballot (or tracking button)
+      // Wait for linked propositions to load, then click tracking button
       const trackButton = page.getByText(/Tracking 1 measure/i);
-      await expect(trackButton).toBeVisible();
+      await expect(trackButton).toBeVisible({ timeout: 15000 });
       await trackButton.click();
 
       // Search input should appear
@@ -397,19 +366,11 @@ test.describe("Petition-Ballot Linking", () => {
       page,
     }) => {
       await mockPetitionResultsGraphQL(page);
-
-      const linkedPropsResponse = page.waitForResponse(
-        (resp) =>
-          resp.request().postData()?.includes("linkedPropositions") ?? false,
-        { timeout: 15000 },
-      );
-
       await page.goto("/petition/results");
-      await expect(page.getByText("Summary")).toBeVisible({ timeout: 10000 });
-      await linkedPropsResponse;
 
-      // Open dropdown
+      // Wait for linked propositions to load, then open dropdown
       const trackButton = page.getByText(/Tracking 1 measure/i);
+      await expect(trackButton).toBeVisible({ timeout: 15000 });
       await trackButton.click();
 
       // Search and select
@@ -488,21 +449,15 @@ test.describe("Petition-Ballot Linking", () => {
         }
       });
 
-      const linkedPropsResponse = page.waitForResponse(
-        (resp) =>
-          resp.request().postData()?.includes("linkedPropositions") ?? false,
-        { timeout: 15000 },
-      );
-
       await page.goto("/petition/results");
-      await expect(page.getByText("Summary")).toBeVisible({ timeout: 10000 });
-      await linkedPropsResponse;
+
+      // Should show "Track on Ballot" button (no linked propositions)
+      await expect(page.getByText("Track on Ballot")).toBeVisible({
+        timeout: 15000,
+      });
 
       // Should show the unmatched "Proposition 47" as plain text
       await expect(page.getByText("Proposition 47")).toBeVisible();
-
-      // Should show "Track on Ballot" button (not "Tracking N measures")
-      await expect(page.getByText("Track on Ballot")).toBeVisible();
     });
 
     test("should display user-linked badge for manual links", async ({
@@ -581,18 +536,12 @@ test.describe("Petition-Ballot Linking", () => {
         }
       });
 
-      const linkedPropsResponse = page.waitForResponse(
-        (resp) =>
-          resp.request().postData()?.includes("linkedPropositions") ?? false,
-        { timeout: 15000 },
-      );
-
       await page.goto("/petition/results");
-      await expect(page.getByText("Summary")).toBeVisible({ timeout: 10000 });
-      await linkedPropsResponse;
 
-      // Should show the user-linked badge
-      await expect(page.getByText("User-linked")).toBeVisible();
+      // Should show the user-linked badge once linked propositions load
+      await expect(page.getByText("User-linked")).toBeVisible({
+        timeout: 15000,
+      });
     });
 
     test("should show multiple linked propositions on proposition detail page", async ({
@@ -692,16 +641,12 @@ test.describe("Petition-Ballot Linking", () => {
       page,
     }) => {
       await mockPetitionResultsGraphQL(page);
-
-      const linkedPropsResponse = page.waitForResponse(
-        (resp) =>
-          resp.request().postData()?.includes("linkedPropositions") ?? false,
-        { timeout: 15000 },
-      );
-
       await page.goto("/petition/results");
-      await expect(page.getByText("Summary")).toBeVisible({ timeout: 10000 });
-      await linkedPropsResponse;
+
+      // Wait for linked propositions to fully render before checking a11y
+      await expect(page.getByText("AI-matched")).toBeVisible({
+        timeout: 15000,
+      });
 
       const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa"])
