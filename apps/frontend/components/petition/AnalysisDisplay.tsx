@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import type {
@@ -45,6 +46,7 @@ export function AnalysisDisplay({
   onOcrTextChange,
 }: AnalysisDisplayProps) {
   const { t } = useTranslation("petition");
+  const [now] = useState(() => Date.now());
 
   return (
     <div className="space-y-6">
@@ -300,7 +302,7 @@ export function AnalysisDisplay({
           <div className="mt-2 space-y-2">
             {analysis.sources.map((source) => {
               const accessedDate = new Date(source.accessedAt);
-              const ageMs = Date.now() - accessedDate.getTime();
+              const ageMs = now - accessedDate.getTime();
               const ageDays = ageMs / (1000 * 60 * 60 * 24);
               const getFreshnessStyle = (days: number) => {
                 if (days < 1) return "bg-green-900 text-green-300";
