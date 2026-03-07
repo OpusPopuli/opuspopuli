@@ -1,0 +1,141 @@
+{
+  "home": {
+    "title": "Escanear una Petición",
+    "description": "Usa tu cámara para capturar páginas de peticiones. Las imágenes se procesan de forma segura y nunca se almacenan en tu dispositivo.",
+    "startScanning": "Comenzar Escaneo",
+    "backToHome": "Volver al Inicio"
+  },
+  "camera": {
+    "permission": {
+      "title": "Se Necesita Acceso a la Cámara",
+      "description": "Para escanear peticiones, necesitamos acceso a tu cámara. Tus imágenes se procesan de forma segura y nunca se guardan en tu dispositivo.",
+      "enable": "Habilitar Cámara",
+      "deniedTitle": "Acceso a Cámara Denegado",
+      "deniedDescription": "El acceso a la cámara fue denegado. Para escanear peticiones:",
+      "deniedStep1": "Abre la configuración de tu navegador",
+      "deniedStep2": "Busca los permisos para este sitio",
+      "deniedStep3": "Habilita el acceso a la cámara",
+      "deniedStep4": "Recarga esta página",
+      "refresh": "Recargar Página",
+      "unsupportedTitle": "Cámara No Soportada",
+      "unsupportedDescription": "Tu navegador no soporta acceso a la cámara. Intenta usar Chrome, Safari o Firefox en un dispositivo móvil."
+    },
+    "overlay": {
+      "alignGuide": "Alinea la petición dentro del marco"
+    },
+    "lighting": {
+      "dark": "Muévete a un área más iluminada",
+      "good": "Buena iluminación",
+      "bright": "Demasiado brillante — busca sombra"
+    },
+    "controls": {
+      "capture": "Capturar foto",
+      "flashOn": "Encender flash",
+      "flashOff": "Apagar flash",
+      "switchCamera": "Cambiar cámara"
+    },
+    "preview": {
+      "retake": "Repetir",
+      "usePhoto": "Usar Foto",
+      "processing": "Procesando"
+    },
+    "error": {
+      "title": "Error de Cámara",
+      "goBack": "Volver",
+      "tryAgain": "Intentar de Nuevo"
+    }
+  },
+  "location": {
+    "prompt": {
+      "title": "¿Agregar Ubicación del Escaneo?",
+      "description": "Agregar tu ubicación ayuda a rastrear dónde se están circulando las peticiones. Tu posición exacta nunca se almacena — redondeamos a aproximadamente una cuadra (~100m) por privacidad.",
+      "allow": "Compartir Ubicación",
+      "skip": "Omitir",
+      "loading": "Obteniendo tu ubicación..."
+    },
+    "denied": {
+      "title": "Acceso a Ubicación Denegado",
+      "description": "El acceso a la ubicación fue denegado. Puedes continuar sin compartir tu ubicación.",
+      "continueWithout": "Continuar Sin Ubicación"
+    },
+    "error": {
+      "title": "Ubicación No Disponible",
+      "continueWithout": "Continuar Sin Ubicación"
+    }
+  },
+  "results": {
+    "title": "Resultados del Escaneo",
+    "back": "Volver",
+    "extractingText": "Leyendo tu petición...",
+    "extractingDescription": "Usando IA para extraer texto de tu imagen",
+    "analyzingDocument": "Analizando petición...",
+    "analyzingDescription": "Nuestra IA está revisando el contenido de la petición",
+    "extractedText": "Texto Extraído",
+    "extractedTextLabel": "Texto de petición extraído (editable si hay errores de OCR)",
+    "confidence": "confianza",
+    "summary": "Resumen",
+    "keyPoints": "Puntos Clave",
+    "actualEffect": "Lo Que Realmente Hace",
+    "concerns": "Preocupaciones Potenciales",
+    "beneficiaries": "Quién se Beneficia",
+    "potentiallyHarmed": "Quién Puede Verse Afectado",
+    "relatedMeasures": "Medidas Relacionadas",
+    "entities": "Entidades Mencionadas",
+    "analyzedBy": "Analizado por {{provider}} ({{model}})",
+    "cachedResult": "resultado en caché",
+    "promptVersion": "Versión del prompt: {{hash}}",
+    "promptVersionTooltip": "Este análisis usó la versión de prompt {{version}} ({{hash}}). Los prompts son auditables independientemente.",
+    "promptCharter": "Carta de Prompts",
+    "dataSources": "Fuentes de Datos",
+    "sourceAccessedAt": "Accedido {{date}}",
+    "sourceFresh": "Reciente",
+    "sourceAging": "Envejeciendo",
+    "sourceStale": "Obsoleto",
+    "dataCompleteness": "Completitud de Datos",
+    "completenessScore": "{{score}}% completo",
+    "completenessExplanation": "Basado en {{available}} de {{ideal}} fuentes de datos",
+    "whatWouldImprove": "Qué mejoraría este análisis",
+    "share": "Compartir Análisis",
+    "trackOnBallot": "Seguir en Boleta",
+    "trackingMeasures": "Siguiendo {{count}} medida(s)",
+    "searchPropositions": "Buscar medidas electorales...",
+    "noMatchesFound": "No se encontraron medidas coincidentes",
+    "linkedAutomatically": "IA-vinculado",
+    "linkedManually": "Vinculado por usuario",
+    "linkSuccess": "Vinculado a medida electoral",
+    "viewOnBallot": "Ver en Boleta",
+    "errorTitle": "Procesamiento Fallido",
+    "backToHome": "Volver al Inicio",
+    "tryAgain": "Escanear de Nuevo",
+    "copiedToClipboard": "Análisis copiado al portapapeles"
+  },
+  "activityFeed": {
+    "live": "En Vivo",
+    "scansLast24h": "{{count}} escaneos en las últimas 24 horas",
+    "activePetitions": "en {{count}} peticiones",
+    "scannedTimes": "Escaneado {{count}} veces en {{locations}} ubicaciones",
+    "lastScanned": "Último escaneo {{time}}",
+    "noActivity": "No hay actividad de peticiones en las últimas 24 horas. ¡Sé el primero en escanear!",
+    "hourlyTrend": "Últimas 24 horas",
+    "loading": "Cargando actividad..."
+  },
+  "report": {
+    "button": "Reportar Problema",
+    "buttonLabel": "Reportar un problema con este análisis",
+    "title": "¿Qué tiene de malo este análisis?",
+    "reasons": {
+      "incorrectAnalysis": "El análisis es incorrecto o engañoso",
+      "offensiveContent": "Contiene contenido ofensivo",
+      "wrongDocumentType": "Tipo de documento incorrecto detectado",
+      "privacyConcern": "Contiene información privada",
+      "other": "Otro problema"
+    },
+    "descriptionPlaceholder": "Detalles adicionales (opcional)",
+    "submit": "Enviar Reporte",
+    "submitting": "Enviando...",
+    "success": "Reporte enviado. Gracias por tu retroalimentación.",
+    "error": "Error al enviar el reporte. Por favor intenta de nuevo.",
+    "alreadyReported": "Ya has reportado este documento.",
+    "submitted": "Reportado"
+  }
+}

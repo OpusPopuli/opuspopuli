@@ -91,6 +91,7 @@ export {
   PromptCategory,
   AbuseReportReason,
   AbuseReportStatus,
+  LinkSource,
 } from "@prisma/client";
 
 // Test utilities are available from "@opuspopuli/relationaldb-provider/testing"
