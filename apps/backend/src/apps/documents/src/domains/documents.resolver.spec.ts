@@ -416,6 +416,14 @@ describe('DocumentsResolver', () => {
         'doc-1',
       );
     });
+
+    it('should throw error when user not authenticated', async () => {
+      const noUserContext = { req: { user: undefined, headers: {} } };
+
+      await expect(
+        documentsResolver.softDeleteScan('doc-1', noUserContext),
+      ).rejects.toThrow('User not authenticated');
+    });
   });
 
   describe('deleteAllMyScans', () => {
@@ -428,6 +436,14 @@ describe('DocumentsResolver', () => {
       expect(documentsService.deleteAllUserScans).toHaveBeenCalledWith(
         'user-1',
       );
+    });
+
+    it('should throw error when user not authenticated', async () => {
+      const noUserContext = { req: { user: undefined, headers: {} } };
+
+      await expect(
+        documentsResolver.deleteAllMyScans(noUserContext),
+      ).rejects.toThrow('User not authenticated');
     });
   });
 

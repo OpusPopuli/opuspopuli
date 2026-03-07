@@ -151,4 +151,42 @@ describe("AnalysisDisplay", () => {
 
     expect(screen.getByText("results.completenessScore")).toBeInTheDocument();
   });
+
+  it("should handle empty key points array", () => {
+    const analysis = { ...baseAnalysis, keyPoints: [] };
+
+    render(<AnalysisDisplay analysis={analysis} />);
+
+    // Summary should still render
+    expect(
+      screen.getByText("This petition seeks to reform criminal sentencing."),
+    ).toBeInTheDocument();
+  });
+
+  it("should handle empty entities array", () => {
+    const analysis = { ...baseAnalysis, entities: [] };
+
+    render(<AnalysisDisplay analysis={analysis} />);
+
+    expect(
+      screen.getByText("This petition seeks to reform criminal sentencing."),
+    ).toBeInTheDocument();
+  });
+
+  it("should handle missing summary gracefully", () => {
+    const analysis = { ...baseAnalysis, summary: "" };
+
+    render(<AnalysisDisplay analysis={analysis} />);
+
+    // Should still render without errors
+    expect(screen.getByText("results.keyPoints")).toBeInTheDocument();
+  });
+
+  it("should not render linked propositions section when list is empty", () => {
+    render(<AnalysisDisplay analysis={baseAnalysis} linkedPropositions={[]} />);
+
+    expect(
+      screen.queryByText("results.relatedBallotMeasures"),
+    ).not.toBeInTheDocument();
+  });
 });

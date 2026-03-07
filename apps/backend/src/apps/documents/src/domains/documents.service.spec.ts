@@ -2066,6 +2066,115 @@ describe('DocumentsService', () => {
       expect(result.total).toBe(0);
       expect(result.hasMore).toBe(false);
     });
+
+    it('should exclude soft-deleted documents', async () => {
+      mockDb.document.findMany.mockResolvedValue([]);
+      mockDb.document.count.mockResolvedValue(0);
+
+      await documentsService.getScanHistory('user-1', 0, 10);
+
+      expect(mockDb.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            deletedAt: null,
+          }),
+        }),
+      );
+      expect(mockDb.document.count).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          deletedAt: null,
+        }),
+      });
+    });
+
+    it('should apply combined search and date filters', async () => {
+      mockDb.document.findMany.mockResolvedValue([]);
+      mockDb.document.count.mockResolvedValue(0);
+
+      await documentsService.getScanHistory('user-1', 0, 10, {
+        search: 'parks',
+        startDate: '2024-01-01',
+        endDate: '2024-06-30',
+      });
+
+      expect(mockDb.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            extractedText: { contains: 'parks', mode: 'insensitive' },
+            createdAt: {
+              gte: new Date('2024-01-01'),
+              lte: new Date('2024-06-30'),
+            },
+          }),
+        }),
+      );
+    });
+
+    it('should apply only startDate when endDate not provided', async () => {
+      mockDb.document.findMany.mockResolvedValue([]);
+      mockDb.document.count.mockResolvedValue(0);
+
+      await documentsService.getScanHistory('user-1', 0, 10, {
+        startDate: '2024-01-01',
+      });
+
+      expect(mockDb.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            createdAt: { gte: new Date('2024-01-01') },
+          }),
+        }),
+      );
+    });
+
+    it('should order results by createdAt descending', async () => {
+      mockDb.document.findMany.mockResolvedValue([]);
+      mockDb.document.count.mockResolvedValue(0);
+
+      await documentsService.getScanHistory('user-1', 0, 10);
+
+      expect(mockDb.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { createdAt: 'desc' },
+        }),
+      );
+    });
+
+    it('should handle summary as undefined when analysis has no summary', async () => {
+      mockDb.document.findMany.mockResolvedValue([
+        {
+          id: 'doc-3',
+          type: 'petition',
+          status: 'ai_analysis_complete',
+          analysis: { keyPoints: ['Point 1'] }, // no summary field
+          ocrConfidence: 90,
+          createdAt: new Date(),
+        } as any,
+      ]);
+      mockDb.document.count.mockResolvedValue(1);
+
+      const result = await documentsService.getScanHistory('user-1', 0, 10);
+
+      expect(result.items[0].summary).toBeUndefined();
+      expect(result.items[0].hasAnalysis).toBe(true);
+    });
+
+    it('should pass correct skip and take to Prisma', async () => {
+      mockDb.document.findMany.mockResolvedValue([]);
+      mockDb.document.count.mockResolvedValue(50);
+
+      await documentsService.getScanHistory('user-1', 20, 5);
+
+      expect(mockDb.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 20,
+          take: 5,
+        }),
+      );
+      expect(
+        (await documentsService.getScanHistory('user-1', 20, 5)).hasMore,
+      ).toBe(true);
+    });
   });
 
   describe('getScanDetail', () => {
@@ -2101,6 +2210,30 @@ describe('DocumentsService', () => {
         documentsService.getScanDetail('user-1', 'nonexistent'),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('should handle document with null optional fields', async () => {
+      const mockDoc: any = {
+        id: 'doc-3',
+        type: 'petition',
+        status: 'text_extraction_complete',
+        extractedText: null,
+        ocrConfidence: null,
+        ocrProvider: null,
+        analysis: null,
+        createdAt: new Date('2024-06-01'),
+        updatedAt: new Date('2024-06-01'),
+      };
+
+      mockDb.document.findFirst.mockResolvedValue(mockDoc);
+
+      const result = await documentsService.getScanDetail('user-1', 'doc-3');
+
+      expect(result.id).toBe('doc-3');
+      expect(result.extractedText).toBeFalsy();
+      expect(result.ocrConfidence).toBeFalsy();
+      expect(result.ocrProvider).toBeFalsy();
+      expect(result.analysis).toBeFalsy();
+    });
   });
 
   describe('softDeleteDocument', () => {
@@ -2129,6 +2262,20 @@ describe('DocumentsService', () => {
       await expect(
         documentsService.softDeleteDocument('user-2', 'doc-1'),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should verify ownership check includes deletedAt null', async () => {
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        userId: 'user-1',
+      } as any);
+      mockDb.document.update.mockResolvedValue({} as any);
+
+      await documentsService.softDeleteDocument('user-1', 'doc-1');
+
+      expect(mockDb.document.findFirst).toHaveBeenCalledWith({
+        where: { id: 'doc-1', userId: 'user-1', deletedAt: null },
+      });
     });
   });
 

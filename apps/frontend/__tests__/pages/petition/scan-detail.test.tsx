@@ -178,4 +178,73 @@ describe("ScanDetailPage", () => {
 
     expect(screen.getByText("OCR: tesseract")).toBeInTheDocument();
   });
+
+  it("should render OCR-only view when no analysis exists", () => {
+    mockScanDetailResult = {
+      data: {
+        scanDetail: {
+          ...mockScanDetail,
+          analysis: null,
+          extractedText: "Some raw OCR text",
+        },
+      },
+      loading: false,
+      error: null,
+    };
+
+    render(<ScanDetailPage />);
+
+    expect(screen.getByText("Some raw OCR text")).toBeInTheDocument();
+    // Share button should not appear without analysis
+    expect(screen.queryByText("history.share")).not.toBeInTheDocument();
+  });
+
+  it("should call softDeleteScan on delete confirmation", async () => {
+    // Mock window.confirm
+    const confirmSpy = jest.spyOn(window, "confirm").mockReturnValue(true);
+    mockSoftDeleteScan.mockResolvedValue({
+      data: { softDeleteScan: true },
+    });
+
+    render(<ScanDetailPage />);
+
+    const deleteButton = screen.getByText("history.delete");
+    deleteButton.click();
+
+    expect(confirmSpy).toHaveBeenCalledWith("history.deleteConfirm");
+    expect(mockSoftDeleteScan).toHaveBeenCalledWith({
+      variables: { documentId: "doc-123" },
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it("should not delete when confirm is cancelled", () => {
+    const confirmSpy = jest.spyOn(window, "confirm").mockReturnValue(false);
+
+    render(<ScanDetailPage />);
+
+    const deleteButton = screen.getByText("history.delete");
+    deleteButton.click();
+
+    expect(mockSoftDeleteScan).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("should show TrackOnBallotButton with linked count", () => {
+    mockLinkedResult = {
+      data: {
+        linkedPropositions: [
+          { id: "link-1", propositionId: "prop-1", title: "Prop 47" },
+          { id: "link-2", propositionId: "prop-2", title: "Prop 36" },
+        ],
+      },
+      refetch: mockRefetchLinked,
+    };
+
+    render(<ScanDetailPage />);
+
+    expect(screen.getByText("Tracking 2")).toBeInTheDocument();
+  });
 });

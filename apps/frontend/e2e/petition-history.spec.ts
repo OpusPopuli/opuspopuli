@@ -255,6 +255,49 @@ test.describe("Petition History", () => {
     expect(results.violations).toEqual([]);
   });
 
+  test("should execute delete after confirmation", async ({ page }) => {
+    await setupAuthAndMocks(page);
+    await page.goto("/petition/history");
+
+    await expect(
+      page.getByText("Reform criminal sentencing guidelines"),
+    ).toBeVisible({ timeout: 15000 });
+
+    await page
+      .getByLabel(/delete scan/i)
+      .first()
+      .click();
+
+    await expect(page.getByText(/are you sure/i)).toBeVisible();
+
+    // Click delete confirmation button
+    await page
+      .getByRole("button", { name: /delete/i })
+      .last()
+      .click();
+
+    // Dialog should close
+    await expect(page.getByText(/are you sure/i)).not.toBeVisible();
+  });
+
+  test("should filter history with search input", async ({ page }) => {
+    await setupAuthAndMocks(page);
+    await page.goto("/petition/history");
+
+    await expect(
+      page.getByText("Reform criminal sentencing guidelines"),
+    ).toBeVisible({ timeout: 15000 });
+
+    // Type a search that returns no results
+    const searchInput = page.getByPlaceholder(/search/i);
+    await searchInput.fill("nonexistent");
+
+    // Wait for debounced search to trigger empty state
+    await expect(page.getByText(/no.*results/i)).toBeVisible({
+      timeout: 5000,
+    });
+  });
+
   test("accessibility: scan detail page meets WCAG AA", async ({ page }) => {
     await setupAuthAndMocks(page);
     await page.goto("/petition/history/doc-1");

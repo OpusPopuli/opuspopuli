@@ -185,4 +185,108 @@ describe("PetitionHistoryPage", () => {
     );
     expect(historyLink).toBeInTheDocument();
   });
+
+  it("should execute delete after confirmation", async () => {
+    mockSoftDeleteScan.mockResolvedValue({ data: { softDeleteScan: true } });
+
+    render(<PetitionHistoryPage />);
+
+    const deleteButtons = screen.getAllByLabelText("history.deleteScan");
+    fireEvent.click(deleteButtons[0]);
+
+    // Confirm delete
+    const confirmButton = screen.getByText("history.delete");
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockSoftDeleteScan).toHaveBeenCalledWith({
+        variables: { documentId: "doc-1" },
+      });
+    });
+  });
+
+  it("should cancel delete confirmation", () => {
+    render(<PetitionHistoryPage />);
+
+    const deleteButtons = screen.getAllByLabelText("history.deleteScan");
+    fireEvent.click(deleteButtons[0]);
+
+    // Click cancel
+    fireEvent.click(screen.getByText("results.back"));
+
+    expect(screen.queryByText("history.deleteConfirm")).not.toBeInTheDocument();
+  });
+
+  it("should open and confirm delete all dialog", async () => {
+    mockDeleteAllMyScans.mockResolvedValue({
+      data: { deleteAllMyScans: { deletedCount: 2 } },
+    });
+
+    render(<PetitionHistoryPage />);
+
+    fireEvent.click(screen.getByText("history.deleteAllScans"));
+    expect(screen.getByText("history.deleteAllConfirm")).toBeInTheDocument();
+
+    // Find the delete all button inside the dialog (second occurrence)
+    const deleteAllButtons = screen.getAllByText("history.deleteAllScans");
+    fireEvent.click(deleteAllButtons[deleteAllButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(mockDeleteAllMyScans).toHaveBeenCalled();
+    });
+  });
+
+  it("should show clear filters button when filters are active", async () => {
+    render(<PetitionHistoryPage />);
+
+    const searchInput = screen.getByPlaceholderText("history.search");
+    fireEvent.change(searchInput, { target: { value: "parks" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("history.clearFilters")).toBeInTheDocument();
+    });
+  });
+
+  it("should disable previous button on first page", () => {
+    render(<PetitionHistoryPage />);
+
+    const prevButton = screen.getByText("history.previous");
+    expect(prevButton).toBeDisabled();
+  });
+
+  it("should disable next button when no more pages", () => {
+    render(<PetitionHistoryPage />);
+
+    const nextButton = screen.getByText("history.next");
+    expect(nextButton).toBeDisabled();
+  });
+
+  it("should show failed status for failed scans", () => {
+    mockQueryResult = {
+      data: {
+        myScanHistory: {
+          items: [
+            {
+              id: "doc-3",
+              type: "petition",
+              status: "ocr_failed",
+              summary: null,
+              ocrConfidence: null,
+              hasAnalysis: false,
+              createdAt: "2024-06-01T10:00:00Z",
+            },
+          ],
+          total: 1,
+          hasMore: false,
+        },
+      },
+      loading: false,
+      error: null,
+      refetch: mockRefetch,
+    };
+
+    render(<PetitionHistoryPage />);
+
+    expect(screen.getByText("history.failed")).toBeInTheDocument();
+  });
 });
