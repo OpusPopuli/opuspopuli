@@ -37,6 +37,12 @@ export default function PetitionPage() {
       >
         View Map
       </Link>
+      <Link
+        href="/petition/history"
+        className="mt-4 px-8 py-3 border border-gray-600 hover:border-gray-400 text-gray-300 font-medium rounded-lg transition-colors"
+      >
+        My Scans
+      </Link>
       <ActivityFeed />
       <Link
         href="/"

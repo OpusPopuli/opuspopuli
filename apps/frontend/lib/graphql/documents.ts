@@ -435,3 +435,150 @@ export interface SearchPropositionsData {
 export interface LinkDocumentToPropositionData {
   linkDocumentToProposition: LinkDocumentResult;
 }
+
+// ============================================
+// Scan History Types
+// ============================================
+
+export interface ScanHistoryItem {
+  id: string;
+  type: string;
+  status: string;
+  summary?: string;
+  ocrConfidence?: number;
+  hasAnalysis: boolean;
+  createdAt: string;
+}
+
+export interface PaginatedScanHistory {
+  items: ScanHistoryItem[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface ScanDetail {
+  id: string;
+  type: string;
+  status: string;
+  extractedText?: string;
+  ocrConfidence?: number;
+  ocrProvider?: string;
+  analysis?: DocumentAnalysis;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeleteAllScansResult {
+  deletedCount: number;
+}
+
+// ============================================
+// Scan History Queries
+// ============================================
+
+export const GET_MY_SCAN_HISTORY = gql`
+  query MyScanHistory(
+    $skip: Float!
+    $take: Float!
+    $filters: ScanHistoryFiltersInput
+  ) {
+    myScanHistory(skip: $skip, take: $take, filters: $filters) {
+      items {
+        id
+        type
+        status
+        summary
+        ocrConfidence
+        hasAnalysis
+        createdAt
+      }
+      total
+      hasMore
+    }
+  }
+`;
+
+export const GET_SCAN_DETAIL = gql`
+  query ScanDetail($documentId: String!) {
+    scanDetail(documentId: $documentId) {
+      id
+      type
+      status
+      extractedText
+      ocrConfidence
+      ocrProvider
+      analysis {
+        documentType
+        summary
+        keyPoints
+        entities
+        analyzedAt
+        provider
+        model
+        tokensUsed
+        processingTimeMs
+        cachedFrom
+        promptVersion
+        promptHash
+        sources {
+          name
+          url
+          accessedAt
+          dataCompleteness
+        }
+        completenessScore
+        completenessDetails {
+          availableCount
+          idealCount
+          missingItems
+          explanation
+        }
+        actualEffect
+        potentialConcerns
+        beneficiaries
+        potentiallyHarmed
+        relatedMeasures
+      }
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+// ============================================
+// Scan History Mutations
+// ============================================
+
+export const SOFT_DELETE_SCAN = gql`
+  mutation SoftDeleteScan($documentId: String!) {
+    softDeleteScan(documentId: $documentId)
+  }
+`;
+
+export const DELETE_ALL_MY_SCANS = gql`
+  mutation DeleteAllMyScans {
+    deleteAllMyScans {
+      deletedCount
+    }
+  }
+`;
+
+// ============================================
+// Scan History Response Types
+// ============================================
+
+export interface MyScanHistoryData {
+  myScanHistory: PaginatedScanHistory;
+}
+
+export interface ScanDetailData {
+  scanDetail: ScanDetail;
+}
+
+export interface SoftDeleteScanData {
+  softDeleteScan: boolean;
+}
+
+export interface DeleteAllMyScansData {
+  deleteAllMyScans: DeleteAllScansResult;
+}
