@@ -201,7 +201,7 @@ function LinkedPetitionScans({
                     ? "AI-matched"
                     : "User-linked"}
                 </span>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-slate-600">
                   {formatDate(doc.linkedAt)}
                 </span>
               </div>

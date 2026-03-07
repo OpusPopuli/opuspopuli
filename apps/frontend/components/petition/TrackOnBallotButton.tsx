@@ -88,7 +88,7 @@ export function TrackOnBallotButton({
     return (
       <button
         onClick={() => setOpen(true)}
-        className="flex-1 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+        className="flex-1 py-3 bg-green-700 text-white font-medium rounded-lg hover:bg-green-800 transition-colors flex items-center justify-center gap-2"
       >
         <svg
           className="w-4 h-4"
