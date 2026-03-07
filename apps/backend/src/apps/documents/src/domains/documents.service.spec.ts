@@ -2306,19 +2306,10 @@ describe('DocumentsService', () => {
   // ============================================
 
   describe('matchAndLinkPropositions', () => {
-    it('should match by title substring and upsert', async () => {
-      mockDb.proposition.findMany.mockResolvedValue([
-        {
-          id: 'prop-1',
-          title: 'Proposition 47: Criminal Sentencing',
-          externalId: 'Prop 47',
-        },
-        {
-          id: 'prop-2',
-          title: 'Proposition 36: Three Strikes Reform',
-          externalId: 'Prop 36',
-        },
-      ] as any);
+    it('should match via DB-side ILIKE and upsert', async () => {
+      mockDb.proposition.findFirst.mockResolvedValue({
+        id: 'prop-1',
+      } as any);
       mockDb.documentProposition.upsert.mockResolvedValue({
         id: 'link-1',
       } as any);
@@ -2329,6 +2320,26 @@ describe('DocumentsService', () => {
 
       expect(result.matched).toBe(1);
       expect(result.propositionIds).toContain('prop-1');
+      expect(mockDb.proposition.findFirst).toHaveBeenCalledWith({
+        where: {
+          deletedAt: null,
+          OR: [
+            {
+              title: {
+                contains: 'Proposition 47: Criminal Sentencing',
+                mode: 'insensitive',
+              },
+            },
+            {
+              externalId: {
+                contains: 'Proposition 47: Criminal Sentencing',
+                mode: 'insensitive',
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
       expect(mockDb.documentProposition.upsert).toHaveBeenCalledWith({
         where: {
           documentId_propositionId: {
@@ -2346,16 +2357,16 @@ describe('DocumentsService', () => {
       });
     });
 
-    it('should match by externalId', async () => {
-      mockDb.proposition.findMany.mockResolvedValue([
-        { id: 'prop-1', title: 'Some Long Title', externalId: 'Prop 47' },
-      ] as any);
+    it('should match by externalId via DB query', async () => {
+      mockDb.proposition.findFirst.mockResolvedValue({
+        id: 'prop-1',
+      } as any);
       mockDb.documentProposition.upsert.mockResolvedValue({
         id: 'link-1',
       } as any);
 
       const result = await documentsService.matchAndLinkPropositions('doc-1', [
-        'Changes related to Prop 47',
+        'Prop 47',
       ]);
 
       expect(result.matched).toBe(1);
@@ -2363,9 +2374,7 @@ describe('DocumentsService', () => {
     });
 
     it('should return empty when no matches', async () => {
-      mockDb.proposition.findMany.mockResolvedValue([
-        { id: 'prop-1', title: 'Proposition 47', externalId: 'Prop 47' },
-      ] as any);
+      mockDb.proposition.findFirst.mockResolvedValue(null);
 
       const result = await documentsService.matchAndLinkPropositions('doc-1', [
         'Something Completely Unrelated',
@@ -2377,15 +2386,12 @@ describe('DocumentsService', () => {
     });
 
     it('should skip "none identified" measures', async () => {
-      mockDb.proposition.findMany.mockResolvedValue([
-        { id: 'prop-1', title: 'None Identified', externalId: 'Prop 1' },
-      ] as any);
-
       const result = await documentsService.matchAndLinkPropositions('doc-1', [
         'None identified',
       ]);
 
       expect(result.matched).toBe(0);
+      expect(mockDb.proposition.findFirst).not.toHaveBeenCalled();
     });
 
     it('should return empty for empty measures array', async () => {
@@ -2396,13 +2402,13 @@ describe('DocumentsService', () => {
 
       expect(result.matched).toBe(0);
       expect(result.propositionIds).toEqual([]);
-      expect(mockDb.proposition.findMany).not.toHaveBeenCalled();
+      expect(mockDb.proposition.findFirst).not.toHaveBeenCalled();
     });
 
     it('should handle upsert errors gracefully', async () => {
-      mockDb.proposition.findMany.mockResolvedValue([
-        { id: 'prop-1', title: 'Proposition 47', externalId: 'Prop 47' },
-      ] as any);
+      mockDb.proposition.findFirst.mockResolvedValue({
+        id: 'prop-1',
+      } as any);
       mockDb.documentProposition.upsert.mockRejectedValue(
         new Error('DB error'),
       );

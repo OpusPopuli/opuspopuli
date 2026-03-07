@@ -513,6 +513,8 @@ model Document {
   linkedPropositions  DocumentProposition[]
 
   @@index([userId])
+  @@index([userId, deletedAt])
+  @@index([createdAt])
   @@index([checksum])
   @@index([type])
   @@index([contentHash])
