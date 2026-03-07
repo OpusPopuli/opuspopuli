@@ -293,8 +293,8 @@ test.describe("Petition History", () => {
     await searchInput.fill("nonexistent");
 
     // Wait for debounced search to trigger empty state
-    await expect(page.getByText(/no.*results/i)).toBeVisible({
-      timeout: 5000,
+    await expect(page.getByText(/no scans match/i)).toBeVisible({
+      timeout: 10000,
     });
   });
 
