@@ -1300,25 +1300,22 @@ export class DocumentsService {
   ): Promise<{ matched: number; propositionIds: string[] }> {
     if (relatedMeasures.length === 0) return { matched: 0, propositionIds: [] };
 
-    const propositions = await this.db.proposition.findMany({
-      where: { deletedAt: null },
-      select: { id: true, title: true, externalId: true },
-    });
-
     const linkedIds: string[] = [];
 
     for (const measureText of relatedMeasures) {
-      const normalized = measureText.toLowerCase().trim();
-      if (!normalized || normalized === 'none identified') continue;
+      const normalized = measureText.trim();
+      if (!normalized || normalized.toLowerCase() === 'none identified')
+        continue;
 
-      const match = propositions.find((p) => {
-        const titleLower = p.title.toLowerCase();
-        const extIdLower = p.externalId.toLowerCase();
-        return (
-          titleLower.includes(normalized) ||
-          normalized.includes(titleLower) ||
-          normalized.includes(extIdLower)
-        );
+      const match = await this.db.proposition.findFirst({
+        where: {
+          deletedAt: null,
+          OR: [
+            { title: { contains: normalized, mode: 'insensitive' } },
+            { externalId: { contains: normalized, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
       });
 
       if (match) {
