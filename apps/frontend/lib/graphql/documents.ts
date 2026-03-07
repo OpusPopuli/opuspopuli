@@ -311,3 +311,127 @@ export interface SubmitAbuseReportData {
 export interface PetitionActivityFeedData {
   petitionActivityFeed: PetitionActivityFeed;
 }
+
+// ============================================
+// Petition-Ballot Linking Types
+// ============================================
+
+export interface LinkedProposition {
+  id: string;
+  propositionId: string;
+  title: string;
+  summary: string;
+  status: string;
+  electionDate?: string;
+  linkSource: string;
+  confidence?: number;
+  matchedText?: string;
+  linkedAt: string;
+}
+
+export interface LinkedPetitionDocument {
+  id: string;
+  documentId: string;
+  summary: string;
+  linkSource: string;
+  confidence?: number;
+  linkedAt: string;
+}
+
+export interface PropositionSearchResult {
+  id: string;
+  title: string;
+  externalId: string;
+  status: string;
+}
+
+export interface LinkDocumentResult {
+  success: boolean;
+  linkId?: string;
+}
+
+// ============================================
+// Petition-Ballot Linking Queries
+// ============================================
+
+export const GET_LINKED_PROPOSITIONS = gql`
+  query GetLinkedPropositions($documentId: String!) {
+    linkedPropositions(documentId: $documentId) {
+      id
+      propositionId
+      title
+      summary
+      status
+      electionDate
+      linkSource
+      confidence
+      matchedText
+      linkedAt
+    }
+  }
+`;
+
+export const GET_PETITION_DOCUMENTS_FOR_PROPOSITION = gql`
+  query GetPetitionDocumentsForProposition($propositionId: String!) {
+    petitionDocumentsForProposition(propositionId: $propositionId) {
+      id
+      documentId
+      summary
+      linkSource
+      confidence
+      linkedAt
+    }
+  }
+`;
+
+export const SEARCH_PROPOSITIONS = gql`
+  query SearchPropositions($query: String!) {
+    searchPropositions(query: $query) {
+      id
+      title
+      externalId
+      status
+    }
+  }
+`;
+
+// ============================================
+// Petition-Ballot Linking Mutations
+// ============================================
+
+export const LINK_DOCUMENT_TO_PROPOSITION = gql`
+  mutation LinkDocumentToProposition($input: LinkDocumentToPropositionInput!) {
+    linkDocumentToProposition(input: $input) {
+      success
+      linkId
+    }
+  }
+`;
+
+export const UNLINK_DOCUMENT_FROM_PROPOSITION = gql`
+  mutation UnlinkDocumentFromProposition(
+    $input: UnlinkDocumentFromPropositionInput!
+  ) {
+    unlinkDocumentFromProposition(input: $input)
+  }
+`;
+
+// ============================================
+// Petition-Ballot Linking Response Types
+// ============================================
+
+export interface LinkedPropositionsData {
+  linkedPropositions: LinkedProposition[];
+}
+
+export interface PetitionDocumentsForPropositionData {
+  petitionDocumentsForProposition: LinkedPetitionDocument[];
+}
+
+export interface SearchPropositionsData {
+  searchPropositions: PropositionSearchResult[];
+}
+
+export interface LinkDocumentToPropositionData {
+  linkDocumentToProposition: LinkDocumentResult;
+}

@@ -44,6 +44,15 @@ import {
   SubmitAbuseReportInput,
   SubmitAbuseReportResult,
 } from './dto/abuse-report.dto';
+import {
+  LinkedProposition,
+  LinkedPetitionDocument,
+  PropositionSearchResult,
+  LinkDocumentToPropositionInput,
+  UnlinkDocumentFromPropositionInput,
+  LinkDocumentResult,
+} from './dto/document-proposition.dto';
+import { Public } from 'src/common/decorators/public.decorator';
 
 /**
  * Documents Resolver
@@ -277,6 +286,82 @@ export class DocumentsResolver {
       input.documentId,
       input.reason,
       input.description,
+    );
+  }
+
+  // ============================================
+  // PETITION-BALLOT LINKING
+  // ============================================
+
+  /**
+   * Get propositions linked to a document
+   */
+  @Query(() => [LinkedProposition])
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
+  async linkedPropositions(
+    @Args('documentId') documentId: string,
+  ): Promise<LinkedProposition[]> {
+    return this.documentsService.getLinkedPropositions(documentId);
+  }
+
+  /**
+   * Get petition documents linked to a proposition (public, for proposition detail page)
+   */
+  @Query(() => [LinkedPetitionDocument])
+  @Public()
+  @Extensions({ complexity: 15 })
+  async petitionDocumentsForProposition(
+    @Args('propositionId') propositionId: string,
+  ): Promise<LinkedPetitionDocument[]> {
+    return this.documentsService.getLinkedPetitionDocuments(propositionId);
+  }
+
+  /**
+   * Search propositions by title (for "Track on Ballot" UI)
+   */
+  @Query(() => [PropositionSearchResult])
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
+  async searchPropositions(
+    @Args('query') query: string,
+  ): Promise<PropositionSearchResult[]> {
+    return this.documentsService.searchPropositions(query);
+  }
+
+  /**
+   * Link a document to a proposition (manual "Track on Ballot")
+   */
+  @Mutation(() => LinkDocumentResult)
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Update, subject: 'File' })
+  async linkDocumentToProposition(
+    @Args('input') input: LinkDocumentToPropositionInput,
+    @Context() context: GqlContext,
+  ): Promise<LinkDocumentResult> {
+    const user = getUserFromContext(context);
+    return this.documentsService.linkDocumentToProposition(
+      user.id,
+      input.documentId,
+      input.propositionId,
+    );
+  }
+
+  /**
+   * Unlink a document from a proposition
+   */
+  @Mutation(() => Boolean)
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Update, subject: 'File' })
+  async unlinkDocumentFromProposition(
+    @Args('input') input: UnlinkDocumentFromPropositionInput,
+    @Context() context: GqlContext,
+  ): Promise<boolean> {
+    const user = getUserFromContext(context);
+    return this.documentsService.unlinkDocumentFromProposition(
+      user.id,
+      input.documentId,
+      input.propositionId,
     );
   }
 }

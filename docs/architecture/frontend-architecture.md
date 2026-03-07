@@ -35,7 +35,8 @@ apps/frontend/
 │   │   └── reset-password/   # Password reset form
 │   ├── onboarding/           # First-time user onboarding (4 steps)
 │   ├── petition/             # Petition feature
-│   │   └── capture/          # Camera-based petition scanning
+│   │   ├── capture/          # Camera-based petition scanning
+│   │   └── results/          # Petition analysis results & ballot linking
 │   ├── rag-demo/             # RAG Demo (document indexing & querying)
 │   ├── region/               # Civic data browsing
 │   │   ├── meetings/         # Public meeting agendas & minutes
@@ -71,6 +72,9 @@ apps/frontend/
 │   │   └── LocationPrompt.tsx         # Geolocation permission prompt
 │   ├── email/
 │   │   └── ContactRepresentativeForm.tsx # Email representative form
+│   ├── petition/
+│   │   ├── ActivityFeed.tsx             # Real-time petition activity feed
+│   │   └── TrackOnBallotButton.tsx      # Search & link petitions to ballot measures
 │   ├── onboarding/
 │   │   ├── OnboardingSteps.tsx        # Step container/navigation
 │   │   └── steps/
@@ -94,7 +98,8 @@ apps/frontend/
 │   │   ├── useMagicLink.ts   # Magic link operations
 │   │   ├── useCamera.ts      # Camera access, frame capture, torch control
 │   │   ├── useLightingAnalysis.ts # Image lighting analysis (luminance)
-│   │   └── useGeolocation.ts # Geolocation with permission handling
+│   │   ├── useGeolocation.ts # Geolocation with permission handling
+│   │   └── useActivityFeed.ts # Petition activity feed polling hook
 │   ├── toast/                # Toast notification system
 │   │   ├── context.tsx       # ToastProvider and useToast hook
 │   │   └── index.ts
@@ -134,6 +139,7 @@ app/
 ├── (auth)/                # Auth route group (login, register, callback)
 ├── onboarding/            # First-time user flow (/onboarding)
 ├── petition/capture/      # Petition scanning (/petition/capture)
+├── petition/results/      # Petition analysis & ballot linking (/petition/results)
 ├── rag-demo/              # RAG Demo (/rag-demo)
 ├── region/                # Civic data (/region, /region/meetings, etc.)
 └── settings/              # User settings (/settings, /settings/security, etc.)
@@ -174,7 +180,7 @@ All GraphQL queries and mutations are centralized in `lib/graphql/`:
 | **activity.ts** | GetMyActivityLog, GetMyActivitySummary, GetMySessions, RevokeSession, RevokeAllOtherSessions |
 | **email.ts** | GetEmailHistory, GetEmail, ContactRepresentative, GetMailtoLink |
 | **region.ts** | GetRegionInfo, GetPropositions, GetMeetings, GetRepresentatives, SyncAll, SyncDataType |
-| **documents.ts** | SetDocumentLocation |
+| **documents.ts** | SetDocumentLocation, AnalyzeDocument, GetLinkedPropositions, SearchPropositions, LinkDocumentToProposition, UnlinkDocumentFromProposition, GetPetitionDocumentsForProposition, PetitionActivityFeed |
 
 ```typescript
 // lib/graphql/knowledge.ts
@@ -579,10 +585,12 @@ The i18n system is initialized globally via `lib/i18n/index.ts` (imported in `je
 apps/frontend/locales/
 ├── en/
 │   ├── common.json     # Shared (buttons, errors, status, accessibility)
-│   └── settings.json   # Settings pages
+│   ├── settings.json   # Settings pages
+│   └── petition.json   # Petition feature (results, ballot tracking)
 └── es/
     ├── common.json
-    └── settings.json
+    ├── settings.json
+    └── petition.json
 ```
 
 ### Key Files
@@ -639,6 +647,7 @@ function LanguageSelector() {
 |-----------|---------|
 | `common` | Shared UI elements (buttons, errors, status badges) |
 | `settings` | Settings pages (profile, addresses, notifications, privacy, security) |
+| `petition` | Petition feature (results, ballot tracking, activity feed) |
 
 ### Profile-Specific Translation Keys
 

@@ -2,19 +2,24 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "@apollo/client/react";
+import Link from "next/link";
+import { useMutation, useLazyQuery } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import {
   PROCESS_SCAN,
   ANALYZE_DOCUMENT,
   SET_DOCUMENT_LOCATION,
+  GET_LINKED_PROPOSITIONS,
   type ProcessScanData,
   type AnalyzeDocumentData,
   type SetDocumentLocationData,
+  type LinkedPropositionsData,
   type DocumentAnalysis,
+  type LinkedProposition,
 } from "@/lib/graphql/documents";
 import { ReportIssueButton } from "@/components/ReportIssueButton";
+import { TrackOnBallotButton } from "@/components/petition/TrackOnBallotButton";
 
 type ProcessingStep = "extracting" | "analyzing" | "complete" | "error";
 
@@ -49,10 +54,17 @@ export default function PetitionResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
 
+  const [linkedPropositions, setLinkedPropositions] = useState<
+    LinkedProposition[]
+  >([]);
+
   const [processScan] = useMutation<ProcessScanData>(PROCESS_SCAN);
   const [analyzeDocument] = useMutation<AnalyzeDocumentData>(ANALYZE_DOCUMENT);
   const [setDocumentLocation] = useMutation<SetDocumentLocationData>(
     SET_DOCUMENT_LOCATION,
+  );
+  const [fetchLinkedPropositions] = useLazyQuery<LinkedPropositionsData>(
+    GET_LINKED_PROPOSITIONS,
   );
 
   const runPipeline = useCallback(
@@ -109,6 +121,13 @@ export default function PetitionResultsPage() {
         setAnalysis(analysisData.analysis);
         setFromCache(analysisData.fromCache);
         setStep("complete");
+
+        // Fetch linked propositions (auto-matched during analysis)
+        fetchLinkedPropositions({
+          variables: { documentId: scan.documentId },
+        }).then((res) =>
+          setLinkedPropositions(res.data?.linkedPropositions ?? []),
+        );
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Processing failed";
@@ -116,7 +135,12 @@ export default function PetitionResultsPage() {
         setStep("error");
       }
     },
-    [processScan, analyzeDocument, setDocumentLocation],
+    [
+      processScan,
+      analyzeDocument,
+      setDocumentLocation,
+      fetchLinkedPropositions,
+    ],
   );
 
   useEffect(() => {
@@ -339,19 +363,63 @@ export default function PetitionResultsPage() {
               </div>
             )}
 
-          {/* Related Measures */}
-          {analysis.relatedMeasures && analysis.relatedMeasures.length > 0 && (
+          {/* Related Measures / Linked Propositions */}
+          {(linkedPropositions.length > 0 ||
+            (analysis.relatedMeasures &&
+              analysis.relatedMeasures.length > 0)) && (
             <div>
               <h3 className="text-md font-semibold text-gray-400 mb-2">
                 {t("results.relatedMeasures")}
               </h3>
-              <ul className="space-y-1">
-                {analysis.relatedMeasures.map((m) => (
-                  <li key={m} className="text-gray-300">
-                    &#8226; {m}
-                  </li>
-                ))}
-              </ul>
+
+              {/* Linked propositions as clickable cards */}
+              {linkedPropositions.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {linkedPropositions.map((prop) => (
+                    <Link
+                      key={prop.id}
+                      href={`/region/propositions/${prop.propositionId}`}
+                      className="block bg-gray-800 hover:bg-gray-700 rounded-lg p-3 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-white font-medium truncate">
+                          {prop.title}
+                        </p>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900 text-blue-300 ml-2 flex-shrink-0">
+                          {prop.linkSource === "auto_analysis"
+                            ? t("results.linkedAutomatically")
+                            : t("results.linkedManually")}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {prop.status}
+                        {prop.electionDate &&
+                          ` · ${new Date(prop.electionDate).toLocaleDateString()}`}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {/* Unmatched text items (measures not yet linked to DB records) */}
+              {analysis.relatedMeasures &&
+                analysis.relatedMeasures.length > 0 && (
+                  <ul className="space-y-1">
+                    {analysis.relatedMeasures
+                      .filter(
+                        (m) =>
+                          !linkedPropositions.some(
+                            (lp) =>
+                              lp.matchedText?.toLowerCase() === m.toLowerCase(),
+                          ),
+                      )
+                      .map((m) => (
+                        <li key={m} className="text-gray-300">
+                          &#8226; {m}
+                        </li>
+                      ))}
+                  </ul>
+                )}
             </div>
           )}
 
@@ -517,13 +585,19 @@ export default function PetitionResultsPage() {
           >
             {t("results.share")}
           </button>
-          <button
-            disabled
-            className="flex-1 py-3 bg-blue-600/50 text-white/50 font-medium rounded-lg cursor-not-allowed"
-            title={t("results.saveComingSoon")}
-          >
-            {t("results.saveToTrack")}
-          </button>
+          {documentId && (
+            <TrackOnBallotButton
+              documentId={documentId}
+              linkedCount={linkedPropositions.length}
+              onLinked={() =>
+                fetchLinkedPropositions({
+                  variables: { documentId },
+                }).then((res) =>
+                  setLinkedPropositions(res.data?.linkedPropositions ?? []),
+                )
+              }
+            />
+          )}
         </div>
       )}
 

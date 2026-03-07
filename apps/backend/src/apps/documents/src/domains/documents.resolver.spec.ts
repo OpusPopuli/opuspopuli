@@ -313,4 +313,133 @@ describe('DocumentsResolver', () => {
       ).rejects.toThrow('User not authenticated');
     });
   });
+
+  // ============================================
+  // PETITION-BALLOT LINKING
+  // ============================================
+
+  describe('linkedPropositions', () => {
+    it('should return linked propositions for a document', async () => {
+      const mockLinks = [
+        {
+          id: 'link-1',
+          propositionId: 'prop-1',
+          title: 'Proposition 47',
+          summary: 'Criminal sentencing reform',
+          status: 'PENDING',
+          linkSource: 'auto_analysis',
+          confidence: 0.8,
+          linkedAt: new Date(),
+        },
+      ];
+      documentsService.getLinkedPropositions = jest
+        .fn()
+        .mockResolvedValue(mockLinks);
+
+      const result = await documentsResolver.linkedPropositions('doc-1');
+
+      expect(result).toEqual(mockLinks);
+      expect(documentsService.getLinkedPropositions).toHaveBeenCalledWith(
+        'doc-1',
+      );
+    });
+  });
+
+  describe('petitionDocumentsForProposition', () => {
+    it('should return petition documents for a proposition', async () => {
+      const mockDocs = [
+        {
+          id: 'link-1',
+          documentId: 'doc-1',
+          summary: 'A petition about parks',
+          linkSource: 'user_manual',
+          linkedAt: new Date(),
+        },
+      ];
+      documentsService.getLinkedPetitionDocuments = jest
+        .fn()
+        .mockResolvedValue(mockDocs);
+
+      const result =
+        await documentsResolver.petitionDocumentsForProposition('prop-1');
+
+      expect(result).toEqual(mockDocs);
+      expect(documentsService.getLinkedPetitionDocuments).toHaveBeenCalledWith(
+        'prop-1',
+      );
+    });
+  });
+
+  describe('searchPropositions', () => {
+    it('should search and return results', async () => {
+      const mockResults = [
+        {
+          id: 'prop-1',
+          title: 'Proposition 47',
+          externalId: 'Prop 47',
+          status: 'PENDING',
+        },
+      ];
+      documentsService.searchPropositions = jest
+        .fn()
+        .mockResolvedValue(mockResults);
+
+      const result = await documentsResolver.searchPropositions('proposition');
+
+      expect(result).toEqual(mockResults);
+      expect(documentsService.searchPropositions).toHaveBeenCalledWith(
+        'proposition',
+      );
+    });
+  });
+
+  describe('linkDocumentToProposition', () => {
+    it('should link and return result', async () => {
+      const mockResult = { success: true, linkId: 'link-1' };
+      documentsService.linkDocumentToProposition = jest
+        .fn()
+        .mockResolvedValue(mockResult);
+
+      const result = await documentsResolver.linkDocumentToProposition(
+        { documentId: 'doc-1', propositionId: 'prop-1' },
+        mockContext,
+      );
+
+      expect(result).toEqual(mockResult);
+      expect(documentsService.linkDocumentToProposition).toHaveBeenCalledWith(
+        'user-1',
+        'doc-1',
+        'prop-1',
+      );
+    });
+
+    it('should throw error when user not authenticated', async () => {
+      const noUserContext = { req: { user: undefined, headers: {} } };
+
+      await expect(
+        documentsResolver.linkDocumentToProposition(
+          { documentId: 'doc-1', propositionId: 'prop-1' },
+          noUserContext,
+        ),
+      ).rejects.toThrow('User not authenticated');
+    });
+  });
+
+  describe('unlinkDocumentFromProposition', () => {
+    it('should unlink and return true', async () => {
+      documentsService.unlinkDocumentFromProposition = jest
+        .fn()
+        .mockResolvedValue(true);
+
+      const result = await documentsResolver.unlinkDocumentFromProposition(
+        { documentId: 'doc-1', propositionId: 'prop-1' },
+        mockContext,
+      );
+
+      expect(result).toBe(true);
+      expect(
+        documentsService.unlinkDocumentFromProposition,
+      ).toHaveBeenCalledWith('user-1', 'doc-1', 'prop-1');
+    });
+  });
 });

@@ -73,6 +73,7 @@ Opus Populi is built on a modular, provider-based architecture with three core p
   - Geolocation tagging for petition scans
   - Real-time petition activity feed with hourly trends
   - Map-based petition location visualization
+  - Petition-to-ballot linking (automatic AI matching and manual user linking)
   - Abuse reporting
 
 ### Knowledge Service

@@ -9,12 +9,14 @@ import {
   disconnectDatabase,
   createUser,
   createDocument,
+  createProposition,
   getDbService,
   generateId,
 } from '../utils';
 import {
   DocumentStatus,
   DocumentType,
+  LinkSource,
   Prisma,
 } from '@opuspopuli/relationaldb-provider';
 /** Privacy threshold — must match PRIVACY_THRESHOLD from activity-feed.dto.ts */
@@ -1436,6 +1438,442 @@ describe('Document Integration Tests', () => {
 
       // All 3 are within 0.001 degrees, so ROUND(x, 2) groups them as 1 location
       expect(Number(result[0].location_count)).toBe(1);
+    });
+  });
+
+  // ============================================
+  // PETITION-BALLOT LINKING (#310)
+  // ============================================
+
+  describe('Document-Proposition Linking', () => {
+    it('should create a link between document and proposition', async () => {
+      const user = await createUser({ email: 'link-create@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+      });
+      const prop = await createProposition({
+        title: 'Proposition 47: Criminal Sentencing',
+        externalId: 'Prop-47',
+      });
+
+      const db = await getDbService();
+      const link = await db.documentProposition.create({
+        data: {
+          documentId: doc.id,
+          propositionId: prop.id,
+          linkSource: LinkSource.user_manual,
+          confidence: null,
+          matchedText: null,
+        },
+      });
+
+      expect(link).toBeDefined();
+      expect(link.id).toBeDefined();
+      expect(link.documentId).toBe(doc.id);
+      expect(link.propositionId).toBe(prop.id);
+      expect(link.linkSource).toBe(LinkSource.user_manual);
+    });
+
+    it('should create auto_analysis link with confidence and matchedText', async () => {
+      const user = await createUser({ email: 'link-auto@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+      });
+      const prop = await createProposition({
+        title: 'Proposition 36: Three Strikes Reform',
+        externalId: 'Prop-36',
+      });
+
+      const db = await getDbService();
+      const link = await db.documentProposition.create({
+        data: {
+          documentId: doc.id,
+          propositionId: prop.id,
+          linkSource: LinkSource.auto_analysis,
+          confidence: 0.85,
+          matchedText: 'Proposition 36',
+        },
+      });
+
+      expect(link.linkSource).toBe(LinkSource.auto_analysis);
+      expect(link.confidence).toBe(0.85);
+      expect(link.matchedText).toBe('Proposition 36');
+      expect(link.createdAt).toBeInstanceOf(Date);
+    });
+
+    it('should enforce unique constraint on [documentId, propositionId]', async () => {
+      const user = await createUser({ email: 'link-unique@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+      });
+      const prop = await createProposition({ title: 'Unique Test Prop' });
+
+      const db = await getDbService();
+      await db.documentProposition.create({
+        data: {
+          documentId: doc.id,
+          propositionId: prop.id,
+          linkSource: LinkSource.auto_analysis,
+        },
+      });
+
+      // Attempting to create a duplicate link should fail
+      await expect(
+        db.documentProposition.create({
+          data: {
+            documentId: doc.id,
+            propositionId: prop.id,
+            linkSource: LinkSource.user_manual,
+          },
+        }),
+      ).rejects.toThrow();
+    });
+
+    it('should allow upsert to update existing link', async () => {
+      const user = await createUser({ email: 'link-upsert@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+      });
+      const prop = await createProposition({ title: 'Upsert Test Prop' });
+
+      const db = await getDbService();
+
+      // Create initial link
+      const initial = await db.documentProposition.create({
+        data: {
+          documentId: doc.id,
+          propositionId: prop.id,
+          linkSource: LinkSource.auto_analysis,
+          confidence: 0.5,
+        },
+      });
+
+      // Upsert should update, not throw
+      const upserted = await db.documentProposition.upsert({
+        where: {
+          documentId_propositionId: {
+            documentId: doc.id,
+            propositionId: prop.id,
+          },
+        },
+        update: {
+          confidence: 0.9,
+          linkSource: LinkSource.user_manual,
+        },
+        create: {
+          documentId: doc.id,
+          propositionId: prop.id,
+          linkSource: LinkSource.user_manual,
+          confidence: 0.9,
+        },
+      });
+
+      expect(upserted.id).toBe(initial.id);
+      expect(upserted.confidence).toBe(0.9);
+      expect(upserted.linkSource).toBe(LinkSource.user_manual);
+    });
+
+    it('should find all propositions linked to a document', async () => {
+      const user = await createUser({ email: 'link-find-props@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+      });
+      const prop1 = await createProposition({
+        title: 'Prop A',
+        externalId: 'prop-a',
+      });
+      const prop2 = await createProposition({
+        title: 'Prop B',
+        externalId: 'prop-b',
+      });
+
+      const db = await getDbService();
+      await db.documentProposition.createMany({
+        data: [
+          {
+            documentId: doc.id,
+            propositionId: prop1.id,
+            linkSource: LinkSource.auto_analysis,
+            confidence: 0.8,
+            matchedText: 'Prop A',
+          },
+          {
+            documentId: doc.id,
+            propositionId: prop2.id,
+            linkSource: LinkSource.user_manual,
+          },
+        ],
+      });
+
+      const links = await db.documentProposition.findMany({
+        where: { documentId: doc.id },
+        include: { proposition: true },
+      });
+
+      expect(links).toHaveLength(2);
+      expect(links.map((l) => l.proposition.title)).toContain('Prop A');
+      expect(links.map((l) => l.proposition.title)).toContain('Prop B');
+    });
+
+    it('should find all documents linked to a proposition', async () => {
+      const user = await createUser({ email: 'link-find-docs@example.com' });
+      const prop = await createProposition({ title: 'Shared Prop' });
+      const doc1 = await createDocument({
+        userId: user.id,
+        key: 'petition-1.pdf',
+        type: DocumentType.petition,
+      });
+      const doc2 = await createDocument({
+        userId: user.id,
+        key: 'petition-2.pdf',
+        type: DocumentType.petition,
+      });
+
+      const db = await getDbService();
+      await db.documentProposition.createMany({
+        data: [
+          {
+            documentId: doc1.id,
+            propositionId: prop.id,
+            linkSource: LinkSource.auto_analysis,
+          },
+          {
+            documentId: doc2.id,
+            propositionId: prop.id,
+            linkSource: LinkSource.user_manual,
+          },
+        ],
+      });
+
+      const links = await db.documentProposition.findMany({
+        where: { propositionId: prop.id },
+        include: { document: true },
+      });
+
+      expect(links).toHaveLength(2);
+      expect(links.map((l) => l.document.key)).toContain('petition-1.pdf');
+      expect(links.map((l) => l.document.key)).toContain('petition-2.pdf');
+    });
+
+    it('should delete link between document and proposition', async () => {
+      const user = await createUser({ email: 'link-delete@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+      });
+      const prop = await createProposition({ title: 'Delete Test Prop' });
+
+      const db = await getDbService();
+      await db.documentProposition.create({
+        data: {
+          documentId: doc.id,
+          propositionId: prop.id,
+          linkSource: LinkSource.user_manual,
+        },
+      });
+
+      const deleted = await db.documentProposition.delete({
+        where: {
+          documentId_propositionId: {
+            documentId: doc.id,
+            propositionId: prop.id,
+          },
+        },
+      });
+
+      expect(deleted).toBeDefined();
+
+      const remaining = await db.documentProposition.findMany({
+        where: { documentId: doc.id },
+      });
+      expect(remaining).toHaveLength(0);
+    });
+
+    it('should cascade delete links when document is deleted', async () => {
+      const user = await createUser({ email: 'link-cascade-doc@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+      });
+      const prop = await createProposition({ title: 'Cascade Doc Prop' });
+
+      const db = await getDbService();
+      await db.documentProposition.create({
+        data: {
+          documentId: doc.id,
+          propositionId: prop.id,
+          linkSource: LinkSource.auto_analysis,
+        },
+      });
+
+      // Delete the document
+      await db.document.delete({ where: { id: doc.id } });
+
+      // Link should be cascade-deleted
+      const links = await db.documentProposition.findMany({
+        where: { documentId: doc.id },
+      });
+      expect(links).toHaveLength(0);
+
+      // Proposition should still exist
+      const propStillExists = await db.proposition.findUnique({
+        where: { id: prop.id },
+      });
+      expect(propStillExists).toBeDefined();
+    });
+
+    it('should cascade delete links when proposition is deleted', async () => {
+      const user = await createUser({
+        email: 'link-cascade-prop@example.com',
+      });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+      });
+      const prop = await createProposition({ title: 'Cascade Prop Prop' });
+
+      const db = await getDbService();
+      await db.documentProposition.create({
+        data: {
+          documentId: doc.id,
+          propositionId: prop.id,
+          linkSource: LinkSource.auto_analysis,
+        },
+      });
+
+      // Delete the proposition
+      await db.proposition.delete({ where: { id: prop.id } });
+
+      // Link should be cascade-deleted
+      const links = await db.documentProposition.findMany({
+        where: { propositionId: prop.id },
+      });
+      expect(links).toHaveLength(0);
+
+      // Document should still exist
+      const docStillExists = await db.document.findUnique({
+        where: { id: doc.id },
+      });
+      expect(docStillExists).toBeDefined();
+    });
+
+    it('should support searching propositions by title (case-insensitive)', async () => {
+      await createProposition({
+        title: 'Proposition 47: Criminal Sentencing',
+        externalId: 'search-prop-47',
+      });
+      await createProposition({
+        title: 'Proposition 36: Three Strikes Reform',
+        externalId: 'search-prop-36',
+      });
+      await createProposition({
+        title: 'Measure A: Parks Bond',
+        externalId: 'search-measure-a',
+      });
+
+      const db = await getDbService();
+      const results = await db.proposition.findMany({
+        where: {
+          title: {
+            contains: 'proposition',
+            mode: 'insensitive',
+          },
+        },
+        take: 10,
+      });
+
+      expect(results).toHaveLength(2);
+      expect(results.map((r) => r.title)).toContain(
+        'Proposition 47: Criminal Sentencing',
+      );
+      expect(results.map((r) => r.title)).toContain(
+        'Proposition 36: Three Strikes Reform',
+      );
+    });
+
+    it('should match propositions by externalId for auto-linking', async () => {
+      const prop = await createProposition({
+        title: 'Proposition 47: Criminal Sentencing',
+        externalId: 'Prop 47',
+      });
+
+      const db = await getDbService();
+      const matched = await db.proposition.findMany({
+        where: {
+          OR: [
+            {
+              title: {
+                contains: 'Proposition 47',
+                mode: 'insensitive',
+              },
+            },
+            {
+              externalId: {
+                contains: 'Proposition 47',
+                mode: 'insensitive',
+              },
+            },
+          ],
+        },
+      });
+
+      expect(matched).toHaveLength(1);
+      expect(matched[0].id).toBe(prop.id);
+    });
+
+    it('should return linked propositions with full details via join', async () => {
+      const user = await createUser({ email: 'link-join@example.com' });
+      const doc = await createDocument({
+        userId: user.id,
+        type: DocumentType.petition,
+        analysis: {
+          summary: 'A test petition about parks',
+        } as Prisma.InputJsonValue,
+      });
+      const prop = await createProposition({
+        title: 'Parks Bond Measure',
+        summary: 'A bond measure for parks',
+        status: 'pending',
+        electionDate: new Date('2024-11-05'),
+      });
+
+      const db = await getDbService();
+      await db.documentProposition.create({
+        data: {
+          documentId: doc.id,
+          propositionId: prop.id,
+          linkSource: LinkSource.auto_analysis,
+          confidence: 0.75,
+          matchedText: 'parks bond',
+        },
+      });
+
+      const links = await db.documentProposition.findMany({
+        where: { documentId: doc.id },
+        include: {
+          proposition: {
+            select: {
+              id: true,
+              title: true,
+              summary: true,
+              status: true,
+              electionDate: true,
+            },
+          },
+        },
+      });
+
+      expect(links).toHaveLength(1);
+      expect(links[0].proposition.title).toBe('Parks Bond Measure');
+      expect(links[0].proposition.summary).toBe('A bond measure for parks');
+      expect(links[0].proposition.electionDate).toBeInstanceOf(Date);
+      expect(links[0].confidence).toBe(0.75);
+      expect(links[0].matchedText).toBe('parks bond');
     });
   });
 });

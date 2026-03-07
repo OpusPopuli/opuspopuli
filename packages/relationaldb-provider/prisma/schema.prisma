@@ -508,8 +508,9 @@ model Document {
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  abuseReports AbuseReport[]
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  abuseReports        AbuseReport[]
+  linkedPropositions  DocumentProposition[]
 
   @@index([userId])
   @@index([checksum])
@@ -592,9 +593,38 @@ model Proposition {
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
 
+  linkedDocuments DocumentProposition[]
+
   @@index([status])
   @@index([electionDate])
   @@map("propositions")
+}
+
+// ============================================
+// DOCUMENT-PROPOSITION LINKING
+// ============================================
+
+enum LinkSource {
+  auto_analysis @map("auto_analysis")
+  user_manual   @map("user_manual")
+}
+
+model DocumentProposition {
+  id            String     @id @default(uuid())
+  documentId    String     @map("document_id")
+  propositionId String     @map("proposition_id")
+  linkSource    LinkSource @map("link_source")
+  confidence    Float?
+  matchedText   String?    @map("matched_text") @db.Text
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  document    Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  proposition Proposition @relation(fields: [propositionId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, propositionId])
+  @@index([documentId])
+  @@index([propositionId])
+  @@map("document_propositions")
 }
 
 model Meeting {
