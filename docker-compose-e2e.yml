@@ -57,6 +57,14 @@ services:
     command: ["/usr/local/bin/db-migrate.sh"]
     networks:
       - opuspopuli-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   users:
     build:
@@ -84,6 +92,14 @@ services:
     networks:
       - opuspopuli-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   documents:
     build:
@@ -111,6 +127,14 @@ services:
     networks:
       - opuspopuli-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   knowledge:
     build:
@@ -138,6 +162,14 @@ services:
     networks:
       - opuspopuli-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   region:
     build:
@@ -165,6 +197,14 @@ services:
     networks:
       - opuspopuli-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   # API Gateway - Port 4000 to avoid conflict with frontend on port 3000
   api:
@@ -200,3 +240,11 @@ services:
     networks:
       - opuspopuli-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
