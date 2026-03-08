@@ -138,11 +138,15 @@ export class DbService
       const gauges = metrics.gauges;
 
       const open =
-        gauges.find((g) => g.key === "prisma_pool_connections_open")?.value ??
-        0;
+        gauges.find(
+          (g: { key: string; value: number }) =>
+            g.key === "prisma_pool_connections_open",
+        )?.value ?? 0;
       const idle =
-        gauges.find((g) => g.key === "prisma_pool_connections_idle")?.value ??
-        0;
+        gauges.find(
+          (g: { key: string; value: number }) =>
+            g.key === "prisma_pool_connections_idle",
+        )?.value ?? 0;
       const busy = open - idle;
 
       return { open, idle, busy };

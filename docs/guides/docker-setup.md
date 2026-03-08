@@ -207,7 +207,7 @@ LLM_MODEL='mistral'
 
 3. Restart your backend application
 
-Available models: https://ollama.ai/library
+Available models: https://ollama.com/library
 
 ## GPU Support (Optional)
 
