@@ -66,8 +66,8 @@ export class CsrfMiddleware implements NestMiddleware {
    * Extract CSRF token from cookie
    */
   private getTokenFromCookie(req: Request): string | undefined {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cookies = (req as any).cookies;
+    const cookies = (req as Request & { cookies?: Record<string, string> })
+      .cookies;
     if (cookies && typeof cookies === 'object') {
       return cookies[this.cookieName];
     }

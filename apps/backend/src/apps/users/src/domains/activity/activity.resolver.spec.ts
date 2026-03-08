@@ -1,11 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 import { UserInputError } from '@nestjs/apollo';
 
 import { ActivityResolver } from './activity.resolver';
 import { ActivityService } from './activity.service';
+import { ActivityLogFilters } from './dto/activity.dto';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
+import { GqlContext } from 'src/common/utils/graphql-context';
 import { ILogin } from 'src/interfaces/login.interface';
 
 describe('ActivityResolver', () => {
@@ -26,7 +27,7 @@ describe('ActivityResolver', () => {
 
   // SECURITY: Tests now use request.user (set by passport) instead of headers.user (spoofable)
   // @see https://github.com/OpusPopuli/opuspopuli/issues/183
-  const mockContext = {
+  const mockContext: GqlContext = {
     req: {
       ip: '127.0.0.1',
       user: mockUser,
@@ -37,14 +38,14 @@ describe('ActivityResolver', () => {
     },
   };
 
-  const mockContextNoUser = {
+  const mockContextNoUser: GqlContext = {
     req: {
       user: undefined,
       headers: {},
     },
   };
 
-  const mockContextNoAuth = {
+  const mockContextNoAuth: GqlContext = {
     req: {
       user: mockUser,
       headers: {},
@@ -138,8 +139,8 @@ describe('ActivityResolver', () => {
       const result = await resolver.getMyActivityLog(
         20,
         0,
-        undefined as any,
-        mockContext as any,
+        undefined as unknown as ActivityLogFilters,
+        mockContext,
       );
 
       expect(result).toEqual(mockActivityLogPage);
@@ -160,8 +161,8 @@ describe('ActivityResolver', () => {
       await resolver.getMyActivityLog(
         10,
         5,
-        filters as any,
-        mockContext as any,
+        filters as ActivityLogFilters,
+        mockContext,
       );
 
       expect(activityService.getActivityLog).toHaveBeenCalledWith(
@@ -177,8 +178,8 @@ describe('ActivityResolver', () => {
         resolver.getMyActivityLog(
           20,
           0,
-          undefined as any,
-          mockContextNoUser as any,
+          undefined as unknown as ActivityLogFilters,
+          mockContextNoUser,
         ),
       ).rejects.toThrow(UserInputError);
     });
@@ -190,7 +191,7 @@ describe('ActivityResolver', () => {
         .fn()
         .mockResolvedValue(mockActivitySummary);
 
-      const result = await resolver.getMyActivitySummary(mockContext as any);
+      const result = await resolver.getMyActivitySummary(mockContext);
 
       expect(result).toEqual(mockActivitySummary);
       expect(activityService.getActivitySummary).toHaveBeenCalledWith(
@@ -200,7 +201,7 @@ describe('ActivityResolver', () => {
 
     it('should throw UserInputError if user not authenticated', async () => {
       await expect(
-        resolver.getMyActivitySummary(mockContextNoUser as any),
+        resolver.getMyActivitySummary(mockContextNoUser),
       ).rejects.toThrow(UserInputError);
     });
   });
@@ -215,7 +216,7 @@ describe('ActivityResolver', () => {
         .fn()
         .mockResolvedValue(mockSessionsPage);
 
-      const result = await resolver.getMySessions(false, mockContext as any);
+      const result = await resolver.getMySessions(false, mockContext);
 
       expect(result).toEqual(mockSessionsPage);
       expect(activityService.getSessions).toHaveBeenCalledWith(
@@ -230,7 +231,7 @@ describe('ActivityResolver', () => {
         .fn()
         .mockResolvedValue(mockSessionsPage);
 
-      await resolver.getMySessions(true, mockContext as any);
+      await resolver.getMySessions(true, mockContext);
 
       expect(activityService.getSessions).toHaveBeenCalledWith(
         mockUserId,
@@ -244,7 +245,7 @@ describe('ActivityResolver', () => {
         .fn()
         .mockResolvedValue(mockSessionsPage);
 
-      await resolver.getMySessions(false, mockContextNoAuth as any);
+      await resolver.getMySessions(false, mockContextNoAuth);
 
       expect(activityService.getSessions).toHaveBeenCalledWith(
         mockUserId,
@@ -255,7 +256,7 @@ describe('ActivityResolver', () => {
 
     it('should throw UserInputError if user not authenticated', async () => {
       await expect(
-        resolver.getMySessions(false, mockContextNoUser as any),
+        resolver.getMySessions(false, mockContextNoUser),
       ).rejects.toThrow(UserInputError);
     });
   });
@@ -264,10 +265,7 @@ describe('ActivityResolver', () => {
     it('should return specific session', async () => {
       activityService.getSession = jest.fn().mockResolvedValue(mockSession);
 
-      const result = await resolver.getMySession(
-        'session-1',
-        mockContext as any,
-      );
+      const result = await resolver.getMySession('session-1', mockContext);
 
       expect(result).toEqual(mockSession);
       expect(activityService.getSession).toHaveBeenCalledWith(
@@ -280,17 +278,14 @@ describe('ActivityResolver', () => {
     it('should return null for non-existent session', async () => {
       activityService.getSession = jest.fn().mockResolvedValue(null);
 
-      const result = await resolver.getMySession(
-        'non-existent',
-        mockContext as any,
-      );
+      const result = await resolver.getMySession('non-existent', mockContext);
 
       expect(result).toBeNull();
     });
 
     it('should throw UserInputError if user not authenticated', async () => {
       await expect(
-        resolver.getMySession('session-1', mockContextNoUser as any),
+        resolver.getMySession('session-1', mockContextNoUser),
       ).rejects.toThrow(UserInputError);
     });
   });
@@ -299,10 +294,7 @@ describe('ActivityResolver', () => {
     it('should revoke session', async () => {
       activityService.revokeSession = jest.fn().mockResolvedValue(true);
 
-      const result = await resolver.revokeSession(
-        'session-1',
-        mockContext as any,
-      );
+      const result = await resolver.revokeSession('session-1', mockContext);
 
       expect(result).toBe(true);
       expect(activityService.revokeSession).toHaveBeenCalledWith(
@@ -315,17 +307,14 @@ describe('ActivityResolver', () => {
     it('should return false if session not found', async () => {
       activityService.revokeSession = jest.fn().mockResolvedValue(false);
 
-      const result = await resolver.revokeSession(
-        'non-existent',
-        mockContext as any,
-      );
+      const result = await resolver.revokeSession('non-existent', mockContext);
 
       expect(result).toBe(false);
     });
 
     it('should throw UserInputError if user not authenticated', async () => {
       await expect(
-        resolver.revokeSession('session-1', mockContextNoUser as any),
+        resolver.revokeSession('session-1', mockContextNoUser),
       ).rejects.toThrow(UserInputError);
     });
   });
@@ -334,7 +323,7 @@ describe('ActivityResolver', () => {
     it('should revoke all other sessions', async () => {
       activityService.revokeAllSessions = jest.fn().mockResolvedValue(3);
 
-      const result = await resolver.revokeAllOtherSessions(mockContext as any);
+      const result = await resolver.revokeAllOtherSessions(mockContext);
 
       expect(result).toBe(3);
       expect(activityService.revokeAllSessions).toHaveBeenCalledWith(
@@ -347,14 +336,14 @@ describe('ActivityResolver', () => {
     it('should return 0 if no other sessions to revoke', async () => {
       activityService.revokeAllSessions = jest.fn().mockResolvedValue(0);
 
-      const result = await resolver.revokeAllOtherSessions(mockContext as any);
+      const result = await resolver.revokeAllOtherSessions(mockContext);
 
       expect(result).toBe(0);
     });
 
     it('should throw UserInputError if user not authenticated', async () => {
       await expect(
-        resolver.revokeAllOtherSessions(mockContextNoUser as any),
+        resolver.revokeAllOtherSessions(mockContextNoUser),
       ).rejects.toThrow(UserInputError);
     });
   });

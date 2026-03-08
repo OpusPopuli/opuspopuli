@@ -13,6 +13,19 @@ import Redis from "ioredis";
 import type { IRateLimiter, RateLimitOptions } from "@opuspopuli/common";
 
 /**
+ * Redis instance extended with the custom tokenBucket Lua command
+ */
+interface RedisWithTokenBucket extends Redis {
+  tokenBucket(
+    key: string,
+    now: number,
+    rate: number,
+    burst: number,
+    requested: number,
+  ): Promise<[number, number]>;
+}
+
+/**
  * Redis rate limiter configuration options
  */
 export interface RedisRateLimiterOptions extends RateLimitOptions {
@@ -139,8 +152,7 @@ export class RedisRateLimiter implements IRateLimiter {
       await this.ensureConnected();
       const now = Date.now();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (this.redis as any).tokenBucket(
+      const result = await (this.redis as RedisWithTokenBucket).tokenBucket(
         this.key,
         now,
         this.requestsPerSecond,
@@ -168,8 +180,7 @@ export class RedisRateLimiter implements IRateLimiter {
       await this.ensureConnected();
       const now = Date.now();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (this.redis as any).tokenBucket(
+      const result = await (this.redis as RedisWithTokenBucket).tokenBucket(
         this.key,
         now,
         this.requestsPerSecond,
@@ -193,8 +204,7 @@ export class RedisRateLimiter implements IRateLimiter {
       const now = Date.now();
 
       // Use 0 tokens requested to just check state
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (this.redis as any).tokenBucket(
+      const result = await (this.redis as RedisWithTokenBucket).tokenBucket(
         this.key,
         now,
         this.requestsPerSecond,

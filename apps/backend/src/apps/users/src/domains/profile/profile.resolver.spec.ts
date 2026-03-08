@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 import { UserInputError } from '@nestjs/apollo';
@@ -7,10 +6,12 @@ import { ProfileResolver } from './profile.resolver';
 import { ProfileService } from './profile.service';
 import { AddressType } from 'src/common/enums/address.enum';
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
+import { GqlContext } from 'src/common/utils/graphql-context';
 import { UserProfileModel } from './models/user-profile.model';
 import { UserAddressModel } from './models/user-address.model';
 import { NotificationPreferenceModel } from './models/notification-preference.model';
 import { UserConsentModel } from './models/user-consent.model';
+import { CreateAddressDto } from './dto/address.dto';
 import { DataExportResult } from './models/data-export-result.model';
 
 describe('ProfileResolver', () => {
@@ -30,7 +31,7 @@ describe('ProfileResolver', () => {
 
   // SECURITY: Tests now use request.user (set by passport) instead of headers.user (spoofable)
   // @see https://github.com/OpusPopuli/opuspopuli/issues/183
-  const mockContext = {
+  const mockContext: GqlContext = {
     req: {
       ip: '127.0.0.1',
       user: mockUser,
@@ -40,7 +41,7 @@ describe('ProfileResolver', () => {
     },
   };
 
-  const mockContextNoUser = {
+  const mockContextNoUser: GqlContext = {
     req: {
       user: undefined,
       headers: {},
@@ -118,16 +119,16 @@ describe('ProfileResolver', () => {
     it('should return profile for authenticated user', async () => {
       profileService.getProfile = jest.fn().mockResolvedValue(mockProfile);
 
-      const result = await resolver.getMyProfile(mockContext as any);
+      const result = await resolver.getMyProfile(mockContext);
 
       expect(result).toEqual(mockProfile);
       expect(profileService.getProfile).toHaveBeenCalledWith(mockUserId);
     });
 
     it('should throw UserInputError if user not authenticated', async () => {
-      await expect(
-        resolver.getMyProfile(mockContextNoUser as any),
-      ).rejects.toThrow(UserInputError);
+      await expect(resolver.getMyProfile(mockContextNoUser)).rejects.toThrow(
+        UserInputError,
+      );
     });
   });
 
@@ -140,10 +141,7 @@ describe('ProfileResolver', () => {
         .fn()
         .mockResolvedValue(updatedProfile);
 
-      const result = await resolver.updateMyProfile(
-        updateDto,
-        mockContext as any,
-      );
+      const result = await resolver.updateMyProfile(updateDto, mockContext);
 
       expect(result).toEqual(updatedProfile);
       expect(profileService.updateProfile).toHaveBeenCalledWith(
@@ -161,7 +159,7 @@ describe('ProfileResolver', () => {
     it('should return list of addresses', async () => {
       profileService.getAddresses = jest.fn().mockResolvedValue([mockAddress]);
 
-      const result = await resolver.getMyAddresses(mockContext as any);
+      const result = await resolver.getMyAddresses(mockContext);
 
       expect(result).toEqual([mockAddress]);
       expect(profileService.getAddresses).toHaveBeenCalledWith(mockUserId);
@@ -172,10 +170,7 @@ describe('ProfileResolver', () => {
     it('should return specific address', async () => {
       profileService.getAddress = jest.fn().mockResolvedValue(mockAddress);
 
-      const result = await resolver.getMyAddress(
-        mockAddress.id,
-        mockContext as any,
-      );
+      const result = await resolver.getMyAddress(mockAddress.id, mockContext);
 
       expect(result).toEqual(mockAddress);
       expect(profileService.getAddress).toHaveBeenCalledWith(
@@ -199,8 +194,8 @@ describe('ProfileResolver', () => {
       profileService.createAddress = jest.fn().mockResolvedValue(mockAddress);
 
       const result = await resolver.createAddress(
-        createDto as any,
-        mockContext as any,
+        createDto as CreateAddressDto,
+        mockContext,
       );
 
       expect(result).toEqual(mockAddress);
@@ -220,10 +215,7 @@ describe('ProfileResolver', () => {
         .fn()
         .mockResolvedValue(updatedAddress);
 
-      const result = await resolver.updateAddress(
-        updateDto,
-        mockContext as any,
-      );
+      const result = await resolver.updateAddress(updateDto, mockContext);
 
       expect(result).toEqual(updatedAddress);
       expect(profileService.updateAddress).toHaveBeenCalledWith(
@@ -237,10 +229,7 @@ describe('ProfileResolver', () => {
     it('should delete address', async () => {
       profileService.deleteAddress = jest.fn().mockResolvedValue(true);
 
-      const result = await resolver.deleteAddress(
-        mockAddress.id,
-        mockContext as any,
-      );
+      const result = await resolver.deleteAddress(mockAddress.id, mockContext);
 
       expect(result).toBe(true);
       expect(profileService.deleteAddress).toHaveBeenCalledWith(
@@ -259,7 +248,7 @@ describe('ProfileResolver', () => {
 
       const result = await resolver.setPrimaryAddress(
         mockAddress.id,
-        mockContext as any,
+        mockContext,
       );
 
       expect(result).toEqual(primaryAddress);
@@ -280,9 +269,7 @@ describe('ProfileResolver', () => {
         .fn()
         .mockResolvedValue(mockNotificationPrefs);
 
-      const result = await resolver.getMyNotificationPreferences(
-        mockContext as any,
-      );
+      const result = await resolver.getMyNotificationPreferences(mockContext);
 
       expect(result).toEqual(mockNotificationPrefs);
     });
@@ -299,7 +286,7 @@ describe('ProfileResolver', () => {
 
       const result = await resolver.updateNotificationPreferences(
         updateDto,
-        mockContext as any,
+        mockContext,
       );
 
       expect(result).toEqual(updatedPrefs);
@@ -319,7 +306,7 @@ describe('ProfileResolver', () => {
         .fn()
         .mockResolvedValue(unsubscribedPrefs);
 
-      const result = await resolver.unsubscribeFromAll(mockContext as any);
+      const result = await resolver.unsubscribeFromAll(mockContext);
 
       expect(result).toEqual(unsubscribedPrefs);
     });
@@ -333,7 +320,7 @@ describe('ProfileResolver', () => {
     it('should return list of consents', async () => {
       profileService.getConsents = jest.fn().mockResolvedValue([mockConsent]);
 
-      const result = await resolver.getMyConsents(mockContext as any);
+      const result = await resolver.getMyConsents(mockContext);
 
       expect(result).toEqual([mockConsent]);
     });
@@ -345,7 +332,7 @@ describe('ProfileResolver', () => {
 
       const result = await resolver.getMyConsent(
         ConsentType.TERMS_OF_SERVICE,
-        mockContext as any,
+        mockContext,
       );
 
       expect(result).toEqual(mockConsent);
@@ -361,10 +348,7 @@ describe('ProfileResolver', () => {
 
       profileService.updateConsent = jest.fn().mockResolvedValue(mockConsent);
 
-      const result = await resolver.updateConsent(
-        updateDto,
-        mockContext as any,
-      );
+      const result = await resolver.updateConsent(updateDto, mockContext);
 
       expect(result).toEqual(mockConsent);
       expect(profileService.updateConsent).toHaveBeenCalledWith(
@@ -392,10 +376,7 @@ describe('ProfileResolver', () => {
         .fn()
         .mockResolvedValue([mockConsent, mockConsent]);
 
-      const result = await resolver.bulkUpdateConsents(
-        input,
-        mockContext as any,
-      );
+      const result = await resolver.bulkUpdateConsents(input, mockContext);
 
       expect(result).toHaveLength(2);
       expect(profileService.bulkUpdateConsents).toHaveBeenCalledWith(
@@ -420,7 +401,7 @@ describe('ProfileResolver', () => {
         .fn()
         .mockResolvedValue(withdrawnConsent);
 
-      const result = await resolver.withdrawConsent(input, mockContext as any);
+      const result = await resolver.withdrawConsent(input, mockContext);
 
       expect(result).toEqual(withdrawnConsent);
       expect(profileService.withdrawConsent).toHaveBeenCalledWith(
@@ -458,16 +439,16 @@ describe('ProfileResolver', () => {
         .fn()
         .mockResolvedValue(mockExportResult);
 
-      const result = await resolver.exportMyData(mockContext as any);
+      const result = await resolver.exportMyData(mockContext);
 
       expect(result).toEqual(mockExportResult);
       expect(profileService.exportUserData).toHaveBeenCalledWith(mockUserId);
     });
 
     it('should throw UserInputError if user not authenticated', async () => {
-      await expect(
-        resolver.exportMyData(mockContextNoUser as any),
-      ).rejects.toThrow(UserInputError);
+      await expect(resolver.exportMyData(mockContextNoUser)).rejects.toThrow(
+        UserInputError,
+      );
     });
   });
 
@@ -477,7 +458,7 @@ describe('ProfileResolver', () => {
 
       const result = await resolver.hasValidConsent(
         ConsentType.TERMS_OF_SERVICE,
-        mockContext as any,
+        mockContext,
       );
 
       expect(result).toBe(true);
@@ -506,7 +487,7 @@ describe('ProfileResolver', () => {
         .fn()
         .mockResolvedValue(mockCompletion);
 
-      const result = await resolver.getMyProfileCompletion(mockContext as any);
+      const result = await resolver.getMyProfileCompletion(mockContext);
 
       expect(result).toEqual(mockCompletion);
       expect(profileService.getProfileCompletion).toHaveBeenCalledWith(
@@ -516,7 +497,7 @@ describe('ProfileResolver', () => {
 
     it('should throw UserInputError if user not authenticated', async () => {
       await expect(
-        resolver.getMyProfileCompletion(mockContextNoUser as any),
+        resolver.getMyProfileCompletion(mockContextNoUser),
       ).rejects.toThrow(UserInputError);
     });
   });
@@ -532,7 +513,7 @@ describe('ProfileResolver', () => {
 
       const result = await resolver.getAvatarUploadUrl(
         'photo.jpg',
-        mockContext as any,
+        mockContext,
       );
 
       expect(result).toBe(mockUrl);
@@ -544,7 +525,7 @@ describe('ProfileResolver', () => {
 
     it('should throw UserInputError if user not authenticated', async () => {
       await expect(
-        resolver.getAvatarUploadUrl('photo.jpg', mockContextNoUser as any),
+        resolver.getAvatarUploadUrl('photo.jpg', mockContextNoUser),
       ).rejects.toThrow(UserInputError);
     });
   });
@@ -560,7 +541,7 @@ describe('ProfileResolver', () => {
 
       const result = await resolver.updateAvatarStorageKey(
         storageKey,
-        mockContext as any,
+        mockContext,
       );
 
       expect(result).toEqual(updatedProfile);
@@ -574,7 +555,7 @@ describe('ProfileResolver', () => {
       await expect(
         resolver.updateAvatarStorageKey(
           'avatars/user-123/photo.jpg',
-          mockContextNoUser as any,
+          mockContextNoUser,
         ),
       ).rejects.toThrow(UserInputError);
     });

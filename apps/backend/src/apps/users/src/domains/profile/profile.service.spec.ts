@@ -1,15 +1,25 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 
 import { ProfileService } from './profile.service';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import {
+  DbService,
+  UserProfile,
+  UserAddress,
+  NotificationPreference,
+  UserConsent,
+  User,
+  UserSession,
+  EmailCorrespondence,
+  PasskeyCredential,
+} from '@opuspopuli/relationaldb-provider';
 import {
   createMockDbClient,
   MockDbClient,
 } from '@opuspopuli/relationaldb-provider/testing';
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 import { AddressType } from 'src/common/enums/address.enum';
+import { CreateAddressDto } from './dto/address.dto';
 
 describe('ProfileService', () => {
   let service: ProfileService;
@@ -17,8 +27,7 @@ describe('ProfileService', () => {
 
   const mockUserId = 'test-user-id';
 
-  // Cast mock objects to any to avoid strict type checking in tests
-  const mockProfile: any = {
+  const mockProfile = {
     id: 'profile-id',
     userId: mockUserId,
     firstName: 'John',
@@ -46,9 +55,9 @@ describe('ProfileService', () => {
     homeownerStatus: null,
     createdAt: new Date(),
     updatedAt: new Date(),
-  };
+  } as unknown as UserProfile;
 
-  const mockAddress: any = {
+  const mockAddress = {
     id: 'address-id',
     userId: mockUserId,
     addressType: AddressType.RESIDENTIAL,
@@ -79,9 +88,9 @@ describe('ProfileService', () => {
     label: null,
     createdAt: new Date(),
     updatedAt: new Date(),
-  };
+  } as unknown as UserAddress;
 
-  const mockNotificationPrefs: any = {
+  const mockNotificationPrefs = {
     id: 'notif-id',
     userId: mockUserId,
     emailEnabled: true,
@@ -108,9 +117,9 @@ describe('ProfileService', () => {
     unsubscribedAllAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
-  };
+  } as unknown as NotificationPreference;
 
-  const mockConsent: any = {
+  const mockConsent = {
     id: 'consent-id',
     userId: mockUserId,
     consentType: ConsentType.TERMS_OF_SERVICE,
@@ -128,7 +137,7 @@ describe('ProfileService', () => {
     expiresAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
-  };
+  } as unknown as UserConsent;
 
   beforeEach(async () => {
     mockDb = createMockDbClient();
@@ -266,7 +275,10 @@ describe('ProfileService', () => {
 
       mockDb.userAddress.create.mockResolvedValue(mockAddress);
 
-      const result = await service.createAddress(mockUserId, createDto as any);
+      const result = await service.createAddress(
+        mockUserId,
+        createDto as CreateAddressDto,
+      );
 
       expect(result).toEqual(mockAddress);
     });
@@ -285,7 +297,7 @@ describe('ProfileService', () => {
       mockDb.userAddress.updateMany.mockResolvedValue({ count: 1 });
       mockDb.userAddress.create.mockResolvedValue(mockAddress);
 
-      await service.createAddress(mockUserId, createDto as any);
+      await service.createAddress(mockUserId, createDto as CreateAddressDto);
 
       expect(mockDb.userAddress.updateMany).toHaveBeenCalledWith({
         where: { userId: mockUserId, isPrimary: true },
@@ -571,7 +583,7 @@ describe('ProfileService', () => {
   // ============================================
 
   describe('exportUserData', () => {
-    const mockUser: any = {
+    const mockUser = {
       id: mockUserId,
       email: 'test@example.com',
       firstName: 'John',
@@ -579,9 +591,9 @@ describe('ProfileService', () => {
       authStrategy: 'passkey',
       created: new Date(),
       updated: new Date(),
-    };
+    } as unknown as User;
 
-    const mockSession: any = {
+    const mockSession = {
       id: 'session-id',
       deviceType: 'desktop',
       deviceName: 'Chrome on macOS',
@@ -593,9 +605,9 @@ describe('ProfileService', () => {
       isActive: true,
       lastActivityAt: new Date(),
       createdAt: new Date(),
-    };
+    } as unknown as UserSession;
 
-    const mockEmail: any = {
+    const mockEmail = {
       id: 'email-id',
       emailType: 'representative_contact',
       status: 'sent',
@@ -605,15 +617,15 @@ describe('ProfileService', () => {
       propositionTitle: null,
       sentAt: new Date(),
       createdAt: new Date(),
-    };
+    } as unknown as EmailCorrespondence;
 
-    const mockPasskey: any = {
+    const mockPasskey = {
       id: 'passkey-id',
       deviceType: 'platform',
       friendlyName: 'MacBook Pro',
       createdAt: new Date(),
       lastUsedAt: new Date(),
-    };
+    } as unknown as PasskeyCredential;
 
     beforeEach(() => {
       mockDb.user.findUnique.mockResolvedValue(mockUser);
@@ -646,7 +658,9 @@ describe('ProfileService', () => {
 
     it('should exclude sensitive address fields', async () => {
       const result = await service.exportUserData(mockUserId);
-      const exportedAddress = (result.data.addresses as any[])[0];
+      const exportedAddress = (
+        result.data.addresses as Record<string, unknown>[]
+      )[0];
 
       expect(exportedAddress.latitude).toBeUndefined();
       expect(exportedAddress.longitude).toBeUndefined();
@@ -663,7 +677,9 @@ describe('ProfileService', () => {
       mockDb.userConsent.findMany.mockResolvedValue([consentWithMeta]);
 
       const result = await service.exportUserData(mockUserId);
-      const exportedConsent = (result.data.consents as any[])[0];
+      const exportedConsent = (
+        result.data.consents as Record<string, unknown>[]
+      )[0];
 
       expect(exportedConsent.ipAddress).toBeUndefined();
       expect(exportedConsent.userAgent).toBeUndefined();
@@ -678,7 +694,7 @@ describe('ProfileService', () => {
       mockDb.userProfile.findUnique.mockResolvedValue(profileWithKey);
 
       const result = await service.exportUserData(mockUserId);
-      const exportedProfile = result.data.profile as any;
+      const exportedProfile = result.data.profile as Record<string, unknown>;
 
       expect(exportedProfile.avatarStorageKey).toBeUndefined();
     });
@@ -729,7 +745,7 @@ describe('ProfileService', () => {
         firstName: 'John',
         timezone: null,
         avatarUrl: null,
-      });
+      } as unknown as UserProfile);
       mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
@@ -762,7 +778,7 @@ describe('ProfileService', () => {
         avatarUrl: 'https://example.com/avatar.jpg',
         politicalAffiliation: 'independent',
         votingFrequency: 'always',
-      });
+      } as unknown as UserProfile);
       mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
@@ -778,7 +794,7 @@ describe('ProfileService', () => {
         avatarUrl: 'https://example.com/avatar.jpg',
         occupation: 'Engineer',
         educationLevel: 'bachelor',
-      });
+      } as unknown as UserProfile);
       mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
@@ -800,7 +816,7 @@ describe('ProfileService', () => {
         incomeRange: '50k_75k',
         householdSize: '2',
         homeownerStatus: 'own',
-      });
+      } as unknown as UserProfile);
       mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
@@ -843,7 +859,7 @@ describe('ProfileService', () => {
         displayName: 'johndoe',
         timezone: null,
         avatarUrl: null,
-      });
+      } as unknown as UserProfile);
       mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
@@ -858,7 +874,7 @@ describe('ProfileService', () => {
         timezone: null,
         avatarUrl: null,
         avatarStorageKey: 'avatars/user-123/photo.jpg',
-      });
+      } as unknown as UserProfile);
       mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
