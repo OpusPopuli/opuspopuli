@@ -106,6 +106,9 @@ jobs:
           name: packages-dist
           path: packages/
 
+      - name: Generate Prisma client
+        run: pnpm --filter @opuspopuli/relationaldb-provider db:generate
+
       - name: Run tests with coverage
         run: pnpm test:ci
 
@@ -193,6 +196,9 @@ jobs:
           name: packages-dist
           path: packages/
 
+      - name: Generate Prisma client
+        run: pnpm --filter @opuspopuli/relationaldb-provider db:generate
+
       - name: Build backend
         run: pnpm --filter backend build
 
@@ -248,6 +254,9 @@ jobs:
         with:
           name: packages-dist
           path: packages/
+
+      - name: Generate Prisma client
+        run: pnpm --filter @opuspopuli/relationaldb-provider db:generate
 
       - name: Run backend integration tests
         run: pnpm test:integration
