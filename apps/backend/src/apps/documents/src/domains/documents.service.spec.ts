@@ -1,11 +1,20 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 import { DocumentsService } from './documents.service';
-import { DbService, DocumentType } from '@opuspopuli/relationaldb-provider';
+import {
+  DbService,
+  DocumentType,
+  AbuseReportReason,
+} from '@opuspopuli/relationaldb-provider';
+import type {
+  Document,
+  AbuseReport,
+  Proposition,
+  DocumentProposition,
+} from '@opuspopuli/relationaldb-provider';
+
 import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
 import { IStorageProvider } from '@opuspopuli/storage-provider';
 import { OcrService } from '@opuspopuli/ocr-provider';
@@ -13,6 +22,7 @@ import { ExtractionProvider } from '@opuspopuli/extraction-provider';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import { MetricsService } from 'src/common/metrics';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
+import { AnalysisSource } from './dto/analysis.dto';
 
 // Mock global fetch
 const mockFetch = jest.fn();
@@ -30,8 +40,7 @@ describe('DocumentsService', () => {
     region: 'us-west-2',
   };
 
-  // Using 'any' type for mock objects to avoid strict type checking
-  const mockDocuments: any[] = [
+  const mockDocuments = [
     {
       id: 'doc-1',
       userId: 'user-1',
@@ -50,7 +59,7 @@ describe('DocumentsService', () => {
       createdAt: new Date('2024-01-02'),
       updatedAt: new Date('2024-01-02'),
     },
-  ];
+  ] as unknown as Document[];
 
   const mockStorageProvider = {
     getSignedUrl: jest.fn(),
@@ -268,7 +277,7 @@ describe('DocumentsService', () => {
 
   describe('createDocument', () => {
     it('should create document metadata', async () => {
-      const newDoc: any = {
+      const newDoc = {
         id: 'new-doc',
         location: 's3://bucket/path',
         userId: 'user-1',
@@ -277,7 +286,7 @@ describe('DocumentsService', () => {
         checksum: 'abc123',
         createdAt: new Date(),
         updatedAt: new Date(),
-      };
+      } as unknown as Document;
       mockDb.document.create.mockResolvedValue(newDoc);
 
       const result = await documentsService.createDocument(
@@ -306,7 +315,8 @@ describe('DocumentsService', () => {
       mockDb.document.update.mockResolvedValue(mockDocuments[0]);
 
       await documentsService.updateDocument('doc-1', {
-        status: DocumentStatus.AIEMBEDDINGSCOMPLETE as any,
+        status:
+          DocumentStatus.AIEMBEDDINGSCOMPLETE as unknown as Document['status'],
       });
 
       expect(mockDb.document.update).toHaveBeenCalledWith({
@@ -318,14 +328,14 @@ describe('DocumentsService', () => {
 
   describe('processScan', () => {
     const base64Data = Buffer.from('fake-image-data').toString('base64');
-    const createdDoc: any = {
+    const createdDoc = {
       id: 'scan-doc-1',
       userId: 'user-1',
       key: 'scan-123.png',
       size: 100,
       status: 'text_extraction_started',
       type: DocumentType.petition,
-    };
+    } as unknown as Document;
 
     beforeEach(() => {
       mockStorageProvider.getSignedUrl.mockResolvedValue(
@@ -516,7 +526,7 @@ describe('DocumentsService', () => {
       userId: 'user-1',
       key: 'test-image.png',
       size: 1024,
-    };
+    } as unknown as Document;
 
     beforeEach(() => {
       mockStorageProvider.getSignedUrl.mockResolvedValue(
@@ -525,8 +535,8 @@ describe('DocumentsService', () => {
     });
 
     it('should extract text from image file using OCR', async () => {
-      mockDb.document.findFirst.mockResolvedValue(mockDocument as any);
-      mockDb.document.update.mockResolvedValue(mockDocument as any);
+      mockDb.document.findFirst.mockResolvedValue(mockDocument);
+      mockDb.document.update.mockResolvedValue(mockDocument);
 
       const imageBuffer = Buffer.from('fake-image-data');
       mockFetch.mockResolvedValue({
@@ -568,7 +578,10 @@ describe('DocumentsService', () => {
     });
 
     it('should extract text from PDF file using extraction provider', async () => {
-      const pdfDocument = { ...mockDocument, key: 'test-doc.pdf' } as any;
+      const pdfDocument = {
+        ...mockDocument,
+        key: 'test-doc.pdf',
+      } as unknown as Document;
       mockDb.document.findFirst.mockResolvedValue(pdfDocument);
       mockDb.document.update.mockResolvedValue(pdfDocument);
 
@@ -597,7 +610,10 @@ describe('DocumentsService', () => {
     });
 
     it('should extract text from text file directly', async () => {
-      const txtDocument = { ...mockDocument, key: 'readme.txt' } as any;
+      const txtDocument = {
+        ...mockDocument,
+        key: 'readme.txt',
+      } as unknown as Document;
       mockDb.document.findFirst.mockResolvedValue(txtDocument);
       mockDb.document.update.mockResolvedValue(txtDocument);
 
@@ -629,7 +645,10 @@ describe('DocumentsService', () => {
     });
 
     it('should handle JPEG files correctly', async () => {
-      const jpegDocument = { ...mockDocument, key: 'photo.jpg' } as any;
+      const jpegDocument = {
+        ...mockDocument,
+        key: 'photo.jpg',
+      } as unknown as Document;
       mockDb.document.findFirst.mockResolvedValue(jpegDocument);
       mockDb.document.update.mockResolvedValue(jpegDocument);
 
@@ -658,7 +677,10 @@ describe('DocumentsService', () => {
     });
 
     it('should handle markdown files as text', async () => {
-      const mdDocument = { ...mockDocument, key: 'README.md' } as any;
+      const mdDocument = {
+        ...mockDocument,
+        key: 'README.md',
+      } as unknown as Document;
       mockDb.document.findFirst.mockResolvedValue(mdDocument);
       mockDb.document.update.mockResolvedValue(mdDocument);
 
@@ -747,8 +769,8 @@ describe('DocumentsService', () => {
         id: 'doc-1',
         userId: 'user-1',
         key: 'test.png',
-      } as any);
-      mockDb.document.update.mockResolvedValue({} as any);
+      } as unknown as Document);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
       mockFetch.mockResolvedValue({
         arrayBuffer: () => Promise.resolve(Buffer.from('data')),
       });
@@ -782,7 +804,7 @@ describe('DocumentsService', () => {
           id: 'doc-1',
           userId: 'user-1',
           key: `test.${ext}`,
-        } as any);
+        } as unknown as Document);
 
         await documentsService.extractTextFromFile('user-1', `test.${ext}`);
 
@@ -805,7 +827,7 @@ describe('DocumentsService', () => {
         id: 'doc-1',
         userId: 'user-1',
         key: 'file.xyz',
-      } as any);
+      } as unknown as Document);
 
       await expect(
         documentsService.extractTextFromFile('user-1', 'file.xyz'),
@@ -819,8 +841,8 @@ describe('DocumentsService', () => {
         id: 'doc-1',
         userId: 'user-1',
         key: 'test.txt',
-      } as any);
-      mockDb.document.update.mockResolvedValue({} as any);
+      } as unknown as Document);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
 
       const content = 'Hello World';
       mockFetch.mockResolvedValue({
@@ -838,8 +860,8 @@ describe('DocumentsService', () => {
         id: 'doc-2',
         userId: 'user-1',
         key: 'test2.txt',
-      } as any);
-      mockDb.document.update.mockResolvedValue({} as any);
+      } as unknown as Document);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
       mockFetch.mockResolvedValue({
         arrayBuffer: () => Promise.resolve(Buffer.from(content)),
       });
@@ -857,8 +879,8 @@ describe('DocumentsService', () => {
         id: 'doc-1',
         userId: 'user-1',
         key: 'test.txt',
-      } as any);
-      mockDb.document.update.mockResolvedValue({} as any);
+      } as unknown as Document);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
 
       // Content with extra whitespace
       const content1 = '  Hello   World  ';
@@ -875,8 +897,8 @@ describe('DocumentsService', () => {
         id: 'doc-2',
         userId: 'user-1',
         key: 'test2.txt',
-      } as any);
-      mockDb.document.update.mockResolvedValue({} as any);
+      } as unknown as Document);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
 
       const content2 = 'Hello World';
       mockFetch.mockResolvedValue({
@@ -891,14 +913,14 @@ describe('DocumentsService', () => {
   });
 
   describe('analyzeDocument', () => {
-    const mockDocumentWithText: any = {
+    const mockDocumentWithText = {
       id: 'doc-1',
       userId: 'user-1',
       key: 'petition.pdf',
       type: DocumentType.petition,
       extractedText: 'This is a petition to increase minimum wage...',
       contentHash: 'abc123hash',
-    };
+    } as unknown as Document;
 
     const mockLLMResponse = {
       text: JSON.stringify({
@@ -916,7 +938,7 @@ describe('DocumentsService', () => {
 
     it('should analyze document and return structured result', async () => {
       mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-      mockDb.document.update.mockResolvedValue({} as any);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
       mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
 
       const result = await documentsService.analyzeDocument('user-1', 'doc-1');
@@ -958,7 +980,7 @@ describe('DocumentsService', () => {
 
     it('should include prompt version and hash in analysis result (#424)', async () => {
       mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-      mockDb.document.update.mockResolvedValue({} as any);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
       mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
 
       const result = await documentsService.analyzeDocument('user-1', 'doc-1');
@@ -969,7 +991,7 @@ describe('DocumentsService', () => {
 
     it('should include source provenance in analysis result (#423)', async () => {
       mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-      mockDb.document.update.mockResolvedValue({} as any);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
       mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
 
       const result = await documentsService.analyzeDocument('user-1', 'doc-1');
@@ -982,20 +1004,20 @@ describe('DocumentsService', () => {
       // Entities were returned, so entity extraction source should be present
       expect(
         result.analysis.sources!.some(
-          (s: any) => s.name === 'Entity Extraction',
+          (s: AnalysisSource) => s.name === 'Entity Extraction',
         ),
       ).toBe(true);
       // Related measures were returned for a petition
       expect(
         result.analysis.sources!.some(
-          (s: any) => s.name === 'Related Measures Database',
+          (s: AnalysisSource) => s.name === 'Related Measures Database',
         ),
       ).toBe(true);
     });
 
     it('should include completeness score in analysis result (#425)', async () => {
       mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-      mockDb.document.update.mockResolvedValue({} as any);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
       mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
 
       const result = await documentsService.analyzeDocument('user-1', 'doc-1');
@@ -1030,7 +1052,7 @@ describe('DocumentsService', () => {
         .mockResolvedValueOnce({
           id: 'cached-doc',
           analysis: cachedAnalysis,
-        } as any);
+        } as unknown as Document);
 
       const result = await documentsService.analyzeDocument('user-1', 'doc-1');
 
@@ -1047,7 +1069,7 @@ describe('DocumentsService', () => {
 
     it('should bypass cache when forceReanalyze is true', async () => {
       mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-      mockDb.document.update.mockResolvedValue({} as any);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
       mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
 
       const result = await documentsService.analyzeDocument(
@@ -1081,7 +1103,7 @@ describe('DocumentsService', () => {
 
     it('should set status to failed when LLM throws error', async () => {
       mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-      mockDb.document.update.mockResolvedValue({} as any);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
       mockLLMProvider.generate.mockRejectedValue(new Error('LLM timeout'));
 
       await expect(
@@ -1107,7 +1129,7 @@ describe('DocumentsService', () => {
 
     it('should handle LLM response with markdown code blocks', async () => {
       mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-      mockDb.document.update.mockResolvedValue({} as any);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
       mockLLMProvider.generate.mockResolvedValue({
         text: '```json\n{"summary":"Test","keyPoints":[],"entities":[]}\n```',
         tokensUsed: 100,
@@ -1126,7 +1148,7 @@ describe('DocumentsService', () => {
       };
 
       mockDb.document.findFirst.mockResolvedValueOnce(contractDoc);
-      mockDb.document.update.mockResolvedValue({} as any);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
       mockLLMProvider.generate.mockResolvedValue({
         text: JSON.stringify({
           summary: 'A service contract',
@@ -1153,7 +1175,7 @@ describe('DocumentsService', () => {
     describe('source provenance (#423)', () => {
       it('should not include Entity Extraction source when no entities', async () => {
         mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-        mockDb.document.update.mockResolvedValue({} as any);
+        mockDb.document.update.mockResolvedValue({} as unknown as Document);
         mockLLMProvider.generate.mockResolvedValue({
           text: JSON.stringify({
             summary: 'No entities found',
@@ -1170,7 +1192,7 @@ describe('DocumentsService', () => {
 
         expect(
           result.analysis.sources!.some(
-            (s: any) => s.name === 'Entity Extraction',
+            (s: AnalysisSource) => s.name === 'Entity Extraction',
           ),
         ).toBe(false);
         expect(result.analysis.sources!.length).toBe(2); // Only OCR + LLM
@@ -1182,7 +1204,7 @@ describe('DocumentsService', () => {
           type: DocumentType.contract,
         };
         mockDb.document.findFirst.mockResolvedValueOnce(contractDoc);
-        mockDb.document.update.mockResolvedValue({} as any);
+        mockDb.document.update.mockResolvedValue({} as unknown as Document);
         mockLLMProvider.generate.mockResolvedValue({
           text: JSON.stringify({
             summary: 'Contract summary',
@@ -1200,14 +1222,14 @@ describe('DocumentsService', () => {
 
         expect(
           result.analysis.sources!.some(
-            (s: any) => s.name === 'Related Measures Database',
+            (s: AnalysisSource) => s.name === 'Related Measures Database',
           ),
         ).toBe(false);
       });
 
       it('should not include Related Measures source when petition has no related measures', async () => {
         mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-        mockDb.document.update.mockResolvedValue({} as any);
+        mockDb.document.update.mockResolvedValue({} as unknown as Document);
         mockLLMProvider.generate.mockResolvedValue({
           text: JSON.stringify({
             summary: 'Petition summary',
@@ -1225,14 +1247,14 @@ describe('DocumentsService', () => {
 
         expect(
           result.analysis.sources!.some(
-            (s: any) => s.name === 'Related Measures Database',
+            (s: AnalysisSource) => s.name === 'Related Measures Database',
           ),
         ).toBe(false);
       });
 
       it('should include LLM provider name in source', async () => {
         mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-        mockDb.document.update.mockResolvedValue({} as any);
+        mockDb.document.update.mockResolvedValue({} as unknown as Document);
         mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
 
         const result = await documentsService.analyzeDocument(
@@ -1248,7 +1270,7 @@ describe('DocumentsService', () => {
 
       it('should set dataCompleteness to 60 for Related Measures (LLM knowledge)', async () => {
         mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-        mockDb.document.update.mockResolvedValue({} as any);
+        mockDb.document.update.mockResolvedValue({} as unknown as Document);
         mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
 
         const result = await documentsService.analyzeDocument(
@@ -1257,7 +1279,7 @@ describe('DocumentsService', () => {
         );
 
         const relatedSource = result.analysis.sources!.find(
-          (s: any) => s.name === 'Related Measures Database',
+          (s: AnalysisSource) => s.name === 'Related Measures Database',
         );
         expect(relatedSource).toBeDefined();
         expect(relatedSource!.dataCompleteness).toBe(60);
@@ -1271,7 +1293,7 @@ describe('DocumentsService', () => {
           type: DocumentType.contract,
         };
         mockDb.document.findFirst.mockResolvedValueOnce(contractDoc);
-        mockDb.document.update.mockResolvedValue({} as any);
+        mockDb.document.update.mockResolvedValue({} as unknown as Document);
         mockLLMProvider.generate.mockResolvedValue({
           text: JSON.stringify({
             summary: 'Contract summary',
@@ -1306,7 +1328,7 @@ describe('DocumentsService', () => {
           type: DocumentType.form,
         };
         mockDb.document.findFirst.mockResolvedValueOnce(formDoc);
-        mockDb.document.update.mockResolvedValue({} as any);
+        mockDb.document.update.mockResolvedValue({} as unknown as Document);
         mockLLMProvider.generate.mockResolvedValue({
           text: JSON.stringify({
             summary: 'Form summary',
@@ -1337,7 +1359,7 @@ describe('DocumentsService', () => {
           type: 'unknown_type' as DocumentType,
         };
         mockDb.document.findFirst.mockResolvedValueOnce(otherDoc);
-        mockDb.document.update.mockResolvedValue({} as any);
+        mockDb.document.update.mockResolvedValue({} as unknown as Document);
         mockLLMProvider.generate.mockResolvedValue({
           text: JSON.stringify({
             summary: 'Summary',
@@ -1359,7 +1381,7 @@ describe('DocumentsService', () => {
 
       it('should include partial explanation when not all sources available', async () => {
         mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-        mockDb.document.update.mockResolvedValue({} as any);
+        mockDb.document.update.mockResolvedValue({} as unknown as Document);
         mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
 
         const result = await documentsService.analyzeDocument(
@@ -1376,7 +1398,7 @@ describe('DocumentsService', () => {
 
       it('should report Financial impact data as always missing for petitions', async () => {
         mockDb.document.findFirst.mockResolvedValueOnce(mockDocumentWithText);
-        mockDb.document.update.mockResolvedValue({} as any);
+        mockDb.document.update.mockResolvedValue({} as unknown as Document);
         mockLLMProvider.generate.mockResolvedValue(mockLLMResponse);
 
         const result = await documentsService.analyzeDocument(
@@ -1404,7 +1426,7 @@ describe('DocumentsService', () => {
 
       mockDb.document.findFirst.mockResolvedValue({
         analysis: storedAnalysis,
-      } as any);
+      } as unknown as Document);
 
       const result = await documentsService.getDocumentAnalysis(
         'user-1',
@@ -1417,7 +1439,7 @@ describe('DocumentsService', () => {
     it('should return null when no analysis exists', async () => {
       mockDb.document.findFirst.mockResolvedValue({
         analysis: null,
-      } as any);
+      } as unknown as Document);
 
       const result = await documentsService.getDocumentAnalysis(
         'user-1',
@@ -1437,11 +1459,11 @@ describe('DocumentsService', () => {
   });
 
   describe('setDocumentLocation', () => {
-    const mockDocument: any = {
+    const mockDocument = {
       id: 'doc-1',
       userId: 'user-1',
       key: 'petition.pdf',
-    };
+    } as unknown as Document;
 
     it('should set fuzzed location for document', async () => {
       mockDb.document.findFirst.mockResolvedValue(mockDocument);
@@ -1481,7 +1503,9 @@ describe('DocumentsService', () => {
 
   describe('getDocumentLocation', () => {
     it('should return location when set', async () => {
-      mockDb.document.findFirst.mockResolvedValue({ id: 'doc-1' } as any);
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+      } as unknown as Document);
       mockDb.$queryRaw.mockResolvedValue([
         { latitude: 37.7749, longitude: -122.4194 },
       ]);
@@ -1498,7 +1522,9 @@ describe('DocumentsService', () => {
     });
 
     it('should return null when no location set', async () => {
-      mockDb.document.findFirst.mockResolvedValue({ id: 'doc-1' } as any);
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+      } as unknown as Document);
       mockDb.$queryRaw.mockResolvedValue([]);
 
       const result = await documentsService.getDocumentLocation(
@@ -1872,7 +1898,7 @@ describe('DocumentsService', () => {
       mockDb.document.findUnique.mockResolvedValue({
         id: 'doc-1',
         userId: 'user-1',
-      } as any);
+      } as unknown as Document);
       mockDb.abuseReport.findFirst.mockResolvedValue(null);
       mockDb.abuseReport.create.mockResolvedValue({
         id: 'report-1',
@@ -1883,12 +1909,12 @@ describe('DocumentsService', () => {
         status: 'pending',
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+      } as unknown as AbuseReport);
 
       const result = await documentsService.submitAbuseReport(
         'user-2',
         'doc-1',
-        'incorrect_analysis' as any,
+        AbuseReportReason.incorrect_analysis,
         'The summary is wrong',
       );
 
@@ -1911,28 +1937,32 @@ describe('DocumentsService', () => {
         documentsService.submitAbuseReport(
           'user-2',
           'nonexistent',
-          'incorrect_analysis' as any,
+          AbuseReportReason.incorrect_analysis,
         ),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException for duplicate report', async () => {
-      mockDb.document.findUnique.mockResolvedValue({ id: 'doc-1' } as any);
+      mockDb.document.findUnique.mockResolvedValue({
+        id: 'doc-1',
+      } as unknown as Document);
       mockDb.abuseReport.findFirst.mockResolvedValue({
         id: 'existing-report',
-      } as any);
+      } as unknown as AbuseReport);
 
       await expect(
         documentsService.submitAbuseReport(
           'user-2',
           'doc-1',
-          'incorrect_analysis' as any,
+          AbuseReportReason.incorrect_analysis,
         ),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('should allow report without description', async () => {
-      mockDb.document.findUnique.mockResolvedValue({ id: 'doc-1' } as any);
+      mockDb.document.findUnique.mockResolvedValue({
+        id: 'doc-1',
+      } as unknown as Document);
       mockDb.abuseReport.findFirst.mockResolvedValue(null);
       mockDb.abuseReport.create.mockResolvedValue({
         id: 'report-2',
@@ -1941,12 +1971,12 @@ describe('DocumentsService', () => {
         reason: 'privacy_concern',
         description: null,
         status: 'pending',
-      } as any);
+      } as unknown as AbuseReport);
 
       const result = await documentsService.submitAbuseReport(
         'user-2',
         'doc-1',
-        'privacy_concern' as any,
+        AbuseReportReason.privacy_concern,
       );
 
       expect(result.success).toBe(true);
@@ -1961,19 +1991,19 @@ describe('DocumentsService', () => {
       mockDb.document.findUnique.mockResolvedValue({
         id: 'doc-1',
         userId: 'user-1',
-      } as any);
+      } as unknown as Document);
       mockDb.abuseReport.findFirst.mockResolvedValue(null);
       mockDb.abuseReport.create.mockResolvedValue({
         id: 'report-3',
         documentId: 'doc-1',
         reporterId: 'user-3',
         reason: 'offensive_content',
-      } as any);
+      } as unknown as AbuseReport);
 
       const result = await documentsService.submitAbuseReport(
         'user-3',
         'doc-1',
-        'offensive_content' as any,
+        AbuseReportReason.offensive_content,
       );
 
       expect(result.success).toBe(true);
@@ -1988,7 +2018,7 @@ describe('DocumentsService', () => {
   // ============================================
 
   describe('getScanHistory', () => {
-    const mockDocs: any[] = [
+    const mockDocs = [
       {
         id: 'doc-1',
         type: 'petition',
@@ -2005,7 +2035,7 @@ describe('DocumentsService', () => {
         ocrConfidence: 80.0,
         createdAt: new Date('2024-05-15'),
       },
-    ];
+    ] as unknown as Document[];
 
     it('should return paginated scan history', async () => {
       mockDb.document.findMany.mockResolvedValue(mockDocs);
@@ -2161,7 +2191,7 @@ describe('DocumentsService', () => {
           analysis: { keyPoints: ['Point 1'] }, // no summary field
           ocrConfidence: 90,
           createdAt: new Date(),
-        } as any,
+        } as unknown as Document,
       ]);
       mockDb.document.count.mockResolvedValue(1);
 
@@ -2191,7 +2221,7 @@ describe('DocumentsService', () => {
 
   describe('getScanDetail', () => {
     it('should return scan detail for owned document', async () => {
-      const mockDoc: any = {
+      const mockDoc = {
         id: 'doc-1',
         type: 'petition',
         status: 'ai_analysis_complete',
@@ -2201,7 +2231,7 @@ describe('DocumentsService', () => {
         analysis: { summary: 'Test summary', keyPoints: ['Point 1'] },
         createdAt: new Date('2024-06-01'),
         updatedAt: new Date('2024-06-01'),
-      };
+      } as unknown as Document;
 
       mockDb.document.findFirst.mockResolvedValue(mockDoc);
 
@@ -2224,7 +2254,7 @@ describe('DocumentsService', () => {
     });
 
     it('should handle document with null optional fields', async () => {
-      const mockDoc: any = {
+      const mockDoc = {
         id: 'doc-3',
         type: 'petition',
         status: 'text_extraction_complete',
@@ -2234,7 +2264,7 @@ describe('DocumentsService', () => {
         analysis: null,
         createdAt: new Date('2024-06-01'),
         updatedAt: new Date('2024-06-01'),
-      };
+      } as unknown as Document;
 
       mockDb.document.findFirst.mockResolvedValue(mockDoc);
 
@@ -2253,8 +2283,8 @@ describe('DocumentsService', () => {
       mockDb.document.findFirst.mockResolvedValue({
         id: 'doc-1',
         userId: 'user-1',
-      } as any);
-      mockDb.document.update.mockResolvedValue({} as any);
+      } as unknown as Document);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
 
       const result = await documentsService.softDeleteDocument(
         'user-1',
@@ -2280,8 +2310,8 @@ describe('DocumentsService', () => {
       mockDb.document.findFirst.mockResolvedValue({
         id: 'doc-1',
         userId: 'user-1',
-      } as any);
-      mockDb.document.update.mockResolvedValue({} as any);
+      } as unknown as Document);
+      mockDb.document.update.mockResolvedValue({} as unknown as Document);
 
       await documentsService.softDeleteDocument('user-1', 'doc-1');
 
@@ -2321,10 +2351,10 @@ describe('DocumentsService', () => {
     it('should match via DB-side ILIKE and upsert', async () => {
       mockDb.proposition.findFirst.mockResolvedValue({
         id: 'prop-1',
-      } as any);
+      } as unknown as Proposition);
       mockDb.documentProposition.upsert.mockResolvedValue({
         id: 'link-1',
-      } as any);
+      } as unknown as DocumentProposition);
 
       const result = await documentsService.matchAndLinkPropositions('doc-1', [
         'Proposition 47: Criminal Sentencing',
@@ -2372,10 +2402,10 @@ describe('DocumentsService', () => {
     it('should match by externalId via DB query', async () => {
       mockDb.proposition.findFirst.mockResolvedValue({
         id: 'prop-1',
-      } as any);
+      } as unknown as Proposition);
       mockDb.documentProposition.upsert.mockResolvedValue({
         id: 'link-1',
-      } as any);
+      } as unknown as DocumentProposition);
 
       const result = await documentsService.matchAndLinkPropositions('doc-1', [
         'Prop 47',
@@ -2420,7 +2450,7 @@ describe('DocumentsService', () => {
     it('should handle upsert errors gracefully', async () => {
       mockDb.proposition.findFirst.mockResolvedValue({
         id: 'prop-1',
-      } as any);
+      } as unknown as Proposition);
       mockDb.documentProposition.upsert.mockRejectedValue(
         new Error('DB error'),
       );
@@ -2438,13 +2468,15 @@ describe('DocumentsService', () => {
       mockDb.document.findFirst.mockResolvedValue({
         id: 'doc-1',
         userId: 'user-1',
-      } as any);
-      mockDb.proposition.findUnique.mockResolvedValue({ id: 'prop-1' } as any);
+      } as unknown as Document);
+      mockDb.proposition.findUnique.mockResolvedValue({
+        id: 'prop-1',
+      } as unknown as Proposition);
       mockDb.documentProposition.upsert.mockResolvedValue({
         id: 'link-1',
         documentId: 'doc-1',
         propositionId: 'prop-1',
-      } as any);
+      } as unknown as DocumentProposition);
 
       const result = await documentsService.linkDocumentToProposition(
         'user-1',
@@ -2477,7 +2509,9 @@ describe('DocumentsService', () => {
     });
 
     it('should throw NotFoundException when proposition not found', async () => {
-      mockDb.document.findFirst.mockResolvedValue({ id: 'doc-1' } as any);
+      mockDb.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+      } as unknown as Document);
       mockDb.proposition.findUnique.mockResolvedValue(null);
 
       await expect(
@@ -2491,7 +2525,7 @@ describe('DocumentsService', () => {
       mockDb.document.findFirst.mockResolvedValue({
         id: 'doc-1',
         userId: 'user-1',
-      } as any);
+      } as unknown as Document);
       mockDb.documentProposition.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await documentsService.unlinkDocumentFromProposition(
@@ -2537,7 +2571,7 @@ describe('DocumentsService', () => {
             electionDate: new Date('2024-11-05'),
           },
         },
-      ] as any);
+      ] as unknown as DocumentProposition[]);
 
       const result = await documentsService.getLinkedPropositions('doc-1');
 
@@ -2579,7 +2613,7 @@ describe('DocumentsService', () => {
             analysis: { summary: 'A petition about parks' },
           },
         },
-      ] as any);
+      ] as unknown as DocumentProposition[]);
 
       const result =
         await documentsService.getLinkedPetitionDocuments('prop-1');
@@ -2604,7 +2638,7 @@ describe('DocumentsService', () => {
           createdAt: new Date(),
           document: { id: 'doc-1', analysis: null },
         },
-      ] as any);
+      ] as unknown as DocumentProposition[]);
 
       const result =
         await documentsService.getLinkedPetitionDocuments('prop-1');
@@ -2622,7 +2656,7 @@ describe('DocumentsService', () => {
           externalId: 'Prop 47',
           status: 'PENDING',
         },
-      ] as any);
+      ] as unknown as Proposition[]);
 
       const result = await documentsService.searchPropositions('proposition');
 

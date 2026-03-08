@@ -1,9 +1,11 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { RegionDomainService } from './region.service';
-import { DbService } from '@opuspopuli/relationaldb-provider';
-import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
+import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
+import {
+  createMockDbService,
+  type MockDbClient,
+} from '@opuspopuli/relationaldb-provider/testing';
 import {
   DataType,
   PropositionStatus,
@@ -13,6 +15,30 @@ import {
   type IRegionPlugin,
   type RegisteredPlugin,
 } from '@opuspopuli/region-provider';
+
+/** Minimal mock for PluginRegistryService used across test suites. */
+interface MockPluginRegistry {
+  register: jest.Mock;
+  unregister: jest.Mock;
+  getActive: jest.Mock;
+  registerLocal: jest.Mock;
+  registerFederal: jest.Mock;
+  getLocal: jest.Mock;
+  getFederal: jest.Mock;
+  getAll: jest.Mock;
+  getActiveName: jest.Mock;
+  hasActive: jest.Mock;
+  getHealth: jest.Mock;
+  getStatus: jest.Mock;
+  onModuleDestroy: jest.Mock;
+}
+
+/** Minimal mock for PluginLoaderService used across test suites. */
+interface MockPluginLoader {
+  loadPlugin: jest.Mock;
+  loadFederalPlugin: jest.Mock;
+  unloadPlugin: jest.Mock;
+}
 
 /**
  * Tests for Region Domain Service
@@ -92,9 +118,9 @@ function createMockPlugin(): jest.Mocked<IRegionPlugin> {
 
 describe('RegionDomainService', () => {
   let service: RegionDomainService;
-  let mockDb: ReturnType<typeof createMockDbService>;
+  let mockDb: MockDbClient;
   let mockPlugin: jest.Mocked<IRegionPlugin>;
-  let mockRegistry: any;
+  let mockRegistry: MockPluginRegistry;
 
   beforeEach(async () => {
     mockDb = createMockDbService();
@@ -126,20 +152,18 @@ describe('RegionDomainService', () => {
       onModuleDestroy: jest.fn(),
     };
 
-    const mockLoader: any = {
+    const mockLoader: MockPluginLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
 
     // Mock DB regionPlugin: no federal config, no enabled local plugin
-    // → service falls back to ExampleRegionProvider via registerLocal('example', ...)
+    // -> service falls back to ExampleRegionProvider via registerLocal('example', ...)
     // But registry.getLocal() returns our mockPlugin regardless
-    (mockDb as any).regionPlugin = {
-      findFirst: jest.fn().mockResolvedValue(null),
-      findUnique: jest.fn().mockResolvedValue(null),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
+    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findUnique.mockResolvedValue(null);
+    mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
     // Set up default empty returns for findMany (no existing records)
     mockDb.proposition.findMany.mockResolvedValue([]);
@@ -147,34 +171,29 @@ describe('RegionDomainService', () => {
     mockDb.representative.findMany.mockResolvedValue([]);
 
     // Set up campaign finance DB mocks
-    (mockDb as any).committee = {
-      findMany: jest.fn().mockResolvedValue([]),
-      findUnique: jest.fn().mockResolvedValue(null),
-      count: jest.fn().mockResolvedValue(0),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
-    (mockDb as any).contribution = {
-      findMany: jest.fn().mockResolvedValue([]),
-      findUnique: jest.fn().mockResolvedValue(null),
-      count: jest.fn().mockResolvedValue(0),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
-    (mockDb as any).expenditure = {
-      findMany: jest.fn().mockResolvedValue([]),
-      findUnique: jest.fn().mockResolvedValue(null),
-      count: jest.fn().mockResolvedValue(0),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
-    (mockDb as any).independentExpenditure = {
-      findMany: jest.fn().mockResolvedValue([]),
-      findUnique: jest.fn().mockResolvedValue(null),
-      count: jest.fn().mockResolvedValue(0),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
+    mockDb.committee.findMany.mockResolvedValue([]);
+    mockDb.committee.findUnique.mockResolvedValue(null);
+    mockDb.committee.count.mockResolvedValue(0);
+    mockDb.committee.upsert.mockResolvedValue({} as never);
+
+    mockDb.contribution.findMany.mockResolvedValue([]);
+    mockDb.contribution.findUnique.mockResolvedValue(null);
+    mockDb.contribution.count.mockResolvedValue(0);
+    mockDb.contribution.upsert.mockResolvedValue({} as never);
+
+    mockDb.expenditure.findMany.mockResolvedValue([]);
+    mockDb.expenditure.findUnique.mockResolvedValue(null);
+    mockDb.expenditure.count.mockResolvedValue(0);
+    mockDb.expenditure.upsert.mockResolvedValue({} as never);
+
+    mockDb.independentExpenditure.findMany.mockResolvedValue([]);
+    mockDb.independentExpenditure.findUnique.mockResolvedValue(null);
+    mockDb.independentExpenditure.count.mockResolvedValue(0);
+    mockDb.independentExpenditure.upsert.mockResolvedValue({} as never);
 
     // Set up default $transaction mock
     (mockDb.$transaction as jest.Mock).mockImplementation(
-      async (operations: any[]) => {
+      async (operations: Promise<unknown>[]) => {
         return Promise.all(operations);
       },
     );
@@ -251,7 +270,7 @@ describe('RegionDomainService', () => {
     it('should update existing propositions using bulk upsert', async () => {
       // Mock existing record found
       mockDb.proposition.findMany.mockResolvedValue([
-        { externalId: 'prop-1' } as any,
+        { externalId: 'prop-1' } as never,
       ]);
 
       const result = await service.syncDataType(DataType.PROPOSITIONS);
@@ -285,7 +304,7 @@ describe('RegionDomainService', () => {
 
     it('should update existing meetings using bulk upsert', async () => {
       mockDb.meeting.findMany.mockResolvedValue([
-        { externalId: 'meeting-1' } as any,
+        { externalId: 'meeting-1' } as never,
       ]);
 
       const result = await service.syncDataType(DataType.MEETINGS);
@@ -307,7 +326,7 @@ describe('RegionDomainService', () => {
 
     it('should update existing representatives using bulk upsert', async () => {
       mockDb.representative.findMany.mockResolvedValue([
-        { externalId: 'rep-1' } as any,
+        { externalId: 'rep-1' } as never,
       ]);
 
       const result = await service.syncDataType(DataType.REPRESENTATIVES);
@@ -379,7 +398,7 @@ describe('RegionDomainService', () => {
       mockDb.proposition.findMany.mockResolvedValue(
         Array.from({ length: 500 }, (_, i) => ({
           externalId: `prop-${i}`,
-        })) as any[],
+        })) as never,
       );
 
       const result = await service.syncDataType(DataType.PROPOSITIONS);
@@ -407,7 +426,7 @@ describe('RegionDomainService', () => {
           deletedAt: null,
         },
       ];
-      mockDb.proposition.findMany.mockResolvedValue(mockItems as any);
+      mockDb.proposition.findMany.mockResolvedValue(mockItems as never);
       mockDb.proposition.count.mockResolvedValue(1);
 
       const result = await service.getPropositions(0, 10);
@@ -431,7 +450,7 @@ describe('RegionDomainService', () => {
         updatedAt: new Date(),
         deletedAt: null,
       }));
-      mockDb.proposition.findMany.mockResolvedValue(mockItems as any);
+      mockDb.proposition.findMany.mockResolvedValue(mockItems as never);
       mockDb.proposition.count.mockResolvedValue(15);
 
       const result = await service.getPropositions(0, 10);
@@ -444,7 +463,7 @@ describe('RegionDomainService', () => {
   describe('getProposition', () => {
     it('should return a single proposition by ID', async () => {
       const mockProp = { id: '1', title: 'Test Prop' };
-      mockDb.proposition.findUnique.mockResolvedValue(mockProp as any);
+      mockDb.proposition.findUnique.mockResolvedValue(mockProp as never);
 
       const result = await service.getProposition('1');
 
@@ -480,7 +499,7 @@ describe('RegionDomainService', () => {
           deletedAt: null,
         },
       ];
-      mockDb.meeting.findMany.mockResolvedValue(mockItems as any);
+      mockDb.meeting.findMany.mockResolvedValue(mockItems as never);
       mockDb.meeting.count.mockResolvedValue(1);
 
       const result = await service.getMeetings(0, 10);
@@ -494,7 +513,7 @@ describe('RegionDomainService', () => {
   describe('getMeeting', () => {
     it('should return a single meeting by ID', async () => {
       const mockMeeting = { id: '1', title: 'Test Meeting' };
-      mockDb.meeting.findUnique.mockResolvedValue(mockMeeting as any);
+      mockDb.meeting.findUnique.mockResolvedValue(mockMeeting as never);
 
       const result = await service.getMeeting('1');
 
@@ -520,7 +539,7 @@ describe('RegionDomainService', () => {
         },
       ];
 
-      mockDb.representative.findMany.mockResolvedValue(mockItems as any);
+      mockDb.representative.findMany.mockResolvedValue(mockItems as never);
       mockDb.representative.count.mockResolvedValue(1);
 
       const result = await service.getRepresentatives(0, 10);
@@ -547,7 +566,7 @@ describe('RegionDomainService', () => {
   describe('getRepresentative', () => {
     it('should return a single representative by ID', async () => {
       const mockRep = { id: '1', name: 'John Doe' };
-      mockDb.representative.findUnique.mockResolvedValue(mockRep as any);
+      mockDb.representative.findUnique.mockResolvedValue(mockRep as never);
 
       const result = await service.getRepresentative('1');
 
@@ -576,10 +595,11 @@ describe('RegionDomainService', () => {
           sourceUrl: null,
           createdAt: new Date(),
           updatedAt: new Date(),
+          deletedAt: null,
         },
       ];
-      (mockDb as any).committee.findMany.mockResolvedValue(mockItems);
-      (mockDb as any).committee.count.mockResolvedValue(1);
+      mockDb.committee.findMany.mockResolvedValue(mockItems);
+      mockDb.committee.count.mockResolvedValue(1);
 
       const result = await service.getCommittees(0, 10);
 
@@ -592,12 +612,12 @@ describe('RegionDomainService', () => {
     });
 
     it('should filter by sourceSystem when provided', async () => {
-      (mockDb as any).committee.findMany.mockResolvedValue([]);
-      (mockDb as any).committee.count.mockResolvedValue(0);
+      mockDb.committee.findMany.mockResolvedValue([]);
+      mockDb.committee.count.mockResolvedValue(0);
 
       await service.getCommittees(0, 10, 'cal-access');
 
-      expect((mockDb as any).committee.findMany).toHaveBeenCalledWith(
+      expect(mockDb.committee.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { sourceSystem: 'cal-access' },
         }),
@@ -619,9 +639,10 @@ describe('RegionDomainService', () => {
         sourceUrl: null,
         createdAt: new Date(),
         updatedAt: new Date(),
+        deletedAt: null,
       }));
-      (mockDb as any).committee.findMany.mockResolvedValue(mockItems);
-      (mockDb as any).committee.count.mockResolvedValue(15);
+      mockDb.committee.findMany.mockResolvedValue(mockItems);
+      mockDb.committee.count.mockResolvedValue(15);
 
       const result = await service.getCommittees(0, 10);
 
@@ -633,18 +654,18 @@ describe('RegionDomainService', () => {
   describe('getCommittee', () => {
     it('should return a single committee by ID', async () => {
       const mockComm = { id: '1', name: 'Test Committee' };
-      (mockDb as any).committee.findUnique.mockResolvedValue(mockComm);
+      mockDb.committee.findUnique.mockResolvedValue(mockComm as never);
 
       const result = await service.getCommittee('1');
 
       expect(result).toEqual(mockComm);
-      expect((mockDb as any).committee.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.committee.findUnique).toHaveBeenCalledWith({
         where: { id: '1' },
       });
     });
 
     it('should return null if committee not found', async () => {
-      (mockDb as any).committee.findUnique.mockResolvedValue(null);
+      mockDb.committee.findUnique.mockResolvedValue(null);
 
       const result = await service.getCommittee('nonexistent');
 
@@ -666,7 +687,7 @@ describe('RegionDomainService', () => {
           donorCity: null,
           donorState: null,
           donorZip: null,
-          amount: { toNumber: () => 500 } as any, // Prisma Decimal
+          amount: { toNumber: () => 500 } as unknown as Prisma.Decimal, // Prisma Decimal
           date: new Date(),
           electionType: null,
           contributionType: null,
@@ -675,8 +696,8 @@ describe('RegionDomainService', () => {
           updatedAt: new Date(),
         },
       ];
-      (mockDb as any).contribution.findMany.mockResolvedValue(mockItems);
-      (mockDb as any).contribution.count.mockResolvedValue(1);
+      mockDb.contribution.findMany.mockResolvedValue(mockItems as never);
+      mockDb.contribution.count.mockResolvedValue(1);
 
       const result = await service.getContributions(0, 10);
 
@@ -690,12 +711,12 @@ describe('RegionDomainService', () => {
     });
 
     it('should filter by committeeId and sourceSystem', async () => {
-      (mockDb as any).contribution.findMany.mockResolvedValue([]);
-      (mockDb as any).contribution.count.mockResolvedValue(0);
+      mockDb.contribution.findMany.mockResolvedValue([]);
+      mockDb.contribution.count.mockResolvedValue(0);
 
       await service.getContributions(0, 10, 'comm-1', 'cal-access');
 
-      expect((mockDb as any).contribution.findMany).toHaveBeenCalledWith(
+      expect(mockDb.contribution.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { committeeId: 'comm-1', sourceSystem: 'cal-access' },
         }),
@@ -706,18 +727,18 @@ describe('RegionDomainService', () => {
   describe('getContribution', () => {
     it('should return a single contribution by ID', async () => {
       const mockContrib = { id: '1', donorName: 'Jane Smith' };
-      (mockDb as any).contribution.findUnique.mockResolvedValue(mockContrib);
+      mockDb.contribution.findUnique.mockResolvedValue(mockContrib as never);
 
       const result = await service.getContribution('1');
 
       expect(result).toEqual(mockContrib);
-      expect((mockDb as any).contribution.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.contribution.findUnique).toHaveBeenCalledWith({
         where: { id: '1' },
       });
     });
 
     it('should return null if contribution not found', async () => {
-      (mockDb as any).contribution.findUnique.mockResolvedValue(null);
+      mockDb.contribution.findUnique.mockResolvedValue(null);
 
       const result = await service.getContribution('nonexistent');
 
@@ -733,7 +754,7 @@ describe('RegionDomainService', () => {
           externalId: 'exp-1',
           committeeId: 'comm-1',
           payeeName: 'Ad Agency Inc',
-          amount: { toNumber: () => 1500 } as any, // Prisma Decimal
+          amount: { toNumber: () => 1500 } as unknown as Prisma.Decimal, // Prisma Decimal
           date: new Date(),
           purposeDescription: null,
           expenditureCode: null,
@@ -745,8 +766,8 @@ describe('RegionDomainService', () => {
           updatedAt: new Date(),
         },
       ];
-      (mockDb as any).expenditure.findMany.mockResolvedValue(mockItems);
-      (mockDb as any).expenditure.count.mockResolvedValue(1);
+      mockDb.expenditure.findMany.mockResolvedValue(mockItems as never);
+      mockDb.expenditure.count.mockResolvedValue(1);
 
       const result = await service.getExpenditures(0, 10);
 
@@ -760,12 +781,12 @@ describe('RegionDomainService', () => {
     });
 
     it('should filter by committeeId and sourceSystem', async () => {
-      (mockDb as any).expenditure.findMany.mockResolvedValue([]);
-      (mockDb as any).expenditure.count.mockResolvedValue(0);
+      mockDb.expenditure.findMany.mockResolvedValue([]);
+      mockDb.expenditure.count.mockResolvedValue(0);
 
       await service.getExpenditures(0, 10, 'comm-1', 'cal-access');
 
-      expect((mockDb as any).expenditure.findMany).toHaveBeenCalledWith(
+      expect(mockDb.expenditure.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { committeeId: 'comm-1', sourceSystem: 'cal-access' },
         }),
@@ -776,18 +797,18 @@ describe('RegionDomainService', () => {
   describe('getExpenditure', () => {
     it('should return a single expenditure by ID', async () => {
       const mockExp = { id: '1', payeeName: 'Ad Agency Inc' };
-      (mockDb as any).expenditure.findUnique.mockResolvedValue(mockExp);
+      mockDb.expenditure.findUnique.mockResolvedValue(mockExp as never);
 
       const result = await service.getExpenditure('1');
 
       expect(result).toEqual(mockExp);
-      expect((mockDb as any).expenditure.findUnique).toHaveBeenCalledWith({
+      expect(mockDb.expenditure.findUnique).toHaveBeenCalledWith({
         where: { id: '1' },
       });
     });
 
     it('should return null if expenditure not found', async () => {
-      (mockDb as any).expenditure.findUnique.mockResolvedValue(null);
+      mockDb.expenditure.findUnique.mockResolvedValue(null);
 
       const result = await service.getExpenditure('nonexistent');
 
@@ -806,7 +827,7 @@ describe('RegionDomainService', () => {
           candidateName: null,
           propositionTitle: null,
           supportOrOppose: 'support',
-          amount: { toNumber: () => 25000 } as any, // Prisma Decimal
+          amount: { toNumber: () => 25000 } as unknown as Prisma.Decimal, // Prisma Decimal
           date: new Date(),
           electionDate: null,
           description: null,
@@ -815,10 +836,10 @@ describe('RegionDomainService', () => {
           updatedAt: new Date(),
         },
       ];
-      (mockDb as any).independentExpenditure.findMany.mockResolvedValue(
-        mockItems,
+      mockDb.independentExpenditure.findMany.mockResolvedValue(
+        mockItems as never,
       );
-      (mockDb as any).independentExpenditure.count.mockResolvedValue(1);
+      mockDb.independentExpenditure.count.mockResolvedValue(1);
 
       const result = await service.getIndependentExpenditures(0, 10);
 
@@ -834,8 +855,8 @@ describe('RegionDomainService', () => {
     });
 
     it('should filter by committeeId, supportOrOppose, and sourceSystem', async () => {
-      (mockDb as any).independentExpenditure.findMany.mockResolvedValue([]);
-      (mockDb as any).independentExpenditure.count.mockResolvedValue(0);
+      mockDb.independentExpenditure.findMany.mockResolvedValue([]);
+      mockDb.independentExpenditure.count.mockResolvedValue(0);
 
       await service.getIndependentExpenditures(
         0,
@@ -845,9 +866,7 @@ describe('RegionDomainService', () => {
         'cal-access',
       );
 
-      expect(
-        (mockDb as any).independentExpenditure.findMany,
-      ).toHaveBeenCalledWith(
+      expect(mockDb.independentExpenditure.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             committeeId: 'comm-1',
@@ -862,22 +881,20 @@ describe('RegionDomainService', () => {
   describe('getIndependentExpenditure', () => {
     it('should return a single independent expenditure by ID', async () => {
       const mockIE = { id: '1', committeeName: 'Test IE Committee' };
-      (mockDb as any).independentExpenditure.findUnique.mockResolvedValue(
-        mockIE,
+      mockDb.independentExpenditure.findUnique.mockResolvedValue(
+        mockIE as never,
       );
 
       const result = await service.getIndependentExpenditure('1');
 
       expect(result).toEqual(mockIE);
-      expect(
-        (mockDb as any).independentExpenditure.findUnique,
-      ).toHaveBeenCalledWith({
+      expect(mockDb.independentExpenditure.findUnique).toHaveBeenCalledWith({
         where: { id: '1' },
       });
     });
 
     it('should return null if independent expenditure not found', async () => {
-      (mockDb as any).independentExpenditure.findUnique.mockResolvedValue(null);
+      mockDb.independentExpenditure.findUnique.mockResolvedValue(null);
 
       const result = await service.getIndependentExpenditure('nonexistent');
 
@@ -902,7 +919,7 @@ describe('RegionDomainService — federal placeholder resolution', () => {
       loadedAt: new Date(),
     };
 
-    const mockRegistry: any = {
+    const mockRegistry: MockPluginRegistry = {
       register: jest.fn().mockResolvedValue(undefined),
       unregister: jest.fn().mockResolvedValue(undefined),
       getActive: jest.fn().mockReturnValue(mockPlugin),
@@ -918,7 +935,7 @@ describe('RegionDomainService — federal placeholder resolution', () => {
       onModuleDestroy: jest.fn(),
     };
 
-    const mockLoader: any = {
+    const mockLoader: MockPluginLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
@@ -964,17 +981,15 @@ describe('RegionDomainService — federal placeholder resolution', () => {
       },
     };
 
-    (mockDb as any).regionPlugin = {
-      findFirst: jest.fn().mockResolvedValue(localConfig),
-      findUnique: jest.fn().mockResolvedValue(federalConfig),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
+    mockDb.regionPlugin.findFirst.mockResolvedValue(localConfig as never);
+    mockDb.regionPlugin.findUnique.mockResolvedValue(federalConfig as never);
+    mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
     mockDb.proposition.findMany.mockResolvedValue([]);
     mockDb.meeting.findMany.mockResolvedValue([]);
     mockDb.representative.findMany.mockResolvedValue([]);
     (mockDb.$transaction as jest.Mock).mockImplementation(
-      async (operations: any[]) => Promise.all(operations),
+      async (operations: Promise<unknown>[]) => Promise.all(operations),
     );
 
     const module = await Test.createTestingModule({
@@ -1012,7 +1027,7 @@ describe('RegionDomainService — federal placeholder resolution', () => {
       loadedAt: new Date(),
     };
 
-    const mockRegistry: any = {
+    const mockRegistry: MockPluginRegistry = {
       register: jest.fn().mockResolvedValue(undefined),
       unregister: jest.fn().mockResolvedValue(undefined),
       getActive: jest.fn().mockReturnValue(mockPlugin),
@@ -1028,7 +1043,7 @@ describe('RegionDomainService — federal placeholder resolution', () => {
       onModuleDestroy: jest.fn(),
     };
 
-    const mockLoader: any = {
+    const mockLoader: MockPluginLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
@@ -1049,17 +1064,15 @@ describe('RegionDomainService — federal placeholder resolution', () => {
       },
     };
 
-    (mockDb as any).regionPlugin = {
-      findFirst: jest.fn().mockResolvedValue(null), // no local config
-      findUnique: jest.fn().mockResolvedValue(federalConfig),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
+    mockDb.regionPlugin.findFirst.mockResolvedValue(null); // no local config
+    mockDb.regionPlugin.findUnique.mockResolvedValue(federalConfig as never);
+    mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
     mockDb.proposition.findMany.mockResolvedValue([]);
     mockDb.meeting.findMany.mockResolvedValue([]);
     mockDb.representative.findMany.mockResolvedValue([]);
     (mockDb.$transaction as jest.Mock).mockImplementation(
-      async (operations: any[]) => Promise.all(operations),
+      async (operations: Promise<unknown>[]) => Promise.all(operations),
     );
 
     const module = await Test.createTestingModule({
@@ -1089,7 +1102,7 @@ describe('RegionDomainService — federal placeholder resolution', () => {
  */
 describe('RegionDomainService — campaign finance sync', () => {
   let service: RegionDomainService;
-  let mockDb: ReturnType<typeof createMockDbService>;
+  let mockDb: MockDbClient;
   let mockPlugin: jest.Mocked<IRegionPlugin> & {
     fetchCampaignFinance: jest.Mock;
   };
@@ -1163,7 +1176,7 @@ describe('RegionDomainService — campaign finance sync', () => {
       loadedAt: new Date(),
     };
 
-    const mockRegistry: any = {
+    const mockRegistry: MockPluginRegistry = {
       register: jest.fn().mockResolvedValue(undefined),
       unregister: jest.fn().mockResolvedValue(undefined),
       getActive: jest.fn().mockReturnValue(mockPlugin),
@@ -1179,38 +1192,32 @@ describe('RegionDomainService — campaign finance sync', () => {
       onModuleDestroy: jest.fn(),
     };
 
-    const mockLoader: any = {
+    const mockLoader: MockPluginLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
 
-    (mockDb as any).regionPlugin = {
-      findFirst: jest.fn().mockResolvedValue(null),
-      findUnique: jest.fn().mockResolvedValue(null),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
+    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findUnique.mockResolvedValue(null);
+    mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
     // Set up campaign finance mocks
-    (mockDb as any).contribution = {
-      findMany: jest.fn().mockResolvedValue([]),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
-    (mockDb as any).expenditure = {
-      findMany: jest.fn().mockResolvedValue([]),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
-    (mockDb as any).independentExpenditure = {
-      findMany: jest.fn().mockResolvedValue([]),
-      upsert: jest.fn().mockResolvedValue({}),
-    };
+    mockDb.contribution.findMany.mockResolvedValue([]);
+    mockDb.contribution.upsert.mockResolvedValue({} as never);
+
+    mockDb.expenditure.findMany.mockResolvedValue([]);
+    mockDb.expenditure.upsert.mockResolvedValue({} as never);
+
+    mockDb.independentExpenditure.findMany.mockResolvedValue([]);
+    mockDb.independentExpenditure.upsert.mockResolvedValue({} as never);
 
     mockDb.proposition.findMany.mockResolvedValue([]);
     mockDb.meeting.findMany.mockResolvedValue([]);
     mockDb.representative.findMany.mockResolvedValue([]);
 
     (mockDb.$transaction as jest.Mock).mockImplementation(
-      async (operations: any[]) => Promise.all(operations),
+      async (operations: Promise<unknown>[]) => Promise.all(operations),
     );
 
     const module = await Test.createTestingModule({
@@ -1242,8 +1249,8 @@ describe('RegionDomainService — campaign finance sync', () => {
 
   it('should update existing records matched by externalId via syncAll', async () => {
     // Mock one existing contribution
-    (mockDb as any).contribution.findMany.mockResolvedValue([
-      { externalId: 'CONT-1' },
+    mockDb.contribution.findMany.mockResolvedValue([
+      { externalId: 'CONT-1' } as never,
     ]);
 
     const results = await service.syncAll();

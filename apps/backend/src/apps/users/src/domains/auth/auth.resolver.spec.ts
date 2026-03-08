@@ -1,8 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
+import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { createMock } from '@golevelup/ts-jest';
+import type {
+  RegistrationResponseJSON,
+  AuthenticationResponseJSON,
+} from '@simplewebauthn/server';
 
 import { AuthResolver } from './auth.resolver';
 import { AuthService } from './auth.service';
@@ -29,11 +33,11 @@ const createMockContext = (): GqlContext => ({
     user: undefined,
     headers: {},
     ip: '127.0.0.1',
-  } as any,
+  },
   res: {
     cookie: jest.fn(),
     clearCookie: jest.fn(),
-  } as any,
+  } as unknown as Response,
 });
 
 // Mock AccountLockoutService that returns sensible defaults
@@ -461,7 +465,7 @@ describe('AuthResolver', () => {
       const result = await resolver.verifyPasskeyRegistration(
         {
           email: 'test@example.com',
-          response: {} as any,
+          response: {} as unknown as RegistrationResponseJSON,
           friendlyName: 'My Device',
         },
         mockContext,
@@ -487,7 +491,7 @@ describe('AuthResolver', () => {
       const result = await resolver.verifyPasskeyRegistration(
         {
           email: 'test@example.com',
-          response: {} as any,
+          response: {} as unknown as RegistrationResponseJSON,
         },
         mockContext,
       );
@@ -503,7 +507,7 @@ describe('AuthResolver', () => {
         resolver.verifyPasskeyRegistration(
           {
             email: 'unknown@example.com',
-            response: {} as any,
+            response: {} as unknown as RegistrationResponseJSON,
           },
           mockContext,
         ),
@@ -613,7 +617,7 @@ describe('AuthResolver', () => {
       const result = await resolver.verifyPasskeyAuthentication(
         {
           identifier: 'session-1',
-          response: {} as any,
+          response: {} as unknown as AuthenticationResponseJSON,
         },
         mockContext,
       );
@@ -634,7 +638,7 @@ describe('AuthResolver', () => {
         resolver.verifyPasskeyAuthentication(
           {
             identifier: 'session-1',
-            response: {} as any,
+            response: {} as unknown as AuthenticationResponseJSON,
           },
           mockContext,
         ),
@@ -672,7 +676,7 @@ describe('AuthResolver', () => {
         .fn()
         .mockResolvedValue(mockCredentials);
 
-      const context = {
+      const context: GqlContext = {
         req: {
           user: {
             id: 'user-1',
@@ -684,15 +688,15 @@ describe('AuthResolver', () => {
           headers: {},
         },
       };
-      const result = await resolver.myPasskeys(context as any);
+      const result = await resolver.myPasskeys(context);
 
       expect(result).toEqual(mockCredentials);
     });
 
     it('should throw error when user not authenticated', async () => {
-      const context = { req: { user: undefined, headers: {} } };
+      const context: GqlContext = { req: { user: undefined, headers: {} } };
 
-      await expect(resolver.myPasskeys(context as any)).rejects.toThrow(
+      await expect(resolver.myPasskeys(context)).rejects.toThrow(
         'User not authenticated',
       );
     });
@@ -725,7 +729,7 @@ describe('AuthResolver', () => {
     it('should delete passkey successfully', async () => {
       passkeyService.deleteCredential = jest.fn().mockResolvedValue(true);
 
-      const context = {
+      const context: GqlContext = {
         req: {
           user: {
             id: 'user-1',
@@ -737,7 +741,7 @@ describe('AuthResolver', () => {
           headers: {},
         },
       };
-      const result = await resolver.deletePasskey('cred-1', context as any);
+      const result = await resolver.deletePasskey('cred-1', context);
 
       expect(result).toBe(true);
       expect(passkeyService.deleteCredential).toHaveBeenCalledWith(
@@ -747,11 +751,11 @@ describe('AuthResolver', () => {
     });
 
     it('should throw error when user not authenticated', async () => {
-      const context = { req: { user: undefined, headers: {} } };
+      const context: GqlContext = { req: { user: undefined, headers: {} } };
 
-      await expect(
-        resolver.deletePasskey('cred-1', context as any),
-      ).rejects.toThrow('User not authenticated');
+      await expect(resolver.deletePasskey('cred-1', context)).rejects.toThrow(
+        'User not authenticated',
+      );
     });
   });
 

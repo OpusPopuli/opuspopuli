@@ -1,12 +1,17 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import type {
   RegistrationResponseJSON,
   AuthenticationResponseJSON,
+  VerifiedRegistrationResponse,
 } from '@simplewebauthn/server';
 
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import {
+  DbService,
+  PasskeyCredential,
+  WebAuthnChallenge,
+  User,
+} from '@opuspopuli/relationaldb-provider';
 import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
 import { PasskeyService } from './passkey.service';
 
@@ -24,8 +29,7 @@ describe('PasskeyService', () => {
   let service: PasskeyService;
   let mockDb: ReturnType<typeof createMockDbService>;
 
-  // Using 'any' type for mock objects to avoid strict type checking
-  const mockCredential: any = {
+  const mockCredential = {
     id: 'cred-1',
     userId: 'user-1',
     credentialId: 'credential-id-123',
@@ -41,15 +45,15 @@ describe('PasskeyService', () => {
       id: 'user-1',
       email: 'test@example.com',
     },
-  };
+  } as unknown as PasskeyCredential;
 
-  const mockChallenge: any = {
+  const mockChallenge = {
     identifier: 'test@example.com',
     challenge: 'challenge-string',
     type: 'registration',
     expiresAt: new Date(Date.now() + 300000), // 5 minutes from now
     createdAt: new Date(),
-  };
+  } as unknown as WebAuthnChallenge;
 
   // Mock WebAuthn response objects with proper types
   const mockRegistrationResponse: RegistrationResponseJSON = {
@@ -336,7 +340,7 @@ describe('PasskeyService', () => {
 
       const result = await service.saveCredential(
         'user-1',
-        mockVerification as any,
+        mockVerification as unknown as VerifiedRegistrationResponse,
         'My Passkey',
       );
 
@@ -360,7 +364,10 @@ describe('PasskeyService', () => {
 
       mockDb.passkeyCredential.create.mockResolvedValue(mockCredential);
 
-      await service.saveCredential('user-1', mockVerification as any);
+      await service.saveCredential(
+        'user-1',
+        mockVerification as unknown as VerifiedRegistrationResponse,
+      );
 
       expect(mockDb.passkeyCredential.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -385,7 +392,10 @@ describe('PasskeyService', () => {
 
       mockDb.passkeyCredential.create.mockResolvedValue(mockCredential);
 
-      await service.saveCredential('user-1', mockVerification as any);
+      await service.saveCredential(
+        'user-1',
+        mockVerification as unknown as VerifiedRegistrationResponse,
+      );
 
       expect(mockDb.passkeyCredential.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -410,7 +420,10 @@ describe('PasskeyService', () => {
 
       mockDb.passkeyCredential.create.mockResolvedValue(mockCredential);
 
-      await service.saveCredential('user-1', mockVerification as any);
+      await service.saveCredential(
+        'user-1',
+        mockVerification as unknown as VerifiedRegistrationResponse,
+      );
 
       expect(mockDb.passkeyCredential.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -438,11 +451,11 @@ describe('PasskeyService', () => {
 
     it('should generate authentication options with email', async () => {
       const mockOptions = { challenge: 'auth-challenge' };
-      const mockUser: any = {
+      const mockUser = {
         id: 'user-1',
         email: 'test@example.com',
         passkeyCredentials: [mockCredential],
-      };
+      } as unknown as User;
 
       mockDb.user.findUnique.mockResolvedValue(mockUser);
       (
@@ -467,11 +480,11 @@ describe('PasskeyService', () => {
 
     it('should generate options without allowCredentials when no credentials found', async () => {
       const mockOptions = { challenge: 'auth-challenge' };
-      const mockUser: any = {
+      const mockUser = {
         id: 'user-1',
         email: 'test@example.com',
         passkeyCredentials: [],
-      };
+      } as unknown as User;
 
       mockDb.user.findUnique.mockResolvedValue(mockUser);
       (

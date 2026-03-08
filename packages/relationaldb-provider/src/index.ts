@@ -70,6 +70,7 @@ export type {
   IndependentExpenditure,
   PromptTemplate,
   AbuseReport,
+  DocumentProposition,
 } from "@prisma/client";
 
 // Re-export database enums
