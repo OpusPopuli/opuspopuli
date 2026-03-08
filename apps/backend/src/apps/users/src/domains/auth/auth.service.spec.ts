@@ -556,6 +556,7 @@ describe('AuthService', () => {
       expect(emailService.sendWelcomeEmail).toHaveBeenCalledWith(
         'new-id',
         'new@example.com',
+        undefined,
       );
     });
 

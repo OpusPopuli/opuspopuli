@@ -63,13 +63,13 @@ export class UsersService {
           `authService error registering (${JSON.stringify(createUserDto)}): ${error instanceof Error ? error.message : String(error)}`,
         );
 
-        this.db.user
-          .delete({ where: { id: dbUser.id } })
-          .catch((deleteError: Error) => {
-            this.logger.error(
-              `Error deleting user after authService error: ${deleteError.message}`,
-            );
-          });
+        try {
+          await this.db.user.delete({ where: { id: dbUser.id } });
+        } catch (deleteError) {
+          this.logger.error(
+            `Error deleting user after authService error: ${(deleteError as Error).message}`,
+          );
+        }
 
         throw error;
       }
