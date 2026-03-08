@@ -2,7 +2,6 @@ import {
   Args,
   Extensions,
   ID,
-  Int,
   Mutation,
   Query,
   Resolver,
@@ -12,6 +11,7 @@ import { AuthGuard } from 'src/common/guards/auth.guard';
 import { Public } from 'src/common/decorators/public.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { PaginationArgs } from 'src/common/dto/pagination.args';
 import { RegionDomainService } from './region.service';
 import {
   RegionInfoModel,
@@ -68,8 +68,7 @@ export class RegionResolver {
   @Query(() => PaginatedPropositions)
   @Extensions({ complexity: 15 }) // Paginated list query
   async propositions(
-    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
-    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args() { skip, take }: PaginationArgs,
   ): Promise<PaginatedPropositions> {
     return this.regionService.getPropositions(skip, take);
   }
@@ -101,8 +100,7 @@ export class RegionResolver {
   @Query(() => PaginatedMeetings)
   @Extensions({ complexity: 15 }) // Paginated list query
   async meetings(
-    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
-    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args() { skip, take }: PaginationArgs,
   ): Promise<PaginatedMeetings> {
     return this.regionService.getMeetings(skip, take);
   }
@@ -133,8 +131,7 @@ export class RegionResolver {
   @Query(() => PaginatedRepresentatives)
   @Extensions({ complexity: 15 }) // Paginated list query
   async representatives(
-    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
-    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args() { skip, take }: PaginationArgs,
     @Args({ name: 'chamber', nullable: true }) chamber?: string,
   ): Promise<PaginatedRepresentatives> {
     return this.regionService.getRepresentatives(skip, take, chamber);
@@ -169,8 +166,7 @@ export class RegionResolver {
   @Query(() => PaginatedCommittees)
   @Extensions({ complexity: 15 })
   async committees(
-    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
-    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args() { skip, take }: PaginationArgs,
     @Args({ name: 'sourceSystem', nullable: true }) sourceSystem?: string,
   ): Promise<PaginatedCommittees> {
     return this.regionService.getCommittees(skip, take, sourceSystem);
@@ -203,8 +199,7 @@ export class RegionResolver {
   @Query(() => PaginatedContributions)
   @Extensions({ complexity: 15 })
   async contributions(
-    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
-    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args() { skip, take }: PaginationArgs,
     @Args({ name: 'committeeId', nullable: true }) committeeId?: string,
     @Args({ name: 'sourceSystem', nullable: true }) sourceSystem?: string,
   ): Promise<PaginatedContributions> {
@@ -246,8 +241,7 @@ export class RegionResolver {
   @Query(() => PaginatedExpenditures)
   @Extensions({ complexity: 15 })
   async expenditures(
-    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
-    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args() { skip, take }: PaginationArgs,
     @Args({ name: 'committeeId', nullable: true }) committeeId?: string,
     @Args({ name: 'sourceSystem', nullable: true }) sourceSystem?: string,
   ): Promise<PaginatedExpenditures> {
@@ -287,8 +281,7 @@ export class RegionResolver {
   @Query(() => PaginatedIndependentExpenditures)
   @Extensions({ complexity: 15 })
   async independentExpenditures(
-    @Args({ name: 'skip', type: () => Int, defaultValue: 0 }) skip: number,
-    @Args({ name: 'take', type: () => Int, defaultValue: 10 }) take: number,
+    @Args() { skip, take }: PaginationArgs,
     @Args({ name: 'committeeId', nullable: true }) committeeId?: string,
     @Args({ name: 'supportOrOppose', nullable: true })
     supportOrOppose?: string,
