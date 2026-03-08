@@ -1,10 +1,11 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 
 import { EmailResolver } from './email.resolver';
 import { EmailService } from './email.service';
 import { EmailType, EmailStatus } from 'src/common/enums/email.enum';
+import { GqlContext } from 'src/common/utils/graphql-context';
+import { PropositionInfoDto } from './dto/contact-representative.dto';
 
 describe('EmailResolver', () => {
   let resolver: EmailResolver;
@@ -13,14 +14,24 @@ describe('EmailResolver', () => {
   const mockUserId = 'test-user-id';
   const mockUserEmail = 'test@example.com';
 
-  const mockContext = {
+  const mockContext: GqlContext = {
     req: {
-      user: { id: mockUserId, email: mockUserEmail },
+      user: {
+        id: mockUserId,
+        email: mockUserEmail,
+        roles: [],
+        department: '',
+        clearance: '',
+      },
+      headers: {},
     },
   };
 
-  const mockContextNoUser = {
-    req: {},
+  const mockContextNoUser: GqlContext = {
+    req: {
+      user: undefined,
+      headers: {},
+    },
   };
 
   const mockCorrespondence = {
@@ -70,7 +81,7 @@ describe('EmailResolver', () => {
       emailService.getEmailHistory = jest.fn().mockResolvedValue(mockResult);
 
       const result = await resolver.getMyEmailHistory(
-        mockContext as any,
+        mockContext,
         0,
         10,
         undefined,
@@ -100,7 +111,7 @@ describe('EmailResolver', () => {
       emailService.getEmailHistory = jest.fn().mockResolvedValue(mockResult);
 
       await resolver.getMyEmailHistory(
-        mockContext as any,
+        mockContext,
         0,
         10,
         EmailType.REPRESENTATIVE_CONTACT,
@@ -116,7 +127,7 @@ describe('EmailResolver', () => {
 
     it('should throw error if user not authenticated', async () => {
       await expect(
-        resolver.getMyEmailHistory(mockContextNoUser as any, 0, 10),
+        resolver.getMyEmailHistory(mockContextNoUser, 0, 10),
       ).rejects.toThrow('User not authenticated');
     });
   });
@@ -129,7 +140,7 @@ describe('EmailResolver', () => {
 
       const result = await resolver.getMyEmail(
         mockCorrespondence.id,
-        mockContext as any,
+        mockContext,
       );
 
       expect(result).toEqual(mockCorrespondence);
@@ -142,17 +153,14 @@ describe('EmailResolver', () => {
     it('should return null if email not found', async () => {
       emailService.getEmailById = jest.fn().mockResolvedValue(null);
 
-      const result = await resolver.getMyEmail(
-        'non-existent-id',
-        mockContext as any,
-      );
+      const result = await resolver.getMyEmail('non-existent-id', mockContext);
 
       expect(result).toBeNull();
     });
 
     it('should throw error if user not authenticated', async () => {
       await expect(
-        resolver.getMyEmail('some-id', mockContextNoUser as any),
+        resolver.getMyEmail('some-id', mockContextNoUser),
       ).rejects.toThrow('User not authenticated');
     });
   });
@@ -216,7 +224,7 @@ describe('EmailResolver', () => {
         mockInput,
         mockRepresentative,
         mockProposition,
-        mockContext as any,
+        mockContext,
       );
 
       expect(result.success).toBe(true);
@@ -251,8 +259,8 @@ describe('EmailResolver', () => {
       const result = await resolver.contactRepresentative(
         mockInput,
         mockRepresentative,
-        null as any,
-        mockContext as any,
+        null as unknown as PropositionInfoDto,
+        mockContext,
       );
 
       expect(result.success).toBe(true);
@@ -273,8 +281,8 @@ describe('EmailResolver', () => {
       const result = await resolver.contactRepresentative(
         mockInput,
         mockRepresentative,
-        null as any,
-        mockContext as any,
+        null as unknown as PropositionInfoDto,
+        mockContext,
       );
 
       expect(result.success).toBe(false);
@@ -286,8 +294,8 @@ describe('EmailResolver', () => {
         resolver.contactRepresentative(
           mockInput,
           mockRepresentative,
-          null as any,
-          mockContextNoUser as any,
+          null as unknown as PropositionInfoDto,
+          mockContextNoUser,
         ),
       ).rejects.toThrow('User not authenticated');
     });
