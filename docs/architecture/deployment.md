@@ -60,7 +60,7 @@ The **Frontend** (Next.js) can be deployed to the edge proxy layer (e.g., Cloudf
 | **Edge Proxy** | Public ingress, TLS termination, DDoS protection, CDN | Routes HTTPS to the compute node | Cloudflare Tunnel (free) | Nginx + Let's Encrypt, Caddy, Tailscale Funnel, ngrok |
 | **User-Facing Database** | Users, auth, documents, knowledge base, file storage | Managed PostgreSQL + pgvector, auth service, object storage | Supabase Cloud | Self-hosted Supabase, any PostgreSQL + auth stack |
 | **AI/Scratch Database** | Structural manifests, pipeline state, prompt templates | PostgreSQL + pgvector, low-latency to LLM | Runs in Docker on the compute node (always local) | N/A (always colocated with compute) |
-| **LLM Endpoint** | Inference for structural analysis, RAG, content evaluation | Ollama-compatible API, GPU required for production inference (Mistral 7B, Llama 3.1) | Ollama native (macOS Metal, Linux CUDA) | Claude API, OpenAI API, vLLM, Ollama in Docker (CPU, development only) |
+| **LLM Endpoint** | Inference for structural analysis, RAG, content evaluation | Ollama-compatible API, GPU required for production inference (Mistral 7B, Llama 3.1) | Ollama native (macOS Metal, Linux CUDA) | Claude API, OpenAI API, Ollama in Docker (CPU, development only) |
 | **Frontend** | User-facing web application (Next.js) | Static hosting or edge runtime | Cloudflare Workers | Vercel, Netlify, Docker container (self-hosted) |
 
 ## Dual-Database Strategy

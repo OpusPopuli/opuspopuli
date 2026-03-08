@@ -452,7 +452,7 @@ See [Authentication Security Guide](../guides/auth-security.md) for implementati
 ## Future Enhancements
 
 ### Planned Providers
-- **LLM**: vLLM, Text Generation Inference
+- **LLM**: Claude API, OpenAI API
 - **Embeddings**: Custom fine-tuned models
 
 ### Planned Features

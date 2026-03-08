@@ -15,6 +15,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  packages-build:
+    name: Build Packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build packages
+        run: pnpm -r --filter './packages/*' build
+
+      - name: Upload package build artifacts
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4
+        with:
+          name: packages-dist
+          path: packages/*/dist/
+          retention-days: 1
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -44,6 +77,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs: [packages-build]
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -66,8 +100,11 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build packages
-        run: pnpm -r --filter './packages/*' build
+      - name: Download package build artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          name: packages-dist
+          path: packages/
 
       - name: Run tests with coverage
         run: pnpm test:ci
@@ -85,7 +122,7 @@ jobs:
   sonarcloud:
     name: SonarCloud Analysis
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [packages-build, test]
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -108,8 +145,11 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build packages
-        run: pnpm -r --filter './packages/*' build
+      - name: Download package build artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          name: packages-dist
+          path: packages/
 
       - name: Download coverage artifacts
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
@@ -126,7 +166,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, packages-build]
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -147,8 +187,11 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build packages
-        run: pnpm -r --filter './packages/*' build
+      - name: Download package build artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          name: packages-dist
+          path: packages/
 
       - name: Build backend
         run: pnpm --filter backend build
@@ -159,7 +202,7 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: [test]  # Changed from [build] - no need to wait for build since we rebuild frontend here
+    needs: [packages-build, test]
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -200,8 +243,11 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build packages
-        run: pnpm -r --filter './packages/*' build
+      - name: Download package build artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          name: packages-dist
+          path: packages/
 
       - name: Run backend integration tests
         run: pnpm test:integration
