@@ -587,13 +587,9 @@ export class DocumentsService {
         Array.isArray(parsed.relatedMeasures) &&
         (parsed.relatedMeasures as string[]).length > 0
       ) {
-        this.matchAndLinkPropositions(
+        this.matchAndLinkPropositionsSafely(
           documentId,
           parsed.relatedMeasures as string[],
-        ).catch((err) =>
-          this.logger.warn(
-            `Auto-match failed for ${documentId}: ${(err as Error).message}`,
-          ),
         );
       }
 
@@ -1356,6 +1352,19 @@ export class DocumentsService {
       `Auto-matched ${linkedIds.length}/${relatedMeasures.length} measures for document ${documentId}`,
     );
     return { matched: linkedIds.length, propositionIds: linkedIds };
+  }
+
+  private async matchAndLinkPropositionsSafely(
+    documentId: string,
+    relatedMeasures: string[],
+  ): Promise<void> {
+    try {
+      await this.matchAndLinkPropositions(documentId, relatedMeasures);
+    } catch (err) {
+      this.logger.warn(
+        `Auto-match failed for ${documentId}: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**
