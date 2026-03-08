@@ -78,7 +78,7 @@ services:
 
   # Inbucket - Local Email Testing (captures emails in web UI)
   inbucket:
-    image: inbucket/inbucket:latest
+    image: inbucket/inbucket:3.0.2
     container_name: opuspopuli-inbucket
     ports:
       - "54324:9000"  # Web UI
@@ -420,7 +420,7 @@ services:
 
   # Ollama - LLM Inference
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.17.7
     container_name: opuspopuli-ollama
     platform: "linux/amd64"
     ports:
