@@ -470,4 +470,4 @@ LLM_MODEL=my-custom-model
 - [AI/ML Pipeline](../architecture/ai-ml-pipeline.md) - Architecture details
 - [RAG Implementation](rag-implementation.md) - Using the RAG system
 - [Docker Setup](docker-setup.md) - Infrastructure configuration
-- [Ollama Library](https://ollama.ai/library) - Browse all available models
+- [Ollama Library](https://ollama.com/library) - Browse all available models
