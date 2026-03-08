@@ -955,6 +955,7 @@ export class DocumentsService {
         COUNT(scan_location) as total_with_location,
         COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') as recent_petitions
       FROM documents
+      WHERE type = 'petition' AND deleted_at IS NULL
     `;
 
     const stats = results[0];
@@ -1057,75 +1058,81 @@ export class DocumentsService {
    * No individual user information is returned.
    */
   async getPetitionActivityFeed(): Promise<PetitionActivityFeed> {
-    const items = await this.db.$queryRaw<
+    const results = await this.db.$queryRaw<
       Array<{
-        content_hash: string;
-        summary: string | null;
-        document_type: string | null;
-        scan_count: bigint;
-        location_count: bigint;
-        latest_scan_at: Date;
-        earliest_scan_at: Date;
+        items: Array<{
+          content_hash: string;
+          summary: string | null;
+          document_type: string | null;
+          scan_count: number;
+          location_count: number;
+          latest_scan_at: string;
+          earliest_scan_at: string;
+        }>;
+        hourly_trend: Array<{
+          hour: string;
+          scan_count: number;
+        }>;
+        total_scans: number;
+        active_petitions: number;
       }>
     >`
+      WITH petition_base AS (
+        SELECT *
+        FROM documents
+        WHERE type = 'petition'
+          AND deleted_at IS NULL
+          AND created_at >= NOW() - INTERVAL '24 hours'
+      ),
+      items AS (
+        SELECT COALESCE(json_agg(t ORDER BY t.latest_scan_at DESC), '[]'::json) AS data
+        FROM (
+          SELECT
+            content_hash,
+            (MAX(analysis::json->>'summary'))::text as summary,
+            MAX(type::text) as document_type,
+            COUNT(*)::int as scan_count,
+            COUNT(DISTINCT CONCAT(
+              ROUND(ST_Y(scan_location::geometry)::numeric, 2),
+              ',',
+              ROUND(ST_X(scan_location::geometry)::numeric, 2)
+            )) FILTER (WHERE scan_location IS NOT NULL)::int as location_count,
+            MAX(created_at) as latest_scan_at,
+            MIN(created_at) as earliest_scan_at
+          FROM petition_base
+          WHERE content_hash IS NOT NULL
+          GROUP BY content_hash
+          HAVING COUNT(*) >= ${PRIVACY_THRESHOLD}
+          LIMIT 50
+        ) t
+      ),
+      hourly AS (
+        SELECT COALESCE(json_agg(t ORDER BY t.hour ASC), '[]'::json) AS data
+        FROM (
+          SELECT
+            date_trunc('hour', created_at) as hour,
+            COUNT(*)::int as scan_count
+          FROM petition_base
+          GROUP BY date_trunc('hour', created_at)
+        ) t
+      ),
+      stats AS (
+        SELECT
+          COUNT(*)::int as total_scans,
+          COUNT(DISTINCT content_hash) FILTER (WHERE content_hash IS NOT NULL)::int as active_petitions
+        FROM petition_base
+      )
       SELECT
-        content_hash,
-        (MAX(analysis::json->>'summary'))::text as summary,
-        MAX(type::text) as document_type,
-        COUNT(*) as scan_count,
-        COUNT(DISTINCT CONCAT(
-          ROUND(ST_Y(scan_location::geometry)::numeric, 2),
-          ',',
-          ROUND(ST_X(scan_location::geometry)::numeric, 2)
-        )) FILTER (WHERE scan_location IS NOT NULL) as location_count,
-        MAX(created_at) as latest_scan_at,
-        MIN(created_at) as earliest_scan_at
-      FROM documents
-      WHERE
-        content_hash IS NOT NULL
-        AND type = 'petition'
-        AND deleted_at IS NULL
-        AND created_at >= NOW() - INTERVAL '24 hours'
-      GROUP BY content_hash
-      HAVING COUNT(*) >= ${PRIVACY_THRESHOLD}
-      ORDER BY MAX(created_at) DESC
-      LIMIT 50
+        items.data as items,
+        hourly.data as hourly_trend,
+        stats.total_scans,
+        stats.active_petitions
+      FROM items, hourly, stats
     `;
 
-    const hourlyTrend = await this.db.$queryRaw<
-      Array<{
-        hour: Date;
-        scan_count: bigint;
-      }>
-    >`
-      SELECT
-        date_trunc('hour', created_at) as hour,
-        COUNT(*) as scan_count
-      FROM documents
-      WHERE
-        type = 'petition'
-        AND deleted_at IS NULL
-        AND created_at >= NOW() - INTERVAL '24 hours'
-      GROUP BY date_trunc('hour', created_at)
-      ORDER BY hour ASC
-    `;
-
-    const summaryStats = await this.db.$queryRaw<
-      Array<{
-        total_scans: bigint;
-        active_petitions: bigint;
-      }>
-    >`
-      SELECT
-        COUNT(*) as total_scans,
-        COUNT(DISTINCT content_hash) as active_petitions
-      FROM documents
-      WHERE
-        type = 'petition'
-        AND content_hash IS NOT NULL
-        AND deleted_at IS NULL
-        AND created_at >= NOW() - INTERVAL '24 hours'
-    `;
+    const row = results[0];
+    const items = row?.items ?? [];
+    const hourlyTrend = row?.hourly_trend ?? [];
 
     return {
       items: items.map((item) => ({
@@ -1134,15 +1141,15 @@ export class DocumentsService {
         documentType: item.document_type ?? undefined,
         scanCount: Number(item.scan_count),
         locationCount: Number(item.location_count),
-        latestScanAt: item.latest_scan_at,
-        earliestScanAt: item.earliest_scan_at,
+        latestScanAt: new Date(item.latest_scan_at),
+        earliestScanAt: new Date(item.earliest_scan_at),
       })),
       hourlyTrend: hourlyTrend.map((bucket) => ({
-        hour: bucket.hour,
+        hour: new Date(bucket.hour),
         scanCount: Number(bucket.scan_count),
       })),
-      totalScansLast24h: Number(summaryStats[0]?.total_scans ?? 0),
-      activePetitionsLast24h: Number(summaryStats[0]?.active_petitions ?? 0),
+      totalScansLast24h: Number(row?.total_scans ?? 0),
+      activePetitionsLast24h: Number(row?.active_petitions ?? 0),
     };
   }
 

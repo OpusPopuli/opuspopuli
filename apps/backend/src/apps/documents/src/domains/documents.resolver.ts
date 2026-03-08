@@ -59,6 +59,7 @@ import {
   DeleteAllScansResult,
 } from './dto/scan-history.dto';
 import { Public } from 'src/common/decorators/public.decorator';
+import { PaginationArgs } from 'src/common/dto/pagination.args';
 
 /**
  * Documents Resolver
@@ -307,8 +308,7 @@ export class DocumentsResolver {
   @Permissions({ action: Action.Read, subject: 'File' })
   @Extensions({ complexity: 20 })
   async myScanHistory(
-    @Args('skip', { type: () => Number, defaultValue: 0 }) skip: number,
-    @Args('take', { type: () => Number, defaultValue: 10 }) take: number,
+    @Args() { skip, take }: PaginationArgs,
     @Args('filters', { nullable: true }) filters?: ScanHistoryFiltersInput,
     @Context() context?: GqlContext,
   ): Promise<PaginatedScanHistory> {

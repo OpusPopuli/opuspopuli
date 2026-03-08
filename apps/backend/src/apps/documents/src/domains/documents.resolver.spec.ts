@@ -338,8 +338,7 @@ describe('DocumentsResolver', () => {
       documentsService.getScanHistory = jest.fn().mockResolvedValue(mockResult);
 
       const result = await documentsResolver.myScanHistory(
-        0,
-        10,
+        { skip: 0, take: 10 },
         undefined,
         mockContext,
       );
@@ -358,7 +357,11 @@ describe('DocumentsResolver', () => {
       documentsService.getScanHistory = jest.fn().mockResolvedValue(mockResult);
 
       const filters = { search: 'parks' };
-      await documentsResolver.myScanHistory(0, 10, filters, mockContext);
+      await documentsResolver.myScanHistory(
+        { skip: 0, take: 10 },
+        filters,
+        mockContext,
+      );
 
       expect(documentsService.getScanHistory).toHaveBeenCalledWith(
         'user-1',

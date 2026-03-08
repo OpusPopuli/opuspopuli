@@ -177,7 +177,7 @@ describe('RegionResolver', () => {
       };
       regionService.getPropositions.mockResolvedValue(mockPaginatedResult);
 
-      const result = await resolver.propositions(0, 10);
+      const result = await resolver.propositions({ skip: 0, take: 10 });
 
       expect(result).toEqual(mockPaginatedResult);
       expect(regionService.getPropositions).toHaveBeenCalledWith(0, 10);
@@ -191,7 +191,7 @@ describe('RegionResolver', () => {
       };
       regionService.getPropositions.mockResolvedValue(mockPaginatedResult);
 
-      await resolver.propositions(0, 10);
+      await resolver.propositions({ skip: 0, take: 10 });
 
       expect(regionService.getPropositions).toHaveBeenCalledWith(0, 10);
     });
@@ -226,7 +226,7 @@ describe('RegionResolver', () => {
       };
       regionService.getMeetings.mockResolvedValue(mockPaginatedResult);
 
-      const result = await resolver.meetings(0, 10);
+      const result = await resolver.meetings({ skip: 0, take: 10 });
 
       expect(result).toEqual(mockPaginatedResult);
       expect(regionService.getMeetings).toHaveBeenCalledWith(0, 10);
@@ -267,7 +267,7 @@ describe('RegionResolver', () => {
       };
       regionService.getRepresentatives.mockResolvedValue(mockPaginatedResult);
 
-      const result = await resolver.representatives(0, 10);
+      const result = await resolver.representatives({ skip: 0, take: 10 });
 
       expect(result).toEqual(mockPaginatedResult);
       expect(regionService.getRepresentatives).toHaveBeenCalledWith(
@@ -285,7 +285,7 @@ describe('RegionResolver', () => {
       };
       regionService.getRepresentatives.mockResolvedValue(mockPaginatedResult);
 
-      await resolver.representatives(0, 10, 'Senate');
+      await resolver.representatives({ skip: 0, take: 10 }, 'Senate');
 
       expect(regionService.getRepresentatives).toHaveBeenCalledWith(
         0,
@@ -332,7 +332,7 @@ describe('RegionResolver', () => {
       };
       regionService.getCommittees.mockResolvedValue(mockPaginatedResult);
 
-      const result = await resolver.committees(0, 10);
+      const result = await resolver.committees({ skip: 0, take: 10 });
 
       expect(result).toEqual(mockPaginatedResult);
       expect(regionService.getCommittees).toHaveBeenCalledWith(
@@ -350,7 +350,7 @@ describe('RegionResolver', () => {
       };
       regionService.getCommittees.mockResolvedValue(mockPaginatedResult);
 
-      await resolver.committees(0, 10, 'cal-access');
+      await resolver.committees({ skip: 0, take: 10 }, 'cal-access');
 
       expect(regionService.getCommittees).toHaveBeenCalledWith(
         0,
@@ -395,7 +395,7 @@ describe('RegionResolver', () => {
       };
       regionService.getContributions.mockResolvedValue(mockPaginatedResult);
 
-      const result = await resolver.contributions(0, 10);
+      const result = await resolver.contributions({ skip: 0, take: 10 });
 
       expect(result).toEqual(mockPaginatedResult);
       expect(regionService.getContributions).toHaveBeenCalledWith(
@@ -414,7 +414,11 @@ describe('RegionResolver', () => {
       };
       regionService.getContributions.mockResolvedValue(mockPaginatedResult);
 
-      await resolver.contributions(0, 10, 'comm-1', 'cal-access');
+      await resolver.contributions(
+        { skip: 0, take: 10 },
+        'comm-1',
+        'cal-access',
+      );
 
       expect(regionService.getContributions).toHaveBeenCalledWith(
         0,
@@ -463,7 +467,7 @@ describe('RegionResolver', () => {
       };
       regionService.getExpenditures.mockResolvedValue(mockPaginatedResult);
 
-      const result = await resolver.expenditures(0, 10);
+      const result = await resolver.expenditures({ skip: 0, take: 10 });
 
       expect(result).toEqual(mockPaginatedResult);
       expect(regionService.getExpenditures).toHaveBeenCalledWith(
@@ -482,7 +486,11 @@ describe('RegionResolver', () => {
       };
       regionService.getExpenditures.mockResolvedValue(mockPaginatedResult);
 
-      await resolver.expenditures(0, 10, 'comm-1', 'cal-access');
+      await resolver.expenditures(
+        { skip: 0, take: 10 },
+        'comm-1',
+        'cal-access',
+      );
 
       expect(regionService.getExpenditures).toHaveBeenCalledWith(
         0,
@@ -531,7 +539,10 @@ describe('RegionResolver', () => {
         mockPaginatedResult,
       );
 
-      const result = await resolver.independentExpenditures(0, 10);
+      const result = await resolver.independentExpenditures({
+        skip: 0,
+        take: 10,
+      });
 
       expect(result).toEqual(mockPaginatedResult);
       expect(regionService.getIndependentExpenditures).toHaveBeenCalledWith(
@@ -554,8 +565,7 @@ describe('RegionResolver', () => {
       );
 
       await resolver.independentExpenditures(
-        0,
-        10,
+        { skip: 0, take: 10 },
         'comm-1',
         'support',
         'cal-access',
