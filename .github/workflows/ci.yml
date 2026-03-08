@@ -48,6 +48,50 @@ jobs:
           path: packages/*/dist/
           retention-days: 1
 
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@1f0aa582c8c8f5f7639610d6d38baddfea4fdcee # v0.9.2
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
+        if: always()
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -209,6 +253,9 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     needs: [packages-build, test]
+    permissions:
+      contents: read
+      security-events: write
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -248,6 +295,45 @@ jobs:
           docker compose -f docker-compose-e2e.yml ps
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trivy container scan — users
+        uses: aquasecurity/trivy-action@1f0aa582c8c8f5f7639610d6d38baddfea4fdcee # v0.9.2
+        with:
+          image-ref: 'opuspopuli-users:latest'
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-users.sarif'
+
+      - name: Trivy container scan — documents
+        uses: aquasecurity/trivy-action@1f0aa582c8c8f5f7639610d6d38baddfea4fdcee # v0.9.2
+        with:
+          image-ref: 'opuspopuli-documents:latest'
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-documents.sarif'
+
+      - name: Trivy container scan — knowledge
+        uses: aquasecurity/trivy-action@1f0aa582c8c8f5f7639610d6d38baddfea4fdcee # v0.9.2
+        with:
+          image-ref: 'opuspopuli-knowledge:latest'
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-knowledge.sarif'
+
+      - name: Trivy container scan — region
+        uses: aquasecurity/trivy-action@1f0aa582c8c8f5f7639610d6d38baddfea4fdcee # v0.9.2
+        with:
+          image-ref: 'opuspopuli-region:latest'
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-region.sarif'
+
+      - name: Upload Trivy container scan results
+        uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
+        if: always()
+        with:
+          sarif_file: '.'
+          category: 'container-scanning'
 
       - name: Download package build artifacts
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
