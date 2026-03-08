@@ -86,15 +86,9 @@ export class AuthService {
     await this.usersService.update(user.id, { id: userId });
     await this.usersService.updateAuthStrategy(userId, AuthStrategy.PASSWORD);
 
-    // Send welcome email (async, don't wait for it)
+    // Send welcome email (fire-and-forget)
     if (this.emailService) {
-      this.emailService
-        .sendWelcomeEmail(userId, email, username)
-        .catch((err) => {
-          this.logger.warn(
-            `Failed to send welcome email to ${email}: ${err.message}`,
-          );
-        });
+      this.sendWelcomeEmailSafely(userId, email, username);
     }
 
     return userId;
@@ -265,13 +259,9 @@ export class AuthService {
     // Create user in our database first (passwordless - no password required)
     const newUser = await this.usersService.createPasswordlessUser(email);
 
-    // Send welcome email (async, don't wait for it)
+    // Send welcome email (fire-and-forget)
     if (this.emailService && newUser) {
-      this.emailService.sendWelcomeEmail(newUser.id, email).catch((err) => {
-        this.logger.warn(
-          `Failed to send welcome email to ${email}: ${err.message}`,
-        );
-      });
+      this.sendWelcomeEmailSafely(newUser.id, email);
     }
 
     return this.authProvider.registerWithMagicLink(email, redirectTo);
@@ -292,5 +282,19 @@ export class AuthService {
       `Generating tokens for passkey-authenticated user: ${user.email}`,
     );
     return this.authProvider.createSessionForUser(user.email);
+  }
+
+  private async sendWelcomeEmailSafely(
+    userId: string,
+    email: string,
+    username?: string,
+  ): Promise<void> {
+    try {
+      await this.emailService!.sendWelcomeEmail(userId, email, username);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to send welcome email to ${email}: ${(err as Error).message}`,
+      );
+    }
   }
 }
