@@ -54,17 +54,21 @@ import { REGION_CACHE } from './region.tokens';
       useExisting: ScrapingPipelineService,
     },
     // Redis-backed cache with in-memory fallback for region reference data (#459)
+    // Disabled in test to prevent stale cached data between E2E test cases
     {
       provide: REGION_CACHE,
       useFactory: () => {
+        const isTest = process.env.NODE_ENV === 'test';
+        const ttlMs = isTest ? 0 : 4 * 60 * 60 * 1000; // disabled in test, 4h in prod
+
         const config = CacheFactory.createConfigFromEnv();
         const primary = CacheFactory.createCache<string>({
           ...config,
           keyPrefix: 'region:',
-          cacheOptions: { ttlMs: 4 * 60 * 60 * 1000 }, // 4 hours
+          cacheOptions: { ttlMs },
         });
         const fallback = new MemoryCache<string>({
-          ttlMs: 4 * 60 * 60 * 1000,
+          ttlMs,
           maxSize: 200,
         });
         return new FallbackCache<string>(primary, fallback);
