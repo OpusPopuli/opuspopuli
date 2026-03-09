@@ -1,0 +1,110 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { IStorageProvider } from '@opuspopuli/storage-provider';
+import { DbService } from '@opuspopuli/relationaldb-provider';
+
+import { IFileConfig } from 'src/config';
+import { DocumentStatus } from 'src/common/enums/document.status.enum';
+import { File } from '../models/file.model';
+
+/**
+ * File Service
+ *
+ * Handles file storage operations: list, upload URL, download URL, delete.
+ */
+@Injectable()
+export class FileService {
+  private readonly logger = new Logger(FileService.name, { timestamp: true });
+  private fileConfig: IFileConfig;
+
+  constructor(
+    private readonly db: DbService,
+    @Inject('STORAGE_PROVIDER') private storage: IStorageProvider,
+    private configService: ConfigService,
+  ) {
+    const fileConfig: IFileConfig | undefined =
+      configService.get<IFileConfig>('file');
+
+    if (!fileConfig) {
+      throw new Error('File storage config is missing');
+    }
+
+    this.fileConfig = fileConfig;
+  }
+
+  /**
+   * List all documents for a user
+   */
+  async listFiles(userId: string): Promise<File[]> {
+    const documents = await this.db.document.findMany({
+      where: { userId },
+    });
+
+    const files: File[] = documents.map((document) => ({
+      userId,
+      filename: document.key,
+      size: document.size,
+      // Cast database enum to application enum - values are compatible at runtime
+      status: document.status as unknown as DocumentStatus,
+      createdAt: document.createdAt,
+      updatedAt: document.updatedAt,
+    }));
+
+    return files;
+  }
+
+  /**
+   * Get signed URL for uploading a file
+   */
+  getUploadUrl(userId: string, filename: string): Promise<string> {
+    return this.getSignedUrl(userId, filename, true);
+  }
+
+  /**
+   * Get signed URL for downloading a file
+   */
+  getDownloadUrl(userId: string, filename: string): Promise<string> {
+    return this.getSignedUrl(userId, filename, false);
+  }
+
+  /**
+   * Get signed URL for file access
+   */
+  private getSignedUrl(
+    userId: string,
+    filename: string,
+    upload: boolean,
+  ): Promise<string> {
+    const key = `${userId}/${filename}`;
+    return this.storage.getSignedUrl(this.fileConfig.bucket, key, upload);
+  }
+
+  /**
+   * Delete a file and its metadata
+   */
+  async deleteFile(userId: string, filename: string): Promise<boolean> {
+    this.logger.log(`Deleting file ${filename} for user ${userId}`);
+
+    try {
+      // Delete from storage
+      const key = `${userId}/${filename}`;
+      const deleted = await this.storage.deleteFile(
+        this.fileConfig.bucket,
+        key,
+      );
+
+      if (deleted) {
+        // Delete metadata from database
+        await this.db.document.deleteMany({
+          where: { userId, key: filename },
+        });
+        this.logger.log(`Deleted file ${filename} successfully`);
+      }
+
+      return deleted;
+    } catch (error) {
+      this.logger.error(`Failed to delete file ${filename}:`, error);
+      throw error;
+    }
+  }
+}
