@@ -2,6 +2,8 @@ import { Module, forwardRef } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 
 import { AuthResolver } from './auth.resolver';
+import { SessionResolver } from './session.resolver';
+import { AdminResolver } from './admin.resolver';
 import { AuthService } from './auth.service';
 import { PasskeyService } from './services/passkey.service';
 import { AccountLockoutService } from './services/account-lockout.service';
@@ -21,6 +23,8 @@ import { AuthModule as AuthProviderModule } from '@opuspopuli/auth-provider';
   ],
   providers: [
     AuthResolver,
+    SessionResolver,
+    AdminResolver,
     AuthService,
     PasskeyService,
     AccountLockoutService,

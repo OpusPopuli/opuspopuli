@@ -15,16 +15,13 @@ import { AccountLockoutService } from './services/account-lockout.service';
 import { UsersService } from '../user/users.service';
 
 import {
-  changePasswordDto,
   confirmForgotPasswordDto,
   loginUserDto,
   registerUserDto,
 } from '../../../../data.spec';
 import { RegisterUserDto } from './dto/register-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
 import { ConfirmForgotPasswordDto } from './dto/confirm-forgot-password.dto';
-import { Role } from 'src/common/enums/role.enum';
 import { GqlContext } from 'src/common/utils/graphql-context';
 
 // Mock context for tests that set cookies
@@ -149,36 +146,6 @@ describe('AuthResolver', () => {
     }
   });
 
-  it('should change a user password', async () => {
-    authService.changePassword = jest
-      .fn()
-      .mockImplementation((id: string, changePassword: ChangePasswordDto) => {
-        return Promise.resolve(true);
-      });
-
-    const mockContext = createMockContext();
-    expect(await resolver.changePassword(changePasswordDto, mockContext)).toBe(
-      true,
-    );
-    expect(authService.changePassword).toHaveBeenCalledTimes(1);
-  });
-
-  it('should fail to change a user password', async () => {
-    authService.changePassword = jest
-      .fn()
-      .mockImplementation((id: string, changePassword: ChangePasswordDto) => {
-        return Promise.reject(new Error('Failed user password change!'));
-      });
-
-    const mockContext = createMockContext();
-    try {
-      await resolver.changePassword(changePasswordDto, mockContext);
-    } catch (error) {
-      expect(error.message).toEqual('Failed user password change!');
-      expect(authService.changePassword).toHaveBeenCalledTimes(1);
-    }
-  });
-
   it('should send a forgot user password', async () => {
     authService.forgotPassword = jest
       .fn()
@@ -224,132 +191,6 @@ describe('AuthResolver', () => {
     } catch (error) {
       expect(error.message).toEqual('Failed forgot user password change!');
       expect(authService.confirmForgotPassword).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it('should confirm a user', async () => {
-    authService.confirmUser = jest.fn().mockImplementation((id: string) => {
-      return Promise.resolve(true);
-    });
-
-    const mockContext = createMockContext();
-    expect(await resolver.confirmUser('1', mockContext)).toBe(true);
-    expect(authService.confirmUser).toHaveBeenCalledTimes(1);
-  });
-
-  it('should fail to confirm an unknown user', async () => {
-    authService.confirmUser = jest.fn().mockImplementation((id: string) => {
-      return Promise.resolve(false);
-    });
-
-    const mockContext = createMockContext();
-    try {
-      await resolver.confirmUser('1', mockContext);
-    } catch (error) {
-      expect(error.message).toEqual('User not confirmed!');
-      expect(authService.confirmUser).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it('should fail to confirm a user due to error', async () => {
-    authService.confirmForgotPassword = jest
-      .fn()
-      .mockImplementation((id: string) => {
-        return Promise.reject(new Error('Failed confirm user!'));
-      });
-
-    const mockContext = createMockContext();
-    try {
-      await resolver.confirmUser('1', mockContext);
-    } catch (error) {
-      expect(error.message).toEqual('Failed confirm user!');
-      expect(authService.confirmUser).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it('should add admin permissions', async () => {
-    authService.addPermission = jest
-      .fn()
-      .mockImplementation((id: string, role: Role) => {
-        return Promise.resolve(true);
-      });
-
-    const mockContext = createMockContext();
-    expect(await resolver.addAdminPermission('1', mockContext)).toBe(true);
-    expect(authService.addPermission).toHaveBeenCalledTimes(1);
-  });
-
-  it('should fail to add admin permission to an unknown user', async () => {
-    authService.addPermission = jest
-      .fn()
-      .mockImplementation((id: string, role: Role) => {
-        return Promise.resolve(false);
-      });
-
-    const mockContext = createMockContext();
-    try {
-      await resolver.addAdminPermission('1', mockContext);
-    } catch (error) {
-      expect(error.message).toEqual('Admin Permissions were not granted!');
-      expect(authService.addPermission).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it('should fail to add admin permission due to error', async () => {
-    authService.addPermission = jest.fn().mockImplementation((id: string) => {
-      return Promise.reject(new Error('Failed to add admin permissions!'));
-    });
-
-    const mockContext = createMockContext();
-    try {
-      await resolver.addAdminPermission('1', mockContext);
-    } catch (error) {
-      expect(error.message).toEqual('Failed to add admin permissions!');
-      expect(authService.addPermission).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it('should remove admin permissions', async () => {
-    authService.removePermission = jest
-      .fn()
-      .mockImplementation((id: string, role: Role) => {
-        return Promise.resolve(true);
-      });
-
-    const mockContext = createMockContext();
-    expect(await resolver.removeAdminPermission('1', mockContext)).toBe(true);
-    expect(authService.removePermission).toHaveBeenCalledTimes(1);
-  });
-
-  it('should fail to remove admin permission from an unknown user', async () => {
-    authService.removePermission = jest
-      .fn()
-      .mockImplementation((id: string, role: Role) => {
-        return Promise.resolve(false);
-      });
-
-    const mockContext = createMockContext();
-    try {
-      await resolver.removeAdminPermission('1', mockContext);
-    } catch (error) {
-      expect(error.message).toEqual('Admin Permissions were not revoked!');
-      expect(authService.removePermission).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it('should fail to add admin permission due to error', async () => {
-    authService.removePermission = jest
-      .fn()
-      .mockImplementation((id: string) => {
-        return Promise.reject(new Error('Failed to revoke admin permissions!'));
-      });
-
-    const mockContext = createMockContext();
-    try {
-      await resolver.removeAdminPermission('1', mockContext);
-    } catch (error) {
-      expect(error.message).toEqual('Failed to revoke admin permissions!');
-      expect(authService.removePermission).toHaveBeenCalledTimes(1);
     }
   });
 
@@ -646,119 +487,6 @@ describe('AuthResolver', () => {
     });
   });
 
-  describe('myPasskeys', () => {
-    let passkeyService: PasskeyService;
-
-    beforeEach(async () => {
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          AuthResolver,
-          { provide: AuthService, useValue: createMock<AuthService>() },
-          { provide: PasskeyService, useValue: createMock<PasskeyService>() },
-          { provide: UsersService, useValue: createMock<UsersService>() },
-          { provide: ConfigService, useValue: createMock<ConfigService>() },
-          {
-            provide: AccountLockoutService,
-            useValue: createMockLockoutService(),
-          },
-        ],
-      }).compile();
-
-      resolver = module.get<AuthResolver>(AuthResolver);
-      passkeyService = module.get<PasskeyService>(PasskeyService);
-    });
-
-    // SECURITY: Tests now use request.user (set by passport) instead of headers.user (spoofable)
-    // @see https://github.com/OpusPopuli/opuspopuli/issues/183
-    it('should return user passkeys', async () => {
-      const mockCredentials = [{ id: 'cred-1', friendlyName: 'Device 1' }];
-      passkeyService.getUserCredentials = jest
-        .fn()
-        .mockResolvedValue(mockCredentials);
-
-      const context: GqlContext = {
-        req: {
-          user: {
-            id: 'user-1',
-            email: 'test@example.com',
-            roles: ['User'],
-            department: 'Engineering',
-            clearance: 'Secret',
-          },
-          headers: {},
-        },
-      };
-      const result = await resolver.myPasskeys(context);
-
-      expect(result).toEqual(mockCredentials);
-    });
-
-    it('should throw error when user not authenticated', async () => {
-      const context: GqlContext = { req: { user: undefined, headers: {} } };
-
-      await expect(resolver.myPasskeys(context)).rejects.toThrow(
-        'User not authenticated',
-      );
-    });
-  });
-
-  describe('deletePasskey', () => {
-    let passkeyService: PasskeyService;
-
-    beforeEach(async () => {
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          AuthResolver,
-          { provide: AuthService, useValue: createMock<AuthService>() },
-          { provide: PasskeyService, useValue: createMock<PasskeyService>() },
-          { provide: UsersService, useValue: createMock<UsersService>() },
-          { provide: ConfigService, useValue: createMock<ConfigService>() },
-          {
-            provide: AccountLockoutService,
-            useValue: createMockLockoutService(),
-          },
-        ],
-      }).compile();
-
-      resolver = module.get<AuthResolver>(AuthResolver);
-      passkeyService = module.get<PasskeyService>(PasskeyService);
-    });
-
-    // SECURITY: Tests now use request.user (set by passport) instead of headers.user (spoofable)
-    // @see https://github.com/OpusPopuli/opuspopuli/issues/183
-    it('should delete passkey successfully', async () => {
-      passkeyService.deleteCredential = jest.fn().mockResolvedValue(true);
-
-      const context: GqlContext = {
-        req: {
-          user: {
-            id: 'user-1',
-            email: 'test@example.com',
-            roles: ['User'],
-            department: 'Engineering',
-            clearance: 'Secret',
-          },
-          headers: {},
-        },
-      };
-      const result = await resolver.deletePasskey('cred-1', context);
-
-      expect(result).toBe(true);
-      expect(passkeyService.deleteCredential).toHaveBeenCalledWith(
-        'cred-1',
-        'user-1',
-      );
-    });
-
-    it('should throw error when user not authenticated', async () => {
-      const context: GqlContext = { req: { user: undefined, headers: {} } };
-
-      await expect(resolver.deletePasskey('cred-1', context)).rejects.toThrow(
-        'User not authenticated',
-      );
-    });
-  });
-
   // ============================================
   // Magic Link Tests
   // ============================================
@@ -857,30 +585,6 @@ describe('AuthResolver', () => {
           mockContext,
         ),
       ).rejects.toThrow('Register failed');
-    });
-  });
-
-  // ============================================
-  // Logout Tests
-  // ============================================
-
-  describe('logout', () => {
-    it('should clear cookies on logout', async () => {
-      const mockContext = createMockContext();
-      const result = await resolver.logout(mockContext);
-
-      expect(result).toBe(true);
-      // Verify cookies were cleared
-      expect(mockContext.res?.clearCookie).toHaveBeenCalled();
-    });
-
-    it('should return true even without res object', async () => {
-      const contextWithoutRes = {
-        req: { user: undefined, headers: {} },
-      } as GqlContext;
-      const result = await resolver.logout(contextWithoutRes);
-
-      expect(result).toBe(true);
     });
   });
 });

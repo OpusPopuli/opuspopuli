@@ -1,38 +1,28 @@
-import { Args, ID, Mutation, Query, Resolver, Context } from '@nestjs/graphql';
+import { Args, Mutation, Resolver, Context } from '@nestjs/graphql';
 import { ConfigService } from '@nestjs/config';
 import { ForbiddenException, Optional } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { randomUUID } from 'node:crypto';
 import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { RegisterUserDto } from './dto/register-user.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
 
 import { UserInputError } from '@nestjs/apollo';
 
 import { Auth } from './models/auth.model';
-import { Permissions } from 'src/common/decorators/permissions.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
-import { Role } from 'src/common/enums/role.enum';
 import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
-import { Roles } from 'src/common/decorators/roles.decorator';
-import { Action } from 'src/common/enums/action.enum';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
 import { ConfirmForgotPasswordDto } from './dto/confirm-forgot-password.dto';
 import { UsersService } from '../user/users.service';
 import {
   GqlContext,
-  getUserFromContext,
+  createAuditContext,
 } from 'src/common/utils/graphql-context';
-import {
-  setAuthCookies,
-  clearAuthCookies,
-} from 'src/common/utils/cookie.utils';
+import { setAuthCookies } from 'src/common/utils/cookie.utils';
 import { AUTH_THROTTLE } from 'src/config/auth-throttle.config';
 import { AccountLockoutService } from './services/account-lockout.service';
 import { AuditLogService } from 'src/common/services/audit-log.service';
 import { SecureLogger } from 'src/common/services/secure-logger.service';
-import { IAuditContext } from 'src/common/interfaces/audit.interface';
 
 // Passkey DTOs
 import {
@@ -42,7 +32,6 @@ import {
   VerifyPasskeyAuthenticationDto,
   PasskeyRegistrationOptions,
   PasskeyAuthenticationOptions,
-  PasskeyCredential,
 } from './dto/passkey.dto';
 import { PasskeyService } from './services/passkey.service';
 
@@ -53,6 +42,19 @@ import {
   RegisterWithMagicLinkDto,
 } from './dto/magic-link.dto';
 
+/**
+ * Auth Resolver
+ *
+ * Handles public authentication operations:
+ * - Registration (standard + magic link)
+ * - Login (password, passkey, magic link)
+ * - Password reset (forgot/confirm)
+ * - Passkey registration and authentication
+ *
+ * All operations are @Public() and rate-limited.
+ *
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/464
+ */
 @Resolver(() => Boolean)
 export class AuthResolver {
   // Use SecureLogger to automatically redact PII (emails, IPs) from log messages
@@ -70,27 +72,6 @@ export class AuthResolver {
   ) {}
 
   /**
-   * Create audit context from GraphQL context
-   * @see https://github.com/OpusPopuli/opuspopuli/issues/191
-   */
-  private createAuditContext(
-    context: GqlContext,
-    userEmail?: string,
-  ): IAuditContext {
-    const user = context.req?.user;
-    return {
-      requestId: randomUUID(),
-      userId: user?.id,
-      userEmail: userEmail || user?.email,
-      ipAddress:
-        context.req?.ip ||
-        (context.req?.headers as Record<string, string>)?.['x-forwarded-for'],
-      userAgent: context.req?.headers?.['user-agent'],
-      serviceName: this.serviceName,
-    };
-  }
-
-  /**
    * Register a new user account
    * Rate limited: 3 attempts per minute
    * @see https://github.com/OpusPopuli/opuspopuli/issues/187
@@ -102,8 +83,9 @@ export class AuthResolver {
     @Args('registerUserDto') registerUserDto: RegisterUserDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(
+    const auditContext = createAuditContext(
       context,
+      this.serviceName,
       registerUserDto.email,
     );
 
@@ -152,7 +134,7 @@ export class AuthResolver {
     @Context() context: GqlContext,
   ): Promise<Auth> {
     const { email } = loginUserDto;
-    const auditContext = this.createAuditContext(context, email);
+    const auditContext = createAuditContext(context, this.serviceName, email);
     const clientIp = auditContext.ipAddress;
 
     // Check if account is locked
@@ -241,46 +223,6 @@ export class AuthResolver {
     return auth;
   }
 
-  @Mutation(() => Boolean)
-  @Permissions({
-    action: Action.Update,
-    subject: 'User',
-    conditions: { id: '{{ id }}' },
-  })
-  async changePassword(
-    @Args('changePasswordDto') changePasswordDto: ChangePasswordDto,
-    @Context() context: GqlContext,
-  ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context);
-
-    let passwordUpdated: boolean;
-    try {
-      passwordUpdated =
-        await this.authService.changePassword(changePasswordDto);
-
-      // Audit: Password change success
-      this.auditLogService?.log({
-        ...auditContext,
-        action: AuditAction.PASSWORD_CHANGE,
-        success: true,
-        resolverName: 'changePassword',
-        operationType: 'mutation',
-      });
-    } catch (error) {
-      // Audit: Password change failure
-      this.auditLogService?.logSync({
-        ...auditContext,
-        action: AuditAction.PASSWORD_CHANGE_FAILED,
-        success: false,
-        resolverName: 'changePassword',
-        operationType: 'mutation',
-        errorMessage: error.message,
-      });
-      throw new UserInputError(error.message);
-    }
-    return passwordUpdated;
-  }
-
   /**
    * Request password reset email
    * Rate limited: 3 attempts per hour (prevents email bombing)
@@ -293,7 +235,7 @@ export class AuthResolver {
     @Args('email') email: string,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context, email);
+    const auditContext = createAuditContext(context, this.serviceName, email);
 
     // Audit: Password reset request (always log, regardless of user existence)
     this.auditLogService?.log({
@@ -314,8 +256,9 @@ export class AuthResolver {
     confirmForgotPasswordDto: ConfirmForgotPasswordDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(
+    const auditContext = createAuditContext(
       context,
+      this.serviceName,
       confirmForgotPasswordDto.email,
     );
 
@@ -346,86 +289,6 @@ export class AuthResolver {
       throw new UserInputError(error.message);
     }
     return passwordUpdated;
-  }
-
-  /** Administration */
-  @Mutation(() => Boolean)
-  @Roles(Role.Admin)
-  async confirmUser(
-    @Args({ name: 'id', type: () => ID }) id: string,
-    @Context() context: GqlContext,
-  ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context);
-
-    const result = await this.authService.confirmUser(id);
-
-    // Audit: User confirmation
-    this.auditLogService?.log({
-      ...auditContext,
-      action: AuditAction.USER_CONFIRMED,
-      success: result,
-      entityType: 'User',
-      entityId: id,
-      resolverName: 'confirmUser',
-      operationType: 'mutation',
-    });
-
-    if (!result) throw new UserInputError('User not confirmed!');
-    return result;
-  }
-
-  @Mutation(() => Boolean)
-  @Roles(Role.Admin)
-  async addAdminPermission(
-    @Args({ name: 'id', type: () => ID }) id: string,
-    @Context() context: GqlContext,
-  ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context);
-
-    const result = await this.authService.addPermission(id, Role.Admin);
-
-    // Audit: Admin permission granted
-    this.auditLogService?.log({
-      ...auditContext,
-      action: AuditAction.PERMISSION_GRANTED,
-      success: result,
-      entityType: 'User',
-      entityId: id,
-      resolverName: 'addAdminPermission',
-      operationType: 'mutation',
-      newValues: { role: Role.Admin },
-    });
-
-    if (!result)
-      throw new UserInputError('Admin Permissions were not granted!');
-    return result;
-  }
-
-  @Mutation(() => Boolean)
-  @Roles(Role.Admin)
-  async removeAdminPermission(
-    @Args({ name: 'id', type: () => ID }) id: string,
-    @Context() context: GqlContext,
-  ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context);
-
-    const result = await this.authService.removePermission(id, Role.Admin);
-
-    // Audit: Admin permission revoked
-    this.auditLogService?.log({
-      ...auditContext,
-      action: AuditAction.PERMISSION_REVOKED,
-      success: result,
-      entityType: 'User',
-      entityId: id,
-      resolverName: 'removeAdminPermission',
-      operationType: 'mutation',
-      previousValues: { role: Role.Admin },
-    });
-
-    if (!result)
-      throw new UserInputError('Admin Permissions were not revoked!');
-    return result;
   }
 
   // ============================================
@@ -465,7 +328,11 @@ export class AuthResolver {
     @Args('input') input: VerifyPasskeyRegistrationDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context, input.email);
+    const auditContext = createAuditContext(
+      context,
+      this.serviceName,
+      input.email,
+    );
 
     try {
       const user = await this.authService.getUserByEmail(input.email);
@@ -553,7 +420,7 @@ export class AuthResolver {
     @Args('input') input: VerifyPasskeyAuthenticationDto,
     @Context() context: GqlContext,
   ): Promise<Auth> {
-    const auditContext = this.createAuditContext(context);
+    const auditContext = createAuditContext(context, this.serviceName);
 
     try {
       const { verification, user } =
@@ -614,49 +481,6 @@ export class AuthResolver {
     }
   }
 
-  @Query(() => [PasskeyCredential])
-  async myPasskeys(
-    @Context() context: GqlContext,
-  ): Promise<PasskeyCredential[]> {
-    const user = getUserFromContext(context);
-    const credentials = await this.passkeyService.getUserCredentials(user.id);
-    // Map database types (null) to GraphQL types (undefined)
-    return credentials.map((cred) => ({
-      id: cred.id,
-      friendlyName: cred.friendlyName ?? undefined,
-      deviceType: cred.deviceType ?? undefined,
-      createdAt: cred.createdAt,
-      lastUsedAt: cred.lastUsedAt,
-    }));
-  }
-
-  @Mutation(() => Boolean)
-  async deletePasskey(
-    @Args('credentialId') credentialId: string,
-    @Context() context: GqlContext,
-  ): Promise<boolean> {
-    const user = getUserFromContext(context);
-    const auditContext = this.createAuditContext(context, user.email);
-
-    const result = await this.passkeyService.deleteCredential(
-      credentialId,
-      user.id,
-    );
-
-    // Audit: Passkey deletion
-    this.auditLogService?.log({
-      ...auditContext,
-      action: AuditAction.PASSKEY_DELETED,
-      success: result,
-      entityType: 'PasskeyCredential',
-      entityId: credentialId,
-      resolverName: 'deletePasskey',
-      operationType: 'mutation',
-    });
-
-    return result;
-  }
-
   // ============================================
   // Magic Link Mutations
   // Rate limited: 3 attempts per minute
@@ -670,7 +494,11 @@ export class AuthResolver {
     @Args('input') input: SendMagicLinkDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context, input.email);
+    const auditContext = createAuditContext(
+      context,
+      this.serviceName,
+      input.email,
+    );
 
     try {
       const result = await this.authService.sendMagicLink(
@@ -700,7 +528,11 @@ export class AuthResolver {
     @Args('input') input: VerifyMagicLinkDto,
     @Context() context: GqlContext,
   ): Promise<Auth> {
-    const auditContext = this.createAuditContext(context, input.email);
+    const auditContext = createAuditContext(
+      context,
+      this.serviceName,
+      input.email,
+    );
 
     try {
       const auth = await this.authService.verifyMagicLink(
@@ -749,7 +581,11 @@ export class AuthResolver {
     @Args('input') input: RegisterWithMagicLinkDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context, input.email);
+    const auditContext = createAuditContext(
+      context,
+      this.serviceName,
+      input.email,
+    );
 
     try {
       const result = await this.authService.registerWithMagicLink(
@@ -770,30 +606,5 @@ export class AuthResolver {
     } catch (error) {
       throw new UserInputError(error.message);
     }
-  }
-
-  // ============================================
-  // Logout
-  // ============================================
-
-  @Mutation(() => Boolean)
-  async logout(@Context() context: GqlContext): Promise<boolean> {
-    const auditContext = this.createAuditContext(context);
-
-    // Clear httpOnly auth cookies
-    if (context.res) {
-      clearAuthCookies(context.res, this.configService);
-    }
-
-    // Audit: Logout
-    this.auditLogService?.log({
-      ...auditContext,
-      action: AuditAction.LOGOUT,
-      success: true,
-      resolverName: 'logout',
-      operationType: 'mutation',
-    });
-
-    return true;
   }
 }
