@@ -1,6 +1,5 @@
 import { Args, ID, Mutation, Resolver, Context } from '@nestjs/graphql';
 import { Optional } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
 
 import { UserInputError } from '@nestjs/apollo';
 
@@ -9,9 +8,11 @@ import { AuthService } from './auth.service';
 import { Role } from 'src/common/enums/role.enum';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
-import { GqlContext } from 'src/common/utils/graphql-context';
+import {
+  GqlContext,
+  createAuditContext,
+} from 'src/common/utils/graphql-context';
 import { AuditLogService } from 'src/common/services/audit-log.service';
-import { IAuditContext } from 'src/common/interfaces/audit.interface';
 
 /**
  * Admin Resolver
@@ -33,30 +34,13 @@ export class AdminResolver {
     @Optional() private readonly auditLogService?: AuditLogService,
   ) {}
 
-  private createAuditContext(
-    context: GqlContext,
-    userEmail?: string,
-  ): IAuditContext {
-    const user = context.req?.user;
-    return {
-      requestId: randomUUID(),
-      userId: user?.id,
-      userEmail: userEmail || user?.email,
-      ipAddress:
-        context.req?.ip ||
-        (context.req?.headers as Record<string, string>)?.['x-forwarded-for'],
-      userAgent: context.req?.headers?.['user-agent'],
-      serviceName: this.serviceName,
-    };
-  }
-
   @Mutation(() => Boolean)
   @Roles(Role.Admin)
   async confirmUser(
     @Args({ name: 'id', type: () => ID }) id: string,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context);
+    const auditContext = createAuditContext(context, this.serviceName);
 
     const result = await this.authService.confirmUser(id);
 
@@ -81,7 +65,7 @@ export class AdminResolver {
     @Args({ name: 'id', type: () => ID }) id: string,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context);
+    const auditContext = createAuditContext(context, this.serviceName);
 
     const result = await this.authService.addPermission(id, Role.Admin);
 
@@ -108,7 +92,7 @@ export class AdminResolver {
     @Args({ name: 'id', type: () => ID }) id: string,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context);
+    const auditContext = createAuditContext(context, this.serviceName);
 
     const result = await this.authService.removePermission(id, Role.Admin);
 

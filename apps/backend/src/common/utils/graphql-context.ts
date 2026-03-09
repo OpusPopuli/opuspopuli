@@ -1,6 +1,8 @@
 import { UserInputError } from '@nestjs/apollo';
 import { Response } from 'express';
+import { randomUUID } from 'node:crypto';
 import { ILogin } from 'src/interfaces/login.interface';
+import { IAuditContext } from '../interfaces/audit.interface';
 
 /**
  * User information extracted from the authenticated context
@@ -75,4 +77,32 @@ export function getSessionTokenFromContext(
   }
   // Extract token from "Bearer <token>"
   return auth.replace(/^Bearer\s+/i, '');
+}
+
+/**
+ * Creates an audit context from the GraphQL request context.
+ *
+ * @param context - The GraphQL context containing the request
+ * @param serviceName - The name of the service creating the audit entry
+ * @param userEmail - Optional email override (for unauthenticated flows like registration/login)
+ * @returns An IAuditContext with request metadata for audit logging
+ *
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/191
+ */
+export function createAuditContext(
+  context: GqlContext,
+  serviceName: string,
+  userEmail?: string,
+): IAuditContext {
+  const user = context.req?.user;
+  return {
+    requestId: randomUUID(),
+    userId: user?.id,
+    userEmail: userEmail || user?.email,
+    ipAddress:
+      context.req?.ip ||
+      (context.req?.headers as Record<string, string>)?.['x-forwarded-for'],
+    userAgent: context.req?.headers?.['user-agent'],
+    serviceName,
+  };
 }

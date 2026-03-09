@@ -2,7 +2,6 @@ import { Args, Mutation, Resolver, Context } from '@nestjs/graphql';
 import { ConfigService } from '@nestjs/config';
 import { ForbiddenException, Optional } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { randomUUID } from 'node:crypto';
 import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { RegisterUserDto } from './dto/register-user.dto';
@@ -15,13 +14,15 @@ import { AuthStrategy } from 'src/common/enums/auth-strategy.enum';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
 import { ConfirmForgotPasswordDto } from './dto/confirm-forgot-password.dto';
 import { UsersService } from '../user/users.service';
-import { GqlContext } from 'src/common/utils/graphql-context';
+import {
+  GqlContext,
+  createAuditContext,
+} from 'src/common/utils/graphql-context';
 import { setAuthCookies } from 'src/common/utils/cookie.utils';
 import { AUTH_THROTTLE } from 'src/config/auth-throttle.config';
 import { AccountLockoutService } from './services/account-lockout.service';
 import { AuditLogService } from 'src/common/services/audit-log.service';
 import { SecureLogger } from 'src/common/services/secure-logger.service';
-import { IAuditContext } from 'src/common/interfaces/audit.interface';
 
 // Passkey DTOs
 import {
@@ -71,27 +72,6 @@ export class AuthResolver {
   ) {}
 
   /**
-   * Create audit context from GraphQL context
-   * @see https://github.com/OpusPopuli/opuspopuli/issues/191
-   */
-  private createAuditContext(
-    context: GqlContext,
-    userEmail?: string,
-  ): IAuditContext {
-    const user = context.req?.user;
-    return {
-      requestId: randomUUID(),
-      userId: user?.id,
-      userEmail: userEmail || user?.email,
-      ipAddress:
-        context.req?.ip ||
-        (context.req?.headers as Record<string, string>)?.['x-forwarded-for'],
-      userAgent: context.req?.headers?.['user-agent'],
-      serviceName: this.serviceName,
-    };
-  }
-
-  /**
    * Register a new user account
    * Rate limited: 3 attempts per minute
    * @see https://github.com/OpusPopuli/opuspopuli/issues/187
@@ -103,8 +83,9 @@ export class AuthResolver {
     @Args('registerUserDto') registerUserDto: RegisterUserDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(
+    const auditContext = createAuditContext(
       context,
+      this.serviceName,
       registerUserDto.email,
     );
 
@@ -153,7 +134,7 @@ export class AuthResolver {
     @Context() context: GqlContext,
   ): Promise<Auth> {
     const { email } = loginUserDto;
-    const auditContext = this.createAuditContext(context, email);
+    const auditContext = createAuditContext(context, this.serviceName, email);
     const clientIp = auditContext.ipAddress;
 
     // Check if account is locked
@@ -254,7 +235,7 @@ export class AuthResolver {
     @Args('email') email: string,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context, email);
+    const auditContext = createAuditContext(context, this.serviceName, email);
 
     // Audit: Password reset request (always log, regardless of user existence)
     this.auditLogService?.log({
@@ -275,8 +256,9 @@ export class AuthResolver {
     confirmForgotPasswordDto: ConfirmForgotPasswordDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(
+    const auditContext = createAuditContext(
       context,
+      this.serviceName,
       confirmForgotPasswordDto.email,
     );
 
@@ -346,7 +328,11 @@ export class AuthResolver {
     @Args('input') input: VerifyPasskeyRegistrationDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context, input.email);
+    const auditContext = createAuditContext(
+      context,
+      this.serviceName,
+      input.email,
+    );
 
     try {
       const user = await this.authService.getUserByEmail(input.email);
@@ -434,7 +420,7 @@ export class AuthResolver {
     @Args('input') input: VerifyPasskeyAuthenticationDto,
     @Context() context: GqlContext,
   ): Promise<Auth> {
-    const auditContext = this.createAuditContext(context);
+    const auditContext = createAuditContext(context, this.serviceName);
 
     try {
       const { verification, user } =
@@ -508,7 +494,11 @@ export class AuthResolver {
     @Args('input') input: SendMagicLinkDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context, input.email);
+    const auditContext = createAuditContext(
+      context,
+      this.serviceName,
+      input.email,
+    );
 
     try {
       const result = await this.authService.sendMagicLink(
@@ -538,7 +528,11 @@ export class AuthResolver {
     @Args('input') input: VerifyMagicLinkDto,
     @Context() context: GqlContext,
   ): Promise<Auth> {
-    const auditContext = this.createAuditContext(context, input.email);
+    const auditContext = createAuditContext(
+      context,
+      this.serviceName,
+      input.email,
+    );
 
     try {
       const auth = await this.authService.verifyMagicLink(
@@ -587,7 +581,11 @@ export class AuthResolver {
     @Args('input') input: RegisterWithMagicLinkDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context, input.email);
+    const auditContext = createAuditContext(
+      context,
+      this.serviceName,
+      input.email,
+    );
 
     try {
       const result = await this.authService.registerWithMagicLink(

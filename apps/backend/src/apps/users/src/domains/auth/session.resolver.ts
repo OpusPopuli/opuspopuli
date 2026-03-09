@@ -1,7 +1,6 @@
 import { Args, Mutation, Query, Resolver, Context } from '@nestjs/graphql';
 import { ConfigService } from '@nestjs/config';
 import { Optional } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
 
 import { UserInputError } from '@nestjs/apollo';
 
@@ -16,10 +15,10 @@ import { AuditAction } from 'src/common/enums/audit-action.enum';
 import {
   GqlContext,
   getUserFromContext,
+  createAuditContext,
 } from 'src/common/utils/graphql-context';
 import { clearAuthCookies } from 'src/common/utils/cookie.utils';
 import { AuditLogService } from 'src/common/services/audit-log.service';
-import { IAuditContext } from 'src/common/interfaces/audit.interface';
 
 /**
  * Session Resolver
@@ -42,23 +41,6 @@ export class SessionResolver {
     @Optional() private readonly auditLogService?: AuditLogService,
   ) {}
 
-  private createAuditContext(
-    context: GqlContext,
-    userEmail?: string,
-  ): IAuditContext {
-    const user = context.req?.user;
-    return {
-      requestId: randomUUID(),
-      userId: user?.id,
-      userEmail: userEmail || user?.email,
-      ipAddress:
-        context.req?.ip ||
-        (context.req?.headers as Record<string, string>)?.['x-forwarded-for'],
-      userAgent: context.req?.headers?.['user-agent'],
-      serviceName: this.serviceName,
-    };
-  }
-
   @Mutation(() => Boolean)
   @Permissions({
     action: Action.Update,
@@ -69,7 +51,7 @@ export class SessionResolver {
     @Args('changePasswordDto') changePasswordDto: ChangePasswordDto,
     @Context() context: GqlContext,
   ): Promise<boolean> {
-    const auditContext = this.createAuditContext(context);
+    const auditContext = createAuditContext(context, this.serviceName);
 
     let passwordUpdated: boolean;
     try {
@@ -121,7 +103,11 @@ export class SessionResolver {
     @Context() context: GqlContext,
   ): Promise<boolean> {
     const user = getUserFromContext(context);
-    const auditContext = this.createAuditContext(context, user.email);
+    const auditContext = createAuditContext(
+      context,
+      this.serviceName,
+      user.email,
+    );
 
     const result = await this.passkeyService.deleteCredential(
       credentialId,
@@ -144,7 +130,7 @@ export class SessionResolver {
 
   @Mutation(() => Boolean)
   async logout(@Context() context: GqlContext): Promise<boolean> {
-    const auditContext = this.createAuditContext(context);
+    const auditContext = createAuditContext(context, this.serviceName);
 
     // Clear httpOnly auth cookies
     if (context.res) {
