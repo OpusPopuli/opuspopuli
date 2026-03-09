@@ -4,12 +4,18 @@ import {
   ScrapingPipelineModule,
   ScrapingPipelineService,
 } from '@opuspopuli/scraping-pipeline';
-import { ExtractionModule } from '@opuspopuli/extraction-provider';
+import {
+  ExtractionModule,
+  CacheFactory,
+  FallbackCache,
+} from '@opuspopuli/extraction-provider';
+import { MemoryCache } from '@opuspopuli/common';
 import { LLMModule } from '@opuspopuli/llm-provider';
 import { RegionDomainService } from './region.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
+import { REGION_CACHE } from './region.tokens';
 
 // RelationalDbModule is global, no need to import
 
@@ -46,6 +52,27 @@ import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repo
     {
       provide: 'SCRAPING_PIPELINE',
       useExisting: ScrapingPipelineService,
+    },
+    // Redis-backed cache with in-memory fallback for region reference data (#459)
+    // Disabled in test to prevent stale cached data between E2E test cases
+    {
+      provide: REGION_CACHE,
+      useFactory: () => {
+        const isTest = process.env.NODE_ENV === 'test';
+        const ttlMs = isTest ? 0 : 4 * 60 * 60 * 1000; // disabled in test, 4h in prod
+
+        const config = CacheFactory.createConfigFromEnv();
+        const primary = CacheFactory.createCache<string>({
+          ...config,
+          keyPrefix: 'region:',
+          cacheOptions: { ttlMs },
+        });
+        const fallback = new MemoryCache<string>({
+          ttlMs,
+          maxSize: 200,
+        });
+        return new FallbackCache<string>(primary, fallback);
+      },
     },
   ],
   exports: [RegionDomainService],
