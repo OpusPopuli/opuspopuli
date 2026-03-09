@@ -1,6 +1,7 @@
 import { Module, Global } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { IEmailProvider, IEmailConfig } from "@opuspopuli/common";
+import { emailConfig } from "@opuspopuli/config-provider";
 import { ResendEmailProvider } from "./providers/resend.provider.js";
 
 /**
@@ -16,7 +17,7 @@ import { ResendEmailProvider } from "./providers/resend.provider.js";
  */
 @Global()
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule.forFeature(emailConfig)],
   providers: [
     {
       provide: "EMAIL_PROVIDER",

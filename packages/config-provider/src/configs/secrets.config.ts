@@ -1,4 +1,4 @@
-import { registerAs } from '@nestjs/config';
+import { registerAs } from "@nestjs/config";
 
 /**
  * Secrets Configuration
@@ -9,6 +9,6 @@ import { registerAs } from '@nestjs/config';
  * - 'env' (default): Read from process.env (works everywhere)
  * - 'supabase': Supabase Vault
  */
-export default registerAs('secrets', () => ({
-  provider: process.env.SECRETS_PROVIDER || 'env',
+export const secretsConfig = registerAs("secrets", () => ({
+  provider: process.env.SECRETS_PROVIDER || "env",
 }));

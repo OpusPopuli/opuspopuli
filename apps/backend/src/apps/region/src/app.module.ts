@@ -19,12 +19,8 @@ import { createQueryComplexityValidationRule } from 'src/common/graphql/query-co
 import { RegionDomainModule } from './domains/region.module';
 
 import configuration from 'src/config';
-import supabaseConfig from 'src/config/supabase.config';
-import storageConfig from 'src/config/storage.config';
-import authConfig from 'src/config/auth.config';
-import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
-import regionConfig from 'src/config/region.config';
+import { regionConfig } from '@opuspopuli/config-provider';
 import { regionValidationSchema } from 'src/config/env.validation';
 
 import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
@@ -50,15 +46,7 @@ import { MetricsModule } from 'src/common/metrics';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      load: [
-        configuration,
-        supabaseConfig,
-        storageConfig,
-        authConfig,
-        secretsConfig,
-        relationaldbConfig,
-        regionConfig,
-      ],
+      load: [configuration, relationaldbConfig, regionConfig],
       validationSchema: regionValidationSchema,
       validationOptions: { abortEarly: false },
       isGlobal: true,

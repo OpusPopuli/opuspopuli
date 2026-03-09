@@ -1,6 +1,7 @@
 import { Module, DynamicModule } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { IOcrProvider } from "@opuspopuli/common";
+import { ocrConfig } from "@opuspopuli/config-provider";
 import { OcrService } from "./ocr.service.js";
 import { TesseractOcrProvider } from "./providers/tesseract.provider.js";
 import { ImagePreprocessor } from "./preprocessing/image-preprocessor.js";
@@ -34,6 +35,7 @@ export interface OcrModuleConfig {
  * - OCR_PREPROCESSING_PRESET: fast/balanced/quality (default: balanced)
  */
 @Module({
+  imports: [ConfigModule.forFeature(ocrConfig)],
   providers: [
     // OCR provider selection
     {

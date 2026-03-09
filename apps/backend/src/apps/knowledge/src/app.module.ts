@@ -18,10 +18,6 @@ import { createQueryComplexityValidationRule } from 'src/common/graphql/query-co
 import { KnowledgeModule } from './domains/knowledge.module';
 
 import configuration from 'src/config';
-import supabaseConfig from 'src/config/supabase.config';
-import storageConfig from 'src/config/storage.config';
-import authConfig from 'src/config/auth.config';
-import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
 import { knowledgeValidationSchema } from 'src/config/env.validation';
 
@@ -49,14 +45,7 @@ import { MetricsModule } from 'src/common/metrics';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      load: [
-        configuration,
-        supabaseConfig,
-        storageConfig,
-        authConfig,
-        secretsConfig,
-        relationaldbConfig,
-      ],
+      load: [configuration, relationaldbConfig],
       validationSchema: knowledgeValidationSchema,
       validationOptions: { abortEarly: false },
       isGlobal: true,

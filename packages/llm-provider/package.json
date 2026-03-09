@@ -25,7 +25,8 @@
   ],
   "license": "AGPL-3.0",
   "dependencies": {
-    "@opuspopuli/common": "workspace:*"
+    "@opuspopuli/common": "workspace:*",
+    "@opuspopuli/config-provider": "workspace:*"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",
