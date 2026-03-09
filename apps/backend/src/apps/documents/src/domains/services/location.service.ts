@@ -4,7 +4,7 @@ import { DbService } from '@opuspopuli/relationaldb-provider';
 import {
   GeoLocation,
   SetDocumentLocationResult,
-  PetitionMapMarker,
+  PetitionMapResult,
   PetitionMapStats,
   MapFiltersInput,
   fuzzLocation,
@@ -106,14 +106,17 @@ export class LocationService {
     };
   }
 
+  private static readonly MAX_MAP_LIMIT = 1000;
+  private static readonly DEFAULT_MAP_LIMIT = 1000;
+
   /**
-   * Get petition locations for map display
+   * Get petition locations for map display with spatial pagination (#465)
    * Returns documents with scan locations, optionally filtered by bounds/type/date
    * Coordinates are already fuzzed at write time, safe to return directly
    */
   async getPetitionMapLocations(
     filters?: MapFiltersInput,
-  ): Promise<PetitionMapMarker[]> {
+  ): Promise<PetitionMapResult> {
     const conditions: string[] = ['scan_location IS NOT NULL'];
     const params: unknown[] = [];
 
@@ -146,36 +149,53 @@ export class LocationService {
     }
 
     const whereClause = conditions.join(' AND ');
-
-    const results = await this.db.$queryRawUnsafe<
-      Array<{
-        id: string;
-        latitude: number;
-        longitude: number;
-        document_type: string | null;
-        created_at: Date;
-      }>
-    >(
-      `SELECT
-        id::text as id,
-        ST_Y(scan_location::geometry) as latitude,
-        ST_X(scan_location::geometry) as longitude,
-        type as document_type,
-        created_at
-      FROM documents
-      WHERE ${whereClause}
-      ORDER BY created_at DESC
-      LIMIT 5000`,
-      ...params,
+    const limit = Math.min(
+      filters?.limit ?? LocationService.DEFAULT_MAP_LIMIT,
+      LocationService.MAX_MAP_LIMIT,
     );
 
-    return results.map((r) => ({
-      id: r.id,
-      latitude: r.latitude,
-      longitude: r.longitude,
-      documentType: r.document_type ?? undefined,
-      createdAt: r.created_at,
-    }));
+    // Run count and data queries in parallel
+    const [countResult, results] = await Promise.all([
+      this.db.$queryRawUnsafe<Array<{ count: bigint }>>(
+        `SELECT COUNT(*) as count FROM documents WHERE ${whereClause}`,
+        ...params,
+      ),
+      this.db.$queryRawUnsafe<
+        Array<{
+          id: string;
+          latitude: number;
+          longitude: number;
+          document_type: string | null;
+          created_at: Date;
+        }>
+      >(
+        `SELECT
+          id::text as id,
+          ST_Y(scan_location::geometry) as latitude,
+          ST_X(scan_location::geometry) as longitude,
+          type as document_type,
+          created_at
+        FROM documents
+        WHERE ${whereClause}
+        ORDER BY created_at DESC
+        LIMIT ${limit}`,
+        ...params,
+      ),
+    ]);
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+
+    return {
+      markers: results.map((r) => ({
+        id: r.id,
+        latitude: r.latitude,
+        longitude: r.longitude,
+        documentType: r.document_type ?? undefined,
+        createdAt: r.created_at,
+      })),
+      totalCount,
+      truncated: totalCount > limit,
+    };
   }
 
   /**

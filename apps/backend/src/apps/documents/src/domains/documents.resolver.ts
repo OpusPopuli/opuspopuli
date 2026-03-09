@@ -34,7 +34,7 @@ import {
   GeoLocation,
   SetDocumentLocationInput,
   SetDocumentLocationResult,
-  PetitionMapMarker,
+  PetitionMapResult,
   PetitionMapStats,
   MapFiltersInput,
 } from './dto/location.dto';
@@ -265,13 +265,13 @@ export class DocumentsResolver {
    * Get petition locations for map display
    * Returns fuzzed coordinates for all documents with scan locations
    */
-  @Query(() => [PetitionMapMarker])
+  @Query(() => PetitionMapResult)
   @UseGuards(AuthGuard)
   @Permissions({ action: Action.Read, subject: 'File' })
   @Extensions({ complexity: 25 })
   async petitionMapLocations(
     @Args('filters', { nullable: true }) filters?: MapFiltersInput,
-  ): Promise<PetitionMapMarker[]> {
+  ): Promise<PetitionMapResult> {
     return this.locationService.getPetitionMapLocations(filters);
   }
 

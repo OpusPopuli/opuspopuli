@@ -27,12 +27,12 @@ import { FileService } from './file.service';
 @Injectable()
 export class ScanService {
   private readonly logger = new Logger(ScanService.name, { timestamp: true });
-  private fileConfig: IFileConfig;
+  private readonly fileConfig: IFileConfig;
 
   constructor(
     private readonly db: DbService,
-    @Inject('STORAGE_PROVIDER') private storage: IStorageProvider,
-    private configService: ConfigService,
+    @Inject('STORAGE_PROVIDER') private readonly storage: IStorageProvider,
+    private readonly configService: ConfigService,
     private readonly ocrService: OcrService,
     private readonly extractionProvider: ExtractionProvider,
     private readonly metricsService: MetricsService,

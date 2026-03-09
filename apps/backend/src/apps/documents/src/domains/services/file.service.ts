@@ -15,12 +15,12 @@ import { File } from '../models/file.model';
 @Injectable()
 export class FileService {
   private readonly logger = new Logger(FileService.name, { timestamp: true });
-  private fileConfig: IFileConfig;
+  private readonly fileConfig: IFileConfig;
 
   constructor(
     private readonly db: DbService,
-    @Inject('STORAGE_PROVIDER') private storage: IStorageProvider,
-    private configService: ConfigService,
+    @Inject('STORAGE_PROVIDER') private readonly storage: IStorageProvider,
+    private readonly configService: ConfigService,
   ) {
     const fileConfig: IFileConfig | undefined =
       configService.get<IFileConfig>('file');
