@@ -10,7 +10,6 @@ import {
 } from '@nestjs/graphql';
 import { File } from './models/file.model';
 import { User } from './models/user.model';
-import { DocumentsService } from './documents.service';
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import { Permissions } from 'src/common/decorators/permissions.decorator';
@@ -61,16 +60,36 @@ import {
 import { Public } from 'src/common/decorators/public.decorator';
 import { PaginationArgs } from 'src/common/dto/pagination.args';
 
+import { FileService } from './services/file.service';
+import { ScanService } from './services/scan.service';
+import { AnalysisService } from './services/analysis.service';
+import { LocationService } from './services/location.service';
+import { LinkingService } from './services/linking.service';
+import { AbuseReportService } from './services/abuse-report.service';
+import { ActivityFeedService } from './services/activity-feed.service';
+import { ScanHistoryService } from './services/scan-history.service';
+
 /**
  * Documents Resolver
  *
  * Handles document metadata and file storage operations.
  * Supports text extraction from images (OCR), PDFs, and text files.
  * Filename inputs are validated to prevent path traversal attacks.
+ *
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/463
  */
 @Resolver(() => File)
 export class DocumentsResolver {
-  constructor(private readonly documentsService: DocumentsService) {}
+  constructor(
+    private readonly fileService: FileService,
+    private readonly scanService: ScanService,
+    private readonly analysisService: AnalysisService,
+    private readonly locationService: LocationService,
+    private readonly linkingService: LinkingService,
+    private readonly abuseReportService: AbuseReportService,
+    private readonly activityFeedService: ActivityFeedService,
+    private readonly scanHistoryService: ScanHistoryService,
+  ) {}
 
   @Query(() => [File])
   @UseGuards(AuthGuard)
@@ -78,7 +97,7 @@ export class DocumentsResolver {
   @Extensions({ complexity: 15 }) // List operation
   listFiles(@Context() context: GqlContext): Promise<File[]> {
     const user = getUserFromContext(context);
-    return this.documentsService.listFiles(user.id);
+    return this.fileService.listFiles(user.id);
   }
 
   @Query(() => String)
@@ -89,7 +108,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<string> {
     const user = getUserFromContext(context);
-    return this.documentsService.getUploadUrl(user.id, input.filename);
+    return this.fileService.getUploadUrl(user.id, input.filename);
   }
 
   @Query(() => String)
@@ -100,7 +119,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<string> {
     const user = getUserFromContext(context);
-    return this.documentsService.getDownloadUrl(user.id, input.filename);
+    return this.fileService.getDownloadUrl(user.id, input.filename);
   }
 
   @Mutation(() => Boolean)
@@ -111,7 +130,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<boolean> {
     const user = getUserFromContext(context);
-    return this.documentsService.deleteFile(user.id, input.filename);
+    return this.fileService.deleteFile(user.id, input.filename);
   }
 
   /**
@@ -127,7 +146,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<ProcessScanResult> {
     const user = getUserFromContext(context);
-    return this.documentsService.processScan(
+    return this.scanService.processScan(
       user.id,
       input.data,
       input.mimeType,
@@ -152,7 +171,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<ExtractTextResult> {
     const user = getUserFromContext(context);
-    return this.documentsService.extractTextFromFile(user.id, input.filename);
+    return this.scanService.extractTextFromFile(user.id, input.filename);
   }
 
   /**
@@ -167,7 +186,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<ExtractTextResult> {
     const user = getUserFromContext(context);
-    return this.documentsService.extractTextFromBase64(
+    return this.scanService.extractTextFromBase64(
       user.id,
       input.data,
       input.mimeType,
@@ -187,7 +206,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<AnalyzeDocumentResult> {
     const user = getUserFromContext(context);
-    return this.documentsService.analyzeDocument(
+    return this.analysisService.analyzeDocument(
       user.id,
       input.documentId,
       input.forceReanalyze ?? false,
@@ -205,7 +224,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<DocumentAnalysis | null> {
     const user = getUserFromContext(context);
-    return this.documentsService.getDocumentAnalysis(user.id, documentId);
+    return this.analysisService.getDocumentAnalysis(user.id, documentId);
   }
 
   /**
@@ -220,7 +239,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<SetDocumentLocationResult> {
     const user = getUserFromContext(context);
-    return this.documentsService.setDocumentLocation(
+    return this.locationService.setDocumentLocation(
       user.id,
       input.documentId,
       input.location.latitude,
@@ -239,7 +258,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<GeoLocation | null> {
     const user = getUserFromContext(context);
-    return this.documentsService.getDocumentLocation(user.id, documentId);
+    return this.locationService.getDocumentLocation(user.id, documentId);
   }
 
   /**
@@ -253,7 +272,7 @@ export class DocumentsResolver {
   async petitionMapLocations(
     @Args('filters', { nullable: true }) filters?: MapFiltersInput,
   ): Promise<PetitionMapMarker[]> {
-    return this.documentsService.getPetitionMapLocations(filters);
+    return this.locationService.getPetitionMapLocations(filters);
   }
 
   /**
@@ -263,7 +282,7 @@ export class DocumentsResolver {
   @UseGuards(AuthGuard)
   @Permissions({ action: Action.Read, subject: 'File' })
   async petitionMapStats(): Promise<PetitionMapStats> {
-    return this.documentsService.getPetitionMapStats();
+    return this.locationService.getPetitionMapStats();
   }
 
   /**
@@ -274,7 +293,7 @@ export class DocumentsResolver {
   @Permissions({ action: Action.Read, subject: 'File' })
   @Extensions({ complexity: 30 })
   async petitionActivityFeed(): Promise<PetitionActivityFeed> {
-    return this.documentsService.getPetitionActivityFeed();
+    return this.activityFeedService.getPetitionActivityFeed();
   }
 
   /**
@@ -288,7 +307,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<SubmitAbuseReportResult> {
     const user = getUserFromContext(context);
-    return this.documentsService.submitAbuseReport(
+    return this.abuseReportService.submitAbuseReport(
       user.id,
       input.documentId,
       input.reason,
@@ -313,7 +332,7 @@ export class DocumentsResolver {
     @Context() context?: GqlContext,
   ): Promise<PaginatedScanHistory> {
     const user = getUserFromContext(context!);
-    return this.documentsService.getScanHistory(user.id, skip, take, filters);
+    return this.scanHistoryService.getScanHistory(user.id, skip, take, filters);
   }
 
   /**
@@ -327,7 +346,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<ScanDetailResult> {
     const user = getUserFromContext(context);
-    return this.documentsService.getScanDetail(user.id, documentId);
+    return this.scanHistoryService.getScanDetail(user.id, documentId);
   }
 
   /**
@@ -341,7 +360,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<boolean> {
     const user = getUserFromContext(context);
-    return this.documentsService.softDeleteDocument(user.id, documentId);
+    return this.scanHistoryService.softDeleteDocument(user.id, documentId);
   }
 
   /**
@@ -354,7 +373,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<DeleteAllScansResult> {
     const user = getUserFromContext(context);
-    const deletedCount = await this.documentsService.deleteAllUserScans(
+    const deletedCount = await this.scanHistoryService.deleteAllUserScans(
       user.id,
     );
     return { deletedCount };
@@ -373,7 +392,7 @@ export class DocumentsResolver {
   async linkedPropositions(
     @Args('documentId') documentId: string,
   ): Promise<LinkedProposition[]> {
-    return this.documentsService.getLinkedPropositions(documentId);
+    return this.linkingService.getLinkedPropositions(documentId);
   }
 
   /**
@@ -385,7 +404,7 @@ export class DocumentsResolver {
   async petitionDocumentsForProposition(
     @Args('propositionId') propositionId: string,
   ): Promise<LinkedPetitionDocument[]> {
-    return this.documentsService.getLinkedPetitionDocuments(propositionId);
+    return this.linkingService.getLinkedPetitionDocuments(propositionId);
   }
 
   /**
@@ -397,7 +416,7 @@ export class DocumentsResolver {
   async searchPropositions(
     @Args('query') query: string,
   ): Promise<PropositionSearchResult[]> {
-    return this.documentsService.searchPropositions(query);
+    return this.linkingService.searchPropositions(query);
   }
 
   /**
@@ -411,7 +430,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<LinkDocumentResult> {
     const user = getUserFromContext(context);
-    return this.documentsService.linkDocumentToProposition(
+    return this.linkingService.linkDocumentToProposition(
       user.id,
       input.documentId,
       input.propositionId,
@@ -429,7 +448,7 @@ export class DocumentsResolver {
     @Context() context: GqlContext,
   ): Promise<boolean> {
     const user = getUserFromContext(context);
-    return this.documentsService.unlinkDocumentFromProposition(
+    return this.linkingService.unlinkDocumentFromProposition(
       user.id,
       input.documentId,
       input.propositionId,

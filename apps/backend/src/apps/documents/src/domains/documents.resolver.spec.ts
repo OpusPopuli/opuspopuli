@@ -2,14 +2,29 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 
 import { DocumentsResolver } from './documents.resolver';
-import { DocumentsService } from './documents.service';
 import { File } from './models/file.model';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 import { SubmitAbuseReportInput } from './dto/abuse-report.dto';
 
+import { FileService } from './services/file.service';
+import { ScanService } from './services/scan.service';
+import { AnalysisService } from './services/analysis.service';
+import { LocationService } from './services/location.service';
+import { LinkingService } from './services/linking.service';
+import { AbuseReportService } from './services/abuse-report.service';
+import { ActivityFeedService } from './services/activity-feed.service';
+import { ScanHistoryService } from './services/scan-history.service';
+
 describe('DocumentsResolver', () => {
   let documentsResolver: DocumentsResolver;
-  let documentsService: DocumentsService;
+  let fileService: FileService;
+  let scanService: ScanService;
+  let analysisService: AnalysisService;
+  let locationService: LocationService;
+  let linkingService: LinkingService;
+  let abuseReportService: AbuseReportService;
+  let activityFeedService: ActivityFeedService;
+  let scanHistoryService: ScanHistoryService;
 
   const mockUser = {
     id: 'user-1',
@@ -51,34 +66,61 @@ describe('DocumentsResolver', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DocumentsResolver,
+        { provide: FileService, useValue: createMock<FileService>() },
+        { provide: ScanService, useValue: createMock<ScanService>() },
+        { provide: AnalysisService, useValue: createMock<AnalysisService>() },
+        { provide: LocationService, useValue: createMock<LocationService>() },
+        { provide: LinkingService, useValue: createMock<LinkingService>() },
         {
-          provide: DocumentsService,
-          useValue: createMock<DocumentsService>(),
+          provide: AbuseReportService,
+          useValue: createMock<AbuseReportService>(),
+        },
+        {
+          provide: ActivityFeedService,
+          useValue: createMock<ActivityFeedService>(),
+        },
+        {
+          provide: ScanHistoryService,
+          useValue: createMock<ScanHistoryService>(),
         },
       ],
     }).compile();
 
     documentsResolver = module.get<DocumentsResolver>(DocumentsResolver);
-    documentsService = module.get<DocumentsService>(DocumentsService);
+    fileService = module.get<FileService>(FileService);
+    scanService = module.get<ScanService>(ScanService);
+    analysisService = module.get<AnalysisService>(AnalysisService);
+    locationService = module.get<LocationService>(LocationService);
+    linkingService = module.get<LinkingService>(LinkingService);
+    abuseReportService = module.get<AbuseReportService>(AbuseReportService);
+    activityFeedService = module.get<ActivityFeedService>(ActivityFeedService);
+    scanHistoryService = module.get<ScanHistoryService>(ScanHistoryService);
   });
 
   it('resolver and services should be defined', () => {
     expect(documentsResolver).toBeDefined();
-    expect(documentsService).toBeDefined();
+    expect(fileService).toBeDefined();
+    expect(scanService).toBeDefined();
+    expect(analysisService).toBeDefined();
+    expect(locationService).toBeDefined();
+    expect(linkingService).toBeDefined();
+    expect(abuseReportService).toBeDefined();
+    expect(activityFeedService).toBeDefined();
+    expect(scanHistoryService).toBeDefined();
   });
 
   describe('listFiles', () => {
     it('should return list of files for authenticated user', async () => {
-      documentsService.listFiles = jest.fn().mockResolvedValue(mockFiles);
+      fileService.listFiles = jest.fn().mockResolvedValue(mockFiles);
 
       const result = await documentsResolver.listFiles(mockContext);
 
       expect(result).toEqual(mockFiles);
-      expect(documentsService.listFiles).toHaveBeenCalledWith('user-1');
+      expect(fileService.listFiles).toHaveBeenCalledWith('user-1');
     });
 
     it('should return empty array when no files found', async () => {
-      documentsService.listFiles = jest.fn().mockResolvedValue([]);
+      fileService.listFiles = jest.fn().mockResolvedValue([]);
 
       const result = await documentsResolver.listFiles(mockContext);
 
@@ -97,7 +139,7 @@ describe('DocumentsResolver', () => {
   describe('getUploadUrl', () => {
     it('should return upload URL for authenticated user', async () => {
       const mockUrl = 'https://s3.example.com/upload-url';
-      documentsService.getUploadUrl = jest.fn().mockResolvedValue(mockUrl);
+      fileService.getUploadUrl = jest.fn().mockResolvedValue(mockUrl);
 
       const result = await documentsResolver.getUploadUrl(
         { filename: 'test.pdf' },
@@ -105,7 +147,7 @@ describe('DocumentsResolver', () => {
       );
 
       expect(result).toBe(mockUrl);
-      expect(documentsService.getUploadUrl).toHaveBeenCalledWith(
+      expect(fileService.getUploadUrl).toHaveBeenCalledWith(
         'user-1',
         'test.pdf',
       );
@@ -115,7 +157,7 @@ describe('DocumentsResolver', () => {
   describe('getDownloadUrl', () => {
     it('should return download URL for authenticated user', async () => {
       const mockUrl = 'https://s3.example.com/download-url';
-      documentsService.getDownloadUrl = jest.fn().mockResolvedValue(mockUrl);
+      fileService.getDownloadUrl = jest.fn().mockResolvedValue(mockUrl);
 
       const result = await documentsResolver.getDownloadUrl(
         { filename: 'test.pdf' },
@@ -123,7 +165,7 @@ describe('DocumentsResolver', () => {
       );
 
       expect(result).toBe(mockUrl);
-      expect(documentsService.getDownloadUrl).toHaveBeenCalledWith(
+      expect(fileService.getDownloadUrl).toHaveBeenCalledWith(
         'user-1',
         'test.pdf',
       );
@@ -132,7 +174,7 @@ describe('DocumentsResolver', () => {
 
   describe('deleteFile', () => {
     it('should return true when file is deleted', async () => {
-      documentsService.deleteFile = jest.fn().mockResolvedValue(true);
+      fileService.deleteFile = jest.fn().mockResolvedValue(true);
 
       const result = await documentsResolver.deleteFile(
         { filename: 'test.pdf' },
@@ -140,14 +182,11 @@ describe('DocumentsResolver', () => {
       );
 
       expect(result).toBe(true);
-      expect(documentsService.deleteFile).toHaveBeenCalledWith(
-        'user-1',
-        'test.pdf',
-      );
+      expect(fileService.deleteFile).toHaveBeenCalledWith('user-1', 'test.pdf');
     });
 
     it('should return false when file deletion fails', async () => {
-      documentsService.deleteFile = jest.fn().mockResolvedValue(false);
+      fileService.deleteFile = jest.fn().mockResolvedValue(false);
 
       const result = await documentsResolver.deleteFile(
         { filename: 'test.pdf' },
@@ -200,9 +239,7 @@ describe('DocumentsResolver', () => {
         fromCache: false,
       };
 
-      documentsService.analyzeDocument = jest
-        .fn()
-        .mockResolvedValue(mockResult);
+      analysisService.analyzeDocument = jest.fn().mockResolvedValue(mockResult);
 
       const result = await documentsResolver.analyzeDocument(
         { documentId: 'doc-1' },
@@ -210,7 +247,7 @@ describe('DocumentsResolver', () => {
       );
 
       expect(result).toEqual(mockResult);
-      expect(documentsService.analyzeDocument).toHaveBeenCalledWith(
+      expect(analysisService.analyzeDocument).toHaveBeenCalledWith(
         'user-1',
         'doc-1',
         false,
@@ -225,7 +262,7 @@ describe('DocumentsResolver', () => {
     });
 
     it('should pass through forceReanalyze flag', async () => {
-      documentsService.analyzeDocument = jest
+      analysisService.analyzeDocument = jest
         .fn()
         .mockResolvedValue({ analysis: {}, fromCache: false });
 
@@ -234,7 +271,7 @@ describe('DocumentsResolver', () => {
         mockContext,
       );
 
-      expect(documentsService.analyzeDocument).toHaveBeenCalledWith(
+      expect(analysisService.analyzeDocument).toHaveBeenCalledWith(
         'user-1',
         'doc-1',
         true,
@@ -261,21 +298,21 @@ describe('DocumentsResolver', () => {
         totalScansLast24h: 10,
         activePetitionsLast24h: 3,
       };
-      documentsService.getPetitionActivityFeed = jest
+      activityFeedService.getPetitionActivityFeed = jest
         .fn()
         .mockResolvedValue(mockFeed);
 
       const result = await documentsResolver.petitionActivityFeed();
 
       expect(result).toEqual(mockFeed);
-      expect(documentsService.getPetitionActivityFeed).toHaveBeenCalled();
+      expect(activityFeedService.getPetitionActivityFeed).toHaveBeenCalled();
     });
   });
 
   describe('submitAbuseReport', () => {
     it('should call service with correct arguments', async () => {
       const mockResult = { success: true, reportId: 'report-1' };
-      documentsService.submitAbuseReport = jest
+      abuseReportService.submitAbuseReport = jest
         .fn()
         .mockResolvedValue(mockResult);
 
@@ -291,7 +328,7 @@ describe('DocumentsResolver', () => {
       );
 
       expect(result).toEqual(mockResult);
-      expect(documentsService.submitAbuseReport).toHaveBeenCalledWith(
+      expect(abuseReportService.submitAbuseReport).toHaveBeenCalledWith(
         'user-1',
         'doc-1',
         'incorrect_analysis',
@@ -335,7 +372,9 @@ describe('DocumentsResolver', () => {
         total: 1,
         hasMore: false,
       };
-      documentsService.getScanHistory = jest.fn().mockResolvedValue(mockResult);
+      scanHistoryService.getScanHistory = jest
+        .fn()
+        .mockResolvedValue(mockResult);
 
       const result = await documentsResolver.myScanHistory(
         { skip: 0, take: 10 },
@@ -344,7 +383,7 @@ describe('DocumentsResolver', () => {
       );
 
       expect(result).toEqual(mockResult);
-      expect(documentsService.getScanHistory).toHaveBeenCalledWith(
+      expect(scanHistoryService.getScanHistory).toHaveBeenCalledWith(
         'user-1',
         0,
         10,
@@ -354,7 +393,9 @@ describe('DocumentsResolver', () => {
 
     it('should pass filters through', async () => {
       const mockResult = { items: [], total: 0, hasMore: false };
-      documentsService.getScanHistory = jest.fn().mockResolvedValue(mockResult);
+      scanHistoryService.getScanHistory = jest
+        .fn()
+        .mockResolvedValue(mockResult);
 
       const filters = { search: 'parks' };
       await documentsResolver.myScanHistory(
@@ -363,7 +404,7 @@ describe('DocumentsResolver', () => {
         mockContext,
       );
 
-      expect(documentsService.getScanHistory).toHaveBeenCalledWith(
+      expect(scanHistoryService.getScanHistory).toHaveBeenCalledWith(
         'user-1',
         0,
         10,
@@ -384,12 +425,14 @@ describe('DocumentsResolver', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      documentsService.getScanDetail = jest.fn().mockResolvedValue(mockDetail);
+      scanHistoryService.getScanDetail = jest
+        .fn()
+        .mockResolvedValue(mockDetail);
 
       const result = await documentsResolver.scanDetail('doc-1', mockContext);
 
       expect(result).toEqual(mockDetail);
-      expect(documentsService.getScanDetail).toHaveBeenCalledWith(
+      expect(scanHistoryService.getScanDetail).toHaveBeenCalledWith(
         'user-1',
         'doc-1',
       );
@@ -406,7 +449,7 @@ describe('DocumentsResolver', () => {
 
   describe('softDeleteScan', () => {
     it('should soft-delete and return true', async () => {
-      documentsService.softDeleteDocument = jest.fn().mockResolvedValue(true);
+      scanHistoryService.softDeleteDocument = jest.fn().mockResolvedValue(true);
 
       const result = await documentsResolver.softDeleteScan(
         'doc-1',
@@ -414,7 +457,7 @@ describe('DocumentsResolver', () => {
       );
 
       expect(result).toBe(true);
-      expect(documentsService.softDeleteDocument).toHaveBeenCalledWith(
+      expect(scanHistoryService.softDeleteDocument).toHaveBeenCalledWith(
         'user-1',
         'doc-1',
       );
@@ -431,12 +474,12 @@ describe('DocumentsResolver', () => {
 
   describe('deleteAllMyScans', () => {
     it('should delete all scans and return count', async () => {
-      documentsService.deleteAllUserScans = jest.fn().mockResolvedValue(5);
+      scanHistoryService.deleteAllUserScans = jest.fn().mockResolvedValue(5);
 
       const result = await documentsResolver.deleteAllMyScans(mockContext);
 
       expect(result).toEqual({ deletedCount: 5 });
-      expect(documentsService.deleteAllUserScans).toHaveBeenCalledWith(
+      expect(scanHistoryService.deleteAllUserScans).toHaveBeenCalledWith(
         'user-1',
       );
     });
@@ -468,14 +511,14 @@ describe('DocumentsResolver', () => {
           linkedAt: new Date(),
         },
       ];
-      documentsService.getLinkedPropositions = jest
+      linkingService.getLinkedPropositions = jest
         .fn()
         .mockResolvedValue(mockLinks);
 
       const result = await documentsResolver.linkedPropositions('doc-1');
 
       expect(result).toEqual(mockLinks);
-      expect(documentsService.getLinkedPropositions).toHaveBeenCalledWith(
+      expect(linkingService.getLinkedPropositions).toHaveBeenCalledWith(
         'doc-1',
       );
     });
@@ -492,7 +535,7 @@ describe('DocumentsResolver', () => {
           linkedAt: new Date(),
         },
       ];
-      documentsService.getLinkedPetitionDocuments = jest
+      linkingService.getLinkedPetitionDocuments = jest
         .fn()
         .mockResolvedValue(mockDocs);
 
@@ -500,7 +543,7 @@ describe('DocumentsResolver', () => {
         await documentsResolver.petitionDocumentsForProposition('prop-1');
 
       expect(result).toEqual(mockDocs);
-      expect(documentsService.getLinkedPetitionDocuments).toHaveBeenCalledWith(
+      expect(linkingService.getLinkedPetitionDocuments).toHaveBeenCalledWith(
         'prop-1',
       );
     });
@@ -516,14 +559,14 @@ describe('DocumentsResolver', () => {
           status: 'PENDING',
         },
       ];
-      documentsService.searchPropositions = jest
+      linkingService.searchPropositions = jest
         .fn()
         .mockResolvedValue(mockResults);
 
       const result = await documentsResolver.searchPropositions('proposition');
 
       expect(result).toEqual(mockResults);
-      expect(documentsService.searchPropositions).toHaveBeenCalledWith(
+      expect(linkingService.searchPropositions).toHaveBeenCalledWith(
         'proposition',
       );
     });
@@ -532,7 +575,7 @@ describe('DocumentsResolver', () => {
   describe('linkDocumentToProposition', () => {
     it('should link and return result', async () => {
       const mockResult = { success: true, linkId: 'link-1' };
-      documentsService.linkDocumentToProposition = jest
+      linkingService.linkDocumentToProposition = jest
         .fn()
         .mockResolvedValue(mockResult);
 
@@ -542,7 +585,7 @@ describe('DocumentsResolver', () => {
       );
 
       expect(result).toEqual(mockResult);
-      expect(documentsService.linkDocumentToProposition).toHaveBeenCalledWith(
+      expect(linkingService.linkDocumentToProposition).toHaveBeenCalledWith(
         'user-1',
         'doc-1',
         'prop-1',
@@ -563,7 +606,7 @@ describe('DocumentsResolver', () => {
 
   describe('unlinkDocumentFromProposition', () => {
     it('should unlink and return true', async () => {
-      documentsService.unlinkDocumentFromProposition = jest
+      linkingService.unlinkDocumentFromProposition = jest
         .fn()
         .mockResolvedValue(true);
 
@@ -573,9 +616,11 @@ describe('DocumentsResolver', () => {
       );
 
       expect(result).toBe(true);
-      expect(
-        documentsService.unlinkDocumentFromProposition,
-      ).toHaveBeenCalledWith('user-1', 'doc-1', 'prop-1');
+      expect(linkingService.unlinkDocumentFromProposition).toHaveBeenCalledWith(
+        'user-1',
+        'doc-1',
+        'prop-1',
+      );
     });
   });
 });
