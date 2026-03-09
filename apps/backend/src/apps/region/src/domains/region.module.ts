@@ -4,12 +4,19 @@ import {
   ScrapingPipelineModule,
   ScrapingPipelineService,
 } from '@opuspopuli/scraping-pipeline';
-import { ExtractionModule } from '@opuspopuli/extraction-provider';
+import {
+  ExtractionModule,
+  CacheFactory,
+  FallbackCache,
+} from '@opuspopuli/extraction-provider';
+import { MemoryCache } from '@opuspopuli/common';
 import { LLMModule } from '@opuspopuli/llm-provider';
 import { RegionDomainService } from './region.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
+
+export const REGION_CACHE = Symbol('REGION_CACHE');
 
 // RelationalDbModule is global, no need to import
 
@@ -46,6 +53,23 @@ import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repo
     {
       provide: 'SCRAPING_PIPELINE',
       useExisting: ScrapingPipelineService,
+    },
+    // Redis-backed cache with in-memory fallback for region reference data (#459)
+    {
+      provide: REGION_CACHE,
+      useFactory: () => {
+        const config = CacheFactory.createConfigFromEnv();
+        const primary = CacheFactory.createCache<string>({
+          ...config,
+          keyPrefix: 'region:',
+          cacheOptions: { ttlMs: 4 * 60 * 60 * 1000 }, // 4 hours
+        });
+        const fallback = new MemoryCache<string>({
+          ttlMs: 4 * 60 * 60 * 1000,
+          maxSize: 200,
+        });
+        return new FallbackCache<string>(primary, fallback);
+      },
     },
   ],
   exports: [RegionDomainService],

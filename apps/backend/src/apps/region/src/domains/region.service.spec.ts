@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { RegionDomainService } from './region.service';
+import { REGION_CACHE } from './region.module';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   createMockDbService,
@@ -116,15 +117,30 @@ function createMockPlugin(): jest.Mocked<IRegionPlugin> {
   };
 }
 
+function createMockCache() {
+  return {
+    get: jest.fn().mockResolvedValue(undefined),
+    set: jest.fn().mockResolvedValue(undefined),
+    has: jest.fn().mockResolvedValue(false),
+    delete: jest.fn().mockResolvedValue(true),
+    clear: jest.fn().mockResolvedValue(undefined),
+    keys: jest.fn().mockResolvedValue([]),
+    size: 0,
+    destroy: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 describe('RegionDomainService', () => {
   let service: RegionDomainService;
   let mockDb: MockDbClient;
   let mockPlugin: jest.Mocked<IRegionPlugin>;
   let mockRegistry: MockPluginRegistry;
+  let mockCache: ReturnType<typeof createMockCache>;
 
   beforeEach(async () => {
     mockDb = createMockDbService();
     mockPlugin = createMockPlugin();
+    mockCache = createMockCache();
 
     // The local registered plugin entry returned by getAll()
     const localRegistered: RegisteredPlugin = {
@@ -204,6 +220,7 @@ describe('RegionDomainService', () => {
         { provide: PluginLoaderService, useValue: mockLoader },
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: DbService, useValue: mockDb },
+        { provide: REGION_CACHE, useValue: mockCache },
       ],
     }).compile();
 
@@ -372,9 +389,10 @@ describe('RegionDomainService', () => {
       expect(result.itemsProcessed).toBe(1000);
       expect(result.itemsCreated).toBe(1000);
 
-      // Verify only 2 database calls (not 2000)
+      // Verify efficient batching (not 2000 individual calls)
       expect(mockDb.proposition.findMany).toHaveBeenCalledTimes(1);
-      expect(mockDb.$transaction).toHaveBeenCalledTimes(1);
+      // 1000 items / 500 chunk size = 2 batched transactions (#476)
+      expect(mockDb.$transaction).toHaveBeenCalledTimes(2);
     });
 
     it('should correctly identify creates vs updates in mixed batch', async () => {
@@ -998,6 +1016,7 @@ describe('RegionDomainService — federal placeholder resolution', () => {
         { provide: PluginLoaderService, useValue: mockLoader },
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: DbService, useValue: mockDb },
+        { provide: REGION_CACHE, useValue: createMockCache() },
       ],
     }).compile();
 
@@ -1081,6 +1100,7 @@ describe('RegionDomainService — federal placeholder resolution', () => {
         { provide: PluginLoaderService, useValue: mockLoader },
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: DbService, useValue: mockDb },
+        { provide: REGION_CACHE, useValue: createMockCache() },
       ],
     }).compile();
 
@@ -1226,6 +1246,7 @@ describe('RegionDomainService — campaign finance sync', () => {
         { provide: PluginLoaderService, useValue: mockLoader },
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: DbService, useValue: mockDb },
+        { provide: REGION_CACHE, useValue: createMockCache() },
       ],
     }).compile();
 
@@ -1289,5 +1310,234 @@ describe('RegionDomainService — campaign finance sync', () => {
     expect(cfResult).toBeDefined();
     expect(cfResult!.itemsProcessed).toBe(0);
     expect(cfResult!.itemsCreated).toBe(0);
+  });
+});
+
+/**
+ * Tests for Redis caching (#459) and batch transactions (#476).
+ * Uses the main test setup with mockCache injected.
+ */
+describe('RegionDomainService — caching and batch transactions', () => {
+  let service: RegionDomainService;
+  let mockDb: MockDbClient;
+  let mockPlugin: jest.Mocked<IRegionPlugin>;
+  let mockCache: ReturnType<typeof createMockCache>;
+
+  beforeEach(async () => {
+    mockDb = createMockDbService();
+    mockPlugin = createMockPlugin();
+    mockCache = createMockCache();
+
+    const localRegistered: RegisteredPlugin = {
+      name: 'test-provider',
+      instance: mockPlugin,
+      status: 'active',
+      loadedAt: new Date(),
+    };
+
+    const mockRegistry: MockPluginRegistry = {
+      register: jest.fn().mockResolvedValue(undefined),
+      unregister: jest.fn().mockResolvedValue(undefined),
+      getActive: jest.fn().mockReturnValue(mockPlugin),
+      registerLocal: jest.fn().mockResolvedValue(undefined),
+      registerFederal: jest.fn().mockResolvedValue(undefined),
+      getLocal: jest.fn().mockReturnValue(mockPlugin),
+      getFederal: jest.fn().mockReturnValue(undefined),
+      getAll: jest.fn().mockReturnValue([localRegistered]),
+      getActiveName: jest.fn().mockReturnValue('test-provider'),
+      hasActive: jest.fn().mockReturnValue(true),
+      getHealth: jest.fn(),
+      getStatus: jest.fn(),
+      onModuleDestroy: jest.fn(),
+    };
+
+    const mockLoader: MockPluginLoader = {
+      loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      unloadPlugin: jest.fn().mockResolvedValue(undefined),
+    };
+
+    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findUnique.mockResolvedValue(null);
+    mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
+
+    mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.proposition.count.mockResolvedValue(0);
+    mockDb.meeting.findMany.mockResolvedValue([]);
+    mockDb.meeting.count.mockResolvedValue(0);
+    mockDb.representative.findMany.mockResolvedValue([]);
+    mockDb.representative.count.mockResolvedValue(0);
+
+    (mockDb.$transaction as jest.Mock).mockImplementation(
+      async (operations: Promise<unknown>[]) => {
+        return Promise.all(operations);
+      },
+    );
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RegionDomainService,
+        { provide: PluginLoaderService, useValue: mockLoader },
+        { provide: PluginRegistryService, useValue: mockRegistry },
+        { provide: DbService, useValue: mockDb },
+        { provide: REGION_CACHE, useValue: mockCache },
+      ],
+    }).compile();
+
+    service = module.get<RegionDomainService>(RegionDomainService);
+    await service.onModuleInit();
+  });
+
+  // ==========================================
+  // CACHING TESTS (#459)
+  // ==========================================
+
+  describe('caching', () => {
+    it('should return cached propositions on cache hit', async () => {
+      const cachedData = {
+        items: [{ id: 'cached-1', title: 'Cached Prop' }],
+        total: 1,
+        hasMore: false,
+      };
+      mockCache.get.mockResolvedValueOnce(JSON.stringify(cachedData));
+
+      const result = await service.getPropositions(0, 10);
+
+      expect(result).toEqual(cachedData);
+      expect(mockDb.proposition.findMany).not.toHaveBeenCalled();
+      expect(mockDb.proposition.count).not.toHaveBeenCalled();
+    });
+
+    it('should cache propositions on cache miss', async () => {
+      mockDb.proposition.findMany.mockResolvedValueOnce([
+        {
+          id: 'prop-1',
+          externalId: 'ext-1',
+          title: 'Prop 1',
+          summary: 'Sum',
+          fullText: null,
+          status: 'pending',
+          electionDate: null,
+          sourceUrl: null,
+          deletedAt: null,
+          createdAt: new Date('2024-01-01'),
+          updatedAt: new Date('2024-01-01'),
+        },
+      ]);
+      mockDb.proposition.count.mockResolvedValueOnce(1);
+
+      await service.getPropositions(0, 10);
+
+      expect(mockCache.set).toHaveBeenCalledWith(
+        'propositions:0:10',
+        expect.any(String),
+      );
+    });
+
+    it('should return cached meetings on cache hit', async () => {
+      const cachedData = {
+        items: [{ id: 'cached-m1', title: 'Cached Meeting' }],
+        total: 1,
+        hasMore: false,
+      };
+      mockCache.get.mockResolvedValueOnce(JSON.stringify(cachedData));
+
+      const result = await service.getMeetings(0, 10);
+
+      expect(result).toEqual(cachedData);
+      expect(mockDb.meeting.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should return cached representatives on cache hit', async () => {
+      const cachedData = {
+        items: [{ id: 'cached-r1', name: 'Cached Rep' }],
+        total: 1,
+        hasMore: false,
+      };
+      mockCache.get.mockResolvedValueOnce(JSON.stringify(cachedData));
+
+      const result = await service.getRepresentatives(0, 10);
+
+      expect(result).toEqual(cachedData);
+      expect(mockDb.representative.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should include chamber in representatives cache key', async () => {
+      mockCache.get.mockResolvedValueOnce(undefined);
+      mockDb.representative.findMany.mockResolvedValueOnce([]);
+      mockDb.representative.count.mockResolvedValueOnce(0);
+
+      await service.getRepresentatives(0, 10, 'Senate');
+
+      expect(mockCache.set).toHaveBeenCalledWith(
+        'representatives:0:10:Senate',
+        expect.any(String),
+      );
+    });
+  });
+
+  // ==========================================
+  // CACHE INVALIDATION TESTS (#459)
+  // ==========================================
+
+  describe('cache invalidation', () => {
+    it('should invalidate proposition cache after syncPropositions', async () => {
+      mockCache.keys.mockResolvedValueOnce([
+        'propositions:0:10',
+        'propositions:10:10',
+      ]);
+
+      await service.syncDataType(DataType.PROPOSITIONS);
+
+      expect(mockCache.keys).toHaveBeenCalled();
+      expect(mockCache.delete).toHaveBeenCalledWith('propositions:0:10');
+      expect(mockCache.delete).toHaveBeenCalledWith('propositions:10:10');
+    });
+
+    it('should invalidate meeting cache after syncMeetings', async () => {
+      mockCache.keys.mockResolvedValueOnce(['meetings:0:10']);
+
+      await service.syncDataType(DataType.MEETINGS);
+
+      expect(mockCache.delete).toHaveBeenCalledWith('meetings:0:10');
+    });
+
+    it('should invalidate representative cache after syncRepresentatives', async () => {
+      mockCache.keys.mockResolvedValueOnce(['representatives:0:10:all']);
+
+      await service.syncDataType(DataType.REPRESENTATIVES);
+
+      expect(mockCache.delete).toHaveBeenCalledWith('representatives:0:10:all');
+    });
+  });
+
+  // ==========================================
+  // BATCH TRANSACTION TESTS (#476)
+  // ==========================================
+
+  describe('batch transactions', () => {
+    it('should chunk large datasets into multiple transactions', async () => {
+      const manyPropositions = Array.from({ length: 1200 }, (_, i) => ({
+        externalId: `prop-${i}`,
+        title: `Proposition ${i}`,
+        summary: `Summary ${i}`,
+        fullText: undefined,
+        status: PropositionStatus.PENDING,
+        electionDate: undefined,
+        sourceUrl: undefined,
+      }));
+      mockPlugin.fetchPropositions.mockResolvedValueOnce(manyPropositions);
+
+      await service.syncDataType(DataType.PROPOSITIONS);
+
+      // 1200 items / 500 chunk size = 3 transaction calls
+      expect(mockDb.$transaction).toHaveBeenCalledTimes(3);
+    });
+
+    it('should use single transaction for small datasets', async () => {
+      await service.syncDataType(DataType.PROPOSITIONS);
+
+      expect(mockDb.$transaction).toHaveBeenCalledTimes(1);
+    });
   });
 });
