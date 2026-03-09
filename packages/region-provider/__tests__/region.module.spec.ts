@@ -19,6 +19,9 @@ jest.mock("@nestjs/common", () => ({
 }));
 
 jest.mock("@nestjs/config", () => ({
+  ConfigModule: {
+    forFeature: jest.fn().mockReturnValue({ module: "ConfigModule" }),
+  },
   ConfigService: jest.fn(),
 }));
 

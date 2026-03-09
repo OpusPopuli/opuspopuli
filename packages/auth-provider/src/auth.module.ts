@@ -1,6 +1,7 @@
 import { Module, Global } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { IAuthProvider } from "@opuspopuli/common";
+import { supabaseConfig, authConfig } from "@opuspopuli/config-provider";
 import { SupabaseAuthProvider } from "./providers/supabase.provider.js";
 
 /**
@@ -13,7 +14,10 @@ import { SupabaseAuthProvider } from "./providers/supabase.provider.js";
  */
 @Global()
 @Module({
-  imports: [ConfigModule],
+  imports: [
+    ConfigModule.forFeature(supabaseConfig),
+    ConfigModule.forFeature(authConfig),
+  ],
   providers: [
     {
       provide: "AUTH_PROVIDER",

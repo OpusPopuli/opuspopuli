@@ -15,11 +15,8 @@ import { Request, Response } from 'express';
 import { LoggingModule, LogLevel } from '@opuspopuli/logging-provider';
 
 import configuration from 'src/config';
-import supabaseConfig from 'src/config/supabase.config';
-import storageConfig from 'src/config/storage.config';
-import authConfig from 'src/config/auth.config';
-import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
+import { authConfig, supabaseConfig } from '@opuspopuli/config-provider';
 import csrfConfig from 'src/config/csrf.config';
 import cookieConfig from 'src/config/cookie.config';
 import websocketConfig, { IWebSocketConfig } from 'src/config/websocket.config';
@@ -78,11 +75,9 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
     ConfigModule.forRoot({
       load: [
         configuration,
-        supabaseConfig,
-        storageConfig,
-        authConfig,
-        secretsConfig,
         relationaldbConfig,
+        supabaseConfig,
+        authConfig,
         csrfConfig,
         cookieConfig,
         websocketConfig,

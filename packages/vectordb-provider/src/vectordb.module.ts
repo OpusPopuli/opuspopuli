@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { IVectorDBProvider } from "@opuspopuli/common";
+import { vectordbConfig } from "@opuspopuli/config-provider";
 import { DbService } from "@opuspopuli/relationaldb-provider";
 import { PgVectorProvider } from "./providers/pgvector.provider.js";
 
@@ -13,6 +14,7 @@ import { PgVectorProvider } from "./providers/pgvector.provider.js";
  * To add custom providers, implement IVectorDBProvider interface.
  */
 @Module({
+  imports: [ConfigModule.forFeature(vectordbConfig)],
   providers: [
     {
       provide: "VECTOR_DB_PROVIDER",

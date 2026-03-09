@@ -18,14 +18,8 @@ import { createQueryComplexityValidationRule } from 'src/common/graphql/query-co
 import { DocumentsModule } from './domains/documents.module';
 
 import configuration from 'src/config';
-import supabaseConfig from 'src/config/supabase.config';
-import storageConfig from 'src/config/storage.config';
-import authConfig from 'src/config/auth.config';
-import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
 import fileConfig from 'src/config/file.config';
-import ocrConfig from 'src/config/ocr.config';
-import r2Config from 'src/config/r2.config';
 import { documentsValidationSchema } from 'src/config/env.validation';
 
 import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
@@ -55,17 +49,7 @@ import { MetricsModule } from 'src/common/metrics';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      load: [
-        configuration,
-        supabaseConfig,
-        storageConfig,
-        authConfig,
-        secretsConfig,
-        relationaldbConfig,
-        fileConfig,
-        ocrConfig,
-        r2Config,
-      ],
+      load: [configuration, relationaldbConfig, fileConfig],
       validationSchema: documentsValidationSchema,
       validationOptions: { abortEarly: false },
       isGlobal: true,
