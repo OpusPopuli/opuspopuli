@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import jwt, { JwtHeader, JwtPayload, SigningKeyCallback } from 'jsonwebtoken';
 import jwksRsa, { JwksClient } from 'jwks-rsa';
 import { ILogin } from 'src/interfaces/login.interface';
+import {
+  ConfigurationException,
+  AuthenticationException,
+} from 'src/common/exceptions/app.exceptions';
 
 interface ISupabaseConfig {
   url: string;
@@ -30,7 +34,7 @@ export class WebSocketAuthService {
   constructor(private readonly configService: ConfigService) {
     const supabaseConfig = this.configService.get<ISupabaseConfig>('supabase');
     if (!supabaseConfig?.url) {
-      throw new Error('Supabase configuration is missing');
+      throw new ConfigurationException('Supabase configuration is missing');
     }
 
     // Supabase Auth JWT issuer is the project URL with /auth/v1
@@ -141,7 +145,7 @@ export class WebSocketAuthService {
       this.logger.warn(
         'WebSocket connection rejected: Missing authentication token',
       );
-      throw new Error('Missing authentication token');
+      throw new AuthenticationException('Missing authentication token');
     }
 
     const user = await this.validateToken(token);
@@ -150,7 +154,7 @@ export class WebSocketAuthService {
       this.logger.warn(
         'WebSocket connection rejected: Invalid authentication token',
       );
-      throw new Error('Invalid authentication token');
+      throw new AuthenticationException('Invalid authentication token');
     }
 
     this.logger.log(`WebSocket connection authenticated for user: ${user.id}`);

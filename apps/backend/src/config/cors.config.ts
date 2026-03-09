@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { ConfigService } from '@nestjs/config';
 import { isProduction } from './environment.config';
+import { ConfigurationException } from 'src/common/exceptions/app.exceptions';
 
 /**
  * CORS Configuration
@@ -85,7 +86,7 @@ export function parseAllowedOrigins(
 
   // Production: ALLOWED_ORIGINS is required (defense in depth — env.validation.ts also enforces this)
   if (!allowedOrigins || allowedOrigins.trim() === '') {
-    throw new Error(
+    throw new ConfigurationException(
       'ALLOWED_ORIGINS must be set in production. Provide a comma-separated list of HTTPS origins.',
     );
   }
@@ -96,14 +97,14 @@ export function parseAllowedOrigins(
     .filter(Boolean);
 
   if (origins.length === 0) {
-    throw new Error(
+    throw new ConfigurationException(
       'ALLOWED_ORIGINS must contain at least one valid origin in production.',
     );
   }
 
   const invalidOrigins = origins.filter((o) => !isValidProductionOrigin(o));
   if (invalidOrigins.length > 0) {
-    throw new Error(
+    throw new ConfigurationException(
       `Invalid origins in ALLOWED_ORIGINS: ${invalidOrigins.join(', ')}. All production origins must use HTTPS.`,
     );
   }
