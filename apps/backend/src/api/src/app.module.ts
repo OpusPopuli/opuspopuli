@@ -41,6 +41,7 @@ import { HmacSignerService } from 'src/common/services/hmac-signer.service';
 import { GracefulShutdownService } from 'src/common/services/graceful-shutdown.service';
 import { HmacRemoteGraphQLDataSource } from './hmac-data-source';
 import { GatewayServicesModule } from './gateway-services.module';
+import { WebSocketConnectionException } from 'src/common/exceptions/app.exceptions';
 
 /**
  * Extract authenticated user from request context for GraphQL operations.
@@ -179,7 +180,9 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
                   }) => {
                     const { connectionParams, extra } = context;
                     if (!connectionParams) {
-                      throw new Error('Missing connection parameters');
+                      throw new WebSocketConnectionException(
+                        'Missing connection parameters',
+                      );
                     }
 
                     // SECURITY: Validate WebSocket origin against allowed origins
@@ -187,7 +190,7 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
                     if (allowedOriginSet) {
                       const origin = extra?.request?.headers?.origin;
                       if (!origin || !allowedOriginSet.has(origin)) {
-                        throw new Error(
+                        throw new WebSocketConnectionException(
                           `WebSocket connection rejected: origin "${origin || 'none'}" is not allowed`,
                         );
                       }

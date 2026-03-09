@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { createLogger, LogLevel } from '@opuspopuli/logging-provider';
 import { DBConnection, DBType } from 'src/common/enums/db.enums';
+import { ConfigurationException } from 'src/common/exceptions/app.exceptions';
 
 /**
  * Config logger for use during application initialization
@@ -85,7 +86,7 @@ export default async (): Promise<Partial<IAppConfig>> => {
   const region = configService.get('REGION');
 
   if (!project || !application || !version || !description || !port) {
-    throw new Error(
+    throw new ConfigurationException(
       `Missing service configuration: PROJECT=${project} APPLICATION=${application} VERSION=${version} DESCRIPTION=${description} PORT=${port}`,
     );
   }

@@ -17,6 +17,7 @@ import {
   type IPipelineService,
   type IRegionPlugin,
 } from '@opuspopuli/region-provider';
+import { ServiceInitializationException } from 'src/common/exceptions/app.exceptions';
 import {
   resolveConfigPlaceholders,
   type Proposition,
@@ -281,7 +282,9 @@ export class RegionDomainService implements OnModuleInit {
     // Set up the local region service for GraphQL resolvers (propositions, meetings, reps)
     const localPlugin = this.pluginRegistry.getLocal();
     if (!localPlugin) {
-      throw new Error('No local region plugin available after initialization');
+      throw new ServiceInitializationException(
+        'No local region plugin available after initialization',
+      );
     }
 
     this.regionService = new RegionProviderService(localPlugin);
