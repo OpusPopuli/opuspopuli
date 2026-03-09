@@ -15,8 +15,7 @@ import { RegionDomainService } from './region.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
-
-export const REGION_CACHE = Symbol('REGION_CACHE');
+import { REGION_CACHE } from './region.tokens';
 
 // RelationalDbModule is global, no need to import
 

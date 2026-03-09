@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { RegionDomainService } from './region.service';
-import { REGION_CACHE } from './region.module';
+import { REGION_CACHE } from './region.tokens';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   createMockDbService,

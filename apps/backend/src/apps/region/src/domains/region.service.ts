@@ -28,7 +28,7 @@ import {
   type Representative,
   type CampaignFinanceResult,
 } from '@opuspopuli/common';
-import { REGION_CACHE } from './region.module';
+import { REGION_CACHE } from './region.tokens';
 
 /**
  * Minimal interface for data fetching used by sync methods.
