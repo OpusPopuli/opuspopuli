@@ -15,6 +15,8 @@ import {
 
 export interface UseMapPetitionsReturn {
   markers: PetitionMapMarker[];
+  totalCount: number;
+  truncated: boolean;
   stats: PetitionMapStats | null;
   loading: boolean;
   error: Error | null;
@@ -73,8 +75,12 @@ export function useMapPetitions(
     };
   }, []);
 
+  const mapResult = locationsData?.petitionMapLocations;
+
   return {
-    markers: locationsData?.petitionMapLocations ?? [],
+    markers: mapResult?.markers ?? [],
+    totalCount: mapResult?.totalCount ?? 0,
+    truncated: mapResult?.truncated ?? false,
     stats: statsData?.petitionMapStats ?? null,
     loading: locationsLoading || statsLoading,
     error: locationsError ?? statsError ?? null,

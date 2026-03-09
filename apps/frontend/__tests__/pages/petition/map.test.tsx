@@ -76,6 +76,8 @@ const mockUpdateFilters = jest.fn();
 jest.mock("@/lib/hooks/useMapPetitions", () => ({
   useMapPetitions: () => ({
     markers: [],
+    totalCount: 0,
+    truncated: false,
     stats: null,
     loading: false,
     error: null,
