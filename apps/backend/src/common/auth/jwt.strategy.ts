@@ -7,6 +7,7 @@ import { Request } from 'express';
 import { IAuthConfig } from 'src/config';
 
 import { ILogin } from 'src/interfaces/login.interface';
+import { ConfigurationException } from 'src/common/exceptions/app.exceptions';
 
 /**
  * Extract JWT from httpOnly cookie
@@ -35,7 +36,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       configService.get<IAuthConfig>('auth');
 
     if (!authConfig) {
-      throw new Error('Authentication config is missing');
+      throw new ConfigurationException('Authentication config is missing');
     }
 
     const region = configService.get<string>('region');
