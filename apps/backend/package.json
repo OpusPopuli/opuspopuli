@@ -61,6 +61,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@opuspopuli/auth-provider": "workspace:*",
     "@opuspopuli/common": "workspace:*",
+    "@opuspopuli/config-provider": "workspace:*",
     "@opuspopuli/email-provider": "workspace:*",
     "@opuspopuli/embeddings-provider": "workspace:*",
     "@opuspopuli/extraction-provider": "workspace:*",

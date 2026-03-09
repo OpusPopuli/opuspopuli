@@ -22,13 +22,9 @@ import { ActivityModule } from './domains/activity/activity.module';
 import { EmailDomainModule } from './domains/email/email.module';
 
 import configuration from 'src/config';
-import supabaseConfig from 'src/config/supabase.config';
-import storageConfig from 'src/config/storage.config';
-import authConfig from 'src/config/auth.config';
-import secretsConfig from 'src/config/secrets.config';
 import relationaldbConfig from 'src/config/relationaldb.config';
-import emailConfig from 'src/config/email.config';
 import authThrottleConfig from 'src/config/auth-throttle.config';
+import { authConfig } from '@opuspopuli/config-provider';
 import { usersValidationSchema } from 'src/config/env.validation';
 
 import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
@@ -49,16 +45,7 @@ import { MetricsModule } from 'src/common/metrics';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      load: [
-        configuration,
-        supabaseConfig,
-        storageConfig,
-        authConfig,
-        secretsConfig,
-        relationaldbConfig,
-        emailConfig,
-        authThrottleConfig,
-      ],
+      load: [configuration, relationaldbConfig, authThrottleConfig, authConfig],
       validationSchema: usersValidationSchema,
       validationOptions: { abortEarly: false },
       isGlobal: true,

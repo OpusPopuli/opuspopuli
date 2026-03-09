@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { IEmbeddingProvider, ChunkingConfig } from "@opuspopuli/common";
+import { embeddingsConfig } from "@opuspopuli/config-provider";
 import { EmbeddingsService } from "./embeddings.service.js";
 import { OllamaEmbeddingProvider } from "./providers/ollama.provider.js";
 import { XenovaEmbeddingProvider } from "./providers/xenova.provider.js";
@@ -16,6 +17,7 @@ import { XenovaEmbeddingProvider } from "./providers/xenova.provider.js";
  * - Add your own implementation of IEmbeddingProvider
  */
 @Module({
+  imports: [ConfigModule.forFeature(embeddingsConfig)],
   providers: [
     // Chunking configuration
     {

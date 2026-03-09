@@ -26,6 +26,7 @@
   "license": "AGPL-3.0",
   "dependencies": {
     "@opuspopuli/common": "workspace:*",
+    "@opuspopuli/config-provider": "workspace:*",
     "@supabase/supabase-js": "^2.49.1"
   },
   "peerDependencies": {

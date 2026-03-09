@@ -1,6 +1,7 @@
 import { Module, Global } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { ISecretsProvider } from "@opuspopuli/common";
+import { supabaseConfig, secretsConfig } from "@opuspopuli/config-provider";
 import { EnvProvider } from "./providers/env.provider.js";
 import { SupabaseVaultProvider } from "./providers/supabase-vault.provider.js";
 
@@ -17,7 +18,10 @@ export const SECRETS_PROVIDER = "SECRETS_PROVIDER";
  */
 @Global()
 @Module({
-  imports: [ConfigModule],
+  imports: [
+    ConfigModule.forFeature(supabaseConfig),
+    ConfigModule.forFeature(secretsConfig),
+  ],
   providers: [
     {
       provide: SECRETS_PROVIDER,

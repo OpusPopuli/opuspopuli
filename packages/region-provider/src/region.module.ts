@@ -1,6 +1,7 @@
 import { Module, DynamicModule } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { IRegionProvider } from "@opuspopuli/common";
+import { regionConfig } from "@opuspopuli/config-provider";
 import { RegionService } from "./region.service.js";
 import { ExampleRegionProvider } from "./providers/example.provider.js";
 import { PluginRegistryService } from "./registry/plugin-registry.service.js";
@@ -69,6 +70,7 @@ export class RegionModule {
   static forRootAsync(): DynamicModule {
     return {
       module: RegionModule,
+      imports: [ConfigModule.forFeature(regionConfig)],
       providers: [
         {
           provide: "REGION_PROVIDER",

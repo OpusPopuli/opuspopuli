@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { ILLMProvider } from "@opuspopuli/common";
+import { llmConfig } from "@opuspopuli/config-provider";
 import {
   OllamaLLMProvider,
   OllamaConfig,
@@ -26,6 +27,7 @@ import {
  * 3. Start server: ollama serve
  */
 @Module({
+  imports: [ConfigModule.forFeature(llmConfig)],
   providers: [
     // LLM provider selection
     {
