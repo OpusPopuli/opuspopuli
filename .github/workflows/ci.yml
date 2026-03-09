@@ -328,12 +328,33 @@ jobs:
           format: 'sarif'
           output: 'trivy-region.sarif'
 
-      - name: Upload Trivy container scan results
+      - name: Upload Trivy scan — users
         uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
-        if: ${{ always() && hashFiles('trivy-*.sarif') != '' }}
+        if: ${{ always() && hashFiles('trivy-users.sarif') != '' }}
         with:
-          sarif_file: '.'
-          category: 'container-scanning'
+          sarif_file: 'trivy-users.sarif'
+          category: 'container-scanning-users'
+
+      - name: Upload Trivy scan — documents
+        uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
+        if: ${{ always() && hashFiles('trivy-documents.sarif') != '' }}
+        with:
+          sarif_file: 'trivy-documents.sarif'
+          category: 'container-scanning-documents'
+
+      - name: Upload Trivy scan — knowledge
+        uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
+        if: ${{ always() && hashFiles('trivy-knowledge.sarif') != '' }}
+        with:
+          sarif_file: 'trivy-knowledge.sarif'
+          category: 'container-scanning-knowledge'
+
+      - name: Upload Trivy scan — region
+        uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818 # v3
+        if: ${{ always() && hashFiles('trivy-region.sarif') != '' }}
+        with:
+          sarif_file: 'trivy-region.sarif'
+          category: 'container-scanning-region'
 
       - name: Download package build artifacts
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
