@@ -115,6 +115,13 @@ export interface MapFiltersInput {
   documentType?: string;
   startDate?: string;
   endDate?: string;
+  limit?: number;
+}
+
+export interface PetitionMapResult {
+  markers: PetitionMapMarker[];
+  totalCount: number;
+  truncated: boolean;
 }
 
 export type AbuseReportReason =
@@ -213,11 +220,15 @@ export const SUBMIT_ABUSE_REPORT = gql`
 export const GET_PETITION_MAP_LOCATIONS = gql`
   query PetitionMapLocations($filters: MapFiltersInput) {
     petitionMapLocations(filters: $filters) {
-      id
-      latitude
-      longitude
-      documentType
-      createdAt
+      markers {
+        id
+        latitude
+        longitude
+        documentType
+        createdAt
+      }
+      totalCount
+      truncated
     }
   }
 `;
@@ -297,7 +308,7 @@ export interface AnalyzeDocumentData {
 }
 
 export interface PetitionMapLocationsData {
-  petitionMapLocations: PetitionMapMarker[];
+  petitionMapLocations: PetitionMapResult;
 }
 
 export interface PetitionMapStatsData {

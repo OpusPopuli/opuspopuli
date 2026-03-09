@@ -49,6 +49,8 @@ describe("useMapPetitions", () => {
     const { result } = renderHook(() => useMapPetitions());
 
     expect(result.current.markers).toEqual([]);
+    expect(result.current.totalCount).toBe(0);
+    expect(result.current.truncated).toBe(false);
     expect(result.current.stats).toBeNull();
     expect(result.current.loading).toBe(true);
     expect(result.current.error).toBeNull();
@@ -57,7 +59,13 @@ describe("useMapPetitions", () => {
   it("returns markers from locations query", () => {
     mockUseQuery
       .mockReturnValueOnce({
-        data: { petitionMapLocations: mockMarkers },
+        data: {
+          petitionMapLocations: {
+            markers: mockMarkers,
+            totalCount: 2,
+            truncated: false,
+          },
+        },
         loading: false,
         error: undefined,
       })
@@ -77,7 +85,13 @@ describe("useMapPetitions", () => {
   it("returns stats from stats query", () => {
     mockUseQuery
       .mockReturnValueOnce({
-        data: { petitionMapLocations: mockMarkers },
+        data: {
+          petitionMapLocations: {
+            markers: mockMarkers,
+            totalCount: 2,
+            truncated: false,
+          },
+        },
         loading: false,
         error: undefined,
       })
@@ -146,7 +160,13 @@ describe("useMapPetitions", () => {
     const statsError = new Error("Stats failed");
     mockUseQuery
       .mockReturnValueOnce({
-        data: { petitionMapLocations: [] },
+        data: {
+          petitionMapLocations: {
+            markers: [],
+            totalCount: 0,
+            truncated: false,
+          },
+        },
         loading: false,
         error: undefined,
       })

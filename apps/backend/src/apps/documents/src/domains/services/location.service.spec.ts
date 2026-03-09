@@ -116,35 +116,80 @@ describe('LocationService', () => {
   });
 
   describe('getPetitionMapLocations', () => {
-    it('should return map markers', async () => {
-      db.$queryRawUnsafe.mockResolvedValue([
-        {
-          id: 'doc-1',
-          latitude: 37.775,
-          longitude: -122.419,
-          document_type: 'petition',
-          created_at: new Date('2024-01-01'),
-        },
-      ]);
+    it('should return map result with markers, totalCount, and truncated', async () => {
+      db.$queryRawUnsafe
+        .mockResolvedValueOnce([{ count: BigInt(1) }]) // count query
+        .mockResolvedValueOnce([
+          {
+            id: 'doc-1',
+            latitude: 37.775,
+            longitude: -122.419,
+            document_type: 'petition',
+            created_at: new Date('2024-01-01'),
+          },
+        ]); // data query
 
       const result = await service.getPetitionMapLocations();
 
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('doc-1');
-      expect(result[0].latitude).toBe(37.775);
-      expect(result[0].documentType).toBe('petition');
+      expect(result.markers).toHaveLength(1);
+      expect(result.markers[0].id).toBe('doc-1');
+      expect(result.markers[0].latitude).toBe(37.775);
+      expect(result.markers[0].documentType).toBe('petition');
+      expect(result.totalCount).toBe(1);
+      expect(result.truncated).toBe(false);
     });
 
-    it('should return empty array when no locations', async () => {
-      db.$queryRawUnsafe.mockResolvedValue([]);
+    it('should return empty markers when no locations', async () => {
+      db.$queryRawUnsafe
+        .mockResolvedValueOnce([{ count: BigInt(0) }])
+        .mockResolvedValueOnce([]);
 
       const result = await service.getPetitionMapLocations();
 
-      expect(result).toEqual([]);
+      expect(result.markers).toEqual([]);
+      expect(result.totalCount).toBe(0);
+      expect(result.truncated).toBe(false);
+    });
+
+    it('should set truncated=true when totalCount exceeds limit', async () => {
+      db.$queryRawUnsafe
+        .mockResolvedValueOnce([{ count: BigInt(1500) }])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.getPetitionMapLocations();
+
+      expect(result.totalCount).toBe(1500);
+      expect(result.truncated).toBe(true);
+    });
+
+    it('should respect custom limit from filters', async () => {
+      db.$queryRawUnsafe
+        .mockResolvedValueOnce([{ count: BigInt(50) }])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.getPetitionMapLocations({ limit: 10 });
+
+      expect(result.totalCount).toBe(50);
+      expect(result.truncated).toBe(true);
+      const dataQuery = db.$queryRawUnsafe.mock.calls[1][0] as string;
+      expect(dataQuery).toContain('LIMIT 10');
+    });
+
+    it('should cap limit at 1000', async () => {
+      db.$queryRawUnsafe
+        .mockResolvedValueOnce([{ count: BigInt(0) }])
+        .mockResolvedValueOnce([]);
+
+      await service.getPetitionMapLocations({ limit: 5000 });
+
+      const dataQuery = db.$queryRawUnsafe.mock.calls[1][0] as string;
+      expect(dataQuery).toContain('LIMIT 1000');
     });
 
     it('should apply filters when provided', async () => {
-      db.$queryRawUnsafe.mockResolvedValue([]);
+      db.$queryRawUnsafe
+        .mockResolvedValueOnce([{ count: BigInt(0) }])
+        .mockResolvedValueOnce([]);
 
       await service.getPetitionMapLocations({
         documentType: 'petition',
@@ -152,9 +197,36 @@ describe('LocationService', () => {
       });
 
       expect(db.$queryRawUnsafe).toHaveBeenCalled();
-      const query = db.$queryRawUnsafe.mock.calls[0][0] as string;
-      expect(query).toContain('type = $');
-      expect(query).toContain('created_at >= $');
+      const countQuery = db.$queryRawUnsafe.mock.calls[0][0] as string;
+      expect(countQuery).toContain('type = $');
+      expect(countQuery).toContain('created_at >= $');
+    });
+
+    it('should apply bounds and endDate filters', async () => {
+      db.$queryRawUnsafe
+        .mockResolvedValueOnce([{ count: BigInt(5) }])
+        .mockResolvedValueOnce([
+          {
+            id: 'doc-1',
+            latitude: 37.0,
+            longitude: -122.0,
+            document_type: 'petition',
+            created_at: new Date('2024-06-01'),
+          },
+        ]);
+
+      const result = await service.getPetitionMapLocations({
+        bounds: { swLat: 34, swLng: -119, neLat: 38, neLng: -117 },
+        endDate: new Date('2024-12-31'),
+      });
+
+      const countQuery = db.$queryRawUnsafe.mock.calls[0][0] as string;
+      expect(countQuery).toContain('ST_Within');
+      expect(countQuery).toContain('ST_MakeEnvelope');
+      expect(countQuery).toContain('created_at <= $');
+      expect(result.markers).toHaveLength(1);
+      expect(result.totalCount).toBe(5);
+      expect(result.truncated).toBe(false);
     });
   });
 

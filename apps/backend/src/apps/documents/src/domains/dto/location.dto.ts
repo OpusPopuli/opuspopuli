@@ -126,6 +126,28 @@ export class MapFiltersInput {
   @Field({ nullable: true })
   @IsOptional()
   endDate?: Date;
+
+  @Field(() => Int, {
+    nullable: true,
+    description: 'Max results to return (1-1000, default 1000)',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(1000)
+  limit?: number;
+}
+
+@ObjectType()
+export class PetitionMapResult {
+  @Field(() => [PetitionMapMarker])
+  markers!: PetitionMapMarker[];
+
+  @Field(() => Int)
+  totalCount!: number;
+
+  @Field()
+  truncated!: boolean;
 }
 
 /**
