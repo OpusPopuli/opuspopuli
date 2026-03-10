@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  OnModuleDestroy,
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
@@ -20,11 +21,14 @@ import {
 import { ServiceInitializationException } from 'src/common/exceptions/app.exceptions';
 import {
   resolveConfigPlaceholders,
+  batchTransaction,
+  type ICache,
   type Proposition,
   type Meeting,
   type Representative,
   type CampaignFinanceResult,
 } from '@opuspopuli/common';
+import { REGION_CACHE } from './region.tokens';
 
 /**
  * Minimal interface for data fetching used by sync methods.
@@ -169,7 +173,7 @@ type IndependentExpenditureRecord = {
  * Syncs data from both plugins and stores in the database.
  */
 @Injectable()
-export class RegionDomainService implements OnModuleInit {
+export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RegionDomainService.name, {
     timestamp: true,
   });
@@ -179,10 +183,15 @@ export class RegionDomainService implements OnModuleInit {
     private readonly pluginLoader: PluginLoaderService,
     private readonly pluginRegistry: PluginRegistryService,
     private readonly db: DbService,
+    @Inject(REGION_CACHE) private readonly cache: ICache<string>,
     @Optional()
     @Inject('SCRAPING_PIPELINE')
     private readonly pipeline?: IPipelineService,
   ) {}
+
+  async onModuleDestroy(): Promise<void> {
+    await this.cache.destroy();
+  }
 
   /**
    * Load region plugins at startup:
@@ -293,6 +302,36 @@ export class RegionDomainService implements OnModuleInit {
       `RegionDomainService initialized — local: ${this.regionService.getProviderName()} (${info.name}), ` +
         `federal: ${this.pluginRegistry.getFederal() ? 'loaded' : 'not loaded'}`,
     );
+  }
+
+  /**
+   * Cache-through helper: returns cached result or executes query and caches it.
+   */
+  private async cachedQuery<T>(
+    key: string,
+    queryFn: () => Promise<T>,
+  ): Promise<T> {
+    const cached = await this.cache.get(key);
+    if (cached) {
+      return JSON.parse(cached) as T;
+    }
+    const result = await queryFn();
+    await this.cache.set(key, JSON.stringify(result));
+    return result;
+  }
+
+  /**
+   * Invalidate all cache keys matching a prefix.
+   */
+  private async invalidateCache(prefix: string): Promise<void> {
+    const allKeys = await this.cache.keys();
+    const matching = allKeys.filter((k) => k.startsWith(prefix));
+    await Promise.all(matching.map((k) => this.cache.delete(k)));
+    if (matching.length > 0) {
+      this.logger.log(
+        `Invalidated ${matching.length} cache key(s) with prefix "${prefix}"`,
+      );
+    }
   }
 
   /**
@@ -445,8 +484,9 @@ export class RegionDomainService implements OnModuleInit {
       existingRecords.map((r: ExternalIdRecord) => r.externalId),
     );
 
-    // Batch upsert all propositions using database transaction
-    await this.db.$transaction(
+    // Batch upsert all propositions in chunked transactions (#476)
+    await batchTransaction(
+      this.db,
       propositions.map((prop) =>
         this.db.proposition.upsert({
           where: { externalId: prop.externalId },
@@ -470,6 +510,9 @@ export class RegionDomainService implements OnModuleInit {
         }),
       ),
     );
+
+    // Invalidate cached proposition queries (#459)
+    await this.invalidateCache('propositions:');
 
     const created = propositions.filter(
       (p) => !existingExternalIds.has(p.externalId),
@@ -510,8 +553,9 @@ export class RegionDomainService implements OnModuleInit {
       existingRecords.map((r: ExternalIdRecord) => r.externalId),
     );
 
-    // Batch upsert all meetings using database transaction
-    await this.db.$transaction(
+    // Batch upsert all meetings in chunked transactions (#476)
+    await batchTransaction(
+      this.db,
       meetings.map((meeting) =>
         this.db.meeting.upsert({
           where: { externalId: meeting.externalId },
@@ -535,6 +579,9 @@ export class RegionDomainService implements OnModuleInit {
         }),
       ),
     );
+
+    // Invalidate cached meeting queries (#459)
+    await this.invalidateCache('meetings:');
 
     const created = meetings.filter(
       (m) => !existingExternalIds.has(m.externalId),
@@ -575,8 +622,9 @@ export class RegionDomainService implements OnModuleInit {
       existingRecords.map((r: ExternalIdRecord) => r.externalId),
     );
 
-    // Batch upsert all representatives using database transaction
-    await this.db.$transaction(
+    // Batch upsert all representatives in chunked transactions (#476)
+    await batchTransaction(
+      this.db,
       reps.map((rep) =>
         this.db.representative.upsert({
           where: { externalId: rep.externalId },
@@ -600,6 +648,9 @@ export class RegionDomainService implements OnModuleInit {
         }),
       ),
     );
+
+    // Invalidate cached representative queries (#459)
+    await this.invalidateCache('representatives:');
 
     const created = reps.filter(
       (r) => !existingExternalIds.has(r.externalId),
@@ -640,7 +691,8 @@ export class RegionDomainService implements OnModuleInit {
         existing.map((r: ExternalIdRecord) => r.externalId),
       );
 
-      await this.db.$transaction(
+      await batchTransaction(
+        this.db,
         data.contributions.map((c) =>
           this.db.contribution.upsert({
             where: { externalId: c.externalId },
@@ -698,7 +750,8 @@ export class RegionDomainService implements OnModuleInit {
         existing.map((r: ExternalIdRecord) => r.externalId),
       );
 
-      await this.db.$transaction(
+      await batchTransaction(
+        this.db,
         data.expenditures.map((e) =>
           this.db.expenditure.upsert({
             where: { externalId: e.externalId },
@@ -752,7 +805,8 @@ export class RegionDomainService implements OnModuleInit {
         existing.map((r: ExternalIdRecord) => r.externalId),
       );
 
-      await this.db.$transaction(
+      await batchTransaction(
+        this.db,
         data.independentExpenditures.map((ie) =>
           this.db.independentExpenditure.upsert({
             where: { externalId: ie.externalId },
@@ -807,30 +861,32 @@ export class RegionDomainService implements OnModuleInit {
     skip: number = 0,
     take: number = 10,
   ): Promise<PaginatedPropositions> {
-    const [items, total] = await Promise.all([
-      this.db.proposition.findMany({
-        orderBy: [{ electionDate: 'desc' }, { createdAt: 'desc' }],
-        skip,
-        take: take + 1,
-      }),
-      this.db.proposition.count(),
-    ]);
+    return this.cachedQuery(`propositions:${skip}:${take}`, async () => {
+      const [items, total] = await Promise.all([
+        this.db.proposition.findMany({
+          orderBy: [{ electionDate: 'desc' }, { createdAt: 'desc' }],
+          skip,
+          take: take + 1,
+        }),
+        this.db.proposition.count(),
+      ]);
 
-    const hasMore = items.length > take;
-    const paginatedItems = items.slice(0, take);
+      const hasMore = items.length > take;
+      const paginatedItems = items.slice(0, take);
 
-    // Cast database types to GraphQL types - enum values are compatible at runtime
-    return {
-      items: paginatedItems.map((item: PropositionRecord) => ({
-        ...item,
-        fullText: item.fullText ?? undefined,
-        electionDate: item.electionDate ?? undefined,
-        sourceUrl: item.sourceUrl ?? undefined,
-        status: item.status as unknown as PropositionStatusGQL,
-      })),
-      total,
-      hasMore,
-    };
+      // Cast database types to GraphQL types - enum values are compatible at runtime
+      return {
+        items: paginatedItems.map((item: PropositionRecord) => ({
+          ...item,
+          fullText: item.fullText ?? undefined,
+          electionDate: item.electionDate ?? undefined,
+          sourceUrl: item.sourceUrl ?? undefined,
+          status: item.status as unknown as PropositionStatusGQL,
+        })),
+        total,
+        hasMore,
+      };
+    });
   }
 
   /**
@@ -847,29 +903,31 @@ export class RegionDomainService implements OnModuleInit {
     skip: number = 0,
     take: number = 10,
   ): Promise<PaginatedMeetings> {
-    const [items, total] = await Promise.all([
-      this.db.meeting.findMany({
-        orderBy: { scheduledAt: 'desc' },
-        skip,
-        take: take + 1,
-      }),
-      this.db.meeting.count(),
-    ]);
+    return this.cachedQuery(`meetings:${skip}:${take}`, async () => {
+      const [items, total] = await Promise.all([
+        this.db.meeting.findMany({
+          orderBy: { scheduledAt: 'desc' },
+          skip,
+          take: take + 1,
+        }),
+        this.db.meeting.count(),
+      ]);
 
-    const hasMore = items.length > take;
-    const paginatedItems = items.slice(0, take);
+      const hasMore = items.length > take;
+      const paginatedItems = items.slice(0, take);
 
-    // Cast database types to GraphQL types
-    return {
-      items: paginatedItems.map((item: MeetingRecord) => ({
-        ...item,
-        location: item.location ?? undefined,
-        agendaUrl: item.agendaUrl ?? undefined,
-        videoUrl: item.videoUrl ?? undefined,
-      })),
-      total,
-      hasMore,
-    };
+      // Cast database types to GraphQL types
+      return {
+        items: paginatedItems.map((item: MeetingRecord) => ({
+          ...item,
+          location: item.location ?? undefined,
+          agendaUrl: item.agendaUrl ?? undefined,
+          videoUrl: item.videoUrl ?? undefined,
+        })),
+        total,
+        hasMore,
+      };
+    });
   }
 
   /**
@@ -887,32 +945,37 @@ export class RegionDomainService implements OnModuleInit {
     take: number = 10,
     chamber?: string,
   ): Promise<PaginatedRepresentatives> {
-    const where = chamber ? { chamber } : undefined;
+    return this.cachedQuery(
+      `representatives:${skip}:${take}:${chamber ?? 'all'}`,
+      async () => {
+        const where = chamber ? { chamber } : undefined;
 
-    const [items, total] = await Promise.all([
-      this.db.representative.findMany({
-        where,
-        orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
-        skip,
-        take: take + 1,
-      }),
-      this.db.representative.count({ where }),
-    ]);
+        const [items, total] = await Promise.all([
+          this.db.representative.findMany({
+            where,
+            orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+            skip,
+            take: take + 1,
+          }),
+          this.db.representative.count({ where }),
+        ]);
 
-    const hasMore = items.length > take;
-    const paginatedItems = items.slice(0, take);
+        const hasMore = items.length > take;
+        const paginatedItems = items.slice(0, take);
 
-    // Cast database types to GraphQL types
-    return {
-      items: paginatedItems.map((item: RepresentativeRecord) => ({
-        ...item,
-        party: item.party ?? undefined,
-        photoUrl: item.photoUrl ?? undefined,
-        contactInfo: (item.contactInfo as ContactInfoModel) ?? undefined,
-      })),
-      total,
-      hasMore,
-    };
+        // Cast database types to GraphQL types
+        return {
+          items: paginatedItems.map((item: RepresentativeRecord) => ({
+            ...item,
+            party: item.party ?? undefined,
+            photoUrl: item.photoUrl ?? undefined,
+            contactInfo: (item.contactInfo as ContactInfoModel) ?? undefined,
+          })),
+          total,
+          hasMore,
+        };
+      },
+    );
   }
 
   /**
