@@ -14,6 +14,8 @@ LLM_URL=http://localhost:11434
 LLM_MODEL=mistral
 ```
 
+> **Dev vs Production:** In development, Ollama runs in Docker and models are pulled with `docker exec`. In production, Ollama runs natively on macOS for GPU acceleration and models are pulled directly with `ollama pull`. See [Ollama Setup](ollama-setup.md) for details.
+
 ## Available Models
 
 ### Mistral 7B Instruct (Default)
@@ -30,7 +32,11 @@ LLM_MODEL=mistral
 
 **Pull command**:
 ```bash
+# Development (Docker)
 docker exec opuspopuli-ollama ollama pull mistral
+
+# Production (native macOS)
+ollama pull mistral
 ```
 
 ---
@@ -49,7 +55,11 @@ docker exec opuspopuli-ollama ollama pull mistral
 
 **Pull command**:
 ```bash
+# Development (Docker)
 docker exec opuspopuli-ollama ollama pull llama3.2
+
+# Production (native macOS)
+ollama pull llama3.2
 ```
 
 **Configuration**:
@@ -73,7 +83,11 @@ LLM_MODEL=llama3.2
 
 **Pull command**:
 ```bash
+# Development (Docker)
 docker exec opuspopuli-ollama ollama pull falcon
+
+# Production (native macOS)
+ollama pull falcon
 ```
 
 **Configuration**:
@@ -97,7 +111,11 @@ LLM_MODEL=falcon
 
 **Pull command**:
 ```bash
+# Development (Docker)
 docker exec opuspopuli-ollama ollama pull llama3.1
+
+# Production (native macOS)
+ollama pull llama3.1
 ```
 
 **Configuration**:
@@ -121,7 +139,11 @@ LLM_MODEL=llama3.1
 
 **Pull command**:
 ```bash
+# Development (Docker)
 docker exec opuspopuli-ollama ollama pull qwen2.5
+
+# Production (native macOS)
+ollama pull qwen2.5
 ```
 
 **Configuration**:
@@ -467,6 +489,7 @@ LLM_MODEL=my-custom-model
 
 ## Related Documentation
 
+- [Ollama Setup](ollama-setup.md) - Installation, dev vs prod, health checks
 - [AI/ML Pipeline](../architecture/ai-ml-pipeline.md) - Architecture details
 - [RAG Implementation](rag-implementation.md) - Using the RAG system
 - [Docker Setup](docker-setup.md) - Infrastructure configuration

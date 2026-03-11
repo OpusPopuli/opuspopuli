@@ -14,7 +14,7 @@ Your `docker-compose.yml` includes:
 | **Supabase Auth** | Authentication (Passkeys, Magic Links) | - | `supabase/gotrue` |
 | **Supabase Storage** | File storage | - | `supabase/storage-api` |
 | **Supabase Studio** | Admin UI | 3100 | `supabase/studio` |
-| **Ollama** | LLM inference (Falcon 7B) | 11434 | `ollama/ollama` |
+| **Ollama** | LLM inference (development only, CPU) | 11434 | `ollama/ollama` |
 | **Redis** | Caching and rate limiting | 6379 | `redis:7-alpine` |
 | **Inbucket** | Local email testing | 54324 | `inbucket/inbucket` |
 
@@ -332,7 +332,7 @@ curl http://localhost:4001/metrics
 For production, consider:
 
 1. **Use managed PostgreSQL with pgvector** (AWS RDS, Supabase Cloud, etc.)
-2. **Deploy Ollama** on GPU instances for better performance
+2. **Run Ollama natively** on macOS for Metal GPU acceleration (see [Ollama Setup](ollama-setup.md))
 3. **Use environment-specific configs** (production.env)
 4. **Configure Prometheus federation** for multi-cluster monitoring
 5. **Set up alerting** via Alertmanager

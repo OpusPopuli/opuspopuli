@@ -269,8 +269,16 @@ Add this to your `.env.production` as `TUNNEL_TOKEN`.
 
 ### 8.1 Start Production Docker Compose
 
+Use the startup script, which verifies Ollama health before launching Docker:
+
 ```bash
-docker compose -f docker-compose-prod.yml up -d --build
+./scripts/start-prod.sh --build
+```
+
+Or start manually (if Ollama is already verified):
+
+```bash
+docker compose -f docker-compose-prod.yml --env-file .env.production up -d --build
 ```
 
 This starts:
