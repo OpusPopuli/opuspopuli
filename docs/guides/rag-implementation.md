@@ -454,7 +454,7 @@ query {
 1. **Improve prompt**: Make instructions more specific
 2. **Lower temperature**: More factual (0.3 instead of 0.7)
 3. **Retrieve more context**: Increase `nResults` from 3 to 5
-4. **Try different model**: Switch from Falcon to Mistral
+4. **Try different model**: Switch to a different Qwen 3.5 size or Mistral
 5. **Better chunking**: Adjust CHUNK_SIZE to preserve context
 
 ### Slow Queries
@@ -463,7 +463,7 @@ query {
 
 **Solutions**:
 1. **Enable GPU**: For Ollama (see [LLM Configuration](llm-configuration.md))
-2. **Use smaller model**: Llama 3.2 (3B) instead of Falcon (7B)
+2. **Use smaller model**: Qwen 3.5 9B instead of 35B
 3. **Reduce context**: Lower `nResults` from 3 to 2
 4. **Shorter answers**: Reduce `maxTokens` from 500 to 250
 5. **Cache results**: Cache answers for common questions

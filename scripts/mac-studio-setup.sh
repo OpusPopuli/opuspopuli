@@ -30,22 +30,9 @@ echo ""
 # ---------------------------------------------------------------------------
 # 1. Ollama (Native macOS — NOT Docker)
 # ---------------------------------------------------------------------------
-echo "--- Installing Ollama ---"
-if command -v ollama &> /dev/null; then
-    echo "Ollama already installed: $(ollama --version)"
-else
-    brew install ollama
-    echo "Ollama installed successfully"
-fi
-
-echo ""
-echo "Pulling LLM models (this may take a while)..."
-ollama pull mistral           # 7B — structural analysis, fast
-ollama pull llama3.1:70b      # 70B — fits in 128GB unified memory
-
-echo ""
-echo "Ollama models ready. Ollama runs as a launchd agent on port 11434."
-echo "Docker containers access it via: http://host.docker.internal:11434"
+echo "--- Setting up Ollama (production models) ---"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/setup-ollama.sh" --prod
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -115,8 +102,8 @@ echo "     cd infra/cloudflare"
 echo "     terraform workspace select prod"
 echo "     terraform output -raw tunnel_token"
 echo ""
-echo "  4. Start the production stack:"
-echo "     docker compose -f docker-compose-prod.yml --env-file .env.production up -d --build"
+echo "  4. Start the production stack (verifies Ollama health first):"
+echo "     ./scripts/start-prod.sh"
 echo ""
 echo "  5. Verify:"
 echo "     curl https://api.opuspopuli.org/health"

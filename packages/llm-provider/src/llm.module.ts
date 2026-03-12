@@ -15,15 +15,14 @@ import {
  * Provider: Ollama (self-hosted, OSS, full privacy)
  *
  * Supports any Ollama model:
- * - mistral (default, 7B, excellent instruction following and JSON output)
- * - llama3.2 (3B, fast and efficient)
- * - llama3.1 (8B, long context)
- * - falcon (7B, TII's open-source model)
- * - Or any other model from ollama.ai/library
+ * - qwen3.5:9b (default dev, 9B, 256K context, Apache 2.0)
+ * - qwen3.5:35b (default prod, 35B, 256K context, Apache 2.0)
+ * - mistral (7B, instruction following and JSON output)
+ * - Or any other model from ollama.com/library
  *
  * Setup:
- * 1. Install Ollama: https://ollama.ai
- * 2. Pull model: ollama pull mistral
+ * 1. Install Ollama: https://ollama.com
+ * 2. Pull model: ollama pull qwen3.5:9b
  * 3. Start server: ollama serve
  */
 @Module({

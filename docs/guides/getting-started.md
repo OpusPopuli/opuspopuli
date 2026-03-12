@@ -37,22 +37,21 @@ NAME                         STATUS          PORTS
 opuspopuli-supabase-db       Up              0.0.0.0:5432->5432/tcp
 opuspopuli-supabase-kong     Up              0.0.0.0:8000->8000/tcp
 opuspopuli-supabase-studio   Up              0.0.0.0:3100->3000/tcp
-opuspopuli-ollama            Up              0.0.0.0:11434->11434/tcp
 opuspopuli-inbucket          Up              0.0.0.0:54324->9000/tcp
 opuspopuli-redis             Up              0.0.0.0:6379->6379/tcp
 ```
 
-### 3. Pull the Falcon LLM Model
+### 3. Set up Ollama with LLM Models
 
 ```bash
-# Run setup script
-./scripts/setup-ollama.sh
+# Run setup script (pulls qwen3.5:9b for dev)
+./scripts/setup-ollama.sh --dev
 
 # Or manually
-docker exec opuspopuli-ollama ollama pull mistral
+ollama pull qwen3.5:9b
 
 # Verify
-docker exec opuspopuli-ollama ollama list
+ollama list
 ```
 
 ### 4. Configure Environment
@@ -64,7 +63,7 @@ cp apps/backend/.env.example apps/backend/.env
 # The defaults are already configured for local development:
 # - Embeddings: Xenova (in-process, no setup needed)
 # - Vector DB: pgvector (same PostgreSQL instance)
-# - LLM: Ollama/Falcon (localhost:11434)
+# - LLM: Ollama/Qwen 3.5 (localhost:11434)
 # - Relational DB: PostgreSQL via Supabase (localhost:5432)
 # - Auth/Storage/Secrets: Supabase (localhost:8000)
 ```
@@ -142,7 +141,7 @@ Returns an AI-generated answer string based on the indexed document.
 ┌────────────────────────────────────────────────────┐
 │              Provider Layer                        │
 ├────────────────────────────────────────────────────┤
-│ Supabase + pgvector │ Xenova    │ Ollama/Falcon   │
+│ Supabase + pgvector │ Xenova    │ Ollama/Qwen3.5  │
 │ :5432               │(in-proc)  │ :11434          │
 └────────────────────────────────────────────────────┘
 ```
@@ -170,7 +169,7 @@ opuspopuli/
 │   ├── architecture/          # As-built architecture docs
 │   └── guides/                # How-to guides
 ├── scripts/                   # Utility scripts
-├── docker-compose.yml         # Base infrastructure (Supabase, Redis, Ollama, observability)
+├── docker-compose.yml         # Base infrastructure (Supabase, Redis, observability)
 ├── docker-compose-integration.yml # Integration testing (API on port 3000, test-runner)
 ├── docker-compose-e2e.yml     # E2E testing (API on port 4000 for Playwright)
 └── docker-compose-uat.yml     # UAT / manual validation (LLM config, region sync disabled)
@@ -194,11 +193,11 @@ Opus Populi comes with sensible defaults for local development:
 - **Table**: `<project>_embeddings`
 - **Storage**: Persistent (PostgreSQL)
 
-### LLM: Ollama with Falcon 7B
+### LLM: Ollama with Qwen 3.5
 - **Provider**: Ollama
 - **URL**: http://localhost:11434
-- **Model**: Mistral 7B Instruct (Mistral AI, Apache 2.0 license)
-- **Setup**: Requires `ollama pull mistral`
+- **Model**: Qwen 3.5 9B (Alibaba Cloud, Apache 2.0 license)
+- **Setup**: Requires `ollama pull qwen3.5:9b`
 
 ### Relational Database: PostgreSQL via Supabase
 - **Provider**: PostgreSQL
@@ -360,15 +359,15 @@ query SearchDocuments {
 
 ### Ollama model not found
 
-**Error**: `Error: model 'mistral' not found`
+**Error**: `Error: model 'qwen3.5:9b' not found`
 
 **Solution**:
 ```bash
 # Pull the model
-docker exec opuspopuli-ollama ollama pull mistral
+ollama pull qwen3.5:9b
 
 # Verify
-docker exec opuspopuli-ollama ollama list
+ollama list
 ```
 
 ### PostgreSQL/pgvector connection error
@@ -482,8 +481,8 @@ docker compose down
 # View logs
 docker compose logs -f
 
-# Restart specific service
-docker compose restart ollama
+# Restart Ollama (runs natively, not in Docker)
+brew services restart ollama
 
 # Remove all data (fresh start)
 docker compose down -v

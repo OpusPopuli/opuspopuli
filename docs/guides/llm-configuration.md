@@ -4,130 +4,72 @@ This guide covers configuring and switching between different LLM models using O
 
 ## Overview
 
-Opus Populi uses Ollama as the LLM inference engine, which supports running any open-source model locally. The default model is Mistral 7B Instruct, chosen for its excellent instruction following and reliable JSON output — both critical for the structural analysis pipeline.
+Opus Populi uses Ollama as the LLM inference engine, which supports running any open-source model locally. The Qwen 3.5 model family (Alibaba Cloud, Apache 2.0) is used across all environments — Qwen 3.5 9B for development and Qwen 3.5 35B for production.
 
 ## Default Configuration
 
 ```bash
-# apps/backend/.env
+# apps/backend/.env (development)
 LLM_URL=http://localhost:11434
-LLM_MODEL=mistral
+LLM_MODEL=qwen3.5:9b
+
+# .env.production
+LLM_URL=http://host.docker.internal:11434
+LLM_MODEL=qwen3.5:35b
 ```
+
+> **All environments:** Ollama always runs natively on the host for GPU acceleration (Metal on macOS, CUDA on Linux). There is no Docker Ollama container. See [Ollama Setup](ollama-setup.md) for details.
 
 ## Available Models
 
-### Mistral 7B Instruct (Default)
+### Qwen 3.5 9B (Development Default)
 
-**Model**: `mistral` or `mistral:7b`
-
-**Details**:
-- Size: 7 billion parameters
-- Context: 8192 tokens
-- License: Apache 2.0
-- Developer: Mistral AI
-
-**Best for**: Structural analysis, JSON output, instruction following (default)
-
-**Pull command**:
-```bash
-docker exec opuspopuli-ollama ollama pull mistral
-```
-
----
-
-### Llama 3.2 (Fast)
-
-**Model**: `llama3.2` or `llama3.2:3b`
+**Model**: `qwen3.5:9b`
 
 **Details**:
-- Size: 3 billion parameters
-- Context: 8192 tokens
-- License: Llama 3 Community License
-- Developer: Meta
-
-**Best for**: Quick responses, high throughput
-
-**Pull command**:
-```bash
-docker exec opuspopuli-ollama ollama pull llama3.2
-```
-
-**Configuration**:
-```bash
-LLM_MODEL=llama3.2
-```
-
----
-
-### Falcon 7B
-
-**Model**: `falcon` or `falcon:7b`
-
-**Details**:
-- Size: 7 billion parameters
-- Context: 2048 tokens
-- License: Apache 2.0
-- Developer: TII (Technology Innovation Institute)
-
-**Best for**: General-purpose tasks
-
-**Pull command**:
-```bash
-docker exec opuspopuli-ollama ollama pull falcon
-```
-
-**Configuration**:
-```bash
-LLM_MODEL=falcon
-```
-
----
-
-### Llama 3.1 (Long Context)
-
-**Model**: `llama3.1` or `llama3.1:8b`
-
-**Details**:
-- Size: 8 billion parameters
-- Context: 128K tokens (!!)
-- License: Llama 3 Community License
-- Developer: Meta
-
-**Best for**: Long documents, complex reasoning
-
-**Pull command**:
-```bash
-docker exec opuspopuli-ollama ollama pull llama3.1
-```
-
-**Configuration**:
-```bash
-LLM_MODEL=llama3.1
-```
-
----
-
-### Qwen 2.5 (Multilingual)
-
-**Model**: `qwen2.5` or `qwen2.5:7b`
-
-**Details**:
-- Size: 7 billion parameters
-- Context: 32K tokens
+- Size: 9 billion parameters
+- Context: 256K tokens
 - License: Apache 2.0
 - Developer: Alibaba Cloud
 
-**Best for**: Multilingual support, code generation
-
-**Pull command**:
-```bash
-docker exec opuspopuli-ollama ollama pull qwen2.5
-```
+**Best for**: Fast iteration, development, structural analysis
 
 **Configuration**:
 ```bash
-LLM_MODEL=qwen2.5
+LLM_MODEL=qwen3.5:9b
 ```
+
+---
+
+### Qwen 3.5 35B (Production Default)
+
+**Model**: `qwen3.5:35b`
+
+**Details**:
+- Size: 35 billion parameters
+- Context: 256K tokens
+- License: Apache 2.0
+- Developer: Alibaba Cloud
+- Requires: 128GB+ unified memory (Mac Studio M4 Max)
+
+**Best for**: Complex reasoning, long documents, structural analysis, code generation
+
+**Configuration**:
+```bash
+LLM_MODEL=qwen3.5:35b
+```
+
+---
+
+### Other Compatible Models
+
+Any Ollama model can be used by setting `LLM_MODEL`. Some alternatives:
+
+| Model | Size | Context | License | Best For |
+|-------|------|---------|---------|----------|
+| `mistral` | 7B | 8K | Apache 2.0 | JSON output, instruction following |
+| `gemma2` | 9B / 27B | 8K | Gemma | General purpose |
+| `qwen3.5:9b` | 9B | 256K | Apache 2.0 | Dev default, structural analysis |
 
 ---
 
@@ -137,28 +79,17 @@ LLM_MODEL=qwen2.5
 
 ```bash
 # Example: Switch to Mistral
-docker exec opuspopuli-ollama ollama pull mistral
+ollama pull mistral
 
 # Verify it's downloaded
-docker exec opuspopuli-ollama ollama list
-```
-
-Expected output:
-```
-NAME                ID              SIZE      MODIFIED
-mistral:latest      abc123def456    4.1 GB    2 minutes ago
-falcon:latest       def456abc123    4.0 GB    3 months ago
+ollama list
 ```
 
 ### Step 2: Update Configuration
 
 Edit `apps/backend/.env`:
 ```bash
-# Change this line
 LLM_MODEL=mistral
-
-# To the new model
-LLM_MODEL=llama3.1
 ```
 
 ### Step 3: Restart Backend
@@ -186,11 +117,10 @@ Ask a question and verify the new model is being used. Check the logs for:
 
 | Model | Size | Context | Speed (GPU) | Quality | Best For |
 |-------|------|---------|------------|---------|----------|
-| **Mistral** | 7B | 8K | Medium | Excellent | Structural analysis, JSON (default) |
-| **Llama 3.2** | 3B | 8K | Fast | Good | Quick responses |
-| **Falcon 7B** | 7B | 2K | Medium | Good | General purpose |
-| **Llama 3.1** | 8B | 128K | Slow | Excellent | Long context |
-| **Qwen 2.5** | 7B | 32K | Medium | Excellent | Multilingual, code |
+| **Qwen 3.5 9B** | 9B | 256K | Fast | Excellent | Dev default, structural analysis |
+| **Qwen 3.5 35B** | 35B | 256K | Medium | Excellent | Prod default, complex reasoning |
+| **Mistral** | 7B | 8K | Fast | Excellent | JSON output, instruction following |
+| **Gemma 2** | 9B/27B | 8K | Medium | Good | General purpose |
 
 ---
 
@@ -268,13 +198,13 @@ topK: 100  // More diverse
 
 ```bash
 # Test Mistral (default)
-docker exec opuspopuli-ollama ollama run mistral "What is RAG?"
+ollama run mistral "What is RAG?"
 
 # Test Llama 3.1
-docker exec opuspopuli-ollama ollama run llama3.1 "Explain semantic search"
+ollama run llama3.1 "Explain semantic search"
 
 # Test with parameters
-docker exec opuspopuli-ollama ollama run mistral \
+ollama run mistral \
   --temperature 0.3 \
   --num-predict 100 \
   "What is RAG?"
@@ -309,45 +239,12 @@ Compare responses from different models to find the best fit.
 
 ### GPU Acceleration
 
-Ollama automatically uses GPU if available. To enable GPU in Docker:
+Ollama runs natively on the host and automatically uses available GPU:
 
-1. Install [nvidia-docker](https://github.com/NVIDIA/nvidia-docker)
+- **macOS (Apple Silicon)**: Metal GPU acceleration is used automatically
+- **Linux (NVIDIA)**: Install CUDA drivers; Ollama detects the GPU automatically
 
-2. Update `docker-compose.yml`:
-```yaml
-ollama:
-  image: ollama/ollama:latest
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
-```
-
-3. Restart:
-```bash
-docker-compose down
-docker-compose up -d ollama
-```
-
-4. Verify GPU is detected:
-```bash
-docker exec opuspopuli-ollama nvidia-smi
-```
-
-### CPU Optimization
-
-If running on CPU only:
-
-1. **Use smaller models**: Llama 3.2 (3B) instead of Mistral (7B)
-2. **Reduce maxTokens**: Generate shorter responses
-3. **Increase resources**: Give Docker more CPU cores
-
-```bash
-# Docker Desktop: Settings → Resources → CPUs (increase to 4-8)
-```
+Verify GPU is being used by checking Activity Monitor (macOS) or `nvidia-smi` (Linux) while running inference.
 
 ### Model Quantization
 
@@ -355,8 +252,8 @@ Ollama models are already quantized (GGUF format). For even smaller sizes:
 
 ```bash
 # Pull quantized version
-docker exec opuspopuli-ollama ollama pull mistral:7b-q4_0  # 4-bit quantization
-docker exec opuspopuli-ollama ollama pull mistral:7b-q8_0  # 8-bit quantization
+ollama pull qwen3.5:9b-q4_0  # 4-bit quantization
+ollama pull qwen3.5:9b-q8_0  # 8-bit quantization
 ```
 
 **Trade-offs**:
@@ -375,17 +272,12 @@ docker exec opuspopuli-ollama ollama pull mistral:7b-q8_0  # 8-bit quantization
 **Solutions**:
 1. Check internet connection
 2. Try again (large files can timeout)
-3. Download outside Docker:
+3. Install/reinstall Ollama:
 ```bash
-# Install Ollama locally
 brew install ollama  # macOS
-# or download from https://ollama.ai
+# or download from https://ollama.com/download
 
-# Pull model
-ollama pull mistral
-
-# Import to Docker
-docker cp ~/.ollama opuspopuli-ollama:/root/.ollama
+ollama pull qwen3.5:9b
 ```
 
 ### Out of Memory
@@ -394,9 +286,9 @@ docker cp ~/.ollama opuspopuli-ollama:/root/.ollama
 
 **Solutions**:
 1. Use smaller model (Llama 3.2 3B)
-2. Increase Docker memory: Settings → Resources → Memory
-3. Use quantized model (q4_0 or q8_0)
-4. Close other applications
+2. Use quantized model (q4_0 or q8_0)
+3. Close other memory-intensive applications
+4. Check available memory: `sysctl hw.memsize` (macOS)
 
 ### Slow Generation
 
@@ -443,7 +335,7 @@ SYSTEM You are an expert assistant specializing in technical documentation.
 ### Step 2: Build Custom Model
 
 ```bash
-docker exec -i opuspopuli-ollama ollama create my-custom-model < Modelfile
+ollama create my-custom-model -f Modelfile
 ```
 
 ### Step 3: Configure
@@ -467,6 +359,7 @@ LLM_MODEL=my-custom-model
 
 ## Related Documentation
 
+- [Ollama Setup](ollama-setup.md) - Installation, dev vs prod, health checks
 - [AI/ML Pipeline](../architecture/ai-ml-pipeline.md) - Architecture details
 - [RAG Implementation](rag-implementation.md) - Using the RAG system
 - [Docker Setup](docker-setup.md) - Infrastructure configuration

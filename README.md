@@ -75,7 +75,7 @@ All documentation is located in the [`docs/`](docs/) directory:
 | **Embeddings** | Xenova (in-process) | Ollama |
 | **Vector DB** | pgvector (PostgreSQL) | Custom implementations |
 | **Relational DB** | PostgreSQL (via Supabase) | Any PostgreSQL |
-| **LLM** | Ollama (Mistral, Llama 3.1) | Any Ollama model |
+| **LLM** | Ollama (Qwen 3.5) | Any Ollama model |
 
 ### Infrastructure
 - [Docker](https://www.docker.com) - Containerization
@@ -192,7 +192,7 @@ docker-compose logs -f   # View logs
 - ✅ **RAG (Retrieval-Augmented Generation)** - Ask questions about your documents
 - ✅ **Semantic Search** - Find relevant information using vector similarity
 - ✅ **Document Indexing** - Automatic chunking and embedding generation
-- ✅ **Multi-Model Support** - Switch between Falcon, Llama, Mistral, etc.
+- ✅ **Multi-Model Support** - Switch between Qwen 3.5, Mistral, Gemma, etc.
 - ✅ **Pluggable Providers** - Swap databases and AI models via configuration
 - ✅ **GraphQL Federation** - Unified API across microservices
 - ✅ **Audit Logging** - Comprehensive logging with PII masking and retention policies

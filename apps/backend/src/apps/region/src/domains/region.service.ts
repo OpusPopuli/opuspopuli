@@ -326,7 +326,9 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   private async invalidateCache(prefix: string): Promise<void> {
     const allKeys = await this.cache.keys();
     const matching = allKeys.filter((k) => k.startsWith(prefix));
-    await Promise.all(matching.map((k) => this.cache.delete(k)));
+    for (const k of matching) {
+      await this.cache.delete(k);
+    }
     if (matching.length > 0) {
       this.logger.log(
         `Invalidated ${matching.length} cache key(s) with prefix "${prefix}"`,
