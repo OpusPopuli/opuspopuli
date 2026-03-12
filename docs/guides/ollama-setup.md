@@ -1,56 +1,61 @@
 # Ollama Setup Guide
 
-Ollama is the local LLM inference engine for Opus Populi. It runs open-source models (Mistral, Llama, etc.) for structural analysis and content evaluation.
+Ollama is the local LLM inference engine for Opus Populi. It runs open-source models for structural analysis and content evaluation. The default model family is Qwen 3.5 (Alibaba Cloud, Apache 2.0).
 
 ## Environment Matrix
 
 | Environment | Ollama Mode | URL from Backend | GPU | Config File |
 |-------------|------------|-----------------|-----|-------------|
-| **Development** | Docker container | `http://localhost:11434` | No (CPU) | `docker-compose.yml` |
+| **Development** | Native macOS/Linux | `http://localhost:11434` | Yes (Metal/CUDA) | `docker-compose.yml` |
+| **UAT** | Native macOS/Linux | `http://host.docker.internal:11434` | Yes (Metal/CUDA) | `docker-compose-uat.yml` |
 | **Production** | Native macOS | `http://host.docker.internal:11434` | Yes (Metal) | `docker-compose-prod.yml` |
-| **Integration tests** | Docker container | `http://ollama:11434` | No (CPU) | `docker-compose-e2e.yml` |
+| **Integration tests** | Mocked or native | N/A | N/A | `docker-compose-e2e.yml` |
 | **Unit tests** | Mocked | N/A | N/A | N/A |
 
-**Why native for production?** Docker cannot access Apple Metal GPU. Running Ollama natively on macOS gives full GPU acceleration via Metal, which is 5-10x faster than CPU-only Docker inference.
+**Why always native?** Docker cannot access Apple Metal GPU. Running Ollama natively gives full GPU acceleration (Metal on macOS, CUDA on Linux), which is 5-10x faster than CPU-only Docker inference. All environments now use native Ollama — there is no Docker Ollama container.
 
 ---
 
-## Installation (Production -- Native macOS)
+## Quick Setup
 
-### 1. Install Ollama
+The setup script installs Ollama, starts it, and pulls the right models for your environment:
 
 ```bash
-brew install ollama
+# Development — MacBook Pro M4 Pro (48GB)
+# Pulls: qwen3.5:9b (9B)
+./scripts/setup-ollama.sh --dev
+
+# Production — Mac Studio M4 Max (128GB)
+# Pulls: qwen3.5:35b (35B)
+./scripts/setup-ollama.sh --prod
+```
+
+### Manual Installation
+
+If you prefer to set up manually:
+
+#### 1. Install Ollama
+
+```bash
+brew install ollama    # macOS
+# or: curl -fsSL https://ollama.com/install.sh | sh   # Linux
 ```
 
 Ollama installs as a macOS app and registers a launchd agent that auto-starts on login.
 
-### 2. Verify Installation
+#### 2. Start Ollama
 
 ```bash
-ollama --version
+open -a Ollama              # macOS (recommended)
+# or: brew services start ollama
+# or: ollama serve
 ```
 
-### 3. Ensure Ollama is Running
-
-Ollama starts automatically when you open the app or log in. Verify:
+#### 3. Verify
 
 ```bash
 curl http://localhost:11434/
 # Expected: "Ollama is running"
-```
-
-If not running:
-
-```bash
-# Option 1: Open the app (recommended on macOS)
-open -a Ollama
-
-# Option 2: Start via brew services
-brew services start ollama
-
-# Option 3: Start manually
-ollama serve
 ```
 
 ---
@@ -60,14 +65,11 @@ ollama serve
 ### Pull Models
 
 ```bash
-# Default model for structural analysis (recommended)
-ollama pull mistral
+# Dev (48GB+ unified memory)
+ollama pull qwen3.5:9b     # 9B — fast iteration, 256K context
 
-# Large model for complex reasoning (requires 64+ GB unified memory)
-ollama pull llama3.1:70b
-
-# Fast model for quick responses
-ollama pull llama3.2
+# Production (128GB+ unified memory)
+ollama pull qwen3.5:35b    # 35B — full quality, 256K context
 ```
 
 ### List Installed Models
@@ -86,7 +88,7 @@ ollama rm <model-name>
 
 ```bash
 # Re-pull to get the latest version
-ollama pull mistral
+ollama pull qwen3.5:9b
 ```
 
 ---
@@ -146,20 +148,30 @@ docker exec opuspopuli-prod-knowledge \
 
 ---
 
-## Development Setup (Docker)
+## Development Setup
 
-For development, Ollama runs inside Docker (no GPU needed):
+Ollama runs natively on the host in all environments (including development) for GPU acceleration:
 
 ```bash
-# Start the dev stack (includes Ollama container)
-docker compose up -d
+# Install Ollama
+brew install ollama    # macOS
+# or download from https://ollama.com/download
 
-# Pull a model into the Docker container
-docker exec opuspopuli-ollama ollama pull mistral
+# Start Ollama
+open -a Ollama         # macOS (recommended)
+# or: ollama serve
+
+# Pull the default model
+ollama pull qwen3.5:9b
 
 # Verify
-docker exec opuspopuli-ollama ollama list
+ollama list
+
+# Then start the dev stack (Ollama is NOT included — it runs on the host)
+docker compose up -d
 ```
+
+Backend services running locally connect to `http://localhost:11434`. Dockerized services connect via `http://host.docker.internal:11434`.
 
 See [Docker Setup](docker-setup.md) for the full development environment.
 
@@ -199,8 +211,8 @@ See [Docker Setup](docker-setup.md) for the full development environment.
 **Symptoms:** Ollama crashes or system becomes unresponsive
 
 **Solutions:**
-1. Use a smaller model (`mistral` 7B instead of `llama3.1:70b`)
-2. Use a quantized variant: `ollama pull mistral:7b-q4_0`
+1. Use a smaller model (`qwen3.5:9b` instead of `qwen3.5:35b`)
+2. Use a quantized variant: `ollama pull qwen3.5:9b-q4_0`
 3. Close other memory-intensive applications
 4. Check available memory: `sysctl hw.memsize` (macOS)
 

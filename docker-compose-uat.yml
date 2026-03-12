@@ -22,7 +22,7 @@
 #   docker compose -f docker-compose-uat.yml down -v
 
 include:
-  - docker-compose.yml  # Base: Supabase, Redis, Ollama, observability
+  - docker-compose.yml  # Base: Supabase, Redis, observability
 
 x-backend-env: &backend-env
   NODE_ENV: test
@@ -154,8 +154,8 @@ services:
       DESCRIPTION: Knowledge microservice
       PORT: 8080
       # LLM for RAG queries during manual testing
-      LLM_URL: http://ollama:11434
-      LLM_MODEL: mistral
+      LLM_URL: http://host.docker.internal:11434
+      LLM_MODEL: qwen3.5:9b
     ports:
       - "3003:8080"
     depends_on:
@@ -192,8 +192,8 @@ services:
       DESCRIPTION: Region microservice
       PORT: 8080
       # LLM for AI-powered structural analysis during data scraping
-      LLM_URL: http://ollama:11434
-      LLM_MODEL: mistral
+      LLM_URL: http://host.docker.internal:11434
+      LLM_MODEL: qwen3.5:9b
       # Disable automatic sync scheduler — trigger manually via GraphQL Playground
       REGION_SYNC_ENABLED: "false"
     ports:

@@ -56,14 +56,13 @@ const DEFAULT_CHUNK_TIMEOUT_MS = 30000; // 30 seconds
  *
  * Setup:
  * 1. Install Ollama: https://ollama.ai
- * 2. Pull a model: ollama pull llama3.2
+ * 2. Pull a model: ollama pull qwen3.5:9b
  * 3. Run server: ollama serve (default port 11434)
  *
  * Recommended Models:
- * - mistral (7B) - Default, excellent instruction following and JSON output
- * - llama3.2 (3B) - Fast, good quality, runs on laptop
- * - falcon (7B) - General purpose alternative
- * - llama3.1 (8B) - Latest Llama, great performance
+ * - qwen3.5:9b (9B) - Dev default, 256K context, Apache 2.0
+ * - qwen3.5:35b (35B) - Prod default, 256K context, Apache 2.0
+ * - mistral (7B) - Alternative, excellent JSON output
  *
  * Pros:
  * - 100% local (no API calls, full privacy)

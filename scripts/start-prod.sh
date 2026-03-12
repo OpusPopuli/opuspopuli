@@ -107,8 +107,8 @@ fi
 # ---------------------------------------------------------------------------
 echo "[3/5] Checking required models..."
 
-# Read LLM_MODEL from env file, default to mistral
-LLM_MODEL="mistral"
+# Read LLM_MODEL from env file, default to qwen3.5:35b
+LLM_MODEL="qwen3.5:35b"
 if [[ -f "$ENV_FILE" ]]; then
   PARSED_MODEL=$(grep -E '^LLM_MODEL=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)
   if [[ -n "$PARSED_MODEL" ]]; then

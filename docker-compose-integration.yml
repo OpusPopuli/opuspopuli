@@ -13,7 +13,7 @@
 #   docker compose -f docker-compose-integration.yml down -v
 
 include:
-  - docker-compose.yml  # Base: Supabase, Redis, Ollama, observability
+  - docker-compose.yml  # Base: Supabase, Redis, observability
 
 x-backend-env: &backend-env
   NODE_ENV: test

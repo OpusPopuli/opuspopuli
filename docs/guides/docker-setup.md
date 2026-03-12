@@ -14,7 +14,7 @@ Your `docker-compose.yml` includes:
 | **Supabase Auth** | Authentication (Passkeys, Magic Links) | - | `supabase/gotrue` |
 | **Supabase Storage** | File storage | - | `supabase/storage-api` |
 | **Supabase Studio** | Admin UI | 3100 | `supabase/studio` |
-| **Ollama** | LLM inference (development only, CPU) | 11434 | `ollama/ollama` |
+| **Ollama** | LLM inference (runs natively, not in Docker) | 11434 | Native install |
 | **Redis** | Caching and rate limiting | 6379 | `redis:7-alpine` |
 | **Inbucket** | Local email testing | 54324 | `inbucket/inbucket` |
 
@@ -32,7 +32,7 @@ Your `docker-compose.yml` includes:
 The project uses a layered Docker Compose architecture. Each environment-specific file is self-contained: it includes the base infrastructure and defines all backend microservices inline.
 
 ```
-docker-compose.yml                       ← Base infrastructure (Supabase, Redis, Ollama, observability)
+docker-compose.yml                       ← Base infrastructure (Supabase, Redis, observability)
   ├── docker-compose-integration.yml     ← Integration testing (API on port 3000, test-runner)
   ├── docker-compose-e2e.yml             ← E2E testing (API on port 4000 for Playwright)
   └── docker-compose-uat.yml             ← Manual UAT (LLM config, region sync disabled)
@@ -53,15 +53,17 @@ docker-compose.yml                       ← Base infrastructure (Supabase, Redi
 docker-compose up -d
 ```
 
-### 2. Pull the Mistral 7B model
+### 2. Set up Ollama (runs natively, not in Docker)
 
 ```bash
-./scripts/setup-ollama.sh
+./scripts/setup-ollama.sh --dev    # pulls qwen3.5:9b
 ```
 
 Or manually:
 ```bash
-docker exec opuspopuli-ollama ollama pull mistral
+brew install ollama       # macOS
+open -a Ollama            # start Ollama
+ollama pull qwen3.5:9b    # pull the dev model
 ```
 
 ### 3. Verify everything is running
@@ -76,8 +78,8 @@ docker exec opuspopuli-supabase-db pg_isready -U postgres
 # Check pgvector extension
 docker exec opuspopuli-supabase-db psql -U postgres -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
 
-# Check Ollama
-docker exec opuspopuli-ollama ollama list
+# Check Ollama (runs natively)
+ollama list
 
 # Check Redis
 docker exec opuspopuli-redis redis-cli ping
@@ -94,7 +96,7 @@ curl http://localhost:9090/-/healthy
 | Supabase Studio | http://localhost:3100 | - |
 | Inbucket (Email) | http://localhost:54324 | - |
 | PostgreSQL | localhost:5432 | `postgres` / from .env |
-| Ollama | http://localhost:11434 | - |
+| Ollama (native) | http://localhost:11434 | - |
 | Redis | localhost:6379 | - |
 | Prometheus | http://localhost:9090 | - |
 | Grafana | http://localhost:3101 | `admin` / `admin` |
@@ -155,7 +157,7 @@ EMBEDDINGS_PROVIDER='xenova'
 # Vector DB: pgvector (uses same PostgreSQL instance)
 VECTOR_DB_DIMENSIONS=384
 
-# LLM: Ollama with Mistral 7B
+# LLM: Ollama (runs natively on host for GPU acceleration)
 LLM_URL='http://localhost:11434'
 LLM_MODEL='mistral'
 
@@ -186,8 +188,6 @@ docker-compose down -v
 docker-compose logs -f
 
 # Specific service
-docker-compose logs -f ollama
-
 # Or use Grafana/Loki at http://localhost:3101
 ```
 
@@ -195,43 +195,28 @@ docker-compose logs -f ollama
 
 To use a different Ollama model:
 
-1. Pull the model:
+1. Pull the model (Ollama runs natively):
 ```bash
-docker exec opuspopuli-ollama ollama pull mistral
+ollama pull qwen3.5:9b
 ```
 
 2. Update `apps/backend/.env`:
 ```bash
-LLM_MODEL='mistral'
+LLM_MODEL='qwen3.5:9b'
 ```
 
 3. Restart your backend application
 
 Available models: https://ollama.com/library
 
-## GPU Support (Optional)
+## GPU Acceleration
 
-If you have an NVIDIA GPU and want faster inference:
+Ollama runs natively on the host (not in Docker) to take advantage of GPU acceleration:
 
-1. Install [nvidia-docker](https://github.com/NVIDIA/nvidia-docker)
+- **macOS (Apple Silicon)**: Metal GPU is used automatically
+- **Linux (NVIDIA)**: Install CUDA drivers; Ollama detects the GPU automatically
 
-2. Uncomment the GPU section in `docker-compose.yml`:
-```yaml
-ollama:
-  # ...
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
-```
-
-3. Restart the Ollama container:
-```bash
-docker-compose up -d ollama
-```
+See [Ollama Setup](ollama-setup.md) for details.
 
 ## Data Persistence
 
@@ -241,7 +226,6 @@ All data is persisted in Docker volumes:
 |--------|---------|
 | `opuspopuli-supabase-db-data` | PostgreSQL database |
 | `opuspopuli-supabase-storage-data` | File uploads |
-| `opuspopuli-ollama-data` | Downloaded LLM models |
 | `opuspopuli-redis-data` | Cache data |
 | `opuspopuli-prometheus-data` | Metrics history (15 days) |
 | `opuspopuli-loki-data` | Log history |
@@ -250,18 +234,17 @@ All data is persisted in Docker volumes:
 To backup:
 ```bash
 docker volume inspect opuspopuli-supabase-db-data
-docker volume inspect opuspopuli-ollama-data
 ```
 
 ## Troubleshooting
 
 ### Ollama model not found
 ```bash
-# Pull the model again
-docker exec opuspopuli-ollama ollama pull mistral
+# Ollama runs natively — pull the model directly
+ollama pull qwen3.5:9b
 
 # Verify it's installed
-docker exec opuspopuli-ollama ollama list
+ollama list
 ```
 
 ### PostgreSQL connection issues
@@ -332,7 +315,7 @@ curl http://localhost:4001/metrics
 For production, consider:
 
 1. **Use managed PostgreSQL with pgvector** (AWS RDS, Supabase Cloud, etc.)
-2. **Run Ollama natively** on macOS for Metal GPU acceleration (see [Ollama Setup](ollama-setup.md))
+2. **Ollama runs natively** for GPU acceleration in all environments (see [Ollama Setup](ollama-setup.md))
 3. **Use environment-specific configs** (production.env)
 4. **Configure Prometheus federation** for multi-cluster monitoring
 5. **Set up alerting** via Alertmanager

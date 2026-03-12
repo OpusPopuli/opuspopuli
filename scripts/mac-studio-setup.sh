@@ -30,30 +30,9 @@ echo ""
 # ---------------------------------------------------------------------------
 # 1. Ollama (Native macOS — NOT Docker)
 # ---------------------------------------------------------------------------
-echo "--- Installing Ollama ---"
-if command -v ollama &> /dev/null; then
-    echo "Ollama already installed: $(ollama --version)"
-else
-    brew install ollama
-    echo "Ollama installed successfully"
-fi
-
-echo ""
-echo "Pulling LLM models (this may take a while)..."
-ollama pull mistral           # 7B — structural analysis, fast
-ollama pull llama3.1:70b      # 70B — fits in 128GB unified memory
-
-echo ""
-echo "Verifying Ollama is running..."
-if curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; then
-    echo "Ollama API is healthy"
-else
-    echo "WARNING: Ollama API not responding. Try: open -a Ollama"
-fi
-
-echo ""
-echo "Ollama models ready. Ollama runs as a launchd agent on port 11434."
-echo "Docker containers access it via: http://host.docker.internal:11434"
+echo "--- Setting up Ollama (production models) ---"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/setup-ollama.sh" --prod
 echo ""
 
 # ---------------------------------------------------------------------------
