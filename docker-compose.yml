@@ -3,7 +3,7 @@
 # This docker-compose provides all services needed for local development:
 # - Supabase (Auth, Storage, Vault, PostgreSQL with pgvector) - OSS platform
 # - Inbucket - Local email testing (captures auth emails)
-# - Ollama - LLM inference
+# - Ollama runs natively on the host for GPU acceleration (not in Docker)
 #
 # Usage:
 #   docker-compose up -d
@@ -13,7 +13,7 @@
 #   - Supabase Studio: http://localhost:3100
 #   - Inbucket (Email UI): http://localhost:54324
 #   - PostgreSQL: localhost:5432
-#   - Ollama: http://localhost:11434
+#   - Ollama (native): http://localhost:11434
 #   - Prometheus: http://localhost:9090
 #   - Loki: http://localhost:3102
 #   - Grafana: http://localhost:3101 (admin/admin)
@@ -415,42 +415,6 @@ services:
           memory: 64M
 
   # ===========================================
-  # AI/ML Services
-  # ===========================================
-
-  # Ollama - LLM Inference
-  ollama:
-    image: ollama/ollama:0.17.7
-    container_name: opuspopuli-ollama
-    platform: "linux/amd64"
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    networks:
-      - opuspopuli-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11434/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 4096M
-        reservations:
-          cpus: '1.0'
-          memory: 1024M
-          # Uncomment for GPU support (requires NVIDIA GPU + nvidia-docker)
-          # devices:
-          #   - driver: nvidia
-          #     count: 1
-          #     capabilities: [gpu]
-
-  # ===========================================
   # Observability Services
   # ===========================================
 
@@ -582,8 +546,6 @@ volumes:
     name: opuspopuli-supabase-storage-data
   redis-data:
     name: opuspopuli-redis-data
-  ollama-data:
-    name: opuspopuli-ollama-data
   prometheus-data:
     name: opuspopuli-prometheus-data
   loki-data:

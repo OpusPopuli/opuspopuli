@@ -252,7 +252,7 @@ export interface ILLMProvider {
 ```bash
 # Ollama (self-hosted)
 LLM_URL=http://localhost:11434
-LLM_MODEL=mistral  # or llama3.2, llama3.1, falcon, etc.
+LLM_MODEL=qwen3.5:9b  # or qwen3.5:35b, mistral, gemma2, etc.
 ```
 
 **Module**: `LLMModule`

@@ -146,8 +146,8 @@ curl -fsSL https://ollama.com/install.sh | sh
 ### 4.2 Pull Models
 
 ```bash
-ollama pull mistral            # 7B - default for structural analysis
-ollama pull llama3.1:70b       # 70B - requires 64+ GB unified/system memory
+ollama pull qwen3.5:9b         # 9B - default for structural analysis
+ollama pull qwen3.5:35b        # 35B - requires 64+ GB unified/system memory
 ```
 
 ### 4.3 Verify
@@ -158,8 +158,6 @@ curl http://localhost:11434/api/tags
 ```
 
 Ollama auto-starts as a background service on port 11434. Docker containers access it via `http://host.docker.internal:11434`.
-
-> **Docker adaptation:** If GPU access is not available or not needed, Ollama can run inside Docker. The development `docker-compose.yml` already includes an Ollama container. For production, add it to `docker-compose-prod.yml` and set `LLM_URL=http://ollama:11434`.
 
 > **Cloud LLM adaptation:** To use Claude API or OpenAI instead of local Ollama, configure the `ILLMProvider` via environment variables. See [LLM Configuration Guide](llm-configuration.md).
 
@@ -269,8 +267,16 @@ Add this to your `.env.production` as `TUNNEL_TOKEN`.
 
 ### 8.1 Start Production Docker Compose
 
+Use the startup script, which verifies Ollama health before launching Docker:
+
 ```bash
-docker compose -f docker-compose-prod.yml up -d --build
+./scripts/start-prod.sh --build
+```
+
+Or start manually (if Ollama is already verified):
+
+```bash
+docker compose -f docker-compose-prod.yml --env-file .env.production up -d --build
 ```
 
 This starts:
@@ -467,7 +473,7 @@ No manual intervention required.
 |--------|------------------------|----------|
 | Edge proxy | Cloudflare Tunnel (required, outbound-only) | Nginx/Caddy (standard reverse proxy) or Tunnel (optional) |
 | LLM | Ollama native (GPU access via Metal/CUDA) | Ollama native on GPU VM, or cloud LLM API (Claude/OpenAI) |
-| `LLM_URL` | `http://host.docker.internal:11434` | `http://ollama:11434` (Docker network) or API endpoint |
+| `LLM_URL` | `http://host.docker.internal:11434` | `http://localhost:11434` (native Ollama) or API endpoint |
 | Resilience | UPS + auto-restart | Cloud provider SLA + auto-restart policies |
 | Cost model | ISP + electricity | VM hourly rate |
 | Tunnel token | Required in `.env.production` | Not needed if using Nginx directly |

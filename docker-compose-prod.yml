@@ -241,7 +241,7 @@ services:
       PORT: 8080
       # Ollama runs natively on macOS for Metal GPU acceleration
       LLM_URL: http://host.docker.internal:11434
-      LLM_MODEL: ${LLM_MODEL:-mistral}
+      LLM_MODEL: ${LLM_MODEL:-qwen3.5:35b}
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -271,7 +271,7 @@ services:
       DESCRIPTION: Region microservice
       PORT: 8080
       LLM_URL: http://host.docker.internal:11434
-      LLM_MODEL: ${LLM_MODEL:-mistral}
+      LLM_MODEL: ${LLM_MODEL:-qwen3.5:35b}
       REGION_SYNC_ENABLED: "true"
     depends_on:
       db-migrate:

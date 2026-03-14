@@ -68,7 +68,7 @@ EMBEDDINGS_PROVIDER=xenova
 EMBEDDINGS_XENOVA_MODEL=Xenova/all-MiniLM-L6-v2
 
 LLM_URL=http://localhost:11434
-LLM_MODEL=mistral
+LLM_MODEL=qwen3.5:9b
 ```
 
 **3. Migrate data**:

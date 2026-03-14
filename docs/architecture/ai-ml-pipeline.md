@@ -6,7 +6,7 @@ The AI/ML pipeline implements RAG (Retrieval-Augmented Generation) using a 100% 
 
 1. **Embeddings** - Convert text to semantic vectors (Xenova/Ollama)
 2. **Vector Search** - Find relevant context (pgvector on PostgreSQL)
-3. **LLM Generation** - Generate answers (Ollama with Falcon 7B)
+3. **LLM Generation** - Generate answers (Ollama with Qwen 3.5)
 
 All processing happens locally with no data sent to third-party APIs.
 
@@ -69,7 +69,7 @@ All processing happens locally with no data sent to third-party APIs.
 │            4. LLM GENERATION                    │
 │                                                 │
 │  ┌───────────────────────────────────────────┐ │
-│  │ Ollama (Falcon 7B)                        │ │
+│  │ Ollama (Qwen 3.5)                          │ │
 │  │                                           │ │
 │  │ Parameters:                               │ │
 │  │   - max_tokens: 500                       │ │
@@ -233,25 +233,25 @@ LIMIT 3;
 **Configuration**:
 ```bash
 LLM_URL=http://localhost:11434
-LLM_MODEL=mistral  # Default model
+LLM_MODEL=qwen3.5:9b  # Default model
 ```
 
-**Model: Mistral 7B Instruct (Default)**
+**Model: Qwen 3.5 (Default)**
 
 **Details**:
-- **Size**: 7 billion parameters
-- **Context**: 8192 tokens
+- **Dev**: `qwen3.5:9b` — 9B parameters (dense), 256K context
+- **Prod**: `qwen3.5:35b` — 35B parameters (3B active, MoE), 256K context
 - **License**: Apache 2.0 (fully open source)
-- **Developer**: Mistral AI
-- **Quality**: Excellent instruction following and JSON output reliability
+- **Developer**: Alibaba Cloud
+- **Quality**: Excellent reasoning, structured output, and multilingual support
 
 **Alternative Models** (via Ollama):
 | Model | Size | Context | Speed | Quality | Use Case |
 |-------|------|---------|-------|---------|----------|
-| mistral | 7B | 8192 | Medium | Excellent | Structural analysis, JSON (default) |
-| llama3.2 | 3B | 8192 | Fast | Good | Quick responses |
-| llama3.1 | 8B | 128K | Slow | Excellent | Long context |
-| falcon | 7B | 2048 | Medium | Good | General purpose |
+| qwen3.5:9b | 9B | 256K | Fast | Excellent | Dev default |
+| qwen3.5:35b | 35B (3B active) | 256K | Fast | Excellent | Prod default |
+| mistral | 7B | 8K | Fast | Excellent | JSON output, instruction following |
+| gemma2 | 9B/27B | 8K | Medium | Good | General purpose |
 
 **Generation Process**:
 ```typescript
@@ -399,9 +399,9 @@ async answerQuery(userId: string, query: string): Promise<string> {
 - ~10-100ms (millions of vectors)
 
 **LLM Generation**:
-- Falcon 7B (CPU): ~5-10 seconds
-- Falcon 7B (GPU): ~500ms-2s
-- Llama3.2 3B (GPU): ~200ms-1s
+- Qwen 3.5 9B (CPU): ~5-10 seconds
+- Qwen 3.5 9B (GPU): ~500ms-2s
+- Qwen 3.5 35B MoE (GPU): ~300ms-1.5s
 
 **Total RAG Latency**:
 - With GPU: ~700ms-2.3s

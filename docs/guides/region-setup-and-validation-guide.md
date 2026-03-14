@@ -122,13 +122,13 @@ The AI model is needed for analyzing web pages during data ingestion. First-time
 ./scripts/setup-ollama.sh
 
 # Option B: Pull manually
-docker exec opuspopuli-ollama ollama pull mistral
+ollama pull qwen3.5:9b
 ```
 
 Verify the model is ready:
 
 ```bash
-docker exec opuspopuli-ollama ollama list
+ollama list
 ```
 
 You should see `mistral:latest` in the output.
@@ -794,9 +794,9 @@ Use this to re-test the registration and onboarding flow without re-ingesting al
 | Problem | Cause | Solution |
 |---------|-------|----------|
 | Sync returns 0 items for propositions | Source website changed layout | Check that https://www.sos.ca.gov/elections/ballot-measures/qualified-ballot-measures is accessible and hasn't changed |
-| AI analysis takes too long | Ollama model too slow | Increase Docker CPU allocation, or try `llama3.2` (3B) for faster but lower-quality results |
+| AI analysis takes too long | Ollama model too slow | Try `llama3.2` (3B) for faster but lower-quality results |
 | Campaign finance sync times out | Large file download | The CAL-ACCESS ZIP is ~1 GB. Ensure stable internet. Try again if it times out. |
-| "Model not found" error | AI model not downloaded | Run `docker exec opuspopuli-ollama ollama pull mistral` |
+| "Model not found" error | AI model not downloaded | Run `ollama pull qwen3.5:9b` |
 | Sync shows errors in response | Individual source failed | Check the `errors` array for details. Some sources may fail independently. |
 
 ### Authentication Issues
@@ -866,7 +866,7 @@ docker compose -f docker-compose-uat.yml ps
 curl http://localhost:3000/health
 
 # Check AI model
-docker exec opuspopuli-ollama ollama list
+ollama list
 
 # View logs for a specific service
 docker compose -f docker-compose-uat.yml logs <service-name>

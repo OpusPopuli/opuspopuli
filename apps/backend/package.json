@@ -38,7 +38,7 @@
     "preinstall": "npx only-allow pnpm"
   },
   "dependencies": {
-    "@apollo/gateway": "^2.12.2",
+    "@apollo/gateway": "^2.12.3",
     "@apollo/server": "^5.4.0",
     "@apollo/subgraph": "^2.12.2",
     "@as-integrations/express5": "^1.1.2",

@@ -73,6 +73,6 @@
   },
   "dependencies": {
     "cockatiel": "^3.2.1",
-    "undici": "^7.3.0"
+    "undici": "^7.24.0"
   }
 }
