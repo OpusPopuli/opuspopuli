@@ -92,91 +92,44 @@ type SendEmailResult {
   error: String
 }
 
-type UserProfileEntity {
+type CoreFieldsStatus {
+  hasName: Boolean!
+  hasPhoto: Boolean!
+  hasTimezone: Boolean!
+  hasAddress: Boolean!
+}
+
+type ProfileCompletionResult {
+  percentage: Int!
+  isComplete: Boolean!
+  coreFieldsComplete: CoreFieldsStatus!
+  suggestedNextSteps: [String!]!
+}
+
+type DataExportResult {
+  exportedAt: String!
+  data: JSON!
+}
+
+type UserProfileModel {
   id: ID!
+  userId: String!
   firstName: String
-  middleName: String
   lastName: String
   displayName: String
-  preferredName: String
-  dateOfBirth: DateTime
-  phone: String
-  phoneVerifiedAt: DateTime
-  timezone: String!
-  locale: String!
-  preferredLanguage: String!
-  avatarUrl: String
   bio: String
-  isPublic: Boolean!
+  dateOfBirth: DateTime
+  phoneNumber: String
+  timezone: String
   avatarStorageKey: String
-  politicalAffiliation: PoliticalAffiliation
-  votingFrequency: VotingFrequency
-  policyPriorities: [String!]
-  occupation: String
-  educationLevel: EducationLevel
-  incomeRange: IncomeRange
-  householdSize: String
-  homeownerStatus: HomeownerStatus
+  language: String
   createdAt: DateTime!
   updatedAt: DateTime!
 }
 
-"""Political party affiliation"""
-enum PoliticalAffiliation {
-  DEMOCRAT
-  REPUBLICAN
-  INDEPENDENT
-  LIBERTARIAN
-  GREEN
-  OTHER
-  PREFER_NOT_TO_SAY
-}
-
-"""How often the user votes"""
-enum VotingFrequency {
-  EVERY_ELECTION
-  MOST_ELECTIONS
-  SOME_ELECTIONS
-  RARELY
-  NEVER
-  PREFER_NOT_TO_SAY
-}
-
-"""Highest education level completed"""
-enum EducationLevel {
-  HIGH_SCHOOL
-  SOME_COLLEGE
-  ASSOCIATE
-  BACHELOR
-  MASTER
-  DOCTORATE
-  TRADE_SCHOOL
-  PREFER_NOT_TO_SAY
-}
-
-"""Annual household income range"""
-enum IncomeRange {
-  UNDER_25K
-  RANGE_25K_50K
-  RANGE_50K_75K
-  RANGE_75K_100K
-  RANGE_100K_150K
-  RANGE_150K_200K
-  OVER_200K
-  PREFER_NOT_TO_SAY
-}
-
-"""Home ownership status"""
-enum HomeownerStatus {
-  OWN
-  RENT
-  LIVING_WITH_FAMILY
-  OTHER
-  PREFER_NOT_TO_SAY
-}
-
-type UserAddressEntity {
+type UserAddressModel {
   id: ID!
+  userId: String!
   addressType: AddressType!
   isPrimary: Boolean!
   label: String
@@ -190,21 +143,11 @@ type UserAddressEntity {
   longitude: Float
   formattedAddress: String
   placeId: String
-  congressionalDistrict: String
-  stateSenatorialDistrict: String
-  stateAssemblyDistrict: String
-  county: String
-  municipality: String
-  schoolDistrict: String
-  precinctId: String
-  pollingPlace: String
-  isVerified: Boolean!
-  verificationMethod: String
   createdAt: DateTime!
   updatedAt: DateTime!
 }
 
-"""The type of address"""
+"""Type of address"""
 enum AddressType {
   RESIDENTIAL
   MAILING
@@ -212,8 +155,9 @@ enum AddressType {
   VOTING
 }
 
-type NotificationPreferenceEntity {
+type NotificationPreferenceModel {
   id: ID!
+  userId: String!
   emailEnabled: Boolean!
   emailProductUpdates: Boolean!
   emailSecurityAlerts: Boolean!
@@ -247,8 +191,9 @@ enum NotificationFrequency {
   NEVER
 }
 
-type UserConsentEntity {
+type UserConsentModel {
   id: ID!
+  userId: String!
   consentType: ConsentType!
   status: ConsentStatus!
   documentVersion: String
@@ -287,20 +232,6 @@ enum ConsentStatus {
   DENIED
   WITHDRAWN
   PENDING
-}
-
-type CoreFieldsStatus {
-  hasName: Boolean!
-  hasPhoto: Boolean!
-  hasTimezone: Boolean!
-  hasAddress: Boolean!
-}
-
-type ProfileCompletionResult {
-  percentage: Int!
-  isComplete: Boolean!
-  coreFieldsComplete: CoreFieldsStatus!
-  suggestedNextSteps: [String!]!
 }
 
 type ActivityLogEntry {
@@ -409,14 +340,14 @@ type Query {
   myEmailHistory(skip: Int! = 0, take: Int! = 10, emailType: EmailType): PaginatedEmailCorrespondence!
   myEmail(id: ID!): EmailCorrespondenceModel
   representativeMailtoLink(representativeEmail: String!, subject: String!, body: String!): String!
-  myProfile: UserProfileEntity
+  myProfile: UserProfileModel
   myProfileCompletion: ProfileCompletionResult!
   avatarUploadUrl(filename: String!): String!
-  myAddresses: [UserAddressEntity!]!
-  myAddress(id: ID!): UserAddressEntity
-  myNotificationPreferences: NotificationPreferenceEntity
-  myConsents: [UserConsentEntity!]!
-  myConsent(consentType: ConsentType!): UserConsentEntity
+  myAddresses: [UserAddressModel!]!
+  myAddress(id: ID!): UserAddressModel
+  myNotificationPreferences: NotificationPreferenceModel
+  myConsents: [UserConsentModel!]!
+  myConsent(consentType: ConsentType!): UserConsentModel
   hasValidConsent(consentType: ConsentType!): Boolean!
   myActivityLog(limit: Int! = 20, offset: Int! = 0, filters: ActivityLogFilters): ActivityLogPage!
   myActivitySummary: ActivitySummary!
@@ -438,33 +369,34 @@ type Mutation {
   deleteUser(id: ID!): Boolean!
   registerUser(registerUserDto: RegisterUserDto!): Boolean!
   loginUser(loginUserDto: LoginUserDto!): Auth!
-  changePassword(changePasswordDto: ChangePasswordDto!): Boolean!
   forgotPassword(email: String!): Boolean!
   confirmForgotPassword(confirmForgotPasswordDto: ConfirmForgotPasswordDto!): Boolean!
-  confirmUser(id: ID!): Boolean!
-  addAdminPermission(id: ID!): Boolean!
-  removeAdminPermission(id: ID!): Boolean!
   generatePasskeyRegistrationOptions(input: GeneratePasskeyRegistrationOptionsDto!): PasskeyRegistrationOptions!
   verifyPasskeyRegistration(input: VerifyPasskeyRegistrationDto!): Boolean!
   generatePasskeyAuthenticationOptions(input: GeneratePasskeyAuthenticationOptionsDto): PasskeyAuthenticationOptions!
   verifyPasskeyAuthentication(input: VerifyPasskeyAuthenticationDto!): Auth!
-  deletePasskey(credentialId: String!): Boolean!
   sendMagicLink(input: SendMagicLinkDto!): Boolean!
   verifyMagicLink(input: VerifyMagicLinkDto!): Auth!
   registerWithMagicLink(input: RegisterWithMagicLinkDto!): Boolean!
+  changePassword(changePasswordDto: ChangePasswordDto!): Boolean!
+  deletePasskey(credentialId: String!): Boolean!
   logout: Boolean!
+  confirmUser(id: ID!): Boolean!
+  addAdminPermission(id: ID!): Boolean!
+  removeAdminPermission(id: ID!): Boolean!
   contactRepresentative(input: ContactRepresentativeDto!, representative: RepresentativeInfoDto!, proposition: PropositionInfoDto): SendEmailResult!
-  updateMyProfile(input: UpdateProfileDto!): UserProfileEntity!
-  updateAvatarStorageKey(storageKey: String!): UserProfileEntity!
-  createAddress(input: CreateAddressDto!): UserAddressEntity!
-  updateAddress(input: UpdateAddressDto!): UserAddressEntity!
+  updateMyProfile(input: UpdateProfileDto!): UserProfileModel!
+  updateAvatarStorageKey(storageKey: String!): UserProfileModel!
+  createAddress(input: CreateAddressDto!): UserAddressModel!
+  updateAddress(input: UpdateAddressDto!): UserAddressModel!
   deleteAddress(id: ID!): Boolean!
-  setPrimaryAddress(id: ID!): UserAddressEntity!
-  updateNotificationPreferences(input: UpdateNotificationPreferencesDto!): NotificationPreferenceEntity!
-  unsubscribeFromAll: NotificationPreferenceEntity!
-  updateConsent(input: UpdateConsentDto!): UserConsentEntity!
-  bulkUpdateConsents(input: BulkUpdateConsentsDto!): [UserConsentEntity!]!
-  withdrawConsent(input: WithdrawConsentDto!): UserConsentEntity!
+  setPrimaryAddress(id: ID!): UserAddressModel!
+  updateNotificationPreferences(input: UpdateNotificationPreferencesDto!): NotificationPreferenceModel!
+  unsubscribeFromAll: NotificationPreferenceModel!
+  updateConsent(input: UpdateConsentDto!): UserConsentModel!
+  bulkUpdateConsents(input: BulkUpdateConsentsDto!): [UserConsentModel!]!
+  withdrawConsent(input: WithdrawConsentDto!): UserConsentModel!
+  exportMyData: DataExportResult!
   revokeSession(id: ID!): Boolean!
 
   """Revoke all sessions except current"""
@@ -505,12 +437,6 @@ input LoginUserDto {
   password: String!
 }
 
-input ChangePasswordDto {
-  accessToken: String!
-  newPassword: String!
-  currentPassword: String!
-}
-
 input ConfirmForgotPasswordDto {
   email: String!
   confirmationCode: String!
@@ -549,6 +475,12 @@ input VerifyMagicLinkDto {
 input RegisterWithMagicLinkDto {
   email: String!
   redirectTo: String
+}
+
+input ChangePasswordDto {
+  accessToken: String!
+  newPassword: String!
+  currentPassword: String!
 }
 
 input ContactRepresentativeDto {
@@ -594,6 +526,60 @@ input UpdateProfileDto {
   incomeRange: IncomeRange
   householdSize: String
   homeownerStatus: HomeownerStatus
+}
+
+"""Political party affiliation"""
+enum PoliticalAffiliation {
+  DEMOCRAT
+  REPUBLICAN
+  INDEPENDENT
+  LIBERTARIAN
+  GREEN
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+"""How often the user votes"""
+enum VotingFrequency {
+  EVERY_ELECTION
+  MOST_ELECTIONS
+  SOME_ELECTIONS
+  RARELY
+  NEVER
+  PREFER_NOT_TO_SAY
+}
+
+"""Highest education level completed"""
+enum EducationLevel {
+  HIGH_SCHOOL
+  SOME_COLLEGE
+  ASSOCIATE
+  BACHELOR
+  MASTER
+  DOCTORATE
+  TRADE_SCHOOL
+  PREFER_NOT_TO_SAY
+}
+
+"""Annual household income range"""
+enum IncomeRange {
+  UNDER_25K
+  RANGE_25K_50K
+  RANGE_50K_75K
+  RANGE_75K_100K
+  RANGE_100K_150K
+  RANGE_150K_200K
+  OVER_200K
+  PREFER_NOT_TO_SAY
+}
+
+"""Home ownership status"""
+enum HomeownerStatus {
+  OWN
+  RENT
+  LIVING_WITH_FAMILY
+  OTHER
+  PREFER_NOT_TO_SAY
 }
 
 input CreateAddressDto {
