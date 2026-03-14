@@ -43,7 +43,12 @@
       "tar": ">=7.5.11",
       "fast-xml-parser": ">=5.3.5",
       "lodash": ">=4.17.23",
-      "langsmith": ">=0.4.6"
+      "langsmith": ">=0.4.6",
+      "@apollo/gateway": ">=2.12.3",
+      "@apollo/query-planner": ">=2.12.3",
+      "@apollo/federation-internals": ">=2.12.3",
+      "undici": ">=7.24.0",
+      "flatted": ">=3.4.0"
     }
   }
 }
