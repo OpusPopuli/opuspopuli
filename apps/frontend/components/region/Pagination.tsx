@@ -13,7 +13,7 @@ export function Pagination({
 }) {
   return (
     <div className="mt-8 flex items-center justify-between">
-      <p className="text-sm text-[#555555]">
+      <p className="text-sm text-[#4d4d4d]">
         Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, total)}{" "}
         of {total}
       </p>

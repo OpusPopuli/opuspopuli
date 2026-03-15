@@ -69,6 +69,14 @@ async function setupAuthAndMocks(page: import("@playwright/test").Page) {
   });
 
   await page.route("**/api", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
+      return;
+    }
     const postData = route.request().postDataJSON();
 
     if (postData?.query?.includes("MyScanHistory")) {
@@ -170,6 +178,14 @@ test.describe("Petition History", () => {
     });
 
     await page.route("**/api", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
+        return;
+      }
       const postData = route.request().postDataJSON();
       if (postData?.query?.includes("MyScanHistory")) {
         await route.fulfill({

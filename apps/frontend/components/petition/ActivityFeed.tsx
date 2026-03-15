@@ -90,7 +90,7 @@ export function ActivityFeed() {
   if (!feed || (feed.totalScansLast24h === 0 && feed.items.length === 0)) {
     return (
       <section className="w-full max-w-sm mt-8 text-center">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-400">
           No petition activity in the last 24 hours. Be the first to scan!
         </p>
       </section>

@@ -145,6 +145,14 @@ test.describe("Login Page", () => {
       // Mock GraphQL API to return error (login uses GraphQL mutation)
       await page.route("**/api", async (route) => {
         const request = route.request();
+        if (request.method() !== "POST") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {} }),
+          });
+          return;
+        }
         const postData = request.postDataJSON();
 
         // Only intercept loginUser mutation
@@ -157,7 +165,11 @@ test.describe("Login Page", () => {
             }),
           });
         } else {
-          await route.continue();
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {} }),
+          });
         }
       });
 

@@ -90,7 +90,7 @@ export default function LoginPage() {
               ${
                 authMode === "passkey"
                   ? "text-[#222222] border-[#222222]"
-                  : "text-[#555555] border-transparent hover:text-[#222222]"
+                  : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
               }`}
           >
             Passkey
@@ -103,7 +103,7 @@ export default function LoginPage() {
             ${
               authMode === "magic-link"
                 ? "text-[#222222] border-[#222222]"
-                : "text-[#555555] border-transparent hover:text-[#222222]"
+                : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
             }`}
         >
           Email Link
@@ -115,7 +115,7 @@ export default function LoginPage() {
             ${
               authMode === "password"
                 ? "text-[#222222] border-[#222222]"
-                : "text-[#555555] border-transparent hover:text-[#222222]"
+                : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
             }`}
         >
           Password
@@ -142,7 +142,7 @@ export default function LoginPage() {
                 />
               </svg>
             </div>
-            <p className="text-[#555555] text-sm mb-4">
+            <p className="text-[#4d4d4d] text-sm mb-4">
               Sign in instantly with your fingerprint, face, or device PIN
             </p>
           </div>
@@ -206,17 +206,17 @@ export default function LoginPage() {
               <h3 className="text-lg font-semibold text-[#222222] mb-2">
                 Check your email
               </h3>
-              <p className="text-[#555555] text-sm">
+              <p className="text-[#4d4d4d] text-sm">
                 We sent a sign-in link to <strong>{email}</strong>
               </p>
-              <p className="text-[#888888] text-xs mt-2">
+              <p className="text-[#595959] text-xs mt-2">
                 The link expires in 2 hours
               </p>
             </div>
           ) : (
             <form onSubmit={handleMagicLinkLogin} className="space-y-5">
               <div className="text-center py-2">
-                <p className="text-[#555555] text-sm">
+                <p className="text-[#4d4d4d] text-sm">
                   We&apos;ll send you a magic link to sign in instantly
                 </p>
               </div>
@@ -275,7 +275,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="password"
-              className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
+              className="block text-xs font-semibold text-[#4d4d4d] uppercase tracking-wider mb-2"
             >
               Password
             </label>
@@ -297,7 +297,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#555555] hover:text-[#222222] transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4d4d4d] hover:text-[#222222] transition-colors"
               >
                 {showPassword ? (
                   <svg
@@ -343,7 +343,7 @@ export default function LoginPage() {
           <div className="text-right">
             <Link
               href="/forgot-password"
-              className="text-sm text-[#555555] hover:text-[#222222] transition-colors"
+              className="text-sm text-[#4d4d4d] hover:text-[#222222] transition-colors"
             >
               Forgot your password?
             </Link>
@@ -362,7 +362,7 @@ export default function LoginPage() {
       <AuthDivider />
 
       {/* Register Link */}
-      <p className="text-center text-[#555555]">
+      <p className="text-center text-[#4d4d4d]">
         Don&apos;t have an account?{" "}
         <Link
           href="/register"

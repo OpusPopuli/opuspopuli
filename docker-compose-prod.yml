@@ -349,7 +349,7 @@ services:
           memory: 256M
 
   loki:
-    image: grafana/loki:2.9.5
+    image: grafana/loki:3.4.2
     container_name: opuspopuli-prod-loki
     volumes:
       - ./observability/loki.yml:/etc/loki/local-config.yaml:ro
@@ -367,7 +367,7 @@ services:
           memory: 256M
 
   promtail:
-    image: grafana/promtail:2.9.5
+    image: grafana/promtail:3.4.2
     container_name: opuspopuli-prod-promtail
     volumes:
       - ./observability/promtail.yml:/etc/promtail/config.yml:ro
@@ -390,7 +390,8 @@ services:
     image: grafana/grafana:10.4.1
     container_name: opuspopuli-prod-grafana
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     volumes:
       - grafana-data:/var/lib/grafana
     ports:

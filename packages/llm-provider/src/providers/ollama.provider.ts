@@ -24,7 +24,7 @@ export type FetchFunction = (
  */
 export interface OllamaConfig {
   url: string; // Ollama server URL
-  model: string; // Model name (e.g., 'mistral', 'llama3.2', 'falcon')
+  model: string; // Model name (e.g., 'qwen3.5:9b', 'qwen3.5:35b', 'mistral')
   /**
    * Overall request timeout in milliseconds
    * Default: 60000 (60 seconds)
@@ -158,6 +158,7 @@ export class OllamaLLMProvider implements ILLMProvider {
             model: this.config.model,
             prompt,
             stream: false,
+            think: options?.think ?? false,
             options: {
               num_predict: options?.maxTokens || 512,
               temperature: options?.temperature || 0.7,
@@ -228,6 +229,7 @@ export class OllamaLLMProvider implements ILLMProvider {
           model: this.config.model,
           prompt,
           stream: true,
+          think: options?.think ?? false,
           options: {
             num_predict: options?.maxTokens || 512,
             temperature: options?.temperature || 0.7,
@@ -375,6 +377,7 @@ export class OllamaLLMProvider implements ILLMProvider {
               content: msg.content,
             })),
             stream: false,
+            think: options?.think ?? false,
             options: {
               num_predict: options?.maxTokens || 512,
               temperature: options?.temperature || 0.7,

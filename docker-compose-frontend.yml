@@ -1,0 +1,48 @@
+# Docker Compose for Frontend
+#
+# Runs the Next.js frontend in Docker, connecting to the backend services
+# on the shared opuspopuli-network. Start backend first (docker-compose-uat.yml),
+# then bring up the frontend separately.
+#
+# Usage:
+#   # Start frontend (backend must already be running):
+#   docker compose -f docker-compose-frontend.yml up -d --build
+#
+#   # Stop frontend:
+#   docker compose -f docker-compose-frontend.yml down
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        # Next.js bakes NEXT_PUBLIC_* vars at build time
+        NEXT_PUBLIC_GRAPHQL_URL: http://localhost:3200/api
+        NEXT_PUBLIC_SITE_URL: http://localhost:3200
+        NEXT_PUBLIC_HMAC_CLIENT_ID: frontend
+        NEXT_PUBLIC_HMAC_SECRET: dev-frontend-secret-key-change-in-production
+    container_name: opuspopuli-frontend
+    ports:
+      - "3200:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - opuspopuli-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+networks:
+  opuspopuli-network:
+    external: true

@@ -66,7 +66,7 @@ export default function ForgotPasswordPage() {
         <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Check your email
         </h1>
-        <p className="text-[#555555] mb-6">
+        <p className="text-[#4d4d4d] mb-6">
           We&apos;ve sent a password reset code to{" "}
           <span className="font-medium text-[#222222]">{email}</span>
         </p>
@@ -76,7 +76,7 @@ export default function ForgotPasswordPage() {
         >
           Enter reset code
         </button>
-        <p className="mt-4 text-sm text-[#555555]">
+        <p className="mt-4 text-sm text-[#4d4d4d]">
           Didn&apos;t receive the email?{" "}
           <button
             onClick={() => setSuccess(false)}
@@ -120,7 +120,7 @@ export default function ForgotPasswordPage() {
       </form>
 
       {/* Back to Login Link */}
-      <p className="mt-8 text-center text-[#555555]">
+      <p className="mt-8 text-center text-[#4d4d4d]">
         Remember your password?{" "}
         <Link
           href="/login"

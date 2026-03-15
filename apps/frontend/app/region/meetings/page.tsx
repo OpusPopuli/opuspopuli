@@ -66,8 +66,8 @@ function MeetingCard({ meeting }: Readonly<{ meeting: Meeting }>) {
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-[#555555]">{meeting.body}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#555555]">
+          <p className="mt-1 text-sm text-[#4d4d4d]">{meeting.body}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#4d4d4d]">
             <span>{formattedDate}</span>
             <span>{formattedTime}</span>
             {meeting.location && <span>{meeting.location}</span>}
@@ -167,7 +167,7 @@ export default function MeetingsPage() {
       />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#222222]">Meetings</h1>
-        <p className="mt-2 text-[#555555]">
+        <p className="mt-2 text-[#4d4d4d]">
           Legislative sessions and public hearings
         </p>
       </div>

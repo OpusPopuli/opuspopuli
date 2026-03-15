@@ -34,7 +34,7 @@ export default function AuthLayout({
 
       {/* Footer */}
       <footer className="p-6 text-center space-y-2">
-        <p className="text-sm text-[#555555]">
+        <p className="text-sm text-[#4d4d4d]">
           Powered by{" "}
           <a
             href="https://opuspopuli.org"
@@ -45,7 +45,7 @@ export default function AuthLayout({
             Opus Populi
           </a>
         </p>
-        <p className="text-xs text-[#666666]">
+        <p className="text-xs text-[#595959]">
           <Link href="/privacy" className="hover:underline">
             Privacy Policy
           </Link>

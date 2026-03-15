@@ -85,11 +85,11 @@ function RepresentativeCard({
           </h3>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <PartyBadge party={representative.party} />
-            <span className="text-sm text-[#555555]">
+            <span className="text-sm text-[#4d4d4d]">
               {representative.chamber}
             </span>
           </div>
-          <p className="mt-1 text-sm text-[#555555]">
+          <p className="mt-1 text-sm text-[#4d4d4d]">
             District {representative.district}
           </p>
         </div>
@@ -115,7 +115,7 @@ function RepresentativeCard({
             </a>
           )}
           {representative.contactInfo.office && (
-            <span className="text-[#555555] col-span-2 truncate">
+            <span className="text-[#4d4d4d] col-span-2 truncate">
               {representative.contactInfo.office}
             </span>
           )}
@@ -205,7 +205,7 @@ export default function RepresentativesPage() {
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-[#222222]">Representatives</h1>
-          <p className="mt-2 text-[#555555]">
+          <p className="mt-2 text-[#4d4d4d]">
             Elected officials and legislators
           </p>
         </div>
@@ -215,7 +215,7 @@ export default function RepresentativesPage() {
           <div className="flex items-center gap-2">
             <label
               htmlFor="chamber"
-              className="text-sm font-medium text-[#555555]"
+              className="text-sm font-medium text-[#4d4d4d]"
             >
               Filter:
             </label>

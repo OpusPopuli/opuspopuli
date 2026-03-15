@@ -61,7 +61,7 @@ function CommitteeCard({ committee }: Readonly<{ committee: Committee }>) {
             {committee.name}
           </h3>
           {committee.candidateName && (
-            <p className="mt-1 text-sm text-[#555555]">
+            <p className="mt-1 text-sm text-[#4d4d4d]">
               Candidate: {committee.candidateName}
             </p>
           )}
@@ -71,7 +71,7 @@ function CommitteeCard({ committee }: Readonly<{ committee: Committee }>) {
           <StatusBadge status={committee.status} />
         </div>
       </div>
-      <div className="mt-4 flex items-center justify-between text-sm text-[#555555]">
+      <div className="mt-4 flex items-center justify-between text-sm text-[#4d4d4d]">
         <span>Source: {committee.sourceSystem}</span>
         {committee.sourceUrl && (
           <a
@@ -129,7 +129,7 @@ export default function CommitteesPage() {
       />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#222222]">Committees</h1>
-        <p className="mt-2 text-[#555555]">
+        <p className="mt-2 text-[#4d4d4d]">
           Campaign committees and PACs for your region
         </p>
       </div>

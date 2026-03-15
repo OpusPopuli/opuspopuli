@@ -241,7 +241,7 @@ export default function AddressesPage() {
             <h1 className="text-2xl font-bold text-[#222222]">
               {t("addresses.title")}
             </h1>
-            <p className="text-[#555555] mt-1">{t("addresses.subtitle")}</p>
+            <p className="text-[#4d4d4d] mt-1">{t("addresses.subtitle")}</p>
           </div>
           {!showForm && (
             <button
@@ -391,7 +391,7 @@ export default function AddressesPage() {
               <button
                 type="button"
                 onClick={handleCancel}
-                className="px-6 py-3 border border-gray-200 text-[#555555] rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                className="px-6 py-3 border border-gray-200 text-[#4d4d4d] rounded-lg font-medium hover:bg-gray-50 transition-colors"
               >
                 {t("common:buttons.cancel")}
               </button>
@@ -430,11 +430,11 @@ export default function AddressesPage() {
                     {address.addressLine1}
                     {address.addressLine2 && `, ${address.addressLine2}`}
                   </p>
-                  <p className="text-[#555555]">
+                  <p className="text-[#4d4d4d]">
                     {address.city}, {address.state} {address.postalCode}
                   </p>
                   {address.congressionalDistrict && (
-                    <p className="text-sm text-[#555555] mt-2">
+                    <p className="text-sm text-[#4d4d4d] mt-2">
                       {t("addresses.congressionalDistrict")}:{" "}
                       {address.congressionalDistrict}
                     </p>
@@ -444,14 +444,14 @@ export default function AddressesPage() {
                   {!address.isPrimary && (
                     <button
                       onClick={() => handleSetPrimary(address.id)}
-                      className="text-sm text-[#555555] hover:text-[#222222] transition-colors"
+                      className="text-sm text-[#4d4d4d] hover:text-[#222222] transition-colors"
                     >
                       {t("addresses.setPrimary")}
                     </button>
                   )}
                   <button
                     onClick={() => handleEdit(address)}
-                    className="p-2 text-[#555555] hover:text-[#222222] transition-colors"
+                    className="p-2 text-[#4d4d4d] hover:text-[#222222] transition-colors"
                     aria-label={t("common:buttons.edit")}
                   >
                     <svg
@@ -498,7 +498,7 @@ export default function AddressesPage() {
       ) : (
         !showForm && (
           <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
-            <div className="text-[#555555]">
+            <div className="text-[#4d4d4d]">
               <svg
                 className="w-12 h-12 mx-auto mb-4 opacity-50"
                 fill="none"
