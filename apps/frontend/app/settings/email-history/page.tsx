@@ -48,21 +48,21 @@ function EmailCard({ email }: { readonly email: EmailCorrespondence }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <StatusBadge status={email.status} />
-            <span className="text-xs text-[#555555]">
+            <span className="text-xs text-[#4d4d4d]">
               {EMAIL_TYPE_LABELS[email.emailType]}
             </span>
-            <span className="text-xs text-[#555555]">
+            <span className="text-xs text-[#4d4d4d]">
               {new Date(email.createdAt).toLocaleDateString()}
             </span>
           </div>
           <h3 className="font-medium text-[#222222] truncate">
             {email.subject}
           </h3>
-          <p className="text-sm text-[#555555] mt-1">
+          <p className="text-sm text-[#4d4d4d] mt-1">
             To: {email.recipientName || email.recipientEmail}
           </p>
           {email.bodyPreview && (
-            <p className="text-sm text-[#555555] mt-2 line-clamp-2">
+            <p className="text-sm text-[#4d4d4d] mt-2 line-clamp-2">
               {email.bodyPreview}
             </p>
           )}
@@ -141,8 +141,8 @@ export default function EmailHistoryPage() {
               d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
             />
           </svg>
-          <p className="text-[#555555]">No emails found.</p>
-          <p className="text-sm text-[#555555] mt-1">
+          <p className="text-[#4d4d4d]">No emails found.</p>
+          <p className="text-sm text-[#4d4d4d] mt-1">
             Emails you send will appear here.
           </p>
         </div>
@@ -159,7 +159,7 @@ export default function EmailHistoryPage() {
 
         {/* Pagination */}
         <div className="mt-8 flex items-center justify-between">
-          <p className="text-sm text-[#555555]">
+          <p className="text-sm text-[#4d4d4d]">
             Showing {page * PAGE_SIZE + 1} -{" "}
             {Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </p>
@@ -194,21 +194,21 @@ export default function EmailHistoryPage() {
         >
           Settings
         </Link>
-        <span className="mx-2 text-[#555555]">/</span>
-        <span className="text-sm text-[#555555]">Email History</span>
+        <span className="mx-2 text-[#4d4d4d]">/</span>
+        <span className="text-sm text-[#4d4d4d]">Email History</span>
       </nav>
 
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#222222]">Email History</h1>
-        <p className="mt-2 text-[#555555]">
+        <p className="mt-2 text-[#4d4d4d]">
           View your sent emails and correspondence
         </p>
       </div>
 
       {/* Filter */}
       <div className="mb-6 flex items-center gap-2">
-        <label htmlFor="email-type-filter" className="text-sm text-[#555555]">
+        <label htmlFor="email-type-filter" className="text-sm text-[#4d4d4d]">
           Filter by type:
         </label>
         <select

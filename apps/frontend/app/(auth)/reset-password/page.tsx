@@ -133,7 +133,7 @@ export default function ResetPasswordPage() {
         <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Password reset successful
         </h1>
-        <p className="text-[#555555] mb-6">
+        <p className="text-[#4d4d4d] mb-6">
           Your password has been updated. You can now sign in with your new
           password.
         </p>
@@ -183,7 +183,7 @@ export default function ResetPasswordPage() {
         <div>
           <label
             htmlFor="password"
-            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
+            className="block text-xs font-semibold text-[#4d4d4d] uppercase tracking-wider mb-2"
           >
             New Password
           </label>
@@ -204,7 +204,7 @@ export default function ResetPasswordPage() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#555555] hover:text-[#222222] transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4d4d4d] hover:text-[#222222] transition-colors"
             >
               {showPassword ? (
                 <svg
@@ -248,7 +248,7 @@ export default function ResetPasswordPage() {
           {password.length > 0 && (
             <div className="mt-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-[#555555]">
+                <span className="text-xs text-[#4d4d4d]">
                   Password strength
                 </span>
                 <span
@@ -272,7 +272,7 @@ export default function ResetPasswordPage() {
                   <li
                     key={req.text}
                     className={`text-xs flex items-center gap-2 ${
-                      req.met ? "text-green-600" : "text-[#888888]"
+                      req.met ? "text-green-600" : "text-[#595959]"
                     }`}
                   >
                     {req.met ? (
@@ -308,7 +308,7 @@ export default function ResetPasswordPage() {
         <div>
           <label
             htmlFor="confirmPassword"
-            className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
+            className="block text-xs font-semibold text-[#4d4d4d] uppercase tracking-wider mb-2"
           >
             Confirm Password
           </label>
@@ -348,7 +348,7 @@ export default function ResetPasswordPage() {
 
       {/* Back Links */}
       <div className="mt-8 text-center space-y-2">
-        <p className="text-[#555555]">
+        <p className="text-[#4d4d4d]">
           Need a new code?{" "}
           <Link
             href="/forgot-password"
@@ -357,7 +357,7 @@ export default function ResetPasswordPage() {
             Request again
           </Link>
         </p>
-        <p className="text-[#555555]">
+        <p className="text-[#4d4d4d]">
           Remember your password?{" "}
           <Link
             href="/login"

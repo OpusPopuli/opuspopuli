@@ -221,14 +221,26 @@ describe("Security Headers Configuration", () => {
       expect(cspHeader?.value).toContain("object-src 'none'");
     });
 
-    it("should include upgrade-insecure-requests", async () => {
-      const configModule =
+    it("should include upgrade-insecure-requests only for HTTPS sites", async () => {
+      // Without HTTPS site URL, directive should NOT be present
+      delete process.env.NEXT_PUBLIC_SITE_URL;
+      jest.resetModules();
+      let configModule =
         await import("../../config/security-headers.config.mjs");
-      const headers = configModule.getSecurityHeaders();
-      const cspHeader = headers.find(
+      let headers = configModule.getSecurityHeaders();
+      let cspHeader = headers.find(
         (h: { key: string }) => h.key === "Content-Security-Policy",
       );
+      expect(cspHeader?.value).not.toContain("upgrade-insecure-requests");
 
+      // With HTTPS site URL, directive SHOULD be present
+      process.env.NEXT_PUBLIC_SITE_URL = "https://opuspopuli.org";
+      jest.resetModules();
+      configModule = await import("../../config/security-headers.config.mjs");
+      headers = configModule.getSecurityHeaders();
+      cspHeader = headers.find(
+        (h: { key: string }) => h.key === "Content-Security-Policy",
+      );
       expect(cspHeader?.value).toContain("upgrade-insecure-requests");
     });
   });

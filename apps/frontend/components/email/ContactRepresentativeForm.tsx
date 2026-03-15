@@ -114,7 +114,7 @@ export function ContactRepresentativeForm({
           Contact {representative.name}
         </h2>
         {representative.chamber && (
-          <p className="text-sm text-[#555555] mt-1">
+          <p className="text-sm text-[#4d4d4d] mt-1">
             {representative.chamber}
           </p>
         )}
@@ -195,7 +195,7 @@ export function ContactRepresentativeForm({
               className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none resize-y"
               placeholder="Write your message here..."
             />
-            <p className="text-xs text-[#555555] mt-1">
+            <p className="text-xs text-[#4d4d4d] mt-1">
               {message.length}/5000 characters
             </p>
           </div>
@@ -209,7 +209,7 @@ export function ContactRepresentativeForm({
                 onChange={(e) => setIncludeAddress(e.target.checked)}
                 className="rounded text-[#222222]"
               />
-              <span className="text-sm text-[#555555]">
+              <span className="text-sm text-[#4d4d4d]">
                 Include my address (helps verify you are a constituent)
               </span>
             </label>
@@ -228,7 +228,7 @@ export function ContactRepresentativeForm({
               <button
                 type="button"
                 onClick={onCancel}
-                className="px-4 py-2 text-sm font-medium text-[#555555] hover:text-[#222222] transition-colors"
+                className="px-4 py-2 text-sm font-medium text-[#4d4d4d] hover:text-[#222222] transition-colors"
               >
                 Cancel
               </button>

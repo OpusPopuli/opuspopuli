@@ -36,14 +36,14 @@ export default function CampaignFinancePage() {
         >
           Region
         </Link>
-        <span className="mx-2 text-[#555555]">/</span>
-        <span className="text-sm text-[#555555]">Campaign Finance</span>
+        <span className="mx-2 text-[#4d4d4d]">/</span>
+        <span className="text-sm text-[#4d4d4d]">Campaign Finance</span>
       </nav>
 
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#222222]">Campaign Finance</h1>
-        <p className="mt-2 text-[#555555]">
+        <p className="mt-2 text-[#4d4d4d]">
           Committees, contributions, and expenditures for your region
         </p>
       </div>
@@ -59,7 +59,7 @@ export default function CampaignFinancePage() {
             <h2 className="text-lg font-semibold text-[#222222] group-hover:text-blue-600 transition-colors">
               {card.title}
             </h2>
-            <p className="mt-1 text-sm text-[#555555]">{card.description}</p>
+            <p className="mt-1 text-sm text-[#4d4d4d]">{card.description}</p>
           </Link>
         ))}
       </div>

@@ -32,11 +32,11 @@ function IndependentExpenditureCard({
             {ie.committeeName}
           </h3>
           {target && (
-            <p className="mt-1 text-sm text-[#555555]">
+            <p className="mt-1 text-sm text-[#4d4d4d]">
               {ie.candidateName ? "Candidate" : "Proposition"}: {target}
             </p>
           )}
-          <p className="mt-1 text-sm text-[#555555]">{formatDate(ie.date)}</p>
+          <p className="mt-1 text-sm text-[#4d4d4d]">{formatDate(ie.date)}</p>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <span className="text-lg font-semibold text-[#222222]">
@@ -45,7 +45,7 @@ function IndependentExpenditureCard({
           <SupportOpposeBadge value={ie.supportOrOppose} />
         </div>
       </div>
-      <div className="mt-4 text-sm text-[#555555]">
+      <div className="mt-4 text-sm text-[#4d4d4d]">
         Source: {ie.sourceSystem}
       </div>
     </div>
@@ -98,7 +98,7 @@ export default function IndependentExpendituresPage() {
         <h1 className="text-3xl font-bold text-[#222222]">
           Independent Expenditures
         </h1>
-        <p className="mt-2 text-[#555555]">
+        <p className="mt-2 text-[#4d4d4d]">
           Independent spending for/against candidates and measures
         </p>
       </div>

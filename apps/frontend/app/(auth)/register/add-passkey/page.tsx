@@ -53,7 +53,7 @@ export default function AddPasskeyPage() {
         <h1 className="text-xl font-bold text-[#222222] mb-2">
           Passkeys not supported
         </h1>
-        <p className="text-[#555555] mb-6">
+        <p className="text-[#4d4d4d] mb-6">
           Your browser or device doesn&apos;t support passkeys yet. You can
           still use magic links to sign in.
         </p>
@@ -90,7 +90,7 @@ export default function AddPasskeyPage() {
         <h1 className="text-xl font-bold text-[#222222] mb-2">
           Passkey added!
         </h1>
-        <p className="text-[#555555] mb-6">
+        <p className="text-[#4d4d4d] mb-6">
           You can now sign in instantly with your fingerprint, face, or device
           PIN.
         </p>
@@ -127,7 +127,7 @@ export default function AddPasskeyPage() {
         <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Add a Passkey
         </h1>
-        <p className="text-[#555555]">
+        <p className="text-[#4d4d4d]">
           Set up faster, more secure sign-in for your account
         </p>
       </div>
@@ -157,7 +157,7 @@ export default function AddPasskeyPage() {
           </svg>
           <div>
             <p className="text-sm font-medium text-[#222222]">More secure</p>
-            <p className="text-xs text-[#555555]">
+            <p className="text-xs text-[#4d4d4d]">
               Passkeys can&apos;t be phished or leaked in data breaches
             </p>
           </div>
@@ -180,7 +180,7 @@ export default function AddPasskeyPage() {
             <p className="text-sm font-medium text-[#222222]">
               Instant sign-in
             </p>
-            <p className="text-xs text-[#555555]">
+            <p className="text-xs text-[#4d4d4d]">
               Use your fingerprint, face, or device PIN
             </p>
           </div>
@@ -203,7 +203,7 @@ export default function AddPasskeyPage() {
             <p className="text-sm font-medium text-[#222222]">
               Works across devices
             </p>
-            <p className="text-xs text-[#555555]">
+            <p className="text-xs text-[#4d4d4d]">
               Synced passkeys work on all your Apple, Google, or Microsoft
               devices
             </p>
@@ -215,7 +215,7 @@ export default function AddPasskeyPage() {
       <div className="mb-6">
         <label
           htmlFor="friendlyName"
-          className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
+          className="block text-xs font-semibold text-[#4d4d4d] uppercase tracking-wider mb-2"
         >
           Passkey Name (Optional)
         </label>
@@ -288,13 +288,13 @@ export default function AddPasskeyPage() {
         <button
           type="button"
           onClick={() => router.push("/rag-demo")}
-          className="w-full py-3 px-6 bg-white text-[#555555] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
+          className="w-full py-3 px-6 bg-white text-[#4d4d4d] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
         >
           Skip for now
         </button>
       </div>
 
-      <p className="mt-6 text-xs text-[#888888] text-center">
+      <p className="mt-6 text-xs text-[#595959] text-center">
         You can add more passkeys later in your account settings.
       </p>
     </div>

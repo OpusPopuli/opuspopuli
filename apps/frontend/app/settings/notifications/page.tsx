@@ -128,7 +128,7 @@ function NotificationForm({
           <h1 className="text-2xl font-bold text-[#222222]">
             {t("notifications.title")}
           </h1>
-          <p className="text-[#555555] mt-1">{t("notifications.subtitle")}</p>
+          <p className="text-[#4d4d4d] mt-1">{t("notifications.subtitle")}</p>
         </div>
         <button
           onClick={onUnsubscribeAll}
@@ -170,7 +170,7 @@ function NotificationForm({
               <p className="text-sm font-medium text-[#222222]">
                 {t("notifications.email.productUpdates")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("notifications.email.productUpdatesDesc")}
               </p>
             </div>
@@ -185,7 +185,7 @@ function NotificationForm({
               <p className="text-sm font-medium text-[#222222]">
                 {t("notifications.email.securityAlerts")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("notifications.email.securityAlertsDesc")}
               </p>
             </div>
@@ -200,7 +200,7 @@ function NotificationForm({
               <p className="text-sm font-medium text-[#222222]">
                 {t("notifications.email.marketing")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("notifications.email.marketingDesc")}
               </p>
             </div>
@@ -252,7 +252,7 @@ function NotificationForm({
               <p className="text-sm font-medium text-[#222222]">
                 {t("notifications.push.productUpdates")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("notifications.push.productUpdatesDesc")}
               </p>
             </div>
@@ -267,7 +267,7 @@ function NotificationForm({
               <p className="text-sm font-medium text-[#222222]">
                 {t("notifications.push.securityAlerts")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("notifications.push.securityAlertsDesc")}
               </p>
             </div>
@@ -291,7 +291,7 @@ function NotificationForm({
               <p className="text-sm font-medium text-[#222222]">
                 {t("notifications.civic.electionReminders")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("notifications.civic.electionRemindersDesc")}
               </p>
             </div>
@@ -305,7 +305,7 @@ function NotificationForm({
               <p className="text-sm font-medium text-[#222222]">
                 {t("notifications.civic.voterDeadlines")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("notifications.civic.voterDeadlinesDesc")}
               </p>
             </div>
@@ -319,7 +319,7 @@ function NotificationForm({
               <p className="text-sm font-medium text-[#222222]">
                 {t("notifications.civic.ballotUpdates")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("notifications.civic.ballotUpdatesDesc")}
               </p>
             </div>
@@ -333,7 +333,7 @@ function NotificationForm({
               <p className="text-sm font-medium text-[#222222]">
                 {t("notifications.civic.localNews")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("notifications.civic.localNewsDesc")}
               </p>
             </div>
@@ -347,7 +347,7 @@ function NotificationForm({
               <p className="text-sm font-medium text-[#222222]">
                 {t("notifications.civic.representativeUpdates")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("notifications.civic.representativeUpdatesDesc")}
               </p>
             </div>
@@ -387,7 +387,7 @@ function NotificationForm({
             <h2 className="text-lg font-semibold text-[#222222]">
               {t("notifications.quietHours.title")}
             </h2>
-            <p className="text-sm text-[#555555]">
+            <p className="text-sm text-[#4d4d4d]">
               {t("notifications.quietHours.subtitle")}
             </p>
           </div>
@@ -399,7 +399,7 @@ function NotificationForm({
         {prefs.quietHoursEnabled && (
           <div className="flex items-center gap-4 pl-4">
             <div>
-              <label className="block text-sm text-[#555555] mb-1">
+              <label className="block text-sm text-[#4d4d4d] mb-1">
                 {t("notifications.quietHours.from")}
               </label>
               <input
@@ -410,7 +410,7 @@ function NotificationForm({
               />
             </div>
             <div>
-              <label className="block text-sm text-[#555555] mb-1">
+              <label className="block text-sm text-[#4d4d4d] mb-1">
                 {t("notifications.quietHours.to")}
               </label>
               <input

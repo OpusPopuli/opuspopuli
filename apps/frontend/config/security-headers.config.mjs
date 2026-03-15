@@ -110,8 +110,14 @@ function buildCspDirectives() {
     "base-uri 'self'",
     "form-action 'self'",
     "object-src 'none'", // Prevent plugins like Flash
-    "upgrade-insecure-requests", // Upgrade HTTP to HTTPS
   ];
+
+  // Only upgrade insecure requests when serving over HTTPS
+  // Docker/local dev serves over HTTP — this directive would break CSS/JS loading
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+  if (siteUrl.startsWith("https://")) {
+    directives.push("upgrade-insecure-requests");
+  }
 
   // Add report-uri if configured
   if (reportUri) {

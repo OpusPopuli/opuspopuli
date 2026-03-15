@@ -35,6 +35,16 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Enable standalone output for Docker (Cloudflare Pages builds without this)
 ENV NEXT_OUTPUT=standalone
 
+# Next.js bakes NEXT_PUBLIC_* vars at build time — accept them as build args
+ARG NEXT_PUBLIC_GRAPHQL_URL=http://localhost:3200/api
+ARG NEXT_PUBLIC_SITE_URL=http://localhost:3200
+ARG NEXT_PUBLIC_HMAC_CLIENT_ID=frontend
+ARG NEXT_PUBLIC_HMAC_SECRET=dev-frontend-secret-key-change-in-production
+ENV NEXT_PUBLIC_GRAPHQL_URL=$NEXT_PUBLIC_GRAPHQL_URL
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+ENV NEXT_PUBLIC_HMAC_CLIENT_ID=$NEXT_PUBLIC_HMAC_CLIENT_ID
+ENV NEXT_PUBLIC_HMAC_SECRET=$NEXT_PUBLIC_HMAC_SECRET
+
 RUN corepack enable
 RUN pnpm build
 

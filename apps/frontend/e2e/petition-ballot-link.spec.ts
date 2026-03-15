@@ -80,6 +80,14 @@ async function mockPetitionResultsGraphQL(
   });
 
   await page.route("**/api", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
+      return;
+    }
     const postData = route.request().postDataJSON();
 
     if (postData?.query?.includes("ProcessScan")) {
@@ -151,7 +159,11 @@ async function mockPetitionResultsGraphQL(
         }),
       });
     } else {
-      await route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
     }
   });
 }
@@ -171,6 +183,14 @@ async function mockPropositionDetailGraphQL(
   });
 
   await page.route("**/api", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
+      return;
+    }
     const postData = route.request().postDataJSON();
 
     if (
@@ -208,7 +228,11 @@ async function mockPropositionDetailGraphQL(
         }),
       });
     } else {
-      await route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
     }
   });
 }
@@ -287,6 +311,14 @@ test.describe("Petition-Ballot Linking", () => {
       });
 
       await page.route("**/api", async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {} }),
+          });
+          return;
+        }
         const postData = route.request().postDataJSON();
 
         if (
@@ -324,7 +356,11 @@ test.describe("Petition-Ballot Linking", () => {
             }),
           });
         } else {
-          await route.continue();
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {} }),
+          });
         }
       });
 
@@ -405,6 +441,14 @@ test.describe("Petition-Ballot Linking", () => {
       });
 
       await page.route("**/api", async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {} }),
+          });
+          return;
+        }
         const postData = route.request().postDataJSON();
 
         if (postData?.query?.includes("ProcessScan")) {
@@ -445,7 +489,11 @@ test.describe("Petition-Ballot Linking", () => {
             }),
           });
         } else {
-          await route.continue();
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {} }),
+          });
         }
       });
 
@@ -477,6 +525,14 @@ test.describe("Petition-Ballot Linking", () => {
       });
 
       await page.route("**/api", async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {} }),
+          });
+          return;
+        }
         const postData = route.request().postDataJSON();
 
         if (postData?.query?.includes("ProcessScan")) {
@@ -532,7 +588,11 @@ test.describe("Petition-Ballot Linking", () => {
             }),
           });
         } else {
-          await route.continue();
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {} }),
+          });
         }
       });
 
@@ -559,6 +619,14 @@ test.describe("Petition-Ballot Linking", () => {
       });
 
       await page.route("**/api", async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {} }),
+          });
+          return;
+        }
         const postData = route.request().postDataJSON();
 
         if (
@@ -615,7 +683,11 @@ test.describe("Petition-Ballot Linking", () => {
             }),
           });
         } else {
-          await route.continue();
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: {} }),
+          });
         }
       });
 
@@ -662,6 +734,9 @@ test.describe("Petition-Ballot Linking", () => {
       await page.goto("/region/propositions/prop-1");
       await page.getByRole("button", { name: "Details" }).click();
       await expect(page.getByText("Community Petition Scans")).toBeVisible();
+
+      // Wait for layer-enter animation (opacity 0→1, 0.25s) to complete
+      await page.waitForTimeout(500);
 
       const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa"])

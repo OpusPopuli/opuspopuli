@@ -91,11 +91,11 @@ function ConsentItem({
           )}
           {getStatusBadge(consent?.status)}
         </div>
-        <p className="text-sm text-[#555555]">
+        <p className="text-sm text-[#4d4d4d]">
           {t(`privacy.consents.${consentType}.description`)}
         </p>
         {statusDate && (
-          <p className="text-xs text-[#888888] mt-1">
+          <p className="text-xs text-[#595959] mt-1">
             {consent?.status === "granted"
               ? t("privacy.status.grantedOn")
               : t("privacy.status.updatedOn")}{" "}
@@ -110,8 +110,8 @@ function ConsentItem({
             disabled={loading || required}
             className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
               required
-                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                : "bg-red-50 text-red-600 hover:bg-red-100"
+                ? "bg-gray-100 text-gray-500 cursor-not-allowed"
+                : "bg-red-50 text-red-700 hover:bg-red-100"
             }`}
           >
             {loading ? "..." : t("common:buttons.withdraw")}
@@ -259,7 +259,7 @@ export default function PrivacyPage() {
           <h1 className="text-2xl font-bold text-[#222222]">
             {t("privacy.title")}
           </h1>
-          <p className="text-[#555555] mt-1">{t("privacy.subtitle")}</p>
+          <p className="text-[#4d4d4d] mt-1">{t("privacy.subtitle")}</p>
         </div>
 
         {/* GDPR/CCPA Notice */}
@@ -297,7 +297,7 @@ export default function PrivacyPage() {
               <h2 className="text-lg font-semibold text-[#222222]">
                 {t(`privacy.groups.${group.groupKey}.title`)}
               </h2>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t(`privacy.groups.${group.groupKey}.description`)}
               </p>
             </div>
@@ -329,7 +329,7 @@ export default function PrivacyPage() {
               <p className="text-sm font-medium text-[#222222]">
                 {t("privacy.dataManagement.exportTitle")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("privacy.dataManagement.exportDesc")}
               </p>
             </div>
@@ -347,11 +347,11 @@ export default function PrivacyPage() {
               <p className="text-sm font-medium text-[#222222]">
                 {t("privacy.dataManagement.deleteTitle")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("privacy.dataManagement.deleteDesc")}
               </p>
             </div>
-            <button className="px-4 py-2 text-sm font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors">
+            <button className="px-4 py-2 text-sm font-medium bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors">
               {t("privacy.dataManagement.deleteButton")}
             </button>
           </div>

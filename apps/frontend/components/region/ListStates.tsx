@@ -33,7 +33,7 @@ export function ErrorState({ entity }: { readonly entity: string }) {
 export function EmptyState({ entity }: { readonly entity: string }) {
   return (
     <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-      <p className="text-[#555555]">No {entity} found.</p>
+      <p className="text-[#4d4d4d]">No {entity} found.</p>
     </div>
   );
 }

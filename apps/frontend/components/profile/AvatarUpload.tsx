@@ -227,7 +227,7 @@ export function AvatarUpload({
       />
 
       {/* Upload Label */}
-      <p className="text-sm text-[#555555]">
+      <p className="text-sm text-[#4d4d4d]">
         {t("profile.avatar.hint", "Click to upload a photo")}
       </p>
 

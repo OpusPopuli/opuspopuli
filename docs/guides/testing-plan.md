@@ -228,43 +228,20 @@ docker logs opuspopuli-uat-region 2>&1 | grep -i "ollama\|llm"
 
 ---
 
-## Phase 6: Frontend
+## Phase 6: Observability Stack
 
 ```bash
-# 6a. Start frontend dev server (from repo root)
-pnpm --filter frontend dev
-# Should start on http://localhost:3200
-
-# 6b. Open in browser: http://localhost:3200
-# Verify:
-#   - Page loads without console errors
-#   - GraphQL connection works (check Network tab for /graphql calls)
-#   - Auth UI renders (login/register page)
-
-# 6c. Test auth flow with Inbucket
-#   - Register a test user with magic link
-#   - Check http://localhost:54324 for the magic link email
-#   - Click the link to verify auth works end-to-end
-```
-
-**Pass criteria:** Frontend loads, connects to backend, auth flow works.
-
----
-
-## Phase 7: Observability Stack
-
-```bash
-# 7a. Verify Prometheus
+# 6a. Verify Prometheus
 # Open: http://localhost:9090
 # Go to Status > Targets — all scrape targets should be "UP"
 
-# 7b. Verify Grafana
+# 6b. Verify Grafana
 # Open: http://localhost:3101
 # Login: admin / admin
 # Check that data sources (Prometheus, Loki) are connected
 # Check pre-provisioned dashboards show data
 
-# 7c. Verify Loki + Promtail
+# 6c. Verify Loki + Promtail
 # In Grafana, go to Explore > select Loki data source
 # Query: {container=~".+"} — should show container logs
 ```
@@ -273,44 +250,65 @@ pnpm --filter frontend dev
 
 ---
 
-## Phase 8: Integration Tests (Docker)
+## Phase 7: Frontend
 
-This is the full automated validation — runs everything in Docker.
+Requires backend services (Phase 4) running on `opuspopuli-network`.
 
 ```bash
-# 8a. Stop any locally running services first
-# Ctrl+C on backend services and frontend
+# 7a. Build and start frontend in Docker
+docker compose -f docker-compose-frontend.yml up -d --build
 
-# 8b. Run dockerized integration tests
-./scripts/test-integration-docker.sh
-# This will:
-#   - Build all service images
-#   - Start infrastructure + services
-#   - Run migrations
-#   - Execute integration test suite
-#   - Clean up containers
+# 7b. Watch container come up (wait for healthy)
+docker compose -f docker-compose-frontend.yml ps
+# Should show "healthy"
 
-# Watch for: all tests passing, clean exit code 0
+# 7c. Open in browser: http://localhost:3200
+# Verify:
+#   - Page loads without console errors
+#   - GraphQL connection works (check Network tab for /api calls)
+#   - Auth UI renders (login/register page)
+
+# 7d. Test auth flow with Inbucket
+#   - Register a test user with magic link
+#   - Check http://localhost:54324 for the magic link email
+#   - Click the link to verify auth works end-to-end
 ```
 
-**Pass criteria:** Integration test script exits with code 0, all tests pass.
+**Pass criteria:** Frontend container healthy, page loads, connects to backend, auth flow works.
+
+---
+
+## Phase 8: Integration Tests
+
+Run integration tests against the already-running backend services (Phase 4).
+
+```bash
+# 8a. Run integration tests against running UAT services
+pnpm test:integration
+
+# Watch for: all tests passing, clean exit code 0
+
+# NOTE: To run integration tests from scratch (standalone, no prior services needed):
+# ./scripts/test-integration-docker.sh
+# This builds its own stack, runs tests, and tears everything down automatically.
+```
+
+**Pass criteria:** All integration tests pass.
 
 ---
 
 ## Phase 9: E2E Tests (Optional but Recommended)
 
+Run Playwright tests against the already-running frontend (Phase 7) and backend (Phase 4).
+
 ```bash
-# 9a. Start the E2E stack
-docker compose -f docker-compose-e2e.yml up -d
-
-# 9b. Wait for all services to be healthy
-docker compose -f docker-compose-e2e.yml ps
-
-# 9c. Start frontend pointing at E2E backend (port 4000)
-pnpm --filter frontend dev
-
-# 9d. Run Playwright tests
+# 9a. Run Playwright tests against running services
 pnpm --filter frontend e2e
+
+# NOTE: To run E2E tests from scratch (standalone, no prior services needed):
+# docker compose -f docker-compose-e2e.yml up -d --build
+# pnpm --filter frontend e2e
+# docker compose -f docker-compose-e2e.yml down -v
 ```
 
 **Pass criteria:** Playwright tests pass, including accessibility checks.

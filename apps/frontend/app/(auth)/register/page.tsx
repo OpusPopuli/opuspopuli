@@ -51,11 +51,11 @@ export default function RegisterPage() {
         <h1 className="text-2xl font-bold text-[#222222] mb-2">
           Check your email
         </h1>
-        <p className="text-[#555555] mb-2">
+        <p className="text-[#4d4d4d] mb-2">
           We&apos;ve sent a verification link to
         </p>
         <p className="font-medium text-[#222222] mb-4">{email}</p>
-        <p className="text-[#555555] text-sm mb-6">
+        <p className="text-[#4d4d4d] text-sm mb-6">
           Click the link in your email to complete your registration.
           <br />
           The link expires in 2 hours.
@@ -154,7 +154,7 @@ export default function RegisterPage() {
         </AuthSubmitButton>
 
         {/* Terms */}
-        <p className="text-xs text-[#555555] text-center">
+        <p className="text-xs text-[#4d4d4d] text-center">
           By creating an account, you agree to our{" "}
           <Link
             href="/terms"
@@ -175,7 +175,7 @@ export default function RegisterPage() {
       <AuthDivider />
 
       {/* Login Link */}
-      <p className="text-center text-[#555555]">
+      <p className="text-center text-[#4d4d4d]">
         Already have an account?{" "}
         <Link
           href="/login"

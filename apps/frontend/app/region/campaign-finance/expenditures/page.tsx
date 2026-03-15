@@ -29,11 +29,11 @@ function ExpenditureCard({
           <h3 className="text-lg font-semibold text-[#222222]">
             {expenditure.payeeName}
           </h3>
-          <p className="mt-1 text-sm text-[#555555]">
+          <p className="mt-1 text-sm text-[#4d4d4d]">
             {formatDate(expenditure.date)}
           </p>
           {expenditure.purposeDescription && (
-            <p className="mt-2 text-sm text-[#555555] line-clamp-2">
+            <p className="mt-2 text-sm text-[#4d4d4d] line-clamp-2">
               {expenditure.purposeDescription}
             </p>
           )}
@@ -45,7 +45,7 @@ function ExpenditureCard({
           <SupportOpposeBadge value={expenditure.supportOrOppose} />
         </div>
       </div>
-      <div className="mt-4 text-sm text-[#555555]">
+      <div className="mt-4 text-sm text-[#4d4d4d]">
         Source: {expenditure.sourceSystem}
       </div>
     </div>
@@ -96,7 +96,7 @@ export default function ExpendituresPage() {
       />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#222222]">Expenditures</h1>
-        <p className="mt-2 text-[#555555]">
+        <p className="mt-2 text-[#4d4d4d]">
           Campaign spending and payments for your region
         </p>
       </div>

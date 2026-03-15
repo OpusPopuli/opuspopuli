@@ -31,7 +31,7 @@ function CallbackLoading() {
         </svg>
       </div>
       <h1 className="text-xl font-bold text-[#222222] mb-2">Loading...</h1>
-      <p className="text-[#555555]">Please wait.</p>
+      <p className="text-[#4d4d4d]">Please wait.</p>
     </div>
   );
 }
@@ -130,7 +130,7 @@ function AuthCallbackContent() {
         <h1 className="text-xl font-bold text-[#222222] mb-2">
           Verifying your link...
         </h1>
-        <p className="text-[#555555]">Please wait while we sign you in.</p>
+        <p className="text-[#4d4d4d]">Please wait while we sign you in.</p>
       </div>
     );
   }
@@ -157,7 +157,7 @@ function AuthCallbackContent() {
         <h1 className="text-xl font-bold text-[#222222] mb-2">
           Link expired or invalid
         </h1>
-        <p className="text-[#555555] mb-6">
+        <p className="text-[#4d4d4d] mb-6">
           {error ||
             "This magic link has expired or is invalid. Please request a new one."}
         </p>
@@ -195,7 +195,7 @@ function AuthCallbackContent() {
         <h1 className="text-xl font-bold text-[#222222] mb-2">
           Welcome! Your account is ready
         </h1>
-        <p className="text-[#555555] mb-6">
+        <p className="text-[#4d4d4d] mb-6">
           Would you like to add a passkey for faster sign-in next time?
         </p>
 
@@ -239,7 +239,7 @@ function AuthCallbackContent() {
           <button
             type="button"
             onClick={() => router.push("/rag-demo")}
-            className="inline-block w-full py-3 px-6 bg-white text-[#555555] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-white text-[#4d4d4d] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
           >
             Skip for now
           </button>
@@ -269,7 +269,7 @@ function AuthCallbackContent() {
       <h1 className="text-xl font-bold text-[#222222] mb-2">
         You&apos;re signed in!
       </h1>
-      <p className="text-[#555555] mb-6">Redirecting you to the app...</p>
+      <p className="text-[#4d4d4d] mb-6">Redirecting you to the app...</p>
       <button
         type="button"
         onClick={() => router.push("/rag-demo")}

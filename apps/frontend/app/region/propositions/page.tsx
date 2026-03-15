@@ -77,7 +77,7 @@ function PropositionCard({
           <h3 className="text-lg font-semibold text-[#222222] line-clamp-2">
             {proposition.title}
           </h3>
-          <p className="mt-2 text-sm text-[#555555] line-clamp-3">
+          <p className="mt-2 text-sm text-[#4d4d4d] line-clamp-3">
             {proposition.summary}
           </p>
         </div>
@@ -85,7 +85,7 @@ function PropositionCard({
       </div>
 
       {electionDate && (
-        <div className="mt-4 text-sm text-[#555555]">
+        <div className="mt-4 text-sm text-[#4d4d4d]">
           Election: {electionDate}
         </div>
       )}
@@ -136,7 +136,7 @@ export default function PropositionsPage() {
       />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#222222]">Propositions</h1>
-        <p className="mt-2 text-[#555555]">
+        <p className="mt-2 text-[#4d4d4d]">
           Ballot measures and initiatives for your region
         </p>
       </div>

@@ -349,7 +349,7 @@ services:
           memory: 256M
 
   loki:
-    image: grafana/loki:2.9.5
+    image: grafana/loki:3.4.2
     container_name: opuspopuli-prod-loki
     volumes:
       - ./observability/loki.yml:/etc/loki/local-config.yaml:ro
@@ -367,7 +367,7 @@ services:
           memory: 256M
 
   promtail:
-    image: grafana/promtail:2.9.5
+    image: grafana/promtail:3.4.2
     container_name: opuspopuli-prod-promtail
     volumes:
       - ./observability/promtail.yml:/etc/promtail/config.yml:ro

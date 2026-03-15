@@ -129,26 +129,15 @@ test.describe("Onboarding Flow", () => {
     );
     expect(before).toBeNull();
 
-    // Listen for localStorage change before clicking
-    await page.evaluate(() => {
-      (globalThis as unknown as Record<string, string>).__onboardingSet =
-        "false";
-      const origSetItem = localStorage.setItem.bind(localStorage);
-      localStorage.setItem = (key: string, value: string) => {
-        origSetItem(key, value);
-        if (key === "opuspopuli_onboarding_completed") {
-          (globalThis as unknown as Record<string, string>).__onboardingSet =
-            value;
-        }
-      };
-    });
-
-    // Skip onboarding
+    // Skip onboarding — this sets localStorage AND navigates to /petition
     await page.getByRole("button", { name: /skip/i }).click();
 
-    // Verify the flag was set before navigation
-    const completed = await page.evaluate(
-      () => (globalThis as unknown as Record<string, string>).__onboardingSet,
+    // Wait for navigation to complete (skip redirects to /petition)
+    await expect(page).toHaveURL(/\/petition/);
+
+    // Verify localStorage was set (persists across navigation on same origin)
+    const completed = await page.evaluate(() =>
+      localStorage.getItem("opuspopuli_onboarding_completed"),
     );
     expect(completed).toBe("true");
   });
