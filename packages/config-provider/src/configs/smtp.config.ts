@@ -12,7 +12,7 @@ import { registerAs } from "@nestjs/config";
  */
 export const smtpConfig = registerAs("smtp", () => ({
   host: process.env.SMTP_HOST || "inbucket",
-  port: parseInt(process.env.SMTP_PORT || "2500", 10),
+  port: Number.parseInt(process.env.SMTP_PORT || "2500", 10),
   user: process.env.SMTP_USER || "",
   pass: process.env.SMTP_PASS || "",
   fromEmail: process.env.SMTP_ADMIN_EMAIL || "noreply@opuspopuli.local",
