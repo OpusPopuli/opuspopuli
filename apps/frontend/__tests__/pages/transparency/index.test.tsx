@@ -26,8 +26,8 @@ describe("TransparencyPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("should render AI System Card link", () => {
-    const link = screen.getByRole("link", { name: /AI System Card/ });
+  it("should render AI System Overview link", () => {
+    const link = screen.getByRole("link", { name: /AI System Overview/ });
     expect(link).toHaveAttribute("href", "/transparency/system-card");
   });
 

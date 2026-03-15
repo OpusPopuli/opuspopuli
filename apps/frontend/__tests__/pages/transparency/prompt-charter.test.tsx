@@ -41,8 +41,8 @@ describe("PromptCharterPage", () => {
     expect(screen.getByText("Transparency")).toBeInTheDocument();
   });
 
-  it("should link to AI System Card", () => {
-    const links = screen.getAllByRole("link", { name: /System Card/ });
+  it("should link to AI System Overview", () => {
+    const links = screen.getAllByRole("link", { name: /System Overview/ });
     expect(links.length).toBeGreaterThanOrEqual(1);
     expect(links[0]).toHaveAttribute("href", "/transparency/system-card");
   });

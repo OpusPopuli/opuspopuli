@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 const pages = [
   {
     href: "/transparency/system-card",
-    title: "AI System Card",
+    title: "AI System Overview",
     description:
       "How our AI works, what data it processes, and its known limitations.",
   },

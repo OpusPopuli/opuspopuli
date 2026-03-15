@@ -175,7 +175,7 @@ export default function Home() {
                     />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-[#222222] dark:text-white mb-2 group-hover:text-[#6f42c1] transition-colors">
+                <h3 className="font-semibold text-[#222222] dark:text-white mb-2 group-hover:text-[#5A7A6A] transition-colors">
                   AI Transparency
                 </h3>
                 <p className="text-sm text-[#4d4d4d] dark:text-gray-300">
@@ -201,7 +201,7 @@ export default function Home() {
                     />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-[#222222] dark:text-white mb-2 group-hover:text-[#6f42c1] transition-colors">
+                <h3 className="font-semibold text-[#222222] dark:text-white mb-2 group-hover:text-[#5A7A6A] transition-colors">
                   Privacy First
                 </h3>
                 <p className="text-sm text-[#4d4d4d] dark:text-gray-300">

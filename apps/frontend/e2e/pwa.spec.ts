@@ -27,7 +27,7 @@ test.describe("PWA - Manifest", () => {
     const response = await request.get("/api/manifest");
     const manifest = await response.json();
 
-    expect(manifest.theme_color).toBe("#6f42c1");
+    expect(manifest.theme_color).toBe("#5A7A6A");
     expect(manifest.background_color).toBe("#ffffff");
   });
 
@@ -159,7 +159,7 @@ test.describe("PWA - HTML Meta Tags", () => {
     expect(themeColor).not.toBeNull();
 
     const content = await themeColor?.getAttribute("content");
-    expect(content).toBe("#6f42c1");
+    expect(content).toBe("#5A7A6A");
   });
 
   test("should have viewport meta tag with correct settings", async ({

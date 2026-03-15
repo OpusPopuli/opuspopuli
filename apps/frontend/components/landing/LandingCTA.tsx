@@ -18,7 +18,7 @@ export function LandingCTA() {
     return (
       <Link
         href="/region"
-        className="inline-block px-8 py-3 bg-[#6f42c1] text-white text-lg font-semibold rounded-lg hover:bg-[#5a35a0] transition-colors"
+        className="inline-block px-8 py-3 bg-[#5A7A6A] text-white text-lg font-semibold rounded-lg hover:bg-[#4A6A5A] transition-colors"
       >
         {t("hero.ctaSignedIn")}
       </Link>
@@ -29,7 +29,7 @@ export function LandingCTA() {
     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
       <Link
         href="/register"
-        className="px-8 py-3 bg-[#6f42c1] text-white text-lg font-semibold rounded-lg hover:bg-[#5a35a0] transition-colors"
+        className="px-8 py-3 bg-[#5A7A6A] text-white text-lg font-semibold rounded-lg hover:bg-[#4A6A5A] transition-colors"
       >
         {t("hero.ctaSignedOut")}
       </Link>

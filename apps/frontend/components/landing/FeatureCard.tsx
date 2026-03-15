@@ -16,7 +16,7 @@ export function FeatureCard({
 }: FeatureCardProps) {
   const content = (
     <>
-      <div className="w-12 h-12 bg-[#6f42c1]/10 dark:bg-[#6f42c1]/20 rounded-xl flex items-center justify-center mb-4 text-[#6f42c1]">
+      <div className="w-12 h-12 bg-[#7F9C8E]/10 dark:bg-[#7F9C8E]/20 rounded-xl flex items-center justify-center mb-4 text-[#7F9C8E]">
         {icon}
       </div>
       <h3 className="text-lg font-semibold text-[#222222] dark:text-white mb-2">

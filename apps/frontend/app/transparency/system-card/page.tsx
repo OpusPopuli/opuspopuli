@@ -4,7 +4,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "AI System Card | Opus Populi",
+  title: "AI System Overview | Opus Populi",
   description:
     "How Opus Populi's AI system works, what data it processes, its limitations, and how to report issues.",
 };
@@ -24,7 +24,7 @@ export default function SystemCardPage() {
         </div>
 
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          AI System Card
+          AI System Overview
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
           Last updated: March 2026

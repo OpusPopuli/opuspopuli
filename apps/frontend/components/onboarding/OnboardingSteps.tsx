@@ -40,7 +40,7 @@ export function OnboardingSteps() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#6f42c1] to-[#4c1d95] flex flex-col">
+    <div className="min-h-screen bg-gradient-to-b from-[#5A7A6A] to-[#2D4A3C] flex flex-col">
       {/* Skip button */}
       <div className="absolute top-4 right-4 z-10">
         <button
@@ -82,7 +82,7 @@ export function OnboardingSteps() {
         {currentStep === totalSteps - 1 ? (
           <button
             onClick={handleComplete}
-            className="px-8 py-3 bg-white text-[#6f42c1] rounded-full font-semibold hover:bg-white/90 transition-colors"
+            className="px-8 py-3 bg-white text-[#5A7A6A] rounded-full font-semibold hover:bg-white/90 transition-colors"
           >
             {t("getStarted")}
           </button>

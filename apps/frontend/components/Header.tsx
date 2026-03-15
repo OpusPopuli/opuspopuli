@@ -30,7 +30,7 @@ export function Header() {
       <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
         <Link
           href="/"
-          className="text-xl font-bold text-gray-900 dark:text-white hover:text-[#6f42c1] dark:hover:text-[#a78bfa] transition-colors"
+          className="text-xl font-bold text-gray-900 dark:text-white hover:text-[#5A7A6A] dark:hover:text-[#A3BEB0] transition-colors"
         >
           Opus Populi
         </Link>
@@ -67,7 +67,7 @@ export function Header() {
               </Link>
               <Link
                 href="/register"
-                className="text-sm px-4 py-2 bg-[#6f42c1] text-white rounded-md hover:bg-[#5a35a0] transition-colors"
+                className="text-sm px-4 py-2 bg-[#5A7A6A] text-white rounded-md hover:bg-[#4A6A5A] transition-colors"
               >
                 Get started
               </Link>
@@ -178,7 +178,7 @@ export function Header() {
                 </Link>
                 <Link
                   href="/register"
-                  className="text-sm px-4 py-2 bg-[#6f42c1] text-white rounded-md hover:bg-[#5a35a0] transition-colors text-center"
+                  className="text-sm px-4 py-2 bg-[#5A7A6A] text-white rounded-md hover:bg-[#4A6A5A] transition-colors text-center"
                   onClick={closeMenu}
                 >
                   Get started
