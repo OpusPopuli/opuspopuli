@@ -268,7 +268,7 @@ export function AnalysisDisplay({
             </span>
           </div>
           {analysis.completenessDetails && (
-            <p className="text-xs text-gray-500 mb-2">
+            <p className="text-xs text-gray-400 mb-2">
               {t("results.completenessExplanation", {
                 available: analysis.completenessDetails.availableCount,
                 ideal: analysis.completenessDetails.idealCount,
@@ -283,7 +283,7 @@ export function AnalysisDisplay({
                 </summary>
                 <ul className="mt-1 space-y-1 pl-4">
                   {analysis.completenessDetails.missingItems.map((item) => (
-                    <li key={item} className="text-xs text-gray-500 list-disc">
+                    <li key={item} className="text-xs text-gray-400 list-disc">
                       {item}
                     </li>
                   ))}
@@ -326,7 +326,7 @@ export function AnalysisDisplay({
                     <p className="text-sm text-gray-300 truncate">
                       {source.name}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-gray-400">
                       {t("results.sourceAccessedAt", {
                         date: accessedDate.toLocaleDateString(),
                       })}
@@ -345,7 +345,7 @@ export function AnalysisDisplay({
       )}
 
       {/* Provider info footer */}
-      <div className="text-xs text-gray-500 pt-4 border-t border-gray-800">
+      <div className="text-xs text-gray-400 pt-4 border-t border-gray-800">
         <p>
           {t("results.analyzedBy", {
             provider: analysis.provider,

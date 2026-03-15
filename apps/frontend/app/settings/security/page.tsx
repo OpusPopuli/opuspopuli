@@ -219,7 +219,7 @@ export default function SecurityPage() {
             <h1 className="text-2xl font-bold text-[#222222]">
               {t("security.title")}
             </h1>
-            <p className="text-[#555555] mt-1">{t("security.subtitle")}</p>
+            <p className="text-[#4d4d4d] mt-1">{t("security.subtitle")}</p>
           </div>
         </div>
 
@@ -230,7 +230,7 @@ export default function SecurityPage() {
               <h2 className="text-lg font-semibold text-[#222222]">
                 {t("security.passkeys.title")}
               </h2>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("security.passkeys.description")}
               </p>
             </div>
@@ -260,7 +260,7 @@ export default function SecurityPage() {
           {passkeysLoading ? (
             <div className="text-center py-8">
               <div className="animate-spin w-8 h-8 border-2 border-[#222222] border-t-transparent rounded-full mx-auto" />
-              <p className="text-[#555555] mt-2">
+              <p className="text-[#4d4d4d] mt-2">
                 {t("common:status.loading")}
               </p>
             </div>
@@ -272,14 +272,14 @@ export default function SecurityPage() {
                   className="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="p-2 bg-gray-100 rounded-lg text-[#555555]">
+                    <div className="p-2 bg-gray-100 rounded-lg text-[#4d4d4d]">
                       <PasskeyIcon />
                     </div>
                     <div>
                       <p className="font-medium text-[#222222]">
                         {passkey.friendlyName || t("security.passkeys.unnamed")}
                       </p>
-                      <p className="text-sm text-[#555555]">
+                      <p className="text-sm text-[#4d4d4d]">
                         {passkey.deviceType ||
                           t("security.passkeys.unknownDevice")}{" "}
                         • {t("security.passkeys.created")}:{" "}
@@ -304,7 +304,7 @@ export default function SecurityPage() {
                       </button>
                       <button
                         onClick={() => setDeleteConfirmId(null)}
-                        className="text-sm text-[#555555] hover:text-[#222222] transition-colors"
+                        className="text-sm text-[#4d4d4d] hover:text-[#222222] transition-colors"
                       >
                         {t("common:buttons.cancel")}
                       </button>
@@ -322,7 +322,7 @@ export default function SecurityPage() {
             </div>
           ) : (
             <div className="text-center py-8 border border-dashed border-gray-200 rounded-lg">
-              <div className="text-[#555555] mb-4">
+              <div className="text-[#4d4d4d] mb-4">
                 <svg
                   className="w-12 h-12 mx-auto opacity-50"
                   fill="none"
@@ -341,7 +341,7 @@ export default function SecurityPage() {
               <p className="text-[#222222] font-medium">
                 {t("security.passkeys.empty")}
               </p>
-              <p className="text-sm text-[#555555] mt-1">
+              <p className="text-sm text-[#4d4d4d] mt-1">
                 {t("security.passkeys.emptyHint")}
               </p>
             </div>
@@ -386,7 +386,7 @@ export default function SecurityPage() {
               <h2 className="text-lg font-semibold text-[#222222]">
                 {t("security.sessions.title")}
               </h2>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("security.sessions.description")}
               </p>
             </div>
@@ -414,7 +414,7 @@ export default function SecurityPage() {
                       {t("common:status.current")}
                     </span>
                   </div>
-                  <p className="text-sm text-[#555555]">
+                  <p className="text-sm text-[#4d4d4d]">
                     {currentSession.browser}
                   </p>
                   <p className="text-xs text-[#374151]">
@@ -432,7 +432,7 @@ export default function SecurityPage() {
 
             {/* Info about other sessions */}
             <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("security.sessions.otherSessionsNote")}
               </p>
             </div>
@@ -445,13 +445,13 @@ export default function SecurityPage() {
         <h2 className="text-lg font-semibold text-[#222222] mb-2">
           {t("security.twoFactor.title")}
         </h2>
-        <p className="text-[#555555] text-sm mb-6">
+        <p className="text-[#4d4d4d] text-sm mb-6">
           {t("security.twoFactor.description")}
         </p>
 
         <div className="flex items-center justify-between py-4 border-b border-gray-100">
           <div className="flex items-center gap-4">
-            <div className="p-2 bg-gray-100 rounded-lg text-[#555555]">
+            <div className="p-2 bg-gray-100 rounded-lg text-[#4d4d4d]">
               <svg
                 className="w-6 h-6"
                 fill="none"
@@ -471,7 +471,7 @@ export default function SecurityPage() {
               <p className="font-medium text-[#222222]">
                 {t("security.twoFactor.authenticator.title")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("security.twoFactor.authenticator.description")}
               </p>
             </div>
@@ -483,7 +483,7 @@ export default function SecurityPage() {
 
         <div className="flex items-center justify-between py-4">
           <div className="flex items-center gap-4">
-            <div className="p-2 bg-gray-100 rounded-lg text-[#555555]">
+            <div className="p-2 bg-gray-100 rounded-lg text-[#4d4d4d]">
               <svg
                 className="w-6 h-6"
                 fill="none"
@@ -503,7 +503,7 @@ export default function SecurityPage() {
               <p className="font-medium text-[#222222]">
                 {t("security.twoFactor.recovery.title")}
               </p>
-              <p className="text-sm text-[#555555]">
+              <p className="text-sm text-[#4d4d4d]">
                 {t("security.twoFactor.recovery.description")}
               </p>
             </div>
@@ -522,7 +522,7 @@ export default function SecurityPage() {
         <h2 className="text-lg font-semibold text-[#222222] mb-2">
           {t("security.password.title")}
         </h2>
-        <p className="text-[#555555] text-sm mb-6">
+        <p className="text-[#4d4d4d] text-sm mb-6">
           {t("security.password.description")}
         </p>
 
@@ -531,7 +531,7 @@ export default function SecurityPage() {
             <p className="font-medium text-[#222222]">
               {t("security.password.changeTitle")}
             </p>
-            <p className="text-sm text-[#555555]">
+            <p className="text-sm text-[#4d4d4d]">
               {t("security.password.changeDescription")}
             </p>
           </div>
@@ -548,7 +548,7 @@ export default function SecurityPage() {
             <h3 className="text-xl font-semibold text-[#222222] mb-2">
               {t("security.passkeys.addTitle")}
             </h3>
-            <p className="text-[#555555] text-sm mb-6">
+            <p className="text-[#4d4d4d] text-sm mb-6">
               {t("security.passkeys.addDescription")}
             </p>
 
@@ -567,7 +567,7 @@ export default function SecurityPage() {
                 placeholder={t("security.passkeys.friendlyNamePlaceholder")}
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent"
               />
-              <p className="text-xs text-[#555555] mt-1">
+              <p className="text-xs text-[#4d4d4d] mt-1">
                 {t("security.passkeys.friendlyNameHint")}
               </p>
             </div>
@@ -586,7 +586,7 @@ export default function SecurityPage() {
                   clearError();
                 }}
                 disabled={passkeyActionLoading}
-                className="px-4 py-2 text-sm font-medium text-[#555555] hover:text-[#222222] transition-colors"
+                className="px-4 py-2 text-sm font-medium text-[#4d4d4d] hover:text-[#222222] transition-colors"
               >
                 {t("common:buttons.cancel")}
               </button>

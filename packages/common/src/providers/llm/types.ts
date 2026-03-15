@@ -2,7 +2,7 @@
  * LLM (Language Model) Types and Interfaces
  *
  * Strategy Pattern for language model inference.
- * Supports swapping between Falcon, Ollama, llama.cpp, etc.
+ * Supports swapping between Ollama (Qwen 3.5), llama.cpp, etc.
  */
 
 /**
@@ -23,6 +23,7 @@ export interface GenerateOptions {
   topK?: number; // Top-K sampling
   stopSequences?: string[]; // Stop generation at these strings
   stream?: boolean; // Stream response token-by-token
+  think?: boolean; // Enable model thinking/reasoning (Qwen 3.5). Default: false
 }
 
 /**

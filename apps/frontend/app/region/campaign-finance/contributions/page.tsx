@@ -45,7 +45,7 @@ function ContributionCard({
           <h3 className="text-lg font-semibold text-[#222222]">
             {contribution.donorName}
           </h3>
-          <p className="mt-1 text-sm text-[#555555]">
+          <p className="mt-1 text-sm text-[#4d4d4d]">
             {formatDate(contribution.date)}
           </p>
         </div>
@@ -56,7 +56,7 @@ function ContributionCard({
           <DonorTypeBadge type={contribution.donorType} />
         </div>
       </div>
-      <div className="mt-4 text-sm text-[#555555]">
+      <div className="mt-4 text-sm text-[#4d4d4d]">
         Source: {contribution.sourceSystem}
       </div>
     </div>
@@ -110,7 +110,7 @@ export default function ContributionsPage() {
       />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#222222]">Contributions</h1>
-        <p className="mt-2 text-[#555555]">
+        <p className="mt-2 text-[#4d4d4d]">
           Campaign donations and contributions for your region
         </p>
       </div>

@@ -14,7 +14,7 @@ export function Breadcrumb({
     <nav className="mb-6">
       {segments.map((segment, i) => (
         <span key={segment.label}>
-          {i > 0 && <span className="mx-2 text-[#555555]">/</span>}
+          {i > 0 && <span className="mx-2 text-[#4d4d4d]">/</span>}
           {segment.href ? (
             <Link
               href={segment.href}
@@ -23,7 +23,7 @@ export function Breadcrumb({
               {segment.label}
             </Link>
           ) : (
-            <span className="text-sm text-[#555555]">{segment.label}</span>
+            <span className="text-sm text-[#4d4d4d]">{segment.label}</span>
           )}
         </span>
       ))}

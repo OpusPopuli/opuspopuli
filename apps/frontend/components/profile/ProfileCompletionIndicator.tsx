@@ -77,7 +77,7 @@ export function ProfileCompletionIndicator({
       {/* Suggested Next Steps */}
       {!isComplete && suggestedNextSteps.length > 0 && (
         <div className="border-t border-gray-100 pt-4">
-          <p className="text-sm font-medium text-[#555555] mb-2">
+          <p className="text-sm font-medium text-[#4d4d4d] mb-2">
             {t("profile.completion.nextSteps", "Suggested next steps:")}
           </p>
           <ul className="space-y-2">

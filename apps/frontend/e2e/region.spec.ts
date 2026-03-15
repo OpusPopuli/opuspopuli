@@ -268,6 +268,14 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
 
   await page.route("**/api", async (route) => {
     const request = route.request();
+    if (request.method() !== "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
+      return;
+    }
     const postData = request.postDataJSON();
 
     if (postData?.query?.includes("regionInfo")) {
@@ -361,7 +369,11 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
         }),
       });
     } else {
-      await route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
     }
   });
 }
@@ -773,6 +785,14 @@ test.describe("Region Pages - Error Handling", () => {
 
     await page.route("**/api", async (route) => {
       const request = route.request();
+      if (request.method() !== "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
+        return;
+      }
       const postData = request.postDataJSON();
 
       if (postData?.query?.includes("regionInfo")) {
@@ -784,7 +804,11 @@ test.describe("Region Pages - Error Handling", () => {
           }),
         });
       } else {
-        await route.continue();
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
       }
     });
 
@@ -812,6 +836,14 @@ test.describe("Region Pages - Error Handling", () => {
 
     await page.route("**/api", async (route) => {
       const request = route.request();
+      if (request.method() !== "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
+        return;
+      }
       const postData = request.postDataJSON();
 
       if (postData?.query?.includes("propositions")) {
@@ -823,7 +855,11 @@ test.describe("Region Pages - Error Handling", () => {
           }),
         });
       } else {
-        await route.continue();
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
       }
     });
 
@@ -850,10 +886,18 @@ test.describe("Region Pages - Loading State", () => {
     // Delay the response to show loading state
     await page.route("**/api", async (route) => {
       const request = route.request();
+      if (request.method() !== "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
+        return;
+      }
       const postData = request.postDataJSON();
 
       if (postData?.query?.includes("regionInfo")) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -862,7 +906,11 @@ test.describe("Region Pages - Loading State", () => {
           }),
         });
       } else {
-        await route.continue();
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
       }
     });
 

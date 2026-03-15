@@ -156,7 +156,7 @@ export default function SettingsLayout({
               </Link>
               <Link
                 href="/"
-                className="text-sm text-[#555555] hover:text-[#222222] transition-colors"
+                className="text-sm text-[#4d4d4d] hover:text-[#222222] transition-colors"
               >
                 {t("common:navigation.backToApp")}
               </Link>
@@ -169,7 +169,7 @@ export default function SettingsLayout({
             {/* Sidebar Navigation */}
             <nav className="w-64 flex-shrink-0">
               <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-2">
-                <h2 className="px-4 py-2 text-xs font-semibold text-[#555555] uppercase tracking-wider">
+                <h2 className="px-4 py-2 text-xs font-semibold text-[#4d4d4d] uppercase tracking-wider">
                   {t("nav.settings")}
                 </h2>
                 <ul className="space-y-1">
@@ -185,7 +185,7 @@ export default function SettingsLayout({
                           className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                             isActive
                               ? "bg-[#222222] text-white"
-                              : "text-[#555555] hover:bg-gray-100 hover:text-[#222222]"
+                              : "text-[#4d4d4d] hover:bg-gray-100 hover:text-[#222222]"
                           }`}
                         >
                           {item.icon}

@@ -27,7 +27,7 @@ export function AuthHeader({
   return (
     <div className="text-center mb-8">
       <h1 className="text-2xl font-bold text-[#222222] mb-2">{title}</h1>
-      <p className="text-[#555555]">{subtitle}</p>
+      <p className="text-[#4d4d4d]">{subtitle}</p>
     </div>
   );
 }
@@ -76,7 +76,7 @@ export function AuthInput({
     <div>
       <label
         htmlFor={id}
-        className="block text-xs font-semibold text-[#555555] uppercase tracking-wider mb-2"
+        className="block text-xs font-semibold text-[#4d4d4d] uppercase tracking-wider mb-2"
       >
         {label}
       </label>
@@ -147,7 +147,7 @@ export function AuthDivider() {
   return (
     <div className="my-8 flex items-center">
       <div className="flex-1 border-t border-[#DDDDDD]" />
-      <span className="px-4 text-sm text-[#555555]">or</span>
+      <span className="px-4 text-sm text-[#4d4d4d]">or</span>
       <div className="flex-1 border-t border-[#DDDDDD]" />
     </div>
   );

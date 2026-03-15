@@ -241,7 +241,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
             className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors"
             placeholder={t("profile.displayNamePlaceholder")}
           />
-          <p className="mt-1 text-sm text-[#555555]">
+          <p className="mt-1 text-sm text-[#4d4d4d]">
             {t("profile.displayNameHint")}
           </p>
         </div>
@@ -317,7 +317,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-sm text-[#555555]">
+            <p className="mt-1 text-sm text-[#4d4d4d]">
               {t("profile.languageHint")}
             </p>
           </div>
@@ -340,7 +340,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
             className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors resize-none"
             placeholder={t("profile.bioPlaceholder")}
           />
-          <p className="mt-1 text-sm text-[#555555]">{t("profile.bioHint")}</p>
+          <p className="mt-1 text-sm text-[#4d4d4d]">{t("profile.bioHint")}</p>
         </div>
 
         {/* Civic Fields Section */}
@@ -454,7 +454,7 @@ export default function ProfileSettingsPage() {
           <h1 className="text-2xl font-bold text-[#222222]">
             {t("profile.title")}
           </h1>
-          <p className="text-[#555555] mt-1">{t("profile.subtitle")}</p>
+          <p className="text-[#4d4d4d] mt-1">{t("profile.subtitle")}</p>
         </div>
 
         {profileData?.myProfile && (

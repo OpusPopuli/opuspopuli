@@ -65,13 +65,13 @@ function LayerNav({
           className={`flex items-center gap-2 text-sm font-medium transition-colors ${
             current === n
               ? "text-[#222222]"
-              : "text-[#666666] hover:text-[#555555]"
+              : "text-[#595959] hover:text-[#444444]"
           }`}
           aria-current={current === n ? "step" : undefined}
         >
           <span
             className={`w-2.5 h-2.5 rounded-full transition-colors ${
-              current === n ? "bg-[#222222]" : "bg-[#cccccc]"
+              current === n ? "bg-[#222222]" : "bg-[#767676]"
             }`}
           />
           {label}
@@ -83,7 +83,7 @@ function LayerNav({
 
 function SectionTitle({ children }: { readonly children: React.ReactNode }) {
   return (
-    <h3 className="text-xs font-bold uppercase tracking-[1.5px] text-[#666666] mb-3">
+    <h3 className="text-xs font-bold uppercase tracking-[1.5px] text-[#595959] mb-3">
       {children}
     </h3>
   );
@@ -419,7 +419,7 @@ export default function PropositionDetailPage() {
     return (
       <div className="max-w-4xl mx-auto px-8 py-12">
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#555555] mb-4">Proposition not found.</p>
+          <p className="text-[#4d4d4d] mb-4">Proposition not found.</p>
           <Link
             href="/region/propositions"
             className="text-blue-600 hover:text-blue-700 hover:underline text-sm font-medium"
@@ -447,7 +447,7 @@ export default function PropositionDetailPage() {
 
       {/* Persistent Header */}
       <div className="mb-6">
-        <p className="text-xs font-bold uppercase tracking-[1px] text-[#666666] mb-2">
+        <p className="text-xs font-bold uppercase tracking-[1px] text-[#595959] mb-2">
           {proposition.externalId}
         </p>
         <h1 className="text-2xl font-extrabold text-[#222222] leading-tight mb-3">
@@ -456,7 +456,7 @@ export default function PropositionDetailPage() {
         <div className="flex flex-wrap items-center gap-3">
           <StatusBadge status={proposition.status} />
           {electionDate && (
-            <span className="text-sm text-[#555555]">
+            <span className="text-sm text-[#4d4d4d]">
               Election: {electionDate}
             </span>
           )}

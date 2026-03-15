@@ -93,7 +93,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
   // After successful report, show static "Reported" state
   if (reported) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-sm text-gray-500">
+      <span className="inline-flex items-center gap-1.5 text-sm text-gray-400">
         <svg
           className="w-4 h-4"
           fill="none"
@@ -117,7 +117,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
     <div className="relative" ref={panelRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-400 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-400 transition-colors"
         aria-label={t("report.buttonLabel")}
       >
         <svg

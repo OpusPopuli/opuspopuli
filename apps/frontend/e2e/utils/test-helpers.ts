@@ -74,6 +74,14 @@ export async function mockGraphQL(
 ) {
   await page.route("**/api", async (route) => {
     const request = route.request();
+    if (request.method() !== "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
+      return;
+    }
     const postData = request.postDataJSON();
 
     for (const [queryMatch, response] of Object.entries(handlers)) {
@@ -87,7 +95,11 @@ export async function mockGraphQL(
       }
     }
 
-    await route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: {} }),
+    });
   });
 }
 
@@ -101,6 +113,14 @@ export async function mockGraphQLError(
 ) {
   await page.route("**/api", async (route) => {
     const request = route.request();
+    if (request.method() !== "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
+      return;
+    }
     const postData = request.postDataJSON();
 
     if (postData?.query?.includes(queryMatch)) {
@@ -112,7 +132,11 @@ export async function mockGraphQLError(
         }),
       });
     } else {
-      await route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
     }
   });
 }
