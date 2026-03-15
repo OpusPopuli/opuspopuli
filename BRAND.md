@@ -60,9 +60,12 @@ Available in both SVG and PNG formats:
 
 ### Accent
 
-| Color | Hex | RGB | Usage |
-|-------|-----|-----|-------|
-| **Sage Green** | `#7F9C8E` | 127, 156, 142 | Highlights, accents, CTAs |
+| Color | Hex | RGB | Contrast (white text) | Usage |
+|-------|-----|-----|-----------------------|-------|
+| **Sage Green** | `#7F9C8E` | 127, 156, 142 | 3.0:1 | Decorative accents, icon backgrounds, borders |
+| **Dark Sage** | `#5A7A6A` | 90, 122, 106 | 4.75:1 ✅ | CTA buttons, interactive elements |
+| **Darker Sage** | `#4A6A5A` | 74, 106, 90 | 6.0:1 ✅ | Hover states on CTA buttons |
+| **Light Sage** | `#A3BEB0` | 163, 190, 176 | — | Dark mode accents, hover text |
 
 ## Accessibility (WCAG 2.2 AA)
 

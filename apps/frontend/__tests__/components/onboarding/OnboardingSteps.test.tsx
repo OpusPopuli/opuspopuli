@@ -20,7 +20,7 @@ const mockCompleteOnboarding = jest.fn();
 const defaultOnboardingContext = {
   hasCompletedOnboarding: false,
   currentStep: 0,
-  totalSteps: 4,
+  totalSteps: 5,
   nextStep: mockNextStep,
   prevStep: mockPrevStep,
   skipOnboarding: mockSkipOnboarding,
@@ -71,7 +71,7 @@ describe("OnboardingSteps", () => {
       const { container } = render(<OnboardingSteps />);
 
       const dots = container.querySelectorAll("[aria-hidden='true']");
-      expect(dots.length).toBe(4);
+      expect(dots.length).toBe(5);
     });
   });
 
@@ -96,30 +96,40 @@ describe("OnboardingSteps", () => {
       expect(mockPrevStep).toHaveBeenCalled();
     });
 
-    it("should render scan step on step 1", () => {
+    it("should render explore step on step 1", () => {
       mockOnboardingContextValue = {
         ...defaultOnboardingContext,
         currentStep: 1,
       };
       render(<OnboardingSteps />);
 
-      expect(screen.getByText("Scan Petitions")).toBeInTheDocument();
+      expect(screen.getByText("Explore Your Region")).toBeInTheDocument();
     });
 
-    it("should render analyze step on step 2", () => {
+    it("should render scan step on step 2", () => {
       mockOnboardingContextValue = {
         ...defaultOnboardingContext,
         currentStep: 2,
       };
       render(<OnboardingSteps />);
 
-      expect(screen.getByText("Instant Analysis")).toBeInTheDocument();
+      expect(screen.getByText("Scan Petitions")).toBeInTheDocument();
     });
 
-    it("should render track step on step 3", () => {
+    it("should render analyze step on step 3", () => {
       mockOnboardingContextValue = {
         ...defaultOnboardingContext,
         currentStep: 3,
+      };
+      render(<OnboardingSteps />);
+
+      expect(screen.getByText("Instant Analysis")).toBeInTheDocument();
+    });
+
+    it("should render track step on step 4", () => {
+      mockOnboardingContextValue = {
+        ...defaultOnboardingContext,
+        currentStep: 4,
       };
       render(<OnboardingSteps />);
 
@@ -134,7 +144,7 @@ describe("OnboardingSteps", () => {
       await userEvent.click(screen.getByRole("button", { name: /skip/i }));
 
       expect(mockSkipOnboarding).toHaveBeenCalled();
-      expect(mockPush).toHaveBeenCalledWith("/petition");
+      expect(mockPush).toHaveBeenCalledWith("/region");
     });
   });
 
@@ -142,7 +152,7 @@ describe("OnboardingSteps", () => {
     it("should show Get Started button on last step", () => {
       mockOnboardingContextValue = {
         ...defaultOnboardingContext,
-        currentStep: 3,
+        currentStep: 4,
       };
       render(<OnboardingSteps />);
 
@@ -157,7 +167,7 @@ describe("OnboardingSteps", () => {
     it("should call completeOnboarding and redirect on Get Started", async () => {
       mockOnboardingContextValue = {
         ...defaultOnboardingContext,
-        currentStep: 3,
+        currentStep: 4,
       };
       render(<OnboardingSteps />);
 
@@ -166,7 +176,7 @@ describe("OnboardingSteps", () => {
       );
 
       expect(mockCompleteOnboarding).toHaveBeenCalled();
-      expect(mockPush).toHaveBeenCalledWith("/petition");
+      expect(mockPush).toHaveBeenCalledWith("/region");
     });
   });
 });

@@ -40,7 +40,13 @@ function CallbackLoading() {
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { verifyMagicLink, isLoading, error, supportsPasskeys } = useAuth();
+  const {
+    verifyMagicLink,
+    exchangeSupabaseSession,
+    isLoading,
+    error,
+    supportsPasskeys,
+  } = useAuth();
 
   const [status, setStatus] = useState<"verifying" | "success" | "error">(
     "verifying",
@@ -71,12 +77,21 @@ function AuthCallbackContent() {
       accessToken = hashParams.get("access_token");
     }
 
-    // If we have access_token in hash, Supabase already verified
+    // If we have access_token in hash, Supabase already verified the magic link.
+    // Exchange the Supabase token with our backend to set httpOnly cookies.
     if (accessToken) {
-      // The user is already authenticated via Supabase
-      // We need to sync with our backend
-      setIsNewUser(type === "register");
-      setStatus("success");
+      const hashParams = new URLSearchParams(hash.substring(1));
+      const refreshToken = hashParams.get("refresh_token") || "";
+      (async () => {
+        try {
+          await exchangeSupabaseSession(accessToken, refreshToken);
+          setIsNewUser(type === "register");
+          setStatus("success");
+        } catch {
+          hasProcessedRef.current = false;
+          setStatus("error");
+        }
+      })();
       return;
     }
 
@@ -238,7 +253,7 @@ function AuthCallbackContent() {
           </Link>
           <button
             type="button"
-            onClick={() => router.push("/rag-demo")}
+            onClick={() => router.push("/onboarding")}
             className="inline-block w-full py-3 px-6 bg-white text-[#4d4d4d] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
           >
             Skip for now
@@ -272,7 +287,7 @@ function AuthCallbackContent() {
       <p className="text-[#4d4d4d] mb-6">Redirecting you to the app...</p>
       <button
         type="button"
-        onClick={() => router.push("/rag-demo")}
+        onClick={() => router.push("/region")}
         className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
       >
         Continue to App

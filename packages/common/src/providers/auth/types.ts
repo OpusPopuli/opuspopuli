@@ -127,6 +127,14 @@ export interface IAuthProvider {
    * @returns Auth tokens for the user
    */
   createSessionForUser?(email: string): Promise<IAuthResult>;
+
+  /**
+   * Validate a Supabase access token and return the user's email
+   * Used after GoTrue redirects with hash fragment tokens
+   * @param accessToken The Supabase JWT access token
+   * @returns The authenticated user's email
+   */
+  validateAccessToken?(accessToken: string): Promise<string>;
 }
 
 /**

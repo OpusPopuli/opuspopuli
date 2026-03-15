@@ -57,8 +57,8 @@ describe("AICommitmentsPage", () => {
     expect(verifications).toHaveLength(6);
   });
 
-  it("should link to AI System Card", () => {
-    const link = screen.getByRole("link", { name: /AI System Card/ });
+  it("should link to AI System Overview", () => {
+    const link = screen.getByRole("link", { name: /AI System Overview/ });
     expect(link).toHaveAttribute("href", "/transparency/system-card");
   });
 

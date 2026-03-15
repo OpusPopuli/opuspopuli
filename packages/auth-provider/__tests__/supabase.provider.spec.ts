@@ -3,6 +3,14 @@ import { ConfigService } from "@nestjs/config";
 import { SupabaseAuthProvider } from "../src/providers/supabase.provider";
 import { AuthError } from "@opuspopuli/common";
 
+// Mock nodemailer - factory must be self-contained due to jest hoisting
+const mockSendMailFn = jest.fn();
+jest.mock("nodemailer", () => ({
+  createTransport: () => ({
+    sendMail: (...args: any[]) => mockSendMailFn(...args),
+  }),
+}));
+
 // Mock the Supabase client
 const mockAuth = {
   signInWithPassword: jest.fn(),
@@ -10,6 +18,7 @@ const mockAuth = {
   updateUser: jest.fn(),
   verifyOtp: jest.fn(),
   signInWithOtp: jest.fn(),
+  getUser: jest.fn(),
   admin: {
     createUser: jest.fn(),
     deleteUser: jest.fn(),
@@ -613,27 +622,41 @@ describe("SupabaseAuthProvider", () => {
   });
 
   describe("sendMagicLink", () => {
-    it("should send magic link successfully", async () => {
-      mockAuth.signInWithOtp.mockResolvedValue({
-        data: {},
+    it("should send magic link successfully via admin.generateLink + SMTP", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: {
+          properties: {
+            action_link: "http://localhost:8000/auth/v1/verify?token=abc123",
+          },
+        },
         error: null,
       });
 
       const result = await provider.sendMagicLink("test@example.com");
 
       expect(result).toBe(true);
-      expect(mockAuth.signInWithOtp).toHaveBeenCalledWith({
+      expect(mockAuth.admin.generateLink).toHaveBeenCalledWith({
+        type: "magiclink",
         email: "test@example.com",
         options: {
-          emailRedirectTo: undefined,
-          shouldCreateUser: false,
+          redirectTo: "http://localhost:3200/auth/callback",
         },
       });
+      expect(mockSendMailFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "test@example.com",
+          subject: "Sign in to Opus Populi",
+        }),
+      );
     });
 
-    it("should send magic link with redirectTo successfully", async () => {
-      mockAuth.signInWithOtp.mockResolvedValue({
-        data: {},
+    it("should send magic link with custom redirectTo", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: {
+          properties: {
+            action_link: "http://localhost:8000/auth/v1/verify?token=abc123",
+          },
+        },
         error: null,
       });
 
@@ -643,20 +666,47 @@ describe("SupabaseAuthProvider", () => {
       );
 
       expect(result).toBe(true);
-      expect(mockAuth.signInWithOtp).toHaveBeenCalledWith({
+      expect(mockAuth.admin.generateLink).toHaveBeenCalledWith({
+        type: "magiclink",
         email: "test@example.com",
         options: {
-          emailRedirectTo: "http://localhost:3000/callback",
-          shouldCreateUser: false,
+          redirectTo: "http://localhost:3000/callback",
         },
       });
     });
 
-    it("should throw AuthError on failure", async () => {
-      mockAuth.signInWithOtp.mockResolvedValue({
+    it("should throw AuthError when generateLink fails", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
         data: null,
-        error: { message: "Failed to send OTP" },
+        error: { message: "Failed to generate link" },
       });
+
+      await expect(provider.sendMagicLink("test@example.com")).rejects.toThrow(
+        AuthError,
+      );
+    });
+
+    it("should throw AuthError when action_link is missing", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: { properties: {} },
+        error: null,
+      });
+
+      await expect(provider.sendMagicLink("test@example.com")).rejects.toThrow(
+        AuthError,
+      );
+    });
+
+    it("should throw AuthError when SMTP send fails", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: {
+          properties: {
+            action_link: "http://localhost:8000/auth/v1/verify?token=abc123",
+          },
+        },
+        error: null,
+      });
+      mockSendMailFn.mockRejectedValueOnce(new Error("SMTP connection failed"));
 
       await expect(provider.sendMagicLink("test@example.com")).rejects.toThrow(
         AuthError,
@@ -738,27 +788,42 @@ describe("SupabaseAuthProvider", () => {
   });
 
   describe("registerWithMagicLink", () => {
-    it("should send registration magic link successfully", async () => {
-      mockAuth.signInWithOtp.mockResolvedValue({
-        data: {},
+    it("should send registration magic link successfully via admin.generateLink + SMTP", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: {
+          properties: {
+            action_link: "http://localhost:8000/auth/v1/verify?token=abc123",
+          },
+        },
         error: null,
       });
 
       const result = await provider.registerWithMagicLink("test@example.com");
 
       expect(result).toBe(true);
-      expect(mockAuth.signInWithOtp).toHaveBeenCalledWith({
+      expect(mockAuth.admin.generateLink).toHaveBeenCalledWith({
+        type: "signup",
         email: "test@example.com",
+        password: expect.any(String),
         options: {
-          emailRedirectTo: undefined,
-          shouldCreateUser: true,
+          redirectTo: "http://localhost:3200/auth/callback",
         },
       });
+      expect(mockSendMailFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "test@example.com",
+          subject: "Welcome to Opus Populi - Verify your email",
+        }),
+      );
     });
 
-    it("should send registration magic link with redirectTo successfully", async () => {
-      mockAuth.signInWithOtp.mockResolvedValue({
-        data: {},
+    it("should send registration magic link with custom redirectTo", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: {
+          properties: {
+            action_link: "http://localhost:8000/auth/v1/verify?token=abc123",
+          },
+        },
         error: null,
       });
 
@@ -768,19 +833,31 @@ describe("SupabaseAuthProvider", () => {
       );
 
       expect(result).toBe(true);
-      expect(mockAuth.signInWithOtp).toHaveBeenCalledWith({
+      expect(mockAuth.admin.generateLink).toHaveBeenCalledWith({
+        type: "signup",
         email: "test@example.com",
+        password: expect.any(String),
         options: {
-          emailRedirectTo: "http://localhost:3000/callback",
-          shouldCreateUser: true,
+          redirectTo: "http://localhost:3000/callback",
         },
       });
     });
 
-    it("should throw AuthError on failure", async () => {
-      mockAuth.signInWithOtp.mockResolvedValue({
+    it("should throw AuthError when generateLink fails", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
         data: null,
-        error: { message: "Failed to send registration OTP" },
+        error: { message: "Failed to generate registration link" },
+      });
+
+      await expect(
+        provider.registerWithMagicLink("test@example.com"),
+      ).rejects.toThrow(AuthError);
+    });
+
+    it("should throw AuthError when action_link is missing", async () => {
+      mockAuth.admin.generateLink.mockResolvedValue({
+        data: { properties: {} },
+        error: null,
       });
 
       await expect(
@@ -1106,6 +1183,46 @@ describe("SupabaseAuthProvider", () => {
 
       const health = provider.getCircuitBreakerHealth();
       expect(health.failureCount).toBeGreaterThan(0);
+    });
+  });
+
+  describe("validateAccessToken", () => {
+    it("should validate token and return email", async () => {
+      mockAuth.getUser.mockResolvedValue({
+        data: {
+          user: { id: "user-123", email: "test@example.com" },
+        },
+        error: null,
+      });
+
+      const email = await provider.validateAccessToken("valid-jwt-token");
+
+      expect(email).toBe("test@example.com");
+      expect(mockAuth.getUser).toHaveBeenCalledWith("valid-jwt-token");
+    });
+
+    it("should throw AuthError when token is invalid", async () => {
+      mockAuth.getUser.mockResolvedValue({
+        data: { user: null },
+        error: { message: "Invalid token" },
+      });
+
+      await expect(
+        provider.validateAccessToken("invalid-token"),
+      ).rejects.toThrow(AuthError);
+    });
+
+    it("should throw AuthError when user has no email", async () => {
+      mockAuth.getUser.mockResolvedValue({
+        data: {
+          user: { id: "user-123", email: null },
+        },
+        error: null,
+      });
+
+      await expect(
+        provider.validateAccessToken("valid-but-no-email"),
+      ).rejects.toThrow(AuthError);
     });
   });
 });

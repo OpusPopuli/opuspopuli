@@ -1,8 +1,7 @@
 import { GraphQLError } from 'graphql';
 import { GraphQLRequestContext, BaseContext } from '@apollo/server';
 import {
-  createQueryComplexityValidationRule,
-  createQueryComplexityLoggingPlugin,
+  createQueryComplexityPlugin,
   DEFAULT_QUERY_COMPLEXITY_CONFIG,
 } from './query-complexity.plugin';
 
@@ -20,61 +19,54 @@ describe('QueryComplexityPlugin', () => {
     });
   });
 
-  describe('createQueryComplexityValidationRule', () => {
-    it('should create a validation rule function', () => {
-      const rule = createQueryComplexityValidationRule();
-      expect(typeof rule).toBe('function');
-    });
-
-    it('should use default config when no config provided', () => {
-      const rule = createQueryComplexityValidationRule();
-      expect(rule).toBeDefined();
-    });
-
-    it('should merge partial config with defaults', () => {
-      const rule = createQueryComplexityValidationRule({
-        maxComplexity: 500,
-      });
-      expect(rule).toBeDefined();
-    });
-
-    it('should accept custom maxComplexity', () => {
-      const rule = createQueryComplexityValidationRule({
-        maxComplexity: 2000,
-      });
-      expect(rule).toBeDefined();
-    });
-
-    it('should accept custom scalarCost', () => {
-      const rule = createQueryComplexityValidationRule({
-        scalarCost: 2,
-      });
-      expect(rule).toBeDefined();
-    });
-
-    it('should accept logComplexity option', () => {
-      const rule = createQueryComplexityValidationRule({
-        logComplexity: true,
-      });
-      expect(rule).toBeDefined();
-    });
-  });
-
-  describe('createQueryComplexityLoggingPlugin', () => {
+  describe('createQueryComplexityPlugin', () => {
     it('should create a plugin object', () => {
-      const plugin = createQueryComplexityLoggingPlugin();
+      const plugin = createQueryComplexityPlugin();
       expect(plugin).toBeDefined();
       expect(typeof plugin.requestDidStart).toBe('function');
     });
 
-    it('should return request listener on requestDidStart', async () => {
-      const plugin = createQueryComplexityLoggingPlugin();
+    it('should return request listener with didResolveOperation', async () => {
+      const plugin = createQueryComplexityPlugin();
       const mockContext = {} as GraphQLRequestContext<BaseContext>;
       const listener = await plugin.requestDidStart!(mockContext);
       expect(listener).toBeDefined();
       if (listener) {
-        expect(typeof listener.willSendResponse).toBe('function');
+        expect(typeof listener.didResolveOperation).toBe('function');
       }
+    });
+
+    it('should use default config when no config provided', () => {
+      const plugin = createQueryComplexityPlugin();
+      expect(plugin).toBeDefined();
+    });
+
+    it('should merge partial config with defaults', () => {
+      const plugin = createQueryComplexityPlugin({
+        maxComplexity: 500,
+      });
+      expect(plugin).toBeDefined();
+    });
+
+    it('should accept custom maxComplexity', () => {
+      const plugin = createQueryComplexityPlugin({
+        maxComplexity: 2000,
+      });
+      expect(plugin).toBeDefined();
+    });
+
+    it('should accept custom scalarCost', () => {
+      const plugin = createQueryComplexityPlugin({
+        scalarCost: 2,
+      });
+      expect(plugin).toBeDefined();
+    });
+
+    it('should accept logComplexity option', () => {
+      const plugin = createQueryComplexityPlugin({
+        logComplexity: true,
+      });
+      expect(plugin).toBeDefined();
     });
   });
 });

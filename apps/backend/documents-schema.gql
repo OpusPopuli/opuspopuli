@@ -26,6 +26,9 @@ enum DocumentStatus {
   AIEMBEDDINGSSTARTED
   AIEMBEDDINGSCOMPLETE
   AIEMBEDDINGSFAILED
+  AIANALYSISSTARTED
+  AIANALYSISCOMPLETE
+  AIANALYSISFAILED
   PROCESSINGNCOMPLETE
 }
 
@@ -34,16 +37,311 @@ A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date
 """
 scalar DateTime
 
+type PetitionActivityItem {
+  contentHash: String!
+  summary: String!
+  documentType: String
+  scanCount: Int!
+  locationCount: Int!
+  latestScanAt: DateTime!
+  earliestScanAt: DateTime!
+}
+
+type ActivityHourBucket {
+  hour: DateTime!
+  scanCount: Int!
+}
+
+type PetitionActivityFeed {
+  items: [PetitionActivityItem!]!
+  hourlyTrend: [ActivityHourBucket!]!
+  totalScansLast24h: Int!
+  activePetitionsLast24h: Int!
+}
+
+type ExtractTextResult {
+  text: String!
+  confidence: Float!
+  provider: String!
+  processingTimeMs: Int!
+}
+
+type AnalysisSource {
+  name: String!
+  url: String
+  accessedAt: String!
+  dataCompleteness: Float!
+}
+
+type CompletenessDetails {
+  availableCount: Int!
+  idealCount: Int!
+  missingItems: [String!]!
+  explanation: String!
+}
+
+type DocumentAnalysis {
+  documentType: DocumentType!
+  summary: String!
+  keyPoints: [String!]!
+  entities: [String!]!
+  analyzedAt: DateTime!
+  provider: String!
+  model: String!
+  tokensUsed: Int
+  processingTimeMs: Int!
+  cachedFrom: String
+  promptVersion: String
+  promptHash: String
+  sources: [AnalysisSource!]
+  completenessScore: Int
+  completenessDetails: CompletenessDetails
+  actualEffect: String
+  potentialConcerns: [String!]
+  beneficiaries: [String!]
+  potentiallyHarmed: [String!]
+  relatedMeasures: [String!]
+  parties: [String!]
+  obligations: [String!]
+  risks: [String!]
+  effectiveDate: String
+  terminationClause: String
+  requiredFields: [String!]
+  purpose: String
+  submissionDeadline: String
+}
+
+"""Type of document for analysis routing"""
+enum DocumentType {
+  generic
+  petition
+  proposition
+  contract
+  form
+}
+
+type AnalyzeDocumentResult {
+  analysis: DocumentAnalysis!
+  fromCache: Boolean!
+}
+
+type GeoLocation {
+  latitude: Float!
+  longitude: Float!
+}
+
+type SetDocumentLocationResult {
+  success: Boolean!
+  fuzzedLocation: GeoLocation
+}
+
+type PetitionMapMarker {
+  id: String!
+  latitude: Float!
+  longitude: Float!
+  documentType: String
+  createdAt: DateTime!
+}
+
+type PetitionMapStats {
+  totalPetitions: Int!
+  totalWithLocation: Int!
+  recentPetitions: Int!
+}
+
+type PetitionMapResult {
+  markers: [PetitionMapMarker!]!
+  totalCount: Int!
+  truncated: Boolean!
+}
+
+type ProcessScanResult {
+  documentId: String!
+  text: String!
+  confidence: Float!
+  provider: String!
+  processingTimeMs: Int!
+}
+
+type SubmitAbuseReportResult {
+  success: Boolean!
+  reportId: String!
+}
+
+type LinkedProposition {
+  id: ID!
+  propositionId: ID!
+  title: String!
+  summary: String!
+  status: String!
+  electionDate: DateTime
+  linkSource: String!
+  confidence: Float
+  matchedText: String
+  linkedAt: DateTime!
+}
+
+type LinkedPetitionDocument {
+  id: ID!
+  documentId: ID!
+  summary: String!
+  linkSource: String!
+  confidence: Float
+  linkedAt: DateTime!
+}
+
+type PropositionSearchResult {
+  id: ID!
+  title: String!
+  externalId: String!
+  status: String!
+}
+
+type LinkDocumentResult {
+  success: Boolean!
+  linkId: ID
+}
+
+type ScanHistoryItem {
+  id: ID!
+  type: String!
+  status: String!
+  summary: String
+  ocrConfidence: Float
+  hasAnalysis: Boolean!
+  createdAt: DateTime!
+}
+
+type PaginatedScanHistory {
+  items: [ScanHistoryItem!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type ScanDetailResult {
+  id: ID!
+  type: String!
+  status: String!
+  extractedText: String
+  ocrConfidence: Float
+  ocrProvider: String
+  analysis: DocumentAnalysis
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type DeleteAllScansResult {
+  deletedCount: Int!
+}
+
 type Query {
   listFiles: [File!]!
   getUploadUrl(input: FilenameInput!): String!
   getDownloadUrl(input: FilenameInput!): String!
+  getDocumentAnalysis(documentId: String!): DocumentAnalysis
+  getDocumentLocation(documentId: String!): GeoLocation
+  petitionMapLocations(filters: MapFiltersInput): PetitionMapResult!
+  petitionMapStats: PetitionMapStats!
+  petitionActivityFeed: PetitionActivityFeed!
+  myScanHistory(skip: Int! = 0, take: Int! = 10, filters: ScanHistoryFiltersInput): PaginatedScanHistory!
+  scanDetail(documentId: String!): ScanDetailResult
+  linkedPropositions(documentId: String!): [LinkedProposition!]!
+  petitionDocumentsForProposition(propositionId: String!): [LinkedPetitionDocument!]!
+  searchPropositions(query: String!): [PropositionSearchResult!]!
 }
 
 input FilenameInput {
   filename: String!
 }
 
+input MapFiltersInput {
+  bounds: MapBoundsInput
+  documentType: String
+  startDate: DateTime
+  endDate: DateTime
+
+  """Max results to return (1-1000, default 1000)"""
+  limit: Int
+}
+
+input MapBoundsInput {
+  swLat: Float!
+  swLng: Float!
+  neLat: Float!
+  neLng: Float!
+}
+
+input ScanHistoryFiltersInput {
+  search: String
+  startDate: String
+  endDate: String
+}
+
 type Mutation {
   deleteFile(input: FilenameInput!): Boolean!
+  processScan(input: ProcessScanInput!): ProcessScanResult!
+  extractTextFromFile(input: ExtractTextFromFileInput!): ExtractTextResult!
+  extractTextFromBase64(input: ExtractTextFromBase64Input!): ExtractTextResult!
+  analyzeDocument(input: AnalyzeDocumentInput!): AnalyzeDocumentResult!
+  setDocumentLocation(input: SetDocumentLocationInput!): SetDocumentLocationResult!
+  submitAbuseReport(input: SubmitAbuseReportInput!): SubmitAbuseReportResult!
+  softDeleteScan(documentId: String!): Boolean!
+  deleteAllMyScans: DeleteAllScansResult!
+  linkDocumentToProposition(input: LinkDocumentToPropositionInput!): LinkDocumentResult!
+  unlinkDocumentFromProposition(input: UnlinkDocumentFromPropositionInput!): Boolean!
+}
+
+input ProcessScanInput {
+  data: String!
+  mimeType: String!
+  documentType: DocumentType = petition
+}
+
+input ExtractTextFromFileInput {
+  filename: String!
+}
+
+input ExtractTextFromBase64Input {
+  data: String!
+  mimeType: String!
+}
+
+input AnalyzeDocumentInput {
+  documentId: String!
+  forceReanalyze: Boolean = false
+}
+
+input SetDocumentLocationInput {
+  documentId: String!
+  location: GeoLocationInput!
+}
+
+input GeoLocationInput {
+  latitude: Float!
+  longitude: Float!
+}
+
+input SubmitAbuseReportInput {
+  documentId: String!
+  reason: AbuseReportReason!
+  description: String
+}
+
+"""Reason for reporting a document analysis"""
+enum AbuseReportReason {
+  incorrect_analysis
+  offensive_content
+  wrong_document_type
+  privacy_concern
+  other
+}
+
+input LinkDocumentToPropositionInput {
+  documentId: String!
+  propositionId: String!
+}
+
+input UnlinkDocumentFromPropositionInput {
+  documentId: String!
+  propositionId: String!
 }

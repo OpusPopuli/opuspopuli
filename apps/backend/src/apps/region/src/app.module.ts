@@ -14,7 +14,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { LoggingModule } from '@opuspopuli/logging-provider';
 import depthLimit from 'graphql-depth-limit';
-import { createQueryComplexityValidationRule } from 'src/common/graphql/query-complexity.plugin';
+import { createQueryComplexityPlugin } from 'src/common/graphql/query-complexity.plugin';
 
 import { RegionDomainModule } from './domains/region.module';
 
@@ -59,8 +59,11 @@ import { MetricsModule } from 'src/common/metrics';
     GraphQLModule.forRoot<ApolloFederationDriverConfig>({
       driver: ApolloFederationDriver,
       autoSchemaFile: { path: 'region-schema.gql', federation: 2 },
-      plugins: createSubgraphPlugins('region-service'),
-      validationRules: [depthLimit(10), createQueryComplexityValidationRule()],
+      plugins: [
+        ...createSubgraphPlugins('region-service'),
+        createQueryComplexityPlugin(),
+      ],
+      validationRules: [depthLimit(10)],
       introspection: GRAPHQL_INTROSPECTION_ENABLED,
       context: ({ req, res }: { req: unknown; res: unknown }) => ({ req, res }),
     }),

@@ -33,13 +33,17 @@ x-backend-env: &backend-env
   DATABASE_URL: postgresql://postgres:your-super-secret-password@supabase-db:5432/postgres
   REDIS_URL: redis://redis:6379
   SUPABASE_URL: http://supabase-kong:8000
-  SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
-  SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+  SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.KR1jqUlyHtwAxCJf6B0QVoRpobrdPEv8ALnNJUlGxPE
+  SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.sF_hc5jg-YhscQGb00SNtjW3ZIyDlGIIQppgOLwHGiM
   GATEWAY_CLIENT_ID: api-gateway
   GATEWAY_HMAC_SECRET: integration-test-hmac-secret
   API_KEYS: '{"api-gateway":"integration-test-hmac-secret"}'
   JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
   AUTH_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
+  SMTP_HOST: inbucket
+  SMTP_PORT: "2500"
+  SMTP_ADMIN_EMAIL: noreply@opuspopuli.local
+  FRONTEND_URL: http://localhost:3200
 
 services:
   db-migrate:

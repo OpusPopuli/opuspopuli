@@ -17,7 +17,7 @@ describe("SystemCardPage", () => {
   });
 
   it("should render the page title", () => {
-    expect(screen.getByText("AI System Card")).toBeInTheDocument();
+    expect(screen.getByText("AI System Overview")).toBeInTheDocument();
   });
 
   it("should render the last updated date", () => {

@@ -5,19 +5,29 @@
   "getStarted": "Comenzar",
   "welcome": {
     "title": "Bienvenido a Opus Populi",
-    "subtitle": "Tu compañero de participación cívica para seguir peticiones y medidas electorales"
+    "subtitle": "Tu centro de participación cívica — sigue proposiciones, representantes, finanzas de campaña y peticiones en un solo lugar"
+  },
+  "explore": {
+    "title": "Explora Tu Región",
+    "description": "Mantente informado con datos cívicos completos de tu área",
+    "features": {
+      "propositions": "Proposiciones",
+      "representatives": "Representantes",
+      "meetings": "Reuniones Públicas",
+      "campaignFinance": "Finanzas de Campaña"
+    }
   },
   "scan": {
     "title": "Escanear Peticiones",
-    "description": "Usa tu cámara para escanear y verificar firmas de peticiones en segundos",
+    "description": "Usa tu cámara para escanear peticiones con verificación y seguimiento instantáneo por IA",
     "permissionNote": "Te pediremos acceso a la cámara cuando estés listo para escanear. No se guardan imágenes en tu dispositivo."
   },
   "analyze": {
     "title": "Análisis Instantáneo",
-    "description": "Nuestra IA verifica firmas y extrae información clave automáticamente"
+    "description": "La IA analiza peticiones, proposiciones y datos de campaña para ayudarte a tomar decisiones informadas"
   },
   "track": {
     "title": "Seguir Progreso",
-    "description": "Ve la actividad de peticiones en tu área y sigue las medidas hasta la votación"
+    "description": "Sigue las medidas electorales, la actividad de peticiones y las sesiones legislativas en tu área"
   }
 }
