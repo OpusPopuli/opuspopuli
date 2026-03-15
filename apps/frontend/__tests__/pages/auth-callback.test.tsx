@@ -33,9 +33,11 @@ jest.mock("next/link", () => {
 
 // Mock auth context
 const mockVerifyMagicLink = jest.fn();
+const mockExchangeSupabaseSession = jest.fn();
 
 const defaultAuthContext = {
   verifyMagicLink: mockVerifyMagicLink,
+  exchangeSupabaseSession: mockExchangeSupabaseSession,
   isLoading: false,
   error: null as string | null,
   supportsPasskeys: true,
@@ -349,6 +351,50 @@ describe("AuthCallbackPage", () => {
           "test@example.com",
           "magic-token",
         );
+      });
+    });
+  });
+
+  describe("Supabase hash token exchange", () => {
+    afterEach(() => {
+      window.location.hash = "";
+    });
+
+    it("should call exchangeSupabaseSession when hash tokens present", async () => {
+      window.location.hash =
+        "#access_token=supabase-jwt&refresh_token=refresh-jwt&token_type=bearer";
+      mockExchangeSupabaseSession.mockResolvedValue(undefined);
+
+      render(<AuthCallbackPage />);
+
+      await waitFor(() => {
+        expect(mockExchangeSupabaseSession).toHaveBeenCalledWith(
+          "supabase-jwt",
+          "refresh-jwt",
+        );
+      });
+    });
+
+    it("should show success after hash token exchange", async () => {
+      window.location.hash =
+        "#access_token=supabase-jwt&refresh_token=refresh-jwt";
+      mockExchangeSupabaseSession.mockResolvedValue(undefined);
+
+      render(<AuthCallbackPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("You're signed in!")).toBeInTheDocument();
+      });
+    });
+
+    it("should show error when hash token exchange fails", async () => {
+      window.location.hash = "#access_token=bad-token";
+      mockExchangeSupabaseSession.mockRejectedValue(new Error("Invalid token"));
+
+      render(<AuthCallbackPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Link expired or invalid")).toBeInTheDocument();
       });
     });
   });

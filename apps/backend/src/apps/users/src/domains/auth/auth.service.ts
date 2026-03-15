@@ -25,6 +25,7 @@ interface IAuthProviderWithPasswordless extends IAuthProvider {
   verifyMagicLink?(email: string, token: string): Promise<IAuthResult>;
   registerWithMagicLink?(email: string, redirectTo?: string): Promise<boolean>;
   createSessionForUser?(email: string): Promise<IAuthResult>;
+  validateAccessToken?(accessToken: string): Promise<string>;
 }
 
 @Injectable()
@@ -282,6 +283,43 @@ export class AuthService {
       `Generating tokens for passkey-authenticated user: ${user.email}`,
     );
     return this.authProvider.createSessionForUser(user.email);
+  }
+
+  /**
+   * Exchange a Supabase access token for a backend session.
+   * Used when GoTrue redirects with hash fragment tokens after email verification.
+   *
+   * The tokens from GoTrue's redirect are already valid — we just need to validate
+   * the access token server-side to confirm authenticity, verify the user exists
+   * in our database, then pass the tokens through for cookie setting.
+   */
+  async exchangeSupabaseSession(
+    accessToken: string,
+    refreshToken: string,
+  ): Promise<Auth> {
+    if (!this.authProvider.validateAccessToken) {
+      throw new Error('Token exchange requires validateAccessToken support');
+    }
+
+    // Validate the Supabase token and extract the user's email
+    const email = await this.authProvider.validateAccessToken(accessToken);
+
+    // Verify the user exists in our database
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    this.logger.log(`Exchanging Supabase session for user: ${email}`);
+
+    // Return the already-valid GoTrue tokens directly.
+    // No need to create a new session — GoTrue already issued valid tokens
+    // when the user clicked the magic link.
+    return {
+      accessToken,
+      idToken: accessToken, // Supabase uses access token for both
+      refreshToken,
+    };
   }
 
   private async sendWelcomeEmailSafely(

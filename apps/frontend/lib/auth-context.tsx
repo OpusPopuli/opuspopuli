@@ -17,6 +17,7 @@ import {
   SEND_MAGIC_LINK,
   VERIFY_MAGIC_LINK,
   REGISTER_WITH_MAGIC_LINK,
+  EXCHANGE_SUPABASE_SESSION,
   GENERATE_PASSKEY_REGISTRATION_OPTIONS,
   VERIFY_PASSKEY_REGISTRATION,
   GENERATE_PASSKEY_AUTHENTICATION_OPTIONS,
@@ -72,6 +73,10 @@ interface AuthContextType {
     email: string,
     redirectTo?: string,
   ) => Promise<boolean>;
+  exchangeSupabaseSession: (
+    accessToken: string,
+    refreshToken: string,
+  ) => Promise<void>;
   magicLinkSent: boolean;
 
   // Common
@@ -132,6 +137,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [registerWithMagicLinkMutation] = useMutation<{
     registerWithMagicLink: boolean;
   }>(REGISTER_WITH_MAGIC_LINK);
+  const [exchangeSupabaseSessionMutation] = useMutation<{
+    exchangeSupabaseSession: AuthTokens;
+  }>(EXCHANGE_SUPABASE_SESSION);
 
   // Passkey mutations
   const [generateRegOptions] = useMutation<{
@@ -470,6 +478,36 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     [registerWithMagicLinkMutation],
   );
 
+  const exchangeSupabaseSession = useCallback(
+    async (accessToken: string, refreshToken: string) => {
+      setError(null);
+      setIsLoading(true);
+
+      try {
+        const { data } = await exchangeSupabaseSessionMutation({
+          variables: { input: { accessToken, refreshToken } },
+        });
+
+        const authTokens = data?.exchangeSupabaseSession;
+        if (!authTokens) {
+          throw new Error("Failed to exchange Supabase session");
+        }
+
+        storeAuth(authTokens);
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Failed to exchange Supabase session";
+        setError(message);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [exchangeSupabaseSessionMutation, storeAuth],
+  );
+
   // ============================================
   // Common
   // ============================================
@@ -516,6 +554,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       sendMagicLink,
       verifyMagicLink,
       registerWithMagicLink,
+      exchangeSupabaseSession,
       magicLinkSent,
 
       // Common
@@ -536,6 +575,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       sendMagicLink,
       verifyMagicLink,
       registerWithMagicLink,
+      exchangeSupabaseSession,
       magicLinkSent,
       logout,
       clearError,

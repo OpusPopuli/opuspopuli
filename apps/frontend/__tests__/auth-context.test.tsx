@@ -50,6 +50,7 @@ const mockGenerateRegOptions = jest.fn();
 const mockVerifyRegMutation = jest.fn();
 const mockGenerateAuthOptions = jest.fn();
 const mockVerifyAuthMutation = jest.fn();
+const mockExchangeSupabaseSessionMutation = jest.fn();
 const mockLogoutMutation = jest.fn();
 
 jest.mock("@apollo/client/react", () => ({
@@ -66,6 +67,8 @@ jest.mock("@apollo/client/react", () => ({
         return [mockVerifyMagicLinkMutation, { loading: false }];
       case "RegisterWithMagicLink":
         return [mockRegisterWithMagicLinkMutation, { loading: false }];
+      case "ExchangeSupabaseSession":
+        return [mockExchangeSupabaseSessionMutation, { loading: false }];
       case "GeneratePasskeyRegistrationOptions":
         return [mockGenerateRegOptions, { loading: false }];
       case "VerifyPasskeyRegistration":
@@ -332,6 +335,67 @@ describe("AuthProvider", () => {
 
       expect(success).toBe(true);
       expect(result.current.magicLinkSent).toBe(true);
+    });
+
+    it("should exchange Supabase session successfully", async () => {
+      mockExchangeSupabaseSessionMutation.mockResolvedValue({
+        data: {
+          exchangeSupabaseSession: {
+            accessToken: "valid-access-token",
+            refreshToken: "refresh-token",
+            idToken: "valid-id-token",
+          },
+        },
+      });
+
+      const { result } = renderHook(() => useAuth(), { wrapper });
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      await act(async () => {
+        await result.current.exchangeSupabaseSession(
+          "valid-access-token",
+          "refresh-token",
+        );
+      });
+
+      expect(result.current.isAuthenticated).toBe(true);
+      expect(result.current.user?.email).toBe("test@example.com");
+      expect(mockExchangeSupabaseSessionMutation).toHaveBeenCalledWith({
+        variables: {
+          input: {
+            accessToken: "valid-access-token",
+            refreshToken: "refresh-token",
+          },
+        },
+      });
+    });
+
+    it("should handle exchange Supabase session error", async () => {
+      mockExchangeSupabaseSessionMutation.mockRejectedValue(
+        new Error("Invalid token"),
+      );
+
+      const { result } = renderHook(() => useAuth(), { wrapper });
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      await act(async () => {
+        try {
+          await result.current.exchangeSupabaseSession(
+            "bad-token",
+            "refresh-token",
+          );
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(result.current.error).toBe("Invalid token");
     });
   });
 

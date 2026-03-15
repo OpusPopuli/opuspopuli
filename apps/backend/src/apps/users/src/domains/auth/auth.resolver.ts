@@ -40,6 +40,7 @@ import {
   SendMagicLinkDto,
   VerifyMagicLinkDto,
   RegisterWithMagicLinkDto,
+  ExchangeSupabaseSessionDto,
 } from './dto/magic-link.dto';
 
 /**
@@ -604,6 +605,60 @@ export class AuthResolver {
 
       return result;
     } catch (error) {
+      throw new UserInputError(error.message);
+    }
+  }
+
+  /**
+   * Exchange a Supabase access token (from GoTrue redirect) for a backend session.
+   * Used when GoTrue verifies a magic link and redirects with hash fragment tokens.
+   * Rate limited: 3 attempts per minute
+   */
+  @Public()
+  @Throttle({ default: AUTH_THROTTLE.magicLink })
+  @Mutation(() => Auth)
+  async exchangeSupabaseSession(
+    @Args('input') input: ExchangeSupabaseSessionDto,
+    @Context() context: GqlContext,
+  ): Promise<Auth> {
+    const auditContext = createAuditContext(context, this.serviceName);
+
+    try {
+      const auth = await this.authService.exchangeSupabaseSession(
+        input.accessToken,
+        input.refreshToken,
+      );
+
+      // Set httpOnly cookies for browser clients
+      if (context.res) {
+        setAuthCookies(
+          context.res,
+          this.configService,
+          auth.accessToken,
+          auth.refreshToken,
+        );
+      }
+
+      // Audit: Supabase session exchange success
+      this.auditLogService?.log({
+        ...auditContext,
+        action: AuditAction.MAGIC_LINK_VERIFIED,
+        success: true,
+        resolverName: 'exchangeSupabaseSession',
+        operationType: 'mutation',
+      });
+
+      return auth;
+    } catch (error) {
+      // Audit: Session exchange failure
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.MAGIC_LINK_FAILED,
+        success: false,
+        resolverName: 'exchangeSupabaseSession',
+        operationType: 'mutation',
+        errorMessage: error.message,
+      });
       throw new UserInputError(error.message);
     }
   }

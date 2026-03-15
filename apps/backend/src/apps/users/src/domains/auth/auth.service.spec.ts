@@ -23,6 +23,7 @@ interface TestAuthProvider extends IAuthProvider {
   verifyMagicLink?(email: string, token: string): Promise<IAuthResult>;
   registerWithMagicLink?(email: string, redirectTo?: string): Promise<boolean>;
   createSessionForUser?(email: string): Promise<IAuthResult>;
+  validateAccessToken?(accessToken: string): Promise<string>;
 }
 
 describe('AuthService', () => {
@@ -623,6 +624,48 @@ describe('AuthService', () => {
       expect(result).toEqual(mockAuth);
       expect(authProvider.createSessionForUser).toHaveBeenCalledWith(
         'test@example.com',
+      );
+    });
+  });
+
+  describe('exchangeSupabaseSession', () => {
+    it('should throw error when validateAccessToken not supported', async () => {
+      authProvider.validateAccessToken = undefined;
+
+      await expect(
+        authService.exchangeSupabaseSession('some-token', 'some-refresh'),
+      ).rejects.toThrow('Token exchange requires validateAccessToken support');
+    });
+
+    it('should throw error when user not found in database', async () => {
+      authProvider.validateAccessToken = jest
+        .fn()
+        .mockResolvedValue('unknown@example.com');
+      usersService.findByEmail = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        authService.exchangeSupabaseSession('some-token', 'some-refresh'),
+      ).rejects.toThrow('User not found');
+    });
+
+    it('should exchange session successfully by passing through validated tokens', async () => {
+      authProvider.validateAccessToken = jest
+        .fn()
+        .mockResolvedValue('test@example.com');
+      usersService.findByEmail = jest.fn().mockResolvedValue(users[0]);
+
+      const result = await authService.exchangeSupabaseSession(
+        'supabase-jwt-token',
+        'supabase-refresh-token',
+      );
+
+      expect(result).toEqual({
+        accessToken: 'supabase-jwt-token',
+        idToken: 'supabase-jwt-token',
+        refreshToken: 'supabase-refresh-token',
+      });
+      expect(authProvider.validateAccessToken).toHaveBeenCalledWith(
+        'supabase-jwt-token',
       );
     });
   });

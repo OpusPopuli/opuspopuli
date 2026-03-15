@@ -41,3 +41,16 @@ export class RegisterWithMagicLinkDto {
   @MaxLength(2000)
   redirectTo?: string;
 }
+
+@InputType()
+export class ExchangeSupabaseSessionDto {
+  @Field()
+  @IsString()
+  @MaxLength(5000)
+  accessToken!: string;
+
+  @Field()
+  @IsString()
+  @MaxLength(5000)
+  refreshToken!: string;
+}
