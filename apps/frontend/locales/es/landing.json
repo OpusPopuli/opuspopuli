@@ -1,0 +1,42 @@
+{
+  "hero": {
+    "title": "Conoce tu boleta. Exige rendición de cuentas.",
+    "subtitle": "Opus Populi te da acceso transparente a proposiciones, representantes, finanzas de campaña y seguimiento de peticiones — impulsado por IA, creado para ciudadanos.",
+    "ctaSignedOut": "Comenzar",
+    "ctaSignedIn": "Ir al Panel"
+  },
+  "features": {
+    "sectionTitle": "Todo lo que necesitas para mantenerte informado",
+    "propositions": {
+      "title": "Boleta y Proposiciones",
+      "description": "Sigue las medidas electorales e iniciativas en tu región. Obtén análisis impulsado por IA para entender lo que estás votando."
+    },
+    "petitions": {
+      "title": "Escáner de Peticiones",
+      "description": "Escanea peticiones con tu cámara para verificación instantánea por IA. Sigue el progreso de firmas en un mapa interactivo."
+    },
+    "representatives": {
+      "title": "Representantes y Reuniones",
+      "description": "Conoce quién te representa. Sigue reuniones públicas, sesiones legislativas y audiencias de comités."
+    },
+    "campaignFinance": {
+      "title": "Finanzas de Campaña",
+      "description": "Sigue el dinero. Explora contribuciones, gastos y fondos de comités con total transparencia."
+    }
+  },
+  "trust": {
+    "sectionTitle": "Construido sobre confianza y transparencia",
+    "transparency": {
+      "title": "Transparencia de IA",
+      "description": "Nuestros compromisos de IA, tarjetas de sistema y carta de prompts son públicos. Siempre sabes cómo se usa la IA."
+    },
+    "privacy": {
+      "title": "Privacidad Primero",
+      "description": "Cumple con GDPR y CCPA. Controlas tus datos con gestión granular de consentimiento y exportación completa de datos."
+    },
+    "openSource": {
+      "title": "Código Abierto",
+      "description": "Nuestra plataforma es de código abierto. Inspecciona el código, contribuye y ayuda a construir mejores herramientas cívicas."
+    }
+  }
+}

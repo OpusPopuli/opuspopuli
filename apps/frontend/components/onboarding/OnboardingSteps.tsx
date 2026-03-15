@@ -6,6 +6,7 @@ import { useOnboarding } from "@/lib/onboarding-context";
 import { WelcomeStep } from "./steps/WelcomeStep";
 import { ScanStep } from "./steps/ScanStep";
 import { AnalyzeStep } from "./steps/AnalyzeStep";
+import { ExploreStep } from "./steps/ExploreStep";
 import { TrackStep } from "./steps/TrackStep";
 
 export function OnboardingSteps() {
@@ -22,16 +23,17 @@ export function OnboardingSteps() {
 
   const handleComplete = () => {
     completeOnboarding();
-    router.push("/petition");
+    router.push("/region");
   };
 
   const handleSkip = () => {
     skipOnboarding();
-    router.push("/petition");
+    router.push("/region");
   };
 
   const steps = [
     <WelcomeStep key="welcome" />,
+    <ExploreStep key="explore" />,
     <ScanStep key="scan" />,
     <AnalyzeStep key="analyze" />,
     <TrackStep key="track" />,

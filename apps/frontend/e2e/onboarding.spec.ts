@@ -2,7 +2,7 @@
  * Onboarding Flow E2E Tests
  *
  * Tests for the first-time user onboarding experience:
- * Welcome → Scan → Analyze → Track → redirect to /petition
+ * Welcome → Explore → Scan → Analyze → Track → redirect to /region
  */
 import { test, expect } from "@playwright/test";
 import {
@@ -42,7 +42,7 @@ test.describe("Onboarding Flow", () => {
     await page.goto("/onboarding");
 
     await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
-    await expect(page.getByText(/civic engagement companion/i)).toBeVisible();
+    await expect(page.getByText(/civic engagement hub/i)).toBeVisible();
   });
 
   test("should navigate through all steps", async ({ page }) => {
@@ -53,15 +53,19 @@ test.describe("Onboarding Flow", () => {
     await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
     await page.getByRole("button", { name: "Next", exact: true }).click();
 
-    // Step 2: Scan
+    // Step 2: Explore
+    await expect(page.getByText("Explore Your Region")).toBeVisible();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
+    // Step 3: Scan
     await expect(page.getByText("Scan Petitions")).toBeVisible();
     await page.getByRole("button", { name: "Next", exact: true }).click();
 
-    // Step 3: Analyze
+    // Step 4: Analyze
     await expect(page.getByText("Instant Analysis")).toBeVisible();
     await page.getByRole("button", { name: "Next", exact: true }).click();
 
-    // Step 4: Track
+    // Step 5: Track
     await expect(page.getByText("Track Progress")).toBeVisible();
 
     // Should show Get Started button on last step
@@ -70,13 +74,14 @@ test.describe("Onboarding Flow", () => {
     ).toBeVisible();
   });
 
-  test("should complete onboarding and redirect to /petition", async ({
+  test("should complete onboarding and redirect to /region", async ({
     page,
   }) => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
 
-    // Navigate through all steps
+    // Navigate through all 5 steps
+    await page.getByRole("button", { name: "Next", exact: true }).click();
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await page.getByRole("button", { name: "Next", exact: true }).click();
@@ -84,29 +89,29 @@ test.describe("Onboarding Flow", () => {
     // Click Get Started
     await page.getByRole("button", { name: /get started/i }).click();
 
-    // Should redirect to /petition
-    await expect(page).toHaveURL(/\/petition/);
+    // Should redirect to /region
+    await expect(page).toHaveURL(/\/region/);
   });
 
-  test("should skip onboarding and redirect to /petition", async ({ page }) => {
+  test("should skip onboarding and redirect to /region", async ({ page }) => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
 
     await page.getByRole("button", { name: /skip/i }).click();
 
-    // Should redirect to /petition
-    await expect(page).toHaveURL(/\/petition/);
+    // Should redirect to /region
+    await expect(page).toHaveURL(/\/region/);
   });
 
   test("should navigate back to previous step", async ({ page }) => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
 
-    // Go to step 2
+    // Go to step 2 (Explore)
     await page.getByRole("button", { name: "Next", exact: true }).click();
-    await expect(page.getByText("Scan Petitions")).toBeVisible();
+    await expect(page.getByText("Explore Your Region")).toBeVisible();
 
-    // Go back to step 1
+    // Go back to step 1 (Welcome)
     await page.getByRole("button", { name: /back/i }).click();
     await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
   });
@@ -129,11 +134,11 @@ test.describe("Onboarding Flow", () => {
     );
     expect(before).toBeNull();
 
-    // Skip onboarding — this sets localStorage AND navigates to /petition
+    // Skip onboarding — this sets localStorage AND navigates to /region
     await page.getByRole("button", { name: /skip/i }).click();
 
-    // Wait for navigation to complete (skip redirects to /petition)
-    await expect(page).toHaveURL(/\/petition/);
+    // Wait for navigation to complete (skip redirects to /region)
+    await expect(page).toHaveURL(/\/region/);
 
     // Verify localStorage was set (persists across navigation on same origin)
     const completed = await page.evaluate(() =>
@@ -144,11 +149,11 @@ test.describe("Onboarding Flow", () => {
 });
 
 test.describe("Onboarding - Returning User", () => {
-  test("should redirect completed user to /petition", async ({ page }) => {
+  test("should redirect completed user to /region", async ({ page }) => {
     await setupReturningUserSession(page);
     await page.goto("/onboarding");
 
-    await expect(page).toHaveURL(/\/petition/);
+    await expect(page).toHaveURL(/\/region/);
   });
 });
 
@@ -195,11 +200,24 @@ test.describe("Onboarding - Accessibility", () => {
     expect(violations).toEqual([]);
   });
 
+  test("should have no WCAG 2.2 AA violations on explore step", async ({
+    page,
+  }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(page.getByText("Explore Your Region")).toBeVisible();
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
   test("should have no WCAG 2.2 AA violations on scan step", async ({
     page,
   }) => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
+    await page.getByRole("button", { name: "Next", exact: true }).click();
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page.getByText("Scan Petitions")).toBeVisible();
 

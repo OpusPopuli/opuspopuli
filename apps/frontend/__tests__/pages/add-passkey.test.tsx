@@ -126,7 +126,7 @@ describe("AddPasskeyPage", () => {
       ).toBeInTheDocument();
     });
 
-    it("should navigate to rag-demo when continue is clicked", async () => {
+    it("should navigate to onboarding when continue is clicked", async () => {
       render(<AddPasskeyPage />);
 
       const continueButton = screen.getByRole("button", {
@@ -134,7 +134,7 @@ describe("AddPasskeyPage", () => {
       });
       await userEvent.click(continueButton);
 
-      expect(mockPush).toHaveBeenCalledWith("/rag-demo");
+      expect(mockPush).toHaveBeenCalledWith("/onboarding");
     });
   });
 
@@ -235,7 +235,7 @@ describe("AddPasskeyPage", () => {
       });
     });
 
-    it("should navigate to rag-demo from success state", async () => {
+    it("should navigate to onboarding from success state", async () => {
       mockRegisterPasskey.mockResolvedValue(true);
       render(<AddPasskeyPage />);
 
@@ -253,18 +253,18 @@ describe("AddPasskeyPage", () => {
       });
       await userEvent.click(continueButton);
 
-      expect(mockPush).toHaveBeenCalledWith("/rag-demo");
+      expect(mockPush).toHaveBeenCalledWith("/onboarding");
     });
   });
 
   describe("skip functionality", () => {
-    it("should navigate to rag-demo when skip is clicked", async () => {
+    it("should navigate to onboarding when skip is clicked", async () => {
       render(<AddPasskeyPage />);
 
       const skipButton = screen.getByRole("button", { name: "Skip for now" });
       await userEvent.click(skipButton);
 
-      expect(mockPush).toHaveBeenCalledWith("/rag-demo");
+      expect(mockPush).toHaveBeenCalledWith("/onboarding");
     });
   });
 

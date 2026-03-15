@@ -10,6 +10,10 @@ jest.mock("@/components/Footer", () => ({
   Footer: () => <footer data-testid="mock-footer">Mock Footer</footer>,
 }));
 
+jest.mock("@/components/landing/LandingCTA", () => ({
+  LandingCTA: () => <div data-testid="mock-landing-cta">Mock CTA</div>,
+}));
+
 import Home from "../app/page";
 
 describe("Home Page", () => {
@@ -18,82 +22,69 @@ describe("Home Page", () => {
   });
 
   describe("Layout", () => {
+    it("should render the header", () => {
+      expect(screen.getByTestId("mock-header")).toBeInTheDocument();
+    });
+
     it("should render the footer", () => {
       expect(screen.getByTestId("mock-footer")).toBeInTheDocument();
     });
+
+    it("should render the CTA", () => {
+      expect(screen.getByTestId("mock-landing-cta")).toBeInTheDocument();
+    });
   });
 
-  describe("Header section", () => {
-    it("should display Opus Populi title", () => {
-      const title = screen.getByText(/Opus Populi/i);
-      expect(title).toBeInTheDocument();
+  describe("Hero section", () => {
+    it("should display civic engagement headline", () => {
+      expect(screen.getByText(/Know your ballot/i)).toBeInTheDocument();
+      expect(screen.getByText(/Hold power accountable/i)).toBeInTheDocument();
     });
 
     it("should display subtitle", () => {
-      const subtitle = screen.getByText(
-        /Quick start platform for building AI-powered applications/i,
-      );
-      expect(subtitle).toBeInTheDocument();
+      expect(
+        screen.getByText(/Transparent access to propositions/i),
+      ).toBeInTheDocument();
     });
   });
 
   describe("Feature cards", () => {
-    it("should have RAG Demo link", () => {
-      const ragDemoLink = screen.getByRole("link", { name: /RAG Demo/i });
-      expect(ragDemoLink).toBeInTheDocument();
-      expect(ragDemoLink).toHaveAttribute("href", "/rag-demo");
+    it("should display Ballot & Propositions card", () => {
+      expect(screen.getByText("Ballot & Propositions")).toBeInTheDocument();
     });
 
-    it("should display RAG Demo description", () => {
-      const description = screen.getByText(
-        /Upload documents, index them into the vector database/i,
-      );
-      expect(description).toBeInTheDocument();
+    it("should display Petition Scanner card", () => {
+      expect(screen.getByText("Petition Scanner")).toBeInTheDocument();
     });
 
-    it("should display More Features section", () => {
-      const moreFeatures = screen.getByText(/More Features/i);
-      expect(moreFeatures).toBeInTheDocument();
+    it("should display Representatives & Meetings card", () => {
+      expect(
+        screen.getByText("Representatives & Meetings"),
+      ).toBeInTheDocument();
     });
 
-    it("should display coming soon message", () => {
-      const comingSoon = screen.getByText(
-        /Additional features and demos coming soon/i,
-      );
-      expect(comingSoon).toBeInTheDocument();
+    it("should display Campaign Finance card", () => {
+      expect(screen.getByText("Campaign Finance")).toBeInTheDocument();
     });
   });
 
-  describe("Platform Features section", () => {
-    it("should display Platform Features heading", () => {
-      const heading = screen.getByText(/Platform Features/i);
-      expect(heading).toBeInTheDocument();
+  describe("Trust signals section", () => {
+    it("should display trust section heading", () => {
+      expect(
+        screen.getByText(/Built on trust and transparency/i),
+      ).toBeInTheDocument();
     });
 
-    it("should display GraphQL API badge", () => {
-      const badge = screen.getByText(/GraphQL API/i);
-      expect(badge).toBeInTheDocument();
+    it("should display AI Transparency", () => {
+      expect(screen.getByText("AI Transparency")).toBeInTheDocument();
     });
 
-    it("should display Vector Database badge", () => {
-      const badges = screen.getAllByText(/Vector Database/i);
-      // One in RAG Demo description, one in Platform Features
-      expect(badges.length).toBeGreaterThanOrEqual(1);
+    it("should display Privacy First", () => {
+      expect(screen.getByText("Privacy First")).toBeInTheDocument();
     });
 
-    it("should display LLM Integration badge", () => {
-      const badge = screen.getByText(/LLM Integration/i);
-      expect(badge).toBeInTheDocument();
-    });
-
-    it("should display Document Processing badge", () => {
-      const badge = screen.getByText(/Document Processing/i);
-      expect(badge).toBeInTheDocument();
-    });
-
-    it("should display User Authentication badge", () => {
-      const badge = screen.getByText(/User Authentication/i);
-      expect(badge).toBeInTheDocument();
+    it("should display Open Source", () => {
+      expect(screen.getByText("Open Source")).toBeInTheDocument();
     });
   });
 });

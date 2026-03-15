@@ -204,7 +204,7 @@ describe("AuthCallbackPage", () => {
       });
     });
 
-    it("should navigate to rag-demo when continue is clicked", async () => {
+    it("should navigate to region when continue is clicked", async () => {
       mockSearchParamsGet = jest.fn().mockImplementation((key: string) => {
         if (key === "email") return "test@example.com";
         if (key === "token") return "valid-token";
@@ -225,7 +225,7 @@ describe("AuthCallbackPage", () => {
       });
       await userEvent.click(continueButton);
 
-      expect(mockPush).toHaveBeenCalledWith("/rag-demo");
+      expect(mockPush).toHaveBeenCalledWith("/region");
     });
   });
 
@@ -308,7 +308,7 @@ describe("AuthCallbackPage", () => {
       });
     });
 
-    it("should navigate to rag-demo when skip is clicked", async () => {
+    it("should navigate to onboarding when skip is clicked", async () => {
       mockSearchParamsGet = jest.fn().mockImplementation((key: string) => {
         if (key === "email") return "test@example.com";
         if (key === "token") return "valid-token";
@@ -329,7 +329,7 @@ describe("AuthCallbackPage", () => {
       const skipButton = screen.getByRole("button", { name: "Skip for now" });
       await userEvent.click(skipButton);
 
-      expect(mockPush).toHaveBeenCalledWith("/rag-demo");
+      expect(mockPush).toHaveBeenCalledWith("/onboarding");
     });
   });
 

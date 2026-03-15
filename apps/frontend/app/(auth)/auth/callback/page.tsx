@@ -238,7 +238,7 @@ function AuthCallbackContent() {
           </Link>
           <button
             type="button"
-            onClick={() => router.push("/rag-demo")}
+            onClick={() => router.push("/onboarding")}
             className="inline-block w-full py-3 px-6 bg-white text-[#4d4d4d] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
           >
             Skip for now
@@ -272,7 +272,7 @@ function AuthCallbackContent() {
       <p className="text-[#4d4d4d] mb-6">Redirecting you to the app...</p>
       <button
         type="button"
-        onClick={() => router.push("/rag-demo")}
+        onClick={() => router.push("/region")}
         className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
       >
         Continue to App

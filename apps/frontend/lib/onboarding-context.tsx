@@ -46,7 +46,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     getServerSnapshot,
   );
   const [currentStep, setCurrentStep] = useState(0);
-  const totalSteps = 4;
+  const totalSteps = 5;
 
   const completeOnboarding = useCallback(() => {
     localStorage.setItem(STORAGE_KEY, "true");
