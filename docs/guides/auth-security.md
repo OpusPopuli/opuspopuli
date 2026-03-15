@@ -440,12 +440,19 @@ All GraphQL subgraphs enforce:
 ```typescript
 // apps/backend/src/apps/*/src/app.module.ts
 GraphQLModule.forRoot<ApolloFederationDriverConfig>({
+  plugins: [
+    createQueryComplexityPlugin(), // Apollo Server plugin (runs in didResolveOperation)
+  ],
   validationRules: [
     depthLimit(10),
-    createQueryComplexityValidationRule(),
   ],
 });
 ```
+
+> **Note:** Query complexity is implemented as an Apollo Server plugin (not a validation rule)
+> because GraphQL validation rules don't have access to request variables. The plugin runs in
+> `didResolveOperation` where `request.variables` are available, preventing false rejections
+> on mutations with required variables.
 
 ### Field Complexity Hints
 

@@ -652,6 +652,53 @@ describe("SupabaseAuthProvider", () => {
       });
     });
 
+    it("should retry with shouldCreateUser when user not in auth provider", async () => {
+      mockAuth.signInWithOtp
+        .mockResolvedValueOnce({
+          data: null,
+          error: { message: "Signups not allowed for otp" },
+        })
+        .mockResolvedValueOnce({
+          data: {},
+          error: null,
+        });
+
+      const result = await provider.sendMagicLink("test@example.com");
+
+      expect(result).toBe(true);
+      expect(mockAuth.signInWithOtp).toHaveBeenCalledTimes(2);
+      expect(mockAuth.signInWithOtp).toHaveBeenNthCalledWith(1, {
+        email: "test@example.com",
+        options: {
+          emailRedirectTo: undefined,
+          shouldCreateUser: false,
+        },
+      });
+      expect(mockAuth.signInWithOtp).toHaveBeenNthCalledWith(2, {
+        email: "test@example.com",
+        options: {
+          emailRedirectTo: undefined,
+          shouldCreateUser: true,
+        },
+      });
+    });
+
+    it("should throw AuthError when retry also fails", async () => {
+      mockAuth.signInWithOtp
+        .mockResolvedValueOnce({
+          data: null,
+          error: { message: "Signups not allowed for otp" },
+        })
+        .mockResolvedValueOnce({
+          data: null,
+          error: { message: "Email rate limit exceeded" },
+        });
+
+      await expect(provider.sendMagicLink("test@example.com")).rejects.toThrow(
+        AuthError,
+      );
+    });
+
     it("should throw AuthError on failure", async () => {
       mockAuth.signInWithOtp.mockResolvedValue({
         data: null,

@@ -490,6 +490,25 @@ export class SupabaseAuthProvider implements IAuthProvider {
       });
 
       if (error) {
+        // If the user exists in our DB but not in Supabase Auth (e.g., orphaned record),
+        // retry with shouldCreateUser: true to sync the user into GoTrue
+        if (error.message?.includes("Signups not allowed for otp")) {
+          this.logger.warn(
+            `User not found in auth provider, retrying with shouldCreateUser: true: ${email}`,
+          );
+          const { error: retryError } = await this.supabase.auth.signInWithOtp({
+            email,
+            options: {
+              emailRedirectTo: redirectTo,
+              shouldCreateUser: true,
+            },
+          });
+          if (retryError) {
+            throw retryError;
+          }
+          this.logger.log(`Magic link sent (with user creation) to: ${email}`);
+          return true;
+        }
         throw error;
       }
 

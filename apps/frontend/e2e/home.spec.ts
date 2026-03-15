@@ -13,7 +13,9 @@ test.describe("Home Page", () => {
   });
 
   test("should have sign in link", async ({ page }) => {
-    await expect(page.getByRole("link", { name: /sign in/i })).toBeVisible();
+    await expect(
+      page.getByRole("banner").getByRole("link", { name: /sign in/i }),
+    ).toBeVisible();
   });
 
   test("should display feature cards", async ({ page }) => {
@@ -50,7 +52,7 @@ test.describe("Home Page", () => {
     page,
   }) => {
     await expect(
-      page.getByRole("link", { name: /get started/i }),
+      page.getByRole("banner").getByRole("link", { name: /get started/i }),
     ).toBeVisible();
   });
 

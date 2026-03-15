@@ -58,7 +58,9 @@ test.describe("Onboarding Flow", () => {
     await page.getByRole("button", { name: "Next", exact: true }).click();
 
     // Step 3: Scan
-    await expect(page.getByText("Scan Petitions")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Scan Petitions" }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Next", exact: true }).click();
 
     // Step 4: Analyze
@@ -219,7 +221,9 @@ test.describe("Onboarding - Accessibility", () => {
     await page.goto("/onboarding");
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await page.getByRole("button", { name: "Next", exact: true }).click();
-    await expect(page.getByText("Scan Petitions")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Scan Petitions" }),
+    ).toBeVisible();
 
     const violations = await checkAccessibility(page);
     expect(violations).toEqual([]);

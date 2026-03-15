@@ -13,7 +13,7 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggingModule } from '@opuspopuli/logging-provider';
 import depthLimit from 'graphql-depth-limit';
-import { createQueryComplexityValidationRule } from 'src/common/graphql/query-complexity.plugin';
+import { createQueryComplexityPlugin } from 'src/common/graphql/query-complexity.plugin';
 
 import { KnowledgeModule } from './domains/knowledge.module';
 
@@ -57,8 +57,11 @@ import { MetricsModule } from 'src/common/metrics';
     GraphQLModule.forRoot<ApolloFederationDriverConfig>({
       driver: ApolloFederationDriver,
       autoSchemaFile: { path: 'knowledge-schema.gql', federation: 2 },
-      plugins: createSubgraphPlugins('knowledge-service'),
-      validationRules: [depthLimit(10), createQueryComplexityValidationRule()],
+      plugins: [
+        ...createSubgraphPlugins('knowledge-service'),
+        createQueryComplexityPlugin(),
+      ],
+      validationRules: [depthLimit(10)],
       introspection: GRAPHQL_INTROSPECTION_ENABLED,
       context: ({ req, res }: { req: unknown; res: unknown }) => ({ req, res }),
     }),
