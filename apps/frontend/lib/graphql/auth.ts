@@ -214,6 +214,20 @@ export const REGISTER_WITH_MAGIC_LINK = gql`
   }
 `;
 
+export interface ExchangeSupabaseSessionData {
+  exchangeSupabaseSession: AuthTokens;
+}
+
+export const EXCHANGE_SUPABASE_SESSION = gql`
+  mutation ExchangeSupabaseSession($input: ExchangeSupabaseSessionDto!) {
+    exchangeSupabaseSession(input: $input) {
+      accessToken
+      idToken
+      refreshToken
+    }
+  }
+`;
+
 // Logout mutation to clear httpOnly cookies
 export const LOGOUT = gql`
   mutation Logout {

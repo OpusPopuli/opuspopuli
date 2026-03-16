@@ -587,4 +587,36 @@ describe('AuthResolver', () => {
       ).rejects.toThrow('Register failed');
     });
   });
+
+  describe('exchangeSupabaseSession', () => {
+    it('should exchange Supabase session successfully', async () => {
+      const mockAuth = { accessToken: 'token', refreshToken: 'refresh' };
+      authService.exchangeSupabaseSession = jest
+        .fn()
+        .mockResolvedValue(mockAuth);
+
+      const mockContext = createMockContext();
+      const result = await resolver.exchangeSupabaseSession(
+        { accessToken: 'supabase-jwt-token', refreshToken: 'supabase-refresh' },
+        mockContext,
+      );
+
+      expect(result).toEqual(mockAuth);
+      expect(mockContext.res?.cookie).toHaveBeenCalled();
+    });
+
+    it('should throw error on invalid token', async () => {
+      authService.exchangeSupabaseSession = jest
+        .fn()
+        .mockRejectedValue(new Error('Invalid or expired access token'));
+
+      const mockContext = createMockContext();
+      await expect(
+        resolver.exchangeSupabaseSession(
+          { accessToken: 'invalid-token', refreshToken: 'refresh' },
+          mockContext,
+        ),
+      ).rejects.toThrow('Invalid or expired access token');
+    });
+  });
 });

@@ -1,0 +1,42 @@
+{
+  "hero": {
+    "title": "Know your ballot. Hold power accountable.",
+    "subtitle": "Opus Populi gives you transparent access to propositions, representatives, campaign finance, and petition tracking — powered by AI, built for citizens.",
+    "ctaSignedOut": "Get Started",
+    "ctaSignedIn": "Go to Dashboard"
+  },
+  "features": {
+    "sectionTitle": "Everything you need to stay informed",
+    "propositions": {
+      "title": "Ballot & Propositions",
+      "description": "Track ballot measures and initiatives in your region. Get AI-powered analysis to understand what you're voting on."
+    },
+    "petitions": {
+      "title": "Petition Scanner",
+      "description": "Scan petitions with your camera for instant AI verification. Track signature progress on an interactive map."
+    },
+    "representatives": {
+      "title": "Representatives & Meetings",
+      "description": "Know who represents you. Follow public meetings, legislative sessions, and committee hearings."
+    },
+    "campaignFinance": {
+      "title": "Campaign Finance",
+      "description": "Follow the money. Explore contributions, expenditures, and committee spending with full transparency."
+    }
+  },
+  "trust": {
+    "sectionTitle": "Built on trust and transparency",
+    "transparency": {
+      "title": "AI Transparency",
+      "description": "Our AI commitments, system cards, and prompt charter are public. You always know how AI is used."
+    },
+    "privacy": {
+      "title": "Privacy First",
+      "description": "GDPR and CCPA compliant. You control your data with granular consent management and full data export."
+    },
+    "openSource": {
+      "title": "Open Source",
+      "description": "Our platform is open source. Inspect the code, contribute, and help build better civic tools."
+    }
+  }
+}

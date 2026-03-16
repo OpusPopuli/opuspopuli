@@ -35,7 +35,9 @@ function useCurrentSession(): Session {
     // Detect device type
     const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
     const isTablet = /iPad|Android(?!.*Mobile)/i.test(ua);
-    const deviceType = isTablet ? "tablet" : isMobile ? "mobile" : "desktop";
+    let deviceType = "desktop";
+    if (isTablet) deviceType = "tablet";
+    else if (isMobile) deviceType = "mobile";
 
     // Detect device name
     let deviceName = "Unknown Device";
@@ -257,14 +259,16 @@ export default function SecurityPage() {
             </div>
           )}
 
-          {passkeysLoading ? (
+          {passkeysLoading && (
             <div className="text-center py-8">
               <div className="animate-spin w-8 h-8 border-2 border-[#222222] border-t-transparent rounded-full mx-auto" />
               <p className="text-[#4d4d4d] mt-2">
                 {t("common:status.loading")}
               </p>
             </div>
-          ) : passkeys.length > 0 ? (
+          )}
+
+          {!passkeysLoading && passkeys.length > 0 && (
             <div className="space-y-3">
               {passkeys.map((passkey) => (
                 <div
@@ -320,7 +324,9 @@ export default function SecurityPage() {
                 </div>
               ))}
             </div>
-          ) : (
+          )}
+
+          {!passkeysLoading && passkeys.length === 0 && (
             <div className="text-center py-8 border border-dashed border-gray-200 rounded-lg">
               <div className="text-[#4d4d4d] mb-4">
                 <svg

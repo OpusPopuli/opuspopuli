@@ -59,7 +59,7 @@ export default function AddPasskeyPage() {
         </p>
         <button
           type="button"
-          onClick={() => router.push("/rag-demo")}
+          onClick={() => router.push("/onboarding")}
           className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
         >
           Continue to App
@@ -96,7 +96,7 @@ export default function AddPasskeyPage() {
         </p>
         <button
           type="button"
-          onClick={() => router.push("/rag-demo")}
+          onClick={() => router.push("/onboarding")}
           className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
         >
           Continue to App
@@ -287,7 +287,7 @@ export default function AddPasskeyPage() {
         </button>
         <button
           type="button"
-          onClick={() => router.push("/rag-demo")}
+          onClick={() => router.push("/onboarding")}
           className="w-full py-3 px-6 bg-white text-[#4d4d4d] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
         >
           Skip for now

@@ -5,19 +5,29 @@
   "getStarted": "Get Started",
   "welcome": {
     "title": "Welcome to Opus Populi",
-    "subtitle": "Your civic engagement companion for tracking petitions and ballot measures"
+    "subtitle": "Your civic engagement hub — track propositions, representatives, campaign finance, and petitions all in one place"
+  },
+  "explore": {
+    "title": "Explore Your Region",
+    "description": "Stay informed with comprehensive civic data for your area",
+    "features": {
+      "propositions": "Propositions",
+      "representatives": "Representatives",
+      "meetings": "Public Meetings",
+      "campaignFinance": "Campaign Finance"
+    }
   },
   "scan": {
     "title": "Scan Petitions",
-    "description": "Use your camera to quickly scan and verify petition signatures in seconds",
+    "description": "Use your camera to scan petitions for instant AI-powered verification and tracking",
     "permissionNote": "We'll ask for camera access when you're ready to scan. No images are saved to your device."
   },
   "analyze": {
     "title": "Instant Analysis",
-    "description": "Our AI verifies signatures and extracts key information automatically"
+    "description": "AI analyzes petitions, propositions, and campaign data to help you make informed decisions"
   },
   "track": {
     "title": "Track Progress",
-    "description": "See petition activity in your area and follow measures through to the ballot"
+    "description": "Follow ballot measures, petition activity, and legislative sessions in your area"
   }
 }

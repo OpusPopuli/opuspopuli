@@ -163,7 +163,7 @@ export default function PromptCharterPage() {
                   href="/transparency/system-card"
                   className="text-blue-600 dark:text-blue-400 hover:underline"
                 >
-                  System Card
+                  System Overview
                 </Link>{" "}
                 changelog documents all prompt version updates.
               </li>
@@ -217,7 +217,7 @@ export default function PromptCharterPage() {
                 href="/transparency/system-card"
                 className="text-blue-600 dark:text-blue-400 hover:underline"
               >
-                AI System Card
+                AI System Overview
               </Link>
               {" \u00B7 "}
               <Link

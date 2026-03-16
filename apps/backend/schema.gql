@@ -378,6 +378,7 @@ type Mutation {
   sendMagicLink(input: SendMagicLinkDto!): Boolean!
   verifyMagicLink(input: VerifyMagicLinkDto!): Auth!
   registerWithMagicLink(input: RegisterWithMagicLinkDto!): Boolean!
+  exchangeSupabaseSession(input: ExchangeSupabaseSessionDto!): Auth!
   changePassword(changePasswordDto: ChangePasswordDto!): Boolean!
   deletePasskey(credentialId: String!): Boolean!
   logout: Boolean!
@@ -475,6 +476,11 @@ input VerifyMagicLinkDto {
 input RegisterWithMagicLinkDto {
   email: String!
   redirectTo: String
+}
+
+input ExchangeSupabaseSessionDto {
+  accessToken: String!
+  refreshToken: String!
 }
 
 input ChangePasswordDto {

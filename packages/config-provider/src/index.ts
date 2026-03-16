@@ -28,3 +28,4 @@ export { llmConfig } from "./configs/llm.config.js";
 export { embeddingsConfig } from "./configs/embeddings.config.js";
 export { vectordbConfig } from "./configs/vectordb.config.js";
 export { regionConfig } from "./configs/region.config.js";
+export { smtpConfig } from "./configs/smtp.config.js";

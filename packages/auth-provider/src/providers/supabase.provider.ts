@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import * as nodemailer from "nodemailer";
 import {
   IAuthProvider,
   IAuthResult,
@@ -22,6 +23,19 @@ interface ISupabaseAuthConfig {
 }
 
 /**
+ * SMTP configuration for sending magic link emails directly.
+ * Bypasses GoTrue's signInWithOtp which forces PKCE flow.
+ */
+interface ISmtpConfig {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  fromEmail: string;
+  secure: boolean;
+}
+
+/**
  * Supabase Auth Provider
  *
  * Implements authentication operations using Supabase Auth (GoTrue).
@@ -39,6 +53,9 @@ export class SupabaseAuthProvider implements IAuthProvider {
   });
   private readonly supabase: SupabaseClient;
   private readonly config: ISupabaseAuthConfig;
+  private readonly smtpConfig: ISmtpConfig;
+  private readonly smtpTransporter: nodemailer.Transporter;
+  private readonly frontendUrl: string;
   private readonly circuitBreaker: CircuitBreakerManager;
 
   constructor(private readonly configService: ConfigService) {
@@ -65,6 +82,36 @@ export class SupabaseAuthProvider implements IAuthProvider {
         autoRefreshToken: false,
         persistSession: false,
       },
+    });
+
+    // SMTP config for sending magic link emails directly.
+    // We bypass GoTrue's signInWithOtp because it forces PKCE flow,
+    // which requires the code_verifier from the originating browser session.
+    // Instead, we use admin.generateLink() + nodemailer to send non-PKCE links.
+    this.smtpConfig = {
+      host: configService.get<string>("smtp.host") || "inbucket",
+      port: configService.get<number>("smtp.port") || 2500,
+      user: configService.get<string>("smtp.user") || "",
+      pass: configService.get<string>("smtp.pass") || "",
+      fromEmail:
+        configService.get<string>("smtp.fromEmail") ||
+        "noreply@opuspopuli.local",
+      secure: (configService.get<number>("smtp.port") || 2500) === 465,
+    };
+
+    this.frontendUrl =
+      configService.get<string>("FRONTEND_URL") || "http://localhost:3200";
+
+    const smtpAuth =
+      this.smtpConfig.user && this.smtpConfig.pass
+        ? { user: this.smtpConfig.user, pass: this.smtpConfig.pass }
+        : undefined;
+
+    this.smtpTransporter = nodemailer.createTransport({
+      host: this.smtpConfig.host,
+      port: this.smtpConfig.port,
+      secure: this.smtpConfig.secure,
+      auth: smtpAuth,
     });
 
     // Initialize circuit breaker for Supabase calls
@@ -476,22 +523,38 @@ export class SupabaseAuthProvider implements IAuthProvider {
   }
 
   /**
-   * Send a magic link for passwordless authentication
-   * Uses Supabase's built-in OTP email functionality
+   * Send a magic link for passwordless authentication.
+   *
+   * Uses admin.generateLink() + nodemailer instead of signInWithOtp because
+   * Supabase JS v2's signInWithOtp always uses PKCE flow, which requires
+   * the code_verifier from the originating browser session. Since the backend
+   * sends the email (not the browser), PKCE tokens can never be exchanged.
+   *
+   * admin.generateLink() produces a non-PKCE hashed token that GoTrue's
+   * /verify endpoint processes with implicit flow (hash fragment redirect).
    */
   async sendMagicLink(email: string, redirectTo?: string): Promise<boolean> {
     try {
-      const { error } = await this.supabase.auth.signInWithOtp({
+      const callbackUrl = redirectTo || `${this.frontendUrl}/auth/callback`;
+
+      const { data, error } = await this.supabase.auth.admin.generateLink({
+        type: "magiclink",
         email,
         options: {
-          emailRedirectTo: redirectTo,
-          shouldCreateUser: false, // Don't create new users on login
+          redirectTo: callbackUrl,
         },
       });
 
       if (error) {
         throw error;
       }
+
+      if (!data.properties?.action_link) {
+        throw new Error("Failed to generate magic link");
+      }
+
+      // Send the email with the magic link
+      await this.sendMagicLinkEmail(email, data.properties.action_link);
 
       this.logger.log(`Magic link sent to: ${email}`);
       return true;
@@ -541,25 +604,37 @@ export class SupabaseAuthProvider implements IAuthProvider {
   }
 
   /**
-   * Register a new user with magic link (passwordless registration)
-   * Sends a verification email that will create the account on confirmation
+   * Register a new user with magic link (passwordless registration).
+   *
+   * Uses admin.generateLink() with type "signup" to create the user in GoTrue
+   * and generate a non-PKCE verification link, then sends the email directly.
    */
   async registerWithMagicLink(
     email: string,
     redirectTo?: string,
   ): Promise<boolean> {
     try {
-      const { error } = await this.supabase.auth.signInWithOtp({
+      const callbackUrl = redirectTo || `${this.frontendUrl}/auth/callback`;
+
+      const { data, error } = await this.supabase.auth.admin.generateLink({
+        type: "signup",
         email,
+        password: crypto.randomUUID(), // Required by GoTrue but user will use magic links
         options: {
-          emailRedirectTo: redirectTo,
-          shouldCreateUser: true, // Create user if they don't exist
+          redirectTo: callbackUrl,
         },
       });
 
       if (error) {
         throw error;
       }
+
+      if (!data.properties?.action_link) {
+        throw new Error("Failed to generate registration link");
+      }
+
+      // Send the email with the verification link
+      await this.sendMagicLinkEmail(email, data.properties.action_link, true);
 
       this.logger.log(`Registration magic link sent to: ${email}`);
       return true;
@@ -624,6 +699,78 @@ export class SupabaseAuthProvider implements IAuthProvider {
         error as Error,
       );
     }
+  }
+
+  /**
+   * Validate a Supabase access token and return the user's email.
+   * Uses supabase.auth.getUser() to verify the token server-side.
+   */
+  async validateAccessToken(accessToken: string): Promise<string> {
+    try {
+      const { data, error } = await this.supabase.auth.getUser(accessToken);
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data.user?.email) {
+        throw new Error("No email found in token");
+      }
+
+      this.logger.log(`Access token validated for user: ${data.user.email}`);
+      return data.user.email;
+    } catch (error) {
+      this.logger.error(
+        `Error validating access token: ${(error as Error).message}`,
+      );
+      throw new AuthError(
+        "Invalid or expired access token",
+        "INVALID_ACCESS_TOKEN",
+        error as Error,
+      );
+    }
+  }
+
+  /**
+   * Send a magic link email via SMTP.
+   */
+  private async sendMagicLinkEmail(
+    email: string,
+    actionLink: string,
+    isRegistration = false,
+  ): Promise<void> {
+    const subject = isRegistration
+      ? "Welcome to Opus Populi - Verify your email"
+      : "Sign in to Opus Populi";
+
+    const heading = isRegistration
+      ? "Welcome to Opus Populi!"
+      : "Sign in to Opus Populi";
+
+    const message = isRegistration
+      ? "Click the link below to verify your email and complete your registration:"
+      : "Click the link below to sign in to your account:";
+
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #222222;">${heading}</h2>
+        <p style="color: #4d4d4d; font-size: 16px;">${message}</p>
+        <a href="${actionLink}" style="display: inline-block; background-color: #222222; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 16px 0;">
+          ${isRegistration ? "Verify Email" : "Sign In"}
+        </a>
+        <p style="color: #999999; font-size: 14px; margin-top: 24px;">
+          This link expires in 1 hour. If you didn't request this, you can safely ignore this email.
+        </p>
+      </div>
+    `;
+
+    await this.smtpTransporter.sendMail({
+      from: this.smtpConfig.fromEmail,
+      to: email,
+      subject,
+      html,
+      text: `${heading}\n\n${message}\n\n${actionLink}\n\nThis link expires in 1 hour.`,
+    });
   }
 
   /**

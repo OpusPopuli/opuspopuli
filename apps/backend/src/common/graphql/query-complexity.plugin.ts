@@ -1,7 +1,7 @@
 import { ApolloServerPlugin, BaseContext } from '@apollo/server';
 import { GraphQLError } from 'graphql';
 import {
-  createComplexityRule,
+  getComplexity,
   simpleEstimator,
   fieldExtensionsEstimator,
 } from 'graphql-query-complexity';
@@ -25,75 +25,67 @@ export const DEFAULT_QUERY_COMPLEXITY_CONFIG: IQueryComplexityConfig = {
 };
 
 /**
- * Creates a GraphQL validation rule for query complexity limiting.
+ * Creates an Apollo Server plugin for query complexity limiting.
  *
  * SECURITY: Prevents DoS attacks by limiting the complexity of GraphQL queries.
  * Complex queries with many fields or deeply nested structures can consume
  * excessive server resources.
  *
+ * NOTE: This is implemented as a plugin (not a validation rule) because
+ * graphql-query-complexity's createComplexityRule calls getVariableValues()
+ * during the validation phase without access to the actual request variables,
+ * causing all mutations/queries with required variables to fail validation.
+ * As a plugin, we have access to request.variables via the request context.
+ *
  * @see https://github.com/OpusPopuli/opuspopuli/issues/199
  *
  * @param config - Complexity configuration (uses defaults if not provided)
- * @returns ValidationRule function to pass to GraphQL validationRules
+ * @returns Apollo Server plugin
  */
-export function createQueryComplexityValidationRule(
+export function createQueryComplexityPlugin(
   config: Partial<IQueryComplexityConfig> = {},
-) {
+): ApolloServerPlugin<BaseContext> {
   const mergedConfig = { ...DEFAULT_QUERY_COMPLEXITY_CONFIG, ...config };
 
-  return createComplexityRule({
-    maximumComplexity: mergedConfig.maxComplexity,
-    estimators: [
-      // Use field extensions for custom complexity hints on resolvers
-      // Example: @Directive('@complexity(value: 50)')
-      fieldExtensionsEstimator(),
-      // Fall back to simple estimation based on config
-      simpleEstimator({
-        defaultComplexity: mergedConfig.scalarCost,
-      }),
-    ],
-    onComplete: (complexity: number) => {
-      if (mergedConfig.logComplexity) {
-        logger.debug(
-          `Query complexity: ${complexity} (max: ${mergedConfig.maxComplexity})`,
-        );
-      }
-    },
-    createError: (max: number, actual: number) => {
-      logger.warn(
-        `Query rejected: complexity ${actual} exceeds maximum ${max}`,
-      );
-      return new GraphQLError(
-        `Query complexity of ${actual} exceeds maximum allowed complexity of ${max}. ` +
-          `Please simplify your query by requesting fewer fields or reducing nesting.`,
-        {
-          extensions: {
-            code: 'QUERY_COMPLEXITY_EXCEEDED',
-            complexity: actual,
-            maxComplexity: max,
-          },
-        },
-      );
-    },
-  });
-}
-
-/**
- * Apollo Server Plugin for Query Complexity Logging
- *
- * Optional plugin that logs query complexity for monitoring purposes.
- * Use this in addition to the validation rule if you want async logging
- * or additional monitoring.
- */
-export function createQueryComplexityLoggingPlugin(): ApolloServerPlugin<BaseContext> {
   return {
     async requestDidStart() {
-      const startTime = Date.now();
       return {
-        async willSendResponse() {
-          const duration = Date.now() - startTime;
-          if (duration > 1000) {
-            logger.warn(`Slow query detected: ${duration}ms`);
+        async didResolveOperation(requestContext) {
+          const { schema, document, request } = requestContext;
+
+          const complexity = getComplexity({
+            schema,
+            query: document,
+            variables: request.variables ?? {},
+            estimators: [
+              fieldExtensionsEstimator(),
+              simpleEstimator({
+                defaultComplexity: mergedConfig.scalarCost,
+              }),
+            ],
+          });
+
+          if (mergedConfig.logComplexity) {
+            logger.debug(
+              `Query complexity: ${complexity} (max: ${mergedConfig.maxComplexity})`,
+            );
+          }
+
+          if (complexity > mergedConfig.maxComplexity) {
+            logger.warn(
+              `Query rejected: complexity ${complexity} exceeds maximum ${mergedConfig.maxComplexity}`,
+            );
+            throw new GraphQLError(
+              `Query complexity of ${complexity} exceeds maximum allowed complexity of ${mergedConfig.maxComplexity}. ` +
+                `Please simplify your query by requesting fewer fields or reducing nesting.`,
+              {
+                extensions: {
+                  code: 'QUERY_COMPLEXITY_EXCEEDED',
+                  complexity,
+                  maxComplexity: mergedConfig.maxComplexity,
+                },
+              },
+            );
           }
         },
       };

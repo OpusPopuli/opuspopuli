@@ -41,7 +41,7 @@ jest.mock("@/lib/auth-context", () => ({
 const defaultOnboardingContext = {
   hasCompletedOnboarding: false,
   currentStep: 0,
-  totalSteps: 4,
+  totalSteps: 5,
   nextStep: jest.fn(),
   prevStep: jest.fn(),
   skipOnboarding: jest.fn(),
@@ -86,7 +86,7 @@ describe("OnboardingPage", () => {
     });
   });
 
-  it("should redirect to /petition when onboarding is completed", async () => {
+  it("should redirect to /region when onboarding is completed", async () => {
     mockOnboardingContextValue = {
       ...defaultOnboardingContext,
       hasCompletedOnboarding: true,
@@ -95,7 +95,7 @@ describe("OnboardingPage", () => {
     render(<OnboardingPage />);
 
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith("/petition");
+      expect(mockReplace).toHaveBeenCalledWith("/region");
     });
   });
 
