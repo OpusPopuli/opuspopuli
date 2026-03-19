@@ -39,7 +39,7 @@ terraform {
   # ---------------------------------------------------------------------------
    backend "s3" {
      bucket         = "opuspopuli-terraform-state-ACCOUNT_ID"
-     key            = "env/dev/terraform.tfstate"
+     key            = "env/${terraform.workspace}/terraform.tfstate"
      region         = "us-east-1"
      encrypt        = true
      dynamodb_table = "opuspopuli-terraform-locks"
