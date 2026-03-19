@@ -37,17 +37,16 @@ Fixes #
 - [ ] UI changes meet WCAG 2.2 Level AA requirements (if applicable)
 - [ ] I have tested with keyboard navigation (if applicable)
 
-### Fork Model Reminder
+### Architecture Reminder
 
-> **Important**: This is the upstream opuspopuli platform repository.
+> **Important**: This is the core platform repository.
 >
 > - **Platform improvements** (bug fixes, new features, providers) belong here
-> - **Region-specific code** (scrapers, data, configs) belongs in your fork
-> - Only `regions/example/` can be modified in upstream
+> - **Region configs** (JSON data source definitions) belong in [`opuspopuli-regions`](https://github.com/OpusPopuli/opuspopuli-regions)
 >
 > See [CONTRIBUTING.md](../CONTRIBUTING.md) for details.
 
-- [ ] I confirm this PR contains platform code, not region-specific implementation
+- [ ] I confirm this PR contains platform code, not region-specific configuration
 
 ## Screenshots/Recordings
 
