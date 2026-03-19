@@ -56,3 +56,20 @@ export type { IPipelineService } from "./declarative/declarative-region-plugin.j
 // Region config discovery
 export { discoverRegionConfigs } from "./loader/region-config-discovery.js";
 export type { RegionPluginFile } from "./loader/region-config-discovery.js";
+
+// Region configs directory (from @opuspopuli/regions package)
+import { resolve, dirname, join } from "node:path";
+
+/**
+ * Returns the absolute path to the regions/ directory from @opuspopuli/regions.
+ * Falls back to the in-tree regions/ directory if the package is not installed
+ * (e.g., in test environments).
+ */
+export function getRegionsDir(): string {
+  try {
+    const pkgPath = require.resolve("@opuspopuli/regions/package.json");
+    return resolve(dirname(pkgPath), "regions");
+  } catch {
+    return join(__dirname, "..", "regions");
+  }
+}

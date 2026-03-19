@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import {
   Inject,
   Injectable,
@@ -15,6 +14,7 @@ import {
   PluginRegistryService,
   ExampleRegionProvider,
   discoverRegionConfigs,
+  getRegionsDir,
   type IPipelineService,
   type IRegionPlugin,
 } from '@opuspopuli/region-provider';
@@ -1196,9 +1196,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    * Exception: federal is always enabled on create.
    */
   private async syncRegionConfigs(): Promise<void> {
-    const regionsDir =
-      process.env.REGION_CONFIGS_DIR ??
-      join(process.cwd(), 'packages', 'region-provider', 'regions');
+    const regionsDir = process.env.REGION_CONFIGS_DIR ?? getRegionsDir();
 
     try {
       const configs = await discoverRegionConfigs(regionsDir);
