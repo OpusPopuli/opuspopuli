@@ -86,7 +86,7 @@ If no local plugin is configured in the database, the platform falls back to the
 
 ### Step 1: Create a JSON Config File
 
-Create a new file in `packages/region-provider/regions/`. The filename should match the region name (e.g., `my-state.json`).
+Add a new file to the [`opuspopuli-regions`](https://github.com/OpusPopuli/opuspopuli-regions) repo under `regions/`. The filename should match the region name (e.g., `my-state.json`). CI will validate it against the JSON Schema and publish a new version of `@opuspopuli/regions`.
 
 See `california.json` for a complete example:
 

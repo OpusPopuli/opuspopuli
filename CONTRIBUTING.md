@@ -14,7 +14,7 @@ Thank you for your interest in contributing to Opus Populi! This document explai
 
 ## The Plugin Architecture
 
-Opus Populi uses a **declarative plugin architecture** — the core platform is a single shared codebase, and region-specific civic data is configured as JSON in the database. No forking, no separate repositories, no scraper code.
+Opus Populi uses a **declarative plugin architecture** — the core platform is a single shared codebase, and region-specific civic data is configured as JSON. Region configs live in the [`opuspopuli-regions`](https://github.com/OpusPopuli/opuspopuli-regions) repo and are published as the `@opuspopuli/regions` npm package.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -25,9 +25,9 @@ Opus Populi uses a **declarative plugin architecture** — the core platform is 
 │  plugin bridge) + Scraping Pipeline (AI analysis,            │
 │  manifest caching, Cheerio extraction, domain mapping)       │
 └──────────────────────────────────────────────────────────────┘
-        ↑ auto-discovers JSON files, syncs to DB at startup
+        ↑ loads configs from @opuspopuli/regions, syncs to DB
   ┌──────────────────────────────────────────────────────┐
-  │    packages/region-provider/regions/                   │
+  │  opuspopuli-regions repo → @opuspopuli/regions pkg    │
   │  ┌────────────┐ ┌────────────┐ ┌────────────┐        │
   │  │california  │ │texas.json  │ │new-york    │  ...   │
   │  │.json       │ │            │ │.json       │        │
@@ -60,9 +60,10 @@ Opus Populi uses a **declarative plugin architecture** — the core platform is 
 
 ### Add a New Region (Declarative Config)
 
-- Create a JSON config file in `packages/region-provider/regions/`
+- Add a JSON config file to the [`opuspopuli-regions`](https://github.com/OpusPopuli/opuspopuli-regions) repo
 - Describes data source URLs and content goals — no scraper code needed
-- Auto-discovered and synced to the database on service startup
+- CI validates the config against the JSON Schema and checks URL connectivity
+- Merging to main publishes a new version of `@opuspopuli/regions`
 
 ## Getting Started
 
@@ -96,9 +97,10 @@ See [docs/guides/getting-started.md](docs/guides/getting-started.md) for detaile
 
 Region-specific civic data is configured as JSON files — no scraper code needed. The scraping pipeline handles extraction automatically.
 
-1. Create a JSON config file in `packages/region-provider/regions/` (see `california.json` for an example)
-2. Restart the service — configs are auto-synced to the database
-3. Enable the plugin: `UPDATE region_plugins SET enabled = true WHERE name = 'my-region';`
+1. Add a JSON config file to the [`opuspopuli-regions`](https://github.com/OpusPopuli/opuspopuli-regions) repo (see `california.json` for an example)
+2. CI validates and publishes `@opuspopuli/regions`; update the package in the monorepo
+3. Restart the service — configs are auto-synced to the database
+4. Enable the plugin: `UPDATE region_plugins SET enabled = true WHERE name = 'my-region';`
 
 See the [Region Provider Guide](docs/guides/region-provider.md) for detailed instructions.
 
