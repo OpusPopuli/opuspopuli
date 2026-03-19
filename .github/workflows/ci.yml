@@ -55,6 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
       security-events: write
     steps:
       - name: Checkout
@@ -267,6 +268,7 @@ jobs:
     needs: [packages-build, test]
     permissions:
       contents: read
+      packages: read
       security-events: write
     timeout-minutes: 45
     steps:
