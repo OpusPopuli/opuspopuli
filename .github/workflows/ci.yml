@@ -32,6 +32,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@opuspopuli'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -53,6 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
       security-events: write
     steps:
       - name: Checkout
@@ -68,6 +71,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@opuspopuli'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -109,6 +114,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@opuspopuli'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -138,6 +145,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@opuspopuli'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -186,6 +195,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@opuspopuli'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -228,6 +239,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@opuspopuli'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -255,6 +268,7 @@ jobs:
     needs: [packages-build, test]
     permissions:
       contents: read
+      packages: read
       security-events: write
     timeout-minutes: 45
     steps:
@@ -271,6 +285,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@opuspopuli'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
