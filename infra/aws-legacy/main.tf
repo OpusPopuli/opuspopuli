@@ -37,13 +37,13 @@ terraform {
   #   3. Replace ACCOUNT_ID with your AWS account ID from bootstrap output
   #   4. Run: terraform init -migrate-state
   # ---------------------------------------------------------------------------
-  # backend "s3" {
-  #   bucket         = "opuspopuli-terraform-state-ACCOUNT_ID"
-  #   key            = "env/dev/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   encrypt        = true
-  #   dynamodb_table = "opuspopuli-terraform-locks"
-  # }
+   backend "s3" {
+     bucket         = "opuspopuli-terraform-state-ACCOUNT_ID"
+     key            = "env/${terraform.workspace}/terraform.tfstate"
+     region         = "us-east-1"
+     encrypt        = true
+     dynamodb_table = "opuspopuli-terraform-locks"
+   }
 
   required_providers {
     aws = {
