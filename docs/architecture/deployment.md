@@ -199,13 +199,16 @@ The platform software is free and open source (AGPL-3.0). These are infrastructu
 
 A "region" in Opus Populi is a jurisdiction (California, Texas, New York, etc.). Each region operator deploys **one node** with their region plugin configured. Region plugins are declarative JSON configuration; they do not affect deployment topology.
 
+Region configs live in the [`opuspopuli-regions`](https://github.com/OpusPopuli/opuspopuli-regions) repo and are published as the `@opuspopuli/regions` npm package. The platform installs this package as a dependency.
+
 ```
-                         +-- california.json (declarative config)
-Region Plugin Config --> +-- federal.json   (always loaded)
-                         +-- texas.json     (another operator's node)
+opuspopuli-regions repo → @opuspopuli/regions npm package
+  ├── california.json (declarative config)
+  ├── federal.json    (always loaded)
+  └── texas.json, ... (other regions)
 ```
 
-A single node runs one local region plugin + the always-on federal plugin. The region plugin declares data sources (URLs, APIs, bulk downloads), and the AI-powered scraping pipeline handles extraction. No code changes are needed to add or switch regions.
+A single node runs one local region plugin + the always-on federal plugin. The region plugin declares data sources (URLs, APIs, bulk downloads), and the AI-powered scraping pipeline handles extraction. No code changes are needed to add or switch regions — just add a JSON config to the regions repo.
 
 See [Region Provider Guide](../guides/region-provider.md) and [Region Setup and Validation](../guides/region-setup-and-validation-guide.md) for details.
 

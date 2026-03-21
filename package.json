@@ -48,7 +48,7 @@
       "@apollo/query-planner": ">=2.12.3",
       "@apollo/federation-internals": ">=2.12.3",
       "undici": ">=7.24.0",
-      "flatted": ">=3.4.0",
+      "flatted": ">=3.4.2",
       "file-type": ">=21.3.1",
       "hono": ">=4.12.7",
       "next": ">=16.1.7"

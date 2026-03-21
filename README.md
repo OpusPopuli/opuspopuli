@@ -148,6 +148,7 @@ The `packages/` directory contains reusable workspace packages that provide plug
 | `@opuspopuli/ocr-provider` | OCR functionality | - |
 | `@opuspopuli/scraping-pipeline` | AI-powered schema-on-read web scraping with structural manifests | - |
 | `@opuspopuli/region-provider` | Civic data integration (declarative plugins, propositions, meetings, representatives) | - |
+| `@opuspopuli/regions` | Declarative region config files ([separate repo](https://github.com/OpusPopuli/opuspopuli-regions)) | - |
 | `@opuspopuli/prompt-client` | AI prompt template client with circuit breaker, HMAC auth, and caching | - |
 
 ## Development
