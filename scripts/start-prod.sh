@@ -22,6 +22,7 @@ set -euo pipefail
 ENV_FILE=".env.production"
 SKIP_PULL=false
 BUILD_FLAG=""
+VERIFY_IMAGES=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -37,9 +38,13 @@ while [[ $# -gt 0 ]]; do
       BUILD_FLAG="--build"
       shift
       ;;
+    --verify)
+      VERIFY_IMAGES=true
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--env-file <file>] [--skip-pull] [--build]"
+      echo "Usage: $0 [--env-file <file>] [--skip-pull] [--build] [--verify]"
       exit 1
       ;;
   esac
@@ -53,7 +58,7 @@ echo ""
 # ---------------------------------------------------------------------------
 # 1. Check Ollama is installed
 # ---------------------------------------------------------------------------
-echo "[1/5] Checking Ollama installation..."
+echo "[1/6] Checking Ollama installation..."
 if ! command -v ollama &> /dev/null; then
   echo "ERROR: Ollama is not installed."
   echo ""
@@ -66,7 +71,7 @@ echo "      Ollama installed: $(ollama --version 2>/dev/null || echo 'unknown ve
 # ---------------------------------------------------------------------------
 # 2. Check Ollama is running
 # ---------------------------------------------------------------------------
-echo "[2/5] Checking Ollama is running..."
+echo "[2/6] Checking Ollama is running..."
 if curl -sf http://localhost:11434/ > /dev/null 2>&1; then
   echo "      Ollama is running on port 11434"
 else
@@ -105,7 +110,7 @@ fi
 # ---------------------------------------------------------------------------
 # 3. Check required models
 # ---------------------------------------------------------------------------
-echo "[3/5] Checking required models..."
+echo "[3/6] Checking required models..."
 
 # Read LLM_MODEL from env file, default to qwen3.5:35b
 LLM_MODEL="qwen3.5:35b"
@@ -131,7 +136,7 @@ fi
 # ---------------------------------------------------------------------------
 # 4. Health check
 # ---------------------------------------------------------------------------
-echo "[4/5] Running Ollama health check..."
+echo "[4/6] Running Ollama health check..."
 if curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; then
   MODEL_COUNT=$(curl -sf http://localhost:11434/api/tags | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('models',[])))" 2>/dev/null || echo "?")
   echo "      Ollama API healthy ($MODEL_COUNT model(s) loaded)"
@@ -141,9 +146,26 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Start Docker Compose
+# 5. Verify container image signatures (optional)
 # ---------------------------------------------------------------------------
-echo "[5/5] Starting production stack..."
+if [[ "$VERIFY_IMAGES" == "true" ]]; then
+  echo "[5/6] Verifying container image signatures..."
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -x "${SCRIPT_DIR}/verify-images.sh" ]]; then
+    "${SCRIPT_DIR}/verify-images.sh"
+  else
+    echo "ERROR: verify-images.sh not found or not executable."
+    echo "       Expected at: ${SCRIPT_DIR}/verify-images.sh"
+    exit 1
+  fi
+else
+  echo "[5/6] Skipping image verification (use --verify to enable)"
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Start Docker Compose
+# ---------------------------------------------------------------------------
+echo "[6/6] Starting production stack..."
 echo ""
 
 if [[ ! -f "$ENV_FILE" ]]; then
