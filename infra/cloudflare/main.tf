@@ -21,6 +21,29 @@
 terraform {
   required_version = ">= 1.0"
 
+  # ---------------------------------------------------------------------------
+  # Remote State — Terraform Cloud (free tier)
+  # ---------------------------------------------------------------------------
+  # Provides remote state storage, locking, encryption, and run history.
+  # No AWS resources required.
+  #
+  # Setup:
+  #   1. Create a Terraform Cloud account at https://app.terraform.io
+  #   2. Create an organization (e.g., "opuspopuli")
+  #   3. Run: terraform login
+  #   4. Run: terraform init   (migrates local state to Terraform Cloud)
+  #
+  # Workspace mapping uses Terraform workspaces (dev, uat, prod) mapped to
+  # Terraform Cloud workspaces prefixed with "opuspopuli-".
+  # ---------------------------------------------------------------------------
+  cloud {
+    organization = "opuspopuli"
+
+    workspaces {
+      tags = ["opuspopuli", "cloudflare"]
+    }
+  }
+
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"

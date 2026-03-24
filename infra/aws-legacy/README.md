@@ -1,4 +1,6 @@
-# OPUSPOPULI AWS Infrastructure
+# OPUSPOPULI AWS Infrastructure (Deprecated)
+
+> **Note:** This infrastructure is deprecated and preserved for reference only. The active infrastructure uses Cloudflare — see [`infra/cloudflare/`](../cloudflare/). Terraform state for the active stack is managed via [Terraform Cloud](https://app.terraform.io).
 
 Simple, cost-effective AWS infrastructure for running Opus Populi with self-hosted AI services.
 
@@ -56,54 +58,9 @@ aws ec2 create-key-pair \
 chmod 400 opuspopuli-key.pem
 ```
 
-## Remote State Management (Recommended)
+## Remote State Management
 
-For team collaboration and disaster recovery, migrate Terraform state to S3.
-
-### 1. Create State Backend
-
-```bash
-cd backend-bootstrap
-
-# Initialize and apply
-terraform init
-terraform apply
-
-# Note the output values (bucket name, etc.)
-```
-
-### 2. Enable Remote State
-
-Edit `main.tf` and uncomment the backend block:
-
-```hcl
-terraform {
-  backend "s3" {
-    bucket         = "opuspopuli-terraform-state-ACCOUNT_ID"  # From bootstrap output
-    key            = "env/dev/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "opuspopuli-terraform-locks"
-  }
-  # ...
-}
-```
-
-### 3. Migrate State
-
-```bash
-cd ..  # Back to infra/
-terraform init -migrate-state
-```
-
-When prompted, type `yes` to migrate the state.
-
-### Benefits
-
-- **Team collaboration**: Multiple developers can work safely
-- **State locking**: DynamoDB prevents concurrent modifications
-- **Versioning**: S3 versioning enables state recovery
-- **Security**: Encryption at rest and in transit
+> **Deprecated:** The S3 + DynamoDB remote state backend described here is no longer used. The active Cloudflare infrastructure uses [Terraform Cloud](https://app.terraform.io) for remote state with locking and encryption. See [`infra/cloudflare/README.md`](../cloudflare/README.md) for setup instructions.
 
 ---
 
@@ -445,4 +402,4 @@ sudo certbot renew --force-renewal
 | `Makefile` | Convenience commands |
 | `scripts/app-server.sh` | App server bootstrap script |
 | `scripts/gpu-server.sh` | GPU server bootstrap script |
-| `backend-bootstrap/` | S3 + DynamoDB for remote state |
+| `backend-bootstrap/` | S3 + DynamoDB for remote state (deprecated — see `infra/cloudflare/`) |
