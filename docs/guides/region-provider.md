@@ -20,11 +20,11 @@ The platform uses **declarative region plugins** — JSON configuration that des
 │                         PLATFORM                                    │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  packages/region-provider/regions/                                  │
+│  @opuspopuli/regions npm package (from opuspopuli-regions repo)     │
 │  ├── federal.json    (always loaded — federal campaign finance)     │
 │  ├── california.json (local plugin — state-specific civic data)     │
 │  └── texas.json, ... (other regions)                                │
-│       ↓ auto-discovered and synced to DB at startup                 │
+│       ↓ discovered via getRegionsDir(), synced to DB at startup     │
 │                                                                     │
 │  Database (region_plugins table)                                    │
 │  └── DeclarativeRegionConfig JSON + enabled flag + sync state       │
@@ -67,7 +67,7 @@ The platform uses **declarative region plugins** — JSON configuration that des
 
 ## How It Works
 
-1. **Config Discovery**: `RegionDomainService.onModuleInit()` auto-discovers JSON files from `packages/region-provider/regions/` and upserts them into the `region_plugins` table (config changes propagate on every restart; the `enabled` flag is never overwritten)
+1. **Config Discovery**: `RegionDomainService.onModuleInit()` discovers JSON config files from the `@opuspopuli/regions` npm package (via `getRegionsDir()`) and upserts them into the `region_plugins` table (config changes propagate on every restart; the `enabled` flag is never overwritten)
 2. **Local Config Read**: The service reads the enabled local region's `stateCode` (e.g., `"CA"`) from the database
 3. **Placeholder Resolution**: Federal config `${stateCode}` placeholders are resolved using `resolveConfigPlaceholders()` (e.g., `contributor_state: "${stateCode}"` becomes `contributor_state: "CA"`)
 4. **Federal Plugin Loading**: `PluginLoaderService.loadFederalPlugin()` creates a `DeclarativeRegionPlugin` from the resolved federal config and registers it in the `federal` slot
