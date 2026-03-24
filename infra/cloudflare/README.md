@@ -23,6 +23,7 @@ The dev environment creates no cloud resources — everything runs locally via `
    - Account > Cloudflare Tunnel > Edit
    - Account > R2 > Edit (prod only)
 4. **Terraform** >= 1.0 installed
+5. **Terraform Cloud account** (free tier — up to 500 managed resources)
 
 ### Gather Your IDs
 
@@ -30,27 +31,43 @@ From the Cloudflare dashboard:
 - **Account ID**: Overview page (right sidebar)
 - **Zone ID**: Domain overview page (right sidebar)
 
+## Terraform Cloud Setup
+
+State is stored remotely in [Terraform Cloud](https://app.terraform.io) with locking, encryption, and run history. No AWS resources required.
+
+```bash
+# 1. Create a free Terraform Cloud account at https://app.terraform.io
+# 2. Create an organization named "opuspopuli"
+# 3. Log in from CLI
+terraform login
+
+# 4. Initialize — this migrates local state to Terraform Cloud
+cd infra/cloudflare
+terraform init
+```
+
+In Terraform Cloud, create workspaces tagged with `opuspopuli` and `cloudflare` for each environment (e.g., `opuspopuli-prod`, `opuspopuli-uat`). Set variables in each workspace:
+
+| Variable | Category | Sensitive |
+|----------|----------|-----------|
+| `cloudflare_api_token` | Terraform | Yes |
+| `cloudflare_account_id` | Terraform | No |
+| `cloudflare_zone_id` | Terraform | No |
+| `domain_name` | Terraform | No |
+
 ## Quick Start
 
 ```bash
 cd infra/cloudflare
 
-# Initialize Terraform
+# Initialize (connects to Terraform Cloud)
 terraform init
 
-# Create and select a workspace
-terraform workspace new prod        # or: uat, dev
-terraform workspace select prod
-
 # Apply with environment-specific variables
-terraform apply -var-file=environments/prod.tfvars \
-  -var="cloudflare_api_token=YOUR_TOKEN" \
-  -var="cloudflare_account_id=YOUR_ACCOUNT_ID" \
-  -var="cloudflare_zone_id=YOUR_ZONE_ID" \
-  -var="domain_name=yourdomain.org"
+terraform apply -var-file=environments/prod.tfvars
 ```
 
-> **Tip:** Store sensitive variables in a `terraform.tfvars` file (gitignored) or use environment variables (`TF_VAR_cloudflare_api_token`).
+> **Tip:** Sensitive variables (API tokens) should be set in Terraform Cloud workspace settings rather than passed on the command line or stored in local files.
 
 ## Environments
 
@@ -114,7 +131,7 @@ docker compose -f docker-compose-prod.yml up -d --build
 
 ```
 infra/cloudflare/
-├── main.tf          # Provider config, workspace-aware naming
+├── main.tf          # Provider config, Terraform Cloud backend, workspace-aware naming
 ├── variables.tf     # Input variables
 ├── outputs.tf       # Tunnel token, URLs, next steps
 ├── tunnel.tf        # Cloudflare Tunnel + ingress rules

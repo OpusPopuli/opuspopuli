@@ -139,7 +139,7 @@ INTERNET --> Nginx/Caddy (port 443, TLS) --> localhost:8080 (API Gateway)
 | **UAT** | `docker-compose-uat.yml` + Tunnel | Supabase Cloud (free tier) + local PG | Cloudflare Tunnel | Workers preview | ~$0 |
 | **Prod** | `docker-compose-prod.yml` + Tunnel | Supabase Cloud (Pro) + local PG | Tunnel + Workers | Workers (custom domain) | ~$100-150 |
 
-The Terraform infrastructure (`infra/cloudflare/`) uses workspaces for state isolation. Each environment gets its own `tfvars` file with feature toggles:
+The Terraform infrastructure (`infra/cloudflare/`) uses [Terraform Cloud](https://app.terraform.io) for remote state with locking and encryption. Workspaces provide state isolation per environment, each with its own `tfvars` file and feature toggles:
 
 ```bash
 terraform workspace select prod

@@ -28,22 +28,8 @@
 terraform {
   required_version = ">= 1.0"
 
-  # ---------------------------------------------------------------------------
-  # Remote State Backend (S3 + DynamoDB)
-  # ---------------------------------------------------------------------------
-  # To enable remote state:
-  #   1. cd backend-bootstrap && terraform init && terraform apply
-  #   2. Uncomment the backend block below
-  #   3. Replace ACCOUNT_ID with your AWS account ID from bootstrap output
-  #   4. Run: terraform init -migrate-state
-  # ---------------------------------------------------------------------------
-  # backend "s3" {
-  #   bucket         = "opuspopuli-terraform-state-ACCOUNT_ID"
-  #   key            = "env/dev/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   encrypt        = true
-  #   dynamodb_table = "opuspopuli-terraform-locks"
-  # }
+  # NOTE: This AWS infrastructure is deprecated. Remote state for the active
+  # Cloudflare infrastructure uses Terraform Cloud — see infra/cloudflare/.
 
   required_providers {
     aws = {
