@@ -42,6 +42,10 @@ export interface LogEntry {
   context?: string;
   /** Request ID for tracing */
   requestId?: string;
+  /** OpenTelemetry trace ID for distributed tracing */
+  traceId?: string;
+  /** OpenTelemetry span ID for distributed tracing */
+  spanId?: string;
   /** User ID if authenticated */
   userId?: string;
   /** Additional metadata */

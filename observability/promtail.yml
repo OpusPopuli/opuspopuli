@@ -46,10 +46,12 @@ scrape_configs:
             message: message
             context: context
             timestamp: timestamp
+            traceId: traceId
       # If JSON parsing fails, use the raw log
       - output:
           source: message
-      # Add log level as label if parsed
+      # Add log level and trace ID as labels if parsed
       - labels:
           level:
           context:
+          traceId:

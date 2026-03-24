@@ -5,6 +5,7 @@ import {
 import type { Response } from 'express';
 import { HmacSignerService } from 'src/common/services/hmac-signer.service';
 import { MetricsService } from 'src/common/metrics';
+import { context as otelContext, propagation } from '@opentelemetry/api';
 
 /**
  * Gateway context passed to data source
@@ -79,6 +80,13 @@ export class HmacRemoteGraphQLDataSource extends RemoteGraphQLDataSource<Gateway
     // Track request start time for latency metrics
     if (this.metricsService && request) {
       this.requestStartTimes.set(request, process.hrtime.bigint());
+    }
+
+    // Propagate W3C trace context (traceparent/tracestate) to subgraph services
+    const traceHeaders: Record<string, string> = {};
+    propagation.inject(otelContext.active(), traceHeaders);
+    for (const [key, value] of Object.entries(traceHeaders)) {
+      request.http?.headers.set(key, value);
     }
 
     // Forward authenticated user to microservices
