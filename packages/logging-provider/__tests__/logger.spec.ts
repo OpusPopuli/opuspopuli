@@ -204,6 +204,36 @@ describe("StructuredLogger", () => {
       expect(output).toHaveProperty("requestId", "req-123");
     });
 
+    it("should include traceId and spanId when OTel span is active", () => {
+      // Mock @opentelemetry/api before re-requiring the logger module
+      jest.resetModules();
+
+      jest.doMock("@opentelemetry/api", () => ({
+        trace: {
+          getActiveSpan: () => ({
+            spanContext: () => ({
+              traceId: "abc123def456",
+              spanId: "span789",
+            }),
+          }),
+        },
+      }));
+
+      const { createLogger: createLoggerFresh } =
+        require("../src/logger") as typeof import("../src/logger");
+
+      const logger = createLoggerFresh({
+        serviceName: "test-service",
+        format: "json",
+      });
+
+      logger.info("traced message");
+
+      const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
+      expect(output).toHaveProperty("traceId", "abc123def456");
+      expect(output).toHaveProperty("spanId", "span789");
+    });
+
     it("should include userId when set", () => {
       const logger = createLogger({
         serviceName: "test-service",
@@ -378,7 +408,10 @@ describe("StructuredLogger", () => {
         format: "json",
       });
 
-      logger.info("request completed", undefined, { durationMs: 150, path: "/api" });
+      logger.info("request completed", undefined, {
+        durationMs: 150,
+        path: "/api",
+      });
 
       const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
       expect(output.durationMs).toBe(150);
@@ -404,7 +437,10 @@ describe("StructuredLogger", () => {
         format: "json",
       });
 
-      logger.info("request completed", undefined, { durationMs: "invalid", other: "value" });
+      logger.info("request completed", undefined, {
+        durationMs: "invalid",
+        other: "value",
+      });
 
       const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
       expect(output.durationMs).toBeUndefined();
@@ -474,7 +510,9 @@ describe("StructuredLogger", () => {
         redactPii: true,
       });
 
-      logger.info("Token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U");
+      logger.info(
+        "Token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+      );
 
       const output = JSON.parse(consoleSpy.log.mock.calls[0][0]);
       expect(output.message).toBe("Token: [JWT_REDACTED]");

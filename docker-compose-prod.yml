@@ -49,6 +49,8 @@ x-backend-env: &backend-env
   GATEWAY_CLIENT_ID: api-gateway
   GATEWAY_HMAC_SECRET: ${GATEWAY_HMAC_SECRET}
   API_KEYS: ${API_KEYS}
+  # OpenTelemetry distributed tracing
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
   # Secrets via env (not AWS)
   SECRETS_PROVIDER: env
   # Email
@@ -392,6 +394,25 @@ services:
           cpus: '0.05'
           memory: 64M
 
+  tempo:
+    image: grafana/tempo:2.7.2
+    container_name: opuspopuli-prod-tempo
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./observability/tempo.yml:/etc/tempo.yml:ro
+      - tempo-data:/var/tempo
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+
   grafana:
     image: grafana/grafana:10.4.1
     container_name: opuspopuli-prod-grafana
@@ -405,6 +426,7 @@ services:
     depends_on:
       - prometheus
       - loki
+      - tempo
     networks:
       - opuspopuli-prod
     restart: unless-stopped
@@ -426,4 +448,5 @@ volumes:
   redis-data:
   prometheus-data:
   loki-data:
+  tempo-data:
   grafana-data:
