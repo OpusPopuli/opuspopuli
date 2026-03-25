@@ -505,13 +505,37 @@ services:
           cpus: '0.05'
           memory: 64M
 
-  # Grafana - Metrics and logs visualization
+  # Tempo - Distributed tracing backend (receives OTLP traces)
+  tempo:
+    image: grafana/tempo:2.7.2
+    container_name: opuspopuli-tempo
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./observability/tempo.yml:/etc/tempo.yml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "4318:4318"    # OTLP HTTP receiver
+      - "3200:3200"    # Tempo query API
+    networks:
+      - opuspopuli-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+
+  # Grafana - Metrics, logs, and traces visualization
   grafana:
     image: grafana/grafana:10.4.1
     container_name: opuspopuli-grafana
     depends_on:
       - prometheus
       - loki
+      - tempo
     ports:
       - "3101:3000"
     environment:
@@ -550,5 +574,7 @@ volumes:
     name: opuspopuli-prometheus-data
   loki-data:
     name: opuspopuli-loki-data
+  tempo-data:
+    name: opuspopuli-tempo-data
   grafana-data:
     name: opuspopuli-grafana-data

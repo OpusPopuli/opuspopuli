@@ -9,6 +9,23 @@ import {
 } from "./types";
 
 /**
+ * Try to load @opentelemetry/api for trace context injection.
+ * Optional — logs work without OTel, just without traceId/spanId.
+ */
+let getActiveSpan:
+  | (() =>
+      | { spanContext: () => { traceId: string; spanId: string } }
+      | undefined)
+  | undefined;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const api = require("@opentelemetry/api");
+  getActiveSpan = () => api.trace.getActiveSpan();
+} catch {
+  // OTel not installed — trace context will not be injected
+}
+
+/**
  * Log level priority for filtering
  */
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
@@ -246,6 +263,16 @@ export class StructuredLogger implements ILogger, LoggerService {
       entry.requestId = this.requestId;
     }
 
+    // Inject OpenTelemetry trace context if available
+    if (getActiveSpan) {
+      const span = getActiveSpan();
+      if (span) {
+        const spanContext = span.spanContext();
+        entry.traceId = spanContext.traceId;
+        entry.spanId = spanContext.spanId;
+      }
+    }
+
     if (this.userId) {
       entry.userId = this.userId;
     }
@@ -260,7 +287,10 @@ export class StructuredLogger implements ILogger, LoggerService {
   /**
    * Process metadata and extract special fields to top-level
    */
-  private processMetadata(entry: LogEntry, meta: Record<string, unknown>): void {
+  private processMetadata(
+    entry: LogEntry,
+    meta: Record<string, unknown>,
+  ): void {
     // Extract durationMs to top-level field for CloudWatch Logs Insights queries
     if ("durationMs" in meta && typeof meta.durationMs === "number") {
       entry.durationMs = meta.durationMs;
