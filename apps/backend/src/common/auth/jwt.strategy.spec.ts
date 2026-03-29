@@ -94,11 +94,6 @@ describe('JwtStrategy', () => {
   let strategy: JwtStrategy;
   let configService: ConfigService;
 
-  const mockAuthConfig = {
-    userPoolId: 'us-east-1_testPool',
-    clientId: 'test-client-id',
-  };
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -107,10 +102,8 @@ describe('JwtStrategy', () => {
           useValue: {
             get: jest.fn((key: string) => {
               switch (key) {
-                case 'auth':
-                  return mockAuthConfig;
-                case 'region':
-                  return 'us-east-1';
+                case 'AUTH_JWT_SECRET':
+                  return 'test-jwt-secret-at-least-32-characters-long';
                 default:
                   return undefined;
               }
@@ -123,33 +116,32 @@ describe('JwtStrategy', () => {
     configService = module.get<ConfigService>(ConfigService);
   });
 
-  it('should throw error when auth config is missing', () => {
+  it('should throw error when AUTH_JWT_SECRET is missing', () => {
     const badConfigService = {
       get: jest.fn().mockReturnValue(undefined),
     } as unknown as ConfigService;
 
     expect(() => new JwtStrategy(badConfigService)).toThrow(
-      'Authentication config is missing',
+      'AUTH_JWT_SECRET is required for Supabase JWT validation',
     );
   });
 
   describe('validate', () => {
     beforeEach(() => {
-      // Mock passportJwtSecret to avoid actual JWKS calls
-      jest.mock('jwks-rsa', () => ({
-        passportJwtSecret: jest.fn().mockReturnValue(() => 'mock-secret'),
-      }));
-
       strategy = new JwtStrategy(configService);
     });
 
-    it('should transform JWT payload to ILogin', async () => {
+    it('should transform Supabase JWT payload to ILogin', async () => {
       const payload = {
         sub: 'user-uuid-123',
         email: 'test@example.com',
-        'cognito:groups': ['Admin', 'User'],
-        'custom:department': 'Engineering',
-        'custom:clearance': 'TopSecret',
+        app_metadata: {
+          roles: ['Admin', 'User'],
+        },
+        user_metadata: {
+          department: 'Engineering',
+          clearance: 'TopSecret',
+        },
       };
 
       const result = await strategy.validate(payload);
@@ -163,12 +155,10 @@ describe('JwtStrategy', () => {
       });
     });
 
-    it('should handle missing cognito:groups with empty array', async () => {
+    it('should handle missing app_metadata with empty roles', async () => {
       const payload = {
         sub: 'user-uuid-123',
         email: 'test@example.com',
-        'custom:department': 'Engineering',
-        'custom:clearance': 'Secret',
       };
 
       const result = await strategy.validate(payload);
@@ -176,7 +166,7 @@ describe('JwtStrategy', () => {
       expect(result.roles).toEqual([]);
     });
 
-    it('should handle undefined custom attributes', async () => {
+    it('should handle missing user_metadata with empty strings', async () => {
       const payload = {
         sub: 'user-uuid-123',
         email: 'test@example.com',
@@ -188,8 +178,8 @@ describe('JwtStrategy', () => {
         id: 'user-uuid-123',
         email: 'test@example.com',
         roles: [],
-        department: undefined,
-        clearance: undefined,
+        department: '',
+        clearance: '',
       });
     });
   });

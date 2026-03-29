@@ -62,10 +62,23 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    // SECURITY: Use request.user set by AuthMiddleware after JWT validation
-    // Never trust request.headers.user as it can be spoofed
-    // @see https://github.com/OpusPopuli/opuspopuli/issues/183
-    const user: ILogin | undefined = request.user;
+    // SECURITY: Trust request.user from AuthMiddleware (JWT via Passport.js),
+    // OR from the gateway's forwarded user header when HMAC-authenticated.
+    // The HMAC signature proves the request came from our gateway, which
+    // already validated the user's JWT before forwarding.
+    let user: ILogin | undefined = request?.user;
+    if (
+      !user &&
+      request?.headers?.['x-hmac-auth'] &&
+      request?.headers?.['user']
+    ) {
+      try {
+        user = JSON.parse(request.headers['user'] as string);
+        if (request) request.user = user;
+      } catch {
+        // Invalid user header — fall through to denial
+      }
+    }
 
     if (user && isLoggedIn(user)) {
       const hasRole = requiredRoles.some((role) => user.roles?.includes(role));

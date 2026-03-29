@@ -1,0 +1,696 @@
+{
+  "info": {
+    "_postman_id": "opus-populi-collection",
+    "name": "OpusPopuli Backend",
+    "description": "GraphQL API collection for OpusPopuli backend microservices.\n\nServices:\n- API Gateway (:3000) - federated gateway\n- Users (:3001) - auth, profiles, activity\n- Documents (:3002) - file management, OCR, analysis\n- Knowledge (:3003) - semantic search, RAG\n- Region (:3004) - civic data, scraping pipeline",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// CSRF double-submit cookie + Apollo preflight",
+          "// Run 'Seed CSRF Token' request first to populate csrf_token env var",
+          "const csrfToken = pm.environment.get('csrf_token');",
+          "if (pm.request.method === 'POST') {",
+          "    pm.request.headers.upsert({ key: 'apollo-require-preflight', value: 'true' });",
+          "    if (csrfToken) {",
+          "        pm.request.headers.upsert({ key: 'x-csrf-token', value: csrfToken });",
+          "        pm.request.headers.upsert({ key: 'Cookie', value: 'csrf-token=' + csrfToken });",
+          "    }",
+          "}"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Checks",
+      "item": [
+        {
+          "name": "Users - Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{users_url}}/health",
+              "host": ["{{users_url}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "Documents - Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{documents_url}}/health",
+              "host": ["{{documents_url}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "Knowledge - Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{knowledge_url}}/health",
+              "host": ["{{knowledge_url}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "Region - Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{region_url}}/health",
+              "host": ["{{region_url}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "API Gateway - Health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway_url}}/health",
+              "host": ["{{gateway_url}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "API Gateway - Seed CSRF Token (run first!)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Try multiple approaches to extract the CSRF token",
+                  "",
+                  "// Approach 1: Read from Postman cookie jar",
+                  "var token = pm.cookies.get('csrf-token');",
+                  "",
+                  "// Approach 2: Parse Set-Cookie headers manually",
+                  "if (!token) {",
+                  "    pm.response.headers.each(function(header) {",
+                  "        if (header.key.toLowerCase() === 'set-cookie') {",
+                  "            var match = header.value.match(/csrf-token=([^;]+)/);",
+                  "            if (match) { token = match[1]; }",
+                  "        }",
+                  "    });",
+                  "}",
+                  "",
+                  "// Approach 3: Get raw response headers as string",
+                  "if (!token) {",
+                  "    var raw = pm.response.headers.toString();",
+                  "    var match = raw.match(/csrf-token=([0-9a-f-]{36})/);",
+                  "    if (match) { token = match[1]; }",
+                  "}",
+                  "",
+                  "if (token && token.indexOf('{') === -1) {",
+                  "    pm.environment.set('csrf_token', token);",
+                  "    console.log('CSRF token saved: ' + token);",
+                  "} else {",
+                  "    console.log('WARNING: Could not extract CSRF token. Headers:', pm.response.headers.toString());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "apollo-require-preflight", "value": "true" }],
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Prompt Service - Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{prompt_service_url}}/health",
+              "host": ["{{prompt_service_url}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Authentication flows.\n\nFor UAT testing, use 'Login via Supabase Auth' to get a JWT, then all subsequent requests use it automatically via the collection's Bearer auth.\n\nSetup: Run 'Seed CSRF Token' first, then 'Login via Supabase Auth'.",
+      "item": [
+        {
+          "name": "Login via Supabase Auth (run this first!)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.access_token) {",
+                  "    pm.environment.set('access_token', response.access_token);",
+                  "    console.log('Access token saved to environment');",
+                  "} else {",
+                  "    console.log('Login failed:', JSON.stringify(response));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "apikey", "value": "{{supabase_anon_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{supabase_url}}/auth/v1/token?grant_type=password",
+              "host": ["{{supabase_url}}"],
+              "path": ["auth", "v1", "token"],
+              "query": [{ "key": "grant_type", "value": "password" }]
+            }
+          }
+        },
+        {
+          "name": "Register User (GraphQL)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation RegisterUser($input: RegisterUserDto!) {\n  registerUser(registerUserDto: $input)\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"{{test_email}}\",\n    \"username\": \"testuser\",\n    \"password\": \"{{test_password}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Login User (GraphQL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.data && response.data.loginUser) {",
+                  "    pm.environment.set('access_token', response.data.loginUser.accessToken);",
+                  "    console.log('Access token saved to environment');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation LoginUser($input: LoginUserDto!) {\n  loginUser(loginUserDto: $input) {\n    accessToken\n    refreshToken\n    expiresIn\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"{{test_email}}\",\n    \"password\": \"{{test_password}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Send Magic Link",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SendMagicLink($input: SendMagicLinkDto!) {\n  sendMagicLink(input: $input)\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"{{test_email}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation {\n  logout\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get Users (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  getUsers {\n    id\n    email\n    firstName\n    lastName\n    role\n    createdAt\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Find User by Email",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query FindUser($email: String!) {\n  findUser(email: $email) {\n    id\n    email\n    firstName\n    lastName\n    role\n  }\n}",
+                "variables": "{\n  \"email\": \"{{test_email}}\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Profile",
+      "item": [
+        {
+          "name": "My Profile",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  myProfile {\n    userId\n    displayName\n    bio\n    avatarUrl\n    region\n    timezone\n    language\n    updatedAt\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Profile Completion",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  myProfileCompletion {\n    completionPercentage\n    completedSteps\n    totalSteps\n    missingFields\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "My Addresses",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  myAddresses {\n    id\n    street\n    city\n    state\n    zipCode\n    country\n    isPrimary\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Region",
+      "item": [
+        {
+          "name": "Region Info",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  regionInfo {\n    id\n    name\n    description\n    timezone\n    dataSourceUrls\n    supportedDataTypes\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Propositions (Paginated)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Propositions($skip: Int!, $take: Int!) {\n  propositions(skip: $skip, take: $take) {\n    items {\n      id\n      title\n      status\n      dataType\n      sourceSystem\n    }\n    total\n    hasMore\n  }\n}",
+                "variables": "{\n  \"skip\": 0,\n  \"take\": 10\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Representatives (Paginated)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Representatives($skip: Int!, $take: Int!, $chamber: String) {\n  representatives(skip: $skip, take: $take, chamber: $chamber) {\n    items {\n      id\n      name\n      party\n      chamber\n      district\n    }\n    total\n    hasMore\n  }\n}",
+                "variables": "{\n  \"skip\": 0,\n  \"take\": 10\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Meetings (Paginated)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Meetings($skip: Int!, $take: Int!) {\n  meetings(skip: $skip, take: $take) {\n    items {\n      id\n      title\n      date\n      location\n    }\n    total\n    hasMore\n  }\n}",
+                "variables": "{\n  \"skip\": 0,\n  \"take\": 10\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Committees (Campaign Finance)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Committees($skip: Int!, $take: Int!) {\n  committees(skip: $skip, take: $take) {\n    items {\n      id\n      name\n      type\n      sourceSystem\n    }\n    total\n    hasMore\n  }\n}",
+                "variables": "{\n  \"skip\": 0,\n  \"take\": 10\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Contributions (Campaign Finance)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Contributions($skip: Int!, $take: Int!) {\n  contributions(skip: $skip, take: $take) {\n    items {\n      id\n      amount\n      date\n      committeeId\n      sourceSystem\n    }\n    total\n    hasMore\n  }\n}",
+                "variables": "{\n  \"skip\": 0,\n  \"take\": 10\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Sync Region Data (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation {\n  syncRegionData {\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "List Files",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  listFiles {\n    name\n    size\n    contentType\n    createdAt\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Analyze Document",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation AnalyzeDocument($input: AnalyzeDocumentInput!) {\n  analyzeDocument(input: $input) {\n    documentId\n    analysisType\n    summary\n    confidence\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"documentId\": \"your-document-id\",\n    \"analysisType\": \"general\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Petition Map Locations",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  petitionMapLocations {\n    locations {\n      documentId\n      latitude\n      longitude\n      title\n    }\n    total\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Knowledge",
+      "item": [
+        {
+          "name": "Search Text",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query SearchText($input: SearchInput!) {\n  searchText(input: $input) {\n    items {\n      content\n      score\n      metadata\n    }\n    total\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"query\": \"California water policy\",\n    \"limit\": 5\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Answer Query (RAG)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation AnswerQuery($input: QueryInput!) {\n  answerQuery(input: $input)\n}",
+                "variables": "{\n  \"input\": {\n    \"query\": \"What are the latest California ballot propositions?\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Activity",
+      "item": [
+        {
+          "name": "My Activity Log",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query MyActivityLog($limit: Int!, $offset: Int!) {\n  myActivityLog(limit: $limit, offset: $offset) {\n    items {\n      action\n      details\n      createdAt\n      ipAddress\n    }\n    total\n  }\n}",
+                "variables": "{\n  \"limit\": 20,\n  \"offset\": 0\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "My Sessions",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  mySessions {\n    items {\n      id\n      userAgent\n      ipAddress\n      createdAt\n      lastActiveAt\n      isRevoked\n    }\n    total\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
