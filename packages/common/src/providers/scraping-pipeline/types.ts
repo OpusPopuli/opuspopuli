@@ -216,6 +216,8 @@ export interface ApiSourceConfig {
   resultsPath?: string;
   /** Static query parameters appended to every request */
   queryParams?: Record<string, string>;
+  /** Field name mappings: API response field → domain model field (e.g., "committee_id" → "committeeId") */
+  fieldMappings?: Record<string, string>;
 }
 
 /**

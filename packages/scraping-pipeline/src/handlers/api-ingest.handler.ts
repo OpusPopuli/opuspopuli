@@ -21,8 +21,8 @@ import { DomainMapperService } from "../mapping/domain-mapper.service.js";
 /** Maximum pages to fetch in a single pipeline run (safety limit) */
 const MAX_PAGES = 10;
 
-/** Request timeout in milliseconds */
-const REQUEST_TIMEOUT_MS = 60_000;
+/** Request timeout in milliseconds (FEC API can take 1-40s per page) */
+const REQUEST_TIMEOUT_MS = 120_000;
 
 /** Delay between paginated requests in milliseconds */
 const PAGE_DELAY_MS = 250;
@@ -58,7 +58,14 @@ export class ApiIngestHandler {
         `Fetched ${allItems.length} items from API ${source.url}`,
       );
 
-      // 3. Inject sourceSystem based on category
+      // 3. Remap field names (e.g., FEC snake_case → domain camelCase)
+      if (api.fieldMappings) {
+        for (const item of allItems) {
+          this.remapFields(item, api.fieldMappings);
+        }
+      }
+
+      // 4. Inject sourceSystem based on category
       const sourceSystem = this.inferSourceSystem(source);
       if (sourceSystem) {
         for (const item of allItems) {
@@ -359,6 +366,22 @@ export class ApiIngestHandler {
     }
     if (cat.includes("fec")) return "fec";
     return undefined;
+  }
+
+  /**
+   * Remap field names on a record using a mapping dictionary.
+   * Renames keys in-place (e.g., "committee_id" → "committeeId").
+   */
+  private remapFields(
+    record: Record<string, unknown>,
+    mappings: Record<string, string>,
+  ): void {
+    for (const [sourceKey, targetKey] of Object.entries(mappings)) {
+      if (sourceKey in record && sourceKey !== targetKey) {
+        record[targetKey] = record[sourceKey];
+        delete record[sourceKey];
+      }
+    }
   }
 
   private delay(ms: number): Promise<void> {
