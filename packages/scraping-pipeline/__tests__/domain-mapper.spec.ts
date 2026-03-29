@@ -184,8 +184,39 @@ describe("DomainMapperService", () => {
         externalId: "ca-assembly-30",
         name: "Jane Doe",
         district: "District 30",
-        party: "Democrat",
+        party: "Democratic",
       });
+    });
+
+    it("should normalize party abbreviations", () => {
+      const testCases = [
+        { input: "(D)", expected: "Democratic" },
+        { input: "(R)", expected: "Republican" },
+        { input: "D", expected: "Democratic" },
+        { input: "R", expected: "Republican" },
+        { input: "Democrat", expected: "Democratic" },
+        { input: "Republican", expected: "Republican" },
+        { input: "Independent", expected: "Independent" },
+        { input: "I", expected: "Independent" },
+        { input: "Green", expected: "Green" },
+      ];
+
+      for (const { input, expected } of testCases) {
+        const result = mapper.map(
+          createRawResult({
+            items: [
+              {
+                externalId: "test-1",
+                name: "Test Rep",
+                district: "1",
+                party: input,
+              },
+            ],
+          }),
+          createSource({ dataType: DataType.REPRESENTATIVES }),
+        );
+        expect(result.items[0]).toMatchObject({ party: expected });
+      }
     });
 
     it("should inject category as chamber", () => {

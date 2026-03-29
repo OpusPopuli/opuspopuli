@@ -27,7 +27,7 @@
   "dependencies": {
     "@opuspopuli/common": "workspace:*",
     "@opuspopuli/config-provider": "workspace:*",
-    "@opuspopuli/regions": "^1.0.7"
+    "@opuspopuli/regions": "^1.0.10"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",
