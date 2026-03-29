@@ -48,7 +48,7 @@ x-backend-env: &backend-env
   SMTP_HOST: inbucket
   SMTP_PORT: "2500"
   SMTP_ADMIN_EMAIL: noreply@opuspopuli.local
-  FRONTEND_URL: http://localhost:3200
+  FRONTEND_URL: http://localhost:3300
 
 services:
   db-migrate:
@@ -160,6 +160,9 @@ services:
       # LLM for RAG queries during manual testing
       LLM_URL: http://host.docker.internal:11434
       LLM_MODEL: qwen3.5:9b
+      # AI Prompt Service for proprietary prompt templates
+      PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
+      PROMPT_SERVICE_API_KEY: dev-key-1
     ports:
       - "3003:8080"
     depends_on:
@@ -173,6 +176,7 @@ services:
       start_period: 30s
     networks:
       - opuspopuli-network
+      - prompt-service_default
     restart: unless-stopped
     deploy:
       resources:
@@ -198,6 +202,11 @@ services:
       # LLM for AI-powered structural analysis during data scraping
       LLM_URL: http://host.docker.internal:11434
       LLM_MODEL: qwen3.5:9b
+      # AI Prompt Service for proprietary prompt templates
+      PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
+      # FEC API key for federal campaign finance data
+      FEC_API_KEY: ${FEC_API_KEY:-}
+      PROMPT_SERVICE_API_KEY: dev-key-1
       # Disable automatic sync scheduler — trigger manually via GraphQL Playground
       REGION_SYNC_ENABLED: "false"
     ports:
@@ -213,15 +222,16 @@ services:
       start_period: 30s
     networks:
       - opuspopuli-network
+      - prompt-service_default
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 256M
+          cpus: '1.0'
+          memory: 2048M
         reservations:
-          cpus: '0.1'
-          memory: 128M
+          cpus: '0.25'
+          memory: 256M
 
   api:
     build:
@@ -264,3 +274,7 @@ services:
         reservations:
           cpus: '0.1'
           memory: 128M
+
+networks:
+  prompt-service_default:
+    external: true

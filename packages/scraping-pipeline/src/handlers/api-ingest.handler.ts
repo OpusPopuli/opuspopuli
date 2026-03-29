@@ -116,7 +116,7 @@ export class ApiIngestHandler {
   ): Promise<Record<string, unknown>[]> {
     const allItems: Record<string, unknown>[] = [];
     let page = 0;
-    let cursor: string | undefined;
+    let cursorParams: Record<string, string> | undefined;
 
     while (page < MAX_PAGES) {
       const { items, body } = await this.fetchPage(
@@ -124,7 +124,7 @@ export class ApiIngestHandler {
         api,
         apiKey,
         page,
-        cursor,
+        cursorParams,
       );
 
       if (items.length === 0) {
@@ -135,9 +135,9 @@ export class ApiIngestHandler {
       allItems.push(...items);
       page++;
 
-      const nextCursor = this.shouldContinue(api, items, body);
-      if (nextCursor === false) break;
-      cursor = nextCursor || undefined;
+      const nextCursor = this.extractCursorParams(api, items, body);
+      if (!nextCursor) break;
+      cursorParams = nextCursor;
 
       await this.delay(PAGE_DELAY_MS);
     }
@@ -159,12 +159,12 @@ export class ApiIngestHandler {
     api: ApiSourceConfig,
     apiKey: string | undefined,
     page: number,
-    cursor: string | undefined,
+    cursorParams: Record<string, string> | undefined,
   ): Promise<{
     items: Record<string, unknown>[];
     body: Record<string, unknown>;
   }> {
-    const url = this.buildPageUrl(baseUrl, api, apiKey, page, cursor);
+    const url = this.buildPageUrl(baseUrl, api, apiKey, page, cursorParams);
     this.logger.debug(`Fetching page ${page + 1}: ${url.toString()}`);
 
     const response = await fetch(url.toString(), {
@@ -187,25 +187,24 @@ export class ApiIngestHandler {
   }
 
   /**
-   * Determine whether to continue pagination.
-   * Returns false to stop, or the cursor string for cursor-based pagination.
+   * Extract cursor parameters for the next page.
+   * Returns undefined to stop, or a Record of all cursor params needed.
    */
-  private shouldContinue(
+  private extractCursorParams(
     api: ApiSourceConfig,
     items: Record<string, unknown>[],
     body: Record<string, unknown>,
-  ): string | false {
+  ): Record<string, string> | undefined {
     const pagination = api.pagination;
-    if (!pagination) return false;
+    if (!pagination) return undefined;
 
     if (pagination.type === "cursor") {
-      const cursor = this.extractCursor(body);
-      return cursor || false;
+      return this.extractAllCursorValues(body);
     }
 
     // For offset/page pagination, stop if we got fewer items than the limit
     const limit = pagination.limit ?? 100;
-    return items.length < limit ? false : "";
+    return items.length < limit ? undefined : {};
   }
 
   /**
@@ -216,7 +215,7 @@ export class ApiIngestHandler {
     api: ApiSourceConfig,
     apiKey: string | undefined,
     page: number,
-    cursor: string | undefined,
+    cursorParams: Record<string, string> | undefined,
   ): URL {
     const url = new URL(baseUrl);
 
@@ -234,34 +233,46 @@ export class ApiIngestHandler {
 
     // Add pagination parameters
     if (api.pagination) {
-      const { type, pageParam, limitParam, limit } = api.pagination;
-      const effectiveLimit = limit ?? 100;
-
-      // Always send the limit/per_page parameter
-      url.searchParams.set(limitParam ?? "per_page", String(effectiveLimit));
-
-      switch (type) {
-        case "offset": {
-          const offset = page * effectiveLimit;
-          url.searchParams.set(pageParam ?? "offset", String(offset));
-          break;
-        }
-        case "page": {
-          if (page > 0) {
-            url.searchParams.set(pageParam ?? "page", String(page + 1));
-          }
-          break;
-        }
-        case "cursor": {
-          if (cursor) {
-            url.searchParams.set("last_index", cursor);
-          }
-          break;
-        }
-      }
+      this.applyPaginationParams(url, api.pagination, page, cursorParams);
     }
 
     return url;
+  }
+
+  /**
+   * Apply pagination-specific query parameters to a URL.
+   */
+  private applyPaginationParams(
+    url: URL,
+    pagination: NonNullable<ApiSourceConfig["pagination"]>,
+    page: number,
+    cursorParams: Record<string, string> | undefined,
+  ): void {
+    const { type, pageParam, limitParam, limit } = pagination;
+    const effectiveLimit = limit ?? 100;
+
+    url.searchParams.set(limitParam ?? "per_page", String(effectiveLimit));
+
+    switch (type) {
+      case "offset":
+        url.searchParams.set(
+          pageParam ?? "offset",
+          String(page * effectiveLimit),
+        );
+        break;
+      case "page":
+        if (page > 0) {
+          url.searchParams.set(pageParam ?? "page", String(page + 1));
+        }
+        break;
+      case "cursor":
+        if (cursorParams) {
+          for (const [key, value] of Object.entries(cursorParams)) {
+            url.searchParams.set(key, value);
+          }
+        }
+        break;
+    }
   }
 
   /**
@@ -293,31 +304,45 @@ export class ApiIngestHandler {
   }
 
   /**
-   * Extract cursor value for next page from API response.
-   * Handles FEC-style pagination: { pagination: { last_indexes: { last_index: "..." } } }
+   * Extract all cursor values for next page from API response.
+   * FEC-style: { pagination: { last_indexes: { last_index: "...", sort_null_only: true, last_X: "..." } } }
+   * Sends ALL values from last_indexes as query params — FEC requires them all.
    */
-  private extractCursor(body: Record<string, unknown>): string | undefined {
+  private extractAllCursorValues(
+    body: Record<string, unknown>,
+  ): Record<string, string> | undefined {
     const pagination = body["pagination"] as
       | Record<string, unknown>
       | undefined;
     if (!pagination) return undefined;
 
-    // FEC style: pagination.last_indexes.last_index
+    // FEC style: pagination.last_indexes contains all cursor params
     const lastIndexes = pagination["last_indexes"] as
       | Record<string, unknown>
       | undefined;
     if (lastIndexes) {
-      const cursor = lastIndexes["last_index"];
-      if (typeof cursor === "string" || typeof cursor === "number") {
-        return String(cursor);
+      const params: Record<string, string> = {};
+      let hasValues = false;
+      for (const [key, value] of Object.entries(lastIndexes)) {
+        if (
+          value !== null &&
+          value !== undefined &&
+          (typeof value === "string" ||
+            typeof value === "number" ||
+            typeof value === "boolean")
+        ) {
+          params[key] = String(value);
+          hasValues = true;
+        }
       }
+      return hasValues ? params : undefined;
     }
 
-    // Generic: pagination.last_index or pagination.cursor or pagination.next_cursor
+    // Generic fallback: look for common cursor keys
     for (const key of ["last_index", "cursor", "next_cursor", "next"]) {
       const val = pagination[key];
       if (typeof val === "string" || typeof val === "number") {
-        return String(val);
+        return { [key]: String(val) };
       }
     }
 

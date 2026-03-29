@@ -39,7 +39,7 @@ x-backend-env: &backend-env
   SMTP_HOST: inbucket
   SMTP_PORT: "2500"
   SMTP_ADMIN_EMAIL: noreply@opuspopuli.local
-  FRONTEND_URL: http://localhost:3200
+  FRONTEND_URL: http://localhost:3300
 
 services:
   db-migrate:

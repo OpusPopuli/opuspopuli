@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { RegionModule } from '@opuspopuli/region-provider';
 import {
   ScrapingPipelineModule,
@@ -11,6 +12,7 @@ import {
 } from '@opuspopuli/extraction-provider';
 import { MemoryCache } from '@opuspopuli/common';
 import { LLMModule } from '@opuspopuli/llm-provider';
+import { PromptClientModule } from '@opuspopuli/prompt-client';
 import { RegionDomainService } from './region.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
@@ -34,7 +36,20 @@ import { REGION_CACHE } from './region.tokens';
   imports: [
     RegionModule.forPlugins(),
     ScrapingPipelineModule.forRoot({
-      imports: [LLMModule, ExtractionModule],
+      imports: [
+        LLMModule,
+        ExtractionModule,
+        PromptClientModule.forRootAsync({
+          inject: [ConfigService],
+          useFactory: (config: ConfigService) => ({
+            config: {
+              promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+              promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
+              hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
+            },
+          }),
+        }),
+      ],
       providers: [
         PrismaManifestRepository,
         {

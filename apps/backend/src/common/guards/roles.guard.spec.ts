@@ -222,6 +222,90 @@ describe('RolesGuard', () => {
     });
   });
 
+  describe('HMAC user forwarding', () => {
+    const createHmacRolesContext = (
+      hmacAuth: string | undefined,
+      userHeader: string | undefined,
+      requiredRoles: Role[],
+      existingUser: unknown = undefined,
+    ) => {
+      const mockRequest: Record<string, unknown> = {
+        user: existingUser,
+        headers: {
+          ...(hmacAuth ? { 'x-hmac-auth': hmacAuth } : {}),
+          ...(userHeader ? { user: userHeader } : {}),
+        },
+      };
+      const mockGqlContext = {
+        getContext: () => ({ req: mockRequest }),
+        getHandler: () => jest.fn(),
+        getClass: () => jest.fn(),
+        getInfo: () => ({
+          fieldName: 'syncRegionData',
+          parentType: { name: 'Mutation' },
+        }),
+      };
+
+      (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
+      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(requiredRoles);
+
+      return {
+        context: {} as ExecutionContext,
+        request: mockRequest,
+      };
+    };
+
+    const adminUserJson = JSON.stringify({
+      id: 'user-123',
+      email: 'admin@example.com',
+      roles: [Role.Admin],
+      department: 'Engineering',
+      clearance: 'Secret',
+    });
+
+    it('should parse HMAC-forwarded user and grant access for correct role', async () => {
+      const { context, request } = createHmacRolesContext(
+        'HMAC ...',
+        adminUserJson,
+        [Role.Admin],
+      );
+      const result = await guard.canActivate(context);
+      expect(result).toBe(true);
+      expect(request.user).toEqual(JSON.parse(adminUserJson));
+    });
+
+    it('should deny when HMAC-forwarded user lacks required role', async () => {
+      const regularUserJson = JSON.stringify({
+        id: 'user-456',
+        email: 'user@example.com',
+        roles: [Role.User],
+        department: 'HR',
+        clearance: 'Public',
+      });
+      const { context } = createHmacRolesContext('HMAC ...', regularUserJson, [
+        Role.Admin,
+      ]);
+      const result = await guard.canActivate(context);
+      expect(result).toBe(false);
+    });
+
+    it('should deny when HMAC is present but user header is invalid JSON', async () => {
+      const { context } = createHmacRolesContext('HMAC ...', 'not-json', [
+        Role.Admin,
+      ]);
+      const result = await guard.canActivate(context);
+      expect(result).toBe(false);
+    });
+
+    it('should NOT parse user header without HMAC (spoofing prevention)', async () => {
+      const { context } = createHmacRolesContext(undefined, adminUserJson, [
+        Role.Admin,
+      ]);
+      const result = await guard.canActivate(context);
+      expect(result).toBe(false);
+    });
+  });
+
   describe('security: deny by default', () => {
     it('should use request.user not request.headers.user', async () => {
       // This test verifies the security fix - we should NOT check headers.user
