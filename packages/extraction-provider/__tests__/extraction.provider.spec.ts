@@ -107,6 +107,39 @@ describe("ExtractionProvider", () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
+    it("should detect URL redirect and include redirect info in result", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        url: "https://example.com/new-path",
+        text: () => Promise.resolve("<html>redirected</html>"),
+        headers: new Map([["content-type", "text/html"]]),
+      });
+
+      const result = await provider.fetchUrl("https://example.com/old-path");
+
+      expect(result.redirectedFrom).toBe("https://example.com/old-path");
+      expect(result.finalUrl).toBe("https://example.com/new-path");
+      expect(result.content).toBe("<html>redirected</html>");
+    });
+
+    it("should not set redirect fields when URL is unchanged", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        url: "https://example.com",
+        text: () => Promise.resolve("content"),
+        headers: new Map([["content-type", "text/html"]]),
+      });
+
+      const result = await provider.fetchUrl("https://example.com");
+
+      expect(result.redirectedFrom).toBeUndefined();
+      expect(result.finalUrl).toBeUndefined();
+    });
+
     it("should throw FetchError on non-ok response", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,

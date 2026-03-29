@@ -113,6 +113,10 @@ export interface CachedFetchResult {
   statusCode?: number;
   /** Content-Type header value */
   contentType?: string;
+  /** If the URL was permanently redirected, the original requested URL */
+  redirectedFrom?: string;
+  /** The final URL after any redirects (differs from original on redirect) */
+  finalUrl?: string;
 }
 
 /**
