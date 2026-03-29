@@ -71,10 +71,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 1024M
+          memory: 2048M
         reservations:
           cpus: '0.5'
-          memory: 512M
+          memory: 1024M
 
   # Inbucket - Local Email Testing (captures emails in web UI)
   inbucket:
@@ -118,8 +118,8 @@ services:
       GOTRUE_DB_DRIVER: postgres
       GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD:-your-super-secret-password}@supabase-db:5432/postgres
 
-      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:3200}
-      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS:-http://localhost:3200/**}
+      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:3300}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS:-http://localhost:3300/**}
       GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-false}
 
       GOTRUE_JWT_AUD: authenticated

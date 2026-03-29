@@ -196,6 +196,90 @@ describe('AuthGuard', () => {
     });
   });
 
+  describe('HMAC user forwarding', () => {
+    const createHmacContext = (
+      hmacAuth: string | undefined,
+      userHeader: string | undefined,
+      existingUser: unknown = undefined,
+    ) => {
+      const mockRequest: Record<string, unknown> = {
+        user: existingUser,
+        headers: {
+          ...(hmacAuth ? { 'x-hmac-auth': hmacAuth } : {}),
+          ...(userHeader ? { user: userHeader } : {}),
+        },
+      };
+      const mockGqlContext = {
+        getContext: () => ({ req: mockRequest }),
+        getInfo: () => ({
+          fieldName: 'syncRegionData',
+          parentType: { name: 'Mutation' },
+        }),
+      };
+
+      (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
+
+      return {
+        context: {
+          getHandler: jest.fn(),
+          getClass: jest.fn(),
+        } as unknown as ExecutionContext,
+        request: mockRequest,
+      };
+    };
+
+    const validUserJson = JSON.stringify({
+      id: 'user-123',
+      email: 'admin@example.com',
+      roles: ['admin'],
+      department: 'Engineering',
+      clearance: 'Secret',
+    });
+
+    it('should parse user from HMAC-forwarded header', async () => {
+      const { context, request } = createHmacContext('HMAC ...', validUserJson);
+      const result = await guard.canActivate(context);
+      expect(result).toBe(true);
+      expect(request.user).toEqual(JSON.parse(validUserJson));
+    });
+
+    it('should deny when HMAC is present but user header is missing', async () => {
+      const { context } = createHmacContext('HMAC ...', undefined);
+      const result = await guard.canActivate(context);
+      expect(result).toBe(false);
+    });
+
+    it('should deny when HMAC is present but user header is invalid JSON', async () => {
+      const { context } = createHmacContext('HMAC ...', 'not-json');
+      const result = await guard.canActivate(context);
+      expect(result).toBe(false);
+    });
+
+    it('should NOT parse user header when HMAC is absent (spoofing prevention)', async () => {
+      const { context } = createHmacContext(undefined, validUserJson);
+      const result = await guard.canActivate(context);
+      expect(result).toBe(false);
+    });
+
+    it('should not overwrite existing request.user', async () => {
+      const existingUser = {
+        id: 'existing-user',
+        email: 'existing@example.com',
+        roles: ['user'],
+        department: 'HR',
+        clearance: 'Public',
+      };
+      const { context, request } = createHmacContext(
+        'HMAC ...',
+        validUserJson,
+        existingUser,
+      );
+      const result = await guard.canActivate(context);
+      expect(result).toBe(true);
+      expect(request.user).toEqual(existingUser);
+    });
+  });
+
   describe('security: deny by default', () => {
     it('should deny access when no user is present on request', async () => {
       const context = createMockContext(null);

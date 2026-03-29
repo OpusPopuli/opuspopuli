@@ -33,7 +33,7 @@ RUN chmod +x /usr/local/bin/test-runner.sh
 
 # Install dependencies from monorepo root
 ARG NODE_AUTH_TOKEN=""
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store NODE_AUTH_TOKEN=${NODE_AUTH_TOKEN} pnpm install --frozen-lockfile
 
 # Generate database client from provider package
 RUN pnpm --filter @opuspopuli/relationaldb-provider db:generate

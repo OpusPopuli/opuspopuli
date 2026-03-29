@@ -19,12 +19,12 @@ services:
       args:
         # Next.js bakes NEXT_PUBLIC_* vars at build time
         NEXT_PUBLIC_GRAPHQL_URL: http://localhost:3000/api
-        NEXT_PUBLIC_SITE_URL: http://localhost:3200
+        NEXT_PUBLIC_SITE_URL: http://localhost:3300
         NEXT_PUBLIC_HMAC_CLIENT_ID: frontend
         NEXT_PUBLIC_HMAC_SECRET: dev-frontend-secret-key-change-in-production
     container_name: opuspopuli-frontend
     ports:
-      - "3200:3000"
+      - "3300:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 10s

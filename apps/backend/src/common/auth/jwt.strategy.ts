@@ -1,10 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
-import { passportJwtSecret } from 'jwks-rsa';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
-import { IAuthConfig } from 'src/config';
 
 import { ILogin } from 'src/interfaces/login.interface';
 import { ConfigurationException } from 'src/common/exceptions/app.exceptions';
@@ -31,16 +29,13 @@ export const isLoggedIn = (login: unknown): login is ILogin =>
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private configService: ConfigService) {
-    const authConfig: IAuthConfig | undefined =
-      configService.get<IAuthConfig>('auth');
-
-    if (!authConfig) {
-      throw new ConfigurationException('Authentication config is missing');
+  constructor(configService: ConfigService) {
+    const jwtSecret = configService.get<string>('AUTH_JWT_SECRET');
+    if (!jwtSecret) {
+      throw new ConfigurationException(
+        'AUTH_JWT_SECRET is required for Supabase JWT validation',
+      );
     }
-
-    const region = configService.get<string>('region');
-    const issuer = `https://cognito-idp.${region}.amazonaws.com/${authConfig.userPoolId}`;
 
     super({
       // Extract JWT from Authorization header OR httpOnly cookie
@@ -50,25 +45,25 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         extractFromCookie,
       ]),
       ignoreExpiration: false,
-      audience: authConfig.clientId,
-      issuer,
-      algorithms: ['RS256'],
-      secretOrKeyProvider: passportJwtSecret({
-        cache: true,
-        rateLimit: true,
-        jwksRequestsPerMinute: 5,
-        jwksUri: `${issuer}/.well-known/jwks.json`,
-      }),
+      secretOrKey: jwtSecret,
+      algorithms: ['HS256'],
     });
   }
 
   async validate(payload: Record<string, unknown>): Promise<ILogin> {
+    const appMetadata = payload['app_metadata'] as
+      | Record<string, unknown>
+      | undefined;
+    const userMetadata = payload['user_metadata'] as
+      | Record<string, unknown>
+      | undefined;
+
     return {
       id: payload['sub'] as string,
       email: payload['email'] as string,
-      roles: (payload['cognito:groups'] as string[]) || [],
-      department: payload['custom:department'] as string,
-      clearance: payload['custom:clearance'] as string,
+      roles: (appMetadata?.['roles'] as string[]) || [],
+      department: (userMetadata?.['department'] as string) || '',
+      clearance: (userMetadata?.['clearance'] as string) || '',
     };
   }
 }

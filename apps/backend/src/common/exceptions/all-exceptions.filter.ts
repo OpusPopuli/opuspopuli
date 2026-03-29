@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { GqlArgumentsHost } from '@nestjs/graphql';
 import { Request, Response } from 'express';
 import {
   createSanitizedResponse,
@@ -24,6 +25,10 @@ import '../types/express';
  * - Sanitized error responses are returned to clients
  * - Stack traces are never exposed in production
  *
+ * Handles both HTTP and GraphQL contexts — in GraphQL context,
+ * host.switchToHttp().getRequest() may return undefined when
+ * exceptions originate from guards or interceptors.
+ *
  * @see https://github.com/OpusPopuli/opuspopuli/issues/190
  */
 @Catch()
@@ -31,6 +36,30 @@ export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
 
   catch(exception: unknown, host: ArgumentsHost): void {
+    // In GraphQL context, switchToHttp() returns undefined request/response.
+    // Detect this and let the GraphQL error handler deal with it.
+    const contextType = host.getType<string>();
+    if (contextType === 'graphql') {
+      const gqlHost = GqlArgumentsHost.create(host);
+      const request = gqlHost.getContext()?.req;
+
+      const status =
+        exception instanceof HttpException
+          ? exception.getStatus()
+          : HttpStatus.INTERNAL_SERVER_ERROR;
+
+      logErrorDetails('AllExceptionsFilter', exception, {
+        path: request?.url ?? gqlHost.getInfo()?.fieldName ?? 'graphql',
+        method: request?.method ?? 'POST',
+        statusCode: status,
+        ip: request?.ip,
+        userAgent: request?.headers?.['user-agent'],
+      });
+
+      // Re-throw so the GraphQL error formatter handles the response
+      throw exception;
+    }
+
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
@@ -41,37 +70,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    // Extract original error message
-    let originalMessage: string;
-    if (exception instanceof HttpException) {
-      const exceptionResponse = exception.getResponse();
-      originalMessage =
-        typeof exceptionResponse === 'string'
-          ? exceptionResponse
-          : (
-              exceptionResponse as Record<string, unknown>
-            ).message?.toString() || exception.message;
-    } else if (exception instanceof Error) {
-      originalMessage = exception.message;
-    } else {
-      originalMessage = 'Unknown error';
-    }
+    const originalMessage = this.extractMessage(exception);
 
     // Log full error details server-side
     logErrorDetails('AllExceptionsFilter', exception, {
-      path: request.url,
-      method: request.method,
+      path: request?.url,
+      method: request?.method,
       statusCode: status,
-      ip: request.ip,
-      userAgent: request.get('user-agent'),
+      ip: request?.ip,
+      userAgent: request?.get?.('user-agent'),
     });
 
     // Create sanitized response for client
     const sanitizedResponse = createSanitizedResponse(
       status,
       originalMessage,
-      request.url,
-      request.auditContext?.requestId,
+      request?.url,
+      request?.auditContext?.requestId,
     );
 
     // In production, for 5xx errors, always use generic message
@@ -83,5 +98,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     // Send sanitized response
     response.status(status).json(sanitizedResponse);
+  }
+
+  private extractMessage(exception: unknown): string {
+    if (exception instanceof HttpException) {
+      const exceptionResponse = exception.getResponse();
+      return typeof exceptionResponse === 'string'
+        ? exceptionResponse
+        : (exceptionResponse as Record<string, unknown>).message?.toString() ||
+            exception.message;
+    }
+    if (exception instanceof Error) {
+      return exception.message;
+    }
+    return 'Unknown error';
   }
 }

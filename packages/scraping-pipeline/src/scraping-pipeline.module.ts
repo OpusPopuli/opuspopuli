@@ -8,7 +8,6 @@
 import { Module, type DynamicModule } from "@nestjs/common";
 import { ScrapingPipelineService } from "./pipeline/pipeline.service.js";
 import { StructuralAnalyzerService } from "./analysis/structural-analyzer.service.js";
-import { PromptClientModule } from "@opuspopuli/prompt-client";
 import {
   ManifestStoreService,
   type ManifestRepository,
@@ -37,12 +36,13 @@ export class ScrapingPipelineModule {
    * - ExtractionProvider: for fetching HTML (from ExtractionModule)
    * - MANIFEST_REPOSITORY: ManifestRepository implementation (Prisma adapter)
    *
-   * PromptClientModule is imported automatically (reads prompt templates from DB).
+   * PromptClientModule must be provided by the caller via options.imports
+   * (configured with forRootAsync to connect to the remote prompt service).
    */
   static forRoot(options?: ScrapingPipelineModuleOptions): DynamicModule {
     return {
       module: ScrapingPipelineModule,
-      imports: [...(options?.imports || []), PromptClientModule],
+      imports: [...(options?.imports || [])],
       providers: [
         ...(options?.providers || []),
         // Manifest store (wraps the injected repository)

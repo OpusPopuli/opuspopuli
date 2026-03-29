@@ -99,9 +99,9 @@ describe('HealthController', () => {
       expect(result.status).toBe('ok');
       expect(result.info).toBeDefined();
       expect(result.info?.service).toBeDefined();
-      expect(result.info?.service.name).toBe('test-service');
-      expect(result.info?.service.status).toBe('up');
-      expect(result.info?.service.uptime).toBeGreaterThanOrEqual(0);
+      expect(result.info?.service?.name).toBe('test-service');
+      expect(result.info?.service?.status).toBe('up');
+      expect(result.info?.service?.uptime).toBeGreaterThanOrEqual(0);
     });
 
     it('should include memory health check', async () => {

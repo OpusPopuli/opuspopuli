@@ -23,6 +23,7 @@ jest.mock("@nestjs/config", () => ({
     forFeature: jest.fn().mockReturnValue({ module: "ConfigModule" }),
   },
   ConfigService: jest.fn(),
+  registerAs: jest.fn((_token: string, factory: () => unknown) => factory),
 }));
 
 describe("RegionModule", () => {

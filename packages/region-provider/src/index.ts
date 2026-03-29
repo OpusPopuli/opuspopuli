@@ -58,18 +58,32 @@ export { discoverRegionConfigs } from "./loader/region-config-discovery.js";
 export type { RegionPluginFile } from "./loader/region-config-discovery.js";
 
 // Region configs directory (from @opuspopuli/regions package)
-import { resolve, dirname, join } from "node:path";
+import { join } from "node:path";
+import { existsSync } from "node:fs";
 
 /**
  * Returns the absolute path to the regions/ directory from @opuspopuli/regions.
- * Falls back to the in-tree regions/ directory if the package is not installed
- * (e.g., in test environments).
+ * Walks up from this file to find node_modules/@opuspopuli/regions/regions/.
+ * Falls back to the in-tree regions/ directory if the package is not installed.
  */
 export function getRegionsDir(): string {
-  try {
-    const pkgPath = require.resolve("@opuspopuli/regions/package.json");
-    return resolve(dirname(pkgPath), "regions");
-  } catch {
-    return join(__dirname, "..", "regions");
+  // Walk up the directory tree looking for the installed package
+  let dir = __dirname;
+  for (let i = 0; i < 10; i++) {
+    const candidate = join(
+      dir,
+      "node_modules",
+      "@opuspopuli",
+      "regions",
+      "regions",
+    );
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = join(dir, "..");
+    if (parent === dir) break;
+    dir = parent;
   }
+  // Fallback for test environments
+  return join(__dirname, "..", "regions");
 }
