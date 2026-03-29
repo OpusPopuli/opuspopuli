@@ -252,12 +252,22 @@ const MeetingSchema = z.object({
   videoUrl: z.string().url().optional(),
 });
 
+const partyTransform = (val: string | undefined) => {
+  if (!val) return "Unknown";
+  const cleaned = val.toUpperCase().replace(/[()]/g, "").trim();
+  if (cleaned === "D" || cleaned === "DEMOCRAT" || cleaned === "DEMOCRATIC")
+    return "Democratic";
+  if (cleaned === "R" || cleaned === "REPUBLICAN") return "Republican";
+  if (cleaned === "I" || cleaned === "INDEPENDENT") return "Independent";
+  return val;
+};
+
 const RepresentativeSchema = z.object({
   externalId: z.string().min(1),
   name: z.string().min(1),
   chamber: z.string().default("Unknown"),
   district: z.string().default("Unknown"),
-  party: z.string().default("Unknown"),
+  party: z.string().transform(partyTransform).default("Unknown"),
   photoUrl: z.string().optional(),
   contactInfo: z
     .object({

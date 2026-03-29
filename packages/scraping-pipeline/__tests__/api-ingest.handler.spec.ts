@@ -411,6 +411,124 @@ describe("ApiIngestHandler", () => {
     });
   });
 
+  describe("execute — field remapping", () => {
+    it("should remap API response fields using fieldMappings", async () => {
+      const items = [
+        {
+          committee_id: "C00123",
+          contributor_name: "Jane Doe",
+          contribution_receipt_amount: 500,
+          sub_id: "12345",
+        },
+      ];
+
+      (global.fetch as jest.Mock).mockResolvedValue(
+        mockFetchResponse({ results: items }),
+      );
+
+      const source = createSource({
+        category: "FEC Contributions",
+        api: {
+          resultsPath: "results",
+          fieldMappings: {
+            committee_id: "committeeId",
+            contributor_name: "donorName",
+            contribution_receipt_amount: "amount",
+            sub_id: "externalId",
+          },
+        },
+      });
+
+      await handler.execute(source, "federal");
+
+      const rawResult = mapper.map.mock.calls[0][0];
+      expect(rawResult.items[0]).toMatchObject({
+        committeeId: "C00123",
+        donorName: "Jane Doe",
+        amount: 500,
+        externalId: "12345",
+      });
+      // Original keys should be removed
+      expect(rawResult.items[0].committee_id).toBeUndefined();
+      expect(rawResult.items[0].contributor_name).toBeUndefined();
+    });
+
+    it("should not remap when fieldMappings is not configured", async () => {
+      const items = [{ committee_id: "C00123" }];
+
+      (global.fetch as jest.Mock).mockResolvedValue(
+        mockFetchResponse({ results: items }),
+      );
+
+      await handler.execute(createSource(), "federal");
+
+      const rawResult = mapper.map.mock.calls[0][0];
+      expect(rawResult.items[0].committee_id).toBe("C00123");
+    });
+
+    it("should skip remapping for keys not present in the record", async () => {
+      const items = [{ name: "Test" }];
+
+      (global.fetch as jest.Mock).mockResolvedValue(
+        mockFetchResponse({ results: items }),
+      );
+
+      const source = createSource({
+        api: {
+          resultsPath: "results",
+          fieldMappings: { nonexistent_field: "mapped" },
+        },
+      });
+
+      await handler.execute(source, "federal");
+
+      const rawResult = mapper.map.mock.calls[0][0];
+      expect(rawResult.items[0]).toEqual({ name: "Test" });
+    });
+  });
+
+  describe("execute — cursor pagination with all last_indexes", () => {
+    it("should send all cursor values from last_indexes on next page", async () => {
+      const page1 = [{ id: "1" }];
+
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(
+          mockFetchResponse({
+            results: page1,
+            pagination: {
+              last_indexes: {
+                last_index: "abc123",
+                last_contribution_receipt_date: "2025-01-01",
+                sort_null_only: "true",
+              },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          mockFetchResponse({
+            results: [],
+          }),
+        );
+
+      const source = createSource({
+        api: {
+          resultsPath: "results",
+          pagination: { type: "cursor", limit: 100 },
+        },
+      });
+
+      await handler.execute(source, "federal");
+
+      // Second fetch should include all cursor params
+      const secondUrl = new URL((global.fetch as jest.Mock).mock.calls[1][0]);
+      expect(secondUrl.searchParams.get("last_index")).toBe("abc123");
+      expect(secondUrl.searchParams.get("last_contribution_receipt_date")).toBe(
+        "2025-01-01",
+      );
+      expect(secondUrl.searchParams.get("sort_null_only")).toBe("true");
+    });
+  });
+
   describe("execute — network error", () => {
     it("should return error result when fetch throws", async () => {
       (global.fetch as jest.Mock).mockRejectedValue(
