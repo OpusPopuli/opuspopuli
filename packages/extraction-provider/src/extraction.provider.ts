@@ -182,11 +182,22 @@ export class ExtractionProvider {
       const content = await response.text();
       const contentType = response.headers.get("content-type") || "unknown";
 
+      // Detect permanent redirects (fetch follows them automatically)
+      const finalUrl = response.url;
+      const wasRedirected = finalUrl && finalUrl !== url;
+
+      if (wasRedirected) {
+        this.logger.warn(
+          `URL redirect detected: ${url} → ${finalUrl}. Consider updating the data source config.`,
+        );
+      }
+
       const result: CachedFetchResult = {
         content,
         fromCache: false,
         statusCode: response.status,
         contentType,
+        ...(wasRedirected && { redirectedFrom: url, finalUrl }),
       };
 
       // Cache the result
