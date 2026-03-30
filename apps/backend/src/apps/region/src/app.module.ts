@@ -36,6 +36,7 @@ import { AuditModule } from 'src/common/audit/audit.module';
 import { CaslModule } from 'src/permissions/casl.module';
 import { HealthModule } from 'src/common/health';
 import { MetricsModule } from 'src/common/metrics';
+import { SecretsModule } from '@opuspopuli/secrets-provider';
 
 /**
  * Region App Module
@@ -68,6 +69,7 @@ import { MetricsModule } from 'src/common/metrics';
       context: ({ req, res }: { req: unknown; res: unknown }) => ({ req, res }),
     }),
     CaslModule.forRoot(),
+    SecretsModule,
     RegionDomainModule,
     HealthModule.forRoot({ serviceName: 'region-service', hasDatabase: true }),
     MetricsModule.forRoot({ serviceName: 'region-service' }),
