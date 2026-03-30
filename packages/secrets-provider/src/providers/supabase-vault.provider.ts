@@ -35,9 +35,12 @@ export async function getSecrets(
     },
   });
 
-  const { data, error } = await supabase.rpc("vault_read_secret", {
-    secret_name: secretName,
-  });
+  const { data, error } = await supabase
+    .schema("vault")
+    .from("decrypted_secrets")
+    .select("decrypted_secret")
+    .eq("name", secretName)
+    .limit(1);
 
   if (error) {
     throw new Error(
@@ -49,32 +52,19 @@ export async function getSecrets(
     throw new Error(`Secret not found: ${secretName}`);
   }
 
-  return data[0]?.decrypted_secret || "";
+  return (data[0] as { decrypted_secret: string })?.decrypted_secret || "";
 }
 
 /**
  * Supabase Vault Provider
  *
  * Implements secrets retrieval using Supabase Vault (pgsodium).
- * Used for Supabase Cloud deployments.
+ * Queries the `vault.decrypted_secrets` view directly via PostgREST.
  *
  * Prerequisites:
- * - Supabase project with Vault enabled
- * - Database function `vault_read_secret` to read from vault.decrypted_secrets
- *
- * SQL to create the function:
- * ```sql
- * CREATE OR REPLACE FUNCTION vault_read_secret(secret_name text)
- * RETURNS TABLE (decrypted_secret text)
- * LANGUAGE plpgsql SECURITY DEFINER AS $$
- * BEGIN
- *   RETURN QUERY
- *   SELECT vault.decrypted_secrets.decrypted_secret
- *   FROM vault.decrypted_secrets
- *   WHERE vault.decrypted_secrets.name = secret_name;
- * END;
- * $$;
- * ```
+ * - Supabase project with Vault enabled (pgsodium extension)
+ * - Secrets created via Supabase Studio or `vault.create_secret()`
+ * - PostgREST must expose the `vault` schema (default in self-hosted setups)
  */
 @Injectable()
 export class SupabaseVaultProvider implements ISecretsProvider {
@@ -116,13 +106,17 @@ export class SupabaseVaultProvider implements ISecretsProvider {
 
   async getSecret(secretId: string): Promise<string | undefined> {
     try {
-      // Call the database function to read from vault.decrypted_secrets
-      const { data, error } = await this.supabase.rpc("vault_read_secret", {
-        secret_name: secretId,
-      });
+      // Query the vault.decrypted_secrets view directly via PostgREST schema()
+      // This avoids needing a custom vault_read_secret() database function.
+      const { data, error } = await this.supabase
+        .schema("vault")
+        .from("decrypted_secrets")
+        .select("decrypted_secret")
+        .eq("name", secretId)
+        .limit(1);
 
       if (error) {
-        // Handle not found case
+        // Handle not found / permission errors
         if (
           error.message.includes("does not exist") ||
           error.code === "PGRST116"
@@ -133,14 +127,13 @@ export class SupabaseVaultProvider implements ISecretsProvider {
         throw error;
       }
 
-      // The RPC returns an array of rows
       if (!data || data.length === 0) {
         this.logger.warn(`Secret not found: ${secretId}`);
         return undefined;
       }
 
       this.logger.log(`Retrieved secret: ${secretId}`);
-      return data[0]?.decrypted_secret;
+      return (data[0] as { decrypted_secret: string })?.decrypted_secret;
     } catch (error) {
       this.logger.error(`Error retrieving secret: ${(error as Error).message}`);
       throw new SecretsError(
