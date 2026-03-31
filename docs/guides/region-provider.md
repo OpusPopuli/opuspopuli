@@ -45,7 +45,8 @@ The platform uses **declarative region plugins** — JSON configuration that des
 │  ├── PipelineService (routes by sourceType)                         │
 │  │   ├── html_scrape → StructuralAnalyzerService → Cheerio         │
 │  │   ├── api → ApiIngestHandler (paginated REST)                   │
-│  │   └── bulk_download → BulkDownloadHandler (ZIP/CSV/TSV)         │
+│  │   ├── bulk_download → BulkDownloadHandler (ZIP/CSV/TSV)         │
+│  │   └── pdf → PdfExtractHandler (text extraction + AI analysis)   │
 │  ├── DomainMapperService (raw records → typed models)               │
 │  └── SelfHealingService (re-analyzes when extraction fails)         │
 │                                                                     │
@@ -77,6 +78,7 @@ The platform uses **declarative region plugins** — JSON configuration that des
    - `html_scrape` (default) — AI structural analysis → Cheerio extraction
    - `api` — Paginated REST API calls → JSON response parsing
    - `bulk_download` — File download → ZIP extraction → delimited parsing with filters
+   - `pdf` — PDF download → text extraction → AI text analysis → regex-based extraction
 8. **Domain Mapping**: Raw records are mapped to typed domain models (`Proposition`, `Meeting`, `Representative`, `Committee`, `Contribution`, `Expenditure`, `IndependentExpenditure`)
 9. **Storage**: Extracted data is upserted into the database
 
@@ -249,12 +251,13 @@ The resolution utility (`resolveConfigPlaceholders()` from `@opuspopuli/common`)
 | `url` | `string` | Yes | URL of the data source |
 | `dataType` | `DataType` | Yes | `"propositions"`, `"meetings"`, `"representatives"`, `"campaign_finance"`, or `"lobbying"` |
 | `contentGoal` | `string` | Yes | Natural language description of what to extract |
-| `sourceType` | `string` | No | `"html_scrape"` (default), `"bulk_download"`, or `"api"` |
+| `sourceType` | `string` | No | `"html_scrape"` (default), `"bulk_download"`, `"api"`, or `"pdf"` |
 | `category` | `string` | No | Sub-grouping (e.g., `"Assembly"`, `"campaign_finance"`) |
 | `hints` | `string[]` | No | Additional hints for the AI structural analyzer |
 | `rateLimitOverride` | `number` | No | Override the default rate limit for this source |
 | `bulk` | `BulkDownloadConfig` | No | Configuration for `bulk_download` sources |
 | `api` | `ApiSourceConfig` | No | Configuration for `api` sources |
+| `pdf` | `PdfSourceConfig` | No | Configuration for `pdf` sources |
 
 ### BulkDownloadConfig Fields
 
@@ -444,6 +447,43 @@ File download and parsing. Use for bulk data exports (ZIP archives, CSV/TSV file
 - Applies row-level `filters` during parsing (e.g., filter by state)
 - No AI needed — the file schema is declared in the config
 
+### pdf
+
+PDF text extraction with AI analysis. Use for government documents published as PDFs (schedules, reports, etc.).
+
+1. **PDF Download** — Downloads the PDF directly, or follows a link from a gateway page (`followPdfLink: true`)
+2. **Text Extraction** — Converts PDF to plain text using `pdf-parse`
+3. **AI Text Analysis** — Sends the extracted text to the LLM, which produces regex-based extraction rules (`TextExtractionRuleSet`)
+4. **Text Extraction** — `TextExtractorService` applies regex patterns and line delimiters to extract structured records from the text
+5. **Domain Mapping** — Standard Zod validation and domain mapping
+
+**Configuration:**
+
+```json
+{
+  "url": "https://www.senate.ca.gov/publications/senate-daily-file",
+  "dataType": "meetings",
+  "sourceType": "pdf",
+  "contentGoal": "Extract committee hearings with date, time, committee name, and room",
+  "category": "Senate",
+  "pdf": {
+    "followPdfLink": true
+  },
+  "hints": [
+    "This page links to a PDF — download the first .PDF link",
+    "The PDF contains committee schedules organized by date"
+  ]
+}
+```
+
+**`PdfSourceConfig` fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `followPdfLink` | `boolean` | `false` | If true, treats the URL as a gateway page and follows the first PDF link |
+| `skipPages` | `number` | `0` | Skip first N pages of the PDF |
+| `maxPages` | `number` | all | Maximum pages to process |
+
 ## Writing Good Content Goals
 
 The `contentGoal` field in `DataSourceConfig` is the primary input to the AI structural analyzer (used for `html_scrape` sources). Good content goals are:
@@ -557,6 +597,7 @@ Region config files use a `version` field (semver) to track the config format. T
 |----------------|-----------------|---------|
 | `1.0.0` | 0.1.0+ | Initial format: `regionId`, `dataSources`, `contentGoal`, `sourceType` (`html_scrape`, `api`, `bulk_download`) |
 | `1.1.0` | 0.1.0+ | Added `stateCode` for federal placeholder resolution, `category` field on data sources |
+| `1.2.0` | 0.1.0+ | Added `sourceType: "pdf"` with `PdfSourceConfig`, `TextExtractionRuleSet` types |
 
 ### Required Fields (all versions)
 
@@ -597,6 +638,7 @@ When the config format changes, update the `version` field in your JSON file. Th
 4. For `html_scrape`: Check the structural manifest in the database — the AI may need better `contentGoal` or `hints`
 5. For `bulk_download`: Verify `columnMappings` match the file's actual column names
 6. For `api`: Check that `apiKeyEnvVar` is set in the environment and `resultsPath` matches the response structure
+7. For `pdf`: Verify the URL returns a valid PDF, or if `followPdfLink` is set, that the gateway page contains a `.pdf` link
 
 ### Data Not Appearing in Frontend
 

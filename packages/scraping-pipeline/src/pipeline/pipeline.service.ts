@@ -10,10 +10,11 @@
  * Plus self-healing: if extraction fails, re-trigger analysis once.
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import type {
   DataSourceConfig,
   ExtractionResult,
+  ILLMProvider,
   StructuralAnalysisResult,
   DataType,
 } from "@opuspopuli/common";
@@ -27,12 +28,14 @@ import { DomainMapperService } from "../mapping/domain-mapper.service.js";
 import { SelfHealingService } from "../healing/self-healing.service.js";
 import { BulkDownloadHandler } from "../handlers/bulk-download.handler.js";
 import { ApiIngestHandler } from "../handlers/api-ingest.handler.js";
+import { PdfExtractHandler } from "../handlers/pdf-extract.handler.js";
 
 @Injectable()
 export class ScrapingPipelineService {
   private readonly logger = new Logger(ScrapingPipelineService.name);
 
   constructor(
+    @Inject("LLM_PROVIDER") private readonly llm: ILLMProvider,
     private readonly extraction: ExtractionProvider,
     private readonly analyzer: StructuralAnalyzerService,
     private readonly manifestStore: ManifestStoreService,
@@ -41,6 +44,7 @@ export class ScrapingPipelineService {
     private readonly healing: SelfHealingService,
     private readonly bulkDownload: BulkDownloadHandler,
     private readonly apiIngest: ApiIngestHandler,
+    private readonly pdfExtract: PdfExtractHandler,
   ) {}
 
   /**
@@ -62,6 +66,8 @@ export class ScrapingPipelineService {
         return this.executeBulkDownload<T>(source, regionId);
       case "api":
         return this.executeApiIngest<T>(source, regionId);
+      case "pdf":
+        return this.executePdfExtract<T>(source, regionId);
       case "html_scrape":
       default:
         return this.executeHtmlScrape<T>(source, regionId);
@@ -264,5 +270,31 @@ export class ScrapingPipelineService {
     }
 
     return this.apiIngest.execute<T>(source, regionId);
+  }
+
+  /**
+   * Execute PDF extraction pipeline.
+   * Downloads PDF, extracts text, uses AI to produce text extraction rules,
+   * then extracts structured data using regex/line-based patterns.
+   */
+  private async executePdfExtract<T>(
+    source: DataSourceConfig,
+    regionId: string,
+  ): Promise<ExtractionResult<T>> {
+    this.logger.log(
+      `Pipeline started [pdf]: ${regionId}/${source.dataType} from ${source.url}`,
+    );
+
+    // Provide LLM and PDF text extraction as callbacks
+    return this.pdfExtract.execute<T>(
+      source,
+      regionId,
+      this.llm,
+      async (url: string) => {
+        const fetchResult = await this.extraction.fetchWithRetry(url);
+        const buffer = Buffer.from(fetchResult.content, "binary");
+        return this.extraction.extractPdfText(buffer);
+      },
+    );
   }
 }

@@ -124,6 +124,7 @@ describe("ScrapingPipelineService", () => {
     } as unknown as jest.Mocked<SelfHealingService>;
 
     pipeline = new ScrapingPipelineService(
+      { generate: jest.fn() } as any,
       mockExtraction,
       mockAnalyzer,
       mockStore,
@@ -132,6 +133,7 @@ describe("ScrapingPipelineService", () => {
       mockHealing,
       {} as unknown as BulkDownloadHandler,
       {} as unknown as ApiIngestHandler,
+      {} as any,
     );
   });
 
@@ -303,6 +305,7 @@ describe("ScrapingPipelineService", () => {
       } as unknown as jest.Mocked<ApiIngestHandler>;
 
       pipeline = new ScrapingPipelineService(
+        { generate: jest.fn() } as any,
         mockExtraction,
         mockAnalyzer,
         mockStore,
@@ -311,6 +314,7 @@ describe("ScrapingPipelineService", () => {
         mockHealing,
         mockBulkDownload,
         mockApiIngest,
+        {} as any,
       );
     });
 

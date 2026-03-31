@@ -165,6 +165,7 @@ describe("Pipeline Integration Tests", () => {
 
     // Wire up the pipeline with real services + mocked externals
     pipeline = new ScrapingPipelineService(
+      { generate: jest.fn() } as any,
       mockExtraction,
       mockAnalyzer,
       mockStore,
@@ -173,6 +174,7 @@ describe("Pipeline Integration Tests", () => {
       healing,
       bulkDownload,
       apiIngest,
+      {} as any,
     );
   });
 

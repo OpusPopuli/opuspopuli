@@ -151,6 +151,48 @@ export interface PreprocessingStep {
 }
 
 // ============================================
+// TEXT EXTRACTION RULES (for PDF content)
+// ============================================
+
+/**
+ * Extraction rules for plain text content (PDF, logs, etc.).
+ * Uses regex patterns and line-based selectors instead of CSS selectors.
+ * Produced by AI structural analysis of PDF text.
+ */
+export interface TextExtractionRuleSet {
+  /** Regex or delimiter that separates individual items in the text */
+  itemDelimiter: string;
+  /** Field mappings: how to extract each field from an item block */
+  fieldMappings: TextFieldMapping[];
+  /** Optional: lines to skip from the beginning (e.g., headers) */
+  skipLines?: number;
+  /** Optional: regex to identify the start of the data section */
+  dataSectionStart?: string;
+  /** Optional: regex to identify the end of the data section */
+  dataSectionEnd?: string;
+  /** Free-form notes from the AI about the text structure */
+  analysisNotes?: string;
+}
+
+/**
+ * Mapping from a regex pattern or line position to a domain model field.
+ */
+export interface TextFieldMapping {
+  /** The target field name (e.g., "title", "scheduledAt") */
+  fieldName: string;
+  /** Regex pattern to extract the value from the item text block */
+  pattern: string;
+  /** Which regex capture group to use (default: 1) */
+  captureGroup?: number;
+  /** Whether this field is required */
+  required: boolean;
+  /** Default value if extraction yields nothing */
+  defaultValue?: string;
+  /** Optional transform to apply after extraction */
+  transform?: FieldTransform;
+}
+
+// ============================================
 // DECLARATIVE REGION CONFIGURATION
 // ============================================
 
@@ -173,13 +215,30 @@ export interface DataSourceConfig {
   rateLimitOverride?: number;
 
   /** Source type determines the extraction strategy. Defaults to 'html_scrape'. */
-  sourceType?: "html_scrape" | "bulk_download" | "api";
+  sourceType?: "html_scrape" | "bulk_download" | "api" | "pdf";
 
   /** Configuration for bulk_download sources (ZIP/CSV/TSV files) */
   bulk?: BulkDownloadConfig;
 
   /** Configuration for API sources (REST endpoints with pagination) */
   api?: ApiSourceConfig;
+
+  /** Configuration for PDF sources (text extraction + AI analysis) */
+  pdf?: PdfSourceConfig;
+}
+
+/**
+ * Configuration for PDF extraction sources.
+ * PDF text is extracted and sent to the AI prompt service for
+ * one-shot structured data extraction (no manifest/CSS selectors).
+ */
+export interface PdfSourceConfig {
+  /** Skip first N pages (e.g., skip cover page) */
+  skipPages?: number;
+  /** Max pages to process (undefined = all) */
+  maxPages?: number;
+  /** If true, the URL is a gateway page — find the first PDF link and download that */
+  followPdfLink?: boolean;
 }
 
 /**
