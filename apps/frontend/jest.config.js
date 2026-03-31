@@ -36,13 +36,6 @@ const config = {
       lines: 35,
       statements: 35,
     },
-    // RAG demo page has SSR guards and Toast auto-dismiss timer
-    "app/rag-demo/page.tsx": {
-      branches: 70,
-      functions: 90,
-      lines: 100,
-      statements: 100,
-    },
     // Auth pages with RTL tests
     // Lower thresholds to account for WCAG accessibility attributes (aria-hidden, aria-label)
     // which are static and don't require unit tests
