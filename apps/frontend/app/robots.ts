@@ -17,7 +17,6 @@ export default function robots(): MetadataRoute.Robots {
           "/auth/",
           "/forgot-password",
           "/reset-password",
-          "/rag-demo",
         ],
       },
     ],
