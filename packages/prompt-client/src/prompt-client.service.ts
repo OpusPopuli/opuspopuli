@@ -386,12 +386,56 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
       );
 
       this.metrics.recordRemoteCall(Date.now() - startMs);
+
+      // Warm the DB cache so fallback has the latest prompt
+      this.warmDbCache(endpoint, result).catch(() => {});
+
       return result;
     } catch (error) {
       this.logger.warn(
         `Remote prompt service failed for ${endpoint}, falling back to DB: ${(error as Error).message}`,
       );
       return this.composeFromDb(endpoint, params);
+    }
+  }
+
+  /**
+   * Upsert a successful remote prompt response into the local DB.
+   * Keeps the DB cache warm so the fallback path always has the latest prompts.
+   * Fire-and-forget — failures are logged but don't affect the caller.
+   */
+  private async warmDbCache(
+    endpoint: string,
+    response: PromptServiceResponse,
+  ): Promise<void> {
+    const categoryMap: Record<string, string> = {
+      "structural-analysis": "structural_analysis",
+      "document-analysis": "document_analysis",
+      rag: "rag",
+    };
+    const category = categoryMap[endpoint] ?? "structural_analysis";
+
+    try {
+      await this.db.promptTemplate.upsert({
+        where: { name: endpoint },
+        update: {
+          templateText: response.promptText,
+          updatedAt: new Date(),
+        },
+        create: {
+          name: endpoint,
+          category: category as never,
+          templateText: response.promptText,
+          version: 1,
+          isActive: true,
+        },
+      });
+      this.metrics.recordCacheWarm();
+      this.logger.debug(`Warmed DB cache for template: ${endpoint}`);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to warm DB cache for ${endpoint}: ${(error as Error).message}`,
+      );
     }
   }
 

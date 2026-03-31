@@ -24,6 +24,7 @@ describe("PromptClientService", () => {
     mockDb = {
       promptTemplate: {
         findFirst: jest.fn(),
+        upsert: jest.fn().mockResolvedValue({}),
       },
     };
 
@@ -497,6 +498,61 @@ describe("PromptClientService", () => {
       expect(health!.serviceName).toBe("PromptService");
       expect(health!.state).toBe("closed");
       expect(health!.isHealthy).toBe(true);
+    });
+
+    it("should warm DB cache on successful remote fetch", async () => {
+      globalThis.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            promptText: "remote prompt text",
+            promptHash: "abc123",
+            promptVersion: "v2",
+          }),
+      });
+
+      await remoteService.getRAGPrompt({ context: "test", query: "test" });
+
+      // Allow fire-and-forget warmDbCache to complete
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockDb.promptTemplate.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { name: "rag" },
+          create: expect.objectContaining({
+            name: "rag",
+            category: "rag",
+            templateText: "remote prompt text",
+          }),
+        }),
+      );
+
+      const metrics = remoteService.getMetrics();
+      expect(metrics.cacheWarms).toBe(1);
+    });
+
+    it("should not fail when DB cache warming fails", async () => {
+      mockDb.promptTemplate.upsert.mockRejectedValue(
+        new Error("DB write failed"),
+      );
+
+      globalThis.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            promptText: "remote prompt",
+            promptHash: "abc",
+            promptVersion: "v1",
+          }),
+      });
+
+      // Should not throw despite DB upsert failure
+      const result = await remoteService.getRAGPrompt({
+        context: "test",
+        query: "test",
+      });
+
+      expect(result.promptText).toBe("remote prompt");
     });
   });
 
