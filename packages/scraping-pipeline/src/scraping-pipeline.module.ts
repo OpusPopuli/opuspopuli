@@ -18,6 +18,8 @@ import { DomainMapperService } from "./mapping/domain-mapper.service.js";
 import { SelfHealingService } from "./healing/self-healing.service.js";
 import { BulkDownloadHandler } from "./handlers/bulk-download.handler.js";
 import { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
+import { PdfExtractHandler } from "./handlers/pdf-extract.handler.js";
+import { TextExtractorService } from "./extraction/text-extractor.service.js";
 
 export interface ScrapingPipelineModuleOptions {
   /** Modules that provide required tokens (LLM_PROVIDER, ExtractionProvider, etc.) */
@@ -61,6 +63,8 @@ export class ScrapingPipelineModule {
         // Source type handlers
         BulkDownloadHandler,
         ApiIngestHandler,
+        PdfExtractHandler,
+        TextExtractorService,
         ScrapingPipelineService,
       ],
       exports: [
