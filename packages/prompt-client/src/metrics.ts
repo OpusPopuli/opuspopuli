@@ -19,6 +19,8 @@ export interface PromptClientMetrics {
   dbFallbacks: number;
   /** Requests that used hardcoded fallback templates */
   hardcodedFallbacks: number;
+  /** Successful DB cache warm operations (remote → DB sync) */
+  cacheWarms: number;
   /** Average remote call latency in ms (0 if no remote calls) */
   avgRemoteLatencyMs: number;
   /** Current circuit breaker state */
@@ -38,6 +40,7 @@ export class MetricsCollector {
   private remoteCalls = 0;
   private dbFallbacks = 0;
   private hardcodedFallbacks = 0;
+  private cacheWarms = 0;
   private totalRemoteLatencyMs = 0;
 
   recordCacheHit(): void {
@@ -61,6 +64,10 @@ export class MetricsCollector {
     this.hardcodedFallbacks++;
   }
 
+  recordCacheWarm(): void {
+    this.cacheWarms++;
+  }
+
   getMetrics(circuitBreakerState: string): PromptClientMetrics {
     return {
       totalRequests: this.totalRequests,
@@ -68,6 +75,7 @@ export class MetricsCollector {
       remoteCalls: this.remoteCalls,
       dbFallbacks: this.dbFallbacks,
       hardcodedFallbacks: this.hardcodedFallbacks,
+      cacheWarms: this.cacheWarms,
       avgRemoteLatencyMs:
         this.remoteCalls > 0
           ? Math.round(this.totalRemoteLatencyMs / this.remoteCalls)
@@ -88,6 +96,7 @@ export class MetricsCollector {
     this.remoteCalls = 0;
     this.dbFallbacks = 0;
     this.hardcodedFallbacks = 0;
+    this.cacheWarms = 0;
     this.totalRemoteLatencyMs = 0;
   }
 }
