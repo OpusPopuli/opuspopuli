@@ -23,11 +23,13 @@ import {
   resolveConfigPlaceholders,
   batchTransaction,
   type ICache,
+  type ISecretsProvider,
   type Proposition,
   type Meeting,
   type Representative,
   type CampaignFinanceResult,
 } from '@opuspopuli/common';
+import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { REGION_CACHE } from './region.tokens';
 
 /**
@@ -187,10 +189,42 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @Inject('SCRAPING_PIPELINE')
     private readonly pipeline?: IPipelineService,
+    @Optional()
+    @Inject(SECRETS_PROVIDER)
+    private readonly secretsProvider?: ISecretsProvider,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
     await this.cache.destroy();
+  }
+
+  /**
+   * Resolve API keys from Supabase Vault and set as environment variables.
+   * Falls back silently to existing env vars if Vault is unavailable.
+   * This runs before plugin loading so API keys are available when
+   * the scraping pipeline's ApiIngestHandler reads process.env.
+   */
+  private async resolveApiKeysFromVault(): Promise<void> {
+    if (!this.secretsProvider) return;
+
+    const apiKeyNames = ['FEC_API_KEY'];
+
+    for (const keyName of apiKeyNames) {
+      // Skip if already set in environment
+      if (process.env[keyName]) continue;
+
+      try {
+        const secret = await this.secretsProvider.getSecret(keyName);
+        if (secret) {
+          process.env[keyName] = secret;
+          this.logger.log(`Resolved ${keyName} from secrets vault`);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to resolve ${keyName} from vault: ${(error as Error).message}. Falling back to env var.`,
+        );
+      }
+    }
   }
 
   /**
@@ -201,6 +235,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    * Falls back to ExampleRegionProvider if no local plugin is configured.
    */
   async onModuleInit(): Promise<void> {
+    await this.resolveApiKeysFromVault();
     await this.syncRegionConfigs();
 
     // Read the local config's stateCode for resolving federal config placeholders.
