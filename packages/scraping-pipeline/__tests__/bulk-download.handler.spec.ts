@@ -1,5 +1,6 @@
 import { BulkDownloadHandler } from "../src/handlers/bulk-download.handler";
 import type { DomainMapperService } from "../src/mapping/domain-mapper.service";
+import { Readable } from "node:stream";
 import {
   DataType,
   type DataSourceConfig,
@@ -17,14 +18,7 @@ jest.mock("@nestjs/common", () => ({
   })),
 }));
 
-// Mock AdmZip
-const mockGetData = jest.fn();
-const mockGetEntries = jest.fn();
-jest.mock("adm-zip", () => {
-  return jest.fn().mockImplementation(() => ({
-    getEntries: mockGetEntries,
-  }));
-});
+// yauzl is NOT mocked — the ZIP integration tests use real yauzl extraction
 
 function createSource(
   overrides: Partial<DataSourceConfig> = {},
@@ -60,31 +54,39 @@ function createMockMapper(): jest.Mocked<DomainMapperService> {
 }
 
 /**
- * Convert a string to a clean ArrayBuffer.
- * Buffer.from(str).buffer returns the shared pool buffer which is too large,
- * so we need to slice it to the exact byte range.
+ * Create a mock fetch response with a readable stream body.
+ * The new handler uses response.body (stream) instead of arrayBuffer().
  */
-function toArrayBuffer(str: string): ArrayBuffer {
-  const buf = Buffer.from(str, "utf-8");
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+function mockStreamResponse(content: string, ok = true, status = 200) {
+  const stream = new Readable({
+    read() {
+      this.push(Buffer.from(content));
+      this.push(null);
+    },
+  });
+
+  return {
+    ok,
+    status,
+    statusText: ok ? "OK" : "Not Found",
+    body: stream,
+  };
 }
 
 describe("BulkDownloadHandler", () => {
   let handler: BulkDownloadHandler;
   let mapper: jest.Mocked<DomainMapperService>;
-  let originalFetch: typeof global.fetch;
+  let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
     mapper = createMockMapper();
     handler = new BulkDownloadHandler(mapper);
-    originalFetch = global.fetch;
-    global.fetch = jest.fn();
-    mockGetEntries.mockReset();
-    mockGetData.mockReset();
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = jest.fn();
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
+    globalThis.fetch = originalFetch;
   });
 
   describe("execute — successful CSV download", () => {
@@ -92,10 +94,9 @@ describe("BulkDownloadHandler", () => {
       const csvContent =
         "CMTE_ID,NAME,AMOUNT\nC001,Jane Doe,500\nC002,John Smith,1000";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(csvContent)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csvContent),
+      );
 
       const result = await handler.execute(createSource(), "california");
 
@@ -103,7 +104,6 @@ describe("BulkDownloadHandler", () => {
       expect(result.items).toHaveLength(2);
       expect(mapper.map).toHaveBeenCalledTimes(1);
 
-      // Verify mapped field names
       const rawItems = mapper.map.mock.calls[0][0].items;
       expect(rawItems[0]).toMatchObject({
         committeeId: "C001",
@@ -120,7 +120,7 @@ describe("BulkDownloadHandler", () => {
 
   describe("execute — HTTP error", () => {
     it("should return success: false with error message", async () => {
-      (global.fetch as jest.Mock).mockResolvedValue({
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
         ok: false,
         status: 404,
         statusText: "Not Found",
@@ -135,125 +135,19 @@ describe("BulkDownloadHandler", () => {
     });
   });
 
-  describe("extractFromZip — file found by exact name", () => {
-    it("should extract file matching exact filePattern from ZIP", async () => {
-      const csvContent = "CMTE_ID|NAME|AMOUNT\nC001|Jane|500";
-
-      mockGetData.mockReturnValue(Buffer.from(csvContent));
-      mockGetEntries.mockReturnValue([
-        {
-          entryName: "itcont.txt",
-          isDirectory: false,
-          header: { size: csvContent.length },
-          getData: mockGetData,
-        },
-      ]);
-
-      (global.fetch as jest.Mock).mockResolvedValue({
+  describe("execute — no response body", () => {
+    it("should return error when response has no body", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
         ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer("zip")),
+        status: 200,
+        body: null,
       });
 
-      const source = createSource({
-        bulk: {
-          format: "zip_csv",
-          filePattern: "itcont.txt",
-          delimiter: "|",
-          columnMappings: { CMTE_ID: "committeeId" },
-        },
-      });
-
-      const result = await handler.execute(source, "california");
-
-      expect(result.success).toBe(true);
-    });
-  });
-
-  describe("extractFromZip — case-insensitive match", () => {
-    it("should find file by case-insensitive match", async () => {
-      const csvContent = "CMTE_ID\nC001";
-
-      mockGetData.mockReturnValue(Buffer.from(csvContent));
-      mockGetEntries.mockReturnValue([
-        {
-          entryName: "ITCONT.TXT",
-          isDirectory: false,
-          header: { size: csvContent.length },
-          getData: mockGetData,
-        },
-      ]);
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer("zip")),
-      });
-
-      const source = createSource({
-        bulk: {
-          format: "zip_csv",
-          filePattern: "itcont.txt",
-          columnMappings: { CMTE_ID: "committeeId" },
-        },
-      });
-
-      const result = await handler.execute(source, "california");
-
-      expect(result.success).toBe(true);
-    });
-  });
-
-  describe("extractFromZip — file not found", () => {
-    it("should return error when filePattern not found in ZIP", async () => {
-      mockGetEntries.mockReturnValue([
-        {
-          entryName: "other-file.csv",
-          isDirectory: false,
-        },
-      ]);
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer("zip")),
-      });
-
-      const source = createSource({
-        bulk: {
-          format: "zip_csv",
-          filePattern: "itcont.txt",
-          columnMappings: { CMTE_ID: "committeeId" },
-        },
-      });
-
-      const result = await handler.execute(source, "california");
+      const result = await handler.execute(createSource(), "california");
 
       expect(result.success).toBe(false);
       expect(result.errors).toEqual(
-        expect.arrayContaining([expect.stringContaining("not found in ZIP")]),
-      );
-    });
-  });
-
-  describe("extractFromZip — no filePattern for ZIP", () => {
-    it("should return error when no filePattern provided for ZIP format", async () => {
-      mockGetEntries.mockReturnValue([]);
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer("zip")),
-      });
-
-      const source = createSource({
-        bulk: {
-          format: "zip_csv",
-          columnMappings: { CMTE_ID: "committeeId" },
-        } as BulkDownloadConfig,
-      });
-
-      const result = await handler.execute(source, "california");
-
-      expect(result.success).toBe(false);
-      expect(result.errors).toEqual(
-        expect.arrayContaining([expect.stringContaining("filePattern")]),
+        expect.arrayContaining([expect.stringContaining("no body")]),
       );
     });
   });
@@ -262,10 +156,9 @@ describe("BulkDownloadHandler", () => {
     it("should parse pipe-delimited content and apply column mappings", async () => {
       const content = "CMTE_ID|NAME|STATE\nC001|Jane|CA\nC002|John|NY";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(content)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
 
       const source = createSource({
         bulk: {
@@ -296,10 +189,9 @@ describe("BulkDownloadHandler", () => {
       const content =
         "CMTE_ID,NAME,STATE\nC001,Jane,CA\nC002,John,NY\nC003,Bob,CA";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(content)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
 
       const source = createSource({
         bulk: {
@@ -325,10 +217,9 @@ describe("BulkDownloadHandler", () => {
     it("should skip empty lines in the content", async () => {
       const content = "CMTE_ID,NAME\nC001,Jane\n\n\nC002,John\n";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(content)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
 
       const source = createSource({
         bulk: {
@@ -348,10 +239,9 @@ describe("BulkDownloadHandler", () => {
     it("should use config delimiter when provided", async () => {
       const content = "CMTE_ID|NAME\nC001|Jane";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(content)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
 
       const source = createSource({
         bulk: {
@@ -370,10 +260,9 @@ describe("BulkDownloadHandler", () => {
     it("should default to tab for TSV format", async () => {
       const content = "CMTE_ID\tNAME\nC001\tJane";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(content)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
 
       const source = createSource({
         bulk: {
@@ -391,10 +280,9 @@ describe("BulkDownloadHandler", () => {
     it("should default to comma for CSV format", async () => {
       const content = "CMTE_ID,NAME\nC001,Jane";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(content)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
 
       const source = createSource({
         bulk: {
@@ -414,10 +302,9 @@ describe("BulkDownloadHandler", () => {
     it("should inject cal_access sourceSystem for cal-access category", async () => {
       const content = "CMTE_ID,NAME\nC001,Jane";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(content)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
 
       const source = createSource({
         category: "cal-access-contributions",
@@ -436,10 +323,9 @@ describe("BulkDownloadHandler", () => {
     it("should inject fec sourceSystem for FEC category", async () => {
       const content = "CMTE_ID,NAME\nC001,Jane";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(content)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
 
       const source = createSource({
         category: "fec-individual-contributions",
@@ -460,12 +346,10 @@ describe("BulkDownloadHandler", () => {
     it("should still parse available columns when some headers are missing", async () => {
       const content = "CMTE_ID,NAME\nC001,Jane";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(content)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
 
-      // Map a column that doesn't exist in the CSV
       const source = createSource({
         bulk: {
           format: "csv",
@@ -486,7 +370,7 @@ describe("BulkDownloadHandler", () => {
 
   describe("execute — network error", () => {
     it("should return error result when fetch throws", async () => {
-      (global.fetch as jest.Mock).mockRejectedValue(
+      (globalThis.fetch as jest.Mock).mockRejectedValue(
         new TypeError("Failed to fetch"),
       );
 
@@ -503,10 +387,9 @@ describe("BulkDownloadHandler", () => {
     it("should skip specified number of header lines", async () => {
       const content = "# Comment line\nCMTE_ID,NAME\nC001,Jane";
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(content)),
-      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
 
       const source = createSource({
         bulk: {
@@ -521,6 +404,156 @@ describe("BulkDownloadHandler", () => {
       const rawItems = mapper.map.mock.calls[0][0].items;
       expect(rawItems).toHaveLength(1);
       expect(rawItems[0]).toMatchObject({ committeeId: "C001" });
+    });
+  });
+
+  describe("execute — ZIP without filePattern", () => {
+    it("should return error when no filePattern provided for ZIP format", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse("dummy"),
+      );
+
+      const source = createSource({
+        bulk: {
+          format: "zip_csv",
+          columnMappings: { CMTE_ID: "committeeId" },
+        } as BulkDownloadConfig,
+      });
+
+      const result = await handler.execute(source, "california");
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toEqual(
+        expect.arrayContaining([expect.stringContaining("filePattern")]),
+      );
+    });
+  });
+
+  describe("execute — real ZIP extraction (integration)", () => {
+    // These tests use adm-zip to create real ZIP test fixtures,
+    // then verify the streaming yauzl extraction path end-to-end.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const AdmZip = require("adm-zip");
+
+    function createZipStream(fileName: string, content: string): Readable {
+      const zip = new AdmZip();
+      zip.addFile(fileName, Buffer.from(content));
+      const zipBuffer = zip.toBuffer();
+
+      return new Readable({
+        read() {
+          this.push(zipBuffer);
+          this.push(null);
+        },
+      });
+    }
+
+    it("should extract and parse a CSV file from a real ZIP", async () => {
+      const csvContent = "CMTE_ID,NAME,AMOUNT\nC001,Jane,500\nC002,John,1000";
+
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: createZipStream("data.csv", csvContent),
+      });
+
+      const source = createSource({
+        bulk: {
+          format: "zip_csv",
+          filePattern: "data.csv",
+          columnMappings: {
+            CMTE_ID: "committeeId",
+            NAME: "donorName",
+            AMOUNT: "amount",
+          },
+        },
+      });
+
+      const result = await handler.execute(source, "california");
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(2);
+      const rawItems = mapper.map.mock.calls[0][0].items;
+      expect(rawItems[0]).toMatchObject({
+        committeeId: "C001",
+        donorName: "Jane",
+        amount: "500",
+      });
+    });
+
+    it("should find file by case-insensitive match in ZIP", async () => {
+      const csvContent = "CMTE_ID\nC001";
+
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: createZipStream("ITCONT.TXT", csvContent),
+      });
+
+      const source = createSource({
+        bulk: {
+          format: "zip_csv",
+          filePattern: "itcont.txt",
+          columnMappings: { CMTE_ID: "committeeId" },
+        },
+      });
+
+      const result = await handler.execute(source, "california");
+
+      expect(result.success).toBe(true);
+    });
+
+    it("should return error when file not found in ZIP", async () => {
+      const csvContent = "CMTE_ID\nC001";
+
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: createZipStream("other-file.csv", csvContent),
+      });
+
+      const source = createSource({
+        bulk: {
+          format: "zip_csv",
+          filePattern: "itcont.txt",
+          columnMappings: { CMTE_ID: "committeeId" },
+        },
+      });
+
+      const result = await handler.execute(source, "california");
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toEqual(
+        expect.arrayContaining([expect.stringContaining("not found in ZIP")]),
+      );
+    });
+
+    it("should parse pipe-delimited TSV from ZIP", async () => {
+      const tsvContent = "CMTE_ID|NAME\nC001|Jane";
+
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: createZipStream("data.tsv", tsvContent),
+      });
+
+      const source = createSource({
+        bulk: {
+          format: "zip_tsv",
+          filePattern: "data.tsv",
+          delimiter: "|",
+          columnMappings: { CMTE_ID: "committeeId", NAME: "donorName" },
+        },
+      });
+
+      const result = await handler.execute(source, "california");
+
+      expect(result.success).toBe(true);
+      const rawItems = mapper.map.mock.calls[0][0].items;
+      expect(rawItems[0]).toMatchObject({
+        committeeId: "C001",
+        donorName: "Jane",
+      });
     });
   });
 });
