@@ -108,12 +108,19 @@ function createSource(
 }
 
 // ==========================================
-// Helper to convert string to ArrayBuffer
+// Helper to create a mock streaming fetch response
 // ==========================================
 
-function toArrayBuffer(str: string): ArrayBuffer {
-  const buf = Buffer.from(str, "utf-8");
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+import { Readable } from "node:stream";
+
+function mockStreamResponse(content: string) {
+  const stream = new Readable({
+    read() {
+      this.push(Buffer.from(content));
+      this.push(null);
+    },
+  });
+  return { ok: true, status: 200, statusText: "OK", body: stream };
 }
 
 describe("Pipeline Integration Tests", () => {
@@ -246,10 +253,9 @@ describe("Pipeline Integration Tests", () => {
         "CONTRIB-002,C002,John Smith,1000.00,02/20/2025",
       ].join("\n");
 
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(csvContent)),
-      });
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(mockStreamResponse(csvContent));
 
       const source = createSource({
         sourceType: "bulk_download",
@@ -291,10 +297,9 @@ describe("Pipeline Integration Tests", () => {
         "C-003,C003,Bob,CA,750,03/10/2025",
       ].join("\n");
 
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(csvContent)),
-      });
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(mockStreamResponse(csvContent));
 
       const source = createSource({
         sourceType: "bulk_download",
@@ -329,10 +334,9 @@ describe("Pipeline Integration Tests", () => {
         "TSV-001\tC001\tJane\t500\t01/15/2025",
       ].join("\n");
 
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(toArrayBuffer(tsvContent)),
-      });
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(mockStreamResponse(tsvContent));
 
       const source = createSource({
         sourceType: "bulk_download",

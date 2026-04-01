@@ -30,12 +30,13 @@
     "@opuspopuli/prompt-client": "workspace:*",
     "adm-zip": "^0.5.16",
     "cheerio": "^1.1.2",
+    "yauzl": "^3.3.0",
     "zod": "^3.23.0"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",
-    "@opuspopuli/llm-provider": "workspace:*",
     "@opuspopuli/extraction-provider": "workspace:*",
+    "@opuspopuli/llm-provider": "workspace:*",
     "@opuspopuli/relationaldb-provider": "workspace:*"
   },
   "devDependencies": {
@@ -47,6 +48,7 @@
     "@types/adm-zip": "^0.5.7",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
+    "@types/yauzl": "^2.10.3",
     "domhandler": "^5.0.3",
     "jest": "^30.0.0",
     "reflect-metadata": "^0.2.2",
