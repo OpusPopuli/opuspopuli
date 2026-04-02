@@ -428,7 +428,7 @@ The AI-powered scraping pipeline for web pages. Use for government websites with
 2. **Manifest Caching** — Manifests are versioned and stored in the database. Cached manifests are reused when the page structure hasn't changed
 3. **Cheerio Extraction** — The manifest's CSS selectors extract raw records from the HTML
 4. **Self-Healing** — If extraction fails (e.g., the website changed its layout), the pipeline re-analyzes and creates a new manifest version
-5. **Detail Crawling** (optional) — If items have a `detailUrl` field, the pipeline fetches each detail page to extract rich content (full text, bios, minutes). AI analyzes the first detail page and reuses rules for the rest. Failures are soft — listing data is preserved even if a detail page can't be fetched
+5. **Detail Crawling** (optional) — If items have a `detailUrl` field, the pipeline fetches each detail page to extract rich content (full text, bios, minutes). AI analyzes the first detail page and reuses rules for the rest. Supports both HTML detail pages and PDF documents (detected by `.pdf` extension or `%PDF` content prefix). Failures are soft — listing data is preserved even if a detail page can't be fetched
 
 ### api
 
