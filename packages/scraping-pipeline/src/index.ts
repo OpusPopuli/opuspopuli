@@ -41,6 +41,7 @@ export { BulkDownloadHandler } from "./handlers/bulk-download.handler.js";
 export { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
 export { PdfExtractHandler } from "./handlers/pdf-extract.handler.js";
 export { TextExtractorService } from "./extraction/text-extractor.service.js";
+export { DetailCrawlerService } from "./crawling/detail-crawler.service.js";
 
 // Validation
 export { ConfigValidator } from "./validation/config-validator.js";

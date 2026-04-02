@@ -250,6 +250,7 @@ const MeetingSchema = z.object({
   location: z.string().optional(),
   agendaUrl: z.string().url().optional(),
   videoUrl: z.string().url().optional(),
+  minutes: z.string().optional(),
 });
 
 const partyTransform = (val: string | undefined) => {
@@ -277,6 +278,7 @@ const RepresentativeSchema = z.object({
       website: z.string().optional(),
     })
     .optional(),
+  bio: z.string().optional(),
 });
 
 // ============================================

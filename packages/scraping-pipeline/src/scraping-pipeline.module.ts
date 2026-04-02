@@ -20,6 +20,7 @@ import { BulkDownloadHandler } from "./handlers/bulk-download.handler.js";
 import { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
 import { PdfExtractHandler } from "./handlers/pdf-extract.handler.js";
 import { TextExtractorService } from "./extraction/text-extractor.service.js";
+import { DetailCrawlerService } from "./crawling/detail-crawler.service.js";
 
 export interface ScrapingPipelineModuleOptions {
   /** Modules that provide required tokens (LLM_PROVIDER, ExtractionProvider, etc.) */
@@ -65,6 +66,7 @@ export class ScrapingPipelineModule {
         ApiIngestHandler,
         PdfExtractHandler,
         TextExtractorService,
+        DetailCrawlerService,
         ScrapingPipelineService,
       ],
       exports: [
