@@ -72,6 +72,7 @@ export interface Meeting {
   location?: string;
   agendaUrl?: string;
   videoUrl?: string;
+  minutes?: string;
 }
 
 /**
@@ -85,6 +86,7 @@ export interface Representative {
   party: string;
   photoUrl?: string;
   contactInfo?: ContactInfo;
+  bio?: string;
 }
 
 // ============================================

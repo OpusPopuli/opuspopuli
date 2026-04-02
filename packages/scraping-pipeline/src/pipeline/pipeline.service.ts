@@ -29,6 +29,7 @@ import { SelfHealingService } from "../healing/self-healing.service.js";
 import { BulkDownloadHandler } from "../handlers/bulk-download.handler.js";
 import { ApiIngestHandler } from "../handlers/api-ingest.handler.js";
 import { PdfExtractHandler } from "../handlers/pdf-extract.handler.js";
+import { DetailCrawlerService } from "../crawling/detail-crawler.service.js";
 
 @Injectable()
 export class ScrapingPipelineService {
@@ -45,6 +46,7 @@ export class ScrapingPipelineService {
     private readonly bulkDownload: BulkDownloadHandler,
     private readonly apiIngest: ApiIngestHandler,
     private readonly pdfExtract: PdfExtractHandler,
+    private readonly detailCrawler: DetailCrawlerService,
   ) {}
 
   /**
@@ -136,6 +138,15 @@ export class ScrapingPipelineService {
       // Original manifest worked — record success and update timestamps
       await this.manifestStore.incrementSuccess(manifest.id);
       await this.manifestStore.markChecked(manifest.id);
+    }
+
+    // Stage 3.5: Enrich items with detail page content (if detailUrl extracted)
+    if (rawResult.items.some((item) => item.detailUrl)) {
+      rawResult = await this.detailCrawler.enrichItems(
+        rawResult,
+        source,
+        this.llm,
+      );
     }
 
     // Stage 4: Map to domain types
