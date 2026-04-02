@@ -47,6 +47,7 @@ The platform uses **declarative region plugins** — JSON configuration that des
 │  │   ├── api → ApiIngestHandler (paginated REST)                   │
 │  │   ├── bulk_download → BulkDownloadHandler (ZIP/CSV/TSV)         │
 │  │   └── pdf → PdfExtractHandler (text extraction + AI analysis)   │
+│  ├── DetailCrawlerService (fetches detail pages for rich content)    │
 │  ├── DomainMapperService (raw records → typed models)               │
 │  └── SelfHealingService (re-analyzes when extraction fails)         │
 │                                                                     │
@@ -427,6 +428,7 @@ The AI-powered scraping pipeline for web pages. Use for government websites with
 2. **Manifest Caching** — Manifests are versioned and stored in the database. Cached manifests are reused when the page structure hasn't changed
 3. **Cheerio Extraction** — The manifest's CSS selectors extract raw records from the HTML
 4. **Self-Healing** — If extraction fails (e.g., the website changed its layout), the pipeline re-analyzes and creates a new manifest version
+5. **Detail Crawling** (optional) — If items have a `detailUrl` field, the pipeline fetches each detail page to extract rich content (full text, bios, minutes). AI analyzes the first detail page and reuses rules for the rest. Failures are soft — listing data is preserved even if a detail page can't be fetched
 
 ### api
 
@@ -598,6 +600,7 @@ Region config files use a `version` field (semver) to track the config format. T
 | `1.0.0` | 0.1.0+ | Initial format: `regionId`, `dataSources`, `contentGoal`, `sourceType` (`html_scrape`, `api`, `bulk_download`) |
 | `1.1.0` | 0.1.0+ | Added `stateCode` for federal placeholder resolution, `category` field on data sources |
 | `1.2.0` | 0.1.0+ | Added `sourceType: "pdf"` with `PdfSourceConfig`, `TextExtractionRuleSet` types |
+| `1.3.0` | 0.1.0+ | Detail page crawling: items with `detailUrl` get rich content. Meeting `minutes`, Representative `bio` fields added |
 
 ### Required Fields (all versions)
 
