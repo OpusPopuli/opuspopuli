@@ -273,5 +273,61 @@ describe("DetailCrawlerService", () => {
       );
       expect(repResult.items[0].bio).toBeDefined();
     });
+
+    it("should detect PDF detail pages and extract text content", async () => {
+      // Mock extraction with PDF detection support
+      mockExtraction.fetchWithRetry.mockResolvedValue({
+        content: "%PDF-1.4 simulated pdf content about water policy",
+        fromCache: false,
+      } as any);
+
+      // Add extractPdfText to mock
+      (mockExtraction as any).extractPdfText = jest
+        .fn()
+        .mockResolvedValue("Full text of the water policy reform bill.");
+
+      const rawResult = createRawResult([
+        {
+          externalId: "prop-1",
+          title: "Water Policy",
+          detailUrl:
+            "https://elections.cdn.sos.ca.gov/ballot-measures/pdf/sb-42.pdf",
+        },
+      ]);
+
+      const result = await crawler.enrichItems(
+        rawResult,
+        createSource(),
+        mockLlm,
+      );
+
+      expect(result.items[0].fullText).toBe(
+        "Full text of the water policy reform bill.",
+      );
+      expect((mockExtraction as any).extractPdfText).toHaveBeenCalled();
+    });
+
+    it("should detect PDF by content prefix even without .pdf extension", async () => {
+      mockExtraction.fetchWithRetry.mockResolvedValue({
+        content: "%PDF-1.7 some binary pdf data",
+        fromCache: false,
+      } as any);
+
+      (mockExtraction as any).extractPdfText = jest
+        .fn()
+        .mockResolvedValue("Extracted PDF text content.");
+
+      const rawResult = createRawResult([
+        {
+          externalId: "prop-1",
+          title: "Test",
+          detailUrl: "https://example.com/document/12345",
+        },
+      ]);
+
+      await crawler.enrichItems(rawResult, createSource(), mockLlm);
+
+      expect(rawResult.items[0].fullText).toBe("Extracted PDF text content.");
+    });
   });
 });

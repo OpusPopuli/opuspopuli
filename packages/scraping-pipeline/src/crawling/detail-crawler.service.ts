@@ -74,44 +74,92 @@ export class DetailCrawlerService {
     // Derive content extraction rules from the first detail page
     let contentFields: string[] | null = null;
 
-    for (const item of toFetch) {
-      const detailUrl = item.detailUrl as string;
-
-      try {
-        const fetchResult = await this.extraction.fetchWithRetry(detailUrl);
-        const html = fetchResult.content;
-
-        // On first successful fetch, ask AI what content to extract
-        if (!contentFields) {
-          contentFields = await this.deriveContentFields(html, source, llm);
-          this.logger.log(
-            `AI derived ${contentFields.length} content fields from detail page`,
-          );
-        }
-
-        // Extract content from the detail page
-        const content = this.extractContent(html, contentFields);
-
-        // Merge extracted content into the listing item
-        for (const [key, value] of Object.entries(content)) {
-          if (value && !item[key]) {
-            item[key] = value;
-          }
-        }
-      } catch (error) {
-        // Soft failure — keep listing item, log warning
-        rawResult.warnings.push(
-          `Detail page fetch failed for ${detailUrl}: ${(error as Error).message}`,
-        );
-      }
+    for (let i = 0; i < toFetch.length; i++) {
+      contentFields = await this.enrichSingleItem(
+        toFetch[i],
+        contentFields,
+        source,
+        llm,
+        rawResult.warnings,
+      );
 
       // Rate limit between fetches
-      if (toFetch.indexOf(item) < toFetch.length - 1) {
+      if (i < toFetch.length - 1) {
         await this.delay(DETAIL_FETCH_DELAY_MS);
       }
     }
 
     return rawResult;
+  }
+
+  /**
+   * Fetch and extract content from a single detail page.
+   * Returns the (possibly updated) contentFields for reuse on subsequent items.
+   */
+  private async enrichSingleItem(
+    item: Record<string, unknown>,
+    contentFields: string[] | null,
+    source: DataSourceConfig,
+    llm: ILLMProvider,
+    warnings: string[],
+  ): Promise<string[] | null> {
+    const detailUrl = item.detailUrl as string;
+
+    try {
+      const pageContent = await this.fetchDetailContent(detailUrl);
+
+      // On first successful fetch, ask AI what content to extract
+      if (!contentFields) {
+        contentFields = await this.deriveContentFields(
+          pageContent,
+          source,
+          llm,
+        );
+        this.logger.log(
+          `AI derived ${contentFields.length} content fields from detail page`,
+        );
+      }
+
+      // Extract and merge content — fetchDetailContent already converted PDF to text
+      const isPdf = detailUrl.toLowerCase().endsWith(".pdf");
+      const content = isPdf
+        ? this.extractTextContent(pageContent, contentFields)
+        : this.extractContent(pageContent, contentFields);
+
+      for (const [key, value] of Object.entries(content)) {
+        if (value && !item[key]) {
+          item[key] = value;
+        }
+      }
+    } catch (error) {
+      warnings.push(
+        `Detail page fetch failed for ${detailUrl}: ${(error as Error).message}`,
+      );
+    }
+
+    return contentFields;
+  }
+
+  /**
+   * Fetch detail page content, handling PDF extraction if needed.
+   */
+  private async fetchDetailContent(detailUrl: string): Promise<string> {
+    const fetchResult = await this.extraction.fetchWithRetry(detailUrl);
+    let content = fetchResult.content;
+
+    const isPdf =
+      detailUrl.toLowerCase().endsWith(".pdf") || content.startsWith("%PDF");
+
+    if (isPdf) {
+      content = await this.extraction.extractPdfText(
+        Buffer.from(content, "binary"),
+      );
+      this.logger.debug(
+        `Extracted ${content.length} chars from PDF: ${detailUrl}`,
+      );
+    }
+
+    return content;
   }
 
   /**
@@ -222,6 +270,22 @@ Respond with ONLY a JSON array, no explanation. Example: ["fullText", "summary"]
       result[fields[0]] = cleanedText;
     }
 
+    return result;
+  }
+
+  /**
+   * Extract content from plain text (PDF).
+   * Assigns the full text to the first requested field.
+   */
+  private extractTextContent(
+    text: string,
+    fields: string[],
+  ): Record<string, string> {
+    const cleaned = text.replaceAll(/\s+/g, " ").trim();
+    const result: Record<string, string> = {};
+    if (cleaned && fields.length > 0) {
+      result[fields[0]] = cleaned;
+    }
     return result;
   }
 
