@@ -90,15 +90,15 @@ describe('MemoryHealthIndicator', () => {
 
       const result = await indicator.check();
 
-      expect(result.memory.heapThreshold).toBe('150.00MB');
-      expect(result.memory.rssThreshold).toBe('300.00MB');
+      expect(result.memory.heapThreshold).toBe('512.00MB');
+      expect(result.memory.rssThreshold).toBe('1024.00MB');
     });
 
     it('should return down status when heap exceeds threshold', async () => {
       process.memoryUsage = createMockMemoryUsage({
-        heapUsed: 200 * 1024 * 1024, // 200MB > 150MB threshold
-        heapTotal: 300 * 1024 * 1024,
-        rss: 250 * 1024 * 1024,
+        heapUsed: 600 * 1024 * 1024, // 600MB > 512MB threshold
+        heapTotal: 700 * 1024 * 1024,
+        rss: 500 * 1024 * 1024,
         external: 10 * 1024 * 1024,
         arrayBuffers: 5 * 1024 * 1024,
       });
@@ -112,7 +112,7 @@ describe('MemoryHealthIndicator', () => {
       process.memoryUsage = createMockMemoryUsage({
         heapUsed: 100 * 1024 * 1024,
         heapTotal: 150 * 1024 * 1024,
-        rss: 400 * 1024 * 1024, // 400MB > 300MB threshold
+        rss: 1200 * 1024 * 1024, // 1200MB > 1024MB threshold
         external: 10 * 1024 * 1024,
         arrayBuffers: 5 * 1024 * 1024,
       });

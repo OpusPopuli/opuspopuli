@@ -132,9 +132,15 @@ export class DomainMapperService {
     category?: string,
   ): Meeting | null {
     // Inject body from category if not in record
+    // Generate externalId from title+scheduledAt if missing (AI sometimes can't find one)
     const enriched = {
       ...record,
       body: record.body ?? category ?? "Unknown",
+      externalId:
+        record.externalId ??
+        `${category ?? "meeting"}-${typeof record.title === "string" ? record.title.slice(0, 30) : ""}-${typeof record.scheduledAt === "string" ? record.scheduledAt : ""}`
+          .replaceAll(/\s+/g, "-")
+          .toLowerCase(),
     };
 
     const result = MeetingSchema.safeParse(enriched);
@@ -227,6 +233,60 @@ export class DomainMapperService {
 // Zod Schemas for Domain Models
 // ============================================
 
+/**
+ * Parse dates from multiple formats, accepting null/undefined.
+ * Returns Date or undefined (never throws on null).
+ */
+function parseFlexibleDate(val: unknown): Date | undefined {
+  if (val === null || val === undefined) return undefined;
+  if (val instanceof Date) return val;
+  const str = String(val).trim();
+  if (!str) return undefined;
+
+  // Try standard ISO date parsing first (2025-01-15, 2025-01-15T00:00:00Z)
+  const standard = new Date(str);
+  if (!Number.isNaN(standard.getTime()) && str.length > 8) return standard;
+
+  // 8-digit formats: try MMDDYYYY first (CAL-ACCESS), then YYYYMMDD (FEC)
+  if (/^\d{8}$/.test(str)) {
+    const mm = str.slice(0, 2);
+    const dd = str.slice(2, 4);
+    const yyyy = str.slice(4, 8);
+    const calAccess = new Date(`${yyyy}-${mm}-${dd}`);
+    if (!Number.isNaN(calAccess.getTime()) && Number(mm) <= 12)
+      return calAccess;
+
+    const fecYyyy = str.slice(0, 4);
+    const fecMm = str.slice(4, 6);
+    const fecDd = str.slice(6, 8);
+    const fec = new Date(`${fecYyyy}-${fecMm}-${fecDd}`);
+    if (!Number.isNaN(fec.getTime())) return fec;
+  }
+
+  // US format: MM/DD/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str)) {
+    const [mm, dd, yyyy] = str.split("/");
+    const parsed = new Date(
+      `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`,
+    );
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  return undefined;
+}
+
+/** Zod schema for required date fields (rejects null/empty) */
+const coerceFlexibleDate = z
+  .unknown()
+  .transform(parseFlexibleDate)
+  .pipe(z.date({ message: "Invalid date format" }));
+
+/** Zod schema for optional date fields (null/empty → undefined) */
+const coerceFlexibleDateOptional = z
+  .unknown()
+  .transform(parseFlexibleDate)
+  .pipe(z.date().optional());
+
 const PropositionSchema = z
   .object({
     externalId: z.string().min(1),
@@ -234,8 +294,13 @@ const PropositionSchema = z
     summary: z.string().default(""),
     fullText: z.string().optional(),
     status: z.nativeEnum(PropositionStatus).default(PropositionStatus.PENDING),
-    electionDate: z.coerce.date().optional(),
-    sourceUrl: z.string().url().optional(),
+    electionDate: coerceFlexibleDateOptional,
+    sourceUrl: z
+      .string()
+      .url()
+      .nullable()
+      .transform((v) => v ?? undefined)
+      .optional(),
   })
   .transform((data) => ({
     ...data,
@@ -244,13 +309,33 @@ const PropositionSchema = z
 
 const MeetingSchema = z.object({
   externalId: z.string().min(1),
-  title: z.string().min(1),
+  title: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? "Untitled Meeting")
+    .default("Untitled Meeting"),
   body: z.string().default("Unknown"),
   scheduledAt: z.coerce.date(),
-  location: z.string().optional(),
-  agendaUrl: z.string().url().optional(),
-  videoUrl: z.string().url().optional(),
-  minutes: z.string().optional(),
+  location: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  agendaUrl: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  videoUrl: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  minutes: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
 });
 
 const partyTransform = (val: string | undefined) => {
@@ -317,18 +402,45 @@ const CommitteeSchema = z.object({
   sourceUrl: z.string().optional(),
 });
 
+/**
+ * Parse dates from multiple formats:
+ * - ISO: 2025-01-15
+ * - US: 01/15/2025
+ * - CAL-ACCESS: 01152025 (MMDDYYYY, no delimiters)
+ * - FEC: 20250115 (YYYYMMDD)
+ */
 const ContributionSchema = z.object({
   externalId: z.string().min(1),
   committeeId: z.string().min(1),
   donorName: z.string().min(1),
   donorType: z.string().transform(donorTypeTransform).default("other"),
-  donorEmployer: z.string().optional(),
-  donorOccupation: z.string().optional(),
-  donorCity: z.string().optional(),
-  donorState: z.string().optional(),
-  donorZip: z.string().optional(),
+  donorEmployer: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  donorOccupation: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  donorCity: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  donorState: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  donorZip: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
   amount: z.coerce.number(),
-  date: z.coerce.date(),
+  date: coerceFlexibleDate,
   electionType: z.string().optional(),
   contributionType: z.string().optional(),
   sourceSystem: z.enum(["cal_access", "fec"]),
@@ -339,28 +451,66 @@ const ExpenditureSchema = z.object({
   committeeId: z.string().min(1),
   payeeName: z.string().min(1),
   amount: z.coerce.number(),
-  date: z.coerce.date(),
-  purposeDescription: z.string().optional(),
-  expenditureCode: z.string().optional(),
-  candidateName: z.string().optional(),
-  propositionTitle: z.string().optional(),
-  supportOrOppose: z.string().transform(supportOpposeTransform).optional(),
+  date: coerceFlexibleDate,
+  purposeDescription: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  expenditureCode: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  candidateName: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  propositionTitle: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  supportOrOppose: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((val) => (val ? supportOpposeTransform(val) : undefined)),
   sourceSystem: z.enum(["cal_access", "fec"]),
 });
 
 const IndependentExpenditureSchema = z.object({
   externalId: z.string().min(1),
   committeeId: z.string().min(1),
-  committeeName: z.string().min(1),
-  candidateName: z.string().optional(),
-  propositionTitle: z.string().optional(),
+  committeeName: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? "Unknown")
+    .default("Unknown"),
+  candidateName: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  propositionTitle: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
   supportOrOppose: z
     .string()
-    .transform((val) => supportOpposeTransform(val) ?? "support")
+    .nullable()
+    .optional()
+    .transform((val) => (val ? supportOpposeTransform(val) : "support"))
     .default("support"),
   amount: z.coerce.number(),
-  date: z.coerce.date(),
-  electionDate: z.coerce.date().optional(),
-  description: z.string().optional(),
+  date: coerceFlexibleDate,
+  electionDate: coerceFlexibleDateOptional,
+  description: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
   sourceSystem: z.enum(["cal_access", "fec"]),
 });

@@ -253,6 +253,8 @@ export interface BulkDownloadConfig {
   delimiter?: string;
   /** Number of header lines to skip */
   headerLines?: number;
+  /** Explicit column headers for files without a header row (e.g., FEC bulk files) */
+  headers?: string[];
   /** Column name mappings: source column name → domain field name */
   columnMappings: Record<string, string>;
   /** Filter expressions applied during parse (e.g., { "STATE": "CA" }) */

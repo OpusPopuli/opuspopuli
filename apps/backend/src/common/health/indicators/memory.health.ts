@@ -5,8 +5,8 @@ import { HealthModuleOptions } from '../health.module';
 /**
  * Default memory thresholds
  */
-const DEFAULT_HEAP_THRESHOLD = 150 * 1024 * 1024; // 150MB
-const DEFAULT_RSS_THRESHOLD = 300 * 1024 * 1024; // 300MB
+const DEFAULT_HEAP_THRESHOLD = 512 * 1024 * 1024; // 512MB (raised for bulk download parsing)
+const DEFAULT_RSS_THRESHOLD = 1024 * 1024 * 1024; // 1GB (raised for bulk download streaming)
 
 /**
  * Memory Health Indicator
