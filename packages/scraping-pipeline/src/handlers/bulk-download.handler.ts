@@ -32,7 +32,8 @@ import type {
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
 
 /** Download timeout: 10 minutes for very large files */
-const DOWNLOAD_TIMEOUT_MS = 600_000;
+/** Download timeout: 30 minutes for very large files (FEC indiv26.zip is ~1.4GB) */
+const DOWNLOAD_TIMEOUT_MS = 1_800_000;
 
 @Injectable()
 export class BulkDownloadHandler {
@@ -236,62 +237,100 @@ export class BulkDownloadHandler {
     const sourceSystem = this.inferSourceSystem(source);
     const headerSkip = bulk.headerLines ?? 0;
 
+    /** Safety limit: max records to keep in memory per bulk download */
+    const MAX_RECORDS = 100_000;
+
     const records: Record<string, unknown>[] = [];
     let lineNum = 0;
     let headers: string[] = [];
     let colIndices: Record<string, number> = {};
     let filterIndices: Record<string, number> = {};
 
+    // Use explicit headers if provided (for files without a header row)
+    const hasExplicitHeaders = bulk.headers && bulk.headers.length > 0;
+    if (hasExplicitHeaders) {
+      headers = bulk.headers!;
+      colIndices = this.buildColumnIndices(headers, mappings);
+      filterIndices = this.buildColumnIndices(headers, filters);
+    }
+
+    const headerLineNum = headerSkip;
     const rl = createInterface({ input: stream, crlfDelay: Infinity });
 
     for await (const line of rl) {
+      // Skip header preamble lines
       if (lineNum < headerSkip) {
         lineNum++;
         continue;
       }
 
-      if (lineNum === headerSkip) {
-        // Parse header line
+      // Parse header line from the file (if not using explicit headers)
+      if (!hasExplicitHeaders && lineNum === headerLineNum) {
         headers = line
           .split(delimiter)
           .map((h) => BulkDownloadHandler.stripQuotes(h));
         colIndices = this.buildColumnIndices(headers, mappings);
-        filterIndices = this.buildColumnIndices(
-          headers,
-          filters as Record<string, string>,
-        );
+        filterIndices = this.buildColumnIndices(headers, filters);
         lineNum++;
         continue;
       }
 
-      if (!line.trim()) {
-        lineNum++;
-        continue;
-      }
+      // Process data line
+      const record = this.processDataLine(
+        line,
+        delimiter,
+        mappings,
+        filters,
+        colIndices,
+        filterIndices,
+        sourceSystem,
+      );
 
-      const values = line.split(delimiter);
-
-      if (!this.passesFilters(values, filters, filterIndices)) {
-        lineNum++;
-        continue;
-      }
-
-      const record = this.mapRow(values, mappings, colIndices);
-
-      if (sourceSystem && !record["sourceSystem"]) {
-        record["sourceSystem"] = sourceSystem;
-      }
-
-      const fieldCount = Object.keys(record).length;
-      const minFields = sourceSystem ? 2 : 1;
-      if (fieldCount >= minFields) {
+      if (record) {
         records.push(record);
+        if (records.length >= MAX_RECORDS) {
+          this.logger.warn(
+            `Reached max records limit (${MAX_RECORDS}). Stopping parse.`,
+          );
+          rl.close();
+          break;
+        }
       }
 
       lineNum++;
     }
 
     return records;
+  }
+
+  /**
+   * Process a single data line: split, filter, map, inject sourceSystem.
+   * Returns null if the line should be skipped.
+   */
+  private processDataLine(
+    line: string,
+    delimiter: string,
+    mappings: Record<string, string>,
+    filters: Record<string, string>,
+    colIndices: Record<string, number>,
+    filterIndices: Record<string, number>,
+    sourceSystem: string | undefined,
+  ): Record<string, unknown> | null {
+    if (!line.trim()) return null;
+
+    const values = line.split(delimiter);
+
+    if (!this.passesFilters(values, filters, filterIndices)) return null;
+
+    const record = this.mapRow(values, mappings, colIndices);
+
+    if (sourceSystem && !record["sourceSystem"]) {
+      record["sourceSystem"] = sourceSystem;
+    }
+
+    const fieldCount = Object.keys(record).length;
+    const minFields = sourceSystem ? 2 : 1;
+    return fieldCount >= minFields ? record : null;
   }
 
   /**
