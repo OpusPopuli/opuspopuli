@@ -703,6 +703,83 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    * Sync campaign finance data (contributions, expenditures, independent expenditures).
    * Called for both federal and local plugins — data is distinguished by sourceSystem.
    */
+  /**
+   * Auto-create stub committee records for any committee IDs referenced by
+   * contributions/expenditures/IEs that don't exist yet. This prevents FK
+   * violations. Also replaces external committee IDs with DB UUIDs.
+   */
+  private async ensureCommitteeStubs(
+    data: CampaignFinanceResult,
+  ): Promise<void> {
+    const referencedIds = new Set<string>();
+    for (const c of data.contributions) {
+      if (c.committeeId) referencedIds.add(c.committeeId);
+    }
+    for (const e of data.expenditures) {
+      if (e.committeeId) referencedIds.add(e.committeeId);
+    }
+    for (const ie of data.independentExpenditures) {
+      if (ie.committeeId) referencedIds.add(ie.committeeId);
+    }
+
+    if (referencedIds.size === 0) return;
+
+    const existing = await this.db.committee.findMany({
+      where: { externalId: { in: [...referencedIds] } },
+      select: { externalId: true, id: true },
+    });
+    const existingMap = new Map(
+      existing.map((c: { externalId: string; id: string }) => [
+        c.externalId,
+        c.id,
+      ]),
+    );
+
+    const missingIds = [...referencedIds].filter((id) => !existingMap.has(id));
+
+    if (missingIds.length > 0) {
+      this.logger.log(
+        `Creating ${missingIds.length} stub committee records for FK references`,
+      );
+      await batchTransaction(
+        this.db,
+        missingIds.map((externalId) =>
+          this.db.committee.create({
+            data: {
+              externalId,
+              name: externalId,
+              type: 'OTHER',
+              status: 'active',
+              sourceSystem: 'fec',
+            },
+          }),
+        ),
+      );
+    }
+
+    // Build lookup from externalId → DB UUID for FK resolution
+    const allCommittees = await this.db.committee.findMany({
+      where: { externalId: { in: [...referencedIds] } },
+      select: { externalId: true, id: true },
+    });
+    const idMap = new Map(
+      allCommittees.map((c: { externalId: string; id: string }) => [
+        c.externalId,
+        c.id,
+      ]),
+    );
+
+    for (const c of data.contributions) {
+      c.committeeId = idMap.get(c.committeeId) ?? c.committeeId;
+    }
+    for (const e of data.expenditures) {
+      e.committeeId = idMap.get(e.committeeId) ?? e.committeeId;
+    }
+    for (const ie of data.independentExpenditures) {
+      ie.committeeId = idMap.get(ie.committeeId) ?? ie.committeeId;
+    }
+  }
+
   private async syncCampaignFinance(provider: DataFetcher): Promise<{
     processed: number;
     created: number;
@@ -716,6 +793,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     let totalProcessed = 0;
     let totalCreated = 0;
     let totalUpdated = 0;
+
+    await this.ensureCommitteeStubs(data);
 
     // Sync contributions
     if (data.contributions.length > 0) {

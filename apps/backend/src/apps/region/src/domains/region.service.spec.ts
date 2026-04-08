@@ -191,6 +191,7 @@ describe('RegionDomainService', () => {
     mockDb.committee.findUnique.mockResolvedValue(null);
     mockDb.committee.count.mockResolvedValue(0);
     mockDb.committee.upsert.mockResolvedValue({} as never);
+    mockDb.committee.create.mockResolvedValue({} as never);
 
     mockDb.contribution.findMany.mockResolvedValue([]);
     mockDb.contribution.findUnique.mockResolvedValue(null);
@@ -1223,6 +1224,18 @@ describe('RegionDomainService — campaign finance sync', () => {
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
     // Set up campaign finance mocks
+    // Committee stubs: first findMany returns empty (no existing), second returns created stubs
+    let committeeCallCount = 0;
+    mockDb.committee.findMany.mockImplementation((() => {
+      committeeCallCount++;
+      if (committeeCallCount <= 1) return Promise.resolve([]);
+      return Promise.resolve([
+        { externalId: 'C001', id: 'uuid-c001' },
+        { externalId: 'C002', id: 'uuid-c002' },
+      ]);
+    }) as never);
+    mockDb.committee.create.mockResolvedValue({} as never);
+
     mockDb.contribution.findMany.mockResolvedValue([]);
     mockDb.contribution.upsert.mockResolvedValue({} as never);
 
