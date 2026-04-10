@@ -201,7 +201,13 @@ export class ManifestExtractorService {
     element: Cheerio<Element>,
     mapping: FieldMapping,
   ): string | undefined {
-    const selected = element.find(mapping.selector);
+    // .find() only searches descendants — if nothing found, check if the
+    // element itself matches the selector (e.g., itemSelector selects <a>
+    // and field mapping also targets "a").
+    let selected = element.find(mapping.selector);
+    if (selected.length === 0) {
+      selected = element.filter(mapping.selector);
+    }
 
     if (selected.length === 0) {
       return undefined;
