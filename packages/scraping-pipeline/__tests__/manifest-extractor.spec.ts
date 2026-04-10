@@ -183,6 +183,62 @@ describe("ManifestExtractorService", () => {
       expect(result.items[0].measureId).toBe("ACA 13");
       expect(result.items[1].measureId).toBe("SB 42");
     });
+
+    it("should extract fields when itemSelector selects the target element itself", () => {
+      // Reproduces issue #554: itemSelector selects <a> tags directly,
+      // and field mappings also target "a" — .find() only searches descendants
+      // so it misses the element itself. The fix uses .filter() as fallback.
+      const html = `
+        <div id="main-content-normal">
+          <h2>November 3, 2026, Statewide Ballot Measures</h2>
+          <p><a href="/elections/ballot-measures/pdf/aca-13.pdf">ACA 13 (Ward) Voting thresholds. (Res. Ch. 176, 2023)</a></p>
+          <p><a href="/elections/ballot-measures/pdf/sca-1-24.pdf">SCA 1 (Newman) Elections: recall of state officers.</a></p>
+          <p><a href="/elections/ballot-measures/pdf/sb-42.pdf">SB 42 (Umberg) Political Reform Act of 1974.</a></p>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: "#main-content-normal",
+          itemSelector: "p > a[href*='ballot-measures/pdf']",
+          fieldMappings: [
+            {
+              fieldName: "externalId",
+              selector: "a",
+              extractionMethod: "regex",
+              regexPattern: "^([A-Z]+ \\d+)",
+              regexGroup: 1,
+              required: true,
+            },
+            {
+              fieldName: "title",
+              selector: "a",
+              extractionMethod: "text",
+              required: true,
+            },
+            {
+              fieldName: "detailUrl",
+              selector: "a",
+              extractionMethod: "attribute",
+              attribute: "href",
+              required: false,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(3);
+      expect(result.items[0].externalId).toBe("ACA 13");
+      expect(result.items[0].title).toContain("ACA 13");
+      expect(result.items[0].detailUrl).toBe(
+        "/elections/ballot-measures/pdf/aca-13.pdf",
+      );
+      expect(result.items[1].externalId).toBe("SCA 1");
+      expect(result.items[2].externalId).toBe("SB 42");
+    });
   });
 
   describe("error handling", () => {
