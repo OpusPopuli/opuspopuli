@@ -1,6 +1,7 @@
 import { Args, Mutation, Query, Resolver, Context } from '@nestjs/graphql';
 import { ConfigService } from '@nestjs/config';
-import { Optional } from '@nestjs/common';
+import { Optional, UseGuards } from '@nestjs/common';
+import { AuthGuard } from 'src/common/guards/auth.guard';
 
 import { UserInputError } from '@nestjs/apollo';
 
@@ -31,6 +32,7 @@ import { AuditLogService } from 'src/common/services/audit-log.service';
  * @see https://github.com/OpusPopuli/opuspopuli/issues/464
  */
 @Resolver(() => Boolean)
+@UseGuards(AuthGuard)
 export class SessionResolver {
   private readonly serviceName = 'users-service';
 

@@ -100,9 +100,12 @@ export function createAuditContext(
     userId: user?.id,
     userEmail: userEmail || user?.email,
     ipAddress:
-      context.req?.ip ||
-      (context.req?.headers as Record<string, string>)?.['x-forwarded-for'],
-    userAgent: context.req?.headers?.['user-agent'],
+      (context.req?.headers as Record<string, string>)?.['x-forwarded-for'] ||
+      context.req?.ip,
+    userAgent:
+      (context.req?.headers as Record<string, string>)?.[
+        'x-original-user-agent'
+      ] || context.req?.headers?.['user-agent'],
     serviceName,
   };
 }

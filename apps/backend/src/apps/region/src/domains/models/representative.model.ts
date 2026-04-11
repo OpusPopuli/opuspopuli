@@ -50,6 +50,9 @@ export class RepresentativeModel {
   @Field(() => ContactInfoModel, { nullable: true })
   contactInfo?: ContactInfoModel;
 
+  @Field({ nullable: true })
+  bio?: string;
+
   @Field()
   createdAt!: Date;
 

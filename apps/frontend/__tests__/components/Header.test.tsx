@@ -85,10 +85,12 @@ describe("Header", () => {
       };
     });
 
-    it("should show user email", () => {
+    it("should show profile icon link to settings", () => {
       render(<Header />);
 
-      expect(screen.getByText("test@example.com")).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: /profile settings/i }),
+      ).toHaveAttribute("href", "/settings");
     });
 
     it("should show region link", () => {
@@ -98,14 +100,6 @@ describe("Header", () => {
         "href",
         "/region",
       );
-    });
-
-    it("should show settings link with user email", () => {
-      render(<Header />);
-
-      expect(
-        screen.getByRole("link", { name: "test@example.com" }),
-      ).toHaveAttribute("href", "/settings");
     });
 
     it("should show sign out button", () => {
