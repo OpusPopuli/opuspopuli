@@ -50,5 +50,58 @@ describe('HmacRemoteGraphQLDataSource', () => {
 
       jest.restoreAllMocks();
     });
+
+    it('should forward client IP and user agent from gateway context', () => {
+      const mockHeaders = new Map<string, string>();
+      const mockRequest = {
+        http: {
+          url: 'http://localhost:4001/graphql',
+          headers: {
+            set: (key: string, value: string) => mockHeaders.set(key, value),
+          },
+        },
+      };
+
+      jest.spyOn(otelApi.propagation, 'inject').mockImplementation(() => {});
+
+      dataSource.willSendRequest({
+        request: mockRequest,
+        context: {
+          clientIp: '192.168.1.100',
+          clientUserAgent: 'Mozilla/5.0 Chrome/120',
+        },
+      } as unknown as Parameters<typeof dataSource.willSendRequest>[0]);
+
+      expect(mockHeaders.get('x-forwarded-for')).toBe('192.168.1.100');
+      expect(mockHeaders.get('x-original-user-agent')).toBe(
+        'Mozilla/5.0 Chrome/120',
+      );
+
+      jest.restoreAllMocks();
+    });
+
+    it('should not set forwarding headers when context lacks client info', () => {
+      const mockHeaders = new Map<string, string>();
+      const mockRequest = {
+        http: {
+          url: 'http://localhost:4001/graphql',
+          headers: {
+            set: (key: string, value: string) => mockHeaders.set(key, value),
+          },
+        },
+      };
+
+      jest.spyOn(otelApi.propagation, 'inject').mockImplementation(() => {});
+
+      dataSource.willSendRequest({
+        request: mockRequest,
+        context: {},
+      } as unknown as Parameters<typeof dataSource.willSendRequest>[0]);
+
+      expect(mockHeaders.has('x-forwarded-for')).toBe(false);
+      expect(mockHeaders.has('x-original-user-agent')).toBe(false);
+
+      jest.restoreAllMocks();
+    });
   });
 });

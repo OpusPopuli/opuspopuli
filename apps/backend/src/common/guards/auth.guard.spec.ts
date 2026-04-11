@@ -280,6 +280,50 @@ describe('AuthGuard', () => {
     });
   });
 
+  describe('forwarded client metadata', () => {
+    it('should use x-forwarded-for and x-original-user-agent in audit log on denial', async () => {
+      const mockRequest = {
+        user: null,
+        ip: '172.18.0.21',
+        headers: {
+          'x-forwarded-for': '192.168.1.100',
+          'x-original-user-agent': 'Mozilla/5.0 Chrome/120',
+          'user-agent': 'minipass-fetch/3.0.5',
+        },
+      };
+      const mockGqlContext = {
+        getContext: () => ({ req: mockRequest }),
+        getInfo: () => ({
+          fieldName: 'myProfile',
+          parentType: { name: 'Query' },
+        }),
+      };
+
+      (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
+
+      const mockAuditLogService = { logSync: jest.fn() };
+      const guardWithAudit = new AuthGuard(
+        mockReflector as Reflector,
+        mockAuditLogService as never,
+      );
+
+      const context = {
+        getHandler: jest.fn(),
+        getClass: jest.fn(),
+      } as unknown as ExecutionContext;
+
+      const result = await guardWithAudit.canActivate(context);
+
+      expect(result).toBe(false);
+      expect(mockAuditLogService.logSync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ipAddress: '192.168.1.100',
+          userAgent: 'Mozilla/5.0 Chrome/120',
+        }),
+      );
+    });
+  });
+
   describe('security: deny by default', () => {
     it('should deny access when no user is present on request', async () => {
       const context = createMockContext(null);
