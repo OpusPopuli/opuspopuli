@@ -1,9 +1,11 @@
 import { Resolver, Query, Mutation, Args, Context, ID } from '@nestjs/graphql';
+import { UseGuards } from '@nestjs/common';
 
 import {
   GqlContext,
   getUserFromContext,
 } from 'src/common/utils/graphql-context';
+import { AuthGuard } from 'src/common/guards/auth.guard';
 
 import { ConsentType } from 'src/common/enums/consent.enum';
 
@@ -24,6 +26,7 @@ import { NotificationPreferenceModel } from './models/notification-preference.mo
 import { UserConsentModel } from './models/user-consent.model';
 
 @Resolver()
+@UseGuards(AuthGuard)
 export class ProfileResolver {
   constructor(private readonly profileService: ProfileService) {}
 

@@ -20,7 +20,8 @@ describe("ProfileCompletionIndicator", () => {
     coreFieldsComplete: {
       hasName: true,
       hasPhoto: false,
-      hasTimezone: true,
+      hasCivic: true,
+      hasDemographic: true,
       hasAddress: false,
     },
     ...overrides,
@@ -43,25 +44,14 @@ describe("ProfileCompletionIndicator", () => {
       expect(screen.getByText("75%")).toBeInTheDocument();
     });
 
-    it("should cap percentage display at 100%", () => {
+    it("should display 100% when percentage is 100", () => {
       render(
         <ProfileCompletionIndicator
-          completion={createCompletion({ percentage: 150 })}
+          completion={createCompletion({ percentage: 100 })}
         />,
       );
 
       expect(screen.getByText("100%")).toBeInTheDocument();
-    });
-
-    it("should show bonus percentage when over 100%", () => {
-      render(
-        <ProfileCompletionIndicator
-          completion={createCompletion({ percentage: 120 })}
-        />,
-      );
-
-      expect(screen.getByText("100%")).toBeInTheDocument();
-      expect(screen.getByText("+20%")).toBeInTheDocument();
     });
 
     it("should show complete message when isComplete is true", () => {
@@ -102,10 +92,10 @@ describe("ProfileCompletionIndicator", () => {
       expect(progressBar).toBeInTheDocument();
     });
 
-    it("should cap progress bar width at 100%", () => {
+    it("should show progress bar width at 100% for full completion", () => {
       const { container } = render(
         <ProfileCompletionIndicator
-          completion={createCompletion({ percentage: 150 })}
+          completion={createCompletion({ percentage: 100 })}
         />,
       );
 
@@ -167,7 +157,8 @@ describe("ProfileCompletionIndicator", () => {
 
       expect(screen.getByText("Name")).toBeInTheDocument();
       expect(screen.getByText("Photo")).toBeInTheDocument();
-      expect(screen.getByText("Timezone")).toBeInTheDocument();
+      expect(screen.getByText("Civic")).toBeInTheDocument();
+      expect(screen.getByText("Demographic")).toBeInTheDocument();
       expect(screen.getByText("Address")).toBeInTheDocument();
     });
 
@@ -178,7 +169,8 @@ describe("ProfileCompletionIndicator", () => {
             coreFieldsComplete: {
               hasName: true,
               hasPhoto: false,
-              hasTimezone: false,
+              hasCivic: false,
+              hasDemographic: false,
               hasAddress: false,
             },
           })}
@@ -196,7 +188,8 @@ describe("ProfileCompletionIndicator", () => {
             coreFieldsComplete: {
               hasName: false,
               hasPhoto: false,
-              hasTimezone: false,
+              hasCivic: false,
+              hasDemographic: false,
               hasAddress: false,
             },
           })}
@@ -267,7 +260,8 @@ describe("ProfileCompletionIndicator", () => {
             coreFieldsComplete: {
               hasName: false,
               hasPhoto: false,
-              hasTimezone: false,
+              hasCivic: false,
+              hasDemographic: false,
               hasAddress: false,
             },
           })}

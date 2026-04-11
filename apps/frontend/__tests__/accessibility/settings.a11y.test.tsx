@@ -99,7 +99,8 @@ let mockProfileCompletionQuery = {
       coreFieldsComplete: {
         hasName: true,
         hasPhoto: false,
-        hasTimezone: true,
+        hasCivic: true,
+        hasDemographic: true,
         hasAddress: true,
       },
       suggestedNextSteps: ["Add a profile photo"],

@@ -105,6 +105,17 @@ export class UsersService {
   }
 
   /**
+   * Update a user's ID to match the Supabase auth user ID.
+   * Used during session exchange to sync IDs when they diverge.
+   */
+  async updateUserId(oldId: string, newId: string): Promise<void> {
+    await this.db.user.update({
+      where: { id: oldId },
+      data: { id: newId },
+    });
+  }
+
+  /**
    * Updates a user's authentication strategy
    *
    * @param {string} id - User ID

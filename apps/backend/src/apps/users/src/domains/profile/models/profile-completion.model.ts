@@ -9,10 +9,13 @@ export class CoreFieldsStatus {
   hasPhoto!: boolean;
 
   @Field()
-  hasTimezone!: boolean;
+  hasAddress!: boolean;
 
   @Field()
-  hasAddress!: boolean;
+  hasCivic!: boolean;
+
+  @Field()
+  hasDemographic!: boolean;
 }
 
 @ObjectType()

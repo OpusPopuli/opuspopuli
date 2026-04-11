@@ -16,6 +16,9 @@ export class ContactInfoModel {
 
   @Field({ nullable: true })
   website?: string;
+
+  @Field({ nullable: true })
+  office?: string;
 }
 
 /**
