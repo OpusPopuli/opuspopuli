@@ -108,9 +108,11 @@ export class AuthGuard implements CanActivate {
           | 'mutation'
           | 'subscription',
         ipAddress:
-          request?.ip ||
-          (request?.headers as Record<string, string>)?.['x-forwarded-for'],
-        userAgent: request?.headers?.['user-agent'],
+          (request?.headers as Record<string, string>)?.['x-forwarded-for'] ||
+          request?.ip,
+        userAgent:
+          request?.headers?.['x-original-user-agent'] ||
+          request?.headers?.['user-agent'],
         errorMessage: 'Unauthenticated access attempt',
       });
 

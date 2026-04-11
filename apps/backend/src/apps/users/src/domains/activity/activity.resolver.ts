@@ -7,12 +7,14 @@ import {
   Int,
   ID,
 } from '@nestjs/graphql';
+import { UseGuards } from '@nestjs/common';
 
 import {
   GqlContext,
   getUserFromContext,
   getSessionTokenFromContext,
 } from 'src/common/utils/graphql-context';
+import { AuthGuard } from 'src/common/guards/auth.guard';
 
 import { ActivityService } from './activity.service';
 import {
@@ -24,6 +26,7 @@ import {
 } from './dto/activity.dto';
 
 @Resolver()
+@UseGuards(AuthGuard)
 export class ActivityResolver {
   constructor(private readonly activityService: ActivityService) {}
 

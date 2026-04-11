@@ -463,7 +463,13 @@ test.describe("Propositions Page", () => {
   test("should display breadcrumb navigation", async ({ page }) => {
     await page.goto("/region/propositions");
 
-    await expect(page.getByRole("link", { name: /Region/i })).toBeVisible();
+    const breadcrumb = page
+      .getByRole("navigation")
+      .filter({ hasText: "Region" })
+      .last();
+    await expect(
+      breadcrumb.getByRole("link", { name: /Region/i }),
+    ).toBeVisible();
   });
 
   test("should display proposition cards", async ({ page }) => {
@@ -499,7 +505,11 @@ test.describe("Propositions Page", () => {
   }) => {
     await page.goto("/region/propositions");
 
-    await page.getByRole("link", { name: /Region/i }).click();
+    const breadcrumb = page
+      .getByRole("navigation")
+      .filter({ hasText: "Region" })
+      .last();
+    await breadcrumb.getByRole("link", { name: /Region/i }).click();
     await expect(page).toHaveURL(/\/region$/);
   });
 });
@@ -1229,7 +1239,13 @@ test.describe("Campaign Finance Hub Page", () => {
   test("should display breadcrumb navigation", async ({ page }) => {
     await page.goto("/region/campaign-finance");
 
-    await expect(page.getByRole("link", { name: /Region/i })).toBeVisible();
+    const breadcrumb = page
+      .getByRole("navigation")
+      .filter({ hasText: "Region" })
+      .last();
+    await expect(
+      breadcrumb.getByRole("link", { name: /Region/i }),
+    ).toBeVisible();
   });
 
   test("should display four sub-category cards", async ({ page }) => {
@@ -1264,7 +1280,11 @@ test.describe("Campaign Finance Hub Page", () => {
   }) => {
     await page.goto("/region/campaign-finance");
 
-    await page.getByRole("link", { name: /Region/i }).click();
+    const breadcrumb = page
+      .getByRole("navigation")
+      .filter({ hasText: "Region" })
+      .last();
+    await breadcrumb.getByRole("link", { name: /Region/i }).click();
     await expect(page).toHaveURL(/\/region$/);
   });
 });
