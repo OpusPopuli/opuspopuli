@@ -284,6 +284,21 @@ describe('UsersService', () => {
     expect(authService.deleteUser).toHaveBeenCalledTimes(0);
   });
 
+  it('should update a user ID', async () => {
+    const dbUser = createDbUser(users[0]);
+    dbService.user.update.mockResolvedValue({
+      ...dbUser,
+      id: 'new-user-id',
+    });
+
+    await usersService.updateUserId(users[0].id, 'new-user-id');
+
+    expect(dbService.user.update).toHaveBeenCalledWith({
+      where: { id: users[0].id },
+      data: { id: 'new-user-id' },
+    });
+  });
+
   it('should fail to delete a user due to auth service error', async () => {
     const dbUser = createDbUser(users[0]);
     dbService.user.findFirst.mockResolvedValue(dbUser);

@@ -77,59 +77,47 @@ export class ProfileService {
     const profile = await this.getProfile(userId);
     const addresses = await this.getAddresses(userId);
 
-    // Core fields: Name + Photo + Timezone + Address = 100% when complete
+    // 5 categories: Name, Photo, Address, Civic, Demographic = 20% each
+    const hasCivic =
+      !!profile?.politicalAffiliation ||
+      !!profile?.votingFrequency ||
+      (!!profile?.policyPriorities && profile.policyPriorities.length > 0);
+
+    const hasDemographic =
+      !!profile?.occupation ||
+      !!profile?.educationLevel ||
+      !!profile?.incomeRange ||
+      !!profile?.householdSize ||
+      !!profile?.homeownerStatus;
+
     const coreFieldsComplete = {
       hasName: !!(profile?.firstName || profile?.displayName),
       hasPhoto: !!(profile?.avatarUrl || profile?.avatarStorageKey),
-      hasTimezone: !!profile?.timezone,
       hasAddress: addresses.length > 0,
+      hasCivic,
+      hasDemographic,
     };
 
-    const coreComplete = Object.values(coreFieldsComplete).every(Boolean);
-
-    // Calculate weighted percentage
-    // Core fields: 25% each = 100% when all complete
-    let percentage = 0;
-    if (coreFieldsComplete.hasName) percentage += 25;
-    if (coreFieldsComplete.hasPhoto) percentage += 25;
-    if (coreFieldsComplete.hasTimezone) percentage += 25;
-    if (coreFieldsComplete.hasAddress) percentage += 25;
-
-    // Civic fields bonus (up to 15%): 5% each
-    const civicFieldsCount = [
-      profile?.politicalAffiliation,
-      profile?.votingFrequency,
-      profile?.policyPriorities && profile.policyPriorities.length > 0,
-    ].filter(Boolean).length;
-    percentage += Math.min(civicFieldsCount * 5, 15);
-
-    // Demographic fields bonus (up to 15%): 3% each
-    const demographicFieldsCount = [
-      profile?.occupation,
-      profile?.educationLevel,
-      profile?.incomeRange,
-      profile?.householdSize,
-      profile?.homeownerStatus,
-    ].filter(Boolean).length;
-    percentage += Math.min(demographicFieldsCount * 3, 15);
+    const completedCount =
+      Object.values(coreFieldsComplete).filter(Boolean).length;
+    const percentage = Math.round((completedCount / 5) * 100);
+    const isComplete = completedCount === 5;
 
     return {
-      percentage: Math.min(percentage, 130), // Cap at 130% (100% core + 30% bonus)
-      isComplete: coreComplete,
+      percentage,
+      isComplete,
       coreFieldsComplete,
-      suggestedNextSteps: this.getSuggestedSteps(coreFieldsComplete, profile),
+      suggestedNextSteps: this.getSuggestedSteps(coreFieldsComplete),
     };
   }
 
-  private getSuggestedSteps(
-    coreFieldsComplete: {
-      hasName: boolean;
-      hasPhoto: boolean;
-      hasTimezone: boolean;
-      hasAddress: boolean;
-    },
-    profile: DbUserProfile | null,
-  ): string[] {
+  private getSuggestedSteps(coreFieldsComplete: {
+    hasName: boolean;
+    hasPhoto: boolean;
+    hasAddress: boolean;
+    hasCivic: boolean;
+    hasDemographic: boolean;
+  }): string[] {
     const steps: string[] = [];
 
     if (!coreFieldsComplete.hasName) {
@@ -138,26 +126,14 @@ export class ProfileService {
     if (!coreFieldsComplete.hasPhoto) {
       steps.push('Upload a profile photo');
     }
-    if (!coreFieldsComplete.hasTimezone) {
-      steps.push('Set your timezone for accurate notifications');
-    }
     if (!coreFieldsComplete.hasAddress) {
       steps.push('Add an address to see relevant ballot information');
     }
-
-    // Suggest civic fields if core is complete
-    if (Object.values(coreFieldsComplete).every(Boolean)) {
-      if (!profile?.politicalAffiliation) {
-        steps.push(
-          'Share your political affiliation for personalized insights',
-        );
-      }
-      if (!profile?.votingFrequency) {
-        steps.push('Tell us how often you vote');
-      }
-      if (!profile?.policyPriorities || profile.policyPriorities.length === 0) {
-        steps.push('Select your policy priorities');
-      }
+    if (!coreFieldsComplete.hasCivic) {
+      steps.push('Share your civic information for personalized insights');
+    }
+    if (!coreFieldsComplete.hasDemographic) {
+      steps.push('Add demographic details to complete your profile');
     }
 
     return steps.slice(0, 3); // Return max 3 suggestions

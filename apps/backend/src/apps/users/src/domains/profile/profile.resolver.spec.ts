@@ -476,7 +476,8 @@ describe('ProfileResolver', () => {
       coreFieldsComplete: {
         hasName: true,
         hasPhoto: false,
-        hasTimezone: true,
+        hasCivic: true,
+        hasDemographic: true,
         hasAddress: true,
       },
       suggestedNextSteps: ['Upload a profile photo'],

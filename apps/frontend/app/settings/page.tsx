@@ -457,13 +457,11 @@ export default function ProfileSettingsPage() {
           <p className="text-[#4d4d4d] mt-1">{t("profile.subtitle")}</p>
         </div>
 
-        {profileData?.myProfile && (
-          <ProfileForm
-            key={profileData.myProfile.id}
-            profile={profileData.myProfile}
-            onSave={handleSave}
-          />
-        )}
+        <ProfileForm
+          key={profileData?.myProfile?.id ?? "new"}
+          profile={profileData?.myProfile ?? ({} as UserProfile)}
+          onSave={handleSave}
+        />
       </div>
     </div>
   );

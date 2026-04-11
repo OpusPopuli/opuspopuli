@@ -27,33 +27,33 @@ interface DemographicFieldsSectionProps {
 }
 
 const EDUCATION_LEVELS: EducationLevel[] = [
-  "high_school",
-  "some_college",
-  "associate",
-  "bachelor",
-  "master",
-  "doctorate",
-  "trade_school",
-  "prefer_not_to_say",
+  "HIGH_SCHOOL",
+  "SOME_COLLEGE",
+  "ASSOCIATE",
+  "BACHELOR",
+  "MASTER",
+  "DOCTORATE",
+  "TRADE_SCHOOL",
+  "PREFER_NOT_TO_SAY",
 ];
 
 const INCOME_RANGES: IncomeRange[] = [
-  "under_25k",
-  "25k_50k",
-  "50k_75k",
-  "75k_100k",
-  "100k_150k",
-  "150k_200k",
-  "over_200k",
-  "prefer_not_to_say",
+  "UNDER_25K",
+  "RANGE_25K_50K",
+  "RANGE_50K_75K",
+  "RANGE_75K_100K",
+  "RANGE_100K_150K",
+  "RANGE_150K_200K",
+  "OVER_200K",
+  "PREFER_NOT_TO_SAY",
 ];
 
 const HOMEOWNER_STATUSES: HomeownerStatus[] = [
-  "own",
-  "rent",
-  "living_with_family",
-  "other",
-  "prefer_not_to_say",
+  "OWN",
+  "RENT",
+  "LIVING_WITH_FAMILY",
+  "OTHER",
+  "PREFER_NOT_TO_SAY",
 ];
 
 const HOUSEHOLD_SIZES = ["1", "2", "3", "4", "5", "6+"];
@@ -215,7 +215,8 @@ export function DemographicFieldsSection({
                   <option key={level} value={level}>
                     {t(
                       `profile.demographic.education.${level}`,
-                      level.replace(/_/g, " "),
+                      level.charAt(0) +
+                        level.slice(1).replace(/_/g, " ").toLowerCase(),
                     )}
                   </option>
                 ))}
@@ -247,7 +248,8 @@ export function DemographicFieldsSection({
                   <option key={range} value={range}>
                     {t(
                       `profile.demographic.income.${range}`,
-                      range.replace(/_/g, " "),
+                      range.charAt(0) +
+                        range.slice(1).replace(/_/g, " ").toLowerCase(),
                     )}
                   </option>
                 ))}
@@ -310,7 +312,8 @@ export function DemographicFieldsSection({
                   <option key={status} value={status}>
                     {t(
                       `profile.demographic.homeowner.${status}`,
-                      status.replace(/_/g, " "),
+                      status.charAt(0) +
+                        status.slice(1).replace(/_/g, " ").toLowerCase(),
                     )}
                   </option>
                 ))}

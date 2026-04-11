@@ -27,7 +27,8 @@ let mockCompletionQueryResult = {
       coreFieldsComplete: {
         hasName: true,
         hasPhoto: false,
-        hasTimezone: true,
+        hasCivic: true,
+        hasDemographic: true,
         hasAddress: true,
       },
       suggestedNextSteps: ["Add a profile photo"],
@@ -93,7 +94,8 @@ describe("ProfileSettingsPage", () => {
           coreFieldsComplete: {
             hasName: true,
             hasPhoto: false,
-            hasTimezone: true,
+            hasCivic: true,
+            hasDemographic: true,
             hasAddress: true,
           },
           suggestedNextSteps: ["Add a profile photo"],

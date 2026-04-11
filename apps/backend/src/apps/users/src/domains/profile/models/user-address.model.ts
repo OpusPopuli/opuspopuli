@@ -54,6 +54,33 @@ export class UserAddressModel {
   @Field({ nullable: true })
   placeId?: string;
 
+  @Field({ nullable: true })
+  congressionalDistrict?: string;
+
+  @Field({ nullable: true })
+  stateSenatorialDistrict?: string;
+
+  @Field({ nullable: true })
+  stateAssemblyDistrict?: string;
+
+  @Field({ nullable: true })
+  county?: string;
+
+  @Field({ nullable: true })
+  municipality?: string;
+
+  @Field({ nullable: true })
+  schoolDistrict?: string;
+
+  @Field({ nullable: true })
+  precinctId?: string;
+
+  @Field({ nullable: true })
+  pollingPlace?: string;
+
+  @Field()
+  isVerified!: boolean;
+
   @Field()
   createdAt!: Date;
 
