@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
 import {
   GET_REPRESENTATIVES,
   RepresentativesData,
   Representative,
 } from "@/lib/graphql/region";
-import { ContactRepresentativeForm } from "@/components/email/ContactRepresentativeForm";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
 import { Pagination } from "@/components/region/Pagination";
 import {
@@ -43,10 +43,12 @@ function PartyBadge({ party }: { readonly party: string }) {
 
 function RepresentativeCard({
   representative,
-  onContact,
-}: Readonly<{ representative: Representative; onContact: () => void }>) {
+}: Readonly<{ representative: Representative }>) {
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow">
+    <Link
+      href={`/region/representatives/${representative.id}`}
+      className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow"
+    >
       <div className="flex items-start gap-4">
         {/* Photo */}
         <div className="flex-shrink-0">
@@ -93,64 +95,30 @@ function RepresentativeCard({
             District {representative.district}
           </p>
         </div>
+
+        {/* Arrow indicator */}
+        <svg
+          className="w-5 h-5 text-gray-400 flex-shrink-0 mt-1"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
       </div>
-
-      {/* Contact Info */}
-      {representative.contactInfo && (
-        <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-2 text-sm">
-          {representative.contactInfo.email && (
-            <a
-              href={`mailto:${representative.contactInfo.email}`}
-              className="text-blue-600 hover:text-blue-700 hover:underline truncate"
-            >
-              {representative.contactInfo.email}
-            </a>
-          )}
-          {representative.contactInfo.phone && (
-            <a
-              href={`tel:${representative.contactInfo.phone}`}
-              className="text-blue-600 hover:text-blue-700 hover:underline"
-            >
-              {representative.contactInfo.phone}
-            </a>
-          )}
-          {representative.contactInfo.office && (
-            <span className="text-[#4d4d4d] col-span-2 truncate">
-              {representative.contactInfo.office}
-            </span>
-          )}
-          {representative.contactInfo.website && (
-            <a
-              href={representative.contactInfo.website}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-700 hover:underline truncate"
-            >
-              Website
-            </a>
-          )}
-        </div>
-      )}
-
-      {/* Contact Button */}
-      {representative.contactInfo?.email && (
-        <div className="mt-4 pt-4 border-t border-gray-100">
-          <button
-            onClick={onContact}
-            className="w-full px-4 py-2 text-sm font-medium text-white bg-[#222222] rounded-lg hover:bg-[#333333] transition-colors"
-          >
-            Contact {representative.name.split(" ")[0]}
-          </button>
-        </div>
-      )}
-    </div>
+    </Link>
   );
 }
 
 export default function RepresentativesPage() {
   const [page, setPage] = useState(0);
   const [chamber, setChamber] = useState<string | undefined>(undefined);
-  const [contactRep, setContactRep] = useState<Representative | null>(null);
 
   const { data, loading, error } = useQuery<RepresentativesData>(
     GET_REPRESENTATIVES,
@@ -159,9 +127,15 @@ export default function RepresentativesPage() {
     },
   );
 
-  // Get unique chambers from data for filter
-  const chambers = data?.representatives.items
-    ? Array.from(new Set(data.representatives.items.map((r) => r.chamber)))
+  // Fetch all reps (unfiltered) to build complete chamber list
+  const { data: allData } = useQuery<RepresentativesData>(GET_REPRESENTATIVES, {
+    variables: { skip: 0, take: 200 },
+  });
+
+  const chambers = allData?.representatives.items
+    ? Array.from(
+        new Set(allData.representatives.items.map((r) => r.chamber)),
+      ).sort()
     : [];
 
   const renderContent = () => {
@@ -174,11 +148,7 @@ export default function RepresentativesPage() {
       <>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {data?.representatives.items.map((rep) => (
-            <RepresentativeCard
-              key={rep.id}
-              representative={rep}
-              onContact={() => setContactRep(rep)}
-            />
+            <RepresentativeCard key={rep.id} representative={rep} />
           ))}
         </div>
         <Pagination
@@ -241,27 +211,6 @@ export default function RepresentativesPage() {
 
       {/* Content */}
       {renderContent()}
-
-      {/* Contact Modal */}
-      {contactRep && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
-            <ContactRepresentativeForm
-              representative={{
-                id: contactRep.id,
-                name: contactRep.name,
-                email: contactRep.contactInfo?.email || "",
-                chamber: contactRep.chamber,
-              }}
-              onSuccess={() => {
-                setContactRep(null);
-                alert("Message sent successfully!");
-              }}
-              onCancel={() => setContactRep(null)}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
