@@ -114,7 +114,7 @@ export default function RepresentativesPage() {
   const chambers = allData?.representatives.items
     ? Array.from(
         new Set(allData.representatives.items.map((r) => r.chamber)),
-      ).sort()
+      ).sort((a, b) => a.localeCompare(b))
     : [];
 
   const renderContent = () => {
