@@ -16,30 +16,9 @@ import {
   ErrorState,
   EmptyState,
 } from "@/components/region/ListStates";
+import { PartyBadge } from "@/components/region/PartyBadge";
 
 const PAGE_SIZE = 12;
-
-const PARTY_COLORS: Record<string, { bg: string; text: string }> = {
-  Democrat: { bg: "bg-blue-100", text: "text-blue-800" },
-  Republican: { bg: "bg-red-100", text: "text-red-800" },
-  Independent: { bg: "bg-purple-100", text: "text-purple-800" },
-  Green: { bg: "bg-green-100", text: "text-green-800" },
-  Libertarian: { bg: "bg-yellow-100", text: "text-yellow-800" },
-};
-
-function PartyBadge({ party }: { readonly party: string }) {
-  const colors = PARTY_COLORS[party] || {
-    bg: "bg-gray-100",
-    text: "text-gray-800",
-  };
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}
-    >
-      {party}
-    </span>
-  );
-}
 
 function RepresentativeCard({
   representative,

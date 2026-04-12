@@ -13,29 +13,7 @@ import {
 import { ContactRepresentativeForm } from "@/components/email/ContactRepresentativeForm";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
 import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
-
-const PARTY_COLORS: Record<string, { bg: string; text: string }> = {
-  Democrat: { bg: "bg-blue-100", text: "text-blue-800" },
-  Democratic: { bg: "bg-blue-100", text: "text-blue-800" },
-  Republican: { bg: "bg-red-100", text: "text-red-800" },
-  Independent: { bg: "bg-purple-100", text: "text-purple-800" },
-  Green: { bg: "bg-green-100", text: "text-green-800" },
-  Libertarian: { bg: "bg-yellow-100", text: "text-yellow-800" },
-};
-
-function PartyBadge({ party }: { readonly party: string }) {
-  const colors = PARTY_COLORS[party] || {
-    bg: "bg-gray-100",
-    text: "text-gray-800",
-  };
-  return (
-    <span
-      className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${colors.bg} ${colors.text}`}
-    >
-      {party}
-    </span>
-  );
-}
+import { PartyBadge } from "@/components/region/PartyBadge";
 
 function ContactSection({
   label,
@@ -155,7 +133,7 @@ export default function RepresentativeDetailPage() {
               {rep.name}
             </h1>
             <div className="flex flex-wrap items-center gap-3 mb-3">
-              <PartyBadge party={rep.party} />
+              <PartyBadge party={rep.party} size="md" />
               <span className="text-sm text-[#4d4d4d] font-medium">
                 {rep.chamber}
               </span>
