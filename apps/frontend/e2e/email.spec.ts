@@ -165,6 +165,17 @@ async function mockEmailGraphQL(page: import("@playwright/test").Page) {
           },
         }),
       });
+    } else if (
+      postData?.query?.includes("representative(") ||
+      postData?.query?.includes("GetRepresentative")
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { representative: mockRepresentatives.items[0] },
+        }),
+      });
     } else if (postData?.query?.includes("representatives")) {
       await route.fulfill({
         status: 200,
@@ -473,26 +484,23 @@ test.describe("Contact Representative Form", () => {
     await mockEmailGraphQL(page);
   });
 
-  test("should display contact form on representatives page", async ({
+  test("should display contact form on representative detail page", async ({
     page,
   }) => {
-    await page.goto("/region/representatives");
+    await page.goto("/region/representatives/rep-1");
 
-    // Wait for representatives to load
     await expect(page.getByText("Jane Smith")).toBeVisible();
 
-    // Click contact button
     const contactButton = page
       .getByRole("button", { name: /Contact/i })
       .first();
     await contactButton.click();
 
-    // Form should be visible
-    await expect(page.getByText(/Contact Jane Smith/)).toBeVisible();
+    await expect(page.getByText(/Contact Jane/)).toBeVisible();
   });
 
   test("should have subject and message fields", async ({ page }) => {
-    await page.goto("/region/representatives");
+    await page.goto("/region/representatives/rep-1");
     await expect(page.getByText("Jane Smith")).toBeVisible();
 
     await page
@@ -505,7 +513,7 @@ test.describe("Contact Representative Form", () => {
   });
 
   test("should have send method toggle", async ({ page }) => {
-    await page.goto("/region/representatives");
+    await page.goto("/region/representatives/rep-1");
     await expect(page.getByText("Jane Smith")).toBeVisible();
 
     await page
@@ -518,7 +526,7 @@ test.describe("Contact Representative Form", () => {
   });
 
   test("should have include address checkbox", async ({ page }) => {
-    await page.goto("/region/representatives");
+    await page.goto("/region/representatives/rep-1");
     await expect(page.getByText("Jane Smith")).toBeVisible();
 
     await page
@@ -530,7 +538,7 @@ test.describe("Contact Representative Form", () => {
   });
 
   test("should show character count for message", async ({ page }) => {
-    await page.goto("/region/representatives");
+    await page.goto("/region/representatives/rep-1");
     await expect(page.getByText("Jane Smith")).toBeVisible();
 
     await page
@@ -544,7 +552,7 @@ test.describe("Contact Representative Form", () => {
   test("should disable submit button when form is incomplete", async ({
     page,
   }) => {
-    await page.goto("/region/representatives");
+    await page.goto("/region/representatives/rep-1");
     await expect(page.getByText("Jane Smith")).toBeVisible();
 
     await page
@@ -557,7 +565,7 @@ test.describe("Contact Representative Form", () => {
   });
 
   test("should enable submit button when form is valid", async ({ page }) => {
-    await page.goto("/region/representatives");
+    await page.goto("/region/representatives/rep-1");
     await expect(page.getByText("Jane Smith")).toBeVisible();
 
     await page
@@ -565,7 +573,6 @@ test.describe("Contact Representative Form", () => {
       .first()
       .click();
 
-    // Fill out the form
     await page.getByLabel(/Subject/i).fill("Test Subject");
     await page
       .getByLabel(/Message/i)
@@ -576,17 +583,17 @@ test.describe("Contact Representative Form", () => {
   });
 
   test("should close form when cancel is clicked", async ({ page }) => {
-    await page.goto("/region/representatives");
+    await page.goto("/region/representatives/rep-1");
     await expect(page.getByText("Jane Smith")).toBeVisible();
 
     await page
       .getByRole("button", { name: /Contact/i })
       .first()
       .click();
-    await expect(page.getByText(/Contact Jane Smith/)).toBeVisible();
+    await expect(page.getByText(/Contact Jane/)).toBeVisible();
 
     await page.getByRole("button", { name: /Cancel/i }).click();
-    await expect(page.getByText(/Contact Jane Smith/)).not.toBeVisible();
+    await expect(page.getByText(/Contact Jane/)).not.toBeVisible();
   });
 });
 
