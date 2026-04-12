@@ -15,7 +15,7 @@ import { AddressType } from 'src/common/enums/address.enum';
 @InputType()
 export class CreateAddressDto {
   @IsEnum(AddressType)
-  @Field(() => String)
+  @Field(() => AddressType)
   public addressType!: AddressType;
 
   @IsOptional()
@@ -74,7 +74,7 @@ export class UpdateAddressDto {
 
   @IsOptional()
   @IsEnum(AddressType)
-  @Field(() => String, { nullable: true })
+  @Field(() => AddressType, { nullable: true })
   public addressType?: AddressType;
 
   @IsOptional()
