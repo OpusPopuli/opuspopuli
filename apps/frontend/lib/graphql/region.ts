@@ -67,6 +67,7 @@ export interface Representative {
   party: string;
   photoUrl?: string;
   contactInfo?: ContactInfo;
+  bio?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -434,6 +435,7 @@ export const GET_REPRESENTATIVE = gql`
         office
         website
       }
+      bio
       createdAt
       updatedAt
     }

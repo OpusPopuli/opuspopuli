@@ -753,11 +753,12 @@ test.describe("Representatives Page", () => {
     await expect(page.getByText("Republican")).toBeVisible();
   });
 
-  test("should display contact information", async ({ page }) => {
+  test("should link cards to representative detail page", async ({ page }) => {
     await page.goto("/region/representatives");
 
-    await expect(page.getByText("jane.smith@example.gov")).toBeVisible();
-    await expect(page.getByText("555-1234")).toBeVisible();
+    const card = page.getByRole("link", { name: /Jane Smith/i });
+    await expect(card).toBeVisible();
+    await expect(card).toHaveAttribute("href", /\/region\/representatives\/.+/);
   });
 
   test("should have chamber filter dropdown", async ({ page }) => {
