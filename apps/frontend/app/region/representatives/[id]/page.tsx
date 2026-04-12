@@ -43,7 +43,7 @@ export default function RepresentativeDetailPage() {
 
   const { data, loading, error } = useQuery<RepresentativeData, IdVars>(
     GET_REPRESENTATIVE,
-    { variables: { id } },
+    { variables: { id }, fetchPolicy: "cache-and-network" },
   );
 
   if (loading) {

@@ -141,6 +141,14 @@ export class ScrapingPipelineService {
     }
 
     // Stage 3.5: Enrich items with detail page content (if detailUrl extracted)
+    // Also check contactInfo.website — AI sometimes maps homepage links there instead of detailUrl
+    for (const item of rawResult.items) {
+      if (!item.detailUrl) {
+        item.detailUrl =
+          item["contactInfo.website"] ??
+          (item.contactInfo as Record<string, unknown> | undefined)?.website;
+      }
+    }
     if (rawResult.items.some((item) => item.detailUrl)) {
       rawResult = await this.detailCrawler.enrichItems(
         rawResult,

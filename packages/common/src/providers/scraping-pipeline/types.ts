@@ -107,7 +107,12 @@ export interface FieldMapping {
   defaultValue?: string;
 }
 
-export type ExtractionMethod = "text" | "attribute" | "html" | "regex";
+export type ExtractionMethod =
+  | "text"
+  | "attribute"
+  | "html"
+  | "regex"
+  | "constant";
 
 /**
  * Post-extraction transforms for field values.

@@ -201,6 +201,16 @@ export class ManifestExtractorService {
     element: Cheerio<Element>,
     mapping: FieldMapping,
   ): string | undefined {
+    // "constant" extraction method returns the defaultValue directly (no selector needed)
+    if (mapping.extractionMethod === "constant") {
+      return mapping.defaultValue || undefined;
+    }
+
+    // Skip if no selector provided
+    if (!mapping.selector) {
+      return undefined;
+    }
+
     // .find() only searches descendants — if nothing found, check if the
     // element itself matches the selector (e.g., itemSelector selects <a>
     // and field mapping also targets "a").
