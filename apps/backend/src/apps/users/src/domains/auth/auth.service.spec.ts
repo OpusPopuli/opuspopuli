@@ -668,5 +668,60 @@ describe('AuthService', () => {
         'supabase-jwt-token',
       );
     });
+
+    it('should sync app user ID when JWT sub differs from app user ID', async () => {
+      const supabaseUserId = 'supabase-auth-uuid-1234';
+      // Create a valid JWT with a sub claim that differs from the app user ID
+      const jwtPayload = { sub: supabaseUserId, email: 'test@example.com' };
+      const fakeJwt = [
+        Buffer.from(JSON.stringify({ alg: 'HS256' })).toString('base64'),
+        Buffer.from(JSON.stringify(jwtPayload)).toString('base64'),
+        'fake-signature',
+      ].join('.');
+
+      authProvider.validateAccessToken = jest
+        .fn()
+        .mockResolvedValue('test@example.com');
+      usersService.findByEmail = jest.fn().mockResolvedValue(users[0]);
+      usersService.updateUserId = jest.fn().mockResolvedValue(undefined);
+
+      const result = await authService.exchangeSupabaseSession(
+        fakeJwt,
+        'supabase-refresh-token',
+      );
+
+      expect(result).toEqual({
+        accessToken: fakeJwt,
+        idToken: fakeJwt,
+        refreshToken: 'supabase-refresh-token',
+      });
+      expect(usersService.updateUserId).toHaveBeenCalledWith(
+        users[0].id,
+        supabaseUserId,
+      );
+    });
+
+    it('should not sync user ID when JWT sub matches app user ID', async () => {
+      // Create a JWT where sub matches users[0].id
+      const jwtPayload = { sub: users[0].id, email: 'test@example.com' };
+      const fakeJwt = [
+        Buffer.from(JSON.stringify({ alg: 'HS256' })).toString('base64'),
+        Buffer.from(JSON.stringify(jwtPayload)).toString('base64'),
+        'fake-signature',
+      ].join('.');
+
+      authProvider.validateAccessToken = jest
+        .fn()
+        .mockResolvedValue('test@example.com');
+      usersService.findByEmail = jest.fn().mockResolvedValue(users[0]);
+      usersService.updateUserId = jest.fn().mockResolvedValue(undefined);
+
+      await authService.exchangeSupabaseSession(
+        fakeJwt,
+        'supabase-refresh-token',
+      );
+
+      expect(usersService.updateUserId).not.toHaveBeenCalled();
+    });
   });
 });

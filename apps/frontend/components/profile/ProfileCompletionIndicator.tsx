@@ -36,13 +36,8 @@ export function ProfileCompletionIndicator({
         </div>
         <div className="text-right">
           <span className="text-3xl font-bold text-[#222222]">
-            {Math.min(percentage, 100)}%
+            {percentage}%
           </span>
-          {percentage > 100 && (
-            <span className="text-sm text-green-600 ml-1">
-              +{percentage - 100}%
-            </span>
-          )}
         </div>
       </div>
 
@@ -50,12 +45,12 @@ export function ProfileCompletionIndicator({
       <div className="h-3 bg-gray-200 rounded-full overflow-hidden mb-4">
         <div
           className={`h-full transition-all duration-500 ease-out ${getProgressColor()}`}
-          style={{ width: `${Math.min(percentage, 100)}%` }}
+          style={{ width: `${percentage}%` }}
         />
       </div>
 
       {/* Core Fields Status */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         <StatusBadge
           label={t("profile.completion.fields.name", "Name")}
           complete={completion.coreFieldsComplete.hasName}
@@ -65,12 +60,16 @@ export function ProfileCompletionIndicator({
           complete={completion.coreFieldsComplete.hasPhoto}
         />
         <StatusBadge
-          label={t("profile.completion.fields.timezone", "Timezone")}
-          complete={completion.coreFieldsComplete.hasTimezone}
-        />
-        <StatusBadge
           label={t("profile.completion.fields.address", "Address")}
           complete={completion.coreFieldsComplete.hasAddress}
+        />
+        <StatusBadge
+          label={t("profile.completion.fields.civic", "Civic")}
+          complete={completion.coreFieldsComplete.hasCivic}
+        />
+        <StatusBadge
+          label={t("profile.completion.fields.demographic", "Demographic")}
+          complete={completion.coreFieldsComplete.hasDemographic}
         />
       </div>
 

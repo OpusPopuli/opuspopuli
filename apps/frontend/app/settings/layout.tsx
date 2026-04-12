@@ -155,7 +155,7 @@ export default function SettingsLayout({
                 </span>
               </Link>
               <Link
-                href="/"
+                href="/region"
                 className="text-sm text-[#4d4d4d] hover:text-[#222222] transition-colors"
               >
                 {t("common:navigation.backToApp")}

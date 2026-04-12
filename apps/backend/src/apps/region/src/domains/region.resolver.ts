@@ -152,6 +152,7 @@ export class RegionResolver {
       ...result,
       photoUrl: result.photoUrl ?? undefined,
       contactInfo: (result.contactInfo as ContactInfoModel) ?? undefined,
+      bio: result.bio ?? undefined,
     };
   }
 

@@ -8,55 +8,56 @@ export type SupportedLanguage = "en" | "es";
 
 // Profile Enhancement Enums
 export type PoliticalAffiliation =
-  | "democrat"
-  | "republican"
-  | "independent"
-  | "libertarian"
-  | "green"
-  | "other"
-  | "prefer_not_to_say";
+  | "DEMOCRAT"
+  | "REPUBLICAN"
+  | "INDEPENDENT"
+  | "LIBERTARIAN"
+  | "GREEN"
+  | "OTHER"
+  | "PREFER_NOT_TO_SAY";
 
 export type VotingFrequency =
-  | "every_election"
-  | "most_elections"
-  | "some_elections"
-  | "rarely"
-  | "never"
-  | "prefer_not_to_say";
+  | "EVERY_ELECTION"
+  | "MOST_ELECTIONS"
+  | "SOME_ELECTIONS"
+  | "RARELY"
+  | "NEVER"
+  | "PREFER_NOT_TO_SAY";
 
 export type EducationLevel =
-  | "high_school"
-  | "some_college"
-  | "associate"
-  | "bachelor"
-  | "master"
-  | "doctorate"
-  | "trade_school"
-  | "prefer_not_to_say";
+  | "HIGH_SCHOOL"
+  | "SOME_COLLEGE"
+  | "ASSOCIATE"
+  | "BACHELOR"
+  | "MASTER"
+  | "DOCTORATE"
+  | "TRADE_SCHOOL"
+  | "PREFER_NOT_TO_SAY";
 
 export type IncomeRange =
-  | "under_25k"
-  | "25k_50k"
-  | "50k_75k"
-  | "75k_100k"
-  | "100k_150k"
-  | "150k_200k"
-  | "over_200k"
-  | "prefer_not_to_say";
+  | "UNDER_25K"
+  | "RANGE_25K_50K"
+  | "RANGE_50K_75K"
+  | "RANGE_75K_100K"
+  | "RANGE_100K_150K"
+  | "RANGE_150K_200K"
+  | "OVER_200K"
+  | "PREFER_NOT_TO_SAY";
 
 export type HomeownerStatus =
-  | "own"
-  | "rent"
-  | "living_with_family"
-  | "other"
-  | "prefer_not_to_say";
+  | "OWN"
+  | "RENT"
+  | "LIVING_WITH_FAMILY"
+  | "OTHER"
+  | "PREFER_NOT_TO_SAY";
 
 // Profile Completion Types
 export interface CoreFieldsStatus {
   hasName: boolean;
   hasPhoto: boolean;
-  hasTimezone: boolean;
   hasAddress: boolean;
+  hasCivic: boolean;
+  hasDemographic: boolean;
 }
 
 export interface ProfileCompletion {
@@ -359,8 +360,9 @@ export const GET_MY_PROFILE_COMPLETION = gql`
       coreFieldsComplete {
         hasName
         hasPhoto
-        hasTimezone
         hasAddress
+        hasCivic
+        hasDemographic
       }
       suggestedNextSteps
     }

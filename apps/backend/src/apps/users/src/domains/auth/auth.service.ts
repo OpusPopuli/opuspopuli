@@ -310,6 +310,27 @@ export class AuthService {
       throw new Error('User not found');
     }
 
+    // Extract Supabase user ID (sub claim) from JWT and sync with app user ID.
+    // The app user may have been created with a Prisma-generated UUID before
+    // Supabase assigned its own UUID, causing an ID mismatch.
+    try {
+      const parts = accessToken.split('.');
+      if (parts.length === 3 && parts[1]) {
+        const jwtPayload = JSON.parse(
+          Buffer.from(parts[1], 'base64').toString(),
+        );
+        const supabaseUserId = jwtPayload.sub as string;
+        if (supabaseUserId && user.id !== supabaseUserId) {
+          this.logger.log(
+            `Syncing app user ID to match Supabase auth ID for ${email}`,
+          );
+          await this.usersService.updateUserId(user.id, supabaseUserId);
+        }
+      }
+    } catch {
+      this.logger.warn(`Failed to decode JWT for ID sync — skipping`);
+    }
+
     this.logger.log(`Exchanging Supabase session for user: ${email}`);
 
     // Return the already-valid GoTrue tokens directly.

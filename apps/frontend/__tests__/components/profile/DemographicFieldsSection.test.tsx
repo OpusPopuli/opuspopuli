@@ -157,17 +157,17 @@ describe("DemographicFieldsSection", () => {
       );
       await user.selectOptions(
         screen.getByLabelText("Education Level"),
-        "bachelor",
+        "BACHELOR",
       );
 
-      expect(mockOnChange).toHaveBeenCalledWith("educationLevel", "bachelor");
+      expect(mockOnChange).toHaveBeenCalledWith("educationLevel", "BACHELOR");
     });
 
     it("should display current education level", async () => {
       const user = userEvent.setup();
       render(
         <DemographicFieldsSection
-          educationLevel="master"
+          educationLevel="MASTER"
           onChange={mockOnChange}
         />,
       );
@@ -176,7 +176,7 @@ describe("DemographicFieldsSection", () => {
         screen.getByRole("button", { name: /demographic information/i }),
       );
 
-      expect(screen.getByLabelText("Education Level")).toHaveValue("master");
+      expect(screen.getByLabelText("Education Level")).toHaveValue("MASTER");
     });
   });
 
@@ -190,17 +190,20 @@ describe("DemographicFieldsSection", () => {
       );
       await user.selectOptions(
         screen.getByLabelText("Annual Household Income"),
-        "75k_100k",
+        "RANGE_75K_100K",
       );
 
-      expect(mockOnChange).toHaveBeenCalledWith("incomeRange", "75k_100k");
+      expect(mockOnChange).toHaveBeenCalledWith(
+        "incomeRange",
+        "RANGE_75K_100K",
+      );
     });
 
     it("should display current income range", async () => {
       const user = userEvent.setup();
       render(
         <DemographicFieldsSection
-          incomeRange="100k_150k"
+          incomeRange="RANGE_100K_150K"
           onChange={mockOnChange}
         />,
       );
@@ -210,7 +213,7 @@ describe("DemographicFieldsSection", () => {
       );
 
       expect(screen.getByLabelText("Annual Household Income")).toHaveValue(
-        "100k_150k",
+        "RANGE_100K_150K",
       );
     });
   });
@@ -250,16 +253,16 @@ describe("DemographicFieldsSection", () => {
       await user.click(
         screen.getByRole("button", { name: /demographic information/i }),
       );
-      await user.selectOptions(screen.getByLabelText("Housing Status"), "own");
+      await user.selectOptions(screen.getByLabelText("Housing Status"), "OWN");
 
-      expect(mockOnChange).toHaveBeenCalledWith("homeownerStatus", "own");
+      expect(mockOnChange).toHaveBeenCalledWith("homeownerStatus", "OWN");
     });
 
     it("should display current homeowner status", async () => {
       const user = userEvent.setup();
       render(
         <DemographicFieldsSection
-          homeownerStatus="rent"
+          homeownerStatus="RENT"
           onChange={mockOnChange}
         />,
       );
@@ -268,7 +271,7 @@ describe("DemographicFieldsSection", () => {
         screen.getByRole("button", { name: /demographic information/i }),
       );
 
-      expect(screen.getByLabelText("Housing Status")).toHaveValue("rent");
+      expect(screen.getByLabelText("Housing Status")).toHaveValue("RENT");
     });
   });
 
@@ -312,10 +315,10 @@ describe("DemographicFieldsSection", () => {
       render(
         <DemographicFieldsSection
           occupation="Nurse"
-          educationLevel="bachelor"
-          incomeRange="50k_75k"
+          educationLevel="BACHELOR"
+          incomeRange="RANGE_50K_75K"
           householdSize="2"
-          homeownerStatus="rent"
+          homeownerStatus="RENT"
           onChange={mockOnChange}
         />,
       );
@@ -325,12 +328,12 @@ describe("DemographicFieldsSection", () => {
       );
 
       expect(screen.getByLabelText("Occupation")).toHaveValue("Nurse");
-      expect(screen.getByLabelText("Education Level")).toHaveValue("bachelor");
+      expect(screen.getByLabelText("Education Level")).toHaveValue("BACHELOR");
       expect(screen.getByLabelText("Annual Household Income")).toHaveValue(
-        "50k_75k",
+        "RANGE_50K_75K",
       );
       expect(screen.getByLabelText("Household Size")).toHaveValue("2");
-      expect(screen.getByLabelText("Housing Status")).toHaveValue("rent");
+      expect(screen.getByLabelText("Housing Status")).toHaveValue("RENT");
     });
   });
 
@@ -339,7 +342,7 @@ describe("DemographicFieldsSection", () => {
       const user = userEvent.setup();
       render(
         <DemographicFieldsSection
-          educationLevel="bachelor"
+          educationLevel="BACHELOR"
           onChange={mockOnChange}
         />,
       );
@@ -356,7 +359,7 @@ describe("DemographicFieldsSection", () => {
       const user = userEvent.setup();
       render(
         <DemographicFieldsSection
-          incomeRange="50k_75k"
+          incomeRange="RANGE_50K_75K"
           onChange={mockOnChange}
         />,
       );

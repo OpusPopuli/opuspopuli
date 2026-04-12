@@ -19,22 +19,22 @@ interface CivicFieldsSectionProps {
 }
 
 const POLITICAL_AFFILIATIONS: PoliticalAffiliation[] = [
-  "democrat",
-  "republican",
-  "independent",
-  "libertarian",
-  "green",
-  "other",
-  "prefer_not_to_say",
+  "DEMOCRAT",
+  "REPUBLICAN",
+  "INDEPENDENT",
+  "LIBERTARIAN",
+  "GREEN",
+  "OTHER",
+  "PREFER_NOT_TO_SAY",
 ];
 
 const VOTING_FREQUENCIES: VotingFrequency[] = [
-  "every_election",
-  "most_elections",
-  "some_elections",
-  "rarely",
-  "never",
-  "prefer_not_to_say",
+  "EVERY_ELECTION",
+  "MOST_ELECTIONS",
+  "SOME_ELECTIONS",
+  "RARELY",
+  "NEVER",
+  "PREFER_NOT_TO_SAY",
 ];
 
 const POLICY_PRIORITIES = [
@@ -178,7 +178,8 @@ export function CivicFieldsSection({
                 <option key={affiliation} value={affiliation}>
                   {t(
                     `profile.civic.affiliations.${affiliation}`,
-                    affiliation.replace(/_/g, " "),
+                    affiliation.charAt(0) +
+                      affiliation.slice(1).replace(/_/g, " ").toLowerCase(),
                   )}
                 </option>
               ))}
@@ -207,7 +208,8 @@ export function CivicFieldsSection({
                 <option key={frequency} value={frequency}>
                   {t(
                     `profile.civic.frequencies.${frequency}`,
-                    frequency.replace(/_/g, " "),
+                    frequency.charAt(0) +
+                      frequency.slice(1).replace(/_/g, " ").toLowerCase(),
                   )}
                 </option>
               ))}

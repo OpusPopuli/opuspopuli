@@ -112,12 +112,12 @@ describe("CivicFieldsSection", () => {
       );
       await user.selectOptions(
         screen.getByLabelText("Political Affiliation"),
-        "democrat",
+        "DEMOCRAT",
       );
 
       expect(mockOnChange).toHaveBeenCalledWith(
         "politicalAffiliation",
-        "democrat",
+        "DEMOCRAT",
       );
     });
 
@@ -125,7 +125,7 @@ describe("CivicFieldsSection", () => {
       const user = userEvent.setup();
       render(
         <CivicFieldsSection
-          politicalAffiliation="democrat"
+          politicalAffiliation="DEMOCRAT"
           onChange={mockOnChange}
         />,
       );
@@ -148,7 +148,7 @@ describe("CivicFieldsSection", () => {
       const user = userEvent.setup();
       render(
         <CivicFieldsSection
-          politicalAffiliation="republican"
+          politicalAffiliation="REPUBLICAN"
           onChange={mockOnChange}
         />,
       );
@@ -158,7 +158,7 @@ describe("CivicFieldsSection", () => {
       );
 
       expect(screen.getByLabelText("Political Affiliation")).toHaveValue(
-        "republican",
+        "REPUBLICAN",
       );
     });
   });
@@ -173,12 +173,12 @@ describe("CivicFieldsSection", () => {
       );
       await user.selectOptions(
         screen.getByLabelText("Voting Frequency"),
-        "every_election",
+        "EVERY_ELECTION",
       );
 
       expect(mockOnChange).toHaveBeenCalledWith(
         "votingFrequency",
-        "every_election",
+        "EVERY_ELECTION",
       );
     });
 
@@ -186,7 +186,7 @@ describe("CivicFieldsSection", () => {
       const user = userEvent.setup();
       render(
         <CivicFieldsSection
-          votingFrequency="most_elections"
+          votingFrequency="MOST_ELECTIONS"
           onChange={mockOnChange}
         />,
       );
@@ -196,7 +196,7 @@ describe("CivicFieldsSection", () => {
       );
 
       expect(screen.getByLabelText("Voting Frequency")).toHaveValue(
-        "most_elections",
+        "MOST_ELECTIONS",
       );
     });
   });
@@ -304,8 +304,8 @@ describe("CivicFieldsSection", () => {
       const user = userEvent.setup();
       render(
         <CivicFieldsSection
-          politicalAffiliation="independent"
-          votingFrequency="every_election"
+          politicalAffiliation="INDEPENDENT"
+          votingFrequency="EVERY_ELECTION"
           policyPriorities={["healthcare", "economy"]}
           onChange={mockOnChange}
         />,
@@ -316,10 +316,10 @@ describe("CivicFieldsSection", () => {
       );
 
       expect(screen.getByLabelText("Political Affiliation")).toHaveValue(
-        "independent",
+        "INDEPENDENT",
       );
       expect(screen.getByLabelText("Voting Frequency")).toHaveValue(
-        "every_election",
+        "EVERY_ELECTION",
       );
     });
   });

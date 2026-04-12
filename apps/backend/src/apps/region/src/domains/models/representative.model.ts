@@ -16,6 +16,9 @@ export class ContactInfoModel {
 
   @Field({ nullable: true })
   website?: string;
+
+  @Field({ nullable: true })
+  office?: string;
 }
 
 /**
@@ -46,6 +49,9 @@ export class RepresentativeModel {
 
   @Field(() => ContactInfoModel, { nullable: true })
   contactInfo?: ContactInfoModel;
+
+  @Field({ nullable: true })
+  bio?: string;
 
   @Field()
   createdAt!: Date;

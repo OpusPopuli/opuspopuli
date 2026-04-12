@@ -57,12 +57,22 @@ import { WebSocketConnectionException } from 'src/common/exceptions/app.exceptio
 const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
   // Only use the validated user from passport (set by AuthMiddleware after JWT validation)
   // req.user contains the ILogin object from JwtStrategy.validate()
-  const context: { user?: string; res: Response } = { res };
+  const context: {
+    user?: string;
+    res: Response;
+    clientIp?: string;
+    clientUserAgent?: string;
+  } = { res };
 
   if (req.user) {
     // Serialize user object to JSON string for propagation to subgraphs
     context.user = JSON.stringify(req.user);
   }
+
+  // Capture original client metadata for forwarding to subgraphs
+  context.clientIp =
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+  context.clientUserAgent = req.headers['user-agent'];
 
   return context;
 };

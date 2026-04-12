@@ -41,6 +41,11 @@ export class AuthMiddleware implements NestMiddleware {
     res: Response,
     next: NextFunction,
   ) {
+    // Extract JWT from httpOnly cookie if no Authorization header present
+    if (!req.headers.authorization && req.cookies?.['access-token']) {
+      req.headers.authorization = `Bearer ${req.cookies['access-token']}`;
+    }
+
     if (req.headers.authorization) {
       passport.authenticate(
         'jwt',

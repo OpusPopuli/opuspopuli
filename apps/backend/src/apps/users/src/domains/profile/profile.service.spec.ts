@@ -735,33 +735,49 @@ describe('ProfileService', () => {
       expect(result.isComplete).toBe(false);
       expect(result.coreFieldsComplete.hasName).toBe(false);
       expect(result.coreFieldsComplete.hasPhoto).toBe(false);
-      expect(result.coreFieldsComplete.hasTimezone).toBe(false);
+      expect(result.coreFieldsComplete.hasCivic).toBe(false);
+      expect(result.coreFieldsComplete.hasDemographic).toBe(false);
       expect(result.coreFieldsComplete.hasAddress).toBe(false);
     });
 
-    it('should return 25% for profile with name only', async () => {
+    it('should return 20% for profile with name only', async () => {
       mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
-        timezone: null,
         avatarUrl: null,
       } as unknown as UserProfile);
       mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
-      expect(result.percentage).toBe(25);
+      expect(result.percentage).toBe(20);
       expect(result.coreFieldsComplete.hasName).toBe(true);
       expect(result.coreFieldsComplete.hasPhoto).toBe(false);
     });
 
-    it('should return 100% for complete core profile', async () => {
+    it('should return 40% for profile with name and photo', async () => {
       mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
-        timezone: 'America/New_York',
         avatarUrl: 'https://example.com/avatar.jpg',
-      });
+      } as unknown as UserProfile);
+      mockDb.userAddress.findMany.mockResolvedValue([]);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.percentage).toBe(40);
+      expect(result.coreFieldsComplete.hasName).toBe(true);
+      expect(result.coreFieldsComplete.hasPhoto).toBe(true);
+    });
+
+    it('should return 100% for fully complete profile', async () => {
+      mockDb.userProfile.findUnique.mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        avatarUrl: 'https://example.com/avatar.jpg',
+        politicalAffiliation: 'independent',
+        occupation: 'Engineer',
+      } as unknown as UserProfile);
       mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
 
       const result = await service.getProfileCompletion(mockUserId);
@@ -770,58 +786,34 @@ describe('ProfileService', () => {
       expect(result.isComplete).toBe(true);
     });
 
-    it('should add civic field bonus percentage', async () => {
+    it('should count civic fields as 20% when any civic field is set', async () => {
       mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
-        timezone: 'America/New_York',
-        avatarUrl: 'https://example.com/avatar.jpg',
+        avatarUrl: null,
         politicalAffiliation: 'independent',
-        votingFrequency: 'always',
       } as unknown as UserProfile);
-      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
-      expect(result.percentage).toBe(110); // 100% core + 10% civic (2 fields * 5%)
+      expect(result.percentage).toBe(40); // name (20%) + civic (20%)
+      expect(result.coreFieldsComplete.hasCivic).toBe(true);
     });
 
-    it('should add demographic field bonus percentage', async () => {
+    it('should count demographic fields as 20% when any demographic field is set', async () => {
       mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
-        timezone: 'America/New_York',
-        avatarUrl: 'https://example.com/avatar.jpg',
+        avatarUrl: null,
         occupation: 'Engineer',
-        educationLevel: 'bachelor',
       } as unknown as UserProfile);
-      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.userAddress.findMany.mockResolvedValue([]);
 
       const result = await service.getProfileCompletion(mockUserId);
 
-      expect(result.percentage).toBe(106); // 100% core + 6% demographic (2 fields * 3%)
-    });
-
-    it('should cap percentage at 130%', async () => {
-      mockDb.userProfile.findUnique.mockResolvedValue({
-        ...mockProfile,
-        firstName: 'John',
-        timezone: 'America/New_York',
-        avatarUrl: 'https://example.com/avatar.jpg',
-        politicalAffiliation: 'independent',
-        votingFrequency: 'always',
-        policyPriorities: ['healthcare', 'education'],
-        occupation: 'Engineer',
-        educationLevel: 'bachelor',
-        incomeRange: '50k_75k',
-        householdSize: '2',
-        homeownerStatus: 'own',
-      } as unknown as UserProfile);
-      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
-
-      const result = await service.getProfileCompletion(mockUserId);
-
-      expect(result.percentage).toBe(130); // Capped at 130%
+      expect(result.percentage).toBe(40); // name (20%) + demographic (20%)
+      expect(result.coreFieldsComplete.hasDemographic).toBe(true);
     });
 
     it('should return suggested steps for incomplete profile', async () => {
@@ -836,11 +828,10 @@ describe('ProfileService', () => {
       );
     });
 
-    it('should suggest civic fields when core is complete', async () => {
+    it('should suggest civic and demographic steps when those fields are missing', async () => {
       mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
-        timezone: 'America/New_York',
         avatarUrl: 'https://example.com/avatar.jpg',
       });
       mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
@@ -848,7 +839,10 @@ describe('ProfileService', () => {
       const result = await service.getProfileCompletion(mockUserId);
 
       expect(result.suggestedNextSteps).toContain(
-        'Share your political affiliation for personalized insights',
+        'Share your civic information for personalized insights',
+      );
+      expect(result.suggestedNextSteps).toContain(
+        'Add demographic details to complete your profile',
       );
     });
 
@@ -857,7 +851,6 @@ describe('ProfileService', () => {
         ...mockProfile,
         firstName: null,
         displayName: 'johndoe',
-        timezone: null,
         avatarUrl: null,
       } as unknown as UserProfile);
       mockDb.userAddress.findMany.mockResolvedValue([]);
@@ -871,7 +864,6 @@ describe('ProfileService', () => {
       mockDb.userProfile.findUnique.mockResolvedValue({
         ...mockProfile,
         firstName: 'John',
-        timezone: null,
         avatarUrl: null,
         avatarStorageKey: 'avatars/user-123/photo.jpg',
       } as unknown as UserProfile);

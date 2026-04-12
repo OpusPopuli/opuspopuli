@@ -14,6 +14,8 @@ import { context as otelContext, propagation } from '@opentelemetry/api';
 interface GatewayContext {
   user?: string;
   res?: Response;
+  clientIp?: string;
+  clientUserAgent?: string;
 }
 
 /**
@@ -92,6 +94,17 @@ export class HmacRemoteGraphQLDataSource extends RemoteGraphQLDataSource<Gateway
     // Forward authenticated user to microservices
     if (context?.user) {
       request.http?.headers.set('user', context.user);
+    }
+
+    // Forward original client IP and user agent for accurate audit logging
+    if (context?.clientIp) {
+      request.http?.headers.set('x-forwarded-for', context.clientIp);
+    }
+    if (context?.clientUserAgent) {
+      request.http?.headers.set(
+        'x-original-user-agent',
+        context.clientUserAgent,
+      );
     }
 
     // Sign request with HMAC for microservice authentication
