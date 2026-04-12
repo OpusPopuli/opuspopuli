@@ -39,5 +39,5 @@
     "jest.setup.mjs",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "src/sw.ts"]
+  "exclude": ["node_modules", "src/sw.ts", "e2e"]
 }
