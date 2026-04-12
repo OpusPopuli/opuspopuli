@@ -498,7 +498,9 @@ test.describe("Contact Representative Form", () => {
       .first();
     await contactButton.click();
 
-    await expect(page.getByText(/Contact Jane/)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Contact Jane Smith/ }),
+    ).toBeVisible();
   });
 
   test("should have subject and message fields", async ({ page }) => {
@@ -606,10 +608,14 @@ test.describe("Contact Representative Form", () => {
       .getByRole("button", { name: /Contact/i })
       .first()
       .click();
-    await expect(page.getByText(/Contact Jane/)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Contact Jane Smith/ }),
+    ).toBeVisible();
 
     await page.getByRole("button", { name: /Cancel/i }).click();
-    await expect(page.getByText(/Contact Jane/)).not.toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Contact Jane Smith/ }),
+    ).not.toBeVisible();
   });
 });
 
