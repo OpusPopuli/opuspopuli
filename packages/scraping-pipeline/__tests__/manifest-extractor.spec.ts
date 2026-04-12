@@ -239,6 +239,81 @@ describe("ManifestExtractorService", () => {
       expect(result.items[1].externalId).toBe("SCA 1");
       expect(result.items[2].externalId).toBe("SB 42");
     });
+
+    it("should handle constant extraction method with defaultValue", () => {
+      const html = `
+        <div class="list">
+          <div class="item"><span class="name">Person A</span></div>
+          <div class="item"><span class="name">Person B</span></div>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".list",
+          itemSelector: ".item",
+          fieldMappings: [
+            {
+              fieldName: "name",
+              selector: ".name",
+              extractionMethod: "text",
+              required: true,
+            },
+            {
+              fieldName: "chamber",
+              selector: "",
+              extractionMethod:
+                "constant" as import("@opuspopuli/common").ExtractionMethod,
+              required: false,
+              defaultValue: "Senate",
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0].chamber).toBe("Senate");
+      expect(result.items[1].chamber).toBe("Senate");
+    });
+
+    it("should handle null selector gracefully", () => {
+      const html = `
+        <div class="list">
+          <div class="item"><span class="name">Person</span></div>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".list",
+          itemSelector: ".item",
+          fieldMappings: [
+            {
+              fieldName: "name",
+              selector: ".name",
+              extractionMethod: "text",
+              required: true,
+            },
+            {
+              fieldName: "extra",
+              selector: null as unknown as string,
+              extractionMethod: "text",
+              required: false,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].name).toBe("Person");
+      expect(result.items[0].extra).toBeUndefined();
+    });
   });
 
   describe("error handling", () => {
