@@ -208,12 +208,11 @@ describe("RepresentativesPage", () => {
       expect(screen.getByText("Independent")).toBeInTheDocument();
     });
 
-    it("should render contact information when available", () => {
+    it("should link representative cards to detail page", () => {
       render(<RepresentativesPage />);
 
-      expect(screen.getByText("jane.smith@example.gov")).toBeInTheDocument();
-      expect(screen.getByText("555-1234")).toBeInTheDocument();
-      expect(screen.getByText("State Capitol, Room 100")).toBeInTheDocument();
+      const janeLink = screen.getByRole("link", { name: /Jane Smith/i });
+      expect(janeLink).toHaveAttribute("href", "/region/representatives/1");
     });
 
     it("should render photos when available", () => {
