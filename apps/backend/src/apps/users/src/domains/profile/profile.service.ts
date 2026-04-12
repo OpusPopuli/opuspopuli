@@ -17,18 +17,23 @@ import {
 import { IFileConfig } from 'src/config';
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 
+import { Logger } from '@nestjs/common';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateAddressDto, UpdateAddressDto } from './dto/address.dto';
 import { UpdateNotificationPreferencesDto } from './dto/notification-preferences.dto';
 import { UpdateConsentDto } from './dto/consent.dto';
 import { ProfileCompletionResult } from './models/profile-completion.model';
+import { GeocodingService } from './geocoding.service';
 
 @Injectable()
 export class ProfileService {
   private fileConfig?: IFileConfig;
 
+  private readonly logger = new Logger(ProfileService.name);
+
   constructor(
     private readonly db: DbService,
+    private readonly geocodingService: GeocodingService,
     @Optional()
     @Inject('STORAGE_PROVIDER')
     private readonly storage?: IStorageProvider,
@@ -214,12 +219,17 @@ export class ProfileService {
       });
     }
 
-    return this.db.userAddress.create({
+    const address = await this.db.userAddress.create({
       data: {
         userId,
         ...createDto,
       },
     });
+
+    // Geocode async — don't block address creation
+    this.geocodeAndUpdate(userId, address.id, createDto).catch(() => {});
+
+    return address;
   }
 
   async updateAddress(
@@ -246,10 +256,78 @@ export class ProfileService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _id, ...updateData } = updateDto;
 
-    return this.db.userAddress.update({
+    const updated = await this.db.userAddress.update({
       where: { id: address.id },
       data: updateData,
     });
+
+    // Re-geocode if address fields changed
+    if (
+      updateDto.addressLine1 ||
+      updateDto.city ||
+      updateDto.state ||
+      updateDto.postalCode
+    ) {
+      this.geocodeAndUpdate(userId, updated.id, updated).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  /**
+   * Geocode an address and update the record with coordinates and civic districts.
+   * Also updates the user's profile timezone from the primary address.
+   * Fire-and-forget — failures are logged but don't affect the caller.
+   */
+  private async geocodeAndUpdate(
+    userId: string,
+    addressId: string,
+    address: {
+      addressLine1: string;
+      city: string;
+      state: string;
+      postalCode: string;
+      isPrimary?: boolean;
+    },
+  ): Promise<void> {
+    const result = await this.geocodingService.geocode(
+      address.addressLine1,
+      address.city,
+      address.state,
+      address.postalCode,
+    );
+
+    if (!result) return;
+
+    await this.db.userAddress.update({
+      where: { id: addressId },
+      data: {
+        latitude: result.latitude,
+        longitude: result.longitude,
+        formattedAddress: result.formattedAddress,
+        congressionalDistrict: result.congressionalDistrict,
+        stateSenatorialDistrict: result.stateSenatorialDistrict,
+        stateAssemblyDistrict: result.stateAssemblyDistrict,
+        county: result.county,
+        municipality: result.municipality,
+        isVerified: true,
+        geocodedAt: new Date(),
+      },
+    });
+
+    this.logger.log(
+      `Geocoded address ${addressId}: ${result.formattedAddress} → ${result.congressionalDistrict}`,
+    );
+
+    // Auto-set timezone on user profile from primary address
+    if (address.isPrimary && result.timezone) {
+      await this.db.userProfile
+        .update({
+          where: { userId },
+          data: { timezone: result.timezone },
+        })
+        .catch(() => {}); // Profile may not exist yet
+    }
   }
 
   async deleteAddress(userId: string, addressId: string): Promise<boolean> {
