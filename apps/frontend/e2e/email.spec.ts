@@ -489,7 +489,9 @@ test.describe("Contact Representative Form", () => {
   }) => {
     await page.goto("/region/representatives/rep-1");
 
-    await expect(page.getByText("Jane Smith")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
 
     const contactButton = page
       .getByRole("button", { name: /Contact/i })
@@ -501,7 +503,9 @@ test.describe("Contact Representative Form", () => {
 
   test("should have subject and message fields", async ({ page }) => {
     await page.goto("/region/representatives/rep-1");
-    await expect(page.getByText("Jane Smith")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
 
     await page
       .getByRole("button", { name: /Contact/i })
@@ -514,7 +518,9 @@ test.describe("Contact Representative Form", () => {
 
   test("should have send method toggle", async ({ page }) => {
     await page.goto("/region/representatives/rep-1");
-    await expect(page.getByText("Jane Smith")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
 
     await page
       .getByRole("button", { name: /Contact/i })
@@ -527,7 +533,9 @@ test.describe("Contact Representative Form", () => {
 
   test("should have include address checkbox", async ({ page }) => {
     await page.goto("/region/representatives/rep-1");
-    await expect(page.getByText("Jane Smith")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
 
     await page
       .getByRole("button", { name: /Contact/i })
@@ -539,7 +547,9 @@ test.describe("Contact Representative Form", () => {
 
   test("should show character count for message", async ({ page }) => {
     await page.goto("/region/representatives/rep-1");
-    await expect(page.getByText("Jane Smith")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
 
     await page
       .getByRole("button", { name: /Contact/i })
@@ -553,7 +563,9 @@ test.describe("Contact Representative Form", () => {
     page,
   }) => {
     await page.goto("/region/representatives/rep-1");
-    await expect(page.getByText("Jane Smith")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
 
     await page
       .getByRole("button", { name: /Contact/i })
@@ -566,7 +578,9 @@ test.describe("Contact Representative Form", () => {
 
   test("should enable submit button when form is valid", async ({ page }) => {
     await page.goto("/region/representatives/rep-1");
-    await expect(page.getByText("Jane Smith")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
 
     await page
       .getByRole("button", { name: /Contact/i })
@@ -584,7 +598,9 @@ test.describe("Contact Representative Form", () => {
 
   test("should close form when cancel is clicked", async ({ page }) => {
     await page.goto("/region/representatives/rep-1");
-    await expect(page.getByText("Jane Smith")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
 
     await page
       .getByRole("button", { name: /Contact/i })
