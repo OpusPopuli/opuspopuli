@@ -672,6 +672,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             party: rep.party,
             photoUrl: rep.photoUrl,
             contactInfo: rep.contactInfo as object | undefined,
+            bio: rep.bio,
           },
           create: {
             externalId: rep.externalId,
@@ -681,6 +682,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             party: rep.party,
             photoUrl: rep.photoUrl,
             contactInfo: rep.contactInfo as object | undefined,
+            bio: rep.bio,
           },
         }),
       ),

@@ -108,7 +108,7 @@ export default function RepresentativesPage() {
 
   // Fetch all reps (unfiltered) to build complete chamber list
   const { data: allData } = useQuery<RepresentativesData>(GET_REPRESENTATIVES, {
-    variables: { skip: 0, take: 200 },
+    variables: { skip: 0, take: 100 },
   });
 
   const chambers = allData?.representatives.items
