@@ -93,6 +93,7 @@ type RepresentativeRecord = {
   party: string | null;
   photoUrl: string | null;
   contactInfo: unknown;
+  bio: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -1088,6 +1089,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             party: item.party ?? undefined,
             photoUrl: item.photoUrl ?? undefined,
             contactInfo: (item.contactInfo as ContactInfoModel) ?? undefined,
+            bio: item.bio ?? undefined,
           })),
           total,
           hasMore,
@@ -1101,6 +1103,55 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    */
   async getRepresentative(id: string) {
     return this.db.representative.findUnique({ where: { id } });
+  }
+
+  /**
+   * Find representatives matching a user's civic districts.
+   * Normalizes district number formats between Census API output
+   * and scraped representative data.
+   */
+  async getRepresentativesByDistricts(
+    congressionalDistrict?: string,
+    stateSenatorialDistrict?: string,
+    stateAssemblyDistrict?: string,
+  ): Promise<RepresentativeRecord[]> {
+    const conditions: { chamber: string; district: string }[] = [];
+
+    // Extract district numbers and build match conditions
+    // Census: "Congressional District 2" → Assembly: "District: 02", Senate: "02"
+    if (stateAssemblyDistrict) {
+      const num = this.extractDistrictNumber(stateAssemblyDistrict);
+      if (num)
+        conditions.push({ chamber: 'Assembly', district: `District: ${num}` });
+    }
+    if (stateSenatorialDistrict) {
+      const num = this.extractDistrictNumber(stateSenatorialDistrict);
+      if (num) conditions.push({ chamber: 'Senate', district: num });
+    }
+
+    if (conditions.length === 0) return [];
+
+    return this.db.representative.findMany({
+      where: {
+        OR: conditions.map((c) => ({
+          chamber: c.chamber,
+          district: c.district,
+        })),
+      },
+      orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  /**
+   * Extract and zero-pad a district number from Census format.
+   * "Congressional District 2" → "02"
+   * "State Senate District 12" → "12"
+   * "Assembly District 5" → "05"
+   */
+  private extractDistrictNumber(districtString: string): string | null {
+    const match = districtString.match(/(\d+)/);
+    if (!match) return null;
+    return match[1].padStart(2, '0');
   }
 
   // ==========================================

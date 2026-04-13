@@ -593,6 +593,101 @@ describe('RegionDomainService', () => {
     });
   });
 
+  describe('getRepresentativesByDistricts', () => {
+    it('should return empty array when no districts provided', async () => {
+      // Reset call tracking so we only see calls from our method
+      mockDb.representative.findMany.mockClear();
+
+      const result = await service.getRepresentativesByDistricts();
+
+      expect(result).toEqual([]);
+      // Should not have called findMany at all (early return)
+      expect(mockDb.representative.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should build correct OR conditions for assembly and senate districts', async () => {
+      mockDb.representative.findMany.mockResolvedValue([]);
+
+      await service.getRepresentativesByDistricts(
+        undefined,
+        'State Senate District 5',
+        'Assembly District 12',
+      );
+
+      expect(mockDb.representative.findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { chamber: 'Assembly', district: 'District: 12' },
+            { chamber: 'Senate', district: '05' },
+          ],
+        },
+        orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+      });
+    });
+
+    it('should zero-pad single-digit district numbers (Congressional District 2 -> "02")', async () => {
+      mockDb.representative.findMany.mockResolvedValue([]);
+
+      await service.getRepresentativesByDistricts(
+        undefined,
+        'State Senate District 2',
+        undefined,
+      );
+
+      expect(mockDb.representative.findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [{ chamber: 'Senate', district: '02' }],
+        },
+        orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+      });
+    });
+
+    it('should preserve two-digit district numbers (Assembly District 12 -> "12")', async () => {
+      mockDb.representative.findMany.mockResolvedValue([]);
+
+      await service.getRepresentativesByDistricts(
+        undefined,
+        undefined,
+        'Assembly District 12',
+      );
+
+      expect(mockDb.representative.findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [{ chamber: 'Assembly', district: 'District: 12' }],
+        },
+        orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+      });
+    });
+
+    it('should return matching representatives from db', async () => {
+      const mockReps = [
+        {
+          id: '1',
+          externalId: 'rep-1',
+          name: 'Jane Senator',
+          chamber: 'Senate',
+          district: '05',
+          party: 'Democratic',
+          photoUrl: null,
+          contactInfo: null,
+          bio: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+        },
+      ];
+      mockDb.representative.findMany.mockResolvedValue(mockReps as never);
+
+      const result = await service.getRepresentativesByDistricts(
+        undefined,
+        'State Senate District 5',
+        undefined,
+      );
+
+      expect(result).toEqual(mockReps);
+    });
+  });
+
   // ==========================================
   // CAMPAIGN FINANCE GETTER TESTS
   // ==========================================

@@ -319,6 +319,59 @@ describe('RegionResolver', () => {
     });
   });
 
+  describe('representativesByDistricts', () => {
+    it('should call service with district strings', async () => {
+      regionService.getRepresentativesByDistricts.mockResolvedValue([
+        mockRepresentative,
+      ]);
+
+      const result = await resolver.representativesByDistricts(
+        'Congressional District 2',
+        'State Senate District 5',
+        'Assembly District 12',
+      );
+
+      expect(regionService.getRepresentativesByDistricts).toHaveBeenCalledWith(
+        'Congressional District 2',
+        'State Senate District 5',
+        'Assembly District 12',
+      );
+      expect(result).toHaveLength(1);
+    });
+
+    it('should convert null party/photoUrl/bio to undefined', async () => {
+      const repWithNulls = {
+        ...mockRepresentative,
+        party: null,
+        photoUrl: null,
+        bio: null,
+        contactInfo: null,
+      };
+      regionService.getRepresentativesByDistricts.mockResolvedValue([
+        repWithNulls,
+      ]);
+
+      const result = await resolver.representativesByDistricts(
+        undefined,
+        'State Senate District 5',
+        undefined,
+      );
+
+      expect(result[0].party).toBeUndefined();
+      expect(result[0].photoUrl).toBeUndefined();
+      expect(result[0].bio).toBeUndefined();
+      expect(result[0].contactInfo).toBeUndefined();
+    });
+
+    it('should return empty array when service returns empty', async () => {
+      regionService.getRepresentativesByDistricts.mockResolvedValue([]);
+
+      const result = await resolver.representativesByDistricts();
+
+      expect(result).toEqual([]);
+    });
+  });
+
   // ==========================================
   // CAMPAIGN FINANCE QUERIES
   // ==========================================
