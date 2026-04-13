@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import RegionPage from "@/app/region/page";
+import { GET_REGION_INFO } from "@/lib/graphql/region";
+import { GET_MY_ADDRESSES } from "@/lib/graphql/profile";
 
 // Mock Apollo Client
 const mockRegionInfo = {
@@ -214,6 +216,102 @@ describe("RegionPage", () => {
       expect(screen.queryByText("Meetings")).not.toBeInTheDocument();
       expect(screen.queryByText("Representatives")).not.toBeInTheDocument();
       expect(screen.queryByText("Campaign Finance")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("MyRepresentativesSection", () => {
+    const mockAddress = {
+      id: "addr-1",
+      userId: "user-1",
+      addressType: "HOME",
+      isPrimary: true,
+      label: "Home",
+      addressLine1: "123 Main St",
+      city: "Sacramento",
+      state: "CA",
+      postalCode: "95814",
+      country: "US",
+      congressionalDistrict: "Congressional District 7",
+      stateSenatorialDistrict: "State Senate District 5",
+      stateAssemblyDistrict: "Assembly District 12",
+    };
+
+    const mockReps = [
+      {
+        id: "rep-1",
+        name: "Jane Senator",
+        chamber: "Senate",
+        district: "05",
+        party: "Democratic",
+        photoUrl: null,
+      },
+      {
+        id: "rep-2",
+        name: "John Assembly",
+        chamber: "Assembly",
+        district: "District: 12",
+        party: "Republican",
+        photoUrl: null,
+      },
+    ];
+
+    it("should render My Representatives heading and rep names as links", () => {
+      const { useQuery } = jest.requireMock("@apollo/client/react");
+      (useQuery as jest.Mock).mockImplementation((query: unknown) => {
+        if (query === GET_MY_ADDRESSES) {
+          return {
+            data: { myAddresses: [mockAddress] },
+            loading: false,
+            error: null,
+          };
+        }
+        if (query === GET_REGION_INFO) {
+          return {
+            data: { regionInfo: mockRegionInfo },
+            loading: false,
+            error: null,
+          };
+        }
+        // GET_REPRESENTATIVES_BY_DISTRICTS
+        return {
+          data: { representativesByDistricts: mockReps },
+          loading: false,
+          error: null,
+        };
+      });
+
+      render(<RegionPage />);
+
+      expect(screen.getByText("My Representatives")).toBeInTheDocument();
+      const janeLink = screen.getByRole("link", { name: /Jane Senator/i });
+      expect(janeLink).toHaveAttribute("href", "/region/representatives/rep-1");
+      const johnLink = screen.getByRole("link", { name: /John Assembly/i });
+      expect(johnLink).toHaveAttribute("href", "/region/representatives/rep-2");
+    });
+
+    it("should show add-address prompt when no primary address", () => {
+      const { useQuery } = jest.requireMock("@apollo/client/react");
+      (useQuery as jest.Mock).mockImplementation((query: unknown) => {
+        if (query === GET_MY_ADDRESSES) {
+          return { data: { myAddresses: [] }, loading: false, error: null };
+        }
+        if (query === GET_REGION_INFO) {
+          return {
+            data: { regionInfo: mockRegionInfo },
+            loading: false,
+            error: null,
+          };
+        }
+        return { data: null, loading: false, error: null };
+      });
+
+      render(<RegionPage />);
+
+      expect(screen.getByText("My Representatives")).toBeInTheDocument();
+      expect(screen.getByText(/Add an address/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: /profile settings/i }),
+      ).toHaveAttribute("href", "/settings/addresses");
     });
   });
 });

@@ -151,7 +151,7 @@ function MyRepresentativesSection() {
             Add an address in your{" "}
             <Link
               href="/settings/addresses"
-              className="text-blue-600 hover:underline"
+              className="text-[#222222] underline font-medium"
             >
               profile settings
             </Link>{" "}
