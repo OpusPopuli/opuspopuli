@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
@@ -16,8 +17,6 @@ import {
 } from '@opuspopuli/relationaldb-provider';
 import { IFileConfig } from 'src/config';
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
-
-import { Logger } from '@nestjs/common';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateAddressDto, UpdateAddressDto } from './dto/address.dto';
 import { UpdateNotificationPreferencesDto } from './dto/notification-preferences.dto';

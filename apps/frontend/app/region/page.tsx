@@ -1,12 +1,17 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
 import {
   GET_REGION_INFO,
+  GET_REPRESENTATIVES_BY_DISTRICTS,
   RegionInfoData,
+  RepresentativesByDistrictsData,
   DataType,
 } from "@/lib/graphql/region";
+import { GET_MY_ADDRESSES, type MyAddressesData } from "@/lib/graphql/profile";
+import { PartyBadge } from "@/components/region/PartyBadge";
 
 const DATA_TYPE_CARDS: Record<
   DataType,
@@ -109,6 +114,107 @@ function DataTypeIcon({ type }: { readonly type: string }) {
   }
 }
 
+function MyRepresentativesSection() {
+  // Get user's primary address with district info
+  const { data: addressData } = useQuery<MyAddressesData>(GET_MY_ADDRESSES);
+
+  const primaryAddress = addressData?.myAddresses?.find((a) => a.isPrimary);
+  const hasDistricts =
+    primaryAddress?.congressionalDistrict ||
+    primaryAddress?.stateSenatorialDistrict ||
+    primaryAddress?.stateAssemblyDistrict;
+
+  // Fetch matching representatives
+  const { data: repData } = useQuery<RepresentativesByDistrictsData>(
+    GET_REPRESENTATIVES_BY_DISTRICTS,
+    {
+      variables: {
+        congressionalDistrict: primaryAddress?.congressionalDistrict,
+        stateSenatorialDistrict: primaryAddress?.stateSenatorialDistrict,
+        stateAssemblyDistrict: primaryAddress?.stateAssemblyDistrict,
+      },
+      skip: !hasDistricts,
+    },
+  );
+
+  const reps = repData?.representativesByDistricts;
+
+  // Don't show section if no address or no districts
+  if (!hasDistricts || !reps || reps.length === 0) {
+    if (!primaryAddress) {
+      return (
+        <div className="mb-10 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6">
+          <h2 className="text-lg font-semibold text-[#222222] mb-2">
+            My Representatives
+          </h2>
+          <p className="text-sm text-[#4d4d4d] mb-3">
+            Add an address in your{" "}
+            <Link
+              href="/settings/addresses"
+              className="text-blue-600 hover:underline"
+            >
+              profile settings
+            </Link>{" "}
+            to see your elected representatives.
+          </p>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  return (
+    <div className="mb-10">
+      <h2 className="text-lg font-semibold text-[#222222] mb-4">
+        My Representatives
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {reps.map((rep) => (
+          <Link
+            key={rep.id}
+            href={`/region/representatives/${rep.id}`}
+            className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow flex items-center gap-3"
+          >
+            {rep.photoUrl ? (
+              <Image
+                src={rep.photoUrl}
+                alt={rep.name}
+                width={48}
+                height={48}
+                className="w-12 h-12 rounded-full object-cover"
+                unoptimized
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                <svg
+                  className="w-6 h-6 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                  />
+                </svg>
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-[#222222] truncate">{rep.name}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <PartyBadge party={rep.party} />
+                <span className="text-xs text-[#4d4d4d]">{rep.chamber}</span>
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function RegionPage() {
   const { data, loading, error } = useQuery<RegionInfoData>(GET_REGION_INFO);
 
@@ -146,6 +252,9 @@ export default function RegionPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
+      {/* My Representatives */}
+      <MyRepresentativesSection />
+
       {/* Region Header */}
       <div className="mb-10">
         <h1 className="text-3xl font-bold text-[#222222]">
