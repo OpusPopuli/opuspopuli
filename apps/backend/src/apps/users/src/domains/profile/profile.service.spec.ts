@@ -20,10 +20,12 @@ import {
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 import { AddressType } from 'src/common/enums/address.enum';
 import { CreateAddressDto } from './dto/address.dto';
+import { GeocodingService } from './geocoding.service';
 
 describe('ProfileService', () => {
   let service: ProfileService;
   let mockDb: MockDbClient;
+  let mockGeocodingService: jest.Mocked<GeocodingService>;
 
   const mockUserId = 'test-user-id';
 
@@ -141,6 +143,9 @@ describe('ProfileService', () => {
 
   beforeEach(async () => {
     mockDb = createMockDbClient();
+    mockGeocodingService = {
+      geocode: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<GeocodingService>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -148,6 +153,10 @@ describe('ProfileService', () => {
         {
           provide: DbService,
           useValue: mockDb,
+        },
+        {
+          provide: GeocodingService,
+          useValue: mockGeocodingService,
         },
       ],
     }).compile();

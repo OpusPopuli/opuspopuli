@@ -5,10 +5,11 @@ import { StorageModule } from '@opuspopuli/storage-provider';
 
 import { ProfileService } from './profile.service';
 import { ProfileResolver } from './profile.resolver';
+import { GeocodingService } from './geocoding.service';
 
 @Module({
   imports: [StorageModule],
-  providers: [ProfileService, ProfileResolver],
+  providers: [ProfileService, ProfileResolver, GeocodingService],
   exports: [ProfileService],
 })
 export class ProfileModule {}

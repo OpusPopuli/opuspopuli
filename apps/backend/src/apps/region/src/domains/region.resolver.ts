@@ -156,6 +156,35 @@ export class RegionResolver {
     };
   }
 
+  /**
+   * Find representatives matching a user's civic districts.
+   * Districts come from the user's geocoded address (Census API format).
+   */
+  @Public()
+  @Query(() => [RepresentativeModel])
+  async representativesByDistricts(
+    @Args({ name: 'congressionalDistrict', nullable: true })
+    congressionalDistrict?: string,
+    @Args({ name: 'stateSenatorialDistrict', nullable: true })
+    stateSenatorialDistrict?: string,
+    @Args({ name: 'stateAssemblyDistrict', nullable: true })
+    stateAssemblyDistrict?: string,
+  ): Promise<RepresentativeModel[]> {
+    const results = await this.regionService.getRepresentativesByDistricts(
+      congressionalDistrict,
+      stateSenatorialDistrict,
+      stateAssemblyDistrict,
+    );
+
+    return results.map((r) => ({
+      ...r,
+      party: r.party ?? undefined,
+      photoUrl: r.photoUrl ?? undefined,
+      contactInfo: (r.contactInfo as ContactInfoModel) ?? undefined,
+      bio: r.bio ?? undefined,
+    })) as RepresentativeModel[];
+  }
+
   // ==========================================
   // CAMPAIGN FINANCE QUERIES
   // ==========================================

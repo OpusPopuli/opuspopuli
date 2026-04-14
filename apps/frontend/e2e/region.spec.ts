@@ -411,7 +411,9 @@ test.describe("Region Page", () => {
 
     await expect(page.getByText("Propositions")).toBeVisible();
     await expect(page.getByText("Meetings")).toBeVisible();
-    await expect(page.getByText("Representatives")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Representatives.*Elected/i }),
+    ).toBeVisible();
     await expect(page.getByText("Campaign Finance")).toBeVisible();
   });
 

@@ -442,6 +442,31 @@ export const GET_REPRESENTATIVE = gql`
   }
 `;
 
+export const GET_REPRESENTATIVES_BY_DISTRICTS = gql`
+  query GetRepresentativesByDistricts(
+    $congressionalDistrict: String
+    $stateSenatorialDistrict: String
+    $stateAssemblyDistrict: String
+  ) {
+    representativesByDistricts(
+      congressionalDistrict: $congressionalDistrict
+      stateSenatorialDistrict: $stateSenatorialDistrict
+      stateAssemblyDistrict: $stateAssemblyDistrict
+    ) {
+      id
+      name
+      chamber
+      district
+      party
+      photoUrl
+    }
+  }
+`;
+
+export interface RepresentativesByDistrictsData {
+  representativesByDistricts: Representative[];
+}
+
 // ============================================
 // Campaign Finance Queries
 // ============================================
