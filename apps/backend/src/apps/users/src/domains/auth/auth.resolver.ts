@@ -75,9 +75,25 @@ export class AuthResolver {
   ) {}
 
   /**
-   * Create a session record for tracking active logins.
-   * Fire-and-forget — failures are logged but don't affect login.
+   * Set auth cookies and create a session record after successful login.
+   * Session creation is fire-and-forget — failures don't affect login.
    */
+  private establishSession(
+    auth: Auth,
+    context: GqlContext,
+    userId?: string,
+  ): void {
+    if (context.res) {
+      setAuthCookies(
+        context.res,
+        this.configService,
+        auth.accessToken,
+        auth.refreshToken,
+      );
+    }
+    this.createSession(userId, auth.accessToken, auth.refreshToken, context);
+  }
+
   private createSession(
     userId: string | undefined,
     accessToken: string,
@@ -236,23 +252,7 @@ export class AuthResolver {
       // Clear lockout on successful login
       this.lockoutService.clearLockout(email);
 
-      // Set httpOnly cookies for browser clients
-      if (context.res) {
-        setAuthCookies(
-          context.res,
-          this.configService,
-          auth.accessToken,
-          auth.refreshToken,
-        );
-      }
-
-      // Track session
-      this.createSession(
-        undefined,
-        auth.accessToken,
-        auth.refreshToken,
-        context,
-      );
+      this.establishSession(auth, context);
 
       // Audit: Login success
       this.auditLogService?.log({
@@ -522,18 +522,7 @@ export class AuthResolver {
       // Generate tokens for the authenticated user
       const auth = await this.authService.generateTokensForUser(user);
 
-      // Set httpOnly cookies for browser clients
-      if (context.res) {
-        setAuthCookies(
-          context.res,
-          this.configService,
-          auth.accessToken,
-          auth.refreshToken,
-        );
-      }
-
-      // Track session
-      this.createSession(user.id, auth.accessToken, auth.refreshToken, context);
+      this.establishSession(auth, context, user.id);
 
       // Audit: Passkey authentication success
       this.auditLogService?.log({
@@ -620,23 +609,7 @@ export class AuthResolver {
         input.token,
       );
 
-      // Set httpOnly cookies for browser clients
-      if (context.res) {
-        setAuthCookies(
-          context.res,
-          this.configService,
-          auth.accessToken,
-          auth.refreshToken,
-        );
-      }
-
-      // Track session
-      this.createSession(
-        undefined,
-        auth.accessToken,
-        auth.refreshToken,
-        context,
-      );
+      this.establishSession(auth, context);
 
       // Audit: Magic link verified (login success)
       this.auditLogService?.log({
@@ -716,23 +689,7 @@ export class AuthResolver {
         input.refreshToken,
       );
 
-      // Set httpOnly cookies for browser clients
-      if (context.res) {
-        setAuthCookies(
-          context.res,
-          this.configService,
-          auth.accessToken,
-          auth.refreshToken,
-        );
-      }
-
-      // Track session
-      this.createSession(
-        undefined,
-        auth.accessToken,
-        auth.refreshToken,
-        context,
-      );
+      this.establishSession(auth, context);
 
       // Audit: Supabase session exchange success
       this.auditLogService?.log({
