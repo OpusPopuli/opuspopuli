@@ -20,6 +20,7 @@ import {
 } from 'src/common/utils/graphql-context';
 import { clearAuthCookies } from 'src/common/utils/cookie.utils';
 import { AuditLogService } from 'src/common/services/audit-log.service';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 
 /**
  * Session Resolver
@@ -40,6 +41,7 @@ export class SessionResolver {
     private readonly authService: AuthService,
     private readonly passkeyService: PasskeyService,
     private readonly configService: ConfigService,
+    private readonly db: DbService,
     @Optional() private readonly auditLogService?: AuditLogService,
   ) {}
 
@@ -137,6 +139,21 @@ export class SessionResolver {
     // Clear httpOnly auth cookies
     if (context.res) {
       clearAuthCookies(context.res, this.configService);
+    }
+
+    // Deactivate all active sessions for the user
+    const user = context.req?.user;
+    if (user?.id) {
+      this.db.userSession
+        .updateMany({
+          where: { userId: user.id, isActive: true },
+          data: {
+            isActive: false,
+            revokedAt: new Date(),
+            revokedReason: 'user_logout',
+          },
+        })
+        .catch(() => {}); // Fire-and-forget
     }
 
     // Audit: Logout

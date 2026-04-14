@@ -13,6 +13,14 @@ import { AuthService } from './auth.service';
 import { PasskeyService } from './services/passkey.service';
 import { AccountLockoutService } from './services/account-lockout.service';
 import { UsersService } from '../user/users.service';
+import { DbService } from '@opuspopuli/relationaldb-provider';
+
+const mockDbService = {
+  userSession: {
+    create: jest.fn().mockResolvedValue({}),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+  },
+};
 
 import {
   confirmForgotPasswordDto,
@@ -62,6 +70,7 @@ describe('AuthResolver', () => {
           provide: AccountLockoutService,
           useValue: createMockLockoutService(),
         },
+        { provide: DbService, useValue: mockDbService },
       ],
     }).compile();
 
@@ -213,6 +222,7 @@ describe('AuthResolver', () => {
             provide: AccountLockoutService,
             useValue: createMockLockoutService(),
           },
+          { provide: DbService, useValue: mockDbService },
         ],
       }).compile();
 
@@ -283,6 +293,7 @@ describe('AuthResolver', () => {
             provide: AccountLockoutService,
             useValue: createMockLockoutService(),
           },
+          { provide: DbService, useValue: mockDbService },
         ],
       }).compile();
 
@@ -371,6 +382,7 @@ describe('AuthResolver', () => {
             provide: AccountLockoutService,
             useValue: createMockLockoutService(),
           },
+          { provide: DbService, useValue: mockDbService },
         ],
       }).compile();
 
@@ -436,6 +448,7 @@ describe('AuthResolver', () => {
             provide: AccountLockoutService,
             useValue: createMockLockoutService(),
           },
+          { provide: DbService, useValue: mockDbService },
         ],
       }).compile();
 
@@ -603,6 +616,42 @@ describe('AuthResolver', () => {
 
       expect(result).toEqual(mockAuth);
       expect(mockContext.res?.cookie).toHaveBeenCalled();
+    });
+
+    it('should create session record on successful exchange', async () => {
+      // Build a real JWT with sub claim
+      const payload = Buffer.from(
+        JSON.stringify({ sub: 'user-abc', email: 'test@test.com' }),
+      ).toString('base64');
+      const fakeJwt = `header.${payload}.signature`;
+      const mockAuth = {
+        accessToken: fakeJwt,
+        refreshToken: 'refresh-token',
+      };
+      authService.exchangeSupabaseSession = jest
+        .fn()
+        .mockResolvedValue(mockAuth);
+
+      const mockContext = createMockContext();
+      mockContext.req.headers = {
+        'user-agent': 'Mozilla/5.0 Chrome/120.0',
+      };
+
+      await resolver.exchangeSupabaseSession(
+        { accessToken: fakeJwt, refreshToken: 'refresh' },
+        mockContext,
+      );
+
+      // Wait for fire-and-forget promise
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockDbService.userSession.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user-abc',
+          isActive: true,
+          browser: 'Chrome/120.0',
+        }),
+      });
     });
 
     it('should throw error on invalid token', async () => {
