@@ -7,6 +7,7 @@ import { createMock } from '@golevelup/ts-jest';
 import { SessionResolver } from './session.resolver';
 import { AuthService } from './auth.service';
 import { PasskeyService } from './services/passkey.service';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { changePasswordDto } from '../../../../data.spec';
@@ -37,6 +38,15 @@ describe('SessionResolver', () => {
         { provide: AuthService, useValue: createMock<AuthService>() },
         { provide: PasskeyService, useValue: createMock<PasskeyService>() },
         { provide: ConfigService, useValue: createMock<ConfigService>() },
+        {
+          provide: DbService,
+          useValue: {
+            userSession: {
+              create: jest.fn().mockResolvedValue({}),
+              updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+            },
+          },
+        },
       ],
     }).compile();
 
@@ -171,6 +181,48 @@ describe('SessionResolver', () => {
       const result = await resolver.logout(contextWithoutRes);
 
       expect(result).toBe(true);
+    });
+
+    it('should deactivate all active sessions on logout', async () => {
+      const mockContext = createMockContext();
+      mockContext.req.user = {
+        id: 'user-123',
+        email: 'test@example.com',
+        roles: ['User'],
+        department: '',
+        clearance: '',
+      };
+
+      const module = await Test.createTestingModule({
+        providers: [
+          SessionResolver,
+          { provide: AuthService, useValue: createMock<AuthService>() },
+          { provide: PasskeyService, useValue: createMock<PasskeyService>() },
+          { provide: ConfigService, useValue: createMock<ConfigService>() },
+          {
+            provide: DbService,
+            useValue: {
+              userSession: {
+                create: jest.fn().mockResolvedValue({}),
+                updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+              },
+            },
+          },
+        ],
+      }).compile();
+
+      const logoutResolver = module.get<SessionResolver>(SessionResolver);
+      const db = module.get<DbService>(DbService);
+
+      await logoutResolver.logout(mockContext);
+
+      expect(db.userSession.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-123', isActive: true },
+        data: expect.objectContaining({
+          isActive: false,
+          revokedReason: 'user_logout',
+        }),
+      });
     });
   });
 });
