@@ -19,6 +19,7 @@ import {
   createAuditContext,
 } from 'src/common/utils/graphql-context';
 import { setAuthCookies } from 'src/common/utils/cookie.utils';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 import { AUTH_THROTTLE } from 'src/config/auth-throttle.config';
 import { AccountLockoutService } from './services/account-lockout.service';
 import { AuditLogService } from 'src/common/services/audit-log.service';
@@ -69,8 +70,91 @@ export class AuthResolver {
     private readonly usersService: UsersService,
     private readonly configService: ConfigService,
     private readonly lockoutService: AccountLockoutService,
+    private readonly db: DbService,
     @Optional() private readonly auditLogService?: AuditLogService,
   ) {}
+
+  /**
+   * Set auth cookies and create a session record after successful login.
+   * Session creation is fire-and-forget — failures don't affect login.
+   */
+  private establishSession(
+    auth: Auth,
+    context: GqlContext,
+    userId?: string,
+  ): void {
+    if (context.res) {
+      setAuthCookies(
+        context.res,
+        this.configService,
+        auth.accessToken,
+        auth.refreshToken,
+      );
+    }
+    this.createSession(userId, auth.accessToken, auth.refreshToken, context);
+  }
+
+  private createSession(
+    userId: string | undefined,
+    accessToken: string,
+    refreshToken: string | undefined,
+    context: GqlContext,
+  ): void {
+    const headers = context.req?.headers as Record<string, string> | undefined;
+    const userAgent =
+      headers?.['x-original-user-agent'] || headers?.['user-agent'] || '';
+    const ipAddress = headers?.['x-forwarded-for'] || context.req?.ip;
+
+    // Parse user agent for device info (simple extraction)
+    const isMobile = /mobile|android|iphone/i.test(userAgent);
+    const browserMatch = /(Chrome|Firefox|Safari|Edge|Opera)\/[\d.]+/.exec(
+      userAgent,
+    );
+    const osMatch = /(Windows|Mac OS X|Linux|Android|iOS)[\s/]?[\d._]*/.exec(
+      userAgent,
+    );
+
+    // Extract user ID from JWT sub claim
+    let jwtUserId = userId;
+    if (!jwtUserId) {
+      try {
+        const parts = accessToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(
+            Buffer.from(parts[1], 'base64').toString(),
+          );
+          jwtUserId = payload.sub;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!jwtUserId) return;
+
+    // Use last 32 chars as token identifier (don't store full JWT)
+    const tokenHash = accessToken.slice(-32);
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    this.db.userSession
+      .create({
+        data: {
+          userId: jwtUserId,
+          sessionToken: tokenHash,
+          refreshToken: refreshToken?.slice(-32),
+          deviceType: isMobile ? 'mobile' : 'desktop',
+          browser: browserMatch?.[0] || undefined,
+          operatingSystem: osMatch?.[0] || undefined,
+          ipAddress: ipAddress || undefined,
+          isActive: true,
+          lastActivityAt: new Date(),
+          expiresAt,
+        },
+      })
+      .catch((err: Error) => {
+        this.logger.warn(`Failed to create session: ${err.message}`);
+      });
+  }
 
   /**
    * Register a new user account
@@ -168,15 +252,7 @@ export class AuthResolver {
       // Clear lockout on successful login
       this.lockoutService.clearLockout(email);
 
-      // Set httpOnly cookies for browser clients
-      if (context.res) {
-        setAuthCookies(
-          context.res,
-          this.configService,
-          auth.accessToken,
-          auth.refreshToken,
-        );
-      }
+      this.establishSession(auth, context);
 
       // Audit: Login success
       this.auditLogService?.log({
@@ -446,15 +522,7 @@ export class AuthResolver {
       // Generate tokens for the authenticated user
       const auth = await this.authService.generateTokensForUser(user);
 
-      // Set httpOnly cookies for browser clients
-      if (context.res) {
-        setAuthCookies(
-          context.res,
-          this.configService,
-          auth.accessToken,
-          auth.refreshToken,
-        );
-      }
+      this.establishSession(auth, context, user.id);
 
       // Audit: Passkey authentication success
       this.auditLogService?.log({
@@ -541,15 +609,7 @@ export class AuthResolver {
         input.token,
       );
 
-      // Set httpOnly cookies for browser clients
-      if (context.res) {
-        setAuthCookies(
-          context.res,
-          this.configService,
-          auth.accessToken,
-          auth.refreshToken,
-        );
-      }
+      this.establishSession(auth, context);
 
       // Audit: Magic link verified (login success)
       this.auditLogService?.log({
@@ -629,15 +689,7 @@ export class AuthResolver {
         input.refreshToken,
       );
 
-      // Set httpOnly cookies for browser clients
-      if (context.res) {
-        setAuthCookies(
-          context.res,
-          this.configService,
-          auth.accessToken,
-          auth.refreshToken,
-        );
-      }
+      this.establishSession(auth, context);
 
       // Audit: Supabase session exchange success
       this.auditLogService?.log({
