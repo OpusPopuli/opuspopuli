@@ -107,11 +107,11 @@ export class AuthResolver {
 
     // Parse user agent for device info (simple extraction)
     const isMobile = /mobile|android|iphone/i.test(userAgent);
-    const browserMatch = userAgent.match(
-      /(Chrome|Firefox|Safari|Edge|Opera)\/[\d.]+/,
+    const browserMatch = /(Chrome|Firefox|Safari|Edge|Opera)\/[\d.]+/.exec(
+      userAgent,
     );
-    const osMatch = userAgent.match(
-      /(Windows|Mac OS X|Linux|Android|iOS)[\s/]?[\d._]*/,
+    const osMatch = /(Windows|Mac OS X|Linux|Android|iOS)[\s/]?[\d._]*/.exec(
+      userAgent,
     );
 
     // Extract user ID from JWT sub claim
