@@ -517,4 +517,82 @@ describe("ManifestExtractorService", () => {
       expect(result.items).toHaveLength(2);
     });
   });
+
+  describe("container-scoped field mappings", () => {
+    it("should extract fields from the container when scope is 'container'", () => {
+      const html = `
+        <div class="content">
+          <h2>November 3, 2026, Statewide Ballot Measures</h2>
+          <p><a href="/measure1.pdf">ACA 13 (Ward) Voting thresholds</a></p>
+          <p><a href="/measure2.pdf">SCA 1 (Newman) Elections: recall</a></p>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".content",
+          itemSelector: "p",
+          fieldMappings: [
+            {
+              fieldName: "title",
+              selector: "a",
+              extractionMethod: "text",
+              required: true,
+            },
+            {
+              fieldName: "electionDate",
+              selector: "h2",
+              extractionMethod: "regex",
+              regexPattern: "(\\w+ \\d+, \\d{4})",
+              required: false,
+              scope: "container",
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]).toEqual({
+        title: "ACA 13 (Ward) Voting thresholds",
+        electionDate: "November 3, 2026",
+      });
+      expect(result.items[1]).toEqual({
+        title: "SCA 1 (Newman) Elections: recall",
+        electionDate: "November 3, 2026",
+      });
+    });
+
+    it("should default to item scope when scope is not specified", () => {
+      const html = `
+        <div class="content">
+          <h2>Heading outside items</h2>
+          <div class="item"><h2>Item heading</h2></div>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".content",
+          itemSelector: ".item",
+          fieldMappings: [
+            {
+              fieldName: "heading",
+              selector: "h2",
+              extractionMethod: "text",
+              required: true,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toEqual({ heading: "Item heading" });
+    });
+  });
 });

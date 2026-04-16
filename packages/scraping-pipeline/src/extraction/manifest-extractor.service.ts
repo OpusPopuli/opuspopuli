@@ -73,7 +73,8 @@ export class ManifestExtractorService {
     }
 
     // Find items within the container
-    const itemElements = container.first().find(rules.itemSelector);
+    const firstContainer = container.first() as Cheerio<Element>;
+    const itemElements = firstContainer.find(rules.itemSelector);
 
     if (itemElements.length === 0) {
       this.logger.warn(
@@ -103,6 +104,7 @@ export class ManifestExtractorService {
       const result = this.extractItem(
         $,
         $(el as Element),
+        firstContainer,
         rules.fieldMappings,
         baseUrl,
       );
@@ -138,6 +140,7 @@ export class ManifestExtractorService {
   private extractItem(
     $: CheerioAPI,
     element: Cheerio<Element>,
+    container: Cheerio<Element>,
     mappings: FieldMapping[],
     baseUrl?: string,
   ): { data: Record<string, unknown>; warnings: string[] } | null {
@@ -151,7 +154,8 @@ export class ManifestExtractorService {
         requiredTotal++;
       }
 
-      const value = this.resolveFieldValue($, element, mapping, baseUrl);
+      const scope = mapping.scope === "container" ? container : element;
+      const value = this.resolveFieldValue($, scope, mapping, baseUrl);
 
       if (!value && mapping.required) {
         requiredMissing++;
@@ -244,7 +248,7 @@ export class ManifestExtractorService {
         }
         const rawText = first.text();
         try {
-          const match = rawText.match(new RegExp(mapping.regexPattern));
+          const match = new RegExp(mapping.regexPattern).exec(rawText);
           return match?.[mapping.regexGroup ?? 1] || undefined;
         } catch {
           return undefined;
