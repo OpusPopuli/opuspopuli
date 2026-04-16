@@ -105,6 +105,9 @@ export interface FieldMapping {
   required: boolean;
   /** Default value if extraction yields nothing */
   defaultValue?: string;
+  /** Search scope: 'item' (default) searches within the item element,
+   *  'container' searches from the container element (for sibling data like headings) */
+  scope?: "item" | "container";
 }
 
 export type ExtractionMethod =
