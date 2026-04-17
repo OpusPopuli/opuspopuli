@@ -392,16 +392,24 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Sync all data types from all loaded plugins (federal + local).
+   * Sync data types from all loaded plugins (federal + local).
+   * When dataTypes is provided, only those types are synced.
    */
-  async syncAll(): Promise<SyncResult[]> {
-    this.logger.log('Starting full data sync');
+  async syncAll(dataTypes?: string[]): Promise<SyncResult[]> {
+    this.logger.log(
+      dataTypes
+        ? `Starting data sync for: ${dataTypes.join(', ')}`
+        : 'Starting full data sync',
+    );
     const results: SyncResult[] = [];
 
     for (const registered of this.pluginRegistry.getAll()) {
       const supported = registered.instance.getSupportedDataTypes();
+      const filtered = dataTypes
+        ? supported.filter((dt) => dataTypes.includes(dt))
+        : supported;
 
-      for (const dataType of supported) {
+      for (const dataType of filtered) {
         try {
           const result = await this.syncDataTypeFrom(
             registered.instance,

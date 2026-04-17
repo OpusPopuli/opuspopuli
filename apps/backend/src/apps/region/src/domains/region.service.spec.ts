@@ -260,6 +260,33 @@ describe('RegionDomainService', () => {
       expect(mockRegistry.getAll).toHaveBeenCalled();
     });
 
+    it('should only sync specified data types when filter is provided', async () => {
+      const results = await service.syncAll([DataType.PROPOSITIONS]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].dataType).toBe(DataType.PROPOSITIONS);
+      expect(mockDb.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('should sync multiple specified data types', async () => {
+      const results = await service.syncAll([
+        DataType.PROPOSITIONS,
+        DataType.MEETINGS,
+      ]);
+
+      expect(results).toHaveLength(2);
+      expect(results[0].dataType).toBe(DataType.PROPOSITIONS);
+      expect(results[1].dataType).toBe(DataType.MEETINGS);
+      expect(mockDb.$transaction).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return empty results when filter matches no supported types', async () => {
+      const results = await service.syncAll(['nonexistent_type']);
+
+      expect(results).toHaveLength(0);
+      expect(mockDb.$transaction).not.toHaveBeenCalled();
+    });
+
     it('should handle sync errors gracefully', async () => {
       mockPlugin.fetchPropositions.mockRejectedValue(
         new Error('Network error'),

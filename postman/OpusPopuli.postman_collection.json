@@ -534,7 +534,8 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation {\n  syncRegionData {\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}"
+                "query": "mutation SyncRegionData($dataTypes: [DataType!]) {\n  syncRegionData(dataTypes: $dataTypes) {\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": null\n}"
               }
             },
             "url": {
