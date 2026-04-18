@@ -688,7 +688,25 @@ describe('RegionResolver', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0].itemsProcessed).toBe(10);
-      expect(regionService.syncAll).toHaveBeenCalled();
+      expect(regionService.syncAll).toHaveBeenCalledWith(undefined);
+    });
+
+    it('should pass dataTypes filter to syncAll', async () => {
+      regionService.syncAll.mockResolvedValue([
+        {
+          dataType: DataType.PROPOSITIONS,
+          itemsProcessed: 3,
+          itemsCreated: 3,
+          itemsUpdated: 0,
+          errors: [],
+          syncedAt: new Date(),
+        },
+      ]);
+
+      const result = await resolver.syncRegionData([DataTypeGQL.PROPOSITIONS]);
+
+      expect(result).toHaveLength(1);
+      expect(regionService.syncAll).toHaveBeenCalledWith(['propositions']);
     });
 
     it('should include errors in sync results', async () => {
