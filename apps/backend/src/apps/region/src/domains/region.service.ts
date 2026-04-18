@@ -40,7 +40,9 @@ interface DataFetcher {
   fetchPropositions(): Promise<Proposition[]>;
   fetchMeetings(): Promise<Meeting[]>;
   fetchRepresentatives(): Promise<Representative[]>;
-  fetchCampaignFinance?(): Promise<CampaignFinanceResult>;
+  fetchCampaignFinance?(
+    onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
+  ): Promise<CampaignFinanceResult>;
 }
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
@@ -58,8 +60,17 @@ import { PaginatedContributions } from './models/contribution.model';
 import { PaginatedExpenditures } from './models/expenditure.model';
 import { PaginatedIndependentExpenditures } from './models/independent-expenditure.model';
 
-// Type aliases for database query results
+// Type aliases for database query results and generic upsert
 type ExternalIdRecord = { externalId: string };
+type PrismaModelDelegate = {
+  findMany(args: unknown): Promise<ExternalIdRecord[]>;
+  upsert(args: unknown): Prisma.PrismaPromise<unknown>;
+};
+type UpsertConfig = {
+  records: readonly unknown[];
+  model: PrismaModelDelegate;
+  fields: string[];
+};
 type PropositionRecord = {
   id: string;
   externalId: string;
@@ -800,184 +811,196 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       return { processed: 0, created: 0, updated: 0 };
     }
 
-    const data = await provider.fetchCampaignFinance();
     let totalProcessed = 0;
     let totalCreated = 0;
     let totalUpdated = 0;
 
-    await this.ensureCommitteeStubs(data);
+    // Batch callback: sort each batch by record type and upsert immediately
+    const onBatch = async (items: Record<string, unknown>[]) => {
+      const batchData = this.sortCampaignFinanceItems(items);
+      await this.ensureCommitteeStubs(batchData);
+      const result = await this.upsertCampaignFinanceBatch(batchData);
+      totalProcessed += result.processed;
+      totalCreated += result.created;
+      totalUpdated += result.updated;
+    };
 
-    // Sync contributions
-    if (data.contributions.length > 0) {
-      const externalIds = data.contributions.map((c) => c.externalId);
-      const existing = await this.db.contribution.findMany({
-        where: { externalId: { in: externalIds } },
-        select: { externalId: true },
-      });
-      const existingSet = new Set(
-        existing.map((r: ExternalIdRecord) => r.externalId),
-      );
+    const data = await provider.fetchCampaignFinance(onBatch);
 
-      await batchTransaction(
-        this.db,
-        data.contributions.map((c) =>
-          this.db.contribution.upsert({
-            where: { externalId: c.externalId },
-            update: {
-              committeeId: c.committeeId,
-              donorName: c.donorName,
-              donorType: c.donorType,
-              donorEmployer: c.donorEmployer,
-              donorOccupation: c.donorOccupation,
-              donorCity: c.donorCity,
-              donorState: c.donorState,
-              donorZip: c.donorZip,
-              amount: c.amount,
-              date: c.date,
-              electionType: c.electionType,
-              contributionType: c.contributionType,
-              sourceSystem: c.sourceSystem,
-            },
-            create: {
-              externalId: c.externalId,
-              committeeId: c.committeeId,
-              donorName: c.donorName,
-              donorType: c.donorType,
-              donorEmployer: c.donorEmployer,
-              donorOccupation: c.donorOccupation,
-              donorCity: c.donorCity,
-              donorState: c.donorState,
-              donorZip: c.donorZip,
-              amount: c.amount,
-              date: c.date,
-              electionType: c.electionType,
-              contributionType: c.contributionType,
-              sourceSystem: c.sourceSystem,
-            },
-          }),
-        ),
-      );
-
-      const created = data.contributions.filter(
-        (c) => !existingSet.has(c.externalId),
-      ).length;
-      totalProcessed += data.contributions.length;
-      totalCreated += created;
-      totalUpdated += data.contributions.length - created;
-    }
-
-    // Sync expenditures
-    if (data.expenditures.length > 0) {
-      const externalIds = data.expenditures.map((e) => e.externalId);
-      const existing = await this.db.expenditure.findMany({
-        where: { externalId: { in: externalIds } },
-        select: { externalId: true },
-      });
-      const existingSet = new Set(
-        existing.map((r: ExternalIdRecord) => r.externalId),
-      );
-
-      await batchTransaction(
-        this.db,
-        data.expenditures.map((e) =>
-          this.db.expenditure.upsert({
-            where: { externalId: e.externalId },
-            update: {
-              committeeId: e.committeeId,
-              payeeName: e.payeeName,
-              amount: e.amount,
-              date: e.date,
-              purposeDescription: e.purposeDescription,
-              expenditureCode: e.expenditureCode,
-              candidateName: e.candidateName,
-              propositionTitle: e.propositionTitle,
-              supportOrOppose: e.supportOrOppose,
-              sourceSystem: e.sourceSystem,
-            },
-            create: {
-              externalId: e.externalId,
-              committeeId: e.committeeId,
-              payeeName: e.payeeName,
-              amount: e.amount,
-              date: e.date,
-              purposeDescription: e.purposeDescription,
-              expenditureCode: e.expenditureCode,
-              candidateName: e.candidateName,
-              propositionTitle: e.propositionTitle,
-              supportOrOppose: e.supportOrOppose,
-              sourceSystem: e.sourceSystem,
-            },
-          }),
-        ),
-      );
-
-      const created = data.expenditures.filter(
-        (e) => !existingSet.has(e.externalId),
-      ).length;
-      totalProcessed += data.expenditures.length;
-      totalCreated += created;
-      totalUpdated += data.expenditures.length - created;
-    }
-
-    // Sync independent expenditures
-    if (data.independentExpenditures.length > 0) {
-      const externalIds = data.independentExpenditures.map(
-        (ie) => ie.externalId,
-      );
-      const existing = await this.db.independentExpenditure.findMany({
-        where: { externalId: { in: externalIds } },
-        select: { externalId: true },
-      });
-      const existingSet = new Set(
-        existing.map((r: ExternalIdRecord) => r.externalId),
-      );
-
-      await batchTransaction(
-        this.db,
-        data.independentExpenditures.map((ie) =>
-          this.db.independentExpenditure.upsert({
-            where: { externalId: ie.externalId },
-            update: {
-              committeeId: ie.committeeId,
-              committeeName: ie.committeeName,
-              candidateName: ie.candidateName,
-              propositionTitle: ie.propositionTitle,
-              supportOrOppose: ie.supportOrOppose,
-              amount: ie.amount,
-              date: ie.date,
-              electionDate: ie.electionDate,
-              description: ie.description,
-              sourceSystem: ie.sourceSystem,
-            },
-            create: {
-              externalId: ie.externalId,
-              committeeId: ie.committeeId,
-              committeeName: ie.committeeName,
-              candidateName: ie.candidateName,
-              propositionTitle: ie.propositionTitle,
-              supportOrOppose: ie.supportOrOppose,
-              amount: ie.amount,
-              date: ie.date,
-              electionDate: ie.electionDate,
-              description: ie.description,
-              sourceSystem: ie.sourceSystem,
-            },
-          }),
-        ),
-      );
-
-      const created = data.independentExpenditures.filter(
-        (ie) => !existingSet.has(ie.externalId),
-      ).length;
-      totalProcessed += data.independentExpenditures.length;
-      totalCreated += created;
-      totalUpdated += data.independentExpenditures.length - created;
+    // Handle any non-batched items (from API sources or small files)
+    if (
+      data.contributions.length > 0 ||
+      data.expenditures.length > 0 ||
+      data.independentExpenditures.length > 0
+    ) {
+      await this.ensureCommitteeStubs(data);
+      const result = await this.upsertCampaignFinanceBatch(data);
+      totalProcessed += result.processed;
+      totalCreated += result.created;
+      totalUpdated += result.updated;
     }
 
     return {
       processed: totalProcessed,
       created: totalCreated,
       updated: totalUpdated,
+    };
+  }
+
+  /**
+   * Sort a flat array of campaign finance items into typed buckets.
+   */
+  private sortCampaignFinanceItems(
+    items: Record<string, unknown>[],
+  ): CampaignFinanceResult {
+    const committees: CampaignFinanceResult['committees'] = [];
+    const contributions: CampaignFinanceResult['contributions'] = [];
+    const expenditures: CampaignFinanceResult['expenditures'] = [];
+    const independentExpenditures: CampaignFinanceResult['independentExpenditures'] =
+      [];
+
+    for (const rec of items) {
+      if ('donorName' in rec && 'amount' in rec) {
+        contributions.push(
+          rec as unknown as CampaignFinanceResult['contributions'][0],
+        );
+      } else if ('payeeName' in rec && 'amount' in rec) {
+        expenditures.push(
+          rec as unknown as CampaignFinanceResult['expenditures'][0],
+        );
+      } else if ('supportOrOppose' in rec && 'committeeName' in rec) {
+        independentExpenditures.push(
+          rec as unknown as CampaignFinanceResult['independentExpenditures'][0],
+        );
+      } else if ('sourceSystem' in rec && 'type' in rec) {
+        committees.push(
+          rec as unknown as CampaignFinanceResult['committees'][0],
+        );
+      }
+    }
+
+    return { committees, contributions, expenditures, independentExpenditures };
+  }
+
+  /**
+   * Upsert a batch of campaign finance records to the database.
+   */
+  private async upsertCampaignFinanceBatch(
+    data: CampaignFinanceResult,
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    const upsertConfigs: UpsertConfig[] = [
+      {
+        records: data.contributions,
+        model: this.db.contribution,
+        fields: [
+          'committeeId',
+          'donorName',
+          'donorType',
+          'donorEmployer',
+          'donorOccupation',
+          'donorCity',
+          'donorState',
+          'donorZip',
+          'amount',
+          'date',
+          'electionType',
+          'contributionType',
+          'sourceSystem',
+        ],
+      },
+      {
+        records: data.expenditures,
+        model: this.db.expenditure,
+        fields: [
+          'committeeId',
+          'payeeName',
+          'amount',
+          'date',
+          'purposeDescription',
+          'expenditureCode',
+          'candidateName',
+          'propositionTitle',
+          'supportOrOppose',
+          'sourceSystem',
+        ],
+      },
+      {
+        records: data.independentExpenditures,
+        model: this.db.independentExpenditure,
+        fields: [
+          'committeeId',
+          'committeeName',
+          'candidateName',
+          'propositionTitle',
+          'supportOrOppose',
+          'amount',
+          'date',
+          'electionDate',
+          'description',
+          'sourceSystem',
+        ],
+      },
+    ];
+
+    let totalProcessed = 0;
+    let totalCreated = 0;
+    let totalUpdated = 0;
+
+    for (const config of upsertConfigs) {
+      if (config.records.length === 0) continue;
+      const result = await this.upsertRecordsByFields(config);
+      totalProcessed += result.processed;
+      totalCreated += result.created;
+      totalUpdated += result.updated;
+    }
+
+    return {
+      processed: totalProcessed,
+      created: totalCreated,
+      updated: totalUpdated,
+    };
+  }
+
+  /**
+   * Generic upsert: find existing by externalId, batch upsert, return counts.
+   * Uses a field-name list to pick values from records, avoiding per-model callbacks.
+   */
+  private async upsertRecordsByFields(
+    config: UpsertConfig,
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    const { model, fields } = config;
+    const rows = config.records as Record<string, unknown>[];
+    const externalIds = rows.map((r) => r.externalId as string);
+
+    const existing = await model.findMany({
+      where: { externalId: { in: externalIds } },
+      select: { externalId: true },
+    });
+    const existingSet = new Set(
+      existing.map((r: ExternalIdRecord) => r.externalId),
+    );
+
+    const pick = (r: Record<string, unknown>) =>
+      Object.fromEntries(fields.map((f: string) => [f, r[f]]));
+
+    await batchTransaction(
+      this.db,
+      rows.map((r) =>
+        model.upsert({
+          where: { externalId: r.externalId as string },
+          update: pick(r),
+          create: { externalId: r.externalId, ...pick(r) },
+        }),
+      ),
+    );
+
+    const created = rows.filter(
+      (r) => !existingSet.has(r.externalId as string),
+    ).length;
+    return {
+      processed: rows.length,
+      created,
+      updated: rows.length - created,
     };
   }
 
