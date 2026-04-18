@@ -201,6 +201,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         const parsedUser = JSON.parse(storedUser) as User;
         // Trust the stored user for now - actual auth is validated by httpOnly cookies
         // on the next API request. If cookies are invalid, user will be redirected to login.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setUser(parsedUser);
       } catch {
         localStorage.removeItem(USER_KEY);

@@ -16,9 +16,14 @@ const mockRepresentatives = {
       photoUrl: "https://example.com/photo1.jpg",
       contactInfo: {
         email: "jane.smith@example.gov",
-        phone: "555-1234",
-        office: "State Capitol, Room 100",
         website: "https://example.com/janesmith",
+        offices: [
+          {
+            name: "Capitol Office",
+            address: "State Capitol, Room 100",
+            phone: "555-1234",
+          },
+        ],
       },
       createdAt: "2024-01-01T00:00:00Z",
       updatedAt: "2024-01-01T00:00:00Z",
@@ -33,7 +38,7 @@ const mockRepresentatives = {
       photoUrl: null,
       contactInfo: {
         email: "john.doe@example.gov",
-        phone: "555-5678",
+        offices: [{ name: "Capitol Office", phone: "555-5678" }],
       },
       createdAt: "2024-01-01T00:00:00Z",
       updatedAt: "2024-01-01T00:00:00Z",

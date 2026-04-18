@@ -283,7 +283,16 @@ export interface CreateRepresentativeOptions {
   party?: string;
   district?: string;
   photoUrl?: string;
-  contactInfo?: { email?: string; phone?: string; website?: string };
+  contactInfo?: {
+    email?: string;
+    website?: string;
+    offices?: Array<{
+      name?: string;
+      address?: string;
+      phone?: string;
+      fax?: string;
+    }>;
+  };
   externalId?: string;
 }
 

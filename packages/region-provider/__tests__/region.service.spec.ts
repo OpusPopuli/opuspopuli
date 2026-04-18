@@ -65,7 +65,7 @@ describe("RegionService", () => {
       photoUrl: "https://example.com/photo.jpg",
       contactInfo: {
         email: "john@example.com",
-        phone: "555-1234",
+        offices: [{ name: "Capitol Office", phone: "555-1234" }],
       },
     },
   ];

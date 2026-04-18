@@ -39,13 +39,22 @@ export interface RegionInfo {
 }
 
 /**
+ * A physical office location (Capitol or district)
+ */
+export interface Office {
+  name: string;
+  address?: string;
+  phone?: string;
+  fax?: string;
+}
+
+/**
  * Contact information for representatives
  */
 export interface ContactInfo {
   email?: string;
-  phone?: string;
-  address?: string;
   website?: string;
+  offices?: Office[];
 }
 
 /**

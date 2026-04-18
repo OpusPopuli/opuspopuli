@@ -144,6 +144,7 @@ export default function PetitionResultsPage() {
     sessionStorage.removeItem("petition-scan-data");
     sessionStorage.removeItem("petition-scan-location");
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     runPipeline(base64, location);
   }, [router, runPipeline]);
 

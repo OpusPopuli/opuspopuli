@@ -72,11 +72,17 @@ export interface Representative {
   updatedAt: string;
 }
 
+export interface Office {
+  name: string;
+  address?: string;
+  phone?: string;
+  fax?: string;
+}
+
 export interface ContactInfo {
   email?: string;
-  phone?: string;
-  office?: string;
   website?: string;
+  offices?: Office[];
 }
 
 export interface PaginatedRepresentatives {
@@ -406,9 +412,13 @@ export const GET_REPRESENTATIVES = gql`
         photoUrl
         contactInfo {
           email
-          phone
-          office
           website
+          offices {
+            name
+            address
+            phone
+            fax
+          }
         }
         createdAt
         updatedAt
@@ -431,9 +441,13 @@ export const GET_REPRESENTATIVE = gql`
       photoUrl
       contactInfo {
         email
-        phone
-        office
         website
+        offices {
+          name
+          address
+          phone
+          fax
+        }
       }
       bio
       createdAt
