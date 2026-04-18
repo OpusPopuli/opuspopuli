@@ -60,12 +60,13 @@ export class ScrapingPipelineService {
   async execute<T>(
     source: DataSourceConfig,
     regionId: string,
+    onBatch?: (items: T[]) => Promise<void>,
   ): Promise<ExtractionResult<T>> {
     const sourceType = source.sourceType ?? "html_scrape";
 
     switch (sourceType) {
       case "bulk_download":
-        return this.executeBulkDownload<T>(source, regionId);
+        return this.executeBulkDownload<T>(source, regionId, onBatch);
       case "api":
         return this.executeApiIngest<T>(source, regionId);
       case "pdf":
@@ -246,6 +247,7 @@ export class ScrapingPipelineService {
   private async executeBulkDownload<T>(
     source: DataSourceConfig,
     regionId: string,
+    onBatch?: (items: T[]) => Promise<void>,
   ): Promise<ExtractionResult<T>> {
     this.logger.log(
       `Pipeline started [bulk_download]: ${regionId}/${source.dataType} from ${source.url}`,
@@ -262,7 +264,7 @@ export class ScrapingPipelineService {
       };
     }
 
-    return this.bulkDownload.execute<T>(source, regionId);
+    return this.bulkDownload.execute<T>(source, regionId, onBatch);
   }
 
   /**

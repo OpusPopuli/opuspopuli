@@ -31,6 +31,7 @@ export interface IPipelineService {
   execute<T>(
     source: DataSourceConfig,
     regionId: string,
+    onBatch?: (items: T[]) => Promise<void>,
   ): Promise<ExtractionResult<T>>;
 }
 
@@ -83,11 +84,15 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     return this.fetchByDataType<Representative>("representatives");
   }
 
-  async fetchCampaignFinance(): Promise<CampaignFinanceResult> {
+  async fetchCampaignFinance(
+    onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
+  ): Promise<CampaignFinanceResult> {
     // All campaign finance sources are fetched as a flat array,
     // then routed by the domain mapper based on category.
-    const allItems =
-      await this.fetchByDataType<Record<string, unknown>>("campaign_finance");
+    const allItems = await this.fetchByDataType<Record<string, unknown>>(
+      "campaign_finance",
+      onBatch,
+    );
 
     // The domain mapper already routes by category, but items come back
     // as a mixed bag. Separate them by checking known fields.
@@ -138,8 +143,13 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
 
   /**
    * Fetch all data sources matching a data type and concatenate results.
+   * When onBatch is provided, bulk_download sources stream batches via callback
+   * instead of accumulating all items in memory.
    */
-  private async fetchByDataType<T>(dataType: string): Promise<T[]> {
+  private async fetchByDataType<T>(
+    dataType: string,
+    onBatch?: (items: T[]) => Promise<void>,
+  ): Promise<T[]> {
     const sources = this.regionConfig.dataSources.filter(
       (ds) => ds.dataType === dataType,
     );
@@ -152,39 +162,64 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     }
 
     const allItems: T[] = [];
+    let batchedItemCount = 0;
 
     for (const source of sources) {
-      try {
-        const category = source.category ? " (" + source.category + ")" : "";
-        this.logger.log(`Fetching ${dataType} from ${source.url}` + category);
-        const result = await this.pipeline.execute<T>(
-          source,
-          this.regionConfig.regionId,
-        );
-
-        allItems.push(...result.items);
-
-        if (result.warnings.length > 0) {
-          this.logger.warn(
-            `Warnings from ${source.url}: ${result.warnings.join(", ")}`,
-          );
-        }
-        if (result.errors.length > 0) {
-          this.logger.error(
-            `Errors from ${source.url}: ${result.errors.join(", ")}`,
-          );
-        }
-      } catch (error) {
-        this.logger.error(
-          `Failed to fetch ${dataType} from ${source.url}: ${(error as Error).message}`,
-        );
-        // Continue with remaining sources — partial results are acceptable
-      }
+      const { items, batched } = await this.fetchSource<T>(
+        source,
+        dataType,
+        onBatch,
+      );
+      allItems.push(...items);
+      batchedItemCount += batched;
     }
 
+    const totalCount = allItems.length + batchedItemCount;
     this.logger.log(
-      `Fetched ${allItems.length} ${dataType} items from ${sources.length} source(s)`,
+      `Fetched ${totalCount} ${dataType} items from ${sources.length} source(s)`,
     );
     return allItems;
+  }
+
+  private async fetchSource<T>(
+    source: DataSourceConfig,
+    dataType: string,
+    onBatch?: (items: T[]) => Promise<void>,
+  ): Promise<{ items: T[]; batched: number }> {
+    try {
+      const category = source.category ? " (" + source.category + ")" : "";
+      this.logger.log(`Fetching ${dataType} from ${source.url}` + category);
+
+      const useBatch = onBatch && source.sourceType === "bulk_download";
+      const result = await this.pipeline.execute<T>(
+        source,
+        this.regionConfig.regionId,
+        useBatch ? onBatch : undefined,
+      );
+
+      this.logResultDiagnostics(source.url, result);
+
+      if (useBatch) {
+        return { items: [], batched: result.itemCount ?? 0 };
+      }
+      return { items: result.items, batched: 0 };
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch ${dataType} from ${source.url}: ${(error as Error).message}`,
+      );
+      return { items: [], batched: 0 };
+    }
+  }
+
+  private logResultDiagnostics<T>(
+    url: string,
+    result: ExtractionResult<T>,
+  ): void {
+    if (result.warnings.length > 0) {
+      this.logger.warn(`Warnings from ${url}: ${result.warnings.join(", ")}`);
+    }
+    if (result.errors.length > 0) {
+      this.logger.error(`Errors from ${url}: ${result.errors.join(", ")}`);
+    }
   }
 }

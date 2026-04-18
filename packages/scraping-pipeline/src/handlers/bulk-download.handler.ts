@@ -31,9 +31,14 @@ import type {
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
 
-/** Download timeout: 10 minutes for very large files */
 /** Download timeout: 30 minutes for very large files (FEC indiv26.zip is ~1.4GB) */
 const DOWNLOAD_TIMEOUT_MS = 1_800_000;
+
+/** Default batch size for record processing (trades memory for fewer DB round-trips) */
+const DEFAULT_BATCH_SIZE = 10_000;
+
+/** Callback invoked with each batch of mapped domain objects */
+export type OnBatchCallback<T> = (items: T[]) => Promise<void>;
 
 @Injectable()
 export class BulkDownloadHandler {
@@ -44,6 +49,7 @@ export class BulkDownloadHandler {
   async execute<T>(
     source: DataSourceConfig,
     _regionId: string,
+    onBatch?: OnBatchCallback<T>,
   ): Promise<ExtractionResult<T>> {
     const pipelineStart = Date.now();
     const bulk = source.bulk!;
@@ -91,7 +97,49 @@ export class BulkDownloadHandler {
         contentStream = createReadStream(tmpPath, { encoding: "utf-8" });
       }
 
-      // 3. Parse delimited rows line-by-line (streaming)
+      // 3. Parse and process in batches (streaming)
+      if (onBatch) {
+        // Batch mode: map and flush each batch via callback, never accumulate all records
+        const batchSize = bulk.batchSize ?? DEFAULT_BATCH_SIZE;
+        let totalItems = 0;
+
+        await this.parseDelimitedStream(
+          contentStream,
+          bulk,
+          source,
+          async (rawBatch) => {
+            const rawResult: RawExtractionResult = {
+              items: rawBatch,
+              success: rawBatch.length > 0,
+              warnings: [],
+              errors: [],
+            };
+            const mapped = this.mapper.map<T>(rawResult, source);
+            warnings.push(...mapped.warnings);
+            if (mapped.items.length > 0) {
+              await onBatch(mapped.items);
+              totalItems += mapped.items.length;
+            }
+          },
+          batchSize,
+        );
+
+        this.logger.log(
+          `Processed ${totalItems} records in batches from ${bulk.filePattern ?? source.url}`,
+        );
+
+        return {
+          items: [],
+          manifestVersion: 0,
+          success: totalItems > 0,
+          warnings,
+          errors,
+          extractionTimeMs: Date.now() - pipelineStart,
+          itemCount: totalItems,
+        };
+      }
+
+      // Non-batch mode: accumulate all records (legacy path for small files)
       const rawRecords = await this.parseDelimitedStream(
         contentStream,
         bulk,
@@ -102,7 +150,6 @@ export class BulkDownloadHandler {
         `Parsed ${rawRecords.length} records from ${bulk.filePattern ?? source.url}`,
       );
 
-      // 4. Map through domain mapper
       const rawResult: RawExtractionResult = {
         items: rawRecords,
         success: rawRecords.length > 0,
@@ -225,82 +272,149 @@ export class BulkDownloadHandler {
   /**
    * Parse delimited content from a stream, line-by-line.
    * Applies column mappings and filters without loading the entire file.
+   *
+   * When onBatch is provided, records are flushed in batches and never
+   * all held in memory. When omitted, all records accumulate and are returned.
    */
   private async parseDelimitedStream(
     stream: Readable,
     bulk: BulkDownloadConfig,
     source: DataSourceConfig,
+    onBatch?: (batch: Record<string, unknown>[]) => Promise<void>,
+    batchSize?: number,
   ): Promise<Record<string, unknown>[]> {
+    if (onBatch) {
+      return this.parseWithBatching(stream, bulk, source, onBatch, batchSize);
+    }
+    return this.parseWithAccumulation(stream, bulk, source);
+  }
+
+  /**
+   * Batch mode: flush records to callback in chunks, never holding all in memory.
+   */
+  private async parseWithBatching(
+    stream: Readable,
+    bulk: BulkDownloadConfig,
+    source: DataSourceConfig,
+    onBatch: (batch: Record<string, unknown>[]) => Promise<void>,
+    batchSize?: number,
+  ): Promise<Record<string, unknown>[]> {
+    const effectiveBatchSize = batchSize ?? DEFAULT_BATCH_SIZE;
+    let batch: Record<string, unknown>[] = [];
+    let totalParsed = 0;
+
+    const lineParser = this.createLineParser(bulk, source);
+    const rl = createInterface({ input: stream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
+      const record = lineParser.processLine(line);
+      if (!record) continue;
+
+      batch.push(record);
+      if (batch.length >= effectiveBatchSize) {
+        await onBatch(batch);
+        totalParsed += batch.length;
+        this.logger.debug(
+          `Flushed batch of ${batch.length} records (${totalParsed} total)`,
+        );
+        batch = [];
+      }
+    }
+
+    if (batch.length > 0) {
+      await onBatch(batch);
+      totalParsed += batch.length;
+    }
+
+    this.logger.log(`Parsed ${totalParsed} records in batches`);
+    return [];
+  }
+
+  /**
+   * Accumulation mode: collect all records in memory (with safety limit).
+   */
+  private async parseWithAccumulation(
+    stream: Readable,
+    bulk: BulkDownloadConfig,
+    source: DataSourceConfig,
+  ): Promise<Record<string, unknown>[]> {
+    const MAX_RECORDS = 100_000;
+    const records: Record<string, unknown>[] = [];
+
+    const lineParser = this.createLineParser(bulk, source);
+    const rl = createInterface({ input: stream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
+      const record = lineParser.processLine(line);
+      if (!record) continue;
+
+      records.push(record);
+      if (records.length >= MAX_RECORDS) {
+        this.logger.warn(
+          `Reached max records limit (${MAX_RECORDS}). Stopping parse.`,
+        );
+        rl.close();
+        break;
+      }
+    }
+
+    return records;
+  }
+
+  /**
+   * Create a stateful line parser that handles headers, skipping, and mapping.
+   */
+  private createLineParser(bulk: BulkDownloadConfig, source: DataSourceConfig) {
     const delimiter = this.getDelimiter(bulk);
     const mappings = bulk.columnMappings;
     const filters = bulk.filters ?? {};
     const sourceSystem = this.inferSourceSystem(source);
     const headerSkip = bulk.headerLines ?? 0;
 
-    /** Safety limit: max records to keep in memory per bulk download */
-    const MAX_RECORDS = 100_000;
-
-    const records: Record<string, unknown>[] = [];
     let lineNum = 0;
-    let headers: string[] = [];
     let colIndices: Record<string, number> = {};
     let filterIndices: Record<string, number> = {};
 
-    // Use explicit headers if provided (for files without a header row)
     const hasExplicitHeaders = bulk.headers && bulk.headers.length > 0;
     if (hasExplicitHeaders) {
-      headers = bulk.headers!;
+      const headers = bulk.headers!;
       colIndices = this.buildColumnIndices(headers, mappings);
       filterIndices = this.buildColumnIndices(headers, filters);
     }
 
     const headerLineNum = headerSkip;
-    const rl = createInterface({ input: stream, crlfDelay: Infinity });
+    const buildIndices = this.buildColumnIndices.bind(this);
+    const processData = this.processDataLine.bind(this);
 
-    for await (const line of rl) {
-      // Skip header preamble lines
-      if (lineNum < headerSkip) {
-        lineNum++;
-        continue;
-      }
-
-      // Parse header line from the file (if not using explicit headers)
-      if (!hasExplicitHeaders && lineNum === headerLineNum) {
-        headers = line
-          .split(delimiter)
-          .map((h) => BulkDownloadHandler.stripQuotes(h));
-        colIndices = this.buildColumnIndices(headers, mappings);
-        filterIndices = this.buildColumnIndices(headers, filters);
-        lineNum++;
-        continue;
-      }
-
-      // Process data line
-      const record = this.processDataLine(
-        line,
-        delimiter,
-        mappings,
-        filters,
-        colIndices,
-        filterIndices,
-        sourceSystem,
-      );
-
-      if (record) {
-        records.push(record);
-        if (records.length >= MAX_RECORDS) {
-          this.logger.warn(
-            `Reached max records limit (${MAX_RECORDS}). Stopping parse.`,
-          );
-          rl.close();
-          break;
+    return {
+      processLine(line: string): Record<string, unknown> | null {
+        if (lineNum < headerSkip) {
+          lineNum++;
+          return null;
         }
-      }
 
-      lineNum++;
-    }
+        if (!hasExplicitHeaders && lineNum === headerLineNum) {
+          const headers = line
+            .split(delimiter)
+            .map((h) => BulkDownloadHandler.stripQuotes(h));
+          colIndices = buildIndices(headers, mappings);
+          filterIndices = buildIndices(headers, filters);
+          lineNum++;
+          return null;
+        }
 
-    return records;
+        lineNum++;
+        return processData(
+          line,
+          delimiter,
+          mappings,
+          filters,
+          colIndices,
+          filterIndices,
+          sourceSystem,
+        );
+      },
+    };
   }
 
   /**

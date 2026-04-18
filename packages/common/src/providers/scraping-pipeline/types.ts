@@ -267,6 +267,9 @@ export interface BulkDownloadConfig {
   columnMappings: Record<string, string>;
   /** Filter expressions applied during parse (e.g., { "STATE": "CA" }) */
   filters?: Record<string, string>;
+  /** Batch size for streaming processing (default: 10,000). Records are
+   *  mapped and persisted in batches of this size to avoid OOM on large files. */
+  batchSize?: number;
 }
 
 /**
@@ -353,7 +356,7 @@ export interface StructuralAnalysisResult {
  * Result of content extraction using a manifest.
  */
 export interface ExtractionResult<T> {
-  /** Extracted items */
+  /** Extracted items (empty when using batch mode) */
   items: T[];
   /** The manifest version used */
   manifestVersion: number;
@@ -365,6 +368,8 @@ export interface ExtractionResult<T> {
   errors: string[];
   /** Extraction duration in milliseconds */
   extractionTimeMs: number;
+  /** Total item count (useful in batch mode where items array is empty) */
+  itemCount?: number;
 }
 
 /**
