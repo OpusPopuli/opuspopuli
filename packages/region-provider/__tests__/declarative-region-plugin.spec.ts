@@ -154,6 +154,7 @@ describe("DeclarativeRegionPlugin", () => {
       expect(pipeline.execute).toHaveBeenCalledWith(
         config.dataSources[0],
         "california",
+        undefined,
       );
       expect(result).toEqual(mockProps);
     });

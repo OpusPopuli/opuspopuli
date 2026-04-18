@@ -235,8 +235,12 @@ export interface IRegionProvider {
   /**
    * Fetch campaign finance data from the region's data sources.
    * Optional — only implemented by plugins with campaign_finance data sources.
+   * When onBatch is provided, bulk sources stream batches to the callback
+   * instead of accumulating all records in memory.
    */
-  fetchCampaignFinance?(): Promise<CampaignFinanceResult>;
+  fetchCampaignFinance?(
+    onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
+  ): Promise<CampaignFinanceResult>;
 }
 
 /**

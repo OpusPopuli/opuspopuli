@@ -556,4 +556,54 @@ describe("BulkDownloadHandler", () => {
       });
     });
   });
+
+  describe("batch mode (onBatch callback)", () => {
+    it("should flush records via onBatch callback instead of accumulating", async () => {
+      const csvContent =
+        "CMTE_ID,NAME,AMOUNT\nC001,Alice,100\nC002,Bob,200\nC003,Carol,300";
+
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csvContent),
+      );
+
+      const batches: Record<string, unknown>[][] = [];
+      const onBatch = jest.fn(async (items: Record<string, unknown>[]) => {
+        batches.push([...items]);
+      });
+
+      const source = createSource({
+        bulk: {
+          format: "csv",
+          columnMappings: { CMTE_ID: "committeeId", NAME: "donorName" },
+          batchSize: 2,
+        },
+      });
+
+      const result = await handler.execute(source, "california", onBatch);
+
+      // Items should NOT be accumulated in the result
+      expect(result.items).toHaveLength(0);
+      expect(result.success).toBe(true);
+      expect(result.itemCount).toBe(3);
+
+      // onBatch called with batches of 2, then remainder of 1
+      expect(onBatch).toHaveBeenCalledTimes(2);
+      expect(batches[0]).toHaveLength(2);
+      expect(batches[1]).toHaveLength(1);
+    });
+
+    it("should return items normally when no onBatch is provided", async () => {
+      const csvContent = "CMTE_ID,NAME,AMOUNT\nC001,Alice,100\nC002,Bob,200";
+
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csvContent),
+      );
+
+      const source = createSource();
+      const result = await handler.execute(source, "california");
+
+      expect(result.items).toHaveLength(2);
+      expect(result.itemCount).toBeUndefined();
+    });
+  });
 });

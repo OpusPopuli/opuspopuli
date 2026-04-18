@@ -270,6 +270,7 @@ The resolution utility (`resolveConfigPlaceholders()` from `@opuspopuli/common`)
 | `headerLines` | `number` | No | Number of header lines to skip |
 | `columnMappings` | `Record<string, string>` | Yes | Source column name to domain field name |
 | `filters` | `Record<string, string>` | No | Row filter expressions (e.g., `{ "STATE": "CA" }`) |
+| `batchSize` | `number` | No | Records per batch for streaming processing (default: 10,000). Each batch is mapped and persisted before the next is parsed, keeping memory bounded for large files. |
 
 ### ApiSourceConfig Fields
 
@@ -443,10 +444,11 @@ Paginated REST API ingestion. Use for structured JSON APIs (e.g., FEC API).
 
 File download and parsing. Use for bulk data exports (ZIP archives, CSV/TSV files).
 
-- Downloads files with a 5-minute timeout for large archives
+- Downloads files with a 30-minute timeout for large archives (e.g., FEC indiv26.zip at 1.4GB)
 - Extracts target files from ZIP archives using `filePattern`
 - Parses delimited rows using `columnMappings`
 - Applies row-level `filters` during parsing (e.g., filter by state)
+- Processes records in batches (default 10,000) to keep memory bounded — each batch is mapped and persisted to the database before the next is parsed
 - No AI needed — the file schema is declared in the config
 
 ### pdf
