@@ -297,6 +297,7 @@ Now we will sync all civic data from California's official government sources. T
 2. Paste this mutation and click **Play**:
 
 ```graphql
+# Sync all data types (default)
 mutation {
   syncRegionData {
     dataType
@@ -307,7 +308,21 @@ mutation {
     syncedAt
   }
 }
+
+# Sync specific data types only
+mutation {
+  syncRegionData(dataTypes: [PROPOSITIONS, MEETINGS]) {
+    dataType
+    itemsProcessed
+    itemsCreated
+    itemsUpdated
+    errors
+    syncedAt
+  }
+}
 ```
+
+> **Available data types:** `PROPOSITIONS`, `MEETINGS`, `REPRESENTATIVES`, `CAMPAIGN_FINANCE`
 
 > **What happens during sync:**
 >

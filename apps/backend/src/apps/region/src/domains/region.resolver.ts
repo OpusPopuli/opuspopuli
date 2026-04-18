@@ -347,14 +347,20 @@ export class RegionResolver {
   }
 
   /**
-   * Trigger a full data sync (admin only)
+   * Trigger a data sync (admin only).
+   * Optionally filter by data types — when omitted, syncs all.
    */
   @Mutation(() => [SyncResultModel])
   @UseGuards(AuthGuard)
   @Roles(Role.Admin)
   @Extensions({ complexity: 100 }) // Full data sync - expensive operation
-  async syncRegionData(): Promise<SyncResultModel[]> {
-    const results = await this.regionService.syncAll();
+  async syncRegionData(
+    @Args('dataTypes', { type: () => [DataTypeGQL], nullable: true })
+    dataTypes?: DataTypeGQL[],
+  ): Promise<SyncResultModel[]> {
+    const results = await this.regionService.syncAll(
+      dataTypes as unknown as string[],
+    );
     return results.map((r) => ({
       ...r,
       dataType: r.dataType as unknown as DataTypeGQL,
