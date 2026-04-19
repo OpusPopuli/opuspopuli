@@ -8,6 +8,7 @@ import { PluginLoaderService } from "../src/loader/plugin-loader.service";
 // Mock NestJS dependencies
 jest.mock("@nestjs/common", () => ({
   Module: () => (target: any) => target,
+  Global: () => (target: any) => target,
   Injectable: () => (target: any) => target,
   Optional: () => () => {},
   Inject: () => () => {},

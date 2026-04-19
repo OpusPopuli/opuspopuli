@@ -25,6 +25,7 @@ import type {
   StructuredFieldConfig,
 } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
+import { extractStructuredArray } from "../extraction/structured-extractor.js";
 
 /** Maximum detail pages to fetch per source per sync (safety limit against runaway crawling) */
 const MAX_DETAIL_PAGES = 500;
@@ -433,48 +434,19 @@ Respond with ONLY valid JSON, no explanation. Example:
 
   /**
    * Extract an array of structured objects from repeating HTML sections.
+   * Delegates to the shared extractStructuredArray utility, using the document
+   * root as the scope (detail pages are extracted whole-document).
    */
   private extractStructuredField(
     $: cheerio.CheerioAPI,
     config: StructuredFieldConfig,
   ): Record<string, string>[] {
-    const items: Record<string, string>[] = [];
-
-    $(config.selector).each((_i, el) => {
-      const item: Record<string, string> = {};
-      const elementText = $(el).text().replaceAll(/\s+/g, " ").trim();
-
-      for (const [childField, childSelector] of Object.entries(
-        config.children,
-      )) {
-        // Special selector: _text grabs the full text of the matched element
-        if (childSelector === "_text") {
-          if (elementText) item[childField] = elementText;
-          continue;
-        }
-
-        // Special selector: _regex:pattern extracts via regex from element text
-        if (childSelector.startsWith("_regex:")) {
-          const pattern = childSelector.slice(7);
-          const match = new RegExp(pattern).exec(elementText);
-          if (match?.[1]) item[childField] = match[1].trim();
-          continue;
-        }
-
-        const [sel, attrSpec] = childSelector.split("|attr:");
-        const child = $(el).find(sel);
-        if (child.length === 0) continue;
-
-        const value = attrSpec
-          ? child.first().attr(attrSpec)
-          : child.first().text().replaceAll(/\s+/g, " ").trim();
-
-        if (value) item[childField] = value;
-      }
-      if (Object.keys(item).length > 0) items.push(item);
-    });
-
-    return items;
+    return extractStructuredArray(
+      $,
+      $.root(),
+      config.selector,
+      config.children,
+    );
   }
 
   /**
