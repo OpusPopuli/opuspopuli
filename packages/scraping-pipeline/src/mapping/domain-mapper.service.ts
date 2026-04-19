@@ -371,6 +371,15 @@ const RepresentativeSchema = z.object({
         .optional(),
     })
     .optional(),
+  committees: z
+    .array(
+      z.object({
+        name: z.string(),
+        role: z.string().optional(),
+        url: z.string().optional(),
+      }),
+    )
+    .optional(),
   bio: z.string().optional(),
 });
 

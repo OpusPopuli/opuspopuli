@@ -9,11 +9,89 @@ import {
   GET_REPRESENTATIVE,
   RepresentativeData,
   IdVars,
+  CommitteeAssignment,
 } from "@/lib/graphql/region";
 import { ContactRepresentativeForm } from "@/components/email/ContactRepresentativeForm";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
 import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
 import { PartyBadge } from "@/components/region/PartyBadge";
+
+const SOURCE_URLS: Record<string, { label: string; url: string }> = {
+  Assembly: {
+    label: "California State Assembly",
+    url: "https://www.assembly.ca.gov/assemblymembers",
+  },
+  Senate: {
+    label: "California State Senate",
+    url: "https://www.senate.ca.gov/senators",
+  },
+};
+
+function SourceAttribution({
+  chamber,
+  updatedAt,
+}: {
+  readonly chamber: string;
+  readonly updatedAt?: string;
+}) {
+  const source = SOURCE_URLS[chamber];
+  if (!source) return null;
+
+  return (
+    <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-[#94a3b8]">
+      <span>
+        Source:{" "}
+        <a
+          href={source.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-[#64748b] hover:underline"
+        >
+          {source.label}
+        </a>
+      </span>
+      {updatedAt && (
+        <span>Last synced: {new Date(updatedAt).toLocaleDateString()}</span>
+      )}
+    </div>
+  );
+}
+
+function isLeadershipRole(role?: string): boolean {
+  return !!role && /chair|ranking/i.test(role);
+}
+
+function CommitteeRow({ c }: { readonly c: CommitteeAssignment }) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+      <div className="flex items-center gap-2">
+        {c.url ? (
+          <a
+            href={c.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+          >
+            {c.name}
+          </a>
+        ) : (
+          <span className="text-sm text-[#334155]">{c.name}</span>
+        )}
+      </div>
+      {c.role && (
+        <span
+          className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+            isLeadershipRole(c.role)
+              ? "bg-blue-50 text-blue-700"
+              : "bg-gray-100 text-[#64748b]"
+          }`}
+        >
+          {c.role}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function ContactSection({
   label,
@@ -294,8 +372,59 @@ export default function RepresentativeDetailPage() {
               ))}
             </div>
           )}
+          <SourceAttribution chamber={rep.chamber} updatedAt={rep.updatedAt} />
         </div>
       )}
+
+      {/* Committee Assignments */}
+      {rep.committees &&
+        rep.committees.length > 0 &&
+        (() => {
+          const leadership = rep.committees.filter((c) =>
+            isLeadershipRole(c.role),
+          );
+          const membership = rep.committees.filter(
+            (c) => !isLeadershipRole(c.role),
+          );
+
+          return (
+            <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 mb-6">
+              <h2 className="text-xs font-bold uppercase tracking-[1.5px] text-[#595959] mb-4">
+                Committee Assignments
+              </h2>
+
+              {leadership.length > 0 && (
+                <div className="mb-5">
+                  <h3 className="text-xs font-semibold text-[#334155] uppercase tracking-wider mb-2">
+                    Leadership
+                  </h3>
+                  <div className="space-y-1">
+                    {leadership.map((c) => (
+                      <CommitteeRow key={c.name} c={c} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {membership.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-[#334155] uppercase tracking-wider mb-2">
+                    Member
+                  </h3>
+                  <div className="space-y-1">
+                    {membership.map((c) => (
+                      <CommitteeRow key={c.name} c={c} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              <SourceAttribution
+                chamber={rep.chamber}
+                updatedAt={rep.updatedAt}
+              />
+            </div>
+          );
+        })()}
 
       {/* Campaign Finance - Coming Soon */}
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 mb-6">

@@ -25,6 +25,7 @@ import {
 } from './models/proposition.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
 import {
+  CommitteeAssignmentModel,
   ContactInfoModel,
   RepresentativeModel,
   PaginatedRepresentatives,
@@ -152,6 +153,9 @@ export class RegionResolver {
       ...result,
       photoUrl: result.photoUrl ?? undefined,
       contactInfo: (result.contactInfo as ContactInfoModel) ?? undefined,
+      committees:
+        (result.committees as unknown as CommitteeAssignmentModel[]) ??
+        undefined,
       bio: result.bio ?? undefined,
     };
   }
@@ -181,6 +185,7 @@ export class RegionResolver {
       party: r.party ?? undefined,
       photoUrl: r.photoUrl ?? undefined,
       contactInfo: (r.contactInfo as ContactInfoModel) ?? undefined,
+      committees: (r.committees as CommitteeAssignmentModel[]) ?? undefined,
       bio: r.bio ?? undefined,
     })) as RepresentativeModel[];
   }

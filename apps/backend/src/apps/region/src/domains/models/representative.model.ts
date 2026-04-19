@@ -34,6 +34,21 @@ export class ContactInfoModel {
 }
 
 /**
+ * A legislative committee assignment
+ */
+@ObjectType()
+export class CommitteeAssignmentModel {
+  @Field()
+  name!: string;
+
+  @Field({ nullable: true })
+  role?: string;
+
+  @Field({ nullable: true })
+  url?: string;
+}
+
+/**
  * Representative GraphQL model
  */
 @ObjectType()
@@ -61,6 +76,9 @@ export class RepresentativeModel {
 
   @Field(() => ContactInfoModel, { nullable: true })
   contactInfo?: ContactInfoModel;
+
+  @Field(() => [CommitteeAssignmentModel], { nullable: true })
+  committees?: CommitteeAssignmentModel[];
 
   @Field({ nullable: true })
   bio?: string;
