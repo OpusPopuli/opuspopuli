@@ -134,8 +134,8 @@ describe("ExampleRegionProvider", () => {
       if (repWithContact?.contactInfo) {
         expect(
           repWithContact.contactInfo.email ||
-            repWithContact.contactInfo.phone ||
-            repWithContact.contactInfo.address,
+            repWithContact.contactInfo.offices?.[0]?.phone ||
+            repWithContact.contactInfo.offices?.[0]?.address,
         ).toBeDefined();
       }
     });

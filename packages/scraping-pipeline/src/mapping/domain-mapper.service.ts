@@ -358,9 +358,17 @@ const RepresentativeSchema = z.object({
   contactInfo: z
     .object({
       email: z.string().email().optional(),
-      phone: z.string().optional(),
-      address: z.string().optional(),
       website: z.string().optional(),
+      offices: z
+        .array(
+          z.object({
+            name: z.string(),
+            address: z.string().optional(),
+            phone: z.string().optional(),
+            fax: z.string().optional(),
+          }),
+        )
+        .optional(),
     })
     .optional(),
   bio: z.string().optional(),

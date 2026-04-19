@@ -66,7 +66,7 @@ function createMockExtraction(): jest.Mocked<ExtractionProvider> {
 function createMockLlm(): jest.Mocked<ILLMProvider> {
   return {
     generate: jest.fn().mockResolvedValue({
-      text: '["fullText"]',
+      text: '{"fullText": "main p"}',
       tokensUsed: 50,
     }),
     getName: jest.fn().mockReturnValue("mock"),
@@ -218,9 +218,10 @@ describe("DetailCrawlerService", () => {
       expect(result.items[0].fullText).toBe("Already has full text");
     });
 
-    it("should warn when items exceed MAX_DETAIL_PAGES limit", async () => {
-      // Create 55 items — exceeds the 50 limit
-      const items = Array.from({ length: 55 }, (_, i) => ({
+    it("should warn when items exceed MAX_DETAIL_PAGES limit", () => {
+      // The MAX_DETAIL_PAGES limit is 500. Verify the warning is added
+      // by checking rawResult.warnings synchronously after the slice.
+      const items = Array.from({ length: 505 }, (_, i) => ({
         externalId: `prop-${i}`,
         title: `Prop ${i}`,
         detailUrl: `https://example.com/${i}`,
@@ -228,19 +229,19 @@ describe("DetailCrawlerService", () => {
 
       const rawResult = createRawResult(items);
 
-      // Don't await the full run — just check the warning is added
-      const result = await crawler.enrichItems(
-        rawResult,
-        createSource(),
-        mockLlm,
+      // Start enrichment but don't await — we only need the sync warning
+      mockExtraction.fetchWithRetry.mockReturnValue(
+        new Promise(() => {}), // Never resolves — prevents crawling
       );
+      crawler.enrichItems(rawResult, createSource(), mockLlm);
 
-      expect(result.warnings).toEqual(
+      // Warning is added synchronously before async crawling starts
+      expect(rawResult.warnings).toEqual(
         expect.arrayContaining([
-          expect.stringContaining("Only enriching first 50"),
+          expect.stringContaining("Only enriching first 500"),
         ]),
       );
-    }, 60000);
+    });
 
     it("should derive correct default fields per data type", async () => {
       mockLlm.generate.mockRejectedValue(new Error("fail"));
@@ -328,6 +329,145 @@ describe("DetailCrawlerService", () => {
       await crawler.enrichItems(rawResult, createSource(), mockLlm);
 
       expect(rawResult.items[0].fullText).toBe("Extracted PDF text content.");
+    });
+  });
+
+  describe("resolveUrl", () => {
+    it("should resolve relative URLs against the base URL", () => {
+      expect(
+        DetailCrawlerService.resolveUrl(
+          "/assemblymembers/30",
+          "https://www.assembly.ca.gov/assemblymembers",
+        ),
+      ).toBe("https://www.assembly.ca.gov/assemblymembers/30");
+    });
+
+    it("should return absolute URLs unchanged", () => {
+      expect(
+        DetailCrawlerService.resolveUrl(
+          "https://example.com/page",
+          "https://other.com",
+        ),
+      ).toBe("https://example.com/page");
+    });
+
+    it("should handle paths relative to the domain root", () => {
+      expect(
+        DetailCrawlerService.resolveUrl(
+          "/senators/district-5",
+          "https://www.senate.ca.gov/senators",
+        ),
+      ).toBe("https://www.senate.ca.gov/senators/district-5");
+    });
+
+    it("should return original URL if resolution fails", () => {
+      expect(
+        DetailCrawlerService.resolveUrl(":::invalid", "also-invalid"),
+      ).toBe(":::invalid");
+    });
+  });
+
+  describe("structured field extraction (detailFields config)", () => {
+    it("should use config-declared detailFields instead of AI derivation", async () => {
+      const detailHtml = `<html><body>
+        <div class="office-card"><h3>Capitol</h3><p class="phone">555-1000</p></div>
+        <div class="office-card"><h3>District</h3><p class="phone">555-2000</p></div>
+        <a class="website" href="https://example.gov">Website</a>
+      </body></html>`;
+
+      mockExtraction.fetchWithRetry.mockResolvedValue({
+        content: detailHtml,
+        fromCache: false,
+      });
+
+      const source = createSource({
+        dataType: DataType.REPRESENTATIVES,
+        contentGoal: "Extract representatives",
+        detailFields: {
+          "contactInfo.website": "a.website|attr:href",
+          "contactInfo.offices": {
+            selector: ".office-card",
+            children: {
+              name: "h3",
+              phone: ".phone",
+            },
+            multiple: true,
+          },
+        },
+      });
+
+      const rawResult = createRawResult([
+        {
+          externalId: "rep-1",
+          name: "Test Rep",
+          detailUrl: "https://example.com/rep/1",
+        },
+      ]);
+
+      await crawler.enrichItems(rawResult, source, mockLlm);
+
+      // AI should NOT be called when detailFields is provided
+      expect(mockLlm.generate).not.toHaveBeenCalled();
+
+      // Structured offices should be extracted
+      const contactInfo = rawResult.items[0].contactInfo as Record<
+        string,
+        unknown
+      >;
+      expect(contactInfo).toBeDefined();
+      expect(contactInfo.website).toBe("https://example.gov");
+
+      const offices = contactInfo.offices as Record<string, string>[];
+      expect(offices).toHaveLength(2);
+      expect(offices[0]).toEqual({ name: "Capitol", phone: "555-1000" });
+      expect(offices[1]).toEqual({ name: "District", phone: "555-2000" });
+    });
+
+    it("should handle simple string selectors alongside structured configs", async () => {
+      const detailHtml = `<html><body>
+        <p class="bio">A great representative.</p>
+        <div class="office"><span class="name">Main Office</span><span class="addr">123 Main St</span></div>
+      </body></html>`;
+
+      mockExtraction.fetchWithRetry.mockResolvedValue({
+        content: detailHtml,
+        fromCache: false,
+      });
+
+      const source = createSource({
+        dataType: DataType.REPRESENTATIVES,
+        contentGoal: "Extract representatives",
+        detailFields: {
+          bio: ".bio",
+          "contactInfo.offices": {
+            selector: ".office",
+            children: { name: ".name", address: ".addr" },
+            multiple: true,
+          },
+        },
+      });
+
+      const rawResult = createRawResult([
+        {
+          externalId: "rep-1",
+          name: "Test",
+          detailUrl: "https://example.com/1",
+        },
+      ]);
+
+      await crawler.enrichItems(rawResult, source, mockLlm);
+
+      expect(rawResult.items[0].bio).toBe("A great representative.");
+      const contactInfo = rawResult.items[0].contactInfo as Record<
+        string,
+        unknown
+      >;
+      const offices = contactInfo.offices as Record<string, string>[];
+      expect(offices).toHaveLength(1);
+      expect(offices[0]).toEqual({
+        name: "Main Office",
+        address: "123 Main St",
+      });
     });
   });
 });

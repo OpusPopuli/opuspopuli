@@ -45,8 +45,12 @@ const buildRepresentativesQuery = (skip = 0, take = 10, chamber?: string) => `
         photoUrl
         contactInfo {
           email
-          phone
           website
+          offices {
+            name
+            address
+            phone
+          }
         }
       }
       total
@@ -345,8 +349,14 @@ describe('Region Integration Tests', () => {
         name: 'Contact Test',
         contactInfo: {
           email: 'rep@example.gov',
-          phone: '555-1234',
           website: 'https://rep.gov',
+          offices: [
+            {
+              name: 'Capitol Office',
+              address: '123 Capitol St',
+              phone: '555-1234',
+            },
+          ],
         },
       });
 
@@ -358,11 +368,11 @@ describe('Region Integration Tests', () => {
       expect(found?.contactInfo).toBeDefined();
       const contactInfo = found?.contactInfo as {
         email?: string;
-        phone?: string;
         website?: string;
+        offices?: Array<{ name?: string; address?: string; phone?: string }>;
       };
       expect(contactInfo.email).toBe('rep@example.gov');
-      expect(contactInfo.phone).toBe('555-1234');
+      expect(contactInfo.offices?.[0]?.phone).toBe('555-1234');
     });
   });
 
