@@ -157,64 +157,68 @@ export class ExampleRegionProvider implements IRegionProvider {
       // In a real provider, you would fetch from an official API or scrape
       // For example: await this.fetchFromLegislatorAPI()
 
-      const representatives: Representative[] = [
+      const exampleReps = [
         {
-          externalId: "rep-senate-001",
+          id: "rep-senate-001",
           name: "Jane Smith",
           chamber: "Senate",
-          district: "District 1",
+          district: "1",
           party: "Democratic",
-          photoUrl: "https://example.com/photos/jane-smith.jpg",
-          contactInfo: {
-            email: "senator.smith@example.gov",
-            phone: "(555) 123-4567",
-            address: "State Capitol, Room 100",
-            website: "https://example.com/senators/smith",
-          },
+          slug: "senators/smith",
+          room: "100",
+          phone: "123-4567",
         },
         {
-          externalId: "rep-senate-002",
+          id: "rep-senate-002",
           name: "John Doe",
           chamber: "Senate",
-          district: "District 2",
+          district: "2",
           party: "Republican",
-          photoUrl: "https://example.com/photos/john-doe.jpg",
-          contactInfo: {
-            email: "senator.doe@example.gov",
-            phone: "(555) 234-5678",
-            address: "State Capitol, Room 101",
-            website: "https://example.com/senators/doe",
-          },
+          slug: "senators/doe",
+          room: "101",
+          phone: "234-5678",
         },
         {
-          externalId: "rep-assembly-001",
+          id: "rep-assembly-001",
           name: "Maria Garcia",
           chamber: "Assembly",
-          district: "District 1",
+          district: "1",
           party: "Democratic",
-          photoUrl: "https://example.com/photos/maria-garcia.jpg",
-          contactInfo: {
-            email: "assembly.garcia@example.gov",
-            phone: "(555) 345-6789",
-            address: "State Capitol, Room 200",
-            website: "https://example.com/assembly/garcia",
-          },
+          slug: "assembly/garcia",
+          room: "200",
+          phone: "345-6789",
         },
         {
-          externalId: "rep-assembly-002",
+          id: "rep-assembly-002",
           name: "Robert Johnson",
           chamber: "Assembly",
-          district: "District 2",
+          district: "2",
           party: "Independent",
-          photoUrl: "https://example.com/photos/robert-johnson.jpg",
-          contactInfo: {
-            email: "assembly.johnson@example.gov",
-            phone: "(555) 456-7890",
-            address: "State Capitol, Room 201",
-            website: "https://example.com/assembly/johnson",
-          },
+          slug: "assembly/johnson",
+          room: "201",
+          phone: "456-7890",
         },
       ];
+
+      const representatives: Representative[] = exampleReps.map((r) => ({
+        externalId: r.id,
+        name: r.name,
+        chamber: r.chamber,
+        district: `District ${r.district}`,
+        party: r.party,
+        photoUrl: `https://example.com/photos/${r.name.toLowerCase().replace(" ", "-")}.jpg`,
+        contactInfo: {
+          email: `${r.chamber.toLowerCase()}.${r.name.split(" ")[1]?.toLowerCase()}@example.gov`,
+          website: `https://example.com/${r.slug}`,
+          offices: [
+            {
+              name: "Capitol Office",
+              address: `State Capitol, Room ${r.room}`,
+              phone: `(555) ${r.phone}`,
+            },
+          ],
+        },
+      }));
 
       this.logger.log(
         `Fetched ${representatives.length} example representatives`,

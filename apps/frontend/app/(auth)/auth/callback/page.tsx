@@ -113,6 +113,7 @@ function AuthCallbackContent() {
     }
 
     // No valid params found
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStatus("error");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

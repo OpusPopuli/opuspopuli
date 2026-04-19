@@ -90,6 +90,7 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
       typeof navigator === "undefined" ||
       !navigator.mediaDevices?.getUserMedia
     ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPermissionState("unsupported");
       return;
     }

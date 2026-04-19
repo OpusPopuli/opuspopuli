@@ -233,6 +233,26 @@ export interface DataSourceConfig {
 
   /** Configuration for PDF sources (text extraction + AI analysis) */
   pdf?: PdfSourceConfig;
+
+  /** Detail page extraction plan: maps domain field names to CSS selectors
+   *  or structured field configs for array extraction.
+   *  When provided, the detail crawler uses these directly instead of AI derivation.
+   *  - String values: CSS selector (supports dot notation and "|attr:href" suffix)
+   *  - Object values: structured array extraction (e.g., multiple offices) */
+  detailFields?: Record<string, string | StructuredFieldConfig>;
+}
+
+/**
+ * Configuration for extracting an array of structured objects from repeating HTML sections.
+ * Used in detailFields for things like multiple office locations.
+ */
+export interface StructuredFieldConfig {
+  /** CSS selector matching each repeating item (e.g., ".office-card") */
+  selector: string;
+  /** Child field selectors relative to each item (e.g., { name: "h3", phone: ".phone" }) */
+  children: Record<string, string>;
+  /** If true, extracts all matches as an array (default: true) */
+  multiple?: boolean;
 }
 
 /**

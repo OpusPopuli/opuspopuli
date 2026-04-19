@@ -12,9 +12,14 @@ const mockRepresentative = {
   photoUrl: "https://example.com/photo.jpg",
   contactInfo: {
     email: "jane@example.gov",
-    phone: "555-1234",
-    office: "State Capitol, Room 100",
     website: "https://example.gov/jane",
+    offices: [
+      {
+        name: "Capitol Office",
+        address: "State Capitol, Room 100",
+        phone: "555-1234",
+      },
+    ],
   },
   bio: "Jane Smith has served in the Senate since 2020.",
   createdAt: "2024-01-01T00:00:00Z",
@@ -79,9 +84,10 @@ describe("RepresentativeDetailPage", () => {
     render(<RepresentativeDetailPage />);
 
     expect(screen.getByText("jane@example.gov")).toBeInTheDocument();
-    expect(screen.getByText("555-1234")).toBeInTheDocument();
-    expect(screen.getByText("State Capitol, Room 100")).toBeInTheDocument();
     expect(screen.getByText("https://example.gov/jane")).toBeInTheDocument();
+    expect(screen.getByText("Capitol Office")).toBeInTheDocument();
+    expect(screen.getByText("State Capitol, Room 100")).toBeInTheDocument();
+    expect(screen.getByText("555-1234")).toBeInTheDocument();
   });
 
   it("should render contact button", () => {

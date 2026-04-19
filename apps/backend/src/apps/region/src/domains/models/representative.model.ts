@@ -1,6 +1,24 @@
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 
 /**
+ * A physical office location (Capitol or district)
+ */
+@ObjectType()
+export class OfficeModel {
+  @Field()
+  name!: string;
+
+  @Field({ nullable: true })
+  address?: string;
+
+  @Field({ nullable: true })
+  phone?: string;
+
+  @Field({ nullable: true })
+  fax?: string;
+}
+
+/**
  * Contact information for a representative
  */
 @ObjectType()
@@ -9,16 +27,10 @@ export class ContactInfoModel {
   email?: string;
 
   @Field({ nullable: true })
-  phone?: string;
-
-  @Field({ nullable: true })
-  address?: string;
-
-  @Field({ nullable: true })
   website?: string;
 
-  @Field({ nullable: true })
-  office?: string;
+  @Field(() => [OfficeModel], { nullable: true })
+  offices?: OfficeModel[];
 }
 
 /**
