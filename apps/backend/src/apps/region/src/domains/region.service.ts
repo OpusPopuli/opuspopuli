@@ -52,6 +52,7 @@ import {
 } from './models/proposition.model';
 import { PaginatedMeetings } from './models/meeting.model';
 import {
+  CommitteeAssignmentModel,
   ContactInfoModel,
   PaginatedRepresentatives,
 } from './models/representative.model';
@@ -104,6 +105,7 @@ type RepresentativeRecord = {
   party: string | null;
   photoUrl: string | null;
   contactInfo: unknown;
+  committees: unknown;
   bio: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -692,6 +694,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             party: rep.party,
             photoUrl: rep.photoUrl,
             contactInfo: rep.contactInfo as object | undefined,
+            committees: rep.committees as object[] | undefined,
             bio: rep.bio,
           },
           create: {
@@ -702,6 +705,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             party: rep.party,
             photoUrl: rep.photoUrl,
             contactInfo: rep.contactInfo as object | undefined,
+            committees: rep.committees as object[] | undefined,
             bio: rep.bio,
           },
         }),
@@ -1120,6 +1124,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             party: item.party ?? undefined,
             photoUrl: item.photoUrl ?? undefined,
             contactInfo: (item.contactInfo as ContactInfoModel) ?? undefined,
+            committees:
+              (item.committees as CommitteeAssignmentModel[]) ?? undefined,
             bio: item.bio ?? undefined,
           })),
           total,

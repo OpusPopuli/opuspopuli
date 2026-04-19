@@ -572,6 +572,7 @@ model Representative {
   party       String
   photoUrl    String?   @map("photo_url")
   contactInfo Json?     @map("contact_info")
+  committees  Json?     @map("committees")       /// CommitteeAssignment[] as JSON
   bio         String?   @db.Text
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz

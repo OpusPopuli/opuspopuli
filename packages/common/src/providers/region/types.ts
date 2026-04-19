@@ -85,6 +85,15 @@ export interface Meeting {
 }
 
 /**
+ * A legislative committee assignment for a representative
+ */
+export interface CommitteeAssignment {
+  name: string;
+  role?: string;
+  url?: string;
+}
+
+/**
  * Elected representative data
  */
 export interface Representative {
@@ -95,6 +104,7 @@ export interface Representative {
   party: string;
   photoUrl?: string;
   contactInfo?: ContactInfo;
+  committees?: CommitteeAssignment[];
   bio?: string;
 }
 
