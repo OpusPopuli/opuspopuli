@@ -97,6 +97,19 @@ const mockRepresentatives = {
           },
         ],
       },
+      committees: [
+        {
+          name: "Judiciary",
+          role: "Chair",
+          url: "https://judiciary.example.gov",
+        },
+        {
+          name: "Budget",
+          role: "Member",
+          url: "https://budget.example.gov",
+        },
+      ],
+      bio: "Jane Smith has served in the Senate since 2020.",
       createdAt: "2024-01-01T00:00:00Z",
       updatedAt: "2024-01-01T00:00:00Z",
     },
@@ -331,6 +344,14 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
         contentType: "application/json",
         body: JSON.stringify({
           data: { meetings: mockMeetings },
+        }),
+      });
+    } else if (postData?.operationName === "GetRepresentative") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { representative: mockRepresentatives.items[0] },
         }),
       });
     } else if (postData?.query?.includes("representatives")) {
@@ -782,6 +803,53 @@ test.describe("Representatives Page", () => {
     await select.selectOption("Senate");
 
     await expect(select).toHaveValue("Senate");
+  });
+});
+
+test.describe("Representative Detail Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockRegionGraphQL(page);
+  });
+
+  test("should display committee assignments with leadership grouping", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+
+    await expect(page.getByText("Committee Assignments")).toBeVisible();
+    await expect(page.getByText("Leadership")).toBeVisible();
+    await expect(page.getByText("Judiciary")).toBeVisible();
+    await expect(page.getByText("Chair")).toBeVisible();
+    await expect(page.getByText("Budget")).toBeVisible();
+  });
+
+  test("should display source attribution on contact section", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+
+    // Source attribution link at the bottom of the contact section
+    const attribution = page
+      .getByRole("link", { name: "California State Senate" })
+      .first();
+    await attribution.scrollIntoViewIfNeeded();
+    await expect(attribution).toBeVisible();
+  });
+
+  test("should display office contact information", async ({ page }) => {
+    await page.goto("/region/representatives/1");
+
+    await expect(page.getByText("Capitol Office")).toBeVisible();
+    await expect(page.getByText("State Capitol, Room 100")).toBeVisible();
+    await expect(page.getByText("555-1234")).toBeVisible();
+  });
+
+  test("should display bio when available", async ({ page }) => {
+    await page.goto("/region/representatives/1");
+
+    await expect(
+      page.getByText("Jane Smith has served in the Senate since 2020."),
+    ).toBeVisible();
   });
 });
 

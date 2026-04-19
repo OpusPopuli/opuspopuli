@@ -157,4 +157,99 @@ describe("RepresentativeDetailPage", () => {
 
     expect(screen.queryByText("Contact Information")).not.toBeInTheDocument();
   });
+
+  it("should render committee assignments grouped by leadership and member", () => {
+    mockQueryResult = {
+      data: {
+        representative: {
+          ...mockRepresentative,
+          committees: [
+            {
+              name: "Budget",
+              role: "Chair",
+              url: "https://budget.example.gov",
+            },
+            {
+              name: "Judiciary",
+              role: "Vice Chair",
+              url: "https://judiciary.example.gov",
+            },
+            {
+              name: "Education",
+              role: "Member",
+              url: "https://education.example.gov",
+            },
+            { name: "Transportation", role: "Member" },
+          ],
+        },
+      },
+      loading: false,
+      error: undefined,
+    };
+
+    render(<RepresentativeDetailPage />);
+
+    expect(screen.getByText("Committee Assignments")).toBeInTheDocument();
+    expect(screen.getByText("Leadership")).toBeInTheDocument();
+    expect(screen.getByText("Budget")).toBeInTheDocument();
+    expect(screen.getByText("Chair")).toBeInTheDocument();
+    expect(screen.getByText("Vice Chair")).toBeInTheDocument();
+    expect(screen.getByText("Education")).toBeInTheDocument();
+    expect(screen.getByText("Transportation")).toBeInTheDocument();
+  });
+
+  it("should render committee links when URL is provided", () => {
+    mockQueryResult = {
+      data: {
+        representative: {
+          ...mockRepresentative,
+          committees: [
+            {
+              name: "Budget",
+              role: "Member",
+              url: "https://budget.example.gov",
+            },
+          ],
+        },
+      },
+      loading: false,
+      error: undefined,
+    };
+
+    render(<RepresentativeDetailPage />);
+
+    const link = screen.getByRole("link", { name: "Budget" });
+    expect(link).toHaveAttribute("href", "https://budget.example.gov");
+  });
+
+  it("should not render committee section when committees is empty", () => {
+    mockQueryResult = {
+      data: {
+        representative: {
+          ...mockRepresentative,
+          committees: [],
+        },
+      },
+      loading: false,
+      error: undefined,
+    };
+
+    render(<RepresentativeDetailPage />);
+
+    expect(screen.queryByText("Committee Assignments")).not.toBeInTheDocument();
+  });
+
+  it("should not render committee section when committees is undefined", () => {
+    render(<RepresentativeDetailPage />);
+
+    // mockRepresentative has no committees field
+    expect(screen.queryByText("Committee Assignments")).not.toBeInTheDocument();
+  });
+
+  it("should render source attribution on contact section", () => {
+    render(<RepresentativeDetailPage />);
+
+    expect(screen.getByText("California State Senate")).toBeInTheDocument();
+    expect(screen.getByText(/Last synced/)).toBeInTheDocument();
+  });
 });

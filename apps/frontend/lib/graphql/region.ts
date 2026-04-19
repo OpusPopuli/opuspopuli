@@ -58,6 +58,12 @@ export interface PaginatedMeetings {
   hasMore: boolean;
 }
 
+export interface CommitteeAssignment {
+  name: string;
+  role?: string;
+  url?: string;
+}
+
 export interface Representative {
   id: string;
   externalId: string;
@@ -67,6 +73,7 @@ export interface Representative {
   party: string;
   photoUrl?: string;
   contactInfo?: ContactInfo;
+  committees?: CommitteeAssignment[];
   bio?: string;
   createdAt: string;
   updatedAt: string;
@@ -448,6 +455,11 @@ export const GET_REPRESENTATIVE = gql`
           phone
           fax
         }
+      }
+      committees {
+        name
+        role
+        url
       }
       bio
       createdAt

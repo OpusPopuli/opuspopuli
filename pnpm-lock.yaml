@@ -905,8 +905,8 @@ importers:
         specifier: workspace:*
         version: link:../config-provider
       '@opuspopuli/regions':
-        specifier: ^1.0.24
-        version: 1.0.24
+        specifier: ^1.0.25
+        version: 1.0.25
     devDependencies:
       '@nestjs/common':
         specifier: ^11.1.9
@@ -1519,8 +1519,8 @@ packages:
     resolution: {integrity: sha512-KVw6qIiCTUQhByfTd78h2yD1/00waTmm9uy/R7Ck/ctUyAPj+AEDLkQIdJW0T8+qGgj3j5bpNKK7Q3G+LedJWg==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
 
-  '@asamuzakjp/dom-selector@7.1.0':
-    resolution: {integrity: sha512-ASf825+5vsGuYWoyFyNsex2mNtPTXpCvYTR942+w/eNw7PqS0Lhl/PE1hC7bajneI3m/Oxi+yrP3vTOPxfwM8A==}
+  '@asamuzakjp/dom-selector@7.1.1':
+    resolution: {integrity: sha512-67RZDnYRc8H/8MLDgQCDE//zoqVFwajkepHZgmXrbwybzXOEwOWGPYGmALYl9J2DOLfFPPs6kKCqmbzV895hTQ==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
 
   '@asamuzakjp/generational-cache@1.0.1':
@@ -4870,8 +4870,8 @@ packages:
   '@opuspopuli/regions@1.0.22':
     resolution: {integrity: sha512-7/4WoFkaz1/Q5OTfWZT/5X8RIPN6yZaFZAp8lNxXZAep1+iZ83C3C0XPIZ36kVdLNzYNXUhGYPntcsVR87F61w==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.22/17a1666cdf708f202c2e086dbe1de1f1484d1298}
 
-  '@opuspopuli/regions@1.0.24':
-    resolution: {integrity: sha512-pNJfCXyxDRcmIUUyWXalf3iIXRtw+RXC3yZ0XapRhNysyj7ll5IgjxErrxQRwV9ClEWsMNX5m9TWkqTvxOSF9w==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.24/d1c395f107f0f83703fcec905b2781f70470e1f8}
+  '@opuspopuli/regions@1.0.25':
+    resolution: {integrity: sha512-Ze4zTZ1wGYv40jwbT5VIi/tGFxO3cn302Y1b7Sph9SAxIHby4B/asuXA1D/Uh/fzYQBwWNy50gZ2sVHJoNG+yg==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.25/60d187f29d4ccb26e0313bc45b3ff6b690521911}
 
   '@paralleldrive/cuid2@2.3.1':
     resolution: {integrity: sha512-XO7cAxhnTZl0Yggq6jOgjiOHhbgcO4NqFqwSmQpjK3b6TEE6Uj/jfSk6wzYyemh3+I0sHirKSetjQwn5cZktFw==}
@@ -12571,7 +12571,7 @@ snapshots:
       '@csstools/css-tokenizer': 4.0.0
     optional: true
 
-  '@asamuzakjp/dom-selector@7.1.0':
+  '@asamuzakjp/dom-selector@7.1.1':
     dependencies:
       '@asamuzakjp/generational-cache': 1.0.1
       '@asamuzakjp/nwsapi': 2.3.9
@@ -17013,7 +17013,7 @@ snapshots:
 
   '@opuspopuli/regions@1.0.22': {}
 
-  '@opuspopuli/regions@1.0.24': {}
+  '@opuspopuli/regions@1.0.25': {}
 
   '@paralleldrive/cuid2@2.3.1':
     dependencies:
@@ -22840,7 +22840,7 @@ snapshots:
   jsdom@29.0.1(@noble/hashes@2.0.1):
     dependencies:
       '@asamuzakjp/css-color': 5.1.11
-      '@asamuzakjp/dom-selector': 7.1.0
+      '@asamuzakjp/dom-selector': 7.1.1
       '@bramus/specificity': 2.4.2
       '@csstools/css-syntax-patches-for-csstree': 1.1.3(css-tree@3.2.1)
       '@exodus/bytes': 1.15.0(@noble/hashes@2.0.1)
