@@ -442,9 +442,25 @@ Respond with ONLY valid JSON, no explanation. Example:
 
     $(config.selector).each((_i, el) => {
       const item: Record<string, string> = {};
+      const elementText = $(el).text().replaceAll(/\s+/g, " ").trim();
+
       for (const [childField, childSelector] of Object.entries(
         config.children,
       )) {
+        // Special selector: _text grabs the full text of the matched element
+        if (childSelector === "_text") {
+          if (elementText) item[childField] = elementText;
+          continue;
+        }
+
+        // Special selector: _regex:pattern extracts via regex from element text
+        if (childSelector.startsWith("_regex:")) {
+          const pattern = childSelector.slice(7);
+          const match = new RegExp(pattern).exec(elementText);
+          if (match?.[1]) item[childField] = match[1].trim();
+          continue;
+        }
+
         const [sel, attrSpec] = childSelector.split("|attr:");
         const child = $(el).find(sel);
         if (child.length === 0) continue;
