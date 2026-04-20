@@ -31,6 +31,7 @@ import {
 } from '@opuspopuli/common';
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { REGION_CACHE } from './region.tokens';
+import { BioGeneratorService } from './bio-generator.service';
 
 /**
  * Minimal interface for data fetching used by sync methods.
@@ -107,6 +108,7 @@ type RepresentativeRecord = {
   contactInfo: unknown;
   committees: unknown;
   bio: string | null;
+  bioSource: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -188,6 +190,24 @@ type IndependentExpenditureRecord = {
  *
  * Syncs data from both plugins and stores in the database.
  */
+
+/**
+ * Derive a sortable last-name key from a full name. Used to sort
+ * representatives alphabetically by last name regardless of whether the
+ * name is stored as "First Last" or "First Middle Last".
+ *
+ * Strips trailing suffixes (Jr., Sr., III, etc.) so a rep named
+ * "Patrick J. Ahrens Jr." sorts under "Ahrens", not "Jr".
+ */
+export function extractLastName(fullName: string): string {
+  const trimmed = fullName.trim();
+  if (!trimmed) return '';
+  const suffixPattern = /\b(Jr|Sr|II|III|IV|Esq)\.?$/i;
+  const withoutSuffix = trimmed.replace(suffixPattern, '').trim();
+  const tokens = withoutSuffix.split(/\s+/);
+  return tokens.at(-1) ?? trimmed;
+}
+
 @Injectable()
 export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RegionDomainService.name, {
@@ -206,6 +226,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @Inject(SECRETS_PROVIDER)
     private readonly secretsProvider?: ISecretsProvider,
+    @Optional() private readonly bioGenerator?: BioGeneratorService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -671,6 +692,11 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       return { processed: 0, created: 0, updated: 0 };
     }
 
+    // Enrich with AI-generated bios where missing (scraped bios are preserved)
+    if (this.bioGenerator) {
+      await this.bioGenerator.enrichBios(reps);
+    }
+
     // Get existing externalIds in a single query to calculate created vs updated
     const externalIds = reps.map((r) => r.externalId);
     const existingRecords = await this.db.representative.findMany({
@@ -684,11 +710,13 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     // Batch upsert all representatives in chunked transactions (#476)
     await batchTransaction(
       this.db,
-      reps.map((rep) =>
-        this.db.representative.upsert({
+      reps.map((rep) => {
+        const lastName = extractLastName(rep.name);
+        return this.db.representative.upsert({
           where: { externalId: rep.externalId },
           update: {
             name: rep.name,
+            lastName,
             chamber: rep.chamber,
             district: rep.district,
             party: rep.party,
@@ -696,10 +724,12 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             contactInfo: rep.contactInfo as object | undefined,
             committees: rep.committees as object[] | undefined,
             bio: rep.bio,
+            bioSource: rep.bioSource,
           },
           create: {
             externalId: rep.externalId,
             name: rep.name,
+            lastName,
             chamber: rep.chamber,
             district: rep.district,
             party: rep.party,
@@ -707,9 +737,10 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             contactInfo: rep.contactInfo as object | undefined,
             committees: rep.committees as object[] | undefined,
             bio: rep.bio,
+            bioSource: rep.bioSource,
           },
-        }),
-      ),
+        });
+      }),
     );
 
     // Invalidate cached representative queries (#459)
@@ -1107,7 +1138,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
         const [items, total] = await Promise.all([
           this.db.representative.findMany({
             where,
-            orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+            orderBy: [{ chamber: 'asc' }, { lastName: 'asc' }],
             skip,
             take: take + 1,
           }),
@@ -1127,6 +1158,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             committees:
               (item.committees as CommitteeAssignmentModel[]) ?? undefined,
             bio: item.bio ?? undefined,
+            bioSource: item.bioSource ?? undefined,
           })),
           total,
           hasMore,
@@ -1175,7 +1207,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
           district: c.district,
         })),
       },
-      orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+      orderBy: [{ chamber: 'asc' }, { lastName: 'asc' }],
     });
   }
 

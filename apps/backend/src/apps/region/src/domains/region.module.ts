@@ -16,10 +16,22 @@ import { PromptClientModule } from '@opuspopuli/prompt-client';
 import { RegionDomainService } from './region.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
+import { BioGeneratorService } from './bio-generator.service';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
 import { REGION_CACHE } from './region.tokens';
 
 // RelationalDbModule is global, no need to import
+
+const promptClientAsyncConfig = {
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    config: {
+      promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+      promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
+      hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
+    },
+  }),
+};
 
 /**
  * Region Domain Module
@@ -28,27 +40,21 @@ import { REGION_CACHE } from './region.tokens';
  * Uses the plugin architecture to dynamically load region providers from DB config.
  * Wires the scraping pipeline for declarative plugin support.
  *
- * LLMModule, ExtractionModule, and MANIFEST_REPOSITORY are passed into
- * ScrapingPipelineModule.forRoot() so they're resolvable within the
- * pipeline module's DI scope (NestJS modules can't access sibling providers).
+ * LLMModule and PromptClientModule are imported at both the top level (for
+ * BioGeneratorService) and inside ScrapingPipelineModule.forRoot() (for the
+ * pipeline's internal services). NestJS modules can't access sibling
+ * providers across scopes, so each scope needs its own import.
  */
 @Module({
   imports: [
     RegionModule.forPlugins(),
+    LLMModule,
+    PromptClientModule.forRootAsync(promptClientAsyncConfig),
     ScrapingPipelineModule.forRoot({
       imports: [
         LLMModule,
         ExtractionModule,
-        PromptClientModule.forRootAsync({
-          inject: [ConfigService],
-          useFactory: (config: ConfigService) => ({
-            config: {
-              promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
-              promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
-              hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
-            },
-          }),
-        }),
+        PromptClientModule.forRootAsync(promptClientAsyncConfig),
       ],
       providers: [
         PrismaManifestRepository,
@@ -63,6 +69,7 @@ import { REGION_CACHE } from './region.tokens';
     RegionDomainService,
     RegionResolver,
     RegionScheduler,
+    BioGeneratorService,
     // Alias for injecting the pipeline into RegionDomainService
     {
       provide: 'SCRAPING_PIPELINE',

@@ -252,4 +252,41 @@ describe("RepresentativeDetailPage", () => {
     expect(screen.getByText("California State Senate")).toBeInTheDocument();
     expect(screen.getByText(/Last synced/)).toBeInTheDocument();
   });
+
+  it("should show AI-generated badge when bioSource is ai-generated", () => {
+    mockQueryResult = {
+      data: {
+        representative: {
+          ...mockRepresentative,
+          bioSource: "ai-generated",
+        } as unknown as typeof mockRepresentative,
+      },
+      loading: false,
+      error: undefined,
+    };
+
+    render(<RepresentativeDetailPage />);
+
+    expect(screen.getByText("AI-generated")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Generated from public record data/),
+    ).toBeInTheDocument();
+  });
+
+  it("should not show AI-generated badge when bioSource is scraped", () => {
+    mockQueryResult = {
+      data: {
+        representative: {
+          ...mockRepresentative,
+          bioSource: "scraped",
+        } as unknown as typeof mockRepresentative,
+      },
+      loading: false,
+      error: undefined,
+    };
+
+    render(<RepresentativeDetailPage />);
+
+    expect(screen.queryByText("AI-generated")).not.toBeInTheDocument();
+  });
 });

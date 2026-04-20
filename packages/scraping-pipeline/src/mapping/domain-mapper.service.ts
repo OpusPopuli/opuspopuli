@@ -348,40 +348,71 @@ const partyTransform = (val: string | undefined) => {
   return val;
 };
 
-const RepresentativeSchema = z.object({
-  externalId: z.string().min(1),
-  name: z.string().min(1),
-  chamber: z.string().default("Unknown"),
-  district: z.string().default("Unknown"),
-  party: z.string().transform(partyTransform).default("Unknown"),
-  photoUrl: z.string().optional(),
-  contactInfo: z
-    .object({
-      email: z.string().email().optional(),
-      website: z.string().optional(),
-      offices: z
-        .array(
-          z.object({
-            name: z.string(),
-            address: z.string().optional(),
-            phone: z.string().optional(),
-            fax: z.string().optional(),
-          }),
-        )
-        .optional(),
-    })
-    .optional(),
-  committees: z
-    .array(
-      z.object({
-        name: z.string(),
-        role: z.string().optional(),
-        url: z.string().optional(),
-      }),
-    )
-    .optional(),
-  bio: z.string().optional(),
-});
+/**
+ * Canonicalize a representative's externalId to a stable form:
+ *   ca-{chamber}-{district-digits}
+ *
+ * The scraping pipeline produces externalId from whatever the manifest
+ * extracts — typically a URL path like "/assemblymembers/22" or an
+ * absolute URL like "https://www.assembly.ca.gov/assemblymembers/22".
+ * These forms drift across Cheerio/scraper versions, so storing the raw
+ * value means the same rep gets upserted under different IDs → duplicate
+ * rows. This transform extracts the numeric district portion and builds
+ * a canonical ID that's stable regardless of scrape output format.
+ */
+function canonicalizeRepresentativeId(
+  rawId: string,
+  chamber: string | undefined,
+): string {
+  // If the ID already looks canonical (e.g. "ca-assembly-22"), keep it.
+  if (/^ca-(assembly|senate)-\d+$/i.test(rawId)) {
+    return rawId.toLowerCase();
+  }
+  const digits = rawId.match(/(\d+)(?!.*\d)/)?.[1]; // last run of digits
+  if (!digits) return rawId; // fall back to raw — validation will flag it
+  const normalizedChamber = (chamber ?? "unknown").trim().toLowerCase();
+  return `ca-${normalizedChamber}-${digits}`;
+}
+
+const RepresentativeSchema = z
+  .object({
+    externalId: z.string().min(1),
+    name: z.string().min(1),
+    chamber: z.string().default("Unknown"),
+    district: z.string().default("Unknown"),
+    party: z.string().transform(partyTransform).default("Unknown"),
+    photoUrl: z.string().optional(),
+    contactInfo: z
+      .object({
+        email: z.string().email().optional(),
+        website: z.string().optional(),
+        offices: z
+          .array(
+            z.object({
+              name: z.string(),
+              address: z.string().optional(),
+              phone: z.string().optional(),
+              fax: z.string().optional(),
+            }),
+          )
+          .optional(),
+      })
+      .optional(),
+    committees: z
+      .array(
+        z.object({
+          name: z.string(),
+          role: z.string().optional(),
+          url: z.string().optional(),
+        }),
+      )
+      .optional(),
+    bio: z.string().optional(),
+  })
+  .transform((rep) => ({
+    ...rep,
+    externalId: canonicalizeRepresentativeId(rep.externalId, rep.chamber),
+  }));
 
 // ============================================
 // Zod Schemas for Campaign Finance Models

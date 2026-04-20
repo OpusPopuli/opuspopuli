@@ -567,6 +567,7 @@ model Representative {
   id          String    @id @default(uuid())
   externalId  String    @unique @map("external_id")
   name        String
+  lastName    String    @default("") @map("last_name") /// derived from `name`, used for alphabetical sorting
   chamber     String
   district    String
   party       String
@@ -574,11 +575,13 @@ model Representative {
   contactInfo Json?     @map("contact_info")
   committees  Json?     @map("committees")       /// CommitteeAssignment[] as JSON
   bio         String?   @db.Text
+  bioSource   String?   @map("bio_source") @db.VarChar(20) /// 'scraped' | 'ai-generated'
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
   @@index([name])
+  @@index([lastName])
   @@index([chamber])
   @@index([party])
   @@map("representatives")

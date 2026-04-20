@@ -255,7 +255,7 @@ export class ManifestExtractorService {
       }
       current = current[key] as Record<string, unknown>;
     }
-    current[parts[parts.length - 1]] = value;
+    current[parts.at(-1)!] = value;
   }
 
   /**

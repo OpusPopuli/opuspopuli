@@ -157,6 +157,7 @@ export class RegionResolver {
         (result.committees as unknown as CommitteeAssignmentModel[]) ??
         undefined,
       bio: result.bio ?? undefined,
+      bioSource: result.bioSource ?? undefined,
     };
   }
 
@@ -187,6 +188,7 @@ export class RegionResolver {
       contactInfo: (r.contactInfo as ContactInfoModel) ?? undefined,
       committees: (r.committees as CommitteeAssignmentModel[]) ?? undefined,
       bio: r.bio ?? undefined,
+      bioSource: r.bioSource ?? undefined,
     })) as RepresentativeModel[];
   }
 

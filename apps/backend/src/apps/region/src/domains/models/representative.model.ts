@@ -83,6 +83,9 @@ export class RepresentativeModel {
   @Field({ nullable: true })
   bio?: string;
 
+  @Field({ nullable: true })
+  bioSource?: string;
+
   @Field()
   createdAt!: Date;
 
