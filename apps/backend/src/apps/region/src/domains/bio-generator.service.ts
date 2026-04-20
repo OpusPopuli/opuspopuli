@@ -3,6 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import type { ILLMProvider, Representative } from '@opuspopuli/common';
 
+/** Matches the opening `"bio": "` token in the LLM's JSON response. */
+const BIO_FIELD_OPENER = /"bio"\s*:\s*"/;
+/** Strips leading ```json (or ```) markdown fences from an LLM response. */
+const LEADING_CODE_FENCE = /^```(?:json)?\n?/;
+/** Strips the trailing ``` fence. */
+const TRAILING_CODE_FENCE = /\n?```$/;
+
 /**
  * Generates AI bios for representatives that lack a scraped biography.
  *
@@ -161,7 +168,10 @@ export class BioGeneratorService {
 
     if (rep.committees && rep.committees.length > 0) {
       const committeeLines = rep.committees
-        .map((c) => `  - ${c.role ? `${c.role}: ` : ''}${c.name}`)
+        .map((c) => {
+          const rolePrefix = c.role ? `${c.role}: ` : '';
+          return `  - ${rolePrefix}${c.name}`;
+        })
         .join('\n');
       lines.push(`Committee Assignments:\n${committeeLines}`);
     }
@@ -219,8 +229,8 @@ export class BioGeneratorService {
       return { bio: salvagedBio, parseTier: 'bio-only' };
     }
 
-    const head = text.slice(0, 80).replace(/\n/g, ' ');
-    const tail = text.slice(-80).replace(/\n/g, ' ');
+    const head = text.slice(0, 80).replaceAll('\n', ' ');
+    const tail = text.slice(-80).replaceAll('\n', ' ');
     this.logger.debug(
       `Bio parse failed entirely (both tiers): ${text.length}-char response. Head: "${head}..." Tail: "...${tail}"`,
     );
@@ -234,8 +244,8 @@ export class BioGeneratorService {
    * bio field itself was emitted with a closing quote.
    */
   private extractBioString(text: string): string | undefined {
-    const match = text.match(/"bio"\s*:\s*"/);
-    if (!match || match.index === undefined) return undefined;
+    const match = BIO_FIELD_OPENER.exec(text);
+    if (match?.index === undefined) return undefined;
 
     const start = match.index + match[0].length;
     let out = '';
@@ -289,38 +299,57 @@ export class BioGeneratorService {
    * and strings with embedded braces). Handles prose before AND after.
    */
   private extractJsonCandidate(text: string): string | undefined {
-    let trimmed = text.trim();
-    if (trimmed.startsWith('```')) {
-      trimmed = trimmed.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-    }
+    const trimmed = this.stripCodeFences(text.trim());
     const start = trimmed.indexOf('{');
     if (start < 0) return undefined;
+    return this.sliceBalancedObject(trimmed, start);
+  }
 
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    for (let i = start; i < trimmed.length; i++) {
-      const ch = trimmed[i];
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (ch === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (ch === '"') {
-        inString = !inString;
-        continue;
-      }
-      if (inString) continue;
-      if (ch === '{') depth++;
-      else if (ch === '}') {
-        depth--;
-        if (depth === 0) return trimmed.slice(start, i + 1);
+  private stripCodeFences(text: string): string {
+    return text.startsWith('```')
+      ? text.replace(LEADING_CODE_FENCE, '').replace(TRAILING_CODE_FENCE, '')
+      : text;
+  }
+
+  /**
+   * Walk `text` from `start` (which must be a `{`) and return the slice up
+   * to and including its matching `}`, or undefined if the object never
+   * closes. Correctly skips braces that appear inside JSON string values.
+   */
+  private sliceBalancedObject(text: string, start: number): string | undefined {
+    const state = { depth: 0, inString: false, escaped: false };
+    for (let i = start; i < text.length; i++) {
+      if (this.advanceJsonState(state, text[i]) && state.depth === 0) {
+        return text.slice(start, i + 1);
       }
     }
     return undefined;
+  }
+
+  /**
+   * Advance a one-char JSON-parse state machine. Returns true iff the
+   * character was a closing `}` (so the caller can check depth).
+   */
+  private advanceJsonState(state: JsonScanState, ch: string): boolean {
+    if (state.escaped) {
+      state.escaped = false;
+      return false;
+    }
+    if (ch === '\\') {
+      state.escaped = true;
+      return false;
+    }
+    if (ch === '"') {
+      state.inString = !state.inString;
+      return false;
+    }
+    if (state.inString) return false;
+    if (ch === '{') state.depth++;
+    else if (ch === '}') {
+      state.depth--;
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -352,6 +381,12 @@ interface BioClaim {
   origin: 'source' | 'training';
   sourceField?: string | null;
   confidence?: 'high' | 'medium';
+}
+
+interface JsonScanState {
+  depth: number;
+  inString: boolean;
+  escaped: boolean;
 }
 
 interface BioResponse {
