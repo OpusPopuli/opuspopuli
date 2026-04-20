@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { RegionDomainService } from './region.service';
+import { extractLastName, RegionDomainService } from './region.service';
 import { REGION_CACHE } from './region.tokens';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
@@ -129,6 +129,31 @@ function createMockCache() {
     destroy: jest.fn().mockResolvedValue(undefined),
   };
 }
+
+describe('extractLastName', () => {
+  it('extracts last word from "First Last"', () => {
+    expect(extractLastName('Juan Alanis')).toBe('Alanis');
+  });
+
+  it('extracts last word from "First Middle Last"', () => {
+    expect(extractLastName('Cecilia M. Aguiar-Curry')).toBe('Aguiar-Curry');
+  });
+
+  it('strips Jr/Sr/III suffixes', () => {
+    expect(extractLastName('Patrick J. Ahrens Jr.')).toBe('Ahrens');
+    expect(extractLastName('John Doe Sr')).toBe('Doe');
+    expect(extractLastName('Frank Smith III')).toBe('Smith');
+  });
+
+  it('falls back to trimmed input when no spaces', () => {
+    expect(extractLastName('Madonna')).toBe('Madonna');
+  });
+
+  it('returns empty for empty input', () => {
+    expect(extractLastName('')).toBe('');
+    expect(extractLastName('   ')).toBe('');
+  });
+});
 
 describe('RegionDomainService', () => {
   let service: RegionDomainService;
@@ -648,7 +673,7 @@ describe('RegionDomainService', () => {
             { chamber: 'Senate', district: '05' },
           ],
         },
-        orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+        orderBy: [{ chamber: 'asc' }, { lastName: 'asc' }],
       });
     });
 
@@ -665,7 +690,7 @@ describe('RegionDomainService', () => {
         where: {
           OR: [{ chamber: 'Senate', district: '02' }],
         },
-        orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+        orderBy: [{ chamber: 'asc' }, { lastName: 'asc' }],
       });
     });
 
@@ -682,7 +707,7 @@ describe('RegionDomainService', () => {
         where: {
           OR: [{ chamber: 'Assembly', district: 'District: 12' }],
         },
-        orderBy: [{ chamber: 'asc' }, { name: 'asc' }],
+        orderBy: [{ chamber: 'asc' }, { lastName: 'asc' }],
       });
     });
 

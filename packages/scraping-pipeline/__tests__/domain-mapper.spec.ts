@@ -250,6 +250,98 @@ describe("DomainMapperService", () => {
 
       expect(result.items).toHaveLength(0);
     });
+
+    it("canonicalizes externalId from relative URL path", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "/assemblymembers/22",
+              name: "Juan Alanis",
+              district: "District 22",
+              party: "R",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.REPRESENTATIVES,
+          category: "Assembly",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({ externalId: "ca-assembly-22" });
+    });
+
+    it("canonicalizes externalId from absolute URL", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "https://www.assembly.ca.gov/assemblymembers/22",
+              name: "Juan Alanis",
+              district: "District 22",
+              party: "R",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.REPRESENTATIVES,
+          category: "Assembly",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({ externalId: "ca-assembly-22" });
+    });
+
+    it("preserves already-canonical externalIds", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "ca-senate-4",
+              name: "Brian Dahle",
+              district: "District 4",
+              party: "R",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.REPRESENTATIVES,
+          category: "Senate",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({ externalId: "ca-senate-4" });
+    });
+
+    it("produces the same canonical ID for drifted scrape outputs", () => {
+      const variants = [
+        "/assemblymembers/22",
+        "https://www.assembly.ca.gov/assemblymembers/22",
+        "ca-assembly-22",
+      ];
+      const ids = variants.map((rawId) => {
+        const result = mapper.map(
+          createRawResult({
+            items: [
+              {
+                externalId: rawId,
+                name: "Test",
+                district: "22",
+                party: "R",
+              },
+            ],
+          }),
+          createSource({
+            dataType: DataType.REPRESENTATIVES,
+            category: "Assembly",
+          }),
+        );
+        return (result.items[0] as { externalId: string }).externalId;
+      });
+
+      expect(ids.every((id) => id === "ca-assembly-22")).toBe(true);
+    });
   });
 
   describe("error handling", () => {

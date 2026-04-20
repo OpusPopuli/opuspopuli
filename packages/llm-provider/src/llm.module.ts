@@ -33,6 +33,15 @@ import {
       provide: "LLM_PROVIDER",
       useFactory: (configService: ConfigService): ILLMProvider => {
         // OSS: Self-hosted inference with Ollama
+        const requestTimeoutMs = Number.parseInt(
+          configService.get<string>("OLLAMA_REQUEST_TIMEOUT_MS") ?? "",
+          10,
+        );
+        const chunkTimeoutMs = Number.parseInt(
+          configService.get<string>("OLLAMA_CHUNK_TIMEOUT_MS") ?? "",
+          10,
+        );
+
         const ollamaConfig: OllamaConfig = {
           url:
             configService.get<string>("llm.ollama.url") ||
@@ -42,6 +51,12 @@ import {
             configService.get<string>("llm.ollama.model") ||
             configService.get<string>("llm.model") ||
             "mistral",
+          ...(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0
+            ? { requestTimeoutMs }
+            : {}),
+          ...(Number.isFinite(chunkTimeoutMs) && chunkTimeoutMs > 0
+            ? { chunkTimeoutMs }
+            : {}),
         };
 
         return new OllamaLLMProvider(ollamaConfig);

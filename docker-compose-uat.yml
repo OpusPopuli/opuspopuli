@@ -209,6 +209,14 @@ services:
       PROMPT_SERVICE_API_KEY: dev-key-1
       # Disable automatic sync scheduler — trigger manually via GraphQL Playground
       REGION_SYNC_ENABLED: "false"
+      # AI bio generation — dev-friendly defaults (prod uses 800 / 1 / unset)
+      # CONCURRENCY>1 only helps when Ollama has OLLAMA_NUM_PARALLEL set to
+      # match; otherwise Ollama serializes and extra queue depth causes timeouts.
+      # MAX_REPS caps bio generation per run — useful in dev to verify pipeline
+      # quickly. Leave unset in production so every rep gets a bio.
+      BIO_GENERATOR_MAX_TOKENS: "800"
+      BIO_GENERATOR_CONCURRENCY: "1"
+      BIO_GENERATOR_MAX_REPS: "5"
     ports:
       - "3004:8080"
     depends_on:
