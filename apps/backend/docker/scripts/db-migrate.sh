@@ -18,8 +18,12 @@ PGDB="${RELATIONAL_DB_DATABASE:-postgres}"
 echo "Running Prisma db:push..."
 npx prisma db push --accept-data-loss
 
-echo "Seeding prompt templates..."
-npx tsx prisma/seed-prompts.ts
+# NOTE: local prompt_templates seeding intentionally removed. When the
+# region is configured with PROMPT_SERVICE_URL the prompt-service is the
+# authoritative source for templates; the local prompt_templates table is
+# only used as a failover cache and does not need to be seeded at deploy
+# time. seed-prompts.ts can be run manually in dev environments that lack
+# access to a prompt-service. See issue #605.
 
 echo "Checking spatial_ref_sys BEFORE setup..."
 psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -c "SELECT schemaname, tablename FROM pg_tables WHERE tablename = 'spatial_ref_sys';"
