@@ -368,7 +368,10 @@ function canonicalizeRepresentativeId(
   if (/^ca-(assembly|senate)-\d+$/i.test(rawId)) {
     return rawId.toLowerCase();
   }
-  const digits = rawId.match(/(\d+)(?!.*\d)/)?.[1]; // last run of digits
+  // Find all digit runs and take the last one. Linear time; avoids the
+  // negative-lookahead pattern (e.g. /(\d+)(?!.*\d)/) which is super-linear
+  // due to backtracking and flagged by static analysis as a ReDoS risk.
+  const digits = rawId.match(/\d+/g)?.at(-1);
   if (!digits) return rawId; // fall back to raw — validation will flag it
   const normalizedChamber = (chamber ?? "unknown").trim().toLowerCase();
   return `ca-${normalizedChamber}-${digits}`;
