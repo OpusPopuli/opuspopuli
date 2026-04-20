@@ -469,5 +469,93 @@ describe("DetailCrawlerService", () => {
         address: "123 Main St",
       });
     });
+
+    it("should support _text child selector to grab full element text", async () => {
+      const detailHtml = `<html><body>
+        <div class="office">Capitol Office, 1021 O Street, Sacramento, CA 95814; (916) 651-4001</div>
+        <div class="office">District Office, 100 Main St, Redding, CA 96001; (530) 224-7001</div>
+      </body></html>`;
+
+      mockExtraction.fetchWithRetry.mockResolvedValue({
+        content: detailHtml,
+        fromCache: false,
+      });
+
+      const source = createSource({
+        dataType: DataType.REPRESENTATIVES,
+        contentGoal: "Extract representatives",
+        detailFields: {
+          "contactInfo.offices": {
+            selector: ".office",
+            children: { fullAddress: "_text" },
+            multiple: true,
+          },
+        },
+      });
+
+      const rawResult = createRawResult([
+        {
+          externalId: "rep-1",
+          name: "Test",
+          detailUrl: "https://example.com/1",
+        },
+      ]);
+
+      await crawler.enrichItems(rawResult, source, mockLlm);
+
+      const contactInfo = rawResult.items[0].contactInfo as Record<
+        string,
+        unknown
+      >;
+      const offices = contactInfo.offices as Record<string, string>[];
+      expect(offices).toHaveLength(2);
+      expect(offices[0].fullAddress).toContain("Capitol Office");
+      expect(offices[1].fullAddress).toContain("District Office");
+    });
+
+    it("should support _regex child selector to extract with regex", async () => {
+      const detailHtml = `<html><body>
+        <div class="office">Capitol 1021 O Street Sacramento, CA 95814 Phone: (916) 651-4001 E-mail: senator@senate.ca.gov</div>
+      </body></html>`;
+
+      mockExtraction.fetchWithRetry.mockResolvedValue({
+        content: detailHtml,
+        fromCache: false,
+      });
+
+      const source = createSource({
+        dataType: DataType.REPRESENTATIVES,
+        contentGoal: "Extract representatives",
+        detailFields: {
+          "contactInfo.offices": {
+            selector: ".office",
+            children: {
+              phone: "_regex:Phone:\\s*([\\d()\\s-]+)",
+              email: "_regex:E-mail:\\s*([\\w.+-]+@[\\w.-]+)",
+            },
+            multiple: true,
+          },
+        },
+      });
+
+      const rawResult = createRawResult([
+        {
+          externalId: "rep-1",
+          name: "Test",
+          detailUrl: "https://example.com/1",
+        },
+      ]);
+
+      await crawler.enrichItems(rawResult, source, mockLlm);
+
+      const contactInfo = rawResult.items[0].contactInfo as Record<
+        string,
+        unknown
+      >;
+      const offices = contactInfo.offices as Record<string, string>[];
+      expect(offices).toHaveLength(1);
+      expect(offices[0].phone).toBe("(916) 651-4001");
+      expect(offices[0].email).toBe("senator@senate.ca.gov");
+    });
   });
 });

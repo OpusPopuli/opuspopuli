@@ -17,6 +17,7 @@ import type {
   RawExtractionResult,
 } from "@opuspopuli/common";
 import { FieldTransformer } from "./field-transformer.js";
+import { extractStructuredArray } from "./structured-extractor.js";
 
 @Injectable()
 export class ManifestExtractorService {
@@ -157,13 +158,19 @@ export class ManifestExtractorService {
       const scope = mapping.scope === "container" ? container : element;
       const value = this.resolveFieldValue($, scope, mapping, baseUrl);
 
-      if (!value && mapping.required) {
+      const isEmpty =
+        value === undefined ||
+        value === null ||
+        value === "" ||
+        (Array.isArray(value) && value.length === 0);
+
+      if (isEmpty && mapping.required) {
         requiredMissing++;
         warnings.push('Required field "' + mapping.fieldName + '" missing');
       }
 
-      if (value !== undefined && value !== null) {
-        data[mapping.fieldName] = value;
+      if (!isEmpty) {
+        this.setNestedValue(data, mapping.fieldName, value);
       }
     }
 
@@ -177,13 +184,19 @@ export class ManifestExtractorService {
 
   /**
    * Extract, transform, and apply defaults for a single field.
+   * Returns a string for scalar methods, an array of objects for 'structured'.
    */
   private resolveFieldValue(
     $: CheerioAPI,
     element: Cheerio<Element>,
     mapping: FieldMapping,
     baseUrl?: string,
-  ): string | undefined {
+  ): unknown {
+    // Structured extraction produces an array — transforms/defaults don't apply
+    if (mapping.extractionMethod === "structured") {
+      return this.extractStructuredArray($, element, mapping);
+    }
+
     let value = this.extractFieldValue($, element, mapping);
 
     if (value && mapping.transform) {
@@ -195,6 +208,54 @@ export class ManifestExtractorService {
     }
 
     return value;
+  }
+
+  /**
+   * Extract an array of structured objects from repeating elements within the scope.
+   * Delegates to the shared extractStructuredArray utility.
+   */
+  private extractStructuredArray(
+    $: CheerioAPI,
+    element: Cheerio<Element>,
+    mapping: FieldMapping,
+  ): Record<string, string>[] {
+    if (!mapping.selector || !mapping.children) return [];
+    return extractStructuredArray(
+      $,
+      element,
+      mapping.selector,
+      mapping.children,
+    );
+  }
+
+  /**
+   * Set a value into data using dot-notation field name (e.g., "contactInfo.offices").
+   * Creates intermediate objects as needed.
+   */
+  private setNestedValue(
+    data: Record<string, unknown>,
+    fieldName: string,
+    value: unknown,
+  ): void {
+    if (!fieldName.includes(".")) {
+      data[fieldName] = value;
+      return;
+    }
+
+    const parts = fieldName.split(".");
+    let current: Record<string, unknown> = data;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const key = parts[i];
+      if (
+        typeof current[key] !== "object" ||
+        current[key] === null ||
+        Array.isArray(current[key])
+      ) {
+        current[key] = {};
+      }
+      current = current[key] as Record<string, unknown>;
+    }
+    current[parts[parts.length - 1]] = value;
   }
 
   /**

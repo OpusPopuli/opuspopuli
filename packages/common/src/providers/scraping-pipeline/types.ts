@@ -108,6 +108,9 @@ export interface FieldMapping {
   /** Search scope: 'item' (default) searches within the item element,
    *  'container' searches from the container element (for sibling data like headings) */
   scope?: "item" | "container";
+  /** For 'structured' method: child field selectors to extract from each matched
+   *  element (e.g., { name: "h3", phone: ".phone" }). Produces an array of objects. */
+  children?: Record<string, string>;
 }
 
 export type ExtractionMethod =
@@ -115,7 +118,8 @@ export type ExtractionMethod =
   | "attribute"
   | "html"
   | "regex"
-  | "constant";
+  | "constant"
+  | "structured";
 
 /**
  * Post-extraction transforms for field values.

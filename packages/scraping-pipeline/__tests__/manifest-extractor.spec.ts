@@ -595,4 +595,337 @@ describe("ManifestExtractorService", () => {
       expect(result.items[0]).toEqual({ heading: "Item heading" });
     });
   });
+
+  describe("structured extraction (arrays of nested objects)", () => {
+    it("should extract arrays of structured objects using children selectors", () => {
+      const html = `
+        <div class="list">
+          <div class="member">
+            <h3 class="name">Jane Smith</h3>
+            <div class="office --capitol">
+              <h4 class="office-title">Capitol Office</h4>
+              <p class="address">1021 O Street</p>
+              <p class="phone">(916) 555-1234</p>
+            </div>
+            <div class="office --district">
+              <h4 class="office-title">District Office</h4>
+              <p class="address">100 Main St</p>
+              <p class="phone">(415) 555-6789</p>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".list",
+          itemSelector: ".member",
+          fieldMappings: [
+            {
+              fieldName: "name",
+              selector: ".name",
+              extractionMethod: "text",
+              required: true,
+            },
+            {
+              fieldName: "contactInfo.offices",
+              selector: ".office",
+              extractionMethod: "structured",
+              children: {
+                name: ".office-title",
+                address: ".address",
+                phone: ".phone",
+              },
+              required: false,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].name).toBe("Jane Smith");
+      const contactInfo = result.items[0].contactInfo as Record<
+        string,
+        unknown
+      >;
+      const offices = contactInfo.offices as Record<string, string>[];
+      expect(offices).toHaveLength(2);
+      expect(offices[0]).toEqual({
+        name: "Capitol Office",
+        address: "1021 O Street",
+        phone: "(916) 555-1234",
+      });
+      expect(offices[1]).toEqual({
+        name: "District Office",
+        address: "100 Main St",
+        phone: "(415) 555-6789",
+      });
+    });
+
+    it("should support attribute extraction in children via |attr: suffix", () => {
+      const html = `
+        <div class="list">
+          <div class="member">
+            <div class="committee">
+              <a href="https://judiciary.example.gov">Judiciary</a>
+              <span class="role">Chair</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".list",
+          itemSelector: ".member",
+          fieldMappings: [
+            {
+              fieldName: "committees",
+              selector: ".committee",
+              extractionMethod: "structured",
+              children: {
+                name: "a",
+                role: ".role",
+                url: "a|attr:href",
+              },
+              required: false,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+
+      const committees = result.items[0].committees as Record<string, string>[];
+      expect(committees).toHaveLength(1);
+      expect(committees[0]).toEqual({
+        name: "Judiciary",
+        role: "Chair",
+        url: "https://judiciary.example.gov",
+      });
+    });
+
+    it("should support _regex children selector for extracting from text", () => {
+      const html = `
+        <div class="list">
+          <div class="member">
+            <div class="office">Capitol, 1021 O Street Sacramento; Phone: (916) 651-4001</div>
+          </div>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".list",
+          itemSelector: ".member",
+          fieldMappings: [
+            {
+              fieldName: "offices",
+              selector: ".office",
+              extractionMethod: "structured",
+              children: {
+                phone: "_regex:Phone:\\s*([\\d()\\s-]+)",
+              },
+              required: false,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+
+      const offices = result.items[0].offices as Record<string, string>[];
+      expect(offices).toHaveLength(1);
+      expect(offices[0].phone).toBe("(916) 651-4001");
+    });
+
+    it("should skip invalid regex patterns gracefully in children", () => {
+      const html = `
+        <div class="list">
+          <div class="member">
+            <div class="info">Phone: (555) 123-4567</div>
+          </div>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".list",
+          itemSelector: ".member",
+          fieldMappings: [
+            {
+              fieldName: "items",
+              selector: ".info",
+              extractionMethod: "structured",
+              children: {
+                bad: "_regex:(invalid[regex",
+                phone: "_regex:Phone:\\s*([\\d()\\s-]+)",
+              },
+              required: false,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+      const items = result.items[0].items as Record<string, string>[];
+      expect(items).toHaveLength(1);
+      // Invalid regex is skipped, valid regex extracts
+      expect(items[0].phone).toBe("(555) 123-4567");
+      expect(items[0].bad).toBeUndefined();
+    });
+
+    it("should return empty array when structured mapping has no selector or children", () => {
+      const html = `<div class="list"><div class="member">x</div></div>`;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".list",
+          itemSelector: ".member",
+          fieldMappings: [
+            {
+              fieldName: "name",
+              selector: ".member",
+              extractionMethod: "text",
+              required: true,
+            },
+            {
+              fieldName: "items",
+              selector: "",
+              extractionMethod: "structured",
+              children: { foo: "bar" },
+              required: false,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+      expect(result.items[0].items).toBeUndefined();
+    });
+
+    it("should return empty array when no matches and not mark required field missing incorrectly", () => {
+      const html = `
+        <div class="list">
+          <div class="member"><h3 class="name">Jane Smith</h3></div>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".list",
+          itemSelector: ".member",
+          fieldMappings: [
+            {
+              fieldName: "name",
+              selector: ".name",
+              extractionMethod: "text",
+              required: true,
+            },
+            {
+              fieldName: "contactInfo.offices",
+              selector: ".office",
+              extractionMethod: "structured",
+              children: { name: ".title" },
+              required: false,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].name).toBe("Jane Smith");
+      // offices key shouldn't be set when the array is empty
+      expect(result.items[0].contactInfo).toBeUndefined();
+    });
+  });
+
+  describe("dot-notation field names", () => {
+    it("should set nested values using dot notation", () => {
+      const html = `
+        <div class="container">
+          <div class="item">
+            <span class="email">jane@example.gov</span>
+            <span class="website">https://jane.example.gov</span>
+          </div>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".container",
+          itemSelector: ".item",
+          fieldMappings: [
+            {
+              fieldName: "contactInfo.email",
+              selector: ".email",
+              extractionMethod: "text",
+              required: false,
+            },
+            {
+              fieldName: "contactInfo.website",
+              selector: ".website",
+              extractionMethod: "text",
+              required: false,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+
+      expect(result.items[0].contactInfo).toEqual({
+        email: "jane@example.gov",
+        website: "https://jane.example.gov",
+      });
+    });
+
+    it("should merge multiple dot-notation fields under the same parent", () => {
+      const html = `
+        <div class="container">
+          <div class="item">
+            <span class="a">1</span>
+            <span class="b">2</span>
+            <span class="c">3</span>
+          </div>
+        </div>
+      `;
+
+      const manifest = createTestManifest({
+        extractionRules: {
+          containerSelector: ".container",
+          itemSelector: ".item",
+          fieldMappings: [
+            {
+              fieldName: "nested.a",
+              selector: ".a",
+              extractionMethod: "text",
+              required: false,
+            },
+            {
+              fieldName: "nested.b",
+              selector: ".b",
+              extractionMethod: "text",
+              required: false,
+            },
+            {
+              fieldName: "nested.c",
+              selector: ".c",
+              extractionMethod: "text",
+              required: false,
+            },
+          ],
+        },
+      });
+
+      const result = extractor.extract(html, manifest);
+      expect(result.items[0].nested).toEqual({ a: "1", b: "2", c: "3" });
+    });
+  });
 });
