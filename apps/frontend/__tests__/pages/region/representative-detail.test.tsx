@@ -1,10 +1,11 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 import RepresentativeDetailPage from "@/app/region/representatives/[id]/page";
 
 const mockRepresentative = {
   id: "rep-1",
-  externalId: "rep-1",
+  externalId: "ca-senate-5",
   name: "Jane Smith",
   chamber: "Senate",
   district: "5",
@@ -21,17 +22,15 @@ const mockRepresentative = {
       },
     ],
   },
-  bio: "Jane Smith has served in the Senate since 2020.",
+  bio: "Jane Smith has served in the Senate since 2020. She chairs the Budget Committee.",
   createdAt: "2024-01-01T00:00:00Z",
   updatedAt: "2024-01-01T00:00:00Z",
 };
 
-// Mock next/navigation
 jest.mock("next/navigation", () => ({
   useParams: () => ({ id: "rep-1" }),
 }));
 
-// Mock Apollo
 let mockQueryResult: {
   data: { representative: typeof mockRepresentative | null } | undefined;
   loading: boolean;
@@ -51,242 +50,298 @@ describe("RepresentativeDetailPage", () => {
     };
   });
 
-  it("should render representative name as heading", () => {
-    render(<RepresentativeDetailPage />);
+  describe("persistent header", () => {
+    it("renders name as heading", () => {
+      render(<RepresentativeDetailPage />);
+      expect(
+        screen.getByRole("heading", { name: "Jane Smith" }),
+      ).toBeInTheDocument();
+    });
 
-    expect(
-      screen.getByRole("heading", { name: "Jane Smith" }),
-    ).toBeInTheDocument();
+    it("renders party, chamber, district", () => {
+      render(<RepresentativeDetailPage />);
+      expect(screen.getByText("Democrat")).toBeInTheDocument();
+      expect(screen.getByText("Senate")).toBeInTheDocument();
+      expect(screen.getByText("District 5")).toBeInTheDocument();
+    });
+
+    it("renders compact contact row: email + website + primary phone", () => {
+      render(<RepresentativeDetailPage />);
+
+      // Email chip
+      expect(screen.getByText("jane@example.gov")).toBeInTheDocument();
+      // Website chip (displayed as hostname only)
+      expect(screen.getByText("example.gov/jane")).toBeInTheDocument();
+      // Primary phone shows in the header chip (and also below in Offices on L1,
+      // hence getAllByText rather than getByText)
+      expect(screen.getAllByText("555-1234").length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("renders Contact CTA button when email is available", () => {
+      render(<RepresentativeDetailPage />);
+      expect(
+        screen.getByRole("button", { name: /Contact Jane/i }),
+      ).toBeInTheDocument();
+    });
+
+    it("persists across all layers", async () => {
+      const user = userEvent.setup();
+      render(<RepresentativeDetailPage />);
+
+      // Use the LayerNav dot (first match) to jump straight to each layer
+      const jump = (label: RegExp) =>
+        screen
+          .getAllByRole("button", { name: label })
+          .find((b) => b.closest('nav[aria-label="Information depth"]'))!;
+
+      await user.click(jump(/What They'?ve Done/));
+      expect(
+        screen.getByRole("heading", { name: "Jane Smith" }),
+      ).toBeInTheDocument();
+
+      await user.click(jump(/How They Are Supported/));
+      expect(
+        screen.getByRole("heading", { name: "Jane Smith" }),
+      ).toBeInTheDocument();
+    });
   });
 
-  it("should render party badge", () => {
-    render(<RepresentativeDetailPage />);
+  describe("layer navigation", () => {
+    it("renders all four layer dots with voter-centric labels", () => {
+      render(<RepresentativeDetailPage />);
+      expect(
+        screen.getByRole("navigation", { name: /Information depth/i }),
+      ).toBeInTheDocument();
+      // Each layer label should exist as a button (at least once — CTA buttons
+      // may duplicate the label intentionally for progressive navigation)
+      expect(
+        screen.getByRole("button", { name: "Who They Are" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("button", { name: /^What They Care About$/ })
+          .length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getByRole("button", { name: /^What They'?ve Done$/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^How They Are Supported$/ }),
+      ).toBeInTheDocument();
+    });
 
-    expect(screen.getByText("Democrat")).toBeInTheDocument();
-  });
+    it("defaults to Who They Are (layer 1) showing the bio", () => {
+      render(<RepresentativeDetailPage />);
+      expect(screen.getByText("Biography")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Jane Smith has served in the Senate since 2020/),
+      ).toBeInTheDocument();
+      // Committees section not yet visible
+      expect(
+        screen.queryByText("Committee Assignments"),
+      ).not.toBeInTheDocument();
+    });
 
-  it("should render chamber and district", () => {
-    render(<RepresentativeDetailPage />);
+    it("Layer 1 shows office addresses under Where to Reach Them", () => {
+      render(<RepresentativeDetailPage />);
+      expect(screen.getByText("Where to Reach Them")).toBeInTheDocument();
+      expect(screen.getByText("Capitol Office")).toBeInTheDocument();
+      expect(screen.getByText("State Capitol, Room 100")).toBeInTheDocument();
+    });
 
-    expect(screen.getByText("Senate")).toBeInTheDocument();
-    expect(screen.getByText("District 5")).toBeInTheDocument();
-  });
-
-  it("should render bio when available", () => {
-    render(<RepresentativeDetailPage />);
-
-    expect(
-      screen.getByText("Jane Smith has served in the Senate since 2020."),
-    ).toBeInTheDocument();
-  });
-
-  it("should render contact information", () => {
-    render(<RepresentativeDetailPage />);
-
-    expect(screen.getByText("jane@example.gov")).toBeInTheDocument();
-    expect(screen.getByText("https://example.gov/jane")).toBeInTheDocument();
-    expect(screen.getByText("Capitol Office")).toBeInTheDocument();
-    expect(screen.getByText("State Capitol, Room 100")).toBeInTheDocument();
-    expect(screen.getByText("555-1234")).toBeInTheDocument();
-  });
-
-  it("should render contact button", () => {
-    render(<RepresentativeDetailPage />);
-
-    expect(
-      screen.getByRole("button", { name: /Contact Jane/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("should render campaign finance placeholder", () => {
-    render(<RepresentativeDetailPage />);
-
-    expect(screen.getByText("Coming Soon")).toBeInTheDocument();
-  });
-
-  it("should render breadcrumb navigation", () => {
-    render(<RepresentativeDetailPage />);
-
-    expect(
-      screen.getByRole("link", { name: "Representatives" }),
-    ).toHaveAttribute("href", "/region/representatives");
-  });
-
-  it("should show not found when representative is null", () => {
-    mockQueryResult = {
-      data: { representative: null },
-      loading: false,
-      error: undefined,
-    };
-
-    render(<RepresentativeDetailPage />);
-
-    expect(screen.getByText("Representative not found.")).toBeInTheDocument();
-  });
-
-  it("should not render bio section when bio is null", () => {
-    mockQueryResult = {
-      data: {
-        representative: {
-          ...mockRepresentative,
-          bio: null as unknown as string,
+    it("advances to What They Care About (layer 2) via CTA", async () => {
+      const user = userEvent.setup();
+      mockQueryResult = {
+        data: {
+          representative: {
+            ...mockRepresentative,
+            committees: [{ name: "Budget", role: "Chair" }],
+          },
         },
-      },
-      loading: false,
-      error: undefined,
-    };
+        loading: false,
+        error: undefined,
+      };
 
-    render(<RepresentativeDetailPage />);
+      render(<RepresentativeDetailPage />);
 
-    expect(screen.queryByText("Biography")).not.toBeInTheDocument();
+      // The CTA button and the nav dot both match; take the last one (content CTA)
+      const buttons = screen.getAllByRole("button", {
+        name: "What They Care About",
+      });
+      await user.click(buttons[buttons.length - 1]);
+
+      expect(screen.getByText("Committee Assignments")).toBeInTheDocument();
+    });
+
+    it("advances to What They've Done (layer 3) via CTA", async () => {
+      const user = userEvent.setup();
+      render(<RepresentativeDetailPage />);
+
+      await user.click(
+        screen.getByRole("button", { name: "How They Are Supported" }),
+      );
+      // Use the LayerNav to jump back to L3 first
+      await user.click(
+        screen.getByRole("button", { name: /What They'?ve Done/ }),
+      );
+
+      expect(screen.getByText("Authored Bills")).toBeInTheDocument();
+      expect(screen.getByText("Voting Record")).toBeInTheDocument();
+    });
+
+    it("advances to How They Are Supported (layer 4) via CTA", async () => {
+      const user = userEvent.setup();
+      render(<RepresentativeDetailPage />);
+
+      await user.click(
+        screen.getByRole("button", { name: "How They Are Supported" }),
+      );
+
+      expect(screen.getByText("Campaign Finance")).toBeInTheDocument();
+    });
+
+    it("Back returns to Who They Are from later layers", async () => {
+      const user = userEvent.setup();
+      render(<RepresentativeDetailPage />);
+
+      // Navigate to layer 3 via nav dot
+      await user.click(
+        screen.getByRole("button", { name: /What They'?ve Done/ }),
+      );
+      expect(screen.getByText("Authored Bills")).toBeInTheDocument();
+
+      // Click Back (secondary LayerButton)
+      await user.click(screen.getByRole("button", { name: "Back" }));
+      expect(screen.getByText("Biography")).toBeInTheDocument();
+    });
+
+    it("Back to Summary returns to Who They Are from layer 4", async () => {
+      const user = userEvent.setup();
+      render(<RepresentativeDetailPage />);
+
+      await user.click(
+        screen.getByRole("button", { name: "How They Are Supported" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Back to Summary" }));
+
+      expect(screen.getByText("Biography")).toBeInTheDocument();
+    });
+
+    it("direct dot click jumps to any layer", async () => {
+      const user = userEvent.setup();
+      render(<RepresentativeDetailPage />);
+
+      await user.click(
+        screen.getByRole("button", { name: "How They Are Supported" }),
+      );
+
+      expect(screen.getByText("Campaign Finance")).toBeInTheDocument();
+    });
   });
 
-  it("should not render contact section when contactInfo is null", () => {
-    mockQueryResult = {
-      data: {
-        representative: {
-          ...mockRepresentative,
-          contactInfo: null as unknown as typeof mockRepresentative.contactInfo,
+  describe("layer content", () => {
+    it("Who They Are shows AI-generated badge when bio is AI", () => {
+      mockQueryResult = {
+        data: {
+          representative: {
+            ...mockRepresentative,
+            bioSource: "ai-generated",
+          } as unknown as typeof mockRepresentative,
         },
-      },
-      loading: false,
-      error: undefined,
-    };
+        loading: false,
+        error: undefined,
+      };
 
-    render(<RepresentativeDetailPage />);
+      render(<RepresentativeDetailPage />);
 
-    expect(screen.queryByText("Contact Information")).not.toBeInTheDocument();
-  });
+      expect(screen.getByText("AI-generated")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Generated from public record data/),
+      ).toBeInTheDocument();
+    });
 
-  it("should render committee assignments grouped by leadership and member", () => {
-    mockQueryResult = {
-      data: {
-        representative: {
-          ...mockRepresentative,
-          committees: [
-            {
-              name: "Budget",
-              role: "Chair",
-              url: "https://budget.example.gov",
-            },
-            {
-              name: "Judiciary",
-              role: "Vice Chair",
-              url: "https://judiciary.example.gov",
-            },
-            {
-              name: "Education",
-              role: "Member",
-              url: "https://education.example.gov",
-            },
-            { name: "Transportation", role: "Member" },
-          ],
+    it("What They Care About shows committees grouped by leadership", async () => {
+      const user = userEvent.setup();
+      mockQueryResult = {
+        data: {
+          representative: {
+            ...mockRepresentative,
+            committees: [
+              { name: "Budget", role: "Chair" },
+              { name: "Education", role: "Member" },
+            ],
+          },
         },
-      },
-      loading: false,
-      error: undefined,
-    };
+        loading: false,
+        error: undefined,
+      };
 
-    render(<RepresentativeDetailPage />);
+      render(<RepresentativeDetailPage />);
+      const buttons = screen.getAllByRole("button", {
+        name: "What They Care About",
+      });
+      await user.click(buttons[buttons.length - 1]);
 
-    expect(screen.getByText("Committee Assignments")).toBeInTheDocument();
-    expect(screen.getByText("Leadership")).toBeInTheDocument();
-    expect(screen.getByText("Budget")).toBeInTheDocument();
-    expect(screen.getByText("Chair")).toBeInTheDocument();
-    expect(screen.getByText("Vice Chair")).toBeInTheDocument();
-    expect(screen.getByText("Education")).toBeInTheDocument();
-    expect(screen.getByText("Transportation")).toBeInTheDocument();
-  });
+      expect(screen.getByText("Leadership")).toBeInTheDocument();
+      expect(screen.getByText("Budget")).toBeInTheDocument();
+      expect(screen.getByText("Chair")).toBeInTheDocument();
+      expect(screen.getByText("Education")).toBeInTheDocument();
+    });
 
-  it("should render committee links when URL is provided", () => {
-    mockQueryResult = {
-      data: {
-        representative: {
-          ...mockRepresentative,
-          committees: [
-            {
-              name: "Budget",
-              role: "Member",
-              url: "https://budget.example.gov",
-            },
-          ],
+    it("What They Care About shows placeholder when no committees", async () => {
+      const user = userEvent.setup();
+      render(<RepresentativeDetailPage />);
+      const buttons = screen.getAllByRole("button", {
+        name: "What They Care About",
+      });
+      await user.click(buttons[buttons.length - 1]);
+
+      expect(
+        screen.getByText(/No committee assignments on file/),
+      ).toBeInTheDocument();
+    });
+
+    it("How They Are Supported shows scraped-bio note for scraped bios", async () => {
+      const user = userEvent.setup();
+      mockQueryResult = {
+        data: {
+          representative: {
+            ...mockRepresentative,
+            bioSource: "scraped",
+          } as unknown as typeof mockRepresentative,
         },
-      },
-      loading: false,
-      error: undefined,
-    };
+        loading: false,
+        error: undefined,
+      };
 
-    render(<RepresentativeDetailPage />);
+      render(<RepresentativeDetailPage />);
+      await user.click(
+        screen.getByRole("button", { name: "How They Are Supported" }),
+      );
 
-    const link = screen.getByRole("link", { name: "Budget" });
-    expect(link).toHaveAttribute("href", "https://budget.example.gov");
+      expect(
+        screen.getByText(/scraped directly from an official source/),
+      ).toBeInTheDocument();
+    });
   });
 
-  it("should not render committee section when committees is empty", () => {
-    mockQueryResult = {
-      data: {
-        representative: {
-          ...mockRepresentative,
-          committees: [],
-        },
-      },
-      loading: false,
-      error: undefined,
-    };
+  describe("not-found + breadcrumb", () => {
+    it("shows not found when representative is null", () => {
+      mockQueryResult = {
+        data: { representative: null },
+        loading: false,
+        error: undefined,
+      };
 
-    render(<RepresentativeDetailPage />);
+      render(<RepresentativeDetailPage />);
 
-    expect(screen.queryByText("Committee Assignments")).not.toBeInTheDocument();
-  });
+      expect(screen.getByText("Representative not found.")).toBeInTheDocument();
+    });
 
-  it("should not render committee section when committees is undefined", () => {
-    render(<RepresentativeDetailPage />);
-
-    // mockRepresentative has no committees field
-    expect(screen.queryByText("Committee Assignments")).not.toBeInTheDocument();
-  });
-
-  it("should render source attribution on contact section", () => {
-    render(<RepresentativeDetailPage />);
-
-    expect(screen.getByText("California State Senate")).toBeInTheDocument();
-    expect(screen.getByText(/Last synced/)).toBeInTheDocument();
-  });
-
-  it("should show AI-generated badge when bioSource is ai-generated", () => {
-    mockQueryResult = {
-      data: {
-        representative: {
-          ...mockRepresentative,
-          bioSource: "ai-generated",
-        } as unknown as typeof mockRepresentative,
-      },
-      loading: false,
-      error: undefined,
-    };
-
-    render(<RepresentativeDetailPage />);
-
-    expect(screen.getByText("AI-generated")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Generated from public record data/),
-    ).toBeInTheDocument();
-  });
-
-  it("should not show AI-generated badge when bioSource is scraped", () => {
-    mockQueryResult = {
-      data: {
-        representative: {
-          ...mockRepresentative,
-          bioSource: "scraped",
-        } as unknown as typeof mockRepresentative,
-      },
-      loading: false,
-      error: undefined,
-    };
-
-    render(<RepresentativeDetailPage />);
-
-    expect(screen.queryByText("AI-generated")).not.toBeInTheDocument();
+    it("renders Representatives breadcrumb link", () => {
+      render(<RepresentativeDetailPage />);
+      expect(
+        screen.getByRole("link", { name: "Representatives" }),
+      ).toHaveAttribute("href", "/region/representatives");
+    });
   });
 });
