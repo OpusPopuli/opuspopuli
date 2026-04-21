@@ -440,7 +440,9 @@ test.describe("Region Page", () => {
     await expect(
       page.getByRole("link", { name: /Representatives.*Elected/i }),
     ).toBeVisible();
-    await expect(page.getByText("Campaign Finance")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Campaign Finance" }),
+    ).toBeVisible();
   });
 
   test("should display data source URLs", async ({ page }) => {
@@ -820,7 +822,9 @@ test.describe("Representative Detail Page", () => {
       page.getByRole("heading", { name: "Jane Smith" }),
     ).toBeVisible();
     await expect(page.getByText("Democrat")).toBeVisible();
-    await expect(page.getByText("Senate")).toBeVisible();
+    // "Senate" appears in bio text and the source-attribution link too;
+    // exact match scopes to the chamber badge.
+    await expect(page.getByText("Senate", { exact: true })).toBeVisible();
     await expect(page.getByText("District 5")).toBeVisible();
   });
 
@@ -926,7 +930,9 @@ test.describe("Representative Detail Page", () => {
       .last()
       .click();
 
-    await expect(page.getByText("Campaign Finance")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Campaign Finance" }),
+    ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: /Sources.*Attribution/i }),
     ).toBeVisible();
@@ -942,7 +948,9 @@ test.describe("Representative Detail Page", () => {
       .getByRole("button", { name: "How They Are Supported" })
       .first()
       .click();
-    await expect(page.getByText("Campaign Finance")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Campaign Finance" }),
+    ).toBeVisible();
 
     // Jump back to Layer 1 via nav dot
     await page.getByRole("button", { name: /Who They Are/ }).click();

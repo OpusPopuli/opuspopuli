@@ -50,15 +50,17 @@ function SourceAttribution({
   const source = SOURCE_URLS[chamber];
   if (!source) return null;
 
+  // Color: slate-600 (#475569) on white ≈ 7:1 contrast (WCAG 2.2 AA pass).
+  // slate-400 (#94a3b8) — used previously — was 2.56:1 and failed axe.
   return (
-    <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-[#94a3b8]">
+    <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-slate-600">
       <span>
         Source:{" "}
         <a
           href={source.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:text-[#64748b] hover:underline"
+          className="hover:text-slate-800 hover:underline"
         >
           {source.label}
         </a>
@@ -92,11 +94,14 @@ function CommitteeRow({ c }: { readonly c: CommitteeAssignment }) {
         )}
       </div>
       {c.role && (
+        // Member badge uses slate-700 (#334155) on gray-100 (#f3f4f6) for
+        // ~7.5:1 contrast; slate-500 (#64748b) — used previously — was
+        // 4.32:1 and failed axe's 4.5:1 threshold at 12px.
         <span
           className={`text-xs font-medium px-2 py-0.5 rounded-full ${
             isLeadershipRole(c.role)
               ? "bg-blue-50 text-blue-700"
-              : "bg-gray-100 text-[#64748b]"
+              : "bg-gray-100 text-slate-700"
           }`}
         >
           {c.role}
