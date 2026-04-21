@@ -280,10 +280,66 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Get the current prompt hash for cache invalidation.
+   *
+   * When configured with a remote prompt service, this hits GET
+   * /prompts/:name/hash so the returned hash matches what the service
+   * returns on prompt fetches (same bare-template SHA-256). This is the
+   * authoritative source and must agree with the hash stored on any
+   * manifest — otherwise the manifest cache will never hit.
+   *
+   * Falls back to hashing the local DB template when remote mode is not
+   * configured or the remote call fails. The fallback path is degraded
+   * (the local template may have drifted from the service) but preserves
+   * availability.
    */
   async getPromptHash(templateName: string): Promise<string> {
+    if (this.config?.promptServiceUrl) {
+      try {
+        return await this.fetchRemoteHash(templateName);
+      } catch (error) {
+        this.logger.warn(
+          `Remote hash lookup failed for ${templateName}, falling back to local: ${(error as Error).message}`,
+        );
+      }
+    }
     const template = await this.getTemplate(templateName);
     return this.hash(template.templateText);
+  }
+
+  private async fetchRemoteHash(templateName: string): Promise<string> {
+    const url = this.config!.promptServiceUrl!;
+    const timeout = this.config?.timeoutMs ?? 10000;
+    const path = `/prompts/${encodeURIComponent(templateName)}/hash`;
+
+    const headers: Record<string, string> = {};
+
+    if (this.hmacConfig) {
+      Object.assign(headers, signRequest(this.hmacConfig, "GET", path, ""));
+    } else {
+      const apiKey = this.config!.promptServiceApiKey;
+      if (!apiKey) {
+        throw new Error(
+          "API key is required when prompt service URL is configured",
+        );
+      }
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
+    const response = await this.circuitBreaker!.execute(async () => {
+      const res = await fetch(`${url}${path}`, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(timeout),
+      });
+      if (!res.ok) {
+        throw new Error(
+          `Prompt service returned ${res.status}: ${res.statusText}`,
+        );
+      }
+      return (await res.json()) as { promptHash: string };
+    });
+
+    return response.promptHash;
   }
 
   /**
@@ -387,55 +443,12 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
 
       this.metrics.recordRemoteCall(Date.now() - startMs);
 
-      // Warm the DB cache so fallback has the latest prompt
-      this.warmDbCache(endpoint, result).catch(() => {});
-
       return result;
     } catch (error) {
       this.logger.warn(
         `Remote prompt service failed for ${endpoint}, falling back to DB: ${(error as Error).message}`,
       );
       return this.composeFromDb(endpoint, params);
-    }
-  }
-
-  /**
-   * Upsert a successful remote prompt response into the local DB.
-   * Keeps the DB cache warm so the fallback path always has the latest prompts.
-   * Fire-and-forget — failures are logged but don't affect the caller.
-   */
-  private async warmDbCache(
-    endpoint: string,
-    response: PromptServiceResponse,
-  ): Promise<void> {
-    const categoryMap: Record<string, string> = {
-      "structural-analysis": "structural_analysis",
-      "document-analysis": "document_analysis",
-      rag: "rag",
-    };
-    const category = categoryMap[endpoint] ?? "structural_analysis";
-
-    try {
-      await this.db.promptTemplate.upsert({
-        where: { name: endpoint },
-        update: {
-          templateText: response.promptText,
-          updatedAt: new Date(),
-        },
-        create: {
-          name: endpoint,
-          category: category as never,
-          templateText: response.promptText,
-          version: 1,
-          isActive: true,
-        },
-      });
-      this.metrics.recordCacheWarm();
-      this.logger.debug(`Warmed DB cache for template: ${endpoint}`);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to warm DB cache for ${endpoint}: ${(error as Error).message}`,
-      );
     }
   }
 

@@ -500,7 +500,47 @@ describe("PromptClientService", () => {
       expect(health!.isHealthy).toBe(true);
     });
 
-    it("should warm DB cache on successful remote fetch", async () => {
+    it("getPromptHash should call remote /hash endpoint", async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            name: "structural-analysis",
+            promptHash: "remote-hash-value",
+            promptVersion: "v7",
+          }),
+      });
+      globalThis.fetch = fetchMock;
+
+      const hash = await remoteService.getPromptHash("structural-analysis");
+
+      expect(hash).toBe("remote-hash-value");
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/prompts/structural-analysis/hash"),
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
+
+    it("getPromptHash falls back to local when remote /hash fails", async () => {
+      globalThis.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+      });
+      mockDb.promptTemplate.findFirst.mockResolvedValue(
+        mockTemplate("rag", "local template text"),
+      );
+
+      const hash = await remoteService.getPromptHash("rag");
+
+      // Should fall back to hashing local template rather than throwing
+      expect(hash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("should NOT write remote responses into the local DB", async () => {
+      // warmDbCache was removed — it previously polluted the local
+      // prompt_templates table with interpolated prompt text, breaking
+      // getPromptHash's cache comparison.
       globalThis.fetch = jest.fn().mockResolvedValue({
         ok: true,
         json: () =>
@@ -512,47 +552,9 @@ describe("PromptClientService", () => {
       });
 
       await remoteService.getRAGPrompt({ context: "test", query: "test" });
-
-      // Allow fire-and-forget warmDbCache to complete
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(mockDb.promptTemplate.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { name: "rag" },
-          create: expect.objectContaining({
-            name: "rag",
-            category: "rag",
-            templateText: "remote prompt text",
-          }),
-        }),
-      );
-
-      const metrics = remoteService.getMetrics();
-      expect(metrics.cacheWarms).toBe(1);
-    });
-
-    it("should not fail when DB cache warming fails", async () => {
-      mockDb.promptTemplate.upsert.mockRejectedValue(
-        new Error("DB write failed"),
-      );
-
-      globalThis.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            promptText: "remote prompt",
-            promptHash: "abc",
-            promptVersion: "v1",
-          }),
-      });
-
-      // Should not throw despite DB upsert failure
-      const result = await remoteService.getRAGPrompt({
-        context: "test",
-        query: "test",
-      });
-
-      expect(result.promptText).toBe("remote prompt");
+      expect(mockDb.promptTemplate.upsert).not.toHaveBeenCalled();
     });
   });
 

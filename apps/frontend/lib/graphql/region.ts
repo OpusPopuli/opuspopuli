@@ -75,6 +75,7 @@ export interface Representative {
   contactInfo?: ContactInfo;
   committees?: CommitteeAssignment[];
   bio?: string;
+  bioSource?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -462,6 +463,7 @@ export const GET_REPRESENTATIVE = gql`
         url
       }
       bio
+      bioSource
       createdAt
       updatedAt
     }

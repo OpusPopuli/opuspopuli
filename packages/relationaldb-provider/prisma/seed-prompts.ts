@@ -56,15 +56,17 @@ Respond with ONLY valid JSON matching this exact structure (no markdown, no expl
   "itemSelector": "CSS selector for each individual item (relative to container)",
   "fieldMappings": [
     {
-      "fieldName": "the target field name",
-      "selector": "CSS selector relative to the item",
-      "extractionMethod": "text|attribute|html|regex",
+      "fieldName": "the target field name (use dot notation for nested: 'contactInfo.email')",
+      "selector": "CSS selector relative to the item (or container if scope is 'container')",
+      "extractionMethod": "text|attribute|html|regex|structured",
       "attribute": "only if extractionMethod is 'attribute'",
       "regexPattern": "only if extractionMethod is 'regex'",
       "regexGroup": 1,
       "transform": { "type": "transform_type", "params": {} },
       "required": true,
-      "defaultValue": "fallback if empty"
+      "defaultValue": "fallback if empty",
+      "scope": "item|container (default: item — use 'container' when the data is in a sibling/parent of items, not inside each item)",
+      "children": { "childField": "CSS selector for child" }
     }
   ],
   "pagination": { "type": "none", "maxPages": 1 },
@@ -81,6 +83,24 @@ Respond with ONLY valid JSON matching this exact structure (no markdown, no expl
 6. If the page has multiple formats (e.g., table AND heading-based), choose the PRIMARY format
 7. The containerSelector should match exactly ONE element
 8. The itemSelector should match MULTIPLE elements within the container
+9. Use "scope": "container" when a field's data lives OUTSIDE the item elements (e.g., a heading above the items that applies to all of them). The selector is then relative to the container, not the item.
+10. Use "extractionMethod": "structured" with a "children" object when a field is an ARRAY of nested objects (e.g., multiple offices per representative, multiple committees per member). The "selector" matches each repeating child element inside the item, and "children" maps each sub-field name to its CSS selector relative to the repeating element. Example:
+    {
+      "fieldName": "contactInfo.offices",
+      "selector": ".member__office",
+      "extractionMethod": "structured",
+      "children": {
+        "name": ".office-title",
+        "address": ".address",
+        "phone": ".phone"
+      },
+      "required": false
+    }
+    Child selectors support:
+    - Standard CSS selectors (e.g., "h3", ".class")
+    - "|attr:attrName" suffix to extract an attribute (e.g., "a|attr:href")
+    - "_text" special value: grabs the full text content of the repeating element
+    - "_regex:PATTERN" special value: extracts via regex from element text (e.g., "_regex:Phone:\\s*([\\d()\\s-]+)")
 
 ## HTML to Analyze
 \`\`\`html

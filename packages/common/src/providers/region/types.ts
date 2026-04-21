@@ -94,6 +94,13 @@ export interface CommitteeAssignment {
 }
 
 /**
+ * Provenance of a representative's bio text.
+ * - 'scraped': extracted from an official source (e.g., Senate website)
+ * - 'ai-generated': produced by the LLM from structured public record data
+ */
+export type BioSource = "scraped" | "ai-generated";
+
+/**
  * Elected representative data
  */
 export interface Representative {
@@ -106,6 +113,7 @@ export interface Representative {
   contactInfo?: ContactInfo;
   committees?: CommitteeAssignment[];
   bio?: string;
+  bioSource?: BioSource;
 }
 
 // ============================================
