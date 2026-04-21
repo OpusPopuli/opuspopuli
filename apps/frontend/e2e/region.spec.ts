@@ -440,7 +440,9 @@ test.describe("Region Page", () => {
     await expect(
       page.getByRole("link", { name: /Representatives.*Elected/i }),
     ).toBeVisible();
-    await expect(page.getByText("Campaign Finance")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Campaign Finance" }),
+    ).toBeVisible();
   });
 
   test("should display data source URLs", async ({ page }) => {
@@ -811,44 +813,178 @@ test.describe("Representative Detail Page", () => {
     await mockRegionGraphQL(page);
   });
 
-  test("should display committee assignments with leadership grouping", async ({
+  test("should display persistent header with name, party, chamber, district", async ({
     page,
   }) => {
     await page.goto("/region/representatives/1");
 
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
+    await expect(page.getByText("Democrat")).toBeVisible();
+    // "Senate" appears in bio text and the source-attribution link too;
+    // exact match scopes to the chamber badge.
+    await expect(page.getByText("Senate", { exact: true })).toBeVisible();
+    await expect(page.getByText("District 5")).toBeVisible();
+  });
+
+  test("should display compact contact chips in header (email, website, phone)", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+
+    await expect(page.getByText("jane.smith@example.gov")).toBeVisible();
+    // Website displayed as hostname only
+    await expect(page.getByText("example.com/janesmith")).toBeVisible();
+    // Primary phone in the header chip
+    await expect(page.getByText("555-1234").first()).toBeVisible();
+  });
+
+  test("should default to Who They Are (Layer 1) with bio and offices", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+
+    // Bio visible
+    await expect(page.getByText("Biography")).toBeVisible();
+    await expect(
+      page.getByText("Jane Smith has served in the Senate since 2020."),
+    ).toBeVisible();
+    // Offices visible
+    await expect(page.getByText("Where to Reach Them")).toBeVisible();
+    await expect(page.getByText("Capitol Office")).toBeVisible();
+    // Layer 2 content NOT visible yet
+    await expect(page.getByText("Committee Assignments")).not.toBeVisible();
+  });
+
+  test("should show Who They Are as the current layer indicator", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+
+    const whoTheyAre = page.getByRole("button", { name: /Who They Are/ });
+    await expect(whoTheyAre).toBeVisible();
+    await expect(whoTheyAre).toHaveAttribute("aria-current", "step");
+  });
+
+  test("should advance to What They Care About (Layer 2) via CTA", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+
+    // Both the nav dot and the content CTA match; the content CTA is last
+    const candidates = page.getByRole("button", {
+      name: "What They Care About",
+    });
+    await candidates.last().click();
+
     await expect(page.getByText("Committee Assignments")).toBeVisible();
+  });
+
+  test("What They Care About shows committees grouped by leadership", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+    await page
+      .getByRole("button", { name: "What They Care About" })
+      .last()
+      .click();
+
     await expect(page.getByText("Leadership")).toBeVisible();
     await expect(page.getByText("Judiciary")).toBeVisible();
     await expect(page.getByText("Chair")).toBeVisible();
     await expect(page.getByText("Budget")).toBeVisible();
   });
 
-  test("should display source attribution on contact section", async ({
+  test("should advance to What They've Done (Layer 3) via CTA", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+    await page
+      .getByRole("button", { name: "What They Care About" })
+      .last()
+      .click();
+    await page
+      .getByRole("button", { name: /What They'?ve Done/ })
+      .last()
+      .click();
+
+    await expect(page.getByText("Authored Bills")).toBeVisible();
+    await expect(page.getByText("Voting Record")).toBeVisible();
+  });
+
+  test("should advance to How They Are Supported (Layer 4) via CTA", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+    await page
+      .getByRole("button", { name: "What They Care About" })
+      .last()
+      .click();
+    await page
+      .getByRole("button", { name: /What They'?ve Done/ })
+      .last()
+      .click();
+    await page
+      .getByRole("button", { name: "How They Are Supported" })
+      .last()
+      .click();
+
+    await expect(
+      page.getByRole("heading", { name: "Campaign Finance" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Sources.*Attribution/i }),
+    ).toBeVisible();
+  });
+
+  test("should navigate layers via LayerNav dots directly", async ({
     page,
   }) => {
     await page.goto("/region/representatives/1");
 
-    // Source attribution link at the bottom of the contact section
-    const attribution = page
-      .getByRole("link", { name: "California State Senate" })
-      .first();
-    await attribution.scrollIntoViewIfNeeded();
-    await expect(attribution).toBeVisible();
+    // Jump directly to Layer 4 via nav dot
+    await page
+      .getByRole("button", { name: "How They Are Supported" })
+      .first()
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Campaign Finance" }),
+    ).toBeVisible();
+
+    // Jump back to Layer 1 via nav dot
+    await page.getByRole("button", { name: /Who They Are/ }).click();
+    await expect(page.getByText("Biography")).toBeVisible();
   });
 
-  test("should display office contact information", async ({ page }) => {
+  test("Back to Summary returns to Who They Are from Layer 4", async ({
+    page,
+  }) => {
     await page.goto("/region/representatives/1");
+    await page
+      .getByRole("button", { name: "How They Are Supported" })
+      .first()
+      .click();
+    await page.getByRole("button", { name: "Back to Summary" }).click();
 
-    await expect(page.getByText("Capitol Office")).toBeVisible();
-    await expect(page.getByText("State Capitol, Room 100")).toBeVisible();
-    await expect(page.getByText("555-1234")).toBeVisible();
+    await expect(page.getByText("Biography")).toBeVisible();
   });
 
-  test("should display bio when available", async ({ page }) => {
+  test("persistent header stays visible across all layers", async ({
+    page,
+  }) => {
     await page.goto("/region/representatives/1");
 
     await expect(
-      page.getByText("Jane Smith has served in the Senate since 2020."),
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
+
+    await page
+      .getByRole("button", { name: "How They Are Supported" })
+      .first()
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
     ).toBeVisible();
   });
 });
@@ -1088,6 +1224,34 @@ test.describe("Region Pages - Accessibility", () => {
     expect(violations).toEqual([]);
   });
 
+  test("Representative detail page Layer 1 should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
+    await page.waitForTimeout(400);
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
+  test("Representative detail page Layer 2 should have no WCAG 2.2 AA violations", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+    await page
+      .getByRole("button", { name: "What They Care About" })
+      .last()
+      .click();
+    await expect(page.getByText("Committee Assignments")).toBeVisible();
+    await page.waitForTimeout(400);
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
   test("Campaign Finance hub page should have no WCAG 2.2 AA violations", async ({
     page,
   }) => {
@@ -1247,6 +1411,26 @@ test.describe("Region Pages - Responsive Design", () => {
 
     await expect(page.getByText("Jane Smith")).toBeVisible();
     await expect(page.getByText("John Doe")).toBeVisible();
+  });
+
+  test("representative detail layers navigate correctly on mobile", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto("/region/representatives/1");
+
+    await expect(
+      page.getByRole("heading", { name: "Jane Smith" }),
+    ).toBeVisible();
+    // Bio visible on default layer
+    await expect(page.getByText("Biography")).toBeVisible();
+
+    // Advance to What They Care About on narrow viewport
+    await page
+      .getByRole("button", { name: "What They Care About" })
+      .last()
+      .click();
+    await expect(page.getByText("Committee Assignments")).toBeVisible();
   });
 
   test("should display correctly on tablet viewport", async ({ page }) => {
