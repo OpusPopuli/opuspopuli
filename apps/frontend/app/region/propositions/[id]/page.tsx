@@ -16,6 +16,10 @@ import {
 } from "@/lib/graphql/documents";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
 import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
+import { SectionTitle } from "@/components/region/SectionTitle";
+import { ComingSoon } from "@/components/region/ComingSoon";
+import { LayerButton } from "@/components/region/LayerButton";
+import { LayerNav } from "@/components/region/LayerNav";
 import { formatDate } from "@/lib/format";
 
 const STATUS_STYLES: Record<
@@ -33,7 +37,7 @@ const LAYERS = [
   { n: 2, label: "Details" },
   { n: 3, label: "Both Sides" },
   { n: 4, label: "Deep Dive" },
-];
+] as const;
 
 function StatusBadge({ status }: { readonly status: PropositionStatus }) {
   const style = STATUS_STYLES[status] || STATUS_STYLES.PENDING;
@@ -43,89 +47,6 @@ function StatusBadge({ status }: { readonly status: PropositionStatus }) {
     >
       {style.label}
     </span>
-  );
-}
-
-function LayerNav({
-  current,
-  onChange,
-}: {
-  readonly current: number;
-  readonly onChange: (layer: number) => void;
-}) {
-  return (
-    <nav
-      className="flex flex-wrap items-center gap-4 mb-8"
-      aria-label="Information depth"
-    >
-      {LAYERS.map(({ n, label }) => (
-        <button
-          key={n}
-          onClick={() => onChange(n)}
-          className={`flex items-center gap-2 text-sm font-medium transition-colors ${
-            current === n
-              ? "text-[#222222]"
-              : "text-[#595959] hover:text-[#444444]"
-          }`}
-          aria-current={current === n ? "step" : undefined}
-        >
-          <span
-            className={`w-2.5 h-2.5 rounded-full transition-colors ${
-              current === n ? "bg-[#222222]" : "bg-[#767676]"
-            }`}
-          />
-          {label}
-        </button>
-      ))}
-    </nav>
-  );
-}
-
-function SectionTitle({ children }: { readonly children: React.ReactNode }) {
-  return (
-    <h3 className="text-xs font-bold uppercase tracking-[1.5px] text-[#595959] mb-3">
-      {children}
-    </h3>
-  );
-}
-
-function ComingSoon({
-  title,
-  description,
-}: {
-  readonly title: string;
-  readonly description: string;
-}) {
-  return (
-    <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-6 text-center">
-      <p className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
-        {title}
-      </p>
-      <p className="text-sm text-slate-700">{description}</p>
-    </div>
-  );
-}
-
-function LayerButton({
-  onClick,
-  variant = "primary",
-  children,
-}: {
-  readonly onClick: () => void;
-  readonly variant?: "primary" | "secondary";
-  readonly children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={
-        variant === "primary"
-          ? "px-6 py-3 bg-gray-900 text-white rounded-lg font-semibold text-sm hover:bg-gray-800 transition-colors"
-          : "px-5 py-2.5 bg-white text-gray-900 border-2 border-gray-200 rounded-lg font-semibold text-sm hover:border-gray-900 transition-colors"
-      }
-    >
-      {children}
-    </button>
   );
 }
 
@@ -464,7 +385,7 @@ export default function PropositionDetailPage() {
       </div>
 
       {/* Layer Navigation */}
-      <LayerNav current={layer} onChange={setLayer} />
+      <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
 
       {/* Layer Content */}
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
