@@ -75,7 +75,9 @@ function LoginPageContent() {
     }
   };
 
-  const handleMagicLinkLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleMagicLinkLogin: React.FormEventHandler<HTMLFormElement> = async (
+    e,
+  ) => {
     e.preventDefault();
     clearError();
     // Preserve the redirect target through the magic-link round-trip so
@@ -88,7 +90,9 @@ function LoginPageContent() {
     await sendMagicLink(email, callbackUrl.toString());
   };
 
-  const handlePasswordLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handlePasswordLogin: React.FormEventHandler<HTMLFormElement> = async (
+    e,
+  ) => {
     e.preventDefault();
     clearError();
     try {

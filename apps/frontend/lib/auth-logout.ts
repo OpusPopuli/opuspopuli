@@ -87,7 +87,7 @@ export function setPerformRedirectForTests(fn: (url: string) => void): void {
  *   page. No redirect, no-op.
  */
 export function triggerAuthExpiredRedirect(pathname: string): void {
-  if (logoutInProgress || typeof globalThis.window === "undefined") return;
+  if (logoutInProgress || globalThis.window === undefined) return;
   if (localStorage.getItem(USER_KEY) === null) return;
   logoutInProgress = true;
 

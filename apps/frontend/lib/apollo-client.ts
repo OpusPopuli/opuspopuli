@@ -140,7 +140,7 @@ function createWsLink(): ApolloLink | null {
 const authExpiryLink = new ErrorLink(({ error, operation }) => {
   if (operation.operationName === "Logout") return;
   if (!isAuthExpiredError(error)) return;
-  if (typeof globalThis.window === "undefined") return;
+  if (globalThis.window === undefined) return;
   triggerAuthExpiredRedirect(
     globalThis.location.pathname + globalThis.location.search,
   );
