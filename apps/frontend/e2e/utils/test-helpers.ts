@@ -163,6 +163,32 @@ export async function setupAuthSession(page: Page, user = mockUser) {
   await page.addInitScript((userData) => {
     localStorage.setItem("auth_user", JSON.stringify(userData));
   }, user);
+
+  // Install a catch-all GraphQL mock so pages that run authenticated
+  // queries don't accidentally hit the real backend and 403 — which,
+  // since #610 shipped, correctly triggers a redirect to /login and
+  // breaks unrelated assertions.
+  //
+  // Tests that need specific query responses can still call
+  // mockGraphQL() or mockGraphQLError() afterwards; Playwright routes
+  // are LIFO, so later-registered handlers intercept first. The
+  // catch-all below only runs if no test-specific handler matched.
+  await page.route("**/api", async (route) => {
+    const request = route.request();
+    if (request.method() !== "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {} }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: {} }),
+    });
+  });
 }
 
 /**

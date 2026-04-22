@@ -383,3 +383,97 @@ test.describe("Session Management", () => {
     await expect(page.locator("body")).toBeVisible();
   });
 });
+
+/**
+ * Session-expired handling (#610).
+ *
+ * When a 403 / FORBIDDEN response comes back while the user is logged
+ * in, the Apollo errorLink redirects to /login?redirect=…&reason=expired
+ * and the login page shows a toast. After re-login, the user is sent
+ * back to the original path.
+ *
+ * Public pages (no stored `auth_user`) do NOT redirect — a 403 on a
+ * public page is an expected permission error, not a session expiry.
+ */
+test.describe("Session expiry (#610)", () => {
+  test("/login?reason=expired shows the session-expired toast", async ({
+    page,
+  }) => {
+    await page.goto("/login?reason=expired");
+
+    await expect(
+      page.getByText(/session expired\. please sign in again/i),
+    ).toBeVisible();
+  });
+
+  test("redirect query param is preserved after successful login", async ({
+    page,
+  }) => {
+    // Mock the login mutation
+    await page.route("**/api", async (route) => {
+      const request = route.request();
+      const postData = request.postDataJSON();
+      if (
+        postData?.operationName === "LoginUser" ||
+        postData?.query?.includes("login(")
+      ) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: mockLoginResponse }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
+      }
+    });
+
+    await page.goto("/login?redirect=%2Fsettings%2Fprivacy&reason=expired");
+    await page.getByRole("button", { name: "Password" }).click();
+    await page.locator("input#email").fill("test@example.com");
+    await page.locator("input#password").fill("password123");
+    await page.getByRole("button", { name: "Sign in" }).click();
+
+    // After login, URL should be the redirect target (not /onboarding).
+    await page.waitForURL(/\/settings\/privacy$/, { timeout: 3000 });
+    await expect(page).toHaveURL(/\/settings\/privacy$/);
+  });
+
+  test("absolute-URL redirect is rejected and falls back to /onboarding", async ({
+    page,
+  }) => {
+    await page.route("**/api", async (route) => {
+      const request = route.request();
+      const postData = request.postDataJSON();
+      if (
+        postData?.operationName === "LoginUser" ||
+        postData?.query?.includes("login(")
+      ) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: mockLoginResponse }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
+      }
+    });
+
+    await page.goto("/login?redirect=https://evil.example.com");
+    await page.getByRole("button", { name: "Password" }).click();
+    await page.locator("input#email").fill("test@example.com");
+    await page.locator("input#password").fill("password123");
+    await page.getByRole("button", { name: "Sign in" }).click();
+
+    // Should NOT navigate off-origin; should land on /onboarding default.
+    await page.waitForURL(/\/onboarding$/, { timeout: 3000 });
+    await expect(page).toHaveURL(/\/onboarding$/);
+  });
+});

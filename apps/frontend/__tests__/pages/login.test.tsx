@@ -3,12 +3,22 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 import LoginPage from "@/app/(auth)/login/page";
 
-// Mock Next.js router
+// Mock Next.js router + search params
 const mockPush = jest.fn();
+let mockSearchParamsMap = new Map<string, string>();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
     push: mockPush,
   }),
+  useSearchParams: () => ({
+    get: (key: string) => mockSearchParamsMap.get(key) ?? null,
+  }),
+}));
+
+// Mock toast system
+const mockShowToast = jest.fn();
+jest.mock("@/lib/toast", () => ({
+  useToast: () => ({ showToast: mockShowToast }),
 }));
 
 // Mock auth context
@@ -48,6 +58,7 @@ describe("LoginPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockAuthContextValue = { ...defaultAuthContext };
+    mockSearchParamsMap = new Map();
   });
 
   describe("rendering", () => {
@@ -395,6 +406,95 @@ describe("LoginPage", () => {
 
       const button = screen.getByRole("button", { name: /Authenticating/i });
       expect(button).toBeDisabled();
+    });
+  });
+
+  describe("session-expired handling (#610)", () => {
+    it('shows "session expired" toast when reason=expired', () => {
+      mockSearchParamsMap.set("reason", "expired");
+      render(<LoginPage />);
+
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "Your session expired. Please sign in again.",
+        "warning",
+        5000,
+      );
+    });
+
+    it("does NOT show the toast when reason query param is absent", () => {
+      render(<LoginPage />);
+      expect(mockShowToast).not.toHaveBeenCalled();
+    });
+
+    it("does NOT show the toast for unknown reason values", () => {
+      mockSearchParamsMap.set("reason", "something-else");
+      render(<LoginPage />);
+      expect(mockShowToast).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("redirect param (#610)", () => {
+    it("redirects to the redirect= path after password login", async () => {
+      mockSearchParamsMap.set("redirect", "/settings/privacy");
+      mockLogin.mockResolvedValueOnce(undefined);
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.click(screen.getByRole("button", { name: "Password" }));
+      await user.type(screen.getByLabelText("Email Address"), "a@example.com");
+      await user.type(screen.getByLabelText("Password"), "password123");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith("/settings/privacy");
+      });
+    });
+
+    it("defaults to /onboarding when redirect param is absent", async () => {
+      mockLogin.mockResolvedValueOnce(undefined);
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.click(screen.getByRole("button", { name: "Password" }));
+      await user.type(screen.getByLabelText("Email Address"), "a@example.com");
+      await user.type(screen.getByLabelText("Password"), "password123");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith("/onboarding");
+      });
+    });
+
+    it("rejects absolute URLs in redirect (open-redirect guard)", async () => {
+      mockSearchParamsMap.set("redirect", "https://evil.example.com");
+      mockLogin.mockResolvedValueOnce(undefined);
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.click(screen.getByRole("button", { name: "Password" }));
+      await user.type(screen.getByLabelText("Email Address"), "a@example.com");
+      await user.type(screen.getByLabelText("Password"), "password123");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith("/onboarding");
+      });
+    });
+
+    it("rejects protocol-relative URLs in redirect", async () => {
+      mockSearchParamsMap.set("redirect", "//evil.example.com");
+      mockLogin.mockResolvedValueOnce(undefined);
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.click(screen.getByRole("button", { name: "Password" }));
+      await user.type(screen.getByLabelText("Email Address"), "a@example.com");
+      await user.type(screen.getByLabelText("Password"), "password123");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith("/onboarding");
+      });
     });
   });
 });

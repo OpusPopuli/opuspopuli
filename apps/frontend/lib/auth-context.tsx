@@ -89,7 +89,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // SECURITY: Only store user info, NOT tokens
 // Tokens are now stored in httpOnly cookies by the backend
 // @see https://github.com/OpusPopuli/opuspopuli/issues/186
-const USER_KEY = "auth_user";
+export const USER_KEY = "auth_user";
 
 function decodeToken(idToken: string): User | null {
   try {
