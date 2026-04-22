@@ -144,5 +144,48 @@ describe("auth-logout", () => {
       // Let the fire-and-forget resolve without unhandled rejection
       await Promise.resolve();
     });
+
+    describe("auth-route loop guard", () => {
+      it("does NOT redirect when already on /login", () => {
+        localStorage.setItem(USER_KEY, JSON.stringify({ id: "u1" }));
+
+        triggerAuthExpiredRedirect("/login");
+
+        // Stale auth state still cleared for safety
+        expect(localStorage.getItem(USER_KEY)).toBeNull();
+        // But no navigation — we're already on the login page
+        expect(assignMock).not.toHaveBeenCalled();
+        // And no backend logout POST — we're on a public route
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it("does NOT redirect when on /login with query params", () => {
+        localStorage.setItem(USER_KEY, JSON.stringify({ id: "u1" }));
+        triggerAuthExpiredRedirect("/login?redirect=%2Fsettings");
+        expect(assignMock).not.toHaveBeenCalled();
+      });
+
+      it("does NOT redirect when already on /register", () => {
+        localStorage.setItem(USER_KEY, JSON.stringify({ id: "u1" }));
+        triggerAuthExpiredRedirect("/register");
+        expect(assignMock).not.toHaveBeenCalled();
+      });
+
+      it("does NOT redirect when on /auth/callback", () => {
+        localStorage.setItem(USER_KEY, JSON.stringify({ id: "u1" }));
+        triggerAuthExpiredRedirect("/auth/callback");
+        expect(assignMock).not.toHaveBeenCalled();
+      });
+
+      it("DOES redirect from a non-auth route with auth_user set", () => {
+        localStorage.setItem(USER_KEY, JSON.stringify({ id: "u1" }));
+
+        triggerAuthExpiredRedirect("/settings/privacy");
+
+        expect(assignMock).toHaveBeenCalledWith(
+          "/login?redirect=%2Fsettings%2Fprivacy&reason=expired",
+        );
+      });
+    });
   });
 });

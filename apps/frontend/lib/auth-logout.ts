@@ -86,9 +86,28 @@ export function setPerformRedirectForTests(fn: (url: string) => void): void {
  *   never logged in, so a 403 is an expected permission error on a public
  *   page. No redirect, no-op.
  */
+/**
+ * Paths that are themselves the re-authentication flow — redirecting
+ * here from a 403 would cause an infinite loop (e.g. if the login page
+ * makes an authenticated query). Both `pathname` and the location
+ * check short-circuit if we're already on one of these.
+ */
+const AUTH_ROUTE_PREFIXES = ["/login", "/register", "/auth/"] as const;
+
+function isAuthRoute(pathname: string): boolean {
+  return AUTH_ROUTE_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
 export function triggerAuthExpiredRedirect(pathname: string): void {
   if (logoutInProgress || globalThis.window === undefined) return;
   if (localStorage.getItem(USER_KEY) === null) return;
+  // Already on an auth route? A 403 here doesn't need to redirect us
+  // anywhere — we're already where we'd send the user. Clear stale
+  // state (they may be mid-expiry) but don't navigate.
+  if (isAuthRoute(pathname)) {
+    localStorage.removeItem(USER_KEY);
+    return;
+  }
   logoutInProgress = true;
 
   localStorage.removeItem(USER_KEY);
