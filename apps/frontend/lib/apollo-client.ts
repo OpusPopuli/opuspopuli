@@ -5,10 +5,12 @@ import {
   InMemoryCache,
   split,
 } from "@apollo/client";
+import { ErrorLink } from "@apollo/client/link/error";
 import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
 import { getMainDefinition } from "@apollo/client/utilities";
 import { createClient } from "graphql-ws";
 import { persistCache, LocalStorageWrapper } from "apollo3-cache-persist";
+import { isAuthExpiredError, triggerAuthExpiredRedirect } from "./auth-logout";
 
 const GRAPHQL_URL =
   process.env.NEXT_PUBLIC_GRAPHQL_URL || "http://localhost:3000/api";
@@ -128,19 +130,35 @@ function createWsLink(): ApolloLink | null {
 }
 
 /**
+ * Error link that detects expired-session responses and redirects to
+ * `/login?redirect=<prev>&reason=expired`. See issue #610 and
+ * [lib/auth-logout.ts](./auth-logout.ts) for the side-effect logic.
+ *
+ * Placed at the HEAD of the link chain so it observes every failure from
+ * the HTTP/WS links below it. Excludes the `Logout` mutation itself so a
+ * 403 on logout doesn't recurse.
+ */
+const authExpiryLink = new ErrorLink(({ error, operation }) => {
+  if (operation.operationName === "Logout") return;
+  if (!isAuthExpiredError(error)) return;
+  if (typeof window === "undefined") return;
+  triggerAuthExpiredRedirect(window.location.pathname + window.location.search);
+});
+
+/**
  * Create the Apollo Link that routes subscriptions to WebSocket
- * and queries/mutations to HTTP
+ * and queries/mutations to HTTP, with the auth-expiry link at the head.
  */
 function createLink(): ApolloLink {
   const wsLink = createWsLink();
 
   // If no WebSocket link (SSR), use HTTP only
   if (!wsLink) {
-    return httpLink;
+    return ApolloLink.from([authExpiryLink, httpLink]);
   }
 
   // Split traffic: subscriptions go to WebSocket, rest to HTTP
-  return split(
+  const transportLink = split(
     ({ query }) => {
       const definition = getMainDefinition(query);
       return (
@@ -151,6 +169,8 @@ function createLink(): ApolloLink {
     wsLink,
     httpLink,
   );
+
+  return ApolloLink.from([authExpiryLink, transportLink]);
 }
 
 /**

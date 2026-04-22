@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { Suspense, useState, useEffect, useRef, FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/lib/toast";
 import {
   AuthCard,
   AuthHeader,
@@ -15,8 +16,22 @@ import {
 
 type AuthMode = "passkey" | "magic-link" | "password";
 
-export default function LoginPage() {
+/**
+ * Validate a `?redirect=` query param so we only accept same-origin paths.
+ * Rejects absolute URLs and protocol-relative `//host/...` forms that
+ * could be used for open-redirect attacks. Defaults to `/onboarding`.
+ */
+function resolveRedirect(raw: string | null): string {
+  if (!raw) return "/onboarding";
+  if (!raw.startsWith("/")) return "/onboarding";
+  if (raw.startsWith("//")) return "/onboarding";
+  return raw;
+}
+
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { showToast } = useToast();
   const {
     login,
     loginWithPasskey,
@@ -36,11 +51,25 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+  // Show a "session expired" toast when the errorLink redirected us here.
+  // useRef guards against React StrictMode double-invoking the effect.
+  const expiredToastShown = useRef(false);
+  useEffect(() => {
+    if (expiredToastShown.current) return;
+    if (searchParams.get("reason") === "expired") {
+      expiredToastShown.current = true;
+      showToast("Your session expired. Please sign in again.", "warning", 5000);
+    }
+  }, [searchParams, showToast]);
+
+  const postLoginRedirect = () =>
+    router.push(resolveRedirect(searchParams.get("redirect")));
+
   const handlePasskeyLogin = async () => {
     clearError();
     try {
       await loginWithPasskey(email || undefined);
-      router.push("/onboarding");
+      postLoginRedirect();
     } catch {
       // Error is handled in context
     }
@@ -49,7 +78,14 @@ export default function LoginPage() {
   const handleMagicLinkLogin = async (e: FormEvent) => {
     e.preventDefault();
     clearError();
-    await sendMagicLink(email, `${globalThis.location.origin}/auth/callback`);
+    // Preserve the redirect target through the magic-link round-trip so
+    // /auth/callback can honor it on successful verification.
+    const redirect = resolveRedirect(searchParams.get("redirect"));
+    const callbackUrl = new URL("/auth/callback", globalThis.location.origin);
+    if (redirect !== "/onboarding") {
+      callbackUrl.searchParams.set("redirect", redirect);
+    }
+    await sendMagicLink(email, callbackUrl.toString());
   };
 
   const handlePasswordLogin = async (e: FormEvent) => {
@@ -57,7 +93,7 @@ export default function LoginPage() {
     clearError();
     try {
       await login({ email, password });
-      router.push("/onboarding");
+      postLoginRedirect();
     } catch {
       // Error is handled in context
     }
@@ -372,5 +408,18 @@ export default function LoginPage() {
         </Link>
       </p>
     </AuthCard>
+  );
+}
+
+/**
+ * Wrap the content in a Suspense boundary so `useSearchParams` doesn't
+ * bail out at build time — Next.js prerenders this route and needs to
+ * know where to show the fallback while the query params resolve.
+ */
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<AuthCard>Loading…</AuthCard>}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

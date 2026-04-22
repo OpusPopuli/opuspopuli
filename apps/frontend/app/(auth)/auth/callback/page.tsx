@@ -36,6 +36,23 @@ function CallbackLoading() {
   );
 }
 
+/**
+ * Validate a `?redirect=` query param so we only accept same-origin paths.
+ * Mirrors the helper in the login page. Keeps this auth callback safe
+ * from open-redirect attacks on the magic-link round-trip.
+ *
+ * Callers pass their own default because the two buttons on this page
+ * have different natural destinations: "Skip for now" → /onboarding
+ * (completes first-time setup), "Continue to App" → /region (returning
+ * users). Both honor an explicit `?redirect=` first.
+ */
+function resolveRedirect(raw: string | null, fallback: string): string {
+  if (!raw) return fallback;
+  if (!raw.startsWith("/")) return fallback;
+  if (raw.startsWith("//")) return fallback;
+  return raw;
+}
+
 // Main callback content component that uses useSearchParams
 function AuthCallbackContent() {
   const router = useRouter();
@@ -47,6 +64,9 @@ function AuthCallbackContent() {
     error,
     supportsPasskeys,
   } = useAuth();
+  const rawRedirect = searchParams.get("redirect");
+  const skipTarget = resolveRedirect(rawRedirect, "/onboarding");
+  const continueTarget = resolveRedirect(rawRedirect, "/region");
 
   const [status, setStatus] = useState<"verifying" | "success" | "error">(
     "verifying",
@@ -254,7 +274,7 @@ function AuthCallbackContent() {
           </Link>
           <button
             type="button"
-            onClick={() => router.push("/onboarding")}
+            onClick={() => router.push(skipTarget)}
             className="inline-block w-full py-3 px-6 bg-white text-[#4d4d4d] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
           >
             Skip for now
@@ -288,7 +308,7 @@ function AuthCallbackContent() {
       <p className="text-[#4d4d4d] mb-6">Redirecting you to the app...</p>
       <button
         type="button"
-        onClick={() => router.push("/region")}
+        onClick={() => router.push(continueTarget)}
         className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
       >
         Continue to App
