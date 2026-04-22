@@ -69,7 +69,7 @@ describe("apollo-client", () => {
 
     afterEach(() => {
       setPerformRedirectForTests((url) => {
-        window.location.assign(url);
+        globalThis.location.assign(url);
       });
       globalThis.fetch = originalFetch;
       localStorage.clear();

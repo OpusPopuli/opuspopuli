@@ -3,7 +3,6 @@ import {
   ApolloLink,
   HttpLink,
   InMemoryCache,
-  split,
 } from "@apollo/client";
 import { ErrorLink } from "@apollo/client/link/error";
 import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
@@ -141,8 +140,10 @@ function createWsLink(): ApolloLink | null {
 const authExpiryLink = new ErrorLink(({ error, operation }) => {
   if (operation.operationName === "Logout") return;
   if (!isAuthExpiredError(error)) return;
-  if (typeof window === "undefined") return;
-  triggerAuthExpiredRedirect(window.location.pathname + window.location.search);
+  if (typeof globalThis.window === "undefined") return;
+  triggerAuthExpiredRedirect(
+    globalThis.location.pathname + globalThis.location.search,
+  );
 });
 
 /**
@@ -158,7 +159,7 @@ function createLink(): ApolloLink {
   }
 
   // Split traffic: subscriptions go to WebSocket, rest to HTTP
-  const transportLink = split(
+  const transportLink = ApolloLink.split(
     ({ query }) => {
       const definition = getMainDefinition(query);
       return (

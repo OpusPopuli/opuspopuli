@@ -81,7 +81,7 @@ describe("auth-logout", () => {
     afterEach(() => {
       // Restore the production implementation
       setPerformRedirectForTests((url) => {
-        window.location.assign(url);
+        globalThis.location.assign(url);
       });
       globalThis.fetch = originalFetch;
     });

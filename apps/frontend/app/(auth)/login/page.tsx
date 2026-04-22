@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useRef, FormEvent } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -75,7 +75,7 @@ function LoginPageContent() {
     }
   };
 
-  const handleMagicLinkLogin = async (e: FormEvent) => {
+  const handleMagicLinkLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     clearError();
     // Preserve the redirect target through the magic-link round-trip so
@@ -88,7 +88,7 @@ function LoginPageContent() {
     await sendMagicLink(email, callbackUrl.toString());
   };
 
-  const handlePasswordLogin = async (e: FormEvent) => {
+  const handlePasswordLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     clearError();
     try {
