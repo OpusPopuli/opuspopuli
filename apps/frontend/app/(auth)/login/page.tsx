@@ -75,9 +75,7 @@ function LoginPageContent() {
     }
   };
 
-  const handleMagicLinkLogin: React.FormEventHandler<HTMLFormElement> = async (
-    e,
-  ) => {
+  const handleMagicLinkLogin: React.FormEventHandler<HTMLFormElement> = (e) => {
     e.preventDefault();
     clearError();
     // Preserve the redirect target through the magic-link round-trip so
@@ -87,20 +85,26 @@ function LoginPageContent() {
     if (redirect !== "/onboarding") {
       callbackUrl.searchParams.set("redirect", redirect);
     }
-    await sendMagicLink(email, callbackUrl.toString());
+    // React onSubmit expects a void-returning handler, so fire the async
+    // work as a fire-and-forget IIFE. sendMagicLink handles its own
+    // errors via auth-context state.
+    void sendMagicLink(email, callbackUrl.toString());
   };
 
-  const handlePasswordLogin: React.FormEventHandler<HTMLFormElement> = async (
-    e,
-  ) => {
+  const handlePasswordLogin: React.FormEventHandler<HTMLFormElement> = (e) => {
     e.preventDefault();
     clearError();
-    try {
-      await login({ email, password });
-      postLoginRedirect();
-    } catch {
-      // Error is handled in context
-    }
+    // React onSubmit expects a void-returning handler; wrap the async
+    // flow so the outer handler returns void and errors don't bubble as
+    // unhandled rejections. login() surfaces errors via auth-context.
+    void (async () => {
+      try {
+        await login({ email, password });
+        postLoginRedirect();
+      } catch {
+        // Error is handled in context
+      }
+    })();
   };
 
   const switchMode = (mode: AuthMode) => {
