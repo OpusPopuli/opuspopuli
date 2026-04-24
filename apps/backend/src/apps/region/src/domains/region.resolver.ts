@@ -2,6 +2,7 @@ import {
   Args,
   Extensions,
   ID,
+  Int,
   Mutation,
   Query,
   Resolver,
@@ -25,6 +26,7 @@ import {
 } from './models/proposition.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
 import {
+  BioClaimModel,
   CommitteeAssignmentModel,
   ContactInfoModel,
   RepresentativeModel,
@@ -156,8 +158,12 @@ export class RegionResolver {
       committees:
         (result.committees as unknown as CommitteeAssignmentModel[]) ??
         undefined,
+      committeesSummary: result.committeesSummary ?? undefined,
       bio: result.bio ?? undefined,
       bioSource: result.bioSource ?? undefined,
+      bioClaims: Array.isArray(result.bioClaims)
+        ? (result.bioClaims as unknown as BioClaimModel[])
+        : undefined,
     };
   }
 
@@ -187,8 +193,12 @@ export class RegionResolver {
       photoUrl: r.photoUrl ?? undefined,
       contactInfo: (r.contactInfo as ContactInfoModel) ?? undefined,
       committees: (r.committees as CommitteeAssignmentModel[]) ?? undefined,
+      committeesSummary: r.committeesSummary ?? undefined,
       bio: r.bio ?? undefined,
       bioSource: r.bioSource ?? undefined,
+      bioClaims: Array.isArray(r.bioClaims)
+        ? (r.bioClaims as unknown as BioClaimModel[])
+        : undefined,
     })) as RepresentativeModel[];
   }
 
@@ -356,6 +366,10 @@ export class RegionResolver {
   /**
    * Trigger a data sync (admin only).
    * Optionally filter by data types — when omitted, syncs all.
+   * Optionally cap AI enrichment (bios, committee summaries) at
+   * `maxReps` per run — useful during testing to verify pipeline
+   * plumbing without a full-roster LLM cycle. When omitted, falls
+   * back to the generator env-var caps (or unlimited).
    */
   @Mutation(() => [SyncResultModel])
   @UseGuards(AuthGuard)
@@ -364,9 +378,12 @@ export class RegionResolver {
   async syncRegionData(
     @Args('dataTypes', { type: () => [DataTypeGQL], nullable: true })
     dataTypes?: DataTypeGQL[],
+    @Args('maxReps', { type: () => Int, nullable: true })
+    maxReps?: number,
   ): Promise<SyncResultModel[]> {
     const results = await this.regionService.syncAll(
       dataTypes as unknown as string[],
+      maxReps,
     );
     return results.map((r) => ({
       ...r,

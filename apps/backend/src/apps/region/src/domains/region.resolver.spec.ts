@@ -688,7 +688,7 @@ describe('RegionResolver', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0].itemsProcessed).toBe(10);
-      expect(regionService.syncAll).toHaveBeenCalledWith(undefined);
+      expect(regionService.syncAll).toHaveBeenCalledWith(undefined, undefined);
     });
 
     it('should pass dataTypes filter to syncAll', async () => {
@@ -706,7 +706,10 @@ describe('RegionResolver', () => {
       const result = await resolver.syncRegionData([DataTypeGQL.PROPOSITIONS]);
 
       expect(result).toHaveLength(1);
-      expect(regionService.syncAll).toHaveBeenCalledWith(['propositions']);
+      expect(regionService.syncAll).toHaveBeenCalledWith(
+        ['propositions'],
+        undefined,
+      );
     });
 
     it('should include errors in sync results', async () => {

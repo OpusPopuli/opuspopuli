@@ -276,12 +276,23 @@ export class ManifestExtractorService {
       return undefined;
     }
 
+    // LLM-generated manifests sometimes bake the "|attr:name" suffix
+    // into the selector (a convention supported by detail-crawler and
+    // structured-extractor). Cheerio parses that as a CSS selector and
+    // chokes on ":name" as a pseudo-class. Strip the suffix here — the
+    // attribute is carried separately on `mapping.attribute` when it
+    // matters. See #594 / scrape regression.
+    const rawSelector = mapping.selector;
+    const pipeIdx = rawSelector.indexOf("|attr:");
+    const cssSelector =
+      pipeIdx >= 0 ? rawSelector.slice(0, pipeIdx) : rawSelector;
+
     // .find() only searches descendants — if nothing found, check if the
     // element itself matches the selector (e.g., itemSelector selects <a>
     // and field mapping also targets "a").
-    let selected = element.find(mapping.selector);
+    let selected = element.find(cssSelector);
     if (selected.length === 0) {
-      selected = element.filter(mapping.selector);
+      selected = element.filter(cssSelector);
     }
 
     if (selected.length === 0) {

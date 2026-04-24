@@ -1,14 +1,26 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PromptClientService } from '@opuspopuli/prompt-client';
-import type { ILLMProvider, Representative } from '@opuspopuli/common';
+import type {
+  BioClaim,
+  ILLMProvider,
+  Representative,
+} from '@opuspopuli/common';
+import {
+  extractFieldString,
+  extractJsonObjectSlice,
+} from './llm-json-salvage.util';
 
-/** Matches the opening `"bio": "` token in the LLM's JSON response. */
-const BIO_FIELD_OPENER = /"bio"\s*:\s*"/;
-/** Strips leading ```json (or ```) markdown fences from an LLM response. */
-const LEADING_CODE_FENCE = /^```(?:json)?\n?/;
-/** Strips the trailing ``` fence. */
-const TRAILING_CODE_FENCE = /\n?```$/;
+/**
+ * Maps the externalId region prefix to a human-readable state name.
+ * Extend when a new state comes online. Federal reps use a different
+ * prefix ("federal-" or similar); that case falls through to the
+ * bare chamber label, and the prompt refuses to use training
+ * knowledge if jurisdiction is ambiguous.
+ */
+const STATE_PREFIX_TO_NAME: Record<string, string> = {
+  ca: 'California',
+};
 
 /**
  * Generates AI bios for representatives that lack a scraped biography.
@@ -53,37 +65,31 @@ export class BioGeneratorService {
   /**
    * Enrich a batch of representatives with AI-generated bios where missing.
    * Returns the same array with bios populated for those that lacked one.
+   *
+   * @param maxRepsOverride — per-call cap that takes precedence over the
+   *   BIO_GENERATOR_MAX_REPS env default. Wired to the syncRegionData
+   *   mutation's `maxReps` arg so operators can choose a cap per run
+   *   without bouncing the service. Pass 0 or undefined to fall back
+   *   to the env default.
    */
-  async enrichBios(reps: Representative[]): Promise<Representative[]> {
+  async enrichBios(
+    reps: Representative[],
+    maxRepsOverride?: number,
+  ): Promise<Representative[]> {
     if (!this.promptClient || !this.llm) {
       return reps;
     }
 
     const candidates = reps.filter((r) => !r.bio || r.bio.trim() === '');
-    const needsBio = this.maxReps
-      ? candidates.slice(0, this.maxReps)
-      : candidates;
+    const cap = this.resolveCap(maxRepsOverride);
+    const needsBio = cap ? candidates.slice(0, cap) : candidates;
 
     if (needsBio.length > 0) {
-      const capNote =
-        this.maxReps && candidates.length > this.maxReps
-          ? ` (capped from ${candidates.length} by BIO_GENERATOR_MAX_REPS=${this.maxReps})`
-          : '';
-      this.logger.log(
-        `Generating AI bios for ${needsBio.length} representatives${capNote} (concurrency=${this.concurrency}, maxTokens=${this.maxTokens})`,
-      );
-
-      let succeeded = 0;
-      for (let i = 0; i < needsBio.length; i += this.concurrency) {
-        const batch = needsBio.slice(i, i + this.concurrency);
-        const results = await Promise.all(
-          batch.map((rep) => this.tryGenerateBio(rep)),
-        );
-        succeeded += results.filter(Boolean).length;
-      }
-
-      this.logger.log(
-        `Generated ${succeeded}/${needsBio.length} AI bios successfully`,
+      await this.runBatchGeneration(
+        needsBio,
+        candidates.length,
+        cap,
+        maxRepsOverride,
       );
     }
 
@@ -98,16 +104,63 @@ export class BioGeneratorService {
   }
 
   /**
+   * Pick the active cap: a positive mutation-arg override wins, else the
+   * env default (possibly undefined → no cap).
+   */
+  private resolveCap(maxRepsOverride?: number): number | undefined {
+    return maxRepsOverride && maxRepsOverride > 0
+      ? maxRepsOverride
+      : this.maxReps;
+  }
+
+  /**
+   * Run the bounded-concurrency batch that turns a list of bio candidates
+   * into generated bios. Mutates the reps in place and logs a summary.
+   */
+  private async runBatchGeneration(
+    needsBio: Representative[],
+    candidatesTotal: number,
+    cap: number | undefined,
+    maxRepsOverride: number | undefined,
+  ): Promise<void> {
+    const capSource =
+      maxRepsOverride && maxRepsOverride > 0 ? 'mutation arg' : 'env default';
+    const capNote =
+      cap && candidatesTotal > cap
+        ? ` (capped from ${candidatesTotal} by ${capSource}=${cap})`
+        : '';
+    this.logger.log(
+      `Generating AI bios for ${needsBio.length} representatives${capNote} (concurrency=${this.concurrency}, maxTokens=${this.maxTokens})`,
+    );
+
+    let succeeded = 0;
+    for (let i = 0; i < needsBio.length; i += this.concurrency) {
+      const batch = needsBio.slice(i, i + this.concurrency);
+      const results = await Promise.all(
+        batch.map((rep) => this.tryGenerateBio(rep)),
+      );
+      succeeded += results.filter(Boolean).length;
+    }
+
+    this.logger.log(
+      `Generated ${succeeded}/${needsBio.length} AI bios successfully`,
+    );
+  }
+
+  /**
    * Generate a bio for one rep, mutating it in place on success.
    * Returns true if a bio was successfully generated and applied.
    * Swallows errors so one failed rep doesn't cancel its batch peers.
    */
   private async tryGenerateBio(rep: Representative): Promise<boolean> {
     try {
-      const bio = await this.generateBio(rep);
-      if (bio) {
-        rep.bio = bio;
+      const parsed = await this.generateBio(rep);
+      if (parsed?.bio) {
+        rep.bio = parsed.bio;
         rep.bioSource = 'ai-generated';
+        // Persist the full claims array (#602). Undefined on tier-2
+        // salvage since only the bio string survived parsing.
+        rep.bioClaims = parsed.claims;
         return true;
       }
     } catch (error) {
@@ -121,7 +174,9 @@ export class BioGeneratorService {
   /**
    * Generate a bio for a single representative via the prompt service + LLM.
    */
-  private async generateBio(rep: Representative): Promise<string | undefined> {
+  private async generateBio(
+    rep: Representative,
+  ): Promise<BioResponse | undefined> {
     const structuredText = this.formatRepData(rep);
 
     const { promptText } = await this.promptClient!.getDocumentAnalysisPrompt({
@@ -138,7 +193,7 @@ export class BioGeneratorService {
     if (parsed) {
       this.logClaimsSummary(rep, parsed);
     }
-    return parsed?.bio;
+    return parsed;
   }
 
   private readPositiveInt(envKey: string, fallback: number): number {
@@ -157,26 +212,41 @@ export class BioGeneratorService {
 
   /**
    * Format representative data as key-value text for the prompt.
+   * Deliberately omits committee assignments: the bio's sibling
+   * "At a glance" summary covers those, and including committees in
+   * the bio input causes the LLM to write about them regardless of
+   * prompt instructions, bloats output, and correlates with JSON
+   * truncation. See #594 Task 4.
+   *
+   * CRITICAL: jurisdiction (state) is plumbed explicitly. Without it,
+   * the LLM disambiguates Name+Chamber+District by guessing a state
+   * and hallucinates biographies of wrong-state namesakes. We derive
+   * the jurisdiction from externalId (e.g., "ca-assembly-4" → California).
    */
   private formatRepData(rep: Representative): string {
-    const lines = [
+    const jurisdiction = this.deriveJurisdiction(rep);
+    return [
       `Name: ${rep.name}`,
-      `Chamber: ${rep.chamber}`,
+      `Jurisdiction: ${jurisdiction}`,
       `District: ${rep.district}`,
       `Party: ${rep.party}`,
-    ];
+    ].join('\n');
+  }
 
-    if (rep.committees && rep.committees.length > 0) {
-      const committeeLines = rep.committees
-        .map((c) => {
-          const rolePrefix = c.role ? `${c.role}: ` : '';
-          return `  - ${rolePrefix}${c.name}`;
-        })
-        .join('\n');
-      lines.push(`Committee Assignments:\n${committeeLines}`);
+  /**
+   * Derive a human-readable jurisdiction label from the rep's
+   * externalId prefix + chamber. Gives the LLM enough context to
+   * refuse or correctly identify a representative.
+   */
+  private deriveJurisdiction(rep: Representative): string {
+    const prefix = rep.externalId.split('-')[0]?.toLowerCase() ?? '';
+    const state = STATE_PREFIX_TO_NAME[prefix];
+    if (!state) {
+      // Federal or unknown — fall back to bare chamber so the prompt
+      // can still decide whether to trust training knowledge.
+      return rep.chamber;
     }
-
-    return lines.join('\n');
+    return `${state} State ${rep.chamber}`;
   }
 
   /**
@@ -198,7 +268,7 @@ export class BioGeneratorService {
    */
   private parseBioFromResponse(text: string): BioResponse | undefined {
     // Tier 1: full structured parse
-    const candidate = this.extractJsonCandidate(text);
+    const candidate = extractJsonObjectSlice(text);
     if (candidate) {
       try {
         const parsed = JSON.parse(candidate) as {
@@ -221,7 +291,7 @@ export class BioGeneratorService {
     }
 
     // Tier 2: bio-only salvage
-    const salvagedBio = this.extractBioString(text);
+    const salvagedBio = extractFieldString(text, 'bio');
     if (salvagedBio && salvagedBio.length > 0) {
       this.logger.debug(
         `Bio parse tier-2 salvage: extracted ${salvagedBio.length}-char bio from ${text.length}-char response (JSON was malformed or truncated)`,
@@ -235,121 +305,6 @@ export class BioGeneratorService {
       `Bio parse failed entirely (both tiers): ${text.length}-char response. Head: "${head}..." Tail: "...${tail}"`,
     );
     return undefined;
-  }
-
-  /**
-   * Extract the value of the "bio" field from raw LLM text using a careful
-   * char-by-char scan that handles escape sequences. Works even when the
-   * surrounding JSON is malformed or truncated — only requires that the
-   * bio field itself was emitted with a closing quote.
-   */
-  private extractBioString(text: string): string | undefined {
-    const match = BIO_FIELD_OPENER.exec(text);
-    if (match?.index === undefined) return undefined;
-
-    const start = match.index + match[0].length;
-    let out = '';
-    let escaped = false;
-    for (let i = start; i < text.length; i++) {
-      const ch = text[i];
-      if (escaped) {
-        // JSON escape sequences we care about
-        switch (ch) {
-          case 'n':
-            out += '\n';
-            break;
-          case 't':
-            out += '\t';
-            break;
-          case 'r':
-            out += '\r';
-            break;
-          case '"':
-            out += '"';
-            break;
-          case '\\':
-            out += '\\';
-            break;
-          case '/':
-            out += '/';
-            break;
-          default:
-            out += ch;
-        }
-        escaped = false;
-        continue;
-      }
-      if (ch === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (ch === '"') {
-        return out.trim();
-      }
-      out += ch;
-    }
-    // Hit end of text without closing quote — response was truncated
-    // mid-bio. If we got a reasonable amount of text, return it anyway.
-    return out.trim().length > 40 ? out.trim() : undefined;
-  }
-
-  /**
-   * Pull a JSON object out of raw LLM text. Strips code fences, then
-   * scans for the first balanced {...} block (handling nested objects
-   * and strings with embedded braces). Handles prose before AND after.
-   */
-  private extractJsonCandidate(text: string): string | undefined {
-    const trimmed = this.stripCodeFences(text.trim());
-    const start = trimmed.indexOf('{');
-    if (start < 0) return undefined;
-    return this.sliceBalancedObject(trimmed, start);
-  }
-
-  private stripCodeFences(text: string): string {
-    return text.startsWith('```')
-      ? text.replace(LEADING_CODE_FENCE, '').replace(TRAILING_CODE_FENCE, '')
-      : text;
-  }
-
-  /**
-   * Walk `text` from `start` (which must be a `{`) and return the slice up
-   * to and including its matching `}`, or undefined if the object never
-   * closes. Correctly skips braces that appear inside JSON string values.
-   */
-  private sliceBalancedObject(text: string, start: number): string | undefined {
-    const state = { depth: 0, inString: false, escaped: false };
-    for (let i = start; i < text.length; i++) {
-      if (this.advanceJsonState(state, text[i]) && state.depth === 0) {
-        return text.slice(start, i + 1);
-      }
-    }
-    return undefined;
-  }
-
-  /**
-   * Advance a one-char JSON-parse state machine. Returns true iff the
-   * character was a closing `}` (so the caller can check depth).
-   */
-  private advanceJsonState(state: JsonScanState, ch: string): boolean {
-    if (state.escaped) {
-      state.escaped = false;
-      return false;
-    }
-    if (ch === '\\') {
-      state.escaped = true;
-      return false;
-    }
-    if (ch === '"') {
-      state.inString = !state.inString;
-      return false;
-    }
-    if (state.inString) return false;
-    if (ch === '{') state.depth++;
-    else if (ch === '}') {
-      state.depth--;
-      return true;
-    }
-    return false;
   }
 
   /**
@@ -374,19 +329,6 @@ export class BioGeneratorService {
       `Bio for ${rep.name}: ${claims.length} claims (${sourceCount} source, ${trainingCount} training), ${parsed.wordCount ?? 'unknown'} words`,
     );
   }
-}
-
-interface BioClaim {
-  sentence: string;
-  origin: 'source' | 'training';
-  sourceField?: string | null;
-  confidence?: 'high' | 'medium';
-}
-
-interface JsonScanState {
-  depth: number;
-  inString: boolean;
-  escaped: boolean;
 }
 
 interface BioResponse {

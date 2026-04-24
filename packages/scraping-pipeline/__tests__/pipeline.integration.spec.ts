@@ -164,6 +164,7 @@ describe("Pipeline Integration Tests", () => {
 
     mockStore = {
       findLatest: jest.fn().mockResolvedValue(createManifest()),
+      getNextVersion: jest.fn().mockResolvedValue(2),
       save: jest.fn().mockImplementation(async (m) => m),
       incrementSuccess: jest.fn().mockResolvedValue(undefined),
       incrementFailure: jest.fn().mockResolvedValue(undefined),
@@ -219,6 +220,7 @@ describe("Pipeline Integration Tests", () => {
 
     it("should run AI analysis when no manifest exists and extract items", async () => {
       mockStore.findLatest.mockResolvedValue(undefined);
+      mockStore.getNextVersion.mockResolvedValue(1);
 
       const result = await pipeline.execute(createSource(), "california");
 

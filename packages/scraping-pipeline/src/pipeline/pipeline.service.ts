@@ -116,7 +116,11 @@ export class ScrapingPipelineService {
       // Re-derive manifest
       const newManifest = await this.analyzer.analyze(html, source);
       newManifest.regionId = regionId;
-      newManifest.version = manifest.version + 1;
+      newManifest.version = await this.manifestStore.getNextVersion(
+        regionId,
+        source.url,
+        source.dataType,
+      );
       await this.manifestStore.save(newManifest);
 
       // Re-extract with new manifest
@@ -226,7 +230,11 @@ export class ScrapingPipelineService {
 
     // Set region and version
     manifest.regionId = regionId;
-    manifest.version = existing ? existing.version + 1 : 1;
+    manifest.version = await this.manifestStore.getNextVersion(
+      regionId,
+      source.url,
+      source.dataType,
+    );
     manifest.structureHash = currentStructureHash;
 
     // Persist
