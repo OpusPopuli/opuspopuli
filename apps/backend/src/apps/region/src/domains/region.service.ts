@@ -32,6 +32,7 @@ import {
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { REGION_CACHE } from './region.tokens';
 import { BioGeneratorService } from './bio-generator.service';
+import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 
 /**
  * Minimal interface for data fetching used by sync methods.
@@ -53,6 +54,7 @@ import {
 } from './models/proposition.model';
 import { PaginatedMeetings } from './models/meeting.model';
 import {
+  BioClaimModel,
   CommitteeAssignmentModel,
   ContactInfoModel,
   PaginatedRepresentatives,
@@ -107,8 +109,10 @@ type RepresentativeRecord = {
   photoUrl: string | null;
   contactInfo: unknown;
   committees: unknown;
+  committeesSummary: string | null;
   bio: string | null;
   bioSource: string | null;
+  bioClaims: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -227,6 +231,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     @Inject(SECRETS_PROVIDER)
     private readonly secretsProvider?: ISecretsProvider,
     @Optional() private readonly bioGenerator?: BioGeneratorService,
+    @Optional()
+    private readonly committeeSummaryGenerator?: CommitteeSummaryGeneratorService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -429,7 +435,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    * Sync data types from all loaded plugins (federal + local).
    * When dataTypes is provided, only those types are synced.
    */
-  async syncAll(dataTypes?: string[]): Promise<SyncResult[]> {
+  async syncAll(dataTypes?: string[], maxReps?: number): Promise<SyncResult[]> {
     this.logger.log(
       dataTypes
         ? `Starting data sync for: ${dataTypes.join(', ')}`
@@ -449,6 +455,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             registered.instance,
             registered.name,
             dataType,
+            maxReps,
           );
           results.push(result);
         } catch (error) {
@@ -491,6 +498,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     provider: DataFetcher,
     pluginName: string,
     dataType: DataType,
+    maxReps?: number,
   ): Promise<SyncResult> {
     this.logger.log(`Syncing ${dataType} from ${pluginName}`);
     const startTime = Date.now();
@@ -503,7 +511,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     > = {
       [DataType.PROPOSITIONS]: () => this.syncPropositions(provider),
       [DataType.MEETINGS]: () => this.syncMeetings(provider),
-      [DataType.REPRESENTATIVES]: () => this.syncRepresentatives(provider),
+      [DataType.REPRESENTATIVES]: () =>
+        this.syncRepresentatives(provider, maxReps),
       [DataType.CAMPAIGN_FINANCE]: () => this.syncCampaignFinance(provider),
     };
 
@@ -680,8 +689,36 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    * This reduces database round trips from O(2n) to O(2) queries
    * @see https://github.com/OpusPopuli/opuspopuli/issues/197
    */
+  /**
+   * Defensive guard against garbage `district` values from flaky LLM-
+   * generated manifests. California reps encode district numerically
+   * in `externalId` (e.g., `ca-assembly-02`), so when the scrape's
+   * district field doesn't look numeric we derive the correct value
+   * from externalId. Without this, a manifest that captures a label
+   * node ("District:") instead of the number clobbers the DB and
+   * breaks address-based rep matching for every voter in the state.
+   */
+  private sanitizeDistrict(rep: Representative): string {
+    const raw = (rep.district ?? '').trim();
+    if (/^\d+$/.test(raw)) return raw;
+    const match = rep.externalId.match(/-0*(\d+)$/);
+    if (match) {
+      this.logger.warn(
+        `Sanitized district for ${rep.name} (${rep.externalId}): scraped value "${raw}" is not numeric, using externalId-derived "${match[1]}"`,
+      );
+      return match[1];
+    }
+    if (raw) {
+      this.logger.warn(
+        `Non-numeric district "${raw}" for ${rep.name} (${rep.externalId}) and no numeric suffix to fall back on; keeping raw value`,
+      );
+    }
+    return raw;
+  }
+
   private async syncRepresentatives(
     provider: DataFetcher = this.regionService,
+    maxReps?: number,
   ): Promise<{
     processed: number;
     created: number;
@@ -694,7 +731,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
 
     // Enrich with AI-generated bios where missing (scraped bios are preserved)
     if (this.bioGenerator) {
-      await this.bioGenerator.enrichBios(reps);
+      await this.bioGenerator.enrichBios(reps, maxReps);
     }
 
     // Get existing externalIds in a single query to calculate created vs updated
@@ -712,32 +749,44 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       this.db,
       reps.map((rep) => {
         const lastName = extractLastName(rep.name);
+        const district = this.sanitizeDistrict(rep);
         return this.db.representative.upsert({
           where: { externalId: rep.externalId },
+          // On UPDATE: `undefined` tells Prisma to skip a field and
+          // preserve the existing DB value. A null from the scrape
+          // (field present in the extractor output but unset for this
+          // rep) would otherwise clobber previously-enriched data —
+          // e.g., wiping an AI-generated bio when the Assembly detail
+          // scrape stops returning a bio field. Convert null→undefined
+          // for every optional enrichment field.
           update: {
             name: rep.name,
             lastName,
             chamber: rep.chamber,
-            district: rep.district,
+            district,
             party: rep.party,
-            photoUrl: rep.photoUrl,
-            contactInfo: rep.contactInfo as object | undefined,
-            committees: rep.committees as object[] | undefined,
-            bio: rep.bio,
-            bioSource: rep.bioSource,
+            photoUrl: rep.photoUrl ?? undefined,
+            contactInfo: (rep.contactInfo as object | null) ?? undefined,
+            committees: (rep.committees as object[] | null) ?? undefined,
+            committeesSummary: rep.committeesSummary ?? undefined,
+            bio: rep.bio ?? undefined,
+            bioSource: rep.bioSource ?? undefined,
+            bioClaims: (rep.bioClaims as object[] | null) ?? undefined,
           },
           create: {
             externalId: rep.externalId,
             name: rep.name,
             lastName,
             chamber: rep.chamber,
-            district: rep.district,
+            district,
             party: rep.party,
             photoUrl: rep.photoUrl,
             contactInfo: rep.contactInfo as object | undefined,
             committees: rep.committees as object[] | undefined,
+            committeesSummary: rep.committeesSummary,
             bio: rep.bio,
             bioSource: rep.bioSource,
+            bioClaims: rep.bioClaims as object[] | undefined,
           },
         });
       }),
@@ -745,6 +794,14 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
 
     // Invalidate cached representative queries (#459)
     await this.invalidateCache('representatives:');
+
+    // Post-upsert: generate the AI committee-assignment preamble for any
+    // reps that have committees but no summary yet. DB-driven so it runs
+    // even when a given sync cycle only refreshes part of the roster
+    // (e.g., Senate-only when Assembly scrape breaks). See #594 Task 4.
+    if (this.committeeSummaryGenerator) {
+      await this.committeeSummaryGenerator.generateMissingSummaries(maxReps);
+    }
 
     const created = reps.filter(
       (r) => !existingExternalIds.has(r.externalId),
@@ -1157,8 +1214,12 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             contactInfo: (item.contactInfo as ContactInfoModel) ?? undefined,
             committees:
               (item.committees as CommitteeAssignmentModel[]) ?? undefined,
+            committeesSummary: item.committeesSummary ?? undefined,
             bio: item.bio ?? undefined,
             bioSource: item.bioSource ?? undefined,
+            bioClaims: Array.isArray(item.bioClaims)
+              ? (item.bioClaims as unknown as BioClaimModel[])
+              : undefined,
           })),
           total,
           hasMore,

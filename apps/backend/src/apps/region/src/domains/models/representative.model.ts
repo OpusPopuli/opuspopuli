@@ -34,6 +34,27 @@ export class ContactInfoModel {
 }
 
 /**
+ * Per-sentence attribution for an AI-generated biography.
+ */
+@ObjectType()
+export class BioClaimModel {
+  @Field()
+  sentence!: string;
+
+  @Field()
+  origin!: string;
+
+  @Field({ nullable: true })
+  sourceField?: string;
+
+  @Field({ nullable: true })
+  sourceHint?: string;
+
+  @Field({ nullable: true })
+  confidence?: string;
+}
+
+/**
  * A legislative committee assignment
  */
 @ObjectType()
@@ -81,10 +102,16 @@ export class RepresentativeModel {
   committees?: CommitteeAssignmentModel[];
 
   @Field({ nullable: true })
+  committeesSummary?: string;
+
+  @Field({ nullable: true })
   bio?: string;
 
   @Field({ nullable: true })
   bioSource?: string;
+
+  @Field(() => [BioClaimModel], { nullable: true })
+  bioClaims?: BioClaimModel[];
 
   @Field()
   createdAt!: Date;

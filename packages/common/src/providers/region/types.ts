@@ -101,6 +101,31 @@ export interface CommitteeAssignment {
 export type BioSource = "scraped" | "ai-generated";
 
 /**
+ * Per-sentence attribution for an AI-generated biography. Populated
+ * when the LLM returns its claim breakdown alongside the bio text.
+ * See #602.
+ */
+export interface BioClaim {
+  /** Verbatim sentence from the bio this claim describes. */
+  sentence: string;
+  /** Where the fact came from. */
+  origin: "source" | "training";
+  /**
+   * For origin="source": dot-path in the source data (e.g., "committees[0].name"). null otherwise.
+   */
+  sourceField?: string | null;
+  /**
+   * For origin="training": short phrase describing the kind of source
+   * the fact is drawn from (e.g., "official legislative bio",
+   * "press coverage of 2022 election"). null for source-origin claims.
+   * Advisory hint, not a verified citation.
+   */
+  sourceHint?: string | null;
+  /** LLM's self-reported confidence. */
+  confidence?: "high" | "medium";
+}
+
+/**
  * Elected representative data
  */
 export interface Representative {
@@ -112,8 +137,10 @@ export interface Representative {
   photoUrl?: string;
   contactInfo?: ContactInfo;
   committees?: CommitteeAssignment[];
+  committeesSummary?: string;
   bio?: string;
   bioSource?: BioSource;
+  bioClaims?: BioClaim[];
 }
 
 // ============================================

@@ -74,10 +74,23 @@ export interface Representative {
   photoUrl?: string;
   contactInfo?: ContactInfo;
   committees?: CommitteeAssignment[];
+  committeesSummary?: string;
   bio?: string;
   bioSource?: string;
+  bioClaims?: BioClaim[];
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Per-sentence attribution for an AI-generated bio. See #602.
+ */
+export interface BioClaim {
+  sentence: string;
+  origin: "source" | "training" | string;
+  sourceField?: string | null;
+  sourceHint?: string | null;
+  confidence?: "high" | "medium" | string;
 }
 
 export interface Office {
@@ -462,8 +475,16 @@ export const GET_REPRESENTATIVE = gql`
         role
         url
       }
+      committeesSummary
       bio
       bioSource
+      bioClaims {
+        sentence
+        origin
+        sourceField
+        sourceHint
+        confidence
+      }
       createdAt
       updatedAt
     }

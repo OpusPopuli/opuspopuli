@@ -17,6 +17,7 @@ import { RegionDomainService } from './region.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
 import { BioGeneratorService } from './bio-generator.service';
+import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
 import { REGION_CACHE } from './region.tokens';
 
@@ -70,6 +71,7 @@ const promptClientAsyncConfig = {
     RegionResolver,
     RegionScheduler,
     BioGeneratorService,
+    CommitteeSummaryGeneratorService,
     // Alias for injecting the pipeline into RegionDomainService
     {
       provide: 'SCRAPING_PIPELINE',

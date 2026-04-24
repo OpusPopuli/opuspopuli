@@ -534,8 +534,8 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation SyncRegionData($dataTypes: [DataType!]) {\n  syncRegionData(dataTypes: $dataTypes) {\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}",
-                "variables": "{\n  \"dataTypes\": null\n}"
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $maxReps: Int) {\n  syncRegionData(dataTypes: $dataTypes, maxReps: $maxReps) {\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"REPRESENTATIVES\"],\n  \"maxReps\": 5\n}"
               }
             },
             "url": {

@@ -574,8 +574,10 @@ model Representative {
   photoUrl    String?   @map("photo_url")
   contactInfo Json?     @map("contact_info")
   committees  Json?     @map("committees")       /// CommitteeAssignment[] as JSON
+  committeesSummary String? @map("committees_summary") @db.Text /// AI-generated preamble describing the policy areas touched by committee assignments
   bio         String?   @db.Text
   bioSource   String?   @map("bio_source") @db.VarChar(20) /// 'scraped' | 'ai-generated'
+  bioClaims   Json?     @map("bio_claims") /// BioClaim[] — per-sentence attribution for ai-generated bios
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz

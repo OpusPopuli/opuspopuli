@@ -1,10 +1,25 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PromptClientService } from '@opuspopuli/prompt-client';
-import type { ILLMProvider, Representative } from '@opuspopuli/common';
+import type {
+  BioClaim,
+  ILLMProvider,
+  Representative,
+} from '@opuspopuli/common';
 
 /** Matches the opening `"bio": "` token in the LLM's JSON response. */
 const BIO_FIELD_OPENER = /"bio"\s*:\s*"/;
+
+/**
+ * Maps the externalId region prefix to a human-readable state name.
+ * Extend when a new state comes online. Federal reps use a different
+ * prefix ("federal-" or similar); that case falls through to the
+ * bare chamber label, and the prompt refuses to use training
+ * knowledge if jurisdiction is ambiguous.
+ */
+const STATE_PREFIX_TO_NAME: Record<string, string> = {
+  ca: 'California',
+};
 /** Strips leading ```json (or ```) markdown fences from an LLM response. */
 const LEADING_CODE_FENCE = /^```(?:json)?\n?/;
 /** Strips the trailing ``` fence. */
@@ -53,21 +68,32 @@ export class BioGeneratorService {
   /**
    * Enrich a batch of representatives with AI-generated bios where missing.
    * Returns the same array with bios populated for those that lacked one.
+   *
+   * @param maxRepsOverride — per-call cap that takes precedence over the
+   *   BIO_GENERATOR_MAX_REPS env default. Wired to the syncRegionData
+   *   mutation's `maxReps` arg so operators can choose a cap per run
+   *   without bouncing the service. Pass 0 or undefined to fall back
+   *   to the env default.
    */
-  async enrichBios(reps: Representative[]): Promise<Representative[]> {
+  async enrichBios(
+    reps: Representative[],
+    maxRepsOverride?: number,
+  ): Promise<Representative[]> {
     if (!this.promptClient || !this.llm) {
       return reps;
     }
 
+    const cap =
+      maxRepsOverride && maxRepsOverride > 0 ? maxRepsOverride : this.maxReps;
     const candidates = reps.filter((r) => !r.bio || r.bio.trim() === '');
-    const needsBio = this.maxReps
-      ? candidates.slice(0, this.maxReps)
-      : candidates;
+    const needsBio = cap ? candidates.slice(0, cap) : candidates;
 
     if (needsBio.length > 0) {
+      const capSource =
+        maxRepsOverride && maxRepsOverride > 0 ? 'mutation arg' : 'env default';
       const capNote =
-        this.maxReps && candidates.length > this.maxReps
-          ? ` (capped from ${candidates.length} by BIO_GENERATOR_MAX_REPS=${this.maxReps})`
+        cap && candidates.length > cap
+          ? ` (capped from ${candidates.length} by ${capSource}=${cap})`
           : '';
       this.logger.log(
         `Generating AI bios for ${needsBio.length} representatives${capNote} (concurrency=${this.concurrency}, maxTokens=${this.maxTokens})`,
@@ -104,10 +130,13 @@ export class BioGeneratorService {
    */
   private async tryGenerateBio(rep: Representative): Promise<boolean> {
     try {
-      const bio = await this.generateBio(rep);
-      if (bio) {
-        rep.bio = bio;
+      const parsed = await this.generateBio(rep);
+      if (parsed?.bio) {
+        rep.bio = parsed.bio;
         rep.bioSource = 'ai-generated';
+        // Persist the full claims array (#602). Undefined on tier-2
+        // salvage since only the bio string survived parsing.
+        rep.bioClaims = parsed.claims;
         return true;
       }
     } catch (error) {
@@ -121,7 +150,9 @@ export class BioGeneratorService {
   /**
    * Generate a bio for a single representative via the prompt service + LLM.
    */
-  private async generateBio(rep: Representative): Promise<string | undefined> {
+  private async generateBio(
+    rep: Representative,
+  ): Promise<BioResponse | undefined> {
     const structuredText = this.formatRepData(rep);
 
     const { promptText } = await this.promptClient!.getDocumentAnalysisPrompt({
@@ -138,7 +169,7 @@ export class BioGeneratorService {
     if (parsed) {
       this.logClaimsSummary(rep, parsed);
     }
-    return parsed?.bio;
+    return parsed;
   }
 
   private readPositiveInt(envKey: string, fallback: number): number {
@@ -157,26 +188,41 @@ export class BioGeneratorService {
 
   /**
    * Format representative data as key-value text for the prompt.
+   * Deliberately omits committee assignments: the bio's sibling
+   * "At a glance" summary covers those, and including committees in
+   * the bio input causes the LLM to write about them regardless of
+   * prompt instructions, bloats output, and correlates with JSON
+   * truncation. See #594 Task 4.
+   *
+   * CRITICAL: jurisdiction (state) is plumbed explicitly. Without it,
+   * the LLM disambiguates Name+Chamber+District by guessing a state
+   * and hallucinates biographies of wrong-state namesakes. We derive
+   * the jurisdiction from externalId (e.g., "ca-assembly-4" → California).
    */
   private formatRepData(rep: Representative): string {
-    const lines = [
+    const jurisdiction = this.deriveJurisdiction(rep);
+    return [
       `Name: ${rep.name}`,
-      `Chamber: ${rep.chamber}`,
+      `Jurisdiction: ${jurisdiction}`,
       `District: ${rep.district}`,
       `Party: ${rep.party}`,
-    ];
+    ].join('\n');
+  }
 
-    if (rep.committees && rep.committees.length > 0) {
-      const committeeLines = rep.committees
-        .map((c) => {
-          const rolePrefix = c.role ? `${c.role}: ` : '';
-          return `  - ${rolePrefix}${c.name}`;
-        })
-        .join('\n');
-      lines.push(`Committee Assignments:\n${committeeLines}`);
+  /**
+   * Derive a human-readable jurisdiction label from the rep's
+   * externalId prefix + chamber. Gives the LLM enough context to
+   * refuse or correctly identify a representative.
+   */
+  private deriveJurisdiction(rep: Representative): string {
+    const prefix = rep.externalId.split('-')[0]?.toLowerCase() ?? '';
+    const state = STATE_PREFIX_TO_NAME[prefix];
+    if (!state) {
+      // Federal or unknown — fall back to bare chamber so the prompt
+      // can still decide whether to trust training knowledge.
+      return rep.chamber;
     }
-
-    return lines.join('\n');
+    return `${state} State ${rep.chamber}`;
   }
 
   /**
@@ -374,13 +420,6 @@ export class BioGeneratorService {
       `Bio for ${rep.name}: ${claims.length} claims (${sourceCount} source, ${trainingCount} training), ${parsed.wordCount ?? 'unknown'} words`,
     );
   }
-}
-
-interface BioClaim {
-  sentence: string;
-  origin: 'source' | 'training';
-  sourceField?: string | null;
-  confidence?: 'high' | 'medium';
 }
 
 interface JsonScanState {

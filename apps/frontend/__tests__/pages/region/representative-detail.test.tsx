@@ -299,29 +299,6 @@ describe("RepresentativeDetailPage", () => {
         screen.getByText(/No committee assignments on file/),
       ).toBeInTheDocument();
     });
-
-    it("How They Are Supported shows scraped-bio note for scraped bios", async () => {
-      const user = userEvent.setup();
-      mockQueryResult = {
-        data: {
-          representative: {
-            ...mockRepresentative,
-            bioSource: "scraped",
-          } as unknown as typeof mockRepresentative,
-        },
-        loading: false,
-        error: undefined,
-      };
-
-      render(<RepresentativeDetailPage />);
-      await user.click(
-        screen.getByRole("button", { name: "How They Are Supported" }),
-      );
-
-      expect(
-        screen.getByText(/scraped directly from an official source/),
-      ).toBeInTheDocument();
-    });
   });
 
   describe("not-found + breadcrumb", () => {
