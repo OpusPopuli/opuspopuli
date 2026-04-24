@@ -203,8 +203,17 @@ type IndependentExpenditureRecord = {
  * Strips trailing suffixes (Jr., Sr., III, etc.) so a rep named
  * "Patrick J. Ahrens Jr." sorts under "Ahrens", not "Jr".
  */
-/** Trailing numeric district suffix on an externalId (e.g., `ca-assembly-02` → `2`). */
-const EXTERNAL_ID_DISTRICT_SUFFIX = /-0*(\d+)$/;
+/**
+ * Extract the trailing numeric segment from an externalId
+ * (e.g., `ca-assembly-02` → `"2"`). Done via split+parseInt rather
+ * than a regex to avoid backtracking heuristics on patterns like
+ * `-0*(\d+)$`.
+ */
+function deriveDistrictFromExternalId(externalId: string): string | undefined {
+  const last = externalId.split('-').at(-1);
+  if (!last || !/^\d+$/.test(last)) return undefined;
+  return String(Number.parseInt(last, 10));
+}
 
 export function extractLastName(fullName: string): string {
   const trimmed = fullName.trim();
@@ -704,12 +713,12 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   private sanitizeDistrict(rep: Representative): string {
     const raw = (rep.district ?? '').trim();
     if (/^\d+$/.test(raw)) return raw;
-    const match = EXTERNAL_ID_DISTRICT_SUFFIX.exec(rep.externalId);
-    if (match) {
+    const derived = deriveDistrictFromExternalId(rep.externalId);
+    if (derived !== undefined) {
       this.logger.warn(
-        `Sanitized district for ${rep.name} (${rep.externalId}): scraped value "${raw}" is not numeric, using externalId-derived "${match[1]}"`,
+        `Sanitized district for ${rep.name} (${rep.externalId}): scraped value "${raw}" is not numeric, using externalId-derived "${derived}"`,
       );
-      return match[1];
+      return derived;
     }
     if (raw) {
       this.logger.warn(
