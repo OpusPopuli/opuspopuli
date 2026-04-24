@@ -153,7 +153,7 @@ function Bio({ rep }: { readonly rep: Representative }) {
       </div>
       <div className="text-[#334155] leading-relaxed space-y-3">
         {rep.bio
-          .split(/\n\s*\n/)
+          .split(/\n\n+/)
           .map((p) => p.trim())
           .filter(Boolean)
           .map((p) => (

@@ -203,6 +203,9 @@ type IndependentExpenditureRecord = {
  * Strips trailing suffixes (Jr., Sr., III, etc.) so a rep named
  * "Patrick J. Ahrens Jr." sorts under "Ahrens", not "Jr".
  */
+/** Trailing numeric district suffix on an externalId (e.g., `ca-assembly-02` → `2`). */
+const EXTERNAL_ID_DISTRICT_SUFFIX = /-0*(\d+)$/;
+
 export function extractLastName(fullName: string): string {
   const trimmed = fullName.trim();
   if (!trimmed) return '';
@@ -701,7 +704,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   private sanitizeDistrict(rep: Representative): string {
     const raw = (rep.district ?? '').trim();
     if (/^\d+$/.test(raw)) return raw;
-    const match = rep.externalId.match(/-0*(\d+)$/);
+    const match = EXTERNAL_ID_DISTRICT_SUFFIX.exec(rep.externalId);
     if (match) {
       this.logger.warn(
         `Sanitized district for ${rep.name} (${rep.externalId}): scraped value "${raw}" is not numeric, using externalId-derived "${match[1]}"`,

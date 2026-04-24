@@ -87,10 +87,12 @@ export interface Representative {
  */
 export interface BioClaim {
   sentence: string;
-  origin: "source" | "training" | string;
+  /** "source" (from authoritative input) or "training" (from LLM training data). */
+  origin: string;
   sourceField?: string | null;
   sourceHint?: string | null;
-  confidence?: "high" | "medium" | string;
+  /** "high" or "medium" — the LLM's self-reported confidence. */
+  confidence?: string;
 }
 
 export interface Office {

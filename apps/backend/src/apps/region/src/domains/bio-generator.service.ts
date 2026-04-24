@@ -83,33 +83,16 @@ export class BioGeneratorService {
       return reps;
     }
 
-    const cap =
-      maxRepsOverride && maxRepsOverride > 0 ? maxRepsOverride : this.maxReps;
     const candidates = reps.filter((r) => !r.bio || r.bio.trim() === '');
+    const cap = this.resolveCap(maxRepsOverride);
     const needsBio = cap ? candidates.slice(0, cap) : candidates;
 
     if (needsBio.length > 0) {
-      const capSource =
-        maxRepsOverride && maxRepsOverride > 0 ? 'mutation arg' : 'env default';
-      const capNote =
-        cap && candidates.length > cap
-          ? ` (capped from ${candidates.length} by ${capSource}=${cap})`
-          : '';
-      this.logger.log(
-        `Generating AI bios for ${needsBio.length} representatives${capNote} (concurrency=${this.concurrency}, maxTokens=${this.maxTokens})`,
-      );
-
-      let succeeded = 0;
-      for (let i = 0; i < needsBio.length; i += this.concurrency) {
-        const batch = needsBio.slice(i, i + this.concurrency);
-        const results = await Promise.all(
-          batch.map((rep) => this.tryGenerateBio(rep)),
-        );
-        succeeded += results.filter(Boolean).length;
-      }
-
-      this.logger.log(
-        `Generated ${succeeded}/${needsBio.length} AI bios successfully`,
+      await this.runBatchGeneration(
+        needsBio,
+        candidates.length,
+        cap,
+        maxRepsOverride,
       );
     }
 
@@ -121,6 +104,50 @@ export class BioGeneratorService {
     }
 
     return reps;
+  }
+
+  /**
+   * Pick the active cap: a positive mutation-arg override wins, else the
+   * env default (possibly undefined → no cap).
+   */
+  private resolveCap(maxRepsOverride?: number): number | undefined {
+    return maxRepsOverride && maxRepsOverride > 0
+      ? maxRepsOverride
+      : this.maxReps;
+  }
+
+  /**
+   * Run the bounded-concurrency batch that turns a list of bio candidates
+   * into generated bios. Mutates the reps in place and logs a summary.
+   */
+  private async runBatchGeneration(
+    needsBio: Representative[],
+    candidatesTotal: number,
+    cap: number | undefined,
+    maxRepsOverride: number | undefined,
+  ): Promise<void> {
+    const capSource =
+      maxRepsOverride && maxRepsOverride > 0 ? 'mutation arg' : 'env default';
+    const capNote =
+      cap && candidatesTotal > cap
+        ? ` (capped from ${candidatesTotal} by ${capSource}=${cap})`
+        : '';
+    this.logger.log(
+      `Generating AI bios for ${needsBio.length} representatives${capNote} (concurrency=${this.concurrency}, maxTokens=${this.maxTokens})`,
+    );
+
+    let succeeded = 0;
+    for (let i = 0; i < needsBio.length; i += this.concurrency) {
+      const batch = needsBio.slice(i, i + this.concurrency);
+      const results = await Promise.all(
+        batch.map((rep) => this.tryGenerateBio(rep)),
+      );
+      succeeded += results.filter(Boolean).length;
+    }
+
+    this.logger.log(
+      `Generated ${succeeded}/${needsBio.length} AI bios successfully`,
+    );
   }
 
   /**
