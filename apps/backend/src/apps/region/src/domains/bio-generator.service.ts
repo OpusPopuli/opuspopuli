@@ -6,9 +6,10 @@ import type {
   ILLMProvider,
   Representative,
 } from '@opuspopuli/common';
-
-/** Matches the opening `"bio": "` token in the LLM's JSON response. */
-const BIO_FIELD_OPENER = /"bio"\s*:\s*"/;
+import {
+  extractFieldString,
+  extractJsonObjectSlice,
+} from './llm-json-salvage.util';
 
 /**
  * Maps the externalId region prefix to a human-readable state name.
@@ -20,10 +21,6 @@ const BIO_FIELD_OPENER = /"bio"\s*:\s*"/;
 const STATE_PREFIX_TO_NAME: Record<string, string> = {
   ca: 'California',
 };
-/** Strips leading ```json (or ```) markdown fences from an LLM response. */
-const LEADING_CODE_FENCE = /^```(?:json)?\n?/;
-/** Strips the trailing ``` fence. */
-const TRAILING_CODE_FENCE = /\n?```$/;
 
 /**
  * Generates AI bios for representatives that lack a scraped biography.
@@ -271,7 +268,7 @@ export class BioGeneratorService {
    */
   private parseBioFromResponse(text: string): BioResponse | undefined {
     // Tier 1: full structured parse
-    const candidate = this.extractJsonCandidate(text);
+    const candidate = extractJsonObjectSlice(text);
     if (candidate) {
       try {
         const parsed = JSON.parse(candidate) as {
@@ -294,7 +291,7 @@ export class BioGeneratorService {
     }
 
     // Tier 2: bio-only salvage
-    const salvagedBio = this.extractBioString(text);
+    const salvagedBio = extractFieldString(text, 'bio');
     if (salvagedBio && salvagedBio.length > 0) {
       this.logger.debug(
         `Bio parse tier-2 salvage: extracted ${salvagedBio.length}-char bio from ${text.length}-char response (JSON was malformed or truncated)`,
@@ -308,121 +305,6 @@ export class BioGeneratorService {
       `Bio parse failed entirely (both tiers): ${text.length}-char response. Head: "${head}..." Tail: "...${tail}"`,
     );
     return undefined;
-  }
-
-  /**
-   * Extract the value of the "bio" field from raw LLM text using a careful
-   * char-by-char scan that handles escape sequences. Works even when the
-   * surrounding JSON is malformed or truncated — only requires that the
-   * bio field itself was emitted with a closing quote.
-   */
-  private extractBioString(text: string): string | undefined {
-    const match = BIO_FIELD_OPENER.exec(text);
-    if (match?.index === undefined) return undefined;
-
-    const start = match.index + match[0].length;
-    let out = '';
-    let escaped = false;
-    for (let i = start; i < text.length; i++) {
-      const ch = text[i];
-      if (escaped) {
-        // JSON escape sequences we care about
-        switch (ch) {
-          case 'n':
-            out += '\n';
-            break;
-          case 't':
-            out += '\t';
-            break;
-          case 'r':
-            out += '\r';
-            break;
-          case '"':
-            out += '"';
-            break;
-          case '\\':
-            out += '\\';
-            break;
-          case '/':
-            out += '/';
-            break;
-          default:
-            out += ch;
-        }
-        escaped = false;
-        continue;
-      }
-      if (ch === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (ch === '"') {
-        return out.trim();
-      }
-      out += ch;
-    }
-    // Hit end of text without closing quote — response was truncated
-    // mid-bio. If we got a reasonable amount of text, return it anyway.
-    return out.trim().length > 40 ? out.trim() : undefined;
-  }
-
-  /**
-   * Pull a JSON object out of raw LLM text. Strips code fences, then
-   * scans for the first balanced {...} block (handling nested objects
-   * and strings with embedded braces). Handles prose before AND after.
-   */
-  private extractJsonCandidate(text: string): string | undefined {
-    const trimmed = this.stripCodeFences(text.trim());
-    const start = trimmed.indexOf('{');
-    if (start < 0) return undefined;
-    return this.sliceBalancedObject(trimmed, start);
-  }
-
-  private stripCodeFences(text: string): string {
-    return text.startsWith('```')
-      ? text.replace(LEADING_CODE_FENCE, '').replace(TRAILING_CODE_FENCE, '')
-      : text;
-  }
-
-  /**
-   * Walk `text` from `start` (which must be a `{`) and return the slice up
-   * to and including its matching `}`, or undefined if the object never
-   * closes. Correctly skips braces that appear inside JSON string values.
-   */
-  private sliceBalancedObject(text: string, start: number): string | undefined {
-    const state = { depth: 0, inString: false, escaped: false };
-    for (let i = start; i < text.length; i++) {
-      if (this.advanceJsonState(state, text[i]) && state.depth === 0) {
-        return text.slice(start, i + 1);
-      }
-    }
-    return undefined;
-  }
-
-  /**
-   * Advance a one-char JSON-parse state machine. Returns true iff the
-   * character was a closing `}` (so the caller can check depth).
-   */
-  private advanceJsonState(state: JsonScanState, ch: string): boolean {
-    if (state.escaped) {
-      state.escaped = false;
-      return false;
-    }
-    if (ch === '\\') {
-      state.escaped = true;
-      return false;
-    }
-    if (ch === '"') {
-      state.inString = !state.inString;
-      return false;
-    }
-    if (state.inString) return false;
-    if (ch === '{') state.depth++;
-    else if (ch === '}') {
-      state.depth--;
-      return true;
-    }
-    return false;
   }
 
   /**
@@ -447,12 +329,6 @@ export class BioGeneratorService {
       `Bio for ${rep.name}: ${claims.length} claims (${sourceCount} source, ${trainingCount} training), ${parsed.wordCount ?? 'unknown'} words`,
     );
   }
-}
-
-interface JsonScanState {
-  depth: number;
-  inString: boolean;
-  escaped: boolean;
 }
 
 interface BioResponse {

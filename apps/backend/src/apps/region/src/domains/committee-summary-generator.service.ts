@@ -3,13 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import type { CommitteeAssignment, ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
-
-/** Matches the opening `"summary": "` token in the LLM's JSON response. */
-const SUMMARY_FIELD_OPENER = /"summary"\s*:\s*"/;
-/** Strips leading ```json (or ```) markdown fences from an LLM response. */
-const LEADING_CODE_FENCE = /^```(?:json)?\n?/;
-/** Strips the trailing ``` fence. */
-const TRAILING_CODE_FENCE = /\n?```$/;
+import {
+  extractFieldString,
+  extractJsonObjectSlice,
+} from './llm-json-salvage.util';
 
 /** Minimal shape of a representative needed to render a committee summary. */
 interface RepForSummary {
@@ -218,7 +215,7 @@ export class CommitteeSummaryGeneratorService {
    */
   private parseSummaryFromResponse(text: string): string | undefined {
     // Tier 1: full JSON parse
-    const candidate = this.extractJsonCandidate(text);
+    const candidate = extractJsonObjectSlice(text);
     if (candidate) {
       try {
         const parsed = JSON.parse(candidate) as { summary?: string };
@@ -229,8 +226,9 @@ export class CommitteeSummaryGeneratorService {
       }
     }
 
-    // Tier 2: extract the summary string directly
-    const salvaged = this.extractSummaryString(text);
+    // Tier 2: extract the summary string directly. Summaries are much
+    // shorter than bios, so the salvage-length threshold is tighter.
+    const salvaged = extractFieldString(text, 'summary', 20);
     if (salvaged && salvaged.length > 0) {
       this.logger.debug(
         `Committee summary tier-2 salvage: extracted ${salvaged.length}-char summary from ${text.length}-char response`,
@@ -245,104 +243,4 @@ export class CommitteeSummaryGeneratorService {
     );
     return undefined;
   }
-
-  /**
-   * Extract the `"summary"` field value char-by-char so we handle escape
-   * sequences correctly even when the surrounding JSON is malformed.
-   */
-  private extractSummaryString(text: string): string | undefined {
-    const match = SUMMARY_FIELD_OPENER.exec(text);
-    if (match?.index === undefined) return undefined;
-
-    const start = match.index + match[0].length;
-    let out = '';
-    let escaped = false;
-    for (let i = start; i < text.length; i++) {
-      const ch = text[i];
-      if (escaped) {
-        switch (ch) {
-          case 'n':
-            out += '\n';
-            break;
-          case 't':
-            out += '\t';
-            break;
-          case 'r':
-            out += '\r';
-            break;
-          case '"':
-            out += '"';
-            break;
-          case '\\':
-            out += '\\';
-            break;
-          case '/':
-            out += '/';
-            break;
-          default:
-            out += ch;
-        }
-        escaped = false;
-        continue;
-      }
-      if (ch === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (ch === '"') return out.trim();
-      out += ch;
-    }
-    return out.trim().length > 20 ? out.trim() : undefined;
-  }
-
-  private extractJsonCandidate(text: string): string | undefined {
-    const trimmed = this.stripCodeFences(text.trim());
-    const start = trimmed.indexOf('{');
-    if (start < 0) return undefined;
-    return this.sliceBalancedObject(trimmed, start);
-  }
-
-  private stripCodeFences(text: string): string {
-    return text.startsWith('```')
-      ? text.replace(LEADING_CODE_FENCE, '').replace(TRAILING_CODE_FENCE, '')
-      : text;
-  }
-
-  private sliceBalancedObject(text: string, start: number): string | undefined {
-    const state = { depth: 0, inString: false, escaped: false };
-    for (let i = start; i < text.length; i++) {
-      if (this.advanceJsonState(state, text[i]) && state.depth === 0) {
-        return text.slice(start, i + 1);
-      }
-    }
-    return undefined;
-  }
-
-  private advanceJsonState(state: JsonScanState, ch: string): boolean {
-    if (state.escaped) {
-      state.escaped = false;
-      return false;
-    }
-    if (ch === '\\') {
-      state.escaped = true;
-      return false;
-    }
-    if (ch === '"') {
-      state.inString = !state.inString;
-      return false;
-    }
-    if (state.inString) return false;
-    if (ch === '{') state.depth++;
-    else if (ch === '}') {
-      state.depth--;
-      return true;
-    }
-    return false;
-  }
-}
-
-interface JsonScanState {
-  depth: number;
-  inString: boolean;
-  escaped: boolean;
 }
