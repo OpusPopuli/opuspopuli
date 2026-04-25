@@ -9,6 +9,8 @@ import {
   PropositionData,
   PropositionStatus,
   IdVars,
+  type Proposition,
+  type PropositionAnalysisClaim,
 } from "@/lib/graphql/region";
 import {
   GET_PETITION_DOCUMENTS_FOR_PROPOSITION,
@@ -20,6 +22,9 @@ import { SectionTitle } from "@/components/region/SectionTitle";
 import { ComingSoon } from "@/components/region/ComingSoon";
 import { LayerButton } from "@/components/region/LayerButton";
 import { LayerNav } from "@/components/region/LayerNav";
+import { YesNoOutcomeCard } from "@/components/region/YesNoOutcomeCard";
+import { ClaimAttribution } from "@/components/region/ClaimAttribution";
+import { SegmentedFullText } from "@/components/region/SegmentedFullText";
 import { formatDate } from "@/lib/format";
 
 const STATUS_STYLES: Record<
@@ -39,6 +44,19 @@ const LAYERS = [
   { n: 4, label: "Deep Dive" },
 ] as const;
 
+function claimKey(
+  claim: Pick<PropositionAnalysisClaim, "sourceStart" | "sourceEnd">,
+): string {
+  return `${claim.sourceStart}-${claim.sourceEnd}`;
+}
+
+function claimsForField(
+  claims: PropositionAnalysisClaim[] | undefined,
+  field: string,
+): PropositionAnalysisClaim[] {
+  return (claims ?? []).filter((c) => c.field === field);
+}
+
 function StatusBadge({ status }: { readonly status: PropositionStatus }) {
   const style = STATUS_STYLES[status] || STATUS_STYLES.PENDING;
   return (
@@ -51,20 +69,25 @@ function StatusBadge({ status }: { readonly status: PropositionStatus }) {
 }
 
 function QuickView({
-  summary,
+  proposition,
   onNext,
 }: {
-  readonly summary: string;
+  readonly proposition: Proposition;
   readonly onNext: () => void;
 }) {
+  const summary = proposition.analysisSummary?.trim() || proposition.summary;
   return (
     <div className="animate-layer-enter">
       <p className="text-lg text-[#475569] leading-relaxed mb-6">{summary}</p>
 
-      <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-100 rounded-lg text-sm font-semibold text-[#334155] mb-6">
-        <span className="w-3 h-3 rounded-full bg-slate-300" />
-        <span>Impact analysis coming soon</span>
-      </div>
+      {proposition.fiscalImpact && (
+        <div className="inline-flex items-start gap-3 px-4 py-3 bg-slate-100 rounded-lg text-sm text-[#334155] mb-6 max-w-2xl">
+          <span className="text-xs font-bold uppercase tracking-wider text-[#595959] whitespace-nowrap pt-0.5">
+            Fiscal impact
+          </span>
+          <span className="leading-relaxed">{proposition.fiscalImpact}</span>
+        </div>
+      )}
 
       <div className="mt-6">
         <LayerButton onClick={onNext}>Learn More</LayerButton>
@@ -135,55 +158,138 @@ function LinkedPetitionScans({
 }
 
 function Details({
-  fullText,
+  proposition,
   propositionId,
+  onNavigateToClaim,
   onNext,
 }: {
-  readonly fullText?: string;
+  readonly proposition: Proposition;
   readonly propositionId: string;
+  readonly onNavigateToClaim: (claim: PropositionAnalysisClaim) => void;
   readonly onNext: () => void;
 }) {
+  const hasAnalysis =
+    !!proposition.analysisSummary ||
+    (proposition.keyProvisions?.length ?? 0) > 0;
+
   return (
     <div className="animate-layer-enter">
       <div className="mb-8">
-        <SectionTitle>What This Does</SectionTitle>
-        {fullText ? (
-          <p className="text-[#334155] leading-relaxed">{fullText}</p>
+        <SectionTitle>Key Provisions</SectionTitle>
+        {proposition.keyProvisions && proposition.keyProvisions.length > 0 ? (
+          <ul className="list-disc pl-5 space-y-2 text-[#334155]">
+            {proposition.keyProvisions.map((provision, idx) => (
+              <li key={idx} className="leading-relaxed">
+                <span>{provision}</span>
+                <ClaimAttribution
+                  claims={claimsForField(
+                    proposition.analysisClaims,
+                    "keyProvisions",
+                  )}
+                  onNavigateToSource={onNavigateToClaim}
+                />
+              </li>
+            ))}
+          </ul>
         ) : (
           <ComingSoon
-            title="Plain-Language Explanation"
-            description="AI-powered explanation coming soon"
+            title="Analysis pending"
+            description={
+              proposition.fullText
+                ? "AI analysis is being generated from the measure text."
+                : "Waiting for the full measure text to be extracted."
+            }
           />
         )}
       </div>
 
-      <div className="mb-8">
-        <SectionTitle>Key Facts</SectionTitle>
-        <ComingSoon
-          title="Coming Soon"
-          description="AI-extracted key facts and figures"
-        />
-      </div>
+      {proposition.fiscalImpact && (
+        <div className="mb-8">
+          <SectionTitle>Fiscal Impact</SectionTitle>
+          <p className="text-[#334155] leading-relaxed">
+            {proposition.fiscalImpact}
+            <ClaimAttribution
+              claims={claimsForField(
+                proposition.analysisClaims,
+                "fiscalImpact",
+              )}
+              onNavigateToSource={onNavigateToClaim}
+            />
+          </p>
+        </div>
+      )}
+
+      {(proposition.yesOutcome || proposition.noOutcome) && (
+        <div className="mb-8">
+          <SectionTitle>What a Yes / No Vote Means</SectionTitle>
+          <YesNoOutcomeCard
+            yesOutcome={proposition.yesOutcome}
+            noOutcome={proposition.noOutcome}
+          />
+        </div>
+      )}
+
+      {proposition.existingVsProposed &&
+        (proposition.existingVsProposed.current ||
+          proposition.existingVsProposed.proposed) && (
+          <div className="mb-8">
+            <SectionTitle>Existing Law vs. This Measure</SectionTitle>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="border-2 border-gray-200 rounded-xl p-5">
+                <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-[#595959] mb-3">
+                  Under Existing Law
+                </p>
+                <p className="text-sm text-[#334155] leading-relaxed">
+                  {proposition.existingVsProposed.current || "Not specified."}
+                  <ClaimAttribution
+                    claims={claimsForField(
+                      proposition.analysisClaims,
+                      "existingCurrent",
+                    )}
+                    onNavigateToSource={onNavigateToClaim}
+                  />
+                </p>
+              </div>
+              <div className="border-2 border-gray-200 rounded-xl p-5">
+                <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-[#595959] mb-3">
+                  If This Passes
+                </p>
+                <p className="text-sm text-[#334155] leading-relaxed">
+                  {proposition.existingVsProposed.proposed || "Not specified."}
+                  <ClaimAttribution
+                    claims={claimsForField(
+                      proposition.analysisClaims,
+                      "existingProposed",
+                    )}
+                    onNavigateToSource={onNavigateToClaim}
+                  />
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
       <LinkedPetitionScans propositionId={propositionId} />
 
-      <div className="mb-8">
-        <SectionTitle>Who&apos;s Funding This</SectionTitle>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-5 text-center">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-              Yes Campaign
-            </p>
-            <p className="text-sm text-slate-700">Funding data coming soon</p>
-          </div>
-          <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-5 text-center">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-              No Campaign
-            </p>
-            <p className="text-sm text-slate-700">Funding data coming soon</p>
+      {!hasAnalysis && (
+        <div className="mb-8">
+          <SectionTitle>Who&apos;s Funding This</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-5 text-center">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                Yes Campaign
+              </p>
+              <p className="text-sm text-slate-700">Funding data coming soon</p>
+            </div>
+            <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-5 text-center">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                No Campaign
+              </p>
+              <p className="text-sm text-slate-700">Funding data coming soon</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <LayerButton onClick={onNext}>See Both Sides</LayerButton>
     </div>
@@ -242,16 +348,14 @@ function BothSides({
 }
 
 function DeepDive({
-  sourceUrl,
-  fullText,
+  proposition,
+  focusedClaimKey,
   onBack,
 }: {
-  readonly sourceUrl?: string;
-  readonly fullText?: string;
+  readonly proposition: Proposition;
+  readonly focusedClaimKey?: string;
   readonly onBack: () => void;
 }) {
-  const [showFullText, setShowFullText] = useState(false);
-
   return (
     <div className="animate-layer-enter">
       <div className="bg-[#fafafa] rounded-xl border-l-4 border-[#222222] p-6 mb-8">
@@ -259,26 +363,16 @@ function DeepDive({
           Full Documentation
         </h3>
         <ul className="space-y-3">
-          {sourceUrl && (
+          {proposition.sourceUrl && (
             <li>
               <a
-                href={sourceUrl}
+                href={proposition.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 font-semibold text-sm hover:underline"
               >
-                &rarr; Official Source
+                &rarr; Official Source (PDF)
               </a>
-            </li>
-          )}
-          {fullText && (
-            <li>
-              <button
-                onClick={() => setShowFullText(!showFullText)}
-                className="text-blue-600 font-semibold text-sm hover:underline text-left"
-              >
-                &rarr; {showFullText ? "Hide" : "Read"} Full Proposition Text
-              </button>
             </li>
           )}
           <li className="text-sm text-slate-600">
@@ -293,12 +387,21 @@ function DeepDive({
         </ul>
       </div>
 
-      {showFullText && fullText && (
-        <div className="mb-8 bg-white border border-gray-200 rounded-xl p-6">
-          <SectionTitle>Full Proposition Text</SectionTitle>
-          <p className="text-sm text-[#334155] leading-relaxed whitespace-pre-line">
-            {fullText}
-          </p>
+      {proposition.fullText ? (
+        <div className="mb-8">
+          <SegmentedFullText
+            fullText={proposition.fullText}
+            sections={proposition.analysisSections ?? []}
+            claims={proposition.analysisClaims ?? []}
+            focusedClaimKey={focusedClaimKey}
+          />
+        </div>
+      ) : (
+        <div className="mb-8">
+          <ComingSoon
+            title="Full text pending"
+            description="The measure's full text will appear here once it is extracted from the official source."
+          />
         </div>
       )}
 
@@ -312,6 +415,7 @@ function DeepDive({
 export default function PropositionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [layer, setLayer] = useState(1);
+  const [focusedClaimKey, setFocusedClaimKey] = useState<string | undefined>();
 
   const { data, loading, error } = useQuery<PropositionData, IdVars>(
     GET_PROPOSITION,
@@ -356,6 +460,11 @@ export default function PropositionDetailPage() {
     ? formatDate(proposition.electionDate)
     : null;
 
+  function handleNavigateToClaim(claim: PropositionAnalysisClaim) {
+    setFocusedClaimKey(claimKey(claim));
+    setLayer(4);
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
       <Breadcrumb
@@ -390,12 +499,13 @@ export default function PropositionDetailPage() {
       {/* Layer Content */}
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
         {layer === 1 && (
-          <QuickView summary={proposition.summary} onNext={() => setLayer(2)} />
+          <QuickView proposition={proposition} onNext={() => setLayer(2)} />
         )}
         {layer === 2 && (
           <Details
-            fullText={proposition.fullText}
+            proposition={proposition}
             propositionId={id}
+            onNavigateToClaim={handleNavigateToClaim}
             onNext={() => setLayer(3)}
           />
         )}
@@ -404,8 +514,8 @@ export default function PropositionDetailPage() {
         )}
         {layer === 4 && (
           <DeepDive
-            sourceUrl={proposition.sourceUrl}
-            fullText={proposition.fullText}
+            proposition={proposition}
+            focusedClaimKey={focusedClaimKey}
             onBack={() => setLayer(1)}
           />
         )}

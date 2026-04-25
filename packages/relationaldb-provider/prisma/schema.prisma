@@ -598,6 +598,25 @@ model Proposition {
   status       String    @default("pending") @db.VarChar(50)
   electionDate DateTime? @map("election_date") @db.Timestamp
   sourceUrl    String?   @map("source_url")
+
+  /// AI-generated plain-language one-liner; populates Layer 1 "Quick View".
+  analysisSummary      String?   @map("analysis_summary") @db.Text
+  /// "This would..." bullets; string[] as JSONB.
+  keyProvisions        Json?     @map("key_provisions")
+  fiscalImpact         String?   @map("fiscal_impact") @db.Text
+  yesOutcome           String?   @map("yes_outcome") @db.Text
+  noOutcome            String?   @map("no_outcome") @db.Text
+  /// { current, proposed } JSONB for Layer 2 existing-law comparison.
+  existingVsProposed   Json?     @map("existing_vs_proposed")
+  /// AI-segmented section anchors into fullText; [{heading,startOffset,endOffset}] as JSONB.
+  analysisSections     Json?     @map("analysis_sections")
+  /// Per-claim attribution with char-offset citations into fullText; mirrors BioClaim[] pattern.
+  analysisClaims       Json?     @map("analysis_claims")
+  analysisSource       String?   @map("analysis_source") @db.VarChar(20) /// 'ai-generated' | 'manual'
+  /// SHA-256 of the prompt template text used for this run; used to detect stale analyses.
+  analysisPromptHash   String?   @map("analysis_prompt_hash") @db.VarChar(64)
+  analysisGeneratedAt  DateTime? @map("analysis_generated_at") @db.Timestamptz
+
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz

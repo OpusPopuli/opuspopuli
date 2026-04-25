@@ -13,7 +13,7 @@ import { Public } from 'src/common/decorators/public.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { PaginationArgs } from 'src/common/dto/pagination.args';
-import { RegionDomainService } from './region.service';
+import { RegionDomainService, mapPropositionRecord } from './region.service';
 import {
   RegionInfoModel,
   SyncResultModel,
@@ -22,7 +22,6 @@ import {
 import {
   PropositionModel,
   PaginatedPropositions,
-  PropositionStatusGQL,
 } from './models/proposition.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
 import {
@@ -86,14 +85,26 @@ export class RegionResolver {
   ): Promise<PropositionModel | null> {
     const result = await this.regionService.getProposition(id);
     if (!result) return null;
-    // Convert database nulls to GraphQL undefined
-    return {
-      ...result,
-      fullText: result.fullText ?? undefined,
-      electionDate: result.electionDate ?? undefined,
-      sourceUrl: result.sourceUrl ?? undefined,
-      status: result.status as PropositionStatusGQL,
-    };
+    return mapPropositionRecord(result) as PropositionModel;
+  }
+
+  /**
+   * Regenerate AI analysis for a single proposition (admin only).
+   * Forces a fresh LLM run regardless of cached prompt hash. Useful
+   * after a prompt-template revision or to recover a malformed analysis.
+   * Returns the updated proposition.
+   */
+  @Mutation(() => PropositionModel, { nullable: true })
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @Extensions({ complexity: 50 })
+  async regeneratePropositionAnalysis(
+    @Args({ name: 'id', type: () => ID }) id: string,
+  ): Promise<PropositionModel | null> {
+    await this.regionService.regeneratePropositionAnalysis(id);
+    const result = await this.regionService.getProposition(id);
+    if (!result) return null;
+    return mapPropositionRecord(result) as PropositionModel;
   }
 
   /**

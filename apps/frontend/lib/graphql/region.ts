@@ -20,6 +20,35 @@ export interface RegionInfo {
   supportedDataTypes: DataType[];
 }
 
+/**
+ * AI-segmented ToC anchor into Proposition.fullText, used by
+ * SegmentedFullText to render collapsible sections with a sticky sidebar.
+ */
+export interface PropositionAnalysisSection {
+  heading: string;
+  startOffset: number;
+  endOffset: number;
+}
+
+/**
+ * A single AI-derived claim with a citation range into fullText. Rendered
+ * as an inline footnote next to analysis content; clicking scrolls to the
+ * attributed range in the Deep Dive layer and highlights it.
+ */
+export interface PropositionAnalysisClaim {
+  claim: string;
+  /** Which analysis field the claim backs (keyProvisions, fiscalImpact, etc.). */
+  field: string;
+  sourceStart: number;
+  sourceEnd: number;
+  confidence?: string;
+}
+
+export interface PropositionExistingVsProposed {
+  current: string;
+  proposed: string;
+}
+
 export interface Proposition {
   id: string;
   externalId: string;
@@ -29,6 +58,18 @@ export interface Proposition {
   status: PropositionStatus;
   electionDate?: string;
   sourceUrl?: string;
+
+  analysisSummary?: string;
+  keyProvisions?: string[];
+  fiscalImpact?: string;
+  yesOutcome?: string;
+  noOutcome?: string;
+  existingVsProposed?: PropositionExistingVsProposed;
+  analysisSections?: PropositionAnalysisSection[];
+  analysisClaims?: PropositionAnalysisClaim[];
+  analysisSource?: string;
+  analysisGeneratedAt?: string;
+
   createdAt: string;
   updatedAt: string;
 }
@@ -378,8 +419,62 @@ export const GET_PROPOSITION = gql`
       status
       electionDate
       sourceUrl
+      analysisSummary
+      keyProvisions
+      fiscalImpact
+      yesOutcome
+      noOutcome
+      existingVsProposed {
+        current
+        proposed
+      }
+      analysisSections {
+        heading
+        startOffset
+        endOffset
+      }
+      analysisClaims {
+        claim
+        field
+        sourceStart
+        sourceEnd
+        confidence
+      }
+      analysisSource
+      analysisGeneratedAt
       createdAt
       updatedAt
+    }
+  }
+`;
+
+export const REGENERATE_PROPOSITION_ANALYSIS = gql`
+  mutation RegeneratePropositionAnalysis($id: ID!) {
+    regeneratePropositionAnalysis(id: $id) {
+      id
+      analysisSummary
+      keyProvisions
+      fiscalImpact
+      yesOutcome
+      noOutcome
+      existingVsProposed {
+        current
+        proposed
+      }
+      analysisSections {
+        heading
+        startOffset
+        endOffset
+      }
+      analysisClaims {
+        claim
+        field
+        sourceStart
+        sourceEnd
+        confidence
+      }
+      analysisSource
+      analysisGeneratedAt
     }
   }
 `;
