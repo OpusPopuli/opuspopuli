@@ -222,12 +222,16 @@ describe('BioGeneratorService', () => {
       expect(result[1].bioSource).toBe('ai-generated');
     });
 
-    it('includes committee assignments in the prompt data', async () => {
+    it('omits committees from prompt input and carries derived jurisdiction', async () => {
       llm.generate.mockResolvedValue({
         text: '{"bio": "Bio."}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
+      // Committees are covered by a separate committee-summary prompt;
+      // including them here bloats output and correlates with JSON
+      // truncation. Bio input is deliberately narrower now.
       const rep = baseRep({
+        externalId: 'ca-senate-5',
         committees: [{ name: 'Budget', role: 'Chair' }, { name: 'Education' }],
       });
 
@@ -236,8 +240,11 @@ describe('BioGeneratorService', () => {
       const firstCall = promptClient.getDocumentAnalysisPrompt.mock.calls[0][0];
       expect(firstCall.documentType).toBe('representative-bio');
       expect(firstCall.text).toContain('Name: Jane Smith');
-      expect(firstCall.text).toContain('Chair: Budget');
-      expect(firstCall.text).toContain('Education');
+      // Jurisdiction must be plumbed explicitly to prevent wrong-state
+      // hallucination when Name+District isn't uniquely identifying.
+      expect(firstCall.text).toContain('Jurisdiction: California State Senate');
+      expect(firstCall.text).not.toContain('Committee Assignments');
+      expect(firstCall.text).not.toContain('Chair: Budget');
     });
 
     it('preserves existing bioSource when already set', async () => {

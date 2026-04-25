@@ -69,6 +69,36 @@ export class ManifestStoreService {
   constructor(private readonly repository: ManifestRepository) {}
 
   /**
+   * Return the next version number to use when saving a new manifest for
+   * a source. Queries across ALL rows (active or not), because the unique
+   * constraint on (regionId, sourceUrl, dataType, version) is
+   * history-wide — using `findLatest` (which is active-only) can produce
+   * a version number that already exists as an inactive row, colliding
+   * on insert.
+   *
+   * This can occur when a prior save failed between its updateMany
+   * (deactivate old) and create (insert new) steps, leaving a source
+   * with no active manifest but a tail of inactive versions. See
+   * #629 for the transactional-save follow-up.
+   */
+  async getNextVersion(
+    regionId: string,
+    sourceUrl: string,
+    dataType: DataType,
+  ): Promise<number> {
+    const [latest] = await this.repository.findMany({
+      where: {
+        regionId,
+        sourceUrl,
+        dataType: dataType as string,
+      },
+      orderBy: { version: "desc" },
+      take: 1,
+    });
+    return latest ? latest.version + 1 : 1;
+  }
+
+  /**
    * Find the latest active manifest for a source.
    */
   async findLatest(

@@ -89,6 +89,7 @@ describe("ScrapingPipelineService", () => {
 
     mockStore = {
       findLatest: jest.fn().mockResolvedValue(createManifest()),
+      getNextVersion: jest.fn().mockResolvedValue(2),
       save: jest.fn().mockImplementation(async (m) => m),
       incrementSuccess: jest.fn().mockResolvedValue(undefined),
       incrementFailure: jest.fn().mockResolvedValue(undefined),
@@ -177,6 +178,7 @@ describe("ScrapingPipelineService", () => {
   describe("execute with no existing manifest", () => {
     beforeEach(() => {
       mockStore.findLatest.mockResolvedValue(undefined);
+      mockStore.getNextVersion.mockResolvedValue(1);
     });
 
     it("should run AI analysis when no manifest exists", async () => {
@@ -267,6 +269,9 @@ describe("ScrapingPipelineService", () => {
         structureHash: "old-hash",
       });
       mockStore.findLatest.mockResolvedValue(existingManifest);
+      // New version comes from getNextVersion (MAX across all rows), not
+      // from the active manifest's version + 1.
+      mockStore.getNextVersion.mockResolvedValue(4);
 
       // Force cache miss by changing prompt hash
       mockAnalyzer.getCurrentPromptHash.mockResolvedValue("different-prompt");

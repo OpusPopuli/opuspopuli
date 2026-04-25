@@ -32,6 +32,8 @@ import {
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { REGION_CACHE } from './region.tokens';
 import { BioGeneratorService } from './bio-generator.service';
+import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
+import { PropositionAnalysisService } from './proposition-analysis.service';
 
 /**
  * Minimal interface for data fetching used by sync methods.
@@ -49,10 +51,16 @@ import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import {
   PaginatedPropositions,
+  PropositionModel,
   PropositionStatusGQL,
 } from './models/proposition.model';
 import { PaginatedMeetings } from './models/meeting.model';
 import {
+  PropositionAnalysisClaimModel,
+  PropositionAnalysisSectionModel,
+} from './models/proposition-analysis.model';
+import {
+  BioClaimModel,
   CommitteeAssignmentModel,
   ContactInfoModel,
   PaginatedRepresentatives,
@@ -82,6 +90,17 @@ type PropositionRecord = {
   status: string;
   electionDate: Date | null;
   sourceUrl: string | null;
+  analysisSummary: string | null;
+  keyProvisions: unknown;
+  fiscalImpact: string | null;
+  yesOutcome: string | null;
+  noOutcome: string | null;
+  existingVsProposed: unknown;
+  analysisSections: unknown;
+  analysisClaims: unknown;
+  analysisSource: string | null;
+  analysisPromptHash: string | null;
+  analysisGeneratedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -107,8 +126,10 @@ type RepresentativeRecord = {
   photoUrl: string | null;
   contactInfo: unknown;
   committees: unknown;
+  committeesSummary: string | null;
   bio: string | null;
   bioSource: string | null;
+  bioClaims: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -199,6 +220,18 @@ type IndependentExpenditureRecord = {
  * Strips trailing suffixes (Jr., Sr., III, etc.) so a rep named
  * "Patrick J. Ahrens Jr." sorts under "Ahrens", not "Jr".
  */
+/**
+ * Extract the trailing numeric segment from an externalId
+ * (e.g., `ca-assembly-02` → `"2"`). Done via split+parseInt rather
+ * than a regex to avoid backtracking heuristics on patterns like
+ * `-0*(\d+)$`.
+ */
+function deriveDistrictFromExternalId(externalId: string): string | undefined {
+  const last = externalId.split('-').at(-1);
+  if (!last || !/^\d+$/.test(last)) return undefined;
+  return String(Number.parseInt(last, 10));
+}
+
 export function extractLastName(fullName: string): string {
   const trimmed = fullName.trim();
   if (!trimmed) return '';
@@ -206,6 +239,51 @@ export function extractLastName(fullName: string): string {
   const withoutSuffix = trimmed.replace(suffixPattern, '').trim();
   const tokens = withoutSuffix.split(/\s+/);
   return tokens.at(-1) ?? trimmed;
+}
+
+/**
+ * Cast a Prisma proposition row into the GraphQL-shaped object. Converts
+ * DB nulls to GraphQL undefined and unpacks JSONB columns that are stored
+ * as `unknown` at the Prisma type level. Used by both the list (plural)
+ * getter and the single-record resolver.
+ */
+export function mapPropositionRecord(
+  item: PropositionRecord,
+): PropositionModel {
+  return {
+    id: item.id,
+    externalId: item.externalId,
+    title: item.title,
+    summary: item.summary,
+    fullText: item.fullText ?? undefined,
+    status: item.status as unknown as PropositionStatusGQL,
+    electionDate: item.electionDate ?? undefined,
+    sourceUrl: item.sourceUrl ?? undefined,
+    analysisSummary: item.analysisSummary ?? undefined,
+    keyProvisions: Array.isArray(item.keyProvisions)
+      ? (item.keyProvisions as string[])
+      : undefined,
+    fiscalImpact: item.fiscalImpact ?? undefined,
+    yesOutcome: item.yesOutcome ?? undefined,
+    noOutcome: item.noOutcome ?? undefined,
+    existingVsProposed:
+      item.existingVsProposed &&
+      typeof item.existingVsProposed === 'object' &&
+      'current' in (item.existingVsProposed as object) &&
+      'proposed' in (item.existingVsProposed as object)
+        ? (item.existingVsProposed as { current: string; proposed: string })
+        : undefined,
+    analysisSections: Array.isArray(item.analysisSections)
+      ? (item.analysisSections as PropositionAnalysisSectionModel[])
+      : undefined,
+    analysisClaims: Array.isArray(item.analysisClaims)
+      ? (item.analysisClaims as PropositionAnalysisClaimModel[])
+      : undefined,
+    analysisSource: item.analysisSource ?? undefined,
+    analysisGeneratedAt: item.analysisGeneratedAt ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
 }
 
 @Injectable()
@@ -227,6 +305,10 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     @Inject(SECRETS_PROVIDER)
     private readonly secretsProvider?: ISecretsProvider,
     @Optional() private readonly bioGenerator?: BioGeneratorService,
+    @Optional()
+    private readonly committeeSummaryGenerator?: CommitteeSummaryGeneratorService,
+    @Optional()
+    private readonly propositionAnalysis?: PropositionAnalysisService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -429,7 +511,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    * Sync data types from all loaded plugins (federal + local).
    * When dataTypes is provided, only those types are synced.
    */
-  async syncAll(dataTypes?: string[]): Promise<SyncResult[]> {
+  async syncAll(dataTypes?: string[], maxReps?: number): Promise<SyncResult[]> {
     this.logger.log(
       dataTypes
         ? `Starting data sync for: ${dataTypes.join(', ')}`
@@ -449,6 +531,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             registered.instance,
             registered.name,
             dataType,
+            maxReps,
           );
           results.push(result);
         } catch (error) {
@@ -491,6 +574,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     provider: DataFetcher,
     pluginName: string,
     dataType: DataType,
+    maxReps?: number,
   ): Promise<SyncResult> {
     this.logger.log(`Syncing ${dataType} from ${pluginName}`);
     const startTime = Date.now();
@@ -503,7 +587,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     > = {
       [DataType.PROPOSITIONS]: () => this.syncPropositions(provider),
       [DataType.MEETINGS]: () => this.syncMeetings(provider),
-      [DataType.REPRESENTATIVES]: () => this.syncRepresentatives(provider),
+      [DataType.REPRESENTATIVES]: () =>
+        this.syncRepresentatives(provider, maxReps),
       [DataType.CAMPAIGN_FINANCE]: () => this.syncCampaignFinance(provider),
     };
 
@@ -594,6 +679,20 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     // Invalidate cached proposition queries (#459)
     await this.invalidateCache('propositions:');
 
+    // Generate AI analysis for any proposition with fullText but no
+    // analysis yet. DB-driven so it picks up newly ingested PDFs as well
+    // as past rows missed by earlier sync cycles. Fire-and-forget in the
+    // sense that failures are logged but don't abort the sync.
+    if (this.propositionAnalysis) {
+      try {
+        await this.propositionAnalysis.generateMissing();
+      } catch (error) {
+        this.logger.warn(
+          `Proposition analysis post-sync pass failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
     const created = propositions.filter(
       (p) => !existingExternalIds.has(p.externalId),
     ).length;
@@ -602,6 +701,20 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     ).length;
 
     return { processed: propositions.length, created, updated };
+  }
+
+  /**
+   * Regenerate AI analysis for a single proposition. Admin-invoked via the
+   * regeneratePropositionAnalysis mutation; also used by the backfill
+   * script for forced reruns.
+   */
+  async regeneratePropositionAnalysis(id: string): Promise<boolean> {
+    if (!this.propositionAnalysis) return false;
+    const result = await this.propositionAnalysis.generate(id, true);
+    if (result) {
+      await this.invalidateCache('propositions:');
+    }
+    return result;
   }
 
   /**
@@ -680,8 +793,36 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    * This reduces database round trips from O(2n) to O(2) queries
    * @see https://github.com/OpusPopuli/opuspopuli/issues/197
    */
+  /**
+   * Defensive guard against garbage `district` values from flaky LLM-
+   * generated manifests. California reps encode district numerically
+   * in `externalId` (e.g., `ca-assembly-02`), so when the scrape's
+   * district field doesn't look numeric we derive the correct value
+   * from externalId. Without this, a manifest that captures a label
+   * node ("District:") instead of the number clobbers the DB and
+   * breaks address-based rep matching for every voter in the state.
+   */
+  private sanitizeDistrict(rep: Representative): string {
+    const raw = (rep.district ?? '').trim();
+    if (/^\d+$/.test(raw)) return raw;
+    const derived = deriveDistrictFromExternalId(rep.externalId);
+    if (derived !== undefined) {
+      this.logger.warn(
+        `Sanitized district for ${rep.name} (${rep.externalId}): scraped value "${raw}" is not numeric, using externalId-derived "${derived}"`,
+      );
+      return derived;
+    }
+    if (raw) {
+      this.logger.warn(
+        `Non-numeric district "${raw}" for ${rep.name} (${rep.externalId}) and no numeric suffix to fall back on; keeping raw value`,
+      );
+    }
+    return raw;
+  }
+
   private async syncRepresentatives(
     provider: DataFetcher = this.regionService,
+    maxReps?: number,
   ): Promise<{
     processed: number;
     created: number;
@@ -694,7 +835,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
 
     // Enrich with AI-generated bios where missing (scraped bios are preserved)
     if (this.bioGenerator) {
-      await this.bioGenerator.enrichBios(reps);
+      await this.bioGenerator.enrichBios(reps, maxReps);
     }
 
     // Get existing externalIds in a single query to calculate created vs updated
@@ -712,32 +853,44 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       this.db,
       reps.map((rep) => {
         const lastName = extractLastName(rep.name);
+        const district = this.sanitizeDistrict(rep);
         return this.db.representative.upsert({
           where: { externalId: rep.externalId },
+          // On UPDATE: `undefined` tells Prisma to skip a field and
+          // preserve the existing DB value. A null from the scrape
+          // (field present in the extractor output but unset for this
+          // rep) would otherwise clobber previously-enriched data —
+          // e.g., wiping an AI-generated bio when the Assembly detail
+          // scrape stops returning a bio field. Convert null→undefined
+          // for every optional enrichment field.
           update: {
             name: rep.name,
             lastName,
             chamber: rep.chamber,
-            district: rep.district,
+            district,
             party: rep.party,
-            photoUrl: rep.photoUrl,
-            contactInfo: rep.contactInfo as object | undefined,
-            committees: rep.committees as object[] | undefined,
-            bio: rep.bio,
-            bioSource: rep.bioSource,
+            photoUrl: rep.photoUrl ?? undefined,
+            contactInfo: (rep.contactInfo as object | null) ?? undefined,
+            committees: (rep.committees as object[] | null) ?? undefined,
+            committeesSummary: rep.committeesSummary ?? undefined,
+            bio: rep.bio ?? undefined,
+            bioSource: rep.bioSource ?? undefined,
+            bioClaims: (rep.bioClaims as object[] | null) ?? undefined,
           },
           create: {
             externalId: rep.externalId,
             name: rep.name,
             lastName,
             chamber: rep.chamber,
-            district: rep.district,
+            district,
             party: rep.party,
             photoUrl: rep.photoUrl,
             contactInfo: rep.contactInfo as object | undefined,
             committees: rep.committees as object[] | undefined,
+            committeesSummary: rep.committeesSummary,
             bio: rep.bio,
             bioSource: rep.bioSource,
+            bioClaims: rep.bioClaims as object[] | undefined,
           },
         });
       }),
@@ -745,6 +898,14 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
 
     // Invalidate cached representative queries (#459)
     await this.invalidateCache('representatives:');
+
+    // Post-upsert: generate the AI committee-assignment preamble for any
+    // reps that have committees but no summary yet. DB-driven so it runs
+    // even when a given sync cycle only refreshes part of the roster
+    // (e.g., Senate-only when Assembly scrape breaks). See #594 Task 4.
+    if (this.committeeSummaryGenerator) {
+      await this.committeeSummaryGenerator.generateMissingSummaries(maxReps);
+    }
 
     const created = reps.filter(
       (r) => !existingExternalIds.has(r.externalId),
@@ -1061,13 +1222,9 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
 
       // Cast database types to GraphQL types - enum values are compatible at runtime
       return {
-        items: paginatedItems.map((item: PropositionRecord) => ({
-          ...item,
-          fullText: item.fullText ?? undefined,
-          electionDate: item.electionDate ?? undefined,
-          sourceUrl: item.sourceUrl ?? undefined,
-          status: item.status as unknown as PropositionStatusGQL,
-        })),
+        items: paginatedItems.map((item: PropositionRecord) =>
+          mapPropositionRecord(item),
+        ),
         total,
         hasMore,
       };
@@ -1157,8 +1314,12 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             contactInfo: (item.contactInfo as ContactInfoModel) ?? undefined,
             committees:
               (item.committees as CommitteeAssignmentModel[]) ?? undefined,
+            committeesSummary: item.committeesSummary ?? undefined,
             bio: item.bio ?? undefined,
             bioSource: item.bioSource ?? undefined,
+            bioClaims: Array.isArray(item.bioClaims)
+              ? (item.bioClaims as unknown as BioClaimModel[])
+              : undefined,
           })),
           total,
           hasMore,

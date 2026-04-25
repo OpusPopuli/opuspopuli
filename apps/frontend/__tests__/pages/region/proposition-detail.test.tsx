@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 import PropositionDetailPage from "@/app/region/propositions/[id]/page";
 
-// Mock data
+// Mock data — covers the rich-analysis path that Layers 1/2/4 render
+// after the proposition-analysis service has run.
 const mockProposition = {
   id: "1",
   externalId: "prop-15",
@@ -15,6 +16,34 @@ const mockProposition = {
   status: "PENDING",
   electionDate: "2024-11-05T00:00:00Z",
   sourceUrl: "https://example.com/prop-15",
+  analysisSummary:
+    "This measure would reassess commercial and industrial properties worth more than $3 million at market value, generating new state revenue while leaving residential properties untouched.",
+  keyProvisions: [
+    "Reassesses commercial properties over $3M at market value.",
+    "Phases in over three years.",
+    "Exempts residential properties.",
+  ],
+  fiscalImpact: "Estimated $8 billion per year in new state revenue.",
+  yesOutcome:
+    "A yes vote means commercial properties over $3M get reassessed at market value.",
+  noOutcome:
+    "A no vote means current Proposition 13 protections remain on commercial properties.",
+  existingVsProposed: {
+    current: "All real property is taxed based on its 1978 acquisition value.",
+    proposed:
+      "Commercial and industrial properties over $3M are taxed on current market value.",
+  },
+  analysisSections: [
+    { heading: "Findings", startOffset: 0, endOffset: 80 },
+    {
+      heading: "Operative Provisions",
+      startOffset: 80,
+      endOffset: 175,
+    },
+  ],
+  analysisClaims: [],
+  analysisSource: "ai-generated",
+  analysisGeneratedAt: "2024-01-02T00:00:00Z",
   createdAt: "2024-01-01T00:00:00Z",
   updatedAt: "2024-01-01T00:00:00Z",
 };
@@ -28,6 +57,16 @@ const mockPropositionNoExtras = {
   status: "PASSED",
   electionDate: null,
   sourceUrl: null,
+  analysisSummary: null,
+  keyProvisions: null,
+  fiscalImpact: null,
+  yesOutcome: null,
+  noOutcome: null,
+  existingVsProposed: null,
+  analysisSections: null,
+  analysisClaims: null,
+  analysisSource: null,
+  analysisGeneratedAt: null,
   createdAt: "2024-01-01T00:00:00Z",
   updatedAt: "2024-01-01T00:00:00Z",
 };
@@ -138,13 +177,27 @@ describe("PropositionDetailPage", () => {
       expect(screen.getByText(/Election:/)).toBeInTheDocument();
     });
 
-    it("should render summary", () => {
+    it("should render the AI analysis summary (preferred over the raw scrape summary)", () => {
+      render(<PropositionDetailPage />);
+
+      // Layer 1 prefers analysisSummary when present and falls back to summary
+      // otherwise. With a populated analysisSummary the richer one shows.
+      expect(
+        screen.getByText(/reassess commercial and industrial properties/i),
+      ).toBeInTheDocument();
+    });
+
+    it("should fall back to the scrape summary when analysisSummary is missing", () => {
+      mockQueryResult = {
+        data: { proposition: mockPropositionNoExtras },
+        loading: false,
+        error: null,
+      };
+
       render(<PropositionDetailPage />);
 
       expect(
-        screen.getByText(
-          "Changes how commercial properties are taxed by requiring reassessment at market value.",
-        ),
+        screen.getByText("A proposition with minimal data."),
       ).toBeInTheDocument();
     });
 
@@ -165,11 +218,14 @@ describe("PropositionDetailPage", () => {
       expect(quickViewButton).toHaveAttribute("aria-current", "step");
     });
 
-    it("should show impact analysis placeholder", () => {
+    it("should show a fiscal-impact chip when fiscalImpact is populated", () => {
       render(<PropositionDetailPage />);
 
+      // Old "Impact analysis coming soon" placeholder is replaced by a real
+      // fiscal-impact chip whenever the analyzer produced a value.
+      expect(screen.getByText(/Fiscal impact/i)).toBeInTheDocument();
       expect(
-        screen.getByText("Impact analysis coming soon"),
+        screen.getByText(/Estimated \$8 billion per year/i),
       ).toBeInTheDocument();
     });
   });
@@ -181,8 +237,11 @@ describe("PropositionDetailPage", () => {
 
       await user.click(screen.getByRole("button", { name: "Learn More" }));
 
+      // Layer 2 leads with the "Key Provisions" section heading.
       await waitFor(() => {
-        expect(screen.getByText("What This Does")).toBeInTheDocument();
+        expect(
+          screen.getByRole("heading", { name: "Key Provisions" }),
+        ).toBeInTheDocument();
       });
     });
 
@@ -275,35 +334,54 @@ describe("PropositionDetailPage", () => {
   });
 
   describe("Layer 2 - Details", () => {
-    it("should show fullText in What This Does section", async () => {
+    it("should render the analyzer's key provisions, yes/no outcomes, and existing-vs-proposed sections", async () => {
       const user = userEvent.setup();
       render(<PropositionDetailPage />);
 
       await user.click(screen.getByRole("button", { name: "Learn More" }));
 
       await waitFor(() => {
+        // Key provisions list
         expect(
-          screen.getByText(/amend the California Constitution/),
+          screen.getByText(/Reassesses commercial properties over \$3M/i),
+        ).toBeInTheDocument();
+        // Yes / No outcome cards
+        expect(
+          screen.getByText(/A yes vote means commercial properties/i),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(/A no vote means current Proposition 13/i),
+        ).toBeInTheDocument();
+        // Existing-vs-proposed comparison
+        expect(
+          screen.getByText(/All real property is taxed based on its 1978/i),
         ).toBeInTheDocument();
       });
     });
 
-    it("should show coming soon placeholders for key facts and funding", async () => {
+    it("should show campaign-finance placeholder only when no analysis exists", async () => {
+      // With analysis present, the Yes/No Campaign placeholders are
+      // suppressed because the page assumes funding rendering belongs to
+      // a future iteration. With analysis absent (legacy/empty rows) the
+      // placeholders still surface so the layout doesn't collapse.
+      mockQueryResult = {
+        data: { proposition: mockPropositionNoExtras },
+        loading: false,
+        error: null,
+      };
+
       const user = userEvent.setup();
       render(<PropositionDetailPage />);
 
       await user.click(screen.getByRole("button", { name: "Learn More" }));
 
       await waitFor(() => {
-        expect(
-          screen.getByRole("heading", { name: "Key Facts" }),
-        ).toBeInTheDocument();
         expect(screen.getByText("Yes Campaign")).toBeInTheDocument();
         expect(screen.getByText("No Campaign")).toBeInTheDocument();
       });
     });
 
-    it("should show placeholder when fullText is not available", async () => {
+    it("should show an analysis-pending placeholder when fullText is missing", async () => {
       mockQueryResult = {
         data: { proposition: mockPropositionNoExtras },
         loading: false,
@@ -317,7 +395,9 @@ describe("PropositionDetailPage", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("AI-powered explanation coming soon"),
+          screen.getByText(
+            /Waiting for the full measure text to be extracted/i,
+          ),
         ).toBeInTheDocument();
       });
     });
@@ -341,49 +421,37 @@ describe("PropositionDetailPage", () => {
       });
     });
 
-    it("should show full text toggle when fullText is available", async () => {
+    it("should render SegmentedFullText with section toggles and the source heading", async () => {
       const user = userEvent.setup();
       render(<PropositionDetailPage />);
 
       await user.click(screen.getByRole("button", { name: /Deep Dive/ }));
 
+      // The Layer 4 deep-dive panel renders SegmentedFullText: a sticky
+      // ToC plus a collapsible block per LLM-extracted section. Both the
+      // ToC entry AND the collapsible section header are buttons, so we
+      // expect each heading name to match TWO elements.
       await waitFor(() => {
         expect(
-          screen.getByRole("button", {
-            name: /Read Full Proposition Text/,
-          }),
-        ).toBeInTheDocument();
+          screen.getAllByRole("button", { name: /Findings/i }),
+        ).toHaveLength(2);
+        expect(
+          screen.getAllByRole("button", { name: /Operative Provisions/i }),
+        ).toHaveLength(2);
       });
     });
 
-    it("should expand full text when toggle is clicked", async () => {
+    it("should render the fullText body inside the segmented sections", async () => {
       const user = userEvent.setup();
       render(<PropositionDetailPage />);
 
       await user.click(screen.getByRole("button", { name: /Deep Dive/ }));
 
-      await waitFor(() => {
-        expect(
-          screen.getByRole("button", {
-            name: /Read Full Proposition Text/,
-          }),
-        ).toBeInTheDocument();
-      });
-
-      await user.click(
-        screen.getByRole("button", {
-          name: /Read Full Proposition Text/,
-        }),
-      );
-
+      // Sections are auto-expanded for ≤3 sections, so the underlying
+      // fullText slice renders without an additional click.
       await waitFor(() => {
         expect(
           screen.getByText(/amend the California Constitution/),
-        ).toBeInTheDocument();
-        expect(
-          screen.getByRole("button", {
-            name: /Hide Full Proposition Text/,
-          }),
         ).toBeInTheDocument();
       });
     });

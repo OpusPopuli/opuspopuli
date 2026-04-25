@@ -214,9 +214,14 @@ services:
       # match; otherwise Ollama serializes and extra queue depth causes timeouts.
       # MAX_REPS caps bio generation per run — useful in dev to verify pipeline
       # quickly. Leave unset in production so every rep gets a bio.
-      BIO_GENERATOR_MAX_TOKENS: "800"
+      BIO_GENERATOR_MAX_TOKENS: "1500"
       BIO_GENERATOR_CONCURRENCY: "1"
       BIO_GENERATOR_MAX_REPS: "5"
+      # AI committee-assignment summary — short (~60 words) preamble above
+      # the committee list. Same cap knob as bios for dev testing.
+      COMMITTEE_SUMMARY_GENERATOR_MAX_TOKENS: "200"
+      COMMITTEE_SUMMARY_GENERATOR_CONCURRENCY: "1"
+      COMMITTEE_SUMMARY_GENERATOR_MAX_REPS: "5"
     ports:
       - "3004:8080"
     depends_on:
