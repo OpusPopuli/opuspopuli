@@ -573,13 +573,14 @@ test.describe("Proposition Detail Page", () => {
   }) => {
     await page.goto("/region/propositions/1");
 
+    // Layer 1 falls back to the scrape `summary` when the analyzer hasn't
+    // yet populated `analysisSummary` (the e2e fixture has no analysis).
     await expect(
       page.getByText("This is a test proposition summary."),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Learn More" }),
     ).toBeVisible();
-    await expect(page.getByText("Impact analysis coming soon")).toBeVisible();
   });
 
   test("should show layer indicator at position 1", async ({ page }) => {
@@ -597,19 +598,26 @@ test.describe("Proposition Detail Page", () => {
 
     await page.getByRole("button", { name: "Learn More" }).click();
 
-    await expect(page.getByText("What This Does")).toBeVisible();
+    // Layer 2 leads with the "Key Provisions" section. Without analyzer
+    // output the bullets are replaced by the analysis-pending placeholder,
+    // but the section heading + the See Both Sides nav button still render.
     await expect(
-      page.getByRole("heading", { name: "Key Facts" }),
+      page.getByRole("heading", { name: "Key Provisions" }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "See Both Sides" }),
     ).toBeVisible();
   });
 
-  test("should show fullText in Layer 2", async ({ page }) => {
+  test("should show fullText inside the Layer 4 segmented view", async ({
+    page,
+  }) => {
+    // fullText moved from Layer 2 to Layer 4's SegmentedFullText, which
+    // auto-expands its single fallback section when no analyzer-provided
+    // sections are present.
     await page.goto("/region/propositions/1");
 
-    await page.getByRole("button", { name: "Learn More" }).click();
+    await page.getByRole("button", { name: /Deep Dive/ }).click();
 
     await expect(
       page.getByText(/amend the California Constitution/),
@@ -1179,7 +1187,9 @@ test.describe("Region Pages - Accessibility", () => {
   }) => {
     await page.goto("/region/propositions/1");
     await page.getByRole("button", { name: "Learn More" }).click();
-    await expect(page.getByText("What This Does")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Key Provisions" }),
+    ).toBeVisible();
     // Wait for layer-enter animation (250ms) to complete so colors are fully rendered
     await page.waitForTimeout(400);
 
