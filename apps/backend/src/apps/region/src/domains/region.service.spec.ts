@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { extractLastName, RegionDomainService } from './region.service';
+import {
+  extractLastName,
+  mapPropositionRecord,
+  RegionDomainService,
+} from './region.service';
+import { PropositionAnalysisService } from './proposition-analysis.service';
 import { REGION_CACHE } from './region.tokens';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
@@ -1579,6 +1584,19 @@ describe('RegionDomainService — caching and batch transactions', () => {
           status: 'pending',
           electionDate: null,
           sourceUrl: null,
+          // Analysis columns added by add_proposition_analysis migration —
+          // null on rows that haven't been analyzed yet.
+          analysisSummary: null,
+          keyProvisions: null,
+          fiscalImpact: null,
+          yesOutcome: null,
+          noOutcome: null,
+          existingVsProposed: null,
+          analysisSections: null,
+          analysisClaims: null,
+          analysisSource: null,
+          analysisPromptHash: null,
+          analysisGeneratedAt: null,
           deletedAt: null,
           createdAt: new Date('2024-01-01'),
           updatedAt: new Date('2024-01-01'),
@@ -1906,5 +1924,352 @@ describe('RegionDomainService — Vault API key resolution', () => {
 
     if (originalKey) process.env.FEC_API_KEY = originalKey;
     else delete process.env.FEC_API_KEY;
+  });
+});
+
+describe('mapPropositionRecord', () => {
+  // Build a Prisma-shaped proposition row with all 11 analysis columns.
+  // mapPropositionRecord must coerce SQL nulls to GraphQL undefined and
+  // unpack the JSONB columns that Prisma surfaces as `unknown`.
+  function row(
+    overrides: Partial<Parameters<typeof mapPropositionRecord>[0]> = {},
+  ) {
+    const now = new Date('2026-04-25T00:00:00Z');
+    return {
+      id: 'prop-1',
+      externalId: 'SCA 1',
+      title: 'Test',
+      summary: 'A measure.',
+      fullText: null,
+      status: 'pending',
+      electionDate: null,
+      sourceUrl: null,
+      analysisSummary: null,
+      keyProvisions: null,
+      fiscalImpact: null,
+      yesOutcome: null,
+      noOutcome: null,
+      existingVsProposed: null,
+      analysisSections: null,
+      analysisClaims: null,
+      analysisSource: null,
+      analysisPromptHash: null,
+      analysisGeneratedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      ...overrides,
+    } as Parameters<typeof mapPropositionRecord>[0];
+  }
+
+  it('converts every db null to GraphQL undefined', () => {
+    const out = mapPropositionRecord(row());
+    expect(out.fullText).toBeUndefined();
+    expect(out.electionDate).toBeUndefined();
+    expect(out.sourceUrl).toBeUndefined();
+    expect(out.analysisSummary).toBeUndefined();
+    expect(out.keyProvisions).toBeUndefined();
+    expect(out.fiscalImpact).toBeUndefined();
+    expect(out.yesOutcome).toBeUndefined();
+    expect(out.noOutcome).toBeUndefined();
+    expect(out.existingVsProposed).toBeUndefined();
+    expect(out.analysisSections).toBeUndefined();
+    expect(out.analysisClaims).toBeUndefined();
+    expect(out.analysisSource).toBeUndefined();
+    expect(out.analysisGeneratedAt).toBeUndefined();
+  });
+
+  it('unpacks JSONB array columns when populated', () => {
+    const out = mapPropositionRecord(
+      row({
+        keyProvisions: ['Provision A', 'Provision B'],
+        analysisSections: [
+          { heading: 'Findings', startOffset: 0, endOffset: 50 },
+        ],
+        analysisClaims: [
+          {
+            claim: 'X',
+            field: 'keyProvisions',
+            sourceStart: 0,
+            sourceEnd: 5,
+            confidence: 'high',
+          },
+        ],
+      }),
+    );
+    expect(out.keyProvisions).toEqual(['Provision A', 'Provision B']);
+    expect(out.analysisSections).toHaveLength(1);
+    expect(out.analysisClaims).toHaveLength(1);
+  });
+
+  it('emits existingVsProposed only when the JSONB blob has the expected shape', () => {
+    const ok = mapPropositionRecord(
+      row({
+        existingVsProposed: { current: 'Today', proposed: 'Tomorrow' },
+      }),
+    );
+    expect(ok.existingVsProposed).toEqual({
+      current: 'Today',
+      proposed: 'Tomorrow',
+    });
+
+    const malformed = mapPropositionRecord(
+      row({ existingVsProposed: { only: 'wrong shape' } }),
+    );
+    expect(malformed.existingVsProposed).toBeUndefined();
+  });
+
+  it('drops jsonb columns that arrive in unexpected shapes', () => {
+    const out = mapPropositionRecord(
+      row({
+        // Not arrays — defensive code should drop these.
+        keyProvisions: { not: 'array' },
+        analysisSections: 'not array either',
+        analysisClaims: 42,
+      }),
+    );
+    expect(out.keyProvisions).toBeUndefined();
+    expect(out.analysisSections).toBeUndefined();
+    expect(out.analysisClaims).toBeUndefined();
+  });
+});
+
+describe('RegionDomainService — proposition analysis wiring', () => {
+  /**
+   * Builds a service instance that has the optional PropositionAnalysisService
+   * dependency wired up so we can verify the post-sync hook invokes the
+   * analyzer and the regenerate path forwards through cleanly. The default
+   * spec setup leaves propositionAnalysis undefined; here we explicitly
+   * inject a mock for the wiring tests.
+   */
+  async function buildService(
+    opts: {
+      analyzer?: Partial<jest.Mocked<PropositionAnalysisService>>;
+    } = {},
+  ) {
+    const mockDb = createMockDbService();
+    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findUnique.mockResolvedValue(null);
+    mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
+    mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.meeting.findMany.mockResolvedValue([]);
+    mockDb.representative.findMany.mockResolvedValue([]);
+    (mockDb.$transaction as jest.Mock).mockImplementation(
+      async (operations: Promise<unknown>[]) => Promise.all(operations),
+    );
+
+    const mockPlugin = {
+      getName: jest.fn().mockReturnValue('test-provider'),
+      getRegionInfo: jest.fn().mockReturnValue({
+        id: 'r',
+        name: 'R',
+        description: 'd',
+        timezone: 'America/Los_Angeles',
+      }),
+      getSupportedDataTypes: jest.fn().mockReturnValue([DataType.PROPOSITIONS]),
+      getProviderName: jest.fn().mockReturnValue('test-provider'),
+      getVersion: jest.fn().mockReturnValue('1.0.0'),
+      initialize: jest.fn(),
+      destroy: jest.fn(),
+      healthCheck: jest.fn(),
+      fetchPropositions: jest.fn().mockResolvedValue([]),
+      fetchMeetings: jest.fn().mockResolvedValue([]),
+      fetchRepresentatives: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<IRegionPlugin>;
+
+    const localRegistered: RegisteredPlugin = {
+      name: 'test-provider',
+      instance: mockPlugin,
+      status: 'active',
+      loadedAt: new Date(),
+    };
+
+    const mockRegistry = {
+      register: jest.fn(),
+      unregister: jest.fn(),
+      getActive: jest.fn().mockReturnValue(mockPlugin),
+      registerLocal: jest.fn(),
+      registerFederal: jest.fn(),
+      getLocal: jest.fn().mockReturnValue(mockPlugin),
+      getFederal: jest.fn().mockReturnValue(undefined),
+      getAll: jest.fn().mockReturnValue([localRegistered]),
+      getActiveName: jest.fn().mockReturnValue('test-provider'),
+      hasActive: jest.fn().mockReturnValue(true),
+      getHealth: jest.fn(),
+      getStatus: jest.fn(),
+      onModuleDestroy: jest.fn(),
+    };
+    const mockLoader = {
+      loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      unloadPlugin: jest.fn(),
+    };
+    const mockCache = {
+      get: jest.fn(),
+      set: jest.fn(),
+      delete: jest.fn(),
+      destroy: jest.fn(),
+      keys: jest.fn().mockResolvedValue([]),
+    };
+
+    const analyzer = {
+      generate: jest.fn().mockResolvedValue(true),
+      generateMissing: jest.fn().mockResolvedValue(undefined),
+      ...opts.analyzer,
+    } as unknown as jest.Mocked<PropositionAnalysisService>;
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RegionDomainService,
+        { provide: PluginLoaderService, useValue: mockLoader },
+        { provide: PluginRegistryService, useValue: mockRegistry },
+        { provide: DbService, useValue: mockDb },
+        { provide: REGION_CACHE, useValue: mockCache },
+        { provide: PropositionAnalysisService, useValue: analyzer },
+      ],
+    }).compile();
+
+    const svc = module.get<RegionDomainService>(RegionDomainService);
+    await svc.onModuleInit();
+    return { service: svc, analyzer, mockPlugin, mockDb, mockCache };
+  }
+
+  describe('regeneratePropositionAnalysis', () => {
+    it('forwards to the analyzer with force=true and invalidates cache on success', async () => {
+      const { service, analyzer, mockCache } = await buildService();
+
+      await expect(
+        service.regeneratePropositionAnalysis('prop-1'),
+      ).resolves.toBe(true);
+
+      expect(analyzer.generate).toHaveBeenCalledWith('prop-1', true);
+      // Cache invalidation runs through keys() → delete(); we just need
+      // to verify the cache was probed for matching keys.
+      expect(mockCache.keys).toHaveBeenCalled();
+    });
+
+    it('does not invalidate cache when the analyzer reports no work was done', async () => {
+      const { service, analyzer, mockCache } = await buildService({
+        analyzer: { generate: jest.fn().mockResolvedValue(false) },
+      });
+
+      await expect(
+        service.regeneratePropositionAnalysis('prop-1'),
+      ).resolves.toBe(false);
+
+      expect(analyzer.generate).toHaveBeenCalledWith('prop-1', true);
+      expect(mockCache.keys).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('post-sync analyzer hook', () => {
+    it('calls generateMissing after a propositions sync', async () => {
+      const { service, analyzer, mockPlugin } = await buildService();
+      mockPlugin.fetchPropositions.mockResolvedValueOnce([
+        {
+          externalId: 'SCA 1',
+          title: 'Test',
+          summary: 'sum',
+          status: PropositionStatus.PENDING,
+        } as Proposition,
+      ]);
+
+      await service.syncDataType(DataType.PROPOSITIONS);
+
+      expect(analyzer.generateMissing).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the sync result successful when the analyzer hook throws', async () => {
+      const { service, analyzer, mockPlugin } = await buildService({
+        analyzer: {
+          generateMissing: jest
+            .fn()
+            .mockRejectedValue(new Error('analyzer down')),
+        },
+      });
+      mockPlugin.fetchPropositions.mockResolvedValueOnce([
+        {
+          externalId: 'SCA 1',
+          title: 'Test',
+          summary: 'sum',
+          status: PropositionStatus.PENDING,
+        } as Proposition,
+      ]);
+
+      const result = await service.syncDataType(DataType.PROPOSITIONS);
+
+      expect(result.errors).toEqual([]);
+      expect(analyzer.generateMissing).toHaveBeenCalled();
+    });
+  });
+
+  describe('regeneratePropositionAnalysis when analyzer is not provided', () => {
+    it('returns false when the optional dependency is absent', async () => {
+      // Build a service without the PropositionAnalysisService provider so
+      // the constructor leaves it undefined.
+      const mockDb = createMockDbService();
+      mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+      mockDb.regionPlugin.findUnique.mockResolvedValue(null);
+      mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
+      mockDb.proposition.findMany.mockResolvedValue([]);
+      const mockPlugin = {
+        getName: jest.fn().mockReturnValue('test'),
+        getRegionInfo: jest.fn().mockReturnValue({
+          id: 'r',
+          name: 'R',
+          description: 'd',
+          timezone: 'America/Los_Angeles',
+        }),
+        getSupportedDataTypes: jest.fn().mockReturnValue([]),
+        getProviderName: jest.fn().mockReturnValue('test'),
+        fetchPropositions: jest.fn().mockResolvedValue([]),
+        fetchMeetings: jest.fn().mockResolvedValue([]),
+        fetchRepresentatives: jest.fn().mockResolvedValue([]),
+      } as unknown as jest.Mocked<IRegionPlugin>;
+      const mockRegistry = {
+        register: jest.fn(),
+        unregister: jest.fn(),
+        getActive: jest.fn().mockReturnValue(mockPlugin),
+        registerLocal: jest.fn(),
+        registerFederal: jest.fn(),
+        getLocal: jest.fn().mockReturnValue(mockPlugin),
+        getFederal: jest.fn().mockReturnValue(undefined),
+        getAll: jest.fn().mockReturnValue([]),
+        getActiveName: jest.fn().mockReturnValue('test'),
+        hasActive: jest.fn().mockReturnValue(true),
+        getHealth: jest.fn(),
+        getStatus: jest.fn(),
+        onModuleDestroy: jest.fn(),
+      };
+      const mockLoader = {
+        loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+        loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
+        unloadPlugin: jest.fn(),
+      };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          RegionDomainService,
+          { provide: PluginLoaderService, useValue: mockLoader },
+          { provide: PluginRegistryService, useValue: mockRegistry },
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: REGION_CACHE,
+            useValue: {
+              get: jest.fn(),
+              set: jest.fn(),
+              delete: jest.fn(),
+              destroy: jest.fn(),
+              keys: jest.fn().mockResolvedValue([]),
+            },
+          },
+        ],
+      }).compile();
+      const svc = module.get<RegionDomainService>(RegionDomainService);
+      await svc.onModuleInit();
+
+      await expect(svc.regeneratePropositionAnalysis('prop-1')).resolves.toBe(
+        false,
+      );
+    });
   });
 });

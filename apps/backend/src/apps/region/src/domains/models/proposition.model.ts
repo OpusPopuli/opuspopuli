@@ -1,4 +1,9 @@
 import { ObjectType, Field, ID, Int, registerEnumType } from '@nestjs/graphql';
+import {
+  ExistingVsProposedModel,
+  PropositionAnalysisClaimModel,
+  PropositionAnalysisSectionModel,
+} from './proposition-analysis.model';
 
 /**
  * Proposition status enum for GraphQL
@@ -43,6 +48,36 @@ export class PropositionModel {
 
   @Field({ nullable: true })
   sourceUrl?: string;
+
+  @Field({ nullable: true })
+  analysisSummary?: string;
+
+  @Field(() => [String], { nullable: true })
+  keyProvisions?: string[];
+
+  @Field({ nullable: true })
+  fiscalImpact?: string;
+
+  @Field({ nullable: true })
+  yesOutcome?: string;
+
+  @Field({ nullable: true })
+  noOutcome?: string;
+
+  @Field(() => ExistingVsProposedModel, { nullable: true })
+  existingVsProposed?: ExistingVsProposedModel;
+
+  @Field(() => [PropositionAnalysisSectionModel], { nullable: true })
+  analysisSections?: PropositionAnalysisSectionModel[];
+
+  @Field(() => [PropositionAnalysisClaimModel], { nullable: true })
+  analysisClaims?: PropositionAnalysisClaimModel[];
+
+  @Field({ nullable: true })
+  analysisSource?: string;
+
+  @Field({ nullable: true })
+  analysisGeneratedAt?: Date;
 
   @Field()
   createdAt!: Date;

@@ -58,6 +58,43 @@ export interface ContactInfo {
 }
 
 /**
+ * AI-segmented section of a proposition's fullText — a ToC anchor with
+ * character-offset bounds into the source. Empty when analysis hasn't run.
+ */
+export interface PropositionAnalysisSection {
+  heading: string;
+  /** Inclusive char offset into Proposition.fullText where this section starts. */
+  startOffset: number;
+  /** Exclusive char offset where the section ends. */
+  endOffset: number;
+}
+
+/**
+ * A single AI-derived claim about the proposition with a citation back
+ * into the source text. Used by ClaimAttribution footnotes to scroll
+ * the reader from the analysis to the supporting passage.
+ */
+export interface PropositionAnalysisClaim {
+  /** The plain-language claim itself (appears as a footnote target). */
+  claim: string;
+  /** Which analysis field the claim backs: 'keyProvisions' | 'fiscalImpact' | 'yesOutcome' | 'noOutcome' | 'existingCurrent' | 'existingProposed' | 'summary'. */
+  field: string;
+  /** Inclusive char offset into fullText where the supporting passage starts. */
+  sourceStart: number;
+  /** Exclusive char offset where the supporting passage ends. */
+  sourceEnd: number;
+  confidence?: "high" | "medium" | "low";
+}
+
+/**
+ * Current-law vs. proposed-change comparison for a ballot measure.
+ */
+export interface PropositionExistingVsProposed {
+  current: string;
+  proposed: string;
+}
+
+/**
  * Proposition/ballot measure data
  */
 export interface Proposition {
@@ -68,6 +105,24 @@ export interface Proposition {
   status: PropositionStatus;
   electionDate?: Date;
   sourceUrl?: string;
+
+  /** AI-generated plain-language one-liner. */
+  analysisSummary?: string;
+  /** "This would..." bullets. */
+  keyProvisions?: string[];
+  fiscalImpact?: string;
+  /** What a yes vote concretely means. */
+  yesOutcome?: string;
+  /** What a no vote concretely means. */
+  noOutcome?: string;
+  existingVsProposed?: PropositionExistingVsProposed;
+  analysisSections?: PropositionAnalysisSection[];
+  analysisClaims?: PropositionAnalysisClaim[];
+  /** 'ai-generated' | 'manual' — reserved for future editorial override. */
+  analysisSource?: "ai-generated" | "manual";
+  /** Prompt hash from PromptServiceResponse — used to detect stale analyses. */
+  analysisPromptHash?: string;
+  analysisGeneratedAt?: Date;
 }
 
 /**

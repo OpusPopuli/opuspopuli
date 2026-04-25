@@ -33,6 +33,7 @@ import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { REGION_CACHE } from './region.tokens';
 import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
+import { PropositionAnalysisService } from './proposition-analysis.service';
 
 /**
  * Minimal interface for data fetching used by sync methods.
@@ -50,9 +51,14 @@ import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import {
   PaginatedPropositions,
+  PropositionModel,
   PropositionStatusGQL,
 } from './models/proposition.model';
 import { PaginatedMeetings } from './models/meeting.model';
+import {
+  PropositionAnalysisClaimModel,
+  PropositionAnalysisSectionModel,
+} from './models/proposition-analysis.model';
 import {
   BioClaimModel,
   CommitteeAssignmentModel,
@@ -84,6 +90,17 @@ type PropositionRecord = {
   status: string;
   electionDate: Date | null;
   sourceUrl: string | null;
+  analysisSummary: string | null;
+  keyProvisions: unknown;
+  fiscalImpact: string | null;
+  yesOutcome: string | null;
+  noOutcome: string | null;
+  existingVsProposed: unknown;
+  analysisSections: unknown;
+  analysisClaims: unknown;
+  analysisSource: string | null;
+  analysisPromptHash: string | null;
+  analysisGeneratedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -224,6 +241,51 @@ export function extractLastName(fullName: string): string {
   return tokens.at(-1) ?? trimmed;
 }
 
+/**
+ * Cast a Prisma proposition row into the GraphQL-shaped object. Converts
+ * DB nulls to GraphQL undefined and unpacks JSONB columns that are stored
+ * as `unknown` at the Prisma type level. Used by both the list (plural)
+ * getter and the single-record resolver.
+ */
+export function mapPropositionRecord(
+  item: PropositionRecord,
+): PropositionModel {
+  return {
+    id: item.id,
+    externalId: item.externalId,
+    title: item.title,
+    summary: item.summary,
+    fullText: item.fullText ?? undefined,
+    status: item.status as unknown as PropositionStatusGQL,
+    electionDate: item.electionDate ?? undefined,
+    sourceUrl: item.sourceUrl ?? undefined,
+    analysisSummary: item.analysisSummary ?? undefined,
+    keyProvisions: Array.isArray(item.keyProvisions)
+      ? (item.keyProvisions as string[])
+      : undefined,
+    fiscalImpact: item.fiscalImpact ?? undefined,
+    yesOutcome: item.yesOutcome ?? undefined,
+    noOutcome: item.noOutcome ?? undefined,
+    existingVsProposed:
+      item.existingVsProposed &&
+      typeof item.existingVsProposed === 'object' &&
+      'current' in (item.existingVsProposed as object) &&
+      'proposed' in (item.existingVsProposed as object)
+        ? (item.existingVsProposed as { current: string; proposed: string })
+        : undefined,
+    analysisSections: Array.isArray(item.analysisSections)
+      ? (item.analysisSections as PropositionAnalysisSectionModel[])
+      : undefined,
+    analysisClaims: Array.isArray(item.analysisClaims)
+      ? (item.analysisClaims as PropositionAnalysisClaimModel[])
+      : undefined,
+    analysisSource: item.analysisSource ?? undefined,
+    analysisGeneratedAt: item.analysisGeneratedAt ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
 @Injectable()
 export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RegionDomainService.name, {
@@ -245,6 +307,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly bioGenerator?: BioGeneratorService,
     @Optional()
     private readonly committeeSummaryGenerator?: CommitteeSummaryGeneratorService,
+    @Optional()
+    private readonly propositionAnalysis?: PropositionAnalysisService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -615,6 +679,20 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     // Invalidate cached proposition queries (#459)
     await this.invalidateCache('propositions:');
 
+    // Generate AI analysis for any proposition with fullText but no
+    // analysis yet. DB-driven so it picks up newly ingested PDFs as well
+    // as past rows missed by earlier sync cycles. Fire-and-forget in the
+    // sense that failures are logged but don't abort the sync.
+    if (this.propositionAnalysis) {
+      try {
+        await this.propositionAnalysis.generateMissing();
+      } catch (error) {
+        this.logger.warn(
+          `Proposition analysis post-sync pass failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
     const created = propositions.filter(
       (p) => !existingExternalIds.has(p.externalId),
     ).length;
@@ -623,6 +701,20 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     ).length;
 
     return { processed: propositions.length, created, updated };
+  }
+
+  /**
+   * Regenerate AI analysis for a single proposition. Admin-invoked via the
+   * regeneratePropositionAnalysis mutation; also used by the backfill
+   * script for forced reruns.
+   */
+  async regeneratePropositionAnalysis(id: string): Promise<boolean> {
+    if (!this.propositionAnalysis) return false;
+    const result = await this.propositionAnalysis.generate(id, true);
+    if (result) {
+      await this.invalidateCache('propositions:');
+    }
+    return result;
   }
 
   /**
@@ -1130,13 +1222,9 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
 
       // Cast database types to GraphQL types - enum values are compatible at runtime
       return {
-        items: paginatedItems.map((item: PropositionRecord) => ({
-          ...item,
-          fullText: item.fullText ?? undefined,
-          electionDate: item.electionDate ?? undefined,
-          sourceUrl: item.sourceUrl ?? undefined,
-          status: item.status as unknown as PropositionStatusGQL,
-        })),
+        items: paginatedItems.map((item: PropositionRecord) =>
+          mapPropositionRecord(item),
+        ),
         total,
         hasMore,
       };

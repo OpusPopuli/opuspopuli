@@ -217,6 +217,30 @@ describe('RegionResolver', () => {
     });
   });
 
+  describe('regeneratePropositionAnalysis', () => {
+    it('should re-fetch and return the proposition after a successful regenerate', async () => {
+      regionService.regeneratePropositionAnalysis.mockResolvedValue(true);
+      regionService.getProposition.mockResolvedValue(mockProposition);
+
+      const result = await resolver.regeneratePropositionAnalysis('1');
+
+      expect(regionService.regeneratePropositionAnalysis).toHaveBeenCalledWith(
+        '1',
+      );
+      expect(regionService.getProposition).toHaveBeenCalledWith('1');
+      expect(result?.id).toBe('1');
+    });
+
+    it('should return null when the proposition vanishes between regenerate and fetch', async () => {
+      regionService.regeneratePropositionAnalysis.mockResolvedValue(false);
+      regionService.getProposition.mockResolvedValue(null);
+
+      const result = await resolver.regeneratePropositionAnalysis('missing');
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('meetings', () => {
     it('should return paginated meetings', async () => {
       const mockPaginatedResult = {
