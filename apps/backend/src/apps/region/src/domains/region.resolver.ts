@@ -85,7 +85,7 @@ export class RegionResolver {
   ): Promise<PropositionModel | null> {
     const result = await this.regionService.getProposition(id);
     if (!result) return null;
-    return mapPropositionRecord(result) as PropositionModel;
+    return mapPropositionRecord(result);
   }
 
   /**
@@ -104,7 +104,7 @@ export class RegionResolver {
     await this.regionService.regeneratePropositionAnalysis(id);
     const result = await this.regionService.getProposition(id);
     if (!result) return null;
-    return mapPropositionRecord(result) as PropositionModel;
+    return mapPropositionRecord(result);
   }
 
   /**

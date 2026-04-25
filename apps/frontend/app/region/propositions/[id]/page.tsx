@@ -178,8 +178,8 @@ function Details({
         <SectionTitle>Key Provisions</SectionTitle>
         {proposition.keyProvisions && proposition.keyProvisions.length > 0 ? (
           <ul className="list-disc pl-5 space-y-2 text-[#334155]">
-            {proposition.keyProvisions.map((provision, idx) => (
-              <li key={idx} className="leading-relaxed">
+            {proposition.keyProvisions.map((provision) => (
+              <li key={provision} className="leading-relaxed">
                 <span>{provision}</span>
                 <ClaimAttribution
                   claims={claimsForField(

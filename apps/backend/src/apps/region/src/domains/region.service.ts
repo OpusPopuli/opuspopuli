@@ -269,8 +269,8 @@ export function mapPropositionRecord(
     existingVsProposed:
       item.existingVsProposed &&
       typeof item.existingVsProposed === 'object' &&
-      'current' in (item.existingVsProposed as object) &&
-      'proposed' in (item.existingVsProposed as object)
+      'current' in item.existingVsProposed &&
+      'proposed' in item.existingVsProposed
         ? (item.existingVsProposed as { current: string; proposed: string })
         : undefined,
     analysisSections: Array.isArray(item.analysisSections)

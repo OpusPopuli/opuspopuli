@@ -427,7 +427,8 @@ export class PropositionAnalysisService {
     for (let i = 0; i < snapped.length - 1; i++) {
       snapped[i].endOffset = snapped[i + 1].startOffset;
     }
-    snapped[snapped.length - 1].endOffset = textLen;
+    const last = snapped.at(-1);
+    if (last) last.endOffset = textLen;
 
     // Drop empty/inverted sections that survived (rare but possible if
     // two snapped headings landed on the same offset).
