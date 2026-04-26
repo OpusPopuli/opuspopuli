@@ -29,7 +29,9 @@ import { LegislativeCommitteeDescriptionGeneratorService } from '../domains/legi
 
 async function main(): Promise<void> {
   const logger = new Logger('run-legislative-committee-descriptions');
-  const cap = process.argv[2] ? parseInt(process.argv[2], 10) : undefined;
+  const cap = process.argv[2]
+    ? Number.parseInt(process.argv[2], 10)
+    : undefined;
 
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['log', 'warn', 'error'],
@@ -38,9 +40,8 @@ async function main(): Promise<void> {
     const service = app.get(LegislativeCommitteeDescriptionGeneratorService, {
       strict: false,
     });
-    logger.log(
-      `Starting legislative committee description pass${cap ? ` (cap=${cap})` : ''}…`,
-    );
+    const capSuffix = cap ? ` (cap=${cap})` : '';
+    logger.log(`Starting legislative committee description pass${capSuffix}…`);
     await service.generateMissingDescriptions(cap);
     logger.log('Done.');
   } finally {

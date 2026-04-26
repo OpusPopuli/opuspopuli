@@ -1467,7 +1467,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       if (!raw) return [];
       const padded = this.extractDistrictNumber(raw);
       if (!padded) return [];
-      const unpadded = String(parseInt(padded, 10));
+      const unpadded = String(Number.parseInt(padded, 10));
       return [
         { chamber, district: padded },
         { chamber, district: unpadded },
