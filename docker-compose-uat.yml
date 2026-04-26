@@ -240,11 +240,16 @@ services:
     deploy:
       resources:
         limits:
+          # Bumped 2048M → 6144M for the campaign-finance bulk sync. The
+          # federal plugin's fetchCampaignFinance accumulates all FEC
+          # records (~3M) in memory before returning instead of honoring
+          # the onBatch streaming flow — separate bug worth fixing, but
+          # for now we just give the container enough headroom.
           cpus: '1.0'
-          memory: 2048M
+          memory: 6144M
         reservations:
           cpus: '0.25'
-          memory: 256M
+          memory: 512M
 
   api:
     build:
