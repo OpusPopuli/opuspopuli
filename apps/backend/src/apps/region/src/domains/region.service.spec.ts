@@ -664,7 +664,7 @@ describe('RegionDomainService', () => {
       expect(mockDb.representative.findMany).not.toHaveBeenCalled();
     });
 
-    it('should build correct OR conditions for assembly and senate districts', async () => {
+    it('matches BOTH padded and unpadded district forms for both chambers', async () => {
       mockDb.representative.findMany.mockResolvedValue([]);
 
       await service.getRepresentativesByDistricts(
@@ -673,18 +673,22 @@ describe('RegionDomainService', () => {
         'Assembly District 12',
       );
 
+      // Assembly stores unpadded ("12"), Senate stores padded ("05") — but a
+      // future scrape drift in either direction must not silently miss matches.
       expect(mockDb.representative.findMany).toHaveBeenCalledWith({
         where: {
           OR: [
-            { chamber: 'Assembly', district: 'District: 12' },
+            { chamber: 'Assembly', district: '12' },
+            { chamber: 'Assembly', district: '12' },
             { chamber: 'Senate', district: '05' },
+            { chamber: 'Senate', district: '5' },
           ],
         },
         orderBy: [{ chamber: 'asc' }, { lastName: 'asc' }],
       });
     });
 
-    it('should zero-pad single-digit district numbers (Congressional District 2 -> "02")', async () => {
+    it('emits both "02" and "2" for a single-digit Senate district', async () => {
       mockDb.representative.findMany.mockResolvedValue([]);
 
       await service.getRepresentativesByDistricts(
@@ -695,13 +699,16 @@ describe('RegionDomainService', () => {
 
       expect(mockDb.representative.findMany).toHaveBeenCalledWith({
         where: {
-          OR: [{ chamber: 'Senate', district: '02' }],
+          OR: [
+            { chamber: 'Senate', district: '02' },
+            { chamber: 'Senate', district: '2' },
+          ],
         },
         orderBy: [{ chamber: 'asc' }, { lastName: 'asc' }],
       });
     });
 
-    it('should preserve two-digit district numbers (Assembly District 12 -> "12")', async () => {
+    it('emits unpadded "12" for an Assembly two-digit district', async () => {
       mockDb.representative.findMany.mockResolvedValue([]);
 
       await service.getRepresentativesByDistricts(
@@ -712,7 +719,10 @@ describe('RegionDomainService', () => {
 
       expect(mockDb.representative.findMany).toHaveBeenCalledWith({
         where: {
-          OR: [{ chamber: 'Assembly', district: 'District: 12' }],
+          OR: [
+            { chamber: 'Assembly', district: '12' },
+            { chamber: 'Assembly', district: '12' },
+          ],
         },
         orderBy: [{ chamber: 'asc' }, { lastName: 'asc' }],
       });

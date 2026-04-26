@@ -79,22 +79,41 @@ function isLeadershipRole(role?: string): boolean {
 }
 
 function CommitteeRow({ c }: { readonly c: CommitteeAssignment }) {
+  // Three rendering tiers, in priority order:
+  //  1. Internal link to the new committee detail page when the linker
+  //     resolved a LegislativeCommittee.id for this assignment.
+  //  2. External link to the rep-specific scrape URL when present (the
+  //     committee detail page doesn't carry that per-rep context).
+  //  3. Plain text for the rare case where neither is available.
+  const renderName = () => {
+    if (c.legislativeCommitteeId) {
+      return (
+        <Link
+          href={`/region/legislative-committees/${c.legislativeCommitteeId}`}
+          className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+        >
+          {c.name}
+        </Link>
+      );
+    }
+    if (c.url) {
+      return (
+        <a
+          href={c.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+        >
+          {c.name}
+        </a>
+      );
+    }
+    return <span className="text-sm text-[#334155]">{c.name}</span>;
+  };
+
   return (
     <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-      <div className="flex items-center gap-2">
-        {c.url ? (
-          <a
-            href={c.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
-          >
-            {c.name}
-          </a>
-        ) : (
-          <span className="text-sm text-[#334155]">{c.name}</span>
-        )}
-      </div>
+      <div className="flex items-center gap-2">{renderName()}</div>
       {c.role && (
         // Member badge uses slate-700 (#334155) on gray-100 (#f3f4f6) for
         // ~7.5:1 contrast; slate-500 (#64748b) — used previously — was

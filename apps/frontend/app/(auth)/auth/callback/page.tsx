@@ -133,6 +133,8 @@ function AuthCallbackContent() {
     }
 
     // No valid params found
+    // Initial-mount sync — rule mis-flags this; we intentionally surface
+    // the error state synchronously when no callback params are present.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setStatus("error");
     // eslint-disable-next-line react-hooks/exhaustive-deps

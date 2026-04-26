@@ -144,6 +144,9 @@ export default function PetitionResultsPage() {
     sessionStorage.removeItem("petition-scan-data");
     sessionStorage.removeItem("petition-scan-location");
 
+    // Initial-mount kickoff of the OCR pipeline — runPipeline internally
+    // calls setState. This is the documented entry point, not a cascading
+    // render loop.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     runPipeline(base64, location);
   }, [router, runPipeline]);

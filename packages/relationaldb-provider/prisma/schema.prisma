@@ -573,7 +573,7 @@ model Representative {
   party       String
   photoUrl    String?   @map("photo_url")
   contactInfo Json?     @map("contact_info")
-  committees  Json?     @map("committees")       /// CommitteeAssignment[] as JSON
+  committees  Json?     @map("committees")       /// CommitteeAssignment[] as JSON — canonical source for the LegislativeCommittee backfill
   committeesSummary String? @map("committees_summary") @db.Text /// AI-generated preamble describing the policy areas touched by committee assignments
   bio         String?   @db.Text
   bioSource   String?   @map("bio_source") @db.VarChar(20) /// 'scraped' | 'ai-generated'
@@ -582,11 +582,58 @@ model Representative {
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
+  committeeAssignments RepresentativeCommitteeAssignment[]
+
   @@index([name])
   @@index([lastName])
   @@index([chamber])
   @@index([party])
   @@map("representatives")
+}
+
+/// Legislative committee within a chamber (e.g. Assembly Health, Senate Judiciary).
+/// First-class entity derived from Representative.committees JSON via the backfill
+/// service. NOT a campaign-finance committee — that's the separate `Committee`
+/// model. See ROADMAP issue for the eventual `Committee` → `FinanceCommittee` rename.
+model LegislativeCommittee {
+  id          String    @id @default(uuid())
+  externalId  String    @unique @map("external_id") /// `<chamber-lowercased>:<normalized-name>` e.g. "assembly:budget"
+  name        String                                 /// Display name as scraped (e.g. "Budget")
+  chamber     String    @db.VarChar(20)              /// "Assembly" | "Senate"
+  url         String?                                /// Optional canonical official link (when present in source data)
+  /// AI-generated description placeholder for Phase 2 — kept nullable so the
+  /// column ships now and a future analyzer can populate later.
+  description String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  assignments RepresentativeCommitteeAssignment[]
+
+  @@index([chamber])
+  @@index([name])
+  @@map("legislative_committees")
+}
+
+/// Many-to-many: which legislators sit on which committees, with role.
+/// Populated by LegislativeCommitteeBackfillService from
+/// Representative.committees JSON. Roles are canonicalized at backfill time
+/// to one of: 'Chair' | 'Vice Chair' | 'Member' (anything unrecognized
+/// collapses to 'Member').
+model RepresentativeCommitteeAssignment {
+  id                     String   @id @default(uuid())
+  representativeId       String   @map("representative_id")
+  legislativeCommitteeId String   @map("legislative_committee_id")
+  role                   String?  @db.VarChar(50)
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  representative Representative       @relation(fields: [representativeId],       references: [id], onDelete: Cascade)
+  committee      LegislativeCommittee @relation(fields: [legislativeCommitteeId], references: [id], onDelete: Cascade)
+
+  @@unique([representativeId, legislativeCommitteeId])
+  @@index([legislativeCommitteeId])
+  @@map("representative_committee_assignments")
 }
 
 model Proposition {

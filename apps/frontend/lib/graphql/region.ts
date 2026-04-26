@@ -103,6 +103,7 @@ export interface CommitteeAssignment {
   name: string;
   role?: string;
   url?: string;
+  legislativeCommitteeId?: string;
 }
 
 export interface Representative {
@@ -175,6 +176,51 @@ export interface PaginatedCommittees {
   items: Committee[];
   total: number;
   hasMore: boolean;
+}
+
+export interface LegislativeCommittee {
+  id: string;
+  externalId: string;
+  name: string;
+  chamber: string;
+  url?: string;
+  description?: string;
+  memberCount: number;
+}
+
+export interface PaginatedLegislativeCommittees {
+  items: LegislativeCommittee[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface LegislativeCommitteeMember {
+  representativeId: string;
+  name: string;
+  role?: string;
+  party: string;
+  photoUrl?: string;
+}
+
+export interface LegislativeCommitteeHearing {
+  id: string;
+  title: string;
+  scheduledAt: string;
+  agendaUrl?: string;
+}
+
+export interface LegislativeCommitteeDetail {
+  id: string;
+  externalId: string;
+  name: string;
+  chamber: string;
+  url?: string;
+  description?: string;
+  memberCount: number;
+  members: LegislativeCommitteeMember[];
+  hearings: LegislativeCommitteeHearing[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Contribution {
@@ -298,6 +344,14 @@ export interface CommitteeData {
   committee: Committee | null;
 }
 
+export interface LegislativeCommitteesData {
+  legislativeCommittees: PaginatedLegislativeCommittees;
+}
+
+export interface LegislativeCommitteeData {
+  legislativeCommittee: LegislativeCommitteeDetail | null;
+}
+
 export interface ContributionsData {
   contributions: PaginatedContributions;
 }
@@ -349,6 +403,10 @@ export interface IdVars {
 
 export interface CommitteesVars extends PaginationVars {
   sourceSystem?: string;
+}
+
+export interface LegislativeCommitteesVars extends PaginationVars {
+  chamber?: string;
 }
 
 export interface ContributionsVars extends PaginationVars {
@@ -653,6 +711,7 @@ export const GET_REPRESENTATIVE = gql`
         name
         role
         url
+        legislativeCommitteeId
       }
       committeesSummary
       bio
@@ -737,6 +796,53 @@ export const GET_COMMITTEE = gql`
       status
       sourceSystem
       sourceUrl
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const GET_LEGISLATIVE_COMMITTEES = gql`
+  query GetLegislativeCommittees($skip: Int, $take: Int, $chamber: String) {
+    legislativeCommittees(skip: $skip, take: $take, chamber: $chamber) {
+      items {
+        id
+        externalId
+        name
+        chamber
+        url
+        description
+        memberCount
+      }
+      total
+      hasMore
+    }
+  }
+`;
+
+export const GET_LEGISLATIVE_COMMITTEE = gql`
+  query GetLegislativeCommittee($id: ID!) {
+    legislativeCommittee(id: $id) {
+      id
+      externalId
+      name
+      chamber
+      url
+      description
+      memberCount
+      members {
+        representativeId
+        name
+        role
+        party
+        photoUrl
+      }
+      hearings {
+        id
+        title
+        scheduledAt
+        agendaUrl
+      }
       createdAt
       updatedAt
     }
