@@ -34,6 +34,11 @@ import { REGION_CACHE } from './region.tokens';
 import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
+import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
+import {
+  PropositionFundingService,
+  type PropositionFunding,
+} from './proposition-funding.service';
 
 /**
  * Minimal interface for data fetching used by sync methods.
@@ -269,8 +274,8 @@ export function mapPropositionRecord(
     existingVsProposed:
       item.existingVsProposed &&
       typeof item.existingVsProposed === 'object' &&
-      'current' in (item.existingVsProposed as object) &&
-      'proposed' in (item.existingVsProposed as object)
+      'current' in item.existingVsProposed &&
+      'proposed' in item.existingVsProposed
         ? (item.existingVsProposed as { current: string; proposed: string })
         : undefined,
     analysisSections: Array.isArray(item.analysisSections)
@@ -309,6 +314,10 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     private readonly committeeSummaryGenerator?: CommitteeSummaryGeneratorService,
     @Optional()
     private readonly propositionAnalysis?: PropositionAnalysisService,
+    @Optional()
+    private readonly propositionFinanceLinker?: PropositionFinanceLinkerService,
+    @Optional()
+    private readonly propositionFunding?: PropositionFundingService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -1027,13 +1036,29 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     if (
       data.contributions.length > 0 ||
       data.expenditures.length > 0 ||
-      data.independentExpenditures.length > 0
+      data.independentExpenditures.length > 0 ||
+      data.committeeMeasureFilings.length > 0
     ) {
       await this.ensureCommitteeStubs(data);
       const result = await this.upsertCampaignFinanceBatch(data);
       totalProcessed += result.processed;
       totalCreated += result.created;
       totalUpdated += result.updated;
+    }
+
+    // Resolve committee↔proposition links from CVR2 + propositionTitle
+    // strings. Fire-and-forget: the linker's own errors should not fail
+    // the sync since the raw data is already persisted and a later run
+    // can re-resolve. Mirrors the post-sync hook pattern from
+    // syncPropositions → propositionAnalysis.generateMissing().
+    if (this.propositionFinanceLinker) {
+      try {
+        await this.propositionFinanceLinker.linkAll();
+      } catch (error) {
+        this.logger.warn(
+          `Proposition finance linker failed: ${(error as Error).message}`,
+        );
+      }
     }
 
     return {
@@ -1044,7 +1069,22 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Aggregate funding for a single proposition. Delegates to the funding
+   * service (which handles caching). Returns null when the funding service
+   * isn't wired (e.g. some test contexts).
+   */
+  async getPropositionFunding(
+    propositionId: string,
+  ): Promise<PropositionFunding | null> {
+    if (!this.propositionFunding) return null;
+    return this.propositionFunding.getFunding(propositionId);
+  }
+
+  /**
    * Sort a flat array of campaign finance items into typed buckets.
+   * The CVR2 (committee↔measure filing) discriminator runs before the
+   * generic "sourceSystem + type" committee check because CVR2 records
+   * also carry a sourceSystem.
    */
   private sortCampaignFinanceItems(
     items: Record<string, unknown>[],
@@ -1053,6 +1093,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     const contributions: CampaignFinanceResult['contributions'] = [];
     const expenditures: CampaignFinanceResult['expenditures'] = [];
     const independentExpenditures: CampaignFinanceResult['independentExpenditures'] =
+      [];
+    const committeeMeasureFilings: CampaignFinanceResult['committeeMeasureFilings'] =
       [];
 
     for (const rec of items) {
@@ -1068,6 +1110,13 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
         independentExpenditures.push(
           rec as unknown as CampaignFinanceResult['independentExpenditures'][0],
         );
+      } else if (
+        'filingId' in rec &&
+        ('ballotName' in rec || 'ballotNumber' in rec)
+      ) {
+        committeeMeasureFilings.push(
+          rec as unknown as CampaignFinanceResult['committeeMeasureFilings'][0],
+        );
       } else if ('sourceSystem' in rec && 'type' in rec) {
         committees.push(
           rec as unknown as CampaignFinanceResult['committees'][0],
@@ -1075,7 +1124,13 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    return { committees, contributions, expenditures, independentExpenditures };
+    return {
+      committees,
+      contributions,
+      expenditures,
+      independentExpenditures,
+      committeeMeasureFilings,
+    };
   }
 
   /**
@@ -1133,6 +1188,18 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
           'date',
           'electionDate',
           'description',
+          'sourceSystem',
+        ],
+      },
+      {
+        records: data.committeeMeasureFilings,
+        model: this.db.cvr2Filing,
+        fields: [
+          'filingId',
+          'ballotName',
+          'ballotNumber',
+          'ballotJurisdiction',
+          'supportOrOppose',
           'sourceSystem',
         ],
       },

@@ -8,6 +8,9 @@ node_modules
 
 *.tfvars
 
+# NestJS GraphQL autoSchemaFile output (region service) — regenerated on every build
+region-schema.gql
+
 # Build outputs
 dist/
 *.tsbuildinfo

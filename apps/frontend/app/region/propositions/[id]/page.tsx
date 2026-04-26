@@ -25,6 +25,7 @@ import { LayerNav } from "@/components/region/LayerNav";
 import { YesNoOutcomeCard } from "@/components/region/YesNoOutcomeCard";
 import { ClaimAttribution } from "@/components/region/ClaimAttribution";
 import { SegmentedFullText } from "@/components/region/SegmentedFullText";
+import { PropositionFundingSection } from "@/components/region/PropositionFundingSection";
 import { formatDate } from "@/lib/format";
 
 const STATUS_STYLES: Record<
@@ -75,10 +76,56 @@ function QuickView({
   readonly proposition: Proposition;
   readonly onNext: () => void;
 }) {
-  const summary = proposition.analysisSummary?.trim() || proposition.summary;
+  // Prefer the richer AI-generated paragraph. Fall back to the raw
+  // scrape `summary` only when it differs from the title — the SOS
+  // listing-page scrape often puts identical text in both, and rendering
+  // a paragraph that's just the title repeated is worse than nothing.
+  const summary =
+    proposition.analysisSummary?.trim() ||
+    (proposition.summary?.trim() &&
+    proposition.summary.trim() !== proposition.title.trim()
+      ? proposition.summary
+      : null);
+
+  // Top 3 key provisions give Quick View substantive depth without
+  // duplicating Layer 2's full bulleted list. If the analyzer hasn't
+  // populated provisions yet we just skip the section.
+  const topProvisions = (proposition.keyProvisions ?? []).slice(0, 3);
+
   return (
     <div className="animate-layer-enter">
-      <p className="text-lg text-[#475569] leading-relaxed mb-6">{summary}</p>
+      {summary ? (
+        <p className="text-lg text-[#475569] leading-relaxed mb-6">{summary}</p>
+      ) : (
+        <p className="text-base italic text-slate-400 mb-6">
+          AI analysis pending — a plain-language summary will appear here once
+          the measure text is processed.
+        </p>
+      )}
+
+      {topProvisions.length > 0 && (
+        <div className="mb-6">
+          <p className="text-xs font-bold uppercase tracking-wider text-[#595959] mb-2">
+            What this would do
+          </p>
+          <ul className="space-y-2 text-[#334155]">
+            {topProvisions.map((provision) => (
+              <li key={provision} className="flex gap-2 leading-relaxed">
+                <span aria-hidden className="text-slate-400 mt-0.5">
+                  →
+                </span>
+                <span>{provision}</span>
+              </li>
+            ))}
+          </ul>
+          {(proposition.keyProvisions?.length ?? 0) > topProvisions.length && (
+            <p className="mt-2 text-xs text-slate-500">
+              + {proposition.keyProvisions!.length - topProvisions.length} more
+              in Details.
+            </p>
+          )}
+        </div>
+      )}
 
       {proposition.fiscalImpact && (
         <div className="inline-flex items-start gap-3 px-4 py-3 bg-slate-100 rounded-lg text-sm text-[#334155] mb-6 max-w-2xl">
@@ -168,18 +215,14 @@ function Details({
   readonly onNavigateToClaim: (claim: PropositionAnalysisClaim) => void;
   readonly onNext: () => void;
 }) {
-  const hasAnalysis =
-    !!proposition.analysisSummary ||
-    (proposition.keyProvisions?.length ?? 0) > 0;
-
   return (
     <div className="animate-layer-enter">
       <div className="mb-8">
         <SectionTitle>Key Provisions</SectionTitle>
         {proposition.keyProvisions && proposition.keyProvisions.length > 0 ? (
           <ul className="list-disc pl-5 space-y-2 text-[#334155]">
-            {proposition.keyProvisions.map((provision, idx) => (
-              <li key={idx} className="leading-relaxed">
+            {proposition.keyProvisions.map((provision) => (
+              <li key={provision} className="leading-relaxed">
                 <span>{provision}</span>
                 <ClaimAttribution
                   claims={claimsForField(
@@ -271,40 +314,24 @@ function Details({
 
       <LinkedPetitionScans propositionId={propositionId} />
 
-      {!hasAnalysis && (
-        <div className="mb-8">
-          <SectionTitle>Who&apos;s Funding This</SectionTitle>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-5 text-center">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                Yes Campaign
-              </p>
-              <p className="text-sm text-slate-700">Funding data coming soon</p>
-            </div>
-            <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-5 text-center">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                No Campaign
-              </p>
-              <p className="text-sm text-slate-700">Funding data coming soon</p>
-            </div>
-          </div>
-        </div>
-      )}
-
       <LayerButton onClick={onNext}>See Both Sides</LayerButton>
     </div>
   );
 }
 
 function BothSides({
+  propositionId,
   onNext,
   onBack,
 }: {
+  readonly propositionId: string;
   readonly onNext: () => void;
   readonly onBack: () => void;
 }) {
   return (
     <div className="animate-layer-enter">
+      <PropositionFundingSection propositionId={propositionId} />
+
       <div className="mb-8">
         <SectionTitle>Best Arguments From Each Side</SectionTitle>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -510,7 +537,11 @@ export default function PropositionDetailPage() {
           />
         )}
         {layer === 3 && (
-          <BothSides onNext={() => setLayer(4)} onBack={() => setLayer(1)} />
+          <BothSides
+            propositionId={id}
+            onNext={() => setLayer(4)}
+            onBack={() => setLayer(1)}
+          />
         )}
         {layer === 4 && (
           <DeepDive

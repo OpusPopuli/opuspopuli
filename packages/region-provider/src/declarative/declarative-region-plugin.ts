@@ -101,6 +101,8 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     const expenditures: CampaignFinanceResult["expenditures"] = [];
     const independentExpenditures: CampaignFinanceResult["independentExpenditures"] =
       [];
+    const committeeMeasureFilings: CampaignFinanceResult["committeeMeasureFilings"] =
+      [];
 
     for (const item of allItems) {
       const rec = item;
@@ -116,6 +118,16 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
         independentExpenditures.push(
           rec as unknown as CampaignFinanceResult["independentExpenditures"][0],
         );
+      } else if (
+        "filingId" in rec &&
+        ("ballotName" in rec || "ballotNumber" in rec)
+      ) {
+        // CVR2 record — Form 410 ballot-measure declaration. Has filingId +
+        // a ballot identifier. Discriminate before "sourceSystem + type"
+        // because a CVR2 row also carries a sourceSystem.
+        committeeMeasureFilings.push(
+          rec as unknown as CampaignFinanceResult["committeeMeasureFilings"][0],
+        );
       } else if ("sourceSystem" in rec && "type" in rec) {
         committees.push(
           rec as unknown as CampaignFinanceResult["committees"][0],
@@ -123,7 +135,13 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       }
     }
 
-    return { committees, contributions, expenditures, independentExpenditures };
+    return {
+      committees,
+      contributions,
+      expenditures,
+      independentExpenditures,
+      committeeMeasureFilings,
+    };
   }
 
   override async healthCheck() {

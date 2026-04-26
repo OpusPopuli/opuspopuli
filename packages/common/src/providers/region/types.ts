@@ -286,6 +286,24 @@ export interface IndependentExpenditure {
 }
 
 /**
+ * Raw CVR2_CAMPAIGN_DISCLOSURE_CD record from CalAccess. Each row represents
+ * one ballot-measure declaration on an FPPC Form 410 filing — links a filing
+ * (and therefore a committee) to a specific measure with a support/oppose
+ * code. Persisted as-is so the proposition-finance-linker can resolve to
+ * (committeeId, propositionId) at link time, decoupled from the bulk-download
+ * cycle order.
+ */
+export interface CommitteeMeasureFiling {
+  externalId: string; // FILING_ID + LINE_ITEM
+  filingId: string; // FILING_ID — joinable to Contribution.externalId / Expenditure.externalId
+  ballotName?: string; // BAL_NAME — fuzzy-matches Proposition.title
+  ballotNumber?: string; // BAL_NUM — e.g. "ACA 13"
+  ballotJurisdiction?: string; // BAL_JURIS
+  supportOrOppose?: "support" | "oppose"; // mapped from SUP_OPP_CD
+  sourceSystem: "cal_access" | "fec";
+}
+
+/**
  * Aggregated result from campaign finance data fetch
  */
 export interface CampaignFinanceResult {
@@ -293,6 +311,7 @@ export interface CampaignFinanceResult {
   contributions: Contribution[];
   expenditures: Expenditure[];
   independentExpenditures: IndependentExpenditure[];
+  committeeMeasureFilings: CommitteeMeasureFiling[];
 }
 
 /**
