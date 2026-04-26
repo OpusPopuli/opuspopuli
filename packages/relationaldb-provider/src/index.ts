@@ -68,6 +68,8 @@ export type {
   Contribution,
   Expenditure,
   IndependentExpenditure,
+  CommitteeMeasurePosition,
+  Cvr2Filing,
   PromptTemplate,
   AbuseReport,
   DocumentProposition,
@@ -93,6 +95,7 @@ export {
   AbuseReportReason,
   AbuseReportStatus,
   LinkSource,
+  CommitteeMeasurePositionType,
 } from "@prisma/client";
 
 // Test utilities are available from "@opuspopuli/relationaldb-provider/testing"

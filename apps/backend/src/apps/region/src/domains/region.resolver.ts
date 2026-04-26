@@ -23,6 +23,7 @@ import {
   PropositionModel,
   PaginatedPropositions,
 } from './models/proposition.model';
+import { PropositionFundingModel } from './models/proposition-funding.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
 import {
   BioClaimModel,
@@ -86,6 +87,26 @@ export class RegionResolver {
     const result = await this.regionService.getProposition(id);
     if (!result) return null;
     return mapPropositionRecord(result);
+  }
+
+  /**
+   * Aggregated campaign-finance totals for a single proposition. Public
+   * so the proposition detail page can render the funding section without
+   * authentication. Returns null when no funding has been linked to the
+   * proposition (the resolver uses the model's nullable mapping; the
+   * service itself returns an all-zeros shape when the proposition exists
+   * but has no positions or IEs yet).
+   */
+  @Public()
+  @Query(() => PropositionFundingModel, { nullable: true })
+  @Extensions({ complexity: 25 })
+  async propositionFunding(
+    @Args({ name: 'propositionId', type: () => ID }) propositionId: string,
+  ): Promise<PropositionFundingModel | null> {
+    const funding =
+      await this.regionService.getPropositionFunding(propositionId);
+    if (!funding) return null;
+    return funding as unknown as PropositionFundingModel;
   }
 
   /**

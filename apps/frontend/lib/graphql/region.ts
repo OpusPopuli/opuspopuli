@@ -396,6 +396,7 @@ export const GET_PROPOSITIONS = gql`
         externalId
         title
         summary
+        analysisSummary
         status
         electionDate
         sourceUrl
@@ -444,6 +445,87 @@ export const GET_PROPOSITION = gql`
       analysisGeneratedAt
       createdAt
       updatedAt
+    }
+  }
+`;
+
+/** A single donor's aggregated giving to one side of a measure. */
+export interface TopDonor {
+  donorName: string;
+  totalAmount: number;
+  contributionCount: number;
+}
+
+/** Compact summary of a primarily-formed committee for a measure. */
+export interface CommitteeSummaryFunding {
+  id: string;
+  name: string;
+  totalRaised: number;
+}
+
+/** Funding totals for one side (support or oppose) of a ballot measure. */
+export interface SidedFunding {
+  totalRaised: number;
+  totalSpent: number;
+  donorCount: number;
+  committeeCount: number;
+  topDonors: TopDonor[];
+  primaryCommittees: CommitteeSummaryFunding[];
+}
+
+/** Aggregated funding for a single proposition. */
+export interface PropositionFunding {
+  propositionId: string;
+  asOf: string;
+  support: SidedFunding;
+  oppose: SidedFunding;
+}
+
+export interface PropositionFundingData {
+  propositionFunding: PropositionFunding | null;
+}
+
+export interface PropositionIdVars {
+  propositionId: string;
+}
+
+export const GET_PROPOSITION_FUNDING = gql`
+  query GetPropositionFunding($propositionId: ID!) {
+    propositionFunding(propositionId: $propositionId) {
+      propositionId
+      asOf
+      support {
+        totalRaised
+        totalSpent
+        donorCount
+        committeeCount
+        topDonors {
+          donorName
+          totalAmount
+          contributionCount
+        }
+        primaryCommittees {
+          id
+          name
+          totalRaised
+        }
+      }
+      oppose {
+        totalRaised
+        totalSpent
+        donorCount
+        committeeCount
+        topDonors {
+          donorName
+          totalAmount
+          contributionCount
+        }
+        primaryCommittees {
+          id
+          name
+          totalRaised
+        }
+      }
     }
   }
 `;
