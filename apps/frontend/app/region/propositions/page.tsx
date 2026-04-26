@@ -56,6 +56,28 @@ function StatusBadge({ status }: { readonly status: PropositionStatus }) {
   );
 }
 
+/**
+ * Pick the best one-line description for a proposition card.
+ *
+ * Priority:
+ *   1. analysisSummary — AI-generated plain-language one-liner. Always
+ *      better than the raw scrape when available.
+ *   2. summary, but only if it differs from title. The SOS listing-page
+ *      scrape pulls the same anchor text into both fields, so summary
+ *      often duplicates title; suppress that case rather than render a
+ *      pointless second copy.
+ *   3. null — caller renders a soft "Analysis pending" hint.
+ */
+function pickDescription(proposition: Proposition): string | null {
+  const analysis = proposition.analysisSummary?.trim();
+  if (analysis) return analysis;
+
+  const summary = proposition.summary?.trim();
+  if (summary && summary !== proposition.title.trim()) return summary;
+
+  return null;
+}
+
 function PropositionCard({
   proposition,
 }: Readonly<{ proposition: Proposition }>) {
@@ -66,6 +88,7 @@ function PropositionCard({
         day: "numeric",
       })
     : null;
+  const description = pickDescription(proposition);
 
   return (
     <Link
@@ -77,9 +100,15 @@ function PropositionCard({
           <h3 className="text-lg font-semibold text-[#222222] line-clamp-2">
             {proposition.title}
           </h3>
-          <p className="mt-2 text-sm text-[#4d4d4d] line-clamp-3">
-            {proposition.summary}
-          </p>
+          {description ? (
+            <p className="mt-2 text-sm text-[#4d4d4d] line-clamp-3">
+              {description}
+            </p>
+          ) : (
+            <p className="mt-2 text-sm italic text-slate-400">
+              Plain-language summary pending AI analysis.
+            </p>
+          )}
         </div>
         <StatusBadge status={proposition.status} />
       </div>

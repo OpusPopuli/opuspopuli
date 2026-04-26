@@ -217,6 +217,54 @@ describe('RegionResolver', () => {
     });
   });
 
+  describe('propositionFunding', () => {
+    const mockFunding = {
+      propositionId: 'prop-1',
+      asOf: new Date('2026-04-25T00:00:00Z'),
+      support: {
+        totalRaised: 100_000,
+        totalSpent: 80_000,
+        donorCount: 5,
+        committeeCount: 1,
+        topDonors: [
+          { donorName: 'A. Donor', totalAmount: 50_000, contributionCount: 2 },
+        ],
+        primaryCommittees: [
+          { id: 'c-1', name: 'Yes on Prop 1', totalRaised: 100_000 },
+        ],
+      },
+      oppose: {
+        totalRaised: 0,
+        totalSpent: 0,
+        donorCount: 0,
+        committeeCount: 0,
+        topDonors: [],
+        primaryCommittees: [],
+      },
+    };
+
+    it('returns the aggregated funding shape from the service', async () => {
+      regionService.getPropositionFunding.mockResolvedValue(mockFunding as any);
+
+      const result = await resolver.propositionFunding('prop-1');
+
+      expect(result).not.toBeNull();
+      expect(result?.support.totalRaised).toBe(100_000);
+      expect(result?.support.topDonors[0].donorName).toBe('A. Donor');
+      expect(regionService.getPropositionFunding).toHaveBeenCalledWith(
+        'prop-1',
+      );
+    });
+
+    it('returns null when the service has no funding data wired', async () => {
+      regionService.getPropositionFunding.mockResolvedValue(null);
+
+      const result = await resolver.propositionFunding('prop-1');
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('regeneratePropositionAnalysis', () => {
     it('should re-fetch and return the proposition after a successful regenerate', async () => {
       regionService.regeneratePropositionAnalysis.mockResolvedValue(true);

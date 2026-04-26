@@ -6,6 +6,8 @@ import {
   RegionDomainService,
 } from './region.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
+import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
+import { PropositionFundingService } from './proposition-funding.service';
 import { REGION_CACHE } from './region.tokens';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
@@ -1323,6 +1325,7 @@ describe('RegionDomainService — campaign finance sync', () => {
         sourceSystem: 'fec',
       },
     ],
+    committeeMeasureFilings: [],
   };
 
   beforeEach(async () => {
@@ -1465,6 +1468,7 @@ describe('RegionDomainService — campaign finance sync', () => {
       contributions: [],
       expenditures: [],
       independentExpenditures: [],
+      committeeMeasureFilings: [],
     });
 
     const results = await service.syncAll();
@@ -2270,6 +2274,250 @@ describe('RegionDomainService — proposition analysis wiring', () => {
       await expect(svc.regeneratePropositionAnalysis('prop-1')).resolves.toBe(
         false,
       );
+    });
+  });
+});
+
+describe('RegionDomainService — proposition finance wiring', () => {
+  /**
+   * Build a service with PropositionFinanceLinkerService + PropositionFundingService
+   * mocks injected. Mirrors the proposition-analysis-wiring helper above so
+   * the linker hook + funding getter both have a clean test surface.
+   */
+  async function buildService(
+    opts: {
+      linker?: { linkAll: jest.Mock };
+      funding?: { getFunding: jest.Mock };
+    } = {},
+  ) {
+    const mockDb = createMockDbService();
+    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findUnique.mockResolvedValue(null);
+    mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
+    mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.committee.findMany.mockResolvedValue([]);
+    mockDb.contribution.findMany.mockResolvedValue([]);
+    mockDb.expenditure.findMany.mockResolvedValue([]);
+    mockDb.independentExpenditure.findMany.mockResolvedValue([]);
+    (mockDb.$transaction as jest.Mock).mockImplementation(
+      async (operations: Promise<unknown>[]) => Promise.all(operations),
+    );
+
+    const fetchCampaignFinance = jest.fn().mockResolvedValue({
+      committees: [],
+      contributions: [],
+      expenditures: [],
+      independentExpenditures: [],
+      committeeMeasureFilings: [],
+    });
+
+    const mockPlugin = {
+      getName: jest.fn().mockReturnValue('test'),
+      getRegionInfo: jest.fn().mockReturnValue({
+        id: 'r',
+        name: 'R',
+        description: 'd',
+        timezone: 'America/Los_Angeles',
+      }),
+      getSupportedDataTypes: jest
+        .fn()
+        .mockReturnValue([DataType.CAMPAIGN_FINANCE]),
+      getProviderName: jest.fn().mockReturnValue('test'),
+      fetchPropositions: jest.fn().mockResolvedValue([]),
+      fetchMeetings: jest.fn().mockResolvedValue([]),
+      fetchRepresentatives: jest.fn().mockResolvedValue([]),
+      fetchCampaignFinance,
+    } as unknown as jest.Mocked<IRegionPlugin> & {
+      fetchCampaignFinance: jest.Mock;
+    };
+
+    const localRegistered: RegisteredPlugin = {
+      name: 'test',
+      instance: mockPlugin,
+      status: 'active',
+      loadedAt: new Date(),
+    };
+
+    const mockRegistry = {
+      register: jest.fn(),
+      unregister: jest.fn(),
+      getActive: jest.fn().mockReturnValue(mockPlugin),
+      registerLocal: jest.fn(),
+      registerFederal: jest.fn(),
+      getLocal: jest.fn().mockReturnValue(mockPlugin),
+      getFederal: jest.fn().mockReturnValue(undefined),
+      getAll: jest.fn().mockReturnValue([localRegistered]),
+      getActiveName: jest.fn().mockReturnValue('test'),
+      hasActive: jest.fn().mockReturnValue(true),
+      getHealth: jest.fn(),
+      getStatus: jest.fn(),
+      onModuleDestroy: jest.fn(),
+    };
+    const mockLoader = {
+      loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      unloadPlugin: jest.fn(),
+    };
+
+    const linker = {
+      linkAll: jest.fn().mockResolvedValue({
+        cvr2Resolved: 0,
+        cvr2Skipped: 0,
+        expenditureLinked: 0,
+        independentExpenditureLinked: 0,
+        inferredPositions: 0,
+      }),
+      ...opts.linker,
+    };
+    const funding = {
+      getFunding: jest.fn().mockResolvedValue({
+        propositionId: 'prop-1',
+        asOf: new Date(),
+        support: {
+          totalRaised: 0,
+          totalSpent: 0,
+          donorCount: 0,
+          committeeCount: 0,
+          topDonors: [],
+          primaryCommittees: [],
+        },
+        oppose: {
+          totalRaised: 0,
+          totalSpent: 0,
+          donorCount: 0,
+          committeeCount: 0,
+          topDonors: [],
+          primaryCommittees: [],
+        },
+      }),
+      ...opts.funding,
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RegionDomainService,
+        { provide: PluginLoaderService, useValue: mockLoader },
+        { provide: PluginRegistryService, useValue: mockRegistry },
+        { provide: DbService, useValue: mockDb },
+        {
+          provide: REGION_CACHE,
+          useValue: {
+            get: jest.fn(),
+            set: jest.fn(),
+            delete: jest.fn(),
+            destroy: jest.fn(),
+            keys: jest.fn().mockResolvedValue([]),
+          },
+        },
+        // The new optional deps under test:
+        { provide: PropositionFinanceLinkerService, useValue: linker },
+        { provide: PropositionFundingService, useValue: funding },
+      ],
+    }).compile();
+
+    const svc = module.get<RegionDomainService>(RegionDomainService);
+    await svc.onModuleInit();
+    return { service: svc, linker, funding, fetchCampaignFinance };
+  }
+
+  describe('post-sync linker hook', () => {
+    it('runs the linker after a campaign-finance sync', async () => {
+      // syncAll uses the plugin instance directly (which has
+      // fetchCampaignFinance), unlike syncDataType which goes through the
+      // RegionProviderService wrapper that doesn't forward that method.
+      const { service, linker } = await buildService();
+      await service.syncAll([DataType.CAMPAIGN_FINANCE]);
+      expect(linker.linkAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the sync result successful when the linker throws', async () => {
+      const { service, linker } = await buildService({
+        linker: {
+          linkAll: jest.fn().mockRejectedValue(new Error('linker boom')),
+        },
+      });
+
+      const results = await service.syncAll([DataType.CAMPAIGN_FINANCE]);
+      const cf = results.find((r) => r.dataType === DataType.CAMPAIGN_FINANCE);
+      expect(cf?.errors).toEqual([]);
+      expect(linker.linkAll).toHaveBeenCalled();
+    });
+  });
+
+  describe('getPropositionFunding', () => {
+    it('delegates to the funding service when available', async () => {
+      const { service, funding } = await buildService();
+      const out = await service.getPropositionFunding('prop-1');
+      expect(funding.getFunding).toHaveBeenCalledWith('prop-1');
+      expect(out).not.toBeNull();
+    });
+  });
+
+  describe('getPropositionFunding when funding service is absent', () => {
+    it('returns null', async () => {
+      // Build a bare-bones service without the funding provider.
+      const mockDb = createMockDbService();
+      mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+      mockDb.regionPlugin.findUnique.mockResolvedValue(null);
+      mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
+      mockDb.proposition.findMany.mockResolvedValue([]);
+      const mockPlugin = {
+        getName: jest.fn().mockReturnValue('t'),
+        getRegionInfo: jest.fn().mockReturnValue({
+          id: 'r',
+          name: 'R',
+          description: 'd',
+          timezone: 'America/Los_Angeles',
+        }),
+        getSupportedDataTypes: jest.fn().mockReturnValue([]),
+        getProviderName: jest.fn().mockReturnValue('t'),
+        fetchPropositions: jest.fn().mockResolvedValue([]),
+        fetchMeetings: jest.fn().mockResolvedValue([]),
+        fetchRepresentatives: jest.fn().mockResolvedValue([]),
+      } as unknown as jest.Mocked<IRegionPlugin>;
+      const mockRegistry = {
+        register: jest.fn(),
+        unregister: jest.fn(),
+        getActive: jest.fn().mockReturnValue(mockPlugin),
+        registerLocal: jest.fn(),
+        registerFederal: jest.fn(),
+        getLocal: jest.fn().mockReturnValue(mockPlugin),
+        getFederal: jest.fn().mockReturnValue(undefined),
+        getAll: jest.fn().mockReturnValue([]),
+        getActiveName: jest.fn().mockReturnValue('t'),
+        hasActive: jest.fn().mockReturnValue(true),
+        getHealth: jest.fn(),
+        getStatus: jest.fn(),
+        onModuleDestroy: jest.fn(),
+      };
+      const mockLoader = {
+        loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+        loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
+        unloadPlugin: jest.fn(),
+      };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          RegionDomainService,
+          { provide: PluginLoaderService, useValue: mockLoader },
+          { provide: PluginRegistryService, useValue: mockRegistry },
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: REGION_CACHE,
+            useValue: {
+              get: jest.fn(),
+              set: jest.fn(),
+              delete: jest.fn(),
+              destroy: jest.fn(),
+              keys: jest.fn().mockResolvedValue([]),
+            },
+          },
+        ],
+      }).compile();
+      const svc = module.get<RegionDomainService>(RegionDomainService);
+      await svc.onModuleInit();
+
+      await expect(svc.getPropositionFunding('prop-1')).resolves.toBeNull();
     });
   });
 });

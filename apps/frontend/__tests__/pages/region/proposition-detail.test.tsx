@@ -101,6 +101,17 @@ jest.mock("next/link", () => {
   };
 });
 
+// Stub PropositionFundingSection to avoid duplicate useQuery dispatch and
+// to keep these tests focused on the page's layer wiring (the funding
+// section has its own dedicated unit test).
+jest.mock("@/components/region/PropositionFundingSection", () => ({
+  PropositionFundingSection: ({ propositionId }: { propositionId: string }) => (
+    <div data-testid="funding-section" data-propid={propositionId}>
+      [funding section]
+    </div>
+  ),
+}));
+
 describe("PropositionDetailPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -245,7 +256,7 @@ describe("PropositionDetailPage", () => {
       });
     });
 
-    it("should navigate to Layer 3 when See Both Sides is clicked", async () => {
+    it("should navigate to Layer 3 when See Both Sides is clicked + render the funding section there", async () => {
       const user = userEvent.setup();
       render(<PropositionDetailPage />);
 
@@ -264,6 +275,11 @@ describe("PropositionDetailPage", () => {
         expect(
           screen.getByText("Best Arguments From Each Side"),
         ).toBeInTheDocument();
+        // Funding section now lives on Layer 3 (it answers "who's behind
+        // each side", which fits "Both Sides" better than "Details").
+        const section = screen.getByTestId("funding-section");
+        expect(section).toBeInTheDocument();
+        expect(section).toHaveAttribute("data-propid", "1");
       });
     });
 
@@ -356,28 +372,6 @@ describe("PropositionDetailPage", () => {
         expect(
           screen.getByText(/All real property is taxed based on its 1978/i),
         ).toBeInTheDocument();
-      });
-    });
-
-    it("should show campaign-finance placeholder only when no analysis exists", async () => {
-      // With analysis present, the Yes/No Campaign placeholders are
-      // suppressed because the page assumes funding rendering belongs to
-      // a future iteration. With analysis absent (legacy/empty rows) the
-      // placeholders still surface so the layout doesn't collapse.
-      mockQueryResult = {
-        data: { proposition: mockPropositionNoExtras },
-        loading: false,
-        error: null,
-      };
-
-      const user = userEvent.setup();
-      render(<PropositionDetailPage />);
-
-      await user.click(screen.getByRole("button", { name: "Learn More" }));
-
-      await waitFor(() => {
-        expect(screen.getByText("Yes Campaign")).toBeInTheDocument();
-        expect(screen.getByText("No Campaign")).toBeInTheDocument();
       });
     });
 
