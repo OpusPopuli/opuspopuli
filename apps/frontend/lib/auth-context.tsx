@@ -201,6 +201,8 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         const parsedUser = JSON.parse(storedUser) as User;
         // Trust the stored user for now - actual auth is validated by httpOnly cookies
         // on the next API request. If cookies are invalid, user will be redirected to login.
+        // Initial hydration from localStorage — synchronous setState here is
+        // the established pattern for syncing persisted auth into React state.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setUser(parsedUser);
       } catch {
@@ -208,6 +210,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       }
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(false);
   }, []);
 

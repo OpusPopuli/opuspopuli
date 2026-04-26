@@ -67,6 +67,16 @@ export class CommitteeAssignmentModel {
 
   @Field({ nullable: true })
   url?: string;
+
+  /**
+   * Resolved id of the matching `LegislativeCommittee` row when the
+   * rep's chamber + normalized committee name matches one in the linked
+   * relational table. Null when the linker hasn't run, the name doesn't
+   * collapse to a known committee, or the chamber doesn't match.
+   * Used by the frontend to turn the row into a link to the detail page.
+   */
+  @Field({ nullable: true })
+  legislativeCommitteeId?: string;
 }
 
 /**

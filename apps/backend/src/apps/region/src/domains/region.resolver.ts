@@ -45,6 +45,10 @@ import {
   IndependentExpenditureModel,
   PaginatedIndependentExpenditures,
 } from './models/independent-expenditure.model';
+import {
+  LegislativeCommitteeDetailModel,
+  PaginatedLegislativeCommittees,
+} from './models/legislative-committee.model';
 
 /**
  * Region Resolver
@@ -182,14 +186,28 @@ export class RegionResolver {
   ): Promise<RepresentativeModel | null> {
     const result = await this.regionService.getRepresentative(id);
     if (!result) return null;
-    // Convert database nulls to GraphQL undefined
+
+    // Resolve each JSONB committee entry to its LegislativeCommittee.id
+    // so the frontend can render a link into the committee detail page.
+    const rawCommittees =
+      (result.committees as unknown as CommitteeAssignmentModel[]) ?? [];
+    const idByName = await this.regionService.resolveLegislativeCommitteeIds(
+      result.chamber,
+      rawCommittees,
+    );
+    const enrichedCommittees = rawCommittees.length
+      ? rawCommittees.map((c) => ({
+          ...c,
+          legislativeCommitteeId:
+            idByName.get(c.name?.trim() ?? '') ?? undefined,
+        }))
+      : undefined;
+
     return {
       ...result,
       photoUrl: result.photoUrl ?? undefined,
       contactInfo: (result.contactInfo as ContactInfoModel) ?? undefined,
-      committees:
-        (result.committees as unknown as CommitteeAssignmentModel[]) ??
-        undefined,
+      committees: enrichedCommittees,
       committeesSummary: result.committeesSummary ?? undefined,
       bio: result.bio ?? undefined,
       bioSource: result.bioSource ?? undefined,
@@ -232,6 +250,78 @@ export class RegionResolver {
         ? (r.bioClaims as unknown as BioClaimModel[])
         : undefined,
     })) as RepresentativeModel[];
+  }
+
+  // ==========================================
+  // LEGISLATIVE COMMITTEE QUERIES
+  // ==========================================
+
+  /**
+   * Paginated list of legislative committees, optionally filtered by chamber.
+   * Backed by RepresentativeCommitteeAssignment (membership) and the
+   * LegislativeCommittee table backfilled from Representative.committees JSON.
+   */
+  @Public()
+  @Query(() => PaginatedLegislativeCommittees)
+  @Extensions({ complexity: 15 })
+  async legislativeCommittees(
+    @Args() { skip, take }: PaginationArgs,
+    @Args({ name: 'chamber', nullable: true }) chamber?: string,
+  ): Promise<PaginatedLegislativeCommittees> {
+    const result = await this.regionService.listLegislativeCommittees({
+      skip,
+      take,
+      chamber,
+    });
+    return {
+      items: result.items.map((c) => ({
+        id: c.id,
+        externalId: c.externalId,
+        name: c.name,
+        chamber: c.chamber,
+        url: c.url ?? undefined,
+        description: c.description ?? undefined,
+        memberCount: c.memberCount,
+      })),
+      total: result.total,
+      hasMore: result.hasMore,
+    };
+  }
+
+  /**
+   * Detail view: committee + sorted members + best-effort recent hearings.
+   */
+  @Public()
+  @Query(() => LegislativeCommitteeDetailModel, { nullable: true })
+  async legislativeCommittee(
+    @Args({ name: 'id', type: () => ID }) id: string,
+  ): Promise<LegislativeCommitteeDetailModel | null> {
+    const result = await this.regionService.getLegislativeCommittee(id);
+    if (!result) return null;
+    return {
+      id: result.id,
+      externalId: result.externalId,
+      name: result.name,
+      chamber: result.chamber,
+      url: result.url ?? undefined,
+      description: result.description ?? undefined,
+      memberCount: result.memberCount,
+      members: result.members.map((m) => ({
+        representativeId: m.representativeId,
+        name: m.name,
+        role: m.role ?? undefined,
+        party: m.party,
+        photoUrl: m.photoUrl ?? undefined,
+      })),
+      hearings: result.hearings.map((h) => ({
+        id: h.id,
+        title: h.title,
+        scheduledAt: h.scheduledAt,
+        agendaUrl: h.agendaUrl ?? undefined,
+      })),
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt,
+    };
   }
 
   // ==========================================

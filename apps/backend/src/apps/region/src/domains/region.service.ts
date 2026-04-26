@@ -39,6 +39,13 @@ import {
   PropositionFundingService,
   type PropositionFunding,
 } from './proposition-funding.service';
+import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
+import {
+  LegislativeCommitteeService,
+  type LegislativeCommitteeDetail,
+  type PaginatedLegislativeCommittees as PaginatedLegislativeCommitteesShape,
+} from './legislative-committee.service';
+import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 
 /**
  * Minimal interface for data fetching used by sync methods.
@@ -318,6 +325,12 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     private readonly propositionFinanceLinker?: PropositionFinanceLinkerService,
     @Optional()
     private readonly propositionFunding?: PropositionFundingService,
+    @Optional()
+    private readonly legislativeCommitteeLinker?: LegislativeCommitteeLinkerService,
+    @Optional()
+    private readonly legislativeCommittees?: LegislativeCommitteeService,
+    @Optional()
+    private readonly legislativeCommitteeDescriptions?: LegislativeCommitteeDescriptionGeneratorService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -916,6 +929,38 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       await this.committeeSummaryGenerator.generateMissingSummaries(maxReps);
     }
 
+    // Materialize the rep ↔ legislative-committee graph from the
+    // Representative.committees JSONB. Idempotent — re-running over
+    // unchanged JSON produces zero new rows. Same shape as the
+    // proposition-finance linker that runs after campaign-finance sync.
+    if (this.legislativeCommitteeLinker) {
+      try {
+        await this.legislativeCommitteeLinker.linkAll();
+      } catch (error) {
+        this.logger.warn(
+          `Legislative committee linker failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    // Fill in AI-generated 2-3 sentence descriptions for any committees
+    // (just-created or pre-existing) that don't have one yet. Runs after
+    // the linker so newly-materialized committees get described in the
+    // same sync cycle. Mirrors CommitteeSummaryGenerator's resilience —
+    // catches inside the service so an LLM/prompt-service flake never
+    // blocks the rest of the sync.
+    if (this.legislativeCommitteeDescriptions) {
+      try {
+        await this.legislativeCommitteeDescriptions.generateMissingDescriptions(
+          maxReps,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Legislative committee description generation failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
     const created = reps.filter(
       (r) => !existingExternalIds.has(r.externalId),
     ).length;
@@ -1412,19 +1457,27 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     stateSenatorialDistrict?: string,
     stateAssemblyDistrict?: string,
   ): Promise<RepresentativeRecord[]> {
-    const conditions: { chamber: string; district: string }[] = [];
+    // The CA scrape stores Senate districts zero-padded ("02") but Assembly
+    // unpadded ("2"). Match against BOTH forms for both chambers so a future
+    // drift in either direction doesn't silently drop matches again.
+    const buildConditions = (
+      chamber: string,
+      raw?: string,
+    ): { chamber: string; district: string }[] => {
+      if (!raw) return [];
+      const padded = this.extractDistrictNumber(raw);
+      if (!padded) return [];
+      const unpadded = String(parseInt(padded, 10));
+      return [
+        { chamber, district: padded },
+        { chamber, district: unpadded },
+      ];
+    };
 
-    // Extract district numbers and build match conditions
-    // Census: "Congressional District 2" → Assembly: "District: 02", Senate: "02"
-    if (stateAssemblyDistrict) {
-      const num = this.extractDistrictNumber(stateAssemblyDistrict);
-      if (num)
-        conditions.push({ chamber: 'Assembly', district: `District: ${num}` });
-    }
-    if (stateSenatorialDistrict) {
-      const num = this.extractDistrictNumber(stateSenatorialDistrict);
-      if (num) conditions.push({ chamber: 'Senate', district: num });
-    }
+    const conditions = [
+      ...buildConditions('Assembly', stateAssemblyDistrict),
+      ...buildConditions('Senate', stateSenatorialDistrict),
+    ];
 
     if (conditions.length === 0) return [];
 
@@ -1449,6 +1502,72 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     const match = districtString.match(/(\d+)/);
     if (!match) return null;
     return match[1].padStart(2, '0');
+  }
+
+  // ==========================================
+  // LEGISLATIVE COMMITTEE GETTERS
+  // ==========================================
+
+  async listLegislativeCommittees(args: {
+    skip: number;
+    take: number;
+    chamber?: string;
+  }): Promise<PaginatedLegislativeCommitteesShape> {
+    if (!this.legislativeCommittees) {
+      return { items: [], total: 0, hasMore: false };
+    }
+    return this.legislativeCommittees.list(args);
+  }
+
+  async getLegislativeCommittee(
+    id: string,
+  ): Promise<LegislativeCommitteeDetail | null> {
+    if (!this.legislativeCommittees) return null;
+    return this.legislativeCommittees.getDetail(id);
+  }
+
+  /**
+   * Resolve each entry in a rep's `committees` JSONB to the matching
+   * `LegislativeCommittee.id` when one exists. Used by the rep query
+   * resolver so the frontend can render each committee row as a link to
+   * the committee detail page without duplicating normalization logic.
+   *
+   * Quietly returns `[]` (effectively a no-op) when the linker isn't
+   * available — the rep query still works, the names just stay as plain
+   * text. Same defensive shape as the linker itself.
+   */
+  async resolveLegislativeCommitteeIds(
+    chamber: string,
+    committees: ReadonlyArray<{ name?: string | null }>,
+  ): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    if (!this.legislativeCommitteeLinker) return result;
+
+    const externalIdByName = new Map<string, string>();
+    for (const c of committees) {
+      const rawName = c?.name?.trim();
+      if (!rawName) continue;
+      const externalId = this.legislativeCommitteeLinker.externalIdFor(
+        chamber,
+        rawName,
+      );
+      if (externalId) externalIdByName.set(rawName, externalId);
+    }
+    if (externalIdByName.size === 0) return result;
+
+    const rows = await this.db.legislativeCommittee.findMany({
+      where: {
+        deletedAt: null,
+        externalId: { in: Array.from(new Set(externalIdByName.values())) },
+      },
+      select: { id: true, externalId: true },
+    });
+    const idByExternalId = new Map(rows.map((r) => [r.externalId, r.id]));
+    for (const [rawName, externalId] of externalIdByName) {
+      const id = idByExternalId.get(externalId);
+      if (id) result.set(rawName, id);
+    }
+    return result;
   }
 
   // ==========================================

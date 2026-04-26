@@ -108,7 +108,11 @@ describe("RegionPage", () => {
       expect(screen.getByText("Propositions")).toBeInTheDocument();
       expect(screen.getByText("Meetings")).toBeInTheDocument();
       expect(screen.getByText("Representatives")).toBeInTheDocument();
-      expect(screen.getByText("Campaign Finance")).toBeInTheDocument();
+      // The CAMPAIGN_FINANCE data-type slot now displays as the
+      // Legislative Committees card on the home page; the campaign-finance
+      // hub stays reachable via direct URL and from proposition pages.
+      expect(screen.getByText("Legislative Committees")).toBeInTheDocument();
+      expect(screen.queryByText("Campaign Finance")).not.toBeInTheDocument();
     });
 
     it("should render data type descriptions", () => {
@@ -124,7 +128,9 @@ describe("RegionPage", () => {
         screen.getByText("Elected officials and legislators"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Committees, contributions, and expenditures"),
+        screen.getByText(
+          "Where bills get debated and shaped before the floor vote",
+        ),
       ).toBeInTheDocument();
     });
 
@@ -146,12 +152,12 @@ describe("RegionPage", () => {
         "/region/representatives",
       );
 
-      const campaignFinanceLink = screen.getByRole("link", {
-        name: /Campaign Finance/i,
+      const legislativeCommitteesLink = screen.getByRole("link", {
+        name: /Legislative Committees/i,
       });
-      expect(campaignFinanceLink).toHaveAttribute(
+      expect(legislativeCommitteesLink).toHaveAttribute(
         "href",
-        "/region/campaign-finance",
+        "/region/legislative-committees",
       );
     });
 
@@ -215,7 +221,9 @@ describe("RegionPage", () => {
       expect(screen.getByText("Propositions")).toBeInTheDocument();
       expect(screen.queryByText("Meetings")).not.toBeInTheDocument();
       expect(screen.queryByText("Representatives")).not.toBeInTheDocument();
-      expect(screen.queryByText("Campaign Finance")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("Legislative Committees"),
+      ).not.toBeInTheDocument();
     });
   });
 

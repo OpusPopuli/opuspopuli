@@ -90,6 +90,8 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
       typeof navigator === "undefined" ||
       !navigator.mediaDevices?.getUserMedia
     ) {
+      // Initial-mount feature-detect — surfacing "unsupported" synchronously
+      // is the whole purpose of this effect.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPermissionState("unsupported");
       return;
