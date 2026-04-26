@@ -457,10 +457,21 @@ export class BulkDownloadHandler {
   }
 
   /**
-   * Strip surrounding double quotes and trim whitespace from a CSV cell value.
+   * Sanitize a CSV/TSV cell value: strip embedded NUL bytes (U+0000),
+   * surrounding double quotes, and surrounding whitespace.
+   *
+   * NUL bytes appear in CalAccess TSVs (notably in committee names and
+   * descriptions) and Postgres rejects them in UTF-8 text columns with
+   * SQLSTATE 22021 ("invalid byte sequence for encoding UTF8: 0x00"),
+   * which fails the entire batch transaction. We drop them here at the
+   * parse layer so every downstream consumer (mapper, upsert, linker)
+   * sees clean strings.
    */
   private static stripQuotes(val: string): string {
-    return val.trim().replaceAll(/(^"|"$)/g, "");
+    return val
+      .replaceAll("\u0000", "")
+      .trim()
+      .replaceAll(/(^"|"$)/g, "");
   }
 
   /**
