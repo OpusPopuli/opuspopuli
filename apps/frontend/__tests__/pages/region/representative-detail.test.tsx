@@ -287,6 +287,45 @@ describe("RepresentativeDetailPage", () => {
       expect(screen.getByText("Education")).toBeInTheDocument();
     });
 
+    it("links a committee row to the committee detail page when legislativeCommitteeId is present", async () => {
+      const user = userEvent.setup();
+      mockQueryResult = {
+        data: {
+          representative: {
+            ...mockRepresentative,
+            committees: [
+              {
+                name: "Budget",
+                role: "Chair",
+                legislativeCommitteeId: "lc-budget",
+              },
+              // No id resolved → falls back to plain text (or external url
+              // when present); make sure the resolved row uses the new link.
+              { name: "Education", role: "Member" },
+            ],
+          },
+        },
+        loading: false,
+        error: undefined,
+      };
+
+      render(<RepresentativeDetailPage />);
+      const buttons = screen.getAllByRole("button", {
+        name: "What They Care About",
+      });
+      await user.click(buttons[buttons.length - 1]);
+
+      const budgetLink = screen
+        .getAllByRole("link")
+        .find((l) => l.textContent === "Budget");
+      expect(budgetLink?.getAttribute("href")).toBe(
+        "/region/legislative-committees/lc-budget",
+      );
+
+      // Education has no resolved id and no scrape url → renders as plain text.
+      expect(screen.getByText("Education").tagName).toBe("SPAN");
+    });
+
     it("What They Care About shows placeholder when no committees", async () => {
       const user = userEvent.setup();
       render(<RepresentativeDetailPage />);

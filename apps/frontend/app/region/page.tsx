@@ -35,11 +35,18 @@ const DATA_TYPE_CARDS: Record<
     href: "/region/representatives",
     icon: "users",
   },
+  // Repurposed — the underlying DataType key (CAMPAIGN_FINANCE) is what
+  // the backend advertises in `supportedDataTypes`, but the home-page card
+  // now points at the new legislative-committees hub. The campaign-finance
+  // hub at /region/campaign-finance stays reachable via direct URL and
+  // from each proposition's funding section; only the home front door
+  // changes — voters get more value from "what shapes a bill before it
+  // hits the floor" than from disconnected donor lists.
   CAMPAIGN_FINANCE: {
-    title: "Campaign Finance",
-    description: "Committees, contributions, and expenditures",
-    href: "/region/campaign-finance",
-    icon: "finance",
+    title: "Legislative Committees",
+    description: "Where bills get debated and shaped before the floor vote",
+    href: "/region/legislative-committees",
+    icon: "committee",
   },
 };
 
@@ -106,6 +113,25 @@ function DataTypeIcon({ type }: { readonly type: string }) {
             strokeLinejoin="round"
             strokeWidth={1.5}
             d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      );
+    case "committee":
+      // Capitol-dome glyph — a single dome arch above a flat platform,
+      // chosen over the generic clipboard "list" icon to read as
+      // legislative chamber rather than to-do list.
+      return (
+        <svg
+          className="w-8 h-8"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M4 20h16M5 20v-7m14 7v-7M5 13h14M6 13V9a6 6 0 0112 0v4M12 3v3"
           />
         </svg>
       );

@@ -21,6 +21,9 @@ import { CommitteeSummaryGeneratorService } from './committee-summary-generator.
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { PropositionFundingService } from './proposition-funding.service';
+import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
+import { LegislativeCommitteeService } from './legislative-committee.service';
+import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
 import { REGION_CACHE } from './region.tokens';
 
@@ -78,6 +81,9 @@ const promptClientAsyncConfig = {
     PropositionAnalysisService,
     PropositionFinanceLinkerService,
     PropositionFundingService,
+    LegislativeCommitteeLinkerService,
+    LegislativeCommitteeService,
+    LegislativeCommitteeDescriptionGeneratorService,
     // Alias for injecting the pipeline into RegionDomainService
     {
       provide: 'SCRAPING_PIPELINE',

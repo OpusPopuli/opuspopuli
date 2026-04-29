@@ -70,6 +70,8 @@ export type {
   IndependentExpenditure,
   CommitteeMeasurePosition,
   Cvr2Filing,
+  LegislativeCommittee,
+  RepresentativeCommitteeAssignment,
   PromptTemplate,
   AbuseReport,
   DocumentProposition,

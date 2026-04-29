@@ -430,7 +430,7 @@ test.describe("Region Page", () => {
     ).toBeVisible();
   });
 
-  test("should display data type cards including campaign finance", async ({
+  test("should display data type cards including legislative committees", async ({
     page,
   }) => {
     await page.goto("/region");
@@ -440,8 +440,11 @@ test.describe("Region Page", () => {
     await expect(
       page.getByRole("link", { name: /Representatives.*Elected/i }),
     ).toBeVisible();
+    // The CAMPAIGN_FINANCE data-type slot now displays as the
+    // Legislative Committees card on the home page; the campaign-finance
+    // hub stays reachable via direct URL and from proposition pages.
     await expect(
-      page.getByRole("heading", { name: "Campaign Finance" }),
+      page.getByRole("heading", { name: "Legislative Committees" }),
     ).toBeVisible();
   });
 
