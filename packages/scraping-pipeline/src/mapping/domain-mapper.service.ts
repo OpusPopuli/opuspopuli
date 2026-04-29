@@ -497,39 +497,60 @@ const ContributionSchema = z.object({
   sourceSystem: z.enum(["cal_access", "fec"]),
 });
 
-const ExpenditureSchema = z.object({
-  externalId: z.string().min(1),
-  committeeId: z.string().min(1),
-  payeeName: z.string().min(1),
-  amount: z.coerce.number(),
-  date: coerceFlexibleDate,
-  purposeDescription: z
-    .string()
-    .nullable()
-    .transform((v) => v ?? undefined)
-    .optional(),
-  expenditureCode: z
-    .string()
-    .nullable()
-    .transform((v) => v ?? undefined)
-    .optional(),
-  candidateName: z
-    .string()
-    .nullable()
-    .transform((v) => v ?? undefined)
-    .optional(),
-  propositionTitle: z
-    .string()
-    .nullable()
-    .transform((v) => v ?? undefined)
-    .optional(),
-  supportOrOppose: z
-    .string()
-    .nullable()
-    .optional()
-    .transform((val) => (val ? supportOpposeTransform(val) : undefined)),
-  sourceSystem: z.enum(["cal_access", "fec"]),
-});
+const ExpenditureSchema = z
+  .object({
+    externalId: z.string().min(1),
+    committeeId: z.string().min(1),
+    payeeName: z.string().min(1),
+    amount: z.coerce.number(),
+    date: coerceFlexibleDate,
+    purposeDescription: z
+      .string()
+      .nullable()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    expenditureCode: z
+      .string()
+      .nullable()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    candidateName: z
+      .string()
+      .nullable()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    propositionTitle: z
+      .string()
+      .nullable()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    // Transient gating field — extracted from CalAccess BAL_NUM, used to
+    // decide whether `propositionTitle` is real or filer noise (#633),
+    // then dropped from the output below. The DB has no `ballotNumber`
+    // column on Expenditure; don't add one without a separate plan.
+    ballotNumber: z
+      .string()
+      .nullable()
+      .transform((v) => (v ? v.trim() : undefined))
+      .optional(),
+    supportOrOppose: z
+      .string()
+      .nullable()
+      .optional()
+      .transform((val) => (val ? supportOpposeTransform(val) : undefined)),
+    sourceSystem: z.enum(["cal_access", "fec"]),
+  })
+  // Drop `propositionTitle` when the row carries no `BAL_NUM`. CalAccess
+  // filers misuse the BAL_NAME field to stuff committee names, party
+  // names, city names, etc. on non-ballot-measure expenditures; real
+  // ballot-measure rows always carry both. This is the same gate the
+  // proposition-finance-linker already applies to CVR2 rows ("ballotName/
+  // ballotNumber being non-empty"). Strip `ballotNumber` itself so it
+  // doesn't leak into downstream consumers expecting the persisted shape.
+  .transform(({ ballotNumber, ...rest }) => ({
+    ...rest,
+    propositionTitle: ballotNumber ? rest.propositionTitle : undefined,
+  }));
 
 const IndependentExpenditureSchema = z.object({
   externalId: z.string().min(1),

@@ -605,6 +605,71 @@ describe("DomainMapperService", () => {
       expect(result.items[0]).toMatchObject({ supportOrOppose: "support" });
       expect(result.items[1]).toMatchObject({ supportOrOppose: "oppose" });
     });
+
+    // #633: CalAccess BAL_NAME is misused by filers for committee names,
+    // party names, city names, etc. on non-ballot-measure expenditures.
+    // Real ballot-measure rows always carry BAL_NUM too — gate
+    // propositionTitle on its presence.
+    describe("propositionTitle gating on ballotNumber (#633)", () => {
+      const buildExpenditure = (overrides: Record<string, unknown>) => ({
+        externalId: "EXP-GATE",
+        committeeId: "C001",
+        payeeName: "Vendor",
+        amount: "100",
+        date: "2026-01-01",
+        propositionTitle: "California Republican Party",
+        sourceSystem: "cal_access",
+        ...overrides,
+      });
+
+      const mapOne = (raw: Record<string, unknown>) =>
+        mapper.map(
+          createRawResult({ items: [raw] }),
+          createSource({
+            dataType: DataType.CAMPAIGN_FINANCE,
+            category: "expenditure",
+          }),
+        );
+
+      it("drops propositionTitle when ballotNumber is absent (filer noise)", () => {
+        const result = mapOne(buildExpenditure({}));
+        expect(result.items[0]).toMatchObject({ payeeName: "Vendor" });
+        expect(
+          (result.items[0] as { propositionTitle?: string }).propositionTitle,
+        ).toBeUndefined();
+      });
+
+      it("drops propositionTitle when ballotNumber is null", () => {
+        const result = mapOne(buildExpenditure({ ballotNumber: null }));
+        expect(
+          (result.items[0] as { propositionTitle?: string }).propositionTitle,
+        ).toBeUndefined();
+      });
+
+      it("drops propositionTitle when ballotNumber is an empty string", () => {
+        const result = mapOne(buildExpenditure({ ballotNumber: "   " }));
+        expect(
+          (result.items[0] as { propositionTitle?: string }).propositionTitle,
+        ).toBeUndefined();
+      });
+
+      it("keeps propositionTitle when ballotNumber is populated (real measure)", () => {
+        const result = mapOne(
+          buildExpenditure({
+            ballotNumber: "10",
+            propositionTitle: "Medi-Cal Funding and Accountability Act",
+          }),
+        );
+        expect(
+          (result.items[0] as { propositionTitle?: string }).propositionTitle,
+        ).toBe("Medi-Cal Funding and Accountability Act");
+      });
+
+      it("never leaks the transient ballotNumber field into the output", () => {
+        const result = mapOne(buildExpenditure({ ballotNumber: "10" }));
+        expect(result.items[0]).not.toHaveProperty("ballotNumber");
+      });
+    });
   });
 
   describe("campaign finance — independent expenditures", () => {
