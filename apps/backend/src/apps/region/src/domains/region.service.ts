@@ -983,15 +983,36 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   private async ensureCommitteeStubs(
     data: CampaignFinanceResult,
   ): Promise<void> {
+    // Build the union of every committee externalId referenced by any
+    // record in this batch, AND remember the sourceSystem of the first
+    // record we saw referencing it. Each finance record carries its own
+    // `sourceSystem`; using that for the stub avoids the #634 bug where
+    // every CalAccess-referenced stub was mislabeled as 'fec'.
+    //
+    // First-wins on the rare case of a single committee referenced by
+    // records from both source systems in the same batch — in practice
+    // a given committee is sourced from one system, so collisions are
+    // theoretical. The chosen sourceSystem only labels the stub; the
+    // real committee row created later by direct ingestion will UPDATE
+    // the stub via upsert and set the authoritative value.
     const referencedIds = new Set<string>();
-    for (const c of data.contributions) {
-      if (c.committeeId) referencedIds.add(c.committeeId);
-    }
-    for (const e of data.expenditures) {
-      if (e.committeeId) referencedIds.add(e.committeeId);
-    }
+    const sourceSystemByExternalId = new Map<string, 'cal_access' | 'fec'>();
+    const noteReference = (
+      committeeId: string | undefined | null,
+      sourceSystem: 'cal_access' | 'fec',
+    ) => {
+      if (!committeeId) return;
+      referencedIds.add(committeeId);
+      if (!sourceSystemByExternalId.has(committeeId)) {
+        sourceSystemByExternalId.set(committeeId, sourceSystem);
+      }
+    };
+    for (const c of data.contributions)
+      noteReference(c.committeeId, c.sourceSystem);
+    for (const e of data.expenditures)
+      noteReference(e.committeeId, e.sourceSystem);
     for (const ie of data.independentExpenditures) {
-      if (ie.committeeId) referencedIds.add(ie.committeeId);
+      noteReference(ie.committeeId, ie.sourceSystem);
     }
 
     if (referencedIds.size === 0) return;
@@ -1022,7 +1043,11 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
               name: externalId,
               type: 'OTHER',
               status: 'active',
-              sourceSystem: 'fec',
+              // Default to 'fec' only if somehow no record carrying this
+              // externalId had a sourceSystem — shouldn't happen given the
+              // reference-walking above, but the fallback keeps the column
+              // non-null without breaking the (#634) fix in the common path.
+              sourceSystem: sourceSystemByExternalId.get(externalId) ?? 'fec',
             },
           }),
         ),
