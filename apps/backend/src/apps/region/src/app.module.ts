@@ -39,6 +39,20 @@ import { MetricsModule } from 'src/common/metrics';
 import { SecretsModule } from '@opuspopuli/secrets-provider';
 
 /**
+ * Parse a positive integer byte count from an env var; fall back to
+ * `defaultBytes` if absent or invalid. Used by the HealthModule config
+ * below to override the in-process default RSS threshold per deployment.
+ */
+function parseRssThreshold(
+  raw: string | undefined,
+  defaultBytes: number,
+): number {
+  if (!raw) return defaultBytes;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultBytes;
+}
+
+/**
  * Region App Module
  *
  * Handles civic data management for the region.
@@ -71,7 +85,23 @@ import { SecretsModule } from '@opuspopuli/secrets-provider';
     CaslModule.forRoot(),
     SecretsModule,
     RegionDomainModule,
-    HealthModule.forRoot({ serviceName: 'region-service', hasDatabase: true }),
+    // Region's RSS legitimately spikes to ~1.7GB during CalAccess bulk
+    // download (~3M contributions, ~70K committee stubs accumulated in
+    // memory before flush). Container memory limit is 6GB; the healthcheck
+    // threshold needs to be well above the observed spike but well below
+    // the container limit. 3GB lands in the right zone — masks no real
+    // OOM risk and stops the false-alarm spam during legitimate sync.
+    // Other services (users, documents, knowledge, api) keep the 1GB
+    // default — they don't do bulk-download work, so a lower threshold
+    // there still catches real memory leaks. See #642.
+    HealthModule.forRoot({
+      serviceName: 'region-service',
+      hasDatabase: true,
+      memoryRssThreshold: parseRssThreshold(
+        process.env.MEMORY_RSS_THRESHOLD_BYTES,
+        3 * 1024 * 1024 * 1024,
+      ),
+    }),
     MetricsModule.forRoot({ serviceName: 'region-service' }),
   ],
   providers: SHARED_PROVIDERS,
