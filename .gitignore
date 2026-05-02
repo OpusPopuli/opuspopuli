@@ -26,3 +26,6 @@ playwright/.cache/
 
 # macOS
 .DS_Store
+
+# Claude Code per-project state (plans, tool results, etc.)
+.claude/

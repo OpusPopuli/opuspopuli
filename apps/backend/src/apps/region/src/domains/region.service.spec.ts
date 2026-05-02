@@ -1490,6 +1490,58 @@ describe('RegionDomainService — campaign finance sync', () => {
     expect(cfResult!.itemsProcessed).toBe(0);
     expect(cfResult!.itemsCreated).toBe(0);
   });
+
+  it('creates committee stubs with the sourceSystem of the referencing record (#634)', async () => {
+    // Mix one cal_access contribution and one fec IE — each references a
+    // distinct committee that doesn't exist yet. The bug being regressed:
+    // the committee referenced by the cal_access contribution used to get
+    // sourceSystem='fec' on the auto-created stub.
+    mockPlugin.fetchCampaignFinance.mockResolvedValue({
+      committees: [],
+      contributions: [
+        {
+          externalId: 'CONT-CAL-1',
+          committeeId: 'CAL-COMMITTEE-1',
+          donorName: 'Jane Donor',
+          donorType: 'individual',
+          amount: 100,
+          date: new Date('2026-01-15'),
+          sourceSystem: 'cal_access',
+        },
+      ],
+      expenditures: [],
+      independentExpenditures: [
+        {
+          externalId: 'IE-FEC-1',
+          committeeId: 'FEC-COMMITTEE-1',
+          committeeName: 'Some PAC',
+          supportOrOppose: 'support',
+          amount: 5000,
+          date: new Date('2026-02-15'),
+          sourceSystem: 'fec',
+        },
+      ],
+      committeeMeasureFilings: [],
+    });
+
+    await service.syncAll();
+
+    // Two stubs created — one per missing committee. Each tagged with the
+    // sourceSystem of the record that referenced it.
+    const stubCreations = mockDb.committee.create.mock.calls.map(
+      ([args]) => args.data,
+    );
+    const calAccessStub = stubCreations.find(
+      (d: { externalId: string }) => d.externalId === 'CAL-COMMITTEE-1',
+    );
+    const fecStub = stubCreations.find(
+      (d: { externalId: string }) => d.externalId === 'FEC-COMMITTEE-1',
+    );
+    expect(calAccessStub).toBeDefined();
+    expect(calAccessStub!.sourceSystem).toBe('cal_access');
+    expect(fecStub).toBeDefined();
+    expect(fecStub!.sourceSystem).toBe('fec');
+  });
 });
 
 /**
