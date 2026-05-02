@@ -157,54 +157,14 @@ export class ExtractionProvider {
       }
     }
 
-    // Wait for rate limiter
     await this.rateLimiter.acquire();
-
     this.logger.debug(`Fetching ${url}`);
 
-    // Wrap the fetch call with circuit breaker protection
-    return this.circuitBreaker.execute(async () => {
-      const timeout = options.timeout ?? this.config.defaultTimeout;
+    const fetched = await this.fetchAndDecode(url, options, (r) => r.text());
+    const result: CachedFetchResult = { ...fetched, fromCache: false };
 
-      const response = await this.fetchFn(url, {
-        headers: options.headers,
-        signal: AbortSignal.timeout(timeout),
-      });
-
-      if (!response.ok) {
-        throw new FetchError(
-          url,
-          response.status,
-          `HTTP ${response.status}: ${response.statusText}`,
-        );
-      }
-
-      const content = await response.text();
-      const contentType = response.headers.get("content-type") || "unknown";
-
-      // Detect permanent redirects (fetch follows them automatically)
-      const finalUrl = response.url;
-      const wasRedirected = finalUrl && finalUrl !== url;
-
-      if (wasRedirected) {
-        this.logger.warn(
-          `URL redirect detected: ${url} → ${finalUrl}. Consider updating the data source config.`,
-        );
-      }
-
-      const result: CachedFetchResult = {
-        content,
-        fromCache: false,
-        statusCode: response.status,
-        contentType,
-        ...(wasRedirected && { redirectedFrom: url, finalUrl }),
-      };
-
-      // Cache the result
-      await this.cache.set(cacheKey, result);
-
-      return result;
-    });
+    await this.cache.set(cacheKey, result);
+    return result;
   }
 
   /**
@@ -218,21 +178,7 @@ export class ExtractionProvider {
     url: string,
     options: RetryOptions = {},
   ): Promise<CachedFetchResult> {
-    return withRetry(() => this.fetchUrl(url, options), {
-      maxAttempts: options.maxRetries ?? this.config.retry.maxAttempts,
-      baseDelayMs: options.baseDelayMs ?? this.config.retry.baseDelayMs,
-      maxDelayMs: options.maxDelayMs ?? this.config.retry.maxDelayMs,
-      isRetryable: RetryPredicates.any(
-        RetryPredicates.isNetworkError,
-        RetryPredicates.isServerError,
-        RetryPredicates.isRateLimitError,
-      ),
-      onRetry: (error, attempt, delayMs) => {
-        this.logger.warn(
-          `Retry attempt ${attempt} for ${url} after ${delayMs}ms: ${error.message}`,
-        );
-      },
-    });
+    return this.retryStandard(url, options, () => this.fetchUrl(url, options));
   }
 
   /**
@@ -278,40 +224,9 @@ export class ExtractionProvider {
     await this.rateLimiter.acquire();
     this.logger.debug(`Fetching bytes from ${url}`);
 
-    return this.circuitBreaker.execute(async () => {
-      const timeout = options.timeout ?? this.config.defaultTimeout;
-      const response = await this.fetchFn(url, {
-        headers: options.headers,
-        signal: AbortSignal.timeout(timeout),
-      });
-
-      if (!response.ok) {
-        throw new FetchError(
-          url,
-          response.status,
-          `HTTP ${response.status}: ${response.statusText}`,
-        );
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      const content = Buffer.from(arrayBuffer);
-      const contentType = response.headers.get("content-type") || "unknown";
-      const finalUrl = response.url;
-      const wasRedirected = finalUrl && finalUrl !== url;
-
-      if (wasRedirected) {
-        this.logger.warn(
-          `URL redirect detected: ${url} → ${finalUrl}. Consider updating the data source config.`,
-        );
-      }
-
-      return {
-        content,
-        statusCode: response.status,
-        contentType,
-        ...(wasRedirected && { redirectedFrom: url, finalUrl }),
-      };
-    });
+    return this.fetchAndDecode(url, options, async (r) =>
+      Buffer.from(await r.arrayBuffer()),
+    );
   }
 
   /**
@@ -329,21 +244,9 @@ export class ExtractionProvider {
     finalUrl?: string;
     redirectedFrom?: string;
   }> {
-    return withRetry(() => this.fetchBytes(url, options), {
-      maxAttempts: options.maxRetries ?? this.config.retry.maxAttempts,
-      baseDelayMs: options.baseDelayMs ?? this.config.retry.baseDelayMs,
-      maxDelayMs: options.maxDelayMs ?? this.config.retry.maxDelayMs,
-      isRetryable: RetryPredicates.any(
-        RetryPredicates.isNetworkError,
-        RetryPredicates.isServerError,
-        RetryPredicates.isRateLimitError,
-      ),
-      onRetry: (error, attempt, delayMs) => {
-        this.logger.warn(
-          `Retry attempt ${attempt} for ${url} after ${delayMs}ms: ${error.message}`,
-        );
-      },
-    });
+    return this.retryStandard(url, options, () =>
+      this.fetchBytes(url, options),
+    );
   }
 
   /**
@@ -425,6 +328,82 @@ export class ExtractionProvider {
    */
   getCacheProvider(): string {
     return this.cacheProvider;
+  }
+
+  /**
+   * Shared HTTP path: rate-limited callers go through circuit breaker,
+   * we throw FetchError on non-2xx, decode the body via the caller's
+   * `decodeBody` (text vs bytes), and detect/log permanent redirects.
+   * Returning a `content` of generic type `T` lets fetchUrl produce
+   * `string` and fetchBytes produce `Buffer` from the same scaffolding.
+   */
+  private async fetchAndDecode<T>(
+    url: string,
+    options: FetchOptions,
+    decodeBody: (response: Response) => Promise<T>,
+  ): Promise<{
+    content: T;
+    statusCode: number;
+    contentType: string;
+    finalUrl?: string;
+    redirectedFrom?: string;
+  }> {
+    return this.circuitBreaker.execute(async () => {
+      const timeout = options.timeout ?? this.config.defaultTimeout;
+      const response = await this.fetchFn(url, {
+        headers: options.headers,
+        signal: AbortSignal.timeout(timeout),
+      });
+
+      if (!response.ok) {
+        throw new FetchError(
+          url,
+          response.status,
+          `HTTP ${response.status}: ${response.statusText}`,
+        );
+      }
+
+      const content = await decodeBody(response);
+      const contentType = response.headers.get("content-type") || "unknown";
+      const finalUrl = response.url;
+      const wasRedirected = finalUrl && finalUrl !== url;
+
+      if (wasRedirected) {
+        this.logger.warn(
+          `URL redirect detected: ${url} → ${finalUrl}. Consider updating the data source config.`,
+        );
+      }
+
+      return {
+        content,
+        statusCode: response.status,
+        contentType,
+        ...(wasRedirected && { redirectedFrom: url, finalUrl }),
+      };
+    });
+  }
+
+  /** Standard retry wrapper used by fetchWithRetry and fetchBytesWithRetry. */
+  private retryStandard<T>(
+    url: string,
+    options: RetryOptions,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    return withRetry(fn, {
+      maxAttempts: options.maxRetries ?? this.config.retry.maxAttempts,
+      baseDelayMs: options.baseDelayMs ?? this.config.retry.baseDelayMs,
+      maxDelayMs: options.maxDelayMs ?? this.config.retry.maxDelayMs,
+      isRetryable: RetryPredicates.any(
+        RetryPredicates.isNetworkError,
+        RetryPredicates.isServerError,
+        RetryPredicates.isRateLimitError,
+      ),
+      onRetry: (error, attempt, delayMs) => {
+        this.logger.warn(
+          `Retry attempt ${attempt} for ${url} after ${delayMs}ms: ${error.message}`,
+        );
+      },
+    });
   }
 
   /**
