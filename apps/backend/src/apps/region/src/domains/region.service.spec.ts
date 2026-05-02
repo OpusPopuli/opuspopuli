@@ -4,6 +4,7 @@ import {
   extractLastName,
   mapPropositionRecord,
   RegionDomainService,
+  stripLeadingZerosFromExternalId,
 } from './region.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
@@ -159,6 +160,65 @@ describe('extractLastName', () => {
   it('returns empty for empty input', () => {
     expect(extractLastName('')).toBe('');
     expect(extractLastName('   ')).toBe('');
+  });
+});
+
+describe('stripLeadingZerosFromExternalId', () => {
+  it('strips leading zeros from a single-digit zero-padded suffix', () => {
+    expect(stripLeadingZerosFromExternalId('ca-assembly-01')).toBe(
+      'ca-assembly-1',
+    );
+    expect(stripLeadingZerosFromExternalId('ca-assembly-09')).toBe(
+      'ca-assembly-9',
+    );
+    expect(stripLeadingZerosFromExternalId('ca-senate-01')).toBe('ca-senate-1');
+  });
+
+  it('strips multiple leading zeros (e.g. "001")', () => {
+    expect(stripLeadingZerosFromExternalId('rep-assembly-001')).toBe(
+      'rep-assembly-1',
+    );
+  });
+
+  it('returns IDs without leading zeros unchanged', () => {
+    expect(stripLeadingZerosFromExternalId('ca-assembly-30')).toBe(
+      'ca-assembly-30',
+    );
+    expect(stripLeadingZerosFromExternalId('ca-assembly-80')).toBe(
+      'ca-assembly-80',
+    );
+    expect(stripLeadingZerosFromExternalId('ca-senate-40')).toBe(
+      'ca-senate-40',
+    );
+  });
+
+  it('does not collapse non-padded numeric suffixes (e.g. "100" stays "100")', () => {
+    // Important: "ca-assembly-100" is the prefix-one bug from #645 — it's
+    // wrong-but-not-zero-padded, so it must NOT be silently rewritten to
+    // "ca-assembly-100". (SQL cleanup soft-deletes it instead.)
+    expect(stripLeadingZerosFromExternalId('ca-assembly-100')).toBe(
+      'ca-assembly-100',
+    );
+  });
+
+  it('returns IDs whose final segment is not all-digits unchanged', () => {
+    expect(stripLeadingZerosFromExternalId('ca-assembly-foo')).toBe(
+      'ca-assembly-foo',
+    );
+    expect(stripLeadingZerosFromExternalId('us-house-AL01')).toBe(
+      'us-house-AL01',
+    );
+  });
+
+  it('returns the input unchanged when there is no hyphen', () => {
+    expect(stripLeadingZerosFromExternalId('singleword')).toBe('singleword');
+    expect(stripLeadingZerosFromExternalId('123')).toBe('123');
+  });
+
+  it('handles "0" as the suffix without stripping it to empty', () => {
+    expect(stripLeadingZerosFromExternalId('ca-assembly-0')).toBe(
+      'ca-assembly-0',
+    );
   });
 });
 
