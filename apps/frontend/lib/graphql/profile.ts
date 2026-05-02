@@ -128,7 +128,18 @@ export interface UpdateProfileInput {
   homeownerStatus?: HomeownerStatus;
 }
 
-export type AddressType = "residential" | "mailing" | "business" | "voting";
+/**
+ * GraphQL `AddressType` enum — wire-format names are uppercase.
+ *
+ * NestJS's `registerEnumType` (apps/backend/src/common/enums/address.enum.ts)
+ * exposes the enum KEYS to GraphQL, not the VALUES. The TS-side enum
+ * has uppercase keys (`RESIDENTIAL`, `MAILING`, ...) and lowercase
+ * string values (`'residential'`, ...) — the backend stores lowercase
+ * in the DB but mutations + responses on the wire carry the uppercase
+ * name. Sending the lowercase value over GraphQL fails validation:
+ * `Value "residential" does not exist in "AddressType" enum.`
+ */
+export type AddressType = "RESIDENTIAL" | "MAILING" | "BUSINESS" | "VOTING";
 
 export interface UserAddress {
   id: string;

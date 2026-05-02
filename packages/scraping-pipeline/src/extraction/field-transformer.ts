@@ -6,12 +6,22 @@
  * regex replacement, and basic string transforms.
  */
 
+import { Logger } from "@nestjs/common";
 import type { FieldTransform } from "@opuspopuli/common";
 
 /**
  * Applies a FieldTransform to an extracted string value.
  */
 export class FieldTransformer {
+  private static readonly logger = new Logger(FieldTransformer.name);
+
+  /**
+   * Set of transform types we've already warned about, so unknown types
+   * encountered repeatedly during a sync don't spam the log. The set is
+   * lifetime-of-process; restart clears it.
+   */
+  private static readonly warnedUnknownTypes = new Set<string>();
+
   /**
    * Apply a transform to a raw extracted value.
    *
@@ -51,8 +61,30 @@ export class FieldTransformer {
         return FieldTransformer.parseDate(value, transform.params);
 
       default:
+        // Unknown transform type — log once per type per process so a
+        // typo or LLM hallucination ("regex" instead of "regex_replace")
+        // surfaces instead of silently passing the value through. The
+        // FieldTransformType union enforces this at compile time, but
+        // manifests loaded from the DB are typed `unknown` at runtime
+        // and bypass the check. See scraping-pipeline #604 / region #632
+        // — debugging this took hours because the symptom was "extraction
+        // returns 0 items" with no error pointing at the cause.
+        FieldTransformer.warnUnknownType(transform.type);
         return value;
     }
+  }
+
+  private static warnUnknownType(type: string): void {
+    if (FieldTransformer.warnedUnknownTypes.has(type)) return;
+    FieldTransformer.warnedUnknownTypes.add(type);
+    FieldTransformer.logger.warn(
+      `Unknown transform type "${type}" — value passed through unchanged. ` +
+        `Valid types: trim, lowercase, uppercase, strip_html, url_resolve, ` +
+        `regex_replace, name_format, date_parse. ` +
+        `If you need substring extraction via regex, use ` +
+        `extractionMethod: "regex" with regexPattern + regexGroup on the ` +
+        `field mapping itself, NOT a transform.`,
+    );
   }
 
   /**

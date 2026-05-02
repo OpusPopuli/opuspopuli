@@ -275,15 +275,12 @@ describe("DetailCrawlerService", () => {
       expect(repResult.items[0].bio).toBeDefined();
     });
 
-    it("should detect PDF detail pages and extract text content", async () => {
-      // Mock extraction with PDF detection support
-      mockExtraction.fetchWithRetry.mockResolvedValue({
-        content: "%PDF-1.4 simulated pdf content about water policy",
-        fromCache: false,
-      } as any);
-
-      // Add extractPdfText to mock
-      (mockExtraction as any).extractPdfText = jest
+    it("should detect PDF detail pages by .pdf extension and use the binary-safe fetchPdfText path", async () => {
+      // The .pdf extension shortcuts to fetchPdfText — the old
+      // `fetchWithRetry → Buffer.from(content, "binary")` path
+      // silently mangled real PDFs (UTF-8 decode is irreversible
+      // for non-ASCII bytes). See ExtractionProvider.fetchPdfText.
+      (mockExtraction as any).fetchPdfText = jest
         .fn()
         .mockResolvedValue("Full text of the water policy reform bill.");
 
@@ -305,16 +302,22 @@ describe("DetailCrawlerService", () => {
       expect(result.items[0].fullText).toBe(
         "Full text of the water policy reform bill.",
       );
-      expect((mockExtraction as any).extractPdfText).toHaveBeenCalled();
+      expect((mockExtraction as any).fetchPdfText).toHaveBeenCalledWith(
+        "https://elections.cdn.sos.ca.gov/ballot-measures/pdf/sb-42.pdf",
+      );
+      // Should NOT have used the broken text-fetch path
+      expect(mockExtraction.fetchWithRetry).not.toHaveBeenCalled();
     });
 
-    it("should detect PDF by content prefix even without .pdf extension", async () => {
+    it("should detect PDF by content prefix on non-.pdf URLs and refetch as bytes", async () => {
+      // For URLs that don't advertise .pdf but turn out to serve a PDF
+      // (content-sniffed): the first fetchWithRetry's text body is already
+      // mangled, so we re-fetch via fetchPdfText to get clean bytes.
       mockExtraction.fetchWithRetry.mockResolvedValue({
         content: "%PDF-1.7 some binary pdf data",
         fromCache: false,
       } as any);
-
-      (mockExtraction as any).extractPdfText = jest
+      (mockExtraction as any).fetchPdfText = jest
         .fn()
         .mockResolvedValue("Extracted PDF text content.");
 
@@ -329,6 +332,10 @@ describe("DetailCrawlerService", () => {
       await crawler.enrichItems(rawResult, createSource(), mockLlm);
 
       expect(rawResult.items[0].fullText).toBe("Extracted PDF text content.");
+      // Sniffed PDFs trigger a second fetch as bytes
+      expect((mockExtraction as any).fetchPdfText).toHaveBeenCalledWith(
+        "https://example.com/document/12345",
+      );
     });
   });
 

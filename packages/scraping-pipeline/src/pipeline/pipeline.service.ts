@@ -314,16 +314,16 @@ export class ScrapingPipelineService {
       `Pipeline started [pdf]: ${regionId}/${source.dataType} from ${source.url}`,
     );
 
-    // Provide LLM and PDF text extraction as callbacks
+    // Provide LLM and PDF text extraction as callbacks. Use the
+    // binary-safe fetchPdfText path — the old `fetchWithRetry +
+    // Buffer.from(content, "binary")` pattern silently mangled real
+    // PDF bytes via response.text()'s UTF-8 decode, leaving PDFParse
+    // to fail with "Invalid Root reference".
     return this.pdfExtract.execute<T>(
       source,
       regionId,
       this.llm,
-      async (url: string) => {
-        const fetchResult = await this.extraction.fetchWithRetry(url);
-        const buffer = Buffer.from(fetchResult.content, "binary");
-        return this.extraction.extractPdfText(buffer);
-      },
+      (url: string) => this.extraction.fetchPdfText(url),
     );
   }
 }
