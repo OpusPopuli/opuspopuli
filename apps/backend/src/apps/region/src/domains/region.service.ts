@@ -244,6 +244,30 @@ function deriveDistrictFromExternalId(externalId: string): string | undefined {
   return String(Number.parseInt(last, 10));
 }
 
+/**
+ * Strip leading zeros from a representative externalId's trailing numeric
+ * segment (e.g., `ca-assembly-01` → `ca-assembly-1`). IDs whose final
+ * segment is not all digits, or whose digits already have no leading
+ * zeros, are returned unchanged.
+ *
+ * Defensive against LLM-generated extraction manifests that produce
+ * `regex_replace` patterns with `(\d+)` instead of stripping the leading
+ * zero in zero-padded URL/text inputs (e.g., href `/assemblymembers/01`).
+ * Two iterations of regions-package hint tightening (#10, #11) failed to
+ * stop the LLM from "simplifying" `0?([1-9][0-9]*)` back to `(\d+)`,
+ * so canonicalization is enforced at the consumer boundary instead —
+ * mirroring how `extractLastName` and `sanitizeDistrict` already
+ * normalize other inconsistent extractor outputs in this same path.
+ */
+export function stripLeadingZerosFromExternalId(externalId: string): string {
+  const parts = externalId.split('-');
+  const last = parts.at(-1);
+  if (!last || !/^\d+$/.test(last)) return externalId;
+  const normalized = String(Number.parseInt(last, 10));
+  if (normalized === last) return externalId;
+  return [...parts.slice(0, -1), normalized].join('-');
+}
+
 export function extractLastName(fullName: string): string {
   const trimmed = fullName.trim();
   if (!trimmed) return '';
@@ -853,6 +877,10 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     const reps = await provider.fetchRepresentatives();
     if (reps.length === 0) {
       return { processed: 0, created: 0, updated: 0 };
+    }
+
+    for (const r of reps) {
+      r.externalId = stripLeadingZerosFromExternalId(r.externalId);
     }
 
     // Enrich with AI-generated bios where missing (scraped bios are preserved)
