@@ -19,11 +19,15 @@ import {
   AddressType,
 } from "@/lib/graphql/profile";
 
+// Values are uppercase to match the GraphQL `AddressType` enum's wire format.
+// labelKeys stay lowercase since the i18n translation files key by the
+// lowercase value (`addresses.types.residential` etc.) — no need to migrate
+// every locale's translation key when only the wire format changed.
 const ADDRESS_TYPES: { value: AddressType; labelKey: string }[] = [
-  { value: "residential", labelKey: "addresses.types.residential" },
-  { value: "mailing", labelKey: "addresses.types.mailing" },
-  { value: "business", labelKey: "addresses.types.business" },
-  { value: "voting", labelKey: "addresses.types.voting" },
+  { value: "RESIDENTIAL", labelKey: "addresses.types.residential" },
+  { value: "MAILING", labelKey: "addresses.types.mailing" },
+  { value: "BUSINESS", labelKey: "addresses.types.business" },
+  { value: "VOTING", labelKey: "addresses.types.voting" },
 ];
 
 const US_STATES = [
@@ -81,7 +85,7 @@ const US_STATES = [
 ];
 
 const emptyAddress: CreateAddressInput = {
-  addressType: "residential",
+  addressType: "RESIDENTIAL",
   isPrimary: false,
   label: "",
   addressLine1: "",
@@ -413,7 +417,9 @@ export default function AddressesPage() {
                   <div className="flex items-center gap-3 mb-2">
                     <span className="text-sm font-medium text-[#222222] capitalize">
                       {address.label ||
-                        t(`addresses.types.${address.addressType}`)}
+                        t(
+                          `addresses.types.${address.addressType.toLowerCase()}`,
+                        )}
                     </span>
                     {address.isPrimary && (
                       <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">

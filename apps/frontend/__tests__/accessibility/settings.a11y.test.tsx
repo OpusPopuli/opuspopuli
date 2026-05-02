@@ -43,7 +43,7 @@ const mockAddresses = [
   {
     id: "addr-1",
     userId: "user-1",
-    addressType: "residential",
+    addressType: "RESIDENTIAL",
     isPrimary: true,
     label: "Home",
     addressLine1: "123 Main St",

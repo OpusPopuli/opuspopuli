@@ -177,4 +177,62 @@ describe("FieldTransformer", () => {
       expect(result).toBe("not a date");
     });
   });
+
+  describe("unknown transform type", () => {
+    // Per-process dedup means we need a fresh module per test to
+    // consistently observe the first-warning path.
+    let warnSpy: jest.SpyInstance;
+    let Fresh: typeof FieldTransformer;
+
+    beforeEach(() => {
+      jest.resetModules();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const NestCommon = require("@nestjs/common");
+      warnSpy = jest
+        .spyOn(NestCommon.Logger.prototype, "warn")
+        .mockImplementation();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      Fresh = require("../src/extraction/field-transformer").FieldTransformer;
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    it('warns when transform.type is unknown (e.g. "regex" instead of "regex_replace")', () => {
+      // Cast through unknown — TS literal-union forbids "regex" at compile
+      // time, but DB-loaded manifests bypass that check at runtime.
+      const result = Fresh.apply(
+        "ACA 13 (Ward) Voting thresholds. (Res. Ch. 176, 2023) (PDF)",
+        {
+          type: "regex" as unknown as "regex_replace",
+          params: { pattern: "^([A-Z]+\\s*\\d+)" },
+        },
+      );
+
+      // Value passes through unchanged — we don't break callers with bad data,
+      // but the warning surfaces the bug instead of failing silently.
+      expect(result).toBe(
+        "ACA 13 (Ward) Voting thresholds. (Res. Ch. 176, 2023) (PDF)",
+      );
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const message = warnSpy.mock.calls[0][0] as string;
+      expect(message).toContain('Unknown transform type "regex"');
+      expect(message).toContain("regex_replace");
+      expect(message).toContain('extractionMethod: "regex"');
+    });
+
+    it("dedupes warnings — same unknown type repeated does not spam the log", () => {
+      Fresh.apply("a", { type: "bogus" as unknown as "regex_replace" });
+      Fresh.apply("b", { type: "bogus" as unknown as "regex_replace" });
+      Fresh.apply("c", { type: "bogus" as unknown as "regex_replace" });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("warns separately for distinct unknown types", () => {
+      Fresh.apply("a", { type: "regex" as unknown as "regex_replace" });
+      Fresh.apply("b", { type: "extract" as unknown as "regex_replace" });
+      expect(warnSpy).toHaveBeenCalledTimes(2);
+    });
+  });
 });
