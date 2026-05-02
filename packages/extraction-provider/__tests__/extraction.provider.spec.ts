@@ -288,6 +288,134 @@ describe("ExtractionProvider", () => {
     });
   });
 
+  describe("fetchBytes / fetchPdfText", () => {
+    /**
+     * Build a buffer containing the PDF magic bytes plus a few bytes
+     * outside the ASCII range. A UTF-8 round-trip via response.text()
+     * would replace 0x80-0xFF bytes with the U+FFFD replacement
+     * character (a 3-byte UTF-8 sequence), so a Buffer reconstructed
+     * from such a string would have a different length AND different
+     * contents — exactly the failure mode that breaks PDFParse.
+     */
+    function pdfishBuffer(): Buffer {
+      return Buffer.concat([
+        Buffer.from("%PDF-1.6\n"),
+        Buffer.from([0xe2, 0xe3, 0xcf, 0xd3, 0x0d, 0x0a]), // binary marker
+        Buffer.from("1 0 obj\n<< /Type /Catalog >>\nendobj\n"),
+        Buffer.from([0x80, 0x81, 0x82, 0xff]), // arbitrary non-ASCII bytes
+      ]);
+    }
+
+    /**
+     * Build a fresh standalone ArrayBuffer with exactly the source
+     * bytes — `Buffer#buffer` returns the underlying pool's full
+     * ArrayBuffer (often 8KB), not the slice the Buffer represents.
+     */
+    function asArrayBuffer(buf: Buffer): ArrayBuffer {
+      const ab = new ArrayBuffer(buf.byteLength);
+      new Uint8Array(ab).set(buf);
+      return ab;
+    }
+
+    it("returns the response body as a Buffer with bytes preserved exactly", async () => {
+      const original = pdfishBuffer();
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        url: "https://example.com/test.pdf",
+        arrayBuffer: () => Promise.resolve(asArrayBuffer(original)),
+        headers: new Map([["content-type", "application/pdf"]]),
+      });
+
+      const result = await provider.fetchBytes("https://example.com/test.pdf");
+
+      expect(result.content).toBeInstanceOf(Buffer);
+      expect(result.content.length).toBe(original.length);
+      // Critical: every byte preserved (not UTF-8-mangled)
+      expect(result.content.equals(original)).toBe(true);
+      expect(result.statusCode).toBe(200);
+      expect(result.contentType).toBe("application/pdf");
+    });
+
+    it("fetchPdfText pipes binary-safe bytes into extractPdfText", async () => {
+      const original = pdfishBuffer();
+      let bufferGivenToParser: Buffer | undefined;
+
+      // Replace the global pdf-parse mock to capture what extractPdfText
+      // received, so we can assert it wasn't UTF-8-mangled by the fetch path.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pdfParse = require("pdf-parse");
+      pdfParse.PDFParse.mockImplementationOnce(({ data }: { data: Buffer }) => {
+        bufferGivenToParser = data;
+        return {
+          getText: jest.fn().mockResolvedValue({ text: "ok" }),
+          destroy: jest.fn().mockResolvedValue(undefined),
+        };
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        url: "https://example.com/test.pdf",
+        arrayBuffer: () => Promise.resolve(asArrayBuffer(original)),
+        headers: new Map([["content-type", "application/pdf"]]),
+      });
+
+      const text = await provider.fetchPdfText("https://example.com/test.pdf");
+
+      expect(text).toBe("ok");
+      expect(bufferGivenToParser).toBeInstanceOf(Buffer);
+      expect(bufferGivenToParser!.equals(original)).toBe(true);
+    });
+
+    it("fetchBytesWithRetry retries on transient error then succeeds", async () => {
+      const original = pdfishBuffer();
+      mockFetch
+        .mockRejectedValueOnce(new Error("Network error"))
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          url: "https://example.com/x.pdf",
+          arrayBuffer: () => Promise.resolve(asArrayBuffer(original)),
+          headers: new Map([["content-type", "application/pdf"]]),
+        });
+
+      const promise = provider.fetchBytesWithRetry(
+        "https://example.com/x.pdf",
+        {
+          bypassCache: true,
+        } as never,
+      );
+
+      // Drain the retry backoff timer (mirrors the existing
+      // fetchWithRetry retry test's shape — single advance, not
+      // runAllTimersAsync, to avoid the cache-cleanup interval loop)
+      await jest.advanceTimersByTimeAsync(5000);
+      const result = await promise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.content.equals(original)).toBe(true);
+    });
+
+    it("throws FetchError on non-2xx response", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        url: "https://example.com/missing.pdf",
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+        headers: new Map(),
+      });
+
+      await expect(
+        provider.fetchBytes("https://example.com/missing.pdf"),
+      ).rejects.toThrow(FetchError);
+    });
+  });
+
   describe("selectElements", () => {
     const html = `
       <html>

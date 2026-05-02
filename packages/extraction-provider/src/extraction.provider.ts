@@ -251,6 +251,115 @@ export class ExtractionProvider {
   }
 
   /**
+   * Fetch a URL and return its body as a Buffer (binary-safe).
+   *
+   * Use this for PDFs and other binary content. The text-mode
+   * fetchUrl/fetchWithRetry decode the body as UTF-8 via
+   * `response.text()`, which mangles non-UTF-8 bytes (every byte > 0x7F
+   * gets replaced with U+FFFD) and cannot be reversed via
+   * `Buffer.from(string, 'binary')`. PDFs round-tripped through that
+   * path arrive at PDFParse with a corrupted cross-reference table and
+   * fail with "Invalid Root reference".
+   *
+   * Bypasses the text cache (binary content shouldn't share a cache
+   * key with text fetches of the same URL) but still goes through the
+   * rate limiter and circuit breaker.
+   */
+  async fetchBytes(
+    url: string,
+    options: FetchOptions = {},
+  ): Promise<{
+    content: Buffer;
+    statusCode: number;
+    contentType: string;
+    finalUrl?: string;
+    redirectedFrom?: string;
+  }> {
+    await this.rateLimiter.acquire();
+    this.logger.debug(`Fetching bytes from ${url}`);
+
+    return this.circuitBreaker.execute(async () => {
+      const timeout = options.timeout ?? this.config.defaultTimeout;
+      const response = await this.fetchFn(url, {
+        headers: options.headers,
+        signal: AbortSignal.timeout(timeout),
+      });
+
+      if (!response.ok) {
+        throw new FetchError(
+          url,
+          response.status,
+          `HTTP ${response.status}: ${response.statusText}`,
+        );
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const content = Buffer.from(arrayBuffer);
+      const contentType = response.headers.get("content-type") || "unknown";
+      const finalUrl = response.url;
+      const wasRedirected = finalUrl && finalUrl !== url;
+
+      if (wasRedirected) {
+        this.logger.warn(
+          `URL redirect detected: ${url} → ${finalUrl}. Consider updating the data source config.`,
+        );
+      }
+
+      return {
+        content,
+        statusCode: response.status,
+        contentType,
+        ...(wasRedirected && { redirectedFrom: url, finalUrl }),
+      };
+    });
+  }
+
+  /**
+   * Fetch a URL as bytes with exponential-backoff retry. Same retry
+   * shape as fetchWithRetry, but the body is preserved binary-safe
+   * for PDF/image/zip downloads.
+   */
+  async fetchBytesWithRetry(
+    url: string,
+    options: RetryOptions = {},
+  ): Promise<{
+    content: Buffer;
+    statusCode: number;
+    contentType: string;
+    finalUrl?: string;
+    redirectedFrom?: string;
+  }> {
+    return withRetry(() => this.fetchBytes(url, options), {
+      maxAttempts: options.maxRetries ?? this.config.retry.maxAttempts,
+      baseDelayMs: options.baseDelayMs ?? this.config.retry.baseDelayMs,
+      maxDelayMs: options.maxDelayMs ?? this.config.retry.maxDelayMs,
+      isRetryable: RetryPredicates.any(
+        RetryPredicates.isNetworkError,
+        RetryPredicates.isServerError,
+        RetryPredicates.isRateLimitError,
+      ),
+      onRetry: (error, attempt, delayMs) => {
+        this.logger.warn(
+          `Retry attempt ${attempt} for ${url} after ${delayMs}ms: ${error.message}`,
+        );
+      },
+    });
+  }
+
+  /**
+   * Convenience: fetch a PDF URL as bytes (binary-safe) and extract
+   * its text in one call. The previous pattern
+   * `fetchWithRetry(url) → Buffer.from(content, "binary") → extractPdfText`
+   * was broken for any PDF whose bytes weren't pure ASCII — which is
+   * essentially every real PDF — because fetchWithRetry's
+   * `response.text()` UTF-8-decodes the body and cannot be reversed.
+   */
+  async fetchPdfText(url: string, options: RetryOptions = {}): Promise<string> {
+    const result = await this.fetchBytesWithRetry(url, options);
+    return this.extractPdfText(result.content);
+  }
+
+  /**
    * Parse HTML and select elements via CSS selector
    *
    * @param html - HTML content to parse

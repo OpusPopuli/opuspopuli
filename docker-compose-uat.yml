@@ -202,6 +202,12 @@ services:
       # LLM for AI-powered structural analysis during data scraping
       LLM_URL: http://host.docker.internal:11434
       LLM_MODEL: qwen3.5:9b
+      # Bump default Ollama request timeout (60s) — proposition-analysis,
+      # bio, and structural-analysis prompts are 7-18KB and routinely
+      # take 60-150s on qwen3.5:9b on a Mac, especially after a sleep
+      # cycle when the model has to reload into memory. 180s gives
+      # headroom without masking actual hangs. See #646.
+      OLLAMA_REQUEST_TIMEOUT_MS: "180000"
       # AI Prompt Service for proprietary prompt templates
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       # FEC API key for federal campaign finance data

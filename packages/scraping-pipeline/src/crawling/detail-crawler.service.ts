@@ -263,24 +263,37 @@ export class DetailCrawlerService {
 
   /**
    * Fetch detail page content, handling PDF extraction if needed.
+   *
+   * URLs ending in .pdf are fetched binary-safe via fetchPdfText; the
+   * old pattern of `fetchWithRetry → Buffer.from(content, "binary")`
+   * silently mangled real PDF bytes (the response.text() UTF-8 decode
+   * is irreversible for non-ASCII bytes, leaving the parser to fail
+   * with "Invalid Root reference"). For pages that don't end in .pdf
+   * but turn out to be PDF responses, we re-fetch as bytes since the
+   * first fetch's content is already corrupted.
    */
   private async fetchDetailContent(detailUrl: string): Promise<string> {
-    const fetchResult = await this.extraction.fetchWithRetry(detailUrl);
-    let content = fetchResult.content;
-
-    const isPdf =
-      detailUrl.toLowerCase().endsWith(".pdf") || content.startsWith("%PDF");
-
-    if (isPdf) {
-      content = await this.extraction.extractPdfText(
-        Buffer.from(content, "binary"),
-      );
+    if (detailUrl.toLowerCase().endsWith(".pdf")) {
+      const text = await this.extraction.fetchPdfText(detailUrl);
       this.logger.debug(
-        `Extracted ${content.length} chars from PDF: ${detailUrl}`,
+        `Extracted ${text.length} chars from PDF: ${detailUrl}`,
       );
+      return text;
     }
 
-    return content;
+    const fetchResult = await this.extraction.fetchWithRetry(detailUrl);
+    if (fetchResult.content.startsWith("%PDF")) {
+      // URL didn't advertise .pdf but the response body is one — refetch
+      // as bytes. The text-mode body is already corrupted; we can't
+      // recover it via Buffer.from(content, "binary").
+      const text = await this.extraction.fetchPdfText(detailUrl);
+      this.logger.debug(
+        `Extracted ${text.length} chars from PDF: ${detailUrl} (content-sniffed)`,
+      );
+      return text;
+    }
+
+    return fetchResult.content;
   }
 
   /**

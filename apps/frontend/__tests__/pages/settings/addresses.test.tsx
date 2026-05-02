@@ -48,7 +48,7 @@ const mockAddresses = [
   {
     id: "addr-1",
     userId: "user-1",
-    addressType: "residential",
+    addressType: "RESIDENTIAL",
     isPrimary: true,
     label: "Home",
     addressLine1: "123 Main St",
@@ -65,7 +65,7 @@ const mockAddresses = [
   {
     id: "addr-2",
     userId: "user-1",
-    addressType: "mailing",
+    addressType: "MAILING",
     isPrimary: false,
     label: "Work",
     addressLine1: "456 Office Blvd",
