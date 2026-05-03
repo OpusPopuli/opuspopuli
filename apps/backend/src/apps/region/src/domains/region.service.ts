@@ -911,6 +911,33 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     return raw;
   }
 
+  /**
+   * Pre-upsert normalization for a single Representative record:
+   *   - canonicalize externalId (strip zero-padding from the trailing digit run)
+   *   - drop bios that look like extraction junk (nav-link "Home" text,
+   *     "Latest News" headline blocks from mismatched-theme senator sites);
+   *     nulling here makes the BioGenerator's `!r.bio || r.bio.trim() === ''`
+   *     filter pick them up and replace with an AI-generated bio
+   *   - mark provenance for bios that arrived from the scrape (covers the
+   *     case where BioGenerator returns early because LLM/prompt deps are
+   *     unwired and would otherwise leave scraped bios with a null bioSource)
+   *
+   * Idempotent with BioGenerator's own scraped-bio marking pass.
+   */
+  private normalizeRep(r: Representative): void {
+    r.externalId = stripLeadingZerosFromExternalId(r.externalId);
+    if (r.bio && !isLikelyValidBio(r.bio)) {
+      this.logger.warn(
+        `Discarding junk bio for ${r.externalId} (${r.bio.length} chars): ${r.bio.slice(0, 60)}…`,
+      );
+      r.bio = undefined;
+      r.bioSource = undefined;
+    }
+    if (r.bio && !r.bioSource) {
+      r.bioSource = 'scraped';
+    }
+  }
+
   private async syncRepresentatives(
     provider: DataFetcher = this.regionService,
     maxReps?: number,
@@ -925,27 +952,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     }
 
     for (const r of reps) {
-      r.externalId = stripLeadingZerosFromExternalId(r.externalId);
-      // Drop bios that look like extraction junk (e.g. "Home" nav link,
-      // "Latest News..." headline blocks from per-senator detail sites
-      // with mismatched Drupal themes). Nulling here makes the bio-
-      // generator's `!r.bio || r.bio.trim() === ''` filter pick them up
-      // and replace with an AI-generated bio on this same run.
-      if (r.bio && !isLikelyValidBio(r.bio)) {
-        this.logger.warn(
-          `Discarding junk bio for ${r.externalId} (${r.bio.length} chars): ${r.bio.slice(0, 60)}…`,
-        );
-        r.bio = undefined;
-        r.bioSource = undefined;
-      }
-      // Mark provenance for bios that arrived from the scrape. Done here
-      // (not only in BioGenerator) because BioGenerator returns early
-      // when LLM/prompt deps are unwired, leaving scraped bios with a
-      // null bioSource. This loop is idempotent with the BioGenerator's
-      // own marking pass.
-      if (r.bio && !r.bioSource) {
-        r.bioSource = 'scraped';
-      }
+      this.normalizeRep(r);
     }
 
     // Enrich with AI-generated bios where missing (scraped bios are preserved)

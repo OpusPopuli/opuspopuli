@@ -117,7 +117,15 @@ export class DomainMapperService {
   }
 
   private mapProposition(record: Record<string, unknown>): Proposition | null {
-    const result = PropositionSchema.safeParse(record);
+    // The CA SOS qualified-ballot-measures page emits each measure as an
+    // anchor whose href points to the bill PDF. The regions config
+    // extracts that href as `detailUrl`, but the proposition domain
+    // type stores it as `sourceUrl`. Map across so the field lands.
+    const enriched = {
+      ...record,
+      sourceUrl: record.sourceUrl ?? record.detailUrl,
+    };
+    const result = PropositionSchema.safeParse(enriched);
     if (!result.success) {
       this.logger.debug(
         `Proposition validation failed: ${result.error.message}`,
@@ -287,10 +295,68 @@ const coerceFlexibleDateOptional = z
   .transform(parseFlexibleDate)
   .pipe(z.date().optional());
 
+/**
+ * Clean a CA SOS qualified-ballot-measures anchor text down to the bare
+ * descriptive title.
+ *
+ * The SOS page emits each measure as one anchor of the form:
+ *
+ *   `ACA 13 (Ward) Voting thresholds. (Res. Ch. 176, 2023) (PDF)`
+ *
+ * which has four glued-on parts beyond the actual title:
+ *  1. The leading `<MEASURE_ID>` (already extracted as externalId).
+ *  2. The author parenthetical `(Ward)`.
+ *  3. A trailing chapter-info parenthetical `(Res. Ch. 176, 2023)`.
+ *  4. A `(PDF)` document-format suffix.
+ *
+ * Region-config hint #29 in `california.json` deliberately captures the
+ * full anchor text and leaves cleanup to the consumer ("title: ... .
+ * Cleanup is the consumer's job; do NOT add a transform"). A previous
+ * attempt to push cleanup into a regex_replace transform broke the
+ * pipeline (the manifest fanned out into mismatched groups). This is
+ * the consumer side of that contract.
+ *
+ * Examples:
+ *   `"ACA 13 (Ward) Voting thresholds. (Res. Ch. 176, 2023) (PDF)"`
+ *     → `"Voting thresholds"`
+ *   `"SB 42 (Umberg) Political Reform Act of 1974: public campaign financing. (Ch. 245, 2025) (PDF)"`
+ *     → `"Political Reform Act of 1974: public campaign financing"`
+ *   `"SCA 1 (Newman) Elections: recall of state officers. (Res. Ch. 204, 2024) (PDF)"`
+ *     → `"Elections: recall of state officers"`
+ *
+ * If the input doesn't match the expected shape (e.g. titles already
+ * cleaned upstream, or a future SOS layout change), returns the input
+ * trimmed — never empty.
+ */
+export function cleanPropositionTitle(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+
+  // Strip leading "<MEASURE_ID> (<author>) " — measure id is letters and
+  // digits with optional whitespace, author is anything inside parens.
+  let cleaned = trimmed.replace(/^[A-Z]+\s*\d+\s*\([^)]*\)\s*/, "");
+
+  // Strip trailing "(...) (...) (...)" parentheticals (chapter info,
+  // PDF suffix, etc.). One or more groups, each separated by whitespace.
+  cleaned = cleaned.replace(/\s*(?:\([^)]*\)\s*)+$/, "");
+
+  // Strip a single trailing period that was the original end-of-title
+  // punctuation in the SOS anchor.
+  cleaned = cleaned.replace(/\.\s*$/, "");
+
+  cleaned = cleaned.trim();
+
+  // Defensive: if cleanup produced an empty string (the input was just
+  // a measure id + parentheticals with no descriptor), fall back to
+  // the trimmed input so the downstream `min(1)` validator doesn't
+  // reject the row.
+  return cleaned || trimmed;
+}
+
 const PropositionSchema = z
   .object({
     externalId: z.string().min(1),
-    title: z.string().min(1),
+    title: z.string().min(1).transform(cleanPropositionTitle),
     summary: z.string().default(""),
     fullText: z.string().optional(),
     status: z.nativeEnum(PropositionStatus).default(PropositionStatus.PENDING),
