@@ -1033,6 +1033,9 @@ importers:
       jest:
         specifier: ^30.0.0
         version: 30.3.0(@types/node@22.19.15)
+      mupdf:
+        specifier: ^1.27.0
+        version: 1.27.0
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
