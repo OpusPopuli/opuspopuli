@@ -328,34 +328,64 @@ const coerceFlexibleDateOptional = z
  * cleaned upstream, or a future SOS layout change), returns the input
  * trimmed — never empty.
  */
+/**
+ * Strip a single trailing balanced parenthetical group (and any whitespace
+ * preceding it) from a string. Returns the original string when no such
+ * group exists.
+ *
+ * Uses imperative paren-matching instead of regex to avoid Sonar's
+ * ReDoS heuristic, which flags any pattern combining `\s*` with `[^)]*`
+ * because those character classes overlap (`\s` is a subset of `[^)]`)
+ * — even though the actual match has no ambiguous positions and runs
+ * in linear time. Each call here is strictly O(n).
+ */
+function stripTrailingParenGroup(s: string): string | null {
+  const trimmed = s.trimEnd();
+  if (!trimmed.endsWith(")")) return null;
+
+  // Walk backward from the closing `)` to find the matching `(`,
+  // accounting for nesting (real titles don't use nested parens but
+  // costs nothing to handle them correctly).
+  let depth = 1;
+  let i = trimmed.length - 2;
+  while (i >= 0 && depth > 0) {
+    if (trimmed[i] === ")") depth++;
+    else if (trimmed[i] === "(") depth--;
+    i--;
+  }
+  if (depth !== 0) return null;
+
+  // i + 1 is the position of the opening `(`. Slice everything before
+  // it, then trim trailing whitespace that preceded the parenthetical.
+  return trimmed.slice(0, i + 1).trimEnd();
+}
+
 export function cleanPropositionTitle(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return trimmed;
 
-  // Strip leading "<MEASURE_ID> (<author>) ". The character classes are
-  // disjoint (`[A-Z]`, `\s`, `\d`, `[^)]`), each quantifier operates on
-  // a non-overlapping set, and the pattern is anchored at `^` — no
-  // ambiguous match positions, so backtracking stays linear in input
-  // length even if the regex doesn't match.
+  // Strip leading "<MEASURE_ID> (<author>) ". Quantifier character
+  // classes are disjoint here (`[A-Z]`, `\d`, `\s`, `[^)]` only after
+  // the literal `(`), the pattern is anchored at `^`, and each `*`/`+`
+  // operates on a single-shot greedy match — no ambiguous match
+  // positions for the regex engine to backtrack across.
   let cleaned = trimmed.replace(/^[A-Z]+\s*\d+\s*\([^)]*\)\s*/, "");
 
-  // Strip trailing parentheticals one at a time via a single-match regex
-  // per iteration. The original `(?:\([^)]*\)\s*)+$` form was flagged by
-  // Sonar's ReDoS heuristic for nested quantifiers (`+` outer + `*`
-  // inside) — even though the inner content classes are disjoint and
-  // can't actually backtrack super-linearly, the loop form is provably
-  // O(n) per iteration with at most O(n) iterations (each strip removes
-  // at least 2 chars: `()`), keeping worst-case total at O(n²) without
-  // any backtracking ambiguity for the static analyzer to flag.
-  let prev: string;
-  do {
-    prev = cleaned;
-    cleaned = cleaned.replace(/\s*\([^)]*\)\s*$/, "");
-  } while (cleaned !== prev);
+  // Strip trailing parentheticals one at a time. Imperative scan in
+  // {@link stripTrailingParenGroup} avoids the regex-based ReDoS
+  // heuristic and is strictly O(n) per call, with at most O(n / 2)
+  // calls (each strip removes at least two chars: `()`).
+  let next = stripTrailingParenGroup(cleaned);
+  while (next !== null) {
+    cleaned = next;
+    next = stripTrailingParenGroup(cleaned);
+  }
 
   // Strip a single trailing period that was the original end-of-title
   // punctuation in the SOS anchor.
-  cleaned = cleaned.replace(/\.\s*$/, "");
+  if (cleaned.endsWith(".")) {
+    cleaned = cleaned.slice(0, -1);
+  }
 
   cleaned = cleaned.trim();
 
