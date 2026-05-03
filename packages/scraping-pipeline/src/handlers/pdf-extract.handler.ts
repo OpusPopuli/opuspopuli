@@ -12,17 +12,15 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import * as cheerio from "cheerio";
-import type {
-  DataSourceConfig,
-  ExtractionResult,
-  TextExtractionRuleSet,
-} from "@opuspopuli/common";
-import { DomainMapperService } from "../mapping/domain-mapper.service.js";
-import { TextExtractorService } from "../extraction/text-extractor.service.js";
 import {
   extractJsonObjectSlice,
   stripCodeFences,
-} from "../utils/json-salvage.js";
+  type DataSourceConfig,
+  type ExtractionResult,
+  type TextExtractionRuleSet,
+} from "@opuspopuli/common";
+import { DomainMapperService } from "../mapping/domain-mapper.service.js";
+import { TextExtractorService } from "../extraction/text-extractor.service.js";
 
 /** Maximum text size to send to the LLM (characters) */
 const MAX_TEXT_SIZE = 12000;

@@ -447,8 +447,8 @@ const PropositionSchema = z
 function slugify(value: string): string {
   return value
     .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, "-")
-    .replaceAll(/^-+|-+$/g, "");
+    .replaceAll(/[^a-z0-9]+/g, "-") // NOSONAR: single char-class with `+`, no backtracking trap
+    .replaceAll(/^-+|-+$/g, ""); // NOSONAR: alternation of two anchored `-+` runs, linear time
 }
 
 /**

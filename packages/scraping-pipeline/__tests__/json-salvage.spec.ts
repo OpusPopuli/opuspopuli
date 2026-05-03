@@ -1,7 +1,4 @@
-import {
-  extractJsonObjectSlice,
-  stripCodeFences,
-} from "../src/utils/json-salvage";
+import { extractJsonObjectSlice, stripCodeFences } from "@opuspopuli/common";
 
 describe("stripCodeFences", () => {
   it("strips ```json fence + closing ```", () => {
