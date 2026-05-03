@@ -1,4 +1,7 @@
-import { DomainMapperService } from "../src/mapping/domain-mapper.service";
+import {
+  DomainMapperService,
+  cleanPropositionTitle,
+} from "../src/mapping/domain-mapper.service";
 import {
   DataType,
   type RawExtractionResult,
@@ -27,6 +30,75 @@ function createRawResult(
     ...overrides,
   };
 }
+
+describe("cleanPropositionTitle", () => {
+  it("strips measure-id + author + chapter-info + (PDF) from real SOS anchor text", () => {
+    expect(
+      cleanPropositionTitle(
+        "ACA 13 (Ward) Voting thresholds. (Res. Ch. 176, 2023) (PDF)",
+      ),
+    ).toBe("Voting thresholds");
+    expect(
+      cleanPropositionTitle(
+        "SB 42 (Umberg) Political Reform Act of 1974: public campaign financing: California Fair Elections Act of 2026. (Ch. 245, 2025) (PDF)",
+      ),
+    ).toBe(
+      "Political Reform Act of 1974: public campaign financing: California Fair Elections Act of 2026",
+    );
+    expect(
+      cleanPropositionTitle(
+        "SCA 1 (Newman) Elections: recall of state officers. (Res. Ch. 204, 2024) (PDF)",
+      ),
+    ).toBe("Elections: recall of state officers");
+  });
+
+  it("handles multi-letter and single-digit measure prefixes", () => {
+    expect(cleanPropositionTitle("AB 1 (Doe) Short title. (PDF)")).toBe(
+      "Short title",
+    );
+    expect(
+      cleanPropositionTitle(
+        "SCA 21 (Smith) Long title here. (Res. Ch. 99, 2025) (PDF)",
+      ),
+    ).toBe("Long title here");
+  });
+
+  it("strips only one trailing parenthetical group cleanly when there is one", () => {
+    expect(cleanPropositionTitle("AB 5 (Doe) Title. (PDF)")).toBe("Title");
+  });
+
+  it("handles colons and punctuation inside the title", () => {
+    expect(
+      cleanPropositionTitle(
+        "AB 1 (Doe) Education: K-12 funding: cost-of-living adjustments. (PDF)",
+      ),
+    ).toBe("Education: K-12 funding: cost-of-living adjustments");
+  });
+
+  it("trims whitespace", () => {
+    expect(cleanPropositionTitle("  ACA 13 (Ward)  Title.   (PDF)  ")).toBe(
+      "Title",
+    );
+  });
+
+  it("returns empty for empty input, trimmed input for whitespace-only", () => {
+    expect(cleanPropositionTitle("")).toBe("");
+    expect(cleanPropositionTitle("   ")).toBe("");
+  });
+
+  it("falls back to the trimmed input when stripping empties the string", () => {
+    // Pathological: anchor with measure id + author parenthetical but no
+    // descriptive title body. We must not return "" — the schema's
+    // min(1) validator would reject the row.
+    expect(cleanPropositionTitle("AB 1 (Doe) (PDF)")).toBe("AB 1 (Doe) (PDF)");
+  });
+
+  it("leaves an already-clean title unchanged", () => {
+    expect(cleanPropositionTitle("Voting thresholds")).toBe(
+      "Voting thresholds",
+    );
+  });
+});
 
 describe("DomainMapperService", () => {
   let mapper: DomainMapperService;
@@ -68,6 +140,52 @@ describe("DomainMapperService", () => {
 
       expect(result.success).toBe(false);
       expect(result.items).toHaveLength(0);
+    });
+
+    it("cleans the title from raw SOS anchor text and routes detailUrl → sourceUrl", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "ACA 13",
+              title:
+                "ACA 13 (Ward) Voting thresholds. (Res. Ch. 176, 2023) (PDF)",
+              detailUrl:
+                "https://www.sos.ca.gov/elections/ballot-measures/pdf/aca-13.pdf",
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        externalId: "ACA 13",
+        title: "Voting thresholds",
+        // summary defaults to cleaned title until AI analysis populates analysis_summary
+        summary: "Voting thresholds",
+        sourceUrl:
+          "https://www.sos.ca.gov/elections/ballot-measures/pdf/aca-13.pdf",
+      });
+    });
+
+    it("prefers an explicit sourceUrl over detailUrl when both present", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "PROP-X",
+              title: "X",
+              sourceUrl: "https://example.com/explicit",
+              detailUrl: "https://example.com/harvest",
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
+      );
+      expect(result.items[0]).toMatchObject({
+        sourceUrl: "https://example.com/explicit",
+      });
     });
 
     it("should use title as summary when summary is empty", () => {

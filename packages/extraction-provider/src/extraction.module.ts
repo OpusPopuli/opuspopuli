@@ -14,6 +14,30 @@ import {
  */
 export interface ExtractionModuleOptions {
   config?: Partial<ExtractionConfig>;
+  /**
+   * Additional modules to import into ExtractionModule's scope. Useful when
+   * binding providers (via `extraProviders`) that depend on services from
+   * external modules — e.g. wiring `OCR_SERVICE` to `@opuspopuli/ocr-provider`'s
+   * `OcrService` requires importing `OcrModule` here so its exports resolve.
+   */
+  extraImports?: NonNullable<DynamicModule["imports"]>;
+  /**
+   * Additional providers to register in ExtractionModule's scope, made
+   * visible to all components declared in this module. The canonical use
+   * is binding the optional `OCR_SERVICE` token used by the tiered PDF
+   * extractor:
+   *
+   * ```ts
+   * ExtractionModule.forRoot({
+   *   extraImports: [OcrModule],
+   *   extraProviders: [{ provide: OCR_SERVICE, useExisting: OcrService }],
+   * })
+   * ```
+   *
+   * Without binding here, ExtractionProvider's `@Optional() @Inject(OCR_SERVICE)`
+   * resolves to `undefined` and image-based PDFs skip the OCR fallback.
+   */
+  extraProviders?: Provider[];
 }
 
 /**
@@ -104,6 +128,7 @@ export class ExtractionModule {
 
     return {
       module: ExtractionModule,
+      imports: options.extraImports ?? [],
       providers: [
         {
           provide: EXTRACTION_CONFIG,
@@ -111,6 +136,7 @@ export class ExtractionModule {
         },
         ExtractionProvider,
         URLExtractor,
+        ...(options.extraProviders ?? []),
         {
           provide: "TEXT_EXTRACTORS",
           useFactory: (urlExtractor: URLExtractor): ITextExtractor[] => {
