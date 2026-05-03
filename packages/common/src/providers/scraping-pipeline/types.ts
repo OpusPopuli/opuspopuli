@@ -108,10 +108,57 @@ export interface FieldMapping {
   /** Search scope: 'item' (default) searches within the item element,
    *  'container' searches from the container element (for sibling data like headings) */
   scope?: "item" | "container";
-  /** For 'structured' method: child field selectors to extract from each matched
-   *  element (e.g., { name: "h3", phone: ".phone" }). Produces an array of objects. */
-  children?: Record<string, string>;
+  /** For 'structured' method: per-child extraction config. Each value is
+   *  either a string selector (legacy DSL with `_text` / `_regex:` / `|attr:`
+   *  shortcuts) or a full ChildFieldConfig object that supports
+   *  extractionMethod + transform. Produces an array of objects. */
+  children?: Record<string, ChildFieldConfig>;
 }
+
+/**
+ * Per-child extraction config inside a `structured` FieldMapping.
+ *
+ * Two equivalent forms:
+ *
+ * 1. **String shortcut** — terse DSL parsed by the structured extractor:
+ *    - `"css-selector"` — text from descendant
+ *    - `"css-selector|attr:name"` — attribute from descendant
+ *    - `"_text"` — full text of the parent element
+ *    - `"_regex:PATTERN"` — capture group 1 from full element text
+ *
+ * 2. **Object form** — when you need an extraction method that doesn't fit
+ *    the shortcut (e.g., regex with non-default capture group, attribute on
+ *    a specific selector with a transform applied after, etc.):
+ *
+ *    ```ts
+ *    { selector: "p.member__address", extractionMethod: "text",
+ *      transform: { type: "regex_replace", params: {...} } }
+ *    ```
+ *
+ *    Object form supports the same shape as the top-level FieldMapping
+ *    (selector + extractionMethod + attribute / regexPattern+regexGroup +
+ *    transform), minus the fieldName/scope/required/defaultValue parts
+ *    that don't apply at child scope.
+ */
+export type ChildFieldConfig =
+  | string
+  | {
+      /** CSS selector relative to the matched element. Required for text /
+       *  attribute / html. Optional for regex (defaults to the full
+       *  element text). */
+      selector?: string;
+      /** Extraction method. Defaults to 'text' when a selector is given,
+       *  'regex' when only a regexPattern is given. */
+      extractionMethod?: ExtractionMethod;
+      /** For extractionMethod='attribute': which attribute to read. */
+      attribute?: string;
+      /** For extractionMethod='regex': the pattern. */
+      regexPattern?: string;
+      /** For extractionMethod='regex': capture group (default: 1). */
+      regexGroup?: number;
+      /** Optional transform applied after extraction. */
+      transform?: FieldTransform;
+    };
 
 export type ExtractionMethod =
   | "text"

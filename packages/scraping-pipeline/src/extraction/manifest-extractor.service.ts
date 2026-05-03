@@ -194,7 +194,7 @@ export class ManifestExtractorService {
   ): unknown {
     // Structured extraction produces an array — transforms/defaults don't apply
     if (mapping.extractionMethod === "structured") {
-      return this.extractStructuredArray($, element, mapping);
+      return this.extractStructuredArray($, element, mapping, baseUrl);
     }
 
     let value = this.extractFieldValue($, element, mapping);
@@ -218,6 +218,7 @@ export class ManifestExtractorService {
     $: CheerioAPI,
     element: Cheerio<Element>,
     mapping: FieldMapping,
+    baseUrl?: string,
   ): Record<string, string>[] {
     if (!mapping.selector || !mapping.children) return [];
     return extractStructuredArray(
@@ -225,6 +226,7 @@ export class ManifestExtractorService {
       element,
       mapping.selector,
       mapping.children,
+      baseUrl,
     );
   }
 

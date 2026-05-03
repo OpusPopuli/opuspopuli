@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import {
   extractLastName,
+  isLikelyValidBio,
   mapPropositionRecord,
   RegionDomainService,
   stripLeadingZerosFromExternalId,
@@ -153,6 +154,30 @@ describe('extractLastName', () => {
     expect(extractLastName('Frank Smith III')).toBe('Smith');
   });
 
+  it('takes the part before the comma when input is "Last, First"', () => {
+    expect(extractLastName('Hadwick, Heather')).toBe('Hadwick');
+    expect(extractLastName('Aguiar-Curry, Cecilia M.')).toBe('Aguiar-Curry');
+    expect(extractLastName('Tangipa, David J.')).toBe('Tangipa');
+    expect(extractLastName('Smith, John Jr.')).toBe('Smith');
+  });
+
+  it('handles whitespace around the comma', () => {
+    expect(extractLastName('Hadwick ,  Heather')).toBe('Hadwick');
+  });
+
+  it('strips suffixes that precede the comma in "Last Suffix, First"', () => {
+    expect(extractLastName('Solache Jr., José Luis')).toBe('Solache');
+    expect(extractLastName('Smith Sr., John')).toBe('Smith');
+    expect(extractLastName('Doe III, Jane')).toBe('Doe');
+  });
+
+  it('preserves multi-word surnames before the comma', () => {
+    // Spanish double surnames are common — "Ávila Farías" is one
+    // surname, not surname + suffix. Suffix stripping only touches
+    // the recognized Jr/Sr/II/III/IV/Esq tokens.
+    expect(extractLastName('Ávila Farías, Anamarie')).toBe('Ávila Farías');
+  });
+
   it('falls back to trimmed input when no spaces', () => {
     expect(extractLastName('Madonna')).toBe('Madonna');
   });
@@ -160,6 +185,57 @@ describe('extractLastName', () => {
   it('returns empty for empty input', () => {
     expect(extractLastName('')).toBe('');
     expect(extractLastName('   ')).toBe('');
+  });
+});
+
+describe('isLikelyValidBio', () => {
+  it('rejects empty / null / undefined', () => {
+    expect(isLikelyValidBio(null)).toBe(false);
+    expect(isLikelyValidBio(undefined)).toBe(false);
+    expect(isLikelyValidBio('')).toBe(false);
+    expect(isLikelyValidBio('   ')).toBe(false);
+  });
+
+  it('rejects bios under 100 chars', () => {
+    expect(isLikelyValidBio('Home')).toBe(false);
+    expect(isLikelyValidBio('Senator Smith represents District 4.')).toBe(
+      false,
+    );
+  });
+
+  it('rejects "Home" nav-link junk', () => {
+    expect(
+      isLikelyValidBio(
+        'Home page content with a lot of filler text padded out to over a hundred characters total length here',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects "Latest News" headline blocks', () => {
+    expect(
+      isLikelyValidBio(
+        'Latest News Senator Smith Takes on New Leadership Role with Senate Rules Committee When Is It Enough?',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects bios where "Latest News" appears after a short biographical-looking header', () => {
+    // Real case from CA Senate sync: a per-senator page emits
+    // "Senator X Representing District N Latest News [headlines]..."
+    // The leading clause looks bio-like but the rest is news content.
+    expect(
+      isLikelyValidBio(
+        'Senator Kelly Seyarto Representing District 32 Latest News Senator Seyarto Proclaims Crime Victims Rights Week California Senate Republicans Introduce Legislation',
+      ),
+    ).toBe(false);
+  });
+
+  it('accepts a real bio with biographical content', () => {
+    expect(
+      isLikelyValidBio(
+        'Senator Smith was elected to represent California Senate District 4 in 2022. Prior to her election she served as a county supervisor for eight years and worked as a public-interest attorney focused on consumer protection.',
+      ),
+    ).toBe(true);
   });
 });
 
