@@ -24,3 +24,4 @@ export type { WithRetryOptions } from "@opuspopuli/common";
 
 // Local implementations (Redis-specific, stays in extraction-provider)
 export * from "./redis-rate-limiter.js";
+export * from "./url-normalize.js";

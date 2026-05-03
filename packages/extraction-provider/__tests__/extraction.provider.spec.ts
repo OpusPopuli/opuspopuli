@@ -60,7 +60,7 @@ describe("ExtractionProvider", () => {
       expect(result.fromCache).toBe(false);
       expect(result.statusCode).toBe(200);
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://example.com",
+        "https://example.com/",
         expect.objectContaining({
           signal: expect.any(AbortSignal),
         }),
@@ -166,7 +166,7 @@ describe("ExtractionProvider", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://example.com",
+        "https://example.com/",
         expect.objectContaining({
           headers: { Authorization: "Bearer token" },
         }),
