@@ -17,6 +17,7 @@ import type {
   RawExtractionResult,
 } from "@opuspopuli/common";
 import { FieldTransformer } from "./field-transformer.js";
+import { safeRegex } from "./safe-regex.js";
 import { extractStructuredArray } from "./structured-extractor.js";
 
 @Injectable()
@@ -320,13 +321,12 @@ export class ManifestExtractorService {
         if (!mapping.regexPattern) {
           return undefined;
         }
-        const rawText = first.text();
-        try {
-          const match = new RegExp(mapping.regexPattern).exec(rawText);
-          return match?.[mapping.regexGroup ?? 1] || undefined;
-        } catch {
+        const regex = safeRegex(mapping.regexPattern);
+        if (!regex) {
           return undefined;
         }
+        const rawText = first.text();
+        return regex.exec(rawText)?.[mapping.regexGroup ?? 1] || undefined;
       }
 
       default:

@@ -1,15 +1,13 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PromptClientService } from '@opuspopuli/prompt-client';
-import type {
-  BioClaim,
-  ILLMProvider,
-  Representative,
-} from '@opuspopuli/common';
 import {
   extractFieldString,
   extractJsonObjectSlice,
-} from './llm-json-salvage.util';
+  type BioClaim,
+  type ILLMProvider,
+  type Representative,
+} from '@opuspopuli/common';
 
 /**
  * Maps the externalId region prefix to a human-readable state name.

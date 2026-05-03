@@ -2,21 +2,19 @@
  * JSON salvage helpers for LLM responses.
  *
  * LLMs occasionally emit malformed JSON — truncation at the token
- * ceiling, rogue escape sequences, trailing prose. The bio and
- * committee-summary generators share a two-tier recovery strategy:
+ * ceiling, rogue escape sequences, trailing prose. Callers share a
+ * two-tier recovery strategy:
  *
  *   Tier 1 — full JSON parse of the first balanced {…} block.
  *   Tier 2 — char-by-char extraction of a single string field value,
  *            salvaging useful output when the full parse fails.
  *
- * Both generators need the same balanced-brace scanner and the same
- * escape-aware string extractor, just for different field names.
- * Keeping them here avoids copy-paste drift.
+ * Tier 2 is most useful when only one field of the object matters
+ * (e.g. a generated bio or summary). Skip it for multi-field schemas
+ * where partial recovery would be misleading.
  */
 
-/** Strips leading ```json (or ```) markdown fences from an LLM response. */
 const LEADING_CODE_FENCE = /^```(?:json)?\n?/;
-/** Strips the trailing ``` fence. */
 const TRAILING_CODE_FENCE = /\n?```$/;
 
 interface JsonScanState {
@@ -26,21 +24,30 @@ interface JsonScanState {
 }
 
 /**
- * Pull a JSON object slice out of raw LLM text. Strips code fences,
+ * Pull a JSON object slice out of raw LLM text. Strips ``` code fences,
  * then scans for the first balanced `{…}` block — correctly skipping
- * braces that appear inside JSON string values. Tolerates prose
- * before AND after the JSON object.
+ * braces that appear inside JSON string values. Tolerates prose before
+ * AND after the JSON object.
+ *
+ * Returns the candidate string for the caller to `JSON.parse`, or
+ * `undefined` if no balanced object is found.
  */
 export function extractJsonObjectSlice(text: string): string | undefined {
   const trimmed = stripCodeFences(text.trim());
-  const start = trimmed.indexOf('{');
+  const start = trimmed.indexOf("{");
   if (start < 0) return undefined;
   return sliceBalancedObject(trimmed, start);
 }
 
-function stripCodeFences(text: string): string {
-  return text.startsWith('```')
-    ? text.replace(LEADING_CODE_FENCE, '').replace(TRAILING_CODE_FENCE, '')
+/**
+ * Strip leading ```json (or ```) and trailing ``` markdown fences from an
+ * LLM response. Exposed so callers that already have a JSON-only string
+ * can run the fast `JSON.parse` path on a cleaned input before falling
+ * through to {@link extractJsonObjectSlice} (which strips internally).
+ */
+export function stripCodeFences(text: string): string {
+  return text.startsWith("```")
+    ? text.replace(LEADING_CODE_FENCE, "").replace(TRAILING_CODE_FENCE, "")
     : text;
 }
 
@@ -59,7 +66,7 @@ function advanceJsonState(state: JsonScanState, ch: string): boolean {
     state.escaped = false;
     return false;
   }
-  if (ch === '\\') {
+  if (ch === "\\") {
     state.escaped = true;
     return false;
   }
@@ -68,8 +75,8 @@ function advanceJsonState(state: JsonScanState, ch: string): boolean {
     return false;
   }
   if (state.inString) return false;
-  if (ch === '{') state.depth++;
-  else if (ch === '}') {
+  if (ch === "{") state.depth++;
+  else if (ch === "}") {
     state.depth--;
     return true;
   }
@@ -97,7 +104,7 @@ export function extractFieldString(
   if (match?.index === undefined) return undefined;
 
   const start = match.index + match[0].length;
-  let out = '';
+  let out = "";
   let escaped = false;
   for (let i = start; i < text.length; i++) {
     const ch = text[i];
@@ -106,7 +113,7 @@ export function extractFieldString(
       escaped = false;
       continue;
     }
-    if (ch === '\\') {
+    if (ch === "\\") {
       escaped = true;
       continue;
     }
@@ -121,18 +128,18 @@ export function extractFieldString(
 
 function decodeEscapedChar(ch: string): string {
   switch (ch) {
-    case 'n':
-      return '\n';
-    case 't':
-      return '\t';
-    case 'r':
-      return '\r';
+    case "n":
+      return "\n";
+    case "t":
+      return "\t";
+    case "r":
+      return "\r";
     case '"':
       return '"';
-    case '\\':
-      return '\\';
-    case '/':
-      return '/';
+    case "\\":
+      return "\\";
+    case "/":
+      return "/";
     default:
       return ch;
   }

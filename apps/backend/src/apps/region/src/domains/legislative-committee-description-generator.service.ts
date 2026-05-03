@@ -1,12 +1,12 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PromptClientService } from '@opuspopuli/prompt-client';
-import type { ILLMProvider } from '@opuspopuli/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
 import {
   extractFieldString,
   extractJsonObjectSlice,
-} from './llm-json-salvage.util';
+  type ILLMProvider,
+} from '@opuspopuli/common';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 
 /** Minimal shape of a committee row needed to render a description prompt. */
 interface CommitteeForDescription {

@@ -269,6 +269,114 @@ describe("DomainMapperService", () => {
       expect(result.items[0]).toMatchObject({ body: "Assembly" });
     });
 
+    it("recomposes externalId when LLM emits a bare date (CA Assembly daily-file case)", () => {
+      // The LLM extracts the meeting date as externalId instead of the
+      // hint-specified `assembly-{committee}-{YYYY-MM-DD}` form. Two
+      // committees on the same date would otherwise collide on upsert
+      // and silently dedup. Mapper composes a unique form from
+      // body + title + date.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "05/04/26",
+              title: "Rules",
+              body: "Assembly",
+              scheduledAt: "2026-05-04T10:00:00Z",
+            },
+            {
+              externalId: "05/04/26",
+              title: "Utilities And Energy",
+              body: "Assembly",
+              scheduledAt: "2026-05-04T13:00:00Z",
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.MEETINGS }),
+      );
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]).toMatchObject({
+        externalId: "assembly-rules-05/04/26",
+      });
+      expect(result.items[1]).toMatchObject({
+        externalId: "assembly-utilities-and-energy-05/04/26",
+      });
+    });
+
+    it("recognizes ISO-format dates as bare dates too", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "2026-05-04",
+              title: "Rules",
+              body: "Assembly",
+              scheduledAt: "2026-05-04T10:00:00Z",
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.MEETINGS }),
+      );
+      expect(result.items[0]).toMatchObject({
+        externalId: "assembly-rules-2026-05-04",
+      });
+    });
+
+    it("preserves a non-bare-date externalId verbatim", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "assembly-rules-2026-05-04",
+              title: "Rules",
+              body: "Assembly",
+              scheduledAt: "2026-05-04T10:00:00Z",
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.MEETINGS }),
+      );
+      expect(result.items[0]).toMatchObject({
+        externalId: "assembly-rules-2026-05-04",
+      });
+    });
+
+    it("rejects a meeting with neither externalId nor title (no degenerate stub)", () => {
+      // Real failure mode: senate-daily-file PDF text-extraction failed
+      // entirely, the previous mapper's fallback produced `senate--` /
+      // "Untitled Meeting" / 1970-01-01 stub rows. New behavior: reject.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              // No externalId, no title — only category-derived body
+              scheduledAt: "2026-05-04T10:00:00Z",
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.MEETINGS, category: "Senate" }),
+      );
+      expect(result.items).toHaveLength(0);
+    });
+
+    it("rejects a meeting where compose would produce a degenerate single-segment id", () => {
+      // Title and body both empty, only an externalId that's a bare date
+      // — recompose can't add unique segments, so the row is rejected.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "05/04/26",
+              scheduledAt: "2026-05-04T10:00:00Z",
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.MEETINGS }),
+      );
+      expect(result.items).toHaveLength(0);
+    });
+
     it("should reject meetings missing scheduledAt", () => {
       const result = mapper.map(
         createRawResult({
