@@ -2,6 +2,7 @@ import type { CheerioAPI, Cheerio } from "cheerio";
 import type { Element, AnyNode } from "domhandler";
 import type { ChildFieldConfig } from "@opuspopuli/common";
 import { FieldTransformer } from "./field-transformer.js";
+import { safeRegex } from "./safe-regex.js";
 
 /**
  * Extracts an array of structured objects from repeating elements matched by a CSS selector.
@@ -89,13 +90,9 @@ function extractFromShortcut(
 
   // _regex:pattern: extract via regex from element text (capture group 1)
   if (childSelector.startsWith("_regex:")) {
-    const pattern = childSelector.slice(7);
-    try {
-      const match = new RegExp(pattern).exec(elementText);
-      return match?.[1]?.trim() || undefined;
-    } catch {
-      return undefined;
-    }
+    const regex = safeRegex(childSelector.slice(7));
+    if (!regex) return undefined;
+    return regex.exec(elementText)?.[1]?.trim() || undefined;
   }
 
   // Standard CSS selector with optional "|attr:name" suffix
@@ -137,13 +134,10 @@ function extractByRegex(
         .replaceAll(/\s+/g, " ")
         .trim()
     : elementText;
-  try {
-    const match = new RegExp(config.regexPattern).exec(haystack);
-    const group = config.regexGroup ?? 1;
-    return match?.[group]?.trim();
-  } catch {
-    return undefined;
-  }
+  const regex = safeRegex(config.regexPattern);
+  if (!regex) return undefined;
+  const group = config.regexGroup ?? 1;
+  return regex.exec(haystack)?.[group]?.trim();
 }
 
 function extractByAttribute(

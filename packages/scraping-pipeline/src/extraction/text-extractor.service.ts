@@ -14,6 +14,7 @@ import type {
   RawExtractionResult,
 } from "@opuspopuli/common";
 import { FieldTransformer } from "./field-transformer.js";
+import { safeRegex } from "./safe-regex.js";
 
 @Injectable()
 export class TextExtractorService {
@@ -39,13 +40,23 @@ export class TextExtractorService {
     // 1. Optionally narrow to data section
     let content = text;
     if (rules.dataSectionStart) {
-      const startMatch = new RegExp(rules.dataSectionStart).exec(content);
+      const re = safeRegex(rules.dataSectionStart, "", (err, prep) => {
+        warnings.push(
+          `dataSectionStart regex invalid (${err.message}); using full content. Pattern: ${prep.pattern}`,
+        );
+      });
+      const startMatch = re?.exec(content);
       if (startMatch?.index !== undefined) {
         content = content.slice(startMatch.index);
       }
     }
     if (rules.dataSectionEnd) {
-      const endMatch = new RegExp(rules.dataSectionEnd).exec(content);
+      const re = safeRegex(rules.dataSectionEnd, "", (err, prep) => {
+        warnings.push(
+          `dataSectionEnd regex invalid (${err.message}); not narrowing to end. Pattern: ${prep.pattern}`,
+        );
+      });
+      const endMatch = re?.exec(content);
       if (endMatch?.index !== undefined) {
         content = content.slice(0, endMatch.index);
       }
@@ -92,16 +103,17 @@ export class TextExtractorService {
   }
 
   /**
-   * Split text into blocks using a delimiter pattern.
+   * Split text into blocks using a delimiter pattern. The delimiter is
+   * compiled via {@link safeRegex} so Python-style inline flags are folded
+   * into JS flags rather than throwing — falls back to literal-string
+   * split when the pattern remains uncompilable.
    */
   private splitIntoBlocks(text: string, delimiter: string): string[] {
-    try {
-      const regex = new RegExp(delimiter, "gm");
-      return text.split(regex).filter((block) => block.trim().length > 0);
-    } catch {
-      // If delimiter isn't valid regex, use as literal string
+    const regex = safeRegex(delimiter, "gm");
+    if (!regex) {
       return text.split(delimiter).filter((block) => block.trim().length > 0);
     }
+    return text.split(regex).filter((block) => block.trim().length > 0);
   }
 
   /**
@@ -140,23 +152,20 @@ export class TextExtractorService {
     block: string,
     mapping: TextFieldMapping,
   ): string | undefined {
-    try {
-      const match = new RegExp(mapping.pattern, "i").exec(block);
+    const regex = safeRegex(mapping.pattern, "i");
+    if (!regex) return undefined;
+    const match = regex.exec(block);
+    if (!match) return undefined;
 
-      if (!match) return undefined;
+    const group = mapping.captureGroup ?? 1;
+    let value: string | undefined = match[group] ?? match[0];
+    value = value?.trim();
 
-      const group = mapping.captureGroup ?? 1;
-      let value = match[group] ?? match[0];
-      value = value?.trim();
-
-      // Apply transform if specified
-      if (value && mapping.transform) {
-        value = FieldTransformer.apply(value, mapping.transform);
-      }
-
-      return value || undefined;
-    } catch {
-      return undefined;
+    // Apply transform if specified
+    if (value && mapping.transform) {
+      value = FieldTransformer.apply(value, mapping.transform);
     }
+
+    return value || undefined;
   }
 }

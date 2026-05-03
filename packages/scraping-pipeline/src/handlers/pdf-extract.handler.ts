@@ -19,6 +19,10 @@ import type {
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
 import { TextExtractorService } from "../extraction/text-extractor.service.js";
+import {
+  extractJsonObjectSlice,
+  stripCodeFences,
+} from "../utils/json-salvage.js";
 
 /** Maximum text size to send to the LLM (characters) */
 const MAX_TEXT_SIZE = 12000;
@@ -189,29 +193,57 @@ ${text}`;
 
   /**
    * Parse AI response into TextExtractionRuleSet.
+   *
+   * Two-stage parse strategy: first try a direct `JSON.parse` on the
+   * fence-stripped response (fast path, ~95% of well-formed responses).
+   * On failure, fall through to {@link extractJsonObjectSlice} which
+   * scans for the first balanced `{…}` block — recovers from prose
+   * surrounding the JSON, trailing commentary after the closing brace,
+   * and other LLM-quality artifacts that defeat plain JSON.parse.
+   *
+   * Real-world failure that motivated the salvage path: qwen3.5:9b
+   * truncated the senate-daily-file rules at ~2802 chars with an
+   * unterminated string. Direct JSON.parse throws; the salvage path
+   * still recovers the leading balanced object when present.
    */
   private parseTextExtractionRules(
     llmResponse: string,
   ): TextExtractionRuleSet | null {
+    const cleaned = stripCodeFences(llmResponse.trim());
+    const parsed = this.tryParseJson(cleaned) ?? this.trySalvageJson(cleaned);
+    if (!parsed) return null;
+    if (!parsed.itemDelimiter || !parsed.fieldMappings?.length) {
+      this.logger.warn("AI produced incomplete text extraction rules");
+      return null;
+    }
+    return parsed;
+  }
+
+  private tryParseJson(text: string): TextExtractionRuleSet | null {
     try {
-      // Strip markdown fences if present
-      let json = llmResponse.trim();
-      if (json.startsWith("```")) {
-        json = json.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-      }
+      return JSON.parse(text) as TextExtractionRuleSet;
+    } catch {
+      return null;
+    }
+  }
 
-      const parsed = JSON.parse(json) as TextExtractionRuleSet;
-
-      // Validate minimal structure
-      if (!parsed.itemDelimiter || !parsed.fieldMappings?.length) {
-        this.logger.warn("AI produced incomplete text extraction rules");
-        return null;
-      }
-
+  private trySalvageJson(text: string): TextExtractionRuleSet | null {
+    const candidate = extractJsonObjectSlice(text);
+    if (!candidate) {
+      this.logger.error(
+        `Failed to parse text extraction rules: no balanced JSON object in ${text.length}-char response`,
+      );
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(candidate) as TextExtractionRuleSet;
+      this.logger.warn(
+        `Recovered text extraction rules via JSON salvage (${candidate.length} of ${text.length} chars)`,
+      );
       return parsed;
     } catch (error) {
       this.logger.error(
-        `Failed to parse text extraction rules: ${(error as Error).message}`,
+        `Failed to parse text extraction rules even after salvage: ${(error as Error).message}`,
       );
       return null;
     }

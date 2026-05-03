@@ -139,19 +139,41 @@ export class DomainMapperService {
     record: Record<string, unknown>,
     category?: string,
   ): Meeting | null {
-    // Inject body from category if not in record
-    // Generate externalId from title+scheduledAt if missing (AI sometimes can't find one)
-    const enriched = {
-      ...record,
-      body: record.body ?? category ?? "Unknown",
-      externalId:
-        record.externalId ??
-        `${category ?? "meeting"}-${typeof record.title === "string" ? record.title.slice(0, 30) : ""}-${typeof record.scheduledAt === "string" ? record.scheduledAt : ""}`
-          .replaceAll(/\s+/g, "-")
-          .toLowerCase(),
-    };
+    const title = typeof record.title === "string" ? record.title : undefined;
+    const body =
+      typeof record.body === "string" ? record.body : (category ?? "Unknown");
+    const scheduledAt =
+      typeof record.scheduledAt === "string" ? record.scheduledAt : undefined;
+    const rawExternalId =
+      typeof record.externalId === "string" ? record.externalId : undefined;
 
-    const result = MeetingSchema.safeParse(enriched);
+    // Reject items where the LLM extracted nothing useful — neither an
+    // externalId nor a title. Without these, no synthesized externalId
+    // is unique (the prior fallback "{category}--" generated literal
+    // garbage rows like `senate--` / `Untitled Meeting` / `1970-01-01`
+    // when the senate-daily-file extraction failed).
+    if (!rawExternalId && !title) {
+      this.logger.debug(
+        `Meeting rejected: no externalId and no title (category=${category ?? "?"})`,
+      );
+      return null;
+    }
+
+    const externalId = composeMeetingExternalId({
+      rawExternalId,
+      title,
+      scheduledAt,
+      body,
+    });
+
+    if (!externalId) {
+      this.logger.debug(
+        `Meeting rejected: could not compose a non-empty externalId (title=${title ?? "?"}, scheduledAt=${scheduledAt ?? "?"})`,
+      );
+      return null;
+    }
+
+    const result = MeetingSchema.safeParse({ ...record, body, externalId });
     if (!result.success) {
       this.logger.debug(`Meeting validation failed: ${result.error.message}`);
       return null;
@@ -415,6 +437,76 @@ const PropositionSchema = z
     ...data,
     summary: data.summary || data.title,
   }));
+
+/**
+ * Slugify a string for use in a composed externalId — lowercase, ASCII
+ * alphanumeric runs joined by hyphens, leading/trailing hyphens stripped.
+ * Returns "" for empty / non-printable input so callers can detect
+ * "nothing to slugify."
+ */
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-+|-+$/g, "");
+}
+
+/**
+ * Detect whether a string looks like a bare date — no committee/title
+ * prefix, just `MM/DD/YY`, `MM/DD/YYYY`, or `YYYY-MM-DD`.
+ *
+ * The CA Assembly daily-file extractor occasionally emits the meeting
+ * date as the externalId (LLM didn't follow the
+ * `assembly-{committee}-{YYYY-MM-DD}` hint). When several committees
+ * meet on the same day, those rows collide on upsert and silently
+ * deduplicate — 22 extracted, 9 stored.
+ */
+function isBareDate(value: string): boolean {
+  return (
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(value) ||
+    /^\d{4}-\d{2}-\d{2}$/.test(value)
+  );
+}
+
+/**
+ * Build a meeting externalId from whatever fields the LLM gave us.
+ *
+ * Cases:
+ *   1. Caller passed an externalId AND it doesn't look like a bare date —
+ *      use it verbatim.
+ *   2. Caller passed an externalId that IS a bare date AND we have title
+ *      + body — recompose `{body-slug}-{title-slug}-{date}` so collisions
+ *      across committees on the same date can't dedup-and-overwrite.
+ *   3. No externalId — synthesize `{body-slug}-{title-slug}-{date}` from
+ *      whatever we have. If components are empty, returns undefined and
+ *      the caller rejects the item.
+ *
+ * Returns undefined when the result would be a degenerate stub like
+ * `senate--` (literally what the previous fallback produced when the
+ * Senate PDF extraction failed entirely).
+ */
+function composeMeetingExternalId(input: {
+  rawExternalId?: string;
+  title?: string;
+  scheduledAt?: string;
+  body?: string;
+}): string | undefined {
+  const { rawExternalId, title, scheduledAt, body } = input;
+  if (rawExternalId && !isBareDate(rawExternalId)) {
+    return rawExternalId;
+  }
+  // Recomposing a unique id requires BOTH body and title — without one
+  // of them, multiple same-day meetings collide on upsert. The "Unknown"
+  // body default + missing title produces an id like `unknown-05/04/26`
+  // that defeats the whole point of recomposing.
+  if (!title || !body) return undefined;
+  const titleSlug = slugify(title.slice(0, 50));
+  const bodySlug = slugify(body);
+  if (!titleSlug || !bodySlug) return undefined;
+  const dateSegment = rawExternalId ?? scheduledAt ?? "";
+  if (!dateSegment) return undefined;
+  return `${bodySlug}-${titleSlug}-${dateSegment}`;
+}
 
 const MeetingSchema = z.object({
   externalId: z.string().min(1),
