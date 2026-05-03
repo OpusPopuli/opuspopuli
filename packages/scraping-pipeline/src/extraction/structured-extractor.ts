@@ -108,6 +108,74 @@ function extractFromShortcut(
     : child.first().text().replaceAll(/\s+/g, " ").trim() || undefined;
 }
 
+type ObjectChildConfig = Exclude<ChildFieldConfig, string>;
+
+/**
+ * Default extraction method when not explicitly set:
+ *   - 'regex' when a pattern is present (the only piece of config that
+ *     uniquely identifies a regex extraction)
+ *   - 'text' otherwise (selector-driven text extraction is the common case)
+ */
+function resolveExtractionMethod(config: ObjectChildConfig): string {
+  return config.extractionMethod ?? (config.regexPattern ? "regex" : "text");
+}
+
+/**
+ * Run a regex pattern against either the parent element's full text or a
+ * narrower child element's text. Returns the configured capture group
+ * (default 1). Invalid regexes return undefined rather than throwing.
+ */
+function extractByRegex(
+  $: CheerioAPI,
+  el: AnyNode,
+  config: ObjectChildConfig,
+  elementText: string,
+): string | undefined {
+  if (!config.regexPattern) return undefined;
+  const haystack = config.selector
+    ? ($(el).find(config.selector).first().text() ?? "")
+        .replaceAll(/\s+/g, " ")
+        .trim()
+    : elementText;
+  try {
+    const match = new RegExp(config.regexPattern).exec(haystack);
+    const group = config.regexGroup ?? 1;
+    return match?.[group]?.trim();
+  } catch {
+    return undefined;
+  }
+}
+
+function extractByAttribute(
+  $: CheerioAPI,
+  el: AnyNode,
+  config: ObjectChildConfig,
+): string | undefined {
+  if (!config.selector || !config.attribute) return undefined;
+  const child = $(el).find(config.selector);
+  if (child.length === 0) return undefined;
+  return child.first().attr(config.attribute);
+}
+
+/**
+ * Default text extraction. With no selector, returns the parent element's
+ * full text. With a selector, returns the first matching descendant's text
+ * (whitespace-collapsed, trimmed).
+ */
+function extractByText(
+  $: CheerioAPI,
+  el: AnyNode,
+  config: ObjectChildConfig,
+  elementText: string,
+): string | undefined {
+  if (!config.selector) {
+    return elementText || undefined;
+  }
+  const child = $(el).find(config.selector);
+  if (child.length === 0) return undefined;
+  return child.first().text().replaceAll(/\s+/g, " ").trim() || undefined;
+}
+
 /**
  * Object-form ChildFieldConfig — full extraction method + optional
  * transform. Mirrors the semantics of top-level FieldMapping but at
@@ -116,54 +184,22 @@ function extractFromShortcut(
 function extractFromObjectConfig(
   $: CheerioAPI,
   el: AnyNode,
-  config: Exclude<ChildFieldConfig, string>,
+  config: ObjectChildConfig,
   elementText: string,
   baseUrl?: string,
 ): string | undefined {
-  // Default extraction method: regex if only a pattern is given, else text
-  const method =
-    config.extractionMethod ?? (config.regexPattern ? "regex" : "text");
-
+  const method = resolveExtractionMethod(config);
   let value: string | undefined;
-
   switch (method) {
-    case "regex": {
-      if (!config.regexPattern) return undefined;
-      // For regex method: optionally narrow to a sub-element first via
-      // selector, otherwise run against the parent element's full text.
-      const haystack = config.selector
-        ? ($(el).find(config.selector).first().text() ?? "")
-            .replaceAll(/\s+/g, " ")
-            .trim()
-        : elementText;
-      try {
-        const match = new RegExp(config.regexPattern).exec(haystack);
-        const group = config.regexGroup ?? 1;
-        value = match?.[group]?.trim();
-      } catch {
-        return undefined;
-      }
+    case "regex":
+      value = extractByRegex($, el, config, elementText);
       break;
-    }
-    case "attribute": {
-      if (!config.selector || !config.attribute) return undefined;
-      const child = $(el).find(config.selector);
-      if (child.length === 0) return undefined;
-      value = child.first().attr(config.attribute);
+    case "attribute":
+      value = extractByAttribute($, el, config);
       break;
-    }
-    case "text":
-    default: {
-      // Text from selector, or whole element if no selector given
-      if (!config.selector) {
-        value = elementText || undefined;
-        break;
-      }
-      const child = $(el).find(config.selector);
-      if (child.length === 0) return undefined;
-      value = child.first().text().replaceAll(/\s+/g, " ").trim() || undefined;
+    default:
+      value = extractByText($, el, config, elementText);
       break;
-    }
   }
 
   if (value && config.transform) {

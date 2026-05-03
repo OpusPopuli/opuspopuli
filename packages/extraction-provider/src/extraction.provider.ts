@@ -12,7 +12,17 @@ import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import * as cheerio from "cheerio";
 import type { CheerioAPI, Cheerio } from "cheerio";
 import type { Element } from "domhandler";
-import { PDFParse } from "pdf-parse";
+import {
+  PdfExtractor,
+  type IOcrProviderForPdf,
+} from "./utils/pdf-extractor.js";
+
+/**
+ * DI token for the optional OCR fallback used by `extractPdfText`. Wire
+ * up `{ provide: OCR_SERVICE, useExisting: OcrService }` in a parent
+ * module to enable image-based PDF support; leave unwired to skip OCR.
+ */
+export const OCR_SERVICE = "OCR_SERVICE";
 import {
   type ICache,
   type IRateLimiter,
@@ -71,6 +81,19 @@ export class ExtractionProvider {
     @Optional()
     @Inject(EXTRACTION_CONFIG)
     config?: Partial<ExtractionConfig>,
+    /**
+     * Optional. When present, PDF extraction falls back to OCR for
+     * image-based PDFs (where pdf-parse and mupdf both produce no
+     * meaningful text). When absent, those PDFs return empty text and
+     * the consumer is responsible for handling no-content gracefully.
+     *
+     * Resolved via the OCR_SERVICE token + structural typing so this
+     * package stays runtime-decoupled from `@opuspopuli/ocr-provider`'s
+     * dep tree.
+     */
+    @Optional()
+    @Inject(OCR_SERVICE)
+    private readonly ocrService?: IOcrProviderForPdf,
   ) {
     this.config = {
       ...DEFAULT_EXTRACTION_CONFIG,
@@ -184,18 +207,17 @@ export class ExtractionProvider {
   }
 
   /**
-   * Extract text from PDF buffer
+   * Extract text from a PDF buffer using a tiered cascade:
+   * pdf-parse → mupdf text → mupdf rasterize + OCR. See
+   * {@link PdfExtractor} for the rationale and quality-threshold logic.
    *
-   * @param buffer - PDF file buffer
-   * @returns Extracted text content
+   * If `OcrService` was not injected, the third tier is skipped and the
+   * best-effort text from the earlier tiers is returned (which may be
+   * empty for image-based PDFs).
    */
   async extractPdfText(buffer: Buffer): Promise<string> {
     this.logger.debug("Extracting text from PDF");
-
-    const parser = new PDFParse({ data: buffer });
-    const result = await parser.getText();
-    await parser.destroy();
-    return result.text;
+    return PdfExtractor.extract(buffer, this.ocrService);
   }
 
   /**

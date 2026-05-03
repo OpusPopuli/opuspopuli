@@ -117,7 +117,15 @@ export class DomainMapperService {
   }
 
   private mapProposition(record: Record<string, unknown>): Proposition | null {
-    const result = PropositionSchema.safeParse(record);
+    // The CA SOS qualified-ballot-measures page emits each measure as an
+    // anchor whose href points to the bill PDF. The regions config
+    // extracts that href as `detailUrl`, but the proposition domain
+    // type stores it as `sourceUrl`. Map across so the field lands.
+    const enriched = {
+      ...record,
+      sourceUrl: record.sourceUrl ?? record.detailUrl,
+    };
+    const result = PropositionSchema.safeParse(enriched);
     if (!result.success) {
       this.logger.debug(
         `Proposition validation failed: ${result.error.message}`,
@@ -287,10 +295,111 @@ const coerceFlexibleDateOptional = z
   .transform(parseFlexibleDate)
   .pipe(z.date().optional());
 
+/**
+ * Clean a CA SOS qualified-ballot-measures anchor text down to the bare
+ * descriptive title.
+ *
+ * The SOS page emits each measure as one anchor of the form:
+ *
+ *   `ACA 13 (Ward) Voting thresholds. (Res. Ch. 176, 2023) (PDF)`
+ *
+ * which has four glued-on parts beyond the actual title:
+ *  1. The leading `<MEASURE_ID>` (already extracted as externalId).
+ *  2. The author parenthetical `(Ward)`.
+ *  3. A trailing chapter-info parenthetical `(Res. Ch. 176, 2023)`.
+ *  4. A `(PDF)` document-format suffix.
+ *
+ * Region-config hint #29 in `california.json` deliberately captures the
+ * full anchor text and leaves cleanup to the consumer ("title: ... .
+ * Cleanup is the consumer's job; do NOT add a transform"). A previous
+ * attempt to push cleanup into a regex_replace transform broke the
+ * pipeline (the manifest fanned out into mismatched groups). This is
+ * the consumer side of that contract.
+ *
+ * Examples:
+ *   `"ACA 13 (Ward) Voting thresholds. (Res. Ch. 176, 2023) (PDF)"`
+ *     → `"Voting thresholds"`
+ *   `"SB 42 (Umberg) Political Reform Act of 1974: public campaign financing. (Ch. 245, 2025) (PDF)"`
+ *     → `"Political Reform Act of 1974: public campaign financing"`
+ *   `"SCA 1 (Newman) Elections: recall of state officers. (Res. Ch. 204, 2024) (PDF)"`
+ *     → `"Elections: recall of state officers"`
+ *
+ * If the input doesn't match the expected shape (e.g. titles already
+ * cleaned upstream, or a future SOS layout change), returns the input
+ * trimmed — never empty.
+ */
+/**
+ * Strip a single trailing balanced parenthetical group (and any whitespace
+ * preceding it) from a string. Returns the original string when no such
+ * group exists.
+ *
+ * Uses imperative paren-matching instead of regex to avoid Sonar's
+ * ReDoS heuristic, which flags any pattern combining `\s*` with `[^)]*`
+ * because those character classes overlap (`\s` is a subset of `[^)]`)
+ * — even though the actual match has no ambiguous positions and runs
+ * in linear time. Each call here is strictly O(n).
+ */
+function stripTrailingParenGroup(s: string): string | null {
+  const trimmed = s.trimEnd();
+  if (!trimmed.endsWith(")")) return null;
+
+  // Walk backward from the closing `)` to find the matching `(`,
+  // accounting for nesting (real titles don't use nested parens but
+  // costs nothing to handle them correctly).
+  let depth = 1;
+  let i = trimmed.length - 2;
+  while (i >= 0 && depth > 0) {
+    if (trimmed[i] === ")") depth++;
+    else if (trimmed[i] === "(") depth--;
+    i--;
+  }
+  if (depth !== 0) return null;
+
+  // i + 1 is the position of the opening `(`. Slice everything before
+  // it, then trim trailing whitespace that preceded the parenthetical.
+  return trimmed.slice(0, i + 1).trimEnd();
+}
+
+export function cleanPropositionTitle(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+
+  // Strip leading "<MEASURE_ID> (<author>) ". Quantifier character
+  // classes are disjoint here (`[A-Z]`, `\d`, `\s`, `[^)]` only after
+  // the literal `(`), the pattern is anchored at `^`, and each `*`/`+`
+  // operates on a single-shot greedy match — no ambiguous match
+  // positions for the regex engine to backtrack across.
+  let cleaned = trimmed.replace(/^[A-Z]+\s*\d+\s*\([^)]*\)\s*/, "");
+
+  // Strip trailing parentheticals one at a time. Imperative scan in
+  // {@link stripTrailingParenGroup} avoids the regex-based ReDoS
+  // heuristic and is strictly O(n) per call, with at most O(n / 2)
+  // calls (each strip removes at least two chars: `()`).
+  let next = stripTrailingParenGroup(cleaned);
+  while (next !== null) {
+    cleaned = next;
+    next = stripTrailingParenGroup(cleaned);
+  }
+
+  // Strip a single trailing period that was the original end-of-title
+  // punctuation in the SOS anchor.
+  if (cleaned.endsWith(".")) {
+    cleaned = cleaned.slice(0, -1);
+  }
+
+  cleaned = cleaned.trim();
+
+  // Defensive: if cleanup produced an empty string (the input was just
+  // a measure id + parentheticals with no descriptor), fall back to
+  // the trimmed input so the downstream `min(1)` validator doesn't
+  // reject the row.
+  return cleaned || trimmed;
+}
+
 const PropositionSchema = z
   .object({
     externalId: z.string().min(1),
-    title: z.string().min(1),
+    title: z.string().min(1).transform(cleanPropositionTitle),
     summary: z.string().default(""),
     fullText: z.string().optional(),
     status: z.nativeEnum(PropositionStatus).default(PropositionStatus.PENDING),

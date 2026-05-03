@@ -9,9 +9,11 @@ import {
   ExtractionModule,
   CacheFactory,
   FallbackCache,
+  OCR_SERVICE,
 } from '@opuspopuli/extraction-provider';
 import { MemoryCache } from '@opuspopuli/common';
 import { LLMModule } from '@opuspopuli/llm-provider';
+import { OcrModule, OcrService } from '@opuspopuli/ocr-provider';
 import { PromptClientModule } from '@opuspopuli/prompt-client';
 import { RegionDomainService } from './region.service';
 import { RegionResolver } from './region.resolver';
@@ -60,7 +62,19 @@ const promptClientAsyncConfig = {
     ScrapingPipelineModule.forRoot({
       imports: [
         LLMModule,
-        ExtractionModule,
+        // ExtractionModule.forRoot is configured below to import OcrModule
+        // and bind the OCR_SERVICE token inside ExtractionModule's own DI
+        // scope — that's what ExtractionProvider injects, and providers
+        // declared at ScrapingPipelineModule's scope are NOT visible to it.
+        ExtractionModule.forRoot({
+          extraImports: [OcrModule],
+          extraProviders: [
+            {
+              provide: OCR_SERVICE,
+              useExisting: OcrService,
+            },
+          ],
+        }),
         PromptClientModule.forRootAsync(promptClientAsyncConfig),
       ],
       providers: [
