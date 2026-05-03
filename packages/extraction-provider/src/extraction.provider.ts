@@ -34,6 +34,7 @@ import {
   FetchError,
   FetchFunction,
 } from "./types.js";
+import { normalizeUrl } from "./utils/url-normalize.js";
 
 /**
  * Selected element from HTML parsing
@@ -146,6 +147,7 @@ export class ExtractionProvider {
     url: string,
     options: FetchOptions = {},
   ): Promise<CachedFetchResult> {
+    url = normalizeUrl(url);
     const cacheKey = this.getCacheKey(url, options);
 
     // Check cache first (unless bypassed)
@@ -221,6 +223,7 @@ export class ExtractionProvider {
     finalUrl?: string;
     redirectedFrom?: string;
   }> {
+    url = normalizeUrl(url);
     await this.rateLimiter.acquire();
     this.logger.debug(`Fetching bytes from ${url}`);
 
@@ -366,12 +369,19 @@ export class ExtractionProvider {
       const content = await decodeBody(response);
       const contentType = response.headers.get("content-type") || "unknown";
       const finalUrl = response.url;
-      const wasRedirected = finalUrl && finalUrl !== url;
+      const wasRedirected =
+        !!finalUrl && normalizeUrl(finalUrl) !== normalizeUrl(url);
 
       if (wasRedirected) {
-        this.logger.warn(
-          `URL redirect detected: ${url} → ${finalUrl}. Consider updating the data source config.`,
-        );
+        if (options.fromConfig) {
+          this.logger.warn(
+            `URL redirect detected: ${url} → ${finalUrl}. Consider updating the data source config.`,
+          );
+        } else {
+          this.logger.debug(
+            `URL redirect detected (harvested URL): ${url} → ${finalUrl}`,
+          );
+        }
       }
 
       return {

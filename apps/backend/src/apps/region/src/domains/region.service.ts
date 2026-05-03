@@ -268,10 +268,51 @@ export function stripLeadingZerosFromExternalId(externalId: string): string {
   return [...parts.slice(0, -1), normalized].join('-');
 }
 
+/**
+ * Decide whether a scraped bio string is real content vs junk extracted
+ * from the wrong DOM (nav links, news headline blocks, single-word labels).
+ *
+ * Background: the LLM-generated structural manifest for the CA Senate
+ * picks up bio content from per-senator detail sites despite the regions
+ * config explicitly discouraging it ("Individual senator sites use
+ * different Drupal themes per-senator"). The result is a mix of literal
+ * "Home" (the nav link), "Latest News ..." headline blocks, and other
+ * non-biographical strings landing in the bio column. When that happens,
+ * the BioGenerator's `!r.bio || r.bio.trim() === ''` filter sees the
+ * junk as a valid bio and skips AI generation, locking the rep into the
+ * junk forever.
+ *
+ * This function returns true only for bios that look biographical:
+ * length ≥ 100 chars and no obvious junk-prefix patterns. Borderline
+ * but real bios pass; obvious junk does not.
+ */
+export function isLikelyValidBio(bio: string | null | undefined): boolean {
+  if (!bio) return false;
+  const trimmed = bio.trim();
+  if (trimmed.length < 100) return false;
+  if (/^Home\b/i.test(trimmed)) return false;
+  // "Latest News..." headline blocks from per-senator detail sites are
+  // junk even when prefixed by a short biographical-looking header
+  // ("Senator X Representing District N Latest News ..."). If the
+  // phrase appears in the first 100 chars, the rest is news content,
+  // not a bio.
+  if (/Latest News/i.test(trimmed.slice(0, 100))) return false;
+  return true;
+}
+
 export function extractLastName(fullName: string): string {
   const trimmed = fullName.trim();
   if (!trimmed) return '';
   const suffixPattern = /\b(Jr|Sr|II|III|IV|Esq)\.?$/i;
+  // Legislative directories often emit "LastName, FirstName [MiddleInitial]"
+  // (e.g. "Hadwick, Heather", "Aguiar-Curry, Cecilia M."). Comma form is
+  // unambiguous: surname is everything before the first comma — but the
+  // suffix can appear before the comma too ("Solache Jr., José Luis"),
+  // so strip it from that side as well.
+  if (trimmed.includes(',')) {
+    const beforeComma = trimmed.slice(0, trimmed.indexOf(',')).trim();
+    return beforeComma.replace(suffixPattern, '').trim();
+  }
   const withoutSuffix = trimmed.replace(suffixPattern, '').trim();
   const tokens = withoutSuffix.split(/\s+/);
   return tokens.at(-1) ?? trimmed;
@@ -850,7 +891,11 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    */
   private sanitizeDistrict(rep: Representative): string {
     const raw = (rep.district ?? '').trim();
-    if (/^\d+$/.test(raw)) return raw;
+    // Numeric district: canonicalize by stripping leading zeros so the
+    // stored district matches the externalId form (`ca-assembly-1`, not
+    // `ca-assembly-01`). The CA Assembly listing emits `01`, `02`, ... in
+    // the district field and we strip the same way externalId does.
+    if (/^\d+$/.test(raw)) return String(Number.parseInt(raw, 10));
     const derived = deriveDistrictFromExternalId(rep.externalId);
     if (derived !== undefined) {
       this.logger.warn(
@@ -881,6 +926,26 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
 
     for (const r of reps) {
       r.externalId = stripLeadingZerosFromExternalId(r.externalId);
+      // Drop bios that look like extraction junk (e.g. "Home" nav link,
+      // "Latest News..." headline blocks from per-senator detail sites
+      // with mismatched Drupal themes). Nulling here makes the bio-
+      // generator's `!r.bio || r.bio.trim() === ''` filter pick them up
+      // and replace with an AI-generated bio on this same run.
+      if (r.bio && !isLikelyValidBio(r.bio)) {
+        this.logger.warn(
+          `Discarding junk bio for ${r.externalId} (${r.bio.length} chars): ${r.bio.slice(0, 60)}…`,
+        );
+        r.bio = undefined;
+        r.bioSource = undefined;
+      }
+      // Mark provenance for bios that arrived from the scrape. Done here
+      // (not only in BioGenerator) because BioGenerator returns early
+      // when LLM/prompt deps are unwired, leaving scraped bios with a
+      // null bioSource. This loop is idempotent with the BioGenerator's
+      // own marking pass.
+      if (r.bio && !r.bioSource) {
+        r.bioSource = 'scraped';
+      }
     }
 
     // Enrich with AI-generated bios where missing (scraped bios are preserved)

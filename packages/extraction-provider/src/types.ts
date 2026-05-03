@@ -30,6 +30,14 @@ export interface FetchOptions {
   timeout?: number;
   /** Skip cache and fetch fresh content */
   bypassCache?: boolean;
+  /**
+   * True when this URL came from a region's data source config (so a
+   * redirect is actionable: update the config). False/unset when the URL
+   * was harvested at runtime (e.g., detail links extracted from a listing
+   * page) — redirects on those aren't fixable by editing config and are
+   * logged at debug instead of warn.
+   */
+  fromConfig?: boolean;
 }
 
 /**
