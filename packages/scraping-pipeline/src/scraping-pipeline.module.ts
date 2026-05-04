@@ -12,6 +12,10 @@ import {
   ManifestStoreService,
   type ManifestRepository,
 } from "./manifest/manifest-store.service.js";
+import {
+  IngestionWatermarkService,
+  type IngestionWatermarkRepository,
+} from "./manifest/ingestion-watermark.service.js";
 import { ManifestExtractorService } from "./extraction/manifest-extractor.service.js";
 import { ExtractionValidator } from "./extraction/extraction-validator.js";
 import { DomainMapperService } from "./mapping/domain-mapper.service.js";
@@ -19,6 +23,7 @@ import { SelfHealingService } from "./healing/self-healing.service.js";
 import { BulkDownloadHandler } from "./handlers/bulk-download.handler.js";
 import { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
 import { PdfExtractHandler } from "./handlers/pdf-extract.handler.js";
+import { MinutesIngestHandler } from "./handlers/minutes-ingest.handler.js";
 import { TextExtractorService } from "./extraction/text-extractor.service.js";
 import { DetailCrawlerService } from "./crawling/detail-crawler.service.js";
 
@@ -55,6 +60,16 @@ export class ScrapingPipelineModule {
             new ManifestStoreService(repository),
           inject: ["MANIFEST_REPOSITORY"],
         },
+        // Watermark store (wraps the injected repository — optional;
+        // consumers without listing-walk sources can omit the binding
+        // and MinutesIngestHandler still functions, just without
+        // cold-start protection).
+        {
+          provide: IngestionWatermarkService,
+          useFactory: (repository?: IngestionWatermarkRepository) =>
+            repository ? new IngestionWatermarkService(repository) : undefined,
+          inject: [{ token: "INGESTION_WATERMARK_REPOSITORY", optional: true }],
+        },
         // Core services
         StructuralAnalyzerService,
         ManifestExtractorService,
@@ -65,6 +80,7 @@ export class ScrapingPipelineModule {
         BulkDownloadHandler,
         ApiIngestHandler,
         PdfExtractHandler,
+        MinutesIngestHandler,
         TextExtractorService,
         DetailCrawlerService,
         ScrapingPipelineService,
@@ -73,6 +89,7 @@ export class ScrapingPipelineModule {
         ScrapingPipelineService,
         StructuralAnalyzerService,
         ManifestStoreService,
+        IngestionWatermarkService,
         ManifestExtractorService,
         DomainMapperService,
       ],

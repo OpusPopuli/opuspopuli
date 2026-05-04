@@ -76,7 +76,7 @@
     "@opuspopuli/ocr-provider": "workspace:*",
     "@opuspopuli/prompt-client": "workspace:*",
     "@opuspopuli/region-provider": "workspace:*",
-    "@opuspopuli/regions": "^1.0.34",
+    "@opuspopuli/regions": "^1.0.35",
     "@opuspopuli/relationaldb-provider": "workspace:*",
     "@opuspopuli/scraping-pipeline": "workspace:*",
     "@opuspopuli/secrets-provider": "workspace:*",

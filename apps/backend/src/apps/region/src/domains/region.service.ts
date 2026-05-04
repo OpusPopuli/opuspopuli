@@ -28,6 +28,7 @@ import {
   type Meeting,
   type Representative,
   type CampaignFinanceResult,
+  type MinutesWithActions,
 } from '@opuspopuli/common';
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { REGION_CACHE } from './region.tokens';
@@ -40,6 +41,7 @@ import {
   type PropositionFunding,
 } from './proposition-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
+import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import {
   LegislativeCommitteeService,
   type LegislativeCommitteeDetail,
@@ -58,6 +60,7 @@ interface DataFetcher {
   fetchCampaignFinance?(
     onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
   ): Promise<CampaignFinanceResult>;
+  fetchLegislativeActions?(): Promise<MinutesWithActions[]>;
 }
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
@@ -396,6 +399,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     private readonly legislativeCommittees?: LegislativeCommitteeService,
     @Optional()
     private readonly legislativeCommitteeDescriptions?: LegislativeCommitteeDescriptionGeneratorService,
+    @Optional()
+    private readonly legislativeActionLinker?: LegislativeActionLinkerService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -677,6 +682,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       [DataType.REPRESENTATIVES]: () =>
         this.syncRepresentatives(provider, maxReps),
       [DataType.CAMPAIGN_FINANCE]: () => this.syncCampaignFinance(provider),
+      [DataType.LEGISLATIVE_ACTIONS]: () =>
+        this.syncLegislativeActions(provider),
     };
 
     const handler = syncHandlers[dataType];
@@ -871,6 +878,107 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     ).length;
 
     return { processed: meetings.length, created, updated };
+  }
+
+  /**
+   * Sync `Minutes` documents from `legislative_actions` data sources
+   * (CA Assembly daily journals etc.) and run the post-sync linker
+   * pass. Two phases:
+   *
+   *   1. Upsert each MinutesWithActions.minutes row by externalId.
+   *      Revisions (`revisionSeq>0`) supersede their predecessors:
+   *      after the new row is upserted, all rows for the same
+   *      (body, date) with a lower revisionSeq get isActive=false.
+   *
+   *   2. Hand the inserted minutes ids to LegislativeActionLinkerService,
+   *      which mines rawText to produce LegislativeAction rows with
+   *      passage offsets attributing the actions to representatives,
+   *      propositions, and committees.
+   *
+   * Issue #665.
+   */
+  private async syncLegislativeActions(
+    provider: DataFetcher = this.regionService,
+  ): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+  }> {
+    if (!provider.fetchLegislativeActions) {
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const bundles = await provider.fetchLegislativeActions();
+    if (bundles.length === 0) {
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const externalIds = bundles.map((b) => b.minutes.externalId);
+    const existingRecords = await this.db.minutes.findMany({
+      where: { externalId: { in: externalIds } },
+      select: { externalId: true },
+    });
+    const existingExternalIds = new Set(
+      existingRecords.map((r: ExternalIdRecord) => r.externalId),
+    );
+
+    const upsertedIds: string[] = [];
+    for (const { minutes } of bundles) {
+      const row = await this.db.minutes.upsert({
+        where: { externalId: minutes.externalId },
+        update: {
+          body: minutes.body,
+          date: minutes.date,
+          revisionSeq: minutes.revisionSeq,
+          isActive: true,
+          pageCount: minutes.pageCount,
+          sourceUrl: minutes.sourceUrl,
+          rawText: minutes.rawText,
+          parsedAt: minutes.parsedAt ?? new Date(),
+        },
+        create: {
+          externalId: minutes.externalId,
+          body: minutes.body,
+          date: minutes.date,
+          revisionSeq: minutes.revisionSeq,
+          isActive: true,
+          pageCount: minutes.pageCount,
+          sourceUrl: minutes.sourceUrl,
+          rawText: minutes.rawText,
+          parsedAt: minutes.parsedAt ?? new Date(),
+        },
+        select: { id: true },
+      });
+      upsertedIds.push(row.id);
+
+      // Supersede older revisions for the same (body, date).
+      if (minutes.revisionSeq > 0) {
+        await this.db.minutes.updateMany({
+          where: {
+            body: minutes.body,
+            date: minutes.date,
+            revisionSeq: { lt: minutes.revisionSeq },
+          },
+          data: { isActive: false },
+        });
+      }
+    }
+
+    // Run the deterministic linker over the freshly-upserted rows.
+    // Optional injection: when the linker isn't bound, Minutes are
+    // still persisted but no LegislativeAction rows are produced.
+    if (upsertedIds.length > 0 && this.legislativeActionLinker) {
+      await this.legislativeActionLinker.linkMinutes(upsertedIds);
+    }
+
+    const created = bundles.filter(
+      (b) => !existingExternalIds.has(b.minutes.externalId),
+    ).length;
+    const updated = bundles.filter((b) =>
+      existingExternalIds.has(b.minutes.externalId),
+    ).length;
+
+    return { processed: bundles.length, created, updated };
   }
 
   /**

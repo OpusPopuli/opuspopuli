@@ -583,6 +583,7 @@ model Representative {
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
   committeeAssignments RepresentativeCommitteeAssignment[]
+  legislativeActions   LegislativeAction[]
 
   @@index([name])
   @@index([lastName])
@@ -608,7 +609,9 @@ model LegislativeCommittee {
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
-  assignments RepresentativeCommitteeAssignment[]
+  assignments        RepresentativeCommitteeAssignment[]
+  legislativeActions LegislativeAction[]
+  minutes            Minutes[]
 
   @@index([chamber])
   @@index([name])
@@ -672,10 +675,156 @@ model Proposition {
   committeePositions      CommitteeMeasurePosition[]
   expenditures            Expenditure[]
   independentExpenditures IndependentExpenditure[]
+  legislativeActions      LegislativeAction[]
 
   @@index([status])
   @@index([electionDate])
   @@map("propositions")
+}
+
+// ============================================
+// MEETING MINUTES + LEGISLATIVE ACTIONS (issue #665)
+// ============================================
+
+/// A meeting-minutes / journal document. The canonical PDF that records
+/// what happened in a chamber session or committee hearing — daily
+/// journals (chamber-wide), committee hearing minutes, etc.
+///
+/// Stored as opaque text + audit metadata at ingest time; downstream
+/// passes (the legislative-action linker for V1, AI summarization for
+/// V2) mine `rawText` to produce structured records.
+///
+/// Optional FKs:
+///   - committeeId — set when the document is a single-committee
+///     minutes (e.g. Assembly Public Safety hearing). Null for a
+///     chamber-wide daily journal that spans many committees.
+///   - meetingId   — set when this minutes record corresponds to a
+///     specific scheduled meeting from `meetings`. Null when the source
+///     PDF doesn't map to a calendared meeting (most chamber-wide
+///     daily journals).
+///
+/// Revision handling: when the clerk re-publishes the same session
+/// day's PDF as `…_r1.pdf`, it lands as a new row with `revisionSeq=1`
+/// and `isActive=true`; the original row's `isActive` is flipped to
+/// false. Downstream pass output (LegislativeAction rows) is regenerated
+/// against the active revision; superseded rows stay in-place for
+/// audit but UI queries should filter `minutes.isActive = true`.
+model Minutes {
+  id              String    @id @default(uuid())
+  /// `${region}-${body-lowercase}-${YYYY-MM-DD}` for chamber-wide r0;
+  /// `${region}-${body-lowercase}-${committee-slug}-${YYYY-MM-DD}` for
+  /// per-committee minutes; suffixed `-r${n}` for revisions.
+  externalId      String    @unique @map("external_id")
+  body            String    @db.VarChar(20)
+  date            DateTime  @db.Date
+  /// Revision sequence: 0 for the original publication, 1+ for
+  /// re-issues. Combined with (body, date, committeeId) gives a stable
+  /// natural key.
+  revisionSeq     Int       @default(0) @map("revision_seq")
+  /// True for the canonical-current version; false for superseded
+  /// predecessors. UI queries filter on this.
+  isActive        Boolean   @default(true) @map("is_active")
+  /// Set when the document is a single-committee minutes. Null for
+  /// chamber-wide daily journals.
+  committeeId     String?   @map("committee_id")
+  /// Set when this minutes record corresponds to a specific scheduled
+  /// meeting. Null when the source PDF doesn't map to a calendared
+  /// meeting.
+  meetingId       String?   @map("meeting_id")
+  pageCount       Int?      @map("page_count")
+  sourceUrl       String    @map("source_url")
+  /// Full pdf-parse output. Capped at ~256kB at write time; longer
+  /// documents are truncated. Used by downstream passes (linker, AI
+  /// summarization) so they can be re-run without re-fetching the PDF.
+  rawText         String?   @map("raw_text") @db.Text
+  /// V2: AI-generated plain-language summary. Reserved column.
+  summary         String?   @db.Text
+  /// V2: per-claim attribution into rawText for citizen-facing
+  /// "letter to representative with quote" features. Mirrors the
+  /// PropositionAnalysisClaim shape (sourceStart/sourceEnd offsets).
+  summaryClaims   Json?     @map("summary_claims")
+  parsedAt        DateTime? @map("parsed_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  committee LegislativeCommittee? @relation(fields: [committeeId], references: [id], onDelete: SetNull)
+  meeting   Meeting?              @relation(fields: [meetingId],   references: [id], onDelete: SetNull)
+  actions   LegislativeAction[]
+
+  @@index([date(sort: Desc)])
+  @@index([body, date(sort: Desc)])
+  @@index([committeeId, date(sort: Desc)])
+  @@index([meetingId])
+  @@index([isActive])
+  @@map("minutes")
+}
+
+/// One discrete legislative action extracted from a Minutes document:
+/// a roll-call presence entry, a committee report, an author's
+/// amendment, an engrossment/enrollment, a resolution introduced, or
+/// (V2) a per-rep vote on a specific bill or a quoted floor speech.
+///
+/// Each action is attributable to zero or more of:
+///   - representativeId — who took/introduced the action (null when
+///     not attributable or when the linker can't resolve the surname)
+///   - propositionId    — the bill/measure it concerns (null when the
+///     bill isn't yet a qualified ballot measure in `propositions`)
+///   - committeeId      — the committee that issued the report
+///
+/// `passageStart` / `passageEnd` are character offsets into the parent
+/// Minutes' `rawText` pointing to the source passage. Citizens building
+/// a "letter to my rep" with a quoted action will use these offsets to
+/// pull the verbatim passage out of the document. `text` is the
+/// already-extracted excerpt (denormalized for query performance);
+/// offsets let the UI re-anchor the quote in context.
+///
+/// `body` and `date` are denormalized from the parent Minutes so the
+/// canonical "rep activity feed" / "bill history" / "committee history"
+/// indexes don't require a JOIN to filter by date.
+model LegislativeAction {
+  id               String    @id @default(uuid())
+  externalId       String    @unique @map("external_id")
+  minutesId        String    @map("minutes_id")
+  body             String    @db.VarChar(20)
+  date             DateTime  @db.Date
+  actionType       String    @map("action_type") @db.VarChar(40)
+  representativeId String?   @map("representative_id")
+  propositionId    String?   @map("proposition_id")
+  committeeId      String?   @map("committee_id")
+  /// 'yes' | 'no' | 'abstain' | 'absent' — null for non-vote actions in V1.
+  position         String?   @db.VarChar(20)
+  /// Verbatim source excerpt. Capped at 4kB at write time. For the
+  /// full source text reach into the parent Minutes' `rawText`.
+  text             String?   @db.Text
+  /// V2: AI-generated summary for long-form actions (speeches, etc.).
+  summary          String?   @db.Text
+  /// Char offset into the parent Minutes' `rawText` where the action's
+  /// source passage begins. Inclusive. Null when offsets can't be
+  /// determined (e.g. synthesized from heterogeneous sections).
+  passageStart     Int?      @map("passage_start")
+  /// Char offset into the parent Minutes' `rawText` where the action's
+  /// source passage ends. Exclusive. Null when offsets aren't available.
+  passageEnd       Int?      @map("passage_end")
+  sourcePage       Int?      @map("source_page")
+  /// Pre-link source text (surname, bill number, committee name). Set
+  /// by the linker; useful in the UI when the FK is null because no
+  /// matching entity exists yet.
+  rawSubject       String?   @map("raw_subject") @db.VarChar(500)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  minutes        Minutes               @relation(fields: [minutesId],        references: [id], onDelete: Cascade)
+  representative Representative?       @relation(fields: [representativeId], references: [id], onDelete: SetNull)
+  proposition    Proposition?          @relation(fields: [propositionId],    references: [id], onDelete: SetNull)
+  committee      LegislativeCommittee? @relation(fields: [committeeId],      references: [id], onDelete: SetNull)
+
+  @@index([minutesId])
+  @@index([representativeId, date(sort: Desc)])
+  @@index([propositionId, date(sort: Desc)])
+  @@index([committeeId, date(sort: Desc)])
+  @@index([body, date(sort: Desc)])
+  @@index([actionType])
+  @@map("legislative_actions")
 }
 
 // ============================================
@@ -718,6 +867,8 @@ model Meeting {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  minutesDocuments Minutes[]
 
   @@index([body])
   @@index([scheduledAt])
@@ -993,6 +1144,38 @@ model PipelineExecution {
   @@index([manifestId])
   @@index([executedAt])
   @@map("pipeline_executions")
+}
+
+/// Per-source incremental-ingestion checkpoint for handlers that walk a
+/// paginated source descending by date — they stop walking when they hit
+/// an `externalId` (or date) ≤ the watermark. Used by the daily-journal
+/// ingestion handler to avoid re-processing already-ingested journals on
+/// every run, and to bound cold-start work via a `maxNew` cap.
+///
+/// One row per (regionId, sourceUrl, dataType). Updated atomically at
+/// the end of each successful ingestion run with the most-recent item
+/// ingested, so a partial-failure mid-run leaves the watermark at the
+/// last fully-completed item — re-running resumes there.
+///
+/// Reusable: not journal-specific. Future consumers (bulk_download with
+/// FILING_ID watermarks, rep-active-on-date watermarks, etc.) can share
+/// this table by choosing a stable `lastExternalId` form per dataType.
+model IngestionWatermark {
+  id              String    @id @default(uuid())
+  regionId        String    @map("region_id") @db.VarChar(100)
+  sourceUrl       String    @map("source_url") @db.VarChar(1000)
+  dataType        String    @map("data_type") @db.VarChar(50)
+  /// Most recent externalId (or date string) successfully ingested.
+  /// Format depends on dataType: for journals, ISO date `YYYY-MM-DD`.
+  /// Null on first run (handler treats absence as "ingest the cap").
+  lastExternalId  String?   @map("last_external_id") @db.VarChar(255)
+  lastIngestedAt  DateTime? @map("last_ingested_at") @db.Timestamptz
+  itemsIngested   Int       @default(0) @map("items_ingested")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([regionId, sourceUrl, dataType])
+  @@map("ingestion_watermarks")
 }
 
 // ============================================

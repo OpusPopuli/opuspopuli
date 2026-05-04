@@ -18,6 +18,7 @@ import type {
   Meeting,
   Representative,
   CampaignFinanceResult,
+  MinutesWithActions,
   DeclarativeRegionConfig,
   DataSourceConfig,
   ExtractionResult,
@@ -82,6 +83,18 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
 
   async fetchRepresentatives(): Promise<Representative[]> {
     return this.fetchByDataType<Representative>("representatives");
+  }
+
+  /**
+   * Fetch meeting-minutes / journal documents from `legislative_actions`
+   * data sources. The pipeline's `pdf_archive` handler walks each
+   * source's listing page, fetches per-day PDFs, and returns
+   * MinutesWithActions records with `actions: []` (V1) — the backend's
+   * LegislativeActionLinkerService mines the stored rawText post-sync
+   * to produce action records. Issue #665.
+   */
+  async fetchLegislativeActions(): Promise<MinutesWithActions[]> {
+    return this.fetchByDataType<MinutesWithActions>("legislative_actions");
   }
 
   async fetchCampaignFinance(
