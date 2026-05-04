@@ -45,7 +45,7 @@ class FakeExtraction {
 
 const SOURCE: DataSourceConfig = {
   url: "https://clerk.example/journals",
-  dataType: "legislative_actions" as DataSourceConfig["dataType"],
+  dataType: "meetings" as DataSourceConfig["dataType"],
   contentGoal: "test",
   category: "Assembly",
   sourceType: "pdf_archive",
@@ -141,9 +141,9 @@ describe("MinutesIngestHandler", () => {
 
     const externalIds = result.items.map((b) => b.minutes.externalId).sort();
     expect(externalIds).toEqual([
-      "ca-legislative_actions-2026-04-21-r1",
-      "ca-legislative_actions-2026-04-27",
-      "ca-legislative_actions-2026-04-28",
+      "ca-meetings-2026-04-21-r1",
+      "ca-meetings-2026-04-27",
+      "ca-meetings-2026-04-28",
     ]);
     // Each Minutes carries the PDF text + body (from category).
     for (const bundle of result.items) {
@@ -177,7 +177,7 @@ describe("MinutesIngestHandler", () => {
       "ca",
       SOURCE.url,
       SOURCE.dataType,
-      "ca-legislative_actions-2026-04-27",
+      "ca-meetings-2026-04-27",
       0,
     );
 
@@ -186,13 +186,11 @@ describe("MinutesIngestHandler", () => {
 
     // Only Apr 28 is new — listing walk halts when it hits the watermark id.
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].minutes.externalId).toBe(
-      "ca-legislative_actions-2026-04-28",
-    );
+    expect(result.items[0].minutes.externalId).toBe("ca-meetings-2026-04-28");
 
     // Watermark advances to the newest ingested.
     const wm = await watermarks.read("ca", SOURCE.url, SOURCE.dataType);
-    expect(wm?.lastExternalId).toBe("ca-legislative_actions-2026-04-28");
+    expect(wm?.lastExternalId).toBe("ca-meetings-2026-04-28");
   });
 
   it("caps cold-start ingestion at maxNew", async () => {
@@ -205,10 +203,7 @@ describe("MinutesIngestHandler", () => {
     expect(result.items).toHaveLength(2);
     // The two newest documents win (Apr 28 + Apr 27).
     const ids = result.items.map((b) => b.minutes.externalId).sort();
-    expect(ids).toEqual([
-      "ca-legislative_actions-2026-04-27",
-      "ca-legislative_actions-2026-04-28",
-    ]);
+    expect(ids).toEqual(["ca-meetings-2026-04-27", "ca-meetings-2026-04-28"]);
   });
 
   it("captures revisionSeq from filenames matching revisionPattern", async () => {
@@ -216,7 +211,7 @@ describe("MinutesIngestHandler", () => {
     const handler = new MinutesIngestHandler(fake as never);
     const result = await handler.execute(SOURCE, "ca");
     const revised = result.items.find(
-      (b) => b.minutes.externalId === "ca-legislative_actions-2026-04-21-r1",
+      (b) => b.minutes.externalId === "ca-meetings-2026-04-21-r1",
     );
     expect(revised).toBeDefined();
     expect(revised!.minutes.revisionSeq).toBe(1);

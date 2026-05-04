@@ -103,17 +103,25 @@ describe('LegislativeActionLinkerService', () => {
     'Legislative business: Members Garcia and Lee.',
     'Illness: Members Smith.',
     '',
+    'ENGROSSMENT AND ENROLLMENT REPORTS',
+    'Mr. Speaker: Pursuant to your instructions the Chief Clerk has examined:',
+    'Assembly Bill No. 1897',
+    'Above bill correctly engrossed.',
+    '',
     'REPORTS OF STANDING COMMITTEES',
     'Committee on Public Safety',
     'Date of Hearing: April 21, 2026',
     'Your Committee on Public Safety reports:',
     'Assembly Bill No. 1897',
     'With the recommendation: Do pass.',
-    'Above bill correctly engrossed.',
     'JONES, Chair',
+    'Above bill ordered to second reading.',
+    '',
+    'RESOLUTIONS',
+    'ASSEMBLY CONCURRENT RESOLUTION NO. 999—Smith. Relative to testing.',
     '',
     'SECOND READING OF ASSEMBLY BILLS',
-    'ASSEMBLY BILL NO. 500',
+    'Assembly Bill No. 500',
     'Bill read second time, and amendments proposed by the Committee on Judiciary read and adopted.',
   ].join('\n');
 
@@ -245,7 +253,10 @@ describe('LegislativeActionLinkerService', () => {
     );
     expect(amendments.length).toBeGreaterThanOrEqual(1);
     expect(amendments[0].committeeId).toBe('cmt-judiciary');
-    expect(amendments[0].rawSubject).toBe('Committee on Judiciary');
+    // Amendment is now attributed to the nearest preceding bill in the
+    // SECOND READING block — better than just naming the committee.
+    expect(amendments[0].rawSubject).toBe('AB 500');
+    expect(amendments[0].text).toMatch(/Committee on Judiciary/);
   });
 
   it('emits engrossment actions and links bill citations to propositions', async () => {

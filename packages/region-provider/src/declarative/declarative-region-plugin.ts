@@ -78,7 +78,14 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
   }
 
   async fetchMeetings(): Promise<Meeting[]> {
-    return this.fetchByDataType<Meeting>("meetings");
+    // Filter out `pdf_archive` sources — those emit Minutes documents
+    // and are handled by `fetchMeetingMinutes` instead. Mixing them
+    // here would type-pollute the Meeting[] return.
+    return this.fetchByDataType<Meeting>(
+      "meetings",
+      undefined,
+      (s) => s.sourceType !== "pdf_archive",
+    );
   }
 
   async fetchRepresentatives(): Promise<Representative[]> {
@@ -86,15 +93,20 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
   }
 
   /**
-   * Fetch meeting-minutes / journal documents from `legislative_actions`
-   * data sources. The pipeline's `pdf_archive` handler walks each
-   * source's listing page, fetches per-day PDFs, and returns
-   * MinutesWithActions records with `actions: []` (V1) — the backend's
-   * LegislativeActionLinkerService mines the stored rawText post-sync
-   * to produce action records. Issue #665.
+   * Fetch meeting-minutes / journal documents from `pdf_archive`
+   * sources under the `meetings` dataType. The pipeline's
+   * `MinutesIngestHandler` walks each source's listing page, fetches
+   * per-day PDFs, and returns one MinutesWithActions per document
+   * with empty actions (V1) — the backend's
+   * LegislativeActionLinkerService mines the stored rawText
+   * post-sync to produce action records. Issue #665.
    */
-  async fetchLegislativeActions(): Promise<MinutesWithActions[]> {
-    return this.fetchByDataType<MinutesWithActions>("legislative_actions");
+  async fetchMeetingMinutes(): Promise<MinutesWithActions[]> {
+    return this.fetchByDataType<MinutesWithActions>(
+      "meetings",
+      undefined,
+      (s) => s.sourceType === "pdf_archive",
+    );
   }
 
   async fetchCampaignFinance(
@@ -176,13 +188,20 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
    * Fetch all data sources matching a data type and concatenate results.
    * When onBatch is provided, bulk_download sources stream batches via callback
    * instead of accumulating all items in memory.
+   *
+   * `sourceFilter` further narrows the matched sources by sourceType
+   * (used to partition `meetings` between scheduled-meeting sources
+   * and `pdf_archive` minutes sources without inventing a second
+   * dataType).
    */
   private async fetchByDataType<T>(
     dataType: string,
     onBatch?: (items: T[]) => Promise<void>,
+    sourceFilter?: (source: DataSourceConfig) => boolean,
   ): Promise<T[]> {
     const sources = this.regionConfig.dataSources.filter(
-      (ds) => ds.dataType === dataType,
+      (ds) =>
+        ds.dataType === dataType && (sourceFilter ? sourceFilter(ds) : true),
     );
 
     if (sources.length === 0) {

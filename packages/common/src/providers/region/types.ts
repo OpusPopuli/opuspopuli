@@ -11,13 +11,16 @@
  */
 export enum DataType {
   PROPOSITIONS = "propositions",
+  /// Both scheduled meetings (calendar/daily-file sources) AND past
+  /// meeting minutes / journals (pdf_archive sources). The plugin
+  /// partitions sources by sourceType inside fetchMeetings /
+  /// fetchMeetingMinutes. The downstream LegislativeAction linker
+  /// runs after Minutes upsert as part of the meetings sync.
+  /// Issue #665.
   MEETINGS = "meetings",
   REPRESENTATIVES = "representatives",
   CAMPAIGN_FINANCE = "campaign_finance",
   LOBBYING = "lobbying",
-  /// Per-action records from legislative daily journals (votes, motions,
-  /// amendments, committee reports, presence). Issue #665.
-  LEGISLATIVE_ACTIONS = "legislative_actions",
 }
 
 /**
@@ -521,19 +524,22 @@ export interface IRegionProvider {
   ): Promise<CampaignFinanceResult>;
 
   /**
-   * Fetch meeting-minutes / journal documents. V1 returns Minutes
-   * records with empty `actions`; the backend linker mines `rawText`
-   * post-sync to produce the action records. Returning the bundled
-   * shape now keeps the door open for fetcher-side extraction in V2
-   * (e.g. AI-driven structural analysis at fetch time) without
-   * changing the interface.
+   * Fetch meeting-minutes / journal documents from `pdf_archive`
+   * sources within the `meetings` dataType. Optional — only
+   * implemented by plugins with at least one `pdf_archive` source.
    *
-   * Optional — only implemented by plugins with legislative_actions
-   * data sources. The handler walks the listing page descending by
-   * date and stops at a watermark (`ingestion_watermarks` table) or a
-   * configured `maxNew` cap to bound cold-start work. Issue #665.
+   * V1 returns Minutes records with empty `actions`; the backend's
+   * downstream linker mines `rawText` post-sync to produce
+   * `LegislativeAction` rows. Returning the bundled shape leaves
+   * room for fetcher-side extraction in V2 (e.g. AI structural
+   * analysis at fetch time) without changing the interface.
+   *
+   * The pipeline's `pdf_archive` handler walks the listing page
+   * descending by date and stops at a watermark
+   * (`ingestion_watermarks`) or a configured `maxNew` cap to bound
+   * cold-start work. Issue #665.
    */
-  fetchLegislativeActions?(): Promise<MinutesWithActions[]>;
+  fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
 }
 
 /**

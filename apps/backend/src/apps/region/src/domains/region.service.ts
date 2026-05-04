@@ -60,7 +60,7 @@ interface DataFetcher {
   fetchCampaignFinance?(
     onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
   ): Promise<CampaignFinanceResult>;
-  fetchLegislativeActions?(): Promise<MinutesWithActions[]>;
+  fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
 }
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
@@ -682,8 +682,6 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       [DataType.REPRESENTATIVES]: () =>
         this.syncRepresentatives(provider, maxReps),
       [DataType.CAMPAIGN_FINANCE]: () => this.syncCampaignFinance(provider),
-      [DataType.LEGISLATIVE_ACTIONS]: () =>
-        this.syncLegislativeActions(provider),
     };
 
     const handler = syncHandlers[dataType];
@@ -827,7 +825,10 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   }> {
     const meetings = await provider.fetchMeetings();
     if (meetings.length === 0) {
-      return { processed: 0, created: 0, updated: 0 };
+      // Daily-file may be empty between sessions, but pdf_archive
+      // (minutes) sources can still be live — fall through to the
+      // Minutes sync.
+      return this.syncMeetingMinutes(provider);
     }
 
     // Get existing externalIds in a single query to calculate created vs updated
@@ -877,38 +878,51 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       existingExternalIds.has(m.externalId),
     ).length;
 
-    return { processed: meetings.length, created, updated };
+    // Daily-journal / committee-minutes documents come in under the
+    // same MEETINGS dataType but as `pdf_archive` sources. Persist
+    // them as Minutes rows + run the downstream LegislativeAction
+    // linker. Counts are summed into the meetings sync result so the
+    // caller sees a single total.
+    const minutesResult = await this.syncMeetingMinutes(provider);
+    return {
+      processed: meetings.length + minutesResult.processed,
+      created: created + minutesResult.created,
+      updated: updated + minutesResult.updated,
+    };
   }
 
   /**
-   * Sync `Minutes` documents from `legislative_actions` data sources
-   * (CA Assembly daily journals etc.) and run the post-sync linker
-   * pass. Two phases:
+   * Sync `Minutes` documents from `pdf_archive` sources within the
+   * `meetings` dataType (CA Assembly daily journals etc.) and run the
+   * downstream linker pass. Invoked from `syncMeetings`. Two phases:
    *
    *   1. Upsert each MinutesWithActions.minutes row by externalId.
    *      Revisions (`revisionSeq>0`) supersede their predecessors:
    *      after the new row is upserted, all rows for the same
    *      (body, date) with a lower revisionSeq get isActive=false.
    *
-   *   2. Hand the inserted minutes ids to LegislativeActionLinkerService,
-   *      which mines rawText to produce LegislativeAction rows with
-   *      passage offsets attributing the actions to representatives,
-   *      propositions, and committees.
+   *   2. Hand the upserted minutes ids to
+   *      LegislativeActionLinkerService, which mines rawText to
+   *      produce LegislativeAction rows with passage offsets
+   *      attributing the actions to representatives, propositions,
+   *      and committees. ACTIONS are downstream of MINUTES — the
+   *      linker is optional injection, so when it isn't bound the
+   *      Minutes still persist but no actions get produced.
    *
    * Issue #665.
    */
-  private async syncLegislativeActions(
+  private async syncMeetingMinutes(
     provider: DataFetcher = this.regionService,
   ): Promise<{
     processed: number;
     created: number;
     updated: number;
   }> {
-    if (!provider.fetchLegislativeActions) {
+    if (!provider.fetchMeetingMinutes) {
       return { processed: 0, created: 0, updated: 0 };
     }
 
-    const bundles = await provider.fetchLegislativeActions();
+    const bundles = await provider.fetchMeetingMinutes();
     if (bundles.length === 0) {
       return { processed: 0, created: 0, updated: 0 };
     }

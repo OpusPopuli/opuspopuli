@@ -52,19 +52,91 @@ interface CandidateAction {
   committeeId?: string;
 }
 
+/**
+ * One contiguous section of a journal, anchored on a recognized
+ * uppercase section header. `startOffset` / `endOffset` are
+ * char-offsets into the parent rawText so per-extractor regex matches
+ * can be re-anchored back to the document for passageStart/passageEnd.
+ */
+interface JournalSection {
+  header: string;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+}
+
+/**
+ * Recognized section headers in CA Assembly daily journals. Matched
+ * verbatim against lines (anchored, all-caps). Headers seen in real
+ * journals but not extracted from (`PROCEEDINGS OF THE ASSEMBLY`,
+ * `INTRODUCTION OF GUESTS`, `MESSAGES FROM THE GOVERNOR`,
+ * `COMMUNICATIONS`, `INTRODUCTION AND REFERENCE OF BILLS`, etc.) are
+ * still treated as section boundaries so unrelated text doesn't leak
+ * into the extractors.
+ */
+const SECTION_HEADERS = new Set<string>([
+  'ROLLCALL',
+  'LEAVES OF ABSENCE FOR THE DAY',
+  'ENGROSSMENT AND ENROLLMENT REPORTS',
+  'RESOLUTIONS',
+  "AUTHOR'S AMENDMENTS",
+  'AUTHOR’S AMENDMENTS', // curly apostrophe variant
+  'REPORTS OF STANDING COMMITTEES',
+  'SECOND READING OF ASSEMBLY BILLS',
+  'THIRD READING OF ASSEMBLY BILLS',
+  // Recognized boundaries — not extracted from but used to bound others:
+  'PROCEEDINGS OF THE ASSEMBLY',
+  'IN ASSEMBLY',
+  'INTRODUCTION OF GUESTS',
+  'INTRODUCTION AND REFERENCE OF BILLS',
+  'COMMUNICATIONS',
+  'MESSAGES FROM THE GOVERNOR',
+  'MESSAGES FROM THE SENATE',
+  'MOTIONS AND RESOLUTIONS',
+  'ROLLCALL VOTES',
+  'PRESENTATION OF FLAG',
+  'ADJOURNMENT',
+  'PRAYER',
+  'PLEDGE OF ALLEGIANCE',
+]);
+
 const SURNAME_LINE_RE = /^[A-ZÀ-ſ][A-Za-zÀ-ſ.,\s'\-’]*$/;
 const BILL_CITATION_RE =
   /(Assembly|ASSEMBLY|Senate|SENATE)\s+(Bill|BILL|Joint Resolution|JOINT RESOLUTION|Concurrent Resolution|CONCURRENT RESOLUTION|Constitutional Amendment|CONSTITUTIONAL AMENDMENT)\s+(?:No\.|NO\.)?\s*(\d+)/g;
-const ROLLCALL_INTRO_RE = /^The following.*morning rollcall/im;
+const ROLLCALL_INTRO_RE =
+  /^The (?:following.*morning rollcall|rollcall was completed.*?\bnames)/im;
 const SPEAKER_LINE_RE = /^Mr\.\s*Speaker\s*$/im;
+/**
+ * Absence groups within the LEAVES OF ABSENCE section. Format:
+ *   <reason>: Assembly Member(s) <name1>, <name2>, ..., and <nameN>.
+ *
+ * Reason group `[^:.\n]+` excludes newlines + period + colon — keeps
+ * the reason on a single line, no cross-paragraph greediness. Names
+ * group `[^.]+?` is non-greedy and bounded by the next period; runs
+ * within the section text only (caller scopes), so a stray period
+ * elsewhere in the journal can't truncate it.
+ */
 const ABSENCE_GROUP_RE =
-  /([^:.]+):\s*(?:Assembly\s+)?Members?\s+([^.]+?)(?:\.|$)/g;
-const COMMITTEE_HEARING_RE =
-  /Committee on\s+([^\n]+?)\nDate of Hearing:\s*([^\n]+)/g;
+  /([^:.\n]+):\s*(?:Assembly\s+)?Members?\s+([^.]+?)(?:\.|$)/g;
+const COMMITTEE_HEADER_RE = /^Committee on\s+(.+?)\s*$/m;
+const HEARING_DATE_RE = /^Date of Hearing:\s*([^\n]+)$/m;
 const AMENDMENT_ADOPTED_RE =
   /amendments proposed by the Committee on\s+([^\n]+?)\s+read and adopted/gi;
-const ENGROSSED_RE = /Above\s+bill[s]?\s+correctly\s+engrossed/i;
-const ENROLLED_RE = /Above\s+bill[s]?\s+correctly\s+enrolled/i;
+// Real journal phrasing is "And reports the same correctly engrossed."
+// (chief clerk's report) — NOT "Above bills correctly engrossed." which
+// is a separate next-action sentence that follows. Match the chief
+// clerk's verb regardless of preamble.
+const ENGROSSED_RE = /correctly\s+engrossed/i;
+const ENROLLED_RE = /correctly\s+enrolled/i;
+/**
+ * One newly-offered resolution. Source format:
+ *   ASSEMBLY [CONCURRENT|JOINT] RESOLUTION NO. <n>—<introducer>. <subject>.
+ * Capture groups: 1 = canonical resolution id phrase, 2 = introducer,
+ * 3 = subject. The em-dash (U+2014), en-dash (U+2013), or ASCII '-'
+ * are all accepted between the id and introducer.
+ */
+const RESOLUTION_LINE_RE =
+  /^(ASSEMBLY (?:CONCURRENT |JOINT )?RESOLUTION NO\.\s*\d+)[—–-]\s*([^.]+?)\.\s*(.+?)$/m;
 
 @Injectable()
 export class LegislativeActionLinkerService {
@@ -76,16 +148,13 @@ export class LegislativeActionLinkerService {
   ) {}
 
   /**
-   * Re-link all active Minutes whose rawText hasn't been linked since
-   * its last update. The simple "delete + re-insert" idempotency model
-   * means we can run this on every Minutes ingest — expensive linking
-   * doesn't happen for already-processed rows because the loop only
-   * walks rows whose IDs are passed in.
+   * Link the given Minutes ids. When `relinkAll` is true, re-runs over
+   * every active Minutes for the body — useful after linker code
+   * improvements to refresh actions without re-fetching PDFs.
    */
-  async linkMinutes(minutesIds: string[]): Promise<{
-    minutesProcessed: number;
-    actionsCreated: number;
-  }> {
+  async linkMinutes(
+    minutesIds: string[],
+  ): Promise<{ minutesProcessed: number; actionsCreated: number }> {
     if (minutesIds.length === 0) {
       return { minutesProcessed: 0, actionsCreated: 0 };
     }
@@ -133,6 +202,23 @@ export class LegislativeActionLinkerService {
     };
   }
 
+  /**
+   * Re-link every active Minutes row. Used by the
+   * `run-relink-minutes` admin script and could be exposed as an
+   * admin GraphQL mutation later. Bypasses the watermark — operates
+   * on whatever is already in the DB.
+   */
+  async relinkAll(): Promise<{
+    minutesProcessed: number;
+    actionsCreated: number;
+  }> {
+    const rows = await this.db.minutes.findMany({
+      where: { isActive: true },
+      select: { id: true },
+    });
+    return this.linkMinutes(rows.map((r) => r.id));
+  }
+
   // ============================================
   // Cache construction
   // ============================================
@@ -144,7 +230,6 @@ export class LegislativeActionLinkerService {
         select: { id: true, lastName: true, chamber: true },
       }),
       this.db.proposition.findMany({
-        where: { deletedAt: null },
         select: { id: true, externalId: true },
       }),
       this.db.legislativeCommittee.findMany({
@@ -182,16 +267,95 @@ export class LegislativeActionLinkerService {
   }
 
   // ============================================
+  // Section splitter
+  // ============================================
+
+  /**
+   * Split rawText into named sections by recognizing all-caps section
+   * headers (verbatim from CA Assembly journal layout). Each section's
+   * `text` is bounded by its header and the next recognized header,
+   * with offsets preserved so per-extractor matches can be projected
+   * back into the parent document for passage offsets.
+   *
+   * Headers seen multiple times in one document (e.g. multiple
+   * "ROLLCALL" appearances on different session days) all get
+   * collected and dispatched independently.
+   */
+  private splitSections(rawText: string): JournalSection[] {
+    const sections: JournalSection[] = [];
+    const lineStarts: number[] = [0];
+    for (let i = 0; i < rawText.length; i++) {
+      if (rawText[i] === '\n') lineStarts.push(i + 1);
+    }
+
+    const boundaries: { offset: number; header: string }[] = [];
+    for (const start of lineStarts) {
+      const lineEnd = rawText.indexOf('\n', start);
+      const line = rawText
+        .slice(start, lineEnd === -1 ? rawText.length : lineEnd)
+        .trim();
+      if (!line) continue;
+      // Quick reject: must be all-caps-ish (allow digits, punctuation).
+      if (/[a-z]/.test(line)) continue;
+      if (SECTION_HEADERS.has(line)) {
+        boundaries.push({ offset: start, header: line });
+      }
+    }
+
+    for (let i = 0; i < boundaries.length; i++) {
+      const cur = boundaries[i];
+      const next = boundaries[i + 1];
+      const startOffset = cur.offset;
+      const endOffset = next ? next.offset : rawText.length;
+      sections.push({
+        header: cur.header,
+        text: rawText.slice(startOffset, endOffset),
+        startOffset,
+        endOffset,
+      });
+    }
+
+    return sections;
+  }
+
+  // ============================================
   // Candidate extraction
   // ============================================
 
   private extractCandidates(ctx: MinutesContext): CandidateAction[] {
     const out: CandidateAction[] = [];
-    out.push(...this.extractPresence(ctx));
-    out.push(...this.extractAbsences(ctx));
-    out.push(...this.extractCommitteeHearings(ctx));
-    out.push(...this.extractAmendments(ctx));
-    out.push(...this.extractEngrossmentsAndEnrollments(ctx));
+    const sections = this.splitSections(ctx.rawText);
+
+    for (const section of sections) {
+      switch (section.header) {
+        case 'ROLLCALL':
+          out.push(...this.extractPresence(ctx, section));
+          break;
+        case 'LEAVES OF ABSENCE FOR THE DAY':
+          out.push(...this.extractAbsences(ctx, section));
+          break;
+        case 'REPORTS OF STANDING COMMITTEES':
+          out.push(...this.extractCommitteeReports(ctx, section));
+          break;
+        case "AUTHOR'S AMENDMENTS":
+        case 'AUTHOR’S AMENDMENTS':
+          out.push(...this.extractAuthorsAmendments(ctx, section));
+          break;
+        case 'SECOND READING OF ASSEMBLY BILLS':
+        case 'THIRD READING OF ASSEMBLY BILLS':
+          out.push(...this.extractReadingAmendments(ctx, section));
+          break;
+        case 'ENGROSSMENT AND ENROLLMENT REPORTS':
+          out.push(...this.extractEngrossmentsAndEnrollments(ctx, section));
+          break;
+        case 'RESOLUTIONS':
+          out.push(...this.extractResolutions(ctx, section));
+          break;
+        // Other recognized headers (PROCEEDINGS, COMMUNICATIONS, etc.)
+        // bound the others but yield no actions in V1.
+      }
+    }
+
     return out;
   }
 
@@ -200,34 +364,51 @@ export class LegislativeActionLinkerService {
    * the line "Mr. Speaker" (which is implicitly present), emitting one
    * 'presence' (position='yes') per surname-shaped line in between.
    */
-  private extractPresence(ctx: MinutesContext): CandidateAction[] {
-    const intro = ROLLCALL_INTRO_RE.exec(ctx.rawText);
+  private extractPresence(
+    ctx: MinutesContext,
+    section: JournalSection,
+  ): CandidateAction[] {
+    const intro = ROLLCALL_INTRO_RE.exec(section.text);
     if (!intro) return [];
-    const tail = ctx.rawText.slice(intro.index);
+    const tail = section.text.slice(intro.index);
     const speaker = SPEAKER_LINE_RE.exec(tail);
     if (!speaker) return [];
     const block = tail.slice(0, speaker.index);
-    const blockStart = intro.index;
+    const blockStart = section.startOffset + intro.index;
 
     const out: CandidateAction[] = [];
     let cursor = blockStart;
     for (const line of block.split('\n')) {
-      const trimmed = line.trim();
+      const lineLength = line.length + 1; // +1 for the consumed '\n'
       const start = cursor;
-      const end = cursor + line.length + 1;
+      const end = cursor + lineLength;
       cursor = end;
-      if (!trimmed || !SURNAME_LINE_RE.test(trimmed)) continue;
-      if (/morning rollcall/i.test(trimmed)) continue;
 
-      const repId = this.resolveRep(ctx, trimmed);
-      out.push({
-        actionType: 'presence',
-        position: 'yes',
-        rawSubject: trimmed,
-        passageStart: start,
-        passageEnd: end,
-        representativeId: repId,
-      });
+      // Some rollcall variants use multi-column layouts, e.g.:
+      //   "Addis   Davies  Johnson         Rogers"
+      // Split on multi-space gaps to recover individual surnames.
+      const cells = line.split(/\s{2,}/).map((c) => c.trim());
+      let cellOffset = start;
+      for (const cell of cells) {
+        if (!cell || !SURNAME_LINE_RE.test(cell)) {
+          cellOffset += cell.length + 1;
+          continue;
+        }
+        if (/morning rollcall|rollcall|the following/i.test(cell)) {
+          cellOffset += cell.length + 1;
+          continue;
+        }
+        const repId = this.resolveRep(ctx, cell);
+        out.push({
+          actionType: 'presence',
+          position: 'yes',
+          rawSubject: cell,
+          passageStart: cellOffset,
+          passageEnd: Math.min(cellOffset + cell.length, end),
+          representativeId: repId,
+        });
+        cellOffset += cell.length + 1;
+      }
     }
 
     // The matched "Mr. Speaker" line is itself a presence entry.
@@ -243,16 +424,23 @@ export class LegislativeActionLinkerService {
     return out;
   }
 
-  private extractAbsences(ctx: MinutesContext): CandidateAction[] {
-    // Reset stateful regex
+  /**
+   * Absences: only run within the LEAVES OF ABSENCE FOR THE DAY
+   * section so unrelated `<text>: Assembly Member <name>` constructs
+   * elsewhere (vote-change reports, motions) don't false-positive.
+   */
+  private extractAbsences(
+    ctx: MinutesContext,
+    section: JournalSection,
+  ): CandidateAction[] {
     ABSENCE_GROUP_RE.lastIndex = 0;
     const out: CandidateAction[] = [];
     let m: RegExpExecArray | null;
-    while ((m = ABSENCE_GROUP_RE.exec(ctx.rawText)) !== null) {
+    while ((m = ABSENCE_GROUP_RE.exec(section.text)) !== null) {
       const reason = m[1].trim();
       const namesBlob = m[2];
-      const matchStart = m.index;
-      const matchEnd = m.index + m[0].length;
+      const matchStart = section.startOffset + m.index;
+      const matchEnd = section.startOffset + m.index + m[0].length;
 
       const names = this.splitAbsenceNames(namesBlob);
       for (const name of names) {
@@ -276,80 +464,249 @@ export class LegislativeActionLinkerService {
     return blob
       .replaceAll(/\band\s+/gi, ',')
       .split(',')
-      .map((n) => n.trim())
+      .map((n) => n.replaceAll(/\s+/g, ' ').trim())
       .filter((n) => n.length > 0);
   }
 
-  private extractCommitteeHearings(ctx: MinutesContext): CandidateAction[] {
-    COMMITTEE_HEARING_RE.lastIndex = 0;
+  /**
+   * REPORTS OF STANDING COMMITTEES has a repeating block shape:
+   *
+   *   Committee on <name>
+   *   Date of Hearing: <date>
+   *   Mr. Speaker: Your Committee on <name> reports:
+   *   <bill1>
+   *   <bill2>
+   *   ...
+   *   With the recommendation: <verdict>.
+   *   <CHAIR_SURNAME>, Chair
+   *   Above bill[s] <disposition>.
+   *
+   * Emits one `committee_hearing` per (committee, hearing date) and
+   * one `committee_report` per bill, both with the committee FK.
+   */
+  private extractCommitteeReports(
+    ctx: MinutesContext,
+    section: JournalSection,
+  ): CandidateAction[] {
     const out: CandidateAction[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = COMMITTEE_HEARING_RE.exec(ctx.rawText)) !== null) {
-      const committeeName = m[1].trim();
-      const hearingDate = m[2].trim();
+    const blocks = this.splitOnLookahead(section.text, /^Committee on\s+/m);
+
+    for (const block of blocks) {
+      const blockOffset = section.startOffset + block.startInParent;
+      const cmtMatch = COMMITTEE_HEADER_RE.exec(block.text);
+      const committeeName = cmtMatch?.[1]?.trim();
+      const hearingMatch = HEARING_DATE_RE.exec(block.text);
+      const hearingDate = hearingMatch?.[1]?.trim();
+      const recommendationMatch =
+        /With the recommendation:\s*([^.]+(?:\.[^.]+)*?\.)/i.exec(block.text);
+      const recommendation = recommendationMatch?.[1]?.trim();
+
+      const committeeId = committeeName
+        ? this.resolveCommittee(ctx, committeeName)
+        : undefined;
+
+      // Hearing action — one per block when we have both committee + date.
+      if (committeeName && hearingDate) {
+        const matchOffset = hearingMatch ? hearingMatch.index : 0;
+        out.push({
+          actionType: 'committee_hearing',
+          rawSubject: committeeName,
+          text: this.truncate(
+            `Committee on ${committeeName} — Date of Hearing: ${hearingDate}`,
+            4000,
+          ),
+          passageStart: blockOffset + matchOffset,
+          passageEnd:
+            blockOffset +
+            matchOffset +
+            (hearingMatch?.[0]?.length ?? committeeName.length),
+          committeeId,
+        });
+      }
+
+      // Per-bill committee_report actions.
+      BILL_CITATION_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = BILL_CITATION_RE.exec(block.text)) !== null) {
+        const canonical = this.normalizeBillCitation(m[1], m[2], m[3]);
+        const propId = ctx.caches.propositionsByExternalId.get(canonical);
+        out.push({
+          actionType: 'committee_report',
+          rawSubject: canonical,
+          text: this.truncate(
+            recommendation
+              ? `${canonical}: ${recommendation}`
+              : `${canonical}: reported by Committee on ${committeeName ?? '?'}.`,
+            4000,
+          ),
+          passageStart: blockOffset + m.index,
+          passageEnd: blockOffset + m.index + m[0].length,
+          committeeId,
+          propositionId: propId,
+        });
+      }
+    }
+
+    return out;
+  }
+
+  /**
+   * AUTHOR'S AMENDMENTS — repeating "Committee on X / Mr. Speaker: ...
+   * / <bill> / With author's amendments..." blocks.
+   */
+  private extractAuthorsAmendments(
+    ctx: MinutesContext,
+    section: JournalSection,
+  ): CandidateAction[] {
+    const out: CandidateAction[] = [];
+    const blocks = this.splitOnLookahead(section.text, /^Committee on\s+/m);
+
+    for (const block of blocks) {
+      const blockOffset = section.startOffset + block.startInParent;
+      const cmtMatch = COMMITTEE_HEADER_RE.exec(block.text);
+      const committeeName = cmtMatch?.[1]?.trim();
+      if (!committeeName) continue;
       const committeeId = this.resolveCommittee(ctx, committeeName);
-      out.push({
-        actionType: 'committee_hearing',
-        rawSubject: committeeName,
-        text: this.truncate(
-          `Committee on ${committeeName} — Date of Hearing: ${hearingDate}`,
-          4000,
-        ),
-        passageStart: m.index,
-        passageEnd: m.index + m[0].length,
-        committeeId,
-      });
+
+      BILL_CITATION_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = BILL_CITATION_RE.exec(block.text)) !== null) {
+        const canonical = this.normalizeBillCitation(m[1], m[2], m[3]);
+        const propId = ctx.caches.propositionsByExternalId.get(canonical);
+        out.push({
+          actionType: 'amendment',
+          rawSubject: canonical,
+          text: this.truncate(
+            `${canonical}: author's amendments adopted in Committee on ${committeeName}.`,
+            4000,
+          ),
+          passageStart: blockOffset + m.index,
+          passageEnd: blockOffset + m.index + m[0].length,
+          committeeId,
+          propositionId: propId,
+        });
+      }
     }
     return out;
   }
 
-  private extractAmendments(ctx: MinutesContext): CandidateAction[] {
+  /**
+   * SECOND/THIRD READING OF ASSEMBLY BILLS — per-bill blocks where
+   * "amendments proposed by the Committee on X read and adopted"
+   * yields one `amendment` action per bill where the floor adopts a
+   * committee amendment.
+   */
+  private extractReadingAmendments(
+    ctx: MinutesContext,
+    section: JournalSection,
+  ): CandidateAction[] {
     AMENDMENT_ADOPTED_RE.lastIndex = 0;
     const out: CandidateAction[] = [];
     let m: RegExpExecArray | null;
-    while ((m = AMENDMENT_ADOPTED_RE.exec(ctx.rawText)) !== null) {
+    while ((m = AMENDMENT_ADOPTED_RE.exec(section.text)) !== null) {
       const committeeName = m[1].trim();
       const committeeId = this.resolveCommittee(ctx, committeeName);
+
+      // Find the nearest preceding bill citation to attribute this
+      // amendment to. Scan backward up to ~600 chars.
+      const lookback = Math.max(0, m.index - 600);
+      const window = section.text.slice(lookback, m.index);
+      const bills = this.lastBillCitation(window);
+
       out.push({
         actionType: 'amendment',
-        rawSubject: `Committee on ${committeeName}`,
-        text: this.truncate(this.sliceAround(ctx.rawText, m.index, 240), 4000),
-        passageStart: m.index,
-        passageEnd: m.index + m[0].length,
+        rawSubject: bills?.canonical ?? `Committee on ${committeeName}`,
+        text: this.truncate(
+          bills
+            ? `${bills.canonical}: amendments by Committee on ${committeeName} read and adopted.`
+            : `Committee on ${committeeName} amendments read and adopted.`,
+          4000,
+        ),
+        passageStart: section.startOffset + m.index,
+        passageEnd: section.startOffset + m.index + m[0].length,
         committeeId,
+        propositionId: bills?.propId,
       });
     }
     return out;
   }
 
+  /**
+   * ENGROSSMENT AND ENROLLMENT REPORTS — block-scoped on "Mr. Speaker:"
+   * intro lines. Each block has N bill citations followed by ONE
+   * disposition line (`Above bill[s] correctly engrossed/enrolled.`).
+   * One action per bill per block, type from the block's disposition.
+   */
   private extractEngrossmentsAndEnrollments(
     ctx: MinutesContext,
+    section: JournalSection,
   ): CandidateAction[] {
-    BILL_CITATION_RE.lastIndex = 0;
     const out: CandidateAction[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = BILL_CITATION_RE.exec(ctx.rawText)) !== null) {
-      const canonical = this.normalizeBillCitation(m[1], m[2], m[3]);
-      const propId = ctx.caches.propositionsByExternalId.get(canonical);
-      const window = this.sliceAround(ctx.rawText, m.index, 240);
-      let actionType: string | undefined;
-      if (ENROLLED_RE.test(window)) {
-        actionType = 'enrollment';
-      } else if (ENGROSSED_RE.test(window)) {
-        actionType = 'engrossment';
-      }
+    const blocks = this.splitOnLookahead(section.text, /^\s*Mr\.\s*Speaker:/m);
+
+    for (const block of blocks) {
+      const blockOffset = section.startOffset + block.startInParent;
+      let actionType: 'engrossment' | 'enrollment' | undefined;
+      if (ENROLLED_RE.test(block.text)) actionType = 'enrollment';
+      else if (ENGROSSED_RE.test(block.text)) actionType = 'engrossment';
       if (!actionType) continue;
+
+      BILL_CITATION_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = BILL_CITATION_RE.exec(block.text)) !== null) {
+        const canonical = this.normalizeBillCitation(m[1], m[2], m[3]);
+        const propId = ctx.caches.propositionsByExternalId.get(canonical);
+        out.push({
+          actionType,
+          rawSubject: canonical,
+          text: this.truncate(
+            `${canonical}: Chief Clerk reports ${actionType === 'enrollment' ? 'enrolled' : 'engrossed'}.`,
+            4000,
+          ),
+          passageStart: blockOffset + m.index,
+          passageEnd: blockOffset + m.index + m[0].length,
+          propositionId: propId,
+        });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * RESOLUTIONS section — one resolution per matching line.
+   */
+  private extractResolutions(
+    ctx: MinutesContext,
+    section: JournalSection,
+  ): CandidateAction[] {
+    const out: CandidateAction[] = [];
+    // Iterate line-by-line so passage offsets are precise.
+    const re = new RegExp(RESOLUTION_LINE_RE.source, 'gm');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(section.text)) !== null) {
+      const idPhrase = m[1].trim();
+      const introducer = m[2].trim();
+      const subject = m[3].trim();
+      const canonical = this.normalizeResolutionId(idPhrase);
+      const propId = canonical
+        ? ctx.caches.propositionsByExternalId.get(canonical)
+        : undefined;
+
       out.push({
-        actionType,
-        rawSubject: canonical,
-        text: this.truncate(window, 4000),
-        passageStart: m.index,
-        passageEnd: m.index + m[0].length,
+        actionType: 'resolution',
+        rawSubject: canonical ?? idPhrase,
+        text: this.truncate(`${introducer}: ${subject}`, 4000),
+        passageStart: section.startOffset + m.index,
+        passageEnd: section.startOffset + m.index + m[0].length,
         propositionId: propId,
       });
     }
     return out;
   }
+
+  // ============================================
+  // Bill-citation normalization
+  // ============================================
 
   private normalizeBillCitation(
     chamber: string,
@@ -365,16 +722,66 @@ export class LegislativeActionLinkerService {
     return `${c}${t} ${number}`;
   }
 
+  private normalizeResolutionId(phrase: string): string | undefined {
+    const m = /ASSEMBLY (CONCURRENT |JOINT )?RESOLUTION NO\.\s*(\d+)/.exec(
+      phrase,
+    );
+    if (!m) return undefined;
+    const kind = m[1]?.trim();
+    let prefix = 'AR';
+    if (kind === 'CONCURRENT') prefix = 'ACR';
+    else if (kind === 'JOINT') prefix = 'AJR';
+    return `${prefix} ${m[2]}`;
+  }
+
+  private lastBillCitation(
+    window: string,
+  ): { canonical: string; propId?: string } | undefined {
+    BILL_CITATION_RE.lastIndex = 0;
+    let last: RegExpExecArray | null = null;
+    let m: RegExpExecArray | null;
+    while ((m = BILL_CITATION_RE.exec(window)) !== null) {
+      last = m;
+    }
+    if (!last) return undefined;
+    const canonical = this.normalizeBillCitation(last[1], last[2], last[3]);
+    return { canonical };
+  }
+
   // ============================================
   // FK resolution
   // ============================================
 
+  /**
+   * Resolve a presence/absence subject to a representative id.
+   * Strategy (single-match conservative — V1 leaves multi-matches null):
+   *   1. Split on `,` and try the first token as surname (handles
+   *      "Rodriguez, M.").
+   *   2. If that doesn't match a single rep, fall back to the LAST
+   *      whitespace-separated token (handles "Celeste Rodriguez").
+   *   3. Multi-match ambiguity → null + log a warning so V2 work can
+   *      add disambiguation (district, first-initial).
+   */
   private resolveRep(ctx: MinutesContext, name: string): string | undefined {
-    const surname = name.split(',')[0].trim().toLowerCase();
-    if (!surname) return undefined;
     const bucket = ctx.caches.repsByLastName.get(ctx.body);
-    const matches = bucket?.get(surname) ?? [];
-    if (matches.length === 1) return matches[0];
+    if (!bucket) return undefined;
+
+    const commaToken = name.split(',')[0].trim().toLowerCase();
+    if (commaToken) {
+      const matches = bucket.get(commaToken) ?? [];
+      if (matches.length === 1) return matches[0];
+      if (matches.length > 1) return undefined;
+    }
+
+    // Fallback: last whitespace token (First Last → Last).
+    const wsTokens = name.replaceAll(/[,.]/g, '').trim().split(/\s+/);
+    if (wsTokens.length > 1) {
+      const last = wsTokens[wsTokens.length - 1].toLowerCase();
+      if (last && last !== commaToken) {
+        const matches = bucket.get(last) ?? [];
+        if (matches.length === 1) return matches[0];
+      }
+    }
     return undefined;
   }
 
@@ -430,10 +837,31 @@ export class LegislativeActionLinkerService {
   // Helpers
   // ============================================
 
-  private sliceAround(text: string, idx: number, halfWindow: number): string {
-    const start = Math.max(0, idx - halfWindow);
-    const end = Math.min(text.length, idx + halfWindow);
-    return text.slice(start, end).trim();
+  /**
+   * Split text on a regex lookahead, preserving the offset of each
+   * resulting block in the parent. The first chunk (before any
+   * lookahead match) is dropped — extractors only care about
+   * blocks beginning at a recognized boundary.
+   */
+  private splitOnLookahead(
+    text: string,
+    boundaryRe: RegExp,
+  ): { text: string; startInParent: number }[] {
+    const out: { text: string; startInParent: number }[] = [];
+    const re = new RegExp(boundaryRe.source, boundaryRe.flags + 'g');
+    const starts: number[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      starts.push(m.index);
+      // Avoid zero-length match infinite loops.
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    for (let i = 0; i < starts.length; i++) {
+      const start = starts[i];
+      const end = starts[i + 1] ?? text.length;
+      out.push({ text: text.slice(start, end), startInParent: start });
+    }
+    return out;
   }
 
   private truncate(s: string, max: number): string {

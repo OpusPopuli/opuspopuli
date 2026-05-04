@@ -85,11 +85,7 @@ describe("IngestionWatermarkService", () => {
   });
 
   it("returns undefined when no watermark exists", async () => {
-    const wm = await svc.read(
-      "ca",
-      "https://example/journals",
-      "legislative_actions",
-    );
+    const wm = await svc.read("ca", "https://example/journals", "meetings");
     expect(wm).toBeUndefined();
   });
 
@@ -97,34 +93,28 @@ describe("IngestionWatermarkService", () => {
     const wm = await svc.advance(
       "ca",
       "https://example/journals",
-      "legislative_actions",
-      "ca-legislative_actions-2026-04-28",
+      "meetings",
+      "ca-meetings-2026-04-28",
       1,
     );
-    expect(wm.lastExternalId).toBe("ca-legislative_actions-2026-04-28");
+    expect(wm.lastExternalId).toBe("ca-meetings-2026-04-28");
     expect(wm.itemsIngested).toBe(1);
     expect(wm.lastIngestedAt).toBeInstanceOf(Date);
   });
 
   it("advances an existing watermark and increments itemsIngested", async () => {
-    await svc.advance("ca", "https://x", "legislative_actions", "id-1", 1);
-    const second = await svc.advance(
-      "ca",
-      "https://x",
-      "legislative_actions",
-      "id-2",
-      3,
-    );
+    await svc.advance("ca", "https://x", "meetings", "id-1", 1);
+    const second = await svc.advance("ca", "https://x", "meetings", "id-2", 3);
     expect(second.lastExternalId).toBe("id-2");
     expect(second.itemsIngested).toBe(4);
   });
 
   it("scopes watermarks per (region, sourceUrl, dataType)", async () => {
-    await svc.advance("ca", "https://x", "legislative_actions", "ca-id", 1);
-    await svc.advance("tx", "https://x", "legislative_actions", "tx-id", 1);
+    await svc.advance("ca", "https://x", "meetings", "ca-id", 1);
+    await svc.advance("tx", "https://x", "meetings", "tx-id", 1);
 
-    const ca = await svc.read("ca", "https://x", "legislative_actions");
-    const tx = await svc.read("tx", "https://x", "legislative_actions");
+    const ca = await svc.read("ca", "https://x", "meetings");
+    const tx = await svc.read("tx", "https://x", "meetings");
     expect(ca?.lastExternalId).toBe("ca-id");
     expect(tx?.lastExternalId).toBe("tx-id");
   });
