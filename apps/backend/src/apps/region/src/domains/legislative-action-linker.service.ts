@@ -100,12 +100,25 @@ const SECTION_HEADERS = new Set<string>([
   'PLEDGE OF ALLEGIANCE',
 ]);
 
-const SURNAME_LINE_RE = /^[A-ZÀ-ſ][A-Za-zÀ-ſ.,\s'\-’]*$/;
+// Every regex below uses bounded quantifiers (`{n,m}` instead of `*`
+// and `+`) and char classes that exclude `\n` where applicable, so
+// the regex engine cannot backtrack past a line boundary or beyond a
+// realistic per-token budget. This is defensive belt-and-braces
+// against Sonar S5852 (super-linear runtime risk) — the inputs are
+// already bounded by section-scoping in extractCandidates(), but
+// bounded quantifiers also pass static analysis without an
+// exception.
+
+const SURNAME_LINE_RE = /^[A-ZÀ-ſ][A-Za-zÀ-ſ.,'\-’ ]{0,200}$/;
+// Case-insensitive flag (`i`) eliminates the doubled UPPERCASE
+// alternatives in the original pattern; bounded `\s{1,5}` between
+// tokens replaces unbounded `\s+`. Number captured at `\d{1,6}` —
+// CA Assembly bills max at ~3-4 digits, 6 is a defensive ceiling.
 const BILL_CITATION_RE =
-  /(Assembly|ASSEMBLY|Senate|SENATE)\s+(Bill|BILL|Joint Resolution|JOINT RESOLUTION|Concurrent Resolution|CONCURRENT RESOLUTION|Constitutional Amendment|CONSTITUTIONAL AMENDMENT)\s+(?:No\.|NO\.)?\s*(\d+)/g;
+  /(Assembly|Senate)\s{1,5}(Bill|Joint Resolution|Concurrent Resolution|Constitutional Amendment)\s{1,5}(?:No\.\s{0,5})?(\d{1,6})/gi;
 const ROLLCALL_INTRO_RE =
-  /^The (?:following.*morning rollcall|rollcall was completed.*?\bnames)/im;
-const SPEAKER_LINE_RE = /^Mr\.\s*Speaker\s*$/im;
+  /^The (?:following[^\n]{0,200}morning rollcall|rollcall was completed[^\n]{0,200}?\bnames)/im;
+const SPEAKER_LINE_RE = /^Mr\.\s{0,5}Speaker\s{0,5}$/im;
 /**
  * Absence groups within the LEAVES OF ABSENCE section. Format:
  *   <reason>: Assembly Member(s) <name1>, <name2>, ..., and <nameN>.
@@ -117,21 +130,21 @@ const SPEAKER_LINE_RE = /^Mr\.\s*Speaker\s*$/im;
  * defensive even though section-scoping already limits the input.
  */
 const ABSENCE_GROUP_RE =
-  /([^:.\n]{1,200}):\s*(?:Assembly\s+)?Members?\s+((?:[^.\n]|\n(?!\s*\n)){1,1000}?)(?:\.|$)/g;
+  /([^:.\n]{1,200}):\s{0,5}(?:Assembly\s{1,5})?Members?\s{1,5}((?:[^.\n]|\n(?!\s{0,10}\n)){1,1000}?)(?:\.|$)/g;
 // Bounded `[^\n]{1,200}` instead of `(.+?)\s*$` — eliminates the
 // non-greedy / trailing-whitespace backtracking pair that Sonar
 // would flag on long lines. Committee names run < 100 chars in real
 // journals; 200 is generous defensive ceiling.
-const COMMITTEE_HEADER_RE = /^Committee on\s+([^\n]{1,200})$/m;
-const HEARING_DATE_RE = /^Date of Hearing:\s*([^\n]{1,200})$/m;
+const COMMITTEE_HEADER_RE = /^Committee on\s{1,5}([^\n]{1,200})$/m;
+const HEARING_DATE_RE = /^Date of Hearing:\s{0,5}([^\n]{1,200})$/m;
 const AMENDMENT_ADOPTED_RE =
-  /amendments proposed by the Committee on\s+([^\n]{1,200}?)\s+read and adopted/gi;
+  /amendments proposed by the Committee on\s{1,5}([^\n]{1,200}?)\s{1,5}read and adopted/gi;
 // Real journal phrasing is "And reports the same correctly engrossed."
 // (chief clerk's report) — NOT "Above bills correctly engrossed." which
 // is a separate next-action sentence that follows. Match the chief
 // clerk's verb regardless of preamble.
-const ENGROSSED_RE = /correctly\s+engrossed/i;
-const ENROLLED_RE = /correctly\s+enrolled/i;
+const ENGROSSED_RE = /correctly\s{1,5}engrossed/i;
+const ENROLLED_RE = /correctly\s{1,5}enrolled/i;
 /**
  * One newly-offered resolution. Source format:
  *   ASSEMBLY [CONCURRENT|JOINT] RESOLUTION NO. <n>—<introducer>. <subject>.
@@ -145,7 +158,7 @@ const ENROLLED_RE = /correctly\s+enrolled/i;
  * Sonar flags on unbounded `+?`/`.+?` chains (rule S5852).
  */
 const RESOLUTION_LINE_RE =
-  /^(ASSEMBLY (?:CONCURRENT |JOINT )?RESOLUTION NO\.\s*\d{1,6})[—–-]\s*([^.\n]{1,200})\.\s*([^\n]{1,500})$/m;
+  /^(ASSEMBLY (?:CONCURRENT |JOINT )?RESOLUTION NO\.\s{0,5}\d{1,6})[—–-]\s{0,5}([^.\n]{1,200})\.\s{0,5}([^\n]{1,500})$/m;
 
 @Injectable()
 export class LegislativeActionLinkerService {
@@ -498,7 +511,7 @@ export class LegislativeActionLinkerService {
     section: JournalSection,
   ): CandidateAction[] {
     const out: CandidateAction[] = [];
-    const blocks = this.splitOnLookahead(section.text, /^Committee on\s+/m);
+    const blocks = this.splitOnLookahead(section.text, /^Committee on\s{1,5}/m);
 
     for (const block of blocks) {
       const blockOffset = section.startOffset + block.startInParent;
@@ -510,7 +523,7 @@ export class LegislativeActionLinkerService {
       // backtracking. Recommendations in real journals run to a few
       // hundred chars at most; cap at 800 as a defensive ceiling.
       const recommendationMatch =
-        /With the recommendation:\s*([^\n]{1,800}?\.)/i.exec(block.text);
+        /With the recommendation:\s{0,5}([^\n]{1,800}?\.)/i.exec(block.text);
       const recommendation = recommendationMatch?.[1]?.trim();
 
       const committeeId = committeeName
@@ -571,7 +584,7 @@ export class LegislativeActionLinkerService {
     section: JournalSection,
   ): CandidateAction[] {
     const out: CandidateAction[] = [];
-    const blocks = this.splitOnLookahead(section.text, /^Committee on\s+/m);
+    const blocks = this.splitOnLookahead(section.text, /^Committee on\s{1,5}/m);
 
     for (const block of blocks) {
       const blockOffset = section.startOffset + block.startInParent;
@@ -654,7 +667,10 @@ export class LegislativeActionLinkerService {
     section: JournalSection,
   ): CandidateAction[] {
     const out: CandidateAction[] = [];
-    const blocks = this.splitOnLookahead(section.text, /^\s*Mr\.\s*Speaker:/m);
+    const blocks = this.splitOnLookahead(
+      section.text,
+      /^\s{0,10}Mr\.\s{0,5}Speaker:/m,
+    );
 
     for (const block of blocks) {
       const blockOffset = section.startOffset + block.startInParent;
@@ -735,9 +751,10 @@ export class LegislativeActionLinkerService {
   }
 
   private normalizeResolutionId(phrase: string): string | undefined {
-    const m = /ASSEMBLY (CONCURRENT |JOINT )?RESOLUTION NO\.\s*(\d+)/.exec(
-      phrase,
-    );
+    const m =
+      /ASSEMBLY (CONCURRENT |JOINT )?RESOLUTION NO\.\s{0,5}(\d{1,6})/.exec(
+        phrase,
+      );
     if (!m) return undefined;
     const kind = m[1]?.trim();
     let prefix = 'AR';
