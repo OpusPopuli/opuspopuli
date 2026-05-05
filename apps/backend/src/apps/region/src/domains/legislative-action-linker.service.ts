@@ -110,18 +110,22 @@ const SPEAKER_LINE_RE = /^Mr\.\s*Speaker\s*$/im;
  * Absence groups within the LEAVES OF ABSENCE section. Format:
  *   <reason>: Assembly Member(s) <name1>, <name2>, ..., and <nameN>.
  *
- * Reason group `[^:.\n]+` excludes newlines + period + colon — keeps
- * the reason on a single line, no cross-paragraph greediness. Names
- * group `[^.]+?` is non-greedy and bounded by the next period; runs
- * within the section text only (caller scopes), so a stray period
- * elsewhere in the journal can't truncate it.
+ * Reason group `[^:.\n]{1,200}` excludes newlines + period + colon.
+ * Names group `[^.\n\r]{1,1000}?` is bounded and non-greedy. The
+ * length caps + char-class exclusions prevent the super-linear
+ * backtracking Sonar flags (S5852) on unbounded `+?` chains —
+ * defensive even though section-scoping already limits the input.
  */
 const ABSENCE_GROUP_RE =
-  /([^:.\n]+):\s*(?:Assembly\s+)?Members?\s+([^.]+?)(?:\.|$)/g;
-const COMMITTEE_HEADER_RE = /^Committee on\s+(.+?)\s*$/m;
-const HEARING_DATE_RE = /^Date of Hearing:\s*([^\n]+)$/m;
+  /([^:.\n]{1,200}):\s*(?:Assembly\s+)?Members?\s+((?:[^.\n]|\n(?!\s*\n)){1,1000}?)(?:\.|$)/g;
+// Bounded `[^\n]{1,200}` instead of `(.+?)\s*$` — eliminates the
+// non-greedy / trailing-whitespace backtracking pair that Sonar
+// would flag on long lines. Committee names run < 100 chars in real
+// journals; 200 is generous defensive ceiling.
+const COMMITTEE_HEADER_RE = /^Committee on\s+([^\n]{1,200})$/m;
+const HEARING_DATE_RE = /^Date of Hearing:\s*([^\n]{1,200})$/m;
 const AMENDMENT_ADOPTED_RE =
-  /amendments proposed by the Committee on\s+([^\n]+?)\s+read and adopted/gi;
+  /amendments proposed by the Committee on\s+([^\n]{1,200}?)\s+read and adopted/gi;
 // Real journal phrasing is "And reports the same correctly engrossed."
 // (chief clerk's report) — NOT "Above bills correctly engrossed." which
 // is a separate next-action sentence that follows. Match the chief
@@ -134,9 +138,14 @@ const ENROLLED_RE = /correctly\s+enrolled/i;
  * Capture groups: 1 = canonical resolution id phrase, 2 = introducer,
  * 3 = subject. The em-dash (U+2014), en-dash (U+2013), or ASCII '-'
  * are all accepted between the id and introducer.
+ *
+ * Quantifiers are bounded (introducer ≤ 200 chars, subject ≤ 500
+ * chars) and char classes exclude `\n` so the engine can't backtrack
+ * across line boundaries. Eliminates the super-linear-runtime risk
+ * Sonar flags on unbounded `+?`/`.+?` chains (rule S5852).
  */
 const RESOLUTION_LINE_RE =
-  /^(ASSEMBLY (?:CONCURRENT |JOINT )?RESOLUTION NO\.\s*\d+)[—–-]\s*([^.]+?)\.\s*(.+?)$/m;
+  /^(ASSEMBLY (?:CONCURRENT |JOINT )?RESOLUTION NO\.\s*\d{1,6})[—–-]\s*([^.\n]{1,200})\.\s*([^\n]{1,500})$/m;
 
 @Injectable()
 export class LegislativeActionLinkerService {
@@ -497,8 +506,11 @@ export class LegislativeActionLinkerService {
       const committeeName = cmtMatch?.[1]?.trim();
       const hearingMatch = HEARING_DATE_RE.exec(block.text);
       const hearingDate = hearingMatch?.[1]?.trim();
+      // Bounded char class + length cap — no nested quantifiers, no
+      // backtracking. Recommendations in real journals run to a few
+      // hundred chars at most; cap at 800 as a defensive ceiling.
       const recommendationMatch =
-        /With the recommendation:\s*([^.]+(?:\.[^.]+)*?\.)/i.exec(block.text);
+        /With the recommendation:\s*([^\n]{1,800}?\.)/i.exec(block.text);
       const recommendation = recommendationMatch?.[1]?.trim();
 
       const committeeId = committeeName
