@@ -223,6 +223,70 @@ export interface LegislativeCommitteeDetail {
   updatedAt: string;
 }
 
+// ============================================
+// LEGISLATIVE ACTIONS (issue #665)
+// ============================================
+
+/** One discrete legislative action mined from a Minutes document. */
+export interface LegislativeAction {
+  id: string;
+  externalId: string;
+  body: string;
+  date: string;
+  /**
+   * 'presence' | 'committee_hearing' | 'committee_report' |
+   * 'amendment' | 'engrossment' | 'enrollment' | 'resolution' |
+   * 'vote' (V2) | 'speech' (V2)
+   */
+  actionType: string;
+  /** 'yes' | 'no' | 'abstain' | 'absent' — null for non-vote actions in V1. */
+  position?: string;
+  text?: string;
+  passageStart?: number;
+  passageEnd?: number;
+  rawSubject?: string;
+  representativeId?: string;
+  propositionId?: string;
+  committeeId?: string;
+  minutesId: string;
+  minutesExternalId: string;
+}
+
+export interface PaginatedLegislativeActions {
+  items: LegislativeAction[];
+  total: number;
+  hasMore: boolean;
+}
+
+/**
+ * At-a-glance counters for the rep detail page Layer 3
+ * ("What They've Done"). Drives the top-of-L3 stats grid.
+ */
+export interface RepresentativeActivityStats {
+  presentSessionDays: number;
+  totalSessionDays: number;
+  absenceDays: number;
+  amendments: number;
+  committeeHearings: number;
+  committeeReports: number;
+  resolutions: number;
+  votes: number;
+  speeches: number;
+}
+
+/** Verbatim passage from Minutes.rawText for an action. */
+export interface MinutesPassage {
+  actionId: string;
+  minutesExternalId: string;
+  body: string;
+  date: string;
+  sourceUrl: string;
+  passageStart: number;
+  passageEnd: number;
+  passageText: string;
+  sectionContext?: string;
+}
+
 export interface Contribution {
   id: string;
   externalId: string;
@@ -1039,6 +1103,80 @@ export const SYNC_DATA_TYPE = gql`
       itemsUpdated
       errors
       syncedAt
+    }
+  }
+`;
+
+// ============================================
+// LEGISLATIVE ACTIONS (issue #665)
+// ============================================
+
+export const GET_REP_ACTIVITY_STATS = gql`
+  query GetRepresentativeActivityStats($id: ID!, $sinceDays: Int) {
+    representativeActivityStats(id: $id, sinceDays: $sinceDays) {
+      presentSessionDays
+      totalSessionDays
+      absenceDays
+      amendments
+      committeeHearings
+      committeeReports
+      resolutions
+      votes
+      speeches
+    }
+  }
+`;
+
+export const GET_REP_ACTIVITY = gql`
+  query GetRepresentativeActivity(
+    $id: ID!
+    $actionTypes: [String!]
+    $includePresenceYes: Boolean
+    $skip: Int
+    $take: Int
+  ) {
+    representativeActivity(
+      id: $id
+      actionTypes: $actionTypes
+      includePresenceYes: $includePresenceYes
+      skip: $skip
+      take: $take
+    ) {
+      items {
+        id
+        externalId
+        body
+        date
+        actionType
+        position
+        text
+        passageStart
+        passageEnd
+        rawSubject
+        representativeId
+        propositionId
+        committeeId
+        minutesId
+        minutesExternalId
+      }
+      total
+      hasMore
+    }
+  }
+`;
+
+export const GET_MINUTES_PASSAGE = gql`
+  query GetMinutesPassage($actionId: ID!) {
+    minutesPassage(actionId: $actionId) {
+      actionId
+      minutesExternalId
+      body
+      date
+      sourceUrl
+      passageStart
+      passageEnd
+      passageText
+      sectionContext
     }
   }
 `;
