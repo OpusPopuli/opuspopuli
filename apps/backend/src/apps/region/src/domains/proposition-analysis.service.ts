@@ -1,14 +1,14 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PromptClientService } from '@opuspopuli/prompt-client';
-import type {
-  ILLMProvider,
-  PropositionAnalysisClaim,
-  PropositionAnalysisSection,
-  PropositionExistingVsProposed,
+import {
+  extractJsonObjectSlice,
+  type ILLMProvider,
+  type PropositionAnalysisClaim,
+  type PropositionAnalysisSection,
+  type PropositionExistingVsProposed,
 } from '@opuspopuli/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
-import { extractJsonObjectSlice } from './llm-json-salvage.util';
 
 /**
  * Shape we ask the LLM to return. Matches the DB columns added by the

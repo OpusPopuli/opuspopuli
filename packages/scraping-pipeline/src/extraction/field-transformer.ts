@@ -8,6 +8,7 @@
 
 import { Logger } from "@nestjs/common";
 import type { FieldTransform } from "@opuspopuli/common";
+import { safeRegex } from "./safe-regex.js";
 
 /**
  * Applies a FieldTransform to an extracted string value.
@@ -137,14 +138,11 @@ export class FieldTransformer {
     if (!params?.pattern) {
       return value;
     }
-
-    try {
-      const flags = params.flags ?? "g";
-      const regex = new RegExp(params.pattern, flags);
-      return value.replace(regex, params.replacement ?? "");
-    } catch {
+    const regex = safeRegex(params.pattern, params.flags ?? "g");
+    if (!regex) {
       return value;
     }
+    return value.replace(regex, params.replacement ?? "");
   }
 
   /**
