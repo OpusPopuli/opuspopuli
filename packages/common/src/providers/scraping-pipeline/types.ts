@@ -274,7 +274,7 @@ export interface DataSourceConfig {
   rateLimitOverride?: number;
 
   /** Source type determines the extraction strategy. Defaults to 'html_scrape'. */
-  sourceType?: "html_scrape" | "bulk_download" | "api" | "pdf";
+  sourceType?: "html_scrape" | "bulk_download" | "api" | "pdf" | "pdf_archive";
 
   /** Configuration for bulk_download sources (ZIP/CSV/TSV files) */
   bulk?: BulkDownloadConfig;
@@ -285,12 +285,42 @@ export interface DataSourceConfig {
   /** Configuration for PDF sources (text extraction + AI analysis) */
   pdf?: PdfSourceConfig;
 
+  /** Configuration for pdf_archive sources (paginated listing of dated PDF documents) */
+  pdfArchive?: PdfArchiveConfig;
+
   /** Detail page extraction plan: maps domain field names to CSS selectors
    *  or structured field configs for array extraction.
    *  When provided, the detail crawler uses these directly instead of AI derivation.
    *  - String values: CSS selector (supports dot notation and "|attr:href" suffix)
    *  - Object values: structured array extraction (e.g., multiple offices) */
   detailFields?: Record<string, string | StructuredFieldConfig>;
+}
+
+/**
+ * Configuration for `sourceType: 'pdf_archive'` — a paginated listing
+ * page that links to a series of dated PDF documents. Each linked PDF
+ * is fetched, pdf-parsed, and stored as a `Minutes` record on the
+ * consumer side. Per-document parsing (text → action records) is a
+ * downstream backend pass — this block carries no parser DSL.
+ *
+ * Cold-start work is bounded by `maxNew` (default 10) so the first
+ * sync doesn't ingest years of historical archives.
+ */
+export interface PdfArchiveConfig {
+  /** CSS selector for PDF anchor elements on the listing page. Each match yields a candidate document. */
+  linkSelector: string;
+  /** Regex applied to the link href (falling back to anchor text) to extract the document's date. Capture groups depend on `dateFormat`. */
+  datePattern?: string;
+  /** Date format hint for interpreting `datePattern` captures. Supported: 'MMDDYY' (3 captures: month, day, two-digit year — assumed 20YY), 'YYYY-MM-DD' (3 captures), 'MM/DD/YYYY' (3 captures). */
+  dateFormat?: string;
+  /** Regex against the link href whose match indicates this URL is a revision. Capture group 1 is the revision sequence number. Unmatched URLs are revisionSeq=0. */
+  revisionPattern?: string;
+  /** Maximum number of listing pages to walk during a single sync cycle. Default: 10. */
+  maxPages?: number;
+  /** Hard cap on number of new documents ingested per sync cycle. Cold-start protection. Default: 10. */
+  maxNew?: number;
+  /** Query parameter name used to paginate the listing page (e.g. 'page'). Omitted when the listing isn't paginated. */
+  paginationParam?: string;
 }
 
 /**

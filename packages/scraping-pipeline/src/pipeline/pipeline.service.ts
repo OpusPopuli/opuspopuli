@@ -29,6 +29,7 @@ import { SelfHealingService } from "../healing/self-healing.service.js";
 import { BulkDownloadHandler } from "../handlers/bulk-download.handler.js";
 import { ApiIngestHandler } from "../handlers/api-ingest.handler.js";
 import { PdfExtractHandler } from "../handlers/pdf-extract.handler.js";
+import { MinutesIngestHandler } from "../handlers/minutes-ingest.handler.js";
 import { DetailCrawlerService } from "../crawling/detail-crawler.service.js";
 
 @Injectable()
@@ -46,6 +47,7 @@ export class ScrapingPipelineService {
     private readonly bulkDownload: BulkDownloadHandler,
     private readonly apiIngest: ApiIngestHandler,
     private readonly pdfExtract: PdfExtractHandler,
+    private readonly minutesIngest: MinutesIngestHandler,
     private readonly detailCrawler: DetailCrawlerService,
   ) {}
 
@@ -71,10 +73,27 @@ export class ScrapingPipelineService {
         return this.executeApiIngest<T>(source, regionId);
       case "pdf":
         return this.executePdfExtract<T>(source, regionId);
+      case "pdf_archive":
+        return this.executePdfArchive<T>(source, regionId);
       case "html_scrape":
       default:
         return this.executeHtmlScrape<T>(source, regionId);
     }
+  }
+
+  /**
+   * Execute pdf_archive ingestion: listing-walk → per-PDF fetch +
+   * pdf-parse → emit one MinutesWithActions per document. The
+   * downstream backend linker mines stored rawText to produce
+   * LegislativeAction rows post-sync.
+   */
+  private async executePdfArchive<T>(
+    source: DataSourceConfig,
+    regionId: string,
+  ): Promise<ExtractionResult<T>> {
+    return this.minutesIngest.execute(source, regionId) as unknown as Promise<
+      ExtractionResult<T>
+    >;
   }
 
   /**

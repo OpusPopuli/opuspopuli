@@ -11,6 +11,12 @@
  */
 export enum DataType {
   PROPOSITIONS = "propositions",
+  /// Both scheduled meetings (calendar/daily-file sources) AND past
+  /// meeting minutes / journals (pdf_archive sources). The plugin
+  /// partitions sources by sourceType inside fetchMeetings /
+  /// fetchMeetingMinutes. The downstream LegislativeAction linker
+  /// runs after Minutes upsert as part of the meetings sync.
+  /// Issue #665.
   MEETINGS = "meetings",
   REPRESENTATIVES = "representatives",
   CAMPAIGN_FINANCE = "campaign_finance",
@@ -199,6 +205,153 @@ export interface Representative {
 }
 
 // ============================================
+// MEETING MINUTES + LEGISLATIVE ACTIONS (issue #665)
+// ============================================
+
+/**
+ * A meeting-minutes / journal document. The canonical PDF that records
+ * what happened in a chamber session or committee hearing — daily
+ * journals, committee hearing minutes, etc.
+ *
+ * V1 stores the document as opaque text + audit metadata at ingest
+ * time; downstream passes (the legislative-action linker for V1, AI
+ * summarization for V2) mine `rawText` to produce structured records.
+ *
+ * `committeeId` is set when the document is single-committee minutes;
+ * null for chamber-wide daily journals. `meetingId` is set when the
+ * document corresponds to a calendared meeting (most chamber-wide
+ * daily journals leave it null).
+ *
+ * Revision handling: when the clerk re-publishes the same session
+ * day's PDF (e.g. `adj042826_r1.pdf`), it lands as a new row with
+ * `revisionSeq=1` and `isActive=true`; the original's `isActive` is
+ * flipped to false.
+ */
+export interface Minutes {
+  externalId: string;
+  /** "Assembly" | "Senate" — V1 is CA Assembly only. */
+  body: string;
+  date: Date;
+  /** 0 for the original publication, 1+ for revisions in publication order. */
+  revisionSeq: number;
+  /** True for the canonical-current version. */
+  isActive: boolean;
+  /** Set when the document is single-committee minutes. Null for chamber-wide daily journals. */
+  committeeId?: string;
+  /** Set when the document corresponds to a calendared meeting. */
+  meetingId?: string;
+  pageCount?: number;
+  sourceUrl: string;
+  /** Full pdf-parse output. Capped ~256kB at write time. */
+  rawText?: string;
+  /** V2 — AI-generated plain-language summary. */
+  summary?: string;
+  /** V2 — per-claim attribution into rawText for citizen-facing
+   *  "letter to representative with quote" features. Mirrors the
+   *  PropositionAnalysisClaim shape (sourceStart/sourceEnd offsets). */
+  summaryClaims?: PropositionAnalysisClaim[];
+  parsedAt?: Date;
+}
+
+/**
+ * Action types extracted from a Minutes document.
+ */
+export type LegislativeActionType =
+  /** Roll-call presence on the morning rollcall. */
+  | "presence"
+  /**
+   * A scheduled or recorded committee hearing referenced in the
+   * minutes (e.g. "Committee on Public Safety / Date of Hearing:
+   * April 21, 2026"). Has `committeeId` set; may have `propositionId`
+   * for hearings on a specific measure.
+   */
+  | "committee_hearing"
+  /**
+   * Committee reporting back on a bill out of hearing — typically a
+   * "do pass" / "do pass as amended" / "hold" verdict. Distinct from
+   * `committee_hearing` (the scheduled meeting) — a hearing produces
+   * zero or more reports.
+   */
+  | "committee_report"
+  | "amendment"
+  | "engrossment"
+  | "enrollment"
+  | "resolution"
+  /** V2 — per-rep-per-bill vote tables */
+  | "vote"
+  /** V2 — floor speech text + summarization */
+  | "speech";
+
+export type LegislativeVotePosition = "yes" | "no" | "abstain" | "absent";
+
+/**
+ * One discrete legislative action extracted from a Minutes document.
+ *
+ * `passageStart` / `passageEnd` are character offsets into the parent
+ * Minutes' `rawText`. Citizens building a "letter to my rep" with a
+ * quoted action use these offsets to pull the verbatim passage out of
+ * the source. `text` is the already-extracted excerpt (denormalized for
+ * query performance); offsets let the UI re-anchor the quote in
+ * context.
+ *
+ * `body` and `date` are denormalized from the parent Minutes so the
+ * canonical "rep activity feed" / "bill history" / "committee history"
+ * queries don't require a JOIN to filter by date.
+ */
+export interface LegislativeAction {
+  externalId: string;
+  /**
+   * Parent Minutes database id. Set after the Minutes row is inserted —
+   * undefined in fetcher output. The fetcher returns actions nested
+   * inside `MinutesWithActions` so the parent→child relationship is
+   * preserved without this field.
+   */
+  minutesId?: string;
+  /** "Assembly" | "Senate" — denormalized from minutes. */
+  body: string;
+  /** Denormalized from minutes. */
+  date: Date;
+  actionType: LegislativeActionType;
+  /** Set by the linker. Null when the linker can't resolve to a known rep. */
+  representativeId?: string;
+  /** Set by the linker. Null when the bill isn't yet a qualified proposition. */
+  propositionId?: string;
+  /** Set by the linker. Null for non-committee actions. */
+  committeeId?: string;
+  /** Vote-only. Null for non-vote actions in V1. */
+  position?: LegislativeVotePosition;
+  /** Verbatim source excerpt. Truncate at 4kB at write time. */
+  text?: string;
+  /** V2 — AI-generated summary for long-form actions. */
+  summary?: string;
+  /** Inclusive char offset into the parent Minutes' rawText where the
+   *  action's source passage begins. */
+  passageStart?: number;
+  /** Exclusive char offset into the parent Minutes' rawText where the
+   *  action's source passage ends. */
+  passageEnd?: number;
+  /** Page within the parent minutes document. */
+  sourcePage?: number;
+  /** Pre-link reference text. Surname / "Assembly Bill No. N" / committee name. */
+  rawSubject?: string;
+}
+
+/**
+ * Fetcher output shape — a Minutes record bundled with any actions
+ * already extracted at fetch time. V1 fetchers return Minutes only
+ * (empty `actions`); the backend linker fills in actions in a
+ * downstream pass after the Minutes row has a database id.
+ *
+ * Used as the `IRegionProvider.fetchLegislativeActions()` return type
+ * so the parent→children relationship is explicit through the pipeline
+ * boundary (before any DB ids exist).
+ */
+export interface MinutesWithActions {
+  minutes: Minutes;
+  actions: LegislativeAction[];
+}
+
+// ============================================
 // CAMPAIGN FINANCE
 // ============================================
 
@@ -369,6 +522,24 @@ export interface IRegionProvider {
   fetchCampaignFinance?(
     onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
   ): Promise<CampaignFinanceResult>;
+
+  /**
+   * Fetch meeting-minutes / journal documents from `pdf_archive`
+   * sources within the `meetings` dataType. Optional — only
+   * implemented by plugins with at least one `pdf_archive` source.
+   *
+   * V1 returns Minutes records with empty `actions`; the backend's
+   * downstream linker mines `rawText` post-sync to produce
+   * `LegislativeAction` rows. Returning the bundled shape leaves
+   * room for fetcher-side extraction in V2 (e.g. AI structural
+   * analysis at fetch time) without changing the interface.
+   *
+   * The pipeline's `pdf_archive` handler walks the listing page
+   * descending by date and stops at a watermark
+   * (`ingestion_watermarks`) or a configured `maxNew` cap to bound
+   * cold-start work. Issue #665.
+   */
+  fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
 }
 
 /**

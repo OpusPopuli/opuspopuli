@@ -6,6 +6,7 @@ import {
   Proposition,
   Meeting,
   Representative,
+  MinutesWithActions,
   SyncResult,
 } from "@opuspopuli/common";
 
@@ -94,6 +95,30 @@ export class RegionService {
     );
 
     return representatives;
+  }
+
+  /**
+   * Fetch meeting-minutes / journal documents from `pdf_archive`
+   * sources under the `meetings` dataType. Optional — only available
+   * on providers that implement the method (declarative plugins
+   * with at least one `pdf_archive` source). Returns an empty array
+   * when the underlying provider doesn't support it. Issue #665.
+   */
+  async fetchMeetingMinutes(): Promise<MinutesWithActions[]> {
+    if (!this.provider.fetchMeetingMinutes) {
+      return [];
+    }
+    this.logger.log("Fetching meeting minutes from provider");
+    const startTime = Date.now();
+
+    const bundles = await this.provider.fetchMeetingMinutes();
+
+    const duration = Date.now() - startTime;
+    this.logger.log(
+      `Fetched ${bundles.length} meeting-minutes documents in ${duration}ms`,
+    );
+
+    return bundles;
   }
 
   /**
