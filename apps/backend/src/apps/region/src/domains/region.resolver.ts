@@ -49,6 +49,12 @@ import {
   LegislativeCommitteeDetailModel,
   PaginatedLegislativeCommittees,
 } from './models/legislative-committee.model';
+import {
+  LegislativeActionModel,
+  RepresentativeActivityStatsModel,
+  PaginatedLegislativeActions,
+  MinutesPassageModel,
+} from './models/legislative-action.model';
 
 /**
  * Region Resolver
@@ -250,6 +256,111 @@ export class RegionResolver {
         ? (r.bioClaims as unknown as BioClaimModel[])
         : undefined,
     })) as RepresentativeModel[];
+  }
+
+  // ==========================================
+  // LEGISLATIVE ACTION QUERIES (issue #665)
+  // ==========================================
+
+  /**
+   * At-a-glance activity counters for the rep detail page Layer 3.
+   * Window defaults to 90 days; tune `sinceDays` for different
+   * surfaces (e.g. session-long stats vs. last-month).
+   */
+  @Public()
+  @Query(() => RepresentativeActivityStatsModel)
+  async representativeActivityStats(
+    @Args({ name: 'id', type: () => ID }) id: string,
+    @Args({ name: 'sinceDays', type: () => Int, nullable: true })
+    sinceDays?: number,
+  ): Promise<RepresentativeActivityStatsModel> {
+    return this.regionService.getRepresentativeActivityStats(
+      id,
+      sinceDays ?? 90,
+    );
+  }
+
+  /**
+   * Reverse-chronological feed of LegislativeActions for a rep.
+   * `presence:yes` rows are filtered out by default — they're the
+   * highest-volume / lowest-signal entries and are already
+   * summarized in the attendance counter. Pass
+   * `actionTypes: ["presence"]` (or set `includePresenceYes`) to
+   * include them.
+   */
+  @Public()
+  @Query(() => PaginatedLegislativeActions)
+  async representativeActivity(
+    @Args({ name: 'id', type: () => ID }) id: string,
+    @Args({ name: 'actionTypes', type: () => [String], nullable: true })
+    actionTypes?: string[],
+    @Args({ name: 'includePresenceYes', nullable: true })
+    includePresenceYes?: boolean,
+    @Args({ name: 'skip', type: () => Int, nullable: true }) skip?: number,
+    @Args({ name: 'take', type: () => Int, nullable: true }) take?: number,
+  ): Promise<PaginatedLegislativeActions> {
+    const result = await this.regionService.getRepresentativeActivity({
+      representativeId: id,
+      actionTypes,
+      includePresenceYes,
+      skip: skip ?? 0,
+      take: take ?? 10,
+    });
+    return {
+      items: result.items.map((r) => this.toLegislativeActionModel(r)),
+      total: result.total,
+      hasMore: result.hasMore,
+    };
+  }
+
+  /**
+   * Resolve a single LegislativeAction to its source passage —
+   * verbatim text from `Minutes.rawText`. Returns null when the
+   * action has no passage offsets recorded or the parent Minutes
+   * has no rawText.
+   */
+  @Public()
+  @Query(() => MinutesPassageModel, { nullable: true })
+  async minutesPassage(
+    @Args({ name: 'actionId', type: () => ID }) actionId: string,
+  ): Promise<MinutesPassageModel | null> {
+    return this.regionService.getMinutesPassage(actionId);
+  }
+
+  private toLegislativeActionModel(r: {
+    id: string;
+    externalId: string;
+    body: string;
+    date: Date;
+    actionType: string;
+    position: string | null;
+    text: string | null;
+    passageStart: number | null;
+    passageEnd: number | null;
+    rawSubject: string | null;
+    representativeId: string | null;
+    propositionId: string | null;
+    committeeId: string | null;
+    minutesId: string;
+    minutesExternalId: string;
+  }): LegislativeActionModel {
+    return {
+      id: r.id,
+      externalId: r.externalId,
+      body: r.body,
+      date: r.date,
+      actionType: r.actionType,
+      position: r.position ?? undefined,
+      text: r.text ?? undefined,
+      passageStart: r.passageStart ?? undefined,
+      passageEnd: r.passageEnd ?? undefined,
+      rawSubject: r.rawSubject ?? undefined,
+      representativeId: r.representativeId ?? undefined,
+      propositionId: r.propositionId ?? undefined,
+      committeeId: r.committeeId ?? undefined,
+      minutesId: r.minutesId,
+      minutesExternalId: r.minutesExternalId,
+    };
   }
 
   // ==========================================

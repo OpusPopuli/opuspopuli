@@ -1818,6 +1818,300 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ==========================================
+  // LEGISLATIVE ACTION GETTERS (issue #665)
+  // ==========================================
+
+  /**
+   * At-a-glance activity stats for a representative over the last
+   * `sinceDays` days. Drives the Layer-3 counters on the rep detail
+   * page (attendance %, amendments, hearings chaired, etc.).
+   *
+   * Three Prisma reads:
+   *   1. legislativeAction.groupBy on action_type (counts).
+   *   2. distinct dates with presence='yes' for the rep.
+   *   3. distinct dates with ANY presence row for the rep's body
+   *      (used as the denominator for attendance — total session
+   *      days the chamber convened in the window).
+   *
+   * Returns zero counts when the rep doesn't exist or has no
+   * linked actions.
+   */
+  async getRepresentativeActivityStats(
+    representativeId: string,
+    sinceDays: number = 90,
+  ): Promise<{
+    presentSessionDays: number;
+    totalSessionDays: number;
+    absenceDays: number;
+    amendments: number;
+    committeeHearings: number;
+    committeeReports: number;
+    resolutions: number;
+    votes: number;
+    speeches: number;
+  }> {
+    const rep = await this.db.representative.findUnique({
+      where: { id: representativeId },
+      select: { chamber: true },
+    });
+    if (!rep) {
+      return {
+        presentSessionDays: 0,
+        totalSessionDays: 0,
+        absenceDays: 0,
+        amendments: 0,
+        committeeHearings: 0,
+        committeeReports: 0,
+        resolutions: 0,
+        votes: 0,
+        speeches: 0,
+      };
+    }
+
+    const since = new Date();
+    since.setDate(since.getDate() - sinceDays);
+
+    const [byType, presentDays, absenceDays, totalSessionDays] =
+      await Promise.all([
+        // Counts of FK-linked actions for this rep, grouped by type.
+        this.db.legislativeAction.groupBy({
+          by: ['actionType'],
+          where: {
+            representativeId,
+            date: { gte: since },
+          },
+          _count: { _all: true },
+        }),
+        // Distinct days where rep was marked present.
+        this.db.legislativeAction.findMany({
+          where: {
+            representativeId,
+            actionType: 'presence',
+            position: 'yes',
+            date: { gte: since },
+          },
+          distinct: ['date'],
+          select: { date: true },
+        }),
+        // Distinct days with an absence record for this rep.
+        this.db.legislativeAction.findMany({
+          where: {
+            representativeId,
+            actionType: 'presence',
+            position: 'absent',
+            date: { gte: since },
+          },
+          distinct: ['date'],
+          select: { date: true },
+        }),
+        // Distinct session days observed in the chamber overall —
+        // any presence row from the same body. Acts as the
+        // attendance denominator.
+        this.db.legislativeAction.findMany({
+          where: {
+            body: rep.chamber,
+            actionType: 'presence',
+            date: { gte: since },
+          },
+          distinct: ['date'],
+          select: { date: true },
+        }),
+      ]);
+
+    const counts = new Map<string, number>();
+    for (const g of byType) counts.set(g.actionType, g._count._all);
+
+    return {
+      presentSessionDays: presentDays.length,
+      totalSessionDays: totalSessionDays.length,
+      absenceDays: absenceDays.length,
+      amendments: counts.get('amendment') ?? 0,
+      committeeHearings: counts.get('committee_hearing') ?? 0,
+      committeeReports: counts.get('committee_report') ?? 0,
+      resolutions: counts.get('resolution') ?? 0,
+      votes: counts.get('vote') ?? 0,
+      speeches: counts.get('speech') ?? 0,
+    };
+  }
+
+  /**
+   * Reverse-chronological feed of LegislativeAction records linked
+   * to a representative. By default filters out `presence:yes` rows
+   * (too noisy for the activity feed — they're already summarized
+   * in the attendance counter). Passes through other action types
+   * including absence records, hearings, amendments, resolutions.
+   */
+  async getRepresentativeActivity(args: {
+    representativeId: string;
+    actionTypes?: string[];
+    includePresenceYes?: boolean;
+    skip?: number;
+    take?: number;
+  }): Promise<{
+    items: Array<{
+      id: string;
+      externalId: string;
+      body: string;
+      date: Date;
+      actionType: string;
+      position: string | null;
+      text: string | null;
+      passageStart: number | null;
+      passageEnd: number | null;
+      rawSubject: string | null;
+      representativeId: string | null;
+      propositionId: string | null;
+      committeeId: string | null;
+      minutesId: string;
+      minutesExternalId: string;
+    }>;
+    total: number;
+    hasMore: boolean;
+  }> {
+    const skip = args.skip ?? 0;
+    const take = args.take ?? 10;
+    const where: Record<string, unknown> = {
+      representativeId: args.representativeId,
+    };
+    if (args.actionTypes && args.actionTypes.length > 0) {
+      where.actionType = { in: args.actionTypes };
+    }
+    // Default: hide presence:yes from the feed unless caller asks
+    // for it OR has explicitly listed `presence` in actionTypes.
+    if (!args.includePresenceYes && !args.actionTypes?.includes('presence')) {
+      where.NOT = { AND: [{ actionType: 'presence' }, { position: 'yes' }] };
+    }
+
+    const [rows, total] = await Promise.all([
+      this.db.legislativeAction.findMany({
+        where,
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take: take + 1,
+        include: { minutes: { select: { externalId: true } } },
+      }),
+      this.db.legislativeAction.count({ where }),
+    ]);
+
+    const hasMore = rows.length > take;
+    const trimmed = rows.slice(0, take);
+
+    return {
+      items: trimmed.map((r) => ({
+        id: r.id,
+        externalId: r.externalId,
+        body: r.body,
+        date: r.date,
+        actionType: r.actionType,
+        position: r.position,
+        text: r.text,
+        passageStart: r.passageStart,
+        passageEnd: r.passageEnd,
+        rawSubject: r.rawSubject,
+        representativeId: r.representativeId,
+        propositionId: r.propositionId,
+        committeeId: r.committeeId,
+        minutesId: r.minutesId,
+        minutesExternalId: r.minutes.externalId,
+      })),
+      total,
+      hasMore,
+    };
+  }
+
+  /**
+   * Resolve a single LegislativeAction to its source passage —
+   * `Minutes.rawText.slice(passageStart, passageEnd)` plus a
+   * surrounding context window. Used by the L4 quote panel and the
+   * citation flow on rep + committee pages.
+   *
+   * Caps the passage at 1kB and the context at 500 chars on either
+   * side. Snaps both to whitespace boundaries to avoid mid-word
+   * truncation.
+   */
+  async getMinutesPassage(actionId: string): Promise<{
+    actionId: string;
+    minutesExternalId: string;
+    body: string;
+    date: Date;
+    sourceUrl: string;
+    passageStart: number;
+    passageEnd: number;
+    passageText: string;
+    sectionContext?: string;
+  } | null> {
+    const action = await this.db.legislativeAction.findUnique({
+      where: { id: actionId },
+      include: {
+        minutes: {
+          select: {
+            externalId: true,
+            body: true,
+            date: true,
+            sourceUrl: true,
+            rawText: true,
+          },
+        },
+      },
+    });
+    if (!action || !action.minutes.rawText) return null;
+    if (action.passageStart === null || action.passageEnd === null) return null;
+
+    const raw = action.minutes.rawText;
+    const PASSAGE_CAP = 1024;
+    const CONTEXT_HALF = 500;
+
+    const start = Math.max(0, action.passageStart);
+    const cappedEnd = Math.min(raw.length, start + PASSAGE_CAP);
+    const end = Math.min(action.passageEnd, cappedEnd);
+    const passageText = raw.slice(start, end);
+
+    // Context window snapped to whitespace boundaries on each end.
+    const ctxStart = this.snapToBoundaryBack(
+      raw,
+      Math.max(0, start - CONTEXT_HALF),
+    );
+    const ctxEnd = this.snapToBoundaryForward(
+      raw,
+      Math.min(raw.length, end + CONTEXT_HALF),
+    );
+    const sectionContext = raw.slice(ctxStart, ctxEnd);
+
+    return {
+      actionId: action.id,
+      minutesExternalId: action.minutes.externalId,
+      body: action.minutes.body,
+      date: action.minutes.date,
+      sourceUrl: action.minutes.sourceUrl,
+      passageStart: start,
+      passageEnd: end,
+      passageText,
+      sectionContext:
+        sectionContext === passageText ? undefined : sectionContext,
+    };
+  }
+
+  private snapToBoundaryBack(text: string, idx: number): number {
+    const probe = Math.max(0, idx);
+    if (probe === 0) return 0;
+    // Walk back at most 50 chars to find a whitespace boundary.
+    for (let i = probe; i > Math.max(0, probe - 50); i--) {
+      if (/\s/.test(text[i])) return i + 1;
+    }
+    return probe;
+  }
+
+  private snapToBoundaryForward(text: string, idx: number): number {
+    const probe = Math.min(text.length, idx);
+    if (probe === text.length) return probe;
+    // Walk forward at most 50 chars to find a whitespace boundary.
+    for (let i = probe; i < Math.min(text.length, probe + 50); i++) {
+      if (/\s/.test(text[i])) return i;
+    }
+    return probe;
+  }
+
+  // ==========================================
   // CAMPAIGN FINANCE GETTERS
   // ==========================================
 
