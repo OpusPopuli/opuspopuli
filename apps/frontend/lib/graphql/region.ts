@@ -120,6 +120,10 @@ export interface Representative {
   bio?: string;
   bioSource?: string;
   bioClaims?: BioClaim[];
+  /** AI-generated 2-3 sentence summary of recent legislative activity. Issue #665. */
+  activitySummary?: string;
+  activitySummaryGeneratedAt?: string;
+  activitySummaryWindowDays?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -219,8 +223,87 @@ export interface LegislativeCommitteeDetail {
   memberCount: number;
   members: LegislativeCommitteeMember[];
   hearings: LegislativeCommitteeHearing[];
+  /** AI-generated 2-3 sentence summary of recent committee activity. Issue #665. */
+  activitySummary?: string;
+  activitySummaryGeneratedAt?: string;
+  activitySummaryWindowDays?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+// ============================================
+// LEGISLATIVE ACTIONS (issue #665)
+// ============================================
+
+/** One discrete legislative action mined from a Minutes document. */
+export interface LegislativeAction {
+  id: string;
+  externalId: string;
+  body: string;
+  date: string;
+  /**
+   * 'presence' | 'committee_hearing' | 'committee_report' |
+   * 'amendment' | 'engrossment' | 'enrollment' | 'resolution' |
+   * 'vote' (V2) | 'speech' (V2)
+   */
+  actionType: string;
+  /** 'yes' | 'no' | 'abstain' | 'absent' — null for non-vote actions in V1. */
+  position?: string;
+  text?: string;
+  passageStart?: number;
+  passageEnd?: number;
+  rawSubject?: string;
+  representativeId?: string;
+  propositionId?: string;
+  committeeId?: string;
+  minutesId: string;
+  minutesExternalId: string;
+}
+
+export interface PaginatedLegislativeActions {
+  items: LegislativeAction[];
+  total: number;
+  hasMore: boolean;
+}
+
+/**
+ * At-a-glance counters for the rep detail page Layer 3
+ * ("What They've Done"). Drives the top-of-L3 stats grid.
+ */
+export interface RepresentativeActivityStats {
+  presentSessionDays: number;
+  totalSessionDays: number;
+  absenceDays: number;
+  amendments: number;
+  committeeHearings: number;
+  committeeReports: number;
+  resolutions: number;
+  votes: number;
+  speeches: number;
+}
+
+/**
+ * At-a-glance counters for the legislative committee detail page
+ * Layer 3 ("Activity"). Drives the top-of-L3 stats grid.
+ */
+export interface CommitteeActivityStats {
+  hearings: number;
+  reports: number;
+  amendments: number;
+  distinctBills: number;
+}
+
+/** Verbatim passage from Minutes.rawText for an action. */
+export interface MinutesPassage {
+  actionId: string;
+  minutesExternalId: string;
+  body: string;
+  date: string;
+  sourceUrl: string;
+  passageStart: number;
+  passageEnd: number;
+  passageText: string;
+  sectionContext?: string;
 }
 
 export interface Contribution {
@@ -723,6 +806,9 @@ export const GET_REPRESENTATIVE = gql`
         sourceHint
         confidence
       }
+      activitySummary
+      activitySummaryGeneratedAt
+      activitySummaryWindowDays
       createdAt
       updatedAt
     }
@@ -843,6 +929,9 @@ export const GET_LEGISLATIVE_COMMITTEE = gql`
         scheduledAt
         agendaUrl
       }
+      activitySummary
+      activitySummaryGeneratedAt
+      activitySummaryWindowDays
       createdAt
       updatedAt
     }
@@ -1039,6 +1128,127 @@ export const SYNC_DATA_TYPE = gql`
       itemsUpdated
       errors
       syncedAt
+    }
+  }
+`;
+
+// ============================================
+// LEGISLATIVE ACTIONS (issue #665)
+// ============================================
+
+export const GET_REP_ACTIVITY_STATS = gql`
+  query GetRepresentativeActivityStats($id: ID!, $sinceDays: Int) {
+    representativeActivityStats(id: $id, sinceDays: $sinceDays) {
+      presentSessionDays
+      totalSessionDays
+      absenceDays
+      amendments
+      committeeHearings
+      committeeReports
+      resolutions
+      votes
+      speeches
+    }
+  }
+`;
+
+export const GET_REP_ACTIVITY = gql`
+  query GetRepresentativeActivity(
+    $id: ID!
+    $actionTypes: [String!]
+    $includePresenceYes: Boolean
+    $skip: Int
+    $take: Int
+  ) {
+    representativeActivity(
+      id: $id
+      actionTypes: $actionTypes
+      includePresenceYes: $includePresenceYes
+      skip: $skip
+      take: $take
+    ) {
+      items {
+        id
+        externalId
+        body
+        date
+        actionType
+        position
+        text
+        passageStart
+        passageEnd
+        rawSubject
+        representativeId
+        propositionId
+        committeeId
+        minutesId
+        minutesExternalId
+      }
+      total
+      hasMore
+    }
+  }
+`;
+
+export const GET_MINUTES_PASSAGE = gql`
+  query GetMinutesPassage($actionId: ID!) {
+    minutesPassage(actionId: $actionId) {
+      actionId
+      minutesExternalId
+      body
+      date
+      sourceUrl
+      passageStart
+      passageEnd
+      passageText
+      sectionContext
+    }
+  }
+`;
+
+export const GET_COMMITTEE_ACTIVITY_STATS = gql`
+  query GetCommitteeActivityStats($committeeId: ID!, $sinceDays: Int) {
+    committeeActivityStats(committeeId: $committeeId, sinceDays: $sinceDays) {
+      hearings
+      reports
+      amendments
+      distinctBills
+    }
+  }
+`;
+
+export const GET_COMMITTEE_ACTIVITY = gql`
+  query GetCommitteeActivity(
+    $committeeId: ID!
+    $actionTypes: [String!]
+    $skip: Int
+    $take: Int
+  ) {
+    committeeActivity(
+      committeeId: $committeeId
+      actionTypes: $actionTypes
+      skip: $skip
+      take: $take
+    ) {
+      items {
+        id
+        externalId
+        body
+        date
+        actionType
+        position
+        text
+        passageStart
+        passageEnd
+        rawSubject
+        representativeId
+        propositionId
+        committeeId
+        minutesId
+        minutesExternalId
+      }
+      total
+      hasMore
     }
   }
 `;

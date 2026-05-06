@@ -20,6 +20,7 @@ import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
 import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
+import { EntityActivitySummaryGeneratorService } from './entity-activity-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { PropositionFundingService } from './proposition-funding.service';
@@ -99,6 +100,7 @@ const promptClientAsyncConfig = {
     RegionScheduler,
     BioGeneratorService,
     CommitteeSummaryGeneratorService,
+    EntityActivitySummaryGeneratorService,
     PropositionAnalysisService,
     PropositionFinanceLinkerService,
     PropositionFundingService,

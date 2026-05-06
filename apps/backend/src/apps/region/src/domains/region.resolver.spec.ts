@@ -802,4 +802,250 @@ describe('RegionResolver', () => {
       expect(result[0].errors).toContain('Network error');
     });
   });
+
+  // ==========================================
+  // Legislative Action queries (issue #665)
+  // ==========================================
+
+  describe('representativeActivityStats', () => {
+    const mockStats = {
+      presentSessionDays: 18,
+      totalSessionDays: 22,
+      absenceDays: 4,
+      amendments: 7,
+      committeeHearings: 5,
+      committeeReports: 12,
+      resolutions: 1,
+      votes: 0,
+      speeches: 0,
+    };
+
+    it('returns stats for the given rep with default 90-day window', async () => {
+      regionService.getRepresentativeActivityStats.mockResolvedValue(mockStats);
+
+      const result = await resolver.representativeActivityStats('rep-1');
+
+      expect(regionService.getRepresentativeActivityStats).toHaveBeenCalledWith(
+        'rep-1',
+        90,
+      );
+      expect(result.presentSessionDays).toBe(18);
+      expect(result.amendments).toBe(7);
+    });
+
+    it('passes through a caller-supplied sinceDays window', async () => {
+      regionService.getRepresentativeActivityStats.mockResolvedValue(mockStats);
+
+      await resolver.representativeActivityStats('rep-1', 30);
+
+      expect(regionService.getRepresentativeActivityStats).toHaveBeenCalledWith(
+        'rep-1',
+        30,
+      );
+    });
+  });
+
+  describe('representativeActivity', () => {
+    const mockAction = {
+      id: 'la-1',
+      externalId: 'california-meetings-2026-04-28-0042',
+      body: 'Assembly',
+      date: new Date('2026-04-28T00:00:00Z'),
+      actionType: 'amendment',
+      position: null,
+      text: "Author's amendments adopted in Committee on Health.",
+      passageStart: 12347,
+      passageEnd: 12521,
+      rawSubject: 'AB 1897',
+      representativeId: 'rep-1',
+      propositionId: null,
+      committeeId: 'cmt-1',
+      minutesId: 'min-1',
+      minutesExternalId: 'california-meetings-2026-04-28',
+    };
+
+    it('returns paginated activity feed for the rep', async () => {
+      regionService.getRepresentativeActivity.mockResolvedValue({
+        items: [mockAction],
+        total: 1,
+        hasMore: false,
+      });
+
+      const result = await resolver.representativeActivity('rep-1');
+
+      expect(regionService.getRepresentativeActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          representativeId: 'rep-1',
+          skip: 0,
+          take: 10,
+        }),
+      );
+      expect(result.total).toBe(1);
+      expect(result.hasMore).toBe(false);
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          id: 'la-1',
+          actionType: 'amendment',
+          rawSubject: 'AB 1897',
+          minutesExternalId: 'california-meetings-2026-04-28',
+          passageStart: 12347,
+          passageEnd: 12521,
+          // null fields are mapped to undefined for GraphQL nullability:
+          position: undefined,
+          propositionId: undefined,
+        }),
+      );
+    });
+
+    it('forwards actionTypes + includePresenceYes filters', async () => {
+      regionService.getRepresentativeActivity.mockResolvedValue({
+        items: [],
+        total: 0,
+        hasMore: false,
+      });
+
+      await resolver.representativeActivity(
+        'rep-1',
+        ['committee_hearing'],
+        true,
+        20,
+        5,
+      );
+
+      expect(regionService.getRepresentativeActivity).toHaveBeenCalledWith({
+        representativeId: 'rep-1',
+        actionTypes: ['committee_hearing'],
+        includePresenceYes: true,
+        skip: 20,
+        take: 5,
+      });
+    });
+  });
+
+  describe('minutesPassage', () => {
+    it('returns the passage for an action with valid offsets', async () => {
+      const mockPassage = {
+        actionId: 'la-1',
+        minutesExternalId: 'california-meetings-2026-04-28',
+        body: 'Assembly',
+        date: new Date('2026-04-28T00:00:00Z'),
+        sourceUrl: 'https://example.com/journal.pdf',
+        passageStart: 12347,
+        passageEnd: 12521,
+        passageText: 'Assembly Bill No. 1897, ...',
+        sectionContext: '...preceding context...',
+      };
+      regionService.getMinutesPassage.mockResolvedValue(mockPassage);
+
+      const result = await resolver.minutesPassage('la-1');
+
+      expect(regionService.getMinutesPassage).toHaveBeenCalledWith('la-1');
+      expect(result?.passageText).toBe('Assembly Bill No. 1897, ...');
+      expect(result?.minutesExternalId).toBe('california-meetings-2026-04-28');
+    });
+
+    it('returns null when the action has no resolvable passage', async () => {
+      regionService.getMinutesPassage.mockResolvedValue(null);
+
+      const result = await resolver.minutesPassage('la-missing');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('committeeActivityStats', () => {
+    const mockStats = {
+      hearings: 7,
+      reports: 43,
+      amendments: 41,
+      distinctBills: 28,
+    };
+
+    it('returns committee stats with default 90-day window', async () => {
+      regionService.getCommitteeActivityStats.mockResolvedValue(mockStats);
+
+      const result = await resolver.committeeActivityStats('cmt-1');
+
+      expect(regionService.getCommitteeActivityStats).toHaveBeenCalledWith(
+        'cmt-1',
+        90,
+      );
+      expect(result.hearings).toBe(7);
+      expect(result.distinctBills).toBe(28);
+    });
+
+    it('forwards a caller-supplied sinceDays window', async () => {
+      regionService.getCommitteeActivityStats.mockResolvedValue(mockStats);
+
+      await resolver.committeeActivityStats('cmt-1', 30);
+
+      expect(regionService.getCommitteeActivityStats).toHaveBeenCalledWith(
+        'cmt-1',
+        30,
+      );
+    });
+  });
+
+  describe('committeeActivity', () => {
+    const mockAction = {
+      id: 'la-1',
+      externalId: 'california-meetings-2026-04-28-0042',
+      body: 'Assembly',
+      date: new Date('2026-04-28T00:00:00Z'),
+      actionType: 'committee_report',
+      position: null,
+      text: 'AB 1897: Do pass.',
+      passageStart: 12347,
+      passageEnd: 12521,
+      rawSubject: 'AB 1897',
+      representativeId: null,
+      propositionId: null,
+      committeeId: 'cmt-1',
+      minutesId: 'min-1',
+      minutesExternalId: 'california-meetings-2026-04-28',
+    };
+
+    it('returns paginated activity feed for the committee', async () => {
+      regionService.getCommitteeActivity.mockResolvedValue({
+        items: [mockAction],
+        total: 1,
+        hasMore: false,
+      });
+
+      const result = await resolver.committeeActivity('cmt-1');
+
+      expect(regionService.getCommitteeActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          committeeId: 'cmt-1',
+          skip: 0,
+          take: 10,
+        }),
+      );
+      expect(result.total).toBe(1);
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          id: 'la-1',
+          actionType: 'committee_report',
+          rawSubject: 'AB 1897',
+          committeeId: 'cmt-1',
+        }),
+      );
+    });
+
+    it('forwards actionTypes + pagination args', async () => {
+      regionService.getCommitteeActivity.mockResolvedValue({
+        items: [],
+        total: 0,
+        hasMore: false,
+      });
+
+      await resolver.committeeActivity('cmt-1', ['committee_hearing'], 20, 5);
+
+      expect(regionService.getCommitteeActivity).toHaveBeenCalledWith({
+        committeeId: 'cmt-1',
+        actionTypes: ['committee_hearing'],
+        skip: 20,
+        take: 5,
+      });
+    });
+  });
 });

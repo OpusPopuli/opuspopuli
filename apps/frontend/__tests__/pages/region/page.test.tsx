@@ -106,7 +106,10 @@ describe("RegionPage", () => {
       render(<RegionPage />);
 
       expect(screen.getByText("Propositions")).toBeInTheDocument();
-      expect(screen.getByText("Meetings")).toBeInTheDocument();
+      // MEETINGS card removed from the home page (issue #665) — past
+      // meeting minutes flow through the rep + committee L3 feeds and
+      // forward-looking calendar entries are lower civic-action value.
+      expect(screen.queryByText("Meetings")).not.toBeInTheDocument();
       expect(screen.getByText("Representatives")).toBeInTheDocument();
       // The CAMPAIGN_FINANCE data-type slot now displays as the
       // Legislative Committees card on the home page; the campaign-finance
@@ -122,9 +125,6 @@ describe("RegionPage", () => {
         screen.getByText("Ballot measures and initiatives"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Legislative sessions and hearings"),
-      ).toBeInTheDocument();
-      expect(
         screen.getByText("Elected officials and legislators"),
       ).toBeInTheDocument();
       expect(
@@ -132,6 +132,10 @@ describe("RegionPage", () => {
           "Where bills get debated and shaped before the floor vote",
         ),
       ).toBeInTheDocument();
+      // Meetings description should no longer appear (#665).
+      expect(
+        screen.queryByText("Legislative sessions and hearings"),
+      ).not.toBeInTheDocument();
     });
 
     it("should render navigation links to sub-pages", () => {
@@ -140,17 +144,19 @@ describe("RegionPage", () => {
       const propositionsLink = screen.getByRole("link", {
         name: /Propositions/i,
       });
-      const meetingsLink = screen.getByRole("link", { name: /Meetings/i });
       const representativesLink = screen.getByRole("link", {
         name: /Representatives/i,
       });
 
       expect(propositionsLink).toHaveAttribute("href", "/region/propositions");
-      expect(meetingsLink).toHaveAttribute("href", "/region/meetings");
       expect(representativesLink).toHaveAttribute(
         "href",
         "/region/representatives",
       );
+      // No meetings card link on the home page anymore.
+      expect(
+        screen.queryByRole("link", { name: /^Meetings$/i }),
+      ).not.toBeInTheDocument();
 
       const legislativeCommitteesLink = screen.getByRole("link", {
         name: /Legislative Committees/i,
