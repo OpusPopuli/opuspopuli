@@ -80,13 +80,19 @@ export class LegislativeCommitteeService {
     skip: number;
     take: number;
     chamber?: string;
+    /** Case-insensitive substring on `name`. Issue #672. */
+    nameFilter?: string;
   }): Promise<PaginatedLegislativeCommittees> {
     if (!this.db) return { items: [], total: 0, hasMore: false };
 
-    const { skip, take, chamber } = args;
+    const { skip, take, chamber, nameFilter } = args;
+    const trimmedFilter = nameFilter?.trim();
     const where = {
       deletedAt: null,
       ...(chamber ? { chamber } : {}),
+      ...(trimmedFilter
+        ? { name: { contains: trimmedFilter, mode: 'insensitive' as const } }
+        : {}),
     };
 
     const [rows, total] = await Promise.all([

@@ -420,9 +420,12 @@ export class RegionResolver {
   // ==========================================
 
   /**
-   * Paginated list of legislative committees, optionally filtered by chamber.
-   * Backed by RepresentativeCommitteeAssignment (membership) and the
-   * LegislativeCommittee table backfilled from Representative.committees JSON.
+   * Paginated list of legislative committees, optionally filtered by
+   * chamber and/or a case-insensitive substring on `name`. The
+   * `nameFilter` arg powers the as-you-type search box on the
+   * committees list page (#672) — when non-empty, callers typically
+   * also bump `take` past PAGE_SIZE so results aren't truncated by
+   * the default page.
    */
   @Public()
   @Query(() => PaginatedLegislativeCommittees)
@@ -430,11 +433,13 @@ export class RegionResolver {
   async legislativeCommittees(
     @Args() { skip, take }: PaginationArgs,
     @Args({ name: 'chamber', nullable: true }) chamber?: string,
+    @Args({ name: 'nameFilter', nullable: true }) nameFilter?: string,
   ): Promise<PaginatedLegislativeCommittees> {
     const result = await this.regionService.listLegislativeCommittees({
       skip,
       take,
       chamber,
+      nameFilter,
     });
     return {
       items: result.items.map((c) => ({

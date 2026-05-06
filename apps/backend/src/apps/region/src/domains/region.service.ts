@@ -1788,6 +1788,9 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     skip: number;
     take: number;
     chamber?: string;
+    /** Case-insensitive substring against `name`. Powers the search box on
+     *  the committees list page. Issue #672. */
+    nameFilter?: string;
   }): Promise<PaginatedLegislativeCommitteesShape> {
     if (!this.legislativeCommittees) {
       return { items: [], total: 0, hasMore: false };
