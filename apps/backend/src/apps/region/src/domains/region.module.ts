@@ -24,9 +24,11 @@ import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { PropositionFundingService } from './proposition-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
+import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
+import { PrismaIngestionWatermarkRepository } from '../infrastructure/prisma-ingestion-watermark-repository';
 import { REGION_CACHE } from './region.tokens';
 
 // RelationalDbModule is global, no need to import
@@ -83,6 +85,11 @@ const promptClientAsyncConfig = {
           provide: 'MANIFEST_REPOSITORY',
           useExisting: PrismaManifestRepository,
         },
+        PrismaIngestionWatermarkRepository,
+        {
+          provide: 'INGESTION_WATERMARK_REPOSITORY',
+          useExisting: PrismaIngestionWatermarkRepository,
+        },
       ],
     }),
   ],
@@ -98,6 +105,7 @@ const promptClientAsyncConfig = {
     LegislativeCommitteeLinkerService,
     LegislativeCommitteeService,
     LegislativeCommitteeDescriptionGeneratorService,
+    LegislativeActionLinkerService,
     // Alias for injecting the pipeline into RegionDomainService
     {
       provide: 'SCRAPING_PIPELINE',

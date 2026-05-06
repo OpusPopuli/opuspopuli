@@ -135,6 +135,7 @@ describe("ScrapingPipelineService", () => {
       {} as unknown as BulkDownloadHandler,
       {} as unknown as ApiIngestHandler,
       {} as any,
+      {} as any,
       { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
     );
   });
@@ -320,6 +321,7 @@ describe("ScrapingPipelineService", () => {
         mockHealing,
         mockBulkDownload,
         mockApiIngest,
+        {} as any,
         {} as any,
         { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
       );

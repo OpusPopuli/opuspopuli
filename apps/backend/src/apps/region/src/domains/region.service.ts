@@ -28,6 +28,7 @@ import {
   type Meeting,
   type Representative,
   type CampaignFinanceResult,
+  type MinutesWithActions,
 } from '@opuspopuli/common';
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { REGION_CACHE } from './region.tokens';
@@ -40,6 +41,7 @@ import {
   type PropositionFunding,
 } from './proposition-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
+import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import {
   LegislativeCommitteeService,
   type LegislativeCommitteeDetail,
@@ -58,6 +60,7 @@ interface DataFetcher {
   fetchCampaignFinance?(
     onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
   ): Promise<CampaignFinanceResult>;
+  fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
 }
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
@@ -396,6 +399,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     private readonly legislativeCommittees?: LegislativeCommitteeService,
     @Optional()
     private readonly legislativeCommitteeDescriptions?: LegislativeCommitteeDescriptionGeneratorService,
+    @Optional()
+    private readonly legislativeActionLinker?: LegislativeActionLinkerService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -820,7 +825,10 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   }> {
     const meetings = await provider.fetchMeetings();
     if (meetings.length === 0) {
-      return { processed: 0, created: 0, updated: 0 };
+      // Daily-file may be empty between sessions, but pdf_archive
+      // (minutes) sources can still be live — fall through to the
+      // Minutes sync.
+      return this.syncMeetingMinutes(provider);
     }
 
     // Get existing externalIds in a single query to calculate created vs updated
@@ -870,7 +878,121 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       existingExternalIds.has(m.externalId),
     ).length;
 
-    return { processed: meetings.length, created, updated };
+    // Daily-journal / committee-minutes documents come in under the
+    // same MEETINGS dataType but as `pdf_archive` sources. Persist
+    // them as Minutes rows + run the downstream LegislativeAction
+    // linker. Counts are summed into the meetings sync result so the
+    // caller sees a single total.
+    const minutesResult = await this.syncMeetingMinutes(provider);
+    return {
+      processed: meetings.length + minutesResult.processed,
+      created: created + minutesResult.created,
+      updated: updated + minutesResult.updated,
+    };
+  }
+
+  /**
+   * Sync `Minutes` documents from `pdf_archive` sources within the
+   * `meetings` dataType (CA Assembly daily journals etc.) and run the
+   * downstream linker pass. Invoked from `syncMeetings`. Two phases:
+   *
+   *   1. Upsert each MinutesWithActions.minutes row by externalId.
+   *      Revisions (`revisionSeq>0`) supersede their predecessors:
+   *      after the new row is upserted, all rows for the same
+   *      (body, date) with a lower revisionSeq get isActive=false.
+   *
+   *   2. Hand the upserted minutes ids to
+   *      LegislativeActionLinkerService, which mines rawText to
+   *      produce LegislativeAction rows with passage offsets
+   *      attributing the actions to representatives, propositions,
+   *      and committees. ACTIONS are downstream of MINUTES — the
+   *      linker is optional injection, so when it isn't bound the
+   *      Minutes still persist but no actions get produced.
+   *
+   * Issue #665.
+   */
+  private async syncMeetingMinutes(
+    provider: DataFetcher = this.regionService,
+  ): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+  }> {
+    if (!provider.fetchMeetingMinutes) {
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const bundles = await provider.fetchMeetingMinutes();
+    if (bundles.length === 0) {
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const externalIds = bundles.map((b) => b.minutes.externalId);
+    const existingRecords = await this.db.minutes.findMany({
+      where: { externalId: { in: externalIds } },
+      select: { externalId: true },
+    });
+    const existingExternalIds = new Set(
+      existingRecords.map((r: ExternalIdRecord) => r.externalId),
+    );
+
+    const upsertedIds: string[] = [];
+    for (const { minutes } of bundles) {
+      const row = await this.db.minutes.upsert({
+        where: { externalId: minutes.externalId },
+        update: {
+          body: minutes.body,
+          date: minutes.date,
+          revisionSeq: minutes.revisionSeq,
+          isActive: true,
+          pageCount: minutes.pageCount,
+          sourceUrl: minutes.sourceUrl,
+          rawText: minutes.rawText,
+          parsedAt: minutes.parsedAt ?? new Date(),
+        },
+        create: {
+          externalId: minutes.externalId,
+          body: minutes.body,
+          date: minutes.date,
+          revisionSeq: minutes.revisionSeq,
+          isActive: true,
+          pageCount: minutes.pageCount,
+          sourceUrl: minutes.sourceUrl,
+          rawText: minutes.rawText,
+          parsedAt: minutes.parsedAt ?? new Date(),
+        },
+        select: { id: true },
+      });
+      upsertedIds.push(row.id);
+
+      // Supersede older revisions for the same (body, date).
+      if (minutes.revisionSeq > 0) {
+        await this.db.minutes.updateMany({
+          where: {
+            body: minutes.body,
+            date: minutes.date,
+            revisionSeq: { lt: minutes.revisionSeq },
+          },
+          data: { isActive: false },
+        });
+      }
+    }
+
+    // Run the deterministic linker over the freshly-upserted rows.
+    // Optional injection: when the linker isn't bound, Minutes are
+    // still persisted but no LegislativeAction rows are produced.
+    if (upsertedIds.length > 0 && this.legislativeActionLinker) {
+      await this.legislativeActionLinker.linkMinutes(upsertedIds);
+    }
+
+    const created = bundles.filter(
+      (b) => !existingExternalIds.has(b.minutes.externalId),
+    ).length;
+    const updated = bundles.filter((b) =>
+      existingExternalIds.has(b.minutes.externalId),
+    ).length;
+
+    return { processed: bundles.length, created, updated };
   }
 
   /**

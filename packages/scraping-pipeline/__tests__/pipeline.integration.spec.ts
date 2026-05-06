@@ -183,6 +183,7 @@ describe("Pipeline Integration Tests", () => {
       bulkDownload,
       apiIngest,
       {} as any,
+      {} as any,
       { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
     );
   });
