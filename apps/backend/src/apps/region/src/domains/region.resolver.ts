@@ -52,6 +52,7 @@ import {
 import {
   LegislativeActionModel,
   RepresentativeActivityStatsModel,
+  CommitteeActivityStatsModel,
   PaginatedLegislativeActions,
   MinutesPassageModel,
 } from './models/legislative-action.model';
@@ -220,6 +221,10 @@ export class RegionResolver {
       bioClaims: Array.isArray(result.bioClaims)
         ? (result.bioClaims as unknown as BioClaimModel[])
         : undefined,
+      activitySummary: result.activitySummary ?? undefined,
+      activitySummaryGeneratedAt:
+        result.activitySummaryGeneratedAt ?? undefined,
+      activitySummaryWindowDays: result.activitySummaryWindowDays ?? undefined,
     };
   }
 
@@ -327,6 +332,53 @@ export class RegionResolver {
     return this.regionService.getMinutesPassage(actionId);
   }
 
+  /**
+   * At-a-glance activity counters for the legislative committee
+   * detail page Layer 3. Window defaults to 90 days.
+   */
+  @Public()
+  @Query(() => CommitteeActivityStatsModel)
+  async committeeActivityStats(
+    @Args({ name: 'committeeId', type: () => ID }) committeeId: string,
+    @Args({ name: 'sinceDays', type: () => Int, nullable: true })
+    sinceDays?: number,
+  ): Promise<CommitteeActivityStatsModel> {
+    return this.regionService.getCommitteeActivityStats(
+      committeeId,
+      sinceDays ?? 90,
+    );
+  }
+
+  /**
+   * Reverse-chronological feed of LegislativeActions linked to a
+   * legislative committee — committee_hearing + committee_report +
+   * amendment rows from minutes ingestion. Mirrors
+   * `representativeActivity` but scoped by committeeId; no
+   * presence-row filtering needed (presence rows aren't
+   * committee-attributed).
+   */
+  @Public()
+  @Query(() => PaginatedLegislativeActions)
+  async committeeActivity(
+    @Args({ name: 'committeeId', type: () => ID }) committeeId: string,
+    @Args({ name: 'actionTypes', type: () => [String], nullable: true })
+    actionTypes?: string[],
+    @Args({ name: 'skip', type: () => Int, nullable: true }) skip?: number,
+    @Args({ name: 'take', type: () => Int, nullable: true }) take?: number,
+  ): Promise<PaginatedLegislativeActions> {
+    const result = await this.regionService.getCommitteeActivity({
+      committeeId,
+      actionTypes,
+      skip: skip ?? 0,
+      take: take ?? 10,
+    });
+    return {
+      items: result.items.map((r) => this.toLegislativeActionModel(r)),
+      total: result.total,
+      hasMore: result.hasMore,
+    };
+  }
+
   private toLegislativeActionModel(r: {
     id: string;
     externalId: string;
@@ -430,6 +482,10 @@ export class RegionResolver {
         scheduledAt: h.scheduledAt,
         agendaUrl: h.agendaUrl ?? undefined,
       })),
+      activitySummary: result.activitySummary ?? undefined,
+      activitySummaryGeneratedAt:
+        result.activitySummaryGeneratedAt ?? undefined,
+      activitySummaryWindowDays: result.activitySummaryWindowDays ?? undefined,
       createdAt: result.createdAt,
       updatedAt: result.updatedAt,
     };

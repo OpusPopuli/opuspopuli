@@ -123,6 +123,16 @@ export class RepresentativeModel {
   @Field(() => [BioClaimModel], { nullable: true })
   bioClaims?: BioClaimModel[];
 
+  /** AI-generated 2-3 sentence summary of recent legislative activity. Issue #665. */
+  @Field({ nullable: true })
+  activitySummary?: string;
+
+  @Field({ nullable: true })
+  activitySummaryGeneratedAt?: Date;
+
+  @Field({ nullable: true })
+  activitySummaryWindowDays?: number;
+
   @Field()
   createdAt!: Date;
 

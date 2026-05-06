@@ -2111,6 +2111,134 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     return probe;
   }
 
+  /**
+   * At-a-glance activity stats for a legislative committee over the
+   * last `sinceDays` days. Drives the Layer-3 counters on the
+   * committee detail page (recent hearings, bills reported out,
+   * amendments touching the committee).
+   *
+   * Returns zero counts when the committee doesn't exist or has no
+   * linked actions.
+   */
+  async getCommitteeActivityStats(
+    committeeId: string,
+    sinceDays: number = 90,
+  ): Promise<{
+    hearings: number;
+    reports: number;
+    amendments: number;
+    distinctBills: number;
+  }> {
+    const since = new Date();
+    since.setDate(since.getDate() - sinceDays);
+
+    const [byType, distinctBills] = await Promise.all([
+      this.db.legislativeAction.groupBy({
+        by: ['actionType'],
+        where: { committeeId, date: { gte: since } },
+        _count: { _all: true },
+      }),
+      // Distinct propositions touched by any action of this committee.
+      // We can't `groupBy` + filter on non-null in one Prisma call cleanly,
+      // so do it as a raw findMany + Set.
+      this.db.legislativeAction.findMany({
+        where: {
+          committeeId,
+          date: { gte: since },
+          propositionId: { not: null },
+        },
+        distinct: ['propositionId'],
+        select: { propositionId: true },
+      }),
+    ]);
+
+    const counts = new Map<string, number>();
+    for (const g of byType) counts.set(g.actionType, g._count._all);
+
+    return {
+      hearings: counts.get('committee_hearing') ?? 0,
+      reports: counts.get('committee_report') ?? 0,
+      amendments: counts.get('amendment') ?? 0,
+      distinctBills: distinctBills.length,
+    };
+  }
+
+  /**
+   * Reverse-chronological feed of LegislativeActions linked to a
+   * legislative committee. Mirrors `getRepresentativeActivity` but
+   * filters by committeeId. No presence-row noise to filter out
+   * because presence rows aren't committee-attributed.
+   */
+  async getCommitteeActivity(args: {
+    committeeId: string;
+    actionTypes?: string[];
+    skip?: number;
+    take?: number;
+  }): Promise<{
+    items: Array<{
+      id: string;
+      externalId: string;
+      body: string;
+      date: Date;
+      actionType: string;
+      position: string | null;
+      text: string | null;
+      passageStart: number | null;
+      passageEnd: number | null;
+      rawSubject: string | null;
+      representativeId: string | null;
+      propositionId: string | null;
+      committeeId: string | null;
+      minutesId: string;
+      minutesExternalId: string;
+    }>;
+    total: number;
+    hasMore: boolean;
+  }> {
+    const skip = args.skip ?? 0;
+    const take = args.take ?? 10;
+    const where: Record<string, unknown> = { committeeId: args.committeeId };
+    if (args.actionTypes && args.actionTypes.length > 0) {
+      where.actionType = { in: args.actionTypes };
+    }
+
+    const [rows, total] = await Promise.all([
+      this.db.legislativeAction.findMany({
+        where,
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take: take + 1,
+        include: { minutes: { select: { externalId: true } } },
+      }),
+      this.db.legislativeAction.count({ where }),
+    ]);
+
+    const hasMore = rows.length > take;
+    const trimmed = rows.slice(0, take);
+
+    return {
+      items: trimmed.map((r) => ({
+        id: r.id,
+        externalId: r.externalId,
+        body: r.body,
+        date: r.date,
+        actionType: r.actionType,
+        position: r.position,
+        text: r.text,
+        passageStart: r.passageStart,
+        passageEnd: r.passageEnd,
+        rawSubject: r.rawSubject,
+        representativeId: r.representativeId,
+        propositionId: r.propositionId,
+        committeeId: r.committeeId,
+        minutesId: r.minutesId,
+        minutesExternalId: r.minutes.externalId,
+      })),
+      total,
+      hasMore,
+    };
+  }
+
   // ==========================================
   // CAMPAIGN FINANCE GETTERS
   // ==========================================

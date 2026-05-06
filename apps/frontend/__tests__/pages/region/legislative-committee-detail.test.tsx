@@ -169,22 +169,23 @@ describe("LegislativeCommitteeDetailPage", () => {
     expect(chairLink).toBeDefined();
   });
 
-  it("shows a hint and the matched hearing on the Hearings layer", async () => {
+  it("shows the live activity feed + scheduled meetings on the Hearings layer", async () => {
     const user = userEvent.setup();
     render(<LegislativeCommitteeDetailPage />);
 
     await user.click(screen.getByRole("button", { name: "See members" }));
     await user.click(screen.getByRole("button", { name: "See hearings" }));
 
-    expect(
-      screen.getByText(/Best-effort match against scheduled meetings/i),
-    ).toBeInTheDocument();
+    // Section headings — the new feed leads, scheduled meetings follow
+    // for forward-looking context. (Issue #665.)
+    expect(screen.getByText("Recent activity")).toBeInTheDocument();
+    expect(screen.getByText("Upcoming scheduled meetings")).toBeInTheDocument();
     expect(
       screen.getByText(/Budget Subcommittee — Hearing/),
     ).toBeInTheDocument();
   });
 
-  it("shows the empty hearings message when none match", async () => {
+  it("shows just the activity feed when no scheduled meetings match", async () => {
     mockQueryResult = {
       data: { legislativeCommittee: { ...mockCommittee, hearings: [] } },
       loading: false,
@@ -196,8 +197,12 @@ describe("LegislativeCommitteeDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "See members" }));
     await user.click(screen.getByRole("button", { name: "See hearings" }));
 
+    // The new "Recent activity" section is always present; the
+    // "Upcoming scheduled meetings" section only renders when the
+    // legacy `committee.hearings` array is non-empty.
+    expect(screen.getByText("Recent activity")).toBeInTheDocument();
     expect(
-      screen.getByText(/No recent hearings matched in the last 12 months/i),
-    ).toBeInTheDocument();
+      screen.queryByText("Upcoming scheduled meetings"),
+    ).not.toBeInTheDocument();
   });
 });

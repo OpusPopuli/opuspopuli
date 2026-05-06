@@ -20,6 +20,9 @@ import { ComingSoon } from "@/components/region/ComingSoon";
 import { LayerButton } from "@/components/region/LayerButton";
 import { LayerNav } from "@/components/region/LayerNav";
 import { PartyBadge } from "@/components/region/PartyBadge";
+import { CommitteeActivityStats } from "@/components/region/CommitteeActivityStats";
+import { CommitteeActivityFeed } from "@/components/region/CommitteeActivityFeed";
+import { ActivitySummary } from "@/components/region/ActivitySummary";
 import { formatDate } from "@/lib/format";
 
 const LAYERS = [
@@ -217,34 +220,61 @@ function HearingRow({
   );
 }
 
+/**
+ * Layer 3 — Activity. Live feed of committee_hearing /
+ * committee_report / amendment LegislativeActions extracted from
+ * the committee's recent minutes. Replaces the previous best-effort
+ * title-match against scheduled meetings (which only ever surfaced
+ * upcoming meetings, not past activity). Issue #665.
+ *
+ * The legacy `committee.hearings` field (scheduled meetings list) is
+ * still rendered as a small "Upcoming meetings" section for
+ * forward-looking context.
+ */
 function Hearings({
   committee,
   onNext,
   onBack,
+  onSeePassage,
 }: {
   readonly committee: LegislativeCommitteeDetail;
   readonly onNext: () => void;
   readonly onBack: () => void;
+  readonly onSeePassage?: (actionId: string) => void;
 }) {
   return (
     <div className="animate-layer-enter">
-      <SectionTitle>Recent hearings</SectionTitle>
-      <p className="text-sm text-[#4d4d4d] mb-4">
-        Best-effort match against scheduled meetings in the {committee.chamber}{" "}
-        whose title mentions {committee.name}. An explicit hearing-to-committee
-        link is planned for a later release.
-      </p>
-      {committee.hearings.length === 0 ? (
-        <p className="italic text-slate-400 mb-6">
-          No recent hearings matched in the last 12 months.
-        </p>
-      ) : (
-        <ul className="space-y-2 mb-6">
-          {committee.hearings.map((h) => (
-            <HearingRow key={h.id} hearing={h} />
-          ))}
-        </ul>
+      <ActivitySummary
+        summary={committee.activitySummary}
+        generatedAt={committee.activitySummaryGeneratedAt}
+        windowDays={committee.activitySummaryWindowDays}
+      />
+
+      <CommitteeActivityStats committeeId={committee.id} />
+
+      <div className="mb-8">
+        <SectionTitle>Recent activity</SectionTitle>
+        <CommitteeActivityFeed
+          committeeId={committee.id}
+          onSeePassage={onSeePassage}
+        />
+      </div>
+
+      {committee.hearings.length > 0 && (
+        <div className="mb-8">
+          <SectionTitle>Upcoming scheduled meetings</SectionTitle>
+          <p className="text-sm text-[#4d4d4d] mb-3">
+            Best-effort match against the chamber&apos;s daily file for
+            forward-looking context.
+          </p>
+          <ul className="space-y-2">
+            {committee.hearings.map((h) => (
+              <HearingRow key={h.id} hearing={h} />
+            ))}
+          </ul>
+        </div>
       )}
+
       <div className="flex flex-wrap gap-3">
         <LayerButton onClick={onNext}>Sources & deep dive</LayerButton>
         <LayerButton onClick={onBack} variant="secondary">

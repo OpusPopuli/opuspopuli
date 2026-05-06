@@ -951,4 +951,101 @@ describe('RegionResolver', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('committeeActivityStats', () => {
+    const mockStats = {
+      hearings: 7,
+      reports: 43,
+      amendments: 41,
+      distinctBills: 28,
+    };
+
+    it('returns committee stats with default 90-day window', async () => {
+      regionService.getCommitteeActivityStats.mockResolvedValue(mockStats);
+
+      const result = await resolver.committeeActivityStats('cmt-1');
+
+      expect(regionService.getCommitteeActivityStats).toHaveBeenCalledWith(
+        'cmt-1',
+        90,
+      );
+      expect(result.hearings).toBe(7);
+      expect(result.distinctBills).toBe(28);
+    });
+
+    it('forwards a caller-supplied sinceDays window', async () => {
+      regionService.getCommitteeActivityStats.mockResolvedValue(mockStats);
+
+      await resolver.committeeActivityStats('cmt-1', 30);
+
+      expect(regionService.getCommitteeActivityStats).toHaveBeenCalledWith(
+        'cmt-1',
+        30,
+      );
+    });
+  });
+
+  describe('committeeActivity', () => {
+    const mockAction = {
+      id: 'la-1',
+      externalId: 'california-meetings-2026-04-28-0042',
+      body: 'Assembly',
+      date: new Date('2026-04-28T00:00:00Z'),
+      actionType: 'committee_report',
+      position: null,
+      text: 'AB 1897: Do pass.',
+      passageStart: 12347,
+      passageEnd: 12521,
+      rawSubject: 'AB 1897',
+      representativeId: null,
+      propositionId: null,
+      committeeId: 'cmt-1',
+      minutesId: 'min-1',
+      minutesExternalId: 'california-meetings-2026-04-28',
+    };
+
+    it('returns paginated activity feed for the committee', async () => {
+      regionService.getCommitteeActivity.mockResolvedValue({
+        items: [mockAction],
+        total: 1,
+        hasMore: false,
+      });
+
+      const result = await resolver.committeeActivity('cmt-1');
+
+      expect(regionService.getCommitteeActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          committeeId: 'cmt-1',
+          skip: 0,
+          take: 10,
+        }),
+      );
+      expect(result.total).toBe(1);
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          id: 'la-1',
+          actionType: 'committee_report',
+          rawSubject: 'AB 1897',
+          committeeId: 'cmt-1',
+        }),
+      );
+    });
+
+    it('forwards actionTypes + pagination args', async () => {
+      regionService.getCommitteeActivity.mockResolvedValue({
+        items: [],
+        total: 0,
+        hasMore: false,
+      });
+
+      await resolver.committeeActivity('cmt-1', ['committee_hearing'], 20, 5);
+
+      expect(regionService.getCommitteeActivity).toHaveBeenCalledWith({
+        committeeId: 'cmt-1',
+        actionTypes: ['committee_hearing'],
+        skip: 20,
+        take: 5,
+      });
+    });
+  });
 });

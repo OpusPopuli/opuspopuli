@@ -25,6 +25,7 @@ import { LayerButton } from "@/components/region/LayerButton";
 import { LayerNav } from "@/components/region/LayerNav";
 import { ActivityStats } from "@/components/region/ActivityStats";
 import { ActivityFeed } from "@/components/region/ActivityFeed";
+import { ActivitySummary } from "@/components/region/ActivitySummary";
 
 const LAYERS = [
   { n: 1, label: "Who They Are" },
@@ -533,6 +534,12 @@ function WhatTheyveDone({
 }) {
   return (
     <div className="animate-layer-enter">
+      <ActivitySummary
+        summary={rep.activitySummary}
+        generatedAt={rep.activitySummaryGeneratedAt}
+        windowDays={rep.activitySummaryWindowDays}
+      />
+
       <ActivityStats representativeId={rep.id} />
 
       <div className="mb-8">

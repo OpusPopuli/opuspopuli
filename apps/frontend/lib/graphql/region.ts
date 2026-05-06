@@ -120,6 +120,10 @@ export interface Representative {
   bio?: string;
   bioSource?: string;
   bioClaims?: BioClaim[];
+  /** AI-generated 2-3 sentence summary of recent legislative activity. Issue #665. */
+  activitySummary?: string;
+  activitySummaryGeneratedAt?: string;
+  activitySummaryWindowDays?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -219,6 +223,10 @@ export interface LegislativeCommitteeDetail {
   memberCount: number;
   members: LegislativeCommitteeMember[];
   hearings: LegislativeCommitteeHearing[];
+  /** AI-generated 2-3 sentence summary of recent committee activity. Issue #665. */
+  activitySummary?: string;
+  activitySummaryGeneratedAt?: string;
+  activitySummaryWindowDays?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -272,6 +280,17 @@ export interface RepresentativeActivityStats {
   resolutions: number;
   votes: number;
   speeches: number;
+}
+
+/**
+ * At-a-glance counters for the legislative committee detail page
+ * Layer 3 ("Activity"). Drives the top-of-L3 stats grid.
+ */
+export interface CommitteeActivityStats {
+  hearings: number;
+  reports: number;
+  amendments: number;
+  distinctBills: number;
 }
 
 /** Verbatim passage from Minutes.rawText for an action. */
@@ -787,6 +806,9 @@ export const GET_REPRESENTATIVE = gql`
         sourceHint
         confidence
       }
+      activitySummary
+      activitySummaryGeneratedAt
+      activitySummaryWindowDays
       createdAt
       updatedAt
     }
@@ -907,6 +929,9 @@ export const GET_LEGISLATIVE_COMMITTEE = gql`
         scheduledAt
         agendaUrl
       }
+      activitySummary
+      activitySummaryGeneratedAt
+      activitySummaryWindowDays
       createdAt
       updatedAt
     }
@@ -1177,6 +1202,53 @@ export const GET_MINUTES_PASSAGE = gql`
       passageEnd
       passageText
       sectionContext
+    }
+  }
+`;
+
+export const GET_COMMITTEE_ACTIVITY_STATS = gql`
+  query GetCommitteeActivityStats($committeeId: ID!, $sinceDays: Int) {
+    committeeActivityStats(committeeId: $committeeId, sinceDays: $sinceDays) {
+      hearings
+      reports
+      amendments
+      distinctBills
+    }
+  }
+`;
+
+export const GET_COMMITTEE_ACTIVITY = gql`
+  query GetCommitteeActivity(
+    $committeeId: ID!
+    $actionTypes: [String!]
+    $skip: Int
+    $take: Int
+  ) {
+    committeeActivity(
+      committeeId: $committeeId
+      actionTypes: $actionTypes
+      skip: $skip
+      take: $take
+    ) {
+      items {
+        id
+        externalId
+        body
+        date
+        actionType
+        position
+        text
+        passageStart
+        passageEnd
+        rawSubject
+        representativeId
+        propositionId
+        committeeId
+        minutesId
+        minutesExternalId
+      }
+      total
+      hasMore
     }
   }
 `;

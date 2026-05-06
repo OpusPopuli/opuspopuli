@@ -7,7 +7,9 @@ import {
   type LegislativeAction,
   type PaginatedLegislativeActions,
 } from "@/lib/graphql/region";
+import { groupActionsByType, groupBillBatches } from "@/lib/format-action";
 import { ActionCard } from "./ActionCard";
+import { GroupedBillBatch } from "./GroupedBillBatch";
 
 const PAGE_SIZE = 10;
 
@@ -111,13 +113,43 @@ export function ActivityFeed({
         </label>
       </div>
 
-      <ul className="space-y-3">
-        {items.map((action) => (
-          <li key={action.id}>
-            <ActionCard action={action} onSeePassage={onSeePassage} />
-          </li>
-        ))}
-      </ul>
+      {groupActionsByType(items).map((group) => (
+        <section key={group.actionType} className="mb-6">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[#595959] mb-2 flex items-baseline gap-2">
+            <span>{group.label}</span>
+            <span className="text-[10px] font-medium text-slate-400">
+              · {group.items.length} record
+              {group.items.length === 1 ? "" : "s"}
+            </span>
+          </h3>
+          <ul className="space-y-3">
+            {groupBillBatches(group.items).map((entry) => (
+              <li
+                key={
+                  entry.type === "single"
+                    ? entry.action.id
+                    : `${entry.actionType}-${entry.date}-${entry.actions[0].id}`
+                }
+              >
+                {entry.type === "single" ? (
+                  <ActionCard
+                    action={entry.action}
+                    onSeePassage={onSeePassage}
+                  />
+                ) : (
+                  <GroupedBillBatch
+                    actionType={entry.actionType}
+                    date={entry.date}
+                    verdict={entry.verdict}
+                    actions={entry.actions}
+                    onSeePassage={onSeePassage}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
 
       {hasMore && (
         <div className="mt-4">

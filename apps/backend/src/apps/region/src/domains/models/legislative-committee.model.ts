@@ -94,6 +94,16 @@ export class LegislativeCommitteeDetailModel {
   @Field(() => [LegislativeCommitteeHearingModel])
   hearings!: LegislativeCommitteeHearingModel[];
 
+  /** AI-generated 2-3 sentence summary of recent committee activity. Issue #665. */
+  @Field({ nullable: true })
+  activitySummary?: string;
+
+  @Field({ nullable: true })
+  activitySummaryGeneratedAt?: Date;
+
+  @Field({ nullable: true })
+  activitySummaryWindowDays?: number;
+
   @Field()
   createdAt!: Date;
 

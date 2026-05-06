@@ -143,6 +143,30 @@ export class PaginatedLegislativeActions {
 }
 
 /**
+ * At-a-glance counters for the committee detail page Layer 3
+ * ("Activity"). Drives the top-of-L3 stats grid showing the
+ * committee's recent operational tempo. Issue #665.
+ */
+@ObjectType()
+export class CommitteeActivityStatsModel {
+  /** Distinct hearing dates extracted from committee_hearing actions. */
+  @Field(() => Int)
+  hearings!: number;
+
+  /** Per-bill verdicts (committee_report actions) issued by the committee. */
+  @Field(() => Int)
+  reports!: number;
+
+  /** Author's-amendments + reading-section amendments touching this committee. */
+  @Field(() => Int)
+  amendments!: number;
+
+  /** Distinct bills the committee has acted on (any action type, dedup'd by propositionId). */
+  @Field(() => Int)
+  distinctBills!: number;
+}
+
+/**
  * The verbatim passage text from a Minutes document for a single
  * action, used by the L4 quote panel + citizen letter-cite flow.
  *
