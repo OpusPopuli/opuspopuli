@@ -87,6 +87,35 @@ import { PaginatedIndependentExpenditures } from './models/independent-expenditu
 
 // Type aliases for database query results and generic upsert
 type ExternalIdRecord = { externalId: string };
+
+/**
+ * Single row in a paginated LegislativeAction feed (rep + committee
+ * activity surfaces share this shape). Issue #665.
+ */
+interface LegislativeActionFeedItem {
+  id: string;
+  externalId: string;
+  body: string;
+  date: Date;
+  actionType: string;
+  position: string | null;
+  text: string | null;
+  passageStart: number | null;
+  passageEnd: number | null;
+  rawSubject: string | null;
+  representativeId: string | null;
+  propositionId: string | null;
+  committeeId: string | null;
+  minutesId: string;
+  minutesExternalId: string;
+}
+
+interface LegislativeActionFeedPage {
+  items: LegislativeActionFeedItem[];
+  total: number;
+  hasMore: boolean;
+}
+
 type PrismaModelDelegate = {
   findMany(args: unknown): Promise<ExternalIdRecord[]>;
   upsert(args: unknown): Prisma.PrismaPromise<unknown>;
@@ -1868,63 +1897,36 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const since = new Date();
-    since.setDate(since.getDate() - sinceDays);
+    const since = this.windowSince(sinceDays);
+    const repWhere = { representativeId, date: { gte: since } };
 
-    const [byType, presentDays, absenceDays, totalSessionDays] =
+    const [counts, presentDays, absenceDays, totalSessionDays] =
       await Promise.all([
-        // Counts of FK-linked actions for this rep, grouped by type.
-        this.db.legislativeAction.groupBy({
-          by: ['actionType'],
-          where: {
-            representativeId,
-            date: { gte: since },
-          },
-          _count: { _all: true },
+        this.actionCountsByType(repWhere),
+        this.distinctActionDates({
+          ...repWhere,
+          actionType: 'presence',
+          position: 'yes',
         }),
-        // Distinct days where rep was marked present.
-        this.db.legislativeAction.findMany({
-          where: {
-            representativeId,
-            actionType: 'presence',
-            position: 'yes',
-            date: { gte: since },
-          },
-          distinct: ['date'],
-          select: { date: true },
-        }),
-        // Distinct days with an absence record for this rep.
-        this.db.legislativeAction.findMany({
-          where: {
-            representativeId,
-            actionType: 'presence',
-            position: 'absent',
-            date: { gte: since },
-          },
-          distinct: ['date'],
-          select: { date: true },
+        this.distinctActionDates({
+          ...repWhere,
+          actionType: 'presence',
+          position: 'absent',
         }),
         // Distinct session days observed in the chamber overall —
         // any presence row from the same body. Acts as the
         // attendance denominator.
-        this.db.legislativeAction.findMany({
-          where: {
-            body: rep.chamber,
-            actionType: 'presence',
-            date: { gte: since },
-          },
-          distinct: ['date'],
-          select: { date: true },
+        this.distinctActionDates({
+          body: rep.chamber,
+          actionType: 'presence',
+          date: { gte: since },
         }),
       ]);
 
-    const counts = new Map<string, number>();
-    for (const g of byType) counts.set(g.actionType, g._count._all);
-
     return {
-      presentSessionDays: presentDays.length,
-      totalSessionDays: totalSessionDays.length,
-      absenceDays: absenceDays.length,
+      presentSessionDays: presentDays,
+      totalSessionDays: totalSessionDays,
+      absenceDays: absenceDays,
       amendments: counts.get('amendment') ?? 0,
       committeeHearings: counts.get('committee_hearing') ?? 0,
       committeeReports: counts.get('committee_report') ?? 0,
@@ -1947,76 +1949,19 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     includePresenceYes?: boolean;
     skip?: number;
     take?: number;
-  }): Promise<{
-    items: Array<{
-      id: string;
-      externalId: string;
-      body: string;
-      date: Date;
-      actionType: string;
-      position: string | null;
-      text: string | null;
-      passageStart: number | null;
-      passageEnd: number | null;
-      rawSubject: string | null;
-      representativeId: string | null;
-      propositionId: string | null;
-      committeeId: string | null;
-      minutesId: string;
-      minutesExternalId: string;
-    }>;
-    total: number;
-    hasMore: boolean;
-  }> {
-    const skip = args.skip ?? 0;
-    const take = args.take ?? 10;
-    const where: Record<string, unknown> = {
+  }): Promise<LegislativeActionFeedPage> {
+    const where: Record<string, unknown> = this.buildActionFeedWhere({
       representativeId: args.representativeId,
-    };
-    if (args.actionTypes && args.actionTypes.length > 0) {
-      where.actionType = { in: args.actionTypes };
-    }
-    // Default: hide presence:yes from the feed unless caller asks
-    // for it OR has explicitly listed `presence` in actionTypes.
+      actionTypes: args.actionTypes,
+    });
+    // Default: hide presence:yes from the rep feed unless caller
+    // asks for it OR has explicitly listed `presence` in actionTypes.
+    // (Committee feeds don't carry presence rows, so this guard
+    // lives on the rep-side wrapper rather than in the shared helper.)
     if (!args.includePresenceYes && !args.actionTypes?.includes('presence')) {
       where.NOT = { AND: [{ actionType: 'presence' }, { position: 'yes' }] };
     }
-
-    const [rows, total] = await Promise.all([
-      this.db.legislativeAction.findMany({
-        where,
-        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        skip,
-        take: take + 1,
-        include: { minutes: { select: { externalId: true } } },
-      }),
-      this.db.legislativeAction.count({ where }),
-    ]);
-
-    const hasMore = rows.length > take;
-    const trimmed = rows.slice(0, take);
-
-    return {
-      items: trimmed.map((r) => ({
-        id: r.id,
-        externalId: r.externalId,
-        body: r.body,
-        date: r.date,
-        actionType: r.actionType,
-        position: r.position,
-        text: r.text,
-        passageStart: r.passageStart,
-        passageEnd: r.passageEnd,
-        rawSubject: r.rawSubject,
-        representativeId: r.representativeId,
-        propositionId: r.propositionId,
-        committeeId: r.committeeId,
-        minutesId: r.minutesId,
-        minutesExternalId: r.minutes.externalId,
-      })),
-      total,
-      hasMore,
-    };
+    return this.paginateLegislativeActions(where, args.skip, args.take);
   }
 
   /**
@@ -2067,13 +2012,15 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     const passageText = raw.slice(start, end);
 
     // Context window snapped to whitespace boundaries on each end.
-    const ctxStart = this.snapToBoundaryBack(
+    const ctxStart = this.snapToWhitespace(
       raw,
       Math.max(0, start - CONTEXT_HALF),
+      'back',
     );
-    const ctxEnd = this.snapToBoundaryForward(
+    const ctxEnd = this.snapToWhitespace(
       raw,
       Math.min(raw.length, end + CONTEXT_HALF),
+      'forward',
     );
     const sectionContext = raw.slice(ctxStart, ctxEnd);
 
@@ -2091,20 +2038,26 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private snapToBoundaryBack(text: string, idx: number): number {
-    const probe = Math.max(0, idx);
-    if (probe === 0) return 0;
-    // Walk back at most 50 chars to find a whitespace boundary.
-    for (let i = probe; i > Math.max(0, probe - 50); i--) {
-      if (/\s/.test(text[i])) return i + 1;
+  /**
+   * Walk up to 50 chars in `direction` from `idx` looking for a
+   * whitespace boundary, so the context window doesn't truncate
+   * mid-word. Falls back to the original index if nothing is found.
+   */
+  private snapToWhitespace(
+    text: string,
+    idx: number,
+    direction: 'back' | 'forward',
+  ): number {
+    if (direction === 'back') {
+      const probe = Math.max(0, idx);
+      if (probe === 0) return 0;
+      for (let i = probe; i > Math.max(0, probe - 50); i--) {
+        if (/\s/.test(text[i])) return i + 1;
+      }
+      return probe;
     }
-    return probe;
-  }
-
-  private snapToBoundaryForward(text: string, idx: number): number {
     const probe = Math.min(text.length, idx);
     if (probe === text.length) return probe;
-    // Walk forward at most 50 chars to find a whitespace boundary.
     for (let i = probe; i < Math.min(text.length, probe + 50); i++) {
       if (/\s/.test(text[i])) return i;
     }
@@ -2129,31 +2082,18 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     amendments: number;
     distinctBills: number;
   }> {
-    const since = new Date();
-    since.setDate(since.getDate() - sinceDays);
+    const since = this.windowSince(sinceDays);
+    const cmtWhere = { committeeId, date: { gte: since } };
 
-    const [byType, distinctBills] = await Promise.all([
-      this.db.legislativeAction.groupBy({
-        by: ['actionType'],
-        where: { committeeId, date: { gte: since } },
-        _count: { _all: true },
-      }),
+    const [counts, distinctBills] = await Promise.all([
+      this.actionCountsByType(cmtWhere),
       // Distinct propositions touched by any action of this committee.
-      // We can't `groupBy` + filter on non-null in one Prisma call cleanly,
-      // so do it as a raw findMany + Set.
       this.db.legislativeAction.findMany({
-        where: {
-          committeeId,
-          date: { gte: since },
-          propositionId: { not: null },
-        },
+        where: { ...cmtWhere, propositionId: { not: null } },
         distinct: ['propositionId'],
         select: { propositionId: true },
       }),
     ]);
-
-    const counts = new Map<string, number>();
-    for (const g of byType) counts.set(g.actionType, g._count._all);
 
     return {
       hearings: counts.get('committee_hearing') ?? 0,
@@ -2174,34 +2114,85 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     actionTypes?: string[];
     skip?: number;
     take?: number;
-  }): Promise<{
-    items: Array<{
-      id: string;
-      externalId: string;
-      body: string;
-      date: Date;
-      actionType: string;
-      position: string | null;
-      text: string | null;
-      passageStart: number | null;
-      passageEnd: number | null;
-      rawSubject: string | null;
-      representativeId: string | null;
-      propositionId: string | null;
-      committeeId: string | null;
-      minutesId: string;
-      minutesExternalId: string;
-    }>;
-    total: number;
-    hasMore: boolean;
-  }> {
-    const skip = args.skip ?? 0;
-    const take = args.take ?? 10;
-    const where: Record<string, unknown> = { committeeId: args.committeeId };
+  }): Promise<LegislativeActionFeedPage> {
+    const where = this.buildActionFeedWhere({
+      committeeId: args.committeeId,
+      actionTypes: args.actionTypes,
+    });
+    return this.paginateLegislativeActions(where, args.skip, args.take);
+  }
+
+  // ==========================================
+  // Shared helpers for the LegislativeAction feed (issue #665)
+  // ==========================================
+
+  /** ISO-shifted "now minus N days" window start. */
+  private windowSince(sinceDays: number): Date {
+    const since = new Date();
+    since.setDate(since.getDate() - sinceDays);
+    return since;
+  }
+
+  /** groupBy(actionType) → Map<actionType, count>. Used by both *ActivityStats. */
+  private async actionCountsByType(
+    where: Record<string, unknown>,
+  ): Promise<Map<string, number>> {
+    const groups = await this.db.legislativeAction.groupBy({
+      by: ['actionType'],
+      where,
+      _count: { _all: true },
+    });
+    const m = new Map<string, number>();
+    for (const g of groups) m.set(g.actionType, g._count._all);
+    return m;
+  }
+
+  /** Distinct-day count for a where clause. Used 3x in rep stats. */
+  private async distinctActionDates(
+    where: Record<string, unknown>,
+  ): Promise<number> {
+    const rows = await this.db.legislativeAction.findMany({
+      where,
+      distinct: ['date'],
+      select: { date: true },
+    });
+    return rows.length;
+  }
+
+  /**
+   * Build the Prisma `where` shape used by both the rep- and
+   * committee-scoped activity feeds. Encapsulates the (entityId,
+   * actionTypes) → where mapping so both wrappers stay tiny.
+   */
+  private buildActionFeedWhere(args: {
+    representativeId?: string;
+    committeeId?: string;
+    actionTypes?: string[];
+  }): Record<string, unknown> {
+    const where: Record<string, unknown> = {};
+    if (args.representativeId) where.representativeId = args.representativeId;
+    if (args.committeeId) where.committeeId = args.committeeId;
     if (args.actionTypes && args.actionTypes.length > 0) {
       where.actionType = { in: args.actionTypes };
     }
+    return where;
+  }
 
+  /**
+   * Run the paginated `findMany + count` against
+   * `legislative_actions` for any caller-supplied `where` clause and
+   * return the typed feed-page shape. Both rep + committee feeds
+   * call this; only their `where` differs.
+   *
+   * Uses the standard `take + 1` trick so `hasMore` is computed
+   * without a second count query — the count we DO run is for
+   * `total` which the UI surfaces independently.
+   */
+  private async paginateLegislativeActions(
+    where: Record<string, unknown>,
+    skip = 0,
+    take = 10,
+  ): Promise<LegislativeActionFeedPage> {
     const [rows, total] = await Promise.all([
       this.db.legislativeAction.findMany({
         where,
@@ -2214,28 +2205,46 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     ]);
 
     const hasMore = rows.length > take;
-    const trimmed = rows.slice(0, take);
-
     return {
-      items: trimmed.map((r) => ({
-        id: r.id,
-        externalId: r.externalId,
-        body: r.body,
-        date: r.date,
-        actionType: r.actionType,
-        position: r.position,
-        text: r.text,
-        passageStart: r.passageStart,
-        passageEnd: r.passageEnd,
-        rawSubject: r.rawSubject,
-        representativeId: r.representativeId,
-        propositionId: r.propositionId,
-        committeeId: r.committeeId,
-        minutesId: r.minutesId,
-        minutesExternalId: r.minutes.externalId,
-      })),
+      items: rows.slice(0, take).map((r) => this.toFeedItem(r)),
       total,
       hasMore,
+    };
+  }
+
+  private toFeedItem(r: {
+    id: string;
+    externalId: string;
+    body: string;
+    date: Date;
+    actionType: string;
+    position: string | null;
+    text: string | null;
+    passageStart: number | null;
+    passageEnd: number | null;
+    rawSubject: string | null;
+    representativeId: string | null;
+    propositionId: string | null;
+    committeeId: string | null;
+    minutesId: string;
+    minutes: { externalId: string };
+  }): LegislativeActionFeedItem {
+    return {
+      id: r.id,
+      externalId: r.externalId,
+      body: r.body,
+      date: r.date,
+      actionType: r.actionType,
+      position: r.position,
+      text: r.text,
+      passageStart: r.passageStart,
+      passageEnd: r.passageEnd,
+      rawSubject: r.rawSubject,
+      representativeId: r.representativeId,
+      propositionId: r.propositionId,
+      committeeId: r.committeeId,
+      minutesId: r.minutesId,
+      minutesExternalId: r.minutes.externalId,
     };
   }
 

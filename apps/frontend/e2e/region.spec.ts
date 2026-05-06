@@ -436,7 +436,11 @@ test.describe("Region Page", () => {
     await page.goto("/region");
 
     await expect(page.getByText("Propositions")).toBeVisible();
-    await expect(page.getByText("Meetings")).toBeVisible();
+    // Meetings card removed from the home page (issue #665) — past
+    // meeting minutes flow through the rep + committee L3 feeds and
+    // the standalone /region/meetings hub is reachable by direct URL
+    // only.
+    await expect(page.getByText("Meetings")).not.toBeVisible();
     await expect(
       page.getByRole("link", { name: /Representatives.*Elected/i }),
     ).toBeVisible();
@@ -462,10 +466,13 @@ test.describe("Region Page", () => {
     await expect(page).toHaveURL(/\/region\/propositions/);
   });
 
-  test("should navigate to meetings page", async ({ page }) => {
-    await page.goto("/region");
-
-    await page.getByRole("link", { name: /Meetings/i }).click();
+  test("/region/meetings is still reachable by direct URL", async ({
+    page,
+  }) => {
+    // The Meetings card was removed from the home page (#665) but the
+    // route stays deployed for direct linking. Replaces the home-page
+    // click-through that the previous version of this test exercised.
+    await page.goto("/region/meetings");
     await expect(page).toHaveURL(/\/region\/meetings/);
   });
 
@@ -920,8 +927,11 @@ test.describe("Representative Detail Page", () => {
       .last()
       .click();
 
+    // L3 leads with the live activity feed (#665); "Authored Bills"
+    // remains as a placeholder section, while "Voting Record" was
+    // dropped because the per-rep vote attribution work is V2.
+    await expect(page.getByText("Recent activity")).toBeVisible();
     await expect(page.getByText("Authored Bills")).toBeVisible();
-    await expect(page.getByText("Voting Record")).toBeVisible();
   });
 
   test("should advance to How They Are Supported (Layer 4) via CTA", async ({
@@ -1149,9 +1159,11 @@ test.describe("Region Pages - Loading State", () => {
 
     await page.goto("/region");
 
-    // Check for loading skeleton (animate-pulse class)
-    const skeletons = await page.locator(".animate-pulse").count();
-    expect(skeletons).toBeGreaterThan(0);
+    // Use Playwright's auto-waiting expect — `count()` was racing the
+    // render and intermittently observed 0 skeletons after the response
+    // already resolved. `toBeVisible` retries until at least one skeleton
+    // node is in the DOM (within the test timeout).
+    await expect(page.locator(".animate-pulse").first()).toBeVisible();
   });
 });
 
