@@ -2175,7 +2175,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     const where: Record<string, unknown> = {};
     if (args.representativeId) where.representativeId = args.representativeId;
     if (args.committeeId) where.committeeId = args.committeeId;
-    if (args.actionTypes && args.actionTypes.length > 0) {
+    if (args.actionTypes?.length) {
       where.actionType = { in: args.actionTypes };
     }
     return where;
