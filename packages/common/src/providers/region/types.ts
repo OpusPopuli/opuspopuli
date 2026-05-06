@@ -21,6 +21,14 @@ export enum DataType {
   REPRESENTATIVES = "representatives",
   CAMPAIGN_FINANCE = "campaign_finance",
   LOBBYING = "lobbying",
+  /// Region governmental structure, process, and vocabulary
+  /// (chambers, measure types, lifecycle stages with status patterns,
+  /// glossary). Scraped from canonical sources like a state
+  /// legislature's "how a bill becomes law" page; the private
+  /// prompt-service extracts a structured CivicsBlock + plain-language
+  /// rewrites for laypeople. See OpusPopuli/opuspopuli#669 +
+  /// OpusPopuli/opuspopuli-regions#15.
+  CIVICS = "civics",
 }
 
 /**
