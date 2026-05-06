@@ -1048,4 +1048,56 @@ describe('RegionResolver', () => {
       });
     });
   });
+
+  // ==========================================
+  // legislativeCommittees query — nameFilter (#672)
+  // ==========================================
+
+  describe('legislativeCommittees', () => {
+    const mockResult = {
+      items: [
+        {
+          id: 'cmt-1',
+          externalId: 'assembly:health',
+          name: 'Health',
+          chamber: 'Assembly',
+          url: null,
+          description: null,
+          memberCount: 10,
+        },
+      ],
+      total: 1,
+      hasMore: false,
+    };
+
+    it('forwards skip + take + chamber to the service', async () => {
+      regionService.listLegislativeCommittees.mockResolvedValue(mockResult);
+
+      await resolver.legislativeCommittees({ skip: 0, take: 10 }, 'Assembly');
+
+      expect(regionService.listLegislativeCommittees).toHaveBeenCalledWith({
+        skip: 0,
+        take: 10,
+        chamber: 'Assembly',
+        nameFilter: undefined,
+      });
+    });
+
+    it('forwards a nameFilter substring to the service', async () => {
+      regionService.listLegislativeCommittees.mockResolvedValue(mockResult);
+
+      await resolver.legislativeCommittees(
+        { skip: 0, take: 200 },
+        undefined,
+        'Veterans',
+      );
+
+      expect(regionService.listLegislativeCommittees).toHaveBeenCalledWith({
+        skip: 0,
+        take: 200,
+        chamber: undefined,
+        nameFilter: 'Veterans',
+      });
+    });
+  });
 });

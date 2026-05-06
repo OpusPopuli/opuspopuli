@@ -889,8 +889,18 @@ export const GET_COMMITTEE = gql`
 `;
 
 export const GET_LEGISLATIVE_COMMITTEES = gql`
-  query GetLegislativeCommittees($skip: Int, $take: Int, $chamber: String) {
-    legislativeCommittees(skip: $skip, take: $take, chamber: $chamber) {
+  query GetLegislativeCommittees(
+    $skip: Int
+    $take: Int
+    $chamber: String
+    $nameFilter: String
+  ) {
+    legislativeCommittees(
+      skip: $skip
+      take: $take
+      chamber: $chamber
+      nameFilter: $nameFilter
+    ) {
       items {
         id
         externalId
