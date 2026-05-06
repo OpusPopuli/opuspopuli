@@ -87,6 +87,35 @@ import { PaginatedIndependentExpenditures } from './models/independent-expenditu
 
 // Type aliases for database query results and generic upsert
 type ExternalIdRecord = { externalId: string };
+
+/**
+ * Single row in a paginated LegislativeAction feed (rep + committee
+ * activity surfaces share this shape). Issue #665.
+ */
+interface LegislativeActionFeedItem {
+  id: string;
+  externalId: string;
+  body: string;
+  date: Date;
+  actionType: string;
+  position: string | null;
+  text: string | null;
+  passageStart: number | null;
+  passageEnd: number | null;
+  rawSubject: string | null;
+  representativeId: string | null;
+  propositionId: string | null;
+  committeeId: string | null;
+  minutesId: string;
+  minutesExternalId: string;
+}
+
+interface LegislativeActionFeedPage {
+  items: LegislativeActionFeedItem[];
+  total: number;
+  hasMore: boolean;
+}
+
 type PrismaModelDelegate = {
   findMany(args: unknown): Promise<ExternalIdRecord[]>;
   upsert(args: unknown): Prisma.PrismaPromise<unknown>;
@@ -1815,6 +1844,408 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       if (id) result.set(rawName, id);
     }
     return result;
+  }
+
+  // ==========================================
+  // LEGISLATIVE ACTION GETTERS (issue #665)
+  // ==========================================
+
+  /**
+   * At-a-glance activity stats for a representative over the last
+   * `sinceDays` days. Drives the Layer-3 counters on the rep detail
+   * page (attendance %, amendments, hearings chaired, etc.).
+   *
+   * Three Prisma reads:
+   *   1. legislativeAction.groupBy on action_type (counts).
+   *   2. distinct dates with presence='yes' for the rep.
+   *   3. distinct dates with ANY presence row for the rep's body
+   *      (used as the denominator for attendance — total session
+   *      days the chamber convened in the window).
+   *
+   * Returns zero counts when the rep doesn't exist or has no
+   * linked actions.
+   */
+  async getRepresentativeActivityStats(
+    representativeId: string,
+    sinceDays: number = 90,
+  ): Promise<{
+    presentSessionDays: number;
+    totalSessionDays: number;
+    absenceDays: number;
+    amendments: number;
+    committeeHearings: number;
+    committeeReports: number;
+    resolutions: number;
+    votes: number;
+    speeches: number;
+  }> {
+    const rep = await this.db.representative.findUnique({
+      where: { id: representativeId },
+      select: { chamber: true },
+    });
+    if (!rep) {
+      return {
+        presentSessionDays: 0,
+        totalSessionDays: 0,
+        absenceDays: 0,
+        amendments: 0,
+        committeeHearings: 0,
+        committeeReports: 0,
+        resolutions: 0,
+        votes: 0,
+        speeches: 0,
+      };
+    }
+
+    const since = this.windowSince(sinceDays);
+    const repWhere = { representativeId, date: { gte: since } };
+
+    const [counts, presentDays, absenceDays, totalSessionDays] =
+      await Promise.all([
+        this.actionCountsByType(repWhere),
+        this.distinctActionDates({
+          ...repWhere,
+          actionType: 'presence',
+          position: 'yes',
+        }),
+        this.distinctActionDates({
+          ...repWhere,
+          actionType: 'presence',
+          position: 'absent',
+        }),
+        // Distinct session days observed in the chamber overall —
+        // any presence row from the same body. Acts as the
+        // attendance denominator.
+        this.distinctActionDates({
+          body: rep.chamber,
+          actionType: 'presence',
+          date: { gte: since },
+        }),
+      ]);
+
+    return {
+      presentSessionDays: presentDays,
+      totalSessionDays: totalSessionDays,
+      absenceDays: absenceDays,
+      amendments: counts.get('amendment') ?? 0,
+      committeeHearings: counts.get('committee_hearing') ?? 0,
+      committeeReports: counts.get('committee_report') ?? 0,
+      resolutions: counts.get('resolution') ?? 0,
+      votes: counts.get('vote') ?? 0,
+      speeches: counts.get('speech') ?? 0,
+    };
+  }
+
+  /**
+   * Reverse-chronological feed of LegislativeAction records linked
+   * to a representative. By default filters out `presence:yes` rows
+   * (too noisy for the activity feed — they're already summarized
+   * in the attendance counter). Passes through other action types
+   * including absence records, hearings, amendments, resolutions.
+   */
+  async getRepresentativeActivity(args: {
+    representativeId: string;
+    actionTypes?: string[];
+    includePresenceYes?: boolean;
+    skip?: number;
+    take?: number;
+  }): Promise<LegislativeActionFeedPage> {
+    const where: Record<string, unknown> = this.buildActionFeedWhere({
+      representativeId: args.representativeId,
+      actionTypes: args.actionTypes,
+    });
+    // Default: hide presence:yes from the rep feed unless caller
+    // asks for it OR has explicitly listed `presence` in actionTypes.
+    // (Committee feeds don't carry presence rows, so this guard
+    // lives on the rep-side wrapper rather than in the shared helper.)
+    if (!args.includePresenceYes && !args.actionTypes?.includes('presence')) {
+      where.NOT = { AND: [{ actionType: 'presence' }, { position: 'yes' }] };
+    }
+    return this.paginateLegislativeActions(where, args.skip, args.take);
+  }
+
+  /**
+   * Resolve a single LegislativeAction to its source passage —
+   * `Minutes.rawText.slice(passageStart, passageEnd)` plus a
+   * surrounding context window. Used by the L4 quote panel and the
+   * citation flow on rep + committee pages.
+   *
+   * Caps the passage at 1kB and the context at 500 chars on either
+   * side. Snaps both to whitespace boundaries to avoid mid-word
+   * truncation.
+   */
+  async getMinutesPassage(actionId: string): Promise<{
+    actionId: string;
+    minutesExternalId: string;
+    body: string;
+    date: Date;
+    sourceUrl: string;
+    passageStart: number;
+    passageEnd: number;
+    passageText: string;
+    sectionContext?: string;
+  } | null> {
+    const action = await this.db.legislativeAction.findUnique({
+      where: { id: actionId },
+      include: {
+        minutes: {
+          select: {
+            externalId: true,
+            body: true,
+            date: true,
+            sourceUrl: true,
+            rawText: true,
+          },
+        },
+      },
+    });
+    if (!action || !action.minutes.rawText) return null;
+    if (action.passageStart === null || action.passageEnd === null) return null;
+
+    const raw = action.minutes.rawText;
+    const PASSAGE_CAP = 1024;
+    const CONTEXT_HALF = 500;
+
+    const start = Math.max(0, action.passageStart);
+    const cappedEnd = Math.min(raw.length, start + PASSAGE_CAP);
+    const end = Math.min(action.passageEnd, cappedEnd);
+    const passageText = raw.slice(start, end);
+
+    // Context window snapped to whitespace boundaries on each end.
+    const ctxStart = this.snapToWhitespace(
+      raw,
+      Math.max(0, start - CONTEXT_HALF),
+      'back',
+    );
+    const ctxEnd = this.snapToWhitespace(
+      raw,
+      Math.min(raw.length, end + CONTEXT_HALF),
+      'forward',
+    );
+    const sectionContext = raw.slice(ctxStart, ctxEnd);
+
+    return {
+      actionId: action.id,
+      minutesExternalId: action.minutes.externalId,
+      body: action.minutes.body,
+      date: action.minutes.date,
+      sourceUrl: action.minutes.sourceUrl,
+      passageStart: start,
+      passageEnd: end,
+      passageText,
+      sectionContext:
+        sectionContext === passageText ? undefined : sectionContext,
+    };
+  }
+
+  /**
+   * Walk up to 50 chars in `direction` from `idx` looking for a
+   * whitespace boundary, so the context window doesn't truncate
+   * mid-word. Falls back to the original index if nothing is found.
+   */
+  private snapToWhitespace(
+    text: string,
+    idx: number,
+    direction: 'back' | 'forward',
+  ): number {
+    if (direction === 'back') {
+      const probe = Math.max(0, idx);
+      if (probe === 0) return 0;
+      for (let i = probe; i > Math.max(0, probe - 50); i--) {
+        if (/\s/.test(text[i])) return i + 1;
+      }
+      return probe;
+    }
+    const probe = Math.min(text.length, idx);
+    if (probe === text.length) return probe;
+    for (let i = probe; i < Math.min(text.length, probe + 50); i++) {
+      if (/\s/.test(text[i])) return i;
+    }
+    return probe;
+  }
+
+  /**
+   * At-a-glance activity stats for a legislative committee over the
+   * last `sinceDays` days. Drives the Layer-3 counters on the
+   * committee detail page (recent hearings, bills reported out,
+   * amendments touching the committee).
+   *
+   * Returns zero counts when the committee doesn't exist or has no
+   * linked actions.
+   */
+  async getCommitteeActivityStats(
+    committeeId: string,
+    sinceDays: number = 90,
+  ): Promise<{
+    hearings: number;
+    reports: number;
+    amendments: number;
+    distinctBills: number;
+  }> {
+    const since = this.windowSince(sinceDays);
+    const cmtWhere = { committeeId, date: { gte: since } };
+
+    const [counts, distinctBills] = await Promise.all([
+      this.actionCountsByType(cmtWhere),
+      // Distinct propositions touched by any action of this committee.
+      this.db.legislativeAction.findMany({
+        where: { ...cmtWhere, propositionId: { not: null } },
+        distinct: ['propositionId'],
+        select: { propositionId: true },
+      }),
+    ]);
+
+    return {
+      hearings: counts.get('committee_hearing') ?? 0,
+      reports: counts.get('committee_report') ?? 0,
+      amendments: counts.get('amendment') ?? 0,
+      distinctBills: distinctBills.length,
+    };
+  }
+
+  /**
+   * Reverse-chronological feed of LegislativeActions linked to a
+   * legislative committee. Mirrors `getRepresentativeActivity` but
+   * filters by committeeId. No presence-row noise to filter out
+   * because presence rows aren't committee-attributed.
+   */
+  async getCommitteeActivity(args: {
+    committeeId: string;
+    actionTypes?: string[];
+    skip?: number;
+    take?: number;
+  }): Promise<LegislativeActionFeedPage> {
+    const where = this.buildActionFeedWhere({
+      committeeId: args.committeeId,
+      actionTypes: args.actionTypes,
+    });
+    return this.paginateLegislativeActions(where, args.skip, args.take);
+  }
+
+  // ==========================================
+  // Shared helpers for the LegislativeAction feed (issue #665)
+  // ==========================================
+
+  /** ISO-shifted "now minus N days" window start. */
+  private windowSince(sinceDays: number): Date {
+    const since = new Date();
+    since.setDate(since.getDate() - sinceDays);
+    return since;
+  }
+
+  /** groupBy(actionType) → Map<actionType, count>. Used by both *ActivityStats. */
+  private async actionCountsByType(
+    where: Record<string, unknown>,
+  ): Promise<Map<string, number>> {
+    const groups = await this.db.legislativeAction.groupBy({
+      by: ['actionType'],
+      where,
+      _count: { _all: true },
+    });
+    const m = new Map<string, number>();
+    for (const g of groups) m.set(g.actionType, g._count._all);
+    return m;
+  }
+
+  /** Distinct-day count for a where clause. Used 3x in rep stats. */
+  private async distinctActionDates(
+    where: Record<string, unknown>,
+  ): Promise<number> {
+    const rows = await this.db.legislativeAction.findMany({
+      where,
+      distinct: ['date'],
+      select: { date: true },
+    });
+    return rows.length;
+  }
+
+  /**
+   * Build the Prisma `where` shape used by both the rep- and
+   * committee-scoped activity feeds. Encapsulates the (entityId,
+   * actionTypes) → where mapping so both wrappers stay tiny.
+   */
+  private buildActionFeedWhere(args: {
+    representativeId?: string;
+    committeeId?: string;
+    actionTypes?: string[];
+  }): Record<string, unknown> {
+    const where: Record<string, unknown> = {};
+    if (args.representativeId) where.representativeId = args.representativeId;
+    if (args.committeeId) where.committeeId = args.committeeId;
+    if (args.actionTypes && args.actionTypes.length > 0) {
+      where.actionType = { in: args.actionTypes };
+    }
+    return where;
+  }
+
+  /**
+   * Run the paginated `findMany + count` against
+   * `legislative_actions` for any caller-supplied `where` clause and
+   * return the typed feed-page shape. Both rep + committee feeds
+   * call this; only their `where` differs.
+   *
+   * Uses the standard `take + 1` trick so `hasMore` is computed
+   * without a second count query — the count we DO run is for
+   * `total` which the UI surfaces independently.
+   */
+  private async paginateLegislativeActions(
+    where: Record<string, unknown>,
+    skip = 0,
+    take = 10,
+  ): Promise<LegislativeActionFeedPage> {
+    const [rows, total] = await Promise.all([
+      this.db.legislativeAction.findMany({
+        where,
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take: take + 1,
+        include: { minutes: { select: { externalId: true } } },
+      }),
+      this.db.legislativeAction.count({ where }),
+    ]);
+
+    const hasMore = rows.length > take;
+    return {
+      items: rows.slice(0, take).map((r) => this.toFeedItem(r)),
+      total,
+      hasMore,
+    };
+  }
+
+  private toFeedItem(r: {
+    id: string;
+    externalId: string;
+    body: string;
+    date: Date;
+    actionType: string;
+    position: string | null;
+    text: string | null;
+    passageStart: number | null;
+    passageEnd: number | null;
+    rawSubject: string | null;
+    representativeId: string | null;
+    propositionId: string | null;
+    committeeId: string | null;
+    minutesId: string;
+    minutes: { externalId: string };
+  }): LegislativeActionFeedItem {
+    return {
+      id: r.id,
+      externalId: r.externalId,
+      body: r.body,
+      date: r.date,
+      actionType: r.actionType,
+      position: r.position,
+      text: r.text,
+      passageStart: r.passageStart,
+      passageEnd: r.passageEnd,
+      rawSubject: r.rawSubject,
+      representativeId: r.representativeId,
+      propositionId: r.propositionId,
+      committeeId: r.committeeId,
+      minutesId: r.minutesId,
+      minutesExternalId: r.minutes.externalId,
+    };
   }
 
   // ==========================================

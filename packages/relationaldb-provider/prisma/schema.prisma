@@ -578,6 +578,15 @@ model Representative {
   bio         String?   @db.Text
   bioSource   String?   @map("bio_source") @db.VarChar(20) /// 'scraped' | 'ai-generated'
   bioClaims   Json?     @map("bio_claims") /// BioClaim[] — per-sentence attribution for ai-generated bios
+  /// AI-generated 2-3 sentence summary of recent legislative activity
+  /// (presence + amendments + hearings + reports linked to this rep).
+  /// Refreshed by run-generate-activity-summaries when new minutes
+  /// ingest. Issue #665.
+  activitySummary           String?   @map("activity_summary") @db.Text
+  activitySummaryGeneratedAt DateTime? @map("activity_summary_generated_at") @db.Timestamptz
+  /// Window the summary covers, in days. Default 90 to match the L3
+  /// stats counters; overridable per-call.
+  activitySummaryWindowDays Int?      @map("activity_summary_window_days")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
@@ -605,6 +614,13 @@ model LegislativeCommittee {
   /// AI-generated description placeholder for Phase 2 — kept nullable so the
   /// column ships now and a future analyzer can populate later.
   description String?   @db.Text
+  /// AI-generated 2-3 sentence summary of recent committee activity
+  /// (hearings, bill reports, amendments). Refreshed by
+  /// run-generate-activity-summaries when new minutes ingest.
+  /// Issue #665.
+  activitySummary           String?   @map("activity_summary") @db.Text
+  activitySummaryGeneratedAt DateTime? @map("activity_summary_generated_at") @db.Timestamptz
+  activitySummaryWindowDays Int?      @map("activity_summary_window_days")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz

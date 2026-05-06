@@ -43,6 +43,9 @@ export interface LegislativeCommitteeDetail {
   memberCount: number;
   members: LegislativeCommitteeMember[];
   hearings: LegislativeCommitteeHearing[];
+  activitySummary: string | null;
+  activitySummaryGeneratedAt: Date | null;
+  activitySummaryWindowDays: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -184,6 +187,9 @@ export class LegislativeCommitteeService {
       memberCount: committee.assignments.length,
       members,
       hearings,
+      activitySummary: committee.activitySummary,
+      activitySummaryGeneratedAt: committee.activitySummaryGeneratedAt,
+      activitySummaryWindowDays: committee.activitySummaryWindowDays,
       createdAt: committee.createdAt,
       updatedAt: committee.updatedAt,
     };

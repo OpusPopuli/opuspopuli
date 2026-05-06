@@ -788,6 +788,290 @@ describe('RegionDomainService', () => {
     });
   });
 
+  // ==========================================
+  // LegislativeAction-driven activity getters (issue #665)
+  // ==========================================
+
+  describe('getRepresentativeActivityStats', () => {
+    it('returns zero counts when the rep does not exist', async () => {
+      mockDb.representative.findUnique.mockResolvedValue(null);
+
+      const result = await service.getRepresentativeActivityStats(
+        'missing',
+        90,
+      );
+
+      expect(result).toEqual({
+        presentSessionDays: 0,
+        totalSessionDays: 0,
+        absenceDays: 0,
+        amendments: 0,
+        committeeHearings: 0,
+        committeeReports: 0,
+        resolutions: 0,
+        votes: 0,
+        speeches: 0,
+      });
+    });
+
+    it('aggregates groupBy + distinct-day queries into typed counters', async () => {
+      mockDb.representative.findUnique.mockResolvedValue({
+        chamber: 'Assembly',
+      } as never);
+      mockDb.legislativeAction.groupBy.mockResolvedValue([
+        { actionType: 'amendment', _count: { _all: 7 } },
+        { actionType: 'committee_hearing', _count: { _all: 3 } },
+        { actionType: 'committee_report', _count: { _all: 12 } },
+        { actionType: 'resolution', _count: { _all: 1 } },
+      ] as never);
+      // Cast to `any` because mockImplementation's signature wants the full
+      // PrismaPromise return type, which is awkward to construct in a unit
+      // test. The deep-mock proxy accepts a regular promise at runtime.
+      (mockDb.legislativeAction.findMany as jest.Mock).mockImplementation(
+        (args: { where?: Record<string, unknown> }) => {
+          if (args.where?.position === 'yes') {
+            return Promise.resolve(
+              Array.from({ length: 18 }, (_, i) => ({
+                date: new Date(2026, 3, i + 1),
+              })),
+            );
+          }
+          if (args.where?.position === 'absent') {
+            return Promise.resolve([{ date: new Date('2026-04-15') }]);
+          }
+          return Promise.resolve(
+            Array.from({ length: 22 }, (_, i) => ({
+              date: new Date(2026, 3, i + 1),
+            })),
+          );
+        },
+      );
+
+      const result = await service.getRepresentativeActivityStats('rep-1', 90);
+
+      expect(result.presentSessionDays).toBe(18);
+      expect(result.totalSessionDays).toBe(22);
+      expect(result.absenceDays).toBe(1);
+      expect(result.amendments).toBe(7);
+      expect(result.committeeHearings).toBe(3);
+      expect(result.committeeReports).toBe(12);
+      expect(result.resolutions).toBe(1);
+    });
+  });
+
+  describe('getRepresentativeActivity', () => {
+    it('paginates + filters out presence:yes by default', async () => {
+      mockDb.legislativeAction.findMany.mockResolvedValue([
+        {
+          id: 'la-1',
+          externalId: 'ext-1',
+          body: 'Assembly',
+          date: new Date('2026-04-28'),
+          actionType: 'amendment',
+          position: null,
+          text: 'Amendment text',
+          passageStart: 100,
+          passageEnd: 200,
+          rawSubject: 'AB 1897',
+          representativeId: 'rep-1',
+          propositionId: null,
+          committeeId: 'cmt-1',
+          minutesId: 'min-1',
+          minutes: { externalId: 'meet-1' },
+        },
+      ] as never);
+      mockDb.legislativeAction.count.mockResolvedValue(1);
+
+      const result = await service.getRepresentativeActivity({
+        representativeId: 'rep-1',
+        skip: 0,
+        take: 10,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.hasMore).toBe(false);
+      expect(result.items[0].minutesExternalId).toBe('meet-1');
+      // The default-exclude `presence:yes` constraint shows up in the where.
+      const findManyCall = mockDb.legislativeAction.findMany.mock
+        .calls[0][0] as {
+        where: Record<string, unknown>;
+      };
+      expect(findManyCall.where.NOT).toBeDefined();
+    });
+
+    it('forwards explicit actionTypes when provided', async () => {
+      mockDb.legislativeAction.findMany.mockResolvedValue([] as never);
+      mockDb.legislativeAction.count.mockResolvedValue(0);
+
+      await service.getRepresentativeActivity({
+        representativeId: 'rep-1',
+        actionTypes: ['committee_hearing'],
+      });
+
+      const findManyCall = mockDb.legislativeAction.findMany.mock
+        .calls[0][0] as {
+        where: Record<string, unknown>;
+      };
+      expect(findManyCall.where.actionType).toEqual({
+        in: ['committee_hearing'],
+      });
+    });
+
+    it('hasMore=true when results exceed take', async () => {
+      // Service fetches `take + 1` to detect hasMore without a second count.
+      mockDb.legislativeAction.findMany.mockResolvedValue(
+        Array.from({ length: 11 }, (_, i) => ({
+          id: `la-${i}`,
+          externalId: `ext-${i}`,
+          body: 'Assembly',
+          date: new Date('2026-04-28'),
+          actionType: 'amendment',
+          position: null,
+          text: null,
+          passageStart: null,
+          passageEnd: null,
+          rawSubject: null,
+          representativeId: 'rep-1',
+          propositionId: null,
+          committeeId: null,
+          minutesId: 'min-1',
+          minutes: { externalId: 'meet-1' },
+        })) as never,
+      );
+      mockDb.legislativeAction.count.mockResolvedValue(50);
+
+      const result = await service.getRepresentativeActivity({
+        representativeId: 'rep-1',
+        take: 10,
+      });
+
+      expect(result.items).toHaveLength(10);
+      expect(result.hasMore).toBe(true);
+    });
+  });
+
+  describe('getMinutesPassage', () => {
+    it('returns null when the action does not exist', async () => {
+      mockDb.legislativeAction.findUnique.mockResolvedValue(null);
+      const result = await service.getMinutesPassage('missing');
+      expect(result).toBeNull();
+    });
+
+    it('returns null when the parent Minutes has no rawText', async () => {
+      mockDb.legislativeAction.findUnique.mockResolvedValue({
+        id: 'la-1',
+        passageStart: 0,
+        passageEnd: 10,
+        minutes: { rawText: null },
+      } as never);
+      const result = await service.getMinutesPassage('la-1');
+      expect(result).toBeNull();
+    });
+
+    it('slices passageText, caps at 1kB, and snaps context window', async () => {
+      const rawText =
+        'Lots of preceding context. ' +
+        'PASSAGE_BEGIN here is the action body PASSAGE_END ' +
+        'And then trailing context that flows on for some chars.';
+      const start = rawText.indexOf('PASSAGE_BEGIN');
+      const end = rawText.indexOf('PASSAGE_END') + 'PASSAGE_END'.length;
+
+      mockDb.legislativeAction.findUnique.mockResolvedValue({
+        id: 'la-1',
+        passageStart: start,
+        passageEnd: end,
+        minutes: {
+          externalId: 'meet-1',
+          body: 'Assembly',
+          date: new Date('2026-04-28'),
+          sourceUrl: 'https://example/journal.pdf',
+          rawText,
+        },
+      } as never);
+
+      const result = await service.getMinutesPassage('la-1');
+      expect(result).not.toBeNull();
+      expect(result?.passageText).toContain('PASSAGE_BEGIN');
+      expect(result?.passageText).toContain('PASSAGE_END');
+      expect(result?.minutesExternalId).toBe('meet-1');
+      // Context window includes surrounding text
+      expect(result?.sectionContext).toContain('preceding context');
+    });
+  });
+
+  describe('getCommitteeActivityStats', () => {
+    it('aggregates groupBy + distinct propositionIds', async () => {
+      mockDb.legislativeAction.groupBy.mockResolvedValue([
+        { actionType: 'committee_hearing', _count: { _all: 7 } },
+        { actionType: 'committee_report', _count: { _all: 43 } },
+        { actionType: 'amendment', _count: { _all: 41 } },
+      ] as never);
+      mockDb.legislativeAction.findMany.mockResolvedValue([
+        { propositionId: 'p1' },
+        { propositionId: 'p2' },
+        { propositionId: 'p3' },
+      ] as never);
+
+      const result = await service.getCommitteeActivityStats('cmt-1', 90);
+
+      expect(result.hearings).toBe(7);
+      expect(result.reports).toBe(43);
+      expect(result.amendments).toBe(41);
+      expect(result.distinctBills).toBe(3);
+    });
+  });
+
+  describe('getCommitteeActivity', () => {
+    it('returns paginated feed scoped by committeeId', async () => {
+      mockDb.legislativeAction.findMany.mockResolvedValue([
+        {
+          id: 'la-1',
+          externalId: 'ext-1',
+          body: 'Assembly',
+          date: new Date('2026-04-28'),
+          actionType: 'committee_report',
+          position: null,
+          text: 'Do pass.',
+          passageStart: 100,
+          passageEnd: 110,
+          rawSubject: 'AB 1897',
+          representativeId: null,
+          propositionId: null,
+          committeeId: 'cmt-1',
+          minutesId: 'min-1',
+          minutes: { externalId: 'meet-1' },
+        },
+      ] as never);
+      mockDb.legislativeAction.count.mockResolvedValue(1);
+
+      const result = await service.getCommitteeActivity({
+        committeeId: 'cmt-1',
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.items[0].committeeId).toBe('cmt-1');
+      expect(result.items[0].minutesExternalId).toBe('meet-1');
+    });
+
+    it('forwards actionTypes filter to Prisma', async () => {
+      mockDb.legislativeAction.findMany.mockResolvedValue([] as never);
+      mockDb.legislativeAction.count.mockResolvedValue(0);
+
+      await service.getCommitteeActivity({
+        committeeId: 'cmt-1',
+        actionTypes: ['committee_hearing'],
+      });
+
+      const findManyCall = mockDb.legislativeAction.findMany.mock
+        .calls[0][0] as {
+        where: Record<string, unknown>;
+      };
+      expect(findManyCall.where.actionType).toEqual({
+        in: ['committee_hearing'],
+      });
+    });
+  });
+
   describe('getRepresentativesByDistricts', () => {
     it('should return empty array when no districts provided', async () => {
       // Reset call tracking so we only see calls from our method

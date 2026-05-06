@@ -13,9 +13,11 @@ import {
 import { GET_MY_ADDRESSES, type MyAddressesData } from "@/lib/graphql/profile";
 import { PartyBadge } from "@/components/region/PartyBadge";
 
-const DATA_TYPE_CARDS: Record<
-  DataType,
-  { title: string; description: string; href: string; icon: string }
+const DATA_TYPE_CARDS: Partial<
+  Record<
+    DataType,
+    { title: string; description: string; href: string; icon: string }
+  >
 > = {
   PROPOSITIONS: {
     title: "Propositions",
@@ -23,12 +25,15 @@ const DATA_TYPE_CARDS: Record<
     href: "/region/propositions",
     icon: "ballot",
   },
-  MEETINGS: {
-    title: "Meetings",
-    description: "Legislative sessions and hearings",
-    href: "/region/meetings",
-    icon: "calendar",
-  },
+  // MEETINGS card removed from the home page (issue #665). The
+  // standalone meetings hub mostly surfaces forward-looking
+  // calendar entries, which is lower civic-action value than the
+  // representative + committee + proposition surfaces. Past
+  // meeting minutes (the daily-journal data) are now woven into
+  // the rep + committee Layer-3 activity feeds, not browsed
+  // standalone — daily-journals don't deserve a top-nav entry.
+  // The /region/meetings route stays deployed and reachable by
+  // direct URL; only the home front door changes.
   REPRESENTATIVES: {
     title: "Representatives",
     description: "Elected officials and legislators",

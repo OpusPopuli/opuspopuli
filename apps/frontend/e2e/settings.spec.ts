@@ -335,8 +335,10 @@ test.describe("Profile Settings Page", () => {
 
     await page.goto("/settings");
 
-    const skeletons = await page.locator(".animate-pulse").count();
-    expect(skeletons).toBeGreaterThan(0);
+    // Use Playwright's auto-waiting expect — `count()` was racing the
+    // render. `toBeVisible` retries until at least one skeleton is in
+    // the DOM.
+    await expect(page.locator(".animate-pulse").first()).toBeVisible();
   });
 
   test("should have no WCAG 2.2 AA violations", async ({ page }) => {

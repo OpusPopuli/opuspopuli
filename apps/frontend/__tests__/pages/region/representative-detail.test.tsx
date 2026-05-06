@@ -184,8 +184,10 @@ describe("RepresentativeDetailPage", () => {
         screen.getByRole("button", { name: /What They'?ve Done/ }),
       );
 
+      // L3 now leads with the live activity feed (issue #665);
+      // "Authored Bills" remains as a ComingSoon section.
+      expect(screen.getByText("Recent activity")).toBeInTheDocument();
       expect(screen.getByText("Authored Bills")).toBeInTheDocument();
-      expect(screen.getByText("Voting Record")).toBeInTheDocument();
     });
 
     it("advances to How They Are Supported (layer 4) via CTA", async () => {

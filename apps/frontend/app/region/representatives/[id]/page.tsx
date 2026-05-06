@@ -23,6 +23,9 @@ import { SectionTitle } from "@/components/region/SectionTitle";
 import { ComingSoon } from "@/components/region/ComingSoon";
 import { LayerButton } from "@/components/region/LayerButton";
 import { LayerNav } from "@/components/region/LayerNav";
+import { ActivityStats } from "@/components/region/ActivityStats";
+import { ActivityFeed } from "@/components/region/ActivityFeed";
+import { ActivitySummary } from "@/components/region/ActivitySummary";
 
 const LAYERS = [
   { n: 1, label: "Who They Are" },
@@ -510,29 +513,45 @@ function WhatTheyCareAbout({
   );
 }
 
-/** Layer 3 — What They've Done: authored bills + voting record. */
+/**
+ * Layer 3 — What They've Done. Live activity feed driven by the
+ * `legislative_actions` data backing the rep, plus an at-a-glance
+ * stats grid. Click "See passage →" on any action card to surface
+ * the verbatim source text in L4 (citation panel — Phase 3).
+ *
+ * Issue #665.
+ */
 function WhatTheyveDone({
+  rep,
   onNext,
   onBack,
+  onSeePassage,
 }: {
+  readonly rep: Representative;
   readonly onNext: () => void;
   readonly onBack: () => void;
+  readonly onSeePassage?: (actionId: string) => void;
 }) {
   return (
     <div className="animate-layer-enter">
+      <ActivitySummary
+        summary={rep.activitySummary}
+        generatedAt={rep.activitySummaryGeneratedAt}
+        windowDays={rep.activitySummaryWindowDays}
+      />
+
+      <ActivityStats representativeId={rep.id} />
+
+      <div className="mb-8">
+        <SectionTitle>Recent activity</SectionTitle>
+        <ActivityFeed representativeId={rep.id} onSeePassage={onSeePassage} />
+      </div>
+
       <div className="mb-8">
         <SectionTitle>Authored Bills</SectionTitle>
         <ComingSoon
           title="Coming Soon"
           description="Bills authored or co-authored by this representative, with status and subject tags. Tracked in #594."
-        />
-      </div>
-
-      <div className="mb-8">
-        <SectionTitle>Voting Record</SectionTitle>
-        <ComingSoon
-          title="Coming Soon"
-          description="Recent floor and committee votes, with alignment against the caucus and public position statements."
         />
       </div>
 
@@ -838,6 +857,7 @@ export default function RepresentativeDetailPage() {
         )}
         {layer === 3 && (
           <WhatTheyveDone
+            rep={rep}
             onNext={() => setLayer(4)}
             onBack={() => setLayer(1)}
           />
