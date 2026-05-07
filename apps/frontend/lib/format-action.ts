@@ -21,33 +21,43 @@ const PUNCH_BY_TYPE: Record<string, string> = {
   speech: "Floor speech",
 };
 
+/**
+ * Per-actionType title builder. Each entry is `(action, subject) => string`
+ * where `subject` is the trimmed `rawSubject`. Centralizing the
+ * branching here keeps `formatActionTitle` itself a thin dispatcher
+ * (Sonar cognitive-complexity caps switch-heavy functions).
+ */
+const TITLE_BUILDERS: Record<
+  string,
+  (action: LegislativeAction, subject: string) => string
+> = {
+  presence: (action, subject) => {
+    if (action.position === "absent") {
+      return subject ? `Absent — ${subject}` : "Absent from session";
+    }
+    return subject ? `Present — ${subject}` : "Present at rollcall";
+  },
+  committee_hearing: (_, subject) =>
+    subject ? `Hearing: Committee on ${subject}` : "Committee hearing",
+  committee_report: (_, subject) =>
+    subject ? `Committee reported ${subject}` : "Committee report",
+  amendment: (_, subject) =>
+    subject ? `Amendment to ${subject}` : "Amendment",
+  engrossment: (_, subject) =>
+    subject ? `${subject} engrossed` : "Bill engrossed",
+  enrollment: (_, subject) =>
+    subject ? `${subject} enrolled` : "Bill enrolled",
+  resolution: (_, subject) =>
+    subject ? `Introduced ${subject}` : "Resolution introduced",
+  vote: (_, subject) => (subject ? `Voted on ${subject}` : "Floor vote"),
+  speech: () => "Floor speech",
+};
+
 export function formatActionTitle(action: LegislativeAction): string {
   const subject = action.rawSubject?.trim() ?? "";
-  switch (action.actionType) {
-    case "presence":
-      if (action.position === "absent") {
-        return subject ? `Absent — ${subject}` : "Absent from session";
-      }
-      return subject ? `Present — ${subject}` : "Present at rollcall";
-    case "committee_hearing":
-      return subject ? `Hearing: Committee on ${subject}` : "Committee hearing";
-    case "committee_report":
-      return subject ? `Committee reported ${subject}` : "Committee report";
-    case "amendment":
-      return subject ? `Amendment to ${subject}` : "Amendment";
-    case "engrossment":
-      return subject ? `${subject} engrossed` : "Bill engrossed";
-    case "enrollment":
-      return subject ? `${subject} enrolled` : "Bill enrolled";
-    case "resolution":
-      return subject ? `Introduced ${subject}` : "Resolution introduced";
-    case "vote":
-      return subject ? `Voted on ${subject}` : "Floor vote";
-    case "speech":
-      return "Floor speech";
-    default:
-      return subject ? `${action.actionType}: ${subject}` : action.actionType;
-  }
+  const build = TITLE_BUILDERS[action.actionType];
+  if (build) return build(action, subject);
+  return subject ? `${action.actionType}: ${subject}` : action.actionType;
 }
 
 /** A short type-label suitable for a colored badge on the card. */
