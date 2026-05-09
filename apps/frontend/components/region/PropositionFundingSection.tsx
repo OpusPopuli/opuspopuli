@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
 import {
   GET_PROPOSITION_FUNDING,
@@ -143,13 +142,8 @@ function FundingSideCard({
           </p>
           <ul className="space-y-1.5">
             {side.primaryCommittees.map((committee) => (
-              <li key={committee.id} className="text-sm">
-                <Link
-                  href={`/region/campaign-finance/committees/${committee.id}`}
-                  className="text-blue-600 hover:underline"
-                >
-                  {committee.name}
-                </Link>
+              <li key={committee.id} className="text-sm text-[#334155]">
+                {committee.name}
               </li>
             ))}
           </ul>

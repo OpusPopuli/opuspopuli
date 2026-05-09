@@ -189,19 +189,14 @@ describe("PropositionFundingSection", () => {
       expect(screen.getByText("Anti-Prop Coalition")).toBeInTheDocument();
     });
 
-    it("renders primary committees as links to their detail pages", () => {
+    it("renders primary committee names as plain text (detail page pending #684)", () => {
       render(<PropositionFundingSection propositionId="prop-1" />);
 
-      const yesLink = screen.getByRole("link", { name: "Yes on Prop 1" });
-      expect(yesLink).toHaveAttribute(
-        "href",
-        "/region/campaign-finance/committees/c-1",
-      );
-      const noLink = screen.getByRole("link", { name: "No on Prop 1" });
-      expect(noLink).toHaveAttribute(
-        "href",
-        "/region/campaign-finance/committees/c-3",
-      );
+      expect(screen.getByText("Yes on Prop 1")).toBeInTheDocument();
+      expect(screen.getByText("No on Prop 1")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("link", { name: "Yes on Prop 1" }),
+      ).not.toBeInTheDocument();
     });
 
     it("shows the asOf timestamp footer", () => {
