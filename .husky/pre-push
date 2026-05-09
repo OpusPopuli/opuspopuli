@@ -2,7 +2,7 @@
 # Thresholds are enforced in each jest.config — this fails if any package drops
 # below its configured branches/functions/lines/statements floor.
 echo "Running tests with coverage..."
-pnpm test:ci || exit 1
+pnpm test || exit 1
 
 # ── 2. AI review gate ────────────────────────────────────────────────────────
 # Load nvm so claude is available in non-interactive shell
