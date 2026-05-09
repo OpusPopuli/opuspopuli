@@ -4,39 +4,34 @@
 echo "Running tests with coverage..."
 pnpm test || exit 1
 
-# ── 2. AI review gate ────────────────────────────────────────────────────────
-# Load nvm so claude is available in non-interactive shell
+# ── 2. Load claude CLI ────────────────────────────────────────────────────────
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
 
 CLAUDE=$(command -v claude 2>/dev/null)
-if [ -z "$CLAUDE" ]; then
-  echo "Warning: claude CLI not found — skipping AI review."
-  exit 0
-fi
-
-echo ""
-echo "Running AI code review..."
 
 BASE=$(git merge-base HEAD origin/develop 2>/dev/null \
      || git merge-base HEAD origin/main 2>/dev/null \
      || echo "HEAD~1")
 DIFF=$(git diff "$BASE"..HEAD 2>/dev/null | head -c 30000)
 
-if [ -z "$DIFF" ]; then
-  exit 0
-fi
+# ── 3. AI code review gate ────────────────────────────────────────────────────
+if [ -z "$CLAUDE" ]; then
+  echo "Warning: claude CLI not found — skipping AI review."
+elif [ -z "$DIFF" ]; then
+  echo "No diff to review."
+else
+  echo ""
+  echo "Running AI code review..."
 
-RESULT=$("$CLAUDE" --print "You are a pre-push code review gate for the Opus Populi platform (NestJS/GraphQL/Next.js, AGPL-3.0).
+  RESULT=$("$CLAUDE" --print "You are a pre-push code review gate for the Opus Populi platform (NestJS/GraphQL/Next.js, AGPL-3.0).
 
 Review the following git diff for BLOCKING issues only:
-1. Exposed secrets, API keys, or credentials committed in code
-2. SQL injection, XSS, command injection, or other OWASP Top 10 vulnerabilities
-3. Broken authentication or authorization (e.g. missing HMAC validation, skipped CSRF)
-4. Critical bugs that would break production (unhandled nulls on hot paths, wrong DB writes)
-5. GPL-licensed dependency additions (violates AGPL dual-license structure)
+1. Critical bugs that would break production (unhandled nulls on hot paths, wrong DB writes)
+2. GPL-licensed dependency additions (violates AGPL dual-license structure)
+3. Breaking changes to GraphQL schema or HMAC authentication contracts
 
-Minor code quality issues are NOT blocking — only flag things that would cause a security incident or production outage.
+Minor code quality issues are NOT blocking — only flag things that would cause a production outage.
 
 Respond with EXACTLY one of:
   PASS
@@ -45,9 +40,47 @@ Respond with EXACTLY one of:
 Diff:
 $DIFF" 2>/dev/null)
 
-echo "$RESULT"
+  echo "$RESULT"
 
-if printf '%s' "$RESULT" | grep -q "^FAIL:"; then
-  printf '\nPush blocked by AI review. Fix the issue above or use git push --no-verify to override.\n'
-  exit 1
+  if printf '%s' "$RESULT" | grep -q "^FAIL:"; then
+    printf '\nPush blocked by AI review. Fix the issue above or use git push --no-verify to override.\n'
+    exit 1
+  fi
+fi
+
+# ── 4. Security review gate ───────────────────────────────────────────────────
+if [ -z "$CLAUDE" ]; then
+  echo "Warning: claude CLI not found — skipping security review."
+elif [ -z "$DIFF" ]; then
+  echo "No diff to review."
+else
+  echo ""
+  echo "Running AI security review..."
+
+  SEC_RESULT=$("$CLAUDE" --print "You are a security-focused pre-push gate for the Opus Populi platform (NestJS/GraphQL/Next.js).
+
+Analyze the following git diff for HIGH-CONFIDENCE security vulnerabilities only. Ignore theoretical issues, rate limiting, and DoS concerns.
+
+Check for:
+1. SQL injection, NoSQL injection, command injection
+2. XSS via dangerouslySetInnerHTML or direct DOM manipulation
+3. SSRF — user-controlled URLs fetched by the server without host validation
+4. Authentication bypass or missing HMAC/CSRF validation
+5. Hardcoded credentials, API keys, or tokens committed in code
+6. Path traversal in file operations
+7. Insecure deserialization (eval, Function constructor with user input)
+
+Respond with EXACTLY one of:
+  PASS
+  FAIL: <one sentence describing the specific vulnerability and file/line>
+
+Diff:
+$DIFF" 2>/dev/null)
+
+  echo "$SEC_RESULT"
+
+  if printf '%s' "$SEC_RESULT" | grep -q "^FAIL:"; then
+    printf '\nPush blocked by security review. Fix the vulnerability above or use git push --no-verify to override.\n'
+    exit 1
+  fi
 fi

@@ -121,6 +121,7 @@ describe('extractLinks', () => {
 
 describe('crawlCivicsUrls', () => {
   const SEED = 'https://www.assembly.ca.gov/resources/legislative-process';
+  const HOSTS = new Set(['www.assembly.ca.gov']);
 
   function makeSvc(fetchImpl: (url: string) => Promise<string>) {
     const svc = buildSvc();
@@ -131,7 +132,7 @@ describe('crawlCivicsUrls', () => {
   it('returns only the seed when crawlDepth is 0 (default)', async () => {
     const svc = makeSvc(jest.fn());
     const ds = { url: SEED };
-    const urls = await svc.crawlCivicsUrls(ds);
+    const urls = await svc.crawlCivicsUrls(ds, HOSTS);
     expect(urls).toEqual([SEED]);
     expect(svc.fetchUrlText).not.toHaveBeenCalled();
   });
@@ -139,7 +140,7 @@ describe('crawlCivicsUrls', () => {
   it('follows links at depth 1 that are in scope', async () => {
     const glossaryUrl = 'https://www.assembly.ca.gov/resources/glossary';
     const svc = makeSvc(async () => `<a href="${glossaryUrl}">Glossary</a>`);
-    const urls = await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 1 });
+    const urls = await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 1 }, HOSTS);
     expect(urls).toContain(SEED);
     expect(urls).toContain(glossaryUrl);
   });
@@ -148,7 +149,7 @@ describe('crawlCivicsUrls', () => {
     const svc = makeSvc(
       async () => `<a href="https://senate.ca.gov/page">Senate</a>`,
     );
-    const urls = await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 1 });
+    const urls = await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 1 }, HOSTS);
     expect(urls).toEqual([SEED]);
   });
 
@@ -157,7 +158,7 @@ describe('crawlCivicsUrls', () => {
       async () =>
         `<a href="https://www.assembly.ca.gov/members/list">Members</a>`,
     );
-    const urls = await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 1 });
+    const urls = await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 1 }, HOSTS);
     expect(urls).toEqual([SEED]);
   });
 
@@ -167,7 +168,7 @@ describe('crawlCivicsUrls', () => {
       async () =>
         `<a href="${dup}">A</a><a href="${dup}/">B</a><a href="${dup}#frag">C</a>`,
     );
-    const urls = await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 1 });
+    const urls = await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 1 }, HOSTS);
     expect(urls.filter((u: string) => u.includes('glossary'))).toHaveLength(1);
   });
 
@@ -180,11 +181,14 @@ describe('crawlCivicsUrls', () => {
           `<a href="https://www.assembly.ca.gov/resources/${n + i + 1}">L</a>`,
       ).join('');
     });
-    const urls = await svc.crawlCivicsUrls({
-      url: 'https://www.assembly.ca.gov/resources/0',
-      crawlDepth: 10,
-      crawlMaxPages: 4,
-    });
+    const urls = await svc.crawlCivicsUrls(
+      {
+        url: 'https://www.assembly.ca.gov/resources/0',
+        crawlDepth: 10,
+        crawlMaxPages: 4,
+      },
+      HOSTS,
+    );
     expect(urls.length).toBeLessThanOrEqual(4);
   });
 
@@ -199,12 +203,36 @@ describe('crawlCivicsUrls', () => {
         return `<a href="${fail}">Bad</a><a href="${ok}">OK</a>`;
       return '';
     });
-    const urls = await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 2 });
+    const urls = await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 2 }, HOSTS);
     // Both links are discovered and recorded even though one failed to fetch
     expect(urls).toContain(ok);
     expect(urls).toContain(fail);
     expect(svc.logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('fetch failed'),
+    );
+  });
+
+  it('rejects non-HTTPS seed URLs', async () => {
+    const svc = makeSvc(jest.fn());
+    const urls = await svc.crawlCivicsUrls(
+      { url: 'http://www.assembly.ca.gov/resources/page' },
+      HOSTS,
+    );
+    expect(urls).toEqual([]);
+    expect(svc.logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('non-HTTPS'),
+    );
+  });
+
+  it('rejects seed URLs whose host is not in the allowlist', async () => {
+    const svc = makeSvc(jest.fn());
+    const urls = await svc.crawlCivicsUrls(
+      { url: 'https://internal.corp/metadata' },
+      HOSTS,
+    );
+    expect(urls).toEqual([]);
+    expect(svc.logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('not a registered data source host'),
     );
   });
 });

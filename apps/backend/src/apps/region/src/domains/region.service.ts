@@ -1443,13 +1443,26 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       return { processed: 0, created: 0, updated: 0 };
     }
 
+    // Build SSRF allowlist from all registered data sources in this plugin.
+    // Derived from @opuspopuli/regions so adding a region automatically
+    // permits its hosts — no separate list to maintain.
+    const registeredHosts = new Set(
+      plugin.getDataSources().flatMap((s) => {
+        try {
+          return [new URL(s.url).hostname];
+        } catch {
+          return [];
+        }
+      }),
+    );
+
     const regionId = plugin.getName();
     let processed = 0;
     let created = 0;
     let updated = 0;
 
     for (const ds of dataSources) {
-      const urls = await this.crawlCivicsUrls(ds);
+      const urls = await this.crawlCivicsUrls(ds, registeredHosts);
       this.logger.log(
         `Civics: crawl from ${ds.url} (depth ${ds.crawlDepth ?? 0}) found ${urls.length} page(s)`,
       );
@@ -1473,12 +1486,31 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    * Crawl failures (fetch error, non-HTML, off-scope) log + skip; the
    * seed URL is always returned even if its links can't be parsed.
    */
-  private async crawlCivicsUrls(ds: DataSourceConfig): Promise<string[]> {
+  private async crawlCivicsUrls(
+    ds: DataSourceConfig,
+    registeredHosts: Set<string>,
+  ): Promise<string[]> {
     const depth = ds.crawlDepth ?? 0;
     const maxPages = ds.crawlMaxPages ?? 20;
 
     const seed = this.canonicalizeUrl(ds.url);
     const seedUrl = new URL(seed);
+
+    // SSRF guard: allowlist is derived from @opuspopuli/regions data sources
+    // in syncCivics(), so any region declared there is automatically permitted.
+    // Rejects non-HTTPS and any host not in the allowlist — prevents a
+    // compromised config from pointing the crawler at internal addresses
+    // (e.g. cloud metadata endpoints, Redis).
+    if (
+      seedUrl.protocol !== 'https:' ||
+      !registeredHosts.has(seedUrl.hostname)
+    ) {
+      this.logger.error(
+        `Civics crawl rejected: ${seedUrl.hostname} is not a registered data source host or is non-HTTPS`,
+      );
+      return [];
+    }
+
     const pathPrefix = seedUrl.pathname.replace(/[^/]*$/, ''); // up to last '/'
     const inScope = (u: string): boolean => {
       try {
