@@ -28,7 +28,7 @@
     "@opuspopuli/common": "workspace:*",
     "@opuspopuli/config-provider": "workspace:*",
     "@supabase/supabase-js": "^2.49.1",
-    "nodemailer": "^8.0.2"
+    "nodemailer": "^8.0.5"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",

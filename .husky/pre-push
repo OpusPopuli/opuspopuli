@@ -4,7 +4,52 @@
 echo "Running tests with coverage..."
 pnpm test || exit 1
 
-# ── 2. Load claude CLI ────────────────────────────────────────────────────────
+# ── 2. Dependency vulnerability audit ────────────────────────────────────────
+# Blocks on HIGH and CRITICAL CVEs in production dependencies.
+# Run `pnpm audit --fix` or add a pnpm.overrides entry to resolve failures.
+echo ""
+echo "Running dependency vulnerability audit..."
+pnpm audit --prod --audit-level=high 2>&1
+AUDIT_EXIT=$?
+if [ $AUDIT_EXIT -ne 0 ]; then
+  printf '\nPush blocked: HIGH or CRITICAL CVEs found in production dependencies.\n'
+  printf 'Fix with: pnpm audit --fix   or add a version override to package.json > pnpm.overrides\n'
+  printf 'Then run /op-security to confirm clean before pushing.\n'
+  exit 1
+fi
+
+# ── 3. Trivy filesystem scan ──────────────────────────────────────────────────
+# Mirror of the CI Trivy scan — catches what the npm advisory DB misses
+# (e.g. container CVEs that also apply to the lockfile).
+if command -v trivy >/dev/null 2>&1; then
+  echo ""
+  echo "Running Trivy filesystem scan..."
+  trivy fs . --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --quiet 2>&1
+  TRIVY_EXIT=$?
+  if [ $TRIVY_EXIT -ne 0 ]; then
+    printf '\nPush blocked: HIGH or CRITICAL CVEs found by Trivy.\n'
+    printf 'Run /op-security for a full breakdown and fix guidance.\n'
+    exit 1
+  fi
+else
+  echo "Warning: trivy not found — install with: brew install trivy"
+fi
+
+# ── 4. Secret scan ────────────────────────────────────────────────────────────
+if command -v gitleaks >/dev/null 2>&1; then
+  echo ""
+  echo "Running secret scan..."
+  gitleaks detect --source . --no-banner --exit-code 1 2>&1
+  if [ $? -ne 0 ]; then
+    printf '\nPush blocked: potential secrets detected by gitleaks.\n'
+    printf 'Review the findings above. If a finding is a false positive, add it to .gitleaksignore\n'
+    exit 1
+  fi
+else
+  echo "Warning: gitleaks not found — install with: brew install gitleaks"
+fi
+
+# ── 5. Load claude CLI ────────────────────────────────────────────────────────
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
 
@@ -15,7 +60,7 @@ BASE=$(git merge-base HEAD origin/develop 2>/dev/null \
      || echo "HEAD~1")
 DIFF=$(git diff "$BASE"..HEAD 2>/dev/null | head -c 30000)
 
-# ── 3. AI code review gate ────────────────────────────────────────────────────
+# ── 6. AI code review gate ────────────────────────────────────────────────────
 if [ -z "$CLAUDE" ]; then
   echo "Warning: claude CLI not found — skipping AI review."
 elif [ -z "$DIFF" ]; then
@@ -48,7 +93,7 @@ $DIFF" 2>/dev/null)
   fi
 fi
 
-# ── 4. Security review gate ───────────────────────────────────────────────────
+# ── 7. Security review gate ───────────────────────────────────────────────────
 if [ -z "$CLAUDE" ]; then
   echo "Warning: claude CLI not found — skipping security review."
 elif [ -z "$DIFF" ]; then
