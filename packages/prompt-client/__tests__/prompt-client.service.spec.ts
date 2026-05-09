@@ -182,6 +182,55 @@ describe("PromptClientService", () => {
     });
   });
 
+  describe("getCivicsExtractionPrompt", () => {
+    it("composes civics-extraction prompt with all interpolated fields", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate(
+          "civics-extraction",
+          "Region: {{REGION_ID}}\nSource: {{SOURCE_URL}}\nGoal: {{CONTENT_GOAL}}\nCategory: {{CATEGORY}}\n{{HINTS}}HTML:\n{{HTML}}",
+        ),
+      );
+
+      const result = await service.getCivicsExtractionPrompt({
+        regionId: "california",
+        sourceUrl: "https://www.assembly.ca.gov/resources/glossary",
+        contentGoal: "Extract the official Assembly glossary",
+        category: "Assembly",
+        hints: ["~150 terms organized A-Z"],
+        html: "<html>...</html>",
+      });
+
+      expect(result.promptText).toContain("Region: california");
+      expect(result.promptText).toContain(
+        "Source: https://www.assembly.ca.gov/resources/glossary",
+      );
+      expect(result.promptText).toContain(
+        "Goal: Extract the official Assembly glossary",
+      );
+      expect(result.promptText).toContain("Category: Assembly");
+      expect(result.promptText).toContain("- ~150 terms organized A-Z");
+      expect(result.promptText).toContain("HTML:\n<html>...</html>");
+      expect(result.promptVersion).toBe("v1");
+      expect(result.promptHash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("omits the hints section when no hints provided", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("civics-extraction", "{{HINTS}}END"),
+      );
+
+      const result = await service.getCivicsExtractionPrompt({
+        regionId: "california",
+        sourceUrl: "https://example.com",
+        contentGoal: "extract",
+        html: "<p/>",
+      });
+
+      // No hints → empty interpolation, no "Hints from the region author" header
+      expect(result.promptText).toBe("END");
+    });
+  });
+
   describe("caching", () => {
     it("should cache templates after first read", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValueOnce(

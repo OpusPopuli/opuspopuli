@@ -70,6 +70,32 @@ export interface RAGParams {
   query: string;
 }
 
+/**
+ * Parameters for civics-extraction prompt — produces a structured
+ * `CivicsBlock` with verbatim source text + plain-language rewrites
+ * from a region's official civic-process pages.
+ *
+ * The LLM returns JSON matching `@opuspopuli/common`'s `CivicsBlock`
+ * shape. Each text field that has a lay reading carries BOTH the
+ * verbatim source text AND a plain-language rewrite for a typical
+ * voter — never one without the other. See
+ * OpusPopuli/opuspopuli#669 + OpusPopuli/opuspopuli-regions#15.
+ */
+export interface CivicsExtractionParams {
+  /** Region identifier (e.g. "california"). */
+  regionId: string;
+  /** URL the HTML/text was scraped from (for citation in `CivicText.sourceUrl`). */
+  sourceUrl: string;
+  /** Natural-language extraction goal from the region config's `dataSource.contentGoal`. */
+  contentGoal: string;
+  /** Optional sub-category from the region config (e.g. "Assembly", "Senate"). */
+  category?: string;
+  /** Optional hints from the region config to disambiguate / scope extraction. */
+  hints?: string[];
+  /** Raw HTML or text content scraped from `sourceUrl`. */
+  html: string;
+}
+
 export const PROMPT_CLIENT_CONFIG = "PROMPT_CLIENT_CONFIG";
 
 export type { PromptServiceResponse };
