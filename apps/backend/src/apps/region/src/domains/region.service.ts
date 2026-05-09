@@ -22,6 +22,7 @@ import { ServiceInitializationException } from 'src/common/exceptions/app.except
 import {
   resolveConfigPlaceholders,
   batchTransaction,
+  extractJsonObjectSlice,
   type ICache,
   type ISecretsProvider,
   type Proposition,
@@ -29,7 +30,11 @@ import {
   type Representative,
   type CampaignFinanceResult,
   type MinutesWithActions,
+  type ILLMProvider,
+  type CivicsBlock,
+  type DataSourceConfig,
 } from '@opuspopuli/common';
+import { PromptClientService } from '@opuspopuli/prompt-client';
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { REGION_CACHE } from './region.tokens';
 import { BioGeneratorService } from './bio-generator.service';
@@ -430,6 +435,10 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     private readonly legislativeCommitteeDescriptions?: LegislativeCommitteeDescriptionGeneratorService,
     @Optional()
     private readonly legislativeActionLinker?: LegislativeActionLinkerService,
+    @Optional() private readonly promptClient?: PromptClientService,
+    @Optional()
+    @Inject('LLM_PROVIDER')
+    private readonly llm?: ILLMProvider,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -711,6 +720,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       [DataType.REPRESENTATIVES]: () =>
         this.syncRepresentatives(provider, maxReps),
       [DataType.CAMPAIGN_FINANCE]: () => this.syncCampaignFinance(provider),
+      [DataType.CIVICS]: () => this.syncCivics(),
     };
 
     const handler = syncHandlers[dataType];
@@ -1387,6 +1397,434 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       created: totalCreated,
       updated: totalUpdated,
     };
+  }
+
+  /**
+   * Sync civics data — for each `dataType: 'civics'` data source in
+   * the region config, BFS-crawl the seed URL up to `crawlDepth`
+   * (default 0 = seed only), and for each visited page send it
+   * through the prompt-service's civics-extraction template, parse
+   * the resulting `CivicsBlock`, and upsert into `civics_blocks`
+   * keyed on `(regionId, sourceUrl)`.
+   *
+   * Pages typically contribute a partial block — the glossary page
+   * fills `glossary[]`, the legislative-process page fills
+   * `lifecycleStages[]`, etc. Pages that don't contain civics-relevant
+   * content produce empty rows; consumers merge across rows.
+   *
+   * Crawl scope: same host, same path prefix as the seed (up to last
+   * `/`), HTML responses only, deduplicated by canonical URL, capped
+   * at `crawlMaxPages` (default 20). Per-page failures log + skip;
+   * a single bad page doesn't fail the whole sync. Issue #669.
+   */
+  private async syncCivics(): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+  }> {
+    if (!this.promptClient || !this.llm) {
+      this.logger.warn(
+        'Civics sync requires PromptClient and LLM provider; skipping',
+      );
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const plugin = this.pluginRegistry.getLocal();
+    if (!plugin?.getDataSources) {
+      this.logger.warn(
+        'Region plugin does not expose getDataSources(); skipping civics sync',
+      );
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const dataSources = plugin.getDataSources(DataType.CIVICS);
+    if (dataSources.length === 0) {
+      this.logger.log('No civics data sources configured for this region');
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const regionId = plugin.getName();
+    let processed = 0;
+    let created = 0;
+    let updated = 0;
+
+    for (const ds of dataSources) {
+      const urls = await this.crawlCivicsUrls(ds);
+      this.logger.log(
+        `Civics: crawl from ${ds.url} (depth ${ds.crawlDepth ?? 0}) found ${urls.length} page(s)`,
+      );
+      for (const url of urls) {
+        const result = await this.extractAndUpsertCivicsPage(regionId, url, ds);
+        if (result === 'created') created++;
+        else if (result === 'updated') updated++;
+        if (result !== 'failed') processed++;
+      }
+    }
+
+    return { processed, created, updated };
+  }
+
+  /**
+   * BFS-crawl from `ds.url` up to `ds.crawlDepth` (default 0). Returns
+   * the list of unique HTML URLs to extract civics from, in visit
+   * order. Scope: same host, same path prefix as the seed; only
+   * `text/html` responses. Caps at `ds.crawlMaxPages` (default 20).
+   *
+   * Crawl failures (fetch error, non-HTML, off-scope) log + skip; the
+   * seed URL is always returned even if its links can't be parsed.
+   */
+  private async crawlCivicsUrls(ds: DataSourceConfig): Promise<string[]> {
+    const depth = ds.crawlDepth ?? 0;
+    const maxPages = ds.crawlMaxPages ?? 20;
+
+    const seed = this.canonicalizeUrl(ds.url);
+    const seedUrl = new URL(seed);
+    const pathPrefix = seedUrl.pathname.replace(/[^/]*$/, ''); // up to last '/'
+    const inScope = (u: string): boolean => {
+      try {
+        const parsed = new URL(u);
+        return (
+          parsed.host === seedUrl.host && parsed.pathname.startsWith(pathPrefix)
+        );
+      } catch {
+        return false;
+      }
+    };
+
+    const visited = new Set<string>([seed]);
+    const order: string[] = [seed];
+    const queue: { url: string; depth: number }[] = [{ url: seed, depth: 0 }];
+
+    while (queue.length > 0 && order.length < maxPages) {
+      const { url, depth: d } = queue.shift()!;
+      if (d >= depth) continue;
+      let html: string;
+      try {
+        html = await this.fetchUrlText(url);
+      } catch (e) {
+        this.logger.warn(
+          `Civics crawl: fetch failed for ${url}: ${(e as Error).message}`,
+        );
+        continue;
+      }
+      for (const link of this.extractLinks(url, html)) {
+        const canonical = this.canonicalizeUrl(link);
+        if (visited.has(canonical) || !inScope(canonical)) continue;
+        visited.add(canonical);
+        order.push(canonical);
+        queue.push({ url: canonical, depth: d + 1 });
+        if (order.length >= maxPages) break;
+      }
+    }
+    return order;
+  }
+
+  /**
+   * Strip the URL fragment + normalize trailing-slash on the path
+   * (treat `/foo` and `/foo/` as the same page). Keeps query string —
+   * different params can produce different content.
+   */
+  private canonicalizeUrl(url: string): string {
+    try {
+      const u = new URL(url);
+      u.hash = '';
+      if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
+        u.pathname = u.pathname.slice(0, -1);
+      }
+      return u.toString();
+    } catch {
+      return url;
+    }
+  }
+
+  /**
+   * Pull all `<a href="...">` values from raw HTML, resolve them
+   * against `baseUrl`, and return absolute URLs. Skips javascript:,
+   * mailto:, tel:, and obvious non-page resources. Caller filters by
+   * scope.
+   */
+  private extractLinks(baseUrl: string, html: string): string[] {
+    const out: string[] = [];
+    const re = /<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"]/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      const href = m[1].trim();
+      if (
+        !href ||
+        href.startsWith('javascript:') ||
+        href.startsWith('mailto:') ||
+        href.startsWith('tel:') ||
+        href.startsWith('#')
+      ) {
+        continue;
+      }
+      try {
+        out.push(new URL(href, baseUrl).toString());
+      } catch {
+        // skip malformed
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Run the LLM extraction for a single URL and upsert the resulting
+   * partial CivicsBlock into `civics_blocks`. Returns the outcome so
+   * the caller can tally created/updated/failed counts. Logs + returns
+   * `'failed'` on any error so a single bad page doesn't abort the
+   * crawl.
+   */
+  private async extractAndUpsertCivicsPage(
+    regionId: string,
+    sourceUrl: string,
+    ds: DataSourceConfig,
+  ): Promise<'created' | 'updated' | 'failed'> {
+    if (!this.promptClient || !this.llm) return 'failed';
+    try {
+      const html = await this.fetchUrlText(sourceUrl);
+      const content = this.htmlToReadableText(html);
+      const { promptText, promptHash, promptVersion } =
+        await this.promptClient.getCivicsExtractionPrompt({
+          regionId,
+          sourceUrl,
+          contentGoal: ds.contentGoal,
+          category: ds.category,
+          hints: ds.hints,
+          html: content,
+        });
+
+      const result = await this.llm.generate(promptText, {
+        // Defaults sized for the heaviest civics pages — the CA
+        // Assembly glossary (~150 terms × ~150 chars/entry) emits
+        // ~15-20k tokens and takes 15-20 min on qwen3.5:9b. Per-
+        // source overrides via `ds.llmMaxTokens` and
+        // `ds.llmRequestTimeoutMs` let the regions config tune this
+        // without recompiling the handler.
+        maxTokens: ds.llmMaxTokens ?? 32000,
+        temperature: 0.1,
+        requestTimeoutMs: ds.llmRequestTimeoutMs,
+      });
+
+      const candidate = extractJsonObjectSlice(result.text);
+      if (!candidate) {
+        this.logger.warn(
+          `Civics extraction: no JSON object for ${sourceUrl} (${result.text.length} chars)`,
+        );
+        return 'failed';
+      }
+
+      let block: Partial<CivicsBlock>;
+      try {
+        block = JSON.parse(candidate) as Partial<CivicsBlock>;
+      } catch (e) {
+        this.logger.warn(
+          `Civics extraction: JSON.parse failed for ${sourceUrl}: ${(e as Error).message}`,
+        );
+        return 'failed';
+      }
+
+      const existing = await this.db.civicsBlock.findUnique({
+        where: { regionId_sourceUrl: { regionId, sourceUrl } },
+        select: { id: true },
+      });
+
+      const fields = {
+        chambers: this.toJsonField(block.chambers),
+        measureTypes: this.toJsonField(block.measureTypes),
+        lifecycleStages: this.toJsonField(block.lifecycleStages),
+        sessionScheme: this.toJsonField(block.sessionScheme),
+        glossary: this.toJsonField(block.glossary),
+      };
+
+      await this.db.civicsBlock.upsert({
+        where: { regionId_sourceUrl: { regionId, sourceUrl } },
+        create: {
+          regionId,
+          sourceUrl,
+          ...fields,
+          promptHash,
+          promptVersion,
+          extractedAt: new Date(),
+        },
+        update: {
+          ...fields,
+          promptHash,
+          promptVersion,
+          extractedAt: new Date(),
+        },
+      });
+
+      const glossaryUpserted = await this.upsertGlossaryEntries(
+        regionId,
+        sourceUrl,
+        block.glossary,
+        promptHash,
+        promptVersion,
+      );
+
+      const outcome = existing ? 'updated' : 'created';
+      this.logger.log(
+        `Civics extracted from ${sourceUrl} (${outcome}, ${glossaryUpserted} glossary terms)`,
+      );
+      return outcome;
+    } catch (e) {
+      this.logger.error(
+        `Civics extraction failed for ${sourceUrl}: ${(e as Error).message}`,
+      );
+      return 'failed';
+    }
+  }
+
+  /**
+   * Flatten the LLM-extracted `block.glossary[]` into the dedicated
+   * `glossary_entries` table — denormalized lookup store for the
+   * `<CivicTerm>` tooltip path (issue #678). Keyed on `(regionId,
+   * slug)`; last-write-wins when the same term appears on multiple
+   * crawled pages.
+   *
+   * Skips entries missing required fields (term/slug/definition)
+   * with a debug log; the per-entry filter prevents one malformed
+   * term from failing the whole batch. Returns the count of
+   * successfully upserted entries so the caller can include it in
+   * the per-page log line.
+   */
+  private async upsertGlossaryEntries(
+    regionId: string,
+    sourceUrl: string,
+    glossary: unknown,
+    promptHash: string | undefined,
+    promptVersion: string | undefined,
+  ): Promise<number> {
+    if (!Array.isArray(glossary) || glossary.length === 0) return 0;
+    const valid = glossary.filter(
+      (
+        e,
+      ): e is { term: string; slug: string; definition: unknown } & Record<
+        string,
+        unknown
+      > =>
+        !!e &&
+        typeof e === 'object' &&
+        typeof (e as Record<string, unknown>).term === 'string' &&
+        typeof (e as Record<string, unknown>).slug === 'string' &&
+        !!(e as Record<string, unknown>).definition,
+    );
+    if (valid.length < glossary.length) {
+      this.logger.debug(
+        `Glossary upsert: dropped ${glossary.length - valid.length} malformed entries from ${sourceUrl}`,
+      );
+    }
+    const now = new Date();
+    await batchTransaction(
+      this.db,
+      valid.map((entry) =>
+        this.db.glossaryEntry.upsert({
+          where: { regionId_slug: { regionId, slug: entry.slug } },
+          create: {
+            regionId,
+            term: entry.term,
+            slug: entry.slug,
+            definition: entry.definition as Prisma.InputJsonValue,
+            longDefinition: this.toJsonField(entry.longDefinition),
+            relatedTerms: Array.isArray(entry.relatedTerms)
+              ? (entry.relatedTerms as string[]).filter(
+                  (t) => typeof t === 'string',
+                )
+              : [],
+            sourceUrl,
+            promptHash,
+            promptVersion,
+            extractedAt: now,
+          },
+          update: {
+            term: entry.term,
+            definition: entry.definition as Prisma.InputJsonValue,
+            longDefinition: this.toJsonField(entry.longDefinition),
+            relatedTerms: Array.isArray(entry.relatedTerms)
+              ? (entry.relatedTerms as string[]).filter(
+                  (t) => typeof t === 'string',
+                )
+              : [],
+            sourceUrl,
+            promptHash,
+            promptVersion,
+            extractedAt: now,
+          },
+        }),
+      ),
+    );
+    return valid.length;
+  }
+
+  /**
+   * Strip `<script>`, `<style>`, `<nav>`, `<header>`, `<footer>`, and
+   * `<aside>` blocks (including their content), then drop remaining
+   * tags, decode common HTML entities, and collapse whitespace.
+   *
+   * Cuts the prompt input by ~5x on typical CMS pages — a 50KB raw
+   * HTML doc shrinks to ~10KB of readable text. Helps both the
+   * prompt-service body limit and the Ollama generation timeout, and
+   * usually improves extraction quality by removing nav/footer noise
+   * the LLM would otherwise have to ignore.
+   */
+  private htmlToReadableText(html: string): string {
+    let s = html;
+    s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+    s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+    s = s.replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, '');
+    s = s.replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, '');
+    s = s.replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, '');
+    s = s.replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, '');
+    s = s.replace(/<!--[\s\S]*?-->/g, '');
+    s = s.replace(/<[^>]+>/g, ' ');
+    s = s
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+    s = s
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\s*\n\s*/g, '\n')
+      .trim();
+    return s;
+  }
+
+  /**
+   * Fetch a URL as text with a 30s timeout. Throws on non-2xx or on a
+   * non-HTML Content-Type (caller can rely on this to skip PDFs etc.
+   * during a civics crawl). Used by `syncCivics`.
+   */
+  private async fetchUrlText(url: string): Promise<string> {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) {
+      throw new Error(
+        `HTTP ${response.status} fetching ${url}: ${response.statusText}`,
+      );
+    }
+    const ct = response.headers.get('content-type') ?? '';
+    if (!ct.toLowerCase().includes('text/html')) {
+      throw new Error(`Non-HTML content-type for ${url}: ${ct}`);
+    }
+    return response.text();
+  }
+
+  /**
+   * Convert an optional CivicsBlock field to a Prisma Json input —
+   * `Prisma.DbNull` (SQL NULL) when missing, the value as
+   * `InputJsonValue` otherwise. Lets consumers query "has glossary"
+   * with a simple `WHERE glossary IS NOT NULL`.
+   */
+  private toJsonField(
+    value: unknown,
+  ): Prisma.InputJsonValue | typeof Prisma.DbNull {
+    return value === undefined || value === null
+      ? Prisma.DbNull
+      : (value as Prisma.InputJsonValue);
   }
 
   /**

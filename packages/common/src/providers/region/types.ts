@@ -6,6 +6,8 @@
  * Forks implement their own provider to fetch data from their region's sources.
  */
 
+import type { DataSourceConfig } from "../scraping-pipeline/types.js";
+
 /**
  * Supported data types for region content
  */
@@ -548,6 +550,18 @@ export interface IRegionProvider {
    * cold-start work. Issue #665.
    */
   fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
+
+  /**
+   * Get the provider's configured data sources, optionally filtered by
+   * `dataType`. Returns the raw `DataSourceConfig[]` so the caller can
+   * read URLs, content goals, hints, etc.
+   *
+   * Optional — only declarative providers expose their config this way.
+   * Used by sync handlers that drive a generic per-source extraction
+   * loop rather than per-region scraper code (civics is the first such
+   * loop; see issue #669).
+   */
+  getDataSources?(dataType?: DataType): DataSourceConfig[];
 }
 
 /**

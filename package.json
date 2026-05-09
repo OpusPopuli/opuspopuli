@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Full-stack civic technology platform with Next.js, NestJS, and 100% OSS AI/ML",
   "main": "index.js",
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "pnpm run --parallel dev",
     "lint": "pnpm -r lint",

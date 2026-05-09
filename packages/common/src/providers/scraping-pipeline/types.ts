@@ -294,6 +294,49 @@ export interface DataSourceConfig {
    *  - String values: CSS selector (supports dot notation and "|attr:href" suffix)
    *  - Object values: structured array extraction (e.g., multiple offices) */
   detailFields?: Record<string, string | StructuredFieldConfig>;
+
+  /**
+   * Crawl depth from the seed `url`, used by sync handlers that walk a
+   * site's link graph (currently civics — see issue #669).
+   *
+   *   `0` (default) — no crawl, fetch only the seed URL itself.
+   *   `1`           — seed + every link on the seed page.
+   *   `N`           — N hops from the seed.
+   *
+   * Crawling is scoped to the same host AND the same path prefix as
+   * the seed (the prefix is everything up to the seed URL's last `/`).
+   * Only `text/html` responses are visited; PDFs, images, and external
+   * domains are ignored. The visited set prevents revisits.
+   */
+  crawlDepth?: number;
+
+  /**
+   * Cap on total pages a crawler will visit per sync run, regardless
+   * of `crawlDepth`. Defaults to 20. Each page costs one LLM call, so
+   * this bounds runtime + token spend during a crawl-based sync.
+   */
+  crawlMaxPages?: number;
+
+  /**
+   * Per-source override for the LLM `maxTokens` generation cap.
+   * When set, supersedes the sync handler's hardcoded default for
+   * any LLM call this source produces. Useful when one source needs
+   * a much longer or shorter output than its siblings — e.g., the CA
+   * Assembly glossary at ~150 terms easily emits 15-20k tokens, while
+   * a how-a-bill-becomes-law page tops out near 5k.
+   */
+  llmMaxTokens?: number;
+
+  /**
+   * Per-source override for the LLM provider's per-call request
+   * timeout (milliseconds). When set, supersedes the provider's
+   * constructor-configured default for any LLM call this source
+   * produces. Useful when a single source legitimately runs much
+   * longer than the platform-wide default — e.g., civics-glossary
+   * extraction on qwen3.5:9b can take 15-20 min, while bio gen
+   * finishes in 2 min on the same hardware.
+   */
+  llmRequestTimeoutMs?: number;
 }
 
 /**

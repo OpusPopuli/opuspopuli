@@ -136,18 +136,26 @@ export class OllamaLLMProvider implements ILLMProvider {
     prompt: string,
     options?: GenerateOptions,
   ): Promise<GenerateResult> {
+    // Per-call timeout override (e.g., civics-glossary needs 20+
+    // min where bio gen needs 2; see GenerateOptions.requestTimeoutMs).
+    // Falls back to the constructor-configured default. Hoisted out
+    // of the try so the AbortError catch can reference it for the
+    // logged + thrown error message.
+    const effectiveTimeoutMs =
+      options?.requestTimeoutMs ?? this.requestTimeoutMs;
+
     // Wrap the call with circuit breaker protection
     return this.circuitBreaker.execute(async () => {
       try {
         this.logger.log(
-          `Generating completion with Ollama/${this.config.model} (${prompt.length} chars)`,
+          `Generating completion with Ollama/${this.config.model} (${prompt.length} chars, timeout ${effectiveTimeoutMs}ms)`,
         );
 
         // Add timeout to prevent hanging if Ollama isn't responding
         const controller = new AbortController();
         const timeoutId = setTimeout(
           () => controller.abort(),
-          this.requestTimeoutMs,
+          effectiveTimeoutMs,
         );
 
         const response = await this.fetchFn(`${this.config.url}/api/generate`, {
@@ -193,13 +201,13 @@ export class OllamaLLMProvider implements ILLMProvider {
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           this.logger.error(
-            `Ollama generation timed out after ${this.requestTimeoutMs}ms`,
+            `Ollama generation timed out after ${effectiveTimeoutMs}ms`,
           );
           throw new LLMError(
             this.getName(),
             "generate",
             new Error(
-              `Request timed out after ${this.requestTimeoutMs}ms. Is Ollama running? Try: ollama serve`,
+              `Request timed out after ${effectiveTimeoutMs}ms. Is Ollama running? Try: ollama serve`,
             ),
           );
         }

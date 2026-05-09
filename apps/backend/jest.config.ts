@@ -16,15 +16,26 @@ const config: Config = {
   coveragePathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
-    // Exclude boilerplate files from coverage
     'src/db/migrations/',
     'src/db/entities/',
     String.raw`/main\.ts$`,
+    String.raw`/tracing\.ts$`,
     String.raw`src/common/bootstrap\.ts$`,
     String.raw`src/config/index\.ts$`,
-    // Exclude simple DTOs (type definitions only)
+    String.raw`src/config/.*\.config\.ts$`,
     String.raw`\.dto\.ts$`,
+    String.raw`\.model\.ts$`,
+    String.raw`\.module\.ts$`,
+    String.raw`src/apps/[^/]+/src/scripts/`,
   ],
+  coverageThreshold: {
+    global: {
+      branches: 60,
+      functions: 75,
+      lines: 75,
+      statements: 75,
+    },
+  },
   verbose: true,
   rootDir: '.',
   modulePathIgnorePatterns: ['<rootDir>/dist'],

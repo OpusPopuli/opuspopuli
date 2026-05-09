@@ -153,11 +153,17 @@ export interface GlossaryEntry {
  * Top-level civics block. The LLM produces this shape; the pipeline
  * persists it; consumers (UI, LifecycleStageMapper, CivicInvariantValidator)
  * read it from the DB.
+ *
+ * `sessionScheme` is `| null` because civics is extracted per source URL
+ * — a glossary page or a how-a-bill-becomes-law page typically does not
+ * describe the session scheme, and the prompt is instructed to emit
+ * `null` rather than fabricate one. Consumers merge across multiple
+ * source extractions; sessionScheme should be present in at least one.
  */
 export interface CivicsBlock {
   chambers: Chamber[];
   measureTypes: MeasureType[];
   lifecycleStages: LifecycleStage[];
-  sessionScheme: SessionScheme;
+  sessionScheme: SessionScheme | null;
   glossary: GlossaryEntry[];
 }
