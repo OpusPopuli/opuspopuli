@@ -67,12 +67,14 @@ export class RegionResolver {
   constructor(private readonly regionService: RegionDomainService) {}
 
   /**
-   * Get region information
+   * Get region information, including merged civics data for the active region.
    */
   @Public()
   @Query(() => RegionInfoModel)
   async regionInfo(): Promise<RegionInfoModel> {
-    return this.regionService.getRegionInfo();
+    const info = this.regionService.getRegionInfo();
+    const civics = await this.regionService.getCivicsData(info.id);
+    return { ...info, civics: civics ?? undefined };
   }
 
   /**

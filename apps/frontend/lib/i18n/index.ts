@@ -6,11 +6,13 @@ import enSettings from "@/locales/en/settings.json";
 import enOnboarding from "@/locales/en/onboarding.json";
 import enPetition from "@/locales/en/petition.json";
 import enLanding from "@/locales/en/landing.json";
+import enCivics from "@/locales/en/civics.json";
 import esCommon from "@/locales/es/common.json";
 import esSettings from "@/locales/es/settings.json";
 import esOnboarding from "@/locales/es/onboarding.json";
 import esPetition from "@/locales/es/petition.json";
 import esLanding from "@/locales/es/landing.json";
+import esCivics from "@/locales/es/civics.json";
 
 export const defaultNS = "common";
 export const supportedLanguages = ["en", "es"] as const;
@@ -23,6 +25,7 @@ export const resources = {
     onboarding: enOnboarding,
     petition: enPetition,
     landing: enLanding,
+    civics: enCivics,
   },
   es: {
     common: esCommon,
@@ -30,6 +33,7 @@ export const resources = {
     onboarding: esOnboarding,
     petition: esPetition,
     landing: esLanding,
+    civics: esCivics,
   },
 } as const;
 

@@ -68,7 +68,11 @@ interface DataFetcher {
   fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
 }
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
-import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
+import {
+  RegionInfoModel,
+  DataTypeGQL,
+  CivicsBlockModel,
+} from './models/region-info.model';
 import {
   PaginatedPropositions,
   PropositionModel,
@@ -634,6 +638,211 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       supportedDataTypes: supportedTypes.map(
         (t) => t as unknown as DataTypeGQL,
       ),
+    };
+  }
+
+  /**
+   * Allow only https: and http: URLs from LLM-extracted civics data.
+   * Rejects javascript:, data:, and any other protocol to prevent XSS
+   * when the URL is rendered in an <a href> on the public civics hub.
+   */
+  private sanitizeCivicsUrl(raw: string | undefined): string | undefined {
+    if (!raw) return undefined;
+    try {
+      const parsed = new URL(raw);
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+        ? raw
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Normalise a field that should be CivicText but may have been stored by
+   * an older extraction as a plain string. Falls back to empty strings so
+   * the GraphQL non-null contract is never violated.
+   */
+  private normalizeCivicText(
+    value: unknown,
+    fallbackSourceUrl: string,
+  ): CivicsBlockModel['glossary'][number]['definition'] {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      'verbatim' in value
+    ) {
+      const v = value as Record<string, unknown>;
+      return {
+        verbatim: String(v['verbatim'] ?? ''),
+        plainLanguage: String(v['plainLanguage'] ?? v['verbatim'] ?? ''),
+        sourceUrl: String(v['sourceUrl'] ?? fallbackSourceUrl),
+      };
+    }
+    if (typeof value !== 'string' && value !== null && value !== undefined) {
+      this.logger.warn(
+        `normalizeCivicText: unexpected type "${Array.isArray(value) ? 'array' : typeof value}" from ${fallbackSourceUrl}`,
+      );
+    }
+    const text = typeof value === 'string' ? value : '';
+    return {
+      verbatim: text,
+      plainLanguage: text,
+      sourceUrl: fallbackSourceUrl,
+    };
+  }
+
+  /**
+   * Merge all civics_blocks rows for a region into a single CivicsBlockModel.
+   * Normalises CivicText fields that the LLM may have stored as plain strings.
+   * Deduplicates by stable key (code/id/slug); first non-null wins for scalars.
+   */
+  async getCivicsData(regionId: string): Promise<CivicsBlockModel | null> {
+    const rows = await this.db.civicsBlock.findMany({
+      where: { regionId },
+      orderBy: { extractedAt: 'desc' },
+    });
+
+    if (rows.length === 0) return null;
+
+    const chambers = new Map<string, CivicsBlockModel['chambers'][number]>();
+    const measureTypes = new Map<
+      string,
+      CivicsBlockModel['measureTypes'][number]
+    >();
+    const lifecycleStages = new Map<
+      string,
+      CivicsBlockModel['lifecycleStages'][number]
+    >();
+    const glossary = new Map<string, CivicsBlockModel['glossary'][number]>();
+    let sessionScheme: CivicsBlockModel['sessionScheme'] | null = null;
+
+    for (const row of rows) {
+      const src = row.sourceUrl;
+      const rawC = row.chambers as Record<string, unknown>[] | null;
+      const rawM = row.measureTypes as Record<string, unknown>[] | null;
+      const rawL = row.lifecycleStages as Record<string, unknown>[] | null;
+      const rawG = row.glossary as Record<string, unknown>[] | null;
+      const rawS = row.sessionScheme as Record<string, unknown> | null;
+
+      if (rawC) {
+        for (const ch of rawC) {
+          const name = String(ch['name'] ?? '');
+          if (!name || chambers.has(name)) continue;
+          chambers.set(name, {
+            name,
+            abbreviation: String(ch['abbreviation'] ?? ''),
+            size: Number(ch['size'] ?? 0),
+            termYears: Number(ch['termYears'] ?? 0),
+            leadershipRoles: Array.isArray(ch['leadershipRoles'])
+              ? (ch['leadershipRoles'] as string[])
+              : [],
+            description: this.normalizeCivicText(ch['description'], src),
+          });
+        }
+      }
+
+      if (rawM) {
+        for (const mt of rawM) {
+          const code = String(mt['code'] ?? '');
+          if (!code || measureTypes.has(code)) continue;
+          measureTypes.set(code, {
+            code,
+            name: String(mt['name'] ?? ''),
+            chamber: String(mt['chamber'] ?? ''),
+            votingThreshold: String(mt['votingThreshold'] ?? 'majority'),
+            reachesGovernor: Boolean(mt['reachesGovernor']),
+            purpose: this.normalizeCivicText(mt['purpose'], src),
+            lifecycleStageIds: Array.isArray(mt['lifecycleStageIds'])
+              ? (mt['lifecycleStageIds'] as string[])
+              : [],
+          });
+        }
+      }
+
+      if (rawL) {
+        for (const ls of rawL) {
+          const id = String(ls['id'] ?? '');
+          if (!id || lifecycleStages.has(id)) continue;
+          const rawAction = ls['citizenAction'] as Record<
+            string,
+            unknown
+          > | null;
+          const citizenAction = rawAction
+            ? {
+                verb: String(rawAction['verb'] ?? 'learn'),
+                label: this.normalizeCivicText(rawAction['label'], src),
+                url: this.sanitizeCivicsUrl(
+                  (rawAction['url'] as string | undefined) ??
+                    (rawAction['sourceUrl'] as string | undefined),
+                ),
+                urgency: String(rawAction['urgency'] ?? 'passive') as
+                  | 'active'
+                  | 'passive'
+                  | 'none',
+              }
+            : undefined;
+          lifecycleStages.set(id, {
+            id,
+            name: this.normalizeCivicText(ls['name'], src),
+            shortDescription: this.normalizeCivicText(
+              ls['shortDescription'],
+              src,
+            ),
+            longDescription: ls['longDescription']
+              ? this.normalizeCivicText(ls['longDescription'], src)
+              : undefined,
+            statusStringPatterns: Array.isArray(ls['statusStringPatterns'])
+              ? (ls['statusStringPatterns'] as string[])
+              : [],
+            citizenAction,
+          });
+        }
+      }
+
+      if (rawG) {
+        for (const ge of rawG) {
+          const slug = String(ge['slug'] ?? '');
+          if (!slug || glossary.has(slug)) continue;
+          glossary.set(slug, {
+            term: String(ge['term'] ?? ''),
+            slug,
+            definition: this.normalizeCivicText(ge['definition'], src),
+            longDefinition: ge['longDefinition']
+              ? this.normalizeCivicText(ge['longDefinition'], src)
+              : undefined,
+            relatedTerms: Array.isArray(ge['relatedTerms'])
+              ? (ge['relatedTerms'] as string[])
+              : [],
+          });
+        }
+      }
+
+      if (rawS && !sessionScheme) {
+        sessionScheme = {
+          cadence: String(rawS['cadence'] ?? 'annual'),
+          namingPattern: String(rawS['namingPattern'] ?? ''),
+          description: this.normalizeCivicText(rawS['description'], src),
+        };
+      }
+    }
+
+    if (
+      chambers.size === 0 &&
+      measureTypes.size === 0 &&
+      lifecycleStages.size === 0 &&
+      glossary.size === 0
+    ) {
+      return null;
+    }
+
+    return {
+      chambers: Array.from(chambers.values()),
+      measureTypes: Array.from(measureTypes.values()),
+      lifecycleStages: Array.from(lifecycleStages.values()),
+      sessionScheme: sessionScheme ?? undefined,
+      glossary: Array.from(glossary.values()),
     };
   }
 

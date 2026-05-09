@@ -9,7 +9,75 @@ export type DataType =
   | "PROPOSITIONS"
   | "MEETINGS"
   | "REPRESENTATIVES"
-  | "CAMPAIGN_FINANCE";
+  | "CAMPAIGN_FINANCE"
+  | "CIVICS";
+
+// ── Civics types ──────────────────────────────────────────────────────────────
+
+export interface CivicText {
+  verbatim: string;
+  plainLanguage: string;
+  sourceUrl: string;
+}
+
+export interface CivicsChamber {
+  name: string;
+  abbreviation: string;
+  size: number;
+  termYears: number;
+  leadershipRoles: string[];
+  description: CivicText;
+}
+
+export interface CitizenAction {
+  verb: string;
+  label: CivicText;
+  url?: string;
+  urgency: "active" | "passive" | "none";
+}
+
+export interface CivicsLifecycleStage {
+  id: string;
+  name: CivicText;
+  shortDescription: CivicText;
+  longDescription?: CivicText;
+  statusStringPatterns: string[];
+  citizenAction?: CitizenAction;
+}
+
+export interface CivicsMeasureType {
+  code: string;
+  name: string;
+  chamber: string;
+  votingThreshold: string;
+  reachesGovernor: boolean;
+  purpose: CivicText;
+  lifecycleStageIds: string[];
+}
+
+export interface CivicsGlossaryEntry {
+  term: string;
+  slug: string;
+  definition: CivicText;
+  longDefinition?: CivicText;
+  relatedTerms: string[];
+}
+
+export interface CivicsSessionScheme {
+  cadence: string;
+  namingPattern: string;
+  description: CivicText;
+}
+
+export interface CivicsBlock {
+  chambers: CivicsChamber[];
+  measureTypes: CivicsMeasureType[];
+  lifecycleStages: CivicsLifecycleStage[];
+  sessionScheme?: CivicsSessionScheme;
+  glossary: CivicsGlossaryEntry[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface RegionInfo {
   id: string;
@@ -18,6 +86,7 @@ export interface RegionInfo {
   timezone: string;
   dataSourceUrls?: string[];
   supportedDataTypes: DataType[];
+  civics?: CivicsBlock;
 }
 
 /**
@@ -516,7 +585,16 @@ export interface SyncDataTypeVars {
 // Queries
 // ============================================
 
+const CIVIC_TEXT_FIELDS = gql`
+  fragment CivicTextFields on CivicText {
+    verbatim
+    plainLanguage
+    sourceUrl
+  }
+`;
+
 export const GET_REGION_INFO = gql`
+  ${CIVIC_TEXT_FIELDS}
   query GetRegionInfo {
     regionInfo {
       id
@@ -525,6 +603,68 @@ export const GET_REGION_INFO = gql`
       timezone
       dataSourceUrls
       supportedDataTypes
+      civics {
+        chambers {
+          name
+          abbreviation
+          size
+          termYears
+          leadershipRoles
+          description {
+            ...CivicTextFields
+          }
+        }
+        measureTypes {
+          code
+          name
+          chamber
+          votingThreshold
+          reachesGovernor
+          purpose {
+            ...CivicTextFields
+          }
+          lifecycleStageIds
+        }
+        lifecycleStages {
+          id
+          name {
+            ...CivicTextFields
+          }
+          shortDescription {
+            ...CivicTextFields
+          }
+          longDescription {
+            ...CivicTextFields
+          }
+          statusStringPatterns
+          citizenAction {
+            verb
+            label {
+              ...CivicTextFields
+            }
+            url
+            urgency
+          }
+        }
+        sessionScheme {
+          cadence
+          namingPattern
+          description {
+            ...CivicTextFields
+          }
+        }
+        glossary {
+          term
+          slug
+          definition {
+            ...CivicTextFields
+          }
+          longDefinition {
+            ...CivicTextFields
+          }
+          relatedTerms
+        }
+      }
     }
   }
 `;
