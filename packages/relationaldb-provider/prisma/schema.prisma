@@ -932,6 +932,7 @@ model CivicsBlock {
 
   @@unique([regionId, sourceUrl])
   @@index([regionId])
+  @@index([regionId, extractedAt])
   @@map("civics_blocks")
 }
 

@@ -325,6 +325,26 @@ export default function RegionPage() {
         })}
       </div>
 
+      {/* Civics Hub */}
+      <div className="mt-8">
+        <Link
+          href="/region/how-it-works"
+          className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-6 py-4 hover:bg-blue-100 transition-colors dark:border-blue-900 dark:bg-blue-900/20 dark:hover:bg-blue-900/30"
+        >
+          <div>
+            <h2 className="text-base font-semibold text-blue-800 dark:text-blue-300">
+              How your government works →
+            </h2>
+            <p className="mt-0.5 text-sm text-blue-600 dark:text-blue-400">
+              Measure types, glossary, and the legislative process explained
+            </p>
+          </div>
+          <span aria-hidden="true" className="text-2xl">
+            🏛️
+          </span>
+        </Link>
+      </div>
+
       {/* Data Sources */}
       {regionInfo?.dataSourceUrls && regionInfo.dataSourceUrls.length > 0 && (
         <div className="mt-12 pt-8 border-t border-gray-100">

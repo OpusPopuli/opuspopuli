@@ -26,6 +26,7 @@ import { YesNoOutcomeCard } from "@/components/region/YesNoOutcomeCard";
 import { ClaimAttribution } from "@/components/region/ClaimAttribution";
 import { SegmentedFullText } from "@/components/region/SegmentedFullText";
 import { PropositionFundingSection } from "@/components/region/PropositionFundingSection";
+import { CivicTerm } from "@/components/civics/CivicTerm";
 import { formatDate } from "@/lib/format";
 
 const STATUS_STYLES: Record<
@@ -505,7 +506,9 @@ export default function PropositionDetailPage() {
       {/* Persistent Header */}
       <div className="mb-6">
         <p className="text-xs font-bold uppercase tracking-[1px] text-[#595959] mb-2">
-          {proposition.externalId}
+          <CivicTerm term={proposition.externalId.replace(/\d+$/, "").trim()}>
+            {proposition.externalId}
+          </CivicTerm>
         </p>
         <h1 className="text-2xl font-extrabold text-[#222222] leading-tight mb-3">
           {proposition.title}

@@ -158,13 +158,17 @@ describe('RegionResolver', () => {
   });
 
   describe('regionInfo', () => {
-    it('should return region info', async () => {
+    it('should return region info with civics merged in', async () => {
       regionService.getRegionInfo.mockReturnValue(mockRegionInfo);
+      (regionService.getCivicsData as jest.Mock).mockResolvedValue(null);
 
       const result = await resolver.regionInfo();
 
-      expect(result).toEqual(mockRegionInfo);
+      expect(result).toEqual({ ...mockRegionInfo, civics: undefined });
       expect(regionService.getRegionInfo).toHaveBeenCalled();
+      expect(regionService.getCivicsData).toHaveBeenCalledWith(
+        mockRegionInfo.id,
+      );
     });
   });
 

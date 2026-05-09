@@ -1,0 +1,45 @@
+{
+  "tooltip": {
+    "learnMore": "Más información",
+    "loading": "Cargando definición…"
+  },
+  "glossary": {
+    "title": "Glosario cívico",
+    "searchPlaceholder": "Buscar términos…",
+    "noResults": "Ningún término coincide con \"{{query}}\".",
+    "relatedTerms": "Términos relacionados",
+    "longDefinitionLabel": "Definición completa"
+  },
+  "measureTypes": {
+    "title": "Tipos de medidas",
+    "description": "Cómo funcionan los diferentes tipos de legislación en {{regionName}}",
+    "columns": {
+      "code": "Código",
+      "name": "Nombre",
+      "chamber": "Cámara",
+      "votingThreshold": "Umbral de votación",
+      "reachesGovernor": "Va al Gobernador",
+      "lifecycleStages": "Etapas"
+    },
+    "yes": "Sí",
+    "no": "No",
+    "stagesPopover": "{{count}} etapas",
+    "thresholds": {
+      "majority": "Mayoría",
+      "two-thirds": "2/3",
+      "three-fifths": "3/5",
+      "unanimous": "Unánime"
+    }
+  },
+  "lifecycle": {
+    "title": "Cómo se convierte en ley un proyecto",
+    "description": "El camino que recorre {{measureType}} por la legislatura",
+    "measureTypeLabel": "Seleccionar tipo de medida",
+    "abstractMode": "Siga las etapas por las que pasa un proyecto desde su presentación hasta la acción final."
+  },
+  "hub": {
+    "title": "Cómo funciona su gobierno",
+    "subtitle": "Una guía en lenguaje sencillo del proceso legislativo de {{regionName}}",
+    "noData": "Los datos cívicos aún se están indexando. Vuelva pronto."
+  }
+}

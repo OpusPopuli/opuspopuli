@@ -23,6 +23,7 @@ import { PartyBadge } from "@/components/region/PartyBadge";
 import { CommitteeActivityStats } from "@/components/region/CommitteeActivityStats";
 import { CommitteeActivityFeed } from "@/components/region/CommitteeActivityFeed";
 import { ActivitySummary } from "@/components/region/ActivitySummary";
+import { CivicTerm } from "@/components/civics/CivicTerm";
 import { formatDate } from "@/lib/format";
 
 const LAYERS = [
@@ -407,6 +408,8 @@ export default function LegislativeCommitteeDetailPage() {
         <div className="flex flex-wrap items-center gap-3">
           <ChamberBadge chamber={committee.chamber} />
           <span className="text-sm text-[#4d4d4d]">
+            <CivicTerm term="committee">Committee</CivicTerm>
+            {" · "}
             {committee.memberCount}{" "}
             {committee.memberCount === 1 ? "member" : "members"}
           </span>
