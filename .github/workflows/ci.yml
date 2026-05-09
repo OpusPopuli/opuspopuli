@@ -148,7 +148,7 @@ jobs:
         run: pnpm --filter @opuspopuli/relationaldb-provider db:generate
 
       - name: Run tests with coverage
-        run: pnpm test:ci
+        run: pnpm test
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4
