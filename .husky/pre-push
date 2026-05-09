@@ -1,1 +1,53 @@
-pnpm test
+# ── 1. Coverage gate ─────────────────────────────────────────────────────────
+# Thresholds are enforced in each jest.config — this fails if any package drops
+# below its configured branches/functions/lines/statements floor.
+echo "Running tests with coverage..."
+pnpm test:ci || exit 1
+
+# ── 2. AI review gate ────────────────────────────────────────────────────────
+# Load nvm so claude is available in non-interactive shell
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
+
+CLAUDE=$(command -v claude 2>/dev/null)
+if [ -z "$CLAUDE" ]; then
+  echo "Warning: claude CLI not found — skipping AI review."
+  exit 0
+fi
+
+echo ""
+echo "Running AI code review..."
+
+BASE=$(git merge-base HEAD origin/develop 2>/dev/null \
+     || git merge-base HEAD origin/main 2>/dev/null \
+     || echo "HEAD~1")
+DIFF=$(git diff "$BASE"..HEAD 2>/dev/null | head -c 30000)
+
+if [ -z "$DIFF" ]; then
+  exit 0
+fi
+
+RESULT=$("$CLAUDE" --print "You are a pre-push code review gate for the Opus Populi platform (NestJS/GraphQL/Next.js, AGPL-3.0).
+
+Review the following git diff for BLOCKING issues only:
+1. Exposed secrets, API keys, or credentials committed in code
+2. SQL injection, XSS, command injection, or other OWASP Top 10 vulnerabilities
+3. Broken authentication or authorization (e.g. missing HMAC validation, skipped CSRF)
+4. Critical bugs that would break production (unhandled nulls on hot paths, wrong DB writes)
+5. GPL-licensed dependency additions (violates AGPL dual-license structure)
+
+Minor code quality issues are NOT blocking — only flag things that would cause a security incident or production outage.
+
+Respond with EXACTLY one of:
+  PASS
+  FAIL: <one sentence describing the blocking issue>
+
+Diff:
+$DIFF" 2>/dev/null)
+
+echo "$RESULT"
+
+if printf '%s' "$RESULT" | grep -q "^FAIL:"; then
+  printf '\nPush blocked by AI review. Fix the issue above or use git push --no-verify to override.\n'
+  exit 1
+fi
