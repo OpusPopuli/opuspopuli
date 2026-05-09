@@ -1,0 +1,33 @@
+# gitleaks configuration for Opus Populi
+# All suppressed findings are intentional false positives:
+#   - Supabase demo JWTs: public tokens from Supabase's own docs, used in
+#     every local Supabase dev stack. Shipped in Supabase's README.
+#   - .env.example files: templates documenting required variables.
+#   - Test spec files: obviously fake keys/tokens as test fixtures.
+#   - localhost.key: self-signed cert for local HTTPS dev, not a real secret.
+#   - Docs/README: illustrative placeholder values.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Supabase demo tokens, example files, test fixtures, and local dev certs"
+regexes = [
+  # Supabase demo JWT — public token shipped in Supabase's own docs
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6''',
+]
+paths = [
+  # Example/template env files — values are intentional placeholders
+  '''.env\.example''',
+  # Supabase local dev stack config (uses public demo tokens)
+  '''supabase/.*''',
+  # Self-signed localhost TLS certificate
+  '''apps/frontend/nginx/\.certs/.*''',
+  # Test spec files — fake keys/tokens are fixtures, not real secrets
+  '''.*\.spec\.ts''',
+  # Documentation and README examples (illustrative values)
+  '''.*README\.md''',
+  '''docs/.*''',
+  # Docker dev env file (contains demo tokens only)
+  '''apps/backend/docker/\.env\.docker\.dev''',
+]

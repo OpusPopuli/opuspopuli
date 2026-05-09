@@ -39,7 +39,7 @@ fi
 if command -v gitleaks >/dev/null 2>&1; then
   echo ""
   echo "Running secret scan..."
-  gitleaks detect --source . --no-banner --exit-code 1 2>&1
+  gitleaks detect --source . --no-banner --config .gitleaks.toml --exit-code 1 2>&1
   if [ $? -ne 0 ]; then
     printf '\nPush blocked: potential secrets detected by gitleaks.\n'
     printf 'Review the findings above. If a finding is a false positive, add it to .gitleaksignore\n'
