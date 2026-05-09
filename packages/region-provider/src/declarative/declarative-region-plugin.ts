@@ -73,6 +73,12 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     return [...types];
   }
 
+  getDataSources(dataType?: DataType): DataSourceConfig[] {
+    return dataType
+      ? this.regionConfig.dataSources.filter((ds) => ds.dataType === dataType)
+      : this.regionConfig.dataSources;
+  }
+
   async fetchPropositions(): Promise<Proposition[]> {
     return this.fetchByDataType<Proposition>("propositions");
   }

@@ -892,6 +892,94 @@ model Meeting {
 }
 
 // ============================================
+// CIVICS (issue #669)
+// ============================================
+
+/// Civic context extracted from a region's official civic-process pages.
+/// One row per (regionId, sourceUrl). Each civics dataSource URL produces
+/// a partial CivicsBlock — a glossary page fills `glossary[]`, a
+/// how-a-bill-becomes-law page fills `lifecycleStages[]`, a chamber-and-
+/// measure-types reference fills `chambers[]`/`measureTypes[]`/
+/// `sessionScheme`. Consumers merge across rows for a complete view.
+///
+/// Fields are typed `Json?` to allow partial extractions per source —
+/// the LLM is instructed to omit (rather than fabricate) fields the
+/// source page doesn't describe. The TypeScript shape lives in
+/// `@opuspopuli/common`'s `CivicsBlock` interface; this table is the
+/// persistence layer.
+model CivicsBlock {
+  id              String   @id @default(uuid())
+  /// Region plugin name (e.g. "california"). Matches `region_plugins.name`.
+  regionId        String   @map("region_id")
+  /// Source URL the civic content was extracted from.
+  sourceUrl       String   @map("source_url")
+  /// Partial CivicsBlock fields stored as JSONB. Empty / missing in this
+  /// row when the source page didn't describe that aspect of civics.
+  chambers        Json?
+  measureTypes    Json?    @map("measure_types")
+  lifecycleStages Json?    @map("lifecycle_stages")
+  sessionScheme   Json?    @map("session_scheme")
+  glossary        Json?
+  /// SHA-256 of the prompt template text used; detects stale extractions
+  /// when the prompt is revised in the prompt-service.
+  promptHash      String?  @map("prompt_hash") @db.VarChar(64)
+  promptVersion   String?  @map("prompt_version") @db.VarChar(20)
+  /// LLM model + provider used (e.g. "ollama/qwen3.5:9b"). Audit trail.
+  llmModel        String?  @map("llm_model") @db.VarChar(80)
+  extractedAt     DateTime @default(now()) @map("extracted_at") @db.Timestamptz
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([regionId, sourceUrl])
+  @@index([regionId])
+  @@map("civics_blocks")
+}
+
+/// Denormalized lookup table for civic-vocabulary terms — one row per
+/// (regionId, slug). The civics-ingest handler flattens
+/// `civics_blocks.glossary[]` into this table after each successful
+/// page extraction; the JSON column stays as the per-page audit
+/// record, this table is the canonical fast-lookup store for the
+/// `<CivicTerm>` tooltip path (issue #678).
+///
+/// Last-write-wins on re-extract: when the same term appears on
+/// multiple crawled pages, the most recent extraction overwrites the
+/// row and `sourceUrl` records which page won. Term-level provenance
+/// is reconstructable from `civics_blocks.glossary` if needed.
+model GlossaryEntry {
+  id              String   @id @default(uuid())
+  /// Region plugin name (e.g. "california"). Matches `region_plugins.name`.
+  regionId        String   @map("region_id")
+  /// Display form of the term (preserves original casing).
+  term            String
+  /// URL-safe anchor (kebab-case) for `<CivicTerm>` "Learn more"
+  /// deep-links into the civics hub (issue #680).
+  slug            String
+  /// CivicText: { verbatim, plainLanguage, sourceUrl }. Stored as
+  /// JSONB to keep the contract single-shape across consumers.
+  definition      Json
+  /// Optional longer-form definition for the civics hub deep link.
+  longDefinition  Json?    @map("long_definition")
+  /// Cross-references to other glossary terms (case-insensitive at
+  /// query time).
+  relatedTerms    String[] @map("related_terms") @default([])
+  /// URL the most recent extraction came from. Last-write-wins when
+  /// the term appears on multiple crawled pages.
+  sourceUrl       String   @map("source_url")
+  /// SHA-256 of the prompt template used; detects stale entries when
+  /// the prompt is revised in the prompt-service.
+  promptHash      String?  @map("prompt_hash") @db.VarChar(64)
+  promptVersion   String?  @map("prompt_version") @db.VarChar(20)
+  extractedAt     DateTime @default(now()) @map("extracted_at") @db.Timestamptz
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([regionId, slug])
+  @@index([regionId, term])
+  @@map("glossary_entries")
+}
+
+// ============================================
 // REGION PLUGINS
 // ============================================
 

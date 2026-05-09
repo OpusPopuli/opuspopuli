@@ -544,6 +544,26 @@
               "path": ["api"]
             }
           }
+        },
+        {
+          "name": "Sync Region Data — CIVICS",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SyncRegionData($dataTypes: [DataType!]) {\n  syncRegionData(dataTypes: $dataTypes) {\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"CIVICS\"]\n}"
+              }
+            },
+            "description": "Triggers a CIVICS data sync against the active region. The pipeline scrapes the URLs declared as `dataType: civics` in the region config (assembly.ca.gov/resources/legislative-process, assembly.ca.gov/resources/glossary, leginfo.ca.gov/califleg.html), calls the private prompt-service to extract a structured CivicsBlock with verbatim source text + plain-language rewrites for laypeople, and persists to the region_civics tables. See OpusPopuli/opuspopuli#669 + OpusPopuli/opuspopuli-regions#15. Until the civics-ingest handler ships, this returns errors[0] = 'No sync handler for data type: civics' — that's the wired-but-not-implemented signal.",
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
         }
       ]
     },

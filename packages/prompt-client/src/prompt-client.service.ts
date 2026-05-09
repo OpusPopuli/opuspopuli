@@ -39,6 +39,7 @@ import type {
   StructuralAnalysisParams,
   DocumentAnalysisParams,
   RAGParams,
+  CivicsExtractionParams,
 } from "./types.js";
 import { PROMPT_CLIENT_CONFIG } from "./types.js";
 
@@ -279,6 +280,24 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Get a civics-extraction prompt — the LLM is instructed to emit
+   * a `CivicsBlock` (chambers, measure types, lifecycle stages,
+   * glossary, sessionScheme) where every text field has BOTH the
+   * verbatim source text AND a plain-language rewrite for laypeople.
+   *
+   * See `@opuspopuli/common`'s `CivicsBlock` for the response shape
+   * the LLM is told to produce. See OpusPopuli/opuspopuli#669.
+   */
+  async getCivicsExtractionPrompt(
+    params: CivicsExtractionParams,
+  ): Promise<PromptServiceResponse> {
+    if (this.config?.promptServiceUrl) {
+      return this.fetchRemotePrompt("civics-extraction", params);
+    }
+    return this.composeCivicsExtraction(params);
+  }
+
+  /**
    * Get the current prompt hash for cache invalidation.
    *
    * When configured with a remote prompt service, this hits GET
@@ -375,7 +394,11 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
    */
   private async fetchRemotePrompt(
     endpoint: string,
-    params: StructuralAnalysisParams | DocumentAnalysisParams | RAGParams,
+    params:
+      | StructuralAnalysisParams
+      | DocumentAnalysisParams
+      | RAGParams
+      | CivicsExtractionParams,
   ): Promise<PromptServiceResponse> {
     const url = this.config!.promptServiceUrl!;
     const timeout = this.config?.timeoutMs ?? 10000;
@@ -461,7 +484,11 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
    */
   private async composeFromDb(
     endpoint: string,
-    params: StructuralAnalysisParams | DocumentAnalysisParams | RAGParams,
+    params:
+      | StructuralAnalysisParams
+      | DocumentAnalysisParams
+      | RAGParams
+      | CivicsExtractionParams,
   ): Promise<PromptServiceResponse> {
     this.metrics.recordDbFallback();
     switch (endpoint) {
@@ -473,6 +500,8 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
         return this.composeDocumentAnalysis(params as DocumentAnalysisParams);
       case "rag":
         return this.composeRag(params as RAGParams);
+      case "civics-extraction":
+        return this.composeCivicsExtraction(params as CivicsExtractionParams);
       default:
         throw new Error(`Unknown prompt endpoint: ${endpoint}`);
     }
@@ -524,6 +553,33 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
       this.interpolate(template.templateText, { TEXT: params.text }) +
       "\n" +
       baseInstructions.templateText;
+
+    return {
+      promptText,
+      promptHash: this.hash(template.templateText),
+      promptVersion: `v${template.version}`,
+    };
+  }
+
+  private async composeCivicsExtraction(
+    params: CivicsExtractionParams,
+  ): Promise<PromptServiceResponse> {
+    const template = await this.getTemplate("civics-extraction");
+
+    const hintsSection = params.hints?.length
+      ? "## Hints from the region author\n" +
+        params.hints.map((h) => "- " + h).join("\n") +
+        "\n"
+      : "";
+
+    const promptText = this.interpolate(template.templateText, {
+      REGION_ID: params.regionId,
+      SOURCE_URL: params.sourceUrl,
+      CONTENT_GOAL: params.contentGoal,
+      CATEGORY: params.category ?? "",
+      HINTS: hintsSection,
+      HTML: params.html,
+    });
 
     return {
       promptText,

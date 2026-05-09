@@ -24,6 +24,16 @@ export interface GenerateOptions {
   stopSequences?: string[]; // Stop generation at these strings
   stream?: boolean; // Stream response token-by-token
   think?: boolean; // Enable model thinking/reasoning (Qwen 3.5). Default: false
+  /**
+   * Per-call request timeout override in milliseconds. When set,
+   * supersedes the provider's constructor-configured timeout for
+   * this single `generate()` invocation. Lets caller-side configs
+   * tune timeouts per content type (e.g., civics-glossary
+   * extraction routinely needs 15-20 min on qwen3.5:9b, while
+   * proposition-analysis finishes in 2 min on the same hardware —
+   * a single global default doesn't fit both well).
+   */
+  requestTimeoutMs?: number;
 }
 
 /**

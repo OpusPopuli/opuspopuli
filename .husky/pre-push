@@ -1,1 +1,131 @@
-pnpm test
+# ── 1. Coverage gate ─────────────────────────────────────────────────────────
+# Thresholds are enforced in each jest.config — this fails if any package drops
+# below its configured branches/functions/lines/statements floor.
+echo "Running tests with coverage..."
+pnpm test || exit 1
+
+# ── 2. Dependency vulnerability audit ────────────────────────────────────────
+# Blocks on HIGH and CRITICAL CVEs in production dependencies.
+# Run `pnpm audit --fix` or add a pnpm.overrides entry to resolve failures.
+echo ""
+echo "Running dependency vulnerability audit..."
+pnpm audit --prod --audit-level=high 2>&1
+AUDIT_EXIT=$?
+if [ $AUDIT_EXIT -ne 0 ]; then
+  printf '\nPush blocked: HIGH or CRITICAL CVEs found in production dependencies.\n'
+  printf 'Fix with: pnpm audit --fix   or add a version override to package.json > pnpm.overrides\n'
+  printf 'Then run /op-security to confirm clean before pushing.\n'
+  exit 1
+fi
+
+# ── 3. Trivy filesystem scan ──────────────────────────────────────────────────
+# Mirror of the CI Trivy scan — catches what the npm advisory DB misses
+# (e.g. container CVEs that also apply to the lockfile).
+if command -v trivy >/dev/null 2>&1; then
+  echo ""
+  echo "Running Trivy filesystem scan..."
+  trivy fs . --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --quiet 2>&1
+  TRIVY_EXIT=$?
+  if [ $TRIVY_EXIT -ne 0 ]; then
+    printf '\nPush blocked: HIGH or CRITICAL CVEs found by Trivy.\n'
+    printf 'Run /op-security for a full breakdown and fix guidance.\n'
+    exit 1
+  fi
+else
+  echo "Warning: trivy not found — install with: brew install trivy"
+fi
+
+# ── 4. Secret scan ────────────────────────────────────────────────────────────
+if command -v gitleaks >/dev/null 2>&1; then
+  echo ""
+  echo "Running secret scan..."
+  gitleaks detect --source . --no-banner --config .gitleaks.toml --exit-code 1 2>&1
+  if [ $? -ne 0 ]; then
+    printf '\nPush blocked: potential secrets detected by gitleaks.\n'
+    printf 'Review the findings above. If a finding is a false positive, add it to .gitleaksignore\n'
+    exit 1
+  fi
+else
+  echo "Warning: gitleaks not found — install with: brew install gitleaks"
+fi
+
+# ── 5. Load claude CLI ────────────────────────────────────────────────────────
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
+
+CLAUDE=$(command -v claude 2>/dev/null)
+
+BASE=$(git merge-base HEAD origin/develop 2>/dev/null \
+     || git merge-base HEAD origin/main 2>/dev/null \
+     || echo "HEAD~1")
+DIFF=$(git diff "$BASE"..HEAD 2>/dev/null | head -c 30000)
+
+# ── 6. AI code review gate ────────────────────────────────────────────────────
+if [ -z "$CLAUDE" ]; then
+  echo "Warning: claude CLI not found — skipping AI review."
+elif [ -z "$DIFF" ]; then
+  echo "No diff to review."
+else
+  echo ""
+  echo "Running AI code review..."
+
+  RESULT=$("$CLAUDE" --print "You are a pre-push code review gate for the Opus Populi platform (NestJS/GraphQL/Next.js, AGPL-3.0).
+
+Review the following git diff for BLOCKING issues only:
+1. Critical bugs that would break production (unhandled nulls on hot paths, wrong DB writes)
+2. GPL-licensed dependency additions (violates AGPL dual-license structure)
+3. Breaking changes to GraphQL schema or HMAC authentication contracts
+
+Minor code quality issues are NOT blocking — only flag things that would cause a production outage.
+
+Respond with EXACTLY one of:
+  PASS
+  FAIL: <one sentence describing the blocking issue>
+
+Diff:
+$DIFF" 2>/dev/null)
+
+  echo "$RESULT"
+
+  if printf '%s' "$RESULT" | grep -q "^FAIL:"; then
+    printf '\nPush blocked by AI review. Fix the issue above or use git push --no-verify to override.\n'
+    exit 1
+  fi
+fi
+
+# ── 7. Security review gate ───────────────────────────────────────────────────
+if [ -z "$CLAUDE" ]; then
+  echo "Warning: claude CLI not found — skipping security review."
+elif [ -z "$DIFF" ]; then
+  echo "No diff to review."
+else
+  echo ""
+  echo "Running AI security review..."
+
+  SEC_RESULT=$("$CLAUDE" --print "You are a security-focused pre-push gate for the Opus Populi platform (NestJS/GraphQL/Next.js).
+
+Analyze the following git diff for HIGH-CONFIDENCE security vulnerabilities only. Ignore theoretical issues, rate limiting, and DoS concerns.
+
+Check for:
+1. SQL injection, NoSQL injection, command injection
+2. XSS via dangerouslySetInnerHTML or direct DOM manipulation
+3. SSRF — user-controlled URLs fetched by the server without host validation
+4. Authentication bypass or missing HMAC/CSRF validation
+5. Hardcoded credentials, API keys, or tokens committed in code
+6. Path traversal in file operations
+7. Insecure deserialization (eval, Function constructor with user input)
+
+Respond with EXACTLY one of:
+  PASS
+  FAIL: <one sentence describing the specific vulnerability and file/line>
+
+Diff:
+$DIFF" 2>/dev/null)
+
+  echo "$SEC_RESULT"
+
+  if printf '%s' "$SEC_RESULT" | grep -q "^FAIL:"; then
+    printf '\nPush blocked by security review. Fix the vulnerability above or use git push --no-verify to override.\n'
+    exit 1
+  fi
+fi
