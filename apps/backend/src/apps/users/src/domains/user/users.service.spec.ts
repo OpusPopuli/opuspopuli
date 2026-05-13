@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
@@ -306,7 +305,7 @@ describe('UsersService', () => {
 
     try {
       await usersService.delete(users[0].id);
-    } catch (error) {
+    } catch {
       expect(dbService.user.findFirst).toHaveBeenCalledWith({
         where: { id: users[0].id, deletedAt: null },
       });

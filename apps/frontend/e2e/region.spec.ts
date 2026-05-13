@@ -930,8 +930,12 @@ test.describe("Representative Detail Page", () => {
     // L3 leads with the live activity feed (#665); "Authored Bills"
     // remains as a placeholder section, while "Voting Record" was
     // dropped because the per-rep vote attribution work is V2.
-    await expect(page.getByText("Recent activity")).toBeVisible();
-    await expect(page.getByText("Authored Bills")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Recent activity" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Authored Bills" }),
+    ).toBeVisible();
   });
 
   test("should advance to How They Are Supported (Layer 4) via CTA", async ({

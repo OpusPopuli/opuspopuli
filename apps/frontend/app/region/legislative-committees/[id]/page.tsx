@@ -7,14 +7,17 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@apollo/client/react";
 import {
   GET_LEGISLATIVE_COMMITTEE,
+  GET_BILLS,
   IdVars,
   LegislativeCommitteeData,
   type LegislativeCommitteeDetail,
   type LegislativeCommitteeMember,
   type LegislativeCommitteeHearing,
+  type BillsData,
+  type BillsVars,
 } from "@/lib/graphql/region";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
-import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
+import { RegionDetailShell } from "@/components/region/RegionDetailShell";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { ComingSoon } from "@/components/region/ComingSoon";
 import { LayerButton } from "@/components/region/LayerButton";
@@ -24,6 +27,8 @@ import { CommitteeActivityStats } from "@/components/region/CommitteeActivitySta
 import { CommitteeActivityFeed } from "@/components/region/CommitteeActivityFeed";
 import { ActivitySummary } from "@/components/region/ActivitySummary";
 import { CivicTerm } from "@/components/civics/CivicTerm";
+import { BillsList } from "@/components/region/BillListItem";
+import { ChamberBadge } from "@/components/region/ChamberBadge";
 import { formatDate } from "@/lib/format";
 
 const LAYERS = [
@@ -44,20 +49,6 @@ const ROLE_GROUPS: ReadonlyArray<{
     match: (r) => !r || (r !== "Chair" && r !== "Vice Chair"),
   },
 ];
-
-function ChamberBadge({ chamber }: { readonly chamber: string }) {
-  const isAssembly = chamber === "Assembly";
-  const cls = isAssembly
-    ? "bg-blue-100 text-blue-800"
-    : "bg-purple-100 text-purple-800";
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cls}`}
-    >
-      {chamber}
-    </span>
-  );
-}
 
 function MemberRow({
   member,
@@ -232,6 +223,41 @@ function HearingRow({
  * still rendered as a small "Upcoming meetings" section for
  * forward-looking context.
  */
+function CommitteeBillsList({ committeeId }: { readonly committeeId: string }) {
+  const { data, loading } = useQuery<BillsData, BillsVars>(GET_BILLS, {
+    variables: { committeeId, take: 10, skip: 0 },
+    fetchPolicy: "cache-and-network",
+  });
+
+  if (loading && !data) {
+    return (
+      <div className="space-y-2 animate-pulse">
+        {[1, 2, 3].map((n) => (
+          <div key={n} className="h-10 bg-slate-100 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  const bills = data?.bills?.items ?? [];
+
+  if (bills.length === 0) {
+    return (
+      <p className="text-sm italic text-slate-400">
+        No bills linked to this committee yet.
+      </p>
+    );
+  }
+
+  return (
+    <BillsList
+      bills={bills}
+      totalCount={data?.bills?.total ?? 0}
+      viewAllHref={`/region/bills?committeeId=${committeeId}`}
+    />
+  );
+}
+
 function Hearings({
   committee,
   onNext,
@@ -259,6 +285,11 @@ function Hearings({
           committeeId={committee.id}
           onSeePassage={onSeePassage}
         />
+      </div>
+
+      <div className="mb-8">
+        <SectionTitle>Bills referred to this committee</SectionTitle>
+        <CommitteeBillsList committeeId={committee.id} />
       </div>
 
       {committee.hearings.length > 0 && (
@@ -354,27 +385,15 @@ export default function LegislativeCommitteeDetailPage() {
     { variables: { id } },
   );
 
-  if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto px-8 py-12">
-        <LoadingSkeleton count={1} height="h-64" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="max-w-4xl mx-auto px-8 py-12">
-        <ErrorState entity="legislative committee" />
-      </div>
-    );
-  }
-
   const committee = data?.legislativeCommittee;
 
-  if (!committee) {
-    return (
-      <div className="max-w-4xl mx-auto px-8 py-12">
+  return (
+    <RegionDetailShell
+      loading={loading}
+      error={error}
+      entity="legislative committee"
+      notFound={!committee}
+      notFoundContent={
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
           <p className="text-[#4d4d4d] mb-4">Committee not found.</p>
           <Link
@@ -384,62 +403,63 @@ export default function LegislativeCommitteeDetailPage() {
             Back to legislative committees
           </Link>
         </div>
-      </div>
-    );
-  }
+      }
+    >
+      {/* committee is guaranteed non-null here */}
+      {committee && (
+        <div className="max-w-4xl mx-auto px-8 py-12">
+          <Breadcrumb
+            segments={[
+              { label: "Region", href: "/region" },
+              {
+                label: "Legislative Committees",
+                href: "/region/legislative-committees",
+              },
+              { label: committee.name },
+            ]}
+          />
 
-  return (
-    <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: "Region", href: "/region" },
-          {
-            label: "Legislative Committees",
-            href: "/region/legislative-committees",
-          },
-          { label: committee.name },
-        ]}
-      />
+          <div className="mb-6">
+            <h1 className="text-2xl font-extrabold text-[#222222] leading-tight mb-3">
+              {committee.name}
+            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <ChamberBadge chamber={committee.chamber} />
+              <span className="text-sm text-[#4d4d4d]">
+                <CivicTerm term="committee">Committee</CivicTerm>
+                {" · "}
+                {committee.memberCount}{" "}
+                {committee.memberCount === 1 ? "member" : "members"}
+              </span>
+            </div>
+          </div>
 
-      <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-[#222222] leading-tight mb-3">
-          {committee.name}
-        </h1>
-        <div className="flex flex-wrap items-center gap-3">
-          <ChamberBadge chamber={committee.chamber} />
-          <span className="text-sm text-[#4d4d4d]">
-            <CivicTerm term="committee">Committee</CivicTerm>
-            {" · "}
-            {committee.memberCount}{" "}
-            {committee.memberCount === 1 ? "member" : "members"}
-          </span>
+          <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
+
+          <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+            {layer === 1 && (
+              <Snapshot committee={committee} onNext={() => setLayer(2)} />
+            )}
+            {layer === 2 && (
+              <Members
+                committee={committee}
+                onNext={() => setLayer(3)}
+                onBack={() => setLayer(1)}
+              />
+            )}
+            {layer === 3 && (
+              <Hearings
+                committee={committee}
+                onNext={() => setLayer(4)}
+                onBack={() => setLayer(2)}
+              />
+            )}
+            {layer === 4 && (
+              <DeepDive committee={committee} onBack={() => setLayer(3)} />
+            )}
+          </div>
         </div>
-      </div>
-
-      <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
-
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        {layer === 1 && (
-          <Snapshot committee={committee} onNext={() => setLayer(2)} />
-        )}
-        {layer === 2 && (
-          <Members
-            committee={committee}
-            onNext={() => setLayer(3)}
-            onBack={() => setLayer(1)}
-          />
-        )}
-        {layer === 3 && (
-          <Hearings
-            committee={committee}
-            onNext={() => setLayer(4)}
-            onBack={() => setLayer(2)}
-          />
-        )}
-        {layer === 4 && (
-          <DeepDive committee={committee} onBack={() => setLayer(3)} />
-        )}
-      </div>
-    </div>
+      )}
+    </RegionDetailShell>
   );
 }

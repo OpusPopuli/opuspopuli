@@ -18,6 +18,7 @@ import {
   type LinkedProposition,
 } from "@/lib/graphql/documents";
 import { ReportIssueButton } from "@/components/ReportIssueButton";
+import { PetitionPageHeader } from "../components/PetitionPageHeader";
 import { TrackOnBallotButton } from "@/components/petition/TrackOnBallotButton";
 import { AnalysisDisplay } from "@/components/petition/AnalysisDisplay";
 
@@ -171,32 +172,10 @@ export default function PetitionResultsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-black/90 backdrop-blur-sm px-4 py-4 flex items-center gap-3 border-b border-gray-800">
-        <button
-          onClick={() => router.push("/petition")}
-          className="text-gray-400 hover:text-white transition-colors"
-          aria-label={t("results.back")}
-        >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-        </button>
-        <h1 className="text-lg font-semibold text-white">
-          {t("results.title")}
-        </h1>
-      </div>
+      <PetitionPageHeader
+        title={t("results.title")}
+        backLabel={t("results.back")}
+      />
 
       {/* Processing Indicator */}
       {(step === "extracting" || step === "analyzing") && !ocrText && (

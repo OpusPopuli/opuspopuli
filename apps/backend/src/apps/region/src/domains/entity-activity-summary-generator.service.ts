@@ -24,15 +24,10 @@
  * Issue #665.
  */
 
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { PromptClientService } from '@opuspopuli/prompt-client';
-import {
-  extractFieldString,
-  extractJsonObjectSlice,
-  type ILLMProvider,
-} from '@opuspopuli/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import { Injectable, Logger } from '@nestjs/common';
+import { extractFieldString, extractJsonObjectSlice } from '@opuspopuli/common';
+import { readPositiveInt } from './config-helpers';
+import { LlmGeneratorBase } from './llm-generator.base';
 
 /** Structured shape we feed the prompt. */
 interface ActivityBundle {
@@ -55,27 +50,21 @@ interface SummaryResponse {
 }
 
 @Injectable()
-export class EntityActivitySummaryGeneratorService {
+export class EntityActivitySummaryGeneratorService extends LlmGeneratorBase {
   private readonly logger = new Logger(
     EntityActivitySummaryGeneratorService.name,
   );
-  private readonly maxTokens: number;
-  private readonly windowDays: number;
-
-  constructor(
-    @Optional()
-    private readonly config?: ConfigService,
-    @Optional()
-    private readonly promptClient?: PromptClientService,
-    @Optional()
-    @Inject('LLM_PROVIDER')
-    private readonly llm?: ILLMProvider,
-    @Optional()
-    private readonly db?: DbService,
-  ) {
-    this.maxTokens = this.readPositiveInt('ACTIVITY_SUMMARY_MAX_TOKENS', 400);
-    this.windowDays = this.readPositiveInt('ACTIVITY_SUMMARY_WINDOW_DAYS', 90);
-  }
+  // Field initializers run after super(), so this.config is already set.
+  private readonly maxTokens = readPositiveInt(
+    this.config,
+    'ACTIVITY_SUMMARY_MAX_TOKENS',
+    400,
+  );
+  private readonly windowDays = readPositiveInt(
+    this.config,
+    'ACTIVITY_SUMMARY_WINDOW_DAYS',
+    90,
+  );
 
   /**
    * Regenerate summaries for every active representative + every
@@ -345,12 +334,5 @@ export class EntityActivitySummaryGeneratorService {
     const sliced = extractFieldString(text, 'summary');
     if (sliced && sliced.trim().length > 0) return sliced.trim();
     return undefined;
-  }
-
-  private readPositiveInt(envKey: string, fallback: number): number {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return fallback;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 }

@@ -1,12 +1,7 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { PromptClientService } from '@opuspopuli/prompt-client';
-import {
-  extractFieldString,
-  extractJsonObjectSlice,
-  type ILLMProvider,
-} from '@opuspopuli/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import { Injectable, Logger } from '@nestjs/common';
+import { extractFieldString, extractJsonObjectSlice } from '@opuspopuli/common';
+import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
+import { LlmGeneratorBase } from './llm-generator.base';
 
 /** Minimal shape of a committee row needed to render a description prompt. */
 interface CommitteeForDescription {
@@ -34,34 +29,25 @@ interface CommitteeForDescription {
  *   the full ~30-60 committee roster).
  */
 @Injectable()
-export class LegislativeCommitteeDescriptionGeneratorService {
+export class LegislativeCommitteeDescriptionGeneratorService extends LlmGeneratorBase {
   private readonly logger = new Logger(
     LegislativeCommitteeDescriptionGeneratorService.name,
   );
-  private readonly maxTokens: number;
-  private readonly concurrency: number;
-  private readonly maxCommittees?: number;
-
-  constructor(
-    @Optional() private readonly config?: ConfigService,
-    @Optional() private readonly promptClient?: PromptClientService,
-    @Optional()
-    @Inject('LLM_PROVIDER')
-    private readonly llm?: ILLMProvider,
-    @Optional() private readonly db?: DbService,
-  ) {
-    this.maxTokens = this.readPositiveInt(
-      'LEGISLATIVE_COMMITTEE_DESCRIPTION_MAX_TOKENS',
-      200,
-    );
-    this.concurrency = this.readPositiveInt(
-      'LEGISLATIVE_COMMITTEE_DESCRIPTION_CONCURRENCY',
-      1,
-    );
-    this.maxCommittees = this.readOptionalPositiveInt(
-      'LEGISLATIVE_COMMITTEE_DESCRIPTION_MAX_COMMITTEES',
-    );
-  }
+  // Field initializers run after super(), so this.config is already set.
+  private readonly maxTokens = readPositiveInt(
+    this.config,
+    'LEGISLATIVE_COMMITTEE_DESCRIPTION_MAX_TOKENS',
+    200,
+  );
+  private readonly concurrency = readPositiveInt(
+    this.config,
+    'LEGISLATIVE_COMMITTEE_DESCRIPTION_CONCURRENCY',
+    1,
+  );
+  private readonly maxCommittees = readOptionalPositiveInt(
+    this.config,
+    'LEGISLATIVE_COMMITTEE_DESCRIPTION_MAX_COMMITTEES',
+  );
 
   /**
    * Generate descriptions for any active committee that doesn't have one.
@@ -187,19 +173,5 @@ export class LegislativeCommitteeDescriptionGeneratorService {
       `Committee description parse failed entirely: ${text.length}-char response. Head: "${head}..." Tail: "...${tail}"`,
     );
     return undefined;
-  }
-
-  private readPositiveInt(envKey: string, fallback: number): number {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return fallback;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
-
-  private readOptionalPositiveInt(envKey: string): number | undefined {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return undefined;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 }

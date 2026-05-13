@@ -67,7 +67,7 @@ export class AuthService {
       },
     });
 
-    const validUUID = /^[a-z,0-9,-]{36,36}$/;
+    const validUUID = /^[a-z0-9-]{36}$/;
 
     if (!validUUID.test(userId)) {
       const msg = `Can't register user <${registerUserDto.email}>. Invalid userId!`;

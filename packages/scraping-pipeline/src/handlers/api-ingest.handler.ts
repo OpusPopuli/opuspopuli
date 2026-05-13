@@ -14,9 +14,13 @@ import type {
   ApiSourceConfig,
   DataSourceConfig,
   ExtractionResult,
-  RawExtractionResult,
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
+import {
+  inferSourceSystem,
+  buildFailureResult,
+  mapAndReturn,
+} from "./handler-utils.js";
 
 /** Maximum pages to fetch in a single pipeline run (safety limit) */
 const MAX_PAGES = 10;
@@ -66,7 +70,7 @@ export class ApiIngestHandler {
       }
 
       // 4. Inject sourceSystem based on category
-      const sourceSystem = this.inferSourceSystem(source);
+      const sourceSystem = inferSourceSystem(source);
       if (sourceSystem) {
         for (const item of allItems) {
           if (!item["sourceSystem"]) {
@@ -76,26 +80,16 @@ export class ApiIngestHandler {
       }
 
       // 4. Map through domain mapper
-      const rawResult: RawExtractionResult = {
-        items: allItems,
-        success: allItems.length > 0,
+      return mapAndReturn<T>(
+        allItems,
         warnings,
         errors,
-      };
-
-      const result = this.mapper.map<T>(rawResult, source);
-      result.extractionTimeMs = Date.now() - pipelineStart;
-      return result;
+        source,
+        this.mapper,
+        pipelineStart,
+      );
     } catch (error) {
-      errors.push((error as Error).message);
-      return {
-        items: [],
-        manifestVersion: 0,
-        success: false,
-        warnings,
-        errors,
-        extractionTimeMs: Date.now() - pipelineStart,
-      };
+      return buildFailureResult<T>(error, warnings, errors, pipelineStart);
     }
   }
 
@@ -353,18 +347,6 @@ export class ApiIngestHandler {
       }
     }
 
-    return undefined;
-  }
-
-  /**
-   * Infer the sourceSystem value from the data source category.
-   */
-  private inferSourceSystem(source: DataSourceConfig): string | undefined {
-    const cat = (source.category ?? "").toLowerCase();
-    if (cat.includes("cal-access") || cat.includes("cal_access")) {
-      return "cal_access";
-    }
-    if (cat.includes("fec")) return "fec";
     return undefined;
   }
 

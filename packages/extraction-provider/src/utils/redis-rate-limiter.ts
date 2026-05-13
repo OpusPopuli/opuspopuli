@@ -11,6 +11,7 @@
 
 import Redis from "ioredis";
 import type { IRateLimiter, RateLimitOptions } from "@opuspopuli/common";
+import { createRedisClient } from "./redis-utils";
 
 /**
  * Redis instance extended with the custom tokenBucket Lua command
@@ -92,41 +93,17 @@ export class RedisRateLimiter implements IRateLimiter {
     this.burstSize = options.burstSize ?? 5;
     this.key = options.key ?? "ratelimit:default";
 
-    // Parse URL or use host/port
-    if (options.url) {
-      this.redis = new Redis(options.url, {
-        lazyConnect: options.lazyConnect ?? true,
-        maxRetriesPerRequest: 3,
-        retryStrategy: (times) => {
-          if (times > 3) return null;
-          return Math.min(times * 200, 2000);
-        },
-      });
-    } else {
-      this.redis = new Redis({
-        host: options.host ?? "localhost",
-        port: options.port ?? 6379,
-        lazyConnect: options.lazyConnect ?? true,
-        maxRetriesPerRequest: 3,
-        retryStrategy: (times) => {
-          if (times > 3) return null;
-          return Math.min(times * 200, 2000);
-        },
-      });
-    }
-
-    // Track connection state
-    this.redis.on("connect", () => {
-      this.isConnected = true;
-    });
-
-    this.redis.on("error", () => {
-      this.isConnected = false;
-    });
-
-    this.redis.on("close", () => {
-      this.isConnected = false;
-    });
+    this.redis = createRedisClient(
+      {
+        url: options.url,
+        host: options.host,
+        port: options.port,
+        lazyConnect: options.lazyConnect,
+      },
+      (connected) => {
+        this.isConnected = connected;
+      },
+    );
 
     // Define the Lua script
     this.redis.defineCommand("tokenBucket", {

@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '@opuspopuli/relationaldb-provider';
+import { readPositiveInt } from './config-helpers';
 
 /**
  * Shape of one entry inside Representative.committees JSON.
@@ -60,7 +61,8 @@ export class LegislativeCommitteeLinkerService {
     @Optional() private readonly config?: ConfigService,
     @Optional() private readonly db?: DbService,
   ) {
-    this.batchSize = this.readPositiveInt(
+    this.batchSize = readPositiveInt(
+      this.config,
       'LEGISLATIVE_COMMITTEE_LINKER_BATCH_SIZE',
       50,
     );
@@ -343,12 +345,5 @@ export class LegislativeCommitteeLinkerService {
     if (VICE_CHAIR_PATTERN.test(raw)) return 'Vice Chair';
     if (CHAIR_PATTERN.test(raw)) return 'Chair';
     return 'Member';
-  }
-
-  private readPositiveInt(envKey: string, fallback: number): number {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return fallback;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 }

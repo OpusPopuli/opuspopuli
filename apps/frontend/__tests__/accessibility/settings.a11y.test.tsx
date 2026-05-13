@@ -91,7 +91,7 @@ let mockProfileQuery = {
   loading: false,
   error: null,
 };
-let mockProfileCompletionQuery = {
+const mockProfileCompletionQuery = {
   data: {
     myProfileCompletion: {
       percentage: 75,

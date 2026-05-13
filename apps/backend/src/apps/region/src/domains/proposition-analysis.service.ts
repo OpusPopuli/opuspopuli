@@ -1,14 +1,13 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { PromptClientService } from '@opuspopuli/prompt-client';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   extractJsonObjectSlice,
-  type ILLMProvider,
   type PropositionAnalysisClaim,
   type PropositionAnalysisSection,
   type PropositionExistingVsProposed,
 } from '@opuspopuli/common';
-import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
+import { Prisma } from '@opuspopuli/relationaldb-provider';
+import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
+import { LlmGeneratorBase } from './llm-generator.base';
 
 /**
  * Shape we ask the LLM to return. Matches the DB columns added by the
@@ -59,32 +58,23 @@ interface PropForAnalysis {
  * - PROPOSITION_ANALYSIS_MAX_PROPS (default unlimited) — dev cap.
  */
 @Injectable()
-export class PropositionAnalysisService {
+export class PropositionAnalysisService extends LlmGeneratorBase {
   private readonly logger = new Logger(PropositionAnalysisService.name);
-  private readonly maxTokens: number;
-  private readonly concurrency: number;
-  private readonly maxProps?: number;
-
-  constructor(
-    @Optional() private readonly config?: ConfigService,
-    @Optional() private readonly promptClient?: PromptClientService,
-    @Optional()
-    @Inject('LLM_PROVIDER')
-    private readonly llm?: ILLMProvider,
-    @Optional() private readonly db?: DbService,
-  ) {
-    this.maxTokens = this.readPositiveInt(
-      'PROPOSITION_ANALYSIS_MAX_TOKENS',
-      2000,
-    );
-    this.concurrency = this.readPositiveInt(
-      'PROPOSITION_ANALYSIS_CONCURRENCY',
-      1,
-    );
-    this.maxProps = this.readOptionalPositiveInt(
-      'PROPOSITION_ANALYSIS_MAX_PROPS',
-    );
-  }
+  // Field initializers run after super(), so this.config is already set.
+  private readonly maxTokens = readPositiveInt(
+    this.config,
+    'PROPOSITION_ANALYSIS_MAX_TOKENS',
+    2000,
+  );
+  private readonly concurrency = readPositiveInt(
+    this.config,
+    'PROPOSITION_ANALYSIS_CONCURRENCY',
+    1,
+  );
+  private readonly maxProps = readOptionalPositiveInt(
+    this.config,
+    'PROPOSITION_ANALYSIS_MAX_PROPS',
+  );
 
   /**
    * Generate (or regenerate) analysis for a single proposition by id.
@@ -433,19 +423,5 @@ export class PropositionAnalysisService {
     // Drop empty/inverted sections that survived (rare but possible if
     // two snapped headings landed on the same offset).
     return snapped.filter((s) => s.endOffset > s.startOffset);
-  }
-
-  private readPositiveInt(envKey: string, fallback: number): number {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return fallback;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
-
-  private readOptionalPositiveInt(envKey: string): number | undefined {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return undefined;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 }

@@ -20,7 +20,7 @@ const mockLoginResponse = {
   },
 };
 
-const mockRegisterResponse = {
+const _mockRegisterResponse = {
   register: {
     user: {
       id: "new-user-id",
@@ -32,7 +32,7 @@ const mockRegisterResponse = {
   },
 };
 
-const mockMagicLinkResponse = {
+const _mockMagicLinkResponse = {
   sendMagicLink: true,
 };
 

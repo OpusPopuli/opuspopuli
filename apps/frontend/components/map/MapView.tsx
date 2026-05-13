@@ -154,7 +154,7 @@ export function MapView({
   }, []);
 
   const handleMoveEnd = useCallback(
-    (evt: ViewStateChangeEvent) => {
+    (_evt: ViewStateChangeEvent) => {
       if (!onMoveEnd || !mapRef.current) return;
       const map = mapRef.current.getMap();
       const bounds = map.getBounds();

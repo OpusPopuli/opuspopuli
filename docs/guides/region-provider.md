@@ -62,7 +62,8 @@ The platform uses **declarative region plugins** — JSON configuration that des
 │  └── Database tables:                                               │
 │      propositions, meetings, representatives,                       │
 │      committees, contributions, expenditures,                       │
-│      independent_expenditures                                       │
+│      independent_expenditures,                                      │
+│      bills, bill_co_authors, bill_committee_assignments, bill_votes │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -190,7 +191,7 @@ Trigger a data sync via GraphQL:
 
 ```graphql
 mutation {
-  syncAll {
+  syncRegionData {
     dataType
     itemsProcessed
     itemsCreated
@@ -250,7 +251,7 @@ The resolution utility (`resolveConfigPlaceholders()` from `@opuspopuli/common`)
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `url` | `string` | Yes | URL of the data source |
-| `dataType` | `DataType` | Yes | `"propositions"`, `"meetings"`, `"representatives"`, `"campaign_finance"`, or `"lobbying"` |
+| `dataType` | `DataType` | Yes | `"propositions"`, `"meetings"`, `"representatives"`, `"campaign_finance"`, `"lobbying"`, or `"bills"` |
 | `contentGoal` | `string` | Yes | Natural language description of what to extract |
 | `sourceType` | `string` | No | `"html_scrape"` (default), `"bulk_download"`, `"api"`, or `"pdf"` |
 | `category` | `string` | No | Sub-grouping (e.g., `"Assembly"`, `"campaign_finance"`) |
@@ -259,6 +260,7 @@ The resolution utility (`resolveConfigPlaceholders()` from `@opuspopuli/common`)
 | `bulk` | `BulkDownloadConfig` | No | Configuration for `bulk_download` sources |
 | `api` | `ApiSourceConfig` | No | Configuration for `api` sources |
 | `pdf` | `PdfSourceConfig` | No | Configuration for `pdf` sources |
+| `billDiscovery` | `BillDiscoveryConfig` | No | Configuration for `bills` sources on legislature sites |
 
 ### BulkDownloadConfig Fields
 
@@ -291,6 +293,17 @@ The resolution utility (`resolveConfigPlaceholders()` from `@opuspopuli/common`)
 | `pageParam` | `string` | No | Query param name for page/offset |
 | `limitParam` | `string` | No | Query param name for page size |
 | `limit` | `number` | No | Items per page (default: 100) |
+
+### BillDiscoveryConfig Fields
+
+Required when `dataType` is `"bills"` for legislature sites (such as CA leginfo) where the search results page links to per-bill navigation hubs rather than directly to bill status or votes pages. Bypasses generic BFS crawling.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `navLinkPattern` | `string` | Yes | Regex (as string) applied to the seed page HTML to extract bill IDs. Capture group 1 must yield the bill ID. |
+| `statusPageTemplate` | `string` | Yes | URL path + query template for the bill status page. Use `{bill_id}` as placeholder; origin is prepended from the seed URL. Example: `"/faces/billStatusClient.xhtml?bill_id={bill_id}"` |
+| `votesPageTemplate` | `string` | Yes | URL path + query template for the bill votes page. Same substitution rules. |
+| `textPageTemplate` | `string` | No | URL path + query template for the bill text page. When set, the sync fetches this page to check the `"Date Published"` timestamp before running LLM extraction — bills whose stored `source_published_at` matches are skipped, avoiding a redundant LLM call for unchanged bills. |
 
 ## Data Types
 
@@ -417,6 +430,49 @@ interface IndependentExpenditure {
 }
 ```
 
+### Bill
+
+```typescript
+interface Bill {
+  externalId: string;         // Stable key: sessionYear + measureTypeCode + number, e.g. "20232024AB1234"
+  billNumber: string;         // Human-readable bill number, e.g. "AB 1234"
+  sessionYear: string;        // Legislative session, e.g. "2023-2024"
+  measureTypeCode: string;    // Maps to MeasureType.code from civics data: AB, SB, ACA, SCA, etc.
+  title: string;
+  subject?: string;
+  status?: string;            // Lifecycle status string from the official source page
+  currentStageId?: string;    // Resolved LifecycleStage id from civics data
+  lastAction?: string;
+  lastActionDate?: Date;
+  fiscalImpact?: string;
+  fullTextUrl?: string;       // URL to the bill's full text on the official source site
+  authorExternalId?: string;  // Resolved by BillAuthorLinker against Representative.externalId
+  authorName?: string;        // Raw author name from source page
+  coAuthorExternalIds: string[];
+  coAuthorNames: string[];
+  committeeNames: string[];   // Raw committee names used for BillCommitteeAssignment linking
+  votes: BillVote[];
+  sourceUrl: string;
+}
+```
+
+### BillVote
+
+```typescript
+type BillVotePosition = "yes" | "no" | "abstain" | "absent" | "excused" | "no_vote";
+
+interface BillVote {
+  billExternalId: string;
+  representativeName: string;           // Raw member name from roll-call table
+  representativeExternalId?: string;    // Resolved by BillAuthorLinker
+  chamber: string;                      // "Assembly" | "Senate"
+  voteDate: Date;
+  position: BillVotePosition;
+  motionText?: string;                  // e.g. "Do Pass" | "Do Pass as Amended"
+  sourceUrl: string;
+}
+```
+
 ## Source Types
 
 The `sourceType` field on `DataSourceConfig` determines the extraction strategy:
@@ -522,7 +578,7 @@ You can trigger a sync via GraphQL:
 ```graphql
 # Sync all data types
 mutation {
-  syncAll {
+  syncRegionData {
     dataType
     itemsProcessed
     itemsCreated
@@ -532,9 +588,23 @@ mutation {
   }
 }
 
-# Sync a specific data type
+# Sync specific data types only
 mutation {
-  syncDataType(dataType: PROPOSITIONS) {
+  syncRegionData(dataTypes: [PROPOSITIONS, BILLS]) {
+    dataType
+    itemsProcessed
+    itemsCreated
+    itemsUpdated
+    errors
+    syncedAt
+  }
+}
+
+# Limit AI-intensive operations during testing
+# maxReps caps representative bio/committee-summary LLM cycles
+# maxBills caps the number of bills processed per sync run
+mutation {
+  syncRegionData(maxReps: 5, maxBills: 20) {
     dataType
     itemsProcessed
     itemsCreated
@@ -589,6 +659,40 @@ query {
     hasMore
   }
 }
+
+# Bills with optional filters
+query {
+  bills(skip: 0, take: 20, measureTypeCode: "AB", sessionYear: "2023-2024") {
+    items {
+      id
+      billNumber
+      title
+      status
+      lastAction
+      lastActionDate
+    }
+    total
+    hasMore
+  }
+}
+
+# Single bill with votes
+query {
+  bill(id: "...") {
+    id
+    billNumber
+    title
+    status
+    authorName
+    votes {
+      representativeName
+      chamber
+      voteDate
+      position
+      motionText
+    }
+  }
+}
 ```
 
 ## Version Compatibility
@@ -603,6 +707,7 @@ Region config files use a `version` field (semver) to track the config format. T
 | `1.1.0` | 0.1.0+ | Added `stateCode` for federal placeholder resolution, `category` field on data sources |
 | `1.2.0` | 0.1.0+ | Added `sourceType: "pdf"` with `PdfSourceConfig`, `TextExtractionRuleSet` types |
 | `1.3.0` | 0.1.0+ | Detail page crawling: items with `detailUrl` get rich content. Meeting `minutes`, Representative `bio` fields added |
+| `1.4.0` | 0.1.0+ | Added `dataType: "bills"` with `BillDiscoveryConfig` (including optional `textPageTemplate` for skip-optimization). New DB tables: `bills`, `bill_co_authors`, `bill_committee_assignments`, `bill_votes` |
 
 ### Required Fields (all versions)
 

@@ -1,8 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 
 import { MetricsService } from 'src/common/metrics';

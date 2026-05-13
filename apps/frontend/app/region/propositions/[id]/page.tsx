@@ -7,7 +7,6 @@ import { useQuery } from "@apollo/client/react";
 import {
   GET_PROPOSITION,
   PropositionData,
-  PropositionStatus,
   IdVars,
   type Proposition,
   type PropositionAnalysisClaim,
@@ -17,7 +16,7 @@ import {
   type PetitionDocumentsForPropositionData,
 } from "@/lib/graphql/documents";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
-import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
+import { RegionDetailShell } from "@/components/region/RegionDetailShell";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { ComingSoon } from "@/components/region/ComingSoon";
 import { LayerButton } from "@/components/region/LayerButton";
@@ -27,17 +26,8 @@ import { ClaimAttribution } from "@/components/region/ClaimAttribution";
 import { SegmentedFullText } from "@/components/region/SegmentedFullText";
 import { PropositionFundingSection } from "@/components/region/PropositionFundingSection";
 import { CivicTerm } from "@/components/civics/CivicTerm";
+import { PropositionStatusBadge } from "@/components/region/PropositionStatusBadge";
 import { formatDate } from "@/lib/format";
-
-const STATUS_STYLES: Record<
-  PropositionStatus,
-  { bg: string; text: string; label: string }
-> = {
-  PENDING: { bg: "bg-yellow-100", text: "text-yellow-800", label: "Pending" },
-  PASSED: { bg: "bg-green-100", text: "text-green-800", label: "Passed" },
-  FAILED: { bg: "bg-red-100", text: "text-red-800", label: "Failed" },
-  WITHDRAWN: { bg: "bg-gray-100", text: "text-gray-800", label: "Withdrawn" },
-};
 
 const LAYERS = [
   { n: 1, label: "Quick View" },
@@ -57,17 +47,6 @@ function claimsForField(
   field: string,
 ): PropositionAnalysisClaim[] {
   return (claims ?? []).filter((c) => c.field === field);
-}
-
-function StatusBadge({ status }: { readonly status: PropositionStatus }) {
-  const style = STATUS_STYLES[status] || STATUS_STYLES.PENDING;
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${style.bg} ${style.text}`}
-    >
-      {style.label}
-    </span>
-  );
 }
 
 function QuickView({
@@ -450,41 +429,9 @@ export default function PropositionDetailPage() {
     { variables: { id } },
   );
 
-  if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto px-8 py-12">
-        <LoadingSkeleton count={1} height="h-64" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="max-w-4xl mx-auto px-8 py-12">
-        <ErrorState entity="proposition" />
-      </div>
-    );
-  }
-
   const proposition = data?.proposition;
 
-  if (!proposition) {
-    return (
-      <div className="max-w-4xl mx-auto px-8 py-12">
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#4d4d4d] mb-4">Proposition not found.</p>
-          <Link
-            href="/region/propositions"
-            className="text-blue-600 hover:text-blue-700 hover:underline text-sm font-medium"
-          >
-            Back to Propositions
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  const electionDate = proposition.electionDate
+  const electionDate = proposition?.electionDate
     ? formatDate(proposition.electionDate)
     : null;
 
@@ -494,66 +441,88 @@ export default function PropositionDetailPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: "Region", href: "/region" },
-          { label: "Propositions", href: "/region/propositions" },
-          { label: proposition.externalId },
-        ]}
-      />
-
-      {/* Persistent Header */}
-      <div className="mb-6">
-        <p className="text-xs font-bold uppercase tracking-[1px] text-[#595959] mb-2">
-          <CivicTerm term={proposition.externalId.replace(/\d+$/, "").trim()}>
-            {proposition.externalId}
-          </CivicTerm>
-        </p>
-        <h1 className="text-2xl font-extrabold text-[#222222] leading-tight mb-3">
-          {proposition.title}
-        </h1>
-        <div className="flex flex-wrap items-center gap-3">
-          <StatusBadge status={proposition.status} />
-          {electionDate && (
-            <span className="text-sm text-[#4d4d4d]">
-              Election: {electionDate}
-            </span>
-          )}
+    <RegionDetailShell
+      loading={loading}
+      error={error}
+      entity="proposition"
+      notFound={!proposition}
+      notFoundContent={
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
+          <p className="text-[#4d4d4d] mb-4">Proposition not found.</p>
+          <Link
+            href="/region/propositions"
+            className="text-blue-600 hover:text-blue-700 hover:underline text-sm font-medium"
+          >
+            Back to Propositions
+          </Link>
         </div>
-      </div>
+      }
+    >
+      {proposition && (
+        <div className="max-w-4xl mx-auto px-8 py-12">
+          <Breadcrumb
+            segments={[
+              { label: "Region", href: "/region" },
+              { label: "Propositions", href: "/region/propositions" },
+              { label: proposition.externalId },
+            ]}
+          />
 
-      {/* Layer Navigation */}
-      <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
+          {/* Persistent Header */}
+          <div className="mb-6">
+            <p className="text-xs font-bold uppercase tracking-[1px] text-[#595959] mb-2">
+              <CivicTerm
+                term={proposition.externalId.replace(/\d+$/, "").trim()}
+              >
+                {proposition.externalId}
+              </CivicTerm>
+            </p>
+            <h1 className="text-2xl font-extrabold text-[#222222] leading-tight mb-3">
+              {proposition.title}
+            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <PropositionStatusBadge status={proposition.status} />
+              {electionDate && (
+                <span className="text-sm text-[#4d4d4d]">
+                  Election: {electionDate}
+                </span>
+              )}
+            </div>
+          </div>
 
-      {/* Layer Content */}
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        {layer === 1 && (
-          <QuickView proposition={proposition} onNext={() => setLayer(2)} />
-        )}
-        {layer === 2 && (
-          <Details
-            proposition={proposition}
-            propositionId={id}
-            onNavigateToClaim={handleNavigateToClaim}
-            onNext={() => setLayer(3)}
-          />
-        )}
-        {layer === 3 && (
-          <BothSides
-            propositionId={id}
-            onNext={() => setLayer(4)}
-            onBack={() => setLayer(1)}
-          />
-        )}
-        {layer === 4 && (
-          <DeepDive
-            proposition={proposition}
-            focusedClaimKey={focusedClaimKey}
-            onBack={() => setLayer(1)}
-          />
-        )}
-      </div>
-    </div>
+          {/* Layer Navigation */}
+          <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
+
+          {/* Layer Content */}
+          <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+            {layer === 1 && (
+              <QuickView proposition={proposition} onNext={() => setLayer(2)} />
+            )}
+            {layer === 2 && (
+              <Details
+                proposition={proposition}
+                propositionId={id}
+                onNavigateToClaim={handleNavigateToClaim}
+                onNext={() => setLayer(3)}
+              />
+            )}
+            {layer === 3 && (
+              <BothSides
+                propositionId={id}
+                onNext={() => setLayer(4)}
+                onBack={() => setLayer(1)}
+              />
+            )}
+            {layer === 4 && (
+              <DeepDive
+                proposition={proposition}
+                focusedClaimKey={focusedClaimKey}
+                onBack={() => setLayer(1)}
+              />
+            )}
+          </div>
+        </div>
+      )}
+    </RegionDetailShell>
   );
 }

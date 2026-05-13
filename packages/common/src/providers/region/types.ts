@@ -391,7 +391,9 @@ export type BillVotePosition =
  */
 export interface BillVote {
   billExternalId: string;
-  /** Matched against Representative.externalId by the bill author linker. */
+  /** Raw member name from the roll-call table — preserved for linker re-runs. */
+  representativeName: string;
+  /** Resolved by BillAuthorLinker against Representative.externalId. */
   representativeExternalId?: string;
   /** "Assembly" | "Senate" */
   chamber: string;
@@ -568,6 +570,7 @@ export interface SyncResult {
   itemsProcessed: number;
   itemsCreated: number;
   itemsUpdated: number;
+  itemsSkipped: number;
   errors: string[];
   syncedAt: Date;
 }

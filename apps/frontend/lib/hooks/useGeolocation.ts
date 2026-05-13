@@ -41,6 +41,14 @@ function getInitialPermissionState(): GeolocationPermissionState {
   return "prompt";
 }
 
+function geoPermissionStateFrom(
+  state: PermissionState,
+): GeolocationPermissionState {
+  if (state === "granted") return "granted";
+  if (state === "denied") return "denied";
+  return "prompt";
+}
+
 function classifyError(err: GeolocationPositionError): GeolocationError {
   switch (err.code) {
     case err.PERMISSION_DENIED:
@@ -85,23 +93,11 @@ export function useGeolocation(
         .query({ name: "geolocation" })
         .then((status) => {
           if (!hasRequestedRef.current) {
-            setPermissionState(
-              status.state === "granted"
-                ? "granted"
-                : status.state === "denied"
-                  ? "denied"
-                  : "prompt",
-            );
+            setPermissionState(geoPermissionStateFrom(status.state));
           }
           status.addEventListener("change", () => {
             if (!hasRequestedRef.current) {
-              setPermissionState(
-                status.state === "granted"
-                  ? "granted"
-                  : status.state === "denied"
-                    ? "denied"
-                    : "prompt",
-              );
+              setPermissionState(geoPermissionStateFrom(status.state));
             }
           });
         })

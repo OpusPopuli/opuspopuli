@@ -337,6 +337,54 @@ export interface DataSourceConfig {
    * finishes in 2 min on the same hardware.
    */
   llmRequestTimeoutMs?: number;
+
+  /**
+   * Bill discovery configuration. When present, the bills-ingest handler
+   * fetches the seed page once, extracts bill IDs using `navLinkPattern`,
+   * and constructs status and votes URLs from the supplied templates —
+   * bypassing generic BFS. Required for legislature sites (e.g. CA leginfo)
+   * where the search results page lists hundreds of nav links at depth 0,
+   * exhausting `crawlMaxPages` before any detail pages can be discovered.
+   */
+  billDiscovery?: BillDiscoveryConfig;
+}
+
+/**
+ * Declarative bill discovery strategy for legislature sites whose search
+ * results page links to per-bill navigation hubs rather than directly to
+ * bill status or votes pages.
+ */
+export interface BillDiscoveryConfig {
+  /**
+   * Regex (as a string) applied to the decoded HTML of the seed page to
+   * extract bill IDs. Capture group 1 must yield the bill ID.
+   * Example for CA leginfo:
+   *   "/faces/billNavClient\\.xhtml\\?bill_id=([^\"&\\s]+)"
+   */
+  navLinkPattern: string;
+
+  /**
+   * URL path + query template for the bill status page. Use `{bill_id}`
+   * as the placeholder; the service prepends the seed URL's origin.
+   * Example: "/faces/billStatusClient.xhtml?bill_id={bill_id}"
+   */
+  statusPageTemplate: string;
+
+  /**
+   * URL path + query template for the bill votes page. Same substitution
+   * rules as `statusPageTemplate`.
+   * Example: "/faces/billVotesClient.xhtml?bill_id={bill_id}"
+   */
+  votesPageTemplate: string;
+
+  /**
+   * Optional URL path + query template for the bill text page. When set,
+   * the sync fetches this page before running LLM extraction to check
+   * the "Date Published" timestamp. If the stored value matches, the bill
+   * is skipped — avoiding a redundant LLM call for unchanged bills.
+   * Example: "/faces/billTextClient.xhtml?bill_id={bill_id}"
+   */
+  textPageTemplate?: string;
 }
 
 /**

@@ -17,7 +17,7 @@ export class ChangePasswordDto {
   @IsString()
   @MaxLength(128)
   @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$&+,:;=?@#|'<>.^*()%!-])[A-Za-z\d@$&+,:;=?@#|'<>.^*()%!-]{8,}$/,
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$&+,:;=?@#|'<>.^*()%!-])[A-Za-z\d@$&+,:;=?#|'<>.^*()%!-]{8,}$/,
     { message: 'invalid password' },
   )
   @Field()
@@ -27,7 +27,7 @@ export class ChangePasswordDto {
   @IsString()
   @MaxLength(128)
   @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$&+,:;=?@#|'<>.^*()%!-])[A-Za-z\d@$&+,:;=?@#|'<>.^*()%!-]{8,}$/,
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$&+,:;=?@#|'<>.^*()%!-])[A-Za-z\d@$&+,:;=?#|'<>.^*()%!-]{8,}$/,
     { message: 'invalid password' },
   )
   @Field()

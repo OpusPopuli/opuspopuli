@@ -141,6 +141,7 @@ export class RegionService {
           itemsProcessed: 0,
           itemsCreated: 0,
           itemsUpdated: 0,
+          itemsSkipped: 0,
           errors: [(error as Error).message],
           syncedAt: new Date(),
         });
@@ -189,6 +190,7 @@ export class RegionService {
       itemsProcessed,
       itemsCreated: 0,
       itemsUpdated: 0,
+      itemsSkipped: 0,
       errors: [],
       syncedAt: new Date(),
     };

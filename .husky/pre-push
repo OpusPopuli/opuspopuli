@@ -4,7 +4,17 @@
 echo "Running tests with coverage..."
 pnpm test || exit 1
 
-# ── 2. Dependency vulnerability audit ────────────────────────────────────────
+# ── 2. Duplicate-code gate ───────────────────────────────────────────────────
+echo ""
+echo "Checking for duplicate code..."
+pnpm jscpd || exit 1
+
+# ── 2b. SonarJS lint gate ─────────────────────────────────────────────────────
+echo ""
+echo "Running SonarJS checks..."
+pnpm lint:sonar || exit 1
+
+# ── 3. Dependency vulnerability audit ────────────────────────────────────────
 # Blocks on HIGH and CRITICAL CVEs in production dependencies.
 # Run `pnpm audit --fix` or add a pnpm.overrides entry to resolve failures.
 echo ""
@@ -18,7 +28,7 @@ if [ $AUDIT_EXIT -ne 0 ]; then
   exit 1
 fi
 
-# ── 3. Trivy filesystem scan ──────────────────────────────────────────────────
+# ── 5. Trivy filesystem scan ──────────────────────────────────────────────────
 # Mirror of the CI Trivy scan — catches what the npm advisory DB misses
 # (e.g. container CVEs that also apply to the lockfile).
 if command -v trivy >/dev/null 2>&1; then
@@ -35,7 +45,7 @@ else
   echo "Warning: trivy not found — install with: brew install trivy"
 fi
 
-# ── 4. Secret scan ────────────────────────────────────────────────────────────
+# ── 6. Secret scan ────────────────────────────────────────────────────────────
 if command -v gitleaks >/dev/null 2>&1; then
   echo ""
   echo "Running secret scan..."
@@ -49,7 +59,7 @@ else
   echo "Warning: gitleaks not found — install with: brew install gitleaks"
 fi
 
-# ── 5. Load claude CLI ────────────────────────────────────────────────────────
+# ── 7. Load claude CLI ────────────────────────────────────────────────────────
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
 
@@ -60,7 +70,7 @@ BASE=$(git merge-base HEAD origin/develop 2>/dev/null \
      || echo "HEAD~1")
 DIFF=$(git diff "$BASE"..HEAD 2>/dev/null | head -c 30000)
 
-# ── 6. AI code review gate ────────────────────────────────────────────────────
+# ── 8. AI code review gate ────────────────────────────────────────────────────
 if [ -z "$CLAUDE" ]; then
   echo "Warning: claude CLI not found — skipping AI review."
 elif [ -z "$DIFF" ]; then
@@ -93,7 +103,7 @@ $DIFF" 2>/dev/null)
   fi
 fi
 
-# ── 7. Security review gate ───────────────────────────────────────────────────
+# ── 9. Security review gate ───────────────────────────────────────────────────
 if [ -z "$CLAUDE" ]; then
   echo "Warning: claude CLI not found — skipping security review."
 elif [ -z "$DIFF" ]; then

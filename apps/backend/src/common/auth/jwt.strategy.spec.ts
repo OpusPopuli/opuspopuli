@@ -101,12 +101,10 @@ describe('JwtStrategy', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string) => {
-              switch (key) {
-                case 'AUTH_JWT_SECRET':
-                  return 'test-jwt-secret-at-least-32-characters-long';
-                default:
-                  return undefined;
+              if (key === 'AUTH_JWT_SECRET') {
+                return 'test-jwt-secret-at-least-32-characters-long';
               }
+              return undefined;
             }),
           },
         },

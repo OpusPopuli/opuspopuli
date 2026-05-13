@@ -1,13 +1,11 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { PromptClientService } from '@opuspopuli/prompt-client';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   extractFieldString,
   extractJsonObjectSlice,
   type CommitteeAssignment,
-  type ILLMProvider,
 } from '@opuspopuli/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
+import { LlmGeneratorBase } from './llm-generator.base';
 
 /** Minimal shape of a representative needed to render a committee summary. */
 interface RepForSummary {
@@ -37,35 +35,23 @@ interface RepForSummary {
  * run even when no reps actually changed in a given sync cycle.
  */
 @Injectable()
-export class CommitteeSummaryGeneratorService {
+export class CommitteeSummaryGeneratorService extends LlmGeneratorBase {
   private readonly logger = new Logger(CommitteeSummaryGeneratorService.name);
-  private readonly maxTokens: number;
-  private readonly concurrency: number;
-  private readonly maxReps?: number;
-
-  constructor(
-    @Optional()
-    private readonly config?: ConfigService,
-    @Optional()
-    private readonly promptClient?: PromptClientService,
-    @Optional()
-    @Inject('LLM_PROVIDER')
-    private readonly llm?: ILLMProvider,
-    @Optional()
-    private readonly db?: DbService,
-  ) {
-    this.maxTokens = this.readPositiveInt(
-      'COMMITTEE_SUMMARY_GENERATOR_MAX_TOKENS',
-      200,
-    );
-    this.concurrency = this.readPositiveInt(
-      'COMMITTEE_SUMMARY_GENERATOR_CONCURRENCY',
-      1,
-    );
-    this.maxReps = this.readOptionalPositiveInt(
-      'COMMITTEE_SUMMARY_GENERATOR_MAX_REPS',
-    );
-  }
+  // Field initializers run after super(), so this.config is already set.
+  private readonly maxTokens = readPositiveInt(
+    this.config,
+    'COMMITTEE_SUMMARY_GENERATOR_MAX_TOKENS',
+    200,
+  );
+  private readonly concurrency = readPositiveInt(
+    this.config,
+    'COMMITTEE_SUMMARY_GENERATOR_CONCURRENCY',
+    1,
+  );
+  private readonly maxReps = readOptionalPositiveInt(
+    this.config,
+    'COMMITTEE_SUMMARY_GENERATOR_MAX_REPS',
+  );
 
   /**
    * Query the DB for representatives that have committees but no summary,
@@ -175,20 +161,6 @@ export class CommitteeSummaryGeneratorService {
     });
 
     return this.parseSummaryFromResponse(result.text);
-  }
-
-  private readPositiveInt(envKey: string, fallback: number): number {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return fallback;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
-
-  private readOptionalPositiveInt(envKey: string): number | undefined {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return undefined;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 
   /**

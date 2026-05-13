@@ -593,6 +593,9 @@ model Representative {
 
   committeeAssignments RepresentativeCommitteeAssignment[]
   legislativeActions   LegislativeAction[]
+  authoredBills        Bill[]
+  billCoAuthorships    BillCoAuthor[]
+  billVotes            BillVote[]
 
   @@index([name])
   @@index([lastName])
@@ -628,6 +631,7 @@ model LegislativeCommittee {
   assignments        RepresentativeCommitteeAssignment[]
   legislativeActions LegislativeAction[]
   minutes            Minutes[]
+  billAssignments    BillCommitteeAssignment[]
 
   @@index([chamber])
   @@index([name])
@@ -978,6 +982,143 @@ model GlossaryEntry {
   @@unique([regionId, slug])
   @@index([regionId, term])
   @@map("glossary_entries")
+}
+
+// ============================================
+// BILLS (issue #686)
+// ============================================
+
+/// A legislative bill scraped from an official legislature website
+/// (leginfo.legislature.ca.gov for California). One row per
+/// (regionId, externalId) where externalId = sessionYear + measureTypeCode
+/// + billNumber, e.g. "20232024AB1234".
+///
+/// Author and co-author links are resolved post-upsert by the
+/// BillAuthorLinker using fuzzy name matching against Representative records.
+/// Committee assignments are resolved similarly by name against
+/// LegislativeCommittee. Both may be null/empty when no match is found.
+///
+/// currentStageId is a string reference to a LifecycleStage.id from the
+/// civics data — not a DB foreign key, since lifecycle stages live in
+/// the JSONB civics_blocks table.
+model Bill {
+  id                String    @id @default(uuid())
+  /// "20232024AB1234" — sessionYear + measureTypeCode + billNumber, no spaces.
+  externalId        String    @unique @map("external_id")
+  /// Region plugin name (e.g. "california").
+  regionId          String    @map("region_id")
+  /// Human-readable number, e.g. "AB 1234".
+  billNumber        String    @map("bill_number") @db.VarChar(30)
+  /// Legislative session, e.g. "2023-2024".
+  sessionYear       String    @map("session_year") @db.VarChar(10)
+  /// Maps to MeasureType.code from civics data: AB, SB, ACA, SCA, etc.
+  measureTypeCode   String    @map("measure_type_code") @db.VarChar(10)
+  title             String    @db.Text
+  subject           String?   @db.VarChar(500)
+  /// Lifecycle status string as it appears on the official source page.
+  status            String?   @db.VarChar(200)
+  /// Id of the matching LifecycleStage from civics data (string ref, not FK).
+  currentStageId    String?   @map("current_stage_id") @db.VarChar(100)
+  lastAction        String?   @map("last_action") @db.Text
+  lastActionDate    DateTime? @map("last_action_date") @db.Date
+  fiscalImpact      String?   @map("fiscal_impact") @db.Text
+  /// URL to the bill's full text on the official source site.
+  fullTextUrl       String?   @map("full_text_url")
+  /// Resolved by BillAuthorLinker. Null when no matching rep record found.
+  authorId          String?   @map("author_id")
+  /// Raw author name from the source page — preserved for linker re-runs.
+  authorName        String?   @map("author_name") @db.VarChar(200)
+  /// Page on the official legislature site this bill was extracted from.
+  sourceUrl         String    @map("source_url")
+  /// "Date Published" timestamp scraped from the bill text page. Used to
+  /// skip LLM re-extraction when the bill text hasn't changed since the
+  /// last sync run.
+  sourcePublishedAt DateTime? @map("source_published_at") @db.Timestamptz
+  extractedAt       DateTime  @default(now()) @map("extracted_at") @db.Timestamptz
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  author            Representative?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  coAuthors         BillCoAuthor[]
+  committeeReferrals BillCommitteeAssignment[]
+  votes             BillVote[]
+
+  @@index([regionId, sessionYear])
+  @@index([regionId, measureTypeCode])
+  @@index([authorId])
+  @@index([status])
+  @@index([lastActionDate(sort: Desc)])
+  @@map("bills")
+}
+
+/// Co-authorship of a bill. Populated by the BillAuthorLinker post-upsert.
+/// `coAuthorType` is the raw string from the source (e.g. "principal coauthor"
+/// | "coauthor") normalised to lowercase.
+model BillCoAuthor {
+  billId            String    @map("bill_id")
+  representativeId  String    @map("representative_id")
+  /// "principal coauthor" | "coauthor"
+  coAuthorType      String?   @map("co_author_type") @db.VarChar(50)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  bill              Bill            @relation(fields: [billId],           references: [id], onDelete: Cascade)
+  representative    Representative  @relation(fields: [representativeId], references: [id], onDelete: Cascade)
+
+  @@id([billId, representativeId])
+  @@index([representativeId])
+  @@map("bill_co_authors")
+}
+
+/// Records which legislative committee a bill was referred to.
+/// Populated by the BillAuthorLinker via name-matching against
+/// LegislativeCommittee records.
+model BillCommitteeAssignment {
+  billId                 String    @map("bill_id")
+  legislativeCommitteeId String    @map("legislative_committee_id")
+  referredAt             DateTime? @map("referred_at") @db.Date
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  bill      Bill                 @relation(fields: [billId],                 references: [id], onDelete: Cascade)
+  committee LegislativeCommittee @relation(fields: [legislativeCommitteeId], references: [id], onDelete: Cascade)
+
+  @@id([billId, legislativeCommitteeId])
+  @@index([legislativeCommitteeId])
+  @@map("bill_committee_assignments")
+}
+
+/// One member's vote on a specific bill roll call, extracted from the
+/// bill's vote-history page on the official legislature website.
+///
+/// `representativeId` is resolved by the BillAuthorLinker via name matching
+/// and may be null when no matching Representative record is found.
+/// The raw `representativeName` is preserved for re-linking when new
+/// representative records are added.
+model BillVote {
+  id                  String    @id @default(uuid())
+  billId              String    @map("bill_id")
+  /// Resolved FK — null when linker cannot match the name.
+  representativeId    String?   @map("representative_id")
+  /// Raw name from the roll-call table; preserved for linker re-runs.
+  representativeName  String    @map("representative_name") @db.VarChar(200)
+  /// "Assembly" | "Senate"
+  chamber             String    @db.VarChar(20)
+  voteDate            DateTime  @map("vote_date") @db.Date
+  /// yes | no | abstain | absent | excused | no_vote
+  position            String    @db.VarChar(20)
+  /// The motion being voted on, e.g. "Do Pass" | "Do Pass as Amended".
+  motionText          String?   @map("motion_text") @db.VarChar(200)
+  sourceUrl           String    @map("source_url")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  bill            Bill            @relation(fields: [billId],            references: [id], onDelete: Cascade)
+  representative  Representative? @relation(fields: [representativeId],  references: [id], onDelete: SetNull)
+
+  @@unique([billId, representativeId, voteDate, chamber])
+  @@index([billId])
+  @@index([representativeId, voteDate(sort: Desc)])
+  @@index([voteDate(sort: Desc)])
+  @@map("bill_votes")
 }
 
 // ============================================

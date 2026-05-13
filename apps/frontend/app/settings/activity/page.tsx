@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation } from "@apollo/client/react";
 import {
@@ -83,8 +83,8 @@ const actionTranslationKeys: Record<AuditAction, string> = {
   LOGIN: "LOGIN",
   LOGOUT: "LOGOUT",
   LOGIN_FAILED: "LOGIN_FAILED",
-  PASSWORD_CHANGE: "CREDENTIAL_CHANGE", // NOSONAR
-  PASSWORD_RESET: "CREDENTIAL_RESET", // NOSONAR
+  PASSWORD_CHANGE: "CREDENTIAL_CHANGE",
+  PASSWORD_RESET: "CREDENTIAL_RESET",
   CREATE: "CREATE",
   READ: "READ",
   UPDATE: "UPDATE",
@@ -291,6 +291,207 @@ function SessionCard({
   );
 }
 
+/**
+ * Shared loading/error/empty states for ActivityTab and SessionsTab.
+ * Returns a node when the tab should show a placeholder, or null to proceed
+ * with rendering the actual content.
+ */
+function useTabPlaceholder(
+  loading: boolean,
+  error: unknown,
+  emptyCheck: boolean,
+  loadingText: string,
+  errorText: string,
+  emptyText: string,
+  onRetry: () => void,
+): ReactNode | null {
+  const { t } = useTranslation(["common"]);
+
+  if (loading) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-500">{loadingText}</p>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-red-600">{errorText}</p>
+        <button
+          onClick={onRetry}
+          className="mt-2 text-sm text-blue-600 hover:text-blue-700"
+        >
+          {t("common:buttons.retry")}
+        </button>
+      </div>
+    );
+  }
+  if (emptyCheck) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-500">{emptyText}</p>
+      </div>
+    );
+  }
+  return null;
+}
+
+interface ActivityTabProps {
+  loading: boolean;
+  error: unknown;
+  activityLog: MyActivityLogData["myActivityLog"] | undefined;
+  offset: number;
+  onRetry: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}
+
+function ActivityTab({
+  loading,
+  error,
+  activityLog,
+  offset,
+  onRetry,
+  onPrev,
+  onNext,
+}: ActivityTabProps) {
+  const { t } = useTranslation(["settings", "common"]);
+  const placeholder = useTabPlaceholder(
+    loading,
+    error,
+    activityLog?.items.length === 0,
+    t("common:status.loading"),
+    t("activity.loadError"),
+    t("activity.noActivity"),
+    onRetry,
+  );
+  if (placeholder) return <>{placeholder}</>;
+
+  return (
+    <>
+      <div className="divide-y divide-gray-100">
+        {activityLog?.items.map((entry) => (
+          <ActivityLogItem key={entry.id} entry={entry} />
+        ))}
+      </div>
+
+      {/* Pagination */}
+      {activityLog && activityLog.total > PAGE_SIZE && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+          <p className="text-sm text-gray-500">
+            {t("activity.showing", {
+              from: offset + 1,
+              to: Math.min(offset + PAGE_SIZE, activityLog.total),
+              total: activityLog.total,
+            })}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={onPrev}
+              disabled={offset === 0}
+              className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {t("activity.previous")}
+            </button>
+            <button
+              onClick={onNext}
+              disabled={!activityLog.hasMore}
+              className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {t("activity.next")}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+interface SessionsTabProps {
+  loading: boolean;
+  error: unknown;
+  sessions: MySessionsData["mySessions"] | undefined;
+  revokeAllLoading: boolean;
+  revokeLoading: boolean;
+  onRevokeAll: () => void;
+  onRevokeSession: (id: string) => void;
+  onRetry: () => void;
+}
+
+function SessionsTab({
+  loading,
+  error,
+  sessions,
+  revokeAllLoading,
+  revokeLoading,
+  onRevokeAll,
+  onRevokeSession,
+  onRetry,
+}: SessionsTabProps) {
+  const { t } = useTranslation(["settings", "common"]);
+  const placeholder = useTabPlaceholder(
+    loading,
+    error,
+    sessions?.items.length === 0,
+    t("common:status.loading"),
+    t("activity.loadError"),
+    t("activity.noSessions"),
+    onRetry,
+  );
+  if (placeholder) return <>{placeholder}</>;
+
+  return (
+    <>
+      {/* Revoke all button */}
+      {sessions && sessions.total > 1 && (
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={onRevokeAll}
+            disabled={revokeAllLoading}
+            className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg disabled:opacity-50"
+          >
+            {revokeAllLoading
+              ? t("common:buttons.loading")
+              : t("activity.sessions.revokeAll")}
+          </button>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {sessions?.items.map((session) => (
+          <SessionCard
+            key={session.id}
+            session={session}
+            onRevoke={onRevokeSession}
+            isRevoking={revokeLoading}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function formatSuccessRate(
+  summaryLoading: boolean,
+  totalActions: number | undefined,
+  successfulActions: number | undefined,
+): string {
+  if (summaryLoading) return "...";
+  if (!totalActions) return "0%";
+  return `${Math.round(((successfulActions ?? 0) / totalActions) * 100)}%`;
+}
+
+function formatLastLogin(
+  summaryLoading: boolean,
+  lastLoginAt: string | undefined,
+  neverLabel: string,
+): string {
+  if (summaryLoading) return "...";
+  if (lastLoginAt) return formatRelativeTime(lastLoginAt);
+  return neverLabel;
+}
+
 export default function ActivityPage() {
   const { t } = useTranslation(["settings", "common"]);
   const { showToast } = useToast();
@@ -370,6 +571,13 @@ export default function ActivityPage() {
   const activityLog = activityData?.myActivityLog;
   const sessions = sessionsData?.mySessions;
 
+  const tabButtonClass = (tab: "activity" | "sessions") =>
+    `px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+      activeTab === tab
+        ? "border-blue-500 text-blue-600"
+        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+    }`;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -395,11 +603,11 @@ export default function ActivityPage() {
             {t("activity.summary.successRate")}
           </p>
           <p className="mt-1 text-2xl font-semibold text-green-600">
-            {summaryLoading
-              ? "..."
-              : summary?.totalActions
-                ? `${Math.round((summary.successfulActions / summary.totalActions) * 100)}%`
-                : "0%"}
+            {formatSuccessRate(
+              summaryLoading,
+              summary?.totalActions,
+              summary?.successfulActions,
+            )}
           </p>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
@@ -415,11 +623,11 @@ export default function ActivityPage() {
             {t("activity.summary.lastLogin")}
           </p>
           <p className="mt-1 text-lg font-semibold text-gray-900">
-            {summaryLoading
-              ? "..."
-              : summary?.lastLoginAt
-                ? formatRelativeTime(summary.lastLoginAt)
-                : t("activity.summary.never")}
+            {formatLastLogin(
+              summaryLoading,
+              summary?.lastLoginAt,
+              t("activity.summary.never"),
+            )}
           </p>
         </div>
       </div>
@@ -433,21 +641,13 @@ export default function ActivityPage() {
                 setActiveTab("activity");
                 setOffset(0);
               }}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "activity"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+              className={tabButtonClass("activity")}
             >
               {t("activity.tabs.activity")}
             </button>
             <button
               onClick={() => setActiveTab("sessions")}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "sessions"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+              className={tabButtonClass("sessions")}
             >
               {t("activity.tabs.sessions")}
               {sessions && (
@@ -461,118 +661,28 @@ export default function ActivityPage() {
 
         <div className="p-6">
           {activeTab === "activity" && (
-            <div>
-              {activityLoading ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">{t("common:status.loading")}</p>
-                </div>
-              ) : activityError ? (
-                <div className="text-center py-8">
-                  <p className="text-red-600">{t("activity.loadError")}</p>
-                  <button
-                    onClick={() => refetchActivity()}
-                    className="mt-2 text-sm text-blue-600 hover:text-blue-700"
-                  >
-                    {t("common:buttons.retry")}
-                  </button>
-                </div>
-              ) : activityLog?.items.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">{t("activity.noActivity")}</p>
-                </div>
-              ) : (
-                <>
-                  <div className="divide-y divide-gray-100">
-                    {activityLog?.items.map((entry) => (
-                      <ActivityLogItem key={entry.id} entry={entry} />
-                    ))}
-                  </div>
-
-                  {/* Pagination */}
-                  {activityLog && activityLog.total > PAGE_SIZE && (
-                    <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
-                      <p className="text-sm text-gray-500">
-                        {t("activity.showing", {
-                          from: offset + 1,
-                          to: Math.min(offset + PAGE_SIZE, activityLog.total),
-                          total: activityLog.total,
-                        })}
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() =>
-                            setOffset(Math.max(0, offset - PAGE_SIZE))
-                          }
-                          disabled={offset === 0}
-                          className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {t("activity.previous")}
-                        </button>
-                        <button
-                          onClick={() => setOffset(offset + PAGE_SIZE)}
-                          disabled={!activityLog.hasMore}
-                          className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {t("activity.next")}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            <ActivityTab
+              loading={activityLoading}
+              error={activityError}
+              activityLog={activityLog}
+              offset={offset}
+              onRetry={refetchActivity}
+              onPrev={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+              onNext={() => setOffset(offset + PAGE_SIZE)}
+            />
           )}
 
           {activeTab === "sessions" && (
-            <div>
-              {sessionsLoading ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">{t("common:status.loading")}</p>
-                </div>
-              ) : sessionsError ? (
-                <div className="text-center py-8">
-                  <p className="text-red-600">{t("activity.loadError")}</p>
-                  <button
-                    onClick={() => refetchSessions()}
-                    className="mt-2 text-sm text-blue-600 hover:text-blue-700"
-                  >
-                    {t("common:buttons.retry")}
-                  </button>
-                </div>
-              ) : sessions?.items.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">{t("activity.noSessions")}</p>
-                </div>
-              ) : (
-                <>
-                  {/* Revoke all button */}
-                  {sessions && sessions.total > 1 && (
-                    <div className="flex justify-end mb-4">
-                      <button
-                        onClick={handleRevokeAllSessions}
-                        disabled={revokeAllLoading}
-                        className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg disabled:opacity-50"
-                      >
-                        {revokeAllLoading
-                          ? t("common:buttons.loading")
-                          : t("activity.sessions.revokeAll")}
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="space-y-3">
-                    {sessions?.items.map((session) => (
-                      <SessionCard
-                        key={session.id}
-                        session={session}
-                        onRevoke={handleRevokeSession}
-                        isRevoking={revokeLoading}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            <SessionsTab
+              loading={sessionsLoading}
+              error={sessionsError}
+              sessions={sessions}
+              revokeAllLoading={revokeAllLoading}
+              revokeLoading={revokeLoading}
+              onRevokeAll={handleRevokeAllSessions}
+              onRevokeSession={handleRevokeSession}
+              onRetry={refetchSessions}
+            />
           )}
         </div>
       </div>

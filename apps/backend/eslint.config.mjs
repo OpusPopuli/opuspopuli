@@ -8,6 +8,12 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     rules: {
+      // Allow underscore-prefixed identifiers to mark intentionally unused
+      // function parameters and destructured variables.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
       /**
        * Enforce consistent environment detection
        *

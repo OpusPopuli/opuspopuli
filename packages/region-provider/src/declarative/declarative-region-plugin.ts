@@ -19,6 +19,7 @@ import type {
   Representative,
   CampaignFinanceResult,
   MinutesWithActions,
+  Bill,
   DeclarativeRegionConfig,
   DataSourceConfig,
   ExtractionResult,
@@ -96,6 +97,10 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
 
   async fetchRepresentatives(): Promise<Representative[]> {
     return this.fetchByDataType<Representative>("representatives");
+  }
+
+  async fetchBills(): Promise<Bill[]> {
+    return this.fetchByDataType<Bill>("bills");
   }
 
   /**

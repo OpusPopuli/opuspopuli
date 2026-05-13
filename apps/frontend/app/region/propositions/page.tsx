@@ -7,9 +7,9 @@ import {
   GET_PROPOSITIONS,
   PropositionsData,
   Proposition,
-  PropositionStatus,
 } from "@/lib/graphql/region";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { PropositionStatusBadge } from "@/components/region/PropositionStatusBadge";
 import { Pagination } from "@/components/region/Pagination";
 import {
   LoadingSkeleton,
@@ -18,43 +18,6 @@ import {
 } from "@/components/region/ListStates";
 
 const PAGE_SIZE = 10;
-
-const STATUS_STYLES: Record<
-  PropositionStatus,
-  { bg: string; text: string; label: string }
-> = {
-  PENDING: {
-    bg: "bg-yellow-100",
-    text: "text-yellow-800",
-    label: "Pending",
-  },
-  PASSED: {
-    bg: "bg-green-100",
-    text: "text-green-800",
-    label: "Passed",
-  },
-  FAILED: {
-    bg: "bg-red-100",
-    text: "text-red-800",
-    label: "Failed",
-  },
-  WITHDRAWN: {
-    bg: "bg-gray-100",
-    text: "text-gray-800",
-    label: "Withdrawn",
-  },
-};
-
-function StatusBadge({ status }: { readonly status: PropositionStatus }) {
-  const style = STATUS_STYLES[status] || STATUS_STYLES.PENDING;
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${style.bg} ${style.text}`}
-    >
-      {style.label}
-    </span>
-  );
-}
 
 /**
  * Pick the best one-line description for a proposition card.
@@ -110,7 +73,7 @@ function PropositionCard({
             </p>
           )}
         </div>
-        <StatusBadge status={proposition.status} />
+        <PropositionStatusBadge status={proposition.status} />
       </div>
 
       {electionDate && (
