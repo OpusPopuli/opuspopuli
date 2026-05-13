@@ -26,6 +26,7 @@ import { LayerNav } from "@/components/region/LayerNav";
 import { ActivityStats } from "@/components/region/ActivityStats";
 import { ActivityFeed } from "@/components/region/ActivityFeed";
 import { ActivitySummary } from "@/components/region/ActivitySummary";
+import { CivicTerm } from "@/components/civics/CivicTerm";
 
 const LAYERS = [
   { n: 1, label: "Who They Are" },
@@ -710,7 +711,7 @@ function PersistentHeader({
           <div className="flex flex-wrap items-center gap-2.5 mb-2.5">
             <PartyBadge party={rep.party} size="md" />
             <span className="text-sm text-[#4d4d4d] font-medium">
-              {rep.chamber}
+              <CivicTerm term={rep.chamber}>{rep.chamber}</CivicTerm>
             </span>
             <span className="text-sm text-[#4d4d4d]">
               District {rep.district}

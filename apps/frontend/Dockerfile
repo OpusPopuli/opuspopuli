@@ -8,7 +8,7 @@ WORKDIR /app
 
 COPY apps/frontend/package.json ./
 
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --lockfile=false --ignore-workspace
 
@@ -45,7 +45,7 @@ ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 ENV NEXT_PUBLIC_HMAC_CLIENT_ID=$NEXT_PUBLIC_HMAC_CLIENT_ID
 ENV NEXT_PUBLIC_HMAC_SECRET=$NEXT_PUBLIC_HMAC_SECRET
 
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 RUN pnpm build
 
 # Production image, copy all the files and run next

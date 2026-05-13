@@ -1,0 +1,45 @@
+{
+  "tooltip": {
+    "learnMore": "Learn more",
+    "loading": "Loading definition…"
+  },
+  "glossary": {
+    "title": "Civic Glossary",
+    "searchPlaceholder": "Search terms…",
+    "noResults": "No terms match \"{{query}}\".",
+    "relatedTerms": "Related terms",
+    "longDefinitionLabel": "Full definition"
+  },
+  "measureTypes": {
+    "title": "Measure Types",
+    "description": "How different types of legislation work in {{regionName}}",
+    "columns": {
+      "code": "Code",
+      "name": "Name",
+      "chamber": "Chamber",
+      "votingThreshold": "Voting threshold",
+      "reachesGovernor": "Goes to Governor",
+      "lifecycleStages": "Stages"
+    },
+    "yes": "Yes",
+    "no": "No",
+    "stagesPopover": "{{count}} stages",
+    "thresholds": {
+      "majority": "Majority",
+      "two-thirds": "2/3",
+      "three-fifths": "3/5",
+      "unanimous": "Unanimous"
+    }
+  },
+  "lifecycle": {
+    "title": "How a Bill Becomes Law",
+    "description": "The path a {{measureType}} takes through the legislature",
+    "measureTypeLabel": "Select measure type",
+    "abstractMode": "Follow the stages a bill passes through from introduction to final action."
+  },
+  "hub": {
+    "title": "How Your Government Works",
+    "subtitle": "A plain-language guide to {{regionName}}'s legislative process",
+    "noData": "Civics data is still being indexed. Check back soon."
+  }
+}
