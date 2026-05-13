@@ -29,6 +29,12 @@ const RESOLUTION_MAP = {
   high: { width: 2560, height: 1440 },
 };
 
+function permissionStateFrom(state: PermissionState): CameraPermissionState {
+  if (state === "granted") return "granted";
+  if (state === "denied") return "denied";
+  return "prompt";
+}
+
 export interface UseCameraReturn {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -108,21 +114,9 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
       navigator.permissions
         .query({ name: "camera" as PermissionName })
         .then((status) => {
-          setPermissionState(
-            status.state === "granted"
-              ? "granted"
-              : status.state === "denied"
-                ? "denied"
-                : "prompt",
-          );
+          setPermissionState(permissionStateFrom(status.state));
           status.addEventListener("change", () => {
-            setPermissionState(
-              status.state === "granted"
-                ? "granted"
-                : status.state === "denied"
-                  ? "denied"
-                  : "prompt",
-            );
+            setPermissionState(permissionStateFrom(status.state));
           });
         })
         .catch(() => {

@@ -746,6 +746,7 @@ describe('RegionResolver', () => {
           itemsProcessed: 10,
           itemsCreated: 5,
           itemsUpdated: 5,
+          itemsSkipped: 0,
           errors: [],
           syncedAt: new Date(),
         },
@@ -754,6 +755,7 @@ describe('RegionResolver', () => {
           itemsProcessed: 5,
           itemsCreated: 3,
           itemsUpdated: 2,
+          itemsSkipped: 0,
           errors: [],
           syncedAt: new Date(),
         },
@@ -764,7 +766,11 @@ describe('RegionResolver', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0].itemsProcessed).toBe(10);
-      expect(regionService.syncAll).toHaveBeenCalledWith(undefined, undefined);
+      expect(regionService.syncAll).toHaveBeenCalledWith(
+        undefined,
+        undefined,
+        undefined,
+      );
     });
 
     it('should pass dataTypes filter to syncAll', async () => {
@@ -774,6 +780,7 @@ describe('RegionResolver', () => {
           itemsProcessed: 3,
           itemsCreated: 3,
           itemsUpdated: 0,
+          itemsSkipped: 0,
           errors: [],
           syncedAt: new Date(),
         },
@@ -785,6 +792,7 @@ describe('RegionResolver', () => {
       expect(regionService.syncAll).toHaveBeenCalledWith(
         ['propositions'],
         undefined,
+        undefined,
       );
     });
 
@@ -795,6 +803,7 @@ describe('RegionResolver', () => {
           itemsProcessed: 0,
           itemsCreated: 0,
           itemsUpdated: 0,
+          itemsSkipped: 0,
           errors: ['Network error'],
           syncedAt: new Date(),
         },

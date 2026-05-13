@@ -27,6 +27,9 @@ import {
   RegisterUserInput,
   LoginUserData,
   RegisterUserData,
+  SendMagicLinkData,
+  VerifyMagicLinkData,
+  RegisterWithMagicLinkData,
   AuthTokens,
   LogoutData,
 } from "./graphql/auth";
@@ -128,15 +131,12 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [registerMutation] = useMutation<RegisterUserData>(REGISTER_USER);
 
   // Magic link mutations
-  const [sendMagicLinkMutation] = useMutation<{ sendMagicLink: boolean }>(
-    SEND_MAGIC_LINK,
-  );
-  const [verifyMagicLinkMutation] = useMutation<{
-    verifyMagicLink: AuthTokens;
-  }>(VERIFY_MAGIC_LINK);
-  const [registerWithMagicLinkMutation] = useMutation<{
-    registerWithMagicLink: boolean;
-  }>(REGISTER_WITH_MAGIC_LINK);
+  const [sendMagicLinkMutation] =
+    useMutation<SendMagicLinkData>(SEND_MAGIC_LINK);
+  const [verifyMagicLinkMutation] =
+    useMutation<VerifyMagicLinkData>(VERIFY_MAGIC_LINK);
+  const [registerWithMagicLinkMutation] =
+    useMutation<RegisterWithMagicLinkData>(REGISTER_WITH_MAGIC_LINK);
   const [exchangeSupabaseSessionMutation] = useMutation<{
     exchangeSupabaseSession: AuthTokens;
   }>(EXCHANGE_SUPABASE_SESSION);
@@ -210,7 +210,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       }
     }
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(false);
   }, []);
 

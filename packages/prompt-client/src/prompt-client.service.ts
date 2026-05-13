@@ -40,6 +40,7 @@ import type {
   DocumentAnalysisParams,
   RAGParams,
   CivicsExtractionParams,
+  BillExtractionParams,
 } from "./types.js";
 import { PROMPT_CLIENT_CONFIG } from "./types.js";
 
@@ -127,6 +128,49 @@ Context:
 {{CONTEXT}}
 Question: {{QUERY}}
 Answer:`,
+    ),
+  ],
+  [
+    "bill-extraction",
+    buildFallbackTemplate(
+      "bill-extraction",
+      "structural_analysis",
+      `You are extracting structured data from an official state legislature bill page.
+Region: {{REGION_ID}}
+Source URL: {{SOURCE_URL}}
+Legislative session: {{SESSION_YEAR}}
+
+Extract the following fields from the HTML and respond with ONLY valid JSON:
+{
+  "billNumber": "AB 1234",
+  "sessionYear": "2023-2024",
+  "measureTypeCode": "AB",
+  "title": "Full bill title",
+  "subject": "Primary subject tag if present",
+  "status": "Current status string as it appears on the page",
+  "lastAction": "Most recent action description",
+  "lastActionDate": "YYYY-MM-DD or null",
+  "fiscalImpact": "Fiscal impact summary or null",
+  "fullTextUrl": "URL to the bill full text or null",
+  "authorName": "Primary author full name",
+  "coAuthorNames": ["Co-author name 1", "Co-author name 2"],
+  "committeeNames": ["Committee name 1"],
+  "votes": [
+    {
+      "representativeName": "Member full name",
+      "chamber": "Assembly",
+      "voteDate": "YYYY-MM-DD",
+      "position": "yes",
+      "motionText": "Do Pass"
+    }
+  ]
+}
+Valid position values: yes | no | abstain | absent | excused | no_vote
+Omit any field you cannot determine from the page. Do not fabricate data.
+HTML:
+\`\`\`html
+{{HTML}}
+\`\`\``,
     ),
   ],
 ]);
@@ -298,6 +342,22 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Get a bill-extraction prompt — the LLM is instructed to emit a
+   * structured `Bill` record (billNumber, title, status, author, votes,
+   * etc.) from a single bill detail page on an official legislature
+   * website. See `@opuspopuli/common`'s `Bill` for the response shape.
+   * Issue #686.
+   */
+  async getBillExtractionPrompt(
+    params: BillExtractionParams,
+  ): Promise<PromptServiceResponse> {
+    if (this.config?.promptServiceUrl) {
+      return this.fetchRemotePrompt("bill-extraction", params);
+    }
+    return this.composeBillExtraction(params);
+  }
+
+  /**
    * Get the current prompt hash for cache invalidation.
    *
    * When configured with a remote prompt service, this hits GET
@@ -398,7 +458,8 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
       | StructuralAnalysisParams
       | DocumentAnalysisParams
       | RAGParams
-      | CivicsExtractionParams,
+      | CivicsExtractionParams
+      | BillExtractionParams,
   ): Promise<PromptServiceResponse> {
     const url = this.config!.promptServiceUrl!;
     const timeout = this.config?.timeoutMs ?? 10000;
@@ -488,7 +549,8 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
       | StructuralAnalysisParams
       | DocumentAnalysisParams
       | RAGParams
-      | CivicsExtractionParams,
+      | CivicsExtractionParams
+      | BillExtractionParams,
   ): Promise<PromptServiceResponse> {
     this.metrics.recordDbFallback();
     switch (endpoint) {
@@ -502,6 +564,8 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
         return this.composeRag(params as RAGParams);
       case "civics-extraction":
         return this.composeCivicsExtraction(params as CivicsExtractionParams);
+      case "bill-extraction":
+        return this.composeBillExtraction(params as BillExtractionParams);
       default:
         throw new Error(`Unknown prompt endpoint: ${endpoint}`);
     }
@@ -578,6 +642,25 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
       CONTENT_GOAL: params.contentGoal,
       CATEGORY: params.category ?? "",
       HINTS: hintsSection,
+      HTML: params.html,
+    });
+
+    return {
+      promptText,
+      promptHash: this.hash(template.templateText),
+      promptVersion: `v${template.version}`,
+    };
+  }
+
+  private async composeBillExtraction(
+    params: BillExtractionParams,
+  ): Promise<PromptServiceResponse> {
+    const template = await this.getTemplate("bill-extraction");
+
+    const promptText = this.interpolate(template.templateText, {
+      REGION_ID: params.regionId,
+      SOURCE_URL: params.sourceUrl,
+      SESSION_YEAR: params.sessionYear,
       HTML: params.html,
     });
 

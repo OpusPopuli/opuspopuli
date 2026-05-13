@@ -33,6 +33,7 @@ import {
   type ILLMProvider,
   type CivicsBlock,
   type DataSourceConfig,
+  type Bill,
 } from '@opuspopuli/common';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
@@ -93,6 +94,12 @@ import { PaginatedCommittees } from './models/committee.model';
 import { PaginatedContributions } from './models/contribution.model';
 import { PaginatedExpenditures } from './models/expenditure.model';
 import { PaginatedIndependentExpenditures } from './models/independent-expenditure.model';
+import {
+  BillModel,
+  BillVoteModel,
+  BillCoAuthorModel,
+  PaginatedBillsModel,
+} from './models/bill.model';
 
 // Type aliases for database query results and generic upsert
 type ExternalIdRecord = { externalId: string };
@@ -720,111 +727,31 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
 
     for (const row of rows) {
       const src = row.sourceUrl;
-      const rawC = row.chambers as Record<string, unknown>[] | null;
-      const rawM = row.measureTypes as Record<string, unknown>[] | null;
-      const rawL = row.lifecycleStages as Record<string, unknown>[] | null;
-      const rawG = row.glossary as Record<string, unknown>[] | null;
-      const rawS = row.sessionScheme as Record<string, unknown> | null;
-
-      if (rawC) {
-        for (const ch of rawC) {
-          const name = String(ch['name'] ?? '');
-          if (!name || chambers.has(name)) continue;
-          chambers.set(name, {
-            name,
-            abbreviation: String(ch['abbreviation'] ?? ''),
-            size: Number(ch['size'] ?? 0),
-            termYears: Number(ch['termYears'] ?? 0),
-            leadershipRoles: Array.isArray(ch['leadershipRoles'])
-              ? (ch['leadershipRoles'] as string[])
-              : [],
-            description: this.normalizeCivicText(ch['description'], src),
-          });
-        }
-      }
-
-      if (rawM) {
-        for (const mt of rawM) {
-          const code = String(mt['code'] ?? '');
-          if (!code || measureTypes.has(code)) continue;
-          measureTypes.set(code, {
-            code,
-            name: String(mt['name'] ?? ''),
-            chamber: String(mt['chamber'] ?? ''),
-            votingThreshold: String(mt['votingThreshold'] ?? 'majority'),
-            reachesGovernor: Boolean(mt['reachesGovernor']),
-            purpose: this.normalizeCivicText(mt['purpose'], src),
-            lifecycleStageIds: Array.isArray(mt['lifecycleStageIds'])
-              ? (mt['lifecycleStageIds'] as string[])
-              : [],
-          });
-        }
-      }
-
-      if (rawL) {
-        for (const ls of rawL) {
-          const id = String(ls['id'] ?? '');
-          if (!id || lifecycleStages.has(id)) continue;
-          const rawAction = ls['citizenAction'] as Record<
-            string,
-            unknown
-          > | null;
-          const citizenAction = rawAction
-            ? {
-                verb: String(rawAction['verb'] ?? 'learn'),
-                label: this.normalizeCivicText(rawAction['label'], src),
-                url: this.sanitizeCivicsUrl(
-                  (rawAction['url'] as string | undefined) ??
-                    (rawAction['sourceUrl'] as string | undefined),
-                ),
-                urgency: String(rawAction['urgency'] ?? 'passive') as
-                  | 'active'
-                  | 'passive'
-                  | 'none',
-              }
-            : undefined;
-          lifecycleStages.set(id, {
-            id,
-            name: this.normalizeCivicText(ls['name'], src),
-            shortDescription: this.normalizeCivicText(
-              ls['shortDescription'],
-              src,
-            ),
-            longDescription: ls['longDescription']
-              ? this.normalizeCivicText(ls['longDescription'], src)
-              : undefined,
-            statusStringPatterns: Array.isArray(ls['statusStringPatterns'])
-              ? (ls['statusStringPatterns'] as string[])
-              : [],
-            citizenAction,
-          });
-        }
-      }
-
-      if (rawG) {
-        for (const ge of rawG) {
-          const slug = String(ge['slug'] ?? '');
-          if (!slug || glossary.has(slug)) continue;
-          glossary.set(slug, {
-            term: String(ge['term'] ?? ''),
-            slug,
-            definition: this.normalizeCivicText(ge['definition'], src),
-            longDefinition: ge['longDefinition']
-              ? this.normalizeCivicText(ge['longDefinition'], src)
-              : undefined,
-            relatedTerms: Array.isArray(ge['relatedTerms'])
-              ? (ge['relatedTerms'] as string[])
-              : [],
-          });
-        }
-      }
-
-      if (rawS && !sessionScheme) {
-        sessionScheme = {
-          cadence: String(rawS['cadence'] ?? 'annual'),
-          namingPattern: String(rawS['namingPattern'] ?? ''),
-          description: this.normalizeCivicText(rawS['description'], src),
-        };
+      this.mergeChambers(
+        chambers,
+        row.chambers as Record<string, unknown>[] | null,
+        src,
+      );
+      this.mergeMeasureTypes(
+        measureTypes,
+        row.measureTypes as Record<string, unknown>[] | null,
+        src,
+      );
+      this.mergeLifecycleStages(
+        lifecycleStages,
+        row.lifecycleStages as Record<string, unknown>[] | null,
+        src,
+      );
+      this.mergeGlossary(
+        glossary,
+        row.glossary as Record<string, unknown>[] | null,
+        src,
+      );
+      if (!sessionScheme) {
+        sessionScheme = this.extractSessionScheme(
+          row.sessionScheme as Record<string, unknown> | null,
+          src,
+        );
       }
     }
 
@@ -846,15 +773,151 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private mergeChambers(
+    chambers: Map<string, CivicsBlockModel['chambers'][number]>,
+    rawC: Record<string, unknown>[] | null,
+    src: string,
+  ): void {
+    if (!rawC) return;
+    for (const ch of rawC) {
+      const name = String(ch['name'] ?? '');
+      if (!name || chambers.has(name)) continue;
+      chambers.set(name, {
+        name,
+        abbreviation: String(ch['abbreviation'] ?? ''),
+        size: Number(ch['size'] ?? 0),
+        termYears: Number(ch['termYears'] ?? 0),
+        leadershipRoles: Array.isArray(ch['leadershipRoles'])
+          ? (ch['leadershipRoles'] as string[])
+          : [],
+        description: this.normalizeCivicText(ch['description'], src),
+      });
+    }
+  }
+
+  private mergeMeasureTypes(
+    measureTypes: Map<string, CivicsBlockModel['measureTypes'][number]>,
+    rawM: Record<string, unknown>[] | null,
+    src: string,
+  ): void {
+    if (!rawM) return;
+    for (const mt of rawM) {
+      const code = String(mt['code'] ?? '');
+      if (!code || measureTypes.has(code)) continue;
+      measureTypes.set(code, {
+        code,
+        name: String(mt['name'] ?? ''),
+        chamber: String(mt['chamber'] ?? ''),
+        votingThreshold: String(mt['votingThreshold'] ?? 'majority'),
+        reachesGovernor: Boolean(mt['reachesGovernor']),
+        purpose: this.normalizeCivicText(mt['purpose'], src),
+        lifecycleStageIds: Array.isArray(mt['lifecycleStageIds'])
+          ? (mt['lifecycleStageIds'] as string[])
+          : [],
+      });
+    }
+  }
+
+  private buildCitizenAction(
+    rawAction: Record<string, unknown> | null,
+    src: string,
+  ): CivicsBlockModel['lifecycleStages'][number]['citizenAction'] {
+    if (!rawAction) return undefined;
+    return {
+      verb: String(rawAction['verb'] ?? 'learn'),
+      label: this.normalizeCivicText(rawAction['label'], src),
+      url: this.sanitizeCivicsUrl(
+        (rawAction['url'] as string | undefined) ??
+          (rawAction['sourceUrl'] as string | undefined),
+      ),
+      urgency: String(rawAction['urgency'] ?? 'passive') as
+        | 'active'
+        | 'passive'
+        | 'none',
+    };
+  }
+
+  private mergeLifecycleStages(
+    lifecycleStages: Map<string, CivicsBlockModel['lifecycleStages'][number]>,
+    rawL: Record<string, unknown>[] | null,
+    src: string,
+  ): void {
+    if (!rawL) return;
+    for (const ls of rawL) {
+      const id = String(ls['id'] ?? '');
+      if (!id || lifecycleStages.has(id)) continue;
+      const citizenAction = this.buildCitizenAction(
+        ls['citizenAction'] as Record<string, unknown> | null,
+        src,
+      );
+      lifecycleStages.set(id, {
+        id,
+        name: this.normalizeCivicText(ls['name'], src),
+        shortDescription: this.normalizeCivicText(ls['shortDescription'], src),
+        longDescription: ls['longDescription']
+          ? this.normalizeCivicText(ls['longDescription'], src)
+          : undefined,
+        statusStringPatterns: Array.isArray(ls['statusStringPatterns'])
+          ? (ls['statusStringPatterns'] as string[])
+          : [],
+        citizenAction,
+      });
+    }
+  }
+
+  private mergeGlossary(
+    glossary: Map<string, CivicsBlockModel['glossary'][number]>,
+    rawG: Record<string, unknown>[] | null,
+    src: string,
+  ): void {
+    if (!rawG) return;
+    for (const ge of rawG) {
+      const slug = String(ge['slug'] ?? '');
+      if (!slug || glossary.has(slug)) continue;
+      glossary.set(slug, {
+        term: String(ge['term'] ?? ''),
+        slug,
+        definition: this.normalizeCivicText(ge['definition'], src),
+        longDefinition: ge['longDefinition']
+          ? this.normalizeCivicText(ge['longDefinition'], src)
+          : undefined,
+        relatedTerms: Array.isArray(ge['relatedTerms'])
+          ? (ge['relatedTerms'] as string[])
+          : [],
+      });
+    }
+  }
+
+  private extractSessionScheme(
+    rawS: Record<string, unknown> | null,
+    src: string,
+  ): CivicsBlockModel['sessionScheme'] | null {
+    if (!rawS) return null;
+    return {
+      cadence: String(rawS['cadence'] ?? 'annual'),
+      namingPattern: String(rawS['namingPattern'] ?? ''),
+      description: this.normalizeCivicText(rawS['description'], src),
+    };
+  }
+
   /**
    * Sync data types from all loaded plugins (federal + local).
    * When dataTypes is provided, only those types are synced.
    */
-  async syncAll(dataTypes?: string[], maxReps?: number): Promise<SyncResult[]> {
+  async syncAll(
+    dataTypes?: string[],
+    maxReps?: number,
+    maxBills?: number,
+  ): Promise<SyncResult[]> {
+    const limits = [
+      maxReps != null ? `maxReps=${maxReps}` : null,
+      maxBills != null ? `maxBills=${maxBills}` : null,
+    ].filter(Boolean);
+    const limitsStr = limits.length ? ` (${limits.join(', ')})` : '';
     this.logger.log(
       dataTypes
-        ? `Starting data sync for: ${dataTypes.join(', ')}`
-        : 'Starting full data sync',
+        ? `Starting data sync for: ${dataTypes.join(', ')}${limitsStr}`
+        : `Starting full data sync${limitsStr}`,
     );
     const results: SyncResult[] = [];
 
@@ -871,6 +934,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             registered.name,
             dataType,
             maxReps,
+            maxBills,
           );
           results.push(result);
         } catch (error) {
@@ -883,6 +947,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             itemsProcessed: 0,
             itemsCreated: 0,
             itemsUpdated: 0,
+            itemsSkipped: 0,
             errors: [(error as Error).message],
             syncedAt: new Date(),
           });
@@ -914,6 +979,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     pluginName: string,
     dataType: DataType,
     maxReps?: number,
+    maxBills?: number,
   ): Promise<SyncResult> {
     this.logger.log(`Syncing ${dataType} from ${pluginName}`);
     const startTime = Date.now();
@@ -921,7 +987,12 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     const syncHandlers: Partial<
       Record<
         DataType,
-        () => Promise<{ processed: number; created: number; updated: number }>
+        () => Promise<{
+          processed: number;
+          created: number;
+          updated: number;
+          skipped?: number;
+        }>
       >
     > = {
       [DataType.PROPOSITIONS]: () => this.syncPropositions(provider),
@@ -930,6 +1001,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
         this.syncRepresentatives(provider, maxReps),
       [DataType.CAMPAIGN_FINANCE]: () => this.syncCampaignFinance(provider),
       [DataType.CIVICS]: () => this.syncCivics(),
+      [DataType.BILLS]: () => this.syncBills(maxBills),
     };
 
     const handler = syncHandlers[dataType];
@@ -940,15 +1012,17 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
         itemsProcessed: 0,
         itemsCreated: 0,
         itemsUpdated: 0,
+        itemsSkipped: 0,
         errors: [`No sync handler for data type: ${dataType}`],
         syncedAt: new Date(),
       };
     }
-    const { processed, created, updated } = await handler();
+    const { processed, created, updated, skipped = 0 } = await handler();
 
     const duration = Date.now() - startTime;
+    const skippedStr = skipped > 0 ? `, ${skipped} skipped` : '';
     this.logger.log(
-      `Synced ${dataType} from ${pluginName}: ${processed} items (${created} created, ${updated} updated) in ${duration}ms`,
+      `Synced ${dataType} from ${pluginName}: ${processed} items (${created} created, ${updated} updated${skippedStr}) in ${duration}ms`,
     );
 
     return {
@@ -956,6 +1030,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       itemsProcessed: processed,
       itemsCreated: created,
       itemsUpdated: updated,
+      itemsSkipped: skipped,
       errors: [],
       syncedAt: new Date(),
     };
@@ -1686,6 +1761,791 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     return { processed, created, updated };
   }
 
+  // ============================================================
+  // BILLS SYNC (issue #686)
+  // ============================================================
+
+  private async syncBills(maxBills?: number): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+    skipped: number;
+  }> {
+    if (!this.promptClient || !this.llm) {
+      this.logger.warn('Bills sync requires PromptClient and LLM; skipping');
+      return { processed: 0, created: 0, updated: 0, skipped: 0 };
+    }
+
+    const plugin = this.pluginRegistry.getLocal();
+    if (!plugin?.getDataSources) {
+      this.logger.warn(
+        'Region plugin does not expose getDataSources(); skipping bills sync',
+      );
+      return { processed: 0, created: 0, updated: 0, skipped: 0 };
+    }
+
+    const dataSources = plugin.getDataSources(DataType.BILLS);
+    if (dataSources.length === 0) {
+      this.logger.log('No bills data sources configured for this region');
+      return { processed: 0, created: 0, updated: 0, skipped: 0 };
+    }
+
+    const registeredHosts = new Set(
+      plugin.getDataSources().flatMap((s) => {
+        try {
+          return [new URL(s.url).hostname];
+        } catch {
+          return [];
+        }
+      }),
+    );
+
+    const regionId = plugin.getName();
+    const repIndex = await this.buildRepNameIndex(regionId);
+    const committeeIndex = await this.buildCommitteeNameIndex();
+
+    let processed = 0;
+    let created = 0;
+    let updated = 0;
+    let skippedTotal = 0;
+    const syncedExternalIds = new Set<string>();
+
+    for (const ds of dataSources) {
+      const counts = await this.syncBillsFromDataSource(
+        regionId,
+        ds,
+        registeredHosts,
+        repIndex,
+        committeeIndex,
+        syncedExternalIds,
+        maxBills,
+      );
+      processed += counts.processed;
+      created += counts.created;
+      updated += counts.updated;
+      skippedTotal += counts.skipped;
+    }
+
+    await this.pruneStaleBills(regionId, syncedExternalIds, maxBills);
+
+    return { processed, created, updated, skipped: skippedTotal };
+  }
+
+  private async syncBillsFromDataSource(
+    regionId: string,
+    ds: DataSourceConfig,
+    registeredHosts: Set<string>,
+    repIndex: Map<string, { id: string; chamber: string }>,
+    committeeIndex: Map<string, string>,
+    syncedExternalIds: Set<string>,
+    maxBills?: number,
+  ): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+    skipped: number;
+  }> {
+    const { statusUrls, votesUrls } = await this.discoverBillUrls(
+      ds,
+      registeredHosts,
+      maxBills,
+    );
+    this.logger.log(
+      `Bills: discovered ${statusUrls.length} bill(s) from ${ds.url}`,
+    );
+
+    let processed = 0;
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    // Pass 1: status pages → create/update full bill records
+    for (const url of statusUrls) {
+      const result = await this.extractAndUpsertBillPage(
+        regionId,
+        url,
+        ds,
+        repIndex,
+        committeeIndex,
+      );
+      if (result === 'created') {
+        created++;
+        processed++;
+      } else if (result === 'updated') {
+        updated++;
+        processed++;
+      } else if (result === 'skipped') {
+        skipped++;
+        processed++;
+      }
+      // Track every externalId we touched, regardless of outcome, so the
+      // orphan-cleanup below knows what was attempted this run. Bills that
+      // fail extraction are intentionally excluded — a parse failure doesn't
+      // mean the bill is gone from the source.
+      if (result !== 'failed') {
+        const billId = new URL(url).searchParams.get('bill_id');
+        if (billId) syncedExternalIds.add(billId);
+      }
+    }
+    if (skipped > 0) {
+      this.logger.log(
+        `Bills: skipped ${skipped} unchanged bill(s) from ${ds.url}`,
+      );
+    }
+
+    // Pass 2: votes pages → merge roll-call votes into existing bills
+    for (const url of votesUrls) {
+      const result = await this.extractVotesOnlyPage(
+        regionId,
+        url,
+        ds,
+        repIndex,
+      );
+      if (result === 'updated') updated++;
+    }
+
+    return { processed, created, updated, skipped };
+  }
+
+  private async pruneStaleBills(
+    regionId: string,
+    syncedExternalIds: Set<string>,
+    maxBills?: number,
+  ): Promise<void> {
+    // Delete bills for this region that were not seen in the current sync run.
+    // Only safe when maxBills is not set — a capped run only discovers a subset
+    // of bills, so deleting everything outside that subset would wipe valid data.
+    if (syncedExternalIds.size === 0 || maxBills != null) return;
+
+    const { count } = await this.db.bill.deleteMany({
+      where: {
+        regionId,
+        externalId: { notIn: Array.from(syncedExternalIds) },
+      },
+    });
+    if (count > 0) {
+      this.logger.log(
+        `Bills: removed ${count} stale bill record(s) for ${regionId}`,
+      );
+    }
+  }
+
+  /**
+   * Discover bill status and votes URLs from the seed page.
+   *
+   * When `ds.billDiscovery` is configured, fetches the seed once and extracts
+   * bill IDs using the region-declared `navLinkPattern`, then constructs status
+   * and votes URLs from the supplied templates. This avoids generic BFS which
+   * breaks for sites like CA leginfo — the search page returns hundreds of
+   * nav-hub links at depth 0, filling `crawlMaxPages` before any detail pages
+   * can be discovered at depth 1.
+   *
+   * Falls back to BFS + URL-type filtering when `billDiscovery` is absent, for
+   * regions whose seed page links directly to bill detail pages.
+   */
+  private async discoverBillUrls(
+    ds: DataSourceConfig,
+    registeredHosts: Set<string>,
+    maxBills?: number,
+  ): Promise<{ statusUrls: string[]; votesUrls: string[] }> {
+    if (!ds.billDiscovery) {
+      // BFS fallback — filters by CA leginfo URL substrings. Only works for
+      // regions whose bill pages use billStatusClient.xhtml / billVotesClient.xhtml.
+      // Other regions must configure billDiscovery to avoid silent 0-bill results.
+      const urls = await this.crawlCivicsUrls(ds, registeredHosts);
+      return {
+        statusUrls: urls.filter((u) => u.includes('billStatusClient.xhtml')),
+        votesUrls: urls.filter((u) => u.includes('billVotesClient.xhtml')),
+      };
+    }
+
+    const { navLinkPattern, statusPageTemplate, votesPageTemplate } =
+      ds.billDiscovery;
+
+    const seedUrl = new URL(ds.url);
+    if (
+      seedUrl.protocol !== 'https:' ||
+      !registeredHosts.has(seedUrl.hostname)
+    ) {
+      this.logger.error(
+        `Bills discovery rejected: ${seedUrl.hostname} is not a registered host`,
+      );
+      return { statusUrls: [], votesUrls: [] };
+    }
+
+    const limit = maxBills ?? Infinity;
+    let html: string;
+    try {
+      html = await this.fetchUrlText(ds.url);
+    } catch (e) {
+      this.logger.warn(
+        `Bills: failed to fetch seed ${ds.url}: ${(e as Error).message}`,
+      );
+      return { statusUrls: [], votesUrls: [] };
+    }
+
+    // HTML-entity decode before applying the pattern — leginfo encodes & as &amp; in hrefs.
+    const decoded = html.replace(/&amp;/g, '&');
+    const re = new RegExp(navLinkPattern, 'g');
+    const seen = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(decoded)) !== null && seen.size < limit) {
+      seen.add(m[1]);
+    }
+
+    const base = `${seedUrl.protocol}//${seedUrl.host}`;
+    const statusUrls: string[] = [];
+    const votesUrls: string[] = [];
+    for (const billId of seen) {
+      statusUrls.push(
+        `${base}${statusPageTemplate.replace('{bill_id}', billId)}`,
+      );
+      votesUrls.push(
+        `${base}${votesPageTemplate.replace('{bill_id}', billId)}`,
+      );
+    }
+
+    return { statusUrls, votesUrls };
+  }
+
+  private async buildRepNameIndex(
+    _: string,
+  ): Promise<Map<string, { id: string; chamber: string }>> {
+    const reps = await this.db.representative.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true, chamber: true },
+    });
+    const index = new Map<string, { id: string; chamber: string }>();
+    for (const r of reps) {
+      index.set(r.name.toLowerCase().trim(), { id: r.id, chamber: r.chamber });
+      const lastName = r.name.split(/\s+/).pop()?.toLowerCase() ?? '';
+      if (lastName && !index.has(lastName)) {
+        index.set(lastName, { id: r.id, chamber: r.chamber });
+      }
+    }
+    return index;
+  }
+
+  private async buildCommitteeNameIndex(): Promise<Map<string, string>> {
+    const committees = await this.db.legislativeCommittee.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true },
+    });
+    const index = new Map<string, string>();
+    for (const c of committees) {
+      index.set(c.name.toLowerCase().trim(), c.id);
+    }
+    return index;
+  }
+
+  private resolveRepByName(
+    name: string,
+    index: Map<string, { id: string; chamber: string }>,
+  ): string | undefined {
+    const normalized = name.toLowerCase().trim();
+    const exact = index.get(normalized);
+    if (exact) return exact.id;
+    const lastName = normalized.split(/\s+/).pop() ?? '';
+    return lastName ? index.get(lastName)?.id : undefined;
+  }
+
+  private extractBillPublishedAt(html: string): string | null {
+    const m = html.match(
+      /Date Published:\s*(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s+[AP]M)/i,
+    );
+    return m ? m[1].trim() : null;
+  }
+
+  /**
+   * Check whether the bill at `sourceUrl` is unchanged by comparing the
+   * "Date Published" string from the text page against the stored value.
+   * Returns the remote publish date (to pass through to the upsert) when the
+   * bill has changed, `'skipped'` when it is unchanged, or `null` when the
+   * text page is unavailable/inapplicable.
+   */
+  private async checkBillSkipCondition(
+    billId: string,
+    sourceUrl: string,
+    textPageTemplate: string,
+  ): Promise<Date | 'skipped' | null> {
+    const base = new URL(sourceUrl).origin;
+    const textUrl = `${base}${textPageTemplate.replace('{bill_id}', billId)}`;
+    try {
+      if (new URL(textUrl).hostname !== new URL(sourceUrl).hostname) {
+        this.logger.warn(
+          `Bills skip-check: textPageTemplate hostname mismatch, skipping for ${sourceUrl}`,
+        );
+        return null;
+      }
+      const textHtml = await this.fetchUrlText(textUrl);
+      const remoteStr = this.extractBillPublishedAt(textHtml);
+      if (!remoteStr) return null;
+
+      // Append " UTC" so Date.parse treats the string as UTC on every
+      // platform — avoids TZ-dependent behaviour in Docker containers.
+      const remoteDate = new Date(`${remoteStr} UTC`);
+      if (isNaN(remoteDate.getTime())) return null;
+
+      const existing = await this.db.bill.findUnique({
+        where: { externalId: billId },
+        select: { sourcePublishedAt: true },
+      });
+      if (
+        existing?.sourcePublishedAt &&
+        existing.sourcePublishedAt.getTime() === remoteDate.getTime()
+      ) {
+        return 'skipped';
+      }
+      return remoteDate;
+    } catch {
+      // Text page fetch failed — fall through to full extraction
+      return null;
+    }
+  }
+
+  private async extractAndUpsertBillPage(
+    regionId: string,
+    sourceUrl: string,
+    ds: DataSourceConfig,
+    repIndex: Map<string, { id: string; chamber: string }>,
+    committeeIndex: Map<string, string>,
+  ): Promise<'created' | 'updated' | 'skipped' | 'failed'> {
+    if (!this.promptClient || !this.llm) return 'failed';
+    try {
+      let sourcePublishedAt: Date | null = null;
+      let billId: string | undefined;
+      try {
+        billId = new URL(sourceUrl).searchParams.get('bill_id') ?? undefined;
+      } catch {
+        /* invalid URL */
+      }
+
+      if (billId && ds.billDiscovery?.textPageTemplate) {
+        const skipResult = await this.checkBillSkipCondition(
+          billId,
+          sourceUrl,
+          ds.billDiscovery.textPageTemplate,
+        );
+        if (skipResult === 'skipped') return 'skipped';
+        if (skipResult instanceof Date) sourcePublishedAt = skipResult;
+      }
+
+      const html = await this.fetchUrlText(sourceUrl);
+      const content = this.htmlToReadableText(html);
+      const sessionYear = this.inferSessionYear(sourceUrl);
+
+      const { promptText } = await this.promptClient.getBillExtractionPrompt({
+        regionId,
+        sourceUrl,
+        sessionYear,
+        html: content,
+      });
+
+      const llmResult = await this.llm.generate(promptText, {
+        maxTokens: ds.llmMaxTokens ?? 8000,
+        temperature: 0.1,
+        requestTimeoutMs: ds.llmRequestTimeoutMs,
+      });
+
+      const candidate = extractJsonObjectSlice(llmResult.text);
+      if (!candidate) {
+        this.logger.warn(`Bills extraction: no JSON for ${sourceUrl}`);
+        return 'failed';
+      }
+
+      let raw: Partial<Bill>;
+      try {
+        raw = JSON.parse(candidate) as Partial<Bill>;
+      } catch {
+        this.logger.warn(
+          `Bills extraction: JSON parse failed for ${sourceUrl}`,
+        );
+        return 'failed';
+      }
+
+      if (!raw.billNumber || !raw.title) {
+        this.logger.warn(
+          `Bills extraction: missing required fields at ${sourceUrl}`,
+        );
+        return 'failed';
+      }
+
+      // Prefer the bill_id URL param as externalId — leginfo encodes it as
+      // {startYear}{endYear}0{MeasureType}{Number} (e.g. 202520260AB1).
+      const urlBillId = (() => {
+        try {
+          return new URL(sourceUrl).searchParams.get('bill_id') ?? undefined;
+        } catch {
+          return undefined;
+        }
+      })();
+      const externalId =
+        urlBillId ?? raw.externalId ?? this.buildBillExternalId(raw);
+      const authorId = raw.authorName
+        ? this.resolveRepByName(raw.authorName, repIndex)
+        : undefined;
+      const existing = await this.db.bill.findUnique({
+        where: { externalId },
+        select: { id: true },
+      });
+
+      const billData = {
+        regionId,
+        billNumber: raw.billNumber,
+        sessionYear: raw.sessionYear ?? sessionYear,
+        measureTypeCode:
+          raw.measureTypeCode ?? this.inferMeasureTypeCode(raw.billNumber),
+        title: raw.title,
+        subject: raw.subject ?? null,
+        status: raw.status ?? null,
+        currentStageId: raw.currentStageId ?? null,
+        lastAction: raw.lastAction ?? null,
+        lastActionDate: raw.lastActionDate
+          ? new Date(raw.lastActionDate as unknown as string)
+          : null,
+        fiscalImpact: raw.fiscalImpact ?? null,
+        fullTextUrl: raw.fullTextUrl ?? null,
+        authorId: authorId ?? null,
+        authorName: raw.authorName ?? null,
+        sourceUrl,
+        sourcePublishedAt,
+        extractedAt: new Date(),
+      };
+      const bill = await this.db.bill.upsert({
+        where: { externalId },
+        create: { externalId, ...billData },
+        update: billData,
+        select: { id: true },
+      });
+
+      await this.linkBillCoAuthors(bill.id, raw.coAuthorNames ?? [], repIndex);
+      await this.linkBillCommittees(
+        bill.id,
+        raw.committeeNames ?? [],
+        committeeIndex,
+      );
+      await this.linkBillVotes(bill.id, raw.votes ?? [], repIndex, sourceUrl);
+
+      return existing ? 'updated' : 'created';
+    } catch (e) {
+      this.logger.warn(
+        `Bills extraction failed for ${sourceUrl}: ${(e as Error).message}`,
+      );
+      return 'failed';
+    }
+  }
+
+  private async extractVotesOnlyPage(
+    regionId: string,
+    sourceUrl: string,
+    ds: DataSourceConfig,
+    repIndex: Map<string, { id: string; chamber: string }>,
+  ): Promise<'updated' | 'failed' | 'skipped'> {
+    if (!this.promptClient || !this.llm) return 'failed';
+    try {
+      const billIdParam = new URL(sourceUrl).searchParams.get('bill_id');
+      if (!billIdParam) return 'skipped';
+
+      const bill = await this.db.bill.findUnique({
+        where: { externalId: billIdParam },
+        select: { id: true },
+      });
+      if (!bill) {
+        this.logger.debug(
+          `Bills: votes page skipped — no bill record yet for ${billIdParam}`,
+        );
+        return 'skipped';
+      }
+
+      const html = await this.fetchUrlText(sourceUrl);
+      const content = this.htmlToReadableText(html);
+      const sessionYear = this.inferSessionYear(sourceUrl);
+
+      const { promptText } = await this.promptClient.getBillExtractionPrompt({
+        regionId,
+        sourceUrl,
+        sessionYear,
+        html: content,
+      });
+
+      const llmResult = await this.llm.generate(promptText, {
+        maxTokens: ds.llmMaxTokens ?? 4000,
+        temperature: 0.1,
+        requestTimeoutMs: ds.llmRequestTimeoutMs,
+      });
+
+      const candidate = extractJsonObjectSlice(llmResult.text);
+      if (!candidate) return 'failed';
+
+      let raw: { votes?: Bill['votes'] };
+      try {
+        raw = JSON.parse(candidate) as { votes?: Bill['votes'] };
+      } catch {
+        return 'failed';
+      }
+
+      if (!raw.votes?.length) return 'skipped';
+
+      await this.linkBillVotes(bill.id, raw.votes, repIndex, sourceUrl);
+      this.logger.log(
+        `Bills: merged ${raw.votes.length} vote(s) for ${billIdParam}`,
+      );
+      return 'updated';
+    } catch (e) {
+      this.logger.warn(
+        `Bills: votes extraction failed for ${sourceUrl}: ${(e as Error).message}`,
+      );
+      return 'failed';
+    }
+  }
+
+  private buildBillExternalId(raw: Partial<Bill>): string {
+    const year = (raw.sessionYear ?? '').replace(/\D/g, '');
+    const num = (raw.billNumber ?? '').replace(/\s/g, '');
+    return `${year}${num}`;
+  }
+
+  private inferMeasureTypeCode(billNumber: string): string {
+    return (
+      billNumber
+        .replace(/\s*\d+.*$/, '')
+        .trim()
+        .toUpperCase() || 'AB'
+    );
+  }
+
+  private inferSessionYear(url: string): string {
+    // Prefer the bill_id param (e.g. "202520260AB1") — the first 8 digits are
+    // always {startYear}{endYear}. Fall back to matching 4+4 digits elsewhere
+    // only if the param is absent, with a plausibility check that the years
+    // are consecutive to avoid matching unrelated numeric sequences.
+    try {
+      const billId = new URL(url).searchParams.get('bill_id');
+      if (billId) {
+        const m = billId.match(/^(\d{4})(\d{4})/);
+        if (m && Number(m[2]) === Number(m[1]) + 1) return `${m[1]}-${m[2]}`;
+      }
+    } catch {
+      /* invalid URL, fall through */
+    }
+    const m = url.match(/(\d{4})(\d{4})/);
+    if (m && Number(m[2]) === Number(m[1]) + 1) return `${m[1]}-${m[2]}`;
+    const y = new Date().getFullYear();
+    return `${y}-${y + 1}`;
+  }
+
+  private async linkBillCoAuthors(
+    billId: string,
+    names: string[],
+    repIndex: Map<string, { id: string; chamber: string }>,
+  ): Promise<void> {
+    await this.db.billCoAuthor.deleteMany({ where: { billId } });
+    const rows = names
+      .map((name) => {
+        const repId = this.resolveRepByName(name, repIndex);
+        return repId
+          ? { billId, representativeId: repId, coAuthorType: 'coauthor' }
+          : null;
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    if (rows.length > 0) {
+      await this.db.billCoAuthor.createMany({
+        data: rows,
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  private async linkBillCommittees(
+    billId: string,
+    names: string[],
+    committeeIndex: Map<string, string>,
+  ): Promise<void> {
+    await this.db.billCommitteeAssignment.deleteMany({ where: { billId } });
+    const rows = names
+      .map((name) => {
+        const committeeId = committeeIndex.get(name.toLowerCase().trim());
+        return committeeId
+          ? { billId, legislativeCommitteeId: committeeId }
+          : null;
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    if (rows.length > 0) {
+      await this.db.billCommitteeAssignment.createMany({
+        data: rows,
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  private async linkBillVotes(
+    billId: string,
+    votes: Bill['votes'],
+    repIndex: Map<string, { id: string; chamber: string }>,
+    sourceUrl: string,
+  ): Promise<void> {
+    if (votes.length === 0) return;
+    // Delete existing votes for this bill and re-create — vote tables are
+    // replaced wholesale on each extraction rather than partially patched.
+    await this.db.billVote.deleteMany({ where: { billId } });
+    const rows = votes
+      .filter((v) => v.representativeName && v.position)
+      .map((v) => {
+        const voteDate =
+          v.voteDate instanceof Date
+            ? v.voteDate
+            : new Date(v.voteDate as unknown as string);
+        return {
+          billId,
+          representativeId:
+            this.resolveRepByName(v.representativeName!, repIndex) ?? null,
+          representativeName: v.representativeName!,
+          chamber: v.chamber,
+          voteDate,
+          position: v.position,
+          motionText: v.motionText ?? null,
+          sourceUrl,
+        };
+      });
+    if (rows.length > 0) {
+      await this.db.billVote.createMany({ data: rows, skipDuplicates: true });
+    }
+  }
+
+  // ── Bill query methods ───────────────────────────────────────────────────────
+
+  async getBills(
+    skip: number,
+    take: number,
+    measureTypeCode?: string,
+    sessionYear?: string,
+    authorId?: string,
+    committeeId?: string,
+  ): Promise<PaginatedBillsModel> {
+    const where = {
+      ...(measureTypeCode && { measureTypeCode }),
+      ...(sessionYear && { sessionYear }),
+      ...(authorId && { authorId }),
+      ...(committeeId && {
+        committeeReferrals: { some: { legislativeCommitteeId: committeeId } },
+      }),
+    };
+
+    const [items, total] = await Promise.all([
+      this.db.bill.findMany({
+        where,
+        skip,
+        take,
+        orderBy: [{ lastActionDate: 'desc' }, { billNumber: 'asc' }],
+        include: {
+          votes: { orderBy: { voteDate: 'desc' } },
+          coAuthors: {
+            include: { representative: { select: { id: true, name: true } } },
+          },
+        },
+      }),
+      this.db.bill.count({ where }),
+    ]);
+
+    return {
+      items: items.map((b) => this.mapBillRecord(b)),
+      total,
+      hasMore: skip + take < total,
+    };
+  }
+
+  async getBill(id: string): Promise<BillModel | null> {
+    const bill = await this.db.bill.findUnique({
+      where: { id },
+      include: {
+        votes: { orderBy: { voteDate: 'desc' } },
+        coAuthors: {
+          include: { representative: { select: { id: true, name: true } } },
+        },
+      },
+    });
+    if (!bill) return null;
+    return this.mapBillRecord(bill);
+  }
+
+  private mapBillRecord(b: {
+    id: string;
+    externalId: string;
+    billNumber: string;
+    sessionYear: string;
+    measureTypeCode: string;
+    title: string;
+    subject: string | null;
+    status: string | null;
+    currentStageId: string | null;
+    lastAction: string | null;
+    lastActionDate: Date | null;
+    fiscalImpact: string | null;
+    fullTextUrl: string | null;
+    authorId: string | null;
+    authorName: string | null;
+    sourceUrl: string;
+    extractedAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+    votes: {
+      id: string;
+      representativeName: string;
+      representativeId: string | null;
+      chamber: string;
+      voteDate: Date;
+      position: string;
+      motionText: string | null;
+      sourceUrl: string;
+    }[];
+    coAuthors: {
+      representativeId: string;
+      coAuthorType: string | null;
+      representative: { id: string; name: string };
+    }[];
+  }): BillModel {
+    return {
+      id: b.id,
+      externalId: b.externalId,
+      billNumber: b.billNumber,
+      sessionYear: b.sessionYear,
+      measureTypeCode: b.measureTypeCode,
+      title: b.title,
+      subject: b.subject ?? undefined,
+      status: b.status ?? undefined,
+      currentStageId: b.currentStageId ?? undefined,
+      lastAction: b.lastAction ?? undefined,
+      lastActionDate: b.lastActionDate ?? undefined,
+      fiscalImpact: b.fiscalImpact ?? undefined,
+      fullTextUrl: b.fullTextUrl ?? undefined,
+      authorId: b.authorId ?? undefined,
+      authorName: b.authorName ?? undefined,
+      sourceUrl: b.sourceUrl,
+      extractedAt: b.extractedAt,
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+      votes: b.votes.map(
+        (v): BillVoteModel => ({
+          id: v.id,
+          representativeName: v.representativeName,
+          representativeId: v.representativeId ?? undefined,
+          chamber: v.chamber,
+          voteDate: v.voteDate,
+          position: v.position,
+          motionText: v.motionText ?? undefined,
+          sourceUrl: v.sourceUrl,
+        }),
+      ),
+      coAuthors: b.coAuthors.map(
+        (c): BillCoAuthorModel => ({
+          representativeId: c.representativeId,
+          name: c.representative.name,
+          coAuthorType: c.coAuthorType ?? undefined,
+        }),
+      ),
+    };
+  }
+
   /**
    * BFS-crawl from `ds.url` up to `ds.crawlDepth` (default 0). Returns
    * the list of unique HTML URLs to extract civics from, in visit
@@ -1789,7 +2649,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     const re = /<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"]/gi;
     let m: RegExpExecArray | null;
     while ((m = re.exec(html)) !== null) {
-      const href = m[1].trim();
+      const href = m[1].trim().replace(/&amp;/g, '&');
       if (
         !href ||
         href.startsWith('javascript:') ||
@@ -2048,7 +2908,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       );
     }
     const ct = response.headers.get('content-type') ?? '';
-    if (!ct.toLowerCase().includes('text/html')) {
+    const ctLower = ct.toLowerCase();
+    if (!ctLower.includes('text/html') && !ctLower.includes('xhtml+xml')) {
       throw new Error(`Non-HTML content-type for ${url}: ${ct}`);
     }
     return response.text();

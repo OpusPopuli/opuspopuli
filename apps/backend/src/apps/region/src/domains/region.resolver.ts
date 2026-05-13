@@ -56,6 +56,7 @@ import {
   PaginatedLegislativeActions,
   MinutesPassageModel,
 } from './models/legislative-action.model';
+import { BillModel, PaginatedBillsModel } from './models/bill.model';
 
 /**
  * Region Resolver
@@ -659,6 +660,47 @@ export class RegionResolver {
     };
   }
 
+  // ==========================================
+  // BILL QUERIES (issue #686)
+  // ==========================================
+
+  /**
+   * Paginated list of bills, optionally filtered by measureTypeCode,
+   * sessionYear, or authorId. Orders by lastActionDate desc.
+   */
+  @Public()
+  @Query(() => PaginatedBillsModel)
+  @Extensions({ complexity: 15 })
+  async bills(
+    @Args() { skip, take }: PaginationArgs,
+    @Args({ name: 'measureTypeCode', nullable: true }) measureTypeCode?: string,
+    @Args({ name: 'sessionYear', nullable: true }) sessionYear?: string,
+    @Args({ name: 'authorId', type: () => ID, nullable: true })
+    authorId?: string,
+    @Args({ name: 'committeeId', type: () => ID, nullable: true })
+    committeeId?: string,
+  ): Promise<PaginatedBillsModel> {
+    return this.regionService.getBills(
+      skip,
+      take,
+      measureTypeCode,
+      sessionYear,
+      authorId,
+      committeeId,
+    );
+  }
+
+  /**
+   * Single bill by ID, including all votes and co-authors.
+   */
+  @Public()
+  @Query(() => BillModel, { nullable: true })
+  async bill(
+    @Args({ name: 'id', type: () => ID }) id: string,
+  ): Promise<BillModel | null> {
+    return this.regionService.getBill(id);
+  }
+
   /**
    * Trigger a data sync (admin only).
    * Optionally filter by data types — when omitted, syncs all.
@@ -676,10 +718,13 @@ export class RegionResolver {
     dataTypes?: DataTypeGQL[],
     @Args('maxReps', { type: () => Int, nullable: true })
     maxReps?: number,
+    @Args('maxBills', { type: () => Int, nullable: true })
+    maxBills?: number,
   ): Promise<SyncResultModel[]> {
     const results = await this.regionService.syncAll(
       dataTypes as unknown as string[],
       maxReps,
+      maxBills,
     );
     return results.map((r) => ({
       ...r,

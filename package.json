@@ -1,6 +1,6 @@
 {
   "name": "opuspopuli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Full-stack civic technology platform with Next.js, NestJS, and 100% OSS AI/ML",
   "main": "index.js",
   "packageManager": "pnpm@10.33.0",
@@ -18,13 +18,17 @@
     "uat:down": "docker compose -f docker-compose-uat.yml down",
     "uat:down:clean": "docker compose -f docker-compose-uat.yml down -v",
     "uat:logs": "docker compose -f docker-compose-uat.yml logs -f",
-    "prepare": "husky"
+    "prepare": "husky",
+    "lint:sonar": "pnpm -r lint:sonar",
+    "jscpd": "jscpd"
   },
   "keywords": [],
   "author": "",
   "license": "AGPL-3.0",
   "devDependencies": {
+    "eslint-plugin-sonarjs": "^4.0.3",
     "husky": "^9.1.7",
+    "jscpd": "^4.1.0",
     "lint-staged": "^15.2.10"
   },
   "lint-staged": {
@@ -65,7 +69,11 @@
       "path-to-regexp": ">=8.4.0",
       "defu": ">=6.1.5",
       "axios": ">=1.15.0",
-      "basic-ftp": ">=5.2.1"
+      "basic-ftp": ">=5.2.1",
+      "next@>=16.0.0 <16.2.6": ">=16.2.6",
+      "@opentelemetry/auto-instrumentations-node@<0.75.0": ">=0.75.0",
+      "@opentelemetry/sdk-node@<0.217.0": ">=0.217.0",
+      "@opentelemetry/exporter-prometheus@<0.217.0": ">=0.217.0"
     }
   }
 }

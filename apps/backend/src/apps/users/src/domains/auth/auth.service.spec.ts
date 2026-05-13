@@ -166,7 +166,7 @@ describe('AuthService', () => {
 
     try {
       await authService.registerUser(registerUserDto);
-    } catch (error) {
+    } catch {
       expect(usersService.findByEmail).toHaveBeenCalledTimes(1);
       expect(authProvider.registerUser).toHaveBeenCalledTimes(1);
       expect(authProvider.addToGroup).toHaveBeenCalledTimes(0);

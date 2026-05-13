@@ -10,7 +10,8 @@ export type DataType =
   | "MEETINGS"
   | "REPRESENTATIVES"
   | "CAMPAIGN_FINANCE"
-  | "CIVICS";
+  | "CIVICS"
+  | "BILLS";
 
 // ── Civics types ──────────────────────────────────────────────────────────────
 
@@ -452,6 +453,7 @@ export interface SyncResult {
   itemsProcessed: number;
   itemsCreated: number;
   itemsUpdated: number;
+  itemsSkipped: number;
   errors: string[];
   syncedAt: string;
 }
@@ -1399,6 +1401,175 @@ export const GET_COMMITTEE_ACTIVITY = gql`
       }
       total
       hasMore
+    }
+  }
+`;
+
+// ============================================
+// BILLS (issue #686)
+// ============================================
+
+export interface BillVote {
+  id: string;
+  representativeName: string;
+  representativeId?: string;
+  chamber: string;
+  voteDate: string;
+  /** yes | no | abstain | absent | excused | no_vote */
+  position: string;
+  motionText?: string;
+  sourceUrl: string;
+}
+
+export interface BillCoAuthor {
+  representativeId?: string;
+  name: string;
+  /** "principal coauthor" | "coauthor" */
+  coAuthorType?: string;
+}
+
+export interface Bill {
+  id: string;
+  externalId: string;
+  billNumber: string;
+  sessionYear: string;
+  measureTypeCode: string;
+  title: string;
+  subject?: string;
+  status?: string;
+  currentStageId?: string;
+  lastAction?: string;
+  lastActionDate?: string;
+  fiscalImpact?: string;
+  fullTextUrl?: string;
+  authorId?: string;
+  authorName?: string;
+  sourceUrl: string;
+  extractedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  votes: BillVote[];
+  coAuthors: BillCoAuthor[];
+}
+
+export interface PaginatedBills {
+  items: Bill[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface BillsData {
+  bills: PaginatedBills;
+}
+
+export interface BillData {
+  bill: Bill | null;
+}
+
+export interface BillsVars {
+  skip?: number;
+  take?: number;
+  measureTypeCode?: string;
+  sessionYear?: string;
+  authorId?: string;
+  committeeId?: string;
+}
+
+export interface BillIdVars {
+  id: string;
+}
+
+const BILL_VOTE_FIELDS = gql`
+  fragment BillVoteFields on BillVote {
+    id
+    representativeName
+    representativeId
+    chamber
+    voteDate
+    position
+    motionText
+    sourceUrl
+  }
+`;
+
+const BILL_CO_AUTHOR_FIELDS = gql`
+  fragment BillCoAuthorFields on BillCoAuthor {
+    representativeId
+    name
+    coAuthorType
+  }
+`;
+
+export const GET_BILLS = gql`
+  query GetBills(
+    $skip: Int
+    $take: Int
+    $measureTypeCode: String
+    $sessionYear: String
+    $authorId: ID
+    $committeeId: ID
+  ) {
+    bills(
+      skip: $skip
+      take: $take
+      measureTypeCode: $measureTypeCode
+      sessionYear: $sessionYear
+      authorId: $authorId
+      committeeId: $committeeId
+    ) {
+      items {
+        id
+        externalId
+        billNumber
+        sessionYear
+        measureTypeCode
+        title
+        subject
+        status
+        currentStageId
+        lastAction
+        lastActionDate
+        authorId
+        authorName
+        sourceUrl
+        updatedAt
+      }
+      total
+      hasMore
+    }
+  }
+`;
+
+export const GET_BILL = gql`
+  ${BILL_VOTE_FIELDS}
+  ${BILL_CO_AUTHOR_FIELDS}
+  query GetBill($id: ID!) {
+    bill(id: $id) {
+      id
+      externalId
+      billNumber
+      sessionYear
+      measureTypeCode
+      title
+      subject
+      status
+      currentStageId
+      lastAction
+      lastActionDate
+      fiscalImpact
+      fullTextUrl
+      authorId
+      authorName
+      sourceUrl
+      extractedAt
+      createdAt
+      updatedAt
+      votes {
+        ...BillVoteFields
+      }
+      coAuthors {
+        ...BillCoAuthorFields
+      }
     }
   }
 `;

@@ -132,6 +132,43 @@ export class OllamaLLMProvider implements ILLMProvider {
     return this.config.model;
   }
 
+  /**
+   * Execute a fetch with an AbortController timeout, mapping AbortErrors
+   * to a LLMError. Shared by generate() and chat() to avoid duplicating
+   * the identical controller/timeout/clearTimeout block.
+   */
+  private async fetchWithTimeout(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number,
+    operation: string,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await this.fetchFn(url, {
+        ...init,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === "AbortError") {
+        this.logger.error(`Ollama ${operation} timed out after ${timeoutMs}ms`);
+        throw new LLMError(
+          this.getName(),
+          operation,
+          new Error(
+            `Request timed out after ${timeoutMs}ms. Is Ollama running? Try: ollama serve`,
+          ),
+        );
+      }
+      throw error;
+    }
+  }
+
   async generate(
     prompt: string,
     options?: GenerateOptions,
@@ -151,33 +188,28 @@ export class OllamaLLMProvider implements ILLMProvider {
           `Generating completion with Ollama/${this.config.model} (${prompt.length} chars, timeout ${effectiveTimeoutMs}ms)`,
         );
 
-        // Add timeout to prevent hanging if Ollama isn't responding
-        const controller = new AbortController();
-        const timeoutId = setTimeout(
-          () => controller.abort(),
+        const response = await this.fetchWithTimeout(
+          `${this.config.url}/api/generate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: this.config.model,
+              prompt,
+              stream: false,
+              think: options?.think ?? false,
+              options: {
+                num_predict: options?.maxTokens || 512,
+                temperature: options?.temperature || 0.7,
+                top_p: options?.topP || 0.95,
+                top_k: options?.topK || 40,
+                stop: options?.stopSequences || [],
+              },
+            }),
+          },
           effectiveTimeoutMs,
+          "generate",
         );
-
-        const response = await this.fetchFn(`${this.config.url}/api/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            model: this.config.model,
-            prompt,
-            stream: false,
-            think: options?.think ?? false,
-            options: {
-              num_predict: options?.maxTokens || 512,
-              temperature: options?.temperature || 0.7,
-              top_p: options?.topP || 0.95,
-              top_k: options?.topK || 40,
-              stop: options?.stopSequences || [],
-            },
-          }),
-        });
-
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${await response.text()}`);
@@ -199,18 +231,7 @@ export class OllamaLLMProvider implements ILLMProvider {
           finishReason: data.done ? "stop" : "length",
         };
       } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          this.logger.error(
-            `Ollama generation timed out after ${effectiveTimeoutMs}ms`,
-          );
-          throw new LLMError(
-            this.getName(),
-            "generate",
-            new Error(
-              `Request timed out after ${effectiveTimeoutMs}ms. Is Ollama running? Try: ollama serve`,
-            ),
-          );
-        }
+        if (error instanceof LLMError) throw error;
         this.logger.error("Ollama generation failed:", error);
         throw new LLMError(this.getName(), "generate", error as Error);
       }
@@ -367,35 +388,30 @@ export class OllamaLLMProvider implements ILLMProvider {
           `Chat completion with Ollama/${this.config.model} (${messages.length} messages)`,
         );
 
-        // Add timeout to prevent hanging if Ollama isn't responding
-        const controller = new AbortController();
-        const timeoutId = setTimeout(
-          () => controller.abort(),
+        const response = await this.fetchWithTimeout(
+          `${this.config.url}/api/chat`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: this.config.model,
+              messages: messages.map((msg) => ({
+                role: msg.role,
+                content: msg.content,
+              })),
+              stream: false,
+              think: options?.think ?? false,
+              options: {
+                num_predict: options?.maxTokens || 512,
+                temperature: options?.temperature || 0.7,
+                top_p: options?.topP || 0.95,
+                top_k: options?.topK || 40,
+              },
+            }),
+          },
           this.requestTimeoutMs,
+          "chat",
         );
-
-        const response = await this.fetchFn(`${this.config.url}/api/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            model: this.config.model,
-            messages: messages.map((msg) => ({
-              role: msg.role,
-              content: msg.content,
-            })),
-            stream: false,
-            think: options?.think ?? false,
-            options: {
-              num_predict: options?.maxTokens || 512,
-              temperature: options?.temperature || 0.7,
-              top_p: options?.topP || 0.95,
-              top_k: options?.topK || 40,
-            },
-          }),
-        });
-
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${await response.text()}`);
@@ -413,18 +429,7 @@ export class OllamaLLMProvider implements ILLMProvider {
           finishReason: data.done ? "stop" : "length",
         };
       } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          this.logger.error(
-            `Ollama chat timed out after ${this.requestTimeoutMs}ms`,
-          );
-          throw new LLMError(
-            this.getName(),
-            "chat",
-            new Error(
-              `Request timed out after ${this.requestTimeoutMs}ms. Is Ollama running? Try: ollama serve`,
-            ),
-          );
-        }
+        if (error instanceof LLMError) throw error;
         this.logger.error("Ollama chat failed:", error);
         throw new LLMError(this.getName(), "chat", error as Error);
       }

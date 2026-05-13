@@ -1,13 +1,12 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { PromptClientService } from '@opuspopuli/prompt-client';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   extractFieldString,
   extractJsonObjectSlice,
   type BioClaim,
-  type ILLMProvider,
   type Representative,
 } from '@opuspopuli/common';
+import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
+import { LlmGeneratorBase } from './llm-generator.base';
 
 /**
  * Maps the externalId region prefix to a human-readable state name.
@@ -40,25 +39,23 @@ const STATE_PREFIX_TO_NAME: Record<string, string> = {
  * - Sets bioSource='ai-generated' on successful generation
  */
 @Injectable()
-export class BioGeneratorService {
+export class BioGeneratorService extends LlmGeneratorBase {
   private readonly logger = new Logger(BioGeneratorService.name);
-  private readonly maxTokens: number;
-  private readonly concurrency: number;
-  private readonly maxReps?: number;
-
-  constructor(
-    @Optional()
-    private readonly config?: ConfigService,
-    @Optional()
-    private readonly promptClient?: PromptClientService,
-    @Optional()
-    @Inject('LLM_PROVIDER')
-    private readonly llm?: ILLMProvider,
-  ) {
-    this.maxTokens = this.readPositiveInt('BIO_GENERATOR_MAX_TOKENS', 800);
-    this.concurrency = this.readPositiveInt('BIO_GENERATOR_CONCURRENCY', 1);
-    this.maxReps = this.readOptionalPositiveInt('BIO_GENERATOR_MAX_REPS');
-  }
+  // Field initializers run after super(), so this.config is already set.
+  private readonly maxTokens = readPositiveInt(
+    this.config,
+    'BIO_GENERATOR_MAX_TOKENS',
+    800,
+  );
+  private readonly concurrency = readPositiveInt(
+    this.config,
+    'BIO_GENERATOR_CONCURRENCY',
+    1,
+  );
+  private readonly maxReps = readOptionalPositiveInt(
+    this.config,
+    'BIO_GENERATOR_MAX_REPS',
+  );
 
   /**
    * Enrich a batch of representatives with AI-generated bios where missing.
@@ -192,20 +189,6 @@ export class BioGeneratorService {
       this.logClaimsSummary(rep, parsed);
     }
     return parsed;
-  }
-
-  private readPositiveInt(envKey: string, fallback: number): number {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return fallback;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
-
-  private readOptionalPositiveInt(envKey: string): number | undefined {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return undefined;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 
   /**

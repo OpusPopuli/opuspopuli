@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@apollo/client/react";
 import {
   GET_REPRESENTATIVE,
+  GET_BILLS,
   RepresentativeData,
   IdVars,
   BioClaim,
@@ -14,6 +15,8 @@ import {
   ContactInfo,
   Office,
   Representative,
+  type BillsData,
+  type BillsVars,
 } from "@/lib/graphql/region";
 import { ContactRepresentativeForm } from "@/components/email/ContactRepresentativeForm";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
@@ -27,6 +30,7 @@ import { ActivityStats } from "@/components/region/ActivityStats";
 import { ActivityFeed } from "@/components/region/ActivityFeed";
 import { ActivitySummary } from "@/components/region/ActivitySummary";
 import { CivicTerm } from "@/components/civics/CivicTerm";
+import { BillsList } from "@/components/region/BillListItem";
 
 const LAYERS = [
   { n: 1, label: "Who They Are" },
@@ -514,6 +518,45 @@ function WhatTheyCareAbout({
   );
 }
 
+function AuthoredBillsList({
+  representativeId,
+}: {
+  readonly representativeId: string;
+}) {
+  const { data, loading } = useQuery<BillsData, BillsVars>(GET_BILLS, {
+    variables: { authorId: representativeId, take: 10, skip: 0 },
+    fetchPolicy: "cache-and-network",
+  });
+
+  if (loading && !data) {
+    return (
+      <div className="space-y-2 animate-pulse">
+        {[1, 2, 3].map((n) => (
+          <div key={n} className="h-12 bg-slate-100 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  const bills = data?.bills?.items ?? [];
+
+  if (bills.length === 0) {
+    return (
+      <p className="text-sm italic text-slate-400">
+        No authored bills found in the current session.
+      </p>
+    );
+  }
+
+  return (
+    <BillsList
+      bills={bills}
+      totalCount={data?.bills?.total ?? 0}
+      viewAllHref={`/region/bills?authorId=${representativeId}`}
+    />
+  );
+}
+
 /**
  * Layer 3 — What They've Done. Live activity feed driven by the
  * `legislative_actions` data backing the rep, plus an at-a-glance
@@ -550,10 +593,7 @@ function WhatTheyveDone({
 
       <div className="mb-8">
         <SectionTitle>Authored Bills</SectionTitle>
-        <ComingSoon
-          title="Coming Soon"
-          description="Bills authored or co-authored by this representative, with status and subject tags. Tracked in #594."
-        />
+        <AuthoredBillsList representativeId={rep.id} />
       </div>
 
       <div className="flex items-center gap-3">
@@ -645,7 +685,7 @@ function ContactChip({
       href={href}
       target={external ? "_blank" : undefined}
       rel={external ? "noopener noreferrer" : undefined}
-      className="inline-flex items-center gap-1.5 text-xs text-[#475569] hover:text-blue-700 hover:underline max-w-[220px]"
+      className="inline-flex items-center gap-1.5 text-xs text-[#475569] hover:text-blue-700 hover:underline max-w-[220px] min-h-[24px]"
     >
       <span className="flex-shrink-0 w-3.5 h-3.5 text-[#94a3b8]">{icon}</span>
       <span className="truncate">{label}</span>

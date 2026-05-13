@@ -252,8 +252,9 @@ export class ProfileService {
     }
 
     // Update only provided fields (excluding id)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { id: _id, ...updateData } = updateDto;
+    const updateData: Omit<UpdateAddressDto, 'id'> = Object.fromEntries(
+      Object.entries(updateDto).filter(([key]) => key !== 'id'),
+    ) as Omit<UpdateAddressDto, 'id'>;
 
     const updated = await this.db.userAddress.update({
       where: { id: address.id },

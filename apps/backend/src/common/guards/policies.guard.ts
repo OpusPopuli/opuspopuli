@@ -22,19 +22,18 @@ import {
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { cloneDeep, isEmpty } from 'lodash';
-import { randomUUID } from 'node:crypto';
 
 import { ILogin } from 'src/interfaces/login.interface';
 import { isLoggedIn } from 'src/common/auth/jwt.strategy';
 
 import { Action } from '../enums/action.enum';
-import { AuditAction } from '../enums/audit-action.enum';
 
 import { IPolicy } from 'src/interfaces/policy.interface';
 import { IUserPolicies } from 'src/interfaces/user.interface';
 import { IFilePolicies } from 'src/interfaces/file.interface';
 import { IKnowledgePolicies } from 'src/interfaces/knowledge.interface';
 import { AuditLogService } from 'src/common/services/audit-log.service';
+import { auditAuthorizationDenied } from './guard-audit.helper';
 
 /**
  * Apollo Federation and GraphQL introspection field names.
@@ -140,23 +139,13 @@ export class PoliciesGuard<
       if (!allowed) {
         // Audit: Authorization denied - policy check failed
         // @see https://github.com/OpusPopuli/opuspopuli/issues/191
-        this.auditLogService?.logSync({
-          requestId: randomUUID(),
+        auditAuthorizationDenied(this.auditLogService, this.logger, {
           serviceName: 'policies-guard',
-          userId: user.id,
-          userEmail: user.email,
-          action: AuditAction.AUTHORIZATION_DENIED,
-          success: false,
-          resolverName: info?.fieldName,
-          operationType: info?.parentType?.name?.toLowerCase() as
-            | 'query'
-            | 'mutation'
-            | 'subscription',
-          ipAddress:
-            request?.ip ||
-            (request?.headers as Record<string, string>)?.['x-forwarded-for'],
-          userAgent: request?.headers?.['user-agent'],
+          user,
+          info,
+          request,
           errorMessage: 'Policy check failed',
+          logMessage: `Policy-based access denied for user ${user.email} to ${info?.fieldName || 'unknown'}`,
           inputVariables: {
             requiredPolicies: requiredPolicies.map((p) => ({
               action: p.action,
@@ -164,10 +153,6 @@ export class PoliciesGuard<
             })),
           },
         });
-
-        this.logger.warn(
-          `Policy-based access denied for user ${user.email} to ${info?.fieldName || 'unknown'}`,
-        );
       }
 
       return allowed;

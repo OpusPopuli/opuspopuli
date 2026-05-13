@@ -30,6 +30,11 @@ import type {
   RawExtractionResult,
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
+import {
+  inferSourceSystem,
+  buildFailureResult,
+  mapAndReturn,
+} from "./handler-utils.js";
 
 /** Download timeout: 30 minutes for very large files (FEC indiv26.zip is ~1.4GB) */
 const DOWNLOAD_TIMEOUT_MS = 1_800_000;
@@ -150,26 +155,16 @@ export class BulkDownloadHandler {
         `Parsed ${rawRecords.length} records from ${bulk.filePattern ?? source.url}`,
       );
 
-      const rawResult: RawExtractionResult = {
-        items: rawRecords,
-        success: rawRecords.length > 0,
+      return mapAndReturn<T>(
+        rawRecords,
         warnings,
         errors,
-      };
-
-      const result = this.mapper.map<T>(rawResult, source);
-      result.extractionTimeMs = Date.now() - pipelineStart;
-      return result;
+        source,
+        this.mapper,
+        pipelineStart,
+      );
     } catch (error) {
-      errors.push((error as Error).message);
-      return {
-        items: [],
-        manifestVersion: 0,
-        success: false,
-        warnings,
-        errors,
-        extractionTimeMs: Date.now() - pipelineStart,
-      };
+      return buildFailureResult<T>(error, warnings, errors, pipelineStart);
     } finally {
       // Always clean up temp file
       await unlink(tmpPath).catch(() => {});
@@ -368,7 +363,7 @@ export class BulkDownloadHandler {
     const delimiter = this.getDelimiter(bulk);
     const mappings = bulk.columnMappings;
     const filters = bulk.filters ?? {};
-    const sourceSystem = this.inferSourceSystem(source);
+    const sourceSystem = inferSourceSystem(source);
     const headerSkip = bulk.headerLines ?? 0;
 
     let lineNum = 0;
@@ -529,17 +524,5 @@ export class BulkDownloadHandler {
       if (val) record[targetField] = val;
     }
     return record;
-  }
-
-  /**
-   * Infer the sourceSystem value from the data source category.
-   */
-  private inferSourceSystem(source: DataSourceConfig): string | undefined {
-    const cat = (source.category ?? "").toLowerCase();
-    if (cat.includes("cal-access") || cat.includes("cal_access")) {
-      return "cal_access";
-    }
-    if (cat.includes("fec")) return "fec";
-    return undefined;
   }
 }

@@ -89,12 +89,13 @@ Opus Populi is built on a modular, provider-based architecture with three core p
 ### Region Service
 - **Technology**: NestJS + Apollo Federation
 - **Port**: 3004
-- **Purpose**: Civic data integration (propositions, meetings, representatives, campaign finance)
+- **Purpose**: Civic data integration (propositions, meetings, representatives, campaign finance, bills)
 - **Location**: `apps/backend/src/apps/region`
 - **Components**:
   - Declarative region plugin loading via `@opuspopuli/region-provider`
   - Propositions, meetings, and representatives data
   - Campaign finance data (committees, contributions, expenditures, independent expenditures)
+  - Legislative bills with author/co-author assignments, committee referrals, and roll-call votes
   - Plugin lifecycle management (initialize, health check, destroy)
 
 ## Provider Architecture

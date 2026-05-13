@@ -10,12 +10,12 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
-  IStorageProvider,
   IListFilesResult,
   IStorageFile,
   ISignedUrlOptions,
   StorageError,
 } from "@opuspopuli/common";
+import { BaseStorageProvider } from "./base-storage.provider";
 
 /**
  * Cloudflare R2 Storage Provider
@@ -25,13 +25,14 @@ import {
  * Used for production deployments.
  */
 @Injectable()
-export class R2StorageProvider implements IStorageProvider {
-  private readonly logger = new Logger(R2StorageProvider.name, {
+export class R2StorageProvider extends BaseStorageProvider {
+  protected readonly logger = new Logger(R2StorageProvider.name, {
     timestamp: true,
   });
   private readonly client: S3Client;
 
   constructor(private configService: ConfigService) {
+    super();
     const accountId = configService.get<string>("r2.accountId");
     const accessKeyId = configService.get<string>("r2.accessKeyId");
     const secretAccessKey = configService.get<string>("r2.secretAccessKey");
@@ -61,93 +62,69 @@ export class R2StorageProvider implements IStorageProvider {
     return "R2StorageProvider";
   }
 
-  async listFiles(bucket: string, prefix: string): Promise<IListFilesResult> {
-    try {
-      const command = new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: prefix,
-        MaxKeys: 1000,
-      });
+  protected async listFilesImpl(
+    bucket: string,
+    prefix: string,
+  ): Promise<IListFilesResult> {
+    const command = new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      MaxKeys: 1000,
+    });
 
-      const response = await this.client.send(command);
+    const response = await this.client.send(command);
 
-      const files: IStorageFile[] = (response.Contents || []).map((item) => ({
-        key: item.Key || "",
-        size: item.Size,
-        lastModified: item.LastModified,
-        etag: item.ETag,
-      }));
+    const files: IStorageFile[] = (response.Contents || []).map((item) => ({
+      key: item.Key || "",
+      size: item.Size,
+      lastModified: item.LastModified,
+      etag: item.ETag,
+    }));
 
-      return {
-        files,
-        continuationToken: response.NextContinuationToken,
-        isTruncated: response.IsTruncated || false,
-      };
-    } catch (error) {
-      this.logger.error(`Error listing files: ${(error as Error).message}`);
-      throw new StorageError(
-        `Failed to list files in ${bucket}/${prefix}`,
-        "LIST_ERROR",
-        error as Error,
-      );
-    }
+    return {
+      files,
+      continuationToken: response.NextContinuationToken,
+      isTruncated: response.IsTruncated || false,
+    };
   }
 
-  async getSignedUrl(
+  protected async getSignedUrlImpl(
     bucket: string,
     key: string,
     upload: boolean,
-    options: ISignedUrlOptions = {},
+    options: ISignedUrlOptions,
   ): Promise<string> {
-    try {
-      const expiresIn = options.expiresIn || 3600;
+    const expiresIn = options.expiresIn || 3600;
 
-      const command = upload
-        ? new PutObjectCommand({
-            Bucket: bucket,
-            Key: key,
-            ...(options.contentType && { ContentType: options.contentType }),
-          })
-        : new GetObjectCommand({
-            Bucket: bucket,
-            Key: key,
-          });
+    const command = upload
+      ? new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          ...(options.contentType && { ContentType: options.contentType }),
+        })
+      : new GetObjectCommand({
+          Bucket: bucket,
+          Key: key,
+        });
 
-      return await getSignedUrl(this.client, command, { expiresIn });
-    } catch (error) {
-      this.logger.error(
-        `Error getting signed URL: ${(error as Error).message}`,
-      );
-      throw new StorageError(
-        `Failed to get signed URL for ${bucket}/${key}`,
-        "SIGNED_URL_ERROR",
-        error as Error,
-      );
-    }
+    return getSignedUrl(this.client, command, { expiresIn });
   }
 
-  async deleteFile(bucket: string, key: string): Promise<boolean> {
-    try {
-      const command = new DeleteObjectCommand({
-        Bucket: bucket,
-        Key: key,
-      });
+  protected async deleteFileImpl(
+    bucket: string,
+    key: string,
+  ): Promise<boolean> {
+    const command = new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
 
-      await this.client.send(command);
-
-      this.logger.log(`Deleted file: ${bucket}/${key}`);
-      return true;
-    } catch (error) {
-      this.logger.error(`Error deleting file: ${(error as Error).message}`);
-      throw new StorageError(
-        `Failed to delete ${bucket}/${key}`,
-        "DELETE_ERROR",
-        error as Error,
-      );
-    }
+    await this.client.send(command);
+    this.logger.log(`Deleted file: ${bucket}/${key}`);
+    return true;
   }
 
-  async exists(bucket: string, key: string): Promise<boolean> {
+  protected async existsImpl(bucket: string, key: string): Promise<boolean> {
     try {
       const command = new HeadObjectCommand({
         Bucket: bucket,
@@ -172,7 +149,10 @@ export class R2StorageProvider implements IStorageProvider {
     }
   }
 
-  async getMetadata(bucket: string, key: string): Promise<IStorageFile | null> {
+  protected async getMetadataImpl(
+    bucket: string,
+    key: string,
+  ): Promise<IStorageFile | null> {
     try {
       const command = new HeadObjectCommand({
         Bucket: bucket,

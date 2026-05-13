@@ -20,6 +20,31 @@ const urgencyColors: Record<CitizenAction["urgency"], string> = {
   none: "hidden",
 };
 
+function getStepDotClass(
+  isSelected: boolean,
+  isAbstract: boolean,
+  isCompleted: boolean,
+  isCurrent: boolean,
+): string {
+  if (isSelected) return "scale-110 border-blue-700 bg-blue-700 shadow-md";
+  if (isAbstract)
+    return "border-gray-400 bg-white hover:border-blue-400 dark:border-gray-500 dark:bg-gray-800";
+  if (isCompleted) return "border-blue-500 bg-blue-500";
+  if (isCurrent) return "border-blue-600 bg-blue-600 ring-2 ring-blue-300";
+  return "border-gray-300 bg-white hover:border-blue-400 dark:border-gray-600 dark:bg-gray-900";
+}
+
+function getStageLabelClass(
+  isSelected: boolean,
+  isCompleted: boolean,
+  isCurrent: boolean,
+): string {
+  if (isSelected || isCurrent)
+    return "font-semibold text-blue-700 dark:text-blue-400";
+  if (isCompleted) return "text-gray-400 dark:text-gray-500";
+  return "text-gray-500 dark:text-gray-400";
+}
+
 /**
  * Horizontal step indicator for a bill's lifecycle.
  *
@@ -87,15 +112,12 @@ export function LifecycleProgressBar({
                   aria-label={`${stage.name.plainLanguage}: ${stage.shortDescription.plainLanguage}`}
                   className={[
                     "relative z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1",
-                    isSelected
-                      ? "scale-110 border-blue-700 bg-blue-700 shadow-md"
-                      : isAbstract
-                        ? "border-gray-400 bg-white hover:border-blue-400 dark:border-gray-500 dark:bg-gray-800"
-                        : isCompleted
-                          ? "border-blue-500 bg-blue-500"
-                          : isCurrent
-                            ? "border-blue-600 bg-blue-600 ring-2 ring-blue-300"
-                            : "border-gray-300 bg-white hover:border-blue-400 dark:border-gray-600 dark:bg-gray-900",
+                    getStepDotClass(
+                      isSelected,
+                      isAbstract,
+                      isCompleted,
+                      isCurrent,
+                    ),
                   ].join(" ")}
                 >
                   {isCompleted && !isSelected && (
@@ -125,13 +147,7 @@ export function LifecycleProgressBar({
                   aria-hidden="true"
                   className={[
                     "mt-1 max-w-[5rem] text-center leading-tight",
-                    isSelected
-                      ? "font-semibold text-blue-700 dark:text-blue-400"
-                      : isCompleted
-                        ? "text-gray-400 dark:text-gray-500"
-                        : isCurrent
-                          ? "font-semibold text-blue-700 dark:text-blue-400"
-                          : "text-gray-500 dark:text-gray-400",
+                    getStageLabelClass(isSelected, isCompleted, isCurrent),
                   ].join(" ")}
                 >
                   {stage.name.plainLanguage}

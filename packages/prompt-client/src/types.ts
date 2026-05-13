@@ -96,6 +96,27 @@ export interface CivicsExtractionParams {
   html: string;
 }
 
+/**
+ * Parameters for bill-extraction prompt — produces a structured `Bill`
+ * record from an individual bill page on an official legislature website
+ * (leginfo.legislature.ca.gov for California). Issue #686.
+ *
+ * The LLM returns JSON matching `@opuspopuli/common`'s `Bill` shape,
+ * including raw author/co-author name strings and a `votes[]` array of
+ * per-member roll-call positions extracted from the bill's vote-history
+ * section.
+ */
+export interface BillExtractionParams {
+  /** Region identifier (e.g. "california"). */
+  regionId: string;
+  /** URL the HTML was scraped from — becomes Bill.sourceUrl. */
+  sourceUrl: string;
+  /** Legislative session inferred from the URL or page content, e.g. "2023-2024". */
+  sessionYear: string;
+  /** Raw HTML of the bill detail page. */
+  html: string;
+}
+
 export const PROMPT_CLIENT_CONFIG = "PROMPT_CLIENT_CONFIG";
 
 export type { PromptServiceResponse };

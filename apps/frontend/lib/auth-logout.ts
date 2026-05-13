@@ -116,7 +116,7 @@ export function triggerAuthExpiredRedirect(pathname: string): void {
   // fetch (not Apollo) so we don't re-enter the link chain during an
   // auth-failure path. Failures are ignored — the navigation below is
   // the user-visible outcome either way.
-  void fetch(GRAPHQL_URL, {
+  fetch(GRAPHQL_URL, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

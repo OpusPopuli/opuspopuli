@@ -438,6 +438,7 @@ const result = await this.llm.generate(promptText, options);
 | `getStructuralAnalysisPrompt()` | `structural-analysis`, `structural-schema-*` | Web scraping schema extraction |
 | `getDocumentAnalysisPrompt()` | `document-analysis-*`, `document-analysis-base-instructions` | Document AI analysis |
 | `getRAGPrompt()` | `rag` | Retrieval-augmented generation |
+| `getBillExtractionPrompt()` | `bill-extraction-*` | Legislative bill data extraction from legislature HTML |
 
 Each template uses `{{VARIABLE}}` placeholders that are interpolated at runtime.
 

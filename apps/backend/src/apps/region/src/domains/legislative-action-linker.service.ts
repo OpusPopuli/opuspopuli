@@ -511,24 +511,21 @@ export class LegislativeActionLinkerService {
     section: JournalSection,
   ): CandidateAction[] {
     const out: CandidateAction[] = [];
-    const blocks = this.splitOnLookahead(section.text, /^Committee on\s{1,5}/m);
 
-    for (const block of blocks) {
-      const blockOffset = section.startOffset + block.startInParent;
-      const cmtMatch = COMMITTEE_HEADER_RE.exec(block.text);
-      const committeeName = cmtMatch?.[1]?.trim();
-      const hearingMatch = HEARING_DATE_RE.exec(block.text);
+    for (const {
+      blockText,
+      blockOffset,
+      committeeName,
+      committeeId,
+    } of this.committeeBlocksForSection(ctx, section)) {
+      const hearingMatch = HEARING_DATE_RE.exec(blockText);
       const hearingDate = hearingMatch?.[1]?.trim();
       // Bounded char class + length cap — no nested quantifiers, no
       // backtracking. Recommendations in real journals run to a few
       // hundred chars at most; cap at 800 as a defensive ceiling.
       const recommendationMatch =
-        /With the recommendation:\s{0,5}([^\n]{1,800}?\.)/i.exec(block.text);
+        /With the recommendation:\s{0,5}([^\n]{1,800}?\.)/i.exec(blockText);
       const recommendation = recommendationMatch?.[1]?.trim();
-
-      const committeeId = committeeName
-        ? this.resolveCommittee(ctx, committeeName)
-        : undefined;
 
       // Hearing action — one per block when we have both committee + date.
       if (committeeName && hearingDate) {
@@ -550,24 +547,24 @@ export class LegislativeActionLinkerService {
       }
 
       // Per-bill committee_report actions.
-      BILL_CITATION_RE.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = BILL_CITATION_RE.exec(block.text)) !== null) {
-        const canonical = this.normalizeBillCitation(m[1], m[2], m[3]);
-        const propId = ctx.caches.propositionsByExternalId.get(canonical);
+      for (const cite of this.billCitationsInBlock(
+        blockText,
+        blockOffset,
+        ctx.caches,
+      )) {
         out.push({
           actionType: 'committee_report',
-          rawSubject: canonical,
+          rawSubject: cite.canonical,
           text: this.truncate(
             recommendation
-              ? `${canonical}: ${recommendation}`
-              : `${canonical}: reported by Committee on ${committeeName ?? '?'}.`,
+              ? `${cite.canonical}: ${recommendation}`
+              : `${cite.canonical}: reported by Committee on ${committeeName ?? '?'}.`,
             4000,
           ),
-          passageStart: blockOffset + m.index,
-          passageEnd: blockOffset + m.index + m[0].length,
+          passageStart: cite.passageStart,
+          passageEnd: cite.passageEnd,
           committeeId,
-          propositionId: propId,
+          propositionId: cite.propId,
         });
       }
     }
@@ -584,31 +581,31 @@ export class LegislativeActionLinkerService {
     section: JournalSection,
   ): CandidateAction[] {
     const out: CandidateAction[] = [];
-    const blocks = this.splitOnLookahead(section.text, /^Committee on\s{1,5}/m);
 
-    for (const block of blocks) {
-      const blockOffset = section.startOffset + block.startInParent;
-      const cmtMatch = COMMITTEE_HEADER_RE.exec(block.text);
-      const committeeName = cmtMatch?.[1]?.trim();
+    for (const {
+      blockText,
+      blockOffset,
+      committeeName,
+      committeeId,
+    } of this.committeeBlocksForSection(ctx, section)) {
       if (!committeeName) continue;
-      const committeeId = this.resolveCommittee(ctx, committeeName);
 
-      BILL_CITATION_RE.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = BILL_CITATION_RE.exec(block.text)) !== null) {
-        const canonical = this.normalizeBillCitation(m[1], m[2], m[3]);
-        const propId = ctx.caches.propositionsByExternalId.get(canonical);
+      for (const cite of this.billCitationsInBlock(
+        blockText,
+        blockOffset,
+        ctx.caches,
+      )) {
         out.push({
           actionType: 'amendment',
-          rawSubject: canonical,
+          rawSubject: cite.canonical,
           text: this.truncate(
-            `${canonical}: author's amendments adopted in Committee on ${committeeName}.`,
+            `${cite.canonical}: author's amendments adopted in Committee on ${committeeName}.`,
             4000,
           ),
-          passageStart: blockOffset + m.index,
-          passageEnd: blockOffset + m.index + m[0].length,
+          passageStart: cite.passageStart,
+          passageEnd: cite.passageEnd,
           committeeId,
-          propositionId: propId,
+          propositionId: cite.propId,
         });
       }
     }
@@ -679,21 +676,21 @@ export class LegislativeActionLinkerService {
       else if (ENGROSSED_RE.test(block.text)) actionType = 'engrossment';
       if (!actionType) continue;
 
-      BILL_CITATION_RE.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = BILL_CITATION_RE.exec(block.text)) !== null) {
-        const canonical = this.normalizeBillCitation(m[1], m[2], m[3]);
-        const propId = ctx.caches.propositionsByExternalId.get(canonical);
+      for (const cite of this.billCitationsInBlock(
+        block.text,
+        blockOffset,
+        ctx.caches,
+      )) {
         out.push({
           actionType,
-          rawSubject: canonical,
+          rawSubject: cite.canonical,
           text: this.truncate(
-            `${canonical}: Chief Clerk reports ${actionType === 'enrollment' ? 'enrolled' : 'engrossed'}.`,
+            `${cite.canonical}: Chief Clerk reports ${actionType === 'enrollment' ? 'enrolled' : 'engrossed'}.`,
             4000,
           ),
-          passageStart: blockOffset + m.index,
-          passageEnd: blockOffset + m.index + m[0].length,
-          propositionId: propId,
+          passageStart: cite.passageStart,
+          passageEnd: cite.passageEnd,
+          propositionId: cite.propId,
         });
       }
     }
@@ -735,6 +732,41 @@ export class LegislativeActionLinkerService {
   // ============================================
   // Bill-citation normalization
   // ============================================
+
+  /**
+   * Iterate all bill citations in a text block, returning normalized tuples.
+   * Centralises the BILL_CITATION_RE reset + exec loop that appears in
+   * multiple extractXxx methods.
+   */
+  private billCitationsInBlock(
+    blockText: string,
+    blockOffset: number,
+    caches: LinkerCaches,
+  ): Array<{
+    canonical: string;
+    propId: string | undefined;
+    passageStart: number;
+    passageEnd: number;
+  }> {
+    BILL_CITATION_RE.lastIndex = 0;
+    const results: Array<{
+      canonical: string;
+      propId: string | undefined;
+      passageStart: number;
+      passageEnd: number;
+    }> = [];
+    let m: RegExpExecArray | null;
+    while ((m = BILL_CITATION_RE.exec(blockText)) !== null) {
+      const canonical = this.normalizeBillCitation(m[1], m[2], m[3]);
+      results.push({
+        canonical,
+        propId: caches.propositionsByExternalId.get(canonical),
+        passageStart: blockOffset + m.index,
+        passageEnd: blockOffset + m.index + m[0].length,
+      });
+    }
+    return results;
+  }
 
   private normalizeBillCitation(
     chamber: string,
@@ -865,6 +897,33 @@ export class LegislativeActionLinkerService {
   // ============================================
   // Helpers
   // ============================================
+
+  /**
+   * Split a journal section into "Committee on X" blocks and resolve the
+   * committee name + document offset for each block. Used by both
+   * `extractCommitteeReports` and `extractAuthorsAmendments` to avoid
+   * duplicating the split + header-parse setup.
+   */
+  private committeeBlocksForSection(
+    ctx: MinutesContext,
+    section: JournalSection,
+  ): Array<{
+    blockText: string;
+    blockOffset: number;
+    committeeName: string | undefined;
+    committeeId: string | undefined;
+  }> {
+    const blocks = this.splitOnLookahead(section.text, /^Committee on\s{1,5}/m);
+    return blocks.map((block) => {
+      const blockOffset = section.startOffset + block.startInParent;
+      const cmtMatch = COMMITTEE_HEADER_RE.exec(block.text);
+      const committeeName = cmtMatch?.[1]?.trim();
+      const committeeId = committeeName
+        ? this.resolveCommittee(ctx, committeeName)
+        : undefined;
+      return { blockText: block.text, blockOffset, committeeName, committeeId };
+    });
+  }
 
   /**
    * Split text on a regex lookahead, preserving the offset of each

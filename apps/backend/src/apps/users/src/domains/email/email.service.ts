@@ -88,24 +88,10 @@ export class EmailService {
         text: template.text,
       });
 
-      if (result.success) {
-        correspondence = await this.db.emailCorrespondence.update({
-          where: { id: correspondence.id },
-          data: {
-            status: DbEmailStatus.sent,
-            sentAt: new Date(),
-            resendId: result.id,
-          },
-        });
-      } else {
-        correspondence = await this.db.emailCorrespondence.update({
-          where: { id: correspondence.id },
-          data: {
-            status: DbEmailStatus.failed,
-            errorMessage: result.error,
-          },
-        });
-      }
+      correspondence = await this.updateCorrespondenceOnResult(
+        correspondence.id,
+        result,
+      );
 
       this.logger.log(
         `Welcome email ${result.success ? 'sent' : 'failed'} for user ${userId}`,
@@ -113,17 +99,11 @@ export class EmailService {
 
       return { success: result.success, correspondenceId: correspondence.id };
     } catch (error) {
-      const err = error as Error;
-      await this.db.emailCorrespondence.update({
-        where: { id: correspondence.id },
-        data: {
-          status: DbEmailStatus.failed,
-          errorMessage: err.message,
-        },
-      });
-
-      this.logger.error(`Failed to send welcome email: ${err.message}`);
-      throw error;
+      return this.handleEmailSendError(
+        correspondence.id,
+        error,
+        'welcome email',
+      );
     }
   }
 
@@ -212,24 +192,10 @@ export class EmailService {
         ],
       });
 
-      if (result.success) {
-        correspondence = await this.db.emailCorrespondence.update({
-          where: { id: correspondence.id },
-          data: {
-            status: DbEmailStatus.sent,
-            sentAt: new Date(),
-            resendId: result.id,
-          },
-        });
-      } else {
-        correspondence = await this.db.emailCorrespondence.update({
-          where: { id: correspondence.id },
-          data: {
-            status: DbEmailStatus.failed,
-            errorMessage: result.error,
-          },
-        });
-      }
+      correspondence = await this.updateCorrespondenceOnResult(
+        correspondence.id,
+        result,
+      );
 
       this.logger.log(
         `Representative contact email ${result.success ? 'sent' : 'failed'} from user ${userId} to ${representative.name}`,
@@ -237,20 +203,56 @@ export class EmailService {
 
       return { success: result.success, correspondenceId: correspondence.id };
     } catch (error) {
-      const err = error as Error;
-      await this.db.emailCorrespondence.update({
-        where: { id: correspondence.id },
+      return this.handleEmailSendError(
+        correspondence.id,
+        error,
+        'representative contact email',
+      );
+    }
+  }
+
+  // ============================================
+  // Private helpers
+  // ============================================
+
+  private async updateCorrespondenceOnResult(
+    id: string,
+    result: { success: boolean; id?: string; error?: string },
+  ): Promise<DbEmailCorrespondence> {
+    if (result.success) {
+      return this.db.emailCorrespondence.update({
+        where: { id },
         data: {
-          status: DbEmailStatus.failed,
-          errorMessage: err.message,
+          status: DbEmailStatus.sent,
+          sentAt: new Date(),
+          resendId: result.id,
         },
       });
-
-      this.logger.error(
-        `Failed to send representative contact email: ${err.message}`,
-      );
-      throw error;
     }
+    return this.db.emailCorrespondence.update({
+      where: { id },
+      data: {
+        status: DbEmailStatus.failed,
+        errorMessage: result.error,
+      },
+    });
+  }
+
+  private async handleEmailSendError(
+    correspondenceId: string,
+    error: unknown,
+    context: string,
+  ): Promise<never> {
+    const err = error as Error;
+    await this.db.emailCorrespondence.update({
+      where: { id: correspondenceId },
+      data: {
+        status: DbEmailStatus.failed,
+        errorMessage: err.message,
+      },
+    });
+    this.logger.error(`Failed to send ${context}: ${err.message}`);
+    throw error;
   }
 
   // ============================================

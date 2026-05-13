@@ -1,7 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { ISecretsProvider, SecretsError } from "@opuspopuli/common";
+import {
+  ISecretsProvider,
+  SecretsError,
+  initSupabaseFromConfig,
+} from "@opuspopuli/common";
 
 /**
  * Helper function to get a secret without dependency injection.
@@ -74,30 +78,19 @@ export class SupabaseVaultProvider implements ISecretsProvider {
   private readonly supabase: SupabaseClient;
 
   constructor(private configService: ConfigService) {
-    const supabaseUrl = configService.get<string>("supabase.url");
-    const supabaseServiceKey = configService.get<string>(
-      "supabase.serviceRoleKey",
-    );
-    const supabaseAnonKey = configService.get<string>("supabase.anonKey");
-
-    if (!supabaseUrl || (!supabaseServiceKey && !supabaseAnonKey)) {
+    try {
+      const { supabase, url } = initSupabaseFromConfig(
+        (key) => configService.get<string>(key),
+        createClient,
+      );
+      this.supabase = supabase;
+      this.logger.log(`SupabaseVaultProvider initialized for: ${url}`);
+    } catch {
       throw new SecretsError(
         "Supabase URL and key are required",
         "CONFIG_ERROR",
       );
     }
-
-    // Use service role key for admin operations, fall back to anon key
-    const key = supabaseServiceKey || supabaseAnonKey;
-
-    this.supabase = createClient(supabaseUrl, key!, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
-    this.logger.log(`SupabaseVaultProvider initialized for: ${supabaseUrl}`);
   }
 
   getName(): string {

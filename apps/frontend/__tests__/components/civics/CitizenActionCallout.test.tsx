@@ -52,8 +52,6 @@ describe("CitizenActionCallout", () => {
 
   it("applies orange styling for active urgency", () => {
     render(<CitizenActionCallout action={makeAction({ urgency: "active" })} />);
-    const el =
-      screen.getByRole("link").parentElement ?? screen.getByRole("link");
     // Orange class is present somewhere in the rendered output
     expect(
       document.querySelector(".text-orange-800, .bg-orange-50"),

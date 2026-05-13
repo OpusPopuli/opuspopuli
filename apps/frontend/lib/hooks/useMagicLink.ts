@@ -7,6 +7,9 @@ import {
   SEND_MAGIC_LINK,
   VERIFY_MAGIC_LINK,
   REGISTER_WITH_MAGIC_LINK,
+  SendMagicLinkData,
+  VerifyMagicLinkData,
+  RegisterWithMagicLinkData,
   AuthTokens,
 } from "@/lib/graphql/auth";
 
@@ -33,15 +36,12 @@ export function useMagicLink(): UseMagicLinkResult {
   const [emailSent, setEmailSent] = useState(false);
 
   // GraphQL mutations
-  const [sendMagicLinkMutation] = useMutation<{ sendMagicLink: boolean }>(
-    SEND_MAGIC_LINK,
-  );
-  const [verifyMagicLinkMutation] = useMutation<{
-    verifyMagicLink: AuthTokens;
-  }>(VERIFY_MAGIC_LINK);
-  const [registerWithMagicLinkMutation] = useMutation<{
-    registerWithMagicLink: boolean;
-  }>(REGISTER_WITH_MAGIC_LINK);
+  const [sendMagicLinkMutation] =
+    useMutation<SendMagicLinkData>(SEND_MAGIC_LINK);
+  const [verifyMagicLinkMutation] =
+    useMutation<VerifyMagicLinkData>(VERIFY_MAGIC_LINK);
+  const [registerWithMagicLinkMutation] =
+    useMutation<RegisterWithMagicLinkData>(REGISTER_WITH_MAGIC_LINK);
 
   const clearError = useCallback(() => {
     setError(null);
