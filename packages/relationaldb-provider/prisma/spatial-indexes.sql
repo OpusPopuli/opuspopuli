@@ -33,5 +33,18 @@ END $$;
 CREATE INDEX IF NOT EXISTS documents_scan_location_gist_idx
   ON documents USING GIST (scan_location);
 
+-- GIST indexes on jurisdictions.boundary for point-in-polygon queries (#690)
+-- Enables resolving a user's lat/lng to all containing civic jurisdictions
+CREATE INDEX IF NOT EXISTS jurisdictions_boundary_gist_idx
+  ON jurisdictions USING GIST (boundary);
+
+CREATE INDEX IF NOT EXISTS jurisdictions_type_boundary_idx
+  ON jurisdictions USING GIST (boundary)
+  WHERE boundary IS NOT NULL;
+
+-- GIST index on user_addresses.point for spatial lookups (#690)
+CREATE INDEX IF NOT EXISTS user_addresses_point_gist_idx
+  ON user_addresses USING GIST (point);
+
 -- Log success
 DO $$ BEGIN RAISE NOTICE 'Spatial indexes created successfully'; END $$;
