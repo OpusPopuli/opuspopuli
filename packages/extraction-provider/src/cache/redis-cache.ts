@@ -9,6 +9,7 @@
 
 import Redis from "ioredis";
 import type { ICache, CacheOptions } from "@opuspopuli/common";
+import { createRedisClient } from "../utils/redis-utils";
 
 /**
  * Redis cache configuration options
@@ -44,43 +45,19 @@ export class RedisCache<T = string> implements ICache<T> {
     this.ttlMs = options.ttlMs ?? 300000; // 5 minutes default
     this.keyPrefix = options.keyPrefix ?? "cache:";
 
-    // Parse URL or use host/port
-    if (options.url) {
-      this.redis = new Redis(options.url, {
-        lazyConnect: options.lazyConnect ?? true,
-        connectTimeout: options.connectTimeout ?? 5000,
-        maxRetriesPerRequest: options.maxRetriesPerRequest ?? 3,
-        retryStrategy: (times) => {
-          if (times > 3) return null; // Stop retrying after 3 attempts
-          return Math.min(times * 200, 2000);
-        },
-      });
-    } else {
-      this.redis = new Redis({
-        host: options.host ?? "localhost",
-        port: options.port ?? 6379,
-        lazyConnect: options.lazyConnect ?? true,
-        connectTimeout: options.connectTimeout ?? 5000,
-        maxRetriesPerRequest: options.maxRetriesPerRequest ?? 3,
-        retryStrategy: (times) => {
-          if (times > 3) return null;
-          return Math.min(times * 200, 2000);
-        },
-      });
-    }
-
-    // Track connection state
-    this.redis.on("connect", () => {
-      this.isConnected = true;
-    });
-
-    this.redis.on("error", () => {
-      this.isConnected = false;
-    });
-
-    this.redis.on("close", () => {
-      this.isConnected = false;
-    });
+    this.redis = createRedisClient(
+      {
+        url: options.url,
+        host: options.host,
+        port: options.port,
+        lazyConnect: options.lazyConnect,
+        connectTimeout: options.connectTimeout,
+        maxRetriesPerRequest: options.maxRetriesPerRequest,
+      },
+      (connected) => {
+        this.isConnected = connected;
+      },
+    );
   }
 
   /**

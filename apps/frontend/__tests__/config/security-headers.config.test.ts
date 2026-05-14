@@ -5,25 +5,11 @@
  * @see https://github.com/OpusPopuli/opuspopuli/issues/193
  */
 
-// We need to dynamically import the ESM module
-let getSecurityHeaders: () => Array<{ key: string; value: string }>;
-let testingExports: {
-  buildCspDirectives: () => string;
-  buildReportToHeader: () => string | null;
-  getApiUrl: () => string | null;
-  isProduction: boolean;
-};
-
 beforeAll(async () => {
   // Reset environment variables
   (process.env as { NODE_ENV?: string }).NODE_ENV = "test";
   delete process.env.NEXT_PUBLIC_GRAPHQL_URL;
   delete process.env.CSP_REPORT_URI;
-
-  // Dynamic import for ESM module
-  const configModule = await import("../../config/security-headers.config.mjs");
-  getSecurityHeaders = configModule.getSecurityHeaders;
-  testingExports = configModule.__testing__;
 });
 
 describe("Security Headers Configuration", () => {

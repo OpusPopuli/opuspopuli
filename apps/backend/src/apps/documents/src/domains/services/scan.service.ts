@@ -7,7 +7,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IStorageProvider } from '@opuspopuli/storage-provider';
-import { DbService, DocumentType } from '@opuspopuli/relationaldb-provider';
+import {
+  DbService,
+  DocumentStatus,
+  DocumentType,
+} from '@opuspopuli/relationaldb-provider';
 import { OcrService } from '@opuspopuli/ocr-provider';
 import { ExtractionProvider } from '@opuspopuli/extraction-provider';
 import { createHash } from 'node:crypto';
@@ -100,19 +104,9 @@ export class ScanService {
       // Extract text via OCR
       const extractedText = await this.extractTextFromBuffer(buffer, mimeType);
 
-      // Calculate content hash for deduplication
-      const contentHash = this.hashText(extractedText.text);
-
-      // Update document with extracted text
-      await this.db.document.update({
-        where: { id: document.id },
-        data: {
-          extractedText: extractedText.text,
-          contentHash,
-          ocrConfidence: extractedText.confidence,
-          ocrProvider: extractedText.provider,
-          status: 'text_extraction_complete',
-        },
+      // Calculate content hash and persist extracted text
+      await this.persistExtractedText(document.id, extractedText, {
+        status: DocumentStatus.text_extraction_complete,
       });
 
       this.logger.log(
@@ -192,19 +186,8 @@ export class ScanService {
     // Extract text using appropriate method
     const extractedText = await this.extractTextFromBuffer(buffer, mimeType);
 
-    // Calculate content hash for deduplication
-    const contentHash = this.hashText(extractedText.text);
-
-    // Update document with extracted text
-    await this.db.document.update({
-      where: { id: document.id },
-      data: {
-        extractedText: extractedText.text,
-        contentHash,
-        ocrConfidence: extractedText.confidence,
-        ocrProvider: extractedText.provider,
-      },
-    });
+    // Calculate content hash and persist extracted text
+    await this.persistExtractedText(document.id, extractedText);
 
     this.logger.log(
       `Extracted ${extractedText.text.length} chars from ${filename} (${extractedText.confidence.toFixed(1)}% confidence)`,
@@ -242,6 +225,30 @@ export class ScanService {
       provider: result.provider,
       processingTimeMs: Date.now() - startTime,
     };
+  }
+
+  /**
+   * Compute content hash and write extracted-text fields to the document row.
+   * Pass `status` only when the caller also wants to update the document status
+   * (e.g. `processScan` stamps `text_extraction_complete`; `extractTextFromFile`
+   * leaves the status column unchanged).
+   */
+  private async persistExtractedText(
+    documentId: string,
+    extractedText: { text: string; confidence: number; provider: string },
+    extra?: { status?: DocumentStatus },
+  ): Promise<void> {
+    const contentHash = this.hashText(extractedText.text);
+    await this.db.document.update({
+      where: { id: documentId },
+      data: {
+        extractedText: extractedText.text,
+        contentHash,
+        ocrConfidence: extractedText.confidence,
+        ocrProvider: extractedText.provider,
+        ...(extra?.status ? { status: extra.status } : {}),
+      },
+    });
   }
 
   /**

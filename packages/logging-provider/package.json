@@ -27,7 +27,8 @@
   ],
   "license": "AGPL-3.0",
   "dependencies": {
-    "@nestjs/common": "^11.0.0"
+    "@nestjs/common": "^11.0.0",
+    "@opuspopuli/common": "workspace:*"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.0.0",

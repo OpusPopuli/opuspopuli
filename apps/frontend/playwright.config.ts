@@ -1,9 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // In CI, use production build (port 3000). Locally, use dev server (port 3200).
+// BASE_URL overrides both — used to target a running Docker container (e.g. port 3300).
 const isCI = !!process.env.CI;
 const port = isCI ? 3000 : 3200;
-const baseURL = `http://localhost:${port}`;
+const baseURL = process.env.BASE_URL ?? `http://localhost:${port}`;
 
 /**
  * Playwright E2E Test Configuration
@@ -105,11 +106,12 @@ export default defineConfig({
   webServer: {
     // In CI, use standalone server (Next.js output: standalone). Locally, use dev server.
     // Note: standalone output preserves monorepo structure, so server.js is at apps/frontend/
+    // When BASE_URL is set (e.g. targeting a Docker container), always reuse the existing server.
     command: isCI
       ? "node .next/standalone/apps/frontend/server.js"
       : "pnpm run dev",
     url: baseURL,
-    reuseExistingServer: !isCI,
+    reuseExistingServer: !!process.env.BASE_URL || !isCI,
     timeout: 120000, // 2 minutes for server startup
   },
 });

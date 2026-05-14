@@ -24,13 +24,8 @@ const FAST_PIPELINE: PreprocessingStep[] = [
   { type: "adaptiveThreshold", enabled: true },
 ];
 
-/**
- * Balanced preset: Moderate preprocessing
- * Best for: Typical mobile camera captures, office documents
- * Steps: grayscale + resize + deskew + adaptive threshold + sharpen
- * Latency: ~100-200ms
- */
-const BALANCED_PIPELINE: PreprocessingStep[] = [
+/** Shared resize + deskew steps used by both BALANCED and QUALITY pipelines. */
+const BASE_RESIZE_DESKEW_STEPS: PreprocessingStep[] = [
   { type: "grayscale", enabled: true },
   {
     type: "resize",
@@ -38,6 +33,16 @@ const BALANCED_PIPELINE: PreprocessingStep[] = [
     options: { targetDpi: 300, maxDimension: 4000 },
   },
   { type: "deskew", enabled: true, options: { maxDeskewAngle: 15 } },
+];
+
+/**
+ * Balanced preset: Moderate preprocessing
+ * Best for: Typical mobile camera captures, office documents
+ * Steps: grayscale + resize + deskew + adaptive threshold + sharpen
+ * Latency: ~100-200ms
+ */
+const BALANCED_PIPELINE: PreprocessingStep[] = [
+  ...BASE_RESIZE_DESKEW_STEPS,
   { type: "adaptiveThreshold", enabled: true },
   { type: "sharpen", enabled: true, options: { sharpenSigma: 1.0 } },
 ];
@@ -49,13 +54,7 @@ const BALANCED_PIPELINE: PreprocessingStep[] = [
  * Latency: ~200-400ms
  */
 const QUALITY_PIPELINE: PreprocessingStep[] = [
-  { type: "grayscale", enabled: true },
-  {
-    type: "resize",
-    enabled: true,
-    options: { targetDpi: 300, maxDimension: 4000 },
-  },
-  { type: "deskew", enabled: true, options: { maxDeskewAngle: 15 } },
+  ...BASE_RESIZE_DESKEW_STEPS,
   { type: "shadowRemoval", enabled: true },
   { type: "adaptiveThreshold", enabled: true },
   {

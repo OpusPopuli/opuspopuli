@@ -1,12 +1,9 @@
-/**
- * Log levels supported by the logger
- */
-export enum LogLevel {
-  DEBUG = "debug",
-  INFO = "info",
-  WARN = "warn",
-  ERROR = "error",
-}
+// Re-export the canonical types from @opuspopuli/common to avoid
+// maintaining duplicate definitions (#7 jscpd clone fix).
+// LogLevel is identical; ILoggingProvider is aliased as ILogger for
+// backward-compatibility with code that imports from this package.
+export { LogLevel, ILoggingProvider as ILogger } from "@opuspopuli/common";
+import type { LogLevel, ILoggingProvider as ILogger } from "@opuspopuli/common";
 
 /**
  * Configuration for the logging provider
@@ -58,29 +55,6 @@ export interface LogEntry {
   };
   /** Duration in milliseconds for performance tracking */
   durationMs?: number;
-}
-
-/**
- * Interface for the logger service
- */
-export interface ILogger {
-  debug(
-    message: string,
-    context?: string,
-    meta?: Record<string, unknown>,
-  ): void;
-  log(message: string, context?: string, meta?: Record<string, unknown>): void;
-  info(message: string, context?: string, meta?: Record<string, unknown>): void;
-  warn(message: string, context?: string, meta?: Record<string, unknown>): void;
-  error(
-    message: string,
-    trace?: string,
-    context?: string,
-    meta?: Record<string, unknown>,
-  ): void;
-  setRequestId(requestId: string): void;
-  setUserId(userId: string): void;
-  child(context: string): ILogger;
 }
 
 /**

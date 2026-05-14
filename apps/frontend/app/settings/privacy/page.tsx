@@ -15,6 +15,7 @@ import {
   ConsentType,
   ConsentStatus,
 } from "@/lib/graphql/profile";
+import { SettingsLoadingSkeleton } from "@/components/settings/SettingsLoadingSkeleton";
 
 interface ConsentItemProps {
   readonly consent: UserConsent | undefined;
@@ -226,19 +227,7 @@ export default function PrivacyPage() {
   };
 
   if (loading) {
-    return (
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-          <div className="space-y-3 mt-8">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-20 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    return <SettingsLoadingSkeleton rows={4} rowHeight="h-20" />;
   }
 
   if (error) {

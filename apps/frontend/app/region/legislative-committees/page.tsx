@@ -9,6 +9,7 @@ import {
   LegislativeCommitteesData,
 } from "@/lib/graphql/region";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { ChamberBadge } from "@/components/region/ChamberBadge";
 import { Pagination } from "@/components/region/Pagination";
 import {
   LoadingSkeleton,
@@ -35,20 +36,6 @@ const CHAMBER_FILTERS: ReadonlyArray<{ label: string; value?: string }> = [
   { label: "Assembly", value: "Assembly" },
   { label: "Senate", value: "Senate" },
 ];
-
-function ChamberBadge({ chamber }: { readonly chamber: string }) {
-  const isAssembly = chamber === "Assembly";
-  const cls = isAssembly
-    ? "bg-blue-100 text-blue-800"
-    : "bg-purple-100 text-purple-800";
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cls}`}
-    >
-      {chamber}
-    </span>
-  );
-}
 
 function CommitteeCard({
   committee,

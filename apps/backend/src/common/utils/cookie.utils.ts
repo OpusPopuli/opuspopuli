@@ -1,13 +1,15 @@
 import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 
+type SameSitePolicy = 'strict' | 'lax' | 'none';
+
 /**
  * Cookie options interface
  */
 export interface CookieOptions {
   httpOnly: boolean;
   secure: boolean;
-  sameSite: 'strict' | 'lax' | 'none';
+  sameSite: SameSitePolicy;
   maxAge: number;
   path: string;
   domain?: string;
@@ -25,9 +27,7 @@ export function getCookieOptions(
     secure:
       configService.get<boolean>('cookie.secure') ??
       configService.get('NODE_ENV') === 'production',
-    sameSite:
-      configService.get<'strict' | 'lax' | 'none'>('cookie.sameSite') ||
-      'strict',
+    sameSite: configService.get<SameSitePolicy>('cookie.sameSite') || 'strict',
     maxAge:
       configService.get<number>('cookie.accessTokenMaxAge') || 15 * 60 * 1000,
     path: '/',
@@ -94,9 +94,8 @@ export function clearAuthCookies(
     secure:
       configService.get<boolean>('cookie.secure') ??
       configService.get('NODE_ENV') === 'production',
-    sameSite: (configService.get<'strict' | 'lax' | 'none'>(
-      'cookie.sameSite',
-    ) || 'strict') as 'strict' | 'lax' | 'none',
+    sameSite: (configService.get<SameSitePolicy>('cookie.sameSite') ||
+      'strict') as SameSitePolicy,
     path: '/',
     domain,
   };

@@ -18,6 +18,7 @@ import {
   CreateAddressInput,
   AddressType,
 } from "@/lib/graphql/profile";
+import { SettingsLoadingSkeleton } from "@/components/settings/SettingsLoadingSkeleton";
 
 // Values are uppercase to match the GraphQL `AddressType` enum's wire format.
 // labelKeys stay lowercase since the i18n translation files key by the
@@ -199,19 +200,7 @@ export default function AddressesPage() {
   };
 
   if (loading) {
-    return (
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-          <div className="space-y-3 mt-8">
-            {[1, 2].map((i) => (
-              <div key={i} className="h-24 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    return <SettingsLoadingSkeleton rows={2} rowHeight="h-24" />;
   }
 
   if (error) {

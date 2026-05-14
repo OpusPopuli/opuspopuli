@@ -4,6 +4,7 @@ import {
   CommitteeMeasurePositionType,
   DbService,
 } from '@opuspopuli/relationaldb-provider';
+import { readPositiveInt } from './config-helpers';
 
 /**
  * Connects campaign-finance records to propositions.
@@ -46,11 +47,13 @@ export class PropositionFinanceLinkerService {
     @Optional() private readonly config?: ConfigService,
     @Optional() private readonly db?: DbService,
   ) {
-    this.minMatchTokens = this.readPositiveInt(
+    this.minMatchTokens = readPositiveInt(
+      this.config,
       'FINANCE_LINKER_TITLE_MATCH_MIN_TOKENS',
       2,
     );
-    this.electionWindowYears = this.readPositiveInt(
+    this.electionWindowYears = readPositiveInt(
+      this.config,
       'FINANCE_LINKER_ELECTION_WINDOW_YEARS',
       2,
     );
@@ -452,12 +455,5 @@ export class PropositionFinanceLinkerService {
     if (!externalId) return null;
     const idx = externalId.search(/[:-]/);
     return idx >= 0 ? externalId.slice(0, idx) : externalId;
-  }
-
-  private readPositiveInt(envKey: string, fallback: number): number {
-    const raw = this.config?.get<string>(envKey);
-    if (!raw) return fallback;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 }

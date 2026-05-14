@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { PetitionPageHeader } from "../components/PetitionPageHeader";
 import {
   GET_MY_SCAN_HISTORY,
   SOFT_DELETE_SCAN,
@@ -32,7 +32,6 @@ function getStatusStyle(item: ScanHistoryItem): {
 }
 
 export default function PetitionHistoryPage() {
-  const router = useRouter();
   const { t } = useTranslation("petition");
 
   const [page, setPage] = useState(0);
@@ -110,32 +109,10 @@ export default function PetitionHistoryPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-black/90 backdrop-blur-sm px-4 py-4 flex items-center gap-3 border-b border-gray-800">
-        <button
-          onClick={() => router.push("/petition")}
-          className="text-gray-400 hover:text-white transition-colors"
-          aria-label={t("results.back")}
-        >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-        </button>
-        <h1 className="text-lg font-semibold text-white">
-          {t("history.title")}
-        </h1>
-      </div>
+      <PetitionPageHeader
+        title={t("history.title")}
+        backLabel={t("results.back")}
+      />
 
       {/* Search & Filters */}
       <div className="px-4 py-4 space-y-3 border-b border-gray-800">

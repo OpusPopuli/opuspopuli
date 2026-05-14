@@ -130,12 +130,9 @@ function StatTile({
   readonly sub?: string;
   readonly tone?: "neutral" | "good" | "warn";
 }) {
-  const valueClass =
-    tone === "good"
-      ? "text-emerald-700"
-      : tone === "warn"
-        ? "text-amber-700"
-        : "text-[#222222]";
+  let valueClass = "text-[#222222]";
+  if (tone === "good") valueClass = "text-emerald-700";
+  else if (tone === "warn") valueClass = "text-amber-700";
   return (
     <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
       <p className="text-[11px] font-bold uppercase tracking-wider text-[#595959] mb-1">

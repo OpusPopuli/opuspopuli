@@ -688,6 +688,7 @@ export interface IRegionPlugin extends IRegionProvider {
 - `Proposition` - Ballot measures with status, summary, election date
 - `Meeting` - Legislative meetings with location, agenda, video URLs
 - `Representative` - Elected officials with contact info, party, district
+- `Bill` - Legislative bills with author/co-author assignments, committee referrals, and roll-call votes (`BillVote`)
 
 **Plugin Loading**:
 ```

@@ -14,6 +14,8 @@ import {
   NotificationFrequency,
   NotificationPreferences,
 } from "@/lib/graphql/profile";
+import { SettingsLoadingSkeleton } from "@/components/settings/SettingsLoadingSkeleton";
+import { useSettingsForm } from "@/lib/hooks/useSettingsForm";
 
 interface ToggleProps {
   readonly enabled: boolean;
@@ -50,6 +52,20 @@ const FREQUENCY_OPTIONS: { value: NotificationFrequency; labelKey: string }[] =
     },
     { value: "never", labelKey: "notifications.frequency.never" },
   ];
+
+/** Renders the shared frequency <option> list inside a <select>. */
+function FrequencyOptions() {
+  const { t } = useTranslation("settings");
+  return (
+    <>
+      {FREQUENCY_OPTIONS.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {t(opt.labelKey)}
+        </option>
+      ))}
+    </>
+  );
+}
 
 interface NotificationFormProps {
   readonly preferences: NotificationPreferences;
@@ -93,31 +109,30 @@ function NotificationForm({
     quietHoursStart: preferences.quietHoursStart || "",
     quietHoursEnd: preferences.quietHoursEnd || "",
   });
-  const [hasChanges, setHasChanges] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const {
+    saveSuccess,
+    saveError,
+    hasChanges,
+    markChanged,
+    handleSuccess,
+    handleError,
+  } = useSettingsForm();
 
   const updatePref = <K extends keyof UpdateNotificationPreferencesInput>(
     key: K,
     value: UpdateNotificationPreferencesInput[K],
   ) => {
     setPrefs((prev) => ({ ...prev, [key]: value }));
-    setHasChanges(true);
-    setSaveSuccess(false);
-    setSaveError(null);
+    markChanged();
   };
 
   const handleSave = async () => {
-    setSaveError(null);
     try {
       await updatePreferences({ variables: { input: prefs } });
-      setSaveSuccess(true);
-      setHasChanges(false);
+      handleSuccess();
       onSave();
     } catch (err) {
-      setSaveError(
-        err instanceof Error ? err.message : t("common:errors.saveFailed"),
-      );
+      handleError(err, t("common:errors.saveFailed"));
     }
   };
 
@@ -225,11 +240,7 @@ function NotificationForm({
               disabled={!prefs.emailEnabled}
               className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white disabled:opacity-50"
             >
-              {FREQUENCY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {t(opt.labelKey)}
-                </option>
-              ))}
+              <FrequencyOptions />
             </select>
           </div>
         </div>
@@ -370,11 +381,7 @@ function NotificationForm({
               }
               className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white"
             >
-              {FREQUENCY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {t(opt.labelKey)}
-                </option>
-              ))}
+              <FrequencyOptions />
             </select>
           </div>
         </div>
@@ -457,19 +464,7 @@ export default function NotificationsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-          <div className="space-y-3 mt-8">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-16 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    return <SettingsLoadingSkeleton rows={4} rowHeight="h-16" />;
   }
 
   if (error) {

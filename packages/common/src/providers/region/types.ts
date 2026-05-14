@@ -31,6 +31,12 @@ export enum DataType {
   /// rewrites for laypeople. See OpusPopuli/opuspopuli#669 +
   /// OpusPopuli/opuspopuli-regions#15.
   CIVICS = "civics",
+  /// Individual legislative bills (AB, SB, ACA, SCA, etc.) scraped
+  /// from official legislature websites (leginfo.legislature.ca.gov
+  /// for California). Includes bill metadata, author/co-author
+  /// assignments, committee referrals, and per-member roll-call votes.
+  /// See OpusPopuli/opuspopuli#686.
+  BILLS = "bills",
 }
 
 /**
@@ -362,6 +368,85 @@ export interface MinutesWithActions {
 }
 
 // ============================================
+// BILLS (issue #686)
+// ============================================
+
+/**
+ * Individual member vote position on a bill roll call.
+ * Superset of LegislativeVotePosition — bill votes distinguish
+ * excused absences and no-votes from true absences.
+ */
+export type BillVotePosition =
+  | "yes"
+  | "no"
+  | "abstain"
+  | "absent"
+  | "excused"
+  | "no_vote";
+
+/**
+ * One member's vote on a specific bill roll call. `representativeExternalId`
+ * is resolved by name-matching at sync time and may be undefined when the
+ * linker cannot find a matching representative record.
+ */
+export interface BillVote {
+  billExternalId: string;
+  /** Raw member name from the roll-call table — preserved for linker re-runs. */
+  representativeName: string;
+  /** Resolved by BillAuthorLinker against Representative.externalId. */
+  representativeExternalId?: string;
+  /** "Assembly" | "Senate" */
+  chamber: string;
+  voteDate: Date;
+  position: BillVotePosition;
+  /** The motion being voted on, e.g. "Do Pass" | "Do Pass as Amended". */
+  motionText?: string;
+  sourceUrl: string;
+}
+
+/**
+ * A legislative bill scraped from an official legislature website.
+ *
+ * `authorExternalId` and `coAuthorExternalIds` are resolved by the
+ * BillAuthorLinker after upsert — they may be undefined when no matching
+ * representative record exists (e.g. the author has left office).
+ * `committeeNames` are the raw strings from the bill page used to link
+ * against LegislativeCommittee records at sync time.
+ */
+export interface Bill {
+  /** Stable key: sessionYear + measureTypeCode + number, e.g. "20232024AB1234". */
+  externalId: string;
+  /** Human-readable bill number, e.g. "AB 1234". */
+  billNumber: string;
+  /** Legislative session, e.g. "2023-2024". */
+  sessionYear: string;
+  /** Maps to MeasureType.code from civics data: AB, SB, ACA, SCA, etc. */
+  measureTypeCode: string;
+  title: string;
+  subject?: string;
+  /** Lifecycle status string as it appears on the official source page. */
+  status?: string;
+  /** Id of the matching LifecycleStage from civics data. Resolved at sync time. */
+  currentStageId?: string;
+  lastAction?: string;
+  lastActionDate?: Date;
+  fiscalImpact?: string;
+  /** URL to the bill's full text on the official source site. */
+  fullTextUrl?: string;
+  /** Resolved by BillAuthorLinker against Representative.externalId. */
+  authorExternalId?: string;
+  /** Raw author name string from the source page — preserved for linker input. */
+  authorName?: string;
+  coAuthorExternalIds: string[];
+  /** Raw co-author name strings from the source page. */
+  coAuthorNames: string[];
+  /** Raw committee name strings used for BillCommitteeAssignment linking. */
+  committeeNames: string[];
+  votes: BillVote[];
+  sourceUrl: string;
+}
+
+// ============================================
 // CAMPAIGN FINANCE
 // ============================================
 
@@ -485,6 +570,7 @@ export interface SyncResult {
   itemsProcessed: number;
   itemsCreated: number;
   itemsUpdated: number;
+  itemsSkipped: number;
   errors: string[];
   syncedAt: Date;
 }
@@ -550,6 +636,14 @@ export interface IRegionProvider {
    * cold-start work. Issue #665.
    */
   fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
+
+  /**
+   * Fetch legislative bills from the region's official legislature website.
+   * Optional — only implemented by plugins with `bills` data sources.
+   * Returns raw Bill records; author/co-author/committee linking runs
+   * as a post-sync pass in the region service. Issue #686.
+   */
+  fetchBills?(): Promise<Bill[]>;
 
   /**
    * Get the provider's configured data sources, optionally filtered by

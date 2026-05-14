@@ -1,4 +1,6 @@
 export { usePasskey } from "./usePasskey";
+export { useWebAuthnRegistration } from "./useWebAuthnRegistration";
+export { useSettingsForm } from "./useSettingsForm";
 export { useMagicLink } from "./useMagicLink";
 export { useCamera } from "./useCamera";
 export { useLightingAnalysis } from "./useLightingAnalysis";

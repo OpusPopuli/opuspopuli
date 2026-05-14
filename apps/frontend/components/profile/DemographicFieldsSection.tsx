@@ -274,19 +274,26 @@ export function DemographicFieldsSection({
                 <option value="">
                   {t("profile.demographic.selectOption", "Select an option")}
                 </option>
-                {HOUSEHOLD_SIZES.map((size) => (
-                  <option key={size} value={size}>
-                    {size === "6+"
-                      ? t(
-                          "profile.demographic.householdSizes.6plus",
-                          "6 or more",
-                        )
-                      : t(
-                          `profile.demographic.householdSizes.${size}`,
-                          `${size} ${size === "1" ? "person" : "people"}`,
-                        )}
-                  </option>
-                ))}
+                {HOUSEHOLD_SIZES.map((size) => {
+                  let householdSizeLabel: string;
+                  if (size === "6+") {
+                    householdSizeLabel = t(
+                      "profile.demographic.householdSizes.6plus",
+                      "6 or more",
+                    );
+                  } else {
+                    const personLabel = size === "1" ? "person" : "people";
+                    householdSizeLabel = t(
+                      `profile.demographic.householdSizes.${size}`,
+                      `${size} ${personLabel}`,
+                    );
+                  }
+                  return (
+                    <option key={size} value={size}>
+                      {householdSizeLabel}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 

@@ -35,7 +35,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./__tests__/jest-e2e.json",
     "test:integration": "jest --config ./__tests__/jest-integration.json",
-    "preinstall": "npx only-allow pnpm"
+    "preinstall": "npx only-allow pnpm",
+    "lint:sonar": "eslint -c eslint.config.sonar.mjs \"{src,apps,libs,test}/**/*.ts\""
   },
   "dependencies": {
     "@apollo/gateway": "^2.12.3",
@@ -76,7 +77,7 @@
     "@opuspopuli/ocr-provider": "workspace:*",
     "@opuspopuli/prompt-client": "workspace:*",
     "@opuspopuli/region-provider": "workspace:*",
-    "@opuspopuli/regions": "^1.0.38",
+    "@opuspopuli/regions": "^1.0.40",
     "@opuspopuli/relationaldb-provider": "workspace:*",
     "@opuspopuli/scraping-pipeline": "workspace:*",
     "@opuspopuli/secrets-provider": "workspace:*",

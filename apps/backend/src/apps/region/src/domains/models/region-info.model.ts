@@ -154,6 +154,7 @@ export enum DataTypeGQL {
   REPRESENTATIVES = 'representatives',
   CAMPAIGN_FINANCE = 'campaign_finance',
   CIVICS = 'civics',
+  BILLS = 'bills',
 }
 
 registerEnumType(DataTypeGQL, {
@@ -204,6 +205,9 @@ export class SyncResultModel {
 
   @Field()
   itemsUpdated!: number;
+
+  @Field()
+  itemsSkipped!: number;
 
   @Field(() => [String])
   errors!: string[];

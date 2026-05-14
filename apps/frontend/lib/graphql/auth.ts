@@ -73,6 +73,19 @@ export const CONFIRM_FORGOT_PASSWORD = gql`
   }
 `;
 
+// Named mutation result types shared by auth-context and useMagicLink
+export interface SendMagicLinkData {
+  sendMagicLink: boolean;
+}
+
+export interface VerifyMagicLinkData {
+  verifyMagicLink: AuthTokens;
+}
+
+export interface RegisterWithMagicLinkData {
+  registerWithMagicLink: boolean;
+}
+
 // ============================================
 // Passwordless Authentication
 // ============================================

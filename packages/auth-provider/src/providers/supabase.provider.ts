@@ -299,25 +299,41 @@ export class SupabaseAuthProvider implements IAuthProvider {
     }
   }
 
+  /**
+   * Resolve a user's ID and their current app_metadata roles.
+   * Shared by addToGroup() and removeFromGroup() to avoid duplicating
+   * the identical getUserIdByUsername + getUserById + role-extract block.
+   */
+  private async resolveUserRoles(username: string): Promise<{
+    userId: string;
+    currentRoles: string[];
+    appMetadata: Record<string, unknown>;
+  }> {
+    const userId = await this.getUserIdByUsername(username);
+
+    if (!userId) {
+      throw new Error(`User not found: ${username}`);
+    }
+
+    const { data: userData, error: getUserError } =
+      await this.supabase.auth.admin.getUserById(userId);
+
+    if (getUserError) {
+      throw getUserError;
+    }
+
+    const currentRoles: string[] =
+      (userData.user?.app_metadata?.roles as string[]) || [];
+    const appMetadata: Record<string, unknown> =
+      (userData.user?.app_metadata as Record<string, unknown>) || {};
+
+    return { userId, currentRoles, appMetadata };
+  }
+
   async addToGroup(username: string, group: string): Promise<void> {
     try {
-      const userId = await this.getUserIdByUsername(username);
-
-      if (!userId) {
-        throw new Error(`User not found: ${username}`);
-      }
-
-      // Get current user to retrieve existing roles
-      const { data: userData, error: getUserError } =
-        await this.supabase.auth.admin.getUserById(userId);
-
-      if (getUserError) {
-        throw getUserError;
-      }
-
-      // Get existing roles or initialize empty array
-      const currentRoles: string[] =
-        (userData.user?.app_metadata?.roles as string[]) || [];
+      const { userId, currentRoles, appMetadata } =
+        await this.resolveUserRoles(username);
 
       // Add new group if not already present
       if (!currentRoles.includes(group)) {
@@ -325,7 +341,7 @@ export class SupabaseAuthProvider implements IAuthProvider {
           userId,
           {
             app_metadata: {
-              ...userData.user?.app_metadata,
+              ...appMetadata,
               roles: [...currentRoles, group],
             },
           },
@@ -351,30 +367,14 @@ export class SupabaseAuthProvider implements IAuthProvider {
 
   async removeFromGroup(username: string, group: string): Promise<void> {
     try {
-      const userId = await this.getUserIdByUsername(username);
+      const { userId, currentRoles, appMetadata } =
+        await this.resolveUserRoles(username);
 
-      if (!userId) {
-        throw new Error(`User not found: ${username}`);
-      }
-
-      // Get current user to retrieve existing roles
-      const { data: userData, error: getUserError } =
-        await this.supabase.auth.admin.getUserById(userId);
-
-      if (getUserError) {
-        throw getUserError;
-      }
-
-      // Get existing roles
-      const currentRoles: string[] =
-        (userData.user?.app_metadata?.roles as string[]) || [];
-
-      // Remove the group
       const newRoles = currentRoles.filter((r) => r !== group);
 
       const { error } = await this.supabase.auth.admin.updateUserById(userId, {
         app_metadata: {
-          ...userData.user?.app_metadata,
+          ...appMetadata,
           roles: newRoles,
         },
       });
@@ -523,6 +523,69 @@ export class SupabaseAuthProvider implements IAuthProvider {
   }
 
   /**
+   * Generate a GoTrue action link and send it via SMTP.
+   * Shared by sendMagicLink() and registerWithMagicLink() to avoid
+   * duplicating the identical generateLink→sendMagicLinkEmail→error-map block.
+   */
+  private async generateAndSendLink(
+    type: "magiclink" | "signup",
+    email: string,
+    redirectTo: string,
+    isRegistration: boolean,
+    errorCode: string,
+    logLabel: string,
+  ): Promise<boolean> {
+    try {
+      const linkParams =
+        type === "signup"
+          ? {
+              type: "signup" as const,
+              email,
+              password: crypto.randomUUID(),
+              options: { redirectTo },
+            }
+          : {
+              type: "magiclink" as const,
+              email,
+              options: { redirectTo },
+            };
+
+      const { data, error } =
+        await this.supabase.auth.admin.generateLink(linkParams);
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data.properties?.action_link) {
+        throw new Error(
+          isRegistration
+            ? "Failed to generate registration link"
+            : "Failed to generate magic link",
+        );
+      }
+
+      await this.sendMagicLinkEmail(
+        email,
+        data.properties.action_link,
+        isRegistration,
+      );
+
+      this.logger.log(`${logLabel}: ${email}`);
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `Error ${logLabel.toLowerCase()}: ${(error as Error).message}`,
+      );
+      throw new AuthError(
+        `Failed to ${logLabel.toLowerCase()} to ${email}`,
+        errorCode,
+        error as Error,
+      );
+    }
+  }
+
+  /**
    * Send a magic link for passwordless authentication.
    *
    * Uses admin.generateLink() + nodemailer instead of signInWithOtp because
@@ -534,40 +597,15 @@ export class SupabaseAuthProvider implements IAuthProvider {
    * /verify endpoint processes with implicit flow (hash fragment redirect).
    */
   async sendMagicLink(email: string, redirectTo?: string): Promise<boolean> {
-    try {
-      const callbackUrl = redirectTo || `${this.frontendUrl}/auth/callback`;
-
-      const { data, error } = await this.supabase.auth.admin.generateLink({
-        type: "magiclink",
-        email,
-        options: {
-          redirectTo: callbackUrl,
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      if (!data.properties?.action_link) {
-        throw new Error("Failed to generate magic link");
-      }
-
-      // Send the email with the magic link
-      await this.sendMagicLinkEmail(email, data.properties.action_link);
-
-      this.logger.log(`Magic link sent to: ${email}`);
-      return true;
-    } catch (error) {
-      this.logger.error(
-        `Error sending magic link: ${(error as Error).message}`,
-      );
-      throw new AuthError(
-        `Failed to send magic link to ${email}`,
-        "MAGIC_LINK_ERROR",
-        error as Error,
-      );
-    }
+    const callbackUrl = redirectTo || `${this.frontendUrl}/auth/callback`;
+    return this.generateAndSendLink(
+      "magiclink",
+      email,
+      callbackUrl,
+      false,
+      "MAGIC_LINK_ERROR",
+      "Magic link sent",
+    );
   }
 
   /**
@@ -613,41 +651,15 @@ export class SupabaseAuthProvider implements IAuthProvider {
     email: string,
     redirectTo?: string,
   ): Promise<boolean> {
-    try {
-      const callbackUrl = redirectTo || `${this.frontendUrl}/auth/callback`;
-
-      const { data, error } = await this.supabase.auth.admin.generateLink({
-        type: "signup",
-        email,
-        password: crypto.randomUUID(), // Required by GoTrue but user will use magic links
-        options: {
-          redirectTo: callbackUrl,
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      if (!data.properties?.action_link) {
-        throw new Error("Failed to generate registration link");
-      }
-
-      // Send the email with the verification link
-      await this.sendMagicLinkEmail(email, data.properties.action_link, true);
-
-      this.logger.log(`Registration magic link sent to: ${email}`);
-      return true;
-    } catch (error) {
-      this.logger.error(
-        `Error sending registration magic link: ${(error as Error).message}`,
-      );
-      throw new AuthError(
-        `Failed to send registration magic link to ${email}`,
-        "REGISTER_MAGIC_LINK_ERROR",
-        error as Error,
-      );
-    }
+    const callbackUrl = redirectTo || `${this.frontendUrl}/auth/callback`;
+    return this.generateAndSendLink(
+      "signup",
+      email,
+      callbackUrl,
+      true,
+      "REGISTER_MAGIC_LINK_ERROR",
+      "Registration magic link sent",
+    );
   }
 
   /**

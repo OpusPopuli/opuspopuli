@@ -3,32 +3,22 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { useWebAuthnRegistration } from "@/lib/hooks/useWebAuthnRegistration";
+import { AuthCheckIcon } from "@/components/auth/AuthUI";
 
 export default function AddPasskeyPage() {
   const router = useRouter();
-  const {
-    registerPasskey,
-    user,
-    isLoading,
-    error,
-    clearError,
-    supportsPasskeys,
-  } = useAuth();
+  const { user, supportsPasskeys } = useAuth();
+  const { success, isLoading, error, register } = useWebAuthnRegistration();
 
   const [friendlyName, setFriendlyName] = useState("");
-  const [success, setSuccess] = useState(false);
 
   const handleAddPasskey = async () => {
     if (!user?.email) {
       return;
     }
 
-    clearError();
-    const result = await registerPasskey(user.email, friendlyName || undefined);
-
-    if (result) {
-      setSuccess(true);
-    }
+    await register(user.email, friendlyName);
   };
 
   // Check if passkeys are supported
@@ -72,21 +62,7 @@ export default function AddPasskeyPage() {
   if (success) {
     return (
       <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
-        <div className="w-16 h-16 bg-[#f0fdf4] rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg
-            className="w-8 h-8 text-[#22c55e]"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-        </div>
+        <AuthCheckIcon />
         <h1 className="text-xl font-bold text-[#222222] mb-2">
           Passkey added!
         </h1>
@@ -141,74 +117,45 @@ export default function AddPasskeyPage() {
 
       {/* Benefits */}
       <div className="mb-6 space-y-3">
-        <div className="flex items-start gap-3 p-3 bg-[#FFFFFF] rounded-lg">
-          <svg
-            className="w-5 h-5 text-[#22c55e] mt-0.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        {(
+          [
+            {
+              title: "More secure",
+              desc: "Passkeys can’t be phished or leaked in data breaches",
+            },
+            {
+              title: "Instant sign-in",
+              desc: "Use your fingerprint, face, or device PIN",
+            },
+            {
+              title: "Works across devices",
+              desc: "Synced passkeys work on all your Apple, Google, or Microsoft devices",
+            },
+          ] as const
+        ).map(({ title, desc }) => (
+          <div
+            key={title}
+            className="flex items-start gap-3 p-3 bg-[#FFFFFF] rounded-lg"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div>
-            <p className="text-sm font-medium text-[#222222]">More secure</p>
-            <p className="text-xs text-[#4d4d4d]">
-              Passkeys can&apos;t be phished or leaked in data breaches
-            </p>
+            <svg
+              className="w-5 h-5 text-[#22c55e] mt-0.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <div>
+              <p className="text-sm font-medium text-[#222222]">{title}</p>
+              <p className="text-xs text-[#4d4d4d]">{desc}</p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-start gap-3 p-3 bg-[#FFFFFF] rounded-lg">
-          <svg
-            className="w-5 h-5 text-[#22c55e] mt-0.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div>
-            <p className="text-sm font-medium text-[#222222]">
-              Instant sign-in
-            </p>
-            <p className="text-xs text-[#4d4d4d]">
-              Use your fingerprint, face, or device PIN
-            </p>
-          </div>
-        </div>
-        <div className="flex items-start gap-3 p-3 bg-[#FFFFFF] rounded-lg">
-          <svg
-            className="w-5 h-5 text-[#22c55e] mt-0.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div>
-            <p className="text-sm font-medium text-[#222222]">
-              Works across devices
-            </p>
-            <p className="text-xs text-[#4d4d4d]">
-              Synced passkeys work on all your Apple, Google, or Microsoft
-              devices
-            </p>
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Optional friendly name */}

@@ -29,7 +29,7 @@ export function DocumentFrameOverlay({
             <rect width="100" height="100" fill="white" />
             <rect
               x={`${padding / 4}`}
-              y={`${(100 - (100 - padding / 2) * (1 / aspectRatio) * (100 / 100)) / 2}`}
+              y={`${(100 - (100 - padding / 2) * (1 / aspectRatio)) / 2}`}
               width={`${100 - padding / 2}`}
               height={`${(100 - padding / 2) / aspectRatio}`}
               fill="black"
