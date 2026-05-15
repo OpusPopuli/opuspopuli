@@ -23,6 +23,7 @@ import { UpdateNotificationPreferencesDto } from './dto/notification-preferences
 import { UpdateConsentDto } from './dto/consent.dto';
 import { ProfileCompletionResult } from './models/profile-completion.model';
 import { GeocodingService } from './geocoding.service';
+import { JurisdictionResolutionService } from './jurisdiction-resolution.service';
 
 @Injectable()
 export class ProfileService {
@@ -33,6 +34,7 @@ export class ProfileService {
   constructor(
     private readonly db: DbService,
     private readonly geocodingService: GeocodingService,
+    private readonly jurisdictionResolutionService: JurisdictionResolutionService,
     @Optional()
     @Inject('STORAGE_PROVIDER')
     private readonly storage?: IStorageProvider,
@@ -310,10 +312,26 @@ export class ProfileService {
         stateAssemblyDistrict: result.stateAssemblyDistrict,
         county: result.county,
         municipality: result.municipality,
+        schoolDistrict: result.schoolDistrict,
         isVerified: true,
         geocodedAt: new Date(),
       },
     });
+
+    // Write PostGIS point for spatial jurisdiction resolution
+    await this.db.$executeRaw`
+      UPDATE user_addresses
+      SET point = ST_SetSRID(ST_Point(${result.longitude}, ${result.latitude}), 4326)
+      WHERE id = ${addressId}
+    `;
+
+    // Resolve and persist all civic jurisdictions for this address
+    await this.jurisdictionResolutionService.resolveForAddress(
+      userId,
+      addressId,
+      result.latitude,
+      result.longitude,
+    );
 
     this.logger.log(
       `Geocoded address ${addressId}: ${result.formattedAddress} → ${result.congressionalDistrict}`,
@@ -343,6 +361,7 @@ export class ProfileService {
   ): Promise<DbUserAddress> {
     const address = await this.db.userAddress.findFirst({
       where: { id: addressId, userId },
+      include: { _count: { select: { userJurisdictions: true } } },
     });
 
     if (!address) {
@@ -356,10 +375,21 @@ export class ProfileService {
     });
 
     // Set this one as primary
-    return this.db.userAddress.update({
+    const updated = await this.db.userAddress.update({
       where: { id: address.id },
       data: { isPrimary: true },
     });
+
+    // If this address has never been geocoded or has no resolved jurisdictions,
+    // trigger geocoding now so myJurisdictions reflects the new primary immediately.
+    if (!address.isVerified || address._count.userJurisdictions === 0) {
+      this.geocodeAndUpdate(userId, address.id, {
+        ...address,
+        isPrimary: true,
+      }).catch(() => {});
+    }
+
+    return updated;
   }
 
   // ============================================

@@ -21,6 +21,7 @@ import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 import { AddressType } from 'src/common/enums/address.enum';
 import { CreateAddressDto } from './dto/address.dto';
 import { GeocodingService } from './geocoding.service';
+import { JurisdictionResolutionService } from './jurisdiction-resolution.service';
 
 describe('ProfileService', () => {
   let service: ProfileService;
@@ -157,6 +158,12 @@ describe('ProfileService', () => {
         {
           provide: GeocodingService,
           useValue: mockGeocodingService,
+        },
+        {
+          provide: JurisdictionResolutionService,
+          useValue: {
+            resolveForAddress: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();
@@ -357,7 +364,12 @@ describe('ProfileService', () => {
 
   describe('setPrimaryAddress', () => {
     it('should set address as primary', async () => {
-      mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
+      // Verified address with existing jurisdictions — no re-geocode
+      mockDb.userAddress.findFirst.mockResolvedValue({
+        ...mockAddress,
+        isVerified: true,
+        _count: { userJurisdictions: 3 },
+      } as unknown as UserAddress);
       mockDb.userAddress.updateMany.mockResolvedValue({ count: 1 });
       mockDb.userAddress.update.mockResolvedValue({
         ...mockAddress,
@@ -371,6 +383,27 @@ describe('ProfileService', () => {
 
       expect(result.isPrimary).toBe(true);
       expect(mockDb.userAddress.updateMany).toHaveBeenCalled();
+      expect(mockGeocodingService.geocode).not.toHaveBeenCalled();
+    });
+
+    it('should trigger re-geocoding when new primary has no resolved jurisdictions', async () => {
+      mockDb.userAddress.findFirst.mockResolvedValue({
+        ...mockAddress,
+        isVerified: true,
+        _count: { userJurisdictions: 0 },
+      } as unknown as UserAddress);
+      mockDb.userAddress.updateMany.mockResolvedValue({ count: 1 });
+      mockDb.userAddress.update.mockResolvedValue({
+        ...mockAddress,
+        isPrimary: true,
+      });
+      mockGeocodingService.geocode.mockResolvedValue(null);
+
+      await service.setPrimaryAddress(mockUserId, mockAddress.id);
+
+      // geocode is called fire-and-forget; give the microtask queue a tick
+      await Promise.resolve();
+      expect(mockGeocodingService.geocode).toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if address not found', async () => {

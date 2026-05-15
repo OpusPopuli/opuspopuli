@@ -6,10 +6,16 @@ import { StorageModule } from '@opuspopuli/storage-provider';
 import { ProfileService } from './profile.service';
 import { ProfileResolver } from './profile.resolver';
 import { GeocodingService } from './geocoding.service';
+import { JurisdictionResolutionService } from './jurisdiction-resolution.service';
 
 @Module({
   imports: [StorageModule],
-  providers: [ProfileService, ProfileResolver, GeocodingService],
+  providers: [
+    ProfileService,
+    ProfileResolver,
+    GeocodingService,
+    JurisdictionResolutionService,
+  ],
   exports: [ProfileService],
 })
 export class ProfileModule {}

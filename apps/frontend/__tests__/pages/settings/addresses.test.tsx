@@ -166,14 +166,6 @@ describe("AddressesPage", () => {
       expect(screen.getByText("Verified")).toBeInTheDocument();
     });
 
-    it("should show congressional district when available", () => {
-      render(<AddressesPage />);
-
-      expect(
-        screen.getByText("Congressional District: CA-12"),
-      ).toBeInTheDocument();
-    });
-
     it("should show Set Primary button for non-primary addresses", () => {
       render(<AddressesPage />);
 

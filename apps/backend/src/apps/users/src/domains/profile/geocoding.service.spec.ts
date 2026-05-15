@@ -79,8 +79,80 @@ describe('GeocodingService', () => {
       expect(result!.stateAssemblyDistrict).toBe('Assembly District 6');
       expect(result!.county).toBe('Sacramento County');
       expect(result!.municipality).toBe('Sacramento city');
+      expect(result!.schoolDistrict).toBeUndefined();
       expect(result!.timezone).toBe('America/Los_Angeles');
 
+      jest.restoreAllMocks();
+    });
+
+    it('should extract unified school district when present', async () => {
+      const mockResponse = {
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            result: {
+              addressMatches: [
+                {
+                  coordinates: { x: -122.2, y: 37.8 },
+                  matchedAddress: '1000 Broadway, Oakland, CA, 94607',
+                  geographies: {
+                    '119th Congressional Districts': [
+                      { NAME: 'Congressional District 12' },
+                    ],
+                    Counties: [{ NAME: 'Alameda County' }],
+                    'Incorporated Places': [{ NAME: 'Oakland city' }],
+                    'Unified School Districts': [
+                      { NAME: 'Oakland Unified School District' },
+                    ],
+                  },
+                },
+              ],
+            },
+          }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as Response);
+
+      const result = await service.geocode(
+        '1000 Broadway',
+        'Oakland',
+        'CA',
+        '94607',
+      );
+
+      expect(result!.schoolDistrict).toBe('Oakland Unified School District');
+      jest.restoreAllMocks();
+    });
+
+    it('should fall back to elementary school district when unified is absent', async () => {
+      const mockResponse = {
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            result: {
+              addressMatches: [
+                {
+                  coordinates: { x: -121.0, y: 37.5 },
+                  matchedAddress: '1 Main St, Anywhere, CA, 95000',
+                  geographies: {
+                    'Elementary School Districts': [
+                      { NAME: 'Anywhere Elementary District' },
+                    ],
+                  },
+                },
+              ],
+            },
+          }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as Response);
+
+      const result = await service.geocode(
+        '1 Main St',
+        'Anywhere',
+        'CA',
+        '95000',
+      );
+
+      expect(result!.schoolDistrict).toBe('Anywhere Elementary District');
       jest.restoreAllMocks();
     });
 

@@ -33,5 +33,24 @@ END $$;
 CREATE INDEX IF NOT EXISTS documents_scan_location_gist_idx
   ON documents USING GIST (scan_location);
 
+-- Geometry columns for jurisdiction resolution (#690)
+-- Added here because Prisma skips Unsupported() columns during db push
+ALTER TABLE jurisdictions
+  ADD COLUMN IF NOT EXISTS boundary geography(MultiPolygon, 4326);
+
+ALTER TABLE user_addresses
+  ADD COLUMN IF NOT EXISTS point geography(Point, 4326);
+
+-- Partial GIST index on jurisdictions.boundary for point-in-polygon queries (#690)
+-- Partial (WHERE boundary IS NOT NULL) is all the planner ever needs for ST_Contains;
+-- a non-partial index would waste storage on the ~0 rows with null boundary.
+CREATE INDEX IF NOT EXISTS jurisdictions_boundary_gist_idx
+  ON jurisdictions USING GIST (boundary)
+  WHERE boundary IS NOT NULL;
+
+-- GIST index on user_addresses.point for spatial lookups (#690)
+CREATE INDEX IF NOT EXISTS user_addresses_point_gist_idx
+  ON user_addresses USING GIST (point);
+
 -- Log success
 DO $$ BEGIN RAISE NOTICE 'Spatial indexes created successfully'; END $$;

@@ -1,0 +1,29 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "typeRoots": [
+      "../apps/backend/node_modules/@types",
+      "../node_modules/@types"
+    ],
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "../dist/scripts",
+    "paths": {
+      "@opuspopuli/relationaldb-provider": [
+        "packages/relationaldb-provider/src/index.ts"
+      ],
+      "@opuspopuli/*": ["packages/*/src/index.ts"],
+      "@prisma/client": [
+        "node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client"
+      ]
+    },
+    "baseUrl": ".."
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["../node_modules"]
+}

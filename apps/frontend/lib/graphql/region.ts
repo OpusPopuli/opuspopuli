@@ -1573,3 +1573,80 @@ export const GET_BILL = gql`
     }
   }
 `;
+
+// ============================================
+// JURISDICTION TYPES & QUERY (#690)
+// ============================================
+
+export type JurisdictionType =
+  | "STATE"
+  | "CONGRESSIONAL_DISTRICT"
+  | "STATE_SENATE_DISTRICT"
+  | "STATE_ASSEMBLY_DISTRICT"
+  | "COUNTY"
+  | "CITY"
+  | "SCHOOL_DISTRICT_UNIFIED"
+  | "SCHOOL_DISTRICT_ELEMENTARY"
+  | "SCHOOL_DISTRICT_HIGH"
+  | "COMMUNITY_COLLEGE_DISTRICT"
+  | "WATER_DISTRICT"
+  | "FIRE_DISTRICT"
+  | "TRANSIT_DISTRICT"
+  | "SPECIAL_DISTRICT";
+
+export type JurisdictionLevel =
+  | "FEDERAL"
+  | "STATE"
+  | "COUNTY"
+  | "MUNICIPAL"
+  | "DISTRICT";
+
+export interface JurisdictionData {
+  id: string;
+  fipsCode?: string;
+  ocdId?: string;
+  name: string;
+  type: JurisdictionType;
+  level: JurisdictionLevel;
+  stateCode: string;
+  parent?: {
+    id: string;
+    name: string;
+    type: JurisdictionType;
+    level: JurisdictionLevel;
+  };
+}
+
+export interface UserJurisdictionData {
+  resolvedBy: string;
+  resolvedAt: string;
+  jurisdiction: JurisdictionData;
+}
+
+export interface MyJurisdictionsData {
+  myJurisdictions: UserJurisdictionData[];
+}
+
+export const MY_JURISDICTIONS = gql`
+  query MyJurisdictions {
+    myJurisdictions {
+      resolvedBy
+      resolvedAt
+      jurisdiction {
+        id
+        fipsCode
+        ocdId
+        name
+        type
+        level
+        stateCode
+        parent {
+          id
+          name
+          type
+          level
+        }
+      }
+    }
+  }
+`;
