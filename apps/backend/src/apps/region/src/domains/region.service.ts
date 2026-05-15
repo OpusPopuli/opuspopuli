@@ -104,6 +104,12 @@ import {
 // Type aliases for database query results and generic upsert
 type ExternalIdRecord = { externalId: string };
 
+/** Compiled lifecycle stage pattern used for bill status resolution. */
+interface StagePattern {
+  stageId: string;
+  regex: RegExp;
+}
+
 /**
  * Single row in a paginated LegislativeAction feed (rep + committee
  * activity surfaces share this shape). Issue #665.
@@ -1804,6 +1810,10 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     const repIndex = await this.buildRepNameIndex(regionId);
     const committeeIndex = await this.buildCommitteeNameIndex();
 
+    // Compile civics lifecycle stage patterns once per sync run so every bill
+    // upsert can resolve currentStageId without additional DB hits.
+    const stagePatterns = await this.buildStagePatterns(regionId);
+
     let processed = 0;
     let created = 0;
     let updated = 0;
@@ -1818,12 +1828,19 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
         repIndex,
         committeeIndex,
         syncedExternalIds,
+        stagePatterns,
         maxBills,
       );
       processed += counts.processed;
       created += counts.created;
       updated += counts.updated;
       skippedTotal += counts.skipped;
+    }
+
+    // Backfill currentStageId on existing bills that were skipped this run
+    // (content unchanged) or were written before this logic existed.
+    if (stagePatterns.length > 0) {
+      await this.backfillBillStageIds(regionId, stagePatterns);
     }
 
     await this.pruneStaleBills(regionId, syncedExternalIds, maxBills);
@@ -1838,6 +1855,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     repIndex: Map<string, { id: string; chamber: string }>,
     committeeIndex: Map<string, string>,
     syncedExternalIds: Set<string>,
+    stagePatterns: StagePattern[],
     maxBills?: number,
   ): Promise<{
     processed: number;
@@ -1867,6 +1885,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
         ds,
         repIndex,
         committeeIndex,
+        stagePatterns,
       );
       if (result === 'created') {
         created++;
@@ -1905,6 +1924,77 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     }
 
     return { processed, created, updated, skipped };
+  }
+
+  /**
+   * Compile each stage's statusStringPatterns into RegExp objects.
+   * Patterns are JS regex syntax (no surrounding slashes), matched case-insensitively.
+   * Invalid patterns are logged and skipped rather than crashing the sync.
+   */
+  private async buildStagePatterns(regionId: string): Promise<StagePattern[]> {
+    const civics = await this.getCivicsData(regionId);
+    const patterns: StagePattern[] = [];
+    for (const stage of civics?.lifecycleStages ?? []) {
+      for (const raw of stage.statusStringPatterns) {
+        try {
+          patterns.push({ stageId: stage.id, regex: new RegExp(raw, 'i') });
+        } catch {
+          this.logger.warn(
+            `Invalid status pattern "${raw}" for stage "${stage.id}" in ${regionId} — skipping`,
+          );
+        }
+      }
+    }
+    return patterns;
+  }
+
+  /**
+   * Return the stageId whose first matching pattern covers the given status
+   * string, or null when no pattern matches.
+   */
+  private resolveStageFromStatus(
+    status: string | null | undefined,
+    stagePatterns: StagePattern[],
+  ): string | null {
+    if (!status || stagePatterns.length === 0) return null;
+    return stagePatterns.find((p) => p.regex.test(status))?.stageId ?? null;
+  }
+
+  /**
+   * Backfill currentStageId on bills that already have a status string but
+   * were written before stage matching existed, or were skipped this sync run.
+   */
+  private async backfillBillStageIds(
+    regionId: string,
+    stagePatterns: StagePattern[],
+  ): Promise<void> {
+    const unmatched = await this.db.bill.findMany({
+      where: { regionId, currentStageId: null, status: { not: null } },
+      select: { id: true, status: true },
+    });
+    if (unmatched.length === 0) return;
+
+    const byStage = new Map<string, string[]>();
+    for (const bill of unmatched) {
+      const stageId = this.resolveStageFromStatus(bill.status, stagePatterns);
+      if (!stageId) continue;
+      if (!byStage.has(stageId)) byStage.set(stageId, []);
+      byStage.get(stageId)!.push(bill.id);
+    }
+
+    let filled = 0;
+    for (const [stageId, ids] of byStage) {
+      await this.db.bill.updateMany({
+        where: { id: { in: ids } },
+        data: { currentStageId: stageId },
+      });
+      filled += ids.length;
+    }
+    if (filled > 0) {
+      this.logger.log(
+        `Bills: backfilled currentStageId for ${filled} of ${unmatched.length} bill(s) in ${regionId}`,
+      );
+    }
   }
 
   private async pruneStaleBills(
@@ -2109,6 +2199,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     ds: DataSourceConfig,
     repIndex: Map<string, { id: string; chamber: string }>,
     committeeIndex: Map<string, string>,
+    stagePatterns: StagePattern[],
   ): Promise<'created' | 'updated' | 'skipped' | 'failed'> {
     if (!this.promptClient || !this.llm) return 'failed';
     try {
@@ -2198,7 +2289,9 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
         title: raw.title,
         subject: raw.subject ?? null,
         status: raw.status ?? null,
-        currentStageId: raw.currentStageId ?? null,
+        currentStageId:
+          raw.currentStageId ??
+          this.resolveStageFromStatus(raw.status, stagePatterns),
         lastAction: raw.lastAction ?? null,
         lastActionDate: raw.lastActionDate
           ? new Date(raw.lastActionDate as unknown as string)
@@ -4045,6 +4138,30 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    * Adapt ExampleRegionProvider (DataFetcher) to IRegionPlugin
    * by adding the required lifecycle methods.
    */
+  // ==========================================
+  // JURISDICTION RESOLUTION (#690)
+  // ==========================================
+
+  async getJurisdictionsForUser(userId: string): Promise<
+    Prisma.UserJurisdictionGetPayload<{
+      include: { jurisdiction: { include: { parent: true } } };
+    }>[]
+  > {
+    return this.db.userJurisdiction.findMany({
+      where: { userId, userAddress: { isPrimary: true } },
+      include: {
+        jurisdiction: {
+          include: { parent: true },
+        },
+      },
+      orderBy: [
+        { jurisdiction: { level: 'asc' } },
+        { jurisdiction: { type: 'asc' } },
+        { jurisdiction: { name: 'asc' } },
+      ],
+    });
+  }
+
   private createFallbackPlugin(): IRegionPlugin {
     const provider = new ExampleRegionProvider();
     return Object.assign(Object.create(provider), {

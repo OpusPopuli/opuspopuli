@@ -75,6 +75,8 @@ export type {
   PromptTemplate,
   AbuseReport,
   DocumentProposition,
+  Jurisdiction,
+  UserJurisdiction,
 } from "@prisma/client";
 
 // Re-export database enums
@@ -98,6 +100,8 @@ export {
   AbuseReportStatus,
   LinkSource,
   CommitteeMeasurePositionType,
+  JurisdictionType,
+  JurisdictionLevel,
 } from "@prisma/client";
 
 // Test utilities are available from "@opuspopuli/relationaldb-provider/testing"

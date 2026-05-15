@@ -428,12 +428,6 @@ export default function AddressesPage() {
                   <p className="text-[#4d4d4d]">
                     {address.city}, {address.state} {address.postalCode}
                   </p>
-                  {address.congressionalDistrict && (
-                    <p className="text-sm text-[#4d4d4d] mt-2">
-                      {t("addresses.congressionalDistrict")}:{" "}
-                      {address.congressionalDistrict}
-                    </p>
-                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {!address.isPrimary && (

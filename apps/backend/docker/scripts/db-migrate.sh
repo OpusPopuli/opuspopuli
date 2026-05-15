@@ -16,7 +16,8 @@ PGUSER="${RELATIONAL_DB_USERNAME:-postgres}"
 PGDB="${RELATIONAL_DB_DATABASE:-postgres}"
 
 echo "Running Prisma db:push..."
-npx prisma db push --accept-data-loss
+# --skip-generate: client is already built into the image; avoids OOM in memory-constrained containers
+npx prisma db push --accept-data-loss --skip-generate
 
 # NOTE: local prompt_templates seeding intentionally removed. When the
 # region is configured with PROMPT_SERVICE_URL the prompt-service is the

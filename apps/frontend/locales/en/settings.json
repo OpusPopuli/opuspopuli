@@ -154,6 +154,22 @@
         "other": "Other",
         "prefer_not_to_say": "Prefer not to say"
       }
+    },
+    "jurisdictions": {
+      "title": "Your Civic Jurisdictions",
+      "subtitle": "All governing bodies that represent your primary address",
+      "primaryAddressNote": "Based on your primary address",
+      "empty": "Add a primary address in",
+      "emptyLink": "Addresses",
+      "emptyTail": "to see your civic jurisdictions.",
+      "resolving": "Jurisdictions are being resolved. Check back shortly.",
+      "levels": {
+        "FEDERAL": "Federal",
+        "STATE": "State Legislative",
+        "COUNTY": "County",
+        "MUNICIPAL": "Municipal",
+        "DISTRICT": "Special Districts"
+      }
     }
   },
   "timezones": {
@@ -199,6 +215,39 @@
     "zipCodePlaceholder": "94102",
     "setPrimary": "Set Primary",
     "congressionalDistrict": "Congressional District",
+    "stateSenatorialDistrict": "State Senate District",
+    "stateAssemblyDistrict": "State Assembly District",
+    "county": "County",
+    "municipality": "City / Municipality",
+    "schoolDistrict": "School District",
+    "jurisdictions": {
+      "title": "Your Civic Jurisdictions",
+      "subtitle": "All governing bodies that represent your address",
+      "empty": "Jurisdictions are being resolved. Check back shortly.",
+      "levels": {
+        "FEDERAL": "Federal",
+        "STATE": "State Legislative",
+        "COUNTY": "County",
+        "MUNICIPAL": "Municipal",
+        "DISTRICT": "Special Districts"
+      },
+      "types": {
+        "STATE": "State",
+        "CONGRESSIONAL_DISTRICT": "Congressional District",
+        "STATE_SENATE_DISTRICT": "State Senate District",
+        "STATE_ASSEMBLY_DISTRICT": "State Assembly District",
+        "COUNTY": "County",
+        "CITY": "City",
+        "SCHOOL_DISTRICT_UNIFIED": "Unified School District",
+        "SCHOOL_DISTRICT_ELEMENTARY": "Elementary School District",
+        "SCHOOL_DISTRICT_HIGH": "High School District",
+        "COMMUNITY_COLLEGE_DISTRICT": "Community College District",
+        "WATER_DISTRICT": "Water District",
+        "FIRE_DISTRICT": "Fire District",
+        "TRANSIT_DISTRICT": "Transit District",
+        "SPECIAL_DISTRICT": "Special District"
+      }
+    },
     "deleteConfirm": "Are you sure you want to delete this address?",
     "requiredFields": "Please fill in all required fields",
     "saveError": "Failed to save address"
