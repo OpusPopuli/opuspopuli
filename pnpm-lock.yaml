@@ -934,8 +934,8 @@ importers:
         specifier: workspace:*
         version: link:../config-provider
       '@opuspopuli/regions':
-        specifier: ^1.0.46
-        version: 1.0.46
+        specifier: ^1.0.47
+        version: 1.0.47
     devDependencies:
       '@nestjs/common':
         specifier: ^11.1.9
@@ -4916,8 +4916,8 @@ packages:
   '@opuspopuli/regions@1.0.40':
     resolution: {integrity: sha512-7GOkXlK1thxRQnC+m94hstbwi53BLTH6Kx6/bSUuNadw+14R5XWCoVqXK+1fMXZoDu/L02lkt0P1LyjHMWAGFQ==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.40/e58414ccdd2f51004709720475e3a6cc08d62294}
 
-  '@opuspopuli/regions@1.0.46':
-    resolution: {integrity: sha512-DrInPt8DeTh97kL/Hx3yuHSdt4Kra/GjP/7YBSXx3gj83279KcjbzbdE+RQD+pYKuONI3C3Xb2KE9oLA7oCxmQ==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.46/64b4c040ab236df54e2692ab2665039580cecb6e}
+  '@opuspopuli/regions@1.0.47':
+    resolution: {integrity: sha512-e7Pjy0MwWkIe0GPZgcKaFMNJ2JWiMyKRG/kfyBLKmlrEHoPVAonEPNBXOO7/mSnb36zsIVJhuJHV19R2uLo9VA==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.47/b4736f296c29d305a1fc742c6a307f67036d6164}
 
   '@paralleldrive/cuid2@2.3.1':
     resolution: {integrity: sha512-XO7cAxhnTZl0Yggq6jOgjiOHhbgcO4NqFqwSmQpjK3b6TEE6Uj/jfSk6wzYyemh3+I0sHirKSetjQwn5cZktFw==}
@@ -16795,7 +16795,7 @@ snapshots:
 
   '@opuspopuli/regions@1.0.40': {}
 
-  '@opuspopuli/regions@1.0.46': {}
+  '@opuspopuli/regions@1.0.47': {}
 
   '@paralleldrive/cuid2@2.3.1':
     dependencies:
