@@ -21,6 +21,7 @@ import { PaginationArgs } from 'src/common/dto/pagination.args';
 import { RegionDomainService, mapPropositionRecord } from './region.service';
 import {
   RegionInfoModel,
+  RegionPluginModel,
   SyncResultModel,
   DataTypeGQL,
 } from './models/region-info.model';
@@ -85,6 +86,29 @@ export class RegionResolver {
     const info = this.regionService.getRegionInfo();
     const civics = await this.regionService.getCivicsData(info.id);
     return { ...info, civics: civics ?? undefined };
+  }
+
+  /**
+   * All registered region plugins (state, county, federal).
+   * Includes parentRegionId and fipsCode for hierarchy traversal.
+   */
+  @Public()
+  @Query(() => [RegionPluginModel])
+  @Extensions({ complexity: 5 })
+  async regionPlugins(): Promise<RegionPluginModel[]> {
+    return this.regionService.listRegionPlugins();
+  }
+
+  /**
+   * Look up a region plugin by its Census FIPS code.
+   * Used to resolve a user's county jurisdiction to a region plugin.
+   */
+  @Public()
+  @Query(() => RegionPluginModel, { nullable: true })
+  async regionPluginByFipsCode(
+    @Args('fipsCode') fipsCode: string,
+  ): Promise<RegionPluginModel | null> {
+    return this.regionService.getRegionPluginByFipsCode(fipsCode);
   }
 
   /**

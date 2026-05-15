@@ -190,6 +190,35 @@ export class RegionInfoModel {
 }
 
 /**
+ * Registered region plugin (state, county, or federal).
+ * parentRegionId is set for sub-regions (counties); null for top-level.
+ * fipsCode is the Census FIPS join key to the jurisdictions table.
+ */
+@ObjectType()
+export class RegionPluginModel {
+  @Field()
+  name!: string;
+
+  @Field()
+  displayName!: string;
+
+  @Field({ nullable: true })
+  description?: string;
+
+  @Field()
+  version!: string;
+
+  @Field()
+  enabled!: boolean;
+
+  @Field({ nullable: true })
+  parentRegionId?: string;
+
+  @Field({ nullable: true })
+  fipsCode?: string;
+}
+
+/**
  * Sync result for a data type
  */
 @ObjectType()
