@@ -154,6 +154,22 @@
         "other": "Otro",
         "prefer_not_to_say": "Prefiero no decir"
       }
+    },
+    "jurisdictions": {
+      "title": "Tus Jurisdicciones Civicas",
+      "subtitle": "Todos los organos de gobierno que representan tu direccion principal",
+      "primaryAddressNote": "Basado en tu direccion principal",
+      "empty": "Agrega una direccion principal en",
+      "emptyLink": "Direcciones",
+      "emptyTail": "para ver tus jurisdicciones civicas.",
+      "resolving": "Las jurisdicciones se estan resolviendo. Vuelve pronto.",
+      "levels": {
+        "FEDERAL": "Federal",
+        "STATE": "Legislativo Estatal",
+        "COUNTY": "Condado",
+        "MUNICIPAL": "Municipal",
+        "DISTRICT": "Distritos Especiales"
+      }
     }
   },
   "timezones": {
@@ -199,6 +215,39 @@
     "zipCodePlaceholder": "94102",
     "setPrimary": "Establecer como Principal",
     "congressionalDistrict": "Distrito del Congreso",
+    "stateSenatorialDistrict": "Distrito del Senado Estatal",
+    "stateAssemblyDistrict": "Distrito de la Asamblea Estatal",
+    "county": "Condado",
+    "municipality": "Ciudad / Municipio",
+    "schoolDistrict": "Distrito Escolar",
+    "jurisdictions": {
+      "title": "Tus Jurisdicciones Civicas",
+      "subtitle": "Todos los organos de gobierno que representan tu direccion",
+      "empty": "Las jurisdicciones se estan resolviendo. Vuelve pronto.",
+      "levels": {
+        "FEDERAL": "Federal",
+        "STATE": "Legislativo Estatal",
+        "COUNTY": "Condado",
+        "MUNICIPAL": "Municipal",
+        "DISTRICT": "Distritos Especiales"
+      },
+      "types": {
+        "STATE": "Estado",
+        "CONGRESSIONAL_DISTRICT": "Distrito del Congreso",
+        "STATE_SENATE_DISTRICT": "Distrito del Senado Estatal",
+        "STATE_ASSEMBLY_DISTRICT": "Distrito de la Asamblea Estatal",
+        "COUNTY": "Condado",
+        "CITY": "Ciudad",
+        "SCHOOL_DISTRICT_UNIFIED": "Distrito Escolar Unificado",
+        "SCHOOL_DISTRICT_ELEMENTARY": "Distrito Escolar de Primaria",
+        "SCHOOL_DISTRICT_HIGH": "Distrito de Escuela Secundaria",
+        "COMMUNITY_COLLEGE_DISTRICT": "Distrito de Colegio Comunitario",
+        "WATER_DISTRICT": "Distrito de Agua",
+        "FIRE_DISTRICT": "Distrito de Bomberos",
+        "TRANSIT_DISTRICT": "Distrito de Transporte",
+        "SPECIAL_DISTRICT": "Distrito Especial"
+      }
+    },
     "deleteConfirm": "Estas seguro de que quieres eliminar esta direccion?",
     "requiredFields": "Por favor, completa todos los campos requeridos",
     "saveError": "Error al guardar la direccion"

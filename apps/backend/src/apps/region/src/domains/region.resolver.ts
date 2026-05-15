@@ -1,5 +1,6 @@
 import {
   Args,
+  Context,
   Extensions,
   ID,
   Int,
@@ -8,6 +9,10 @@ import {
   Resolver,
 } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
+import {
+  GqlContext,
+  getUserFromContext,
+} from 'src/common/utils/graphql-context';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import { Public } from 'src/common/decorators/public.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -57,6 +62,10 @@ import {
   MinutesPassageModel,
 } from './models/legislative-action.model';
 import { BillModel, PaginatedBillsModel } from './models/bill.model';
+import {
+  JurisdictionModel,
+  UserJurisdictionModel,
+} from './models/jurisdiction.model';
 
 /**
  * Region Resolver
@@ -709,6 +718,41 @@ export class RegionResolver {
    * plumbing without a full-roster LLM cycle. When omitted, falls
    * back to the generator env-var caps (or unlimited).
    */
+  // ==========================================
+  // JURISDICTION RESOLUTION (#690)
+  // ==========================================
+
+  /**
+   * Return all civic jurisdictions resolved for the authenticated user's
+   * primary address, grouped by level (legislative → county → municipal → district).
+   */
+  @Query(() => [UserJurisdictionModel])
+  @UseGuards(AuthGuard)
+  @Extensions({ complexity: 10 })
+  async myJurisdictions(
+    @Context() context: GqlContext,
+  ): Promise<UserJurisdictionModel[]> {
+    const user = getUserFromContext(context);
+    const rows = await this.regionService.getJurisdictionsForUser(user.id);
+
+    return rows.map((row) => ({
+      resolvedBy: row.resolvedBy,
+      resolvedAt: row.resolvedAt,
+      jurisdiction: {
+        ...row.jurisdiction,
+        fipsCode: row.jurisdiction.fipsCode ?? undefined,
+        ocdId: row.jurisdiction.ocdId ?? undefined,
+        parent: row.jurisdiction.parent
+          ? {
+              ...row.jurisdiction.parent,
+              fipsCode: row.jurisdiction.parent.fipsCode ?? undefined,
+              ocdId: row.jurisdiction.parent.ocdId ?? undefined,
+            }
+          : undefined,
+      } as JurisdictionModel,
+    }));
+  }
+
   @Mutation(() => [SyncResultModel])
   @UseGuards(AuthGuard)
   @Roles(Role.Admin)

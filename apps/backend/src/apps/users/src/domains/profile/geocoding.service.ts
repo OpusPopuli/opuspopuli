@@ -13,6 +13,7 @@ export interface GeocodingResult {
   stateAssemblyDistrict?: string;
   county?: string;
   municipality?: string;
+  schoolDistrict?: string;
   timezone?: string;
 }
 
@@ -107,6 +108,11 @@ export class GeocodingService {
           'Incorporated Places',
           'NAME',
         ),
+        schoolDistrict: this.extractFirstMatching(
+          geographies,
+          'School District',
+          'NAME',
+        ),
         timezone: this.deriveTimezone(match.coordinates?.x),
       };
     } catch (error) {
@@ -118,7 +124,7 @@ export class GeocodingService {
   }
 
   /**
-   * Extract a geography name from the Census response.
+   * Extract a geography name from the Census response by exact key.
    */
   private extractGeography(
     geographies: Record<string, unknown[]>,
@@ -126,6 +132,27 @@ export class GeocodingService {
     field: string,
   ): string | undefined {
     const entries = geographies[key] as Record<string, string>[] | undefined;
+    return entries?.[0]?.[field] || undefined;
+  }
+
+  /**
+   * Extract a field from the first geography key whose name contains the given
+   * substring (case-insensitive). Used for layer names that vary by vintage
+   * (e.g. "Unified School Districts", "Elementary School Districts").
+   */
+  private extractFirstMatching(
+    geographies: Record<string, unknown[]>,
+    keySubstring: string,
+    field: string,
+  ): string | undefined {
+    const lower = keySubstring.toLowerCase();
+    const matchingKey = Object.keys(geographies).find((k) =>
+      k.toLowerCase().includes(lower),
+    );
+    if (!matchingKey) return undefined;
+    const entries = geographies[matchingKey] as
+      | Record<string, string>[]
+      | undefined;
     return entries?.[0]?.[field] || undefined;
   }
 

@@ -20,7 +20,13 @@ import {
   HomeownerStatus,
 } from "@/lib/graphql/profile";
 import { useLocale } from "@/lib/i18n/context";
+import Link from "next/link";
 import { ProfileCompletionIndicator } from "@/components/profile/ProfileCompletionIndicator";
+import {
+  MY_JURISDICTIONS,
+  MyJurisdictionsData,
+  JurisdictionLevel,
+} from "@/lib/graphql/region";
 import { AvatarUpload } from "@/components/profile/AvatarUpload";
 import { ProfileVisibilityToggle } from "@/components/profile/ProfileVisibilityToggle";
 import { CivicFieldsSection } from "@/components/profile/CivicFieldsSection";
@@ -391,6 +397,10 @@ export default function ProfileSettingsPage() {
     loading: completionLoading,
     refetch: refetchCompletion,
   } = useQuery<MyProfileCompletionData>(GET_MY_PROFILE_COMPLETION);
+  const { data: jurisdictionsData } = useQuery<MyJurisdictionsData>(
+    MY_JURISDICTIONS,
+    { fetchPolicy: "network-only" },
+  );
 
   const handleSave = useCallback(() => {
     refetchProfile();
@@ -448,6 +458,13 @@ export default function ProfileSettingsPage() {
         />
       )}
 
+      {/* Civic Jurisdictions — derived from primary address */}
+      <JurisdictionsSection
+        jurisdictions={jurisdictionsData?.myJurisdictions ?? null}
+        loaded={jurisdictionsData !== undefined}
+        t={t}
+      />
+
       {/* Profile Form */}
       <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
         <div className="mb-8">
@@ -463,6 +480,111 @@ export default function ProfileSettingsPage() {
           onSave={handleSave}
         />
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// JurisdictionsSection
+// ---------------------------------------------------------------------------
+
+// FEDERAL renders when congressional district rows exist in the jurisdictions table.
+// The ETL currently loads CA state/county/city/district data but not congressional
+// boundaries — add a loadCongressionalDistricts() call to load-ca-boundaries.ts
+// to populate FEDERAL rows.
+const LEVEL_ORDER: JurisdictionLevel[] = [
+  "FEDERAL",
+  "STATE",
+  "COUNTY",
+  "MUNICIPAL",
+  "DISTRICT",
+];
+
+function JurisdictionsSection({
+  jurisdictions,
+  loaded,
+  t,
+}: {
+  jurisdictions: MyJurisdictionsData["myJurisdictions"] | null;
+  loaded: boolean;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  if (!loaded) return null; // still fetching — don't flash empty state
+
+  const hasJurisdictions = jurisdictions !== null && jurisdictions.length > 0;
+  const isResolving = jurisdictions !== null && jurisdictions.length === 0;
+
+  const byLevel = new Map<
+    JurisdictionLevel,
+    NonNullable<typeof jurisdictions>
+  >();
+  if (hasJurisdictions) {
+    for (const uj of jurisdictions) {
+      const level = uj.jurisdiction.level;
+      if (!byLevel.has(level)) byLevel.set(level, []);
+      byLevel.get(level)!.push(uj);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6">
+      <div className="flex items-baseline justify-between mb-1">
+        <h2 className="text-lg font-semibold text-[#222222]">
+          {t("profile.jurisdictions.title")}
+        </h2>
+        {hasJurisdictions && (
+          <span className="text-xs text-[#6b7280]">
+            {t("profile.jurisdictions.primaryAddressNote")}
+          </span>
+        )}
+      </div>
+      <p className="text-sm text-[#4d4d4d] mb-4">
+        {t("profile.jurisdictions.subtitle")}
+      </p>
+
+      {/* No primary address set — prompt to add one */}
+      {jurisdictions === null && (
+        <p className="text-sm text-[#4d4d4d]">
+          {t("profile.jurisdictions.empty")}{" "}
+          <Link
+            href="/settings/addresses"
+            className="text-[#222222] underline underline-offset-2 hover:no-underline"
+          >
+            {t("profile.jurisdictions.emptyLink")}
+          </Link>{" "}
+          {t("profile.jurisdictions.emptyTail")}
+        </p>
+      )}
+
+      {/* Primary address exists but geocoding hasn't resolved yet */}
+      {isResolving && (
+        <p className="text-sm text-[#4d4d4d] italic">
+          {t("profile.jurisdictions.resolving")}
+        </p>
+      )}
+
+      {/* Resolved jurisdictions grouped by level */}
+      {hasJurisdictions && (
+        <div className="divide-y divide-gray-100 -mx-6 border-t border-gray-100">
+          {LEVEL_ORDER.filter((l) => byLevel.has(l)).map((level) => (
+            <div key={level} className="px-6 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#6b7280] mb-2">
+                {t(`profile.jurisdictions.levels.${level}`)}
+              </p>
+              <ul className="space-y-1">
+                {byLevel.get(level)!.map((uj) => (
+                  <li
+                    key={uj.jurisdiction.id}
+                    className="text-sm text-[#222222]"
+                  >
+                    {uj.jurisdiction.name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

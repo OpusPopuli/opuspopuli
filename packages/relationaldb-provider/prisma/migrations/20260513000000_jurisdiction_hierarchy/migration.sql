@@ -55,11 +55,9 @@ CREATE TABLE "jurisdictions" (
 ALTER TABLE "jurisdictions"
   ADD COLUMN "boundary" geography(MultiPolygon, 4326);
 
--- GIST spatial indexes on jurisdictions
+-- Partial GIST index on jurisdictions.boundary for point-in-polygon queries
+-- Partial (WHERE boundary IS NOT NULL) is sufficient; ST_Contains never matches null rows.
 CREATE INDEX "jurisdictions_boundary_gist_idx"
-  ON "jurisdictions" USING GIST ("boundary");
-
-CREATE INDEX "jurisdictions_type_boundary_idx"
   ON "jurisdictions" USING GIST ("boundary")
   WHERE "boundary" IS NOT NULL;
 
