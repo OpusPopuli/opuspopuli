@@ -569,11 +569,12 @@ model AbuseReport {
 model Representative {
   id          String    @id @default(uuid())
   externalId  String    @unique @map("external_id")
+  regionId    String    @default("california") @map("region_id") @db.VarChar(100) /// e.g. "california", "california-sonoma", "federal"
   name        String
   lastName    String    @default("") @map("last_name") /// derived from `name`, used for alphabetical sorting
   chamber     String
   district    String
-  party       String
+  party       String?
   photoUrl    String?   @map("photo_url")
   contactInfo Json?     @map("contact_info")
   committees  Json?     @map("committees")       /// CommitteeAssignment[] as JSON — canonical source for the LegislativeCommittee backfill
@@ -604,6 +605,8 @@ model Representative {
   @@index([lastName])
   @@index([chamber])
   @@index([party])
+  @@index([regionId])
+  @@index([regionId, chamber])
   @@map("representatives")
 }
 

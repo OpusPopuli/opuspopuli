@@ -182,7 +182,7 @@ export interface Representative {
   name: string;
   chamber: string;
   district: string;
-  party: string;
+  party?: string;
   photoUrl?: string;
   contactInfo?: ContactInfo;
   committees?: CommitteeAssignment[];
@@ -272,7 +272,7 @@ export interface LegislativeCommitteeMember {
   representativeId: string;
   name: string;
   role?: string;
-  party: string;
+  party?: string;
   photoUrl?: string;
 }
 
@@ -962,11 +962,13 @@ export const GET_REPRESENTATIVES_BY_DISTRICTS = gql`
     $congressionalDistrict: String
     $stateSenatorialDistrict: String
     $stateAssemblyDistrict: String
+    $countyRegionId: String
   ) {
     representativesByDistricts(
       congressionalDistrict: $congressionalDistrict
       stateSenatorialDistrict: $stateSenatorialDistrict
       stateAssemblyDistrict: $stateAssemblyDistrict
+      countyRegionId: $countyRegionId
     ) {
       id
       name
@@ -980,6 +982,40 @@ export const GET_REPRESENTATIVES_BY_DISTRICTS = gql`
 
 export interface RepresentativesByDistrictsData {
   representativesByDistricts: Representative[];
+}
+
+export const GET_COUNTY_REPRESENTATIVES = gql`
+  query GetCountyRepresentatives($countyRegionId: String!) {
+    countyRepresentatives(countyRegionId: $countyRegionId) {
+      id
+      name
+      chamber
+      district
+      party
+      photoUrl
+    }
+  }
+`;
+
+export interface CountyRepresentativesData {
+  countyRepresentatives: Representative[];
+}
+
+export const MY_COUNTY_SUPERVISORS = gql`
+  query MyCountySupervisors {
+    myCountySupervisors {
+      id
+      name
+      chamber
+      district
+      party
+      photoUrl
+    }
+  }
+`;
+
+export interface MyCountySupervisorsData {
+  myCountySupervisors: Representative[];
 }
 
 // ============================================

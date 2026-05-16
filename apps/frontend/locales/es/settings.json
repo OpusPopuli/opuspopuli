@@ -170,6 +170,11 @@
         "MUNICIPAL": "Municipal",
         "DISTRICT": "Distritos Especiales"
       }
+    },
+    "countySupervisors": {
+      "title": "Junta de Supervisores del Condado",
+      "subtitle": "Sus supervisores del condado elegidos según su dirección principal.",
+      "district": "Distrito {{district}}"
     }
   },
   "timezones": {

@@ -59,6 +59,13 @@ export class ScrapingPipelineService {
    * @param regionId - The region this source belongs to
    * @returns Typed extraction result with items and diagnostics
    */
+  async invalidateManifest(
+    regionId: string,
+    sourceUrl: string,
+  ): Promise<number> {
+    return this.manifestStore.invalidate(regionId, sourceUrl);
+  }
+
   async execute<T>(
     source: DataSourceConfig,
     regionId: string,
@@ -97,6 +104,49 @@ export class ScrapingPipelineService {
   }
 
   /**
+   * Execute extraction using caller-supplied selectors, bypassing AI analysis.
+   * No LLM call, no manifest store, no self-heal loop.
+   */
+  private executeStaticManifest<T>(
+    source: DataSourceConfig,
+    regionId: string,
+    html: string,
+    pipelineStart: number,
+  ): ExtractionResult<T> {
+    const sm = source.staticManifest!;
+    const syntheticManifest = {
+      id: `static-${regionId}-${source.dataType}`,
+      regionId,
+      sourceUrl: source.url,
+      dataType: source.dataType,
+      version: 0,
+      structureHash: "static",
+      promptHash: "static",
+      extractionRules: {
+        containerSelector: sm.containerSelector,
+        itemSelector: sm.itemSelector,
+        fieldMappings: sm.fieldMappings,
+      },
+      isActive: true,
+      successCount: 0,
+      failureCount: 0,
+      createdAt: new Date(),
+      lastCheckedAt: new Date(),
+    };
+
+    const rawResult = this.extractor.extract(
+      html,
+      syntheticManifest as never,
+      source.url,
+    );
+    const duration = Date.now() - pipelineStart;
+    this.logger.log(
+      `Pipeline complete [static]: ${rawResult.items.length} items extracted in ${duration}ms`,
+    );
+    return rawResult as unknown as ExtractionResult<T>;
+  }
+
+  /**
    * Execute the HTML scraping pipeline (original behavior).
    * AI structural analysis → Cheerio extraction → domain mapping.
    */
@@ -114,6 +164,17 @@ export class ScrapingPipelineService {
     const html = fetchResult.content;
 
     // Stage 1+2: Get or derive manifest
+    // When a staticManifest is provided in the source config, bypass AI analysis
+    // entirely — no LLM call, no manifest persistence, no self-heal loop.
+    if (source.staticManifest) {
+      return this.executeStaticManifest<T>(
+        source,
+        regionId,
+        html,
+        pipelineStart,
+      );
+    }
+
     const analysisResult = await this.getOrDeriveManifest(
       source,
       regionId,

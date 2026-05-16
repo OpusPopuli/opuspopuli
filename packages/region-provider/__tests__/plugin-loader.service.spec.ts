@@ -56,6 +56,7 @@ describe("PluginLoaderService", () => {
         errors: [],
         extractionTimeMs: 0,
       }),
+      invalidateManifest: jest.fn().mockResolvedValue(0),
     };
   });
 

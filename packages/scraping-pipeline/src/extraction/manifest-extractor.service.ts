@@ -76,7 +76,16 @@ export class ManifestExtractorService {
 
     // Find items within the container
     const firstContainer = container.first() as Cheerio<Element>;
-    const itemElements = firstContainer.find(rules.itemSelector);
+    let itemElements = firstContainer.find(rules.itemSelector);
+
+    // Single-record fallback: when itemSelector === containerSelector the LLM
+    // signaled that the container itself is the one item (detail page).
+    if (
+      itemElements.length === 0 &&
+      rules.itemSelector === rules.containerSelector
+    ) {
+      itemElements = firstContainer;
+    }
 
     if (itemElements.length === 0) {
       this.logger.warn(

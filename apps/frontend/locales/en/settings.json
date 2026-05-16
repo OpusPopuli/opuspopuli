@@ -170,6 +170,11 @@
         "MUNICIPAL": "Municipal",
         "DISTRICT": "Special Districts"
       }
+    },
+    "countySupervisors": {
+      "title": "County Board of Supervisors",
+      "subtitle": "Your elected county supervisors based on your primary address.",
+      "district": "District {{district}}"
     }
   },
   "timezones": {

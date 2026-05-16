@@ -39,8 +39,8 @@ export class LegislativeCommitteeMemberModel {
   @Field({ nullable: true })
   role?: string;
 
-  @Field()
-  party!: string;
+  @Field({ nullable: true })
+  party?: string;
 
   @Field({ nullable: true })
   photoUrl?: string;
