@@ -11,9 +11,10 @@ export function PartyBadge({
   party,
   size = "sm",
 }: {
-  readonly party: string;
+  readonly party?: string;
   readonly size?: "sm" | "md";
 }) {
+  if (!party) return null;
   const colors = PARTY_COLORS[party] || {
     bg: "bg-gray-100",
     text: "text-gray-800",

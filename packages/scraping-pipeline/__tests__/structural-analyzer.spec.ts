@@ -199,7 +199,7 @@ describe("StructuralAnalyzerService", () => {
       ).rejects.toThrow("containerSelector");
     });
 
-    it("should throw when itemSelector is missing", async () => {
+    it("should fall back to containerSelector when itemSelector is missing", async () => {
       const badJson = JSON.stringify({
         containerSelector: ".list",
         fieldMappings: [
@@ -212,9 +212,8 @@ describe("StructuralAnalyzerService", () => {
         mockPromptClient as unknown as PromptClientService,
       );
 
-      await expect(
-        analyzer.analyze(SIMPLE_HTML, createSource()),
-      ).rejects.toThrow("itemSelector");
+      const result = await analyzer.analyze(SIMPLE_HTML, createSource());
+      expect(result.extractionRules.itemSelector).toBe(".list");
     });
 
     it("should throw when fieldMappings is empty", async () => {

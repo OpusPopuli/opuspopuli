@@ -225,6 +225,30 @@ export class ManifestStoreService {
   }
 
   /**
+   * Deactivate all active manifests for a source so the next sync triggers
+   * a fresh structural analysis. Returns the number of records deactivated.
+   */
+  async invalidate(
+    regionId: string,
+    sourceUrl: string,
+    dataType?: DataType,
+  ): Promise<number> {
+    const where = dataType
+      ? { regionId, sourceUrl, dataType: dataType as string, isActive: true }
+      : { regionId, sourceUrl, isActive: true };
+
+    const result = await this.repository.updateMany({
+      where,
+      data: { isActive: false },
+    });
+
+    this.logger.log(
+      `Invalidated ${result.count} manifest(s) for ${regionId}/${sourceUrl}`,
+    );
+    return result.count;
+  }
+
+  /**
    * Update the lastCheckedAt timestamp for a manifest.
    */
   async markChecked(manifestId: string): Promise<void> {

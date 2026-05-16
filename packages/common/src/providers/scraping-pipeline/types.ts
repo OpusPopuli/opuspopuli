@@ -296,6 +296,20 @@ export interface DataSourceConfig {
   detailFields?: Record<string, string | StructuredFieldConfig>;
 
   /**
+   * Explicit extraction rules that bypass AI structural analysis entirely.
+   * When provided, the pipeline uses these selectors directly — no LLM call,
+   * no manifest generation, no self-heal loop.
+   *
+   * Use this when the page structure is known and stable, or when the local
+   * LLM consistently generates wrong selectors for a specific site.
+   */
+  staticManifest?: {
+    containerSelector: string;
+    itemSelector: string;
+    fieldMappings: FieldMapping[];
+  };
+
+  /**
    * Crawl depth from the seed `url`, used by sync handlers that walk a
    * site's link graph (currently civics — see issue #669).
    *

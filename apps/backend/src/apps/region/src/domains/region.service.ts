@@ -9,9 +9,11 @@ import {
 import {
   RegionService as RegionProviderService,
   DataType,
+  SyncDepth,
   SyncResult,
   PluginLoaderService,
   PluginRegistryService,
+  DeclarativeRegionPlugin,
   ExampleRegionProvider,
   discoverRegionConfigs,
   getRegionsDir,
@@ -33,6 +35,7 @@ import {
   type ILLMProvider,
   type CivicsBlock,
   type DataSourceConfig,
+  type DeclarativeRegionConfig,
   type Bill,
 } from '@opuspopuli/common';
 import { PromptClientService } from '@opuspopuli/prompt-client';
@@ -213,7 +216,7 @@ type MeetingRecord = {
   createdAt: Date;
   updatedAt: Date;
 };
-type RepresentativeRecord = {
+export type RepresentativeRecord = {
   id: string;
   externalId: string;
   name: string;
@@ -345,6 +348,7 @@ function deriveDistrictFromExternalId(externalId: string): string | undefined {
  * normalize other inconsistent extractor outputs in this same path.
  */
 export function stripLeadingZerosFromExternalId(externalId: string): string {
+  if (!externalId) return externalId;
   const parts = externalId.split('-');
   const last = parts.at(-1);
   if (!last || !/^\d+$/.test(last)) return externalId;
@@ -945,10 +949,14 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     dataTypes?: string[],
     maxReps?: number,
     maxBills?: number,
+    depth: string = SyncDepth.STATE,
+    scopedRegionId?: string,
   ): Promise<SyncResult[]> {
     const limits = [
       maxReps != null ? `maxReps=${maxReps}` : null,
       maxBills != null ? `maxBills=${maxBills}` : null,
+      depth !== SyncDepth.STATE ? `depth=${depth}` : null,
+      scopedRegionId ? `regionId=${scopedRegionId}` : null,
     ].filter(Boolean);
     const limitsStr = limits.length ? ` (${limits.join(', ')})` : '';
     this.logger.log(
@@ -958,41 +966,152 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     );
     const results: SyncResult[] = [];
 
-    for (const registered of this.pluginRegistry.getAll()) {
-      const supported = registered.instance.getSupportedDataTypes();
-      const filtered = dataTypes
-        ? supported.filter((dt) => dataTypes.includes(dt))
-        : supported;
+    // Resolve which plugin instances to run based on depth + optional scope.
+    // STATE (default): only loaded registry plugins (state + federal).
+    // COUNTY: enabled county region_plugin rows fetched from DB on demand.
+    // ALL: STATE plugins first, then COUNTY.
+    const statePlugins =
+      depth === SyncDepth.COUNTY
+        ? []
+        : this.pluginRegistry
+            .getAll()
+            .filter((p) => !scopedRegionId || p.name === scopedRegionId);
 
-      for (const dataType of filtered) {
-        try {
-          const result = await this.syncDataTypeFrom(
-            registered.instance,
-            registered.name,
-            dataType,
-            maxReps,
-            maxBills,
-          );
-          results.push(result);
-        } catch (error) {
-          this.logger.error(
-            `Failed to sync ${dataType} from ${registered.name}:`,
-            error,
-          );
-          results.push({
-            dataType,
-            itemsProcessed: 0,
-            itemsCreated: 0,
-            itemsUpdated: 0,
-            itemsSkipped: 0,
-            errors: [(error as Error).message],
-            syncedAt: new Date(),
-          });
-        }
-      }
+    for (const registered of statePlugins) {
+      results.push(
+        ...(await this.runPluginSync(
+          registered.instance,
+          registered.name,
+          dataTypes,
+          maxReps,
+          maxBills,
+        )),
+      );
     }
 
-    this.logger.log(`Sync complete. Processed ${results.length} data types.`);
+    if (depth === SyncDepth.COUNTY || depth === SyncDepth.ALL) {
+      results.push(
+        ...(await this.syncCountyPlugins(
+          dataTypes,
+          maxReps,
+          maxBills,
+          scopedRegionId,
+        )),
+      );
+    }
+
+    this.logger.log(`Sync complete. Processed ${results.length} data type(s).`);
+    return results;
+  }
+
+  private async runPluginSync(
+    instance: IRegionPlugin,
+    name: string,
+    dataTypes?: string[],
+    maxReps?: number,
+    maxBills?: number,
+  ): Promise<SyncResult[]> {
+    const supported = instance.getSupportedDataTypes();
+    const filtered = dataTypes
+      ? supported.filter((dt) => dataTypes.includes(dt))
+      : supported;
+    const results: SyncResult[] = [];
+    for (const dataType of filtered) {
+      try {
+        const result = await this.syncDataTypeFrom(
+          instance,
+          name,
+          dataType,
+          maxReps,
+          maxBills,
+          name,
+        );
+        results.push(result);
+      } catch (error) {
+        this.logger.error(`Failed to sync ${dataType} from ${name}:`, error);
+        results.push({
+          regionId: name,
+          dataType,
+          itemsProcessed: 0,
+          itemsCreated: 0,
+          itemsUpdated: 0,
+          itemsSkipped: 0,
+          errors: [(error as Error).message],
+          syncedAt: new Date(),
+        });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Fetch enabled county (sub-region) plugins from region_plugins, instantiate
+   * each as a DeclarativePlugin on-demand, and run the requested data types.
+   */
+  private async syncCountyPlugins(
+    dataTypes?: string[],
+    maxReps?: number,
+    maxBills?: number,
+    scopedRegionId?: string,
+  ): Promise<SyncResult[]> {
+    const where = scopedRegionId
+      ? { name: scopedRegionId, parentRegionId: { not: null }, enabled: true }
+      : { parentRegionId: { not: null }, enabled: true };
+
+    const countyRows = await this.db.regionPlugin.findMany({
+      where,
+      select: { name: true, config: true },
+      orderBy: { name: 'asc' },
+    });
+
+    if (countyRows.length === 0) {
+      this.logger.debug('No enabled county plugins found for sync');
+      return [];
+    }
+
+    this.logger.log(`Syncing ${countyRows.length} county plugin(s)…`);
+    const results: SyncResult[] = [];
+
+    for (const row of countyRows) {
+      if (!row.config) continue;
+      try {
+        // Instantiate transiently — don't register in the shared registry,
+        // since county plugins are loaded on-demand for sync only.
+        if (!this.pipeline) {
+          throw new Error(
+            'ScrapingPipelineService unavailable — county sync requires a pipeline',
+          );
+        }
+        const plugin = new DeclarativeRegionPlugin(
+          row.config as unknown as DeclarativeRegionConfig,
+          this.pipeline,
+        );
+        results.push(
+          ...(await this.runPluginSync(
+            plugin,
+            row.name,
+            dataTypes,
+            maxReps,
+            maxBills,
+          )),
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to instantiate county plugin ${row.name}:`,
+          error,
+        );
+        results.push({
+          regionId: row.name,
+          dataType: DataType.REPRESENTATIVES,
+          itemsProcessed: 0,
+          itemsCreated: 0,
+          itemsUpdated: 0,
+          itemsSkipped: 0,
+          errors: [(error as Error).message],
+          syncedAt: new Date(),
+        });
+      }
+    }
     return results;
   }
 
@@ -1017,6 +1136,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     dataType: DataType,
     maxReps?: number,
     maxBills?: number,
+    regionId?: string,
   ): Promise<SyncResult> {
     this.logger.log(`Syncing ${dataType} from ${pluginName}`);
     const startTime = Date.now();
@@ -1035,7 +1155,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       [DataType.PROPOSITIONS]: () => this.syncPropositions(provider),
       [DataType.MEETINGS]: () => this.syncMeetings(provider),
       [DataType.REPRESENTATIVES]: () =>
-        this.syncRepresentatives(provider, maxReps),
+        this.syncRepresentatives(provider, maxReps, regionId),
       [DataType.CAMPAIGN_FINANCE]: () => this.syncCampaignFinance(provider),
       [DataType.CIVICS]: () => this.syncCivics(),
       [DataType.BILLS]: () => this.syncBills(maxBills),
@@ -1045,6 +1165,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     if (!handler) {
       this.logger.warn(`No sync handler for data type: ${dataType}`);
       return {
+        regionId: pluginName,
         dataType,
         itemsProcessed: 0,
         itemsCreated: 0,
@@ -1063,6 +1184,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     );
 
     return {
+      regionId: pluginName,
       dataType,
       itemsProcessed: processed,
       itemsCreated: created,
@@ -1420,9 +1542,18 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private applyChamberFallback(r: Representative, provider: DataFetcher): void {
+    if (r.chamber || !(provider instanceof DeclarativeRegionPlugin)) return;
+    const source = provider
+      .getDataSources('REPRESENTATIVES' as DataType)
+      .find((s) => s.category);
+    if (source?.category) r.chamber = source.category;
+  }
+
   private async syncRepresentatives(
     provider: DataFetcher = this.regionService,
     maxReps?: number,
+    regionId?: string,
   ): Promise<{
     processed: number;
     created: number;
@@ -1435,6 +1566,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
 
     for (const r of reps) {
       this.normalizeRep(r);
+      this.applyChamberFallback(r, provider);
     }
 
     // Enrich with AI-generated bios where missing (scraped bios are preserved)
@@ -1468,6 +1600,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
           // scrape stops returning a bio field. Convert null→undefined
           // for every optional enrichment field.
           update: {
+            regionId: regionId ?? rep.regionId ?? 'california',
             name: rep.name,
             lastName,
             chamber: rep.chamber,
@@ -1483,6 +1616,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
           },
           create: {
             externalId: rep.externalId,
+            regionId: regionId ?? rep.regionId ?? 'california',
             name: rep.name,
             lastName,
             chamber: rep.chamber,
@@ -3433,6 +3567,24 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Return all Board of Supervisors for a county region.
+   * v1: returns all supervisors — specific district matching requires
+   * county-published shapefiles (follow-up to issue #22).
+   */
+  async getRepresentativesByCounty(
+    countyRegionId: string,
+  ): Promise<RepresentativeRecord[]> {
+    return this.db.representative.findMany({
+      where: {
+        regionId: countyRegionId,
+        chamber: 'Board of Supervisors',
+        deletedAt: null,
+      },
+      orderBy: [{ district: 'asc' }, { lastName: 'asc' }],
+    });
+  }
+
+  /**
    * Extract and zero-pad a district number from Census format.
    * "Congressional District 2" → "02"
    * "State Senate District 12" → "12"
@@ -4116,6 +4268,37 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Return Board of Supervisors for the user's primary address county.
+   * Resolves: user → primary address county jurisdiction → fipsCode →
+   * county region plugin → supervisors. Returns [] when no county
+   * jurisdiction is resolved or no county plugin is enabled.
+   */
+  async getMyCountySupervisors(
+    userId: string,
+  ): Promise<RepresentativeRecord[]> {
+    const countyJurisdiction = await this.db.userJurisdiction.findFirst({
+      where: {
+        userId,
+        userAddress: { isPrimary: true },
+        jurisdiction: { type: 'COUNTY' },
+      },
+      include: { jurisdiction: { select: { fipsCode: true } } },
+    });
+
+    const fipsCode = countyJurisdiction?.jurisdiction?.fipsCode;
+    if (!fipsCode) return [];
+
+    const plugin = await this.db.regionPlugin.findUnique({
+      where: { fipsCode },
+      select: { name: true, enabled: true },
+    });
+
+    if (!plugin?.enabled) return [];
+
+    return this.getRepresentativesByCounty(plugin.name);
+  }
+
+  /**
    * Discover JSON config files from packages/region-provider/regions/
    * and upsert them into the region_plugins table.
    *
@@ -4187,6 +4370,41 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       orderBy: [{ parentRegionId: 'asc' }, { name: 'asc' }],
     });
     return rows.map(toRegionPluginRow);
+  }
+
+  async invalidateManifest(
+    regionId: string,
+    sourceUrl: string,
+  ): Promise<number> {
+    if (!this.pipeline) {
+      throw new Error(
+        'ScrapingPipelineService unavailable — cannot invalidate manifest',
+      );
+    }
+    return this.pipeline.invalidateManifest(regionId, sourceUrl);
+  }
+
+  async setRegionPluginEnabled(
+    name: string,
+    enabled: boolean,
+  ): Promise<RegionPluginRow> {
+    const row = await this.db.regionPlugin.update({
+      where: { name },
+      data: { enabled },
+      select: {
+        name: true,
+        displayName: true,
+        description: true,
+        version: true,
+        enabled: true,
+        parentRegionId: true,
+        fipsCode: true,
+      },
+    });
+    this.logger.log(
+      `Region plugin "${name}" ${enabled ? 'enabled' : 'disabled'}`,
+    );
+    return toRegionPluginRow(row);
   }
 
   async getRegionPluginByFipsCode(

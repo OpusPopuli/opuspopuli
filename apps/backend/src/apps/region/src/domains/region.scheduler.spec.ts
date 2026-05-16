@@ -13,6 +13,7 @@ describe('RegionScheduler', () => {
 
   const mockSyncResults = [
     {
+      regionId: 'california',
       dataType: DataType.PROPOSITIONS,
       itemsProcessed: 10,
       itemsCreated: 5,
@@ -22,6 +23,7 @@ describe('RegionScheduler', () => {
       syncedAt: new Date(),
     },
     {
+      regionId: 'california',
       dataType: DataType.MEETINGS,
       itemsProcessed: 5,
       itemsCreated: 3,
@@ -31,6 +33,7 @@ describe('RegionScheduler', () => {
       syncedAt: new Date(),
     },
     {
+      regionId: 'california',
       dataType: DataType.REPRESENTATIVES,
       itemsProcessed: 8,
       itemsCreated: 2,
@@ -171,6 +174,7 @@ describe('RegionScheduler', () => {
     it('should log warnings when sync has errors', async () => {
       const resultsWithErrors = [
         {
+          regionId: 'california',
           dataType: DataType.PROPOSITIONS,
           itemsProcessed: 10,
           itemsCreated: 5,

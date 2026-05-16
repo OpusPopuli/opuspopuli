@@ -90,7 +90,9 @@
         {
           "name": "API Gateway - Health",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
             "header": [],
             "url": {
@@ -141,9 +143,16 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
-            "header": [{ "key": "apollo-require-preflight", "value": "true" }],
+            "header": [
+              {
+                "key": "apollo-require-preflight",
+                "value": "true"
+              }
+            ],
             "url": {
               "raw": "{{gateway_url}}/api",
               "host": ["{{gateway_url}}"],
@@ -189,11 +198,19 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "apikey", "value": "{{supabase_anon_key}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "apikey",
+                "value": "{{supabase_anon_key}}"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -203,16 +220,28 @@
               "raw": "{{supabase_url}}/auth/v1/token?grant_type=password",
               "host": ["{{supabase_url}}"],
               "path": ["auth", "v1", "token"],
-              "query": [{ "key": "grant_type", "value": "password" }]
+              "query": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                }
+              ]
             }
           }
         },
         {
           "name": "Register User (GraphQL)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -245,9 +274,16 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -265,9 +301,16 @@
         {
           "name": "Send Magic Link",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -286,7 +329,12 @@
           "name": "Logout",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -309,7 +357,12 @@
           "name": "Get Users (Admin)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -326,9 +379,16 @@
         {
           "name": "Find User by Email",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -352,7 +412,12 @@
           "name": "My Profile",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -370,7 +435,12 @@
           "name": "Profile Completion",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -388,7 +458,12 @@
           "name": "My Addresses",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -410,9 +485,16 @@
         {
           "name": "Region Info",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -429,9 +511,16 @@
         {
           "name": "Propositions (Paginated)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -449,9 +538,16 @@
         {
           "name": "Representatives (Paginated)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -469,9 +565,16 @@
         {
           "name": "Meetings (Paginated)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -489,9 +592,16 @@
         {
           "name": "Committees (Campaign Finance)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -509,9 +619,16 @@
         {
           "name": "Contributions (Campaign Finance)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -530,12 +647,68 @@
           "name": "Sync Region Data (Admin)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation SyncRegionData($dataTypes: [DataType!], $maxReps: Int) {\n  syncRegionData(dataTypes: $dataTypes, maxReps: $maxReps) {\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}",
-                "variables": "{\n  \"dataTypes\": [\"REPRESENTATIVES\"],\n  \"maxReps\": 5\n}"
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $depth: SyncDepth, $regionId: String, $maxReps: Int, $maxBills: Int) {\n  syncRegionData(dataTypes: $dataTypes, depth: $depth, regionId: $regionId, maxReps: $maxReps, maxBills: $maxBills) {\n    regionId\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"REPRESENTATIVES\"],\n  \"depth\": \"STATE\",\n  \"maxReps\": 5\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          },
+          "description": "Trigger a data sync. depth: STATE (default, top-level plugin only), COUNTY (all enabled county sub-regions), ALL (state + all counties). Optionally scope to a single regionId (e.g. 'california-sonoma'). maxReps/maxBills cap AI enrichment per run."
+        },
+        {
+          "name": "Sync Region Data \u2014 CIVICS",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SyncRegionData($dataTypes: [DataType!]) {\n  syncRegionData(dataTypes: $dataTypes) {\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"CIVICS\"]\n}"
+              }
+            },
+            "description": "Triggers a CIVICS data sync against the active region. The pipeline scrapes the URLs declared as `dataType: civics` in the region config (assembly.ca.gov/resources/legislative-process, assembly.ca.gov/resources/glossary, leginfo.ca.gov/califleg.html), calls the private prompt-service to extract a structured CivicsBlock with verbatim source text + plain-language rewrites for laypeople, and persists to the region_civics tables. See OpusPopuli/opuspopuli#669 + OpusPopuli/opuspopuli-regions#15. Until the civics-ingest handler ships, this returns errors[0] = 'No sync handler for data type: civics' \u2014 that's the wired-but-not-implemented signal.",
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Sync County Reps \u2014 All Counties (Admin)",
+          "description": "Sync Board of Supervisors representatives for all 58 enabled CA county sub-regions.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $depth: SyncDepth, $maxReps: Int) {\n  syncRegionData(dataTypes: $dataTypes, depth: $depth, maxReps: $maxReps) {\n    regionId\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"REPRESENTATIVES\"],\n  \"depth\": \"COUNTY\",\n  \"maxReps\": 3\n}"
               }
             },
             "url": {
@@ -546,18 +719,123 @@
           }
         },
         {
-          "name": "Sync Region Data — CIVICS",
+          "name": "Sync County Reps \u2014 Single County (Admin)",
+          "description": "Sync Board of Supervisors for one specific county. Set regionId to the county's region plugin name, e.g. 'california-sonoma'.",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation SyncRegionData($dataTypes: [DataType!]) {\n  syncRegionData(dataTypes: $dataTypes) {\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}",
-                "variables": "{\n  \"dataTypes\": [\"CIVICS\"]\n}"
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $depth: SyncDepth, $regionId: String, $maxReps: Int) {\n  syncRegionData(dataTypes: $dataTypes, depth: $depth, regionId: $regionId, maxReps: $maxReps) {\n    regionId\n    dataType\n    itemsProcessed\n    itemsCreated\n    itemsUpdated\n    errors\n    syncedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"REPRESENTATIVES\"],\n  \"depth\": \"COUNTY\",\n  \"regionId\": \"california-sonoma\"\n}"
               }
             },
-            "description": "Triggers a CIVICS data sync against the active region. The pipeline scrapes the URLs declared as `dataType: civics` in the region config (assembly.ca.gov/resources/legislative-process, assembly.ca.gov/resources/glossary, leginfo.ca.gov/califleg.html), calls the private prompt-service to extract a structured CivicsBlock with verbatim source text + plain-language rewrites for laypeople, and persists to the region_civics tables. See OpusPopuli/opuspopuli#669 + OpusPopuli/opuspopuli-regions#15. Until the civics-ingest handler ships, this returns errors[0] = 'No sync handler for data type: civics' — that's the wired-but-not-implemented signal.",
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Invalidate Manifest (Admin)",
+          "description": "Deactivate cached structural manifests for a source URL so the next sync triggers fresh AI re-analysis. Use this after fixing a region config's contentGoal or hints.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation InvalidateManifest($regionId: String!, $sourceUrl: String!) {\n  invalidateManifest(regionId: $regionId, sourceUrl: $sourceUrl)\n}",
+                "variables": "{\n  \"regionId\": \"california-sonoma\",\n  \"sourceUrl\": \"https://sonomacounty.gov/administrative-support-and-fiscal-services/board-of-supervisors\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Enable Region Plugin (Admin)",
+          "description": "Enable or disable a region plugin by name. County plugins are disabled by default and must be enabled before syncing. Set enabled: false to disable.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation UpdateRegionPlugin($name: String!, $enabled: Boolean!) {\n  updateRegionPlugin(name: $name, enabled: $enabled) {\n    name\n    displayName\n    enabled\n    parentRegionId\n    fipsCode\n  }\n}",
+                "variables": "{\n  \"name\": \"california-sonoma\",\n  \"enabled\": true\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "County Representatives",
+          "description": "Get Board of Supervisors for a specific county by county region plugin name.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query CountyRepresentatives($countyRegionId: String!) {\n  countyRepresentatives(countyRegionId: $countyRegionId) {\n    id\n    name\n    title\n    district\n    party\n    phone\n    email\n    photoUrl\n    website\n  }\n}",
+                "variables": "{\n  \"countyRegionId\": \"california-sonoma\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "My County Supervisors",
+          "description": "Get Board of Supervisors for the authenticated user's county (resolved from their primary address jurisdiction). Requires auth.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  myCountySupervisors {\n    id\n    name\n    title\n    district\n    party\n    phone\n    email\n    photoUrl\n    website\n  }\n}",
+                "variables": ""
+              }
+            },
             "url": {
               "raw": "{{gateway_url}}/api",
               "host": ["{{gateway_url}}"],
@@ -574,7 +852,12 @@
           "name": "List Files",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -592,7 +875,12 @@
           "name": "Analyze Document",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -610,9 +898,16 @@
         {
           "name": "Petition Map Locations",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -635,7 +930,12 @@
           "name": "Search Text",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -654,7 +954,12 @@
           "name": "Answer Query (RAG)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -678,7 +983,12 @@
           "name": "My Activity Log",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {
@@ -697,7 +1007,12 @@
           "name": "My Sessions",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "graphql",
               "graphql": {

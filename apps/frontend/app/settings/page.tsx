@@ -26,6 +26,8 @@ import {
   MY_JURISDICTIONS,
   MyJurisdictionsData,
   JurisdictionLevel,
+  MY_COUNTY_SUPERVISORS,
+  MyCountySupervisorsData,
 } from "@/lib/graphql/region";
 import { AvatarUpload } from "@/components/profile/AvatarUpload";
 import { ProfileVisibilityToggle } from "@/components/profile/ProfileVisibilityToggle";
@@ -401,6 +403,10 @@ export default function ProfileSettingsPage() {
     MY_JURISDICTIONS,
     { fetchPolicy: "network-only" },
   );
+  const { data: supervisorsData } = useQuery<MyCountySupervisorsData>(
+    MY_COUNTY_SUPERVISORS,
+    { fetchPolicy: "network-only" },
+  );
 
   const handleSave = useCallback(() => {
     refetchProfile();
@@ -462,6 +468,13 @@ export default function ProfileSettingsPage() {
       <JurisdictionsSection
         jurisdictions={jurisdictionsData?.myJurisdictions ?? null}
         loaded={jurisdictionsData !== undefined}
+        t={t}
+      />
+
+      {/* County Board of Supervisors */}
+      <CountySupervisorsSection
+        supervisors={supervisorsData?.myCountySupervisors ?? null}
+        loaded={supervisorsData !== undefined}
         t={t}
       />
 
@@ -585,6 +598,55 @@ function JurisdictionsSection({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CountySupervisorsSection
+// ---------------------------------------------------------------------------
+
+function CountySupervisorsSection({
+  supervisors,
+  loaded,
+  t,
+}: {
+  supervisors: MyCountySupervisorsData["myCountySupervisors"] | null;
+  loaded: boolean;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  if (!loaded) return null;
+  if (!supervisors || supervisors.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6">
+      <h2 className="text-lg font-semibold text-[#222222] mb-1">
+        {t("profile.countySupervisors.title")}
+      </h2>
+      <p className="text-sm text-[#4d4d4d] mb-4">
+        {t("profile.countySupervisors.subtitle")}
+      </p>
+      <ul className="divide-y divide-gray-100 -mx-6 border-t border-gray-100">
+        {supervisors.map((rep) => (
+          <li key={rep.id} className="px-6 py-3 flex items-center gap-3">
+            {rep.photoUrl && (
+              <img
+                src={rep.photoUrl}
+                alt={rep.name}
+                className="w-8 h-8 rounded-full object-cover shrink-0"
+              />
+            )}
+            <div>
+              <p className="text-sm font-medium text-[#222222]">{rep.name}</p>
+              <p className="text-xs text-[#6b7280]">
+                {t("profile.countySupervisors.district", {
+                  district: rep.district,
+                })}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

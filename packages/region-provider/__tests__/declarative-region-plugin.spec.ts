@@ -83,6 +83,7 @@ const createCampaignFinanceConfig = (): DeclarativeRegionConfig =>
 
 const createMockPipeline = (): jest.Mocked<IPipelineService> => ({
   execute: jest.fn(),
+  invalidateManifest: jest.fn().mockResolvedValue(0),
 });
 
 const createExtractionResult = <T>(items: T[]): ExtractionResult<T> => ({

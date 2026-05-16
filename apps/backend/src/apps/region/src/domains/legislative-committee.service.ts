@@ -22,7 +22,7 @@ export interface LegislativeCommitteeMember {
   representativeId: string;
   name: string;
   role: string | null;
-  party: string;
+  party: string | null;
   photoUrl: string | null;
 }
 

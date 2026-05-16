@@ -26,6 +26,7 @@ export {
   Representative,
   ContactInfo,
   SyncResult,
+  SyncDepth,
   RegionError,
 } from "@opuspopuli/common";
 
