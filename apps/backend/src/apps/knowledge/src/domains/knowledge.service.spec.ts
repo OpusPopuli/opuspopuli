@@ -32,7 +32,7 @@ describe('KnowledgeService', () => {
       getName: jest.fn().mockReturnValue('MockLLM'),
       getModelName: jest.fn().mockReturnValue('mock-model'),
       generate: jest.fn().mockResolvedValue({
-        text: 'Generated answer',
+        text: '{"answer":"Generated answer","sourcedFrom":["mock context"]}',
         tokensUsed: 100,
       } as GenerateResult),
     };
@@ -131,7 +131,7 @@ describe('KnowledgeService', () => {
         .mockResolvedValue(mockQueryEmbedding);
       vectorDB.queryEmbeddings = jest.fn().mockResolvedValue(mockResults);
       llm.generate = jest.fn().mockResolvedValue({
-        text: 'This is the answer based on context.',
+        text: '{"answer":"This is the answer based on context.","sourcedFrom":["Context chunk 1"]}',
         tokensUsed: 50,
       });
 
@@ -149,10 +149,13 @@ describe('KnowledgeService', () => {
         3,
       );
       expect(llm.generate).toHaveBeenCalled();
-      expect(answer).toBe('This is the answer based on context.');
+      expect(answer).toEqual({
+        answer: 'This is the answer based on context.',
+        sourcedFrom: ['Context chunk 1'],
+      });
     });
 
-    it('should return no-info message when no context is found', async () => {
+    it('should return no-info result when no context is found', async () => {
       embeddingsService.getEmbeddingsForQuery = jest
         .fn()
         .mockResolvedValue(mockQueryEmbedding);
@@ -163,13 +166,15 @@ describe('KnowledgeService', () => {
         'Unknown topic?',
       );
 
-      expect(answer).toBe(
-        'I could not find any relevant information to answer your question.',
-      );
+      expect(answer).toEqual({
+        answer:
+          'I could not find any relevant information to answer your question.',
+        sourcedFrom: [],
+      });
       expect(llm.generate).not.toHaveBeenCalled();
     });
 
-    it('should return no-info message when semantic search fails', async () => {
+    it('should return no-info result when semantic search fails', async () => {
       // semanticSearch catches errors and returns empty array
       embeddingsService.getEmbeddingsForQuery = jest
         .fn()
@@ -177,10 +182,39 @@ describe('KnowledgeService', () => {
 
       const answer = await knowledgeService.answerQuery('user-1', 'Test query');
 
-      expect(answer).toBe(
-        'I could not find any relevant information to answer your question.',
-      );
+      expect(answer).toEqual({
+        answer:
+          'I could not find any relevant information to answer your question.',
+        sourcedFrom: [],
+      });
       expect(llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('should fall back gracefully when LLM returns non-JSON text', async () => {
+      const mockResults: IVectorDocument[] = [
+        {
+          id: '1',
+          content: 'Some context',
+          embedding: [],
+          metadata: { source: 'doc-1', userId: 'user-1' },
+        },
+      ];
+
+      embeddingsService.getEmbeddingsForQuery = jest
+        .fn()
+        .mockResolvedValue(mockQueryEmbedding);
+      vectorDB.queryEmbeddings = jest.fn().mockResolvedValue(mockResults);
+      llm.generate = jest.fn().mockResolvedValue({
+        text: 'Plain text answer with no JSON',
+        tokensUsed: 20,
+      });
+
+      const answer = await knowledgeService.answerQuery('user-1', 'Test?');
+
+      expect(answer).toEqual({
+        answer: 'Plain text answer with no JSON',
+        sourcedFrom: [],
+      });
     });
   });
 

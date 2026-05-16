@@ -7,6 +7,32 @@ import {
   SearchResult,
   PaginatedSearchResults,
 } from './models/search-result.model';
+import { QueryResult } from './models/query-result.model';
+
+function parseRagResponse(text: string): QueryResult {
+  const stripped = text
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+  try {
+    const parsed = JSON.parse(stripped) as unknown;
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as Record<string, unknown>).answer === 'string' &&
+      Array.isArray((parsed as Record<string, unknown>).sourcedFrom)
+    ) {
+      const { answer, sourcedFrom } = parsed as {
+        answer: string;
+        sourcedFrom: string[];
+      };
+      return { answer, sourcedFrom };
+    }
+  } catch {
+    // fall through — treat unparseable output as plain-text answer
+  }
+  return { answer: stripped, sourcedFrom: [] };
+}
 
 /**
  * Knowledge Service
@@ -72,7 +98,7 @@ export class KnowledgeService {
    * 2. Build prompt with context and user query
    * 3. Generate answer using LLM
    */
-  async answerQuery(userId: string, query: string): Promise<string> {
+  async answerQuery(userId: string, query: string): Promise<QueryResult> {
     try {
       // Step 1: Retrieve relevant context via semantic search
       const contextChunks = await this.semanticSearch(userId, query, 3);
@@ -82,7 +108,11 @@ export class KnowledgeService {
       );
 
       if (contextChunks.length === 0) {
-        return 'I could not find any relevant information to answer your question.';
+        return {
+          answer:
+            'I could not find any relevant information to answer your question.',
+          sourcedFrom: [],
+        };
       }
 
       // Step 2: Get RAG prompt from database templates
@@ -99,7 +129,7 @@ export class KnowledgeService {
       // Step 3: Generate answer with LLM
       // Lower temperature (0.3) for more factual, consistent responses
       const result = await this.llm.generate(promptText, {
-        maxTokens: 500,
+        maxTokens: 600,
         temperature: 0.3,
         topP: 0.9,
       });
@@ -108,7 +138,7 @@ export class KnowledgeService {
         `Generated answer: ${result.text.length} chars (${result.tokensUsed || 'unknown'} tokens)`,
       );
 
-      return result.text;
+      return parseRagResponse(result.text);
     } catch (error) {
       this.logger.error('RAG answer generation failed:', error);
       throw error;
