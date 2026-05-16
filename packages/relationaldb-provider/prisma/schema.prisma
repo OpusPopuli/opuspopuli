@@ -1139,6 +1139,8 @@ model RegionPlugin {
   pluginType     String    @default("declarative") @map("plugin_type") @db.VarChar(20)
   version        String    @db.VarChar(50)
   enabled        Boolean   @default(false)
+  parentRegionId String?   @map("parent_region_id") @db.VarChar(100) /// regionId of the parent region (null for top-level)
+  fipsCode       String?   @unique @map("fips_code") @db.VarChar(10)  /// Census FIPS code — join key to jurisdictions table
   config         Json?                                        /// DeclarativeRegionConfig JSON
   lastSyncAt     DateTime? @map("last_sync_at") @db.Timestamptz
   lastSyncStatus String?   @map("last_sync_status") @db.VarChar(50)
@@ -1147,6 +1149,7 @@ model RegionPlugin {
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   @@index([enabled])
+  @@index([parentRegionId])
   @@map("region_plugins")
 }
 

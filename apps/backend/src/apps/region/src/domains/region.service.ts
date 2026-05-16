@@ -110,6 +110,37 @@ interface StagePattern {
   regex: RegExp;
 }
 
+/** Region plugin row shape returned by list/lookup queries. */
+type RegionPluginRow = {
+  name: string;
+  displayName: string;
+  description?: string;
+  version: string;
+  enabled: boolean;
+  parentRegionId?: string;
+  fipsCode?: string;
+};
+
+function toRegionPluginRow(r: {
+  name: string;
+  displayName: string;
+  description: string | null;
+  version: string;
+  enabled: boolean;
+  parentRegionId: string | null;
+  fipsCode: string | null;
+}): RegionPluginRow {
+  return {
+    name: r.name,
+    displayName: r.displayName,
+    description: r.description ?? undefined,
+    version: r.version,
+    enabled: r.enabled,
+    parentRegionId: r.parentRegionId ?? undefined,
+    fipsCode: r.fipsCode ?? undefined,
+  };
+}
+
 /**
  * Single row in a paginated LegislativeAction feed (rep + committee
  * activity surfaces share this shape). Issue #665.
@@ -4106,6 +4137,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             description: file.description,
             version: file.version,
             pluginType: 'declarative',
+            parentRegionId: file.config.parentRegionId ?? null,
+            fipsCode: file.config.fipsCode ?? null,
             config: file.config as unknown as Prisma.InputJsonValue,
           },
           create: {
@@ -4114,6 +4147,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             description: file.description,
             version: file.version,
             pluginType: 'declarative',
+            parentRegionId: file.config.parentRegionId ?? null,
+            fipsCode: file.config.fipsCode ?? null,
             // Federal always enabled; local defaults to false
             enabled: file.name === 'federal',
             config: file.config as unknown as Prisma.InputJsonValue,
@@ -4132,6 +4167,44 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
         `Failed to sync region configs from ${regionsDir}: ${(error as Error).message}`,
       );
     }
+  }
+
+  // ==========================================
+  // REGION PLUGIN HIERARCHY (#20 regions)
+  // ==========================================
+
+  async listRegionPlugins(): Promise<RegionPluginRow[]> {
+    const rows = await this.db.regionPlugin.findMany({
+      select: {
+        name: true,
+        displayName: true,
+        description: true,
+        version: true,
+        enabled: true,
+        parentRegionId: true,
+        fipsCode: true,
+      },
+      orderBy: [{ parentRegionId: 'asc' }, { name: 'asc' }],
+    });
+    return rows.map(toRegionPluginRow);
+  }
+
+  async getRegionPluginByFipsCode(
+    fipsCode: string,
+  ): Promise<RegionPluginRow | null> {
+    const row = await this.db.regionPlugin.findUnique({
+      where: { fipsCode },
+      select: {
+        name: true,
+        displayName: true,
+        description: true,
+        version: true,
+        enabled: true,
+        parentRegionId: true,
+        fipsCode: true,
+      },
+    });
+    return row ? toRegionPluginRow(row) : null;
   }
 
   /**

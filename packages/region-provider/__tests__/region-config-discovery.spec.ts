@@ -86,11 +86,77 @@ describe("discoverRegionConfigs", () => {
     expect(configs).toHaveLength(1);
   });
 
+  it("discovers JSON files in subdirectories", async () => {
+    const subDir = join(tempDir, "california");
+    await mkdir(subDir, { recursive: true });
+    await writeFile(
+      join(subDir, "california.json"),
+      JSON.stringify({ ...validConfig, name: "california" }),
+    );
+
+    const configs = await discoverRegionConfigs(tempDir);
+
+    expect(configs).toHaveLength(1);
+    expect(configs[0].name).toBe("california");
+  });
+
+  it("discovers JSON files nested two levels deep (county layout)", async () => {
+    const countyDir = join(tempDir, "california", "counties", "sonoma");
+    await mkdir(countyDir, { recursive: true });
+    await writeFile(
+      join(countyDir, "sonoma.json"),
+      JSON.stringify({ ...validConfig, name: "california-sonoma" }),
+    );
+
+    const configs = await discoverRegionConfigs(tempDir);
+
+    expect(configs).toHaveLength(1);
+    expect(configs[0].name).toBe("california-sonoma");
+  });
+
+  it("discovers mixed root-level and nested configs together", async () => {
+    // federal.json at root
+    await writeFile(
+      join(tempDir, "federal.json"),
+      JSON.stringify({ ...validConfig, name: "federal" }),
+    );
+    // california.json one level deep
+    const caDir = join(tempDir, "california");
+    await mkdir(caDir, { recursive: true });
+    await writeFile(
+      join(caDir, "california.json"),
+      JSON.stringify({ ...validConfig, name: "california" }),
+    );
+    // county two levels deep
+    const countyDir = join(caDir, "counties", "sonoma");
+    await mkdir(countyDir, { recursive: true });
+    await writeFile(
+      join(countyDir, "sonoma.json"),
+      JSON.stringify({ ...validConfig, name: "california-sonoma" }),
+    );
+
+    const configs = await discoverRegionConfigs(tempDir);
+
+    expect(configs).toHaveLength(3);
+    const names = configs.map((c) => c.name).sort();
+    expect(names).toEqual(["california", "california-sonoma", "federal"]);
+  });
+
   it("throws on invalid JSON", async () => {
     await writeFile(join(tempDir, "bad.json"), "{ not valid json }}}");
 
     await expect(discoverRegionConfigs(tempDir)).rejects.toThrow(
       "Invalid JSON in region config file: bad.json",
+    );
+  });
+
+  it("includes relative path in error for invalid JSON in subdirectory", async () => {
+    const subDir = join(tempDir, "california");
+    await mkdir(subDir, { recursive: true });
+    await writeFile(join(subDir, "bad.json"), "{ not valid json }}}");
+
+    await expect(discoverRegionConfigs(tempDir)).rejects.toThrow(
+      "california/bad.json",
     );
   });
 
