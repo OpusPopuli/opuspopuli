@@ -123,7 +123,8 @@ type JurisdictionType =
   | "WATER_DISTRICT"
   | "FIRE_DISTRICT"
   | "TRANSIT_DISTRICT"
-  | "SPECIAL_DISTRICT";
+  | "SPECIAL_DISTRICT"
+  | "COUNTY_SUPERVISOR_DISTRICT";
 
 type JurisdictionLevel =
   | "FEDERAL"
