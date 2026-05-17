@@ -265,7 +265,7 @@ export default function RegionPage() {
             Data Sources
           </h3>
           <ul className="space-y-2">
-            {regionInfo.dataSourceUrls.map((url) => (
+            {Array.from(new Set(regionInfo.dataSourceUrls)).map((url) => (
               <li key={url}>
                 <a
                   href={url}

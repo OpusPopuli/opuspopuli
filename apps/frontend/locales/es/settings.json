@@ -6,7 +6,8 @@
     "notifications": "Notificaciones",
     "privacy": "Privacidad",
     "security": "Seguridad",
-    "activity": "Actividad"
+    "activity": "Actividad",
+    "signOut": "Cerrar sesión"
   },
   "profile": {
     "title": "Configuracion del Perfil",

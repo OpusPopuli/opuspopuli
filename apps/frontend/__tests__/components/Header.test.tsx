@@ -102,21 +102,12 @@ describe("Header", () => {
       );
     });
 
-    it("should show sign out button", () => {
+    it("should not show sign out button (moved to settings sidebar)", () => {
       render(<Header />);
 
       expect(
-        screen.getByRole("button", { name: /sign out/i }),
-      ).toBeInTheDocument();
-    });
-
-    it("should call logout when sign out is clicked", async () => {
-      const user = userEvent.setup();
-      render(<Header />);
-
-      await user.click(screen.getByRole("button", { name: /sign out/i }));
-
-      expect(mockLogout).toHaveBeenCalledTimes(1);
+        screen.queryByRole("button", { name: /sign out/i }),
+      ).not.toBeInTheDocument();
     });
 
     it("should not show sign in or get started links", () => {
