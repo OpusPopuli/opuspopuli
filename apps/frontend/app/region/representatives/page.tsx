@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
 import {
   GET_REPRESENTATIVES,
+  GET_REPRESENTATIVES_BY_DISTRICTS,
+  MY_COUNTY_SUPERVISORS,
   RepresentativesData,
+  RepresentativesByDistrictsData,
+  MyCountySupervisorsData,
   Representative,
 } from "@/lib/graphql/region";
+import { GET_MY_ADDRESSES, type MyAddressesData } from "@/lib/graphql/profile";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
 import { Pagination } from "@/components/region/Pagination";
 import {
@@ -29,7 +34,6 @@ function RepresentativeCard({
       className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow"
     >
       <div className="flex items-start gap-4">
-        {/* Photo */}
         <div className="flex-shrink-0">
           {representative.photoUrl ? (
             <Image
@@ -59,7 +63,6 @@ function RepresentativeCard({
           )}
         </div>
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-semibold text-[#222222]">
             {representative.name}
@@ -75,7 +78,6 @@ function RepresentativeCard({
           </p>
         </div>
 
-        {/* Arrow indicator */}
         <svg
           className="w-5 h-5 text-gray-400 flex-shrink-0 mt-1"
           fill="none"
@@ -95,18 +97,115 @@ function RepresentativeCard({
   );
 }
 
+function RepGroup({
+  title,
+  reps,
+}: Readonly<{ title: string; reps: Representative[] }>) {
+  if (reps.length === 0) return null;
+  return (
+    <div>
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-[#6b7280] mb-3">
+        {title}
+      </h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {reps.map((rep) => (
+          <RepresentativeCard key={rep.id} representative={rep} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MyRepresentativesSection({
+  stateReps,
+  countyReps,
+  addressLoaded,
+  hasAddress,
+}: Readonly<{
+  stateReps: Representative[];
+  countyReps: Representative[];
+  addressLoaded: boolean;
+  hasAddress: boolean;
+}>) {
+  if (!addressLoaded) return null;
+
+  if (!hasAddress) {
+    return (
+      <div className="mb-10 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6">
+        <h2 className="text-xl font-semibold text-[#222222] mb-2">
+          My Representatives
+        </h2>
+        <p className="text-sm text-[#4d4d4d]">
+          Add an address in your{" "}
+          <Link
+            href="/settings/addresses"
+            className="text-[#222222] underline font-medium"
+          >
+            profile settings
+          </Link>{" "}
+          to see your elected representatives.
+        </p>
+      </div>
+    );
+  }
+
+  if (stateReps.length === 0 && countyReps.length === 0) return null;
+
+  return (
+    <div className="mb-10">
+      <h2 className="text-xl font-semibold text-[#222222] mb-6">
+        My Representatives
+      </h2>
+      <div className="space-y-6">
+        <RepGroup title="State" reps={stateReps} />
+        <RepGroup title="County" reps={countyReps} />
+      </div>
+    </div>
+  );
+}
+
 export default function RepresentativesPage() {
   const [page, setPage] = useState(0);
   const [chamber, setChamber] = useState<string | undefined>(undefined);
 
-  const { data, loading, error } = useQuery<RepresentativesData>(
-    GET_REPRESENTATIVES,
+  const { data: addressData } = useQuery<MyAddressesData>(GET_MY_ADDRESSES);
+  const primaryAddress = addressData?.myAddresses?.find((a) => a.isPrimary);
+  const hasDistricts =
+    primaryAddress?.congressionalDistrict ||
+    primaryAddress?.stateSenatorialDistrict ||
+    primaryAddress?.stateAssemblyDistrict;
+
+  const { data: stateRepData } = useQuery<RepresentativesByDistrictsData>(
+    GET_REPRESENTATIVES_BY_DISTRICTS,
     {
-      variables: { skip: page * PAGE_SIZE, take: PAGE_SIZE, chamber },
+      variables: {
+        congressionalDistrict: primaryAddress?.congressionalDistrict,
+        stateSenatorialDistrict: primaryAddress?.stateSenatorialDistrict,
+        stateAssemblyDistrict: primaryAddress?.stateAssemblyDistrict,
+      },
+      skip: !hasDistricts,
     },
   );
 
-  // Fetch all reps (unfiltered) to build complete chamber list
+  const { data: supervisorsData } = useQuery<MyCountySupervisorsData>(
+    MY_COUNTY_SUPERVISORS,
+  );
+
+  const myRepIds = useMemo(() => {
+    const ids = new Set<string>();
+    stateRepData?.representativesByDistricts?.forEach((r) => ids.add(r.id));
+    supervisorsData?.myCountySupervisors?.forEach((r) => ids.add(r.id));
+    return ids;
+  }, [stateRepData, supervisorsData]);
+
+  const stateReps = stateRepData?.representativesByDistricts ?? [];
+  const countyReps = supervisorsData?.myCountySupervisors ?? [];
+
+  const { data, loading, error } = useQuery<RepresentativesData>(
+    GET_REPRESENTATIVES,
+    { variables: { skip: page * PAGE_SIZE, take: PAGE_SIZE, chamber } },
+  );
+
   const { data: allData } = useQuery<RepresentativesData>(GET_REPRESENTATIVES, {
     variables: { skip: 0, take: 100 },
   });
@@ -117,24 +216,35 @@ export default function RepresentativesPage() {
       ).sort((a, b) => a.localeCompare(b))
     : [];
 
-  const renderContent = () => {
+  // Pagination total reflects the unfiltered server count — slightly off when
+  // "My Representatives" exclusions reduce a page's visible card count. (#702)
+  const masterReps =
+    data?.representatives.items.filter((r) => !myRepIds.has(r.id)) ?? [];
+
+  const renderMasterList = () => {
     if (loading) return <LoadingSkeleton count={4} height="h-40" grid />;
     if (error) return <ErrorState entity="representatives" />;
-    if (data?.representatives.items.length === 0)
+    if (masterReps.length === 0 && myRepIds.size === 0)
       return <EmptyState entity="representatives" />;
+    if (masterReps.length === 0)
+      return (
+        <p className="text-sm text-[#4d4d4d]">
+          All representatives for your area appear above.
+        </p>
+      );
 
     return (
       <>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {data?.representatives.items.map((rep) => (
+          {masterReps.map((rep) => (
             <RepresentativeCard key={rep.id} representative={rep} />
           ))}
         </div>
         <Pagination
           page={page}
           pageSize={PAGE_SIZE}
-          total={data?.representatives.total || 0}
-          hasMore={data?.representatives.hasMore || false}
+          total={data?.representatives.total ?? 0}
+          hasMore={data?.representatives.hasMore ?? false}
           onPageChange={setPage}
         />
       </>
@@ -150,46 +260,53 @@ export default function RepresentativesPage() {
         ]}
       />
 
-      {/* Header */}
-      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-[#222222]">Representatives</h1>
-          <p className="mt-2 text-[#4d4d4d]">
-            Elected officials and legislators
-          </p>
-        </div>
-
-        {/* Chamber Filter */}
-        {chambers.length > 0 && (
-          <div className="flex items-center gap-2">
-            <label
-              htmlFor="chamber"
-              className="text-sm font-medium text-[#4d4d4d]"
-            >
-              Filter:
-            </label>
-            <select
-              id="chamber"
-              value={chamber || ""}
-              onChange={(e) => {
-                setChamber(e.target.value || undefined);
-                setPage(0);
-              }}
-              className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
-            >
-              <option value="">All Chambers</option>
-              {chambers.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-[#222222]">Representatives</h1>
+        <p className="mt-2 text-[#4d4d4d]">Elected officials and legislators</p>
       </div>
 
-      {/* Content */}
-      {renderContent()}
+      <MyRepresentativesSection
+        stateReps={stateReps}
+        countyReps={countyReps}
+        addressLoaded={addressData !== undefined}
+        hasAddress={!!primaryAddress}
+      />
+
+      <div>
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <h2 className="text-xl font-semibold text-[#222222]">
+            All Representatives
+          </h2>
+          {chambers.length > 0 && (
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="chamber"
+                className="text-sm font-medium text-[#4d4d4d]"
+              >
+                Filter:
+              </label>
+              <select
+                id="chamber"
+                value={chamber || ""}
+                onChange={(e) => {
+                  setChamber(e.target.value || undefined);
+                  setPage(0);
+                }}
+                className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
+              >
+                <option value="">All Chambers</option>
+                {chambers.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {renderMasterList()}
+      </div>
     </div>
   );
 }

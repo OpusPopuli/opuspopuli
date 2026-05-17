@@ -3,6 +3,7 @@
 import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { AUTH_FULL_OPTIONS } from "@/lib/features";
 import {
   AuthCard,
   AuthHeader,
@@ -110,8 +111,10 @@ export default function RegisterPage() {
             </p>
             <p className="text-xs text-[#0369a1] mt-1">
               We&apos;ll send you a secure link to verify your email and set up
-              your account. After that, you can use passkeys for instant
-              sign-in.
+              your account.
+              {AUTH_FULL_OPTIONS && (
+                <> After that, you can use passkeys for instant sign-in.</>
+              )}
             </p>
           </div>
         </div>

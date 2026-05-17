@@ -15,6 +15,10 @@ jest.mock("next/navigation", () => ({
   }),
 }));
 
+// Feature flags — default to full options so existing tests cover all flows.
+// Individual tests can override AUTH_FULL_OPTIONS via jest.replaceProperty.
+jest.mock("@/lib/features", () => ({ AUTH_FULL_OPTIONS: true }));
+
 // Mock toast system
 const mockShowToast = jest.fn();
 jest.mock("@/lib/toast", () => ({

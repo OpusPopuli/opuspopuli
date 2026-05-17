@@ -354,6 +354,26 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
           data: { representative: mockRepresentatives.items[0] },
         }),
       });
+    } else if (postData?.query?.includes("myAddresses")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { myAddresses: [] } }),
+      });
+    } else if (postData?.query?.includes("representativesByDistricts")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { representativesByDistricts: [] },
+        }),
+      });
+    } else if (postData?.query?.includes("myCountySupervisors")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { myCountySupervisors: [] } }),
+      });
     } else if (postData?.query?.includes("representatives")) {
       await route.fulfill({
         status: 200,
@@ -823,6 +843,33 @@ test.describe("Representatives Page", () => {
     await select.selectOption("Senate");
 
     await expect(select).toHaveValue("Senate");
+  });
+
+  test("should show add-address prompt in My Representatives when no address", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives");
+
+    // No address mocked → prompt shown
+    await expect(page.getByText("My Representatives")).toBeVisible();
+    await expect(page.getByText(/Add an address/i)).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /profile settings/i }),
+    ).toBeVisible();
+  });
+
+  test("should show All Representatives section below My Representatives", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives");
+
+    await expect(
+      page.getByRole("heading", { name: "All Representatives" }),
+    ).toBeVisible();
+
+    // Master list reps still present
+    await expect(page.getByText("Jane Smith")).toBeVisible();
+    await expect(page.getByText("John Doe")).toBeVisible();
   });
 });
 

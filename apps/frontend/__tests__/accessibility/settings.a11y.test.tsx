@@ -151,6 +151,9 @@ jest.mock("@apollo/client", () => ({
   useMutation: () => [jest.fn(), { loading: false }],
 }));
 
+// Feature flags — full options enabled so a11y tests cover all security sections.
+jest.mock("@/lib/features", () => ({ AUTH_FULL_OPTIONS: true }));
+
 // Mock auth context for security page
 jest.mock("@/lib/auth-context", () => ({
   useAuth: () => ({
