@@ -35,6 +35,7 @@ export interface IPipelineService {
     regionId: string,
     onBatch?: (items: T[]) => Promise<void>,
   ): Promise<ExtractionResult<T>>;
+  invalidateManifest(regionId: string, sourceUrl: string): Promise<number>;
 }
 
 export class DeclarativeRegionPlugin extends BaseRegionPlugin {

@@ -18,11 +18,17 @@ import { Public } from 'src/common/decorators/public.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { PaginationArgs } from 'src/common/dto/pagination.args';
-import { RegionDomainService, mapPropositionRecord } from './region.service';
+import {
+  RegionDomainService,
+  RepresentativeRecord,
+  mapPropositionRecord,
+} from './region.service';
 import {
   RegionInfoModel,
+  RegionPluginModel,
   SyncResultModel,
   DataTypeGQL,
+  SyncDepthGQL,
 } from './models/region-info.model';
 import {
   PropositionModel,
@@ -85,6 +91,29 @@ export class RegionResolver {
     const info = this.regionService.getRegionInfo();
     const civics = await this.regionService.getCivicsData(info.id);
     return { ...info, civics: civics ?? undefined };
+  }
+
+  /**
+   * All registered region plugins (state, county, federal).
+   * Includes parentRegionId and fipsCode for hierarchy traversal.
+   */
+  @Public()
+  @Query(() => [RegionPluginModel])
+  @Extensions({ complexity: 5 })
+  async regionPlugins(): Promise<RegionPluginModel[]> {
+    return this.regionService.listRegionPlugins();
+  }
+
+  /**
+   * Look up a region plugin by its Census FIPS code.
+   * Used to resolve a user's county jurisdiction to a region plugin.
+   */
+  @Public()
+  @Query(() => RegionPluginModel, { nullable: true })
+  async regionPluginByFipsCode(
+    @Args('fipsCode') fipsCode: string,
+  ): Promise<RegionPluginModel | null> {
+    return this.regionService.getRegionPluginByFipsCode(fipsCode);
   }
 
   /**
@@ -224,6 +253,7 @@ export class RegionResolver {
 
     return {
       ...result,
+      party: result.party ?? undefined,
       photoUrl: result.photoUrl ?? undefined,
       contactInfo: (result.contactInfo as ContactInfoModel) ?? undefined,
       committees: enrichedCommittees,
@@ -253,26 +283,39 @@ export class RegionResolver {
     stateSenatorialDistrict?: string,
     @Args({ name: 'stateAssemblyDistrict', nullable: true })
     stateAssemblyDistrict?: string,
+    @Args({ name: 'countyRegionId', nullable: true })
+    countyRegionId?: string,
   ): Promise<RepresentativeModel[]> {
-    const results = await this.regionService.getRepresentativesByDistricts(
-      congressionalDistrict,
-      stateSenatorialDistrict,
-      stateAssemblyDistrict,
-    );
+    const [stateResults, countyResults] = await Promise.all([
+      this.regionService.getRepresentativesByDistricts(
+        congressionalDistrict,
+        stateSenatorialDistrict,
+        stateAssemblyDistrict,
+      ),
+      countyRegionId
+        ? this.regionService.getRepresentativesByCounty(countyRegionId)
+        : Promise.resolve([]),
+    ]);
 
-    return results.map((r) => ({
-      ...r,
-      party: r.party ?? undefined,
-      photoUrl: r.photoUrl ?? undefined,
-      contactInfo: (r.contactInfo as ContactInfoModel) ?? undefined,
-      committees: (r.committees as CommitteeAssignmentModel[]) ?? undefined,
-      committeesSummary: r.committeesSummary ?? undefined,
-      bio: r.bio ?? undefined,
-      bioSource: r.bioSource ?? undefined,
-      bioClaims: Array.isArray(r.bioClaims)
-        ? (r.bioClaims as unknown as BioClaimModel[])
-        : undefined,
-    })) as RepresentativeModel[];
+    return [...stateResults, ...countyResults].map((r) =>
+      this.toRepresentativeModel(r),
+    );
+  }
+
+  /**
+   * All Board of Supervisors for a county region.
+   * v1: returns all supervisors for the county — specific district
+   * matching requires county shapefiles (follow-up to #22).
+   */
+  @Public()
+  @Query(() => [RepresentativeModel])
+  @Extensions({ complexity: 5 })
+  async countyRepresentatives(
+    @Args('countyRegionId') countyRegionId: string,
+  ): Promise<RepresentativeModel[]> {
+    const results =
+      await this.regionService.getRepresentativesByCounty(countyRegionId);
+    return results.map((r) => this.toRepresentativeModel(r));
   }
 
   // ==========================================
@@ -427,6 +470,22 @@ export class RegionResolver {
     };
   }
 
+  private toRepresentativeModel(r: RepresentativeRecord): RepresentativeModel {
+    return {
+      ...r,
+      party: r.party ?? undefined,
+      photoUrl: r.photoUrl ?? undefined,
+      contactInfo: (r.contactInfo as ContactInfoModel) ?? undefined,
+      committees: (r.committees as CommitteeAssignmentModel[]) ?? undefined,
+      committeesSummary: r.committeesSummary ?? undefined,
+      bio: r.bio ?? undefined,
+      bioSource: r.bioSource ?? undefined,
+      bioClaims: Array.isArray(r.bioClaims)
+        ? (r.bioClaims as unknown as BioClaimModel[])
+        : undefined,
+    } as RepresentativeModel;
+  }
+
   // ==========================================
   // LEGISLATIVE COMMITTEE QUERIES
   // ==========================================
@@ -490,7 +549,7 @@ export class RegionResolver {
         representativeId: m.representativeId,
         name: m.name,
         role: m.role ?? undefined,
-        party: m.party,
+        party: m.party ?? undefined,
         photoUrl: m.photoUrl ?? undefined,
       })),
       hearings: result.hearings.map((h) => ({
@@ -753,6 +812,43 @@ export class RegionResolver {
     }));
   }
 
+  /**
+   * Board of Supervisors for the authenticated user's county, resolved
+   * from their primary address via FIPS code → county region plugin.
+   * Returns [] when no county jurisdiction is resolved or county plugin
+   * is not yet enabled (#22).
+   */
+  @Query(() => [RepresentativeModel])
+  @UseGuards(AuthGuard)
+  @Extensions({ complexity: 10 })
+  async myCountySupervisors(
+    @Context() context: GqlContext,
+  ): Promise<RepresentativeModel[]> {
+    const user = getUserFromContext(context);
+    const results = await this.regionService.getMyCountySupervisors(user.id);
+    return results.map((r) => this.toRepresentativeModel(r));
+  }
+
+  @Mutation(() => Int)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  async invalidateManifest(
+    @Args('regionId') regionId: string,
+    @Args('sourceUrl') sourceUrl: string,
+  ): Promise<number> {
+    return this.regionService.invalidateManifest(regionId, sourceUrl);
+  }
+
+  @Mutation(() => RegionPluginModel)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  async updateRegionPlugin(
+    @Args('name') name: string,
+    @Args('enabled') enabled: boolean,
+  ): Promise<RegionPluginModel> {
+    return this.regionService.setRegionPluginEnabled(name, enabled);
+  }
+
   @Mutation(() => [SyncResultModel])
   @UseGuards(AuthGuard)
   @Roles(Role.Admin)
@@ -760,6 +856,10 @@ export class RegionResolver {
   async syncRegionData(
     @Args('dataTypes', { type: () => [DataTypeGQL], nullable: true })
     dataTypes?: DataTypeGQL[],
+    @Args('depth', { type: () => SyncDepthGQL, nullable: true })
+    depth?: SyncDepthGQL,
+    @Args('regionId', { nullable: true })
+    regionId?: string,
     @Args('maxReps', { type: () => Int, nullable: true })
     maxReps?: number,
     @Args('maxBills', { type: () => Int, nullable: true })
@@ -769,6 +869,8 @@ export class RegionResolver {
       dataTypes as unknown as string[],
       maxReps,
       maxBills,
+      depth as unknown as string,
+      regionId,
     );
     return results.map((r) => ({
       ...r,

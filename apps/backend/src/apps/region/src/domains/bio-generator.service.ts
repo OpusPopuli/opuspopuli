@@ -220,7 +220,7 @@ export class BioGeneratorService extends LlmGeneratorBase {
    * refuse or correctly identify a representative.
    */
   private deriveJurisdiction(rep: Representative): string {
-    const prefix = rep.externalId.split('-')[0]?.toLowerCase() ?? '';
+    const prefix = rep.externalId?.split('-')[0]?.toLowerCase() ?? '';
     const state = STATE_PREFIX_TO_NAME[prefix];
     if (!state) {
       // Federal or unknown — fall back to bare chamber so the prompt

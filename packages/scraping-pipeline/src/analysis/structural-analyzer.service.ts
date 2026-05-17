@@ -237,7 +237,10 @@ export class StructuralAnalyzerService {
       throw new Error("LLM output missing required field: containerSelector");
     }
     if (!rules.itemSelector || typeof rules.itemSelector !== "string") {
-      throw new Error("LLM output missing required field: itemSelector");
+      // Single-record pages: LLM often omits itemSelector when there's no
+      // repeating container. Fall back to containerSelector — the extractor
+      // treats this as "the container itself is the one item".
+      rules.itemSelector = rules.containerSelector;
     }
     if (
       !Array.isArray(rules.fieldMappings) ||

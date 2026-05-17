@@ -217,6 +217,12 @@ async function mockSettingsGraphQL(page: import("@playwright/test").Page) {
         contentType: "application/json",
         body: JSON.stringify({ data: { myJurisdictions: [] } }),
       });
+    } else if (postData?.query?.includes("myCountySupervisors")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { myCountySupervisors: [] } }),
+      });
     } else if (postData?.query?.includes("myNotificationSettings")) {
       await route.fulfill({
         status: 200,

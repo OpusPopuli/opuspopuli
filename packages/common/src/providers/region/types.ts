@@ -207,6 +207,8 @@ export interface BioClaim {
  */
 export interface Representative {
   externalId: string;
+  /** regionId of the plugin that produced this rep (e.g. "california", "california-sonoma"). */
+  regionId?: string;
   name: string;
   chamber: string;
   district: string;
@@ -565,7 +567,17 @@ export interface CampaignFinanceResult {
 /**
  * Sync result metadata
  */
+export enum SyncDepth {
+  /** Sync the top-level region plugin only (default — backward-compatible). */
+  STATE = "STATE",
+  /** Sync all enabled sub-region plugins (counties, districts). */
+  COUNTY = "COUNTY",
+  /** Sync STATE + COUNTY in one pass. */
+  ALL = "ALL",
+}
+
 export interface SyncResult {
+  regionId: string;
   dataType: DataType;
   itemsProcessed: number;
   itemsCreated: number;

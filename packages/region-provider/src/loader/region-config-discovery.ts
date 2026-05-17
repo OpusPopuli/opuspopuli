@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import type { Dirent } from "node:fs";
 import type { DeclarativeRegionConfig } from "@opuspopuli/common";
 
 /**
@@ -17,10 +18,12 @@ export interface RegionPluginFile {
 }
 
 /**
- * Discover and validate region plugin JSON config files from a directory.
+ * Discover and validate region plugin JSON config files from a directory tree.
  *
- * Reads all *.json files from `regionsDir`, parses them, and validates
- * that each has the required fields. Returns an array of validated configs.
+ * Recursively walks `regionsDir`, collecting every *.json file at any depth.
+ * This supports the nested layout introduced with per-state subdirectories and
+ * county configs (e.g. regions/california/california.json,
+ * regions/california/counties/sonoma/sonoma.json).
  *
  * @throws Error if a JSON file is malformed or missing required fields
  * @returns Empty array if the directory doesn't exist or contains no JSON files
@@ -28,37 +31,42 @@ export interface RegionPluginFile {
 export async function discoverRegionConfigs(
   regionsDir: string,
 ): Promise<RegionPluginFile[]> {
-  let entries: string[];
-  try {
-    entries = await readdir(regionsDir);
-  } catch {
-    // Directory doesn't exist — no configs to discover
-    return [];
-  }
-
-  const jsonFiles = entries.filter((f) => f.endsWith(".json"));
-  if (jsonFiles.length === 0) {
-    return [];
-  }
-
   const configs: RegionPluginFile[] = [];
+  await collectConfigs(regionsDir, regionsDir, configs);
+  return configs;
+}
 
-  for (const file of jsonFiles) {
-    const filePath = join(regionsDir, file);
-    const raw = await readFile(filePath, "utf-8");
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new TypeError(`Invalid JSON in region config file: ${file}`);
-    }
-
-    const pluginFile = validateRegionPluginFile(parsed, file);
-    configs.push(pluginFile);
+async function collectConfigs(
+  rootDir: string,
+  dir: string,
+  configs: RegionPluginFile[],
+): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
   }
 
-  return configs;
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      await collectConfigs(rootDir, join(dir, entry.name), configs);
+    } else if (entry.isFile() && entry.name.endsWith(".json")) {
+      const filePath = join(dir, entry.name);
+      const relPath = relative(rootDir, filePath);
+      const raw = await readFile(filePath, "utf-8");
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new TypeError(`Invalid JSON in region config file: ${relPath}`);
+      }
+
+      const pluginFile = validateRegionPluginFile(parsed, relPath);
+      configs.push(pluginFile);
+    }
+  }
 }
 
 function validateRegionPluginFile(

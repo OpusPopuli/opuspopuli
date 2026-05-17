@@ -137,6 +137,7 @@ export class RegionService {
       } catch (error) {
         this.logger.error(`Failed to sync ${dataType}:`, error);
         results.push({
+          regionId: this.provider.getName(),
           dataType,
           itemsProcessed: 0,
           itemsCreated: 0,
@@ -186,6 +187,7 @@ export class RegionService {
     // Note: itemsCreated and itemsUpdated would be set by the microservice
     // after comparing with database records
     return {
+      regionId: this.provider.getName(),
       dataType,
       itemsProcessed,
       itemsCreated: 0,

@@ -742,6 +742,7 @@ describe('RegionResolver', () => {
     it('should trigger sync and return results', async () => {
       const mockSyncResults = [
         {
+          regionId: 'california',
           dataType: DataType.PROPOSITIONS,
           itemsProcessed: 10,
           itemsCreated: 5,
@@ -751,6 +752,7 @@ describe('RegionResolver', () => {
           syncedAt: new Date(),
         },
         {
+          regionId: 'california',
           dataType: DataType.MEETINGS,
           itemsProcessed: 5,
           itemsCreated: 3,
@@ -770,12 +772,15 @@ describe('RegionResolver', () => {
         undefined,
         undefined,
         undefined,
+        undefined,
+        undefined,
       );
     });
 
     it('should pass dataTypes filter to syncAll', async () => {
       regionService.syncAll.mockResolvedValue([
         {
+          regionId: 'california',
           dataType: DataType.PROPOSITIONS,
           itemsProcessed: 3,
           itemsCreated: 3,
@@ -793,12 +798,15 @@ describe('RegionResolver', () => {
         ['propositions'],
         undefined,
         undefined,
+        undefined,
+        undefined,
       );
     });
 
     it('should include errors in sync results', async () => {
       const mockSyncResults = [
         {
+          regionId: 'california',
           dataType: DataType.PROPOSITIONS,
           itemsProcessed: 0,
           itemsCreated: 0,

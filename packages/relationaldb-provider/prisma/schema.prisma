@@ -569,11 +569,12 @@ model AbuseReport {
 model Representative {
   id          String    @id @default(uuid())
   externalId  String    @unique @map("external_id")
+  regionId    String    @default("california") @map("region_id") @db.VarChar(100) /// e.g. "california", "california-sonoma", "federal"
   name        String
   lastName    String    @default("") @map("last_name") /// derived from `name`, used for alphabetical sorting
   chamber     String
   district    String
-  party       String
+  party       String?
   photoUrl    String?   @map("photo_url")
   contactInfo Json?     @map("contact_info")
   committees  Json?     @map("committees")       /// CommitteeAssignment[] as JSON — canonical source for the LegislativeCommittee backfill
@@ -604,6 +605,8 @@ model Representative {
   @@index([lastName])
   @@index([chamber])
   @@index([party])
+  @@index([regionId])
+  @@index([regionId, chamber])
   @@map("representatives")
 }
 
@@ -1139,6 +1142,8 @@ model RegionPlugin {
   pluginType     String    @default("declarative") @map("plugin_type") @db.VarChar(20)
   version        String    @db.VarChar(50)
   enabled        Boolean   @default(false)
+  parentRegionId String?   @map("parent_region_id") @db.VarChar(100) /// regionId of the parent region (null for top-level)
+  fipsCode       String?   @unique @map("fips_code") @db.VarChar(10)  /// Census FIPS code — join key to jurisdictions table
   config         Json?                                        /// DeclarativeRegionConfig JSON
   lastSyncAt     DateTime? @map("last_sync_at") @db.Timestamptz
   lastSyncStatus String?   @map("last_sync_status") @db.VarChar(50)
@@ -1147,6 +1152,7 @@ model RegionPlugin {
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   @@index([enabled])
+  @@index([parentRegionId])
   @@map("region_plugins")
 }
 

@@ -296,6 +296,20 @@ export interface DataSourceConfig {
   detailFields?: Record<string, string | StructuredFieldConfig>;
 
   /**
+   * Explicit extraction rules that bypass AI structural analysis entirely.
+   * When provided, the pipeline uses these selectors directly — no LLM call,
+   * no manifest generation, no self-heal loop.
+   *
+   * Use this when the page structure is known and stable, or when the local
+   * LLM consistently generates wrong selectors for a specific site.
+   */
+  staticManifest?: {
+    containerSelector: string;
+    itemSelector: string;
+    fieldMappings: FieldMapping[];
+  };
+
+  /**
    * Crawl depth from the seed `url`, used by sync handlers that walk a
    * site's link graph (currently civics — see issue #669).
    *
@@ -513,6 +527,10 @@ export interface DeclarativeRegionConfig {
   timezone: string;
   /** Two-letter US state code (e.g., "CA"). Used to scope federal data to this region. */
   stateCode?: string;
+  /** regionId of this region's parent (e.g., "california" for a CA county). Omit for top-level regions. */
+  parentRegionId?: string;
+  /** Census FIPS code: 2-digit for states, 5-digit for counties, 7-digit for places. Join key to PostGIS jurisdictions table. */
+  fipsCode?: string;
   /** Data sources to scrape */
   dataSources: DataSourceConfig[];
   /** Rate limiting defaults */
