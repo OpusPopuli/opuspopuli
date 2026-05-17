@@ -269,6 +269,41 @@ const mockIndependentExpenditures = {
   hasMore: false,
 };
 
+// Returns mock data for a given GraphQL POST body, or null for unknown queries.
+function resolveRegionQueryData(
+  postData: Record<string, unknown> | null,
+): unknown {
+  if (!postData) return null;
+  if (postData.operationName === "GetRepresentative")
+    return { representative: mockRepresentatives.items[0] };
+  const q = (postData.query as string) ?? "";
+  if (q.includes("regionInfo")) return { regionInfo: mockRegionInfo };
+  if (q.includes("petitionDocumentsForProposition"))
+    return { petitionDocumentsForProposition: [] };
+  if (q.match(/proposition[\s(]/))
+    return {
+      proposition: {
+        ...mockPropositions.items[0],
+        fullText:
+          "This proposition would amend the California Constitution to require commercial and industrial properties worth more than $3 million to be reassessed at current market value.",
+      },
+    };
+  if (q.includes("propositions")) return { propositions: mockPropositions };
+  if (q.includes("meetings")) return { meetings: mockMeetings };
+  if (q.includes("myAddresses")) return { myAddresses: [] };
+  if (q.includes("representativesByDistricts"))
+    return { representativesByDistricts: [] };
+  if (q.includes("myCountySupervisors")) return { myCountySupervisors: [] };
+  if (q.includes("representatives"))
+    return { representatives: mockRepresentatives };
+  if (q.includes("independentExpenditures"))
+    return { independentExpenditures: mockIndependentExpenditures };
+  if (q.includes("expenditures")) return { expenditures: mockExpenditures };
+  if (q.includes("contributions")) return { contributions: mockContributions };
+  if (q.includes("committees")) return { committees: mockCommittees };
+  return null;
+}
+
 // Helper function to mock GraphQL API
 async function mockRegionGraphQL(page: import("@playwright/test").Page) {
   // Set up auth session BEFORE page loads using addInitScript
@@ -294,133 +329,12 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
       });
       return;
     }
-    const postData = request.postDataJSON();
-
-    if (postData?.query?.includes("regionInfo")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { regionInfo: mockRegionInfo },
-        }),
-      });
-    } else if (postData?.query?.includes("petitionDocumentsForProposition")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { petitionDocumentsForProposition: [] },
-        }),
-      });
-    } else if (
-      postData?.query?.includes("proposition(") ||
-      postData?.query?.includes("proposition (")
-    ) {
-      // Single proposition query — return first mock with fullText
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: {
-            proposition: {
-              ...mockPropositions.items[0],
-              fullText:
-                "This proposition would amend the California Constitution to require commercial and industrial properties worth more than $3 million to be reassessed at current market value.",
-            },
-          },
-        }),
-      });
-    } else if (postData?.query?.includes("propositions")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { propositions: mockPropositions },
-        }),
-      });
-    } else if (postData?.query?.includes("meetings")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { meetings: mockMeetings },
-        }),
-      });
-    } else if (postData?.operationName === "GetRepresentative") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { representative: mockRepresentatives.items[0] },
-        }),
-      });
-    } else if (postData?.query?.includes("myAddresses")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: { myAddresses: [] } }),
-      });
-    } else if (postData?.query?.includes("representativesByDistricts")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { representativesByDistricts: [] },
-        }),
-      });
-    } else if (postData?.query?.includes("myCountySupervisors")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: { myCountySupervisors: [] } }),
-      });
-    } else if (postData?.query?.includes("representatives")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { representatives: mockRepresentatives },
-        }),
-      });
-    } else if (postData?.query?.includes("independentExpenditures")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { independentExpenditures: mockIndependentExpenditures },
-        }),
-      });
-    } else if (postData?.query?.includes("expenditures")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { expenditures: mockExpenditures },
-        }),
-      });
-    } else if (postData?.query?.includes("contributions")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { contributions: mockContributions },
-        }),
-      });
-    } else if (postData?.query?.includes("committees")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: { committees: mockCommittees },
-        }),
-      });
-    } else {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: {} }),
-      });
-    }
+    const data = resolveRegionQueryData(request.postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: data ?? {} }),
+    });
   });
 }
 
