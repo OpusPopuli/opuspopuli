@@ -696,7 +696,7 @@ test.describe("Representatives Page", () => {
     await page.goto("/region/representatives");
 
     await expect(
-      page.getByRole("heading", { name: "Representatives" }),
+      page.getByRole("heading", { name: "Representatives", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByText("Elected officials and legislators"),
@@ -768,7 +768,7 @@ test.describe("Representatives Page", () => {
     await expect(page.getByText("My Representatives")).toBeVisible();
     await expect(page.getByText(/Add an address/i)).toBeVisible();
     await expect(
-      page.getByRole("link", { name: /profile settings/i }),
+      page.getByRole("link", { name: "profile settings", exact: true }),
     ).toBeVisible();
   });
 
@@ -1207,7 +1207,7 @@ test.describe("Region Pages - Accessibility", () => {
     await page.goto("/region/representatives");
     // Wait for content to load
     await expect(
-      page.getByRole("heading", { name: "Representatives" }),
+      page.getByRole("heading", { name: "Representatives", exact: true }),
     ).toBeVisible();
 
     const violations = await checkAccessibility(page);
