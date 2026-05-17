@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Inter, IBM_Plex_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { ApolloProvider } from "@/lib/apollo-provider";
 import { ToastProvider } from "@/lib/toast";
@@ -7,10 +7,18 @@ import { OnboardingProvider } from "@/lib/onboarding-context";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { JsonLd } from "@/components/JsonLd";
 
-const ibmPlexSans = IBM_Plex_Sans({
+const inter = Inter({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-ibm-plex-sans",
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const playfairDisplay = Playfair_Display({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
+  variable: "--font-playfair-display",
   display: "swap",
 });
 
@@ -133,7 +141,7 @@ export default function RootLayout({
         <JsonLd data={webApplicationJsonLd} />
       </head>
       <body
-        className={`${ibmPlexSans.variable} ${ibmPlexMono.variable} antialiased`}
+        className={`${inter.variable} ${playfairDisplay.variable} ${ibmPlexMono.variable} antialiased`}
       >
         <ApolloProvider>
           <ToastProvider>
