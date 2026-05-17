@@ -216,6 +216,60 @@ describe('KnowledgeService', () => {
         sourcedFrom: [],
       });
     });
+
+    it('should fall back gracefully when LLM returns wrong-shape JSON', async () => {
+      const mockResults: IVectorDocument[] = [
+        {
+          id: '1',
+          content: 'Some context',
+          embedding: [],
+          metadata: { source: 'doc-1', userId: 'user-1' },
+        },
+      ];
+
+      embeddingsService.getEmbeddingsForQuery = jest
+        .fn()
+        .mockResolvedValue(mockQueryEmbedding);
+      vectorDB.queryEmbeddings = jest.fn().mockResolvedValue(mockResults);
+      llm.generate = jest.fn().mockResolvedValue({
+        text: '{"text":"answer","sources":[]}',
+        tokensUsed: 20,
+      });
+
+      const answer = await knowledgeService.answerQuery('user-1', 'Test?');
+
+      expect(answer).toEqual({
+        answer: '{"text":"answer","sources":[]}',
+        sourcedFrom: [],
+      });
+    });
+
+    it('should strip markdown code fences from LLM response before parsing', async () => {
+      const mockResults: IVectorDocument[] = [
+        {
+          id: '1',
+          content: 'Some context',
+          embedding: [],
+          metadata: { source: 'doc-1', userId: 'user-1' },
+        },
+      ];
+
+      embeddingsService.getEmbeddingsForQuery = jest
+        .fn()
+        .mockResolvedValue(mockQueryEmbedding);
+      vectorDB.queryEmbeddings = jest.fn().mockResolvedValue(mockResults);
+      llm.generate = jest.fn().mockResolvedValue({
+        text: '```json\n{"answer":"Fenced answer","sourcedFrom":["ctx"]}\n```',
+        tokensUsed: 30,
+      });
+
+      const answer = await knowledgeService.answerQuery('user-1', 'Test?');
+
+      expect(answer).toEqual({
+        answer: 'Fenced answer',
+        sourcedFrom: ['ctx'],
+      });
+    });
   });
 
   describe('searchText', () => {

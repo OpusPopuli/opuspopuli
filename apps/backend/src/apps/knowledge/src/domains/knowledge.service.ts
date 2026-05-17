@@ -11,22 +11,24 @@ import { QueryResult } from './models/query-result.model';
 
 function parseRagResponse(text: string): QueryResult {
   const stripped = text
+    .trim()
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/, '')
     .trim();
   try {
     const parsed = JSON.parse(stripped) as unknown;
+    const p = parsed as Record<string, unknown>;
     if (
       typeof parsed === 'object' &&
       parsed !== null &&
-      typeof (parsed as Record<string, unknown>).answer === 'string' &&
-      Array.isArray((parsed as Record<string, unknown>).sourcedFrom)
+      typeof p.answer === 'string' &&
+      Array.isArray(p.sourcedFrom) &&
+      (p.sourcedFrom as unknown[]).every((s) => typeof s === 'string')
     ) {
-      const { answer, sourcedFrom } = parsed as {
-        answer: string;
-        sourcedFrom: string[];
+      return {
+        answer: p.answer as string,
+        sourcedFrom: p.sourcedFrom as string[],
       };
-      return { answer, sourcedFrom };
     }
   } catch {
     // fall through — treat unparseable output as plain-text answer
