@@ -13,6 +13,7 @@ import { AuthGuard } from 'src/common/guards/auth.guard';
 import { Permissions } from 'src/common/decorators/permissions.decorator';
 import { Action } from 'src/common/enums/action.enum';
 import { PaginatedSearchResults } from './models/search-result.model';
+import { QueryResult } from './models/query-result.model';
 import {
   GqlContext,
   getUserFromContext,
@@ -37,14 +38,14 @@ export class KnowledgeResolver {
 
   constructor(private readonly knowledgeService: KnowledgeService) {}
 
-  @Mutation(() => String)
+  @Mutation(() => QueryResult)
   @UseGuards(AuthGuard)
   @Permissions({ action: Action.Read, subject: 'Knowledge' })
   @Extensions({ complexity: 100 }) // LLM call - expensive operation
   async answerQuery(
     @Args('input') input: QueryInput,
     @Context() context: GqlContext,
-  ): Promise<string> {
+  ): Promise<QueryResult> {
     const user = getUserFromContext(context);
     return this.knowledgeService.answerQuery(user.id, input.query);
   }
