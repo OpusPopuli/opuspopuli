@@ -1473,6 +1473,7 @@ enum JurisdictionType {
   FIRE_DISTRICT
   TRANSIT_DISTRICT
   SPECIAL_DISTRICT
+  COUNTY_SUPERVISOR_DISTRICT
 }
 
 enum JurisdictionLevel {
