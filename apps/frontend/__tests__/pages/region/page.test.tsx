@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import RegionPage from "@/app/region/page";
-import { GET_REGION_INFO } from "@/lib/graphql/region";
 
 // Mock Apollo Client
 const mockRegionInfo = {
