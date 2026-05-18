@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { Footer } from "@/components/Footer";
+import { useAuth } from "@/lib/auth-context";
 
 export default function SettingsLayout({
   children,
@@ -12,6 +14,7 @@ export default function SettingsLayout({
 }>) {
   const pathname = usePathname();
   const { t } = useTranslation("settings");
+  const { logout } = useAuth();
 
   const navItems = [
     {
@@ -147,12 +150,11 @@ export default function SettingsLayout({
                 href="/"
                 className="inline-flex items-center gap-3 hover:opacity-80 transition-opacity"
               >
-                <div className="w-10 h-10 bg-[#222222] rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">Q</span>
-                </div>
-                <span className="text-[#222222] font-semibold text-lg">
-                  Opus Populi
-                </span>
+                <img
+                  src="/logos/svg/op-horizontal-light.svg"
+                  alt="Opus Populi"
+                  className="h-8"
+                />
               </Link>
               <Link
                 href="/region"
@@ -195,6 +197,27 @@ export default function SettingsLayout({
                     );
                   })}
                 </ul>
+                <div className="mt-2 pt-2 border-t border-gray-100">
+                  <button
+                    onClick={logout}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                      />
+                    </svg>
+                    {t("nav.signOut")}
+                  </button>
+                </div>
               </div>
             </nav>
 
@@ -202,6 +225,7 @@ export default function SettingsLayout({
             <main className="flex-1 min-w-0">{children}</main>
           </div>
         </div>
+        <Footer />
       </div>
     </ProtectedRoute>
   );

@@ -41,7 +41,9 @@ test.describe("Login Page", () => {
     await page.goto("/login");
   });
 
-  test("should display login form with all auth modes", async ({ page }) => {
+  test("should display login form with magic link as default", async ({
+    page,
+  }) => {
     await expect(
       page.getByRole("heading", { name: "Welcome back" }),
     ).toBeVisible();
@@ -49,11 +51,16 @@ test.describe("Login Page", () => {
       page.getByText("Sign in to your account to continue"),
     ).toBeVisible();
 
-    // Check auth mode tabs are visible
+    // Magic link form is always shown (launch mode — AUTH_FULL_OPTIONS=false by default)
+    await expect(page.locator("input#magic-email")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Email Link" }),
+      page.getByRole("button", { name: "Send Magic Link" }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Password" })).toBeVisible();
+
+    // Tabs are hidden in launch mode
+    await expect(
+      page.getByRole("button", { name: "Password" }),
+    ).not.toBeVisible();
   });
 
   test("should show register link", async ({ page }) => {
@@ -65,7 +72,11 @@ test.describe("Login Page", () => {
     await expect(page).toHaveURL(/\/register/);
   });
 
-  test.describe("Password Login Mode", () => {
+  // Password and passkey flows are hidden in launch mode (AUTH_FULL_OPTIONS=false).
+  // Re-enable this suite by setting NEXT_PUBLIC_AUTH_FULL_OPTIONS=true in the
+  // build env. See issue #671 for the re-enable checklist.
+  test.describe
+    .skip("Password Login Mode (AUTH_FULL_OPTIONS=true only)", () => {
     test.beforeEach(async ({ page }) => {
       await page.getByRole("button", { name: "Password" }).click();
     });
@@ -185,9 +196,8 @@ test.describe("Login Page", () => {
   });
 
   test.describe("Magic Link Mode", () => {
-    test.beforeEach(async ({ page }) => {
-      await page.getByRole("button", { name: "Email Link" }).click();
-    });
+    // Magic link is the default in launch mode — no tab click needed.
+    test.beforeEach(async () => {});
 
     test("should display magic link form", async ({ page }) => {
       await expect(page.getByText(/We'll send you a magic link/)).toBeVisible();
@@ -282,9 +292,7 @@ test.describe("Login Page", () => {
       await expect(
         page.getByRole("heading", { name: "Welcome back" }),
       ).toBeVisible();
-      await expect(
-        page.getByRole("button", { name: "Password" }),
-      ).toBeVisible();
+      await expect(page.locator("input#magic-email")).toBeVisible();
     });
 
     test("should display correctly on tablet", async ({ page }) => {
@@ -357,29 +365,23 @@ test.describe("Auth Callback Page", () => {
 
 test.describe("Session Management", () => {
   test("should persist auth state in localStorage", async ({ page }) => {
-    // Mock auth API
-    await page.route("**/api/auth/**", async (route) => {
+    // Mock GraphQL API for magic link submission
+    await page.route("**/api", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          user: mockLoginResponse.login.user,
-          accessToken: mockLoginResponse.login.accessToken,
-        }),
+        body: JSON.stringify({ data: { sendMagicLink: true } }),
       });
     });
 
     await page.goto("/login");
-    await page.getByRole("button", { name: "Password" }).click();
-    await page.locator("input#email").fill("test@example.com");
-    await page.locator("input#password").fill("password123");
-    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.locator("input#magic-email").fill("test@example.com");
+    await page.getByRole("button", { name: "Send Magic Link" }).click();
 
-    // Wait for potential navigation or state change
-    await page.waitForTimeout(1000);
+    // Wait for potential state change
+    await page.waitForTimeout(500);
 
-    // Auth state storage is implementation-dependent
-    // This test verifies the form submission works without errors
+    // Form submission works without errors
     await expect(page.locator("body")).toBeVisible();
   });
 });
@@ -406,10 +408,13 @@ test.describe("Session expiry (#610)", () => {
     ).toBeVisible();
   });
 
-  test("redirect query param is preserved after successful login", async ({
+  // Redirect-param tests require a completed login flow. In launch mode
+  // (AUTH_FULL_OPTIONS=false) the only UI path is magic link, which needs
+  // real email delivery. These tests are preserved but skipped until
+  // AUTH_FULL_OPTIONS=true is set in the build env (see issue #671).
+  test.skip("redirect query param is preserved after successful login", async ({
     page,
   }) => {
-    // Mock the login mutation
     await page.route("**/api", async (route) => {
       const request = route.request();
       const postData = request.postDataJSON();
@@ -437,12 +442,11 @@ test.describe("Session expiry (#610)", () => {
     await page.locator("input#password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    // After login, URL should be the redirect target (not /onboarding).
     await page.waitForURL(/\/settings\/privacy$/, { timeout: 3000 });
     await expect(page).toHaveURL(/\/settings\/privacy$/);
   });
 
-  test("absolute-URL redirect is rejected and falls back to /onboarding", async ({
+  test.skip("absolute-URL redirect is rejected and falls back to /onboarding", async ({
     page,
   }) => {
     await page.route("**/api", async (route) => {
@@ -472,8 +476,59 @@ test.describe("Session expiry (#610)", () => {
     await page.locator("input#password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    // Should NOT navigate off-origin; should land on /onboarding default.
     await page.waitForURL(/\/onboarding$/, { timeout: 3000 });
     await expect(page).toHaveURL(/\/onboarding$/);
+  });
+});
+
+test.describe("Launch mode — magic link only (#671)", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/login");
+  });
+
+  test("login page shows only magic link — no passkey or password tabs", async ({
+    page,
+  }) => {
+    await expect(
+      page.getByRole("heading", { name: "Welcome back" }),
+    ).toBeVisible();
+    await expect(page.locator("input#magic-email")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Send Magic Link" }),
+    ).toBeVisible();
+
+    await expect(
+      page.getByRole("button", { name: "Password" }),
+    ).not.toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Passkey" }),
+    ).not.toBeVisible();
+  });
+
+  test("magic link form sends and shows confirmation", async ({ page }) => {
+    await page.route("**/api", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { sendMagicLink: true } }),
+      });
+    });
+
+    await page.locator("input#magic-email").fill("test@example.com");
+    await page.getByRole("button", { name: "Send Magic Link" }).click();
+
+    await expect(page.getByText(/Check your email/i)).toBeVisible({
+      timeout: 5000,
+    });
+  });
+
+  test("session-expired toast still appears in launch mode", async ({
+    page,
+  }) => {
+    await page.goto("/login?reason=expired");
+
+    await expect(
+      page.getByText(/session expired\. please sign in again/i),
+    ).toBeVisible();
   });
 });

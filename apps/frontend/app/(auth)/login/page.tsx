@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast";
+import { AUTH_FULL_OPTIONS } from "@/lib/features";
 import {
   AuthCard,
   AuthHeader,
@@ -44,9 +45,9 @@ function LoginPageContent() {
     magicLinkSent,
   } = useAuth();
 
-  // Default to passkey if supported, otherwise magic link
+  // In launch mode (AUTH_FULL_OPTIONS=false) magic link is the only path.
   const [authMode, setAuthMode] = useState<AuthMode>(
-    supportsPasskeys ? "passkey" : "magic-link",
+    AUTH_FULL_OPTIONS && supportsPasskeys ? "passkey" : "magic-link",
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -125,50 +126,52 @@ function LoginPageContent() {
 
       <AuthErrorAlert error={error} />
 
-      {/* Auth Mode Tabs */}
-      <div className="flex mb-6 border-b border-[#DDDDDD]">
-        {supportsPasskeys && (
+      {/* Auth Mode Tabs — hidden in launch mode, shown when AUTH_FULL_OPTIONS=true */}
+      {AUTH_FULL_OPTIONS && (
+        <div className="flex mb-6 border-b border-[#DDDDDD]">
+          {supportsPasskeys && (
+            <button
+              type="button"
+              onClick={() => switchMode("passkey")}
+              className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
+                ${
+                  authMode === "passkey"
+                    ? "text-[#222222] border-[#222222]"
+                    : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
+                }`}
+            >
+              Passkey
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => switchMode("passkey")}
+            onClick={() => switchMode("magic-link")}
             className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
               ${
-                authMode === "passkey"
+                authMode === "magic-link"
                   ? "text-[#222222] border-[#222222]"
                   : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
               }`}
           >
-            Passkey
+            Email Link
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => switchMode("magic-link")}
-          className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
-            ${
-              authMode === "magic-link"
-                ? "text-[#222222] border-[#222222]"
-                : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
-            }`}
-        >
-          Email Link
-        </button>
-        <button
-          type="button"
-          onClick={() => switchMode("password")}
-          className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
-            ${
-              authMode === "password"
-                ? "text-[#222222] border-[#222222]"
-                : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
-            }`}
-        >
-          Password
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => switchMode("password")}
+            className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
+              ${
+                authMode === "password"
+                  ? "text-[#222222] border-[#222222]"
+                  : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
+              }`}
+          >
+            Password
+          </button>
+        </div>
+      )}
 
-      {/* Passkey Mode */}
-      {authMode === "passkey" && (
+      {/* Passkey Mode — only reachable when AUTH_FULL_OPTIONS=true */}
+      {AUTH_FULL_OPTIONS && authMode === "passkey" && (
         <div className="space-y-5">
           <div className="text-center py-4">
             <div className="w-16 h-16 mx-auto mb-4 bg-[#f0f9ff] rounded-full flex items-center justify-center">
@@ -303,8 +306,8 @@ function LoginPageContent() {
         </div>
       )}
 
-      {/* Password Mode */}
-      {authMode === "password" && (
+      {/* Password Mode — only reachable when AUTH_FULL_OPTIONS=true */}
+      {AUTH_FULL_OPTIONS && authMode === "password" && (
         <form onSubmit={handlePasswordLogin} className="space-y-5">
           <AuthInput
             id="email"

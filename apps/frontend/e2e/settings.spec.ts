@@ -375,20 +375,34 @@ test.describe("Security Settings Page", () => {
     ).toBeVisible();
   });
 
-  test("should display passkeys section", async ({ page }) => {
-    await page.goto("/settings/security");
-
-    // Check for the Passkeys heading
-    await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
-  });
-
   test("should display active sessions section", async ({ page }) => {
     await page.goto("/settings/security");
 
-    // Check for the Active Sessions heading
     await expect(
       page.getByRole("heading", { name: "Active Sessions" }),
     ).toBeVisible();
+  });
+
+  test("launch mode hides passkeys, 2FA, and password sections (#671)", async ({
+    page,
+  }) => {
+    await page.goto("/settings/security");
+
+    // Active Sessions always visible
+    await expect(
+      page.getByRole("heading", { name: "Active Sessions" }),
+    ).toBeVisible();
+
+    // Passkeys, 2FA, and password sections hidden in launch mode
+    await expect(
+      page.getByRole("heading", { name: "Passkeys" }),
+    ).not.toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Two.Factor/i }),
+    ).not.toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Password/i }),
+    ).not.toBeVisible();
   });
 
   test("should have no WCAG 2.2 AA violations", async ({ page }) => {
@@ -531,7 +545,9 @@ test.describe("Privacy Settings Page", () => {
     await page.goto("/settings/privacy");
 
     // The page should load - check for sidebar navigation which is always visible
-    await expect(page.getByRole("link", { name: "Privacy" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Privacy", exact: true }),
+    ).toBeVisible();
   });
 
   test("should have privacy-related content or error state", async ({
@@ -558,7 +574,9 @@ test.describe("Privacy Settings Page", () => {
   test("should have no WCAG 2.2 AA violations", async ({ page }) => {
     await page.goto("/settings/privacy");
     // Wait for page to load (sidebar is always visible)
-    await expect(page.getByRole("link", { name: "Privacy" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Privacy", exact: true }),
+    ).toBeVisible();
 
     const violations = await checkAccessibility(page);
     expect(violations).toEqual([]);

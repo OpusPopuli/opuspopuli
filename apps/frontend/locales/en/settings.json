@@ -6,7 +6,8 @@
     "notifications": "Notifications",
     "privacy": "Privacy",
     "security": "Security",
-    "activity": "Activity"
+    "activity": "Activity",
+    "signOut": "Sign out"
   },
   "profile": {
     "title": "Profile Settings",

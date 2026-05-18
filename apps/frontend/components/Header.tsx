@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 
 export function Header() {
-  const { user, isAuthenticated, logout, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -59,20 +59,11 @@ export function Header() {
               />
             </svg>
           </Link>
-          <button
-            onClick={logout}
-            className="text-sm px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-          >
-            Sign out
-          </button>
         </>
       );
     }
     return (
       <>
-        <Link href="/transparency" className={navLinkClass}>
-          Transparency
-        </Link>
         <Link href="/login" className={navLinkClass}>
           Sign in
         </Link>
@@ -120,23 +111,11 @@ export function Header() {
             </svg>
             Profile
           </Link>
-          <button
-            onClick={() => {
-              closeMenu();
-              logout();
-            }}
-            className="text-sm text-left text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-          >
-            Sign out
-          </button>
         </>
       );
     }
     return (
       <>
-        <Link href="/transparency" className={navLinkClass} onClick={closeMenu}>
-          Transparency
-        </Link>
         <Link href="/login" className={navLinkClass} onClick={closeMenu}>
           Sign in
         </Link>
@@ -154,11 +133,17 @@ export function Header() {
   return (
     <header className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
       <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
-        <Link
-          href="/"
-          className="text-xl font-bold text-gray-900 dark:text-white hover:text-[#5A7A6A] dark:hover:text-[#A3BEB0] transition-colors"
-        >
-          Opus Populi
+        <Link href="/" className="hover:opacity-80 transition-opacity">
+          <img
+            src="/logos/svg/op-horizontal-light.svg"
+            alt="Opus Populi"
+            className="h-8 dark:hidden"
+          />
+          <img
+            src="/logos/svg/op-horizontal-dark.svg"
+            alt="Opus Populi"
+            className="h-8 hidden dark:block"
+          />
         </Link>
 
         {/* Desktop nav */}
