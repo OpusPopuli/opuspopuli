@@ -66,8 +66,25 @@ let mockQueryResult = {
   error: null as Error | null,
 };
 
+// Address and supervisor queries return empty by default so MyRepresentativesSection
+// stays hidden and the master list renders all reps unfiltered.
 jest.mock("@apollo/client/react", () => ({
-  useQuery: jest.fn(() => mockQueryResult),
+  useQuery: jest.fn((query: unknown) => {
+    const { GET_MY_ADDRESSES } = jest.requireActual("@/lib/graphql/profile");
+    const { GET_REPRESENTATIVES_BY_DISTRICTS, MY_COUNTY_SUPERVISORS } =
+      jest.requireActual("@/lib/graphql/region");
+    if (query === GET_MY_ADDRESSES)
+      return { data: { myAddresses: [] }, loading: false, error: null };
+    if (query === GET_REPRESENTATIVES_BY_DISTRICTS)
+      return {
+        data: { representativesByDistricts: [] },
+        loading: false,
+        error: null,
+      };
+    if (query === MY_COUNTY_SUPERVISORS)
+      return { data: { myCountySupervisors: [] }, loading: false, error: null };
+    return mockQueryResult;
+  }),
 }));
 
 // Mock next/link
@@ -364,6 +381,182 @@ describe("RepresentativesPage", () => {
       await waitFor(() => {
         expect(screen.getByText("Previous")).toBeDisabled();
       });
+    });
+  });
+
+  describe("MyRepresentativesSection", () => {
+    const mockAddress = {
+      id: "addr-1",
+      userId: "user-1",
+      addressType: "HOME",
+      isPrimary: true,
+      label: "Home",
+      addressLine1: "123 Main St",
+      city: "Santa Rosa",
+      state: "CA",
+      postalCode: "95403",
+      country: "US",
+      congressionalDistrict: "Congressional District 2",
+      stateSenatorialDistrict: "State Senate District 2",
+      stateAssemblyDistrict: "Assembly District 2",
+    };
+
+    const mockStateReps = [
+      {
+        id: "sr-1",
+        name: "Jane Senator",
+        chamber: "Senate",
+        district: "2",
+        party: "Democrat",
+        photoUrl: null,
+      },
+    ];
+
+    const mockCountyReps = [
+      {
+        id: "cr-1",
+        name: "Bob Supervisor",
+        chamber: "Board of Supervisors",
+        district: "5",
+        party: null,
+        photoUrl: null,
+      },
+    ];
+
+    it("should show add-address prompt when no primary address exists", () => {
+      const { useQuery } = jest.requireMock("@apollo/client/react");
+      (useQuery as jest.Mock).mockImplementation((query: unknown) => {
+        const { GET_MY_ADDRESSES } = jest.requireActual(
+          "@/lib/graphql/profile",
+        );
+        const { GET_REPRESENTATIVES_BY_DISTRICTS, MY_COUNTY_SUPERVISORS } =
+          jest.requireActual("@/lib/graphql/region");
+        if (query === GET_MY_ADDRESSES)
+          return { data: { myAddresses: [] }, loading: false, error: null };
+        if (query === GET_REPRESENTATIVES_BY_DISTRICTS)
+          return {
+            data: { representativesByDistricts: [] },
+            loading: false,
+            error: null,
+          };
+        if (query === MY_COUNTY_SUPERVISORS)
+          return {
+            data: { myCountySupervisors: [] },
+            loading: false,
+            error: null,
+          };
+        return mockQueryResult;
+      });
+
+      render(<RepresentativesPage />);
+
+      expect(screen.getByText("My Representatives")).toBeInTheDocument();
+      expect(screen.getByText(/Add an address/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: /profile settings/i }),
+      ).toHaveAttribute("href", "/settings/addresses");
+    });
+
+    it("should render State and County sections with rep cards", () => {
+      const { useQuery } = jest.requireMock("@apollo/client/react");
+      (useQuery as jest.Mock).mockImplementation((query: unknown) => {
+        const { GET_MY_ADDRESSES } = jest.requireActual(
+          "@/lib/graphql/profile",
+        );
+        const { GET_REPRESENTATIVES_BY_DISTRICTS, MY_COUNTY_SUPERVISORS } =
+          jest.requireActual("@/lib/graphql/region");
+        if (query === GET_MY_ADDRESSES)
+          return {
+            data: { myAddresses: [mockAddress] },
+            loading: false,
+            error: null,
+          };
+        if (query === GET_REPRESENTATIVES_BY_DISTRICTS)
+          return {
+            data: { representativesByDistricts: mockStateReps },
+            loading: false,
+            error: null,
+          };
+        if (query === MY_COUNTY_SUPERVISORS)
+          return {
+            data: { myCountySupervisors: mockCountyReps },
+            loading: false,
+            error: null,
+          };
+        return mockQueryResult;
+      });
+
+      render(<RepresentativesPage />);
+
+      expect(screen.getByText("My Representatives")).toBeInTheDocument();
+      expect(screen.getByText("State")).toBeInTheDocument();
+      expect(screen.getByText("County")).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: /Jane Senator/i }),
+      ).toHaveAttribute("href", "/region/representatives/sr-1");
+      expect(
+        screen.getByRole("link", { name: /Bob Supervisor/i }),
+      ).toHaveAttribute("href", "/region/representatives/cr-1");
+    });
+
+    it("should exclude My Representatives IDs from the master list", () => {
+      const { useQuery } = jest.requireMock("@apollo/client/react");
+      const masterRepsWithOverlap = {
+        items: [
+          ...mockRepresentatives.items,
+          {
+            id: "sr-1",
+            externalId: "sr-1",
+            name: "Jane Senator",
+            chamber: "Senate",
+            district: "2",
+            party: "Democrat",
+            photoUrl: null,
+            contactInfo: null,
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ],
+        total: 4,
+        hasMore: false,
+      };
+
+      (useQuery as jest.Mock).mockImplementation((query: unknown) => {
+        const { GET_MY_ADDRESSES } = jest.requireActual(
+          "@/lib/graphql/profile",
+        );
+        const { GET_REPRESENTATIVES_BY_DISTRICTS, MY_COUNTY_SUPERVISORS } =
+          jest.requireActual("@/lib/graphql/region");
+        if (query === GET_MY_ADDRESSES)
+          return {
+            data: { myAddresses: [mockAddress] },
+            loading: false,
+            error: null,
+          };
+        if (query === GET_REPRESENTATIVES_BY_DISTRICTS)
+          return {
+            data: { representativesByDistricts: mockStateReps },
+            loading: false,
+            error: null,
+          };
+        if (query === MY_COUNTY_SUPERVISORS)
+          return {
+            data: { myCountySupervisors: [] },
+            loading: false,
+            error: null,
+          };
+        return {
+          data: { representatives: masterRepsWithOverlap },
+          loading: false,
+          error: null,
+        };
+      });
+
+      render(<RepresentativesPage />);
+
+      // Jane Senator appears once in My Representatives, not again in master list
+      const janeLinks = screen.getAllByRole("link", { name: /Jane Senator/i });
+      expect(janeLinks).toHaveLength(1);
     });
   });
 });

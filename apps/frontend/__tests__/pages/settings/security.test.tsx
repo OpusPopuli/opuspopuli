@@ -33,6 +33,9 @@ jest.mock("@/lib/auth-context", () => ({
   useAuth: () => mockAuthContextValue,
 }));
 
+// Feature flags — default to full options so existing tests cover passkey/2FA/password UI.
+jest.mock("@/lib/features", () => ({ AUTH_FULL_OPTIONS: true }));
+
 // Mock passkey hook
 const mockRegisterPasskey = jest.fn();
 const mockDeletePasskey = jest.fn();

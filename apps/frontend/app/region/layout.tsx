@@ -2,6 +2,7 @@
 
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
 import { CivicsProvider } from "@/components/civics/CivicsContext";
 
 export default function RegionLayout({
@@ -13,6 +14,7 @@ export default function RegionLayout({
     <ProtectedRoute>
       <Header />
       <CivicsProvider>{children}</CivicsProvider>
+      <Footer />
     </ProtectedRoute>
   );
 }
