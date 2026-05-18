@@ -378,13 +378,22 @@ export default function BillDetailPage() {
   const bill = data?.bill;
 
   // Resolve the lifecycle stages that apply to this bill's measure type.
+  // Fall back to the full stage list if the measure type filter would hide the
+  // current stage — guards against civics_blocks data that omits terminal stages.
   const lifecycleStages = useMemo(() => {
     if (!civics || !bill) return [];
     const measureType = measureTypeByCode.get(bill.measureTypeCode);
     if (!measureType) return civics.lifecycleStages;
     const ids = new Set(measureType.lifecycleStageIds);
     const filtered = civics.lifecycleStages.filter((s) => ids.has(s.id));
-    return filtered.length > 0 ? filtered : civics.lifecycleStages;
+    if (filtered.length === 0) return civics.lifecycleStages;
+    if (
+      bill.currentStageId &&
+      !filtered.some((s) => s.id === bill.currentStageId)
+    ) {
+      return civics.lifecycleStages;
+    }
+    return filtered;
   }, [civics, bill, measureTypeByCode]);
 
   if (loading) {
