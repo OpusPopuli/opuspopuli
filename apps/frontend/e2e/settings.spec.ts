@@ -545,7 +545,9 @@ test.describe("Privacy Settings Page", () => {
     await page.goto("/settings/privacy");
 
     // The page should load - check for sidebar navigation which is always visible
-    await expect(page.getByRole("link", { name: "Privacy" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Privacy", exact: true }),
+    ).toBeVisible();
   });
 
   test("should have privacy-related content or error state", async ({
@@ -572,7 +574,9 @@ test.describe("Privacy Settings Page", () => {
   test("should have no WCAG 2.2 AA violations", async ({ page }) => {
     await page.goto("/settings/privacy");
     // Wait for page to load (sidebar is always visible)
-    await expect(page.getByRole("link", { name: "Privacy" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Privacy", exact: true }),
+    ).toBeVisible();
 
     const violations = await checkAccessibility(page);
     expect(violations).toEqual([]);
