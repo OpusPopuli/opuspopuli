@@ -13,6 +13,7 @@ As-built documentation describing how the system is designed and implemented.
 - [**AI/ML Pipeline**](architecture/ai-ml-pipeline.md) - Embeddings, RAG, and LLM architecture
 - [**Frontend Architecture**](architecture/frontend-architecture.md) - React/Next.js frontend design
 - [**Deployment Architecture**](architecture/deployment.md) - Deployment topology, networking, and multi-environment strategy
+- [**Async Workers**](architecture/async-workers.md) - BullMQ worker pattern, `pipeline_jobs` table, adding new workers
 
 ### 📚 How-To Guides (`guides/`)
 Practical guides for common tasks and workflows.
@@ -121,6 +122,7 @@ The `packages/` directory contains workspace packages (`@opuspopuli/*`) that imp
 | `@opuspopuli/scraping-pipeline` | AI-powered schema-on-read web scraping with structural manifests |
 | `@opuspopuli/region-provider` | Civic data integration (declarative plugins, propositions, meetings, representatives) |
 | `@opuspopuli/prompt-client` | AI prompt template client with circuit breaker, HMAC auth, and caching |
+| `@opuspopuli/queue-provider` | BullMQ queue + worker factory, job types, `pipeline_jobs` status tracking |
 
 See [Provider Pattern](architecture/provider-pattern.md) and [Region Provider Guide](guides/region-provider.md) for implementation details.
 
