@@ -4,12 +4,16 @@ import { createMock } from '@golevelup/ts-jest';
 
 import { RegionResolver } from './region.resolver';
 import { RegionDomainService } from './region.service';
-import { DataType } from '@opuspopuli/region-provider';
+import { PipelineJobService } from './pipeline-job.service';
+import { QueueService } from '@opuspopuli/queue-provider';
 import { DataTypeGQL } from './models/region-info.model';
+import { SyncJobStatus, SyncTriggerSource } from './models/pipeline-job.model';
 
 describe('RegionResolver', () => {
   let resolver: RegionResolver;
   let regionService: jest.Mocked<RegionDomainService>;
+  let pipelineJobService: jest.Mocked<PipelineJobService>;
+  let queueService: jest.Mocked<QueueService>;
 
   const mockRegionInfo = {
     id: 'test-region',
@@ -136,21 +140,44 @@ describe('RegionResolver', () => {
     updatedAt: new Date(),
   };
 
+  const mockJob = {
+    jobId: 'job-uuid-1',
+    status: SyncJobStatus.QUEUED,
+    triggerSource: SyncTriggerSource.MANUAL,
+    regionId: undefined,
+    dataTypes: [],
+    enqueuedAt: new Date(),
+    startedAt: undefined,
+    finishedAt: undefined,
+    errorMessage: undefined,
+    results: undefined,
+    elapsedMs: undefined,
+  };
+
   beforeEach(async () => {
     const mockRegionService = createMock<RegionDomainService>();
+    const mockPipelineJobService = createMock<PipelineJobService>();
+    const mockQueueService = createMock<QueueService>();
+
+    mockPipelineJobService.create.mockResolvedValue({ id: 'job-uuid-1' });
+    mockPipelineJobService.markSucceeded.mockResolvedValue(undefined);
+    mockPipelineJobService.markFailed.mockResolvedValue(undefined);
+    mockPipelineJobService.findById.mockResolvedValue(mockJob as any);
+    mockQueueService.enqueue.mockResolvedValue('job-uuid-1');
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RegionResolver,
-        {
-          provide: RegionDomainService,
-          useValue: mockRegionService,
-        },
+        { provide: RegionDomainService, useValue: mockRegionService },
+        { provide: PipelineJobService, useValue: mockPipelineJobService },
+        { provide: QueueService, useValue: mockQueueService },
       ],
     }).compile();
 
     resolver = module.get<RegionResolver>(RegionResolver);
     regionService = module.get(RegionDomainService);
+    pipelineJobService = module.get(PipelineJobService);
+    queueService = module.get(QueueService);
   });
 
   it('should be defined', () => {
@@ -739,88 +766,32 @@ describe('RegionResolver', () => {
   });
 
   describe('syncRegionData', () => {
-    it('should trigger sync and return results', async () => {
-      const mockSyncResults = [
-        {
-          regionId: 'california',
-          dataType: DataType.PROPOSITIONS,
-          itemsProcessed: 10,
-          itemsCreated: 5,
-          itemsUpdated: 5,
-          itemsSkipped: 0,
-          errors: [],
-          syncedAt: new Date(),
-        },
-        {
-          regionId: 'california',
-          dataType: DataType.MEETINGS,
-          itemsProcessed: 5,
-          itemsCreated: 3,
-          itemsUpdated: 2,
-          itemsSkipped: 0,
-          errors: [],
-          syncedAt: new Date(),
-        },
-      ];
-      regionService.syncAll.mockResolvedValue(mockSyncResults);
-
+    it('enqueues a job and returns without calling syncAll', async () => {
       const result = await resolver.syncRegionData();
 
-      expect(result).toHaveLength(2);
-      expect(result[0].itemsProcessed).toBe(10);
-      expect(regionService.syncAll).toHaveBeenCalledWith(
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
+      expect(result.jobId).toBe('job-uuid-1');
+      expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+      expect(regionService.syncAll).not.toHaveBeenCalled();
+      expect(pipelineJobService.markRunning).not.toHaveBeenCalled();
+    });
+
+    it('sets triggerSource MANUAL and passes args to the queue', async () => {
+      await resolver.syncRegionData([DataTypeGQL.PROPOSITIONS]);
+
+      expect(queueService.enqueue).toHaveBeenCalledWith(
+        'region-sync',
+        expect.objectContaining({ triggerSource: 'manual' }),
+        expect.objectContaining({ jobId: 'job-uuid-1' }),
       );
     });
 
-    it('should pass dataTypes filter to syncAll', async () => {
-      regionService.syncAll.mockResolvedValue([
-        {
-          regionId: 'california',
-          dataType: DataType.PROPOSITIONS,
-          itemsProcessed: 3,
-          itemsCreated: 3,
-          itemsUpdated: 0,
-          itemsSkipped: 0,
-          errors: [],
-          syncedAt: new Date(),
-        },
-      ]);
+    it('creates the job row with matching id and bullmqJobId', async () => {
+      await resolver.syncRegionData();
 
-      const result = await resolver.syncRegionData([DataTypeGQL.PROPOSITIONS]);
-
-      expect(result).toHaveLength(1);
-      expect(regionService.syncAll).toHaveBeenCalledWith(
-        ['propositions'],
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-      );
-    });
-
-    it('should include errors in sync results', async () => {
-      const mockSyncResults = [
-        {
-          regionId: 'california',
-          dataType: DataType.PROPOSITIONS,
-          itemsProcessed: 0,
-          itemsCreated: 0,
-          itemsUpdated: 0,
-          itemsSkipped: 0,
-          errors: ['Network error'],
-          syncedAt: new Date(),
-        },
-      ];
-      regionService.syncAll.mockResolvedValue(mockSyncResults);
-
-      const result = await resolver.syncRegionData();
-
-      expect(result[0].errors).toContain('Network error');
+      const createCall = pipelineJobService.create.mock.calls[0][0];
+      expect(createCall.id).toBeDefined();
+      expect(createCall.bullmqJobId).toBe(createCall.id);
+      expect(createCall.triggerSource).toBe('manual');
     });
   });
 

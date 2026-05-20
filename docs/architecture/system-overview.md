@@ -97,6 +97,21 @@ Opus Populi is built on a modular, provider-based architecture with three core p
   - Campaign finance data (committees, contributions, expenditures, independent expenditures)
   - Legislative bills with author/co-author assignments, committee referrals, and roll-call votes
   - Plugin lifecycle management (initialize, health check, destroy)
+  - `syncRegionData` mutation — enqueues a job to the `region-sync` BullMQ queue and returns immediately with a `RegionSyncJob` handle
+
+## Workers
+
+Workers are standalone NestJS applications that process BullMQ queue jobs. They have no GraphQL schema and expose only `/health` and `/metrics` endpoints. They live in `apps/backend/src/apps/workers/`.
+
+### Region Worker
+- **Port**: 3005
+- **Queue**: `region-sync`
+- **Location**: `apps/backend/src/apps/workers/region-worker`
+- **Purpose**: Runs the region sync pipeline (`syncAll`) off the GraphQL request cycle
+- **Triggers**: Manual (`syncRegionData` mutation), daily cron (2 AM via BullMQ repeatable job), optional startup job
+- **Status tracking**: Writes `QUEUED → RUNNING → SUCCEEDED | FAILED` to the `pipeline_jobs` table in PostgreSQL; BullMQ Redis state is ephemeral
+
+**See**: [Async Workers Architecture](async-workers.md)
 
 ## Provider Architecture
 
@@ -120,6 +135,7 @@ All external dependencies use the **Strategy Pattern + Dependency Injection** fo
 | `@opuspopuli/scraping-pipeline` | AI-powered schema-on-read web scraping | `SCRAPING_PIPELINE` |
 | `@opuspopuli/region-provider` | Civic data integration (declarative plugins) | `REGION_PROVIDER` |
 | `@opuspopuli/prompt-client` | AI prompt templates with remote delegation, HMAC, circuit breaker | `PROMPT_CLIENT_CONFIG` |
+| `@opuspopuli/queue-provider` | BullMQ queue + worker factory, job types, `pipeline_jobs` status tracking | — |
 
 ### Relational Database Provider
 **Package**: `@opuspopuli/relationaldb-provider`

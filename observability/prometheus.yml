@@ -51,6 +51,13 @@ scrape_configs:
     metrics_path: /metrics
     scrape_interval: 10s
 
+  # Region Worker metrics
+  - job_name: 'region-worker'
+    static_configs:
+      - targets: ['host.docker.internal:4005']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
   # Redis metrics (if redis_exporter is added)
   # - job_name: 'redis'
   #   static_configs:

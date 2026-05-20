@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RegionModule } from '@opuspopuli/region-provider';
+import { QueueModule } from '@opuspopuli/queue-provider';
 import {
   ScrapingPipelineModule,
   ScrapingPipelineService,
@@ -31,8 +32,17 @@ import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-c
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
 import { PrismaIngestionWatermarkRepository } from '../infrastructure/prisma-ingestion-watermark-repository';
 import { REGION_CACHE } from './region.tokens';
+import { PipelineJobService } from './pipeline-job.service';
 
 // RelationalDbModule is global, no need to import
+
+const queueModuleAsyncConfig = {
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    url: config.get('REDIS_URL') || 'redis://localhost:6379',
+    prefix: config.get('BULLMQ_PREFIX') || 'bullmq',
+  }),
+};
 
 const promptClientAsyncConfig = {
   inject: [ConfigService],
@@ -61,6 +71,7 @@ const promptClientAsyncConfig = {
   imports: [
     RegionModule.forPlugins(),
     LLMModule,
+    QueueModule.forRootAsync(queueModuleAsyncConfig),
     PromptClientModule.forRootAsync(promptClientAsyncConfig),
     ScrapingPipelineModule.forRoot({
       imports: [
@@ -98,6 +109,7 @@ const promptClientAsyncConfig = {
     RegionDomainService,
     RegionResolver,
     RegionScheduler,
+    PipelineJobService,
     BioGeneratorService,
     CommitteeSummaryGeneratorService,
     EntityActivitySummaryGeneratorService,
@@ -135,6 +147,6 @@ const promptClientAsyncConfig = {
       },
     },
   ],
-  exports: [RegionDomainService],
+  exports: [RegionDomainService, PipelineJobService, QueueModule],
 })
 export class RegionDomainModule {}

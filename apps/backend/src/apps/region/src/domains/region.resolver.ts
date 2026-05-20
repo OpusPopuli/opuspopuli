@@ -9,6 +9,7 @@ import {
   Resolver,
 } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import {
   GqlContext,
   getUserFromContext,
@@ -26,10 +27,17 @@ import {
 import {
   RegionInfoModel,
   RegionPluginModel,
-  SyncResultModel,
   DataTypeGQL,
   SyncDepthGQL,
 } from './models/region-info.model';
+import { RegionSyncJobModel } from './models/pipeline-job.model';
+import { PipelineJobService } from './pipeline-job.service';
+import {
+  QueueService,
+  REGION_SYNC_QUEUE,
+  TRIGGER_SOURCE,
+} from '@opuspopuli/queue-provider';
+import type { RegionSyncJobData } from '@opuspopuli/queue-provider';
 import {
   PropositionModel,
   PaginatedPropositions,
@@ -80,7 +88,11 @@ import {
  */
 @Resolver()
 export class RegionResolver {
-  constructor(private readonly regionService: RegionDomainService) {}
+  constructor(
+    private readonly regionService: RegionDomainService,
+    private readonly pipelineJobService: PipelineJobService,
+    private readonly queueService: QueueService,
+  ) {}
 
   /**
    * Get region information, including merged civics data for the active region.
@@ -849,10 +861,9 @@ export class RegionResolver {
     return this.regionService.setRegionPluginEnabled(name, enabled);
   }
 
-  @Mutation(() => [SyncResultModel])
+  @Mutation(() => RegionSyncJobModel)
   @UseGuards(AuthGuard)
   @Roles(Role.Admin)
-  @Extensions({ complexity: 100 }) // Full data sync - expensive operation
   async syncRegionData(
     @Args('dataTypes', { type: () => [DataTypeGQL], nullable: true })
     dataTypes?: DataTypeGQL[],
@@ -864,17 +875,73 @@ export class RegionResolver {
     maxReps?: number,
     @Args('maxBills', { type: () => Int, nullable: true })
     maxBills?: number,
-  ): Promise<SyncResultModel[]> {
-    const results = await this.regionService.syncAll(
-      dataTypes as unknown as string[],
-      maxReps,
-      maxBills,
-      depth as unknown as string,
-      regionId,
+    @Context() ctx?: { req: { user?: { id?: string } } },
+  ): Promise<RegionSyncJobModel> {
+    const userId = ctx?.req?.user?.id;
+    return this.enqueueSyncJob(
+      {
+        regionId,
+        dataTypes: dataTypes as string[],
+        depth: depth as string,
+        maxReps,
+        maxBills,
+      },
+      userId,
     );
-    return results.map((r) => ({
-      ...r,
-      dataType: r.dataType as unknown as DataTypeGQL,
-    }));
+  }
+
+  @Query(() => RegionSyncJobModel, { nullable: true })
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  async regionSyncJob(
+    @Args('jobId', { type: () => ID }) jobId: string,
+  ): Promise<RegionSyncJobModel | null> {
+    return this.pipelineJobService.findById(jobId);
+  }
+
+  @Query(() => [RegionSyncJobModel])
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  async recentRegionSyncJobs(
+    @Args('limit', { type: () => Int, nullable: true, defaultValue: 20 })
+    limit: number,
+  ): Promise<RegionSyncJobModel[]> {
+    return this.pipelineJobService.findRecent(Math.min(limit, 100));
+  }
+
+  private async enqueueSyncJob(
+    args: {
+      regionId?: string;
+      dataTypes?: string[];
+      depth?: string;
+      maxReps?: number;
+      maxBills?: number;
+    },
+    userId?: string,
+  ): Promise<RegionSyncJobModel> {
+    // Pre-generate the ID so bullmq_job_id matches the DB row ID from creation —
+    // avoids a second markRunning call from the resolver (worker owns that transition).
+    const jobId = randomUUID();
+
+    const row = await this.pipelineJobService.create({
+      id: jobId,
+      bullmqJobId: jobId,
+      triggerSource: TRIGGER_SOURCE.MANUAL,
+      enqueuedBy: userId,
+      ...args,
+    });
+
+    const jobData: RegionSyncJobData = {
+      pipelineJobId: row.id,
+      triggerSource: TRIGGER_SOURCE.MANUAL,
+      ...args,
+    };
+
+    await this.queueService.enqueue(REGION_SYNC_QUEUE, jobData, {
+      jobId: row.id,
+    });
+
+    const job = await this.pipelineJobService.findById(row.id);
+    return job!;
   }
 }

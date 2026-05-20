@@ -14,6 +14,7 @@ pnpm start:users              # Users         :3001
 pnpm start:documents          # Documents     :3002
 pnpm start:knowledge          # Knowledge     :3003
 pnpm start:region             # Region        :3004
+pnpm start:region-worker      # Region worker  :3005
 pnpm test                     # Jest unit tests
 pnpm test:integration         # Requires docker compose up
 
@@ -44,6 +45,14 @@ Each `start:*` script builds before starting watch mode — don't run `nest star
 | `documents` | 3002 | Document storage, petition scanning, OCR, activity feed |
 | `knowledge` | 3003 | RAG pipeline — embeddings, vector search, LLM inference |
 | `region` | 3004 | Civic data — propositions, meetings, representatives, campaign finance |
+
+**Workers** (`apps/backend/src/apps/workers/`): async BullMQ job processors — no GraphQL, no HTTP beyond `/health`. Each worker owns a queue and a `pipeline_jobs`-style status table.
+
+| Worker | Port | Queue | Trigger |
+|--------|------|-------|---------|
+| `region-worker` | 3005 | `region-sync` | `syncRegionData` mutation, daily cron (2 AM), optional startup job |
+
+Adding a new worker: create `src/apps/workers/<name>/`, register in `nest-cli.json`, add a `Dockerfile.<name>` following `Dockerfile.region-worker`, add to `docker-compose-prod.yml` and `docker-compose-uat.yml`.
 
 **Workspace packages** (`packages/`): `auth-provider`, `common`, `config-provider`, `email-provider`, `embeddings-provider`, `extraction-provider`, `llm-provider`, `logging-provider`, `ocr-provider`, `prompt-client`, `region-provider`, `relationaldb-provider`, `scraping-pipeline`, `secrets-provider`, `storage-provider`, `vectordb-provider`
 

@@ -106,6 +106,7 @@ All services should show status **Up** or **Up (healthy)**. Key services to conf
 | `opuspopuli-uat-documents` | 3002 | Documents microservice |
 | `opuspopuli-uat-knowledge` | 3003 | Knowledge microservice |
 | `opuspopuli-uat-region` | 3004 | Region microservice |
+| `opuspopuli-uat-region-worker` | 3005 | Async region-sync BullMQ processor |
 
 If any service shows **Restarting** or **Unhealthy**, check its logs:
 
@@ -168,6 +169,7 @@ curl http://localhost:3001/health    # Users service
 curl http://localhost:3002/health    # Documents service
 curl http://localhost:3003/health    # Knowledge service
 curl http://localhost:3004/health    # Region service
+curl http://localhost:3005/health    # Region worker
 ```
 
 Each should return an HTTP 200 response.
@@ -293,40 +295,87 @@ Now we will sync all civic data from California's official government sources. T
 
 ### 7.1 Run the Sync
 
+Region sync is **asynchronous** — the mutation enqueues a job in BullMQ and returns immediately with a job handle. The `region-worker` container picks it up and runs the pipeline in the background.
+
 1. Open http://localhost:3000/graphql
 2. Paste this mutation and click **Play**:
 
 ```graphql
-# Sync all data types (default)
+# Enqueue a sync (returns immediately)
 mutation {
   syncRegionData {
-    dataType
-    itemsProcessed
-    itemsCreated
-    itemsUpdated
-    errors
-    syncedAt
+    jobId
+    status
+    triggerSource
+    enqueuedAt
   }
 }
 
-# Sync specific data types only
+# Scope to specific data types
 mutation {
   syncRegionData(dataTypes: [PROPOSITIONS, MEETINGS]) {
-    dataType
-    itemsProcessed
-    itemsCreated
-    itemsUpdated
-    errors
-    syncedAt
+    jobId
+    status
+    triggerSource
+    enqueuedAt
   }
 }
 ```
 
 > **Available data types:** `PROPOSITIONS`, `MEETINGS`, `REPRESENTATIVES`, `CAMPAIGN_FINANCE`
 
-> **What happens during sync:**
+The mutation returns immediately with `status: QUEUED`. Copy the `jobId` and proceed to step 7.2 to poll for completion.
+
+### 7.2 Poll for Completion
+
+Paste this query, replacing `<jobId>` with the value from step 7.1:
+
+```graphql
+query {
+  regionSyncJob(jobId: "<jobId>") {
+    jobId
+    status        # QUEUED | RUNNING | SUCCEEDED | FAILED
+    startedAt
+    finishedAt
+    elapsedMs
+    errorMessage
+    results {
+      regionId
+      dataType
+      itemsProcessed
+      itemsCreated
+      itemsUpdated
+      errors
+      syncedAt
+    }
+  }
+}
+```
+
+Re-run this query every 30–60 seconds until `status` is `SUCCEEDED` or `FAILED`. You can also watch `region-worker` logs in real time:
+
+```bash
+docker compose -f docker-compose-uat.yml logs -f region-worker
+```
+
+To see all recent jobs:
+
+```graphql
+query {
+  recentRegionSyncJobs(limit: 5) {
+    jobId
+    status
+    triggerSource
+    enqueuedAt
+    finishedAt
+    elapsedMs
+  }
+}
+```
+
+> **What the worker does:**
 >
-> The system fetches data from 8 sources configured in the California plugin:
+> The `region-worker` fetches data from 8 sources configured in the California plugin:
 >
 > | Source | Type | What It Fetches |
 > |--------|------|----------------|
@@ -341,13 +390,13 @@ mutation {
 >
 > **Web scrape** sources use the AI model to analyze page structure — this can take 30–60 seconds per source on the first run (cached on subsequent runs).
 >
-> **Bulk download** sources download a large ZIP file (~1 GB) from the CA Secretary of State. This can take **5–10 minutes** depending on your internet connection. The ZIP is downloaded once and three different TSV files are extracted from it.
+> **Bulk download** sources download a large ZIP file (~1 GB) from the CA Secretary of State. This can take **5–10 minutes** depending on your internet connection.
 
-### 7.2 Review Sync Results
+### 7.3 Review Results
 
-The mutation returns an array of results, one per data type. Check each:
+Once `status` is `SUCCEEDED`, check each data type in the `results` array:
 
-**Successful sync looks like:**
+**Successful result looks like:**
 ```json
 {
   "dataType": "PROPOSITIONS",
@@ -359,19 +408,20 @@ The mutation returns an array of results, one per data type. Check each:
 }
 ```
 
-**If you see errors:** Note the `dataType` and `errors` array. Common issues:
+**If `status` is `FAILED`:** Check `errorMessage` for the top-level failure reason and `results[].errors` for per-data-type detail. Common issues:
 - **Network timeout:** The source website may be temporarily unavailable. Try again.
-- **AI analysis failure:** The AI model may struggle with a page. Check that Ollama is running.
-- **Bulk download timeout:** The CAL-ACCESS ZIP file is very large. Increase `requestTimeoutMs` if needed.
+- **AI analysis failure:** Check that Ollama is running and the model is loaded (`ollama list`).
+- **Bulk download timeout:** The CAL-ACCESS ZIP file is very large. Check worker logs for progress.
 
 ### Ingestion Checklist
 
-- [ ] Mutation executed without GraphQL errors
-- [ ] PROPOSITIONS sync shows `itemsProcessed > 0`
-- [ ] MEETINGS sync shows `itemsProcessed > 0`
-- [ ] REPRESENTATIVES sync shows `itemsProcessed > 0`
-- [ ] CAMPAIGN_FINANCE sync shows `itemsProcessed > 0`
-- [ ] No critical errors in the `errors` arrays
+- [ ] Mutation returned a `jobId` immediately (no hang)
+- [ ] Polling shows `status` transition from `QUEUED` → `RUNNING` → `SUCCEEDED`
+- [ ] PROPOSITIONS result shows `itemsProcessed > 0`
+- [ ] MEETINGS result shows `itemsProcessed > 0`
+- [ ] REPRESENTATIVES result shows `itemsProcessed > 0`
+- [ ] CAMPAIGN_FINANCE result shows `itemsProcessed > 0`
+- [ ] No critical errors in the `results[].errors` arrays
 
 ---
 
@@ -855,6 +905,7 @@ Use this to re-test the registration and onboarding flow without re-ingesting al
 | 3002 | Documents microservice | `opuspopuli-uat-documents` |
 | 3003 | Knowledge microservice | `opuspopuli-uat-knowledge` |
 | 3004 | Region microservice | `opuspopuli-uat-region` |
+| 3005 | Region worker (BullMQ processor) | `opuspopuli-uat-region-worker` |
 | 3100 | Supabase Studio | `opuspopuli-supabase-studio` |
 | 3101 | Grafana | `opuspopuli-grafana` |
 | 3200 | Frontend | _(runs locally)_ |

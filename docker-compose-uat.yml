@@ -218,6 +218,8 @@ services:
       PROMPT_SERVICE_API_KEY: dev-key-1
       # Disable automatic sync scheduler — trigger manually via GraphQL Playground
       REGION_SYNC_ENABLED: "false"
+      # Disable the legacy @Cron path — daily repeatable job is owned by region-worker
+      REGION_SYNC_CRON_VIA_QUEUE: "true"
       # AI bio generation — dev-friendly defaults (prod uses 800 / 1 / unset)
       # CONCURRENCY>1 only helps when Ollama has OLLAMA_NUM_PARALLEL set to
       # match; otherwise Ollama serializes and extra queue depth causes timeouts.
@@ -254,6 +256,57 @@ services:
           # records (~3M) in memory before returning instead of honoring
           # the onBatch streaming flow — separate bug worth fixing, but
           # for now we just give the container enough headroom.
+          cpus: '1.0'
+          memory: 6144M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
+  region-worker:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.region-worker
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-uat-region-worker
+    environment:
+      <<: *backend-env
+      APPLICATION: region-worker
+      DESCRIPTION: Region worker (async job processor)
+      PORT: 8080
+      REGION_WORKER_PORT: 8080
+      LLM_URL: http://host.docker.internal:11434
+      LLM_MODEL: qwen3.5:9b
+      OLLAMA_REQUEST_TIMEOUT_MS: "600000"
+      PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
+      PROMPT_SERVICE_API_KEY: dev-key-1
+      # No automatic scheduling in UAT — trigger via syncRegionData mutation
+      REGION_SYNC_CRON_ENABLED: "false"
+      REGION_SYNC_RUN_ON_STARTUP: "false"
+      BIO_GENERATOR_MAX_TOKENS: "1500"
+      BIO_GENERATOR_CONCURRENCY: "1"
+      BIO_GENERATOR_MAX_REPS: "5"
+      COMMITTEE_SUMMARY_GENERATOR_MAX_TOKENS: "200"
+      COMMITTEE_SUMMARY_GENERATOR_CONCURRENCY: "1"
+      COMMITTEE_SUMMARY_GENERATOR_MAX_REPS: "5"
+    ports:
+      - "3005:8080"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - opuspopuli-network
+      - prompt-service_default
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
           cpus: '1.0'
           memory: 6144M
         reservations:
