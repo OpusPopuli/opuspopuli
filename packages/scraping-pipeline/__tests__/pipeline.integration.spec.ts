@@ -185,6 +185,7 @@ describe("Pipeline Integration Tests", () => {
       {} as any,
       {} as any,
       { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
+      null,
     );
   });
 

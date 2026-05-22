@@ -11,7 +11,12 @@
 
 // Core pipeline
 export { ScrapingPipelineService } from "./pipeline/pipeline.service.js";
-export { ScrapingPipelineModule } from "./scraping-pipeline.module.js";
+export {
+  ScrapingPipelineModule,
+  MANIFEST_MISSING_CALLBACK,
+  type ManifestMissingArgs,
+  type ScrapingPipelineModuleOptions,
+} from "./scraping-pipeline.module.js";
 
 // Analysis
 export { StructuralAnalyzerService } from "./analysis/structural-analyzer.service.js";

@@ -27,10 +27,27 @@ import { MinutesIngestHandler } from "./handlers/minutes-ingest.handler.js";
 import { TextExtractorService } from "./extraction/text-extractor.service.js";
 import { DetailCrawlerService } from "./crawling/detail-crawler.service.js";
 
+export interface ManifestMissingArgs {
+  regionId: string;
+  sourceUrl: string;
+  dataType: string;
+  contentGoal?: string;
+  category?: string;
+  hints?: string[];
+  requestedBy: "cache_miss" | "cache_stale" | "manual";
+}
+
+export const MANIFEST_MISSING_CALLBACK = "MANIFEST_MISSING_CALLBACK";
+
 export interface ScrapingPipelineModuleOptions {
   /** Modules that provide required tokens (LLM_PROVIDER, ExtractionProvider, etc.) */
   imports?: any[];
-  /** Additional providers (e.g., MANIFEST_REPOSITORY) */
+  /**
+   * Additional providers. To enable async manifest analysis, include a
+   * { provide: MANIFEST_MISSING_CALLBACK, useFactory: ..., inject: [...] }
+   * provider here. Omit it (or provide null) to keep the original inline
+   * LLM-analysis behaviour.
+   */
   providers?: any[];
 }
 

@@ -109,7 +109,15 @@ Workers are standalone NestJS applications that process BullMQ queue jobs. They 
 - **Location**: `apps/backend/src/apps/workers/region-worker`
 - **Purpose**: Runs the region sync pipeline (`syncAll`) off the GraphQL request cycle
 - **Triggers**: Manual (`syncRegionData` mutation), daily cron (2 AM via BullMQ repeatable job), optional startup job
-- **Status tracking**: Writes `QUEUED → RUNNING → SUCCEEDED | FAILED` to the `pipeline_jobs` table in PostgreSQL; BullMQ Redis state is ephemeral
+- **Status tracking**: `QUEUED → RUNNING → SUCCEEDED | FAILED` in the `pipeline_jobs` table
+
+### Structural Analysis Worker
+- **Port**: 3006
+- **Queue**: `pipeline-structural-analysis`
+- **Location**: `apps/backend/src/apps/workers/structural-analysis-worker`
+- **Purpose**: Fetches HTML and runs LLM structural analysis to derive a scraping manifest when the pipeline finds a cache miss or stale manifest. Decouples the 2–10 min LLM call from the sync loop so region sync returns immediately.
+- **Triggers**: Fired by `MANIFEST_MISSING_CALLBACK` inside `ScrapingPipelineService` on `cache_miss` or `cache_stale`; deduplicates (skips enqueue if a QUEUED/RUNNING job already exists for the same source)
+- **Status tracking**: `QUEUED → RUNNING → SUCCEEDED | FAILED` in the `structural_analysis_jobs` table
 
 **See**: [Async Workers Architecture](async-workers.md)
 
@@ -135,7 +143,7 @@ All external dependencies use the **Strategy Pattern + Dependency Injection** fo
 | `@opuspopuli/scraping-pipeline` | AI-powered schema-on-read web scraping | `SCRAPING_PIPELINE` |
 | `@opuspopuli/region-provider` | Civic data integration (declarative plugins) | `REGION_PROVIDER` |
 | `@opuspopuli/prompt-client` | AI prompt templates with remote delegation, HMAC, circuit breaker | `PROMPT_CLIENT_CONFIG` |
-| `@opuspopuli/queue-provider` | BullMQ queue + worker factory, job types, `pipeline_jobs` status tracking | — |
+| `@opuspopuli/queue-provider` | BullMQ queue + worker factory, job types, queue name constants, status tracking | — |
 
 ### Relational Database Provider
 **Package**: `@opuspopuli/relationaldb-provider`
