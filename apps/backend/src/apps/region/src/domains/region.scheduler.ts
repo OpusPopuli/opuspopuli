@@ -1,15 +1,27 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
-import { RegionDomainService } from './region.service';
+import {
+  QueueService,
+  REGION_SYNC_QUEUE,
+  TRIGGER_SOURCE,
+} from '@opuspopuli/queue-provider';
+import type {
+  RegionSyncJobData,
+  TriggerSource,
+} from '@opuspopuli/queue-provider';
+import { randomUUID } from 'crypto';
+import { PipelineJobService } from './pipeline-job.service';
 
 /**
- * Region Scheduler (legacy cron path)
+ * Region Scheduler
  *
- * Retained for rollout safety behind REGION_SYNC_CRON_VIA_QUEUE=false.
+ * Fires the daily 2 AM cron from the region service side. Enqueues a
+ * region-sync job onto the BullMQ queue for retry/backoff/observability.
+ *
  * When REGION_SYNC_CRON_VIA_QUEUE=true the worker's RegionSyncScheduler
- * owns the daily repeatable job and this class becomes inert.
- * Cleanup PR: delete this file and remove from RegionDomainModule.
+ * registers a BullMQ repeatable job directly — this class returns early
+ * to avoid double-enqueue.
  */
 @Injectable()
 export class RegionScheduler {
@@ -21,28 +33,26 @@ export class RegionScheduler {
   private readonly syncRunOnStartup: boolean;
 
   constructor(
-    private readonly regionService: RegionDomainService,
+    private readonly queueService: QueueService,
+    private readonly pipelineJobService: PipelineJobService,
     private readonly configService: ConfigService,
   ) {
-    this.syncEnabled = this.configService.get('region.syncEnabled') !== false;
+    this.syncEnabled =
+      this.configService.get<string>('REGION_SYNC_ENABLED') !== 'false';
     this.syncCronViaQueue =
-      this.configService.get<boolean>('region.syncCronViaQueue') === true;
+      this.configService.get<string>('REGION_SYNC_CRON_VIA_QUEUE') === 'true';
     this.syncRunOnStartup =
-      this.configService.get<boolean>('region.syncRunOnStartup') === true;
+      this.configService.get<string>('REGION_SYNC_RUN_ON_STARTUP') === 'true';
   }
 
   async onModuleInit() {
-    if (!this.syncRunOnStartup) {
+    if (!this.syncRunOnStartup || this.syncCronViaQueue) {
       return;
     }
     this.logger.log(
-      'Running initial data sync on startup (REGION_SYNC_RUN_ON_STARTUP=true)',
+      'Enqueueing startup sync (REGION_SYNC_RUN_ON_STARTUP=true)',
     );
-    try {
-      await this.syncData();
-    } catch (error) {
-      this.logger.error('Startup sync failed:', error);
-    }
+    await this.enqueueSync(TRIGGER_SOURCE.STARTUP);
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
@@ -50,28 +60,29 @@ export class RegionScheduler {
     if (!this.syncEnabled || this.syncCronViaQueue) {
       return;
     }
-    this.logger.log('Running scheduled data sync');
-    await this.syncData();
+    this.logger.log('Enqueueing scheduled cron sync');
+    await this.enqueueSync(TRIGGER_SOURCE.CRON);
   }
 
-  private async syncData() {
+  private async enqueueSync(triggerSource: TriggerSource) {
     try {
-      const results = await this.regionService.syncAll();
-      const summary = results
-        .map(
-          (r) =>
-            `${r.dataType}: ${r.itemsProcessed} processed (${r.itemsCreated} new, ${r.itemsUpdated} updated)`,
-        )
-        .join(', ');
-      this.logger.log(`Sync complete: ${summary}`);
-      const errors = results.flatMap((r) => r.errors);
-      if (errors.length > 0) {
-        this.logger.warn(
-          `Sync had ${errors.length} errors: ${errors.join(', ')}`,
-        );
-      }
+      const jobId = randomUUID();
+      const row = await this.pipelineJobService.create({
+        bullmqJobId: jobId,
+        triggerSource,
+      });
+      await this.queueService.enqueue<RegionSyncJobData>(
+        REGION_SYNC_QUEUE,
+        { pipelineJobId: row.id, triggerSource },
+        { jobId },
+      );
+      this.logger.log(
+        `Region sync enqueued (jobId=${jobId}, trigger=${triggerSource})`,
+      );
     } catch (error) {
-      this.logger.error('Scheduled sync failed:', error);
+      this.logger.error(
+        `Failed to enqueue ${triggerSource} sync: ${(error as Error).message}`,
+      );
     }
   }
 }
