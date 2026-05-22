@@ -333,6 +333,39 @@ services:
           cpus: '0.5'
           memory: 1G
 
+  structural-analysis-worker:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.structural-analysis-worker
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-prod-structural-analysis-worker
+    environment:
+      <<: *backend-env
+      APPLICATION: structural-analysis-worker
+      DESCRIPTION: Structural analysis worker (async manifest analysis)
+      PORT: 8080
+      STRUCTURAL_ANALYSIS_WORKER_PORT: 8080
+      LLM_URL: http://host.docker.internal:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen3.5:35b}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    healthcheck: *healthcheck
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
   api:
     build:
       context: .

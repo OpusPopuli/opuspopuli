@@ -10,7 +10,7 @@
  * Plus self-healing: if extraction fails, re-trigger analysis once.
  */
 
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type {
   DataSourceConfig,
   ExtractionResult,
@@ -31,6 +31,10 @@ import { ApiIngestHandler } from "../handlers/api-ingest.handler.js";
 import { PdfExtractHandler } from "../handlers/pdf-extract.handler.js";
 import { MinutesIngestHandler } from "../handlers/minutes-ingest.handler.js";
 import { DetailCrawlerService } from "../crawling/detail-crawler.service.js";
+import {
+  MANIFEST_MISSING_CALLBACK,
+  type ManifestMissingArgs,
+} from "../scraping-pipeline.module.js";
 
 @Injectable()
 export class ScrapingPipelineService {
@@ -49,7 +53,49 @@ export class ScrapingPipelineService {
     private readonly pdfExtract: PdfExtractHandler,
     private readonly minutesIngest: MinutesIngestHandler,
     private readonly detailCrawler: DetailCrawlerService,
+    @Optional()
+    @Inject(MANIFEST_MISSING_CALLBACK)
+    private readonly onManifestMissing:
+      | ((args: ManifestMissingArgs) => Promise<void>)
+      | null,
   ) {}
+
+  /**
+   * Fetch HTML, run structural analysis, persist the manifest, and return its ID.
+   * Called by the structural-analysis-worker on cache miss / stale-refresh.
+   */
+  async performManifestAnalysis(
+    regionId: string,
+    sourceUrl: string,
+    dataType: string,
+    contentGoal = "",
+    category?: string,
+    hints?: string[],
+  ): Promise<{ manifestId: string; manifestVersion: number }> {
+    const fetchResult = await this.extraction.fetchWithRetry(sourceUrl);
+    const html = fetchResult.content;
+
+    const source = {
+      url: sourceUrl,
+      dataType: dataType as DataType,
+      contentGoal,
+      category,
+      hints,
+      sourceType: "html_scrape" as const,
+    };
+
+    const manifest = await this.analyzer.analyze(html, source);
+    manifest.regionId = regionId;
+    manifest.version = await this.manifestStore.getNextVersion(
+      regionId,
+      sourceUrl,
+      dataType as DataType,
+    );
+    manifest.structureHash = computeStructureHash(html);
+    await this.manifestStore.save(manifest);
+
+    return { manifestId: manifest.id, manifestVersion: manifest.version };
+  }
 
   /**
    * Execute the pipeline for a data source.
@@ -180,6 +226,24 @@ export class ScrapingPipelineService {
       regionId,
       html,
     );
+
+    // Cold manifest miss with async worker configured — skip extraction this run.
+    if (analysisResult === null) {
+      const totalMs = Date.now() - pipelineStart;
+      this.logger.log(
+        `Pipeline deferred [${regionId}/${source.dataType}] — manifest analysis enqueued (${totalMs}ms)`,
+      );
+      return {
+        items: [] as T[],
+        manifestVersion: 0,
+        success: true,
+        warnings: [],
+        errors: [],
+        extractionTimeMs: 0,
+        pendingManifestAnalysis: true,
+      };
+    }
+
     const manifest = analysisResult.manifest;
 
     // Stage 3: Extract content using manifest
@@ -193,31 +257,42 @@ export class ScrapingPipelineService {
         `Self-healing: re-analyzing ${source.url} — ${healingDecision.reason}`,
       );
 
-      // Re-derive manifest
-      const newManifest = await this.analyzer.analyze(html, source);
-      newManifest.regionId = regionId;
-      newManifest.version = await this.manifestStore.getNextVersion(
-        regionId,
-        source.url,
-        source.dataType,
-      );
-      await this.manifestStore.save(newManifest);
-
-      // Re-extract with new manifest
-      rawResult = this.extractor.extract(html, newManifest, source.url);
-
-      // Check again (but don't heal again)
-      const secondCheck = this.healing.evaluate(
-        rawResult,
-        newManifest,
-        undefined,
-        true,
-      );
-      if (secondCheck.shouldHeal) {
-        await this.manifestStore.incrementFailure(newManifest.id);
+      if (this.onManifestMissing) {
+        // Async path: enqueue refresh, continue with degraded extraction.
+        await this.onManifestMissing({
+          regionId,
+          sourceUrl: source.url,
+          dataType: source.dataType,
+          contentGoal: source.contentGoal,
+          category: source.category,
+          hints: source.hints,
+          requestedBy: "cache_stale",
+        });
+        await this.manifestStore.incrementFailure(manifest.id);
       } else {
-        // New manifest worked — record success
-        await this.manifestStore.incrementSuccess(newManifest.id);
+        // Inline path: re-analyze immediately.
+        const newManifest = await this.analyzer.analyze(html, source);
+        newManifest.regionId = regionId;
+        newManifest.version = await this.manifestStore.getNextVersion(
+          regionId,
+          source.url,
+          source.dataType,
+        );
+        await this.manifestStore.save(newManifest);
+
+        rawResult = this.extractor.extract(html, newManifest, source.url);
+
+        const secondCheck = this.healing.evaluate(
+          rawResult,
+          newManifest,
+          undefined,
+          true,
+        );
+        if (secondCheck.shouldHeal) {
+          await this.manifestStore.incrementFailure(newManifest.id);
+        } else {
+          await this.manifestStore.incrementSuccess(newManifest.id);
+        }
       }
     } else {
       // Original manifest worked — record success and update timestamps
@@ -257,28 +332,31 @@ export class ScrapingPipelineService {
 
   /**
    * Get an existing manifest or derive a new one via AI analysis.
+   *
+   * When onManifestMissing is wired:
+   * - Cache miss  → callback fired, returns null (caller skips extraction this run)
+   * - Cache stale → callback fired for background refresh, returns existing manifest
+   *                 so extraction still runs with the old rules this run
+   *
+   * When onManifestMissing is null (default / local dev) the original inline
+   * behaviour is preserved — LLM analysis runs synchronously.
    */
   private async getOrDeriveManifest(
     source: DataSourceConfig,
     regionId: string,
     html: string,
-  ): Promise<StructuralAnalysisResult> {
-    // Compute current structure hash
+  ): Promise<StructuralAnalysisResult | null> {
     const currentStructureHash = computeStructureHash(html);
-
-    // Compute current prompt hash
     const currentPromptHash = await this.analyzer.getCurrentPromptHash(
       source.dataType as DataType,
     );
 
-    // Look up existing manifest
     const existing = await this.manifestStore.findLatest(
       regionId,
       source.url,
       source.dataType as DataType,
     );
 
-    // Compare hashes
     const comparison = ManifestComparator.compare(
       existing,
       currentStructureHash,
@@ -297,18 +375,45 @@ export class ScrapingPipelineService {
       };
     }
 
-    // Need fresh analysis
-    if (comparison.reason) {
+    const missReason = comparison.reason ?? "unknown";
+    const isStale = !!existing && !comparison.canReuse;
+
+    if (this.onManifestMissing) {
+      // Async path: delegate analysis to the structural-analysis worker.
+      const requestedBy = isStale ? "cache_stale" : "cache_miss";
       this.logger.log(
-        `Manifest cache miss for ${source.url}: ${comparison.reason}`,
+        `Manifest ${requestedBy} for ${source.url}: ${missReason} — enqueuing analysis`,
       );
+      await this.onManifestMissing({
+        regionId,
+        sourceUrl: source.url,
+        dataType: source.dataType,
+        contentGoal: source.contentGoal,
+        category: source.category,
+        hints: source.hints,
+        requestedBy,
+      });
+
+      if (isStale) {
+        // Extract with old manifest this run; worker refreshes in background.
+        return {
+          manifest: existing!,
+          fromCache: true,
+          structureChanged: true,
+          analysisTimeMs: 0,
+        };
+      }
+
+      // Cold miss — no manifest at all. Signal caller to skip extraction.
+      return null;
     }
 
+    // Inline path (fallback when no callback configured).
+    this.logger.log(`Manifest cache miss for ${source.url}: ${missReason}`);
     const startTime = Date.now();
     const manifest = await this.analyzer.analyze(html, source);
     const analysisTimeMs = Date.now() - startTime;
 
-    // Set region and version
     manifest.regionId = regionId;
     manifest.version = await this.manifestStore.getNextVersion(
       regionId,
@@ -316,8 +421,6 @@ export class ScrapingPipelineService {
       source.dataType,
     );
     manifest.structureHash = currentStructureHash;
-
-    // Persist
     await this.manifestStore.save(manifest);
 
     return {

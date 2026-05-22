@@ -10,6 +10,7 @@ import IORedis from 'ioredis';
 import {
   QUEUE_CONNECTION,
   REGION_SYNC_QUEUE,
+  TRIGGER_SOURCE,
   createWorker,
 } from '@opuspopuli/queue-provider';
 import type {
@@ -81,7 +82,17 @@ export class RegionSyncProcessor
       'Processing region-sync job',
     );
 
-    await this.pipelineJobService.markRunning(pipelineJobId, job.id as string);
+    // Cron-fired repeatable jobs have no pre-created DB record — create one now.
+    const effectiveJobId =
+      pipelineJobId ??
+      (
+        await this.pipelineJobService.create({
+          bullmqJobId: job.id as string,
+          triggerSource: triggerSource ?? TRIGGER_SOURCE.CRON,
+        })
+      ).id;
+
+    await this.pipelineJobService.markRunning(effectiveJobId, job.id as string);
 
     try {
       const results = await this.regionService.syncAll(
@@ -97,7 +108,7 @@ export class RegionSyncProcessor
         dataType: r.dataType as unknown as DataTypeGQL,
       }));
 
-      await this.pipelineJobService.markSucceeded(pipelineJobId, gqlResults);
+      await this.pipelineJobService.markSucceeded(effectiveJobId, gqlResults);
 
       this.logger.log(
         {
@@ -115,7 +126,7 @@ export class RegionSyncProcessor
 
       if (isLastAttempt) {
         await this.pipelineJobService.markFailed(
-          pipelineJobId,
+          effectiveJobId,
           (err as Error).message,
         );
       }

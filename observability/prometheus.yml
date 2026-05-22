@@ -58,6 +58,13 @@ scrape_configs:
     metrics_path: /metrics
     scrape_interval: 10s
 
+  # Structural Analysis Worker metrics
+  - job_name: 'structural-analysis-worker'
+    static_configs:
+      - targets: ['host.docker.internal:4006']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
   # Redis metrics (if redis_exporter is added)
   # - job_name: 'redis'
   #   static_configs:

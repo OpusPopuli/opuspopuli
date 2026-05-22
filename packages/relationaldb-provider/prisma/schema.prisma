@@ -1435,6 +1435,30 @@ model PipelineJob {
   @@map("pipeline_jobs")
 }
 
+/// Async job status for the pipeline:structural-analysis BullMQ queue.
+/// Tracks each LLM structural analysis job — initiated on cache miss/stale
+/// during a scrape run or via the warmManifest admin mutation.
+model StructuralAnalysisJob {
+  id            String    @id @default(uuid())
+  bullmqJobId   String    @map("bullmq_job_id")
+  status        String    @db.VarChar(20) // queued | running | succeeded | failed
+  regionId      String    @map("region_id") @db.VarChar(100)
+  sourceUrl     String    @map("source_url") @db.VarChar(1000)
+  dataType      String    @map("data_type") @db.VarChar(50)
+  requestedBy   String    @map("requested_by") @db.VarChar(20) // cache_miss | cache_stale | manual
+  manifestId    String?   @map("manifest_id") // set on success
+  attempts      Int       @default(0)
+  enqueuedAt    DateTime  @default(now()) @map("enqueued_at") @db.Timestamptz
+  startedAt     DateTime? @map("started_at") @db.Timestamptz
+  finishedAt    DateTime? @map("finished_at") @db.Timestamptz
+  errorMessage  String?   @map("error_message")
+
+  @@index([status, enqueuedAt])
+  @@index([regionId, sourceUrl, dataType, enqueuedAt(sort: Desc)])
+  @@index([bullmqJobId])
+  @@map("structural_analysis_jobs")
+}
+
 /// Per-source incremental-ingestion checkpoint for handlers that walk a
 /// paginated source descending by date — they stop walking when they hit
 /// an `externalId` (or date) ≤ the watermark. Used by the daily-journal

@@ -1,10 +1,20 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RegionModule } from '@opuspopuli/region-provider';
-import { QueueModule } from '@opuspopuli/queue-provider';
+import {
+  QueueModule,
+  QueueService,
+  STRUCTURAL_ANALYSIS_QUEUE,
+} from '@opuspopuli/queue-provider';
+import type {
+  StructuralAnalysisJobData,
+  AnalysisRequestSource,
+} from '@opuspopuli/queue-provider';
 import {
   ScrapingPipelineModule,
   ScrapingPipelineService,
+  MANIFEST_MISSING_CALLBACK,
+  type ManifestMissingArgs,
 } from '@opuspopuli/scraping-pipeline';
 import {
   ExtractionModule,
@@ -33,6 +43,8 @@ import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repo
 import { PrismaIngestionWatermarkRepository } from '../infrastructure/prisma-ingestion-watermark-repository';
 import { REGION_CACHE } from './region.tokens';
 import { PipelineJobService } from './pipeline-job.service';
+import { StructuralAnalysisJobService } from './structural-analysis-job.service';
+import { randomUUID } from 'crypto';
 
 // RelationalDbModule is global, no need to import
 
@@ -90,6 +102,9 @@ const promptClientAsyncConfig = {
           ],
         }),
         PromptClientModule.forRootAsync(promptClientAsyncConfig),
+        // QueueModule must be imported here (not just at RegionDomainModule scope)
+        // because ScrapingPipelineModule's DI scope cannot see sibling providers.
+        QueueModule.forRootAsync(queueModuleAsyncConfig),
       ],
       providers: [
         PrismaManifestRepository,
@@ -102,6 +117,52 @@ const promptClientAsyncConfig = {
           provide: 'INGESTION_WATERMARK_REPOSITORY',
           useExisting: PrismaIngestionWatermarkRepository,
         },
+        StructuralAnalysisJobService,
+        {
+          provide: MANIFEST_MISSING_CALLBACK,
+          useFactory:
+            (
+              queueService: QueueService,
+              jobService: StructuralAnalysisJobService,
+            ) =>
+            async (args: ManifestMissingArgs) => {
+              // Skip if an analysis job is already queued or running for this source.
+              const active = await jobService.findActiveForSource(
+                args.regionId,
+                args.sourceUrl,
+                args.dataType,
+              );
+              if (active) return;
+
+              const jobId = randomUUID();
+              // Enqueue first so the worker can start immediately; create the DB
+              // record after. markRunning upserts, so a worker that races ahead
+              // before create() completes is handled gracefully.
+              const bullmqJobId =
+                await queueService.enqueue<StructuralAnalysisJobData>(
+                  STRUCTURAL_ANALYSIS_QUEUE,
+                  {
+                    structuralAnalysisJobId: jobId,
+                    regionId: args.regionId,
+                    sourceUrl: args.sourceUrl,
+                    dataType: args.dataType,
+                    contentGoal: args.contentGoal,
+                    category: args.category,
+                    hints: args.hints,
+                    requestedBy: args.requestedBy as AnalysisRequestSource,
+                  },
+                );
+              await jobService.create({
+                id: jobId,
+                bullmqJobId,
+                regionId: args.regionId,
+                sourceUrl: args.sourceUrl,
+                dataType: args.dataType,
+                requestedBy: args.requestedBy as AnalysisRequestSource,
+              });
+            },
+          inject: [QueueService, StructuralAnalysisJobService],
+        },
       ],
     }),
   ],
@@ -110,6 +171,7 @@ const promptClientAsyncConfig = {
     RegionResolver,
     RegionScheduler,
     PipelineJobService,
+    StructuralAnalysisJobService,
     BioGeneratorService,
     CommitteeSummaryGeneratorService,
     EntityActivitySummaryGeneratorService,
@@ -147,6 +209,12 @@ const promptClientAsyncConfig = {
       },
     },
   ],
-  exports: [RegionDomainService, PipelineJobService, QueueModule],
+  exports: [
+    RegionDomainService,
+    PipelineJobService,
+    StructuralAnalysisJobService,
+    QueueModule,
+    ScrapingPipelineModule,
+  ],
 })
 export class RegionDomainModule {}
