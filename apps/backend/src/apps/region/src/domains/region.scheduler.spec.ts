@@ -9,7 +9,6 @@ import { DataType } from '@opuspopuli/region-provider';
 describe('RegionScheduler', () => {
   let scheduler: RegionScheduler;
   let regionService: jest.Mocked<RegionDomainService>;
-  let configService: jest.Mocked<ConfigService>;
 
   const mockSyncResults = [
     {
@@ -22,55 +21,35 @@ describe('RegionScheduler', () => {
       errors: [],
       syncedAt: new Date(),
     },
-    {
-      regionId: 'california',
-      dataType: DataType.MEETINGS,
-      itemsProcessed: 5,
-      itemsCreated: 3,
-      itemsUpdated: 2,
-      itemsSkipped: 0,
-      errors: [],
-      syncedAt: new Date(),
-    },
-    {
-      regionId: 'california',
-      dataType: DataType.REPRESENTATIVES,
-      itemsProcessed: 8,
-      itemsCreated: 2,
-      itemsUpdated: 6,
-      itemsSkipped: 0,
-      errors: [],
-      syncedAt: new Date(),
-    },
   ];
 
-  beforeEach(async () => {
+  function buildModule(configOverrides: Record<string, unknown> = {}) {
     const mockRegionService = createMock<RegionDomainService>();
     mockRegionService.syncAll.mockResolvedValue(mockSyncResults);
 
     const mockConfigService = createMock<ConfigService>();
     mockConfigService.get.mockImplementation((key: string) => {
-      if (key === 'region.syncEnabled') return true;
-      return undefined;
+      const defaults: Record<string, unknown> = {
+        'region.syncEnabled': true,
+        'region.syncCronViaQueue': false,
+        'region.syncRunOnStartup': false,
+      };
+      return configOverrides[key] ?? defaults[key] ?? undefined;
     });
 
-    const module: TestingModule = await Test.createTestingModule({
+    return Test.createTestingModule({
       providers: [
         RegionScheduler,
-        {
-          provide: RegionDomainService,
-          useValue: mockRegionService,
-        },
-        {
-          provide: ConfigService,
-          useValue: mockConfigService,
-        },
+        { provide: RegionDomainService, useValue: mockRegionService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
+  }
 
+  beforeEach(async () => {
+    const module: TestingModule = await buildModule();
     scheduler = module.get<RegionScheduler>(RegionScheduler);
     regionService = module.get(RegionDomainService);
-    configService = module.get(ConfigService);
   });
 
   it('should be defined', () => {
@@ -78,117 +57,68 @@ describe('RegionScheduler', () => {
   });
 
   describe('onModuleInit', () => {
-    it('should run initial sync when sync is enabled', async () => {
+    it('does not sync by default (REGION_SYNC_RUN_ON_STARTUP defaults to false)', async () => {
       await scheduler.onModuleInit();
-
-      expect(regionService.syncAll).toHaveBeenCalled();
-    });
-
-    it('should not run initial sync when sync is disabled', async () => {
-      configService.get.mockImplementation((key: string) => {
-        if (key === 'region.syncEnabled') return false;
-        return undefined;
-      });
-
-      // Create a new scheduler with sync disabled
-      const module = await Test.createTestingModule({
-        providers: [
-          RegionScheduler,
-          {
-            provide: RegionDomainService,
-            useValue: regionService,
-          },
-          {
-            provide: ConfigService,
-            useValue: configService,
-          },
-        ],
-      }).compile();
-
-      const disabledScheduler = module.get<RegionScheduler>(RegionScheduler);
-      regionService.syncAll.mockClear();
-
-      await disabledScheduler.onModuleInit();
-
       expect(regionService.syncAll).not.toHaveBeenCalled();
     });
 
-    it('should handle sync errors gracefully', async () => {
-      regionService.syncAll.mockRejectedValue(new Error('Sync failed'));
+    it('syncs when REGION_SYNC_RUN_ON_STARTUP=true', async () => {
+      const module = await buildModule({ 'region.syncRunOnStartup': true });
+      const s = module.get<RegionScheduler>(RegionScheduler);
+      const rs = module.get(
+        RegionDomainService,
+      ) as jest.Mocked<RegionDomainService>;
 
-      // Should not throw
-      await expect(scheduler.onModuleInit()).resolves.not.toThrow();
+      await s.onModuleInit();
+
+      expect(rs.syncAll).toHaveBeenCalled();
+    });
+
+    it('handles errors gracefully on startup', async () => {
+      const module = await buildModule({ 'region.syncRunOnStartup': true });
+      const s = module.get<RegionScheduler>(RegionScheduler);
+      const rs = module.get(
+        RegionDomainService,
+      ) as jest.Mocked<RegionDomainService>;
+      rs.syncAll.mockRejectedValue(new Error('Startup sync failed'));
+
+      await expect(s.onModuleInit()).resolves.not.toThrow();
     });
   });
 
   describe('handleScheduledSync', () => {
-    it('should run sync when enabled', async () => {
+    it('runs sync when syncEnabled=true and syncCronViaQueue=false', async () => {
       await scheduler.handleScheduledSync();
-
       expect(regionService.syncAll).toHaveBeenCalled();
     });
 
-    it('should not run sync when disabled', async () => {
-      configService.get.mockImplementation((key: string) => {
-        if (key === 'region.syncEnabled') return false;
-        return undefined;
-      });
+    it('skips when syncEnabled=false', async () => {
+      const module = await buildModule({ 'region.syncEnabled': false });
+      const s = module.get<RegionScheduler>(RegionScheduler);
+      const rs = module.get(
+        RegionDomainService,
+      ) as jest.Mocked<RegionDomainService>;
 
-      const module = await Test.createTestingModule({
-        providers: [
-          RegionScheduler,
-          {
-            provide: RegionDomainService,
-            useValue: regionService,
-          },
-          {
-            provide: ConfigService,
-            useValue: configService,
-          },
-        ],
-      }).compile();
+      await s.handleScheduledSync();
 
-      const disabledScheduler = module.get<RegionScheduler>(RegionScheduler);
-      regionService.syncAll.mockClear();
-
-      await disabledScheduler.handleScheduledSync();
-
-      expect(regionService.syncAll).not.toHaveBeenCalled();
+      expect(rs.syncAll).not.toHaveBeenCalled();
     });
 
-    it('should handle sync errors gracefully', async () => {
+    it('skips when REGION_SYNC_CRON_VIA_QUEUE=true (worker owns the schedule)', async () => {
+      const module = await buildModule({ 'region.syncCronViaQueue': true });
+      const s = module.get<RegionScheduler>(RegionScheduler);
+      const rs = module.get(
+        RegionDomainService,
+      ) as jest.Mocked<RegionDomainService>;
+
+      await s.handleScheduledSync();
+
+      expect(rs.syncAll).not.toHaveBeenCalled();
+    });
+
+    it('handles sync errors gracefully', async () => {
       regionService.syncAll.mockRejectedValue(new Error('Network error'));
-
-      // Should not throw
       await expect(scheduler.handleScheduledSync()).resolves.not.toThrow();
-    });
-
-    it('should log sync results', async () => {
-      await scheduler.handleScheduledSync();
-
-      expect(regionService.syncAll).toHaveBeenCalled();
-    });
-  });
-
-  describe('sync with errors', () => {
-    it('should log warnings when sync has errors', async () => {
-      const resultsWithErrors = [
-        {
-          regionId: 'california',
-          dataType: DataType.PROPOSITIONS,
-          itemsProcessed: 10,
-          itemsCreated: 5,
-          itemsUpdated: 5,
-          itemsSkipped: 0,
-          errors: ['Failed to parse item'],
-          syncedAt: new Date(),
-        },
-      ];
-      regionService.syncAll.mockResolvedValue(resultsWithErrors);
-
-      // Should not throw, just log warnings
-      await expect(scheduler.handleScheduledSync()).resolves.not.toThrow();
-      expect(regionService.syncAll).toHaveBeenCalled();
     });
   });
 });

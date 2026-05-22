@@ -47,6 +47,15 @@
         "tsConfigPath": "src/apps/region/tsconfig.app.json"
       }
     },
+    "region-worker": {
+      "type": "application",
+      "root": "src/apps/workers/region-worker",
+      "entryFile": "main",
+      "sourceRoot": "src/apps/workers/region-worker/src",
+      "compilerOptions": {
+        "tsConfigPath": "src/apps/workers/region-worker/tsconfig.app.json"
+      }
+    },
     "api": {
       "type": "application",
       "root": "src/api",

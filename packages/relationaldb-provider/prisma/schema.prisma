@@ -1394,11 +1394,45 @@ model PipelineExecution {
   llmModel            String?  @map("llm_model") @db.VarChar(100)
   llmTokensUsed       Int?     @map("llm_tokens_used")
   executedAt          DateTime @default(now()) @map("executed_at") @db.Timestamptz
+  pipelineJobId       String?  @map("pipeline_job_id")
+  pipelineJob         PipelineJob? @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
 
   @@index([regionId, dataType, executedAt])
   @@index([manifestId])
   @@index([executedAt])
+  @@index([pipelineJobId])
   @@map("pipeline_executions")
+}
+
+/// Async job status for region-sync BullMQ queue.
+/// Canonical job history — BullMQ Redis state is ephemeral (removeOnComplete/removeOnFail).
+/// Template for future job families: each queue gets its own status table.
+model PipelineJob {
+  id            String    @id @default(uuid())
+  bullmqJobId   String    @map("bullmq_job_id")
+  triggerSource String    @map("trigger_source")
+  regionId      String?   @map("region_id")
+  dataTypes     String[]  @map("data_types")
+  depth         String?
+  maxReps       Int?      @map("max_reps")
+  maxBills      Int?      @map("max_bills")
+  status        String
+  attempts      Int       @default(0)
+  enqueuedBy    String?   @map("enqueued_by")
+  enqueuedAt    DateTime  @default(now()) @map("enqueued_at") @db.Timestamptz
+  startedAt     DateTime? @map("started_at") @db.Timestamptz
+  finishedAt    DateTime? @map("finished_at") @db.Timestamptz
+  errorMessage  String?   @map("error_message")
+  result        Json?
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  executions    PipelineExecution[]
+
+  @@index([status, enqueuedAt])
+  @@index([regionId, enqueuedAt(sort: Desc)])
+  @@index([bullmqJobId])
+  @@index([triggerSource, enqueuedAt(sort: Desc)])
+  @@map("pipeline_jobs")
 }
 
 /// Per-source incremental-ingestion checkpoint for handlers that walk a
