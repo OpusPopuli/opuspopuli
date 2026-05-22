@@ -313,6 +313,48 @@ services:
           cpus: '0.25'
           memory: 512M
 
+  structural-analysis-worker:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.structural-analysis-worker
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-uat-structural-analysis-worker
+    environment:
+      <<: *backend-env
+      APPLICATION: structural-analysis-worker
+      DESCRIPTION: Structural analysis worker (async manifest analysis)
+      PORT: 8080
+      STRUCTURAL_ANALYSIS_WORKER_PORT: 8080
+      LLM_URL: http://host.docker.internal:11434
+      LLM_MODEL: qwen3.5:9b
+      OLLAMA_REQUEST_TIMEOUT_MS: "600000"
+      PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
+      PROMPT_SERVICE_API_KEY: dev-key-1
+    ports:
+      - "3006:8080"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - opuspopuli-network
+      - prompt-service_default
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 4096M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
   api:
     build:
       context: .

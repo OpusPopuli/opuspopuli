@@ -1,4 +1,14 @@
 export const REGION_SYNC_QUEUE = "region-sync";
+export const STRUCTURAL_ANALYSIS_QUEUE = "pipeline-structural-analysis";
+
+export const ANALYSIS_REQUEST_SOURCE = {
+  CACHE_MISS: "cache_miss",
+  CACHE_STALE: "cache_stale",
+  MANUAL: "manual",
+} as const;
+
+export type AnalysisRequestSource =
+  (typeof ANALYSIS_REQUEST_SOURCE)[keyof typeof ANALYSIS_REQUEST_SOURCE];
 
 export const QUEUE_CONNECTION = "QUEUE_CONNECTION";
 export const QUEUE_MODULE_OPTIONS = "QUEUE_MODULE_OPTIONS";

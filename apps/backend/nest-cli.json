@@ -56,6 +56,15 @@
         "tsConfigPath": "src/apps/workers/region-worker/tsconfig.app.json"
       }
     },
+    "structural-analysis-worker": {
+      "type": "application",
+      "root": "src/apps/workers/structural-analysis-worker",
+      "entryFile": "main",
+      "sourceRoot": "src/apps/workers/structural-analysis-worker/src",
+      "compilerOptions": {
+        "tsConfigPath": "src/apps/workers/structural-analysis-worker/tsconfig.app.json"
+      }
+    },
     "api": {
       "type": "application",
       "root": "src/api",

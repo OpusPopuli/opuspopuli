@@ -1,4 +1,4 @@
-import { TriggerSource } from "./queue.constants";
+import { AnalysisRequestSource, TriggerSource } from "./queue.constants";
 
 export interface RegionSyncJobData {
   pipelineJobId: string;
@@ -19,6 +19,23 @@ export interface RegionSyncJobResult {
   itemsSkipped: number;
   errors: string[];
   syncedAt: string;
+}
+
+export interface StructuralAnalysisJobData {
+  structuralAnalysisJobId: string;
+  regionId: string;
+  sourceUrl: string;
+  dataType: string;
+  contentGoal?: string;
+  category?: string;
+  hints?: string[];
+  requestedBy: AnalysisRequestSource;
+}
+
+export interface StructuralAnalysisJobResult {
+  manifestId: string;
+  manifestVersion: number;
+  analysisTimeMs: number;
 }
 
 export interface QueueModuleOptions {

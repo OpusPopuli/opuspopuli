@@ -580,6 +580,12 @@ export interface ExtractionResult<T> {
   extractionTimeMs: number;
   /** Total item count (useful in batch mode where items array is empty) */
   itemCount?: number;
+  /**
+   * True when manifest analysis was deferred to the async worker queue.
+   * Items will be empty or extracted with a stale manifest this run;
+   * the next run will find the freshly-derived manifest in cache.
+   */
+  pendingManifestAnalysis?: boolean;
 }
 
 /**
