@@ -8,7 +8,7 @@ echo "=== Test Runner: Verifying database state ==="
 
 # Connection parameters
 export PGPASSWORD="${RELATIONAL_DB_PASSWORD:-your-super-secret-password}"
-PGHOST="${RELATIONAL_DB_HOST:-supabase-db}"
+PGHOST="${RELATIONAL_DB_HOST:-opuspopuli-db}"
 PGUSER="${RELATIONAL_DB_USERNAME:-postgres}"
 PGDB="${RELATIONAL_DB_DATABASE:-postgres}"
 

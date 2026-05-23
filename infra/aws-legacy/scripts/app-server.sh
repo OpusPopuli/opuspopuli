@@ -255,7 +255,7 @@ services:
   # PostgreSQL with pgvector
   postgres:
     image: supabase/postgres:15.1.0.147
-    container_name: supabase-db
+    container_name: opuspopuli-db
     restart: unless-stopped
     ports:
       - "5432:5432"
@@ -591,7 +591,7 @@ docker-compose up -d
 log "Step 10: Running health checks..."
 
 # Wait for PostgreSQL
-wait_for_healthy "PostgreSQL" "docker exec supabase-db pg_isready -U postgres" 120 5 || {
+wait_for_healthy "PostgreSQL" "docker exec opuspopuli-db pg_isready -U postgres" 120 5 || {
     log_error "PostgreSQL health check failed"
     docker-compose logs postgres
 }

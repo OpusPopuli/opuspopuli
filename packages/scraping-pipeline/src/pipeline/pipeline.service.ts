@@ -116,14 +116,20 @@ export class ScrapingPipelineService {
     source: DataSourceConfig,
     regionId: string,
     onBatch?: (items: T[]) => Promise<void>,
+    pipelineJobId?: string,
   ): Promise<ExtractionResult<T>> {
     const sourceType = source.sourceType ?? "html_scrape";
 
     switch (sourceType) {
       case "bulk_download":
-        return this.executeBulkDownload<T>(source, regionId, onBatch);
+        return this.executeBulkDownload<T>(
+          source,
+          regionId,
+          onBatch,
+          pipelineJobId,
+        );
       case "api":
-        return this.executeApiIngest<T>(source, regionId);
+        return this.executeApiIngest<T>(source, regionId, pipelineJobId);
       case "pdf":
         return this.executePdfExtract<T>(source, regionId);
       case "pdf_archive":
@@ -439,6 +445,7 @@ export class ScrapingPipelineService {
     source: DataSourceConfig,
     regionId: string,
     onBatch?: (items: T[]) => Promise<void>,
+    pipelineJobId?: string,
   ): Promise<ExtractionResult<T>> {
     this.logger.log(
       `Pipeline started [bulk_download]: ${regionId}/${source.dataType} from ${source.url}`,
@@ -455,7 +462,12 @@ export class ScrapingPipelineService {
       };
     }
 
-    return this.bulkDownload.execute<T>(source, regionId, onBatch);
+    return this.bulkDownload.execute<T>(
+      source,
+      regionId,
+      onBatch,
+      pipelineJobId,
+    );
   }
 
   /**
@@ -465,6 +477,7 @@ export class ScrapingPipelineService {
   private async executeApiIngest<T>(
     source: DataSourceConfig,
     regionId: string,
+    pipelineJobId?: string,
   ): Promise<ExtractionResult<T>> {
     this.logger.log(
       `Pipeline started [api]: ${regionId}/${source.dataType} from ${source.url}`,
@@ -481,7 +494,12 @@ export class ScrapingPipelineService {
       };
     }
 
-    return this.apiIngest.execute<T>(source, regionId);
+    return this.apiIngest.execute<T>(
+      source,
+      regionId,
+      undefined,
+      pipelineJobId,
+    );
   }
 
   /**

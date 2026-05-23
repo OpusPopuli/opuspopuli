@@ -27,13 +27,17 @@ import type {
   BulkDownloadConfig,
   DataSourceConfig,
   ExtractionResult,
-  RawExtractionResult,
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
+import {
+  ExecutionTrackerService,
+  type ExecutionSession,
+} from "../pipeline/execution-tracker.service.js";
 import {
   inferSourceSystem,
   buildFailureResult,
   mapAndReturn,
+  mapBatchItems,
 } from "./handler-utils.js";
 
 /** Download timeout: 30 minutes for very large files (FEC indiv26.zip is ~1.4GB) */
@@ -49,12 +53,16 @@ export type OnBatchCallback<T> = (items: T[]) => Promise<void>;
 export class BulkDownloadHandler {
   private readonly logger = new Logger(BulkDownloadHandler.name);
 
-  constructor(private readonly mapper: DomainMapperService) {}
+  constructor(
+    private readonly mapper: DomainMapperService,
+    private readonly executionTracker: ExecutionTrackerService | null = null,
+  ) {}
 
   async execute<T>(
     source: DataSourceConfig,
-    _regionId: string,
+    regionId: string,
     onBatch?: OnBatchCallback<T>,
+    pipelineJobId?: string,
   ): Promise<ExtractionResult<T>> {
     const pipelineStart = Date.now();
     const bulk = source.bulk!;
@@ -104,30 +112,66 @@ export class BulkDownloadHandler {
 
       // 3. Parse and process in batches (streaming)
       if (onBatch) {
-        // Batch mode: map and flush each batch via callback, never accumulate all records
         const batchSize = bulk.batchSize ?? DEFAULT_BATCH_SIZE;
         let totalItems = 0;
 
-        await this.parseDelimitedStream(
-          contentStream,
-          bulk,
-          source,
-          async (rawBatch) => {
-            const rawResult: RawExtractionResult = {
-              items: rawBatch,
-              success: rawBatch.length > 0,
-              warnings: [],
-              errors: [],
-            };
-            const mapped = this.mapper.map<T>(rawResult, source);
-            warnings.push(...mapped.warnings);
-            if (mapped.items.length > 0) {
-              await onBatch(mapped.items);
-              totalItems += mapped.items.length;
-            }
-          },
-          batchSize,
-        );
+        // On retry, the session exposes already-applied batch indexes so we
+        // skip re-sending them to onBatch. Disabled sessions are silent.
+        const session: ExecutionSession =
+          await ExecutionTrackerService.beginSession(
+            this.executionTracker,
+            pipelineJobId,
+            {
+              regionId,
+              sourceUrl: source.url,
+              dataType: source.dataType,
+            },
+          );
+
+        let batchIndex = 0;
+        let streamSuccess = false;
+
+        try {
+          await this.parseDelimitedStream(
+            contentStream,
+            bulk,
+            source,
+            async (rawBatch) => {
+              const currentBatch = batchIndex++;
+              const items = mapBatchItems<T>(
+                rawBatch,
+                source,
+                this.mapper,
+                warnings,
+              );
+
+              if (items.length === 0) return;
+
+              if (session.appliedBatches.has(currentBatch)) {
+                this.logger.debug(
+                  `Skipping already-applied batch ${currentBatch} for ${source.url}`,
+                );
+                return;
+              }
+
+              // onBatch (upsert) runs before recordBatch intentionally:
+              // if recordBatch fails transiently, the upsert is idempotent
+              // and the batch will be re-applied on retry — acceptable.
+              await onBatch(items);
+              totalItems += items.length;
+
+              await session.recordBatch(currentBatch, items.length);
+            },
+            batchSize,
+          );
+          streamSuccess = true;
+        } finally {
+          await session.finalize(streamSuccess, {
+            itemsExtracted: totalItems,
+            itemsFailed: 0,
+            extractionTimeMs: Date.now() - pipelineStart,
+          });
+        }
 
         this.logger.log(
           `Processed ${totalItems} records in batches from ${bulk.filePattern ?? source.url}`,

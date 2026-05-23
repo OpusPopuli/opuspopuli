@@ -14,6 +14,7 @@ import {
   ScrapingPipelineModule,
   ScrapingPipelineService,
   MANIFEST_MISSING_CALLBACK,
+  EXECUTION_TRACKER_REPOSITORY,
   type ManifestMissingArgs,
 } from '@opuspopuli/scraping-pipeline';
 import {
@@ -41,6 +42,7 @@ import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
 import { PrismaIngestionWatermarkRepository } from '../infrastructure/prisma-ingestion-watermark-repository';
+import { PrismaExecutionTrackerRepository } from '../infrastructure/prisma-execution-tracker-repository';
 import { REGION_CACHE } from './region.tokens';
 import { PipelineJobService } from './pipeline-job.service';
 import { StructuralAnalysisJobService } from './structural-analysis-job.service';
@@ -116,6 +118,11 @@ const promptClientAsyncConfig = {
         {
           provide: 'INGESTION_WATERMARK_REPOSITORY',
           useExisting: PrismaIngestionWatermarkRepository,
+        },
+        PrismaExecutionTrackerRepository,
+        {
+          provide: EXECUTION_TRACKER_REPOSITORY,
+          useExisting: PrismaExecutionTrackerRepository,
         },
         StructuralAnalysisJobService,
         {

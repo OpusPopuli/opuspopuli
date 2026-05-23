@@ -30,12 +30,12 @@ x-backend-env: &backend-env
   VERSION: 1.0.0
   RESEND_API_KEY: re_test_placeholder_key
   RELATIONAL_DB_PROVIDER: postgres
-  RELATIONAL_DB_HOST: supabase-db
+  RELATIONAL_DB_HOST: opuspopuli-db
   RELATIONAL_DB_PORT: 5432
   RELATIONAL_DB_USERNAME: postgres
   RELATIONAL_DB_PASSWORD: your-super-secret-password
   RELATIONAL_DB_DATABASE: postgres
-  DATABASE_URL: postgresql://postgres:your-super-secret-password@supabase-db:5432/postgres
+  DATABASE_URL: postgresql://postgres:your-super-secret-password@opuspopuli-db:5432/postgres
   REDIS_URL: redis://redis:6379
   SUPABASE_URL: http://supabase-kong:8000
   SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.KR1jqUlyHtwAxCJf6B0QVoRpobrdPEv8ALnNJUlGxPE
@@ -61,7 +61,7 @@ services:
     environment:
       <<: *backend-env
     depends_on:
-      supabase-db:
+      opuspopuli-db:
         condition: service_healthy
     command: ["/usr/local/bin/db-migrate.sh"]
     networks:

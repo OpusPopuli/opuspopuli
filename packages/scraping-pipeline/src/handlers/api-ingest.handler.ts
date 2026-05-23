@@ -17,9 +17,14 @@ import type {
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
 import {
+  ExecutionTrackerService,
+  type ExecutionSession,
+} from "../pipeline/execution-tracker.service.js";
+import {
   inferSourceSystem,
   buildFailureResult,
   mapAndReturn,
+  mapBatchItems,
 } from "./handler-utils.js";
 
 /** Maximum pages to fetch in a single pipeline run (safety limit) */
@@ -35,22 +40,110 @@ const PAGE_DELAY_MS = 250;
 export class ApiIngestHandler {
   private readonly logger = new Logger(ApiIngestHandler.name);
 
-  constructor(private readonly mapper: DomainMapperService) {}
+  constructor(
+    private readonly mapper: DomainMapperService,
+    private readonly executionTracker: ExecutionTrackerService | null = null,
+  ) {}
 
   async execute<T>(
     source: DataSourceConfig,
-    _regionId: string,
+    regionId: string,
+    onBatch?: (items: T[]) => Promise<void>,
+    pipelineJobId?: string,
   ): Promise<ExtractionResult<T>> {
     const pipelineStart = Date.now();
     const api = source.api!;
     const warnings: string[] = [];
     const errors: string[] = [];
+    const sourceSystem = inferSourceSystem(source);
 
     try {
-      // 1. Resolve API key
       const apiKey = this.resolveApiKey(api);
 
-      // 2. Fetch all pages
+      if (onBatch) {
+        // Streaming mode: map and flush each page via callback.
+        const session: ExecutionSession =
+          await ExecutionTrackerService.beginSession(
+            this.executionTracker,
+            pipelineJobId,
+            {
+              regionId,
+              sourceUrl: source.url,
+              dataType: source.dataType,
+            },
+          );
+
+        let totalItems = 0;
+        let streamSuccess = false;
+
+        try {
+          await this.fetchAllPages(
+            source.url,
+            api,
+            apiKey,
+            warnings,
+            async (rawPageItems, pageIndex) => {
+              // Apply per-page transformations before domain mapping.
+              if (api.fieldMappings) {
+                for (const item of rawPageItems) {
+                  this.remapFields(item, api.fieldMappings);
+                }
+              }
+              if (sourceSystem) {
+                for (const item of rawPageItems) {
+                  if (!item["sourceSystem"])
+                    item["sourceSystem"] = sourceSystem;
+                }
+              }
+
+              const items = mapBatchItems<T>(
+                rawPageItems,
+                source,
+                this.mapper,
+                warnings,
+              );
+
+              if (items.length === 0) return;
+
+              if (session.appliedBatches.has(pageIndex)) {
+                this.logger.debug(
+                  `Skipping already-applied page ${pageIndex} for ${source.url}`,
+                );
+                return;
+              }
+
+              // onBatch (upsert) runs before recordBatch intentionally:
+              // if recordBatch fails transiently, the upsert is idempotent
+              // and the batch will be re-applied on retry — acceptable.
+              await onBatch(items);
+              totalItems += items.length;
+
+              await session.recordBatch(pageIndex, items.length);
+            },
+          );
+          streamSuccess = true;
+        } finally {
+          await session.finalize(streamSuccess, {
+            itemsExtracted: totalItems,
+            itemsFailed: 0,
+            extractionTimeMs: Date.now() - pipelineStart,
+          });
+        }
+
+        this.logger.log(`Streamed ${totalItems} items from API ${source.url}`);
+
+        return {
+          items: [],
+          manifestVersion: 0,
+          success: totalItems > 0,
+          warnings,
+          errors,
+          extractionTimeMs: Date.now() - pipelineStart,
+          itemCount: totalItems,
+        };
+      }
+
+      // Non-streaming (accumulation) mode — original behavior preserved.
       const allItems = await this.fetchAllPages(
         source.url,
         api,
@@ -62,15 +155,12 @@ export class ApiIngestHandler {
         `Fetched ${allItems.length} items from API ${source.url}`,
       );
 
-      // 3. Remap field names (e.g., FEC snake_case → domain camelCase)
       if (api.fieldMappings) {
         for (const item of allItems) {
           this.remapFields(item, api.fieldMappings);
         }
       }
 
-      // 4. Inject sourceSystem based on category
-      const sourceSystem = inferSourceSystem(source);
       if (sourceSystem) {
         for (const item of allItems) {
           if (!item["sourceSystem"]) {
@@ -79,7 +169,6 @@ export class ApiIngestHandler {
         }
       }
 
-      // 4. Map through domain mapper
       return mapAndReturn<T>(
         allItems,
         warnings,
@@ -108,12 +197,23 @@ export class ApiIngestHandler {
 
   /**
    * Fetch all pages from a paginated API endpoint.
+   *
+   * When onPage is provided (streaming mode), each page's items are passed to
+   * the callback and NOT accumulated — returns an empty array. Cursor state is
+   * always maintained so pagination advances correctly even when a callback
+   * skips writing items (e.g. already-applied pages on retry).
+   *
+   * When omitted (accumulation mode), all items are collected and returned.
    */
   private async fetchAllPages(
     baseUrl: string,
     api: ApiSourceConfig,
     apiKey: string | undefined,
     warnings: string[],
+    onPage?: (
+      items: Record<string, unknown>[],
+      pageIndex: number,
+    ) => Promise<void>,
   ): Promise<Record<string, unknown>[]> {
     const allItems: Record<string, unknown>[] = [];
     let page = 0;
@@ -133,7 +233,11 @@ export class ApiIngestHandler {
         break;
       }
 
-      allItems.push(...items);
+      if (onPage) {
+        await onPage(items, page);
+      } else {
+        allItems.push(...items);
+      }
       page++;
 
       const nextCursor = this.extractCursorParams(api, items, body);
