@@ -30,7 +30,10 @@ import {
   DataTypeGQL,
   SyncDepthGQL,
 } from './models/region-info.model';
-import { RegionSyncJobModel } from './models/pipeline-job.model';
+import {
+  RegionSyncJobModel,
+  ScheduledSyncJobModel,
+} from './models/pipeline-job.model';
 import { PipelineJobService } from './pipeline-job.service';
 import {
   QueueService,
@@ -907,6 +910,13 @@ export class RegionResolver {
     limit: number,
   ): Promise<RegionSyncJobModel[]> {
     return this.pipelineJobService.findRecent(Math.min(limit, 100));
+  }
+
+  @Query(() => [ScheduledSyncJobModel])
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  async scheduledSyncJobs(): Promise<ScheduledSyncJobModel[]> {
+    return this.queueService.listSchedulers(REGION_SYNC_QUEUE);
   }
 
   private async enqueueSyncJob(

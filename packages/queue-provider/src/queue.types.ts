@@ -63,3 +63,9 @@ export interface QueueJobInfo {
   progress: number;
   failedReason?: string;
 }
+
+export interface SchedulerInfo {
+  id: string;
+  pattern: string;
+  next: number | null;
+}

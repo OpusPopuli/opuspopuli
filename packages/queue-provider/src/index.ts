@@ -24,4 +24,5 @@ export type {
   QueueModuleAsyncOptions,
   EnqueueOptions,
   QueueJobInfo,
+  SchedulerInfo,
 } from "./queue.types";

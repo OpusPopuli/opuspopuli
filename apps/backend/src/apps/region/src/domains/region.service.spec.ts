@@ -107,6 +107,25 @@ describe('isLikelyValidBio', () => {
       ),
     ).toBe(true);
   });
+
+  it('rejects bios matching custom plugin noise patterns', () => {
+    const patterns = [/^About Us/i, /Navigation Menu/i];
+    const longJunk =
+      'Navigation Menu Contact Us Events Calendar Links Resources Committees ' +
+      'Meeting Schedule Agendas Minutes Reports Forms Documents Publications'.repeat(
+        2,
+      );
+    expect(isLikelyValidBio(longJunk, patterns)).toBe(false);
+  });
+
+  it('accepts a valid bio when custom patterns are provided and do not match', () => {
+    const patterns = [/^About Us/i];
+    const realBio =
+      'Representative Jane Doe was elected to the State Assembly in 2020. ' +
+      'She serves on the Agriculture and Finance committees and has championed ' +
+      'water conservation legislation throughout her tenure in the legislature.';
+    expect(isLikelyValidBio(realBio, patterns)).toBe(true);
+  });
 });
 
 // ─── stripLeadingZerosFromExternalId ─────────────────────────────────────────
