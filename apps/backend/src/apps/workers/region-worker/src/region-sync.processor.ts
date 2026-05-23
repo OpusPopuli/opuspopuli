@@ -101,6 +101,7 @@ export class RegionSyncProcessor
         maxBills,
         depth,
         regionId,
+        effectiveJobId,
       );
 
       const gqlResults = results.map((r) => ({

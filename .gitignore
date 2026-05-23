@@ -28,4 +28,5 @@ playwright/.cache/
 .DS_Store
 
 # Claude Code per-project state (plans, tool results, etc.)
-.claude/
+.claude/CALIFORNIA_SCRAPING_TEST_PLAN.md
+tmp/

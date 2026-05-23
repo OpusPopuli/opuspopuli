@@ -63,11 +63,12 @@ import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-c
  * Satisfied by both RegionProviderService and IRegionPlugin.
  */
 interface DataFetcher {
-  fetchPropositions(): Promise<Proposition[]>;
-  fetchMeetings(): Promise<Meeting[]>;
+  fetchPropositions(pipelineJobId?: string): Promise<Proposition[]>;
+  fetchMeetings(pipelineJobId?: string): Promise<Meeting[]>;
   fetchRepresentatives(): Promise<Representative[]>;
   fetchCampaignFinance?(
     onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
+    pipelineJobId?: string,
   ): Promise<CampaignFinanceResult>;
   fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
 }
@@ -951,6 +952,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     maxBills?: number,
     depth: string = SyncDepth.STATE,
     scopedRegionId?: string,
+    pipelineJobId?: string,
   ): Promise<SyncResult[]> {
     const limits = [
       maxReps != null ? `maxReps=${maxReps}` : null,
@@ -985,6 +987,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
           dataTypes,
           maxReps,
           maxBills,
+          pipelineJobId,
         )),
       );
     }
@@ -996,6 +999,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
           maxReps,
           maxBills,
           scopedRegionId,
+          pipelineJobId,
         )),
       );
     }
@@ -1010,6 +1014,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     dataTypes?: string[],
     maxReps?: number,
     maxBills?: number,
+    pipelineJobId?: string,
   ): Promise<SyncResult[]> {
     const supported = instance.getSupportedDataTypes();
     const filtered = dataTypes
@@ -1025,6 +1030,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
           maxReps,
           maxBills,
           name,
+          pipelineJobId,
         );
         results.push(result);
       } catch (error) {
@@ -1053,6 +1059,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     maxReps?: number,
     maxBills?: number,
     scopedRegionId?: string,
+    pipelineJobId?: string,
   ): Promise<SyncResult[]> {
     const where = scopedRegionId
       ? { name: scopedRegionId, parentRegionId: { not: null }, enabled: true }
@@ -1093,6 +1100,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
             dataTypes,
             maxReps,
             maxBills,
+            pipelineJobId,
           )),
         );
       } catch (error) {
@@ -1137,6 +1145,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     maxReps?: number,
     maxBills?: number,
     regionId?: string,
+    pipelineJobId?: string,
   ): Promise<SyncResult> {
     this.logger.log(`Syncing ${dataType} from ${pluginName}`);
     const startTime = Date.now();
@@ -1152,11 +1161,13 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
         }>
       >
     > = {
-      [DataType.PROPOSITIONS]: () => this.syncPropositions(provider),
-      [DataType.MEETINGS]: () => this.syncMeetings(provider),
+      [DataType.PROPOSITIONS]: () =>
+        this.syncPropositions(provider, pipelineJobId),
+      [DataType.MEETINGS]: () => this.syncMeetings(provider, pipelineJobId),
       [DataType.REPRESENTATIVES]: () =>
         this.syncRepresentatives(provider, maxReps, regionId),
-      [DataType.CAMPAIGN_FINANCE]: () => this.syncCampaignFinance(provider),
+      [DataType.CAMPAIGN_FINANCE]: () =>
+        this.syncCampaignFinance(provider, pipelineJobId),
       [DataType.CIVICS]: () => this.syncCivics(),
       [DataType.BILLS]: () => this.syncBills(maxBills),
     };
@@ -1203,12 +1214,13 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    */
   private async syncPropositions(
     provider: DataFetcher = this.regionService,
+    pipelineJobId?: string,
   ): Promise<{
     processed: number;
     created: number;
     updated: number;
   }> {
-    const propositions = await provider.fetchPropositions();
+    const propositions = await provider.fetchPropositions(pipelineJobId);
     if (propositions.length === 0) {
       return { processed: 0, created: 0, updated: 0 };
     }
@@ -1300,12 +1312,13 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
    */
   private async syncMeetings(
     provider: DataFetcher = this.regionService,
+    pipelineJobId?: string,
   ): Promise<{
     processed: number;
     created: number;
     updated: number;
   }> {
-    const meetings = await provider.fetchMeetings();
+    const meetings = await provider.fetchMeetings(pipelineJobId);
     if (meetings.length === 0) {
       // Daily-file may be empty between sessions, but pdf_archive
       // (minutes) sources can still be live — fall through to the
@@ -1793,7 +1806,10 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async syncCampaignFinance(provider: DataFetcher): Promise<{
+  private async syncCampaignFinance(
+    provider: DataFetcher,
+    pipelineJobId?: string,
+  ): Promise<{
     processed: number;
     created: number;
     updated: number;
@@ -1816,7 +1832,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       totalUpdated += result.updated;
     };
 
-    const data = await provider.fetchCampaignFinance(onBatch);
+    const data = await provider.fetchCampaignFinance(onBatch, pipelineJobId);
 
     // Handle any non-batched items (from API sources or small files)
     if (

@@ -64,7 +64,7 @@ export default async function globalSetup() {
   if (!isRunningInDocker) {
     // Verify docker-compose services are running (only when running from host)
     try {
-      execSync('docker compose ps --status running | grep supabase-db', {
+      execSync('docker compose ps --status running | grep opuspopuli-db', {
         stdio: 'pipe',
       });
     } catch {

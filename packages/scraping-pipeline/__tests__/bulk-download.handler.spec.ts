@@ -1,5 +1,6 @@
 import { BulkDownloadHandler } from "../src/handlers/bulk-download.handler";
 import type { DomainMapperService } from "../src/mapping/domain-mapper.service";
+import type { ExecutionTrackerService } from "../src/pipeline/execution-tracker.service";
 import { Readable } from "node:stream";
 import {
   DataType,
@@ -80,7 +81,7 @@ describe("BulkDownloadHandler", () => {
 
   beforeEach(() => {
     mapper = createMockMapper();
-    handler = new BulkDownloadHandler(mapper);
+    handler = new BulkDownloadHandler(mapper, null);
     originalFetch = globalThis.fetch;
     globalThis.fetch = jest.fn();
   });
@@ -604,6 +605,157 @@ describe("BulkDownloadHandler", () => {
 
       expect(result.items).toHaveLength(2);
       expect(result.itemCount).toBeUndefined();
+    });
+  });
+
+  describe("idempotency (execution tracking)", () => {
+    // 5 rows, batchSize=2 → 3 batches: [0,1], [2,3], [4]
+    const csvContent =
+      "CMTE_ID,NAME\nC001,Alice\nC002,Bob\nC003,Carol\nC004,Dave\nC005,Eve";
+
+    function createTracker(
+      appliedBatches: Set<number> = new Set(),
+    ): jest.Mocked<ExecutionTrackerService> {
+      return {
+        isEnabled: true,
+        startExecution: jest.fn().mockResolvedValue({
+          executionId: "exec-test",
+          appliedBatches,
+        }),
+        recordBatch: jest.fn().mockResolvedValue(true),
+        finalizeExecution: jest.fn().mockResolvedValue(undefined),
+      } as unknown as jest.Mocked<ExecutionTrackerService>;
+    }
+
+    function createBatchSource() {
+      return createSource({
+        bulk: {
+          format: "csv",
+          columnMappings: { CMTE_ID: "committeeId", NAME: "donorName" },
+          batchSize: 2,
+        },
+      });
+    }
+
+    beforeEach(() => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csvContent),
+      );
+    });
+
+    it("should call onBatch for all batches when none are pre-applied", async () => {
+      const tracker = createTracker(new Set());
+      handler = new BulkDownloadHandler(mapper, tracker);
+
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+      const result = await handler.execute(
+        createBatchSource(),
+        "california",
+        onBatch,
+        "job-1",
+      );
+
+      expect(onBatch).toHaveBeenCalledTimes(3);
+      expect(result.itemCount).toBe(5);
+      expect(tracker.startExecution).toHaveBeenCalledWith({
+        pipelineJobId: "job-1",
+        regionId: "california",
+        sourceUrl: "https://example.com/data.csv",
+        dataType: "campaign_finance",
+      });
+      expect(tracker.recordBatch).toHaveBeenCalledTimes(3);
+      expect(tracker.finalizeExecution).toHaveBeenCalledWith(
+        "exec-test",
+        true,
+        expect.objectContaining({ itemsExtracted: 5 }),
+      );
+    });
+
+    it("should skip already-applied batches and only call onBatch for new ones (crash-and-retry)", async () => {
+      // Simulate: batches 0 and 1 applied in a prior run, batch 2 is new
+      const tracker = createTracker(new Set([0, 1]));
+      handler = new BulkDownloadHandler(mapper, tracker);
+
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+      await handler.execute(
+        createBatchSource(),
+        "california",
+        onBatch,
+        "job-1",
+      );
+
+      // Only batch 2 (the 5th row) should fire onBatch
+      expect(onBatch).toHaveBeenCalledTimes(1);
+      // recordBatch called only for the new batch
+      expect(tracker.recordBatch).toHaveBeenCalledTimes(1);
+      expect(tracker.recordBatch).toHaveBeenCalledWith("exec-test", 2, 1);
+    });
+
+    it("should not call onBatch at all when all batches are pre-applied", async () => {
+      const tracker = createTracker(new Set([0, 1, 2]));
+      handler = new BulkDownloadHandler(mapper, tracker);
+
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+      const result = await handler.execute(
+        createBatchSource(),
+        "california",
+        onBatch,
+        "job-1",
+      );
+
+      expect(onBatch).not.toHaveBeenCalled();
+      expect(tracker.recordBatch).not.toHaveBeenCalled();
+      expect(result.itemCount).toBe(0);
+    });
+
+    it("should finalize as failed and still call finalizeExecution when onBatch throws", async () => {
+      const tracker = createTracker(new Set());
+      handler = new BulkDownloadHandler(mapper, tracker);
+
+      const onBatch = jest.fn().mockRejectedValue(new Error("DB write failed"));
+      // The outer catch returns buildFailureResult, but finalizeExecution fires in the inner finally
+      await handler.execute(
+        createBatchSource(),
+        "california",
+        onBatch,
+        "job-1",
+      );
+
+      expect(tracker.finalizeExecution).toHaveBeenCalledWith(
+        "exec-test",
+        false,
+        expect.objectContaining({ itemsExtracted: 0 }),
+      );
+    });
+
+    it("should not track when pipelineJobId is absent", async () => {
+      const tracker = createTracker();
+      handler = new BulkDownloadHandler(mapper, tracker);
+
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+      // No pipelineJobId → tracker should not be engaged
+      await handler.execute(createBatchSource(), "california", onBatch);
+
+      expect(tracker.startExecution).not.toHaveBeenCalled();
+      expect(tracker.recordBatch).not.toHaveBeenCalled();
+      expect(tracker.finalizeExecution).not.toHaveBeenCalled();
+      // But onBatch should still fire normally
+      expect(onBatch).toHaveBeenCalledTimes(3);
+    });
+
+    it("should not track when tracker is null", async () => {
+      handler = new BulkDownloadHandler(mapper, null);
+
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+      const result = await handler.execute(
+        createBatchSource(),
+        "california",
+        onBatch,
+        "job-1",
+      );
+
+      expect(onBatch).toHaveBeenCalledTimes(3);
+      expect(result.itemCount).toBe(5);
     });
   });
 });

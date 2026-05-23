@@ -144,7 +144,7 @@ describe("Pipeline Integration Tests", () => {
     extractor = new ManifestExtractorService();
     mapper = new DomainMapperService();
     healing = new SelfHealingService();
-    bulkDownload = new BulkDownloadHandler(mapper);
+    bulkDownload = new BulkDownloadHandler(mapper, null);
     apiIngest = new ApiIngestHandler(mapper);
 
     // Mock external dependencies

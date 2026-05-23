@@ -38,9 +38,9 @@ services:
   # ===========================================
 
   # PostgreSQL with Supabase extensions (pgsodium for Vault, etc.)
-  supabase-db:
-    image: supabase/postgres:15.6.1.139
-    container_name: opuspopuli-supabase-db
+  opuspopuli-db:
+    image: supabase/postgres:17.6.1.091
+    container_name: opuspopuli-db
     ports:
       - "5432:5432"
     environment:
@@ -50,7 +50,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters}
       JWT_EXP: ${JWT_EXP:-3600}
     volumes:
-      - supabase-db-data:/var/lib/postgresql/data
+      - opuspopuli-db-data:/var/lib/postgresql/data
       # Custom init script to set passwords on Supabase roles
       # Named zz-* to run AFTER migrate.sh (z > m alphabetically)
       # postgres entrypoint ignores directories, so must mount as a file
@@ -106,7 +106,7 @@ services:
     image: supabase/gotrue:v2.164.0
     container_name: opuspopuli-supabase-auth
     depends_on:
-      supabase-db:
+      opuspopuli-db:
         condition: service_healthy
       inbucket:
         condition: service_started
@@ -116,7 +116,7 @@ services:
       API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
 
       GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD:-your-super-secret-password}@supabase-db:5432/postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD:-your-super-secret-password}@opuspopuli-db:5432/postgres
 
       GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:3300}
       GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS:-http://localhost:3300/**}
@@ -170,10 +170,10 @@ services:
     image: postgrest/postgrest:v12.2.3
     container_name: opuspopuli-supabase-rest
     depends_on:
-      supabase-db:
+      opuspopuli-db:
         condition: service_healthy
     environment:
-      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD:-your-super-secret-password}@supabase-db:5432/postgres
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD:-your-super-secret-password}@opuspopuli-db:5432/postgres
       PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-public,storage,graphql_public}
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters}
@@ -203,7 +203,7 @@ services:
     image: supabase/storage-api:v1.11.8
     container_name: opuspopuli-supabase-storage
     depends_on:
-      supabase-db:
+      opuspopuli-db:
         condition: service_healthy
       supabase-rest:
         condition: service_started
@@ -212,7 +212,7 @@ services:
       SERVICE_KEY: ${SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.sF_hc5jg-YhscQGb00SNtjW3ZIyDlGIIQppgOLwHGiM}
       POSTGREST_URL: http://supabase-rest:3000
       PGRST_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters}
-      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD:-your-super-secret-password}@supabase-db:5432/postgres
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD:-your-super-secret-password}@opuspopuli-db:5432/postgres
       FILE_SIZE_LIMIT: 52428800
       STORAGE_BACKEND: file
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
@@ -356,11 +356,11 @@ services:
     image: supabase/postgres-meta:v0.83.2
     container_name: opuspopuli-supabase-meta
     depends_on:
-      supabase-db:
+      opuspopuli-db:
         condition: service_healthy
     environment:
       PG_META_PORT: 8080
-      PG_META_DB_HOST: supabase-db
+      PG_META_DB_HOST: opuspopuli-db
       PG_META_DB_PORT: 5432
       PG_META_DB_NAME: postgres
       PG_META_DB_USER: supabase_admin
@@ -564,8 +564,8 @@ services:
           memory: 128M
 
 volumes:
-  supabase-db-data:
-    name: opuspopuli-supabase-db-data
+  opuspopuli-db-data:
+    name: opuspopuli-db-data
   supabase-storage-data:
     name: opuspopuli-supabase-storage-data
   redis-data:
