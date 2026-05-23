@@ -13,6 +13,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { DataType, SyncResult } from '@opuspopuli/region-provider';
+import type { DataSourceConfig } from '@opuspopuli/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
 import { CivicsBlockModel } from './models/region-info.model';
 import { RegionInfoModel } from './models/region-info.model';
@@ -108,15 +109,23 @@ export function stripLeadingZerosFromExternalId(externalId: string): string {
   return [...parts.slice(0, -1), normalized].join('-');
 }
 
+const DEFAULT_BIO_NOISE_PATTERNS: RegExp[] = [/^Home\b/i, /Latest News/i];
+
 /**
  * Decide whether a scraped bio string is real content vs junk.
+ * Pass plugin-configured noise patterns to override the defaults.
  */
-export function isLikelyValidBio(bio: string | null | undefined): boolean {
+export function isLikelyValidBio(
+  bio: string | null | undefined,
+  noisePatterns: RegExp[] = DEFAULT_BIO_NOISE_PATTERNS,
+): boolean {
   if (!bio) return false;
   const trimmed = bio.trim();
   if (trimmed.length < 100) return false;
-  if (/^Home\b/i.test(trimmed)) return false;
-  if (/Latest News/i.test(trimmed.slice(0, 100))) return false;
+  const head = trimmed.slice(0, 100);
+  for (const pattern of noisePatterns) {
+    if (pattern.test(trimmed) || pattern.test(head)) return false;
+  }
   return true;
 }
 
@@ -290,6 +299,12 @@ export class RegionDomainService {
 
   getRegionPluginByFipsCode(fipsCode: string): Promise<RegionPluginRow | null> {
     return this.syncService.getRegionPluginByFipsCode(fipsCode);
+  }
+
+  getPluginDataSourceConfigs(): Promise<
+    Array<{ regionId: string; sources: DataSourceConfig[] }>
+  > {
+    return this.syncService.getPluginDataSourceConfigs();
   }
 
   // ─── Query delegation ─────────────────────────────────────────────────────

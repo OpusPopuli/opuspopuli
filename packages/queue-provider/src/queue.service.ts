@@ -6,6 +6,7 @@ import {
   EnqueueOptions,
   QueueJobInfo,
   QueueModuleOptions,
+  SchedulerInfo,
 } from "./queue.types";
 
 @Injectable()
@@ -61,6 +62,22 @@ export class QueueService implements OnModuleDestroy {
     this.logger.log(
       `Upserted scheduler ${schedulerId} on ${queueName} (cron: ${cron})`,
     );
+  }
+
+  async listSchedulers(queueName: string): Promise<SchedulerInfo[]> {
+    const queue = this.getQueue(queueName);
+    const schedulers = await queue.getJobSchedulers();
+    return schedulers.map((s) => ({
+      id: s.key,
+      pattern: s.pattern ?? "",
+      next: s.next ?? null,
+    }));
+  }
+
+  async removeScheduler(queueName: string, schedulerId: string): Promise<void> {
+    const queue = this.getQueue(queueName);
+    await queue.removeJobScheduler(schedulerId);
+    this.logger.log(`Removed scheduler ${schedulerId} from ${queueName}`);
   }
 
   async close(): Promise<void> {

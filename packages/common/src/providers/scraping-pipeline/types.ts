@@ -361,6 +361,14 @@ export interface DataSourceConfig {
    * exhausting `crawlMaxPages` before any detail pages can be discovered.
    */
   billDiscovery?: BillDiscoveryConfig;
+
+  /**
+   * 5-field cron expression for how often this source is synced
+   * (e.g. '0 2 * * *' = daily at 2 AM, '0 2 * * 0' = weekly on Sunday).
+   * Omit to inherit the global daily-cron fallback. The worker applies a
+   * deterministic per-source minute offset at registration time.
+   */
+  syncCadence?: string;
 }
 
 /**
@@ -542,6 +550,18 @@ export interface DeclarativeRegionConfig {
   cacheTtlMs?: number;
   /** Request timeout in milliseconds */
   requestTimeoutMs?: number;
+  /**
+   * Strip leading zeros from representative externalId trailing segment
+   * (e.g. ca-assembly-01 → ca-assembly-1). Opt-in; default false.
+   * Set true for regions whose LLM manifests emit zero-padded district numbers.
+   */
+  normalizeExternalIdDistrict?: boolean;
+  /**
+   * Regex pattern strings (case-insensitive) matched against scraped
+   * representative bio text. Bios matching any pattern are discarded as
+   * nav junk. Defaults to no filtering if omitted.
+   */
+  bioNoisePatterns?: string[];
 }
 
 // ============================================

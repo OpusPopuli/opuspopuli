@@ -1,4 +1,10 @@
-import { ObjectType, Field, ID, registerEnumType } from '@nestjs/graphql';
+import {
+  ObjectType,
+  Field,
+  ID,
+  Float,
+  registerEnumType,
+} from '@nestjs/graphql';
 import { SyncResultModel } from './region-info.model';
 
 export enum SyncJobStatus {
@@ -23,6 +29,18 @@ registerEnumType(SyncTriggerSource, {
   name: 'SyncTriggerSource',
   description: 'What triggered the sync job',
 });
+
+@ObjectType('ScheduledSyncJob')
+export class ScheduledSyncJobModel {
+  @Field(() => ID)
+  id!: string;
+
+  @Field()
+  pattern!: string;
+
+  @Field(() => Float, { nullable: true })
+  next!: number | null;
+}
 
 @ObjectType('RegionSyncJob')
 export class RegionSyncJobModel {

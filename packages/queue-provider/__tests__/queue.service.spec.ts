@@ -8,6 +8,8 @@ jest.mock("bullmq", () => {
     add: jest.fn().mockResolvedValue(mockJob),
     getJob: jest.fn(),
     upsertJobScheduler: jest.fn().mockResolvedValue(undefined),
+    getJobSchedulers: jest.fn().mockResolvedValue([]),
+    removeJobScheduler: jest.fn().mockResolvedValue(true),
     close: jest.fn().mockResolvedValue(undefined),
   };
   return { Queue: jest.fn(() => mockQueue) };
@@ -66,6 +68,48 @@ describe("QueueService", () => {
         service.upsertScheduler("region-sync", "daily-cron", "0 2 * * *", {
           triggerSource: "cron",
         }),
+      ).resolves.not.toThrow();
+    });
+  });
+
+  describe("listSchedulers", () => {
+    it("returns mapped scheduler info from bullmq", async () => {
+      const { Queue } = jest.requireMock("bullmq");
+      const mockQueue = Queue.mock.results[0]?.value ?? Queue();
+      mockQueue.getJobSchedulers.mockResolvedValueOnce([
+        {
+          key: "california-campaign_finance-cron",
+          pattern: "15 2 * * *",
+          next: 1700000000000,
+        },
+        {
+          key: "california-propositions-cron",
+          pattern: "22 2 * * 0",
+          next: null,
+        },
+      ]);
+
+      const result = await service.listSchedulers("region-sync");
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: "california-campaign_finance-cron",
+        pattern: "15 2 * * *",
+        next: 1700000000000,
+      });
+      expect(result[1].next).toBeNull();
+    });
+
+    it("returns empty array when no schedulers registered", async () => {
+      const result = await service.listSchedulers("region-sync");
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe("removeScheduler", () => {
+    it("delegates to bullmq removeJobScheduler", async () => {
+      await expect(
+        service.removeScheduler("region-sync", "daily-cron"),
       ).resolves.not.toThrow();
     });
   });
