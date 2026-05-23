@@ -1743,15 +1743,8 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         return 'failed';
       }
 
-      const urlBillId = (() => {
-        try {
-          return new URL(sourceUrl).searchParams.get('bill_id') ?? undefined;
-        } catch {
-          return undefined;
-        }
-      })();
       const externalId =
-        urlBillId ?? raw.externalId ?? this.buildBillExternalId(raw);
+        billId ?? raw.externalId ?? this.buildBillExternalId(raw);
       const authorId = raw.authorName
         ? this.resolveRepByName(raw.authorName, repIndex)
         : undefined;
