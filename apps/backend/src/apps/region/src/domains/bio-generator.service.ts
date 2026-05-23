@@ -9,17 +9,6 @@ import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
 import { LlmGeneratorBase } from './llm-generator.base';
 
 /**
- * Maps the externalId region prefix to a human-readable state name.
- * Extend when a new state comes online. Federal reps use a different
- * prefix ("federal-" or similar); that case falls through to the
- * bare chamber label, and the prompt refuses to use training
- * knowledge if jurisdiction is ambiguous.
- */
-const STATE_PREFIX_TO_NAME: Record<string, string> = {
-  ca: 'California',
-};
-
-/**
  * Generates AI bios for representatives that lack a scraped biography.
  *
  * Uses structured public record data (name, chamber, district, party,
@@ -41,6 +30,7 @@ const STATE_PREFIX_TO_NAME: Record<string, string> = {
 @Injectable()
 export class BioGeneratorService extends LlmGeneratorBase {
   private readonly logger = new Logger(BioGeneratorService.name);
+  private activeRegionName: string | undefined;
   // Field initializers run after super(), so this.config is already set.
   private readonly maxTokens = readPositiveInt(
     this.config,
@@ -69,11 +59,13 @@ export class BioGeneratorService extends LlmGeneratorBase {
    */
   async enrichBios(
     reps: Representative[],
+    regionName: string | undefined,
     maxRepsOverride?: number,
   ): Promise<Representative[]> {
     if (!this.promptClient || !this.llm) {
       return reps;
     }
+    this.activeRegionName = regionName;
 
     const candidates = reps.filter((r) => !r.bio || r.bio.trim() === '');
     const cap = this.resolveCap(maxRepsOverride);
@@ -220,14 +212,17 @@ export class BioGeneratorService extends LlmGeneratorBase {
    * refuse or correctly identify a representative.
    */
   private deriveJurisdiction(rep: Representative): string {
-    const prefix = rep.externalId?.split('-')[0]?.toLowerCase() ?? '';
-    const state = STATE_PREFIX_TO_NAME[prefix];
-    if (!state) {
+    if (!this.activeRegionName) {
       // Federal or unknown — fall back to bare chamber so the prompt
       // can still decide whether to trust training knowledge.
       return rep.chamber;
     }
-    return `${state} State ${rep.chamber}`;
+    // County regions (e.g. "Sonoma County") don't need "State" inserted —
+    // "Sonoma County Board of Supervisors" is already correct.
+    const isCounty = /county/i.test(this.activeRegionName);
+    return isCounty
+      ? `${this.activeRegionName} ${rep.chamber}`
+      : `${this.activeRegionName} State ${rep.chamber}`;
   }
 
   /**

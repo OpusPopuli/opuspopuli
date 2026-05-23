@@ -837,6 +837,25 @@
               "path": ["api"]
             }
           }
+        },
+        {
+          "name": "Scheduled Sync Jobs (Admin)",
+          "description": "List all BullMQ repeatable job schedulers currently registered on the region-sync queue. Each entry shows the scheduler key (e.g. 'california-meetings-cron'), its staggered cron pattern, and the next scheduled fire time as a Unix epoch millisecond value (null if not yet computed). Requires REGION_SYNC_CRON_ENABLED=true on the region-worker for entries to appear.",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  scheduledSyncJobs {\n    id\n    pattern\n    next\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
         }
       ]
     },

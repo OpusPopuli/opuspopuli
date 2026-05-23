@@ -70,7 +70,7 @@ describe('BioGeneratorService', () => {
       const built = await buildService(false);
       const reps = [baseRep({ bio: undefined })];
 
-      const result = await built.service.enrichBios(reps);
+      const result = await built.service.enrichBios(reps, undefined);
 
       expect(result).toBe(reps);
       expect(result[0].bio).toBeUndefined();
@@ -97,7 +97,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: 'r3' }),
       ];
 
-      const result = await service.enrichBios(reps);
+      const result = await service.enrichBios(reps, undefined);
 
       expect(llm.generate).toHaveBeenCalledTimes(2);
       expect(result[0].bio).toBe('Existing bio text.');
@@ -112,7 +112,7 @@ describe('BioGeneratorService', () => {
     it('returns early when no reps need bios', async () => {
       const reps = [baseRep({ bio: 'Already has one.' })];
 
-      const result = await service.enrichBios(reps);
+      const result = await service.enrichBios(reps, undefined);
 
       expect(llm.generate).not.toHaveBeenCalled();
       expect(result[0].bioSource).toBe('scraped');
@@ -123,7 +123,7 @@ describe('BioGeneratorService', () => {
         text: '```json\n{"bio": "Fenced bio."}\n```',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBe('Fenced bio.');
       expect(result[0].bioSource).toBe('ai-generated');
@@ -134,7 +134,7 @@ describe('BioGeneratorService', () => {
         text: '{"bio": ""}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBeUndefined();
       expect(result[0].bioSource).toBeUndefined();
@@ -145,7 +145,7 @@ describe('BioGeneratorService', () => {
         text: 'not json at all',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBeUndefined();
     });
@@ -159,7 +159,7 @@ describe('BioGeneratorService', () => {
         text: truncatedResponse,
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBe(
         'Dawn Addis represents District 30 in the California State Assembly.',
@@ -174,7 +174,7 @@ describe('BioGeneratorService', () => {
         text: malformedResponse,
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBe('Valid bio text.');
     });
@@ -186,7 +186,7 @@ describe('BioGeneratorService', () => {
         text: escapedBio,
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBe('Line one.\nLine two with "quoted" text.');
     });
@@ -198,7 +198,7 @@ describe('BioGeneratorService', () => {
         text: tooShort,
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBeUndefined();
     });
@@ -215,7 +215,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: 'r2' }),
       ];
 
-      const result = await service.enrichBios(reps);
+      const result = await service.enrichBios(reps, undefined);
 
       expect(result[0].bio).toBeUndefined();
       expect(result[1].bio).toBe('Bio for rep 2.');
@@ -235,7 +235,7 @@ describe('BioGeneratorService', () => {
         committees: [{ name: 'Budget', role: 'Chair' }, { name: 'Education' }],
       });
 
-      await service.enrichBios([rep]);
+      await service.enrichBios([rep], 'California');
 
       const firstCall = promptClient.getDocumentAnalysisPrompt.mock.calls[0][0];
       expect(firstCall.documentType).toBe('representative-bio');
@@ -247,10 +247,26 @@ describe('BioGeneratorService', () => {
       expect(firstCall.text).not.toContain('Chair: Budget');
     });
 
+    it('uses county jurisdiction format for county region names', async () => {
+      const rep = baseRep({
+        bio: '',
+        chamber: 'Board of Supervisors',
+        externalId: 'california-sonoma-district-1',
+      });
+
+      await service.enrichBios([rep], 'Sonoma County');
+
+      const firstCall = promptClient.getDocumentAnalysisPrompt.mock.calls[0][0];
+      expect(firstCall.text).toContain(
+        'Jurisdiction: Sonoma County Board of Supervisors',
+      );
+      expect(firstCall.text).not.toContain('State Board');
+    });
+
     it('preserves existing bioSource when already set', async () => {
       const reps = [baseRep({ bio: 'Has bio', bioSource: 'scraped' })];
 
-      const result = await service.enrichBios(reps);
+      const result = await service.enrichBios(reps, undefined);
 
       expect(result[0].bioSource).toBe('scraped');
     });
@@ -277,7 +293,7 @@ describe('BioGeneratorService', () => {
         }),
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBe('Paragraph one.\n\nParagraph two.');
       expect(result[0].bioSource).toBe('ai-generated');
@@ -288,7 +304,7 @@ describe('BioGeneratorService', () => {
         text: 'Here is the biography JSON:\n\n{"bio": "Prose-wrapped bio."}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBe('Prose-wrapped bio.');
       expect(result[0].bioSource).toBe('ai-generated');
@@ -299,7 +315,7 @@ describe('BioGeneratorService', () => {
         text: '{"bio": "Bio with trailing text."}\n\nLet me know if you need anything else.',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBe('Bio with trailing text.');
     });
@@ -309,7 +325,7 @@ describe('BioGeneratorService', () => {
         text: '{"bio": "Reference to {SB-42} passed."}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBe('Reference to {SB-42} passed.');
     });
@@ -319,7 +335,7 @@ describe('BioGeneratorService', () => {
         text: JSON.stringify({ bio: 'Just a bio.' }),
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()]);
+      const result = await service.enrichBios([baseRep()], undefined);
 
       expect(result[0].bio).toBe('Just a bio.');
       expect(result[0].bioSource).toBe('ai-generated');
@@ -333,7 +349,7 @@ describe('BioGeneratorService', () => {
         text: JSON.stringify({ bio: 'Bio.' }),
       });
 
-      await built.service.enrichBios([baseRep()]);
+      await built.service.enrichBios([baseRep()], undefined);
 
       expect(built.llm.generate).toHaveBeenCalledWith(
         expect.any(String),
@@ -349,7 +365,7 @@ describe('BioGeneratorService', () => {
         text: JSON.stringify({ bio: 'Bio.' }),
       });
 
-      await built.service.enrichBios([baseRep()]);
+      await built.service.enrichBios([baseRep()], undefined);
 
       expect(built.llm.generate).toHaveBeenCalledWith(
         expect.any(String),
@@ -365,7 +381,7 @@ describe('BioGeneratorService', () => {
         text: JSON.stringify({ bio: 'Bio.' }),
       });
 
-      await built.service.enrichBios([baseRep()]);
+      await built.service.enrichBios([baseRep()], undefined);
 
       expect(built.llm.generate).toHaveBeenCalledWith(
         expect.any(String),
@@ -393,7 +409,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: `r${i}`, name: `Rep ${i}` }),
       );
 
-      await built.service.enrichBios(reps);
+      await built.service.enrichBios(reps, undefined);
 
       expect(peakInFlight).toBe(3);
       expect(built.llm.generate).toHaveBeenCalledTimes(6);
@@ -411,7 +427,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: `r${i}`, name: `Rep ${i}` }),
       );
 
-      const result = await built.service.enrichBios(reps);
+      const result = await built.service.enrichBios(reps, undefined);
 
       expect(built.llm.generate).toHaveBeenCalledTimes(2);
       expect(result[0].bioSource).toBe('ai-generated');
@@ -431,7 +447,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: `r${i}` }),
       );
 
-      await built.service.enrichBios(reps);
+      await built.service.enrichBios(reps, undefined);
 
       expect(built.llm.generate).toHaveBeenCalledTimes(3);
     });
@@ -452,7 +468,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: 'r3', name: 'Rep 3' }),
       ];
 
-      const result = await built.service.enrichBios(reps);
+      const result = await built.service.enrichBios(reps, undefined);
 
       expect(result[0].bio).toBeUndefined();
       expect(result[1].bio).toBe('OK 2.');

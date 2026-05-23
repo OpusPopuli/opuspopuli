@@ -137,6 +137,9 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     timestamp: true,
   });
   private regionService!: RegionProviderService;
+  private pluginRegionName: string | undefined;
+  private pluginNormalizeDistrict = false;
+  private pluginBioNoisePatterns: RegExp[] = [];
 
   constructor(
     private readonly pluginLoader: PluginLoaderService,
@@ -297,6 +300,16 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
 
     this.regionService = new RegionProviderService(localPlugin);
     const info = this.regionService.getRegionInfo();
+    this.pluginRegionName = info.name;
+
+    const pluginCfg = localConfigRow?.config as
+      | DeclarativeRegionConfig
+      | undefined;
+    this.pluginNormalizeDistrict =
+      pluginCfg?.normalizeExternalIdDistrict ?? false;
+    this.pluginBioNoisePatterns = (pluginCfg?.bioNoisePatterns ?? []).map(
+      (p) => new RegExp(p, 'i'),
+    );
     this.logger.log(
       `RegionSyncService initialized — local: ${this.regionService.getProviderName()} (${info.name}), ` +
         `federal: ${this.pluginRegistry.getFederal() ? 'loaded' : 'not loaded'}`,
@@ -349,6 +362,26 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       orderBy: [{ parentRegionId: 'asc' }, { name: 'asc' }],
     });
     return rows.map(toRegionPluginRow);
+  }
+
+  async getPluginDataSourceConfigs(): Promise<
+    Array<{ regionId: string; sources: DataSourceConfig[] }>
+  > {
+    const rows = await this.db.regionPlugin.findMany({
+      where: { enabled: true },
+      select: { name: true, config: true },
+    });
+    return rows
+      .map((row) => {
+        const cfg = row.config as unknown as
+          | DeclarativeRegionConfig
+          | undefined;
+        return {
+          regionId: row.name,
+          sources: cfg?.dataSources ?? [],
+        };
+      })
+      .filter((entry) => entry.sources.length > 0);
   }
 
   async getRegionPluginByFipsCode(
@@ -930,8 +963,10 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   private normalizeRep(r: Representative): void {
-    r.externalId = stripLeadingZerosFromExternalId(r.externalId);
-    if (r.bio && !isLikelyValidBio(r.bio)) {
+    if (this.pluginNormalizeDistrict) {
+      r.externalId = stripLeadingZerosFromExternalId(r.externalId);
+    }
+    if (r.bio && !isLikelyValidBio(r.bio, this.pluginBioNoisePatterns)) {
       this.logger.warn(
         `Discarding junk bio for ${r.externalId} (${r.bio.length} chars): ${r.bio.slice(0, 60)}…`,
       );
@@ -964,7 +999,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (this.bioGenerator) {
-      await this.bioGenerator.enrichBios(reps, maxReps);
+      await this.bioGenerator.enrichBios(reps, this.pluginRegionName, maxReps);
     }
 
     const result = await this.upsertByExternalId(
@@ -1640,6 +1675,26 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private parseBillJson(
+    candidate: string,
+    sourceUrl: string,
+  ): (Partial<Bill> & { billNumber: string; title: string }) | null {
+    let raw: Partial<Bill>;
+    try {
+      raw = JSON.parse(candidate) as Partial<Bill>;
+    } catch {
+      this.logger.warn(`Bills extraction: JSON parse failed for ${sourceUrl}`);
+      return null;
+    }
+    if (!raw.billNumber || !raw.title) {
+      this.logger.warn(
+        `Bills extraction: missing required fields at ${sourceUrl}`,
+      );
+      return null;
+    }
+    return raw as Partial<Bill> & { billNumber: string; title: string };
+  }
+
   private async extractAndUpsertBillPage(
     regionId: string,
     sourceUrl: string,
@@ -1691,32 +1746,11 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         return 'failed';
       }
 
-      let raw: Partial<Bill>;
-      try {
-        raw = JSON.parse(candidate) as Partial<Bill>;
-      } catch {
-        this.logger.warn(
-          `Bills extraction: JSON parse failed for ${sourceUrl}`,
-        );
-        return 'failed';
-      }
+      const raw = this.parseBillJson(candidate, sourceUrl);
+      if (!raw) return 'failed';
 
-      if (!raw.billNumber || !raw.title) {
-        this.logger.warn(
-          `Bills extraction: missing required fields at ${sourceUrl}`,
-        );
-        return 'failed';
-      }
-
-      const urlBillId = (() => {
-        try {
-          return new URL(sourceUrl).searchParams.get('bill_id') ?? undefined;
-        } catch {
-          return undefined;
-        }
-      })();
       const externalId =
-        urlBillId ?? raw.externalId ?? this.buildBillExternalId(raw);
+        billId ?? raw.externalId ?? this.buildBillExternalId(raw);
       const authorId = raw.authorName
         ? this.resolveRepByName(raw.authorName, repIndex)
         : undefined;
@@ -1725,12 +1759,20 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         select: { id: true },
       });
 
+      const measureTypeCode =
+        raw.measureTypeCode ?? this.inferMeasureTypeCode(raw.billNumber);
+      if (!measureTypeCode) {
+        this.logger.warn(
+          `Bills extraction: cannot determine measureTypeCode for "${raw.billNumber}" at ${sourceUrl}`,
+        );
+        return 'failed';
+      }
+
       const billData = {
         regionId,
         billNumber: raw.billNumber,
         sessionYear: raw.sessionYear ?? sessionYear,
-        measureTypeCode:
-          raw.measureTypeCode ?? this.inferMeasureTypeCode(raw.billNumber),
+        measureTypeCode,
         title: raw.title,
         subject: raw.subject ?? null,
         status: raw.status ?? null,
@@ -1843,12 +1885,12 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     return `${year}${num}`;
   }
 
-  private inferMeasureTypeCode(billNumber: string): string {
+  private inferMeasureTypeCode(billNumber: string): string | null {
     return (
       billNumber
         .replace(/\s*\d+.*$/, '')
         .trim()
-        .toUpperCase() || 'AB'
+        .toUpperCase() || null
     );
   }
 
