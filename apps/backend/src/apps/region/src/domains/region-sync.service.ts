@@ -1675,6 +1675,26 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private parseBillJson(
+    candidate: string,
+    sourceUrl: string,
+  ): (Partial<Bill> & { billNumber: string; title: string }) | null {
+    let raw: Partial<Bill>;
+    try {
+      raw = JSON.parse(candidate) as Partial<Bill>;
+    } catch {
+      this.logger.warn(`Bills extraction: JSON parse failed for ${sourceUrl}`);
+      return null;
+    }
+    if (!raw.billNumber || !raw.title) {
+      this.logger.warn(
+        `Bills extraction: missing required fields at ${sourceUrl}`,
+      );
+      return null;
+    }
+    return raw as Partial<Bill> & { billNumber: string; title: string };
+  }
+
   private async extractAndUpsertBillPage(
     regionId: string,
     sourceUrl: string,
@@ -1726,22 +1746,8 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         return 'failed';
       }
 
-      let raw: Partial<Bill>;
-      try {
-        raw = JSON.parse(candidate) as Partial<Bill>;
-      } catch {
-        this.logger.warn(
-          `Bills extraction: JSON parse failed for ${sourceUrl}`,
-        );
-        return 'failed';
-      }
-
-      if (!raw.billNumber || !raw.title) {
-        this.logger.warn(
-          `Bills extraction: missing required fields at ${sourceUrl}`,
-        );
-        return 'failed';
-      }
+      const raw = this.parseBillJson(candidate, sourceUrl);
+      if (!raw) return 'failed';
 
       const externalId =
         billId ?? raw.externalId ?? this.buildBillExternalId(raw);
