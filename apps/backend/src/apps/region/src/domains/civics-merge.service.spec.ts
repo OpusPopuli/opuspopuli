@@ -1,15 +1,24 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Unit tests for getCivicsData merge logic and normalizeCivicText helper
- * on RegionDomainService. Uses prototype-level mock — no NestJS DI needed.
+ * Unit tests for getCivicsData merge logic and normalizeCivicText helper.
+ * Uses prototype-level mock — no NestJS DI needed.
+ *
+ * After DEBT-030 refactor:
+ *   - sanitizeCivicsUrl / normalizeCivicText live on RegionSyncService
+ *   - getCivicsData lives on RegionQueryService
  */
 
-import { RegionDomainService } from './region.service';
+import { RegionQueryService } from './region-query.service';
 
 const SRC = 'https://example.gov/page';
 
+/**
+ * Build a prototype-level RegionQueryService mock.
+ * After DEBT-030: sanitizeCivicsUrl, normalizeCivicText, and getCivicsData
+ * all live on RegionQueryService.
+ */
 function buildSvc(dbRows: any[] = []): any {
-  const svc = Object.create(RegionDomainService.prototype);
+  const svc = Object.create(RegionQueryService.prototype);
   Object.assign(svc, {
     logger: { log: jest.fn(), warn: jest.fn(), error: jest.fn() },
     db: {

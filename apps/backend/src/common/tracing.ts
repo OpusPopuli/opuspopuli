@@ -11,7 +11,7 @@
  *   OTEL_EXPORTER_OTLP_ENDPOINT — Tempo endpoint (default: http://localhost:4318)
  *   APPLICATION — service name (default: unknown-service)
  *   VERSION — service version (default: 0.0.0)
- *   OTEL_TRACING_ENABLED — set to "false" to disable (default: true)
+ *   OTEL_TRACING_ENABLED — set to "false" to disable, "true" to force-enable in test env (default: true)
  *
  * @see https://github.com/OpusPopuli/opuspopuli/issues/466
  */
@@ -26,7 +26,9 @@ import {
 } from '@opentelemetry/semantic-conventions';
 import { isTest } from 'src/config/environment.config';
 
-const isDisabled = isTest() || process.env.OTEL_TRACING_ENABLED === 'false';
+const isDisabled =
+  process.env.OTEL_TRACING_ENABLED === 'false' ||
+  (isTest() && process.env.OTEL_TRACING_ENABLED !== 'true');
 
 if (!isDisabled) {
   const endpoint =

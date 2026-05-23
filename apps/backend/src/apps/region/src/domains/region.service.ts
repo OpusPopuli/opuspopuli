@@ -1,121 +1,58 @@
-import {
-  Inject,
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-  Optional,
-} from '@nestjs/common';
-import {
-  RegionService as RegionProviderService,
-  DataType,
-  SyncDepth,
-  SyncResult,
-  PluginLoaderService,
-  PluginRegistryService,
-  DeclarativeRegionPlugin,
-  ExampleRegionProvider,
-  discoverRegionConfigs,
-  getRegionsDir,
-  type IPipelineService,
-  type IRegionPlugin,
-} from '@opuspopuli/region-provider';
-import { ServiceInitializationException } from 'src/common/exceptions/app.exceptions';
-import {
-  resolveConfigPlaceholders,
-  batchTransaction,
-  extractJsonObjectSlice,
-  type ICache,
-  type ISecretsProvider,
-  type Proposition,
-  type Meeting,
-  type Representative,
-  type CampaignFinanceResult,
-  type MinutesWithActions,
-  type ILLMProvider,
-  type CivicsBlock,
-  type DataSourceConfig,
-  type DeclarativeRegionConfig,
-  type Bill,
-} from '@opuspopuli/common';
-import { PromptClientService } from '@opuspopuli/prompt-client';
-import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
-import { REGION_CACHE } from './region.tokens';
-import { BioGeneratorService } from './bio-generator.service';
-import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
-import { PropositionAnalysisService } from './proposition-analysis.service';
-import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
-import {
-  PropositionFundingService,
-  type PropositionFunding,
-} from './proposition-funding.service';
-import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
-import { LegislativeActionLinkerService } from './legislative-action-linker.service';
-import {
-  LegislativeCommitteeService,
-  type LegislativeCommitteeDetail,
-  type PaginatedLegislativeCommittees as PaginatedLegislativeCommitteesShape,
-} from './legislative-committee.service';
-import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
-
 /**
- * Minimal interface for data fetching used by sync methods.
- * Satisfied by both RegionProviderService and IRegionPlugin.
+ * Region Domain Service (thin facade)
+ *
+ * All sync logic lives in RegionSyncService; all query logic lives in
+ * RegionQueryService. This class delegates every public method to the
+ * appropriate focused service so the rest of the codebase (resolvers,
+ * scheduler, worker, specs) can keep importing from this path unchanged.
+ *
+ * Module-level type aliases and utility functions remain here for
+ * backward-compat — other files import them from this module.
+ *
+ * Issue DEBT-030.
  */
-interface DataFetcher {
-  fetchPropositions(pipelineJobId?: string): Promise<Proposition[]>;
-  fetchMeetings(pipelineJobId?: string): Promise<Meeting[]>;
-  fetchRepresentatives(): Promise<Representative[]>;
-  fetchCampaignFinance?(
-    onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
-    pipelineJobId?: string,
-  ): Promise<CampaignFinanceResult>;
-  fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
-}
-import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
-import {
-  RegionInfoModel,
-  DataTypeGQL,
-  CivicsBlockModel,
-} from './models/region-info.model';
+import { Injectable } from '@nestjs/common';
+import { DataType, SyncResult } from '@opuspopuli/region-provider';
+import { Prisma } from '@opuspopuli/relationaldb-provider';
+import { CivicsBlockModel } from './models/region-info.model';
+import { RegionInfoModel } from './models/region-info.model';
 import {
   PaginatedPropositions,
   PropositionModel,
   PropositionStatusGQL,
 } from './models/proposition.model';
 import { PaginatedMeetings } from './models/meeting.model';
+import { PaginatedRepresentatives } from './models/representative.model';
 import {
   PropositionAnalysisClaimModel,
   PropositionAnalysisSectionModel,
 } from './models/proposition-analysis.model';
-import {
-  BioClaimModel,
-  CommitteeAssignmentModel,
-  ContactInfoModel,
-  PaginatedRepresentatives,
-} from './models/representative.model';
 import { PaginatedCommittees } from './models/committee.model';
 import { PaginatedContributions } from './models/contribution.model';
 import { PaginatedExpenditures } from './models/expenditure.model';
 import { PaginatedIndependentExpenditures } from './models/independent-expenditure.model';
-import {
-  BillModel,
-  BillVoteModel,
-  BillCoAuthorModel,
-  PaginatedBillsModel,
-} from './models/bill.model';
+import { BillModel, PaginatedBillsModel } from './models/bill.model';
+import type { PropositionFunding } from './proposition-funding.service';
+import type {
+  LegislativeCommitteeDetail,
+  PaginatedLegislativeCommittees as PaginatedLegislativeCommitteesShape,
+} from './legislative-committee.service';
+import { RegionSyncService } from './region-sync.service';
+import { RegionQueryService } from './region-query.service';
 
-// Type aliases for database query results and generic upsert
-type ExternalIdRecord = { externalId: string };
+// ─── Module-level type aliases preserved for backward compatibility ───────────
+
+/** Minimal externalId record used by upsert helpers. */
+export type ExternalIdRecord = { externalId: string };
 
 /** Compiled lifecycle stage pattern used for bill status resolution. */
-interface StagePattern {
+export interface StagePattern {
   stageId: string;
   regex: RegExp;
 }
 
 /** Region plugin row shape returned by list/lookup queries. */
-type RegionPluginRow = {
+export type RegionPluginRow = {
   name: string;
   displayName: string;
   description?: string;
@@ -125,7 +62,7 @@ type RegionPluginRow = {
   fipsCode?: string;
 };
 
-function toRegionPluginRow(r: {
+export function toRegionPluginRow(r: {
   name: string;
   displayName: string;
   description: string | null;
@@ -146,43 +83,75 @@ function toRegionPluginRow(r: {
 }
 
 /**
- * Single row in a paginated LegislativeAction feed (rep + committee
- * activity surfaces share this shape). Issue #665.
+ * Extract the trailing numeric segment from an externalId
+ * (e.g., `ca-assembly-02` → `"2"`).
  */
-interface LegislativeActionFeedItem {
+export function deriveDistrictFromExternalId(
+  externalId: string,
+): string | undefined {
+  const last = externalId.split('-').at(-1);
+  if (!last || !/^\d+$/.test(last)) return undefined;
+  return String(Number.parseInt(last, 10));
+}
+
+/**
+ * Strip leading zeros from a representative externalId's trailing numeric
+ * segment (e.g., `ca-assembly-01` → `ca-assembly-1`).
+ */
+export function stripLeadingZerosFromExternalId(externalId: string): string {
+  if (!externalId) return externalId;
+  const parts = externalId.split('-');
+  const last = parts.at(-1);
+  if (!last || !/^\d+$/.test(last)) return externalId;
+  const normalized = String(Number.parseInt(last, 10));
+  if (normalized === last) return externalId;
+  return [...parts.slice(0, -1), normalized].join('-');
+}
+
+/**
+ * Decide whether a scraped bio string is real content vs junk.
+ */
+export function isLikelyValidBio(bio: string | null | undefined): boolean {
+  if (!bio) return false;
+  const trimmed = bio.trim();
+  if (trimmed.length < 100) return false;
+  if (/^Home\b/i.test(trimmed)) return false;
+  if (/Latest News/i.test(trimmed.slice(0, 100))) return false;
+  return true;
+}
+
+export function extractLastName(fullName: string): string {
+  const trimmed = fullName.trim();
+  if (!trimmed) return '';
+  const suffixPattern = /\b(Jr|Sr|II|III|IV|Esq)\.?$/i;
+  if (trimmed.includes(',')) {
+    const beforeComma = trimmed.slice(0, trimmed.indexOf(',')).trim();
+    return beforeComma.replace(suffixPattern, '').trim();
+  }
+  const withoutSuffix = trimmed.replace(suffixPattern, '').trim();
+  const tokens = withoutSuffix.split(/\s+/);
+  return tokens.at(-1) ?? trimmed;
+}
+
+export type RepresentativeRecord = {
   id: string;
   externalId: string;
-  body: string;
-  date: Date;
-  actionType: string;
-  position: string | null;
-  text: string | null;
-  passageStart: number | null;
-  passageEnd: number | null;
-  rawSubject: string | null;
-  representativeId: string | null;
-  propositionId: string | null;
-  committeeId: string | null;
-  minutesId: string;
-  minutesExternalId: string;
-}
-
-interface LegislativeActionFeedPage {
-  items: LegislativeActionFeedItem[];
-  total: number;
-  hasMore: boolean;
-}
-
-type PrismaModelDelegate = {
-  findMany(args: unknown): Promise<ExternalIdRecord[]>;
-  upsert(args: unknown): Prisma.PrismaPromise<unknown>;
+  name: string;
+  chamber: string;
+  district: string;
+  party: string | null;
+  photoUrl: string | null;
+  contactInfo: unknown;
+  committees: unknown;
+  committeesSummary: string | null;
+  bio: string | null;
+  bioSource: string | null;
+  bioClaims: unknown;
+  createdAt: Date;
+  updatedAt: Date;
 };
-type UpsertConfig = {
-  records: readonly unknown[];
-  model: PrismaModelDelegate;
-  fields: string[];
-};
-type PropositionRecord = {
+
+type InternalPropositionRecord = {
   id: string;
   externalId: string;
   title: string;
@@ -205,217 +174,12 @@ type PropositionRecord = {
   createdAt: Date;
   updatedAt: Date;
 };
-type MeetingRecord = {
-  id: string;
-  externalId: string;
-  title: string;
-  body: string;
-  scheduledAt: Date;
-  location: string | null;
-  agendaUrl: string | null;
-  videoUrl: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-export type RepresentativeRecord = {
-  id: string;
-  externalId: string;
-  name: string;
-  chamber: string;
-  district: string;
-  party: string | null;
-  photoUrl: string | null;
-  contactInfo: unknown;
-  committees: unknown;
-  committeesSummary: string | null;
-  bio: string | null;
-  bioSource: string | null;
-  bioClaims: unknown;
-  createdAt: Date;
-  updatedAt: Date;
-};
-type CommitteeRecord = {
-  id: string;
-  externalId: string;
-  name: string;
-  type: string;
-  candidateName: string | null;
-  candidateOffice: string | null;
-  propositionId: string | null;
-  party: string | null;
-  status: string;
-  sourceSystem: string;
-  sourceUrl: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt: Date | null;
-};
-type ContributionRecord = {
-  id: string;
-  externalId: string;
-  committeeId: string;
-  donorName: string;
-  donorType: string;
-  donorEmployer: string | null;
-  donorOccupation: string | null;
-  donorCity: string | null;
-  donorState: string | null;
-  donorZip: string | null;
-  amount: Prisma.Decimal;
-  date: Date;
-  electionType: string | null;
-  contributionType: string | null;
-  sourceSystem: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
-type ExpenditureRecord = {
-  id: string;
-  externalId: string;
-  committeeId: string;
-  payeeName: string;
-  amount: Prisma.Decimal;
-  date: Date;
-  purposeDescription: string | null;
-  expenditureCode: string | null;
-  candidateName: string | null;
-  propositionTitle: string | null;
-  supportOrOppose: string | null;
-  sourceSystem: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
-type IndependentExpenditureRecord = {
-  id: string;
-  externalId: string;
-  committeeId: string;
-  committeeName: string;
-  candidateName: string | null;
-  propositionTitle: string | null;
-  supportOrOppose: string;
-  amount: Prisma.Decimal;
-  date: Date;
-  electionDate: Date | null;
-  description: string | null;
-  sourceSystem: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
 
 /**
- * Region Domain Service
- *
- * Handles civic data management for the region.
- * Loads two plugins at startup:
- * - Federal plugin (always loaded): FEC campaign finance data
- * - Local plugin (user-selected): state civic data + state campaign finance
- *
- * Syncs data from both plugins and stores in the database.
- */
-
-/**
- * Derive a sortable last-name key from a full name. Used to sort
- * representatives alphabetically by last name regardless of whether the
- * name is stored as "First Last" or "First Middle Last".
- *
- * Strips trailing suffixes (Jr., Sr., III, etc.) so a rep named
- * "Patrick J. Ahrens Jr." sorts under "Ahrens", not "Jr".
- */
-/**
- * Extract the trailing numeric segment from an externalId
- * (e.g., `ca-assembly-02` → `"2"`). Done via split+parseInt rather
- * than a regex to avoid backtracking heuristics on patterns like
- * `-0*(\d+)$`.
- */
-function deriveDistrictFromExternalId(externalId: string): string | undefined {
-  const last = externalId.split('-').at(-1);
-  if (!last || !/^\d+$/.test(last)) return undefined;
-  return String(Number.parseInt(last, 10));
-}
-
-/**
- * Strip leading zeros from a representative externalId's trailing numeric
- * segment (e.g., `ca-assembly-01` → `ca-assembly-1`). IDs whose final
- * segment is not all digits, or whose digits already have no leading
- * zeros, are returned unchanged.
- *
- * Defensive against LLM-generated extraction manifests that produce
- * `regex_replace` patterns with `(\d+)` instead of stripping the leading
- * zero in zero-padded URL/text inputs (e.g., href `/assemblymembers/01`).
- * Two iterations of regions-package hint tightening (#10, #11) failed to
- * stop the LLM from "simplifying" `0?([1-9][0-9]*)` back to `(\d+)`,
- * so canonicalization is enforced at the consumer boundary instead —
- * mirroring how `extractLastName` and `sanitizeDistrict` already
- * normalize other inconsistent extractor outputs in this same path.
- */
-export function stripLeadingZerosFromExternalId(externalId: string): string {
-  if (!externalId) return externalId;
-  const parts = externalId.split('-');
-  const last = parts.at(-1);
-  if (!last || !/^\d+$/.test(last)) return externalId;
-  const normalized = String(Number.parseInt(last, 10));
-  if (normalized === last) return externalId;
-  return [...parts.slice(0, -1), normalized].join('-');
-}
-
-/**
- * Decide whether a scraped bio string is real content vs junk extracted
- * from the wrong DOM (nav links, news headline blocks, single-word labels).
- *
- * Background: the LLM-generated structural manifest for the CA Senate
- * picks up bio content from per-senator detail sites despite the regions
- * config explicitly discouraging it ("Individual senator sites use
- * different Drupal themes per-senator"). The result is a mix of literal
- * "Home" (the nav link), "Latest News ..." headline blocks, and other
- * non-biographical strings landing in the bio column. When that happens,
- * the BioGenerator's `!r.bio || r.bio.trim() === ''` filter sees the
- * junk as a valid bio and skips AI generation, locking the rep into the
- * junk forever.
- *
- * This function returns true only for bios that look biographical:
- * length ≥ 100 chars and no obvious junk-prefix patterns. Borderline
- * but real bios pass; obvious junk does not.
- */
-export function isLikelyValidBio(bio: string | null | undefined): boolean {
-  if (!bio) return false;
-  const trimmed = bio.trim();
-  if (trimmed.length < 100) return false;
-  if (/^Home\b/i.test(trimmed)) return false;
-  // "Latest News..." headline blocks from per-senator detail sites are
-  // junk even when prefixed by a short biographical-looking header
-  // ("Senator X Representing District N Latest News ..."). If the
-  // phrase appears in the first 100 chars, the rest is news content,
-  // not a bio.
-  if (/Latest News/i.test(trimmed.slice(0, 100))) return false;
-  return true;
-}
-
-export function extractLastName(fullName: string): string {
-  const trimmed = fullName.trim();
-  if (!trimmed) return '';
-  const suffixPattern = /\b(Jr|Sr|II|III|IV|Esq)\.?$/i;
-  // Legislative directories often emit "LastName, FirstName [MiddleInitial]"
-  // (e.g. "Hadwick, Heather", "Aguiar-Curry, Cecilia M."). Comma form is
-  // unambiguous: surname is everything before the first comma — but the
-  // suffix can appear before the comma too ("Solache Jr., José Luis"),
-  // so strip it from that side as well.
-  if (trimmed.includes(',')) {
-    const beforeComma = trimmed.slice(0, trimmed.indexOf(',')).trim();
-    return beforeComma.replace(suffixPattern, '').trim();
-  }
-  const withoutSuffix = trimmed.replace(suffixPattern, '').trim();
-  const tokens = withoutSuffix.split(/\s+/);
-  return tokens.at(-1) ?? trimmed;
-}
-
-/**
- * Cast a Prisma proposition row into the GraphQL-shaped object. Converts
- * DB nulls to GraphQL undefined and unpacks JSONB columns that are stored
- * as `unknown` at the Prisma type level. Used by both the list (plural)
- * getter and the single-record resolver.
+ * Cast a Prisma proposition row into the GraphQL-shaped object.
  */
 export function mapPropositionRecord(
-  item: PropositionRecord,
+  item: InternalPropositionRecord,
 ): PropositionModel {
   return {
     id: item.id,
@@ -453,3256 +217,145 @@ export function mapPropositionRecord(
   };
 }
 
-@Injectable()
-export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(RegionDomainService.name, {
-    timestamp: true,
-  });
-  private regionService!: RegionProviderService;
+// ─── Facade ───────────────────────────────────────────────────────────────────
 
+/**
+ * RegionDomainService — thin facade that delegates to RegionSyncService and
+ * RegionQueryService. Preserves the public API surface so resolvers, workers,
+ * and specs need no changes.
+ */
+@Injectable()
+export class RegionDomainService {
   constructor(
-    private readonly pluginLoader: PluginLoaderService,
-    private readonly pluginRegistry: PluginRegistryService,
-    private readonly db: DbService,
-    @Inject(REGION_CACHE) private readonly cache: ICache<string>,
-    @Optional()
-    @Inject('SCRAPING_PIPELINE')
-    private readonly pipeline?: IPipelineService,
-    @Optional()
-    @Inject(SECRETS_PROVIDER)
-    private readonly secretsProvider?: ISecretsProvider,
-    @Optional() private readonly bioGenerator?: BioGeneratorService,
-    @Optional()
-    private readonly committeeSummaryGenerator?: CommitteeSummaryGeneratorService,
-    @Optional()
-    private readonly propositionAnalysis?: PropositionAnalysisService,
-    @Optional()
-    private readonly propositionFinanceLinker?: PropositionFinanceLinkerService,
-    @Optional()
-    private readonly propositionFunding?: PropositionFundingService,
-    @Optional()
-    private readonly legislativeCommitteeLinker?: LegislativeCommitteeLinkerService,
-    @Optional()
-    private readonly legislativeCommittees?: LegislativeCommitteeService,
-    @Optional()
-    private readonly legislativeCommitteeDescriptions?: LegislativeCommitteeDescriptionGeneratorService,
-    @Optional()
-    private readonly legislativeActionLinker?: LegislativeActionLinkerService,
-    @Optional() private readonly promptClient?: PromptClientService,
-    @Optional()
-    @Inject('LLM_PROVIDER')
-    private readonly llm?: ILLMProvider,
+    private readonly syncService: RegionSyncService,
+    private readonly queryService: RegionQueryService,
   ) {}
 
-  async onModuleDestroy(): Promise<void> {
-    await this.cache.destroy();
-  }
+  // ─── Lifecycle (delegated to sync service) ────────────────────────────────
 
-  /**
-   * Resolve API keys from Supabase Vault and set as environment variables.
-   * Falls back silently to existing env vars if Vault is unavailable.
-   * This runs before plugin loading so API keys are available when
-   * the scraping pipeline's ApiIngestHandler reads process.env.
-   */
-  private async resolveApiKeysFromVault(): Promise<void> {
-    if (!this.secretsProvider) return;
-
-    const apiKeyNames = ['FEC_API_KEY'];
-
-    for (const keyName of apiKeyNames) {
-      // Skip if already set in environment
-      if (process.env[keyName]) continue;
-
-      try {
-        const secret = await this.secretsProvider.getSecret(keyName);
-        if (secret) {
-          process.env[keyName] = secret;
-          this.logger.log(`Resolved ${keyName} from secrets vault`);
-        }
-      } catch (error) {
-        this.logger.warn(
-          `Failed to resolve ${keyName} from vault: ${(error as Error).message}. Falling back to env var.`,
-        );
-      }
-    }
-  }
-
-  /**
-   * Load region plugins at startup:
-   * 1. Sync JSON config files to the database
-   * 2. Always load the federal plugin (FEC data)
-   * 3. Load the enabled local plugin (state civic data)
-   * Falls back to ExampleRegionProvider if no local plugin is configured.
-   */
   async onModuleInit(): Promise<void> {
-    await this.resolveApiKeysFromVault();
-    await this.syncRegionConfigs();
-
-    // Read the local config's stateCode for resolving federal config placeholders.
-    // This is a lightweight read — we only need stateCode, not the full plugin load.
-    const localConfigRow = await this.db.regionPlugin.findFirst({
-      where: { enabled: true, name: { not: 'federal' } },
-    });
-
-    const localConfigData = localConfigRow?.config as
-      | Record<string, unknown>
-      | undefined;
-    const stateCode = localConfigData?.stateCode as string | undefined;
-
-    // Build variable map for placeholder resolution (e.g., ${stateCode} → "CA")
-    const variables: Record<string, string> = {};
-    if (stateCode) {
-      variables['stateCode'] = stateCode;
-    }
-
-    // 1. ALWAYS load federal (not gated by DB enabled flag)
-    try {
-      const federalConfig = await this.db.regionPlugin.findUnique({
-        where: { name: 'federal' },
-      });
-
-      if (federalConfig) {
-        let config = federalConfig.config as Record<string, unknown>;
-
-        // Resolve ${stateCode} (and any future placeholders) in federal config
-        if (Object.keys(variables).length > 0) {
-          config = resolveConfigPlaceholders(config, variables);
-          this.logger.log(
-            `Resolved federal config placeholders (stateCode="${stateCode}")`,
-          );
-        } else {
-          this.logger.warn(
-            'No local region stateCode available — federal config placeholders will not be resolved',
-          );
-        }
-
-        this.logger.log('Loading federal plugin');
-        await this.pluginLoader.loadFederalPlugin(config, this.pipeline);
-      } else {
-        this.logger.warn(
-          'Federal region config not found in database — FEC data will not be available',
-        );
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to load federal plugin: ${(error as Error).message}`,
-      );
-    }
-
-    // 2. Load the enabled LOCAL plugin (reuse the row already read above)
-    try {
-      const localConfig = localConfigRow;
-
-      if (localConfig) {
-        this.logger.log(
-          `Loading local declarative region plugin "${localConfig.name}"`,
-        );
-        await this.pluginLoader.loadPlugin(
-          {
-            name: localConfig.name,
-            config: localConfig.config as Record<string, unknown> | undefined,
-          },
-          this.pipeline,
-        );
-      } else {
-        this.logger.warn(
-          'No enabled local region plugin found in database, falling back to ExampleRegionProvider',
-        );
-        await this.pluginRegistry.registerLocal(
-          'example',
-          this.createFallbackPlugin(),
-        );
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to load local region plugin, falling back to ExampleRegionProvider: ${(error as Error).message}`,
-      );
-      await this.pluginRegistry.registerLocal(
-        'example',
-        this.createFallbackPlugin(),
-      );
-    }
-
-    // Set up the local region service for GraphQL resolvers (propositions, meetings, reps)
-    const localPlugin = this.pluginRegistry.getLocal();
-    if (!localPlugin) {
-      throw new ServiceInitializationException(
-        'No local region plugin available after initialization',
-      );
-    }
-
-    this.regionService = new RegionProviderService(localPlugin);
-    const info = this.regionService.getRegionInfo();
-    this.logger.log(
-      `RegionDomainService initialized — local: ${this.regionService.getProviderName()} (${info.name}), ` +
-        `federal: ${this.pluginRegistry.getFederal() ? 'loaded' : 'not loaded'}`,
-    );
+    return this.syncService.onModuleInit();
   }
 
-  /**
-   * Cache-through helper: returns cached result or executes query and caches it.
-   */
-  private async cachedQuery<T>(
-    key: string,
-    queryFn: () => Promise<T>,
-  ): Promise<T> {
-    const cached = await this.cache.get(key);
-    if (cached) {
-      return JSON.parse(cached) as T;
-    }
-    const result = await queryFn();
-    await this.cache.set(key, JSON.stringify(result));
-    return result;
+  async onModuleDestroy(): Promise<void> {
+    return this.syncService.onModuleDestroy();
   }
 
-  /**
-   * Invalidate all cache keys matching a prefix.
-   */
-  private async invalidateCache(prefix: string): Promise<void> {
-    const allKeys = await this.cache.keys();
-    const matching = allKeys.filter((k) => k.startsWith(prefix));
-    for (const k of matching) {
-      await this.cache.delete(k);
-    }
-    if (matching.length > 0) {
-      this.logger.log(
-        `Invalidated ${matching.length} cache key(s) with prefix "${prefix}"`,
-      );
-    }
-  }
+  // ─── Sync / admin delegation ──────────────────────────────────────────────
 
-  /**
-   * Get region information
-   */
-  getRegionInfo(): RegionInfoModel {
-    const info = this.regionService.getRegionInfo();
-    const supportedTypes = this.regionService.getSupportedDataTypes();
-
-    return {
-      id: info.id,
-      name: info.name,
-      description: info.description,
-      timezone: info.timezone,
-      dataSourceUrls: info.dataSourceUrls,
-      supportedDataTypes: supportedTypes.map(
-        (t) => t as unknown as DataTypeGQL,
-      ),
-    };
-  }
-
-  /**
-   * Allow only https: and http: URLs from LLM-extracted civics data.
-   * Rejects javascript:, data:, and any other protocol to prevent XSS
-   * when the URL is rendered in an <a href> on the public civics hub.
-   */
-  private sanitizeCivicsUrl(raw: string | undefined): string | undefined {
-    if (!raw) return undefined;
-    try {
-      const parsed = new URL(raw);
-      return parsed.protocol === 'https:' || parsed.protocol === 'http:'
-        ? raw
-        : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /**
-   * Normalise a field that should be CivicText but may have been stored by
-   * an older extraction as a plain string. Falls back to empty strings so
-   * the GraphQL non-null contract is never violated.
-   */
-  private normalizeCivicText(
-    value: unknown,
-    fallbackSourceUrl: string,
-  ): CivicsBlockModel['glossary'][number]['definition'] {
-    if (
-      value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      'verbatim' in value
-    ) {
-      const v = value as Record<string, unknown>;
-      return {
-        verbatim: String(v['verbatim'] ?? ''),
-        plainLanguage: String(v['plainLanguage'] ?? v['verbatim'] ?? ''),
-        sourceUrl: String(v['sourceUrl'] ?? fallbackSourceUrl),
-      };
-    }
-    if (typeof value !== 'string' && value !== null && value !== undefined) {
-      this.logger.warn(
-        `normalizeCivicText: unexpected type "${Array.isArray(value) ? 'array' : typeof value}" from ${fallbackSourceUrl}`,
-      );
-    }
-    const text = typeof value === 'string' ? value : '';
-    return {
-      verbatim: text,
-      plainLanguage: text,
-      sourceUrl: fallbackSourceUrl,
-    };
-  }
-
-  /**
-   * Merge all civics_blocks rows for a region into a single CivicsBlockModel.
-   * Normalises CivicText fields that the LLM may have stored as plain strings.
-   * Deduplicates by stable key (code/id/slug); first non-null wins for scalars.
-   */
-  async getCivicsData(regionId: string): Promise<CivicsBlockModel | null> {
-    const rows = await this.db.civicsBlock.findMany({
-      where: { regionId },
-      orderBy: { extractedAt: 'desc' },
-    });
-
-    if (rows.length === 0) return null;
-
-    const chambers = new Map<string, CivicsBlockModel['chambers'][number]>();
-    const measureTypes = new Map<
-      string,
-      CivicsBlockModel['measureTypes'][number]
-    >();
-    const lifecycleStages = new Map<
-      string,
-      CivicsBlockModel['lifecycleStages'][number]
-    >();
-    const glossary = new Map<string, CivicsBlockModel['glossary'][number]>();
-    let sessionScheme: CivicsBlockModel['sessionScheme'] | null = null;
-
-    for (const row of rows) {
-      const src = row.sourceUrl;
-      this.mergeChambers(
-        chambers,
-        row.chambers as Record<string, unknown>[] | null,
-        src,
-      );
-      this.mergeMeasureTypes(
-        measureTypes,
-        row.measureTypes as Record<string, unknown>[] | null,
-        src,
-      );
-      this.mergeLifecycleStages(
-        lifecycleStages,
-        row.lifecycleStages as Record<string, unknown>[] | null,
-        src,
-      );
-      this.mergeGlossary(
-        glossary,
-        row.glossary as Record<string, unknown>[] | null,
-        src,
-      );
-      if (!sessionScheme) {
-        sessionScheme = this.extractSessionScheme(
-          row.sessionScheme as Record<string, unknown> | null,
-          src,
-        );
-      }
-    }
-
-    if (
-      chambers.size === 0 &&
-      measureTypes.size === 0 &&
-      lifecycleStages.size === 0 &&
-      glossary.size === 0
-    ) {
-      return null;
-    }
-
-    return {
-      chambers: Array.from(chambers.values()),
-      measureTypes: Array.from(measureTypes.values()),
-      lifecycleStages: Array.from(lifecycleStages.values()),
-      sessionScheme: sessionScheme ?? undefined,
-      glossary: Array.from(glossary.values()),
-    };
-  }
-
-  private mergeChambers(
-    chambers: Map<string, CivicsBlockModel['chambers'][number]>,
-    rawC: Record<string, unknown>[] | null,
-    src: string,
-  ): void {
-    if (!rawC) return;
-    for (const ch of rawC) {
-      const name = String(ch['name'] ?? '');
-      if (!name || chambers.has(name)) continue;
-      chambers.set(name, {
-        name,
-        abbreviation: String(ch['abbreviation'] ?? ''),
-        size: Number(ch['size'] ?? 0),
-        termYears: Number(ch['termYears'] ?? 0),
-        leadershipRoles: Array.isArray(ch['leadershipRoles'])
-          ? (ch['leadershipRoles'] as string[])
-          : [],
-        description: this.normalizeCivicText(ch['description'], src),
-      });
-    }
-  }
-
-  private mergeMeasureTypes(
-    measureTypes: Map<string, CivicsBlockModel['measureTypes'][number]>,
-    rawM: Record<string, unknown>[] | null,
-    src: string,
-  ): void {
-    if (!rawM) return;
-    for (const mt of rawM) {
-      const code = String(mt['code'] ?? '');
-      if (!code || measureTypes.has(code)) continue;
-      measureTypes.set(code, {
-        code,
-        name: String(mt['name'] ?? ''),
-        chamber: String(mt['chamber'] ?? ''),
-        votingThreshold: String(mt['votingThreshold'] ?? 'majority'),
-        reachesGovernor: Boolean(mt['reachesGovernor']),
-        purpose: this.normalizeCivicText(mt['purpose'], src),
-        lifecycleStageIds: Array.isArray(mt['lifecycleStageIds'])
-          ? (mt['lifecycleStageIds'] as string[])
-          : [],
-      });
-    }
-  }
-
-  private buildCitizenAction(
-    rawAction: Record<string, unknown> | null,
-    src: string,
-  ): CivicsBlockModel['lifecycleStages'][number]['citizenAction'] {
-    if (!rawAction) return undefined;
-    return {
-      verb: String(rawAction['verb'] ?? 'learn'),
-      label: this.normalizeCivicText(rawAction['label'], src),
-      url: this.sanitizeCivicsUrl(
-        (rawAction['url'] as string | undefined) ??
-          (rawAction['sourceUrl'] as string | undefined),
-      ),
-      urgency: String(rawAction['urgency'] ?? 'passive') as
-        | 'active'
-        | 'passive'
-        | 'none',
-    };
-  }
-
-  private mergeLifecycleStages(
-    lifecycleStages: Map<string, CivicsBlockModel['lifecycleStages'][number]>,
-    rawL: Record<string, unknown>[] | null,
-    src: string,
-  ): void {
-    if (!rawL) return;
-    for (const ls of rawL) {
-      const id = String(ls['id'] ?? '');
-      if (!id || lifecycleStages.has(id)) continue;
-      const citizenAction = this.buildCitizenAction(
-        ls['citizenAction'] as Record<string, unknown> | null,
-        src,
-      );
-      lifecycleStages.set(id, {
-        id,
-        name: this.normalizeCivicText(ls['name'], src),
-        shortDescription: this.normalizeCivicText(ls['shortDescription'], src),
-        longDescription: ls['longDescription']
-          ? this.normalizeCivicText(ls['longDescription'], src)
-          : undefined,
-        statusStringPatterns: Array.isArray(ls['statusStringPatterns'])
-          ? (ls['statusStringPatterns'] as string[])
-          : [],
-        citizenAction,
-      });
-    }
-  }
-
-  private mergeGlossary(
-    glossary: Map<string, CivicsBlockModel['glossary'][number]>,
-    rawG: Record<string, unknown>[] | null,
-    src: string,
-  ): void {
-    if (!rawG) return;
-    for (const ge of rawG) {
-      const slug = String(ge['slug'] ?? '');
-      if (!slug || glossary.has(slug)) continue;
-      glossary.set(slug, {
-        term: String(ge['term'] ?? ''),
-        slug,
-        definition: this.normalizeCivicText(ge['definition'], src),
-        longDefinition: ge['longDefinition']
-          ? this.normalizeCivicText(ge['longDefinition'], src)
-          : undefined,
-        relatedTerms: Array.isArray(ge['relatedTerms'])
-          ? (ge['relatedTerms'] as string[])
-          : [],
-      });
-    }
-  }
-
-  private extractSessionScheme(
-    rawS: Record<string, unknown> | null,
-    src: string,
-  ): CivicsBlockModel['sessionScheme'] | null {
-    if (!rawS) return null;
-    return {
-      cadence: String(rawS['cadence'] ?? 'annual'),
-      namingPattern: String(rawS['namingPattern'] ?? ''),
-      description: this.normalizeCivicText(rawS['description'], src),
-    };
-  }
-
-  /**
-   * Sync data types from all loaded plugins (federal + local).
-   * When dataTypes is provided, only those types are synced.
-   */
-  async syncAll(
+  syncAll(
     dataTypes?: string[],
     maxReps?: number,
     maxBills?: number,
-    depth: string = SyncDepth.STATE,
+    depth?: string,
     scopedRegionId?: string,
     pipelineJobId?: string,
   ): Promise<SyncResult[]> {
-    const limits = [
-      maxReps != null ? `maxReps=${maxReps}` : null,
-      maxBills != null ? `maxBills=${maxBills}` : null,
-      depth !== SyncDepth.STATE ? `depth=${depth}` : null,
-      scopedRegionId ? `regionId=${scopedRegionId}` : null,
-    ].filter(Boolean);
-    const limitsStr = limits.length ? ` (${limits.join(', ')})` : '';
-    this.logger.log(
-      dataTypes
-        ? `Starting data sync for: ${dataTypes.join(', ')}${limitsStr}`
-        : `Starting full data sync${limitsStr}`,
-    );
-    const results: SyncResult[] = [];
-
-    // Resolve which plugin instances to run based on depth + optional scope.
-    // STATE (default): only loaded registry plugins (state + federal).
-    // COUNTY: enabled county region_plugin rows fetched from DB on demand.
-    // ALL: STATE plugins first, then COUNTY.
-    const statePlugins =
-      depth === SyncDepth.COUNTY
-        ? []
-        : this.pluginRegistry
-            .getAll()
-            .filter((p) => !scopedRegionId || p.name === scopedRegionId);
-
-    for (const registered of statePlugins) {
-      results.push(
-        ...(await this.runPluginSync(
-          registered.instance,
-          registered.name,
-          dataTypes,
-          maxReps,
-          maxBills,
-          pipelineJobId,
-        )),
-      );
-    }
-
-    if (depth === SyncDepth.COUNTY || depth === SyncDepth.ALL) {
-      results.push(
-        ...(await this.syncCountyPlugins(
-          dataTypes,
-          maxReps,
-          maxBills,
-          scopedRegionId,
-          pipelineJobId,
-        )),
-      );
-    }
-
-    this.logger.log(`Sync complete. Processed ${results.length} data type(s).`);
-    return results;
-  }
-
-  private async runPluginSync(
-    instance: IRegionPlugin,
-    name: string,
-    dataTypes?: string[],
-    maxReps?: number,
-    maxBills?: number,
-    pipelineJobId?: string,
-  ): Promise<SyncResult[]> {
-    const supported = instance.getSupportedDataTypes();
-    const filtered = dataTypes
-      ? supported.filter((dt) => dataTypes.includes(dt))
-      : supported;
-    const results: SyncResult[] = [];
-    for (const dataType of filtered) {
-      try {
-        const result = await this.syncDataTypeFrom(
-          instance,
-          name,
-          dataType,
-          maxReps,
-          maxBills,
-          name,
-          pipelineJobId,
-        );
-        results.push(result);
-      } catch (error) {
-        this.logger.error(`Failed to sync ${dataType} from ${name}:`, error);
-        results.push({
-          regionId: name,
-          dataType,
-          itemsProcessed: 0,
-          itemsCreated: 0,
-          itemsUpdated: 0,
-          itemsSkipped: 0,
-          errors: [(error as Error).message],
-          syncedAt: new Date(),
-        });
-      }
-    }
-    return results;
-  }
-
-  /**
-   * Fetch enabled county (sub-region) plugins from region_plugins, instantiate
-   * each as a DeclarativePlugin on-demand, and run the requested data types.
-   */
-  private async syncCountyPlugins(
-    dataTypes?: string[],
-    maxReps?: number,
-    maxBills?: number,
-    scopedRegionId?: string,
-    pipelineJobId?: string,
-  ): Promise<SyncResult[]> {
-    const where = scopedRegionId
-      ? { name: scopedRegionId, parentRegionId: { not: null }, enabled: true }
-      : { parentRegionId: { not: null }, enabled: true };
-
-    const countyRows = await this.db.regionPlugin.findMany({
-      where,
-      select: { name: true, config: true },
-      orderBy: { name: 'asc' },
-    });
-
-    if (countyRows.length === 0) {
-      this.logger.debug('No enabled county plugins found for sync');
-      return [];
-    }
-
-    this.logger.log(`Syncing ${countyRows.length} county plugin(s)…`);
-    const results: SyncResult[] = [];
-
-    for (const row of countyRows) {
-      if (!row.config) continue;
-      try {
-        // Instantiate transiently — don't register in the shared registry,
-        // since county plugins are loaded on-demand for sync only.
-        if (!this.pipeline) {
-          throw new Error(
-            'ScrapingPipelineService unavailable — county sync requires a pipeline',
-          );
-        }
-        const plugin = new DeclarativeRegionPlugin(
-          row.config as unknown as DeclarativeRegionConfig,
-          this.pipeline,
-        );
-        results.push(
-          ...(await this.runPluginSync(
-            plugin,
-            row.name,
-            dataTypes,
-            maxReps,
-            maxBills,
-            pipelineJobId,
-          )),
-        );
-      } catch (error) {
-        this.logger.error(
-          `Failed to instantiate county plugin ${row.name}:`,
-          error,
-        );
-        results.push({
-          regionId: row.name,
-          dataType: DataType.REPRESENTATIVES,
-          itemsProcessed: 0,
-          itemsCreated: 0,
-          itemsUpdated: 0,
-          itemsSkipped: 0,
-          errors: [(error as Error).message],
-          syncedAt: new Date(),
-        });
-      }
-    }
-    return results;
-  }
-
-  /**
-   * Sync a specific data type from the local plugin.
-   * Backward-compatible entry point used by the scheduler.
-   */
-  async syncDataType(dataType: DataType): Promise<SyncResult> {
-    return this.syncDataTypeFrom(
-      this.regionService,
-      this.pluginRegistry.getActiveName() ?? 'local',
-      dataType,
-    );
-  }
-
-  /**
-   * Sync a specific data type from a given provider.
-   */
-  private async syncDataTypeFrom(
-    provider: DataFetcher,
-    pluginName: string,
-    dataType: DataType,
-    maxReps?: number,
-    maxBills?: number,
-    regionId?: string,
-    pipelineJobId?: string,
-  ): Promise<SyncResult> {
-    this.logger.log(`Syncing ${dataType} from ${pluginName}`);
-    const startTime = Date.now();
-
-    const syncHandlers: Partial<
-      Record<
-        DataType,
-        () => Promise<{
-          processed: number;
-          created: number;
-          updated: number;
-          skipped?: number;
-        }>
-      >
-    > = {
-      [DataType.PROPOSITIONS]: () =>
-        this.syncPropositions(provider, pipelineJobId),
-      [DataType.MEETINGS]: () => this.syncMeetings(provider, pipelineJobId),
-      [DataType.REPRESENTATIVES]: () =>
-        this.syncRepresentatives(provider, maxReps, regionId),
-      [DataType.CAMPAIGN_FINANCE]: () =>
-        this.syncCampaignFinance(provider, pipelineJobId),
-      [DataType.CIVICS]: () => this.syncCivics(),
-      [DataType.BILLS]: () => this.syncBills(maxBills),
-    };
-
-    const handler = syncHandlers[dataType];
-    if (!handler) {
-      this.logger.warn(`No sync handler for data type: ${dataType}`);
-      return {
-        regionId: pluginName,
-        dataType,
-        itemsProcessed: 0,
-        itemsCreated: 0,
-        itemsUpdated: 0,
-        itemsSkipped: 0,
-        errors: [`No sync handler for data type: ${dataType}`],
-        syncedAt: new Date(),
-      };
-    }
-    const { processed, created, updated, skipped = 0 } = await handler();
-
-    const duration = Date.now() - startTime;
-    const skippedStr = skipped > 0 ? `, ${skipped} skipped` : '';
-    this.logger.log(
-      `Synced ${dataType} from ${pluginName}: ${processed} items (${created} created, ${updated} updated${skippedStr}) in ${duration}ms`,
-    );
-
-    return {
-      regionId: pluginName,
-      dataType,
-      itemsProcessed: processed,
-      itemsCreated: created,
-      itemsUpdated: updated,
-      itemsSkipped: skipped,
-      errors: [],
-      syncedAt: new Date(),
-    };
-  }
-
-  /**
-   * Sync propositions using bulk upsert
-   *
-   * PERFORMANCE: Uses batch upsert instead of N+1 queries
-   * This reduces database round trips from O(2n) to O(2) queries
-   */
-  private async syncPropositions(
-    provider: DataFetcher = this.regionService,
-    pipelineJobId?: string,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
-    const propositions = await provider.fetchPropositions(pipelineJobId);
-    if (propositions.length === 0) {
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    // Get existing externalIds in a single query to calculate created vs updated
-    const externalIds = propositions.map((p) => p.externalId);
-    const existingRecords = await this.db.proposition.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingExternalIds = new Set(
-      existingRecords.map((r: ExternalIdRecord) => r.externalId),
-    );
-
-    // Batch upsert all propositions in chunked transactions (#476)
-    await batchTransaction(
-      this.db,
-      propositions.map((prop) =>
-        this.db.proposition.upsert({
-          where: { externalId: prop.externalId },
-          update: {
-            title: prop.title,
-            summary: prop.summary,
-            fullText: prop.fullText,
-            status: prop.status,
-            electionDate: prop.electionDate,
-            sourceUrl: prop.sourceUrl,
-          },
-          create: {
-            externalId: prop.externalId,
-            title: prop.title,
-            summary: prop.summary,
-            fullText: prop.fullText,
-            status: prop.status,
-            electionDate: prop.electionDate,
-            sourceUrl: prop.sourceUrl,
-          },
-        }),
-      ),
-    );
-
-    // Invalidate cached proposition queries (#459)
-    await this.invalidateCache('propositions:');
-
-    // Generate AI analysis for any proposition with fullText but no
-    // analysis yet. DB-driven so it picks up newly ingested PDFs as well
-    // as past rows missed by earlier sync cycles. Fire-and-forget in the
-    // sense that failures are logged but don't abort the sync.
-    if (this.propositionAnalysis) {
-      try {
-        await this.propositionAnalysis.generateMissing();
-      } catch (error) {
-        this.logger.warn(
-          `Proposition analysis post-sync pass failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    const created = propositions.filter(
-      (p) => !existingExternalIds.has(p.externalId),
-    ).length;
-    const updated = propositions.filter((p) =>
-      existingExternalIds.has(p.externalId),
-    ).length;
-
-    return { processed: propositions.length, created, updated };
-  }
-
-  /**
-   * Regenerate AI analysis for a single proposition. Admin-invoked via the
-   * regeneratePropositionAnalysis mutation; also used by the backfill
-   * script for forced reruns.
-   */
-  async regeneratePropositionAnalysis(id: string): Promise<boolean> {
-    if (!this.propositionAnalysis) return false;
-    const result = await this.propositionAnalysis.generate(id, true);
-    if (result) {
-      await this.invalidateCache('propositions:');
-    }
-    return result;
-  }
-
-  /**
-   * Sync meetings using bulk upsert
-   *
-   * PERFORMANCE: Uses batch upsert instead of N+1 queries
-   * This reduces database round trips from O(2n) to O(2) queries
-   * @see https://github.com/OpusPopuli/opuspopuli/issues/197
-   */
-  private async syncMeetings(
-    provider: DataFetcher = this.regionService,
-    pipelineJobId?: string,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
-    const meetings = await provider.fetchMeetings(pipelineJobId);
-    if (meetings.length === 0) {
-      // Daily-file may be empty between sessions, but pdf_archive
-      // (minutes) sources can still be live — fall through to the
-      // Minutes sync.
-      return this.syncMeetingMinutes(provider);
-    }
-
-    // Get existing externalIds in a single query to calculate created vs updated
-    const externalIds = meetings.map((m) => m.externalId);
-    const existingRecords = await this.db.meeting.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingExternalIds = new Set(
-      existingRecords.map((r: ExternalIdRecord) => r.externalId),
-    );
-
-    // Batch upsert all meetings in chunked transactions (#476)
-    await batchTransaction(
-      this.db,
-      meetings.map((meeting) =>
-        this.db.meeting.upsert({
-          where: { externalId: meeting.externalId },
-          update: {
-            title: meeting.title,
-            body: meeting.body,
-            scheduledAt: meeting.scheduledAt,
-            location: meeting.location,
-            agendaUrl: meeting.agendaUrl,
-            videoUrl: meeting.videoUrl,
-          },
-          create: {
-            externalId: meeting.externalId,
-            title: meeting.title,
-            body: meeting.body,
-            scheduledAt: meeting.scheduledAt,
-            location: meeting.location,
-            agendaUrl: meeting.agendaUrl,
-            videoUrl: meeting.videoUrl,
-          },
-        }),
-      ),
-    );
-
-    // Invalidate cached meeting queries (#459)
-    await this.invalidateCache('meetings:');
-
-    const created = meetings.filter(
-      (m) => !existingExternalIds.has(m.externalId),
-    ).length;
-    const updated = meetings.filter((m) =>
-      existingExternalIds.has(m.externalId),
-    ).length;
-
-    // Daily-journal / committee-minutes documents come in under the
-    // same MEETINGS dataType but as `pdf_archive` sources. Persist
-    // them as Minutes rows + run the downstream LegislativeAction
-    // linker. Counts are summed into the meetings sync result so the
-    // caller sees a single total.
-    const minutesResult = await this.syncMeetingMinutes(provider);
-    return {
-      processed: meetings.length + minutesResult.processed,
-      created: created + minutesResult.created,
-      updated: updated + minutesResult.updated,
-    };
-  }
-
-  /**
-   * Sync `Minutes` documents from `pdf_archive` sources within the
-   * `meetings` dataType (CA Assembly daily journals etc.) and run the
-   * downstream linker pass. Invoked from `syncMeetings`. Two phases:
-   *
-   *   1. Upsert each MinutesWithActions.minutes row by externalId.
-   *      Revisions (`revisionSeq>0`) supersede their predecessors:
-   *      after the new row is upserted, all rows for the same
-   *      (body, date) with a lower revisionSeq get isActive=false.
-   *
-   *   2. Hand the upserted minutes ids to
-   *      LegislativeActionLinkerService, which mines rawText to
-   *      produce LegislativeAction rows with passage offsets
-   *      attributing the actions to representatives, propositions,
-   *      and committees. ACTIONS are downstream of MINUTES — the
-   *      linker is optional injection, so when it isn't bound the
-   *      Minutes still persist but no actions get produced.
-   *
-   * Issue #665.
-   */
-  private async syncMeetingMinutes(
-    provider: DataFetcher = this.regionService,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
-    if (!provider.fetchMeetingMinutes) {
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    const bundles = await provider.fetchMeetingMinutes();
-    if (bundles.length === 0) {
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    const externalIds = bundles.map((b) => b.minutes.externalId);
-    const existingRecords = await this.db.minutes.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingExternalIds = new Set(
-      existingRecords.map((r: ExternalIdRecord) => r.externalId),
-    );
-
-    const upsertedIds: string[] = [];
-    for (const { minutes } of bundles) {
-      const row = await this.db.minutes.upsert({
-        where: { externalId: minutes.externalId },
-        update: {
-          body: minutes.body,
-          date: minutes.date,
-          revisionSeq: minutes.revisionSeq,
-          isActive: true,
-          pageCount: minutes.pageCount,
-          sourceUrl: minutes.sourceUrl,
-          rawText: minutes.rawText,
-          parsedAt: minutes.parsedAt ?? new Date(),
-        },
-        create: {
-          externalId: minutes.externalId,
-          body: minutes.body,
-          date: minutes.date,
-          revisionSeq: minutes.revisionSeq,
-          isActive: true,
-          pageCount: minutes.pageCount,
-          sourceUrl: minutes.sourceUrl,
-          rawText: minutes.rawText,
-          parsedAt: minutes.parsedAt ?? new Date(),
-        },
-        select: { id: true },
-      });
-      upsertedIds.push(row.id);
-
-      // Supersede older revisions for the same (body, date).
-      if (minutes.revisionSeq > 0) {
-        await this.db.minutes.updateMany({
-          where: {
-            body: minutes.body,
-            date: minutes.date,
-            revisionSeq: { lt: minutes.revisionSeq },
-          },
-          data: { isActive: false },
-        });
-      }
-    }
-
-    // Run the deterministic linker over the freshly-upserted rows.
-    // Optional injection: when the linker isn't bound, Minutes are
-    // still persisted but no LegislativeAction rows are produced.
-    if (upsertedIds.length > 0 && this.legislativeActionLinker) {
-      await this.legislativeActionLinker.linkMinutes(upsertedIds);
-    }
-
-    const created = bundles.filter(
-      (b) => !existingExternalIds.has(b.minutes.externalId),
-    ).length;
-    const updated = bundles.filter((b) =>
-      existingExternalIds.has(b.minutes.externalId),
-    ).length;
-
-    return { processed: bundles.length, created, updated };
-  }
-
-  /**
-   * Sync representatives using bulk upsert
-   *
-   * PERFORMANCE: Uses batch upsert instead of N+1 queries
-   * This reduces database round trips from O(2n) to O(2) queries
-   * @see https://github.com/OpusPopuli/opuspopuli/issues/197
-   */
-  /**
-   * Defensive guard against garbage `district` values from flaky LLM-
-   * generated manifests. California reps encode district numerically
-   * in `externalId` (e.g., `ca-assembly-02`), so when the scrape's
-   * district field doesn't look numeric we derive the correct value
-   * from externalId. Without this, a manifest that captures a label
-   * node ("District:") instead of the number clobbers the DB and
-   * breaks address-based rep matching for every voter in the state.
-   */
-  private sanitizeDistrict(rep: Representative): string {
-    const raw = (rep.district ?? '').trim();
-    // Numeric district: canonicalize by stripping leading zeros so the
-    // stored district matches the externalId form (`ca-assembly-1`, not
-    // `ca-assembly-01`). The CA Assembly listing emits `01`, `02`, ... in
-    // the district field and we strip the same way externalId does.
-    if (/^\d+$/.test(raw)) return String(Number.parseInt(raw, 10));
-    const derived = deriveDistrictFromExternalId(rep.externalId);
-    if (derived !== undefined) {
-      this.logger.warn(
-        `Sanitized district for ${rep.name} (${rep.externalId}): scraped value "${raw}" is not numeric, using externalId-derived "${derived}"`,
-      );
-      return derived;
-    }
-    if (raw) {
-      this.logger.warn(
-        `Non-numeric district "${raw}" for ${rep.name} (${rep.externalId}) and no numeric suffix to fall back on; keeping raw value`,
-      );
-    }
-    return raw;
-  }
-
-  /**
-   * Pre-upsert normalization for a single Representative record:
-   *   - canonicalize externalId (strip zero-padding from the trailing digit run)
-   *   - drop bios that look like extraction junk (nav-link "Home" text,
-   *     "Latest News" headline blocks from mismatched-theme senator sites);
-   *     nulling here makes the BioGenerator's `!r.bio || r.bio.trim() === ''`
-   *     filter pick them up and replace with an AI-generated bio
-   *   - mark provenance for bios that arrived from the scrape (covers the
-   *     case where BioGenerator returns early because LLM/prompt deps are
-   *     unwired and would otherwise leave scraped bios with a null bioSource)
-   *
-   * Idempotent with BioGenerator's own scraped-bio marking pass.
-   */
-  private normalizeRep(r: Representative): void {
-    r.externalId = stripLeadingZerosFromExternalId(r.externalId);
-    if (r.bio && !isLikelyValidBio(r.bio)) {
-      this.logger.warn(
-        `Discarding junk bio for ${r.externalId} (${r.bio.length} chars): ${r.bio.slice(0, 60)}…`,
-      );
-      r.bio = undefined;
-      r.bioSource = undefined;
-    }
-    if (r.bio && !r.bioSource) {
-      r.bioSource = 'scraped';
-    }
-  }
-
-  private applyChamberFallback(r: Representative, provider: DataFetcher): void {
-    if (r.chamber || !(provider instanceof DeclarativeRegionPlugin)) return;
-    const source = provider
-      .getDataSources('REPRESENTATIVES' as DataType)
-      .find((s) => s.category);
-    if (source?.category) r.chamber = source.category;
-  }
-
-  private async syncRepresentatives(
-    provider: DataFetcher = this.regionService,
-    maxReps?: number,
-    regionId?: string,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
-    const reps = await provider.fetchRepresentatives();
-    if (reps.length === 0) {
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    for (const r of reps) {
-      this.normalizeRep(r);
-      this.applyChamberFallback(r, provider);
-    }
-
-    // Enrich with AI-generated bios where missing (scraped bios are preserved)
-    if (this.bioGenerator) {
-      await this.bioGenerator.enrichBios(reps, maxReps);
-    }
-
-    // Get existing externalIds in a single query to calculate created vs updated
-    const externalIds = reps.map((r) => r.externalId);
-    const existingRecords = await this.db.representative.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingExternalIds = new Set(
-      existingRecords.map((r: ExternalIdRecord) => r.externalId),
-    );
-
-    // Batch upsert all representatives in chunked transactions (#476)
-    await batchTransaction(
-      this.db,
-      reps.map((rep) => {
-        const lastName = extractLastName(rep.name);
-        const district = this.sanitizeDistrict(rep);
-        return this.db.representative.upsert({
-          where: { externalId: rep.externalId },
-          // On UPDATE: `undefined` tells Prisma to skip a field and
-          // preserve the existing DB value. A null from the scrape
-          // (field present in the extractor output but unset for this
-          // rep) would otherwise clobber previously-enriched data —
-          // e.g., wiping an AI-generated bio when the Assembly detail
-          // scrape stops returning a bio field. Convert null→undefined
-          // for every optional enrichment field.
-          update: {
-            regionId: regionId ?? rep.regionId ?? 'california',
-            name: rep.name,
-            lastName,
-            chamber: rep.chamber,
-            district,
-            party: rep.party,
-            photoUrl: rep.photoUrl ?? undefined,
-            contactInfo: (rep.contactInfo as object | null) ?? undefined,
-            committees: (rep.committees as object[] | null) ?? undefined,
-            committeesSummary: rep.committeesSummary ?? undefined,
-            bio: rep.bio ?? undefined,
-            bioSource: rep.bioSource ?? undefined,
-            bioClaims: (rep.bioClaims as object[] | null) ?? undefined,
-          },
-          create: {
-            externalId: rep.externalId,
-            regionId: regionId ?? rep.regionId ?? 'california',
-            name: rep.name,
-            lastName,
-            chamber: rep.chamber,
-            district,
-            party: rep.party,
-            photoUrl: rep.photoUrl,
-            contactInfo: rep.contactInfo as object | undefined,
-            committees: rep.committees as object[] | undefined,
-            committeesSummary: rep.committeesSummary,
-            bio: rep.bio,
-            bioSource: rep.bioSource,
-            bioClaims: rep.bioClaims as object[] | undefined,
-          },
-        });
-      }),
-    );
-
-    // Invalidate cached representative queries (#459)
-    await this.invalidateCache('representatives:');
-
-    // Post-upsert: generate the AI committee-assignment preamble for any
-    // reps that have committees but no summary yet. DB-driven so it runs
-    // even when a given sync cycle only refreshes part of the roster
-    // (e.g., Senate-only when Assembly scrape breaks). See #594 Task 4.
-    if (this.committeeSummaryGenerator) {
-      await this.committeeSummaryGenerator.generateMissingSummaries(maxReps);
-    }
-
-    // Materialize the rep ↔ legislative-committee graph from the
-    // Representative.committees JSONB. Idempotent — re-running over
-    // unchanged JSON produces zero new rows. Same shape as the
-    // proposition-finance linker that runs after campaign-finance sync.
-    if (this.legislativeCommitteeLinker) {
-      try {
-        await this.legislativeCommitteeLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Legislative committee linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    // Fill in AI-generated 2-3 sentence descriptions for any committees
-    // (just-created or pre-existing) that don't have one yet. Runs after
-    // the linker so newly-materialized committees get described in the
-    // same sync cycle. Mirrors CommitteeSummaryGenerator's resilience —
-    // catches inside the service so an LLM/prompt-service flake never
-    // blocks the rest of the sync.
-    if (this.legislativeCommitteeDescriptions) {
-      try {
-        await this.legislativeCommitteeDescriptions.generateMissingDescriptions(
-          maxReps,
-        );
-      } catch (error) {
-        this.logger.warn(
-          `Legislative committee description generation failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    const created = reps.filter(
-      (r) => !existingExternalIds.has(r.externalId),
-    ).length;
-    const updated = reps.filter((r) =>
-      existingExternalIds.has(r.externalId),
-    ).length;
-
-    return { processed: reps.length, created, updated };
-  }
-
-  /**
-   * Sync campaign finance data (contributions, expenditures, independent expenditures).
-   * Called for both federal and local plugins — data is distinguished by sourceSystem.
-   */
-  /**
-   * Auto-create stub committee records for any committee IDs referenced by
-   * contributions/expenditures/IEs that don't exist yet. This prevents FK
-   * violations. Also replaces external committee IDs with DB UUIDs.
-   */
-  private async ensureCommitteeStubs(
-    data: CampaignFinanceResult,
-  ): Promise<void> {
-    // Build the union of every committee externalId referenced by any
-    // record in this batch, AND remember the sourceSystem of the first
-    // record we saw referencing it. Each finance record carries its own
-    // `sourceSystem`; using that for the stub avoids the #634 bug where
-    // every CalAccess-referenced stub was mislabeled as 'fec'.
-    //
-    // First-wins on the rare case of a single committee referenced by
-    // records from both source systems in the same batch — in practice
-    // a given committee is sourced from one system, so collisions are
-    // theoretical. The chosen sourceSystem only labels the stub; the
-    // real committee row created later by direct ingestion will UPDATE
-    // the stub via upsert and set the authoritative value.
-    const referencedIds = new Set<string>();
-    const sourceSystemByExternalId = new Map<string, 'cal_access' | 'fec'>();
-    const noteReference = (
-      committeeId: string | undefined | null,
-      sourceSystem: 'cal_access' | 'fec',
-    ) => {
-      if (!committeeId) return;
-      referencedIds.add(committeeId);
-      if (!sourceSystemByExternalId.has(committeeId)) {
-        sourceSystemByExternalId.set(committeeId, sourceSystem);
-      }
-    };
-    for (const c of data.contributions)
-      noteReference(c.committeeId, c.sourceSystem);
-    for (const e of data.expenditures)
-      noteReference(e.committeeId, e.sourceSystem);
-    for (const ie of data.independentExpenditures) {
-      noteReference(ie.committeeId, ie.sourceSystem);
-    }
-
-    if (referencedIds.size === 0) return;
-
-    const existing = await this.db.committee.findMany({
-      where: { externalId: { in: [...referencedIds] } },
-      select: { externalId: true, id: true },
-    });
-    const existingMap = new Map(
-      existing.map((c: { externalId: string; id: string }) => [
-        c.externalId,
-        c.id,
-      ]),
-    );
-
-    const missingIds = [...referencedIds].filter((id) => !existingMap.has(id));
-
-    if (missingIds.length > 0) {
-      this.logger.log(
-        `Creating ${missingIds.length} stub committee records for FK references`,
-      );
-      await batchTransaction(
-        this.db,
-        missingIds.map((externalId) =>
-          this.db.committee.create({
-            data: {
-              externalId,
-              name: externalId,
-              type: 'OTHER',
-              status: 'active',
-              // Default to 'fec' only if somehow no record carrying this
-              // externalId had a sourceSystem — shouldn't happen given the
-              // reference-walking above, but the fallback keeps the column
-              // non-null without breaking the (#634) fix in the common path.
-              sourceSystem: sourceSystemByExternalId.get(externalId) ?? 'fec',
-            },
-          }),
-        ),
-      );
-    }
-
-    // Build lookup from externalId → DB UUID for FK resolution
-    const allCommittees = await this.db.committee.findMany({
-      where: { externalId: { in: [...referencedIds] } },
-      select: { externalId: true, id: true },
-    });
-    const idMap = new Map(
-      allCommittees.map((c: { externalId: string; id: string }) => [
-        c.externalId,
-        c.id,
-      ]),
-    );
-
-    for (const c of data.contributions) {
-      c.committeeId = idMap.get(c.committeeId) ?? c.committeeId;
-    }
-    for (const e of data.expenditures) {
-      e.committeeId = idMap.get(e.committeeId) ?? e.committeeId;
-    }
-    for (const ie of data.independentExpenditures) {
-      ie.committeeId = idMap.get(ie.committeeId) ?? ie.committeeId;
-    }
-  }
-
-  private async syncCampaignFinance(
-    provider: DataFetcher,
-    pipelineJobId?: string,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
-    if (!provider.fetchCampaignFinance) {
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    let totalProcessed = 0;
-    let totalCreated = 0;
-    let totalUpdated = 0;
-
-    // Batch callback: sort each batch by record type and upsert immediately
-    const onBatch = async (items: Record<string, unknown>[]) => {
-      const batchData = this.sortCampaignFinanceItems(items);
-      await this.ensureCommitteeStubs(batchData);
-      const result = await this.upsertCampaignFinanceBatch(batchData);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-    };
-
-    const data = await provider.fetchCampaignFinance(onBatch, pipelineJobId);
-
-    // Handle any non-batched items (from API sources or small files)
-    if (
-      data.contributions.length > 0 ||
-      data.expenditures.length > 0 ||
-      data.independentExpenditures.length > 0 ||
-      data.committeeMeasureFilings.length > 0
-    ) {
-      await this.ensureCommitteeStubs(data);
-      const result = await this.upsertCampaignFinanceBatch(data);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-    }
-
-    // Resolve committee↔proposition links from CVR2 + propositionTitle
-    // strings. Fire-and-forget: the linker's own errors should not fail
-    // the sync since the raw data is already persisted and a later run
-    // can re-resolve. Mirrors the post-sync hook pattern from
-    // syncPropositions → propositionAnalysis.generateMissing().
-    if (this.propositionFinanceLinker) {
-      try {
-        await this.propositionFinanceLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Proposition finance linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    return {
-      processed: totalProcessed,
-      created: totalCreated,
-      updated: totalUpdated,
-    };
-  }
-
-  /**
-   * Sync civics data — for each `dataType: 'civics'` data source in
-   * the region config, BFS-crawl the seed URL up to `crawlDepth`
-   * (default 0 = seed only), and for each visited page send it
-   * through the prompt-service's civics-extraction template, parse
-   * the resulting `CivicsBlock`, and upsert into `civics_blocks`
-   * keyed on `(regionId, sourceUrl)`.
-   *
-   * Pages typically contribute a partial block — the glossary page
-   * fills `glossary[]`, the legislative-process page fills
-   * `lifecycleStages[]`, etc. Pages that don't contain civics-relevant
-   * content produce empty rows; consumers merge across rows.
-   *
-   * Crawl scope: same host, same path prefix as the seed (up to last
-   * `/`), HTML responses only, deduplicated by canonical URL, capped
-   * at `crawlMaxPages` (default 20). Per-page failures log + skip;
-   * a single bad page doesn't fail the whole sync. Issue #669.
-   */
-  private async syncCivics(): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
-    if (!this.promptClient || !this.llm) {
-      this.logger.warn(
-        'Civics sync requires PromptClient and LLM provider; skipping',
-      );
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    const plugin = this.pluginRegistry.getLocal();
-    if (!plugin?.getDataSources) {
-      this.logger.warn(
-        'Region plugin does not expose getDataSources(); skipping civics sync',
-      );
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    const dataSources = plugin.getDataSources(DataType.CIVICS);
-    if (dataSources.length === 0) {
-      this.logger.log('No civics data sources configured for this region');
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    // Build SSRF allowlist from all registered data sources in this plugin.
-    // Derived from @opuspopuli/regions so adding a region automatically
-    // permits its hosts — no separate list to maintain.
-    const registeredHosts = new Set(
-      plugin.getDataSources().flatMap((s) => {
-        try {
-          return [new URL(s.url).hostname];
-        } catch {
-          return [];
-        }
-      }),
-    );
-
-    const regionId = plugin.getName();
-    let processed = 0;
-    let created = 0;
-    let updated = 0;
-
-    for (const ds of dataSources) {
-      const urls = await this.crawlCivicsUrls(ds, registeredHosts);
-      this.logger.log(
-        `Civics: crawl from ${ds.url} (depth ${ds.crawlDepth ?? 0}) found ${urls.length} page(s)`,
-      );
-      for (const url of urls) {
-        const result = await this.extractAndUpsertCivicsPage(regionId, url, ds);
-        if (result === 'created') created++;
-        else if (result === 'updated') updated++;
-        if (result !== 'failed') processed++;
-      }
-    }
-
-    return { processed, created, updated };
-  }
-
-  // ============================================================
-  // BILLS SYNC (issue #686)
-  // ============================================================
-
-  private async syncBills(maxBills?: number): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-    skipped: number;
-  }> {
-    if (!this.promptClient || !this.llm) {
-      this.logger.warn('Bills sync requires PromptClient and LLM; skipping');
-      return { processed: 0, created: 0, updated: 0, skipped: 0 };
-    }
-
-    const plugin = this.pluginRegistry.getLocal();
-    if (!plugin?.getDataSources) {
-      this.logger.warn(
-        'Region plugin does not expose getDataSources(); skipping bills sync',
-      );
-      return { processed: 0, created: 0, updated: 0, skipped: 0 };
-    }
-
-    const dataSources = plugin.getDataSources(DataType.BILLS);
-    if (dataSources.length === 0) {
-      this.logger.log('No bills data sources configured for this region');
-      return { processed: 0, created: 0, updated: 0, skipped: 0 };
-    }
-
-    const registeredHosts = new Set(
-      plugin.getDataSources().flatMap((s) => {
-        try {
-          return [new URL(s.url).hostname];
-        } catch {
-          return [];
-        }
-      }),
-    );
-
-    const regionId = plugin.getName();
-    const repIndex = await this.buildRepNameIndex(regionId);
-    const committeeIndex = await this.buildCommitteeNameIndex();
-
-    // Compile civics lifecycle stage patterns once per sync run so every bill
-    // upsert can resolve currentStageId without additional DB hits.
-    const stagePatterns = await this.buildStagePatterns(regionId);
-
-    let processed = 0;
-    let created = 0;
-    let updated = 0;
-    let skippedTotal = 0;
-    const syncedExternalIds = new Set<string>();
-
-    for (const ds of dataSources) {
-      const counts = await this.syncBillsFromDataSource(
-        regionId,
-        ds,
-        registeredHosts,
-        repIndex,
-        committeeIndex,
-        syncedExternalIds,
-        stagePatterns,
-        maxBills,
-      );
-      processed += counts.processed;
-      created += counts.created;
-      updated += counts.updated;
-      skippedTotal += counts.skipped;
-    }
-
-    // Backfill currentStageId on existing bills that were skipped this run
-    // (content unchanged) or were written before this logic existed.
-    if (stagePatterns.length > 0) {
-      await this.backfillBillStageIds(regionId, stagePatterns);
-    }
-
-    await this.pruneStaleBills(regionId, syncedExternalIds, maxBills);
-
-    return { processed, created, updated, skipped: skippedTotal };
-  }
-
-  private async syncBillsFromDataSource(
-    regionId: string,
-    ds: DataSourceConfig,
-    registeredHosts: Set<string>,
-    repIndex: Map<string, { id: string; chamber: string }>,
-    committeeIndex: Map<string, string>,
-    syncedExternalIds: Set<string>,
-    stagePatterns: StagePattern[],
-    maxBills?: number,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-    skipped: number;
-  }> {
-    const { statusUrls, votesUrls } = await this.discoverBillUrls(
-      ds,
-      registeredHosts,
+    return this.syncService.syncAll(
+      dataTypes,
+      maxReps,
       maxBills,
+      depth,
+      scopedRegionId,
+      pipelineJobId,
     );
-    this.logger.log(
-      `Bills: discovered ${statusUrls.length} bill(s) from ${ds.url}`,
-    );
-
-    let processed = 0;
-    let created = 0;
-    let updated = 0;
-    let skipped = 0;
-
-    // Pass 1: status pages → create/update full bill records
-    for (const url of statusUrls) {
-      const result = await this.extractAndUpsertBillPage(
-        regionId,
-        url,
-        ds,
-        repIndex,
-        committeeIndex,
-        stagePatterns,
-      );
-      if (result === 'created') {
-        created++;
-        processed++;
-      } else if (result === 'updated') {
-        updated++;
-        processed++;
-      } else if (result === 'skipped') {
-        skipped++;
-        processed++;
-      }
-      // Track every externalId we touched, regardless of outcome, so the
-      // orphan-cleanup below knows what was attempted this run. Bills that
-      // fail extraction are intentionally excluded — a parse failure doesn't
-      // mean the bill is gone from the source.
-      if (result !== 'failed') {
-        const billId = new URL(url).searchParams.get('bill_id');
-        if (billId) syncedExternalIds.add(billId);
-      }
-    }
-    if (skipped > 0) {
-      this.logger.log(
-        `Bills: skipped ${skipped} unchanged bill(s) from ${ds.url}`,
-      );
-    }
-
-    // Pass 2: votes pages → merge roll-call votes into existing bills
-    for (const url of votesUrls) {
-      const result = await this.extractVotesOnlyPage(
-        regionId,
-        url,
-        ds,
-        repIndex,
-      );
-      if (result === 'updated') updated++;
-    }
-
-    return { processed, created, updated, skipped };
   }
 
-  /**
-   * Compile each stage's statusStringPatterns into RegExp objects.
-   * Patterns are JS regex syntax (no surrounding slashes), matched case-insensitively.
-   * Invalid patterns are logged and skipped rather than crashing the sync.
-   */
-  private async buildStagePatterns(regionId: string): Promise<StagePattern[]> {
-    const civics = await this.getCivicsData(regionId);
-    const patterns: StagePattern[] = [];
-    for (const stage of civics?.lifecycleStages ?? []) {
-      for (const raw of stage.statusStringPatterns) {
-        try {
-          patterns.push({ stageId: stage.id, regex: new RegExp(raw, 'i') });
-        } catch {
-          this.logger.warn(
-            `Invalid status pattern "${raw}" for stage "${stage.id}" in ${regionId} — skipping`,
-          );
-        }
-      }
-    }
-    return patterns;
+  syncDataType(dataType: DataType): Promise<SyncResult> {
+    return this.syncService.syncDataType(dataType);
   }
 
-  /**
-   * Return the stageId whose first matching pattern covers the given status
-   * string, or null when no pattern matches.
-   */
-  private resolveStageFromStatus(
-    status: string | null | undefined,
-    stagePatterns: StagePattern[],
-  ): string | null {
-    if (!status || stagePatterns.length === 0) return null;
-    return stagePatterns.find((p) => p.regex.test(status))?.stageId ?? null;
+  getRegionInfo(): RegionInfoModel {
+    return this.syncService.getRegionInfo();
   }
 
-  /**
-   * Backfill currentStageId on bills that already have a status string but
-   * were written before stage matching existed, or were skipped this sync run.
-   */
-  private async backfillBillStageIds(
-    regionId: string,
-    stagePatterns: StagePattern[],
-  ): Promise<void> {
-    const unmatched = await this.db.bill.findMany({
-      where: { regionId, currentStageId: null, status: { not: null } },
-      select: { id: true, status: true },
-    });
-    if (unmatched.length === 0) return;
-
-    const byStage = new Map<string, string[]>();
-    for (const bill of unmatched) {
-      const stageId = this.resolveStageFromStatus(bill.status, stagePatterns);
-      if (!stageId) continue;
-      if (!byStage.has(stageId)) byStage.set(stageId, []);
-      byStage.get(stageId)!.push(bill.id);
-    }
-
-    let filled = 0;
-    for (const [stageId, ids] of byStage) {
-      await this.db.bill.updateMany({
-        where: { id: { in: ids } },
-        data: { currentStageId: stageId },
-      });
-      filled += ids.length;
-    }
-    if (filled > 0) {
-      this.logger.log(
-        `Bills: backfilled currentStageId for ${filled} of ${unmatched.length} bill(s) in ${regionId}`,
-      );
-    }
+  regeneratePropositionAnalysis(id: string): Promise<boolean> {
+    return this.syncService.regeneratePropositionAnalysis(id);
   }
 
-  private async pruneStaleBills(
-    regionId: string,
-    syncedExternalIds: Set<string>,
-    maxBills?: number,
-  ): Promise<void> {
-    // Delete bills for this region that were not seen in the current sync run.
-    // Only safe when maxBills is not set — a capped run only discovers a subset
-    // of bills, so deleting everything outside that subset would wipe valid data.
-    if (syncedExternalIds.size === 0 || maxBills != null) return;
-
-    const { count } = await this.db.bill.deleteMany({
-      where: {
-        regionId,
-        externalId: { notIn: Array.from(syncedExternalIds) },
-      },
-    });
-    if (count > 0) {
-      this.logger.log(
-        `Bills: removed ${count} stale bill record(s) for ${regionId}`,
-      );
-    }
+  invalidateManifest(regionId: string, sourceUrl: string): Promise<number> {
+    return this.syncService.invalidateManifest(regionId, sourceUrl);
   }
 
-  /**
-   * Discover bill status and votes URLs from the seed page.
-   *
-   * When `ds.billDiscovery` is configured, fetches the seed once and extracts
-   * bill IDs using the region-declared `navLinkPattern`, then constructs status
-   * and votes URLs from the supplied templates. This avoids generic BFS which
-   * breaks for sites like CA leginfo — the search page returns hundreds of
-   * nav-hub links at depth 0, filling `crawlMaxPages` before any detail pages
-   * can be discovered at depth 1.
-   *
-   * Falls back to BFS + URL-type filtering when `billDiscovery` is absent, for
-   * regions whose seed page links directly to bill detail pages.
-   */
-  private async discoverBillUrls(
-    ds: DataSourceConfig,
-    registeredHosts: Set<string>,
-    maxBills?: number,
-  ): Promise<{ statusUrls: string[]; votesUrls: string[] }> {
-    if (!ds.billDiscovery) {
-      // BFS fallback — filters by CA leginfo URL substrings. Only works for
-      // regions whose bill pages use billStatusClient.xhtml / billVotesClient.xhtml.
-      // Other regions must configure billDiscovery to avoid silent 0-bill results.
-      const urls = await this.crawlCivicsUrls(ds, registeredHosts);
-      return {
-        statusUrls: urls.filter((u) => u.includes('billStatusClient.xhtml')),
-        votesUrls: urls.filter((u) => u.includes('billVotesClient.xhtml')),
-      };
-    }
-
-    const { navLinkPattern, statusPageTemplate, votesPageTemplate } =
-      ds.billDiscovery;
-
-    const seedUrl = new URL(ds.url);
-    if (
-      seedUrl.protocol !== 'https:' ||
-      !registeredHosts.has(seedUrl.hostname)
-    ) {
-      this.logger.error(
-        `Bills discovery rejected: ${seedUrl.hostname} is not a registered host`,
-      );
-      return { statusUrls: [], votesUrls: [] };
-    }
-
-    const limit = maxBills ?? Infinity;
-    let html: string;
-    try {
-      html = await this.fetchUrlText(ds.url);
-    } catch (e) {
-      this.logger.warn(
-        `Bills: failed to fetch seed ${ds.url}: ${(e as Error).message}`,
-      );
-      return { statusUrls: [], votesUrls: [] };
-    }
-
-    // HTML-entity decode before applying the pattern — leginfo encodes & as &amp; in hrefs.
-    const decoded = html.replace(/&amp;/g, '&');
-    const re = new RegExp(navLinkPattern, 'g');
-    const seen = new Set<string>();
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(decoded)) !== null && seen.size < limit) {
-      seen.add(m[1]);
-    }
-
-    const base = `${seedUrl.protocol}//${seedUrl.host}`;
-    const statusUrls: string[] = [];
-    const votesUrls: string[] = [];
-    for (const billId of seen) {
-      statusUrls.push(
-        `${base}${statusPageTemplate.replace('{bill_id}', billId)}`,
-      );
-      votesUrls.push(
-        `${base}${votesPageTemplate.replace('{bill_id}', billId)}`,
-      );
-    }
-
-    return { statusUrls, votesUrls };
-  }
-
-  private async buildRepNameIndex(
-    _: string,
-  ): Promise<Map<string, { id: string; chamber: string }>> {
-    const reps = await this.db.representative.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true, chamber: true },
-    });
-    const index = new Map<string, { id: string; chamber: string }>();
-    for (const r of reps) {
-      index.set(r.name.toLowerCase().trim(), { id: r.id, chamber: r.chamber });
-      const lastName = r.name.split(/\s+/).pop()?.toLowerCase() ?? '';
-      if (lastName && !index.has(lastName)) {
-        index.set(lastName, { id: r.id, chamber: r.chamber });
-      }
-    }
-    return index;
-  }
-
-  private async buildCommitteeNameIndex(): Promise<Map<string, string>> {
-    const committees = await this.db.legislativeCommittee.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true },
-    });
-    const index = new Map<string, string>();
-    for (const c of committees) {
-      index.set(c.name.toLowerCase().trim(), c.id);
-    }
-    return index;
-  }
-
-  private resolveRepByName(
+  setRegionPluginEnabled(
     name: string,
-    index: Map<string, { id: string; chamber: string }>,
-  ): string | undefined {
-    const normalized = name.toLowerCase().trim();
-    const exact = index.get(normalized);
-    if (exact) return exact.id;
-    const lastName = normalized.split(/\s+/).pop() ?? '';
-    return lastName ? index.get(lastName)?.id : undefined;
+    enabled: boolean,
+  ): Promise<RegionPluginRow> {
+    return this.syncService.setRegionPluginEnabled(name, enabled);
   }
 
-  private extractBillPublishedAt(html: string): string | null {
-    const m = html.match(
-      /Date Published:\s*(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s+[AP]M)/i,
-    );
-    return m ? m[1].trim() : null;
+  listRegionPlugins(): Promise<RegionPluginRow[]> {
+    return this.syncService.listRegionPlugins();
   }
 
-  /**
-   * Check whether the bill at `sourceUrl` is unchanged by comparing the
-   * "Date Published" string from the text page against the stored value.
-   * Returns the remote publish date (to pass through to the upsert) when the
-   * bill has changed, `'skipped'` when it is unchanged, or `null` when the
-   * text page is unavailable/inapplicable.
-   */
-  private async checkBillSkipCondition(
-    billId: string,
-    sourceUrl: string,
-    textPageTemplate: string,
-  ): Promise<Date | 'skipped' | null> {
-    const base = new URL(sourceUrl).origin;
-    const textUrl = `${base}${textPageTemplate.replace('{bill_id}', billId)}`;
-    try {
-      if (new URL(textUrl).hostname !== new URL(sourceUrl).hostname) {
-        this.logger.warn(
-          `Bills skip-check: textPageTemplate hostname mismatch, skipping for ${sourceUrl}`,
-        );
-        return null;
-      }
-      const textHtml = await this.fetchUrlText(textUrl);
-      const remoteStr = this.extractBillPublishedAt(textHtml);
-      if (!remoteStr) return null;
-
-      // Append " UTC" so Date.parse treats the string as UTC on every
-      // platform — avoids TZ-dependent behaviour in Docker containers.
-      const remoteDate = new Date(`${remoteStr} UTC`);
-      if (isNaN(remoteDate.getTime())) return null;
-
-      const existing = await this.db.bill.findUnique({
-        where: { externalId: billId },
-        select: { sourcePublishedAt: true },
-      });
-      if (
-        existing?.sourcePublishedAt &&
-        existing.sourcePublishedAt.getTime() === remoteDate.getTime()
-      ) {
-        return 'skipped';
-      }
-      return remoteDate;
-    } catch {
-      // Text page fetch failed — fall through to full extraction
-      return null;
-    }
+  getRegionPluginByFipsCode(fipsCode: string): Promise<RegionPluginRow | null> {
+    return this.syncService.getRegionPluginByFipsCode(fipsCode);
   }
 
-  private async extractAndUpsertBillPage(
-    regionId: string,
-    sourceUrl: string,
-    ds: DataSourceConfig,
-    repIndex: Map<string, { id: string; chamber: string }>,
-    committeeIndex: Map<string, string>,
-    stagePatterns: StagePattern[],
-  ): Promise<'created' | 'updated' | 'skipped' | 'failed'> {
-    if (!this.promptClient || !this.llm) return 'failed';
-    try {
-      let sourcePublishedAt: Date | null = null;
-      let billId: string | undefined;
-      try {
-        billId = new URL(sourceUrl).searchParams.get('bill_id') ?? undefined;
-      } catch {
-        /* invalid URL */
-      }
+  // ─── Query delegation ─────────────────────────────────────────────────────
 
-      if (billId && ds.billDiscovery?.textPageTemplate) {
-        const skipResult = await this.checkBillSkipCondition(
-          billId,
-          sourceUrl,
-          ds.billDiscovery.textPageTemplate,
-        );
-        if (skipResult === 'skipped') return 'skipped';
-        if (skipResult instanceof Date) sourcePublishedAt = skipResult;
-      }
-
-      const html = await this.fetchUrlText(sourceUrl);
-      const content = this.htmlToReadableText(html);
-      const sessionYear = this.inferSessionYear(sourceUrl);
-
-      const { promptText } = await this.promptClient.getBillExtractionPrompt({
-        regionId,
-        sourceUrl,
-        sessionYear,
-        html: content,
-      });
-
-      const llmResult = await this.llm.generate(promptText, {
-        maxTokens: ds.llmMaxTokens ?? 8000,
-        temperature: 0.1,
-        requestTimeoutMs: ds.llmRequestTimeoutMs,
-      });
-
-      const candidate = extractJsonObjectSlice(llmResult.text);
-      if (!candidate) {
-        this.logger.warn(`Bills extraction: no JSON for ${sourceUrl}`);
-        return 'failed';
-      }
-
-      let raw: Partial<Bill>;
-      try {
-        raw = JSON.parse(candidate) as Partial<Bill>;
-      } catch {
-        this.logger.warn(
-          `Bills extraction: JSON parse failed for ${sourceUrl}`,
-        );
-        return 'failed';
-      }
-
-      if (!raw.billNumber || !raw.title) {
-        this.logger.warn(
-          `Bills extraction: missing required fields at ${sourceUrl}`,
-        );
-        return 'failed';
-      }
-
-      // Prefer the bill_id URL param as externalId — leginfo encodes it as
-      // {startYear}{endYear}0{MeasureType}{Number} (e.g. 202520260AB1).
-      const urlBillId = (() => {
-        try {
-          return new URL(sourceUrl).searchParams.get('bill_id') ?? undefined;
-        } catch {
-          return undefined;
-        }
-      })();
-      const externalId =
-        urlBillId ?? raw.externalId ?? this.buildBillExternalId(raw);
-      const authorId = raw.authorName
-        ? this.resolveRepByName(raw.authorName, repIndex)
-        : undefined;
-      const existing = await this.db.bill.findUnique({
-        where: { externalId },
-        select: { id: true },
-      });
-
-      const billData = {
-        regionId,
-        billNumber: raw.billNumber,
-        sessionYear: raw.sessionYear ?? sessionYear,
-        measureTypeCode:
-          raw.measureTypeCode ?? this.inferMeasureTypeCode(raw.billNumber),
-        title: raw.title,
-        subject: raw.subject ?? null,
-        status: raw.status ?? null,
-        currentStageId:
-          raw.currentStageId ??
-          this.resolveStageFromStatus(raw.status, stagePatterns),
-        lastAction: raw.lastAction ?? null,
-        lastActionDate: raw.lastActionDate
-          ? new Date(raw.lastActionDate as unknown as string)
-          : null,
-        fiscalImpact: raw.fiscalImpact ?? null,
-        fullTextUrl: raw.fullTextUrl ?? null,
-        authorId: authorId ?? null,
-        authorName: raw.authorName ?? null,
-        sourceUrl,
-        sourcePublishedAt,
-        extractedAt: new Date(),
-      };
-      const bill = await this.db.bill.upsert({
-        where: { externalId },
-        create: { externalId, ...billData },
-        update: billData,
-        select: { id: true },
-      });
-
-      await this.linkBillCoAuthors(bill.id, raw.coAuthorNames ?? [], repIndex);
-      await this.linkBillCommittees(
-        bill.id,
-        raw.committeeNames ?? [],
-        committeeIndex,
-      );
-      await this.linkBillVotes(bill.id, raw.votes ?? [], repIndex, sourceUrl);
-
-      return existing ? 'updated' : 'created';
-    } catch (e) {
-      this.logger.warn(
-        `Bills extraction failed for ${sourceUrl}: ${(e as Error).message}`,
-      );
-      return 'failed';
-    }
+  getCivicsData(regionId: string): Promise<CivicsBlockModel | null> {
+    return this.queryService.getCivicsData(regionId);
   }
 
-  private async extractVotesOnlyPage(
-    regionId: string,
-    sourceUrl: string,
-    ds: DataSourceConfig,
-    repIndex: Map<string, { id: string; chamber: string }>,
-  ): Promise<'updated' | 'failed' | 'skipped'> {
-    if (!this.promptClient || !this.llm) return 'failed';
-    try {
-      const billIdParam = new URL(sourceUrl).searchParams.get('bill_id');
-      if (!billIdParam) return 'skipped';
-
-      const bill = await this.db.bill.findUnique({
-        where: { externalId: billIdParam },
-        select: { id: true },
-      });
-      if (!bill) {
-        this.logger.debug(
-          `Bills: votes page skipped — no bill record yet for ${billIdParam}`,
-        );
-        return 'skipped';
-      }
-
-      const html = await this.fetchUrlText(sourceUrl);
-      const content = this.htmlToReadableText(html);
-      const sessionYear = this.inferSessionYear(sourceUrl);
-
-      const { promptText } = await this.promptClient.getBillExtractionPrompt({
-        regionId,
-        sourceUrl,
-        sessionYear,
-        html: content,
-      });
-
-      const llmResult = await this.llm.generate(promptText, {
-        maxTokens: ds.llmMaxTokens ?? 4000,
-        temperature: 0.1,
-        requestTimeoutMs: ds.llmRequestTimeoutMs,
-      });
-
-      const candidate = extractJsonObjectSlice(llmResult.text);
-      if (!candidate) return 'failed';
-
-      let raw: { votes?: Bill['votes'] };
-      try {
-        raw = JSON.parse(candidate) as { votes?: Bill['votes'] };
-      } catch {
-        return 'failed';
-      }
-
-      if (!raw.votes?.length) return 'skipped';
-
-      await this.linkBillVotes(bill.id, raw.votes, repIndex, sourceUrl);
-      this.logger.log(
-        `Bills: merged ${raw.votes.length} vote(s) for ${billIdParam}`,
-      );
-      return 'updated';
-    } catch (e) {
-      this.logger.warn(
-        `Bills: votes extraction failed for ${sourceUrl}: ${(e as Error).message}`,
-      );
-      return 'failed';
-    }
+  getPropositions(
+    skip?: number,
+    take?: number,
+  ): Promise<PaginatedPropositions> {
+    return this.queryService.getPropositions(skip, take);
   }
 
-  private buildBillExternalId(raw: Partial<Bill>): string {
-    const year = (raw.sessionYear ?? '').replace(/\D/g, '');
-    const num = (raw.billNumber ?? '').replace(/\s/g, '');
-    return `${year}${num}`;
+  getProposition(id: string) {
+    return this.queryService.getProposition(id);
   }
 
-  private inferMeasureTypeCode(billNumber: string): string {
-    return (
-      billNumber
-        .replace(/\s*\d+.*$/, '')
-        .trim()
-        .toUpperCase() || 'AB'
-    );
-  }
-
-  private inferSessionYear(url: string): string {
-    // Prefer the bill_id param (e.g. "202520260AB1") — the first 8 digits are
-    // always {startYear}{endYear}. Fall back to matching 4+4 digits elsewhere
-    // only if the param is absent, with a plausibility check that the years
-    // are consecutive to avoid matching unrelated numeric sequences.
-    try {
-      const billId = new URL(url).searchParams.get('bill_id');
-      if (billId) {
-        const m = billId.match(/^(\d{4})(\d{4})/);
-        if (m && Number(m[2]) === Number(m[1]) + 1) return `${m[1]}-${m[2]}`;
-      }
-    } catch {
-      /* invalid URL, fall through */
-    }
-    const m = url.match(/(\d{4})(\d{4})/);
-    if (m && Number(m[2]) === Number(m[1]) + 1) return `${m[1]}-${m[2]}`;
-    const y = new Date().getFullYear();
-    return `${y}-${y + 1}`;
-  }
-
-  private async linkBillCoAuthors(
-    billId: string,
-    names: string[],
-    repIndex: Map<string, { id: string; chamber: string }>,
-  ): Promise<void> {
-    await this.db.billCoAuthor.deleteMany({ where: { billId } });
-    const rows = names
-      .map((name) => {
-        const repId = this.resolveRepByName(name, repIndex);
-        return repId
-          ? { billId, representativeId: repId, coAuthorType: 'coauthor' }
-          : null;
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
-    if (rows.length > 0) {
-      await this.db.billCoAuthor.createMany({
-        data: rows,
-        skipDuplicates: true,
-      });
-    }
-  }
-
-  private async linkBillCommittees(
-    billId: string,
-    names: string[],
-    committeeIndex: Map<string, string>,
-  ): Promise<void> {
-    await this.db.billCommitteeAssignment.deleteMany({ where: { billId } });
-    const rows = names
-      .map((name) => {
-        const committeeId = committeeIndex.get(name.toLowerCase().trim());
-        return committeeId
-          ? { billId, legislativeCommitteeId: committeeId }
-          : null;
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
-    if (rows.length > 0) {
-      await this.db.billCommitteeAssignment.createMany({
-        data: rows,
-        skipDuplicates: true,
-      });
-    }
-  }
-
-  private async linkBillVotes(
-    billId: string,
-    votes: Bill['votes'],
-    repIndex: Map<string, { id: string; chamber: string }>,
-    sourceUrl: string,
-  ): Promise<void> {
-    if (votes.length === 0) return;
-    // Delete existing votes for this bill and re-create — vote tables are
-    // replaced wholesale on each extraction rather than partially patched.
-    await this.db.billVote.deleteMany({ where: { billId } });
-    const rows = votes
-      .filter((v) => v.representativeName && v.position)
-      .map((v) => {
-        const voteDate =
-          v.voteDate instanceof Date
-            ? v.voteDate
-            : new Date(v.voteDate as unknown as string);
-        return {
-          billId,
-          representativeId:
-            this.resolveRepByName(v.representativeName!, repIndex) ?? null,
-          representativeName: v.representativeName!,
-          chamber: v.chamber,
-          voteDate,
-          position: v.position,
-          motionText: v.motionText ?? null,
-          sourceUrl,
-        };
-      });
-    if (rows.length > 0) {
-      await this.db.billVote.createMany({ data: rows, skipDuplicates: true });
-    }
-  }
-
-  // ── Bill query methods ───────────────────────────────────────────────────────
-
-  async getBills(
-    skip: number,
-    take: number,
-    measureTypeCode?: string,
-    sessionYear?: string,
-    authorId?: string,
-    committeeId?: string,
-  ): Promise<PaginatedBillsModel> {
-    const where = {
-      ...(measureTypeCode && { measureTypeCode }),
-      ...(sessionYear && { sessionYear }),
-      ...(authorId && { authorId }),
-      ...(committeeId && {
-        committeeReferrals: { some: { legislativeCommitteeId: committeeId } },
-      }),
-    };
-
-    const [items, total] = await Promise.all([
-      this.db.bill.findMany({
-        where,
-        skip,
-        take,
-        orderBy: [{ lastActionDate: 'desc' }, { billNumber: 'asc' }],
-        include: {
-          votes: { orderBy: { voteDate: 'desc' } },
-          coAuthors: {
-            include: { representative: { select: { id: true, name: true } } },
-          },
-        },
-      }),
-      this.db.bill.count({ where }),
-    ]);
-
-    return {
-      items: items.map((b) => this.mapBillRecord(b)),
-      total,
-      hasMore: skip + take < total,
-    };
-  }
-
-  async getBill(id: string): Promise<BillModel | null> {
-    const bill = await this.db.bill.findUnique({
-      where: { id },
-      include: {
-        votes: { orderBy: { voteDate: 'desc' } },
-        coAuthors: {
-          include: { representative: { select: { id: true, name: true } } },
-        },
-      },
-    });
-    if (!bill) return null;
-    return this.mapBillRecord(bill);
-  }
-
-  private mapBillRecord(b: {
-    id: string;
-    externalId: string;
-    billNumber: string;
-    sessionYear: string;
-    measureTypeCode: string;
-    title: string;
-    subject: string | null;
-    status: string | null;
-    currentStageId: string | null;
-    lastAction: string | null;
-    lastActionDate: Date | null;
-    fiscalImpact: string | null;
-    fullTextUrl: string | null;
-    authorId: string | null;
-    authorName: string | null;
-    sourceUrl: string;
-    extractedAt: Date;
-    createdAt: Date;
-    updatedAt: Date;
-    votes: {
-      id: string;
-      representativeName: string;
-      representativeId: string | null;
-      chamber: string;
-      voteDate: Date;
-      position: string;
-      motionText: string | null;
-      sourceUrl: string;
-    }[];
-    coAuthors: {
-      representativeId: string;
-      coAuthorType: string | null;
-      representative: { id: string; name: string };
-    }[];
-  }): BillModel {
-    return {
-      id: b.id,
-      externalId: b.externalId,
-      billNumber: b.billNumber,
-      sessionYear: b.sessionYear,
-      measureTypeCode: b.measureTypeCode,
-      title: b.title,
-      subject: b.subject ?? undefined,
-      status: b.status ?? undefined,
-      currentStageId: b.currentStageId ?? undefined,
-      lastAction: b.lastAction ?? undefined,
-      lastActionDate: b.lastActionDate ?? undefined,
-      fiscalImpact: b.fiscalImpact ?? undefined,
-      fullTextUrl: b.fullTextUrl ?? undefined,
-      authorId: b.authorId ?? undefined,
-      authorName: b.authorName ?? undefined,
-      sourceUrl: b.sourceUrl,
-      extractedAt: b.extractedAt,
-      createdAt: b.createdAt,
-      updatedAt: b.updatedAt,
-      votes: b.votes.map(
-        (v): BillVoteModel => ({
-          id: v.id,
-          representativeName: v.representativeName,
-          representativeId: v.representativeId ?? undefined,
-          chamber: v.chamber,
-          voteDate: v.voteDate,
-          position: v.position,
-          motionText: v.motionText ?? undefined,
-          sourceUrl: v.sourceUrl,
-        }),
-      ),
-      coAuthors: b.coAuthors.map(
-        (c): BillCoAuthorModel => ({
-          representativeId: c.representativeId,
-          name: c.representative.name,
-          coAuthorType: c.coAuthorType ?? undefined,
-        }),
-      ),
-    };
-  }
-
-  /**
-   * BFS-crawl from `ds.url` up to `ds.crawlDepth` (default 0). Returns
-   * the list of unique HTML URLs to extract civics from, in visit
-   * order. Scope: same host, same path prefix as the seed; only
-   * `text/html` responses. Caps at `ds.crawlMaxPages` (default 20).
-   *
-   * Crawl failures (fetch error, non-HTML, off-scope) log + skip; the
-   * seed URL is always returned even if its links can't be parsed.
-   */
-  private async crawlCivicsUrls(
-    ds: DataSourceConfig,
-    registeredHosts: Set<string>,
-  ): Promise<string[]> {
-    const depth = ds.crawlDepth ?? 0;
-    const maxPages = ds.crawlMaxPages ?? 20;
-
-    const seed = this.canonicalizeUrl(ds.url);
-    const seedUrl = new URL(seed);
-
-    // SSRF guard: allowlist is derived from @opuspopuli/regions data sources
-    // in syncCivics(), so any region declared there is automatically permitted.
-    // Rejects non-HTTPS and any host not in the allowlist — prevents a
-    // compromised config from pointing the crawler at internal addresses
-    // (e.g. cloud metadata endpoints, Redis).
-    if (
-      seedUrl.protocol !== 'https:' ||
-      !registeredHosts.has(seedUrl.hostname)
-    ) {
-      this.logger.error(
-        `Civics crawl rejected: ${seedUrl.hostname} is not a registered data source host or is non-HTTPS`,
-      );
-      return [];
-    }
-
-    const pathPrefix = seedUrl.pathname.replace(/[^/]*$/, ''); // up to last '/'
-    const inScope = (u: string): boolean => {
-      try {
-        const parsed = new URL(u);
-        return (
-          parsed.host === seedUrl.host && parsed.pathname.startsWith(pathPrefix)
-        );
-      } catch {
-        return false;
-      }
-    };
-
-    const visited = new Set<string>([seed]);
-    const order: string[] = [seed];
-    const queue: { url: string; depth: number }[] = [{ url: seed, depth: 0 }];
-
-    while (queue.length > 0 && order.length < maxPages) {
-      const { url, depth: d } = queue.shift()!;
-      if (d >= depth) continue;
-      let html: string;
-      try {
-        html = await this.fetchUrlText(url);
-      } catch (e) {
-        this.logger.warn(
-          `Civics crawl: fetch failed for ${url}: ${(e as Error).message}`,
-        );
-        continue;
-      }
-      for (const link of this.extractLinks(url, html)) {
-        const canonical = this.canonicalizeUrl(link);
-        if (visited.has(canonical) || !inScope(canonical)) continue;
-        visited.add(canonical);
-        order.push(canonical);
-        queue.push({ url: canonical, depth: d + 1 });
-        if (order.length >= maxPages) break;
-      }
-    }
-    return order;
-  }
-
-  /**
-   * Strip the URL fragment + normalize trailing-slash on the path
-   * (treat `/foo` and `/foo/` as the same page). Keeps query string —
-   * different params can produce different content.
-   */
-  private canonicalizeUrl(url: string): string {
-    try {
-      const u = new URL(url);
-      u.hash = '';
-      if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
-        u.pathname = u.pathname.slice(0, -1);
-      }
-      return u.toString();
-    } catch {
-      return url;
-    }
-  }
-
-  /**
-   * Pull all `<a href="...">` values from raw HTML, resolve them
-   * against `baseUrl`, and return absolute URLs. Skips javascript:,
-   * mailto:, tel:, and obvious non-page resources. Caller filters by
-   * scope.
-   */
-  private extractLinks(baseUrl: string, html: string): string[] {
-    const out: string[] = [];
-    const re = /<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"]/gi;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(html)) !== null) {
-      const href = m[1].trim().replace(/&amp;/g, '&');
-      if (
-        !href ||
-        href.startsWith('javascript:') ||
-        href.startsWith('mailto:') ||
-        href.startsWith('tel:') ||
-        href.startsWith('#')
-      ) {
-        continue;
-      }
-      try {
-        out.push(new URL(href, baseUrl).toString());
-      } catch {
-        // skip malformed
-      }
-    }
-    return out;
-  }
-
-  /**
-   * Run the LLM extraction for a single URL and upsert the resulting
-   * partial CivicsBlock into `civics_blocks`. Returns the outcome so
-   * the caller can tally created/updated/failed counts. Logs + returns
-   * `'failed'` on any error so a single bad page doesn't abort the
-   * crawl.
-   */
-  private async extractAndUpsertCivicsPage(
-    regionId: string,
-    sourceUrl: string,
-    ds: DataSourceConfig,
-  ): Promise<'created' | 'updated' | 'failed'> {
-    if (!this.promptClient || !this.llm) return 'failed';
-    try {
-      const html = await this.fetchUrlText(sourceUrl);
-      const content = this.htmlToReadableText(html);
-      const { promptText, promptHash, promptVersion } =
-        await this.promptClient.getCivicsExtractionPrompt({
-          regionId,
-          sourceUrl,
-          contentGoal: ds.contentGoal,
-          category: ds.category,
-          hints: ds.hints,
-          html: content,
-        });
-
-      const result = await this.llm.generate(promptText, {
-        // Defaults sized for the heaviest civics pages — the CA
-        // Assembly glossary (~150 terms × ~150 chars/entry) emits
-        // ~15-20k tokens and takes 15-20 min on qwen3.5:9b. Per-
-        // source overrides via `ds.llmMaxTokens` and
-        // `ds.llmRequestTimeoutMs` let the regions config tune this
-        // without recompiling the handler.
-        maxTokens: ds.llmMaxTokens ?? 32000,
-        temperature: 0.1,
-        requestTimeoutMs: ds.llmRequestTimeoutMs,
-      });
-
-      const candidate = extractJsonObjectSlice(result.text);
-      if (!candidate) {
-        this.logger.warn(
-          `Civics extraction: no JSON object for ${sourceUrl} (${result.text.length} chars)`,
-        );
-        return 'failed';
-      }
-
-      let block: Partial<CivicsBlock>;
-      try {
-        block = JSON.parse(candidate) as Partial<CivicsBlock>;
-      } catch (e) {
-        this.logger.warn(
-          `Civics extraction: JSON.parse failed for ${sourceUrl}: ${(e as Error).message}`,
-        );
-        return 'failed';
-      }
-
-      const existing = await this.db.civicsBlock.findUnique({
-        where: { regionId_sourceUrl: { regionId, sourceUrl } },
-        select: { id: true },
-      });
-
-      const fields = {
-        chambers: this.toJsonField(block.chambers),
-        measureTypes: this.toJsonField(block.measureTypes),
-        lifecycleStages: this.toJsonField(block.lifecycleStages),
-        sessionScheme: this.toJsonField(block.sessionScheme),
-        glossary: this.toJsonField(block.glossary),
-      };
-
-      await this.db.civicsBlock.upsert({
-        where: { regionId_sourceUrl: { regionId, sourceUrl } },
-        create: {
-          regionId,
-          sourceUrl,
-          ...fields,
-          promptHash,
-          promptVersion,
-          extractedAt: new Date(),
-        },
-        update: {
-          ...fields,
-          promptHash,
-          promptVersion,
-          extractedAt: new Date(),
-        },
-      });
-
-      const glossaryUpserted = await this.upsertGlossaryEntries(
-        regionId,
-        sourceUrl,
-        block.glossary,
-        promptHash,
-        promptVersion,
-      );
-
-      const outcome = existing ? 'updated' : 'created';
-      this.logger.log(
-        `Civics extracted from ${sourceUrl} (${outcome}, ${glossaryUpserted} glossary terms)`,
-      );
-      return outcome;
-    } catch (e) {
-      this.logger.error(
-        `Civics extraction failed for ${sourceUrl}: ${(e as Error).message}`,
-      );
-      return 'failed';
-    }
-  }
-
-  /**
-   * Flatten the LLM-extracted `block.glossary[]` into the dedicated
-   * `glossary_entries` table — denormalized lookup store for the
-   * `<CivicTerm>` tooltip path (issue #678). Keyed on `(regionId,
-   * slug)`; last-write-wins when the same term appears on multiple
-   * crawled pages.
-   *
-   * Skips entries missing required fields (term/slug/definition)
-   * with a debug log; the per-entry filter prevents one malformed
-   * term from failing the whole batch. Returns the count of
-   * successfully upserted entries so the caller can include it in
-   * the per-page log line.
-   */
-  private async upsertGlossaryEntries(
-    regionId: string,
-    sourceUrl: string,
-    glossary: unknown,
-    promptHash: string | undefined,
-    promptVersion: string | undefined,
-  ): Promise<number> {
-    if (!Array.isArray(glossary) || glossary.length === 0) return 0;
-    const valid = glossary.filter(
-      (
-        e,
-      ): e is { term: string; slug: string; definition: unknown } & Record<
-        string,
-        unknown
-      > =>
-        !!e &&
-        typeof e === 'object' &&
-        typeof (e as Record<string, unknown>).term === 'string' &&
-        typeof (e as Record<string, unknown>).slug === 'string' &&
-        !!(e as Record<string, unknown>).definition,
-    );
-    if (valid.length < glossary.length) {
-      this.logger.debug(
-        `Glossary upsert: dropped ${glossary.length - valid.length} malformed entries from ${sourceUrl}`,
-      );
-    }
-    const now = new Date();
-    await batchTransaction(
-      this.db,
-      valid.map((entry) =>
-        this.db.glossaryEntry.upsert({
-          where: { regionId_slug: { regionId, slug: entry.slug } },
-          create: {
-            regionId,
-            term: entry.term,
-            slug: entry.slug,
-            definition: entry.definition as Prisma.InputJsonValue,
-            longDefinition: this.toJsonField(entry.longDefinition),
-            relatedTerms: Array.isArray(entry.relatedTerms)
-              ? (entry.relatedTerms as string[]).filter(
-                  (t) => typeof t === 'string',
-                )
-              : [],
-            sourceUrl,
-            promptHash,
-            promptVersion,
-            extractedAt: now,
-          },
-          update: {
-            term: entry.term,
-            definition: entry.definition as Prisma.InputJsonValue,
-            longDefinition: this.toJsonField(entry.longDefinition),
-            relatedTerms: Array.isArray(entry.relatedTerms)
-              ? (entry.relatedTerms as string[]).filter(
-                  (t) => typeof t === 'string',
-                )
-              : [],
-            sourceUrl,
-            promptHash,
-            promptVersion,
-            extractedAt: now,
-          },
-        }),
-      ),
-    );
-    return valid.length;
-  }
-
-  /**
-   * Strip `<script>`, `<style>`, `<nav>`, `<header>`, `<footer>`, and
-   * `<aside>` blocks (including their content), then drop remaining
-   * tags, decode common HTML entities, and collapse whitespace.
-   *
-   * Cuts the prompt input by ~5x on typical CMS pages — a 50KB raw
-   * HTML doc shrinks to ~10KB of readable text. Helps both the
-   * prompt-service body limit and the Ollama generation timeout, and
-   * usually improves extraction quality by removing nav/footer noise
-   * the LLM would otherwise have to ignore.
-   */
-  private htmlToReadableText(html: string): string {
-    let s = html;
-    s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-    s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
-    s = s.replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, '');
-    s = s.replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, '');
-    s = s.replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, '');
-    s = s.replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, '');
-    s = s.replace(/<!--[\s\S]*?-->/g, '');
-    s = s.replace(/<[^>]+>/g, ' ');
-    s = s
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
-    s = s
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\s*\n\s*/g, '\n')
-      .trim();
-    return s;
-  }
-
-  /**
-   * Fetch a URL as text with a 30s timeout. Throws on non-2xx or on a
-   * non-HTML Content-Type (caller can rely on this to skip PDFs etc.
-   * during a civics crawl). Used by `syncCivics`.
-   */
-  private async fetchUrlText(url: string): Promise<string> {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status} fetching ${url}: ${response.statusText}`,
-      );
-    }
-    const ct = response.headers.get('content-type') ?? '';
-    const ctLower = ct.toLowerCase();
-    if (!ctLower.includes('text/html') && !ctLower.includes('xhtml+xml')) {
-      throw new Error(`Non-HTML content-type for ${url}: ${ct}`);
-    }
-    return response.text();
-  }
-
-  /**
-   * Convert an optional CivicsBlock field to a Prisma Json input —
-   * `Prisma.DbNull` (SQL NULL) when missing, the value as
-   * `InputJsonValue` otherwise. Lets consumers query "has glossary"
-   * with a simple `WHERE glossary IS NOT NULL`.
-   */
-  private toJsonField(
-    value: unknown,
-  ): Prisma.InputJsonValue | typeof Prisma.DbNull {
-    return value === undefined || value === null
-      ? Prisma.DbNull
-      : (value as Prisma.InputJsonValue);
-  }
-
-  /**
-   * Aggregate funding for a single proposition. Delegates to the funding
-   * service (which handles caching). Returns null when the funding service
-   * isn't wired (e.g. some test contexts).
-   */
-  async getPropositionFunding(
+  getPropositionFunding(
     propositionId: string,
   ): Promise<PropositionFunding | null> {
-    if (!this.propositionFunding) return null;
-    return this.propositionFunding.getFunding(propositionId);
+    return this.queryService.getPropositionFunding(propositionId);
   }
 
-  /**
-   * Sort a flat array of campaign finance items into typed buckets.
-   * The CVR2 (committee↔measure filing) discriminator runs before the
-   * generic "sourceSystem + type" committee check because CVR2 records
-   * also carry a sourceSystem.
-   */
-  private sortCampaignFinanceItems(
-    items: Record<string, unknown>[],
-  ): CampaignFinanceResult {
-    const committees: CampaignFinanceResult['committees'] = [];
-    const contributions: CampaignFinanceResult['contributions'] = [];
-    const expenditures: CampaignFinanceResult['expenditures'] = [];
-    const independentExpenditures: CampaignFinanceResult['independentExpenditures'] =
-      [];
-    const committeeMeasureFilings: CampaignFinanceResult['committeeMeasureFilings'] =
-      [];
-
-    for (const rec of items) {
-      if ('donorName' in rec && 'amount' in rec) {
-        contributions.push(
-          rec as unknown as CampaignFinanceResult['contributions'][0],
-        );
-      } else if ('payeeName' in rec && 'amount' in rec) {
-        expenditures.push(
-          rec as unknown as CampaignFinanceResult['expenditures'][0],
-        );
-      } else if ('supportOrOppose' in rec && 'committeeName' in rec) {
-        independentExpenditures.push(
-          rec as unknown as CampaignFinanceResult['independentExpenditures'][0],
-        );
-      } else if (
-        'filingId' in rec &&
-        ('ballotName' in rec || 'ballotNumber' in rec)
-      ) {
-        committeeMeasureFilings.push(
-          rec as unknown as CampaignFinanceResult['committeeMeasureFilings'][0],
-        );
-      } else if ('sourceSystem' in rec && 'type' in rec) {
-        committees.push(
-          rec as unknown as CampaignFinanceResult['committees'][0],
-        );
-      }
-    }
-
-    return {
-      committees,
-      contributions,
-      expenditures,
-      independentExpenditures,
-      committeeMeasureFilings,
-    };
+  getMeetings(skip?: number, take?: number): Promise<PaginatedMeetings> {
+    return this.queryService.getMeetings(skip, take);
   }
 
-  /**
-   * Upsert a batch of campaign finance records to the database.
-   */
-  private async upsertCampaignFinanceBatch(
-    data: CampaignFinanceResult,
-  ): Promise<{ processed: number; created: number; updated: number }> {
-    const upsertConfigs: UpsertConfig[] = [
-      {
-        records: data.contributions,
-        model: this.db.contribution,
-        fields: [
-          'committeeId',
-          'donorName',
-          'donorType',
-          'donorEmployer',
-          'donorOccupation',
-          'donorCity',
-          'donorState',
-          'donorZip',
-          'amount',
-          'date',
-          'electionType',
-          'contributionType',
-          'sourceSystem',
-        ],
-      },
-      {
-        records: data.expenditures,
-        model: this.db.expenditure,
-        fields: [
-          'committeeId',
-          'payeeName',
-          'amount',
-          'date',
-          'purposeDescription',
-          'expenditureCode',
-          'candidateName',
-          'propositionTitle',
-          'supportOrOppose',
-          'sourceSystem',
-        ],
-      },
-      {
-        records: data.independentExpenditures,
-        model: this.db.independentExpenditure,
-        fields: [
-          'committeeId',
-          'committeeName',
-          'candidateName',
-          'propositionTitle',
-          'supportOrOppose',
-          'amount',
-          'date',
-          'electionDate',
-          'description',
-          'sourceSystem',
-        ],
-      },
-      {
-        records: data.committeeMeasureFilings,
-        model: this.db.cvr2Filing,
-        fields: [
-          'filingId',
-          'ballotName',
-          'ballotNumber',
-          'ballotJurisdiction',
-          'supportOrOppose',
-          'sourceSystem',
-        ],
-      },
-    ];
-
-    let totalProcessed = 0;
-    let totalCreated = 0;
-    let totalUpdated = 0;
-
-    for (const config of upsertConfigs) {
-      if (config.records.length === 0) continue;
-      const result = await this.upsertRecordsByFields(config);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-    }
-
-    return {
-      processed: totalProcessed,
-      created: totalCreated,
-      updated: totalUpdated,
-    };
+  getMeeting(id: string) {
+    return this.queryService.getMeeting(id);
   }
 
-  /**
-   * Generic upsert: find existing by externalId, batch upsert, return counts.
-   * Uses a field-name list to pick values from records, avoiding per-model callbacks.
-   */
-  private async upsertRecordsByFields(
-    config: UpsertConfig,
-  ): Promise<{ processed: number; created: number; updated: number }> {
-    const { model, fields } = config;
-    const rows = config.records as Record<string, unknown>[];
-    const externalIds = rows.map((r) => r.externalId as string);
-
-    const existing = await model.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingSet = new Set(
-      existing.map((r: ExternalIdRecord) => r.externalId),
-    );
-
-    const pick = (r: Record<string, unknown>) =>
-      Object.fromEntries(fields.map((f: string) => [f, r[f]]));
-
-    await batchTransaction(
-      this.db,
-      rows.map((r) =>
-        model.upsert({
-          where: { externalId: r.externalId as string },
-          update: pick(r),
-          create: { externalId: r.externalId, ...pick(r) },
-        }),
-      ),
-    );
-
-    const created = rows.filter(
-      (r) => !existingSet.has(r.externalId as string),
-    ).length;
-    return {
-      processed: rows.length,
-      created,
-      updated: rows.length - created,
-    };
-  }
-
-  /**
-   * Get propositions with pagination
-   */
-  async getPropositions(
-    skip: number = 0,
-    take: number = 10,
-  ): Promise<PaginatedPropositions> {
-    return this.cachedQuery(`propositions:${skip}:${take}`, async () => {
-      const [items, total] = await Promise.all([
-        this.db.proposition.findMany({
-          orderBy: [{ electionDate: 'desc' }, { createdAt: 'desc' }],
-          skip,
-          take: take + 1,
-        }),
-        this.db.proposition.count(),
-      ]);
-
-      const hasMore = items.length > take;
-      const paginatedItems = items.slice(0, take);
-
-      // Cast database types to GraphQL types - enum values are compatible at runtime
-      return {
-        items: paginatedItems.map((item: PropositionRecord) =>
-          mapPropositionRecord(item),
-        ),
-        total,
-        hasMore,
-      };
-    });
-  }
-
-  /**
-   * Get a single proposition by ID
-   */
-  async getProposition(id: string) {
-    return this.db.proposition.findUnique({ where: { id } });
-  }
-
-  /**
-   * Get meetings with pagination
-   */
-  async getMeetings(
-    skip: number = 0,
-    take: number = 10,
-  ): Promise<PaginatedMeetings> {
-    return this.cachedQuery(`meetings:${skip}:${take}`, async () => {
-      const [items, total] = await Promise.all([
-        this.db.meeting.findMany({
-          orderBy: { scheduledAt: 'desc' },
-          skip,
-          take: take + 1,
-        }),
-        this.db.meeting.count(),
-      ]);
-
-      const hasMore = items.length > take;
-      const paginatedItems = items.slice(0, take);
-
-      // Cast database types to GraphQL types
-      return {
-        items: paginatedItems.map((item: MeetingRecord) => ({
-          ...item,
-          location: item.location ?? undefined,
-          agendaUrl: item.agendaUrl ?? undefined,
-          videoUrl: item.videoUrl ?? undefined,
-        })),
-        total,
-        hasMore,
-      };
-    });
-  }
-
-  /**
-   * Get a single meeting by ID
-   */
-  async getMeeting(id: string) {
-    return this.db.meeting.findUnique({ where: { id } });
-  }
-
-  /**
-   * Get representatives with pagination
-   */
-  async getRepresentatives(
-    skip: number = 0,
-    take: number = 10,
+  getRepresentatives(
+    skip?: number,
+    take?: number,
     chamber?: string,
   ): Promise<PaginatedRepresentatives> {
-    return this.cachedQuery(
-      `representatives:${skip}:${take}:${chamber ?? 'all'}`,
-      async () => {
-        const where = chamber ? { chamber } : undefined;
-
-        const [items, total] = await Promise.all([
-          this.db.representative.findMany({
-            where,
-            orderBy: [{ chamber: 'asc' }, { lastName: 'asc' }],
-            skip,
-            take: take + 1,
-          }),
-          this.db.representative.count({ where }),
-        ]);
-
-        const hasMore = items.length > take;
-        const paginatedItems = items.slice(0, take);
-
-        // Cast database types to GraphQL types
-        return {
-          items: paginatedItems.map((item: RepresentativeRecord) => ({
-            ...item,
-            party: item.party ?? undefined,
-            photoUrl: item.photoUrl ?? undefined,
-            contactInfo: (item.contactInfo as ContactInfoModel) ?? undefined,
-            committees:
-              (item.committees as CommitteeAssignmentModel[]) ?? undefined,
-            committeesSummary: item.committeesSummary ?? undefined,
-            bio: item.bio ?? undefined,
-            bioSource: item.bioSource ?? undefined,
-            bioClaims: Array.isArray(item.bioClaims)
-              ? (item.bioClaims as unknown as BioClaimModel[])
-              : undefined,
-          })),
-          total,
-          hasMore,
-        };
-      },
-    );
+    return this.queryService.getRepresentatives(skip, take, chamber);
   }
 
-  /**
-   * Get a single representative by ID
-   */
-  async getRepresentative(id: string) {
-    return this.db.representative.findUnique({ where: { id } });
+  getRepresentative(id: string) {
+    return this.queryService.getRepresentative(id);
   }
 
-  /**
-   * Find representatives matching a user's civic districts.
-   * Normalizes district number formats between Census API output
-   * and scraped representative data.
-   */
-  async getRepresentativesByDistricts(
+  getRepresentativesByDistricts(
     congressionalDistrict?: string,
     stateSenatorialDistrict?: string,
     stateAssemblyDistrict?: string,
   ): Promise<RepresentativeRecord[]> {
-    // The CA scrape stores Senate districts zero-padded ("02") but Assembly
-    // unpadded ("2"). Match against BOTH forms for both chambers so a future
-    // drift in either direction doesn't silently drop matches again.
-    const buildConditions = (
-      chamber: string,
-      raw?: string,
-    ): { chamber: string; district: string }[] => {
-      if (!raw) return [];
-      const padded = this.extractDistrictNumber(raw);
-      if (!padded) return [];
-      const unpadded = String(Number.parseInt(padded, 10));
-      return [
-        { chamber, district: padded },
-        { chamber, district: unpadded },
-      ];
-    };
-
-    const conditions = [
-      ...buildConditions('Assembly', stateAssemblyDistrict),
-      ...buildConditions('Senate', stateSenatorialDistrict),
-    ];
-
-    if (conditions.length === 0) return [];
-
-    return this.db.representative.findMany({
-      where: {
-        OR: conditions.map((c) => ({
-          chamber: c.chamber,
-          district: c.district,
-        })),
-      },
-      orderBy: [{ chamber: 'asc' }, { lastName: 'asc' }],
-    });
+    return this.queryService.getRepresentativesByDistricts(
+      congressionalDistrict,
+      stateSenatorialDistrict,
+      stateAssemblyDistrict,
+    );
   }
 
-  /**
-   * Return all Board of Supervisors for a county region.
-   * v1: returns all supervisors — specific district matching requires
-   * county-published shapefiles (follow-up to issue #22).
-   */
-  async getRepresentativesByCounty(
+  getRepresentativesByCounty(
     countyRegionId: string,
   ): Promise<RepresentativeRecord[]> {
-    return this.db.representative.findMany({
-      where: {
-        regionId: countyRegionId,
-        chamber: 'Board of Supervisors',
-        deletedAt: null,
-      },
-      orderBy: [{ district: 'asc' }, { lastName: 'asc' }],
-    });
+    return this.queryService.getRepresentativesByCounty(countyRegionId);
   }
 
-  /**
-   * Extract and zero-pad a district number from Census format.
-   * "Congressional District 2" → "02"
-   * "State Senate District 12" → "12"
-   * "Assembly District 5" → "05"
-   */
-  private extractDistrictNumber(districtString: string): string | null {
-    const match = districtString.match(/(\d+)/);
-    if (!match) return null;
-    return match[1].padStart(2, '0');
-  }
-
-  // ==========================================
-  // LEGISLATIVE COMMITTEE GETTERS
-  // ==========================================
-
-  async listLegislativeCommittees(args: {
-    skip: number;
-    take: number;
-    chamber?: string;
-    /** Case-insensitive substring against `name`. Powers the search box on
-     *  the committees list page. Issue #672. */
-    nameFilter?: string;
-  }): Promise<PaginatedLegislativeCommitteesShape> {
-    if (!this.legislativeCommittees) {
-      return { items: [], total: 0, hasMore: false };
-    }
-    return this.legislativeCommittees.list(args);
-  }
-
-  async getLegislativeCommittee(
-    id: string,
-  ): Promise<LegislativeCommitteeDetail | null> {
-    if (!this.legislativeCommittees) return null;
-    return this.legislativeCommittees.getDetail(id);
-  }
-
-  /**
-   * Resolve each entry in a rep's `committees` JSONB to the matching
-   * `LegislativeCommittee.id` when one exists. Used by the rep query
-   * resolver so the frontend can render each committee row as a link to
-   * the committee detail page without duplicating normalization logic.
-   *
-   * Quietly returns `[]` (effectively a no-op) when the linker isn't
-   * available — the rep query still works, the names just stay as plain
-   * text. Same defensive shape as the linker itself.
-   */
-  async resolveLegislativeCommitteeIds(
-    chamber: string,
-    committees: ReadonlyArray<{ name?: string | null }>,
-  ): Promise<Map<string, string>> {
-    const result = new Map<string, string>();
-    if (!this.legislativeCommitteeLinker) return result;
-
-    const externalIdByName = new Map<string, string>();
-    for (const c of committees) {
-      const rawName = c?.name?.trim();
-      if (!rawName) continue;
-      const externalId = this.legislativeCommitteeLinker.externalIdFor(
-        chamber,
-        rawName,
-      );
-      if (externalId) externalIdByName.set(rawName, externalId);
-    }
-    if (externalIdByName.size === 0) return result;
-
-    const rows = await this.db.legislativeCommittee.findMany({
-      where: {
-        deletedAt: null,
-        externalId: { in: Array.from(new Set(externalIdByName.values())) },
-      },
-      select: { id: true, externalId: true },
-    });
-    const idByExternalId = new Map(rows.map((r) => [r.externalId, r.id]));
-    for (const [rawName, externalId] of externalIdByName) {
-      const id = idByExternalId.get(externalId);
-      if (id) result.set(rawName, id);
-    }
-    return result;
-  }
-
-  // ==========================================
-  // LEGISLATIVE ACTION GETTERS (issue #665)
-  // ==========================================
-
-  /**
-   * At-a-glance activity stats for a representative over the last
-   * `sinceDays` days. Drives the Layer-3 counters on the rep detail
-   * page (attendance %, amendments, hearings chaired, etc.).
-   *
-   * Three Prisma reads:
-   *   1. legislativeAction.groupBy on action_type (counts).
-   *   2. distinct dates with presence='yes' for the rep.
-   *   3. distinct dates with ANY presence row for the rep's body
-   *      (used as the denominator for attendance — total session
-   *      days the chamber convened in the window).
-   *
-   * Returns zero counts when the rep doesn't exist or has no
-   * linked actions.
-   */
-  async getRepresentativeActivityStats(
+  getRepresentativeActivityStats(
     representativeId: string,
-    sinceDays: number = 90,
+    sinceDays?: number,
   ): Promise<{
     presentSessionDays: number;
     totalSessionDays: number;
@@ -3714,772 +367,171 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     votes: number;
     speeches: number;
   }> {
-    const rep = await this.db.representative.findUnique({
-      where: { id: representativeId },
-      select: { chamber: true },
-    });
-    if (!rep) {
-      return {
-        presentSessionDays: 0,
-        totalSessionDays: 0,
-        absenceDays: 0,
-        amendments: 0,
-        committeeHearings: 0,
-        committeeReports: 0,
-        resolutions: 0,
-        votes: 0,
-        speeches: 0,
-      };
-    }
-
-    const since = this.windowSince(sinceDays);
-    const repWhere = { representativeId, date: { gte: since } };
-
-    const [counts, presentDays, absenceDays, totalSessionDays] =
-      await Promise.all([
-        this.actionCountsByType(repWhere),
-        this.distinctActionDates({
-          ...repWhere,
-          actionType: 'presence',
-          position: 'yes',
-        }),
-        this.distinctActionDates({
-          ...repWhere,
-          actionType: 'presence',
-          position: 'absent',
-        }),
-        // Distinct session days observed in the chamber overall —
-        // any presence row from the same body. Acts as the
-        // attendance denominator.
-        this.distinctActionDates({
-          body: rep.chamber,
-          actionType: 'presence',
-          date: { gte: since },
-        }),
-      ]);
-
-    return {
-      presentSessionDays: presentDays,
-      totalSessionDays: totalSessionDays,
-      absenceDays: absenceDays,
-      amendments: counts.get('amendment') ?? 0,
-      committeeHearings: counts.get('committee_hearing') ?? 0,
-      committeeReports: counts.get('committee_report') ?? 0,
-      resolutions: counts.get('resolution') ?? 0,
-      votes: counts.get('vote') ?? 0,
-      speeches: counts.get('speech') ?? 0,
-    };
+    return this.queryService.getRepresentativeActivityStats(
+      representativeId,
+      sinceDays,
+    );
   }
 
-  /**
-   * Reverse-chronological feed of LegislativeAction records linked
-   * to a representative. By default filters out `presence:yes` rows
-   * (too noisy for the activity feed — they're already summarized
-   * in the attendance counter). Passes through other action types
-   * including absence records, hearings, amendments, resolutions.
-   */
-  async getRepresentativeActivity(args: {
+  getRepresentativeActivity(args: {
     representativeId: string;
     actionTypes?: string[];
     includePresenceYes?: boolean;
     skip?: number;
     take?: number;
-  }): Promise<LegislativeActionFeedPage> {
-    const where: Record<string, unknown> = this.buildActionFeedWhere({
-      representativeId: args.representativeId,
-      actionTypes: args.actionTypes,
-    });
-    // Default: hide presence:yes from the rep feed unless caller
-    // asks for it OR has explicitly listed `presence` in actionTypes.
-    // (Committee feeds don't carry presence rows, so this guard
-    // lives on the rep-side wrapper rather than in the shared helper.)
-    if (!args.includePresenceYes && !args.actionTypes?.includes('presence')) {
-      where.NOT = { AND: [{ actionType: 'presence' }, { position: 'yes' }] };
-    }
-    return this.paginateLegislativeActions(where, args.skip, args.take);
+  }) {
+    return this.queryService.getRepresentativeActivity(args);
   }
 
-  /**
-   * Resolve a single LegislativeAction to its source passage —
-   * `Minutes.rawText.slice(passageStart, passageEnd)` plus a
-   * surrounding context window. Used by the L4 quote panel and the
-   * citation flow on rep + committee pages.
-   *
-   * Caps the passage at 1kB and the context at 500 chars on either
-   * side. Snaps both to whitespace boundaries to avoid mid-word
-   * truncation.
-   */
-  async getMinutesPassage(actionId: string): Promise<{
-    actionId: string;
-    minutesExternalId: string;
-    body: string;
-    date: Date;
-    sourceUrl: string;
-    passageStart: number;
-    passageEnd: number;
-    passageText: string;
-    sectionContext?: string;
-  } | null> {
-    const action = await this.db.legislativeAction.findUnique({
-      where: { id: actionId },
-      include: {
-        minutes: {
-          select: {
-            externalId: true,
-            body: true,
-            date: true,
-            sourceUrl: true,
-            rawText: true,
-          },
-        },
-      },
-    });
-    if (!action || !action.minutes.rawText) return null;
-    if (action.passageStart === null || action.passageEnd === null) return null;
-
-    const raw = action.minutes.rawText;
-    const PASSAGE_CAP = 1024;
-    const CONTEXT_HALF = 500;
-
-    const start = Math.max(0, action.passageStart);
-    const cappedEnd = Math.min(raw.length, start + PASSAGE_CAP);
-    const end = Math.min(action.passageEnd, cappedEnd);
-    const passageText = raw.slice(start, end);
-
-    // Context window snapped to whitespace boundaries on each end.
-    const ctxStart = this.snapToWhitespace(
-      raw,
-      Math.max(0, start - CONTEXT_HALF),
-      'back',
-    );
-    const ctxEnd = this.snapToWhitespace(
-      raw,
-      Math.min(raw.length, end + CONTEXT_HALF),
-      'forward',
-    );
-    const sectionContext = raw.slice(ctxStart, ctxEnd);
-
-    return {
-      actionId: action.id,
-      minutesExternalId: action.minutes.externalId,
-      body: action.minutes.body,
-      date: action.minutes.date,
-      sourceUrl: action.minutes.sourceUrl,
-      passageStart: start,
-      passageEnd: end,
-      passageText,
-      sectionContext:
-        sectionContext === passageText ? undefined : sectionContext,
-    };
+  getMinutesPassage(actionId: string) {
+    return this.queryService.getMinutesPassage(actionId);
   }
 
-  /**
-   * Walk up to 50 chars in `direction` from `idx` looking for a
-   * whitespace boundary, so the context window doesn't truncate
-   * mid-word. Falls back to the original index if nothing is found.
-   */
-  private snapToWhitespace(
-    text: string,
-    idx: number,
-    direction: 'back' | 'forward',
-  ): number {
-    if (direction === 'back') {
-      const probe = Math.max(0, idx);
-      if (probe === 0) return 0;
-      for (let i = probe; i > Math.max(0, probe - 50); i--) {
-        if (/\s/.test(text[i])) return i + 1;
-      }
-      return probe;
-    }
-    const probe = Math.min(text.length, idx);
-    if (probe === text.length) return probe;
-    for (let i = probe; i < Math.min(text.length, probe + 50); i++) {
-      if (/\s/.test(text[i])) return i;
-    }
-    return probe;
-  }
-
-  /**
-   * At-a-glance activity stats for a legislative committee over the
-   * last `sinceDays` days. Drives the Layer-3 counters on the
-   * committee detail page (recent hearings, bills reported out,
-   * amendments touching the committee).
-   *
-   * Returns zero counts when the committee doesn't exist or has no
-   * linked actions.
-   */
-  async getCommitteeActivityStats(
+  getCommitteeActivityStats(
     committeeId: string,
-    sinceDays: number = 90,
+    sinceDays?: number,
   ): Promise<{
     hearings: number;
     reports: number;
     amendments: number;
     distinctBills: number;
   }> {
-    const since = this.windowSince(sinceDays);
-    const cmtWhere = { committeeId, date: { gte: since } };
-
-    const [counts, distinctBills] = await Promise.all([
-      this.actionCountsByType(cmtWhere),
-      // Distinct propositions touched by any action of this committee.
-      this.db.legislativeAction.findMany({
-        where: { ...cmtWhere, propositionId: { not: null } },
-        distinct: ['propositionId'],
-        select: { propositionId: true },
-      }),
-    ]);
-
-    return {
-      hearings: counts.get('committee_hearing') ?? 0,
-      reports: counts.get('committee_report') ?? 0,
-      amendments: counts.get('amendment') ?? 0,
-      distinctBills: distinctBills.length,
-    };
+    return this.queryService.getCommitteeActivityStats(committeeId, sinceDays);
   }
 
-  /**
-   * Reverse-chronological feed of LegislativeActions linked to a
-   * legislative committee. Mirrors `getRepresentativeActivity` but
-   * filters by committeeId. No presence-row noise to filter out
-   * because presence rows aren't committee-attributed.
-   */
-  async getCommitteeActivity(args: {
+  getCommitteeActivity(args: {
     committeeId: string;
     actionTypes?: string[];
     skip?: number;
     take?: number;
-  }): Promise<LegislativeActionFeedPage> {
-    const where = this.buildActionFeedWhere({
-      committeeId: args.committeeId,
-      actionTypes: args.actionTypes,
-    });
-    return this.paginateLegislativeActions(where, args.skip, args.take);
+  }) {
+    return this.queryService.getCommitteeActivity(args);
   }
 
-  // ==========================================
-  // Shared helpers for the LegislativeAction feed (issue #665)
-  // ==========================================
-
-  /** ISO-shifted "now minus N days" window start. */
-  private windowSince(sinceDays: number): Date {
-    const since = new Date();
-    since.setDate(since.getDate() - sinceDays);
-    return since;
+  listLegislativeCommittees(args: {
+    skip: number;
+    take: number;
+    chamber?: string;
+    nameFilter?: string;
+  }): Promise<PaginatedLegislativeCommitteesShape> {
+    return this.queryService.listLegislativeCommittees(args);
   }
 
-  /** groupBy(actionType) → Map<actionType, count>. Used by both *ActivityStats. */
-  private async actionCountsByType(
-    where: Record<string, unknown>,
-  ): Promise<Map<string, number>> {
-    const groups = await this.db.legislativeAction.groupBy({
-      by: ['actionType'],
-      where,
-      _count: { _all: true },
-    });
-    const m = new Map<string, number>();
-    for (const g of groups) m.set(g.actionType, g._count._all);
-    return m;
+  getLegislativeCommittee(
+    id: string,
+  ): Promise<LegislativeCommitteeDetail | null> {
+    return this.queryService.getLegislativeCommittee(id);
   }
 
-  /** Distinct-day count for a where clause. Used 3x in rep stats. */
-  private async distinctActionDates(
-    where: Record<string, unknown>,
-  ): Promise<number> {
-    const rows = await this.db.legislativeAction.findMany({
-      where,
-      distinct: ['date'],
-      select: { date: true },
-    });
-    return rows.length;
+  resolveLegislativeCommitteeIds(
+    chamber: string,
+    committees: ReadonlyArray<{ name?: string | null }>,
+  ): Promise<Map<string, string>> {
+    return this.queryService.resolveLegislativeCommitteeIds(
+      chamber,
+      committees,
+    );
   }
 
-  /**
-   * Build the Prisma `where` shape used by both the rep- and
-   * committee-scoped activity feeds. Encapsulates the (entityId,
-   * actionTypes) → where mapping so both wrappers stay tiny.
-   */
-  private buildActionFeedWhere(args: {
-    representativeId?: string;
-    committeeId?: string;
-    actionTypes?: string[];
-  }): Record<string, unknown> {
-    const where: Record<string, unknown> = {};
-    if (args.representativeId) where.representativeId = args.representativeId;
-    if (args.committeeId) where.committeeId = args.committeeId;
-    if (args.actionTypes?.length) {
-      where.actionType = { in: args.actionTypes };
-    }
-    return where;
-  }
-
-  /**
-   * Run the paginated `findMany + count` against
-   * `legislative_actions` for any caller-supplied `where` clause and
-   * return the typed feed-page shape. Both rep + committee feeds
-   * call this; only their `where` differs.
-   *
-   * Uses the standard `take + 1` trick so `hasMore` is computed
-   * without a second count query — the count we DO run is for
-   * `total` which the UI surfaces independently.
-   */
-  private async paginateLegislativeActions(
-    where: Record<string, unknown>,
-    skip = 0,
-    take = 10,
-  ): Promise<LegislativeActionFeedPage> {
-    const [rows, total] = await Promise.all([
-      this.db.legislativeAction.findMany({
-        where,
-        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        skip,
-        take: take + 1,
-        include: { minutes: { select: { externalId: true } } },
-      }),
-      this.db.legislativeAction.count({ where }),
-    ]);
-
-    const hasMore = rows.length > take;
-    return {
-      items: rows.slice(0, take).map((r) => this.toFeedItem(r)),
-      total,
-      hasMore,
-    };
-  }
-
-  private toFeedItem(r: {
-    id: string;
-    externalId: string;
-    body: string;
-    date: Date;
-    actionType: string;
-    position: string | null;
-    text: string | null;
-    passageStart: number | null;
-    passageEnd: number | null;
-    rawSubject: string | null;
-    representativeId: string | null;
-    propositionId: string | null;
-    committeeId: string | null;
-    minutesId: string;
-    minutes: { externalId: string };
-  }): LegislativeActionFeedItem {
-    return {
-      id: r.id,
-      externalId: r.externalId,
-      body: r.body,
-      date: r.date,
-      actionType: r.actionType,
-      position: r.position,
-      text: r.text,
-      passageStart: r.passageStart,
-      passageEnd: r.passageEnd,
-      rawSubject: r.rawSubject,
-      representativeId: r.representativeId,
-      propositionId: r.propositionId,
-      committeeId: r.committeeId,
-      minutesId: r.minutesId,
-      minutesExternalId: r.minutes.externalId,
-    };
-  }
-
-  // ==========================================
-  // CAMPAIGN FINANCE GETTERS
-  // ==========================================
-
-  /**
-   * Get committees with pagination
-   */
-  async getCommittees(
-    skip: number = 0,
-    take: number = 10,
+  getCommittees(
+    skip?: number,
+    take?: number,
     sourceSystem?: string,
   ): Promise<PaginatedCommittees> {
-    const where: Record<string, unknown> = {};
-    if (sourceSystem) where.sourceSystem = sourceSystem;
-    const whereClause = Object.keys(where).length > 0 ? where : undefined;
-
-    const [items, total] = await Promise.all([
-      this.db.committee.findMany({
-        where: whereClause,
-        orderBy: [{ name: 'asc' }],
-        skip,
-        take: take + 1,
-      }),
-      this.db.committee.count({ where: whereClause }),
-    ]);
-
-    const hasMore = items.length > take;
-    const paginatedItems = items.slice(0, take);
-
-    return {
-      items: paginatedItems.map((item: CommitteeRecord) => ({
-        ...item,
-        candidateName: item.candidateName ?? undefined,
-        candidateOffice: item.candidateOffice ?? undefined,
-        propositionId: item.propositionId ?? undefined,
-        party: item.party ?? undefined,
-        sourceUrl: item.sourceUrl ?? undefined,
-      })),
-      total,
-      hasMore,
-    };
+    return this.queryService.getCommittees(skip, take, sourceSystem);
   }
 
-  /**
-   * Get a single committee by ID
-   */
-  async getCommittee(id: string) {
-    return this.db.committee.findUnique({ where: { id } });
+  getCommittee(id: string) {
+    return this.queryService.getCommittee(id);
   }
 
-  /**
-   * Get contributions with pagination
-   */
-  async getContributions(
-    skip: number = 0,
-    take: number = 10,
+  getContributions(
+    skip?: number,
+    take?: number,
     committeeId?: string,
     sourceSystem?: string,
   ): Promise<PaginatedContributions> {
-    const where: Record<string, unknown> = {};
-    if (committeeId) where.committeeId = committeeId;
-    if (sourceSystem) where.sourceSystem = sourceSystem;
-    const whereClause = Object.keys(where).length > 0 ? where : undefined;
-
-    const [items, total] = await Promise.all([
-      this.db.contribution.findMany({
-        where: whereClause,
-        orderBy: [{ date: 'desc' }, { amount: 'desc' }],
-        skip,
-        take: take + 1,
-      }),
-      this.db.contribution.count({ where: whereClause }),
-    ]);
-
-    const hasMore = items.length > take;
-    const paginatedItems = items.slice(0, take);
-
-    return {
-      items: paginatedItems.map((item: ContributionRecord) => ({
-        ...item,
-        amount: Number(item.amount),
-        donorEmployer: item.donorEmployer ?? undefined,
-        donorOccupation: item.donorOccupation ?? undefined,
-        donorCity: item.donorCity ?? undefined,
-        donorState: item.donorState ?? undefined,
-        donorZip: item.donorZip ?? undefined,
-        electionType: item.electionType ?? undefined,
-        contributionType: item.contributionType ?? undefined,
-      })),
-      total,
-      hasMore,
-    };
+    return this.queryService.getContributions(
+      skip,
+      take,
+      committeeId,
+      sourceSystem,
+    );
   }
 
-  /**
-   * Get a single contribution by ID
-   */
-  async getContribution(id: string) {
-    return this.db.contribution.findUnique({ where: { id } });
+  getContribution(id: string) {
+    return this.queryService.getContribution(id);
   }
 
-  /**
-   * Get expenditures with pagination
-   */
-  async getExpenditures(
-    skip: number = 0,
-    take: number = 10,
+  getExpenditures(
+    skip?: number,
+    take?: number,
     committeeId?: string,
     sourceSystem?: string,
   ): Promise<PaginatedExpenditures> {
-    const where: Record<string, unknown> = {};
-    if (committeeId) where.committeeId = committeeId;
-    if (sourceSystem) where.sourceSystem = sourceSystem;
-    const whereClause = Object.keys(where).length > 0 ? where : undefined;
-
-    const [items, total] = await Promise.all([
-      this.db.expenditure.findMany({
-        where: whereClause,
-        orderBy: [{ date: 'desc' }, { amount: 'desc' }],
-        skip,
-        take: take + 1,
-      }),
-      this.db.expenditure.count({ where: whereClause }),
-    ]);
-
-    const hasMore = items.length > take;
-    const paginatedItems = items.slice(0, take);
-
-    return {
-      items: paginatedItems.map((item: ExpenditureRecord) => ({
-        ...item,
-        amount: Number(item.amount),
-        purposeDescription: item.purposeDescription ?? undefined,
-        expenditureCode: item.expenditureCode ?? undefined,
-        candidateName: item.candidateName ?? undefined,
-        propositionTitle: item.propositionTitle ?? undefined,
-        supportOrOppose: item.supportOrOppose ?? undefined,
-      })),
-      total,
-      hasMore,
-    };
+    return this.queryService.getExpenditures(
+      skip,
+      take,
+      committeeId,
+      sourceSystem,
+    );
   }
 
-  /**
-   * Get a single expenditure by ID
-   */
-  async getExpenditure(id: string) {
-    return this.db.expenditure.findUnique({ where: { id } });
+  getExpenditure(id: string) {
+    return this.queryService.getExpenditure(id);
   }
 
-  /**
-   * Get independent expenditures with pagination
-   */
-  async getIndependentExpenditures(
-    skip: number = 0,
-    take: number = 10,
+  getIndependentExpenditures(
+    skip?: number,
+    take?: number,
     committeeId?: string,
     supportOrOppose?: string,
     sourceSystem?: string,
   ): Promise<PaginatedIndependentExpenditures> {
-    const where: Record<string, unknown> = {};
-    if (committeeId) where.committeeId = committeeId;
-    if (supportOrOppose) where.supportOrOppose = supportOrOppose;
-    if (sourceSystem) where.sourceSystem = sourceSystem;
-    const whereClause = Object.keys(where).length > 0 ? where : undefined;
-
-    const [items, total] = await Promise.all([
-      this.db.independentExpenditure.findMany({
-        where: whereClause,
-        orderBy: [{ date: 'desc' }, { amount: 'desc' }],
-        skip,
-        take: take + 1,
-      }),
-      this.db.independentExpenditure.count({ where: whereClause }),
-    ]);
-
-    const hasMore = items.length > take;
-    const paginatedItems = items.slice(0, take);
-
-    return {
-      items: paginatedItems.map((item: IndependentExpenditureRecord) => ({
-        ...item,
-        amount: Number(item.amount),
-        candidateName: item.candidateName ?? undefined,
-        propositionTitle: item.propositionTitle ?? undefined,
-        electionDate: item.electionDate ?? undefined,
-        description: item.description ?? undefined,
-      })),
-      total,
-      hasMore,
-    };
-  }
-
-  /**
-   * Get a single independent expenditure by ID
-   */
-  async getIndependentExpenditure(id: string) {
-    return this.db.independentExpenditure.findUnique({ where: { id } });
-  }
-
-  /**
-   * Return Board of Supervisors for the user's primary address county.
-   * Resolves: user → primary address county jurisdiction → fipsCode →
-   * county region plugin → supervisors. Returns [] when no county
-   * jurisdiction is resolved or no county plugin is enabled.
-   */
-  async getMyCountySupervisors(
-    userId: string,
-  ): Promise<RepresentativeRecord[]> {
-    const countyJurisdiction = await this.db.userJurisdiction.findFirst({
-      where: {
-        userId,
-        userAddress: { isPrimary: true },
-        jurisdiction: { type: 'COUNTY' },
-      },
-      include: { jurisdiction: { select: { fipsCode: true } } },
-    });
-
-    const fipsCode = countyJurisdiction?.jurisdiction?.fipsCode;
-    if (!fipsCode) return [];
-
-    const plugin = await this.db.regionPlugin.findUnique({
-      where: { fipsCode },
-      select: { name: true, enabled: true },
-    });
-
-    if (!plugin?.enabled) return [];
-
-    return this.getRepresentativesByCounty(plugin.name);
-  }
-
-  /**
-   * Discover JSON config files from packages/region-provider/regions/
-   * and upsert them into the region_plugins table.
-   *
-   * Config changes propagate on every restart. The `enabled` flag
-   * is never overwritten — it's runtime state managed in the DB.
-   * Exception: federal is always enabled on create.
-   */
-  private async syncRegionConfigs(): Promise<void> {
-    const regionsDir = process.env.REGION_CONFIGS_DIR ?? getRegionsDir();
-
-    try {
-      const configs = await discoverRegionConfigs(regionsDir);
-
-      for (const file of configs) {
-        await this.db.regionPlugin.upsert({
-          where: { name: file.name },
-          update: {
-            displayName: file.displayName,
-            description: file.description,
-            version: file.version,
-            pluginType: 'declarative',
-            parentRegionId: file.config.parentRegionId ?? null,
-            fipsCode: file.config.fipsCode ?? null,
-            config: file.config as unknown as Prisma.InputJsonValue,
-          },
-          create: {
-            name: file.name,
-            displayName: file.displayName,
-            description: file.description,
-            version: file.version,
-            pluginType: 'declarative',
-            parentRegionId: file.config.parentRegionId ?? null,
-            fipsCode: file.config.fipsCode ?? null,
-            // Federal always enabled; local defaults to false
-            enabled: file.name === 'federal',
-            config: file.config as unknown as Prisma.InputJsonValue,
-          },
-        });
-        this.logger.log(`Synced region config "${file.name}" v${file.version}`);
-      }
-
-      if (configs.length > 0) {
-        this.logger.log(
-          `Auto-synced ${configs.length} region config(s) from ${regionsDir}`,
-        );
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Failed to sync region configs from ${regionsDir}: ${(error as Error).message}`,
-      );
-    }
-  }
-
-  // ==========================================
-  // REGION PLUGIN HIERARCHY (#20 regions)
-  // ==========================================
-
-  async listRegionPlugins(): Promise<RegionPluginRow[]> {
-    const rows = await this.db.regionPlugin.findMany({
-      select: {
-        name: true,
-        displayName: true,
-        description: true,
-        version: true,
-        enabled: true,
-        parentRegionId: true,
-        fipsCode: true,
-      },
-      orderBy: [{ parentRegionId: 'asc' }, { name: 'asc' }],
-    });
-    return rows.map(toRegionPluginRow);
-  }
-
-  async invalidateManifest(
-    regionId: string,
-    sourceUrl: string,
-  ): Promise<number> {
-    if (!this.pipeline) {
-      throw new Error(
-        'ScrapingPipelineService unavailable — cannot invalidate manifest',
-      );
-    }
-    return this.pipeline.invalidateManifest(regionId, sourceUrl);
-  }
-
-  async setRegionPluginEnabled(
-    name: string,
-    enabled: boolean,
-  ): Promise<RegionPluginRow> {
-    const row = await this.db.regionPlugin.update({
-      where: { name },
-      data: { enabled },
-      select: {
-        name: true,
-        displayName: true,
-        description: true,
-        version: true,
-        enabled: true,
-        parentRegionId: true,
-        fipsCode: true,
-      },
-    });
-    this.logger.log(
-      `Region plugin "${name}" ${enabled ? 'enabled' : 'disabled'}`,
+    return this.queryService.getIndependentExpenditures(
+      skip,
+      take,
+      committeeId,
+      supportOrOppose,
+      sourceSystem,
     );
-    return toRegionPluginRow(row);
   }
 
-  async getRegionPluginByFipsCode(
-    fipsCode: string,
-  ): Promise<RegionPluginRow | null> {
-    const row = await this.db.regionPlugin.findUnique({
-      where: { fipsCode },
-      select: {
-        name: true,
-        displayName: true,
-        description: true,
-        version: true,
-        enabled: true,
-        parentRegionId: true,
-        fipsCode: true,
-      },
-    });
-    return row ? toRegionPluginRow(row) : null;
+  getIndependentExpenditure(id: string) {
+    return this.queryService.getIndependentExpenditure(id);
   }
 
-  /**
-   * Adapt ExampleRegionProvider (DataFetcher) to IRegionPlugin
-   * by adding the required lifecycle methods.
-   */
-  // ==========================================
-  // JURISDICTION RESOLUTION (#690)
-  // ==========================================
+  getMyCountySupervisors(userId: string): Promise<RepresentativeRecord[]> {
+    return this.queryService.getMyCountySupervisors(userId);
+  }
 
-  async getJurisdictionsForUser(userId: string): Promise<
+  getBills(
+    skip: number,
+    take: number,
+    measureTypeCode?: string,
+    sessionYear?: string,
+    authorId?: string,
+    committeeId?: string,
+  ): Promise<PaginatedBillsModel> {
+    return this.queryService.getBills(
+      skip,
+      take,
+      measureTypeCode,
+      sessionYear,
+      authorId,
+      committeeId,
+    );
+  }
+
+  getBill(id: string): Promise<BillModel | null> {
+    return this.queryService.getBill(id);
+  }
+
+  getJurisdictionsForUser(userId: string): Promise<
     Prisma.UserJurisdictionGetPayload<{
       include: { jurisdiction: { include: { parent: true } } };
     }>[]
   > {
-    return this.db.userJurisdiction.findMany({
-      where: { userId, userAddress: { isPrimary: true } },
-      include: {
-        jurisdiction: {
-          include: { parent: true },
-        },
-      },
-      orderBy: [
-        { jurisdiction: { level: 'asc' } },
-        { jurisdiction: { type: 'asc' } },
-        { jurisdiction: { name: 'asc' } },
-      ],
-    });
-  }
-
-  private createFallbackPlugin(): IRegionPlugin {
-    const provider = new ExampleRegionProvider();
-    return Object.assign(Object.create(provider), {
-      getVersion: () => '0.0.0-fallback',
-      initialize: async () => {},
-      healthCheck: async () => ({
-        healthy: true,
-        message: 'Example fallback provider',
-        lastCheck: new Date(),
-      }),
-      destroy: async () => {},
-    }) as IRegionPlugin;
+    return this.queryService.getJurisdictionsForUser(userId);
   }
 }

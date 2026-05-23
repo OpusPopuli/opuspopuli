@@ -28,6 +28,8 @@ x-backend-env: &backend-env
   NODE_ENV: test
   PROJECT: opuspopuli
   VERSION: 1.0.0
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+  OTEL_TRACING_ENABLED: "true"
   RESEND_API_KEY: re_test_placeholder_key
   RELATIONAL_DB_PROVIDER: postgres
   RELATIONAL_DB_HOST: opuspopuli-db
