@@ -344,6 +344,7 @@ describe("ScrapingPipelineService", () => {
         source,
         "california",
         undefined,
+        undefined,
       );
       expect(result.success).toBe(true);
       expect(result.items).toHaveLength(1);
@@ -363,7 +364,12 @@ describe("ScrapingPipelineService", () => {
 
       const result = await pipeline.execute(source, "california");
 
-      expect(mockApiIngest.execute).toHaveBeenCalledWith(source, "california");
+      expect(mockApiIngest.execute).toHaveBeenCalledWith(
+        source,
+        "california",
+        undefined,
+        undefined,
+      );
       expect(result.success).toBe(true);
       expect(result.items).toHaveLength(1);
       expect(mockExtraction.fetchWithRetry).not.toHaveBeenCalled();

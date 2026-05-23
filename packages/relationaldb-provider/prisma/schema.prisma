@@ -1389,6 +1389,7 @@ model PipelineExecution {
   extractionTimeMs    Int      @default(0) @map("extraction_time_ms")
   totalTimeMs         Int      @default(0) @map("total_time_ms")
   success             Boolean  @default(true)
+  status              String   @default("completed") @db.VarChar(20)
   errorMessage        String?  @map("error_message") @db.Text
   llmProvider         String?  @map("llm_provider") @db.VarChar(50)
   llmModel            String?  @map("llm_model") @db.VarChar(100)
@@ -1396,12 +1397,28 @@ model PipelineExecution {
   executedAt          DateTime @default(now()) @map("executed_at") @db.Timestamptz
   pipelineJobId       String?  @map("pipeline_job_id")
   pipelineJob         PipelineJob? @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
+  batches             PipelineExecutionBatch[]
 
   @@index([regionId, dataType, executedAt])
   @@index([manifestId])
   @@index([executedAt])
   @@index([pipelineJobId])
   @@map("pipeline_executions")
+}
+
+/// Per-batch deduplication record for streaming pipeline handlers.
+/// Unique on (execution_id, batch_index) — insert conflict = already applied, skip.
+model PipelineExecutionBatch {
+  id          String   @id @default(uuid())
+  executionId String   @map("execution_id")
+  execution   PipelineExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  batchIndex  Int      @map("batch_index")
+  itemCount   Int      @default(0) @map("item_count")
+  appliedAt   DateTime @default(now()) @map("applied_at") @db.Timestamptz
+
+  @@unique([executionId, batchIndex])
+  @@index([executionId])
+  @@map("pipeline_execution_batches")
 }
 
 /// Async job status for region-sync BullMQ queue.

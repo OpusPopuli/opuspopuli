@@ -50,12 +50,12 @@ echo ""
 # Wait for Supabase DB first
 RETRY_COUNT=0
 echo -n "Waiting for PostgreSQL"
-until docker compose -f "$COMPOSE_FILE" exec -T supabase-db pg_isready -U postgres > /dev/null 2>&1; do
+until docker compose -f "$COMPOSE_FILE" exec -T opuspopuli-db pg_isready -U postgres > /dev/null 2>&1; do
   RETRY_COUNT=$((RETRY_COUNT + 1))
   if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
     echo ""
     echo -e "${RED}Timeout waiting for PostgreSQL${NC}"
-    docker compose -f "$COMPOSE_FILE" logs supabase-db
+    docker compose -f "$COMPOSE_FILE" logs opuspopuli-db
     exit 1
   fi
   echo -n "."

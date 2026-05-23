@@ -34,6 +34,7 @@ export interface IPipelineService {
     source: DataSourceConfig,
     regionId: string,
     onBatch?: (items: T[]) => Promise<void>,
+    pipelineJobId?: string,
   ): Promise<ExtractionResult<T>>;
   invalidateManifest(regionId: string, sourceUrl: string): Promise<number>;
 }
@@ -81,11 +82,16 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       : this.regionConfig.dataSources;
   }
 
-  async fetchPropositions(): Promise<Proposition[]> {
-    return this.fetchByDataType<Proposition>("propositions");
+  async fetchPropositions(pipelineJobId?: string): Promise<Proposition[]> {
+    return this.fetchByDataType<Proposition>(
+      "propositions",
+      undefined,
+      undefined,
+      pipelineJobId,
+    );
   }
 
-  async fetchMeetings(): Promise<Meeting[]> {
+  async fetchMeetings(pipelineJobId?: string): Promise<Meeting[]> {
     // Filter out `pdf_archive` sources — those emit Minutes documents
     // and are handled by `fetchMeetingMinutes` instead. Mixing them
     // here would type-pollute the Meeting[] return.
@@ -93,6 +99,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       "meetings",
       undefined,
       (s) => s.sourceType !== "pdf_archive",
+      pipelineJobId,
     );
   }
 
@@ -123,12 +130,15 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
 
   async fetchCampaignFinance(
     onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
+    pipelineJobId?: string,
   ): Promise<CampaignFinanceResult> {
     // All campaign finance sources are fetched as a flat array,
     // then routed by the domain mapper based on category.
     const allItems = await this.fetchByDataType<Record<string, unknown>>(
       "campaign_finance",
       onBatch,
+      undefined,
+      pipelineJobId,
     );
 
     // The domain mapper already routes by category, but items come back
@@ -210,6 +220,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     dataType: string,
     onBatch?: (items: T[]) => Promise<void>,
     sourceFilter?: (source: DataSourceConfig) => boolean,
+    pipelineJobId?: string,
   ): Promise<T[]> {
     const sources = this.regionConfig.dataSources.filter(
       (ds) =>
@@ -231,6 +242,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
         source,
         dataType,
         onBatch,
+        pipelineJobId,
       );
       allItems.push(...items);
       batchedItemCount += batched;
@@ -247,16 +259,20 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     source: DataSourceConfig,
     dataType: string,
     onBatch?: (items: T[]) => Promise<void>,
+    pipelineJobId?: string,
   ): Promise<{ items: T[]; batched: number }> {
     try {
       const category = source.category ? " (" + source.category + ")" : "";
       this.logger.log(`Fetching ${dataType} from ${source.url}` + category);
 
-      const useBatch = onBatch && source.sourceType === "bulk_download";
+      const useBatch =
+        onBatch &&
+        (source.sourceType === "bulk_download" || source.sourceType === "api");
       const result = await this.pipeline.execute<T>(
         source,
         this.regionConfig.regionId,
         useBatch ? onBatch : undefined,
+        pipelineJobId,
       );
 
       this.logResultDiagnostics(source.url, result);

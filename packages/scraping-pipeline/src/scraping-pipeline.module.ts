@@ -7,6 +7,11 @@
 
 import { Module, type DynamicModule } from "@nestjs/common";
 import { ScrapingPipelineService } from "./pipeline/pipeline.service.js";
+import {
+  ExecutionTrackerService,
+  EXECUTION_TRACKER_REPOSITORY,
+  type ExecutionTrackerRepository,
+} from "./pipeline/execution-tracker.service.js";
 import { StructuralAnalyzerService } from "./analysis/structural-analyzer.service.js";
 import {
   ManifestStoreService,
@@ -87,15 +92,43 @@ export class ScrapingPipelineModule {
             repository ? new IngestionWatermarkService(repository) : undefined,
           inject: [{ token: "INGESTION_WATERMARK_REPOSITORY", optional: true }],
         },
+        // Execution tracker (optional — disabled when EXECUTION_TRACKER_REPOSITORY not bound)
+        {
+          provide: ExecutionTrackerService,
+          useFactory: (repository?: ExecutionTrackerRepository) =>
+            new ExecutionTrackerService(repository ?? null),
+          inject: [{ token: EXECUTION_TRACKER_REPOSITORY, optional: true }],
+        },
         // Core services
         StructuralAnalyzerService,
         ManifestExtractorService,
         ExtractionValidator,
         DomainMapperService,
         SelfHealingService,
-        // Source type handlers
-        BulkDownloadHandler,
-        ApiIngestHandler,
+        // Streaming handlers wired manually so they receive ExecutionTrackerService
+        // without a parameter decorator (avoids reflect-metadata requirement in tests).
+        {
+          provide: BulkDownloadHandler,
+          useFactory: (
+            mapper: DomainMapperService,
+            tracker?: ExecutionTrackerService,
+          ) => new BulkDownloadHandler(mapper, tracker ?? null),
+          inject: [
+            DomainMapperService,
+            { token: ExecutionTrackerService, optional: true },
+          ],
+        },
+        {
+          provide: ApiIngestHandler,
+          useFactory: (
+            mapper: DomainMapperService,
+            tracker?: ExecutionTrackerService,
+          ) => new ApiIngestHandler(mapper, tracker ?? null),
+          inject: [
+            DomainMapperService,
+            { token: ExecutionTrackerService, optional: true },
+          ],
+        },
         PdfExtractHandler,
         MinutesIngestHandler,
         TextExtractorService,
@@ -104,6 +137,7 @@ export class ScrapingPipelineModule {
       ],
       exports: [
         ScrapingPipelineService,
+        ExecutionTrackerService,
         StructuralAnalyzerService,
         ManifestStoreService,
         IngestionWatermarkService,

@@ -12,6 +12,14 @@
 // Core pipeline
 export { ScrapingPipelineService } from "./pipeline/pipeline.service.js";
 export {
+  ExecutionTrackerService,
+  EXECUTION_TRACKER_REPOSITORY,
+  type ExecutionTrackerRepository,
+  type ExecutionRecord,
+  type ExecutionStats,
+  type ExecutionStatus,
+} from "./pipeline/execution-tracker.service.js";
+export {
   ScrapingPipelineModule,
   MANIFEST_MISSING_CALLBACK,
   type ManifestMissingArgs,

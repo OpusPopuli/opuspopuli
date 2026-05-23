@@ -37,6 +37,28 @@ export function mapAndReturn<T>(
 }
 
 /**
+ * Map one batch of raw items, accumulate warnings, and return the mapped
+ * items. Shared by both streaming handlers — avoids re-building the
+ * RawExtractionResult shell in each per-batch callback.
+ */
+export function mapBatchItems<T>(
+  rawItems: Record<string, unknown>[],
+  source: DataSourceConfig,
+  mapper: DomainMapperService,
+  warnings: string[],
+): T[] {
+  const rawResult: RawExtractionResult = {
+    items: rawItems,
+    success: rawItems.length > 0,
+    warnings: [],
+    errors: [],
+  };
+  const mapped = mapper.map<T>(rawResult, source);
+  warnings.push(...mapped.warnings);
+  return mapped.items;
+}
+
+/**
  * Build a failure ExtractionResult from a caught error.
  * Shared by ApiIngestHandler and BulkDownloadHandler to eliminate the
  * identical catch-block return value.
