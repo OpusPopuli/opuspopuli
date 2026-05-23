@@ -1,9 +1,51 @@
-Dockerfile
-.dockerignore
+# --- Build artifacts ---
 node_modules
-npm-debug.log
 dist
 .next
+npm-debug.log
+coverage
+playwright-report
+*.tsbuildinfo
+
+# --- Version control ---
 .git
+.github
+
+# --- Infrastructure (not part of any application image) ---
+infra
+infra-backup
+
+# --- Local dev data ---
+supabase
+observability
+tmp
+
+# --- Documentation and dev tooling ---
+docs
+postman
+scripts
+
+# --- IDE and tooling config ---
+.claude
+.husky
+.vscode
+.sonarlint
+.DS_Store
+.editorconfig
+.gitleaks.toml
+.jscpd.json
+renovate.json
+
+# --- Docker files (not needed inside images) ---
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# --- Environment files (security) ---
+.env
+.env.*
+
+# --- Documentation files ---
 *.md
 !README.md
+LICENSE

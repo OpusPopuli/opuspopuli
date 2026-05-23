@@ -28,6 +28,9 @@ import { LLMModule } from '@opuspopuli/llm-provider';
 import { OcrModule, OcrService } from '@opuspopuli/ocr-provider';
 import { PromptClientModule } from '@opuspopuli/prompt-client';
 import { RegionDomainService } from './region.service';
+import { RegionCacheService } from './region-cache.service';
+import { RegionSyncService } from './region-sync.service';
+import { RegionQueryService } from './region-query.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
 import { BioGeneratorService } from './bio-generator.service';
@@ -174,6 +177,9 @@ const promptClientAsyncConfig = {
     }),
   ],
   providers: [
+    RegionCacheService,
+    RegionSyncService,
+    RegionQueryService,
     RegionDomainService,
     RegionResolver,
     RegionScheduler,
@@ -218,6 +224,8 @@ const promptClientAsyncConfig = {
   ],
   exports: [
     RegionDomainService,
+    RegionSyncService,
+    RegionQueryService,
     PipelineJobService,
     StructuralAnalysisJobService,
     QueueModule,
