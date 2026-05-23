@@ -12,10 +12,10 @@
  * (fetchUrlText) directly.
  */
 
-import { RegionDomainService } from './region.service';
+import { RegionSyncService } from './region-sync.service';
 
 function buildSvc(overrides: Record<string, any> = {}): any {
-  const svc = Object.create(RegionDomainService.prototype);
+  const svc = Object.create(RegionSyncService.prototype);
   Object.assign(svc, {
     logger: { log: jest.fn(), warn: jest.fn(), error: jest.fn() },
     pluginRegistry: { getLocal: jest.fn().mockReturnValue(null) },

@@ -1,0 +1,2448 @@
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
+import {
+  RegionService as RegionProviderService,
+  DataType,
+  SyncDepth,
+  SyncResult,
+  PluginLoaderService,
+  PluginRegistryService,
+  DeclarativeRegionPlugin,
+  ExampleRegionProvider,
+  discoverRegionConfigs,
+  getRegionsDir,
+  type IPipelineService,
+  type IRegionPlugin,
+} from '@opuspopuli/region-provider';
+import { ServiceInitializationException } from 'src/common/exceptions/app.exceptions';
+import {
+  resolveConfigPlaceholders,
+  batchTransaction,
+  extractJsonObjectSlice,
+  type ISecretsProvider,
+  type Proposition,
+  type Meeting,
+  type Representative,
+  type CampaignFinanceResult,
+  type MinutesWithActions,
+  type ILLMProvider,
+  type DataSourceConfig,
+  type DeclarativeRegionConfig,
+  type Bill,
+} from '@opuspopuli/common';
+import { PromptClientService } from '@opuspopuli/prompt-client';
+import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
+import { BioGeneratorService } from './bio-generator.service';
+import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
+import { PropositionAnalysisService } from './proposition-analysis.service';
+import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
+import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
+import { LegislativeActionLinkerService } from './legislative-action-linker.service';
+import { LegislativeCommitteeService } from './legislative-committee.service';
+import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
+import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
+import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
+import { RegionCacheService } from './region-cache.service';
+import {
+  stripLeadingZerosFromExternalId,
+  isLikelyValidBio,
+  extractLastName,
+} from './region.service';
+
+// ─── Type aliases (sync-local, not exported) ─────────────────────────────────
+
+type ExternalIdRecord = { externalId: string };
+
+/** Compiled lifecycle stage pattern used for bill status resolution. */
+interface StagePattern {
+  stageId: string;
+  regex: RegExp;
+}
+
+/** Region plugin row shape returned by list/lookup queries. */
+type RegionPluginRow = {
+  name: string;
+  displayName: string;
+  description?: string;
+  version: string;
+  enabled: boolean;
+  parentRegionId?: string;
+  fipsCode?: string;
+};
+
+function toRegionPluginRow(r: {
+  name: string;
+  displayName: string;
+  description: string | null;
+  version: string;
+  enabled: boolean;
+  parentRegionId: string | null;
+  fipsCode: string | null;
+}): RegionPluginRow {
+  return {
+    name: r.name,
+    displayName: r.displayName,
+    description: r.description ?? undefined,
+    version: r.version,
+    enabled: r.enabled,
+    parentRegionId: r.parentRegionId ?? undefined,
+    fipsCode: r.fipsCode ?? undefined,
+  };
+}
+
+/**
+ * Minimal interface for data fetching used by sync methods.
+ * Satisfied by both RegionProviderService and IRegionPlugin.
+ */
+interface DataFetcher {
+  fetchPropositions(pipelineJobId?: string): Promise<Proposition[]>;
+  fetchMeetings(pipelineJobId?: string): Promise<Meeting[]>;
+  fetchRepresentatives(): Promise<Representative[]>;
+  fetchCampaignFinance?(
+    onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
+    pipelineJobId?: string,
+  ): Promise<CampaignFinanceResult>;
+  fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
+}
+
+type PrismaModelDelegate = {
+  findMany(args: unknown): Promise<ExternalIdRecord[]>;
+  upsert(args: unknown): Prisma.PrismaPromise<unknown>;
+};
+type UpsertConfig = {
+  records: readonly unknown[];
+  model: PrismaModelDelegate;
+  fields: string[];
+};
+type CommitteeRecord = {
+  externalId: string;
+  id: string;
+};
+
+/**
+ * RegionSyncService — owns all data-synchronisation logic extracted from
+ * the monolithic RegionDomainService (issue DEBT-030). Implements
+ * OnModuleInit / OnModuleDestroy so it can perform plugin loading and
+ * cache teardown just as the original class did.
+ */
+@Injectable()
+export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(RegionSyncService.name, {
+    timestamp: true,
+  });
+  private regionService!: RegionProviderService;
+
+  constructor(
+    private readonly pluginLoader: PluginLoaderService,
+    private readonly pluginRegistry: PluginRegistryService,
+    private readonly db: DbService,
+    private readonly cacheService: RegionCacheService,
+    @Optional()
+    @Inject('SCRAPING_PIPELINE')
+    private readonly pipeline?: IPipelineService,
+    @Optional()
+    @Inject(SECRETS_PROVIDER)
+    private readonly secretsProvider?: ISecretsProvider,
+    @Optional() private readonly bioGenerator?: BioGeneratorService,
+    @Optional()
+    private readonly committeeSummaryGenerator?: CommitteeSummaryGeneratorService,
+    @Optional()
+    private readonly propositionAnalysis?: PropositionAnalysisService,
+    @Optional()
+    private readonly propositionFinanceLinker?: PropositionFinanceLinkerService,
+    @Optional()
+    private readonly legislativeCommitteeLinker?: LegislativeCommitteeLinkerService,
+    @Optional()
+    private readonly legislativeCommittees?: LegislativeCommitteeService,
+    @Optional()
+    private readonly legislativeCommitteeDescriptions?: LegislativeCommitteeDescriptionGeneratorService,
+    @Optional()
+    private readonly legislativeActionLinker?: LegislativeActionLinkerService,
+    @Optional() private readonly promptClient?: PromptClientService,
+    @Optional()
+    @Inject('LLM_PROVIDER')
+    private readonly llm?: ILLMProvider,
+  ) {}
+
+  async onModuleDestroy(): Promise<void> {
+    await this.cacheService.destroy();
+  }
+
+  /**
+   * Resolve API keys from Supabase Vault and set as environment variables.
+   * Falls back silently to existing env vars if Vault is unavailable.
+   */
+  private async resolveApiKeysFromVault(): Promise<void> {
+    if (!this.secretsProvider) return;
+
+    const apiKeyNames = ['FEC_API_KEY'];
+
+    for (const keyName of apiKeyNames) {
+      if (process.env[keyName]) continue;
+
+      try {
+        const secret = await this.secretsProvider.getSecret(keyName);
+        if (secret) {
+          process.env[keyName] = secret;
+          this.logger.log(`Resolved ${keyName} from secrets vault`);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to resolve ${keyName} from vault: ${(error as Error).message}. Falling back to env var.`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Load region plugins at startup.
+   */
+  async onModuleInit(): Promise<void> {
+    await this.resolveApiKeysFromVault();
+    await this.syncRegionConfigs();
+
+    const localConfigRow = await this.db.regionPlugin.findFirst({
+      where: { enabled: true, name: { not: 'federal' } },
+    });
+
+    const localConfigData = localConfigRow?.config as
+      | Record<string, unknown>
+      | undefined;
+    const stateCode = localConfigData?.stateCode as string | undefined;
+
+    const variables: Record<string, string> = {};
+    if (stateCode) {
+      variables['stateCode'] = stateCode;
+    }
+
+    // 1. ALWAYS load federal
+    try {
+      const federalConfig = await this.db.regionPlugin.findUnique({
+        where: { name: 'federal' },
+      });
+
+      if (federalConfig) {
+        let config = federalConfig.config as Record<string, unknown>;
+
+        if (Object.keys(variables).length > 0) {
+          config = resolveConfigPlaceholders(config, variables);
+          this.logger.log(
+            `Resolved federal config placeholders (stateCode="${stateCode}")`,
+          );
+        } else {
+          this.logger.warn(
+            'No local region stateCode available — federal config placeholders will not be resolved',
+          );
+        }
+
+        this.logger.log('Loading federal plugin');
+        await this.pluginLoader.loadFederalPlugin(config, this.pipeline);
+      } else {
+        this.logger.warn(
+          'Federal region config not found in database — FEC data will not be available',
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to load federal plugin: ${(error as Error).message}`,
+      );
+    }
+
+    // 2. Load the enabled LOCAL plugin
+    try {
+      const localConfig = localConfigRow;
+
+      if (localConfig) {
+        this.logger.log(
+          `Loading local declarative region plugin "${localConfig.name}"`,
+        );
+        await this.pluginLoader.loadPlugin(
+          {
+            name: localConfig.name,
+            config: localConfig.config as Record<string, unknown> | undefined,
+          },
+          this.pipeline,
+        );
+      } else {
+        this.logger.warn(
+          'No enabled local region plugin found in database, falling back to ExampleRegionProvider',
+        );
+        await this.pluginRegistry.registerLocal(
+          'example',
+          this.createFallbackPlugin(),
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to load local region plugin, falling back to ExampleRegionProvider: ${(error as Error).message}`,
+      );
+      await this.pluginRegistry.registerLocal(
+        'example',
+        this.createFallbackPlugin(),
+      );
+    }
+
+    const localPlugin = this.pluginRegistry.getLocal();
+    if (!localPlugin) {
+      throw new ServiceInitializationException(
+        'No local region plugin available after initialization',
+      );
+    }
+
+    this.regionService = new RegionProviderService(localPlugin);
+    const info = this.regionService.getRegionInfo();
+    this.logger.log(
+      `RegionSyncService initialized — local: ${this.regionService.getProviderName()} (${info.name}), ` +
+        `federal: ${this.pluginRegistry.getFederal() ? 'loaded' : 'not loaded'}`,
+    );
+  }
+
+  private createFallbackPlugin(): IRegionPlugin {
+    const provider = new ExampleRegionProvider();
+    return Object.assign(Object.create(provider), {
+      getVersion: () => '0.0.0-fallback',
+      initialize: async () => {},
+      healthCheck: async () => ({
+        healthy: true,
+        message: 'Example fallback provider',
+        lastCheck: new Date(),
+      }),
+      destroy: async () => {},
+    }) as IRegionPlugin;
+  }
+
+  // ─── Plugin state / admin reads ──────────────────────────────────────────────
+
+  getRegionInfo(): RegionInfoModel {
+    const info = this.regionService.getRegionInfo();
+    const supportedTypes = this.regionService.getSupportedDataTypes();
+
+    return {
+      id: info.id,
+      name: info.name,
+      description: info.description,
+      timezone: info.timezone,
+      dataSourceUrls: info.dataSourceUrls,
+      supportedDataTypes: supportedTypes.map(
+        (t) => t as unknown as DataTypeGQL,
+      ),
+    };
+  }
+
+  async listRegionPlugins(): Promise<RegionPluginRow[]> {
+    const rows = await this.db.regionPlugin.findMany({
+      select: {
+        name: true,
+        displayName: true,
+        description: true,
+        version: true,
+        enabled: true,
+        parentRegionId: true,
+        fipsCode: true,
+      },
+      orderBy: [{ parentRegionId: 'asc' }, { name: 'asc' }],
+    });
+    return rows.map(toRegionPluginRow);
+  }
+
+  async getRegionPluginByFipsCode(
+    fipsCode: string,
+  ): Promise<RegionPluginRow | null> {
+    const row = await this.db.regionPlugin.findUnique({
+      where: { fipsCode },
+      select: {
+        name: true,
+        displayName: true,
+        description: true,
+        version: true,
+        enabled: true,
+        parentRegionId: true,
+        fipsCode: true,
+      },
+    });
+    return row ? toRegionPluginRow(row) : null;
+  }
+
+  async setRegionPluginEnabled(
+    name: string,
+    enabled: boolean,
+  ): Promise<RegionPluginRow> {
+    const row = await this.db.regionPlugin.update({
+      where: { name },
+      data: { enabled },
+      select: {
+        name: true,
+        displayName: true,
+        description: true,
+        version: true,
+        enabled: true,
+        parentRegionId: true,
+        fipsCode: true,
+      },
+    });
+    this.logger.log(
+      `Region plugin "${name}" ${enabled ? 'enabled' : 'disabled'}`,
+    );
+    return toRegionPluginRow(row);
+  }
+
+  async invalidateManifest(
+    regionId: string,
+    sourceUrl: string,
+  ): Promise<number> {
+    if (!this.pipeline) {
+      throw new Error(
+        'ScrapingPipelineService unavailable — cannot invalidate manifest',
+      );
+    }
+    return this.pipeline.invalidateManifest(regionId, sourceUrl);
+  }
+
+  private async syncRegionConfigs(): Promise<void> {
+    const regionsDir = process.env.REGION_CONFIGS_DIR ?? getRegionsDir();
+
+    try {
+      const configs = await discoverRegionConfigs(regionsDir);
+
+      for (const file of configs) {
+        await this.db.regionPlugin.upsert({
+          where: { name: file.name },
+          update: {
+            displayName: file.displayName,
+            description: file.description,
+            version: file.version,
+            pluginType: 'declarative',
+            parentRegionId: file.config.parentRegionId ?? null,
+            fipsCode: file.config.fipsCode ?? null,
+            config: file.config as unknown as Prisma.InputJsonValue,
+          },
+          create: {
+            name: file.name,
+            displayName: file.displayName,
+            description: file.description,
+            version: file.version,
+            pluginType: 'declarative',
+            parentRegionId: file.config.parentRegionId ?? null,
+            fipsCode: file.config.fipsCode ?? null,
+            enabled: file.name === 'federal',
+            config: file.config as unknown as Prisma.InputJsonValue,
+          },
+        });
+        this.logger.log(`Synced region config "${file.name}" v${file.version}`);
+      }
+
+      if (configs.length > 0) {
+        this.logger.log(
+          `Auto-synced ${configs.length} region config(s) from ${regionsDir}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to sync region configs from ${regionsDir}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  // ─── Sync orchestration ───────────────────────────────────────────────────────
+
+  async syncAll(
+    dataTypes?: string[],
+    maxReps?: number,
+    maxBills?: number,
+    depth: string = SyncDepth.STATE,
+    scopedRegionId?: string,
+    pipelineJobId?: string,
+  ): Promise<SyncResult[]> {
+    const limits = [
+      maxReps != null ? `maxReps=${maxReps}` : null,
+      maxBills != null ? `maxBills=${maxBills}` : null,
+      depth !== SyncDepth.STATE ? `depth=${depth}` : null,
+      scopedRegionId ? `regionId=${scopedRegionId}` : null,
+    ].filter(Boolean);
+    const limitsStr = limits.length ? ` (${limits.join(', ')})` : '';
+    this.logger.log(
+      dataTypes
+        ? `Starting data sync for: ${dataTypes.join(', ')}${limitsStr}`
+        : `Starting full data sync${limitsStr}`,
+    );
+    const results: SyncResult[] = [];
+
+    const statePlugins =
+      depth === SyncDepth.COUNTY
+        ? []
+        : this.pluginRegistry
+            .getAll()
+            .filter((p) => !scopedRegionId || p.name === scopedRegionId);
+
+    for (const registered of statePlugins) {
+      results.push(
+        ...(await this.runPluginSync(
+          registered.instance,
+          registered.name,
+          dataTypes,
+          maxReps,
+          maxBills,
+          pipelineJobId,
+        )),
+      );
+    }
+
+    if (depth === SyncDepth.COUNTY || depth === SyncDepth.ALL) {
+      results.push(
+        ...(await this.syncCountyPlugins(
+          dataTypes,
+          maxReps,
+          maxBills,
+          scopedRegionId,
+          pipelineJobId,
+        )),
+      );
+    }
+
+    this.logger.log(`Sync complete. Processed ${results.length} data type(s).`);
+    return results;
+  }
+
+  private async runPluginSync(
+    instance: IRegionPlugin,
+    name: string,
+    dataTypes?: string[],
+    maxReps?: number,
+    maxBills?: number,
+    pipelineJobId?: string,
+  ): Promise<SyncResult[]> {
+    const supported = instance.getSupportedDataTypes();
+    const filtered = dataTypes
+      ? supported.filter((dt) => dataTypes.includes(dt))
+      : supported;
+    const results: SyncResult[] = [];
+    for (const dataType of filtered) {
+      try {
+        const result = await this.syncDataTypeFrom(
+          instance,
+          name,
+          dataType,
+          maxReps,
+          maxBills,
+          name,
+          pipelineJobId,
+        );
+        results.push(result);
+      } catch (error) {
+        this.logger.error(`Failed to sync ${dataType} from ${name}:`, error);
+        results.push({
+          regionId: name,
+          dataType,
+          itemsProcessed: 0,
+          itemsCreated: 0,
+          itemsUpdated: 0,
+          itemsSkipped: 0,
+          errors: [(error as Error).message],
+          syncedAt: new Date(),
+        });
+      }
+    }
+    return results;
+  }
+
+  private async syncCountyPlugins(
+    dataTypes?: string[],
+    maxReps?: number,
+    maxBills?: number,
+    scopedRegionId?: string,
+    pipelineJobId?: string,
+  ): Promise<SyncResult[]> {
+    const where = scopedRegionId
+      ? { name: scopedRegionId, parentRegionId: { not: null }, enabled: true }
+      : { parentRegionId: { not: null }, enabled: true };
+
+    const countyRows = await this.db.regionPlugin.findMany({
+      where,
+      select: { name: true, config: true },
+      orderBy: { name: 'asc' },
+    });
+
+    if (countyRows.length === 0) {
+      this.logger.debug('No enabled county plugins found for sync');
+      return [];
+    }
+
+    this.logger.log(`Syncing ${countyRows.length} county plugin(s)…`);
+    const results: SyncResult[] = [];
+
+    for (const row of countyRows) {
+      if (!row.config) continue;
+      try {
+        if (!this.pipeline) {
+          throw new Error(
+            'ScrapingPipelineService unavailable — county sync requires a pipeline',
+          );
+        }
+        const plugin = new DeclarativeRegionPlugin(
+          row.config as unknown as DeclarativeRegionConfig,
+          this.pipeline,
+        );
+        results.push(
+          ...(await this.runPluginSync(
+            plugin,
+            row.name,
+            dataTypes,
+            maxReps,
+            maxBills,
+            pipelineJobId,
+          )),
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to instantiate county plugin ${row.name}:`,
+          error,
+        );
+        results.push({
+          regionId: row.name,
+          dataType: DataType.REPRESENTATIVES,
+          itemsProcessed: 0,
+          itemsCreated: 0,
+          itemsUpdated: 0,
+          itemsSkipped: 0,
+          errors: [(error as Error).message],
+          syncedAt: new Date(),
+        });
+      }
+    }
+    return results;
+  }
+
+  async syncDataType(dataType: DataType): Promise<SyncResult> {
+    return this.syncDataTypeFrom(
+      this.regionService,
+      this.pluginRegistry.getActiveName() ?? 'local',
+      dataType,
+    );
+  }
+
+  private async syncDataTypeFrom(
+    provider: DataFetcher,
+    pluginName: string,
+    dataType: DataType,
+    maxReps?: number,
+    maxBills?: number,
+    regionId?: string,
+    pipelineJobId?: string,
+  ): Promise<SyncResult> {
+    this.logger.log(`Syncing ${dataType} from ${pluginName}`);
+    const startTime = Date.now();
+
+    const syncHandlers: Partial<
+      Record<
+        DataType,
+        () => Promise<{
+          processed: number;
+          created: number;
+          updated: number;
+          skipped?: number;
+        }>
+      >
+    > = {
+      [DataType.PROPOSITIONS]: () =>
+        this.syncPropositions(provider, pipelineJobId),
+      [DataType.MEETINGS]: () => this.syncMeetings(provider, pipelineJobId),
+      [DataType.REPRESENTATIVES]: () =>
+        this.syncRepresentatives(provider, maxReps, regionId),
+      [DataType.CAMPAIGN_FINANCE]: () =>
+        this.syncCampaignFinance(provider, pipelineJobId),
+      [DataType.CIVICS]: () => this.syncCivics(),
+      [DataType.BILLS]: () => this.syncBills(maxBills),
+    };
+
+    const handler = syncHandlers[dataType];
+    if (!handler) {
+      this.logger.warn(`No sync handler for data type: ${dataType}`);
+      return {
+        regionId: pluginName,
+        dataType,
+        itemsProcessed: 0,
+        itemsCreated: 0,
+        itemsUpdated: 0,
+        itemsSkipped: 0,
+        errors: [`No sync handler for data type: ${dataType}`],
+        syncedAt: new Date(),
+      };
+    }
+    const { processed, created, updated, skipped = 0 } = await handler();
+
+    const duration = Date.now() - startTime;
+    const skippedStr = skipped > 0 ? `, ${skipped} skipped` : '';
+    this.logger.log(
+      `Synced ${dataType} from ${pluginName}: ${processed} items (${created} created, ${updated} updated${skippedStr}) in ${duration}ms`,
+    );
+
+    return {
+      regionId: pluginName,
+      dataType,
+      itemsProcessed: processed,
+      itemsCreated: created,
+      itemsUpdated: updated,
+      itemsSkipped: skipped,
+      errors: [],
+      syncedAt: new Date(),
+    };
+  }
+
+  // ─── upsert helper ────────────────────────────────────────────────────────────
+
+  private async upsertByExternalId<T extends ExternalIdRecord>(
+    items: T[],
+    findExisting: (externalIds: string[]) => Promise<ExternalIdRecord[]>,
+    buildOps: (items: T[]) => Prisma.PrismaPromise<unknown>[],
+    cachePrefix: string,
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    if (items.length === 0) return { processed: 0, created: 0, updated: 0 };
+
+    const externalIds = items.map((i) => i.externalId);
+    const existingRecords = await findExisting(externalIds);
+    const existingSet = new Set(existingRecords.map((r) => r.externalId));
+
+    await batchTransaction(this.db, buildOps(items));
+    await this.cacheService.invalidateCache(cachePrefix);
+
+    return {
+      processed: items.length,
+      created: items.filter((i) => !existingSet.has(i.externalId)).length,
+      updated: items.filter((i) => existingSet.has(i.externalId)).length,
+    };
+  }
+
+  // ─── Per-type sync methods ────────────────────────────────────────────────────
+
+  private async syncPropositions(
+    provider: DataFetcher = this.regionService,
+    pipelineJobId?: string,
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    const propositions = await provider.fetchPropositions(pipelineJobId);
+
+    const result = await this.upsertByExternalId(
+      propositions,
+      (ids) =>
+        this.db.proposition.findMany({
+          where: { externalId: { in: ids } },
+          select: { externalId: true },
+        }),
+      (props) =>
+        props.map((prop) =>
+          this.db.proposition.upsert({
+            where: { externalId: prop.externalId },
+            update: {
+              title: prop.title,
+              summary: prop.summary,
+              fullText: prop.fullText,
+              status: prop.status,
+              electionDate: prop.electionDate,
+              sourceUrl: prop.sourceUrl,
+            },
+            create: {
+              externalId: prop.externalId,
+              title: prop.title,
+              summary: prop.summary,
+              fullText: prop.fullText,
+              status: prop.status,
+              electionDate: prop.electionDate,
+              sourceUrl: prop.sourceUrl,
+            },
+          }),
+        ),
+      'propositions:',
+    );
+
+    if (this.propositionAnalysis) {
+      try {
+        await this.propositionAnalysis.generateMissing();
+      } catch (error) {
+        this.logger.warn(
+          `Proposition analysis post-sync pass failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    return result;
+  }
+
+  async regeneratePropositionAnalysis(id: string): Promise<boolean> {
+    if (!this.propositionAnalysis) return false;
+    const result = await this.propositionAnalysis.generate(id, true);
+    if (result) {
+      await this.cacheService.invalidateCache('propositions:');
+    }
+    return result;
+  }
+
+  private async syncMeetings(
+    provider: DataFetcher = this.regionService,
+    pipelineJobId?: string,
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    const meetings = await provider.fetchMeetings(pipelineJobId);
+    if (meetings.length === 0) {
+      return this.syncMeetingMinutes(provider);
+    }
+
+    const result = await this.upsertByExternalId(
+      meetings,
+      (ids) =>
+        this.db.meeting.findMany({
+          where: { externalId: { in: ids } },
+          select: { externalId: true },
+        }),
+      (items) =>
+        items.map((meeting) =>
+          this.db.meeting.upsert({
+            where: { externalId: meeting.externalId },
+            update: {
+              title: meeting.title,
+              body: meeting.body,
+              scheduledAt: meeting.scheduledAt,
+              location: meeting.location,
+              agendaUrl: meeting.agendaUrl,
+              videoUrl: meeting.videoUrl,
+            },
+            create: {
+              externalId: meeting.externalId,
+              title: meeting.title,
+              body: meeting.body,
+              scheduledAt: meeting.scheduledAt,
+              location: meeting.location,
+              agendaUrl: meeting.agendaUrl,
+              videoUrl: meeting.videoUrl,
+            },
+          }),
+        ),
+      'meetings:',
+    );
+
+    const minutesResult = await this.syncMeetingMinutes(provider);
+    return {
+      processed: result.processed + minutesResult.processed,
+      created: result.created + minutesResult.created,
+      updated: result.updated + minutesResult.updated,
+    };
+  }
+
+  private async syncMeetingMinutes(
+    provider: DataFetcher = this.regionService,
+  ): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+  }> {
+    if (!provider.fetchMeetingMinutes) {
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const bundles = await provider.fetchMeetingMinutes();
+    if (bundles.length === 0) {
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const externalIds = bundles.map((b) => b.minutes.externalId);
+    const existingRecords = await this.db.minutes.findMany({
+      where: { externalId: { in: externalIds } },
+      select: { externalId: true },
+    });
+    const existingExternalIds = new Set(
+      existingRecords.map((r: ExternalIdRecord) => r.externalId),
+    );
+
+    const upsertedIds: string[] = [];
+    for (const { minutes } of bundles) {
+      const row = await this.db.minutes.upsert({
+        where: { externalId: minutes.externalId },
+        update: {
+          body: minutes.body,
+          date: minutes.date,
+          revisionSeq: minutes.revisionSeq,
+          isActive: true,
+          pageCount: minutes.pageCount,
+          sourceUrl: minutes.sourceUrl,
+          rawText: minutes.rawText,
+          parsedAt: minutes.parsedAt ?? new Date(),
+        },
+        create: {
+          externalId: minutes.externalId,
+          body: minutes.body,
+          date: minutes.date,
+          revisionSeq: minutes.revisionSeq,
+          isActive: true,
+          pageCount: minutes.pageCount,
+          sourceUrl: minutes.sourceUrl,
+          rawText: minutes.rawText,
+          parsedAt: minutes.parsedAt ?? new Date(),
+        },
+        select: { id: true },
+      });
+      upsertedIds.push(row.id);
+
+      if (minutes.revisionSeq > 0) {
+        await this.db.minutes.updateMany({
+          where: {
+            body: minutes.body,
+            date: minutes.date,
+            revisionSeq: { lt: minutes.revisionSeq },
+          },
+          data: { isActive: false },
+        });
+      }
+    }
+
+    if (upsertedIds.length > 0 && this.legislativeActionLinker) {
+      await this.legislativeActionLinker.linkMinutes(upsertedIds);
+    }
+
+    const created = bundles.filter(
+      (b) => !existingExternalIds.has(b.minutes.externalId),
+    ).length;
+    const updated = bundles.filter((b) =>
+      existingExternalIds.has(b.minutes.externalId),
+    ).length;
+
+    return { processed: bundles.length, created, updated };
+  }
+
+  private sanitizeDistrict(rep: Representative): string {
+    const raw = (rep.district ?? '').trim();
+    if (/^\d+$/.test(raw)) return String(Number.parseInt(raw, 10));
+    const derived = deriveDistrictFromExternalId(rep.externalId);
+    if (derived !== undefined) {
+      this.logger.warn(
+        `Sanitized district for ${rep.name} (${rep.externalId}): scraped value "${raw}" is not numeric, using externalId-derived "${derived}"`,
+      );
+      return derived;
+    }
+    if (raw) {
+      this.logger.warn(
+        `Non-numeric district "${raw}" for ${rep.name} (${rep.externalId}) and no numeric suffix to fall back on; keeping raw value`,
+      );
+    }
+    return raw;
+  }
+
+  private normalizeRep(r: Representative): void {
+    r.externalId = stripLeadingZerosFromExternalId(r.externalId);
+    if (r.bio && !isLikelyValidBio(r.bio)) {
+      this.logger.warn(
+        `Discarding junk bio for ${r.externalId} (${r.bio.length} chars): ${r.bio.slice(0, 60)}…`,
+      );
+      r.bio = undefined;
+      r.bioSource = undefined;
+    }
+    if (r.bio && !r.bioSource) {
+      r.bioSource = 'scraped';
+    }
+  }
+
+  private applyChamberFallback(r: Representative, provider: DataFetcher): void {
+    if (r.chamber || !(provider instanceof DeclarativeRegionPlugin)) return;
+    const source = provider
+      .getDataSources('REPRESENTATIVES' as DataType)
+      .find((s) => s.category);
+    if (source?.category) r.chamber = source.category;
+  }
+
+  private async syncRepresentatives(
+    provider: DataFetcher = this.regionService,
+    maxReps?: number,
+    regionId?: string,
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    const reps = await provider.fetchRepresentatives();
+
+    for (const r of reps) {
+      this.normalizeRep(r);
+      this.applyChamberFallback(r, provider);
+    }
+
+    if (this.bioGenerator) {
+      await this.bioGenerator.enrichBios(reps, maxReps);
+    }
+
+    const result = await this.upsertByExternalId(
+      reps,
+      (ids) =>
+        this.db.representative.findMany({
+          where: { externalId: { in: ids } },
+          select: { externalId: true },
+        }),
+      (items) =>
+        items.map((rep) => {
+          const lastName = extractLastName(rep.name);
+          const district = this.sanitizeDistrict(rep);
+          return this.db.representative.upsert({
+            where: { externalId: rep.externalId },
+            update: {
+              regionId: regionId ?? rep.regionId ?? 'california',
+              name: rep.name,
+              lastName,
+              chamber: rep.chamber,
+              district,
+              party: rep.party,
+              photoUrl: rep.photoUrl ?? undefined,
+              contactInfo: (rep.contactInfo as object | null) ?? undefined,
+              committees: (rep.committees as object[] | null) ?? undefined,
+              committeesSummary: rep.committeesSummary ?? undefined,
+              bio: rep.bio ?? undefined,
+              bioSource: rep.bioSource ?? undefined,
+              bioClaims: (rep.bioClaims as object[] | null) ?? undefined,
+            },
+            create: {
+              externalId: rep.externalId,
+              regionId: regionId ?? rep.regionId ?? 'california',
+              name: rep.name,
+              lastName,
+              chamber: rep.chamber,
+              district,
+              party: rep.party,
+              photoUrl: rep.photoUrl,
+              contactInfo: rep.contactInfo as object | undefined,
+              committees: rep.committees as object[] | undefined,
+              committeesSummary: rep.committeesSummary,
+              bio: rep.bio,
+              bioSource: rep.bioSource,
+              bioClaims: rep.bioClaims as object[] | undefined,
+            },
+          });
+        }),
+      'representatives:',
+    );
+
+    if (this.committeeSummaryGenerator) {
+      await this.committeeSummaryGenerator.generateMissingSummaries(maxReps);
+    }
+
+    if (this.legislativeCommitteeLinker) {
+      try {
+        await this.legislativeCommitteeLinker.linkAll();
+      } catch (error) {
+        this.logger.warn(
+          `Legislative committee linker failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    if (this.legislativeCommitteeDescriptions) {
+      try {
+        await this.legislativeCommitteeDescriptions.generateMissingDescriptions(
+          maxReps,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Legislative committee description generation failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    return result;
+  }
+
+  private async ensureCommitteeStubs(
+    data: CampaignFinanceResult,
+  ): Promise<void> {
+    const referencedIds = new Set<string>();
+    const sourceSystemByExternalId = new Map<string, 'cal_access' | 'fec'>();
+    const noteReference = (
+      committeeId: string | undefined | null,
+      sourceSystem: 'cal_access' | 'fec',
+    ) => {
+      if (!committeeId) return;
+      referencedIds.add(committeeId);
+      if (!sourceSystemByExternalId.has(committeeId)) {
+        sourceSystemByExternalId.set(committeeId, sourceSystem);
+      }
+    };
+    for (const c of data.contributions)
+      noteReference(c.committeeId, c.sourceSystem);
+    for (const e of data.expenditures)
+      noteReference(e.committeeId, e.sourceSystem);
+    for (const ie of data.independentExpenditures) {
+      noteReference(ie.committeeId, ie.sourceSystem);
+    }
+
+    if (referencedIds.size === 0) return;
+
+    const existing = await this.db.committee.findMany({
+      where: { externalId: { in: [...referencedIds] } },
+      select: { externalId: true, id: true },
+    });
+    const existingMap = new Map(
+      existing.map((c: CommitteeRecord) => [c.externalId, c.id]),
+    );
+
+    const missingIds = [...referencedIds].filter((id) => !existingMap.has(id));
+
+    if (missingIds.length > 0) {
+      this.logger.log(
+        `Creating ${missingIds.length} stub committee records for FK references`,
+      );
+      await batchTransaction(
+        this.db,
+        missingIds.map((externalId) =>
+          this.db.committee.create({
+            data: {
+              externalId,
+              name: externalId,
+              type: 'OTHER',
+              status: 'active',
+              sourceSystem: sourceSystemByExternalId.get(externalId) ?? 'fec',
+            },
+          }),
+        ),
+      );
+    }
+
+    const allCommittees = await this.db.committee.findMany({
+      where: { externalId: { in: [...referencedIds] } },
+      select: { externalId: true, id: true },
+    });
+    const idMap = new Map(
+      allCommittees.map((c: CommitteeRecord) => [c.externalId, c.id]),
+    );
+
+    for (const c of data.contributions) {
+      c.committeeId = idMap.get(c.committeeId) ?? c.committeeId;
+    }
+    for (const e of data.expenditures) {
+      e.committeeId = idMap.get(e.committeeId) ?? e.committeeId;
+    }
+    for (const ie of data.independentExpenditures) {
+      ie.committeeId = idMap.get(ie.committeeId) ?? ie.committeeId;
+    }
+  }
+
+  private async syncCampaignFinance(
+    provider: DataFetcher,
+    pipelineJobId?: string,
+  ): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+  }> {
+    if (!provider.fetchCampaignFinance) {
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    let totalProcessed = 0;
+    let totalCreated = 0;
+    let totalUpdated = 0;
+
+    const onBatch = async (items: Record<string, unknown>[]) => {
+      const batchData = this.sortCampaignFinanceItems(items);
+      await this.ensureCommitteeStubs(batchData);
+      const result = await this.upsertCampaignFinanceBatch(batchData);
+      totalProcessed += result.processed;
+      totalCreated += result.created;
+      totalUpdated += result.updated;
+    };
+
+    const data = await provider.fetchCampaignFinance(onBatch, pipelineJobId);
+
+    if (
+      data.contributions.length > 0 ||
+      data.expenditures.length > 0 ||
+      data.independentExpenditures.length > 0 ||
+      data.committeeMeasureFilings.length > 0
+    ) {
+      await this.ensureCommitteeStubs(data);
+      const result = await this.upsertCampaignFinanceBatch(data);
+      totalProcessed += result.processed;
+      totalCreated += result.created;
+      totalUpdated += result.updated;
+    }
+
+    if (this.propositionFinanceLinker) {
+      try {
+        await this.propositionFinanceLinker.linkAll();
+      } catch (error) {
+        this.logger.warn(
+          `Proposition finance linker failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    return {
+      processed: totalProcessed,
+      created: totalCreated,
+      updated: totalUpdated,
+    };
+  }
+
+  private async syncCivics(): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+  }> {
+    if (!this.promptClient || !this.llm) {
+      this.logger.warn(
+        'Civics sync requires PromptClient and LLM provider; skipping',
+      );
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const plugin = this.pluginRegistry.getLocal();
+    if (!plugin?.getDataSources) {
+      this.logger.warn(
+        'Region plugin does not expose getDataSources(); skipping civics sync',
+      );
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const dataSources = plugin.getDataSources(DataType.CIVICS);
+    if (dataSources.length === 0) {
+      this.logger.log('No civics data sources configured for this region');
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const registeredHosts = new Set(
+      plugin.getDataSources().flatMap((s) => {
+        try {
+          return [new URL(s.url).hostname];
+        } catch {
+          return [];
+        }
+      }),
+    );
+
+    const regionId = plugin.getName();
+    let processed = 0;
+    let created = 0;
+    let updated = 0;
+
+    for (const ds of dataSources) {
+      const urls = await this.crawlCivicsUrls(ds, registeredHosts);
+      this.logger.log(
+        `Civics: crawl from ${ds.url} (depth ${ds.crawlDepth ?? 0}) found ${urls.length} page(s)`,
+      );
+      for (const url of urls) {
+        const result = await this.extractAndUpsertCivicsPage(regionId, url, ds);
+        if (result === 'created') created++;
+        else if (result === 'updated') updated++;
+        if (result !== 'failed') processed++;
+      }
+    }
+
+    return { processed, created, updated };
+  }
+
+  // ─── Bills sync ───────────────────────────────────────────────────────────────
+
+  private async syncBills(maxBills?: number): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+    skipped: number;
+  }> {
+    if (!this.promptClient || !this.llm) {
+      this.logger.warn('Bills sync requires PromptClient and LLM; skipping');
+      return { processed: 0, created: 0, updated: 0, skipped: 0 };
+    }
+
+    const plugin = this.pluginRegistry.getLocal();
+    if (!plugin?.getDataSources) {
+      this.logger.warn(
+        'Region plugin does not expose getDataSources(); skipping bills sync',
+      );
+      return { processed: 0, created: 0, updated: 0, skipped: 0 };
+    }
+
+    const dataSources = plugin.getDataSources(DataType.BILLS);
+    if (dataSources.length === 0) {
+      this.logger.log('No bills data sources configured for this region');
+      return { processed: 0, created: 0, updated: 0, skipped: 0 };
+    }
+
+    const registeredHosts = new Set(
+      plugin.getDataSources().flatMap((s) => {
+        try {
+          return [new URL(s.url).hostname];
+        } catch {
+          return [];
+        }
+      }),
+    );
+
+    const regionId = plugin.getName();
+    const repIndex = await this.buildRepNameIndex(regionId);
+    const committeeIndex = await this.buildCommitteeNameIndex();
+    const stagePatterns = await this.buildStagePatterns(regionId);
+
+    let processed = 0;
+    let created = 0;
+    let updated = 0;
+    let skippedTotal = 0;
+    const syncedExternalIds = new Set<string>();
+
+    for (const ds of dataSources) {
+      const counts = await this.syncBillsFromDataSource(
+        regionId,
+        ds,
+        registeredHosts,
+        repIndex,
+        committeeIndex,
+        syncedExternalIds,
+        stagePatterns,
+        maxBills,
+      );
+      processed += counts.processed;
+      created += counts.created;
+      updated += counts.updated;
+      skippedTotal += counts.skipped;
+    }
+
+    if (stagePatterns.length > 0) {
+      await this.backfillBillStageIds(regionId, stagePatterns);
+    }
+
+    await this.pruneStaleBills(regionId, syncedExternalIds, maxBills);
+
+    return { processed, created, updated, skipped: skippedTotal };
+  }
+
+  private async syncBillsFromDataSource(
+    regionId: string,
+    ds: DataSourceConfig,
+    registeredHosts: Set<string>,
+    repIndex: Map<string, { id: string; chamber: string }>,
+    committeeIndex: Map<string, string>,
+    syncedExternalIds: Set<string>,
+    stagePatterns: StagePattern[],
+    maxBills?: number,
+  ): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+    skipped: number;
+  }> {
+    const { statusUrls, votesUrls } = await this.discoverBillUrls(
+      ds,
+      registeredHosts,
+      maxBills,
+    );
+    this.logger.log(
+      `Bills: discovered ${statusUrls.length} bill(s) from ${ds.url}`,
+    );
+
+    let processed = 0;
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const url of statusUrls) {
+      const result = await this.extractAndUpsertBillPage(
+        regionId,
+        url,
+        ds,
+        repIndex,
+        committeeIndex,
+        stagePatterns,
+      );
+      if (result === 'created') {
+        created++;
+        processed++;
+      } else if (result === 'updated') {
+        updated++;
+        processed++;
+      } else if (result === 'skipped') {
+        skipped++;
+        processed++;
+      }
+      if (result !== 'failed') {
+        const billId = new URL(url).searchParams.get('bill_id');
+        if (billId) syncedExternalIds.add(billId);
+      }
+    }
+    if (skipped > 0) {
+      this.logger.log(
+        `Bills: skipped ${skipped} unchanged bill(s) from ${ds.url}`,
+      );
+    }
+
+    for (const url of votesUrls) {
+      const result = await this.extractVotesOnlyPage(
+        regionId,
+        url,
+        ds,
+        repIndex,
+      );
+      if (result === 'updated') updated++;
+    }
+
+    return { processed, created, updated, skipped };
+  }
+
+  private async buildStagePatterns(regionId: string): Promise<StagePattern[]> {
+    const civics = await this.getCivicsDataForSync(regionId);
+    const patterns: StagePattern[] = [];
+    for (const stage of civics?.lifecycleStages ?? []) {
+      for (const raw of stage.statusStringPatterns) {
+        try {
+          patterns.push({ stageId: stage.id, regex: new RegExp(raw, 'i') });
+        } catch {
+          this.logger.warn(
+            `Invalid status pattern "${raw}" for stage "${stage.id}" in ${regionId} — skipping`,
+          );
+        }
+      }
+    }
+    return patterns;
+  }
+
+  /**
+   * Internal helper to load civics data for bill stage pattern compilation.
+   * Reads directly from DB without caching so sync always uses fresh data.
+   */
+  private async getCivicsDataForSync(regionId: string): Promise<{
+    lifecycleStages: Array<{
+      id: string;
+      statusStringPatterns: string[];
+    }>;
+  } | null> {
+    const rows = await this.db.civicsBlock.findMany({
+      where: { regionId },
+      orderBy: { extractedAt: 'desc' },
+    });
+    if (rows.length === 0) return null;
+    const lifecycleStages = new Map<
+      string,
+      { id: string; statusStringPatterns: string[] }
+    >();
+    for (const row of rows) {
+      const rawL = row.lifecycleStages as Record<string, unknown>[] | null;
+      if (!rawL) continue;
+      for (const ls of rawL) {
+        const id = String(ls['id'] ?? '');
+        if (!id || lifecycleStages.has(id)) continue;
+        lifecycleStages.set(id, {
+          id,
+          statusStringPatterns: Array.isArray(ls['statusStringPatterns'])
+            ? (ls['statusStringPatterns'] as string[])
+            : [],
+        });
+      }
+    }
+    if (lifecycleStages.size === 0) return null;
+    return { lifecycleStages: Array.from(lifecycleStages.values()) };
+  }
+
+  private resolveStageFromStatus(
+    status: string | null | undefined,
+    stagePatterns: StagePattern[],
+  ): string | null {
+    if (!status || stagePatterns.length === 0) return null;
+    return stagePatterns.find((p) => p.regex.test(status))?.stageId ?? null;
+  }
+
+  private async backfillBillStageIds(
+    regionId: string,
+    stagePatterns: StagePattern[],
+  ): Promise<void> {
+    const unmatched = await this.db.bill.findMany({
+      where: { regionId, currentStageId: null, status: { not: null } },
+      select: { id: true, status: true },
+    });
+    if (unmatched.length === 0) return;
+
+    const byStage = new Map<string, string[]>();
+    for (const bill of unmatched) {
+      const stageId = this.resolveStageFromStatus(bill.status, stagePatterns);
+      if (!stageId) continue;
+      if (!byStage.has(stageId)) byStage.set(stageId, []);
+      byStage.get(stageId)!.push(bill.id);
+    }
+
+    let filled = 0;
+    for (const [stageId, ids] of byStage) {
+      await this.db.bill.updateMany({
+        where: { id: { in: ids } },
+        data: { currentStageId: stageId },
+      });
+      filled += ids.length;
+    }
+    if (filled > 0) {
+      this.logger.log(
+        `Bills: backfilled currentStageId for ${filled} of ${unmatched.length} bill(s) in ${regionId}`,
+      );
+    }
+  }
+
+  private async pruneStaleBills(
+    regionId: string,
+    syncedExternalIds: Set<string>,
+    maxBills?: number,
+  ): Promise<void> {
+    if (syncedExternalIds.size === 0 || maxBills != null) return;
+
+    const { count } = await this.db.bill.deleteMany({
+      where: {
+        regionId,
+        externalId: { notIn: Array.from(syncedExternalIds) },
+      },
+    });
+    if (count > 0) {
+      this.logger.log(
+        `Bills: removed ${count} stale bill record(s) for ${regionId}`,
+      );
+    }
+  }
+
+  private async discoverBillUrls(
+    ds: DataSourceConfig,
+    registeredHosts: Set<string>,
+    maxBills?: number,
+  ): Promise<{ statusUrls: string[]; votesUrls: string[] }> {
+    if (!ds.billDiscovery) {
+      const urls = await this.crawlCivicsUrls(ds, registeredHosts);
+      return {
+        statusUrls: urls.filter((u) => u.includes('billStatusClient.xhtml')),
+        votesUrls: urls.filter((u) => u.includes('billVotesClient.xhtml')),
+      };
+    }
+
+    const { navLinkPattern, statusPageTemplate, votesPageTemplate } =
+      ds.billDiscovery;
+
+    const seedUrl = new URL(ds.url);
+    if (
+      seedUrl.protocol !== 'https:' ||
+      !registeredHosts.has(seedUrl.hostname)
+    ) {
+      this.logger.error(
+        `Bills discovery rejected: ${seedUrl.hostname} is not a registered host`,
+      );
+      return { statusUrls: [], votesUrls: [] };
+    }
+
+    const limit = maxBills ?? Infinity;
+    let html: string;
+    try {
+      html = await this.fetchUrlText(ds.url);
+    } catch (e) {
+      this.logger.warn(
+        `Bills: failed to fetch seed ${ds.url}: ${(e as Error).message}`,
+      );
+      return { statusUrls: [], votesUrls: [] };
+    }
+
+    const decoded = html.replace(/&amp;/g, '&');
+    const re = new RegExp(navLinkPattern, 'g');
+    const seen = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(decoded)) !== null && seen.size < limit) {
+      seen.add(m[1]);
+    }
+
+    const base = `${seedUrl.protocol}//${seedUrl.host}`;
+    const statusUrls: string[] = [];
+    const votesUrls: string[] = [];
+    for (const billId of seen) {
+      statusUrls.push(
+        `${base}${statusPageTemplate.replace('{bill_id}', billId)}`,
+      );
+      votesUrls.push(
+        `${base}${votesPageTemplate.replace('{bill_id}', billId)}`,
+      );
+    }
+
+    return { statusUrls, votesUrls };
+  }
+
+  private async buildRepNameIndex(
+    _: string,
+  ): Promise<Map<string, { id: string; chamber: string }>> {
+    const reps = await this.db.representative.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true, chamber: true },
+    });
+    const index = new Map<string, { id: string; chamber: string }>();
+    for (const r of reps) {
+      index.set(r.name.toLowerCase().trim(), { id: r.id, chamber: r.chamber });
+      const lastName = r.name.split(/\s+/).pop()?.toLowerCase() ?? '';
+      if (lastName && !index.has(lastName)) {
+        index.set(lastName, { id: r.id, chamber: r.chamber });
+      }
+    }
+    return index;
+  }
+
+  private async buildCommitteeNameIndex(): Promise<Map<string, string>> {
+    const committees = await this.db.legislativeCommittee.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true },
+    });
+    const index = new Map<string, string>();
+    for (const c of committees) {
+      index.set(c.name.toLowerCase().trim(), c.id);
+    }
+    return index;
+  }
+
+  private resolveRepByName(
+    name: string,
+    index: Map<string, { id: string; chamber: string }>,
+  ): string | undefined {
+    const normalized = name.toLowerCase().trim();
+    const exact = index.get(normalized);
+    if (exact) return exact.id;
+    const lastName = normalized.split(/\s+/).pop() ?? '';
+    return lastName ? index.get(lastName)?.id : undefined;
+  }
+
+  private extractBillPublishedAt(html: string): string | null {
+    const m = html.match(
+      /Date Published:\s*(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s+[AP]M)/i,
+    );
+    return m ? m[1].trim() : null;
+  }
+
+  private async checkBillSkipCondition(
+    billId: string,
+    sourceUrl: string,
+    textPageTemplate: string,
+  ): Promise<Date | 'skipped' | null> {
+    const base = new URL(sourceUrl).origin;
+    const textUrl = `${base}${textPageTemplate.replace('{bill_id}', billId)}`;
+    try {
+      if (new URL(textUrl).hostname !== new URL(sourceUrl).hostname) {
+        this.logger.warn(
+          `Bills skip-check: textPageTemplate hostname mismatch, skipping for ${sourceUrl}`,
+        );
+        return null;
+      }
+      const textHtml = await this.fetchUrlText(textUrl);
+      const remoteStr = this.extractBillPublishedAt(textHtml);
+      if (!remoteStr) return null;
+
+      const remoteDate = new Date(`${remoteStr} UTC`);
+      if (isNaN(remoteDate.getTime())) return null;
+
+      const existing = await this.db.bill.findUnique({
+        where: { externalId: billId },
+        select: { sourcePublishedAt: true },
+      });
+      if (
+        existing?.sourcePublishedAt &&
+        existing.sourcePublishedAt.getTime() === remoteDate.getTime()
+      ) {
+        return 'skipped';
+      }
+      return remoteDate;
+    } catch {
+      return null;
+    }
+  }
+
+  private async extractAndUpsertBillPage(
+    regionId: string,
+    sourceUrl: string,
+    ds: DataSourceConfig,
+    repIndex: Map<string, { id: string; chamber: string }>,
+    committeeIndex: Map<string, string>,
+    stagePatterns: StagePattern[],
+  ): Promise<'created' | 'updated' | 'skipped' | 'failed'> {
+    if (!this.promptClient || !this.llm) return 'failed';
+    try {
+      let sourcePublishedAt: Date | null = null;
+      let billId: string | undefined;
+      try {
+        billId = new URL(sourceUrl).searchParams.get('bill_id') ?? undefined;
+      } catch {
+        /* invalid URL */
+      }
+
+      if (billId && ds.billDiscovery?.textPageTemplate) {
+        const skipResult = await this.checkBillSkipCondition(
+          billId,
+          sourceUrl,
+          ds.billDiscovery.textPageTemplate,
+        );
+        if (skipResult === 'skipped') return 'skipped';
+        if (skipResult instanceof Date) sourcePublishedAt = skipResult;
+      }
+
+      const html = await this.fetchUrlText(sourceUrl);
+      const content = this.htmlToReadableText(html);
+      const sessionYear = this.inferSessionYear(sourceUrl);
+
+      const { promptText } = await this.promptClient.getBillExtractionPrompt({
+        regionId,
+        sourceUrl,
+        sessionYear,
+        html: content,
+      });
+
+      const llmResult = await this.llm.generate(promptText, {
+        maxTokens: ds.llmMaxTokens ?? 8000,
+        temperature: 0.1,
+        requestTimeoutMs: ds.llmRequestTimeoutMs,
+      });
+
+      const candidate = extractJsonObjectSlice(llmResult.text);
+      if (!candidate) {
+        this.logger.warn(`Bills extraction: no JSON for ${sourceUrl}`);
+        return 'failed';
+      }
+
+      let raw: Partial<Bill>;
+      try {
+        raw = JSON.parse(candidate) as Partial<Bill>;
+      } catch {
+        this.logger.warn(
+          `Bills extraction: JSON parse failed for ${sourceUrl}`,
+        );
+        return 'failed';
+      }
+
+      if (!raw.billNumber || !raw.title) {
+        this.logger.warn(
+          `Bills extraction: missing required fields at ${sourceUrl}`,
+        );
+        return 'failed';
+      }
+
+      const urlBillId = (() => {
+        try {
+          return new URL(sourceUrl).searchParams.get('bill_id') ?? undefined;
+        } catch {
+          return undefined;
+        }
+      })();
+      const externalId =
+        urlBillId ?? raw.externalId ?? this.buildBillExternalId(raw);
+      const authorId = raw.authorName
+        ? this.resolveRepByName(raw.authorName, repIndex)
+        : undefined;
+      const existing = await this.db.bill.findUnique({
+        where: { externalId },
+        select: { id: true },
+      });
+
+      const billData = {
+        regionId,
+        billNumber: raw.billNumber,
+        sessionYear: raw.sessionYear ?? sessionYear,
+        measureTypeCode:
+          raw.measureTypeCode ?? this.inferMeasureTypeCode(raw.billNumber),
+        title: raw.title,
+        subject: raw.subject ?? null,
+        status: raw.status ?? null,
+        currentStageId:
+          raw.currentStageId ??
+          this.resolveStageFromStatus(raw.status, stagePatterns),
+        lastAction: raw.lastAction ?? null,
+        lastActionDate: raw.lastActionDate
+          ? new Date(raw.lastActionDate as unknown as string)
+          : null,
+        fiscalImpact: raw.fiscalImpact ?? null,
+        fullTextUrl: raw.fullTextUrl ?? null,
+        authorId: authorId ?? null,
+        authorName: raw.authorName ?? null,
+        sourceUrl,
+        sourcePublishedAt,
+        extractedAt: new Date(),
+      };
+      const bill = await this.db.bill.upsert({
+        where: { externalId },
+        create: { externalId, ...billData },
+        update: billData,
+        select: { id: true },
+      });
+
+      await this.linkBillCoAuthors(bill.id, raw.coAuthorNames ?? [], repIndex);
+      await this.linkBillCommittees(
+        bill.id,
+        raw.committeeNames ?? [],
+        committeeIndex,
+      );
+      await this.linkBillVotes(bill.id, raw.votes ?? [], repIndex, sourceUrl);
+
+      return existing ? 'updated' : 'created';
+    } catch (e) {
+      this.logger.warn(
+        `Bills extraction failed for ${sourceUrl}: ${(e as Error).message}`,
+      );
+      return 'failed';
+    }
+  }
+
+  private async extractVotesOnlyPage(
+    regionId: string,
+    sourceUrl: string,
+    ds: DataSourceConfig,
+    repIndex: Map<string, { id: string; chamber: string }>,
+  ): Promise<'updated' | 'failed' | 'skipped'> {
+    if (!this.promptClient || !this.llm) return 'failed';
+    try {
+      const billIdParam = new URL(sourceUrl).searchParams.get('bill_id');
+      if (!billIdParam) return 'skipped';
+
+      const bill = await this.db.bill.findUnique({
+        where: { externalId: billIdParam },
+        select: { id: true },
+      });
+      if (!bill) {
+        this.logger.debug(
+          `Bills: votes page skipped — no bill record yet for ${billIdParam}`,
+        );
+        return 'skipped';
+      }
+
+      const html = await this.fetchUrlText(sourceUrl);
+      const content = this.htmlToReadableText(html);
+      const sessionYear = this.inferSessionYear(sourceUrl);
+
+      const { promptText } = await this.promptClient.getBillExtractionPrompt({
+        regionId,
+        sourceUrl,
+        sessionYear,
+        html: content,
+      });
+
+      const llmResult = await this.llm.generate(promptText, {
+        maxTokens: ds.llmMaxTokens ?? 4000,
+        temperature: 0.1,
+        requestTimeoutMs: ds.llmRequestTimeoutMs,
+      });
+
+      const candidate = extractJsonObjectSlice(llmResult.text);
+      if (!candidate) return 'failed';
+
+      let raw: { votes?: Bill['votes'] };
+      try {
+        raw = JSON.parse(candidate) as { votes?: Bill['votes'] };
+      } catch {
+        return 'failed';
+      }
+
+      if (!raw.votes?.length) return 'skipped';
+
+      await this.linkBillVotes(bill.id, raw.votes, repIndex, sourceUrl);
+      this.logger.log(
+        `Bills: merged ${raw.votes.length} vote(s) for ${billIdParam}`,
+      );
+      return 'updated';
+    } catch (e) {
+      this.logger.warn(
+        `Bills: votes extraction failed for ${sourceUrl}: ${(e as Error).message}`,
+      );
+      return 'failed';
+    }
+  }
+
+  private buildBillExternalId(raw: Partial<Bill>): string {
+    const year = (raw.sessionYear ?? '').replace(/\D/g, '');
+    const num = (raw.billNumber ?? '').replace(/\s/g, '');
+    return `${year}${num}`;
+  }
+
+  private inferMeasureTypeCode(billNumber: string): string {
+    return (
+      billNumber
+        .replace(/\s*\d+.*$/, '')
+        .trim()
+        .toUpperCase() || 'AB'
+    );
+  }
+
+  private inferSessionYear(url: string): string {
+    try {
+      const billId = new URL(url).searchParams.get('bill_id');
+      if (billId) {
+        const m = billId.match(/^(\d{4})(\d{4})/);
+        if (m && Number(m[2]) === Number(m[1]) + 1) return `${m[1]}-${m[2]}`;
+      }
+    } catch {
+      /* invalid URL, fall through */
+    }
+    const m = url.match(/(\d{4})(\d{4})/);
+    if (m && Number(m[2]) === Number(m[1]) + 1) return `${m[1]}-${m[2]}`;
+    const y = new Date().getFullYear();
+    return `${y}-${y + 1}`;
+  }
+
+  private async linkBillCoAuthors(
+    billId: string,
+    names: string[],
+    repIndex: Map<string, { id: string; chamber: string }>,
+  ): Promise<void> {
+    await this.db.billCoAuthor.deleteMany({ where: { billId } });
+    const rows = names
+      .map((name) => {
+        const repId = this.resolveRepByName(name, repIndex);
+        return repId
+          ? { billId, representativeId: repId, coAuthorType: 'coauthor' }
+          : null;
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    if (rows.length > 0) {
+      await this.db.billCoAuthor.createMany({
+        data: rows,
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  private async linkBillCommittees(
+    billId: string,
+    names: string[],
+    committeeIndex: Map<string, string>,
+  ): Promise<void> {
+    await this.db.billCommitteeAssignment.deleteMany({ where: { billId } });
+    const rows = names
+      .map((name) => {
+        const committeeId = committeeIndex.get(name.toLowerCase().trim());
+        return committeeId
+          ? { billId, legislativeCommitteeId: committeeId }
+          : null;
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    if (rows.length > 0) {
+      await this.db.billCommitteeAssignment.createMany({
+        data: rows,
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  private async linkBillVotes(
+    billId: string,
+    votes: Bill['votes'],
+    repIndex: Map<string, { id: string; chamber: string }>,
+    sourceUrl: string,
+  ): Promise<void> {
+    if (votes.length === 0) return;
+    await this.db.billVote.deleteMany({ where: { billId } });
+    const rows = votes
+      .filter((v) => v.representativeName && v.position)
+      .map((v) => {
+        const voteDate =
+          v.voteDate instanceof Date
+            ? v.voteDate
+            : new Date(v.voteDate as unknown as string);
+        return {
+          billId,
+          representativeId:
+            this.resolveRepByName(v.representativeName!, repIndex) ?? null,
+          representativeName: v.representativeName!,
+          chamber: v.chamber,
+          voteDate,
+          position: v.position,
+          motionText: v.motionText ?? null,
+          sourceUrl,
+        };
+      });
+    if (rows.length > 0) {
+      await this.db.billVote.createMany({ data: rows, skipDuplicates: true });
+    }
+  }
+
+  // ─── Civics sync helpers ──────────────────────────────────────────────────────
+
+  private async crawlCivicsUrls(
+    ds: DataSourceConfig,
+    registeredHosts: Set<string>,
+  ): Promise<string[]> {
+    const depth = ds.crawlDepth ?? 0;
+    const maxPages = ds.crawlMaxPages ?? 20;
+
+    const seed = this.canonicalizeUrl(ds.url);
+    const seedUrl = new URL(seed);
+
+    if (
+      seedUrl.protocol !== 'https:' ||
+      !registeredHosts.has(seedUrl.hostname)
+    ) {
+      this.logger.error(
+        `Civics crawl rejected: ${seedUrl.hostname} is not a registered data source host or is non-HTTPS`,
+      );
+      return [];
+    }
+
+    const pathPrefix = seedUrl.pathname.replace(/[^/]*$/, '');
+    const inScope = (u: string): boolean => {
+      try {
+        const parsed = new URL(u);
+        return (
+          parsed.host === seedUrl.host && parsed.pathname.startsWith(pathPrefix)
+        );
+      } catch {
+        return false;
+      }
+    };
+
+    const visited = new Set<string>([seed]);
+    const order: string[] = [seed];
+    const queue: { url: string; depth: number }[] = [{ url: seed, depth: 0 }];
+
+    while (queue.length > 0 && order.length < maxPages) {
+      const { url, depth: d } = queue.shift()!;
+      if (d >= depth) continue;
+      let html: string;
+      try {
+        html = await this.fetchUrlText(url);
+      } catch (e) {
+        this.logger.warn(
+          `Civics crawl: fetch failed for ${url}: ${(e as Error).message}`,
+        );
+        continue;
+      }
+      for (const link of this.extractLinks(url, html)) {
+        const canonical = this.canonicalizeUrl(link);
+        if (visited.has(canonical) || !inScope(canonical)) continue;
+        visited.add(canonical);
+        order.push(canonical);
+        queue.push({ url: canonical, depth: d + 1 });
+        if (order.length >= maxPages) break;
+      }
+    }
+    return order;
+  }
+
+  private canonicalizeUrl(url: string): string {
+    try {
+      const u = new URL(url);
+      u.hash = '';
+      if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
+        u.pathname = u.pathname.slice(0, -1);
+      }
+      return u.toString();
+    } catch {
+      return url;
+    }
+  }
+
+  private extractLinks(baseUrl: string, html: string): string[] {
+    const out: string[] = [];
+    const re = /<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"]/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      const href = m[1].trim().replace(/&amp;/g, '&');
+      if (
+        !href ||
+        href.startsWith('javascript:') ||
+        href.startsWith('mailto:') ||
+        href.startsWith('tel:') ||
+        href.startsWith('#')
+      ) {
+        continue;
+      }
+      try {
+        out.push(new URL(href, baseUrl).toString());
+      } catch {
+        // skip malformed
+      }
+    }
+    return out;
+  }
+
+  private async extractAndUpsertCivicsPage(
+    regionId: string,
+    sourceUrl: string,
+    ds: DataSourceConfig,
+  ): Promise<'created' | 'updated' | 'failed'> {
+    if (!this.promptClient || !this.llm) return 'failed';
+    try {
+      const html = await this.fetchUrlText(sourceUrl);
+      const content = this.htmlToReadableText(html);
+      const { promptText, promptHash, promptVersion } =
+        await this.promptClient.getCivicsExtractionPrompt({
+          regionId,
+          sourceUrl,
+          contentGoal: ds.contentGoal,
+          category: ds.category,
+          hints: ds.hints,
+          html: content,
+        });
+
+      const result = await this.llm.generate(promptText, {
+        maxTokens: ds.llmMaxTokens ?? 32000,
+        temperature: 0.1,
+        requestTimeoutMs: ds.llmRequestTimeoutMs,
+      });
+
+      const candidate = extractJsonObjectSlice(result.text);
+      if (!candidate) {
+        this.logger.warn(
+          `Civics extraction: no JSON object for ${sourceUrl} (${result.text.length} chars)`,
+        );
+        return 'failed';
+      }
+
+      let block: Partial<{
+        chambers: unknown;
+        measureTypes: unknown;
+        lifecycleStages: unknown;
+        sessionScheme: unknown;
+        glossary: unknown;
+      }>;
+      try {
+        block = JSON.parse(candidate) as typeof block;
+      } catch (e) {
+        this.logger.warn(
+          `Civics extraction: JSON.parse failed for ${sourceUrl}: ${(e as Error).message}`,
+        );
+        return 'failed';
+      }
+
+      const existing = await this.db.civicsBlock.findUnique({
+        where: { regionId_sourceUrl: { regionId, sourceUrl } },
+        select: { id: true },
+      });
+
+      const fields = {
+        chambers: this.toJsonField(block.chambers),
+        measureTypes: this.toJsonField(block.measureTypes),
+        lifecycleStages: this.toJsonField(block.lifecycleStages),
+        sessionScheme: this.toJsonField(block.sessionScheme),
+        glossary: this.toJsonField(block.glossary),
+      };
+
+      await this.db.civicsBlock.upsert({
+        where: { regionId_sourceUrl: { regionId, sourceUrl } },
+        create: {
+          regionId,
+          sourceUrl,
+          ...fields,
+          promptHash,
+          promptVersion,
+          extractedAt: new Date(),
+        },
+        update: {
+          ...fields,
+          promptHash,
+          promptVersion,
+          extractedAt: new Date(),
+        },
+      });
+
+      const glossaryUpserted = await this.upsertGlossaryEntries(
+        regionId,
+        sourceUrl,
+        block.glossary,
+        promptHash,
+        promptVersion,
+      );
+
+      const outcome = existing ? 'updated' : 'created';
+      this.logger.log(
+        `Civics extracted from ${sourceUrl} (${outcome}, ${glossaryUpserted} glossary terms)`,
+      );
+      return outcome;
+    } catch (e) {
+      this.logger.error(
+        `Civics extraction failed for ${sourceUrl}: ${(e as Error).message}`,
+      );
+      return 'failed';
+    }
+  }
+
+  private async upsertGlossaryEntries(
+    regionId: string,
+    sourceUrl: string,
+    glossary: unknown,
+    promptHash: string | undefined,
+    promptVersion: string | undefined,
+  ): Promise<number> {
+    if (!Array.isArray(glossary) || glossary.length === 0) return 0;
+    const valid = glossary.filter(
+      (
+        e,
+      ): e is { term: string; slug: string; definition: unknown } & Record<
+        string,
+        unknown
+      > =>
+        !!e &&
+        typeof e === 'object' &&
+        typeof (e as Record<string, unknown>).term === 'string' &&
+        typeof (e as Record<string, unknown>).slug === 'string' &&
+        !!(e as Record<string, unknown>).definition,
+    );
+    if (valid.length < glossary.length) {
+      this.logger.debug(
+        `Glossary upsert: dropped ${glossary.length - valid.length} malformed entries from ${sourceUrl}`,
+      );
+    }
+    const now = new Date();
+    await batchTransaction(
+      this.db,
+      valid.map((entry) =>
+        this.db.glossaryEntry.upsert({
+          where: { regionId_slug: { regionId, slug: entry.slug } },
+          create: {
+            regionId,
+            term: entry.term,
+            slug: entry.slug,
+            definition: entry.definition as Prisma.InputJsonValue,
+            longDefinition: this.toJsonField(entry.longDefinition),
+            relatedTerms: Array.isArray(entry.relatedTerms)
+              ? (entry.relatedTerms as string[]).filter(
+                  (t) => typeof t === 'string',
+                )
+              : [],
+            sourceUrl,
+            promptHash,
+            promptVersion,
+            extractedAt: now,
+          },
+          update: {
+            term: entry.term,
+            definition: entry.definition as Prisma.InputJsonValue,
+            longDefinition: this.toJsonField(entry.longDefinition),
+            relatedTerms: Array.isArray(entry.relatedTerms)
+              ? (entry.relatedTerms as string[]).filter(
+                  (t) => typeof t === 'string',
+                )
+              : [],
+            sourceUrl,
+            promptHash,
+            promptVersion,
+            extractedAt: now,
+          },
+        }),
+      ),
+    );
+    return valid.length;
+  }
+
+  private async fetchUrlText(url: string): Promise<string> {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) {
+      throw new Error(
+        `HTTP ${response.status} fetching ${url}: ${response.statusText}`,
+      );
+    }
+    const ct = response.headers.get('content-type') ?? '';
+    const ctLower = ct.toLowerCase();
+    if (!ctLower.includes('text/html') && !ctLower.includes('xhtml+xml')) {
+      throw new Error(`Non-HTML content-type for ${url}: ${ct}`);
+    }
+    return response.text();
+  }
+
+  private htmlToReadableText(html: string): string {
+    let s = html;
+    s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+    s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+    s = s.replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, '');
+    s = s.replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, '');
+    s = s.replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, '');
+    s = s.replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, '');
+    s = s.replace(/<!--[\s\S]*?-->/g, '');
+    s = s.replace(/<[^>]+>/g, ' ');
+    s = s
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+    s = s
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\s*\n\s*/g, '\n')
+      .trim();
+    return s;
+  }
+
+  private toJsonField(
+    value: unknown,
+  ): Prisma.InputJsonValue | typeof Prisma.DbNull {
+    return value === undefined || value === null
+      ? Prisma.DbNull
+      : (value as Prisma.InputJsonValue);
+  }
+
+  // ─── Campaign finance helpers ─────────────────────────────────────────────────
+
+  private sortCampaignFinanceItems(
+    items: Record<string, unknown>[],
+  ): CampaignFinanceResult {
+    const committees: CampaignFinanceResult['committees'] = [];
+    const contributions: CampaignFinanceResult['contributions'] = [];
+    const expenditures: CampaignFinanceResult['expenditures'] = [];
+    const independentExpenditures: CampaignFinanceResult['independentExpenditures'] =
+      [];
+    const committeeMeasureFilings: CampaignFinanceResult['committeeMeasureFilings'] =
+      [];
+
+    for (const rec of items) {
+      if ('donorName' in rec && 'amount' in rec) {
+        contributions.push(
+          rec as unknown as CampaignFinanceResult['contributions'][0],
+        );
+      } else if ('payeeName' in rec && 'amount' in rec) {
+        expenditures.push(
+          rec as unknown as CampaignFinanceResult['expenditures'][0],
+        );
+      } else if ('supportOrOppose' in rec && 'committeeName' in rec) {
+        independentExpenditures.push(
+          rec as unknown as CampaignFinanceResult['independentExpenditures'][0],
+        );
+      } else if (
+        'filingId' in rec &&
+        ('ballotName' in rec || 'ballotNumber' in rec)
+      ) {
+        committeeMeasureFilings.push(
+          rec as unknown as CampaignFinanceResult['committeeMeasureFilings'][0],
+        );
+      } else if ('sourceSystem' in rec && 'type' in rec) {
+        committees.push(
+          rec as unknown as CampaignFinanceResult['committees'][0],
+        );
+      }
+    }
+
+    return {
+      committees,
+      contributions,
+      expenditures,
+      independentExpenditures,
+      committeeMeasureFilings,
+    };
+  }
+
+  private async upsertCampaignFinanceBatch(
+    data: CampaignFinanceResult,
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    const upsertConfigs: UpsertConfig[] = [
+      {
+        records: data.contributions,
+        model: this.db.contribution,
+        fields: [
+          'committeeId',
+          'donorName',
+          'donorType',
+          'donorEmployer',
+          'donorOccupation',
+          'donorCity',
+          'donorState',
+          'donorZip',
+          'amount',
+          'date',
+          'electionType',
+          'contributionType',
+          'sourceSystem',
+        ],
+      },
+      {
+        records: data.expenditures,
+        model: this.db.expenditure,
+        fields: [
+          'committeeId',
+          'payeeName',
+          'amount',
+          'date',
+          'purposeDescription',
+          'expenditureCode',
+          'candidateName',
+          'propositionTitle',
+          'supportOrOppose',
+          'sourceSystem',
+        ],
+      },
+      {
+        records: data.independentExpenditures,
+        model: this.db.independentExpenditure,
+        fields: [
+          'committeeId',
+          'committeeName',
+          'candidateName',
+          'propositionTitle',
+          'supportOrOppose',
+          'amount',
+          'date',
+          'electionDate',
+          'description',
+          'sourceSystem',
+        ],
+      },
+      {
+        records: data.committeeMeasureFilings,
+        model: this.db.cvr2Filing,
+        fields: [
+          'filingId',
+          'ballotName',
+          'ballotNumber',
+          'ballotJurisdiction',
+          'supportOrOppose',
+          'sourceSystem',
+        ],
+      },
+    ];
+
+    let totalProcessed = 0;
+    let totalCreated = 0;
+    let totalUpdated = 0;
+
+    for (const config of upsertConfigs) {
+      if (config.records.length === 0) continue;
+      const result = await this.upsertRecordsByFields(config);
+      totalProcessed += result.processed;
+      totalCreated += result.created;
+      totalUpdated += result.updated;
+    }
+
+    return {
+      processed: totalProcessed,
+      created: totalCreated,
+      updated: totalUpdated,
+    };
+  }
+
+  private async upsertRecordsByFields(
+    config: UpsertConfig,
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    const { model, fields } = config;
+    const rows = config.records as Record<string, unknown>[];
+    const externalIds = rows.map((r) => r.externalId as string);
+
+    const existing = await model.findMany({
+      where: { externalId: { in: externalIds } },
+      select: { externalId: true },
+    });
+    const existingSet = new Set(
+      existing.map((r: ExternalIdRecord) => r.externalId),
+    );
+
+    const pick = (r: Record<string, unknown>) =>
+      Object.fromEntries(fields.map((f: string) => [f, r[f]]));
+
+    await batchTransaction(
+      this.db,
+      rows.map((r) =>
+        model.upsert({
+          where: { externalId: r.externalId as string },
+          update: pick(r),
+          create: { externalId: r.externalId, ...pick(r) },
+        }),
+      ),
+    );
+
+    const created = rows.filter(
+      (r) => !existingSet.has(r.externalId as string),
+    ).length;
+    return {
+      processed: rows.length,
+      created,
+      updated: rows.length - created,
+    };
+  }
+}
+
+// ─── Module-level utility (needed by both sync + other helpers) ───────────────
+
+function deriveDistrictFromExternalId(externalId: string): string | undefined {
+  const last = externalId.split('-').at(-1);
+  if (!last || !/^\d+$/.test(last)) return undefined;
+  return String(Number.parseInt(last, 10));
+}
