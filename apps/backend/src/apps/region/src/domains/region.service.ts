@@ -672,6 +672,35 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Generic upsert-by-externalId helper shared by syncPropositions,
+   * syncMeetings, and syncRepresentatives. Callers own pre-sync enrichment
+   * and post-sync hooks; this method owns only the five shared steps:
+   * externalId query → existing Set → batchTransaction → invalidateCache
+   * → created/updated counts.
+   */
+  private async upsertByExternalId<T extends ExternalIdRecord>(
+    items: T[],
+    findExisting: (externalIds: string[]) => Promise<ExternalIdRecord[]>,
+    buildOps: (items: T[]) => Prisma.PrismaPromise<unknown>[],
+    cachePrefix: string,
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    if (items.length === 0) return { processed: 0, created: 0, updated: 0 };
+
+    const externalIds = items.map((i) => i.externalId);
+    const existingRecords = await findExisting(externalIds);
+    const existingSet = new Set(existingRecords.map((r) => r.externalId));
+
+    await batchTransaction(this.db, buildOps(items));
+    await this.invalidateCache(cachePrefix);
+
+    return {
+      processed: items.length,
+      created: items.filter((i) => !existingSet.has(i.externalId)).length,
+      updated: items.filter((i) => existingSet.has(i.externalId)).length,
+    };
+  }
+
+  /**
    * Get region information
    */
   getRegionInfo(): RegionInfoModel {
@@ -1215,55 +1244,41 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   private async syncPropositions(
     provider: DataFetcher = this.regionService,
     pipelineJobId?: string,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
+  ): Promise<{ processed: number; created: number; updated: number }> {
     const propositions = await provider.fetchPropositions(pipelineJobId);
-    if (propositions.length === 0) {
-      return { processed: 0, created: 0, updated: 0 };
-    }
 
-    // Get existing externalIds in a single query to calculate created vs updated
-    const externalIds = propositions.map((p) => p.externalId);
-    const existingRecords = await this.db.proposition.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingExternalIds = new Set(
-      existingRecords.map((r: ExternalIdRecord) => r.externalId),
-    );
-
-    // Batch upsert all propositions in chunked transactions (#476)
-    await batchTransaction(
-      this.db,
-      propositions.map((prop) =>
-        this.db.proposition.upsert({
-          where: { externalId: prop.externalId },
-          update: {
-            title: prop.title,
-            summary: prop.summary,
-            fullText: prop.fullText,
-            status: prop.status,
-            electionDate: prop.electionDate,
-            sourceUrl: prop.sourceUrl,
-          },
-          create: {
-            externalId: prop.externalId,
-            title: prop.title,
-            summary: prop.summary,
-            fullText: prop.fullText,
-            status: prop.status,
-            electionDate: prop.electionDate,
-            sourceUrl: prop.sourceUrl,
-          },
+    const result = await this.upsertByExternalId(
+      propositions,
+      (ids) =>
+        this.db.proposition.findMany({
+          where: { externalId: { in: ids } },
+          select: { externalId: true },
         }),
-      ),
+      (props) =>
+        props.map((prop) =>
+          this.db.proposition.upsert({
+            where: { externalId: prop.externalId },
+            update: {
+              title: prop.title,
+              summary: prop.summary,
+              fullText: prop.fullText,
+              status: prop.status,
+              electionDate: prop.electionDate,
+              sourceUrl: prop.sourceUrl,
+            },
+            create: {
+              externalId: prop.externalId,
+              title: prop.title,
+              summary: prop.summary,
+              fullText: prop.fullText,
+              status: prop.status,
+              electionDate: prop.electionDate,
+              sourceUrl: prop.sourceUrl,
+            },
+          }),
+        ),
+      'propositions:',
     );
-
-    // Invalidate cached proposition queries (#459)
-    await this.invalidateCache('propositions:');
 
     // Generate AI analysis for any proposition with fullText but no
     // analysis yet. DB-driven so it picks up newly ingested PDFs as well
@@ -1279,14 +1294,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const created = propositions.filter(
-      (p) => !existingExternalIds.has(p.externalId),
-    ).length;
-    const updated = propositions.filter((p) =>
-      existingExternalIds.has(p.externalId),
-    ).length;
-
-    return { processed: propositions.length, created, updated };
+    return result;
   }
 
   /**
@@ -1313,11 +1321,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
   private async syncMeetings(
     provider: DataFetcher = this.regionService,
     pipelineJobId?: string,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
+  ): Promise<{ processed: number; created: number; updated: number }> {
     const meetings = await provider.fetchMeetings(pipelineJobId);
     if (meetings.length === 0) {
       // Daily-file may be empty between sessions, but pdf_archive
@@ -1326,52 +1330,38 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       return this.syncMeetingMinutes(provider);
     }
 
-    // Get existing externalIds in a single query to calculate created vs updated
-    const externalIds = meetings.map((m) => m.externalId);
-    const existingRecords = await this.db.meeting.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingExternalIds = new Set(
-      existingRecords.map((r: ExternalIdRecord) => r.externalId),
-    );
-
-    // Batch upsert all meetings in chunked transactions (#476)
-    await batchTransaction(
-      this.db,
-      meetings.map((meeting) =>
-        this.db.meeting.upsert({
-          where: { externalId: meeting.externalId },
-          update: {
-            title: meeting.title,
-            body: meeting.body,
-            scheduledAt: meeting.scheduledAt,
-            location: meeting.location,
-            agendaUrl: meeting.agendaUrl,
-            videoUrl: meeting.videoUrl,
-          },
-          create: {
-            externalId: meeting.externalId,
-            title: meeting.title,
-            body: meeting.body,
-            scheduledAt: meeting.scheduledAt,
-            location: meeting.location,
-            agendaUrl: meeting.agendaUrl,
-            videoUrl: meeting.videoUrl,
-          },
+    const result = await this.upsertByExternalId(
+      meetings,
+      (ids) =>
+        this.db.meeting.findMany({
+          where: { externalId: { in: ids } },
+          select: { externalId: true },
         }),
-      ),
+      (items) =>
+        items.map((meeting) =>
+          this.db.meeting.upsert({
+            where: { externalId: meeting.externalId },
+            update: {
+              title: meeting.title,
+              body: meeting.body,
+              scheduledAt: meeting.scheduledAt,
+              location: meeting.location,
+              agendaUrl: meeting.agendaUrl,
+              videoUrl: meeting.videoUrl,
+            },
+            create: {
+              externalId: meeting.externalId,
+              title: meeting.title,
+              body: meeting.body,
+              scheduledAt: meeting.scheduledAt,
+              location: meeting.location,
+              agendaUrl: meeting.agendaUrl,
+              videoUrl: meeting.videoUrl,
+            },
+          }),
+        ),
+      'meetings:',
     );
-
-    // Invalidate cached meeting queries (#459)
-    await this.invalidateCache('meetings:');
-
-    const created = meetings.filter(
-      (m) => !existingExternalIds.has(m.externalId),
-    ).length;
-    const updated = meetings.filter((m) =>
-      existingExternalIds.has(m.externalId),
-    ).length;
 
     // Daily-journal / committee-minutes documents come in under the
     // same MEETINGS dataType but as `pdf_archive` sources. Persist
@@ -1380,9 +1370,9 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     // caller sees a single total.
     const minutesResult = await this.syncMeetingMinutes(provider);
     return {
-      processed: meetings.length + minutesResult.processed,
-      created: created + minutesResult.created,
-      updated: updated + minutesResult.updated,
+      processed: result.processed + minutesResult.processed,
+      created: result.created + minutesResult.created,
+      updated: result.updated + minutesResult.updated,
     };
   }
 
@@ -1567,15 +1557,8 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
     provider: DataFetcher = this.regionService,
     maxReps?: number,
     regionId?: string,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
+  ): Promise<{ processed: number; created: number; updated: number }> {
     const reps = await provider.fetchRepresentatives();
-    if (reps.length === 0) {
-      return { processed: 0, created: 0, updated: 0 };
-    }
 
     for (const r of reps) {
       this.normalizeRep(r);
@@ -1587,68 +1570,61 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       await this.bioGenerator.enrichBios(reps, maxReps);
     }
 
-    // Get existing externalIds in a single query to calculate created vs updated
-    const externalIds = reps.map((r) => r.externalId);
-    const existingRecords = await this.db.representative.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingExternalIds = new Set(
-      existingRecords.map((r: ExternalIdRecord) => r.externalId),
+    const result = await this.upsertByExternalId(
+      reps,
+      (ids) =>
+        this.db.representative.findMany({
+          where: { externalId: { in: ids } },
+          select: { externalId: true },
+        }),
+      (items) =>
+        items.map((rep) => {
+          const lastName = extractLastName(rep.name);
+          const district = this.sanitizeDistrict(rep);
+          return this.db.representative.upsert({
+            where: { externalId: rep.externalId },
+            // On UPDATE: `undefined` tells Prisma to skip a field and
+            // preserve the existing DB value. A null from the scrape
+            // (field present in the extractor output but unset for this
+            // rep) would otherwise clobber previously-enriched data —
+            // e.g., wiping an AI-generated bio when the Assembly detail
+            // scrape stops returning a bio field. Convert null→undefined
+            // for every optional enrichment field.
+            update: {
+              regionId: regionId ?? rep.regionId ?? 'california',
+              name: rep.name,
+              lastName,
+              chamber: rep.chamber,
+              district,
+              party: rep.party,
+              photoUrl: rep.photoUrl ?? undefined,
+              contactInfo: (rep.contactInfo as object | null) ?? undefined,
+              committees: (rep.committees as object[] | null) ?? undefined,
+              committeesSummary: rep.committeesSummary ?? undefined,
+              bio: rep.bio ?? undefined,
+              bioSource: rep.bioSource ?? undefined,
+              bioClaims: (rep.bioClaims as object[] | null) ?? undefined,
+            },
+            create: {
+              externalId: rep.externalId,
+              regionId: regionId ?? rep.regionId ?? 'california',
+              name: rep.name,
+              lastName,
+              chamber: rep.chamber,
+              district,
+              party: rep.party,
+              photoUrl: rep.photoUrl,
+              contactInfo: rep.contactInfo as object | undefined,
+              committees: rep.committees as object[] | undefined,
+              committeesSummary: rep.committeesSummary,
+              bio: rep.bio,
+              bioSource: rep.bioSource,
+              bioClaims: rep.bioClaims as object[] | undefined,
+            },
+          });
+        }),
+      'representatives:',
     );
-
-    // Batch upsert all representatives in chunked transactions (#476)
-    await batchTransaction(
-      this.db,
-      reps.map((rep) => {
-        const lastName = extractLastName(rep.name);
-        const district = this.sanitizeDistrict(rep);
-        return this.db.representative.upsert({
-          where: { externalId: rep.externalId },
-          // On UPDATE: `undefined` tells Prisma to skip a field and
-          // preserve the existing DB value. A null from the scrape
-          // (field present in the extractor output but unset for this
-          // rep) would otherwise clobber previously-enriched data —
-          // e.g., wiping an AI-generated bio when the Assembly detail
-          // scrape stops returning a bio field. Convert null→undefined
-          // for every optional enrichment field.
-          update: {
-            regionId: regionId ?? rep.regionId ?? 'california',
-            name: rep.name,
-            lastName,
-            chamber: rep.chamber,
-            district,
-            party: rep.party,
-            photoUrl: rep.photoUrl ?? undefined,
-            contactInfo: (rep.contactInfo as object | null) ?? undefined,
-            committees: (rep.committees as object[] | null) ?? undefined,
-            committeesSummary: rep.committeesSummary ?? undefined,
-            bio: rep.bio ?? undefined,
-            bioSource: rep.bioSource ?? undefined,
-            bioClaims: (rep.bioClaims as object[] | null) ?? undefined,
-          },
-          create: {
-            externalId: rep.externalId,
-            regionId: regionId ?? rep.regionId ?? 'california',
-            name: rep.name,
-            lastName,
-            chamber: rep.chamber,
-            district,
-            party: rep.party,
-            photoUrl: rep.photoUrl,
-            contactInfo: rep.contactInfo as object | undefined,
-            committees: rep.committees as object[] | undefined,
-            committeesSummary: rep.committeesSummary,
-            bio: rep.bio,
-            bioSource: rep.bioSource,
-            bioClaims: rep.bioClaims as object[] | undefined,
-          },
-        });
-      }),
-    );
-
-    // Invalidate cached representative queries (#459)
-    await this.invalidateCache('representatives:');
 
     // Post-upsert: generate the AI committee-assignment preamble for any
     // reps that have committees but no summary yet. DB-driven so it runs
@@ -1690,14 +1666,7 @@ export class RegionDomainService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const created = reps.filter(
-      (r) => !existingExternalIds.has(r.externalId),
-    ).length;
-    const updated = reps.filter((r) =>
-      existingExternalIds.has(r.externalId),
-    ).length;
-
-    return { processed: reps.length, created, updated };
+    return result;
   }
 
   /**

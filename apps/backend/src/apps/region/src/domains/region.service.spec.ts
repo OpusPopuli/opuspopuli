@@ -623,6 +623,56 @@ describe('RegionDomainService', () => {
     });
   });
 
+  describe('upsertByExternalId helper (via syncDataType)', () => {
+    it('invalidates cache after upsert', async () => {
+      mockCache.keys.mockResolvedValue([
+        'propositions:all',
+        'propositions:page-1',
+        'other:key',
+      ]);
+      mockDb.proposition.findMany.mockResolvedValue([]);
+
+      await service.syncDataType(DataType.PROPOSITIONS);
+
+      expect(mockCache.keys).toHaveBeenCalled();
+      // Only the two 'propositions:' keys should be deleted, not 'other:key'
+      expect(mockCache.delete).toHaveBeenCalledTimes(2);
+      expect(mockCache.delete).toHaveBeenCalledWith('propositions:all');
+      expect(mockCache.delete).toHaveBeenCalledWith('propositions:page-1');
+      expect(mockCache.delete).not.toHaveBeenCalledWith('other:key');
+    });
+
+    it('skips upsert and cache invalidation when provider returns no items', async () => {
+      mockPlugin.fetchPropositions.mockResolvedValue([]);
+
+      await service.syncDataType(DataType.PROPOSITIONS);
+
+      expect(mockDb.proposition.findMany).not.toHaveBeenCalled();
+      expect(mockDb.$transaction).not.toHaveBeenCalled();
+      expect(mockCache.keys).not.toHaveBeenCalled();
+    });
+
+    it('falls through to syncMeetingMinutes when meetings list is empty', async () => {
+      mockPlugin.fetchMeetings.mockResolvedValue([]);
+      // plugin has no fetchMeetingMinutes — syncMeetingMinutes returns {0,0,0}
+      const result = await service.syncDataType(DataType.MEETINGS);
+
+      expect(mockDb.meeting.findMany).not.toHaveBeenCalled();
+      expect(mockDb.$transaction).not.toHaveBeenCalled();
+      expect(result.itemsProcessed).toBe(0);
+    });
+
+    it('sums meeting + minutes counts when both are non-empty', async () => {
+      // meetings: 1 new record
+      mockDb.meeting.findMany.mockResolvedValue([]);
+      // minutes fallthrough: provider has no fetchMeetingMinutes → 0 extra
+      const result = await service.syncDataType(DataType.MEETINGS);
+
+      expect(result.itemsCreated).toBe(1); // from meetings only
+      expect(result.itemsProcessed).toBe(1);
+    });
+  });
+
   describe('getPropositions', () => {
     it('should return paginated propositions', async () => {
       const mockItems = [
