@@ -1,7 +1,7 @@
 import { AnalysisRequestSource, TriggerSource } from "./queue.constants";
 
 export interface RegionSyncJobData {
-  pipelineJobId: string;
+  pipelineJobId?: string;
   triggerSource: TriggerSource;
   regionId?: string;
   dataTypes?: string[];

@@ -43,8 +43,11 @@ export class PipelineJobService {
   }
 
   async markRunning(id: string, bullmqJobId: string): Promise<void> {
-    await this.prisma.pipelineJob.update({
-      where: { id },
+    // Skip if already SUCCEEDED — BullMQ can re-enqueue a stalled job even
+    // after the original attempt finished, and we must not overwrite the
+    // completed record's startedAt/finishedAt (which would cause negative elapsedMs).
+    await this.prisma.pipelineJob.updateMany({
+      where: { id, status: { not: JOB_STATUS.SUCCEEDED } },
       data: {
         status: JOB_STATUS.RUNNING,
         bullmqJobId,
