@@ -285,6 +285,8 @@ services:
       # No automatic scheduling in UAT — trigger via syncRegionData mutation
       REGION_SYNC_CRON_ENABLED: "false"
       REGION_SYNC_RUN_ON_STARTUP: "false"
+      # 1-hour lock for region-sync — representatives bio generation takes ~70 min
+      BULLMQ_QUEUE_REGION_SYNC_LOCK_DURATION_MS: "3600000"
       BIO_GENERATOR_MAX_TOKENS: "1500"
       BIO_GENERATOR_CONCURRENCY: "1"
       BIO_GENERATOR_MAX_REPS: "5"
@@ -328,6 +330,8 @@ services:
       DESCRIPTION: Structural analysis worker (async manifest analysis)
       PORT: 8080
       STRUCTURAL_ANALYSIS_WORKER_PORT: 8080
+      # 10-min lock for structural analysis — LLM manifest analysis can be slow
+      BULLMQ_QUEUE_PIPELINE_STRUCTURAL_ANALYSIS_LOCK_DURATION_MS: "600000"
       LLM_URL: http://host.docker.internal:11434
       LLM_MODEL: qwen3.5:9b
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"

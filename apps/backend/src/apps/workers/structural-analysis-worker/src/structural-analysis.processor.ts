@@ -10,10 +10,14 @@ import { Job, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import {
   QUEUE_CONNECTION,
+  REGION_SYNC_QUEUE,
   STRUCTURAL_ANALYSIS_QUEUE,
+  TRIGGER_SOURCE,
+  QueueService,
   createWorker,
 } from '@opuspopuli/queue-provider';
 import type {
+  RegionSyncJobData,
   StructuralAnalysisJobData,
   StructuralAnalysisJobResult,
   AnalysisRequestSource,
@@ -33,6 +37,7 @@ export class StructuralAnalysisProcessor
   constructor(
     private readonly pipeline: ScrapingPipelineService,
     private readonly jobService: StructuralAnalysisJobService,
+    private readonly queueService: QueueService,
     @Inject(QUEUE_CONNECTION) private readonly connection: IORedis,
     private readonly config: ConfigService,
   ) {}
@@ -122,6 +127,8 @@ export class StructuralAnalysisProcessor
         'Structural-analysis job succeeded',
       );
 
+      await this.enqueueFollowUpSync(regionId, dataType);
+
       return { manifestId, manifestVersion, analysisTimeMs };
     } catch (err) {
       const isLastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
@@ -146,6 +153,41 @@ export class StructuralAnalysisProcessor
       );
 
       throw err;
+    }
+  }
+
+  /**
+   * Enqueue a targeted region-sync job after a manifest is written.
+   * Uses a deterministic jobId so BullMQ deduplicates concurrent analyses
+   * for the same (regionId, dataType) — only one follow-up sync is queued.
+   */
+  private async enqueueFollowUpSync(
+    regionId: string,
+    dataType: string,
+  ): Promise<void> {
+    try {
+      // Deterministic jobId deduplicates concurrent analyses for the same
+      // (regionId, dataType) — BullMQ silently skips if already queued/active.
+      const dedupeJobId = `manifest-ready:${regionId}:${dataType}`;
+
+      await this.queueService.enqueue<RegionSyncJobData>(
+        REGION_SYNC_QUEUE,
+        {
+          triggerSource: TRIGGER_SOURCE.MANIFEST_READY,
+          regionId,
+          dataTypes: [dataType],
+        },
+        { jobId: dedupeJobId },
+      );
+
+      this.logger.log(
+        `Enqueued follow-up region-sync for ${regionId}/${dataType} after manifest ready`,
+      );
+    } catch (err) {
+      // Log but don't fail the analysis job — the operator can re-trigger sync manually
+      this.logger.warn(
+        `Failed to enqueue follow-up sync for ${regionId}/${dataType}: ${(err as Error).message}`,
+      );
     }
   }
 }

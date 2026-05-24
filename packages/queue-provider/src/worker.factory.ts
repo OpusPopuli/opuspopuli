@@ -29,10 +29,11 @@ export function createWorker<T>(
   const logger = new Logger(`Worker:${queueName}`);
   const envPrefix = queueName.toUpperCase().replace(/-/g, "_");
 
-  const concurrency = parseInt(
-    process.env[`BULLMQ_QUEUE_${envPrefix}_CONCURRENCY`] ?? "1",
-    10,
-  );
+  const concurrency =
+    Number.parseInt(
+      process.env[`BULLMQ_QUEUE_${envPrefix}_CONCURRENCY`] ?? "1",
+      10,
+    ) || 1;
   const enabled = process.env[`BULLMQ_QUEUE_${envPrefix}_ENABLED`] !== "false";
 
   if (!enabled) {
@@ -41,11 +42,18 @@ export function createWorker<T>(
     );
   }
 
+  const lockDurationMs =
+    Number.parseInt(
+      process.env[`BULLMQ_QUEUE_${envPrefix}_LOCK_DURATION_MS`] ?? "300000",
+      10,
+    ) || 300000;
+
   const workerOpts: WorkerOptions = {
     connection,
     prefix: opts.prefix ?? "bullmq",
     concurrency,
     autorun: enabled,
+    lockDuration: lockDurationMs,
   };
 
   const worker = new Worker<T>(

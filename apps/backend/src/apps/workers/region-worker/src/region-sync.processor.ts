@@ -82,13 +82,15 @@ export class RegionSyncProcessor
       'Processing region-sync job',
     );
 
-    // Cron-fired repeatable jobs have no pre-created DB record — create one now.
+    // Cron and manifest-ready jobs have no pre-created DB record — create one now.
     const effectiveJobId =
       pipelineJobId ??
       (
         await this.pipelineJobService.create({
           bullmqJobId: job.id as string,
           triggerSource: triggerSource ?? TRIGGER_SOURCE.CRON,
+          regionId,
+          dataTypes,
         })
       ).id;
 

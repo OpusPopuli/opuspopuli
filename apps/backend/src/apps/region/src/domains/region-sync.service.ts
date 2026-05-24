@@ -109,6 +109,8 @@ interface DataFetcher {
     pipelineJobId?: string,
   ): Promise<CampaignFinanceResult>;
   fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
+  getName?(): string;
+  getDataSources?(dataType?: DataType): DataSourceConfig[];
 }
 
 type PrismaModelDelegate = {
@@ -124,6 +126,17 @@ type CommitteeRecord = {
   externalId: string;
   id: string;
 };
+
+// State-level rows (parentRegionId IS NULL) sort before county rows so the
+// primary plugin is always a state plugin when one is available.
+function comparePluginRows(
+  a: { name: string; parentRegionId: string | null },
+  b: { name: string; parentRegionId: string | null },
+): number {
+  if (!a.parentRegionId && b.parentRegionId) return -1;
+  if (a.parentRegionId && !b.parentRegionId) return 1;
+  return a.name.localeCompare(b.name);
+}
 
 /**
  * RegionSyncService — owns all data-synchronisation logic extracted from
@@ -210,86 +223,22 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     await this.resolveApiKeysFromVault();
     await this.syncRegionConfigs();
 
-    const localConfigRow = await this.db.regionPlugin.findFirst({
+    const allLocalConfigRows = await this.db.regionPlugin.findMany({
       where: { enabled: true, name: { not: 'federal' } },
     });
+    // State-level plugins (parentRegionId IS NULL) first so the primary plugin
+    // is always a state plugin when one is available.
+    allLocalConfigRows.sort(comparePluginRows);
+    const localConfigRow =
+      allLocalConfigRows.find((r) => !r.parentRegionId) ??
+      allLocalConfigRows[0];
 
-    const localConfigData = localConfigRow?.config as
-      | Record<string, unknown>
-      | undefined;
-    const stateCode = localConfigData?.stateCode as string | undefined;
+    const stateCode = (
+      localConfigRow?.config as Record<string, unknown> | undefined
+    )?.stateCode as string | undefined;
 
-    const variables: Record<string, string> = {};
-    if (stateCode) {
-      variables['stateCode'] = stateCode;
-    }
-
-    // 1. ALWAYS load federal
-    try {
-      const federalConfig = await this.db.regionPlugin.findUnique({
-        where: { name: 'federal' },
-      });
-
-      if (federalConfig) {
-        let config = federalConfig.config as Record<string, unknown>;
-
-        if (Object.keys(variables).length > 0) {
-          config = resolveConfigPlaceholders(config, variables);
-          this.logger.log(
-            `Resolved federal config placeholders (stateCode="${stateCode}")`,
-          );
-        } else {
-          this.logger.warn(
-            'No local region stateCode available — federal config placeholders will not be resolved',
-          );
-        }
-
-        this.logger.log('Loading federal plugin');
-        await this.pluginLoader.loadFederalPlugin(config, this.pipeline);
-      } else {
-        this.logger.warn(
-          'Federal region config not found in database — FEC data will not be available',
-        );
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to load federal plugin: ${(error as Error).message}`,
-      );
-    }
-
-    // 2. Load the enabled LOCAL plugin
-    try {
-      const localConfig = localConfigRow;
-
-      if (localConfig) {
-        this.logger.log(
-          `Loading local declarative region plugin "${localConfig.name}"`,
-        );
-        await this.pluginLoader.loadPlugin(
-          {
-            name: localConfig.name,
-            config: localConfig.config as Record<string, unknown> | undefined,
-          },
-          this.pipeline,
-        );
-      } else {
-        this.logger.warn(
-          'No enabled local region plugin found in database, falling back to ExampleRegionProvider',
-        );
-        await this.pluginRegistry.registerLocal(
-          'example',
-          this.createFallbackPlugin(),
-        );
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to load local region plugin, falling back to ExampleRegionProvider: ${(error as Error).message}`,
-      );
-      await this.pluginRegistry.registerLocal(
-        'example',
-        this.createFallbackPlugin(),
-      );
-    }
+    await this.initFederalPlugin(stateCode);
+    await this.initLocalPlugins(allLocalConfigRows);
 
     const localPlugin = this.pluginRegistry.getLocal();
     if (!localPlugin) {
@@ -302,7 +251,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     const info = this.regionService.getRegionInfo();
     this.pluginRegionName = info.name;
 
-    const pluginCfg = localConfigRow?.config as
+    const pluginCfg = localConfigRow?.config as unknown as
       | DeclarativeRegionConfig
       | undefined;
     this.pluginNormalizeDistrict =
@@ -314,6 +263,85 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       `RegionSyncService initialized — local: ${this.regionService.getProviderName()} (${info.name}), ` +
         `federal: ${this.pluginRegistry.getFederal() ? 'loaded' : 'not loaded'}`,
     );
+  }
+
+  private async initFederalPlugin(
+    stateCode: string | undefined,
+  ): Promise<void> {
+    try {
+      const federalConfig = await this.db.regionPlugin.findUnique({
+        where: { name: 'federal' },
+      });
+      if (!federalConfig) {
+        this.logger.warn(
+          'Federal region config not found in database — FEC data will not be available',
+        );
+        return;
+      }
+
+      let config = federalConfig.config as Record<string, unknown>;
+      if (stateCode) {
+        config = resolveConfigPlaceholders(config, { stateCode });
+        this.logger.log(
+          `Resolved federal config placeholders (stateCode="${stateCode}")`,
+        );
+      } else {
+        this.logger.warn(
+          'No local region stateCode available — federal config placeholders will not be resolved',
+        );
+      }
+
+      this.logger.log('Loading federal plugin');
+      await this.pluginLoader.loadFederalPlugin(config, this.pipeline);
+    } catch (error) {
+      this.logger.error(
+        `Failed to load federal plugin: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  private async initLocalPlugins(
+    rows: { name: string; config: unknown; parentRegionId: string | null }[],
+  ): Promise<void> {
+    if (rows.length === 0) {
+      this.logger.warn(
+        'No enabled local region plugins found in database, falling back to ExampleRegionProvider',
+      );
+      await this.pluginRegistry.registerLocal(
+        'example',
+        this.createFallbackPlugin(),
+      );
+      return;
+    }
+
+    for (const row of rows) {
+      try {
+        this.logger.log(
+          `Loading local declarative region plugin "${row.name}"`,
+        );
+        await this.pluginLoader.loadPlugin(
+          {
+            name: row.name,
+            config: row.config as Record<string, unknown> | undefined,
+          },
+          this.pipeline,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to load plugin "${row.name}": ${(error as Error).message}`,
+        );
+      }
+    }
+
+    if (!this.pluginRegistry.hasActive()) {
+      this.logger.warn(
+        'All local plugins failed to load, falling back to ExampleRegionProvider',
+      );
+      await this.pluginRegistry.registerLocal(
+        'example',
+        this.createFallbackPlugin(),
+      );
+    }
   }
 
   private createFallbackPlugin(): IRegionPlugin {
@@ -467,7 +495,6 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
             config: file.config as unknown as Prisma.InputJsonValue,
           },
         });
-        this.logger.log(`Synced region config "${file.name}" v${file.version}`);
       }
 
       if (configs.length > 0) {
@@ -689,8 +716,8 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         this.syncRepresentatives(provider, maxReps, regionId),
       [DataType.CAMPAIGN_FINANCE]: () =>
         this.syncCampaignFinance(provider, pipelineJobId),
-      [DataType.CIVICS]: () => this.syncCivics(),
-      [DataType.BILLS]: () => this.syncBills(maxBills),
+      [DataType.CIVICS]: () => this.syncCivics(provider),
+      [DataType.BILLS]: () => this.syncBills(maxBills, provider),
     };
 
     const handler = syncHandlers[dataType];
@@ -1211,7 +1238,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async syncCivics(): Promise<{
+  private async syncCivics(plugin: DataFetcher): Promise<{
     processed: number;
     created: number;
     updated: number;
@@ -1223,7 +1250,6 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       return { processed: 0, created: 0, updated: 0 };
     }
 
-    const plugin = this.pluginRegistry.getLocal();
     if (!plugin?.getDataSources) {
       this.logger.warn(
         'Region plugin does not expose getDataSources(); skipping civics sync',
@@ -1247,7 +1273,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    const regionId = plugin.getName();
+    const regionId = plugin.getName?.() ?? 'unknown';
     let processed = 0;
     let created = 0;
     let updated = 0;
@@ -1270,7 +1296,10 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
 
   // ─── Bills sync ───────────────────────────────────────────────────────────────
 
-  private async syncBills(maxBills?: number): Promise<{
+  private async syncBills(
+    maxBills: number | undefined,
+    plugin: DataFetcher,
+  ): Promise<{
     processed: number;
     created: number;
     updated: number;
@@ -1281,7 +1310,6 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       return { processed: 0, created: 0, updated: 0, skipped: 0 };
     }
 
-    const plugin = this.pluginRegistry.getLocal();
     if (!plugin?.getDataSources) {
       this.logger.warn(
         'Region plugin does not expose getDataSources(); skipping bills sync',
@@ -1305,7 +1333,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    const regionId = plugin.getName();
+    const regionId = plugin.getName?.() ?? 'unknown';
     const repIndex = await this.buildRepNameIndex(regionId);
     const committeeIndex = await this.buildCommitteeNameIndex();
     const stagePatterns = await this.buildStagePatterns(regionId);

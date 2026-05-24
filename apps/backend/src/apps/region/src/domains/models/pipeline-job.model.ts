@@ -18,6 +18,7 @@ export enum SyncTriggerSource {
   MANUAL = 'MANUAL',
   CRON = 'CRON',
   STARTUP = 'STARTUP',
+  MANIFEST_READY = 'MANIFEST_READY',
 }
 
 registerEnumType(SyncJobStatus, {

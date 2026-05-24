@@ -169,7 +169,7 @@ describe('RegionSyncService', () => {
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
 
-    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findMany.mockResolvedValue([]);
     mockDb.regionPlugin.findUnique.mockResolvedValue(null);
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
@@ -554,7 +554,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
       },
     };
 
-    mockDb.regionPlugin.findFirst.mockResolvedValue(localConfig as never);
+    mockDb.regionPlugin.findMany.mockResolvedValue([localConfig] as never);
     mockDb.regionPlugin.findUnique.mockResolvedValue(federalConfig as never);
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
@@ -637,7 +637,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
       },
     };
 
-    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findMany.mockResolvedValue([]);
     mockDb.regionPlugin.findUnique.mockResolvedValue(federalConfig as never);
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
@@ -771,7 +771,7 @@ describe('RegionSyncService — campaign finance sync', () => {
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
 
-    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findMany.mockResolvedValue([]);
     mockDb.regionPlugin.findUnique.mockResolvedValue(null);
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
@@ -962,7 +962,7 @@ describe('RegionSyncService — cache invalidation and batch transactions', () =
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
 
-    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findMany.mockResolvedValue([]);
     mockDb.regionPlugin.findUnique.mockResolvedValue(null);
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
@@ -1269,7 +1269,7 @@ describe('RegionSyncService — proposition analysis wiring', () => {
     } = {},
   ) {
     const mockDb = createMockDbService();
-    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findMany.mockResolvedValue([]);
     mockDb.regionPlugin.findUnique.mockResolvedValue(null);
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
     mockDb.proposition.findMany.mockResolvedValue([]);
@@ -1384,7 +1384,7 @@ describe('RegionSyncService — proposition analysis wiring', () => {
   describe('regeneratePropositionAnalysis when analyzer is not provided', () => {
     it('returns false when the optional dependency is absent', async () => {
       const mockDb = createMockDbService();
-      mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+      mockDb.regionPlugin.findMany.mockResolvedValue([]);
       mockDb.regionPlugin.findUnique.mockResolvedValue(null);
       mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
@@ -1503,7 +1503,7 @@ describe('RegionSyncService — proposition finance wiring', () => {
     } = {},
   ) {
     const mockDb = createMockDbService();
-    mockDb.regionPlugin.findFirst.mockResolvedValue(null);
+    mockDb.regionPlugin.findMany.mockResolvedValue([]);
     mockDb.regionPlugin.findUnique.mockResolvedValue(null);
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
     mockDb.proposition.findMany.mockResolvedValue([]);
