@@ -27,6 +27,7 @@ playwright/.cache/
 # macOS
 .DS_Store
 
-# Claude Code per-project state (plans, tool results, etc.)
-.claude/CALIFORNIA_SCRAPING_TEST_PLAN.md
+# Claude Code per-project state (worktrees, tool results, local settings)
+# settings.json (team config) can be force-added if needed: git add -f .claude/settings.json
+.claude/
 tmp/

@@ -17,6 +17,7 @@ export const TRIGGER_SOURCE = {
   MANUAL: "manual",
   CRON: "cron",
   STARTUP: "startup",
+  MANIFEST_READY: "manifest_ready",
 } as const;
 
 export type TriggerSource =

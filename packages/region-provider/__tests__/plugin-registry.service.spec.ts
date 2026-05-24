@@ -72,16 +72,31 @@ describe("PluginRegistryService", () => {
       expect(plugin.initialize).toHaveBeenCalledWith(config);
     });
 
-    it("should unregister existing plugin before registering new one", async () => {
+    it("should keep both plugins when registering different names", async () => {
       const plugin1 = createMockPlugin();
       const plugin2 = createMockPlugin();
 
       await registry.register("plugin1", plugin1);
       await registry.register("plugin2", plugin2);
 
+      expect(plugin1.destroy).not.toHaveBeenCalled();
+      expect(registry.getLocal("plugin1")).toBe(plugin1);
+      expect(registry.getLocal("plugin2")).toBe(plugin2);
+      // First registered is still the primary
+      expect(registry.getActive()).toBe(plugin1);
+      expect(registry.getActiveName()).toBe("plugin1");
+    });
+
+    it("should replace existing plugin when registering same name", async () => {
+      const plugin1 = createMockPlugin();
+      const plugin2 = createMockPlugin();
+
+      await registry.register("same-name", plugin1);
+      await registry.register("same-name", plugin2);
+
       expect(plugin1.destroy).toHaveBeenCalled();
       expect(registry.getActive()).toBe(plugin2);
-      expect(registry.getActiveName()).toBe("plugin2");
+      expect(registry.getActiveName()).toBe("same-name");
     });
 
     it("should mark plugin as error if initialize fails", async () => {
@@ -293,6 +308,25 @@ describe("PluginRegistryService", () => {
     it("should return empty array when no plugins registered", () => {
       const all = registry.getAll();
       expect(all).toHaveLength(0);
+    });
+
+    it("should return federal + all local plugins when multiple locals registered", async () => {
+      const federalPlugin = createMockPlugin();
+      const statePlugin = createMockPlugin();
+      const countyPlugin = createMockPlugin();
+
+      await registry.registerFederal("federal", federalPlugin);
+      await registry.registerLocal("california", statePlugin);
+      await registry.registerLocal("california-sonoma", countyPlugin);
+
+      const all = registry.getAll();
+
+      expect(all).toHaveLength(3);
+      expect(all.map((p) => p.name)).toEqual([
+        "federal",
+        "california",
+        "california-sonoma",
+      ]);
     });
   });
 

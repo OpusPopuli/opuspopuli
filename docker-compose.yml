@@ -393,7 +393,10 @@ services:
     container_name: opuspopuli-redis
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # noeviction required by BullMQ — allkeys-lru would evict job data under
+    # memory pressure. Conflicts with cache-as-LRU usage; see #725 for the
+    # production split into dedicated Redis instances.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
     volumes:
       - redis-data:/data
     networks:
