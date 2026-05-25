@@ -71,6 +71,9 @@ const buildLinker = (opts: {
         return { count: args.data.length };
       }),
     },
+    bill: {
+      updateMany: jest.fn(async () => ({ count: 0 })),
+    },
     $transaction: jest.fn(async (ops: any[]) => {
       for (const op of ops) await op;
     }),
@@ -283,6 +286,52 @@ describe('LegislativeActionLinkerService', () => {
     const ab1897 = engrossments.find((a) => a.rawSubject === 'AB 1897');
     expect(ab1897).toBeDefined();
     expect(ab1897!.propositionId).toBe('prop-ab1897');
+  });
+
+  it('flags bills cited in journal text for status re-check (#689)', async () => {
+    const { linker, db } = buildLinker({
+      minutes: [
+        {
+          id: 'm-1',
+          externalId: 'ca-2026-04-28',
+          body: 'Assembly',
+          date: new Date('2026-04-28T00:00:00Z'),
+          isActive: true,
+          rawText: FIXTURE_RAWTEXT,
+        },
+      ],
+    });
+
+    await linker.linkMinutes(['m-1']);
+
+    expect(db.bill.updateMany).toHaveBeenCalledTimes(1);
+    const call = (db.bill.updateMany as jest.Mock).mock.calls[0][0];
+    expect(call.data).toEqual({ needsStatusRecheck: true });
+    // FIXTURE_RAWTEXT contains AB 1897 in the engrossment block — must be
+    // present in the flagged set. Other citations from the same fixture are
+    // fine to include too; the assertion is "AB 1897 at minimum."
+    expect(call.where.billNumber.in).toEqual(
+      expect.arrayContaining(['AB 1897']),
+    );
+  });
+
+  it('does not call updateMany when no bill citations are present', async () => {
+    const { linker, db } = buildLinker({
+      minutes: [
+        {
+          id: 'm-empty',
+          externalId: 'ca-empty',
+          body: 'Assembly',
+          date: new Date('2026-04-28T00:00:00Z'),
+          isActive: true,
+          rawText: 'Tuesday, April 28, 2026\n\nNo bill citations here.\n',
+        },
+      ],
+    });
+
+    await linker.linkMinutes(['m-empty']);
+
+    expect(db.bill.updateMany).not.toHaveBeenCalled();
   });
 
   it('every action carries valid passage offsets into the source rawText', async () => {

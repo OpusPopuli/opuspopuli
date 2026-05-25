@@ -180,6 +180,7 @@ type InternalPropositionRecord = {
   analysisSource: string | null;
   analysisPromptHash: string | null;
   analysisGeneratedAt: Date | null;
+  lifecycleStageId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -221,6 +222,7 @@ export function mapPropositionRecord(
       : undefined,
     analysisSource: item.analysisSource ?? undefined,
     analysisGeneratedAt: item.analysisGeneratedAt ?? undefined,
+    lifecycleStageId: item.lifecycleStageId ?? undefined,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
@@ -259,6 +261,7 @@ export class RegionDomainService {
     depth?: string,
     scopedRegionId?: string,
     pipelineJobId?: string,
+    forceStatusRecheck?: boolean,
   ): Promise<SyncResult[]> {
     return this.syncService.syncAll(
       dataTypes,
@@ -267,6 +270,7 @@ export class RegionDomainService {
       depth,
       scopedRegionId,
       pipelineJobId,
+      forceStatusRecheck,
     );
   }
 
@@ -527,6 +531,7 @@ export class RegionDomainService {
     sessionYear?: string,
     authorId?: string,
     committeeId?: string,
+    coAuthorId?: string,
   ): Promise<PaginatedBillsModel> {
     return this.queryService.getBills(
       skip,
@@ -535,6 +540,7 @@ export class RegionDomainService {
       sessionYear,
       authorId,
       committeeId,
+      coAuthorId,
     );
   }
 

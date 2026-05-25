@@ -45,7 +45,7 @@ export class RegionSyncScheduler implements OnApplicationBootstrap {
     const configs = await this.regionService.getPluginDataSourceConfigs();
 
     const hasCadences = configs.some(({ sources }) =>
-      sources.some((s) => s.syncCadence),
+      sources.some((s) => s.syncCadence || s.statusScanCadence),
     );
 
     if (!hasCadences) {
@@ -65,38 +65,73 @@ export class RegionSyncScheduler implements OnApplicationBootstrap {
 
     const registeredKeys = new Set<string>();
 
+    // Each source can register two independent schedulers — the daily/regular
+    // syncCadence and the bills-only weekly statusScanCadence. Each upsert
+    // is isolated in its own try/catch via `registerSourceScheduler` so a
+    // failure on one does not prevent the other from registering.
     for (const { regionId, sources } of configs) {
       for (const source of sources) {
-        if (!source.syncCadence) continue;
-
-        const schedulerKey = `${regionId}-${source.dataType}-cron`;
-        const cron = staggeredCron(
-          source.syncCadence,
-          `${regionId}-${source.dataType}`,
-        );
-
-        try {
-          await this.queueService.upsertScheduler(
-            REGION_SYNC_QUEUE,
-            schedulerKey,
-            cron,
+        if (source.syncCadence) {
+          await this.registerSourceScheduler(
+            `${regionId}-${source.dataType}-cron`,
+            staggeredCron(source.syncCadence, `${regionId}-${source.dataType}`),
             {
               triggerSource: TRIGGER_SOURCE.CRON,
               regionId,
               dataTypes: [source.dataType as string],
-            } satisfies Partial<RegionSyncJobData>,
+            },
+            registeredKeys,
           );
-          registeredKeys.add(schedulerKey);
-          this.logger.log(`Registered scheduler ${schedulerKey} (${cron})`);
-        } catch (err) {
-          this.logger.warn(
-            `Failed to register scheduler ${schedulerKey}: ${(err as Error).message}`,
+        }
+
+        // Weekly bills status-scan backstop (#689) — bills only.
+        if (source.statusScanCadence && source.dataType === 'bills') {
+          await this.registerSourceScheduler(
+            `${regionId}-bills-status-scan-cron`,
+            staggeredCron(
+              source.statusScanCadence,
+              `${regionId}-bills-status-scan`,
+            ),
+            {
+              triggerSource: TRIGGER_SOURCE.CRON,
+              regionId,
+              dataTypes: ['bills'],
+              forceStatusRecheck: true,
+            },
+            registeredKeys,
           );
         }
       }
     }
 
     await this.removeStaleSchedulers(registeredKeys);
+  }
+
+  /**
+   * Upsert a single scheduler with try/catch and structured logging.
+   * Adds `key` to `registeredKeys` on success so `removeStaleSchedulers`
+   * preserves it. Catches and warns on failure — caller continues.
+   */
+  private async registerSourceScheduler(
+    key: string,
+    cron: string,
+    jobData: Partial<RegionSyncJobData>,
+    registeredKeys: Set<string>,
+  ): Promise<void> {
+    try {
+      await this.queueService.upsertScheduler(
+        REGION_SYNC_QUEUE,
+        key,
+        cron,
+        jobData,
+      );
+      registeredKeys.add(key);
+      this.logger.log(`Registered scheduler ${key} (${cron})`);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to register scheduler ${key}: ${(err as Error).message}`,
+      );
+    }
   }
 
   private async removeStaleSchedulers(activeKeys: Set<string>): Promise<void> {

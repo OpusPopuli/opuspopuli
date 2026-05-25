@@ -749,7 +749,9 @@ export class RegionResolver {
 
   /**
    * Paginated list of bills, optionally filtered by measureTypeCode,
-   * sessionYear, or authorId. Orders by lastActionDate desc.
+   * sessionYear, authorId, committeeId, or coAuthorId. Orders by
+   * lastActionDate desc. Combining authorId with coAuthorId is AND-semantic
+   * (rare; useful for "all bills this rep touched in any role"). See #594.
    */
   @Public()
   @Query(() => PaginatedBillsModel)
@@ -762,6 +764,8 @@ export class RegionResolver {
     authorId?: string,
     @Args({ name: 'committeeId', type: () => ID, nullable: true })
     committeeId?: string,
+    @Args({ name: 'coAuthorId', type: () => ID, nullable: true })
+    coAuthorId?: string,
   ): Promise<PaginatedBillsModel> {
     return this.regionService.getBills(
       skip,
@@ -770,6 +774,7 @@ export class RegionResolver {
       sessionYear,
       authorId,
       committeeId,
+      coAuthorId,
     );
   }
 

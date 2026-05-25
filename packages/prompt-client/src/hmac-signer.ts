@@ -31,6 +31,14 @@ export interface HmacHeaders {
  * Signature string: `${timestamp}\n${method}\n${path}\n${bodyHash}`
  * Body hash: SHA-256 hex digest of the raw request body
  * Signature: Base64-encoded HMAC-SHA256 of the signature string
+ *
+ * IMPORTANT — canonical path form (prompt-service #61):
+ * `path` MUST be the canonical form the server verifies against, which is
+ * `request.originalUrl` on the server side. That includes any query string
+ * (e.g. `/admin/nodes?status=certified`), not just the route path. The
+ * server currently accepts both the canonical form and the legacy
+ * path-only form during a transitional window, but a follow-up release
+ * tightens to canonical-only. Always pass the full URL with query string.
  */
 export function signRequest(
   config: HmacSigningConfig,
