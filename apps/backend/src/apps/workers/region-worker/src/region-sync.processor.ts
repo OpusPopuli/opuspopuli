@@ -38,8 +38,29 @@ export class RegionSyncProcessor
     private readonly config: ConfigService,
   ) {}
 
-  onApplicationBootstrap() {
+  async onApplicationBootstrap() {
     const prefix = this.config.get<string>('BULLMQ_PREFIX') ?? 'bullmq';
+
+    // Recover rows that were RUNNING when the previous worker died/crashed
+    // (BullMQ stall + worker death leaves them stuck). Threshold is the
+    // BullMQ lock-renewal window plus a safety margin — anything older is
+    // definitely abandoned. See opuspopuli#730.
+    const staleAgeMs = Number.parseInt(
+      this.config.get<string>('PIPELINE_JOB_STALE_AGE_MS') ?? '600000',
+      10,
+    );
+    try {
+      const swept = await this.pipelineJobService.sweepStaleRunning(staleAgeMs);
+      if (swept > 0) {
+        this.logger.warn(
+          `Swept ${swept} stale RUNNING pipeline_jobs row(s) older than ${staleAgeMs}ms on startup`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Stale-row sweep failed (non-fatal): ${(err as Error).message}`,
+      );
+    }
 
     this.worker = createWorker<RegionSyncJobData>(
       REGION_SYNC_QUEUE,

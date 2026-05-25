@@ -53,4 +53,36 @@ describe('PipelineJobService', () => {
       );
     });
   });
+
+  describe('sweepStaleRunning (#730)', () => {
+    it('marks RUNNING rows older than maxAgeMs as FAILED with cutoff in where clause', async () => {
+      const prisma = buildMockPrisma();
+      prisma.pipelineJob.updateMany.mockResolvedValue({ count: 2 });
+      const svc = new PipelineJobService(prisma as never);
+
+      const before = Date.now();
+      const count = await svc.sweepStaleRunning(600_000);
+      const after = Date.now();
+
+      expect(count).toBe(2);
+      const call = prisma.pipelineJob.updateMany.mock.calls[0][0];
+      expect(call.where.status).toBe(JOB_STATUS.RUNNING);
+      // The cutoff Date should be roughly (now - maxAgeMs)
+      const cutoffMs = (call.where.startedAt.lt as Date).getTime();
+      expect(cutoffMs).toBeGreaterThanOrEqual(before - 600_000 - 5);
+      expect(cutoffMs).toBeLessThanOrEqual(after - 600_000 + 5);
+      expect(call.data.status).toBe(JOB_STATUS.FAILED);
+      expect(call.data.errorMessage).toMatch(/Abandoned/);
+    });
+
+    it('returns 0 when no rows match without throwing', async () => {
+      const prisma = buildMockPrisma();
+      prisma.pipelineJob.updateMany.mockResolvedValue({ count: 0 });
+      const svc = new PipelineJobService(prisma as never);
+
+      const count = await svc.sweepStaleRunning(600_000);
+
+      expect(count).toBe(0);
+    });
+  });
 });

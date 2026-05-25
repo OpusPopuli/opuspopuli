@@ -78,6 +78,10 @@ describe('RegionSyncProcessor', () => {
     pipelineJobService.markRunning.mockResolvedValue(undefined);
     pipelineJobService.markSucceeded.mockResolvedValue(undefined);
     pipelineJobService.markFailed.mockResolvedValue(undefined);
+    pipelineJobService.sweepStaleRunning.mockResolvedValue(0);
+
+    const configMock = module.get<jest.Mocked<ConfigService>>(ConfigService);
+    configMock.get.mockReturnValue('600000');
   });
 
   it('is defined', () => {
@@ -90,7 +94,7 @@ describe('RegionSyncProcessor', () => {
     }
 
     it('marks job running then succeeded on success', async () => {
-      processor.onApplicationBootstrap();
+      await processor.onApplicationBootstrap();
 
       await getHandler()(buildJob());
 
@@ -107,7 +111,7 @@ describe('RegionSyncProcessor', () => {
 
     it('marks job failed on final failure (retries exhausted)', async () => {
       regionService.syncAll.mockRejectedValue(new Error('Scrape failed'));
-      processor.onApplicationBootstrap();
+      await processor.onApplicationBootstrap();
       const job = buildJob({ attemptsMade: 2, opts: { attempts: 3 } } as any);
 
       await expect(getHandler()(job)).rejects.toThrow('Scrape failed');
@@ -120,12 +124,33 @@ describe('RegionSyncProcessor', () => {
 
     it('does not mark failed on intermediate retry', async () => {
       regionService.syncAll.mockRejectedValue(new Error('Transient'));
-      processor.onApplicationBootstrap();
+      await processor.onApplicationBootstrap();
       const job = buildJob({ attemptsMade: 0, opts: { attempts: 3 } } as any);
 
       await expect(getHandler()(job)).rejects.toThrow('Transient');
 
       expect(pipelineJobService.markFailed).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('startup sweep of stale RUNNING rows (#730)', () => {
+    it('calls sweepStaleRunning with the configured threshold on bootstrap', async () => {
+      await processor.onApplicationBootstrap();
+
+      expect(pipelineJobService.sweepStaleRunning).toHaveBeenCalledTimes(1);
+      expect(pipelineJobService.sweepStaleRunning).toHaveBeenCalledWith(600000);
+    });
+
+    it('continues starting the worker even if the sweep throws', async () => {
+      pipelineJobService.sweepStaleRunning.mockRejectedValueOnce(
+        new Error('DB connection lost'),
+      );
+
+      // Should not throw — the catch path swallows the error.
+      await expect(processor.onApplicationBootstrap()).resolves.toBeUndefined();
+
+      // Worker was still created.
+      expect(createWorker).toHaveBeenCalled();
     });
   });
 });
