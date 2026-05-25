@@ -3,6 +3,7 @@ import {
   withRetry,
   isFetchRetryable,
   fetchTextWithRetry,
+  RetryableHttpError,
 } from './resilient-fetch';
 
 describe('HostThrottle', () => {
@@ -54,6 +55,43 @@ describe('HostThrottle', () => {
     const t = new HostThrottle(100);
     await expect(t.acquire('not a url')).resolves.toBeUndefined();
   });
+
+  it('fans out N concurrent acquires at N × gap (race-safe)', async () => {
+    const t = new HostThrottle(80);
+    const start = Date.now();
+    const completions: number[] = [];
+
+    // Fire 3 concurrent acquires. Without the race fix, all three would
+    // read the same lastFetchByHost value (undefined), all skip the sleep,
+    // and all complete at ~start. With the fix, each reserves its own
+    // slot atomically: +0, +80, +160.
+    await Promise.all(
+      [0, 1, 2].map(async () => {
+        await t.acquire('https://racy.example/p');
+        completions.push(Date.now() - start);
+      }),
+    );
+
+    completions.sort((a, b) => a - b);
+    expect(completions[0]).toBeLessThan(30);
+    expect(completions[1]).toBeGreaterThanOrEqual(70);
+    expect(completions[2]).toBeGreaterThanOrEqual(150);
+  });
+});
+
+describe('RetryableHttpError', () => {
+  it('carries the status code and message', () => {
+    const err = new RetryableHttpError(503, 'Service Unavailable');
+    expect(err.status).toBe(503);
+    expect(err.message).toBe('Service Unavailable');
+    expect(err.retryable).toBe(true);
+    expect(err.name).toBe('RetryableHttpError');
+  });
+
+  it('is recognized by isFetchRetryable via instanceof', () => {
+    expect(isFetchRetryable(new RetryableHttpError(503, 'x'))).toBe(true);
+    expect(isFetchRetryable(new RetryableHttpError(429, 'y'))).toBe(true);
+  });
 });
 
 describe('withRetry', () => {
@@ -73,11 +111,27 @@ describe('withRetry', () => {
     const delays: number[] = [];
     const result = await withRetry(fn, {
       baseDelayMs: 10,
+      jitterRatio: 0, // disable jitter for deterministic assertion
       onRetry: (_e, _a, d) => delays.push(d),
     });
     expect(result).toBe('ok');
     expect(fn).toHaveBeenCalledTimes(3);
     expect(delays).toEqual([10, 20]); // 10ms then 20ms (2^0, 2^1)
+  });
+
+  it('applies jitter (±jitterRatio) to backoff delays', async () => {
+    const fn = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('1'))
+      .mockResolvedValue('ok');
+    const delays: number[] = [];
+    await withRetry(fn, {
+      baseDelayMs: 100,
+      jitterRatio: 0.2, // ±20%
+      onRetry: (_e, _a, d) => delays.push(d),
+    });
+    expect(delays[0]).toBeGreaterThanOrEqual(80);
+    expect(delays[0]).toBeLessThanOrEqual(120);
   });
 
   it('gives up after maxAttempts and throws the last error', async () => {
@@ -108,6 +162,7 @@ describe('withRetry', () => {
       maxAttempts: 4,
       baseDelayMs: 100,
       maxDelayMs: 150,
+      jitterRatio: 0,
       onRetry: (_e, _a, d) => delays.push(d),
     });
     expect(delays).toEqual([100, 150, 150]); // capped at 150
@@ -115,8 +170,10 @@ describe('withRetry', () => {
 });
 
 describe('isFetchRetryable', () => {
-  it('returns true for explicit retryable flag', () => {
-    expect(isFetchRetryable({ retryable: true })).toBe(true);
+  it('returns true for RetryableHttpError instances', () => {
+    expect(isFetchRetryable(new RetryableHttpError(503, 'svc unavail'))).toBe(
+      true,
+    );
   });
 
   it('returns true for timeout/abort errors', () => {
@@ -132,6 +189,13 @@ describe('isFetchRetryable', () => {
     expect(isFetchRetryable(new Error('connect ECONNRESET'))).toBe(true);
     expect(isFetchRetryable(new Error('connect ECONNREFUSED'))).toBe(true);
     expect(isFetchRetryable(new Error('getaddrinfo EAI_AGAIN'))).toBe(true);
+  });
+
+  it('returns true for response-body stream errors', () => {
+    // Errors thrown by response.text() when the body stream is interrupted
+    // mid-read — node-fetch / undici typically surface these messages.
+    expect(isFetchRetryable(new Error('socket hang up'))).toBe(true);
+    expect(isFetchRetryable(new Error('terminated'))).toBe(true);
   });
 
   it('returns false for ordinary application errors', () => {

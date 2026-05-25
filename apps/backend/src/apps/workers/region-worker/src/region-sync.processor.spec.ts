@@ -152,5 +152,38 @@ describe('RegionSyncProcessor', () => {
       // Worker was still created.
       expect(createWorker).toHaveBeenCalled();
     });
+
+    it('falls back to the default when PIPELINE_JOB_STALE_AGE_MS is malformed', async () => {
+      const configMock = (
+        processor as unknown as { config: jest.Mocked<ConfigService> }
+      ).config;
+      configMock.get.mockReturnValue('not-a-number');
+
+      await processor.onApplicationBootstrap();
+
+      expect(pipelineJobService.sweepStaleRunning).toHaveBeenCalledWith(600000);
+    });
+
+    it('falls back to the default when PIPELINE_JOB_STALE_AGE_MS is non-positive', async () => {
+      const configMock = (
+        processor as unknown as { config: jest.Mocked<ConfigService> }
+      ).config;
+      configMock.get.mockReturnValue('-100');
+
+      await processor.onApplicationBootstrap();
+
+      expect(pipelineJobService.sweepStaleRunning).toHaveBeenCalledWith(600000);
+    });
+
+    it('honors a valid override', async () => {
+      const configMock = (
+        processor as unknown as { config: jest.Mocked<ConfigService> }
+      ).config;
+      configMock.get.mockReturnValue('30000');
+
+      await processor.onApplicationBootstrap();
+
+      expect(pipelineJobService.sweepStaleRunning).toHaveBeenCalledWith(30000);
+    });
   });
 });

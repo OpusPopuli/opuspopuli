@@ -45,10 +45,20 @@ export class RegionSyncProcessor
     // (BullMQ stall + worker death leaves them stuck). Threshold is the
     // BullMQ lock-renewal window plus a safety margin — anything older is
     // definitely abandoned. See opuspopuli#730.
-    const staleAgeMs = Number.parseInt(
-      this.config.get<string>('PIPELINE_JOB_STALE_AGE_MS') ?? '600000',
-      10,
-    );
+    const DEFAULT_STALE_AGE_MS = 600_000;
+    const rawStaleAge = this.config.get<string>('PIPELINE_JOB_STALE_AGE_MS');
+    const parsedStaleAge = rawStaleAge
+      ? Number.parseInt(rawStaleAge, 10)
+      : DEFAULT_STALE_AGE_MS;
+    const staleAgeMs =
+      Number.isFinite(parsedStaleAge) && parsedStaleAge > 0
+        ? parsedStaleAge
+        : DEFAULT_STALE_AGE_MS;
+    if (rawStaleAge && staleAgeMs !== parsedStaleAge) {
+      this.logger.warn(
+        `Ignoring invalid PIPELINE_JOB_STALE_AGE_MS="${rawStaleAge}", using default ${DEFAULT_STALE_AGE_MS}ms`,
+      );
+    }
     try {
       const swept = await this.pipelineJobService.sweepStaleRunning(staleAgeMs);
       if (swept > 0) {
