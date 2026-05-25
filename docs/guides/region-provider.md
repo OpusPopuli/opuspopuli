@@ -256,7 +256,7 @@ The resolution utility (`resolveConfigPlaceholders()` from `@opuspopuli/common`)
 | `sourceType` | `string` | No | `"html_scrape"` (default), `"bulk_download"`, `"api"`, or `"pdf"` |
 | `category` | `string` | No | Sub-grouping (e.g., `"Assembly"`, `"campaign_finance"`) |
 | `hints` | `string[]` | No | Additional hints for the AI structural analyzer |
-| `rateLimitOverride` | `number` | No | Override the default rate limit for this source |
+| `rateLimitOverride` | `number` | No | Max requests/second for this source's hostname. Applied to the region-sync's per-host throttle (default 2 req/sec). E.g. `0.5` ⇒ 2000ms gap; `5` ⇒ 200ms gap. Lower this when you observe HTTP 503 from the source. See [async-workers.md](../architecture/async-workers.md#outbound-http-resilience-region-sync). |
 | `bulk` | `BulkDownloadConfig` | No | Configuration for `bulk_download` sources |
 | `api` | `ApiSourceConfig` | No | Configuration for `api` sources |
 | `pdf` | `PdfSourceConfig` | No | Configuration for `pdf` sources |

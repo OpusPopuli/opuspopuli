@@ -80,6 +80,31 @@ export class PipelineJobService {
     });
   }
 
+  /**
+   * Mark any rows stuck in RUNNING for longer than `maxAgeMs` as FAILED.
+   * Called on worker startup to recover rows whose worker died without
+   * firing the catch-path mark (e.g. BullMQ stall + worker crash).
+   *
+   * Idempotent: if no rows match, returns 0 with no DB writes. Returns
+   * the count for caller logging. See opuspopuli#730.
+   */
+  async sweepStaleRunning(maxAgeMs: number): Promise<number> {
+    const cutoff = new Date(Date.now() - maxAgeMs);
+    const result = await this.prisma.pipelineJob.updateMany({
+      where: {
+        status: JOB_STATUS.RUNNING,
+        startedAt: { lt: cutoff },
+      },
+      data: {
+        status: JOB_STATUS.FAILED,
+        finishedAt: new Date(),
+        errorMessage:
+          'Abandoned: worker startup detected stale RUNNING row past lock-renewal window',
+      },
+    });
+    return result.count;
+  }
+
   async findById(id: string): Promise<RegionSyncJobModel | null> {
     const row = await this.prisma.pipelineJob.findUnique({ where: { id } });
     return row ? this.toModel(row) : null;
