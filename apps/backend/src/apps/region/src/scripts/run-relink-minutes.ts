@@ -8,6 +8,11 @@
  * re-insert), so running it twice in a row is a no-op on the second
  * pass.
  *
+ * Doubles as the backfill path for new linker columns. After deploying
+ * the LegislativeAction.billId migration (opuspopuli#666), run this to
+ * populate `billId` on historical actions — the migration leaves the
+ * column NULL on existing rows and only new linker passes write to it.
+ *
  * Usage (assumes the region container is running):
  *   docker compose -f docker-compose-uat.yml exec region \
  *     node dist/src/apps/region/apps/region/src/scripts/run-relink-minutes.js

@@ -427,6 +427,15 @@ export class RegionDomainService {
     return this.queryService.getCommitteeActivity(args);
   }
 
+  getBillActivity(args: {
+    billId: string;
+    actionTypes?: string[];
+    skip?: number;
+    take?: number;
+  }) {
+    return this.queryService.getBillActivity(args);
+  }
+
   listLegislativeCommittees(args: {
     skip: number;
     take: number;

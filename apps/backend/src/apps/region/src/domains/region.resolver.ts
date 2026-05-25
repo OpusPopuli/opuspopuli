@@ -449,6 +449,35 @@ export class RegionResolver {
     };
   }
 
+  /**
+   * Reverse-chronological feed of LegislativeActions linked to a Bill
+   * via the canonical `billId` FK (issue #666). Powers the bill detail
+   * page "History" tab — engrossments, enrollments, committee reports
+   * and amendments extracted from Assembly weekly histories + daily
+   * journals.
+   */
+  @Public()
+  @Query(() => PaginatedLegislativeActions)
+  async billActivity(
+    @Args({ name: 'billId', type: () => ID }) billId: string,
+    @Args({ name: 'actionTypes', type: () => [String], nullable: true })
+    actionTypes?: string[],
+    @Args({ name: 'skip', type: () => Int, nullable: true }) skip?: number,
+    @Args({ name: 'take', type: () => Int, nullable: true }) take?: number,
+  ): Promise<PaginatedLegislativeActions> {
+    const result = await this.regionService.getBillActivity({
+      billId,
+      actionTypes,
+      skip: skip ?? 0,
+      take: take ?? 10,
+    });
+    return {
+      items: result.items.map((r) => this.toLegislativeActionModel(r)),
+      total: result.total,
+      hasMore: result.hasMore,
+    };
+  }
+
   private toLegislativeActionModel(r: {
     id: string;
     externalId: string;
@@ -462,6 +491,7 @@ export class RegionResolver {
     rawSubject: string | null;
     representativeId: string | null;
     propositionId: string | null;
+    billId: string | null;
     committeeId: string | null;
     minutesId: string;
     minutesExternalId: string;
@@ -479,6 +509,7 @@ export class RegionResolver {
       rawSubject: r.rawSubject ?? undefined,
       representativeId: r.representativeId ?? undefined,
       propositionId: r.propositionId ?? undefined,
+      billId: r.billId ?? undefined,
       committeeId: r.committeeId ?? undefined,
       minutesId: r.minutesId,
       minutesExternalId: r.minutesExternalId,

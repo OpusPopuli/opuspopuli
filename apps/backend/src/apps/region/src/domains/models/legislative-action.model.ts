@@ -65,6 +65,9 @@ export class LegislativeActionModel {
   propositionId?: string;
 
   @Field(() => ID, { nullable: true })
+  billId?: string;
+
+  @Field(() => ID, { nullable: true })
   committeeId?: string;
 
   @Field(() => ID)

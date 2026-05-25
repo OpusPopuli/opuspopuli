@@ -164,6 +164,7 @@ interface LegislativeActionFeedItem {
   rawSubject: string | null;
   representativeId: string | null;
   propositionId: string | null;
+  billId: string | null;
   committeeId: string | null;
   minutesId: string;
   minutesExternalId: string;
@@ -846,6 +847,25 @@ export class RegionQueryService {
     return this.paginateLegislativeActions(where, args.skip, args.take);
   }
 
+  /**
+   * Reverse-chronological feed of LegislativeActions linked to a Bill
+   * via the canonical `billId` FK populated by the linker (issue #666).
+   * Mirrors {@link getCommitteeActivity}; no presence-row filtering
+   * needed (presence actions aren't bill-attributed).
+   */
+  async getBillActivity(args: {
+    billId: string;
+    actionTypes?: string[];
+    skip?: number;
+    take?: number;
+  }): Promise<LegislativeActionFeedPage> {
+    const where = this.buildActionFeedWhere({
+      billId: args.billId,
+      actionTypes: args.actionTypes,
+    });
+    return this.paginateLegislativeActions(where, args.skip, args.take);
+  }
+
   // ─── Legislative committee getters ───────────────────────────────────────────
 
   async listLegislativeCommittees(args: {
@@ -1297,11 +1317,13 @@ export class RegionQueryService {
   private buildActionFeedWhere(args: {
     representativeId?: string;
     committeeId?: string;
+    billId?: string;
     actionTypes?: string[];
   }): Record<string, unknown> {
     const where: Record<string, unknown> = {};
     if (args.representativeId) where.representativeId = args.representativeId;
     if (args.committeeId) where.committeeId = args.committeeId;
+    if (args.billId) where.billId = args.billId;
     if (args.actionTypes?.length) {
       where.actionType = { in: args.actionTypes };
     }
@@ -1345,6 +1367,7 @@ export class RegionQueryService {
     rawSubject: string | null;
     representativeId: string | null;
     propositionId: string | null;
+    billId: string | null;
     committeeId: string | null;
     minutesId: string;
     minutes: { externalId: string };
@@ -1362,6 +1385,7 @@ export class RegionQueryService {
       rawSubject: r.rawSubject,
       representativeId: r.representativeId,
       propositionId: r.propositionId,
+      billId: r.billId,
       committeeId: r.committeeId,
       minutesId: r.minutesId,
       minutesExternalId: r.minutes.externalId,
