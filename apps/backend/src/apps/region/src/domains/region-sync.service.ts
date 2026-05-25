@@ -46,6 +46,7 @@ import { LegislativeCommitteeLinkerService } from './legislative-committee-linke
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
+import { HostThrottle, fetchTextWithRetry } from './resilient-fetch';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import { RegionCacheService } from './region-cache.service';
@@ -164,6 +165,10 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   private pluginRegionName: string | undefined;
   private pluginNormalizeDistrict = false;
   private pluginBioNoisePatterns: RegExp[] = [];
+  /** Per-host fetch throttle shared across all syncs in this process.
+   *  Per-source `rateLimitOverride` values are applied to the relevant
+   *  hostname by sync orchestrators before they start their loops. */
+  private readonly hostThrottle = new HostThrottle(1000);
 
   constructor(
     private readonly pluginLoader: PluginLoaderService,
@@ -1410,6 +1415,25 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
+    // Apply per-source rate limits to the shared host throttle. Each bills
+    // data source may override the default 1 req/sec gap via
+    // DataSourceConfig.rateLimitOverride (requests/sec). The override
+    // applies to the source's hostname, which transitively covers the
+    // status / votes / text page templates (all on the same host).
+    for (const ds of dataSources) {
+      if (ds.rateLimitOverride && ds.rateLimitOverride > 0) {
+        try {
+          const host = new URL(ds.url).hostname;
+          this.hostThrottle.setRequestsPerSecond(host, ds.rateLimitOverride);
+          this.logger.log(
+            `Bills: host throttle for ${host} set to ${ds.rateLimitOverride} req/sec`,
+          );
+        } catch {
+          /* invalid URL — surfaced elsewhere */
+        }
+      }
+    }
+
     const regionId = plugin.getName?.() ?? 'unknown';
     const repIndex = await this.buildRepNameIndex(regionId);
     const committeeIndex = await this.buildCommitteeNameIndex();
@@ -2569,21 +2593,18 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     return valid.length;
   }
 
+  /**
+   * Throttled + retried HTML fetch. Wraps `fetchTextWithRetry` from
+   * `./resilient-fetch` so all per-bill / per-page fetches honor the
+   * shared per-host gap and back off on 5xx / 429 / timeouts before
+   * giving up. See opuspopuli#730.
+   */
   private async fetchUrlText(url: string): Promise<string> {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(30_000),
+    return fetchTextWithRetry(url, {
+      timeoutMs: 20_000,
+      throttle: this.hostThrottle,
+      logger: this.logger,
     });
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status} fetching ${url}: ${response.statusText}`,
-      );
-    }
-    const ct = response.headers.get('content-type') ?? '';
-    const ctLower = ct.toLowerCase();
-    if (!ctLower.includes('text/html') && !ctLower.includes('xhtml+xml')) {
-      throw new Error(`Non-HTML content-type for ${url}: ${ct}`);
-    }
-    return response.text();
   }
 
   private htmlToReadableText(html: string): string {
