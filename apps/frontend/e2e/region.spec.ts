@@ -911,8 +911,9 @@ test.describe("Representative Detail Page", () => {
     await expect(
       page.getByRole("heading", { name: "Recent activity" }),
     ).toBeVisible();
+    // "Authored Bills" needs exact: true to avoid matching "Co-authored Bills".
     await expect(
-      page.getByRole("heading", { name: "Authored Bills" }),
+      page.getByRole("heading", { name: "Authored Bills", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Co-authored Bills" }),
