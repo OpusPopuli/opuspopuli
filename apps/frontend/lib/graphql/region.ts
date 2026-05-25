@@ -331,6 +331,7 @@ export interface LegislativeAction {
   rawSubject?: string;
   representativeId?: string;
   propositionId?: string;
+  billId?: string;
   committeeId?: string;
   minutesId: string;
   minutesExternalId: string;
@@ -1438,6 +1439,43 @@ export const GET_COMMITTEE_ACTIVITY = gql`
         rawSubject
         representativeId
         propositionId
+        committeeId
+        minutesId
+        minutesExternalId
+      }
+      total
+      hasMore
+    }
+  }
+`;
+
+export const GET_BILL_ACTIVITY = gql`
+  query GetBillActivity(
+    $billId: ID!
+    $actionTypes: [String!]
+    $skip: Int
+    $take: Int
+  ) {
+    billActivity(
+      billId: $billId
+      actionTypes: $actionTypes
+      skip: $skip
+      take: $take
+    ) {
+      items {
+        id
+        externalId
+        body
+        date
+        actionType
+        position
+        text
+        passageStart
+        passageEnd
+        rawSubject
+        representativeId
+        propositionId
+        billId
         committeeId
         minutesId
         minutesExternalId

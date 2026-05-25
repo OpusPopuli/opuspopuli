@@ -269,6 +269,68 @@ const mockIndependentExpenditures = {
   hasMore: false,
 };
 
+const mockBill = {
+  id: "bill-ab1897",
+  externalId: "20252026AB1897",
+  billNumber: "AB 1897",
+  sessionYear: "2025-2026",
+  measureTypeCode: "AB",
+  title: "Test bill — placeholder text used by the History-tab e2e",
+  subject: "Testing",
+  status: "In committee",
+  currentStageId: "policy-committee",
+  lastAction: "From committee chair, with author's amendments",
+  lastActionDate: "2026-05-13T00:00:00Z",
+  fiscalImpact: null,
+  fullTextUrl: null,
+  authorId: null,
+  authorName: "Jane Smith",
+  sourceUrl:
+    "https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=ab1897",
+  extractedAt: "2026-05-14T00:00:00Z",
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-05-14T00:00:00Z",
+  votes: [
+    {
+      id: "v-1",
+      representativeName: "Aguiar-Curry, Cecilia",
+      representativeId: null,
+      chamber: "Assembly",
+      voteDate: "2026-04-28T00:00:00Z",
+      position: "yes",
+      motionText: "Do pass",
+      sourceUrl:
+        "https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=ab1897",
+    },
+  ],
+  coAuthors: [],
+};
+
+const mockBillActivity = {
+  items: [
+    {
+      id: "la-1",
+      externalId: "california-meetings-2026-04-28-0042",
+      body: "Assembly",
+      date: "2026-04-28T00:00:00Z",
+      actionType: "committee_report",
+      position: null,
+      text: "AB 1897: Do pass.",
+      passageStart: 12347,
+      passageEnd: 12521,
+      rawSubject: "AB 1897",
+      representativeId: null,
+      propositionId: null,
+      billId: "bill-ab1897",
+      committeeId: null,
+      minutesId: "min-1",
+      minutesExternalId: "california-meetings-2026-04-28",
+    },
+  ],
+  total: 1,
+  hasMore: false,
+};
+
 // Returns mock data for a given GraphQL POST body, or null for unknown queries.
 function resolveRegionQueryData(
   postData: Record<string, unknown> | null,
@@ -276,6 +338,9 @@ function resolveRegionQueryData(
   if (!postData) return null;
   if (postData.operationName === "GetRepresentative")
     return { representative: mockRepresentatives.items[0] };
+  if (postData.operationName === "GetBill") return { bill: mockBill };
+  if (postData.operationName === "GetBillActivity")
+    return { billActivity: mockBillActivity };
   const q = (postData.query as string) ?? "";
   if (q.includes("regionInfo")) return { regionInfo: mockRegionInfo };
   if (q.includes("petitionDocumentsForProposition"))
@@ -1726,5 +1791,42 @@ test.describe("Independent Expenditures Page", () => {
 
     await expect(page.getByText("Candidate: Jane Smith")).toBeVisible();
     await expect(page.getByText("Proposition: Proposition X")).toBeVisible();
+  });
+});
+
+test.describe("Bill Detail Page — History tab (#666)", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockRegionGraphQL(page);
+  });
+
+  test("exposes a History tab and renders the activity feed when selected", async ({
+    page,
+  }) => {
+    await page.goto("/region/bills/bill-ab1897");
+
+    await expect(
+      page.getByRole("button", { name: "History", exact: true }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "History", exact: true }).click();
+
+    await expect(
+      page.getByRole("heading", { name: /What has happened to this bill/ }),
+    ).toBeVisible();
+    await expect(page.getByTestId("bill-activity-feed")).toBeVisible();
+    await expect(page.getByText("Showing 1 of 1 record")).toBeVisible();
+  });
+
+  test("filter dropdown narrows the feed by action type", async ({ page }) => {
+    await page.goto("/region/bills/bill-ab1897");
+    await page.getByRole("button", { name: "History", exact: true }).click();
+
+    const filter = page.getByLabel("Filter bill activity by type");
+    await expect(filter).toBeVisible();
+    await filter.selectOption("engrossment");
+    // Mock router returns the same fixture for any filter — assert the
+    // dropdown wiring + persistent feed presence; the value-level filtering
+    // is covered by the backend resolver tests.
+    await expect(page.getByTestId("bill-activity-feed")).toBeVisible();
   });
 });
