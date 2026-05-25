@@ -67,76 +67,71 @@ export class RegionSyncScheduler implements OnApplicationBootstrap {
 
     // Each source can register two independent schedulers — the daily/regular
     // syncCadence and the bills-only weekly statusScanCadence. Each upsert
-    // has its own try/catch so a failure on one does not prevent the other
-    // from registering. Successfully-registered keys both populate
-    // `registeredKeys` so `removeStaleSchedulers` preserves them.
+    // is isolated in its own try/catch via `registerSourceScheduler` so a
+    // failure on one does not prevent the other from registering.
     for (const { regionId, sources } of configs) {
       for (const source of sources) {
         if (source.syncCadence) {
-          const schedulerKey = `${regionId}-${source.dataType}-cron`;
-          const cron = staggeredCron(
-            source.syncCadence,
-            `${regionId}-${source.dataType}`,
+          await this.registerSourceScheduler(
+            `${regionId}-${source.dataType}-cron`,
+            staggeredCron(source.syncCadence, `${regionId}-${source.dataType}`),
+            {
+              triggerSource: TRIGGER_SOURCE.CRON,
+              regionId,
+              dataTypes: [source.dataType as string],
+            },
+            registeredKeys,
           );
-
-          try {
-            await this.queueService.upsertScheduler(
-              REGION_SYNC_QUEUE,
-              schedulerKey,
-              cron,
-              {
-                triggerSource: TRIGGER_SOURCE.CRON,
-                regionId,
-                dataTypes: [source.dataType as string],
-              } satisfies Partial<RegionSyncJobData>,
-            );
-            registeredKeys.add(schedulerKey);
-            this.logger.log(`Registered scheduler ${schedulerKey} (${cron})`);
-          } catch (err) {
-            this.logger.warn(
-              `Failed to register scheduler ${schedulerKey}: ${(err as Error).message}`,
-            );
-          }
         }
 
-        // Weekly bills status-scan backstop (#689). Bypasses the
-        // sourcePublishedAt skip + the needsStatusRecheck gate to catch
-        // governor actions and off-session changes the journal linker
-        // can't see. Only meaningful for bills sources; runs at the
-        // statusScanCadence (typically '0 2 * * 0' Sunday 2 AM).
+        // Weekly bills status-scan backstop (#689) — bills only.
         if (source.statusScanCadence && source.dataType === 'bills') {
-          const statusScanKey = `${regionId}-bills-status-scan-cron`;
-          const statusScanCron = staggeredCron(
-            source.statusScanCadence,
-            `${regionId}-bills-status-scan`,
+          await this.registerSourceScheduler(
+            `${regionId}-bills-status-scan-cron`,
+            staggeredCron(
+              source.statusScanCadence,
+              `${regionId}-bills-status-scan`,
+            ),
+            {
+              triggerSource: TRIGGER_SOURCE.CRON,
+              regionId,
+              dataTypes: ['bills'],
+              forceStatusRecheck: true,
+            },
+            registeredKeys,
           );
-
-          try {
-            await this.queueService.upsertScheduler(
-              REGION_SYNC_QUEUE,
-              statusScanKey,
-              statusScanCron,
-              {
-                triggerSource: TRIGGER_SOURCE.CRON,
-                regionId,
-                dataTypes: ['bills'],
-                forceStatusRecheck: true,
-              } satisfies Partial<RegionSyncJobData>,
-            );
-            registeredKeys.add(statusScanKey);
-            this.logger.log(
-              `Registered scheduler ${statusScanKey} (${statusScanCron})`,
-            );
-          } catch (err) {
-            this.logger.warn(
-              `Failed to register scheduler ${statusScanKey}: ${(err as Error).message}`,
-            );
-          }
         }
       }
     }
 
     await this.removeStaleSchedulers(registeredKeys);
+  }
+
+  /**
+   * Upsert a single scheduler with try/catch and structured logging.
+   * Adds `key` to `registeredKeys` on success so `removeStaleSchedulers`
+   * preserves it. Catches and warns on failure — caller continues.
+   */
+  private async registerSourceScheduler(
+    key: string,
+    cron: string,
+    jobData: Partial<RegionSyncJobData>,
+    registeredKeys: Set<string>,
+  ): Promise<void> {
+    try {
+      await this.queueService.upsertScheduler(
+        REGION_SYNC_QUEUE,
+        key,
+        cron,
+        jobData,
+      );
+      registeredKeys.add(key);
+      this.logger.log(`Registered scheduler ${key} (${cron})`);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to register scheduler ${key}: ${(err as Error).message}`,
+      );
+    }
   }
 
   private async removeStaleSchedulers(activeKeys: Set<string>): Promise<void> {

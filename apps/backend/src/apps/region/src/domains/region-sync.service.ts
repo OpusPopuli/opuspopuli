@@ -1476,64 +1476,35 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       `Bills: discovered ${statusUrls.length} bill(s) from ${ds.url}`,
     );
 
-    let processed = 0;
-    let created = 0;
-    let updated = 0;
-    let skipped = 0;
-    let statusOnlyMatched = 0;
+    const counts = {
+      processed: 0,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      statusOnlyMatched: 0,
+    };
 
     for (const url of statusUrls) {
-      const billId = this.safeBillIdFromUrl(url);
-
-      // Status-only re-check path (#689): when a bill is flagged by the
-      // journal linker or forced by the weekly backstop. Unchanged →
-      // skip cheaply (no LLM); changed/parse-fail → fall through to LLM.
-      if (billId) {
-        const recheck = await this.tryStatusOnlyRecheck(
-          url,
-          forceStatusRecheck,
-          billsByExternalId.get(billId),
-        );
-        if (recheck === 'unchanged') {
-          skipped++;
-          statusOnlyMatched++;
-          processed++;
-          syncedExternalIds.add(billId);
-          continue;
-        }
-        // 'no-recheck-needed' or 'fall-through': fall into normal extraction
-      }
-
-      const result = await this.extractAndUpsertBillPage(
+      await this.processOneBillUrl(url, {
         regionId,
-        url,
         ds,
         repIndex,
         committeeIndex,
         stagePatterns,
-      );
-      if (result === 'created') {
-        created++;
-        processed++;
-      } else if (result === 'updated') {
-        updated++;
-        processed++;
-      } else if (result === 'skipped') {
-        skipped++;
-        processed++;
-      }
-      if (result !== 'failed' && billId) {
-        syncedExternalIds.add(billId);
-      }
+        billsByExternalId,
+        forceStatusRecheck,
+        syncedExternalIds,
+        counts,
+      });
     }
-    if (skipped > 0) {
+    if (counts.skipped > 0) {
       this.logger.log(
-        `Bills: skipped ${skipped} unchanged bill(s) from ${ds.url}`,
+        `Bills: skipped ${counts.skipped} unchanged bill(s) from ${ds.url}`,
       );
     }
-    if (statusOnlyMatched > 0) {
+    if (counts.statusOnlyMatched > 0) {
       this.logger.log(
-        `Bills: status-only re-check matched ${statusOnlyMatched} unchanged bill(s) from ${ds.url} (no LLM)`,
+        `Bills: status-only re-check matched ${counts.statusOnlyMatched} unchanged bill(s) from ${ds.url} (no LLM)`,
       );
     }
 
@@ -1544,10 +1515,82 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         ds,
         repIndex,
       );
-      if (result === 'updated') updated++;
+      if (result === 'updated') counts.updated++;
     }
 
-    return { processed, created, updated, skipped };
+    return {
+      processed: counts.processed,
+      created: counts.created,
+      updated: counts.updated,
+      skipped: counts.skipped,
+    };
+  }
+
+  /**
+   * Process a single bill discovery URL: try the cheap status-only
+   * re-check first, then fall through to the full LLM extraction. Mutates
+   * the shared `counts` object and `syncedExternalIds` set in place.
+   */
+  private async processOneBillUrl(
+    url: string,
+    ctx: {
+      regionId: string;
+      ds: DataSourceConfig;
+      repIndex: Map<string, { id: string; chamber: string }>;
+      committeeIndex: Map<string, string>;
+      stagePatterns: StagePattern[];
+      billsByExternalId: Map<string, BillSkipRecord>;
+      forceStatusRecheck: boolean;
+      syncedExternalIds: Set<string>;
+      counts: {
+        processed: number;
+        created: number;
+        updated: number;
+        skipped: number;
+        statusOnlyMatched: number;
+      };
+    },
+  ): Promise<void> {
+    const billId = this.safeBillIdFromUrl(url);
+
+    // Status-only re-check path (#689): flagged-by-linker or forced by
+    // weekly backstop. Unchanged → skip cheaply; otherwise fall through.
+    if (billId) {
+      const recheck = await this.tryStatusOnlyRecheck(
+        url,
+        ctx.forceStatusRecheck,
+        ctx.billsByExternalId.get(billId),
+      );
+      if (recheck === 'unchanged') {
+        ctx.counts.skipped++;
+        ctx.counts.statusOnlyMatched++;
+        ctx.counts.processed++;
+        ctx.syncedExternalIds.add(billId);
+        return;
+      }
+    }
+
+    const result = await this.extractAndUpsertBillPage(
+      ctx.regionId,
+      url,
+      ctx.ds,
+      ctx.repIndex,
+      ctx.committeeIndex,
+      ctx.stagePatterns,
+    );
+    if (result === 'created') {
+      ctx.counts.created++;
+      ctx.counts.processed++;
+    } else if (result === 'updated') {
+      ctx.counts.updated++;
+      ctx.counts.processed++;
+    } else if (result === 'skipped') {
+      ctx.counts.skipped++;
+      ctx.counts.processed++;
+    }
+    if (result !== 'failed' && billId) {
+      ctx.syncedExternalIds.add(billId);
+    }
   }
 
   private async buildStagePatterns(regionId: string): Promise<StagePattern[]> {
