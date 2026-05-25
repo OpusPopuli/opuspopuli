@@ -822,6 +822,11 @@ model LegislativeAction {
   actionType       String    @map("action_type") @db.VarChar(40)
   representativeId String?   @map("representative_id")
   propositionId    String?   @map("proposition_id")
+  /// Optional FK to Bill — resolved by the linker when the action's
+  /// canonical citation (e.g. "AB 1234") matches a row in `bills`. Set
+  /// independently of propositionId: an action can link to one, both,
+  /// or neither. See opuspopuli#666.
+  billId           String?   @map("bill_id")
   committeeId      String?   @map("committee_id")
   /// 'yes' | 'no' | 'abstain' | 'absent' — null for non-vote actions in V1.
   position         String?   @db.VarChar(20)
@@ -848,11 +853,13 @@ model LegislativeAction {
   minutes        Minutes               @relation(fields: [minutesId],        references: [id], onDelete: Cascade)
   representative Representative?       @relation(fields: [representativeId], references: [id], onDelete: SetNull)
   proposition    Proposition?          @relation(fields: [propositionId],    references: [id], onDelete: SetNull)
+  bill           Bill?                 @relation(fields: [billId],           references: [id], onDelete: SetNull)
   committee      LegislativeCommittee? @relation(fields: [committeeId],      references: [id], onDelete: SetNull)
 
   @@index([minutesId])
   @@index([representativeId, date(sort: Desc)])
   @@index([propositionId, date(sort: Desc)])
+  @@index([billId, date(sort: Desc)])
   @@index([committeeId, date(sort: Desc)])
   @@index([body, date(sort: Desc)])
   @@index([actionType])
@@ -1059,6 +1066,7 @@ model Bill {
   coAuthors         BillCoAuthor[]
   committeeReferrals BillCommitteeAssignment[]
   votes             BillVote[]
+  actions           LegislativeAction[]
 
   @@index([regionId, sessionYear])
   @@index([regionId, measureTypeCode])

@@ -851,6 +851,7 @@ describe('RegionResolver', () => {
       rawSubject: 'AB 1897',
       representativeId: 'rep-1',
       propositionId: null,
+      billId: null,
       committeeId: 'cmt-1',
       minutesId: 'min-1',
       minutesExternalId: 'california-meetings-2026-04-28',
@@ -991,6 +992,7 @@ describe('RegionResolver', () => {
       rawSubject: 'AB 1897',
       representativeId: null,
       propositionId: null,
+      billId: null,
       committeeId: 'cmt-1',
       minutesId: 'min-1',
       minutesExternalId: 'california-meetings-2026-04-28',
@@ -1035,6 +1037,76 @@ describe('RegionResolver', () => {
       expect(regionService.getCommitteeActivity).toHaveBeenCalledWith({
         committeeId: 'cmt-1',
         actionTypes: ['committee_hearing'],
+        skip: 20,
+        take: 5,
+      });
+    });
+  });
+
+  describe('billActivity (#666)', () => {
+    const mockBillAction = {
+      id: 'la-2',
+      externalId: 'california-weekly-2026-04-28-0007',
+      body: 'Assembly',
+      date: new Date('2026-04-28T00:00:00Z'),
+      actionType: 'engrossment',
+      position: null,
+      text: 'AB 1897 — Ordered to the Senate.',
+      passageStart: 4200,
+      passageEnd: 4280,
+      rawSubject: 'AB 1897',
+      representativeId: null,
+      propositionId: null,
+      billId: 'bill-ab1897',
+      committeeId: null,
+      minutesId: 'min-2',
+      minutesExternalId: 'california-weekly-2026-04-28',
+    };
+
+    it('returns paginated activity feed for the bill', async () => {
+      regionService.getBillActivity.mockResolvedValue({
+        items: [mockBillAction],
+        total: 1,
+        hasMore: false,
+      });
+
+      const result = await resolver.billActivity('bill-ab1897');
+
+      expect(regionService.getBillActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          billId: 'bill-ab1897',
+          skip: 0,
+          take: 10,
+        }),
+      );
+      expect(result.total).toBe(1);
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          id: 'la-2',
+          actionType: 'engrossment',
+          billId: 'bill-ab1897',
+          rawSubject: 'AB 1897',
+        }),
+      );
+    });
+
+    it('forwards actionTypes + pagination args', async () => {
+      regionService.getBillActivity.mockResolvedValue({
+        items: [],
+        total: 0,
+        hasMore: false,
+      });
+
+      await resolver.billActivity(
+        'bill-ab1897',
+        ['engrossment', 'enrollment'],
+        20,
+        5,
+      );
+
+      expect(regionService.getBillActivity).toHaveBeenCalledWith({
+        billId: 'bill-ab1897',
+        actionTypes: ['engrossment', 'enrollment'],
         skip: 20,
         take: 5,
       });

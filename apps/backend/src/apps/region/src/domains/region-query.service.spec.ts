@@ -737,6 +737,57 @@ describe('RegionQueryService — query methods', () => {
     });
   });
 
+  describe('getBillActivity (#666)', () => {
+    it('returns paginated feed scoped by billId', async () => {
+      mockDb.legislativeAction.findMany.mockResolvedValue([
+        {
+          id: 'la-1',
+          externalId: 'ext-1',
+          body: 'Assembly',
+          date: new Date('2026-04-28'),
+          actionType: 'engrossment',
+          position: null,
+          text: 'Ordered to the Senate.',
+          passageStart: 100,
+          passageEnd: 124,
+          rawSubject: 'AB 1897',
+          representativeId: null,
+          propositionId: null,
+          billId: 'bill-ab1897',
+          committeeId: null,
+          minutesId: 'min-1',
+          minutes: { externalId: 'weekly-2026-04-28' },
+        },
+      ] as never);
+      mockDb.legislativeAction.count.mockResolvedValue(1);
+
+      const result = await service.getBillActivity({ billId: 'bill-ab1897' });
+
+      expect(result.total).toBe(1);
+      expect(result.items[0].billId).toBe('bill-ab1897');
+      expect(result.items[0].minutesExternalId).toBe('weekly-2026-04-28');
+    });
+
+    it('scopes the Prisma where clause by billId', async () => {
+      mockDb.legislativeAction.findMany.mockResolvedValue([] as never);
+      mockDb.legislativeAction.count.mockResolvedValue(0);
+
+      await service.getBillActivity({
+        billId: 'bill-ab1897',
+        actionTypes: ['engrossment', 'enrollment'],
+      });
+
+      const findManyCall = mockDb.legislativeAction.findMany.mock
+        .calls[0][0] as {
+        where: Record<string, unknown>;
+      };
+      expect(findManyCall.where.billId).toBe('bill-ab1897');
+      expect(findManyCall.where.actionType).toEqual({
+        in: ['engrossment', 'enrollment'],
+      });
+    });
+  });
+
   describe('getCommittees', () => {
     it('should return paginated committees', async () => {
       const mockItems = [

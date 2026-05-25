@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import BillDetailPage from "@/app/region/bills/[id]/page";
 import type {
@@ -177,6 +177,21 @@ describe("BillDetailPage", () => {
       render(<BillDetailPage />);
       expect(screen.getByText("Chaptered")).toBeInTheDocument();
       expect(screen.getByText("Failed")).toBeInTheDocument();
+    });
+  });
+
+  describe("history tab (#666)", () => {
+    it("exposes a History tab in the layer navigation", () => {
+      render(<BillDetailPage />);
+      expect(
+        screen.getByRole("button", { name: /^History$/ }),
+      ).toBeInTheDocument();
+    });
+
+    it("renders the BillActivityFeed when the History tab is selected", () => {
+      render(<BillDetailPage />);
+      fireEvent.click(screen.getByRole("button", { name: /^History$/ }));
+      expect(screen.getByTestId("bill-activity-feed")).toBeInTheDocument();
     });
   });
 });
