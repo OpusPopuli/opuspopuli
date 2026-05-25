@@ -331,42 +331,77 @@ const mockBillActivity = {
   hasMore: false,
 };
 
-// Returns mock data for a given GraphQL POST body, or null for unknown queries.
-function resolveRegionQueryData(
-  postData: Record<string, unknown> | null,
-): unknown {
-  if (!postData) return null;
-  if (postData.operationName === "GetRepresentative")
-    return { representative: mockRepresentatives.items[0] };
-  if (postData.operationName === "GetBill") return { bill: mockBill };
-  if (postData.operationName === "GetBillActivity")
-    return { billActivity: mockBillActivity };
-  const q = (postData.query as string) ?? "";
-  if (q.includes("regionInfo")) return { regionInfo: mockRegionInfo };
-  if (q.includes("petitionDocumentsForProposition"))
-    return { petitionDocumentsForProposition: [] };
-  if (q.match(/proposition[\s(]/))
-    return {
+// Lookup by GraphQL operationName for the queries that have an explicit
+// `query Foo` declaration in the frontend (Apollo sets operationName).
+const OPERATION_RESPONSES: Record<string, () => unknown> = {
+  GetRepresentative: () => ({ representative: mockRepresentatives.items[0] }),
+  GetBill: () => ({ bill: mockBill }),
+  GetBillActivity: () => ({ billActivity: mockBillActivity }),
+};
+
+// Fallback dispatch table for inline / anonymous queries — first matching
+// predicate wins. Order matters: more-specific predicates come first.
+const QUERY_MATCHERS: Array<[(q: string) => boolean, () => unknown]> = [
+  [(q) => q.includes("regionInfo"), () => ({ regionInfo: mockRegionInfo })],
+  [
+    (q) => q.includes("petitionDocumentsForProposition"),
+    () => ({ petitionDocumentsForProposition: [] }),
+  ],
+  [
+    (q) => /proposition[\s(]/.test(q),
+    () => ({
       proposition: {
         ...mockPropositions.items[0],
         fullText:
           "This proposition would amend the California Constitution to require commercial and industrial properties worth more than $3 million to be reassessed at current market value.",
       },
-    };
-  if (q.includes("propositions")) return { propositions: mockPropositions };
-  if (q.includes("meetings")) return { meetings: mockMeetings };
-  if (q.includes("myAddresses")) return { myAddresses: [] };
-  if (q.includes("representativesByDistricts"))
-    return { representativesByDistricts: [] };
-  if (q.includes("myCountySupervisors")) return { myCountySupervisors: [] };
-  if (q.includes("representatives"))
-    return { representatives: mockRepresentatives };
-  if (q.includes("independentExpenditures"))
-    return { independentExpenditures: mockIndependentExpenditures };
-  if (q.includes("expenditures")) return { expenditures: mockExpenditures };
-  if (q.includes("contributions")) return { contributions: mockContributions };
-  if (q.includes("committees")) return { committees: mockCommittees };
-  return null;
+    }),
+  ],
+  [
+    (q) => q.includes("propositions"),
+    () => ({ propositions: mockPropositions }),
+  ],
+  [(q) => q.includes("meetings"), () => ({ meetings: mockMeetings })],
+  [(q) => q.includes("myAddresses"), () => ({ myAddresses: [] })],
+  [
+    (q) => q.includes("representativesByDistricts"),
+    () => ({ representativesByDistricts: [] }),
+  ],
+  [
+    (q) => q.includes("myCountySupervisors"),
+    () => ({ myCountySupervisors: [] }),
+  ],
+  [
+    (q) => q.includes("representatives"),
+    () => ({ representatives: mockRepresentatives }),
+  ],
+  [
+    (q) => q.includes("independentExpenditures"),
+    () => ({ independentExpenditures: mockIndependentExpenditures }),
+  ],
+  [
+    (q) => q.includes("expenditures"),
+    () => ({ expenditures: mockExpenditures }),
+  ],
+  [
+    (q) => q.includes("contributions"),
+    () => ({ contributions: mockContributions }),
+  ],
+  [(q) => q.includes("committees"), () => ({ committees: mockCommittees })],
+];
+
+// Returns mock data for a given GraphQL POST body, or null for unknown queries.
+function resolveRegionQueryData(
+  postData: Record<string, unknown> | null,
+): unknown {
+  if (!postData) return null;
+  const opName = postData.operationName as string | undefined;
+  if (opName && OPERATION_RESPONSES[opName]) {
+    return OPERATION_RESPONSES[opName]();
+  }
+  const q = (postData.query as string) ?? "";
+  const match = QUERY_MATCHERS.find(([predicate]) => predicate(q));
+  return match ? match[1]() : null;
 }
 
 // Helper function to mock GraphQL API
