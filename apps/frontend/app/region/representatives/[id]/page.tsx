@@ -557,6 +557,45 @@ function AuthoredBillsList({
   );
 }
 
+function CoAuthoredBillsList({
+  representativeId,
+}: {
+  readonly representativeId: string;
+}) {
+  const { data, loading } = useQuery<BillsData, BillsVars>(GET_BILLS, {
+    variables: { coAuthorId: representativeId, take: 10, skip: 0 },
+    fetchPolicy: "cache-and-network",
+  });
+
+  if (loading && !data) {
+    return (
+      <div className="space-y-2 animate-pulse">
+        {[1, 2, 3].map((n) => (
+          <div key={n} className="h-12 bg-slate-100 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  const bills = data?.bills?.items ?? [];
+
+  if (bills.length === 0) {
+    return (
+      <p className="text-sm italic text-slate-400">
+        No co-authored bills found in the current session.
+      </p>
+    );
+  }
+
+  return (
+    <BillsList
+      bills={bills}
+      totalCount={data?.bills?.total ?? 0}
+      viewAllHref={`/region/bills?coAuthorId=${representativeId}`}
+    />
+  );
+}
+
 /**
  * Layer 3 — What They've Done. Live activity feed driven by the
  * `legislative_actions` data backing the rep, plus an at-a-glance
@@ -594,6 +633,11 @@ function WhatTheyveDone({
       <div className="mb-8">
         <SectionTitle>Authored Bills</SectionTitle>
         <AuthoredBillsList representativeId={rep.id} />
+      </div>
+
+      <div className="mb-8">
+        <SectionTitle>Co-authored Bills</SectionTitle>
+        <CoAuthoredBillsList representativeId={rep.id} />
       </div>
 
       <div className="flex items-center gap-3">

@@ -631,6 +631,22 @@ test.describe("Proposition Detail Page", () => {
     await propositionsLink.click();
     await expect(page).toHaveURL(/\/region\/propositions$/);
   });
+
+  // #679: when civics.lifecycleStages isn't loaded (or the proposition has
+  // no lifecycleStageId), the bar and the citizen-action CTA must both be
+  // suppressed without affecting the rest of the page. The default fixture
+  // has no civics → both should be absent and the page still renders.
+  test("lifecycle progress bar is suppressed when civics data is empty", async ({
+    page,
+  }) => {
+    await page.goto("/region/propositions/1");
+
+    await expect(page.getByText("Proposition 1: Test Measure")).toBeVisible();
+    await expect(page.getByRole("list", { name: /lifecycle/i })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Take action/i })).toHaveCount(
+      0,
+    );
+  });
 });
 
 test.describe("Meetings Page", () => {
@@ -890,12 +906,16 @@ test.describe("Representative Detail Page", () => {
 
     // L3 leads with the live activity feed (#665); "Authored Bills"
     // remains as a placeholder section, while "Voting Record" was
-    // dropped because the per-rep vote attribution work is V2.
+    // dropped because the per-rep vote attribution work is V2. #594
+    // adds the parallel "Co-authored Bills" section.
     await expect(
       page.getByRole("heading", { name: "Recent activity" }),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Authored Bills" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Co-authored Bills" }),
     ).toBeVisible();
   });
 
