@@ -10,6 +10,8 @@ import {
   IdVars,
   type Proposition,
   type PropositionAnalysisClaim,
+  type CitizenAction,
+  type CivicsLifecycleStage,
 } from "@/lib/graphql/region";
 import {
   GET_PETITION_DOCUMENTS_FOR_PROPOSITION,
@@ -26,6 +28,9 @@ import { ClaimAttribution } from "@/components/region/ClaimAttribution";
 import { SegmentedFullText } from "@/components/region/SegmentedFullText";
 import { PropositionFundingSection } from "@/components/region/PropositionFundingSection";
 import { CivicTerm } from "@/components/civics/CivicTerm";
+import { CitizenActionCallout } from "@/components/civics/CitizenActionCallout";
+import { LifecycleProgressBar } from "@/components/civics/LifecycleProgressBar";
+import { useCivics } from "@/components/civics/CivicsContext";
 import { PropositionStatusBadge } from "@/components/region/PropositionStatusBadge";
 import { formatDate } from "@/lib/format";
 
@@ -51,9 +56,11 @@ function claimsForField(
 
 function QuickView({
   proposition,
+  citizenAction,
   onNext,
 }: {
   readonly proposition: Proposition;
+  readonly citizenAction: CitizenAction | null | undefined;
   readonly onNext: () => void;
 }) {
   // Prefer the richer AI-generated paragraph. Fall back to the raw
@@ -113,6 +120,12 @@ function QuickView({
             Fiscal impact
           </span>
           <span className="leading-relaxed">{proposition.fiscalImpact}</span>
+        </div>
+      )}
+
+      {citizenAction && (
+        <div className="mb-6 max-w-2xl">
+          <CitizenActionCallout action={citizenAction} />
         </div>
       )}
 
@@ -430,10 +443,30 @@ export default function PropositionDetailPage() {
   );
 
   const proposition = data?.proposition;
+  const { civics, measureTypeByCode } = useCivics();
 
   const electionDate = proposition?.electionDate
     ? formatDate(proposition.electionDate)
     : null;
+
+  // Derive the ordered lifecycle-stage list for this proposition's measure
+  // type. Measure-type code is the alpha prefix of externalId ("AB" in
+  // "AB1234"). Empty list ⇒ bar suppressed. React Compiler memoizes these
+  // derivations automatically — no manual useMemo. See #679.
+  const lifecycleStagesById = new Map<string, CivicsLifecycleStage>(
+    (civics?.lifecycleStages ?? []).map((s) => [s.id, s]),
+  );
+  const measureTypeCode =
+    proposition?.externalId.replace(/\d+$/, "").trim() ?? "";
+  const orderedStageIds =
+    measureTypeByCode.get(measureTypeCode)?.lifecycleStageIds ?? [];
+  const lifecycleStages: CivicsLifecycleStage[] = orderedStageIds
+    .map((id) => lifecycleStagesById.get(id))
+    .filter((s): s is CivicsLifecycleStage => s !== undefined);
+  const citizenAction: CitizenAction | null | undefined =
+    proposition?.lifecycleStageId
+      ? lifecycleStagesById.get(proposition.lifecycleStageId)?.citizenAction
+      : undefined;
 
   function handleNavigateToClaim(claim: PropositionAnalysisClaim) {
     setFocusedClaimKey(claimKey(claim));
@@ -490,13 +523,30 @@ export default function PropositionDetailPage() {
             </div>
           </div>
 
+          {/* Lifecycle progress bar — visible across all 4 layers. Renders
+              only when civics defines an ordered stage list for this
+              measure type. Falls back gracefully to "in-progress" mode
+              when currentStageId is null. See #679. */}
+          {lifecycleStages.length > 0 && (
+            <div className="mb-6">
+              <LifecycleProgressBar
+                stages={lifecycleStages}
+                currentStageId={proposition.lifecycleStageId ?? null}
+              />
+            </div>
+          )}
+
           {/* Layer Navigation */}
           <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
 
           {/* Layer Content */}
           <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
             {layer === 1 && (
-              <QuickView proposition={proposition} onNext={() => setLayer(2)} />
+              <QuickView
+                proposition={proposition}
+                citizenAction={citizenAction}
+                onNext={() => setLayer(2)}
+              />
             )}
             {layer === 2 && (
               <Details

@@ -71,13 +71,20 @@ describe("PromptClientService Integration", () => {
     });
 
     it("should use remote when available (tier 1)", async () => {
+      // After #729: the remote path returns a RAW TEMPLATE; the client
+      // interpolates locally to produce promptText.
       globalThis.fetch = jest.fn().mockResolvedValue({
         ok: true,
         json: () =>
           Promise.resolve({
-            promptText: "from remote",
+            name: "rag",
+            templateText: "remote: {{CONTEXT}} {{QUERY}}",
+            variables: ["CONTEXT", "QUERY"],
             promptHash: "abc",
             promptVersion: "v5",
+            expiresAt: new Date(Date.now() + 3600000).toISOString(),
+            experimentId: null,
+            variantName: null,
           }),
       });
 
@@ -86,7 +93,7 @@ describe("PromptClientService Integration", () => {
         query: "q",
       });
 
-      expect(result.promptText).toBe("from remote");
+      expect(result.promptText).toBe("remote: ctx q");
       expect(result.promptVersion).toBe("v5");
 
       const metrics = service.getMetrics();
@@ -135,7 +142,11 @@ describe("PromptClientService Integration", () => {
       expect(result.promptVersion).toBe("v0");
 
       const metrics = service.getMetrics();
-      expect(metrics.dbFallbacks).toBe(1);
+      // After #729: dbFallbacks counts only templates actually fetched
+      // FROM the DB (not just "request used the DB path"). DB returned
+      // null here, so 0 templates from DB; the hardcoded fallback fired
+      // instead — counted separately.
+      expect(metrics.dbFallbacks).toBe(0);
       expect(metrics.hardcodedFallbacks).toBeGreaterThan(0);
     });
   });
@@ -273,21 +284,30 @@ describe("PromptClientService Integration", () => {
     });
 
     it("should accumulate metrics across multiple operations", async () => {
-      // 2 successful remote calls
+      // After #729: the SECOND remote call is served from the local
+      // template cache (no fetch). So we get 1 remote-call metric, not 2.
       globalThis.fetch = jest.fn().mockResolvedValue({
         ok: true,
         json: () =>
           Promise.resolve({
-            promptText: "remote",
+            name: "rag",
+            templateText: "remote: {{CONTEXT}} {{QUERY}}",
+            variables: ["CONTEXT", "QUERY"],
             promptHash: "abc",
             promptVersion: "v1",
+            expiresAt: new Date(Date.now() + 3600000).toISOString(),
+            experimentId: null,
+            variantName: null,
           }),
       });
 
       await service.getRAGPrompt({ context: "a", query: "b" });
       await service.getRAGPrompt({ context: "c", query: "d" });
 
-      // 1 failed remote call → DB fallback
+      // 1 failed remote call → DB fallback. The cache was warm, but the
+      // template's expiresAt is honored — set the failing fetch BEFORE
+      // clearing cache so it falls through.
+      await service.clearCache();
       globalThis.fetch = jest.fn().mockRejectedValue(new Error("timeout"));
       mockDb.promptTemplate.findFirst.mockResolvedValue(
         mockTemplate("rag", "fb: {{CONTEXT}} {{QUERY}}"),
@@ -296,7 +316,8 @@ describe("PromptClientService Integration", () => {
       await service.getRAGPrompt({ context: "e", query: "f" });
 
       const metrics = service.getMetrics();
-      expect(metrics.remoteCalls).toBe(2);
+      expect(metrics.remoteCalls).toBe(1); // second was a cache hit
+      expect(metrics.templateCacheHits).toBe(1);
       expect(metrics.dbFallbacks).toBe(1);
       expect(metrics.totalRequests).toBeGreaterThanOrEqual(3);
       expect(metrics.avgRemoteLatencyMs).toBeGreaterThanOrEqual(0);
@@ -374,14 +395,19 @@ describe("PromptClientService Integration", () => {
       await service.onModuleInit();
       expect(mockDb.promptTemplate.findFirst).not.toHaveBeenCalled();
 
-      // Use with HMAC auth
+      // Use with HMAC auth — new shape from GET /prompts/:name
       globalThis.fetch = jest.fn().mockResolvedValue({
         ok: true,
         json: () =>
           Promise.resolve({
-            promptText: "hmac response",
+            name: "rag",
+            templateText: "hmac: {{CONTEXT}} {{QUERY}}",
+            variables: ["CONTEXT", "QUERY"],
             promptHash: "hash",
             promptVersion: "v2",
+            expiresAt: new Date(Date.now() + 3600000).toISOString(),
+            experimentId: null,
+            variantName: null,
           }),
       });
 
@@ -389,7 +415,7 @@ describe("PromptClientService Integration", () => {
         context: "hmac test",
         query: "question",
       });
-      expect(result.promptText).toBe("hmac response");
+      expect(result.promptText).toBe("hmac: hmac test question");
 
       // Verify HMAC headers were sent
       const fetchCall = (globalThis.fetch as jest.Mock).mock.calls[0];

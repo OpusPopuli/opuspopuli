@@ -65,6 +65,17 @@ interface StagePattern {
   regex: RegExp;
 }
 
+/** Minimal Bill row shape needed by the inner sync-loop skip checks.
+ *  Loaded once per region via `loadBillSkipMetadata` to avoid N+1 reads. */
+interface BillSkipRecord {
+  id: string;
+  externalId: string;
+  sourcePublishedAt: Date | null;
+  lastAction: string | null;
+  lastActionDate: Date | null;
+  needsStatusRecheck: boolean;
+}
+
 /** Region plugin row shape returned by list/lookup queries. */
 type RegionPluginRow = {
   name: string;
@@ -518,12 +529,14 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     depth: string = SyncDepth.STATE,
     scopedRegionId?: string,
     pipelineJobId?: string,
+    forceStatusRecheck?: boolean,
   ): Promise<SyncResult[]> {
     const limits = [
       maxReps != null ? `maxReps=${maxReps}` : null,
       maxBills != null ? `maxBills=${maxBills}` : null,
       depth !== SyncDepth.STATE ? `depth=${depth}` : null,
       scopedRegionId ? `regionId=${scopedRegionId}` : null,
+      forceStatusRecheck ? 'forceStatusRecheck=true' : null,
     ].filter(Boolean);
     const limitsStr = limits.length ? ` (${limits.join(', ')})` : '';
     this.logger.log(
@@ -549,6 +562,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
           maxReps,
           maxBills,
           pipelineJobId,
+          forceStatusRecheck,
         )),
       );
     }
@@ -561,6 +575,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
           maxBills,
           scopedRegionId,
           pipelineJobId,
+          forceStatusRecheck,
         )),
       );
     }
@@ -576,6 +591,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     maxReps?: number,
     maxBills?: number,
     pipelineJobId?: string,
+    forceStatusRecheck?: boolean,
   ): Promise<SyncResult[]> {
     const supported = instance.getSupportedDataTypes();
     const filtered = dataTypes
@@ -592,6 +608,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
           maxBills,
           name,
           pipelineJobId,
+          forceStatusRecheck,
         );
         results.push(result);
       } catch (error) {
@@ -617,6 +634,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     maxBills?: number,
     scopedRegionId?: string,
     pipelineJobId?: string,
+    forceStatusRecheck?: boolean,
   ): Promise<SyncResult[]> {
     const where = scopedRegionId
       ? { name: scopedRegionId, parentRegionId: { not: null }, enabled: true }
@@ -656,6 +674,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
             maxReps,
             maxBills,
             pipelineJobId,
+            forceStatusRecheck,
           )),
         );
       } catch (error) {
@@ -694,6 +713,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     maxBills?: number,
     regionId?: string,
     pipelineJobId?: string,
+    forceStatusRecheck?: boolean,
   ): Promise<SyncResult> {
     this.logger.log(`Syncing ${dataType} from ${pluginName}`);
     const startTime = Date.now();
@@ -717,7 +737,8 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       [DataType.CAMPAIGN_FINANCE]: () =>
         this.syncCampaignFinance(provider, pipelineJobId),
       [DataType.CIVICS]: () => this.syncCivics(provider),
-      [DataType.BILLS]: () => this.syncBills(maxBills, provider),
+      [DataType.BILLS]: () =>
+        this.syncBills(maxBills, provider, forceStatusRecheck),
     };
 
     const handler = syncHandlers[dataType];
@@ -786,6 +807,9 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ processed: number; created: number; updated: number }> {
     const propositions = await provider.fetchPropositions(pipelineJobId);
 
+    const regionId = provider.getName?.() ?? 'unknown';
+    const stagePatterns = await this.buildStagePatterns(regionId);
+
     const result = await this.upsertByExternalId(
       propositions,
       (ids) =>
@@ -794,8 +818,12 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
           select: { externalId: true },
         }),
       (props) =>
-        props.map((prop) =>
-          this.db.proposition.upsert({
+        props.map((prop) => {
+          const lifecycleStageId = this.resolveStageFromStatus(
+            prop.status,
+            stagePatterns,
+          );
+          return this.db.proposition.upsert({
             where: { externalId: prop.externalId },
             update: {
               title: prop.title,
@@ -804,6 +832,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
               status: prop.status,
               electionDate: prop.electionDate,
               sourceUrl: prop.sourceUrl,
+              lifecycleStageId,
             },
             create: {
               externalId: prop.externalId,
@@ -813,11 +842,16 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
               status: prop.status,
               electionDate: prop.electionDate,
               sourceUrl: prop.sourceUrl,
+              lifecycleStageId,
             },
-          }),
-        ),
+          });
+        }),
       'propositions:',
     );
+
+    if (stagePatterns.length > 0) {
+      await this.backfillPropositionStageIds(stagePatterns);
+    }
 
     if (this.propositionAnalysis) {
       try {
@@ -830,6 +864,48 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     }
 
     return result;
+  }
+
+  /**
+   * Resolve `lifecycleStageId` for propositions that were ingested before
+   * civics patterns were available, or whose status matched no pattern at
+   * the time of upsert. Mirrors `backfillBillStageIds`. Idempotent.
+   *
+   * Unlike the bill equivalent, this is NOT region-scoped because
+   * Proposition has no `regionId` column today. Safe for single-region
+   * deployments; will need a Proposition.regionId migration before a
+   * second region is added. Tracked in opuspopuli#731.
+   */
+  private async backfillPropositionStageIds(
+    stagePatterns: StagePattern[],
+  ): Promise<void> {
+    const unmatched = await this.db.proposition.findMany({
+      where: { lifecycleStageId: null, deletedAt: null },
+      select: { id: true, status: true },
+    });
+    if (unmatched.length === 0) return;
+
+    const byStage = new Map<string, string[]>();
+    for (const prop of unmatched) {
+      const stageId = this.resolveStageFromStatus(prop.status, stagePatterns);
+      if (!stageId) continue;
+      if (!byStage.has(stageId)) byStage.set(stageId, []);
+      byStage.get(stageId)!.push(prop.id);
+    }
+
+    let filled = 0;
+    for (const [stageId, ids] of byStage) {
+      await this.db.proposition.updateMany({
+        where: { id: { in: ids } },
+        data: { lifecycleStageId: stageId },
+      });
+      filled += ids.length;
+    }
+    if (filled > 0) {
+      this.logger.log(
+        `Propositions: backfilled lifecycleStageId for ${filled} of ${unmatched.length} proposition(s)`,
+      );
+    }
   }
 
   async regeneratePropositionAnalysis(id: string): Promise<boolean> {
@@ -1299,6 +1375,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   private async syncBills(
     maxBills: number | undefined,
     plugin: DataFetcher,
+    forceStatusRecheck: boolean = false,
   ): Promise<{
     processed: number;
     created: number;
@@ -1337,6 +1414,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     const repIndex = await this.buildRepNameIndex(regionId);
     const committeeIndex = await this.buildCommitteeNameIndex();
     const stagePatterns = await this.buildStagePatterns(regionId);
+    const billsByExternalId = await this.loadBillSkipMetadata(regionId);
 
     let processed = 0;
     let created = 0;
@@ -1353,7 +1431,9 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         committeeIndex,
         syncedExternalIds,
         stagePatterns,
+        billsByExternalId,
         maxBills,
+        forceStatusRecheck,
       );
       processed += counts.processed;
       created += counts.created;
@@ -1378,7 +1458,9 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     committeeIndex: Map<string, string>,
     syncedExternalIds: Set<string>,
     stagePatterns: StagePattern[],
+    billsByExternalId: Map<string, BillSkipRecord>,
     maxBills?: number,
+    forceStatusRecheck: boolean = false,
   ): Promise<{
     processed: number;
     created: number;
@@ -1394,38 +1476,35 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       `Bills: discovered ${statusUrls.length} bill(s) from ${ds.url}`,
     );
 
-    let processed = 0;
-    let created = 0;
-    let updated = 0;
-    let skipped = 0;
+    const counts = {
+      processed: 0,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      statusOnlyMatched: 0,
+    };
 
     for (const url of statusUrls) {
-      const result = await this.extractAndUpsertBillPage(
+      await this.processOneBillUrl(url, {
         regionId,
-        url,
         ds,
         repIndex,
         committeeIndex,
         stagePatterns,
-      );
-      if (result === 'created') {
-        created++;
-        processed++;
-      } else if (result === 'updated') {
-        updated++;
-        processed++;
-      } else if (result === 'skipped') {
-        skipped++;
-        processed++;
-      }
-      if (result !== 'failed') {
-        const billId = new URL(url).searchParams.get('bill_id');
-        if (billId) syncedExternalIds.add(billId);
-      }
+        billsByExternalId,
+        forceStatusRecheck,
+        syncedExternalIds,
+        counts,
+      });
     }
-    if (skipped > 0) {
+    if (counts.skipped > 0) {
       this.logger.log(
-        `Bills: skipped ${skipped} unchanged bill(s) from ${ds.url}`,
+        `Bills: skipped ${counts.skipped} unchanged bill(s) from ${ds.url}`,
+      );
+    }
+    if (counts.statusOnlyMatched > 0) {
+      this.logger.log(
+        `Bills: status-only re-check matched ${counts.statusOnlyMatched} unchanged bill(s) from ${ds.url} (no LLM)`,
       );
     }
 
@@ -1436,10 +1515,82 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         ds,
         repIndex,
       );
-      if (result === 'updated') updated++;
+      if (result === 'updated') counts.updated++;
     }
 
-    return { processed, created, updated, skipped };
+    return {
+      processed: counts.processed,
+      created: counts.created,
+      updated: counts.updated,
+      skipped: counts.skipped,
+    };
+  }
+
+  /**
+   * Process a single bill discovery URL: try the cheap status-only
+   * re-check first, then fall through to the full LLM extraction. Mutates
+   * the shared `counts` object and `syncedExternalIds` set in place.
+   */
+  private async processOneBillUrl(
+    url: string,
+    ctx: {
+      regionId: string;
+      ds: DataSourceConfig;
+      repIndex: Map<string, { id: string; chamber: string }>;
+      committeeIndex: Map<string, string>;
+      stagePatterns: StagePattern[];
+      billsByExternalId: Map<string, BillSkipRecord>;
+      forceStatusRecheck: boolean;
+      syncedExternalIds: Set<string>;
+      counts: {
+        processed: number;
+        created: number;
+        updated: number;
+        skipped: number;
+        statusOnlyMatched: number;
+      };
+    },
+  ): Promise<void> {
+    const billId = this.safeBillIdFromUrl(url);
+
+    // Status-only re-check path (#689): flagged-by-linker or forced by
+    // weekly backstop. Unchanged → skip cheaply; otherwise fall through.
+    if (billId) {
+      const recheck = await this.tryStatusOnlyRecheck(
+        url,
+        ctx.forceStatusRecheck,
+        ctx.billsByExternalId.get(billId),
+      );
+      if (recheck === 'unchanged') {
+        ctx.counts.skipped++;
+        ctx.counts.statusOnlyMatched++;
+        ctx.counts.processed++;
+        ctx.syncedExternalIds.add(billId);
+        return;
+      }
+    }
+
+    const result = await this.extractAndUpsertBillPage(
+      ctx.regionId,
+      url,
+      ctx.ds,
+      ctx.repIndex,
+      ctx.committeeIndex,
+      ctx.stagePatterns,
+    );
+    if (result === 'created') {
+      ctx.counts.created++;
+      ctx.counts.processed++;
+    } else if (result === 'updated') {
+      ctx.counts.updated++;
+      ctx.counts.processed++;
+    } else if (result === 'skipped') {
+      ctx.counts.skipped++;
+      ctx.counts.processed++;
+    }
+    if (result !== 'failed' && billId) {
+      ctx.syncedExternalIds.add(billId);
+    }
   }
 
   private async buildStagePatterns(regionId: string): Promise<StagePattern[]> {
@@ -1703,6 +1854,138 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private safeBillIdFromUrl(url: string): string | undefined {
+    try {
+      return new URL(url).searchParams.get('bill_id') ?? undefined;
+    } catch {
+      this.logger.warn(`Bills: malformed bill URL skipped: ${url}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Extract change-detection signals from billStatusClient.xhtml for the
+   * status-only re-check path (#689). Targets the actual leginfo markup:
+   *
+   *   - lastActionDate: <span id="lastAction" class="statusLabel">M/D/YY</span>
+   *   - lastAction:    first row of the action history table
+   *                    (<td scope="row">DATE</td><td>TEXT</td>)
+   *
+   * Note: the leginfo `status` cell ("Inactive Bill - Chaptered") differs
+   * from the LLM-normalized DB `status` ("Chaptered"), so it is NOT used
+   * for change detection — a raw-vs-normalized mismatch would trigger a
+   * false positive on every check. Caller compares only lastActionDate +
+   * lastAction text, which the LLM stores verbatim.
+   */
+  private extractBillStatusFields(html: string): {
+    lastAction: string | null;
+    lastActionDate: Date | null;
+  } {
+    const clean = (raw: string): string =>
+      raw
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // <span id="lastAction"...>M/D/YY</span> — 2-digit year on leginfo
+    const dateMatch = html.match(
+      /<span\s+id="lastAction"[^>]*>\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s*</i,
+    );
+    let lastActionDate: Date | null = null;
+    if (dateMatch) {
+      const [, m, d, yRaw] = dateMatch;
+      const year = yRaw.length === 2 ? 2000 + Number(yRaw) : Number(yRaw);
+      const dt = new Date(Date.UTC(year, Number(m) - 1, Number(d)));
+      if (!isNaN(dt.getTime())) lastActionDate = dt;
+    }
+
+    // First action history row: <td scope="row">DATE</td><td>TEXT</td>
+    const actionMatch = html.match(
+      /<td\s+scope="row">\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*<\/td>\s*<td>\s*([^<]+?)\s*</i,
+    );
+    const lastAction = actionMatch ? clean(actionMatch[1]) || null : null;
+
+    return { lastAction, lastActionDate };
+  }
+
+  /**
+   * Status-only re-check for bills flagged by the journal linker or forced
+   * by the weekly backstop (#689). Compares lastActionDate + lastAction
+   * text (both LLM-stored verbatim) against the raw page; status is
+   * skipped because the LLM normalizes it ("Inactive Bill - Chaptered" →
+   * "Chaptered") and a raw comparison would false-positive every time.
+   *
+   * Takes `existing` as a parameter to avoid a per-bill `findUnique` —
+   * callers pre-load via `loadBillSkipMetadata` at sync start.
+   */
+  private async tryStatusOnlyRecheck(
+    statusUrl: string,
+    forceStatusRecheck: boolean,
+    existing: BillSkipRecord | undefined,
+  ): Promise<'unchanged' | 'no-recheck-needed' | 'fall-through'> {
+    if (!existing) return 'fall-through'; // brand-new bill, full extraction
+    if (!forceStatusRecheck && !existing.needsStatusRecheck) {
+      return 'no-recheck-needed';
+    }
+
+    let html: string;
+    try {
+      html = await this.fetchUrlText(statusUrl);
+    } catch {
+      return 'fall-through';
+    }
+    const fields = this.extractBillStatusFields(html);
+
+    // Both signals must parse cleanly. If the page structure shifts and a
+    // regex breaks, fall through to LLM so we don't silently drift.
+    if (fields.lastAction == null || fields.lastActionDate == null) {
+      return 'fall-through';
+    }
+
+    const lastActionChanged = fields.lastAction !== existing.lastAction;
+    const dateChanged =
+      existing.lastActionDate == null ||
+      existing.lastActionDate.getTime() !== fields.lastActionDate.getTime();
+
+    if (lastActionChanged || dateChanged) {
+      // Something new on the page — defer to LLM for authoritative update.
+      // The LLM path clears needsStatusRecheck in its upsert.
+      return 'fall-through';
+    }
+
+    // No material change. Clear the flag and skip.
+    await this.db.bill.update({
+      where: { id: existing.id },
+      data: { needsStatusRecheck: false },
+    });
+    return 'unchanged';
+  }
+
+  /**
+   * Pre-load the per-bill metadata that the inner loop needs for skip-gating
+   * decisions (status-only re-check + sourcePublishedAt skip).
+   *
+   * Eliminates a per-bill `findUnique` in the iteration loop: with ~5k bills
+   * per CA sync that's ~5k round-trips replaced by one bulk SELECT.
+   */
+  private async loadBillSkipMetadata(
+    regionId: string,
+  ): Promise<Map<string, BillSkipRecord>> {
+    const rows = await this.db.bill.findMany({
+      where: { regionId },
+      select: {
+        id: true,
+        externalId: true,
+        sourcePublishedAt: true,
+        lastAction: true,
+        lastActionDate: true,
+        needsStatusRecheck: true,
+      },
+    });
+    return new Map(rows.map((r) => [r.externalId, r]));
+  }
+
   private parseBillJson(
     candidate: string,
     sourceUrl: string,
@@ -1817,6 +2100,10 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         authorName: raw.authorName ?? null,
         sourceUrl,
         sourcePublishedAt,
+        // A successful full extraction always clears the status-recheck
+        // flag — whether the bill arrived here via the journal flag or the
+        // weekly backstop, the LLM update is authoritative. See #689.
+        needsStatusRecheck: false,
         extractedAt: new Date(),
       };
       const bill = await this.db.bill.upsert({

@@ -174,8 +174,10 @@ describe('RegionSyncService', () => {
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
     mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.proposition.updateMany.mockResolvedValue({ count: 0 } as never);
     mockDb.meeting.findMany.mockResolvedValue([]);
     mockDb.representative.findMany.mockResolvedValue([]);
+    mockDb.civicsBlock.findMany.mockResolvedValue([]);
 
     mockDb.committee.findMany.mockResolvedValue([]);
     mockDb.committee.findUnique.mockResolvedValue(null);
@@ -478,6 +480,221 @@ describe('RegionSyncService', () => {
       expect(result.itemsProcessed).toBe(1);
     });
   });
+
+  describe('extractBillStatusFields — status-only re-check parser (#689)', () => {
+    // Synthetic snippet mirroring leginfo billStatusClient.xhtml structure:
+    // <span id="lastAction">M/D/YY</span> + first action-history row.
+    const sampleHtml = `
+      <div>
+        <span id="lastAction" class="statusLabel">10/09/25</span>
+      </div>
+      <table>
+        <tbody>
+          <tr>
+            <td scope="row">10/09/25</td>
+            <td>Chaptered by Secretary of State - Chapter 472, Statutes of 2025.</td>
+          </tr>
+          <tr>
+            <td scope="row">10/09/25</td>
+            <td>Approved by the Governor.</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+
+    it('extracts lastAction (first history row) + lastActionDate (M/D/YY → UTC)', () => {
+      const result = (
+        service as unknown as {
+          extractBillStatusFields: (h: string) => {
+            lastAction: string | null;
+            lastActionDate: Date | null;
+          };
+        }
+      ).extractBillStatusFields(sampleHtml);
+      expect(result.lastAction).toBe(
+        'Chaptered by Secretary of State - Chapter 472, Statutes of 2025.',
+      );
+      expect(result.lastActionDate?.toISOString()).toBe(
+        '2025-10-09T00:00:00.000Z',
+      );
+    });
+
+    it('returns nulls when the page structure does not match (caller falls through to LLM)', () => {
+      const result = (
+        service as unknown as {
+          extractBillStatusFields: (h: string) => {
+            lastAction: string | null;
+            lastActionDate: Date | null;
+          };
+        }
+      ).extractBillStatusFields(
+        '<html><body>nothing useful here</body></html>',
+      );
+      expect(result.lastAction).toBeNull();
+      expect(result.lastActionDate).toBeNull();
+    });
+  });
+
+  describe('tryStatusOnlyRecheck — status-only re-check gate (#689)', () => {
+    // Sample real-leginfo-shaped HTML; the parser path is covered by the
+    // extractBillStatusFields tests above. These tests focus on the gate
+    // logic: when to read, when to fetch, when to clear the flag.
+    const matchingHtml = `
+      <span id="lastAction" class="statusLabel">10/09/25</span>
+      <table><tbody>
+        <tr><td scope="row">10/09/25</td><td>Chaptered by Secretary of State - Chapter 472, Statutes of 2025.</td></tr>
+      </tbody></table>
+    `;
+
+    type Recheck = (
+      url: string,
+      force: boolean,
+      existing:
+        | {
+            id: string;
+            externalId: string;
+            sourcePublishedAt: Date | null;
+            lastAction: string | null;
+            lastActionDate: Date | null;
+            needsStatusRecheck: boolean;
+          }
+        | undefined,
+    ) => Promise<'unchanged' | 'no-recheck-needed' | 'fall-through'>;
+    const callRecheck = (svc: RegionSyncService) =>
+      (
+        svc as unknown as { tryStatusOnlyRecheck: Recheck }
+      ).tryStatusOnlyRecheck.bind(svc);
+
+    const mkExisting = (
+      overrides: Partial<{
+        lastAction: string | null;
+        lastActionDate: Date | null;
+        needsStatusRecheck: boolean;
+      }> = {},
+    ) => ({
+      id: 'bill-uuid',
+      externalId: '202520260AB1',
+      sourcePublishedAt: null,
+      lastAction:
+        'Chaptered by Secretary of State - Chapter 472, Statutes of 2025.',
+      lastActionDate: new Date(Date.UTC(2025, 9, 9)),
+      needsStatusRecheck: false,
+      ...overrides,
+    });
+
+    let fetchSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      fetchSpy = jest
+        .spyOn(
+          service as unknown as {
+            fetchUrlText: (u: string) => Promise<string>;
+          },
+          'fetchUrlText',
+        )
+        .mockResolvedValue(matchingHtml);
+    });
+
+    afterEach(() => fetchSpy.mockRestore());
+
+    it('returns "fall-through" when bill is not in the DB map', async () => {
+      const recheck = callRecheck(service);
+      const result = await recheck(
+        'https://x/billStatusClient.xhtml?bill_id=AB1',
+        false,
+        undefined,
+      );
+      expect(result).toBe('fall-through');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns "no-recheck-needed" when flag is false and force is false (no fetch)', async () => {
+      const recheck = callRecheck(service);
+      const result = await recheck('https://x/x.xhtml', false, mkExisting());
+      expect(result).toBe('no-recheck-needed');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('fetches when forceStatusRecheck=true even if the flag is false', async () => {
+      const recheck = callRecheck(service);
+      await recheck('https://x/x.xhtml', true, mkExisting());
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('fetches when the flag is true even if force is false', async () => {
+      const recheck = callRecheck(service);
+      await recheck(
+        'https://x/x.xhtml',
+        false,
+        mkExisting({ needsStatusRecheck: true }),
+      );
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns "fall-through" when fetch throws', async () => {
+      fetchSpy.mockRejectedValueOnce(new Error('503'));
+      const recheck = callRecheck(service);
+      const result = await recheck('https://x/x.xhtml', true, mkExisting());
+      expect(result).toBe('fall-through');
+    });
+
+    it('returns "fall-through" when the regex cannot parse the page', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        '<html><body>no useful markup</body></html>',
+      );
+      const recheck = callRecheck(service);
+      const result = await recheck('https://x/x.xhtml', true, mkExisting());
+      expect(result).toBe('fall-through');
+    });
+
+    it('returns "unchanged" and clears the flag when page matches stored values', async () => {
+      const updateMock = jest.fn().mockResolvedValue({});
+      (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+        bill: { update: updateMock },
+      };
+      const recheck = callRecheck(service);
+      const result = await recheck(
+        'https://x/x.xhtml',
+        true,
+        mkExisting({ needsStatusRecheck: true }),
+      );
+      expect(result).toBe('unchanged');
+      expect(updateMock).toHaveBeenCalledWith({
+        where: { id: 'bill-uuid' },
+        data: { needsStatusRecheck: false },
+      });
+    });
+
+    it('returns "fall-through" when lastAction text differs from stored', async () => {
+      const recheck = callRecheck(service);
+      const result = await recheck(
+        'https://x/x.xhtml',
+        true,
+        mkExisting({ lastAction: 'Different action' }),
+      );
+      expect(result).toBe('fall-through');
+    });
+
+    it('returns "fall-through" when lastActionDate differs from stored', async () => {
+      const recheck = callRecheck(service);
+      const result = await recheck(
+        'https://x/x.xhtml',
+        true,
+        mkExisting({ lastActionDate: new Date(Date.UTC(2024, 0, 1)) }),
+      );
+      expect(result).toBe('fall-through');
+    });
+
+    it('returns "fall-through" when stored lastActionDate is null (treated as changed)', async () => {
+      const recheck = callRecheck(service);
+      const result = await recheck(
+        'https://x/x.xhtml',
+        true,
+        mkExisting({ lastActionDate: null }),
+      );
+      expect(result).toBe('fall-through');
+    });
+  });
 });
 
 // ─── Federal placeholder resolution ───────────────────────────────────────────
@@ -559,8 +776,10 @@ describe('RegionSyncService — federal placeholder resolution', () => {
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
     mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.proposition.updateMany.mockResolvedValue({ count: 0 } as never);
     mockDb.meeting.findMany.mockResolvedValue([]);
     mockDb.representative.findMany.mockResolvedValue([]);
+    mockDb.civicsBlock.findMany.mockResolvedValue([]);
     (mockDb.$transaction as jest.Mock).mockImplementation(
       async (operations: Promise<unknown>[]) => Promise.all(operations),
     );
@@ -642,8 +861,10 @@ describe('RegionSyncService — federal placeholder resolution', () => {
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
 
     mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.proposition.updateMany.mockResolvedValue({ count: 0 } as never);
     mockDb.meeting.findMany.mockResolvedValue([]);
     mockDb.representative.findMany.mockResolvedValue([]);
+    mockDb.civicsBlock.findMany.mockResolvedValue([]);
     (mockDb.$transaction as jest.Mock).mockImplementation(
       async (operations: Promise<unknown>[]) => Promise.all(operations),
     );
@@ -796,8 +1017,10 @@ describe('RegionSyncService — campaign finance sync', () => {
     mockDb.independentExpenditure.upsert.mockResolvedValue({} as never);
 
     mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.proposition.updateMany.mockResolvedValue({ count: 0 } as never);
     mockDb.meeting.findMany.mockResolvedValue([]);
     mockDb.representative.findMany.mockResolvedValue([]);
+    mockDb.civicsBlock.findMany.mockResolvedValue([]);
 
     (mockDb.$transaction as jest.Mock).mockImplementation(
       async (operations: Promise<unknown>[]) => Promise.all(operations),
@@ -968,10 +1191,12 @@ describe('RegionSyncService — cache invalidation and batch transactions', () =
 
     mockDb.proposition.findMany.mockResolvedValue([]);
     mockDb.proposition.count.mockResolvedValue(0);
+    mockDb.proposition.updateMany.mockResolvedValue({ count: 0 } as never);
     mockDb.meeting.findMany.mockResolvedValue([]);
     mockDb.meeting.count.mockResolvedValue(0);
     mockDb.representative.findMany.mockResolvedValue([]);
     mockDb.representative.count.mockResolvedValue(0);
+    mockDb.civicsBlock.findMany.mockResolvedValue([]);
 
     (mockDb.$transaction as jest.Mock).mockImplementation(
       async (operations: Promise<unknown>[]) => {
@@ -1273,8 +1498,10 @@ describe('RegionSyncService — proposition analysis wiring', () => {
     mockDb.regionPlugin.findUnique.mockResolvedValue(null);
     mockDb.regionPlugin.upsert.mockResolvedValue({} as never);
     mockDb.proposition.findMany.mockResolvedValue([]);
+    mockDb.proposition.updateMany.mockResolvedValue({ count: 0 } as never);
     mockDb.meeting.findMany.mockResolvedValue([]);
     mockDb.representative.findMany.mockResolvedValue([]);
+    mockDb.civicsBlock.findMany.mockResolvedValue([]);
     (mockDb.$transaction as jest.Mock).mockImplementation(
       async (operations: Promise<unknown>[]) => Promise.all(operations),
     );

@@ -3,6 +3,50 @@ import { PromptClientService } from "../src/prompt-client.service.js";
 import { DbService } from "@opuspopuli/relationaldb-provider";
 import { PROMPT_CLIENT_CONFIG } from "../src/types.js";
 
+/**
+ * Mock the response shape of `GET /prompts/:name` from prompt-service
+ * (post-#66). Returns a Response-like object that fetch mocks can resolve
+ * with directly.
+ */
+function mockRemoteTemplateResponse(opts: {
+  name: string;
+  templateText: string;
+  variables?: string[];
+  version?: number;
+  hash?: string;
+  expiresInMs?: number;
+}) {
+  return {
+    ok: true,
+    json: () =>
+      Promise.resolve({
+        name: opts.name,
+        templateText: opts.templateText,
+        variables: opts.variables ?? [],
+        promptHash: opts.hash ?? `hash-${opts.name}`,
+        promptVersion: `v${opts.version ?? 1}`,
+        expiresAt: new Date(
+          Date.now() + (opts.expiresInMs ?? 3600000),
+        ).toISOString(),
+        experimentId: null,
+        variantName: null,
+      }),
+  };
+}
+
+/** Mock the response shape of `GET /prompts/:name/hash`. */
+function mockRemoteHashResponse(name: string, hash: string, version = 1) {
+  return {
+    ok: true,
+    json: () =>
+      Promise.resolve({
+        name,
+        promptHash: hash,
+        promptVersion: `v${version}`,
+      }),
+  };
+}
+
 describe("PromptClientService", () => {
   let service: PromptClientService;
   let mockDb: any;
@@ -475,28 +519,33 @@ describe("PromptClientService", () => {
       await noKeyService.onModuleDestroy();
     });
 
-    it("should call remote service with Bearer auth when URL is configured", async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            promptText: "remote prompt",
-            promptHash: "abc123",
-            promptVersion: "v2",
-          }),
-      });
+    it("should fetch the raw template via GET and interpolate locally", async () => {
+      const mockFetch = jest.fn().mockResolvedValue(
+        mockRemoteTemplateResponse({
+          name: "rag",
+          templateText: "Q={{QUERY}} C={{CONTEXT}}",
+          version: 2,
+        }),
+      );
       globalThis.fetch = mockFetch;
 
       const result = await remoteService.getRAGPrompt({
-        context: "test",
-        query: "test",
+        context: "ctx",
+        query: "q",
       });
 
-      expect(result.promptText).toBe("remote prompt");
+      // Local interpolation: raw template + local variable substitution.
+      expect(result.promptText).toBe("Q=q C=ctx");
+      // Hash is SHA-256 of the bare template text — same algorithm
+      // server-side and client-side, so values match deterministically.
+      expect(result.promptHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(result.promptVersion).toBe("v2");
+
+      // The wire call is GET /prompts/rag (not POST per-call).
       expect(mockFetch).toHaveBeenCalledWith(
         "http://prompt-service:3005/prompts/rag",
         expect.objectContaining({
-          method: "POST",
+          method: "GET",
           headers: expect.objectContaining({
             Authorization: "Bearer test-api-key",
           }),
@@ -504,16 +553,13 @@ describe("PromptClientService", () => {
       );
     });
 
-    it("should track remote call metrics on success", async () => {
-      globalThis.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            promptText: "remote",
-            promptHash: "abc",
-            promptVersion: "v1",
-          }),
-      });
+    it("should track remote call metrics on cache-miss fetch", async () => {
+      globalThis.fetch = jest.fn().mockResolvedValue(
+        mockRemoteTemplateResponse({
+          name: "rag",
+          templateText: "{{CONTEXT}} {{QUERY}}",
+        }),
+      );
 
       await remoteService.getRAGPrompt({ context: "a", query: "b" });
       const metrics = remoteService.getMetrics();
@@ -587,18 +633,17 @@ describe("PromptClientService", () => {
     });
 
     it("should NOT write remote responses into the local DB", async () => {
-      // warmDbCache was removed — it previously polluted the local
-      // prompt_templates table with interpolated prompt text, breaking
-      // getPromptHash's cache comparison.
-      globalThis.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            promptText: "remote prompt text",
-            promptHash: "abc123",
-            promptVersion: "v2",
-          }),
-      });
+      // warmDbCache was removed long ago and the #729 refactor doesn't
+      // reintroduce DB writes from the remote path — remote-cached entries
+      // live only in the in-memory remoteCache.
+      globalThis.fetch = jest.fn().mockResolvedValue(
+        mockRemoteTemplateResponse({
+          name: "rag",
+          templateText: "{{CONTEXT}} {{QUERY}}",
+          hash: "abc123",
+          version: 2,
+        }),
+      );
 
       await remoteService.getRAGPrompt({ context: "test", query: "test" });
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -637,15 +682,13 @@ describe("PromptClientService", () => {
     });
 
     it("should use HMAC headers instead of Bearer when hmacNodeId is set", async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            promptText: "hmac prompt",
-            promptHash: "def456",
-            promptVersion: "v1",
-          }),
-      });
+      const mockFetch = jest.fn().mockResolvedValue(
+        mockRemoteTemplateResponse({
+          name: "rag",
+          templateText: "{{CONTEXT}} {{QUERY}}",
+          hash: "def456",
+        }),
+      );
       globalThis.fetch = mockFetch;
 
       await hmacService.getRAGPrompt({ context: "test", query: "test" });
@@ -663,15 +706,12 @@ describe("PromptClientService", () => {
     });
 
     it("should produce valid HMAC signature format", async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            promptText: "test",
-            promptHash: "abc",
-            promptVersion: "v1",
-          }),
-      });
+      const mockFetch = jest.fn().mockResolvedValue(
+        mockRemoteTemplateResponse({
+          name: "rag",
+          templateText: "{{CONTEXT}} {{QUERY}}",
+        }),
+      );
       globalThis.fetch = mockFetch;
 
       await hmacService.getRAGPrompt({ context: "ctx", query: "q" });
@@ -785,22 +825,19 @@ describe("PromptClientService", () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Successful request should reset the circuit
-      globalThis.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            promptText: "recovered",
-            promptHash: "abc",
-            promptVersion: "v1",
-          }),
-      });
+      globalThis.fetch = jest.fn().mockResolvedValue(
+        mockRemoteTemplateResponse({
+          name: "rag",
+          templateText: "recovered: {{CONTEXT}} {{QUERY}}",
+        }),
+      );
 
       const result = await resetService.getRAGPrompt({
         context: "c",
         query: "d",
       });
 
-      expect(result.promptText).toBe("recovered");
+      expect(result.promptText).toBe("recovered: c d");
       expect(resetService.getCircuitBreakerHealth()!.state).toBe("closed");
       await resetService.onModuleDestroy();
     });
@@ -834,16 +871,27 @@ describe("PromptClientService", () => {
       await remoteService.onModuleDestroy();
     });
 
-    it("should call remote for getStructuralAnalysisPrompt", async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            promptText: "remote structural",
-            promptHash: "hash1",
-            promptVersion: "v3",
+    it("should fetch BOTH main template and schema sub-template for structural-analysis", async () => {
+      // composeStructuralAnalysis pulls 'structural-analysis' (main) and
+      // 'structural-schema-<dataType>' (schema sub). After #729, each
+      // goes through getTemplate → fetchRawTemplate → GET /:name.
+      const mockFetch = jest
+        .fn()
+        .mockResolvedValueOnce(
+          mockRemoteTemplateResponse({
+            name: "structural-analysis",
+            templateText:
+              "Analyze {{DATA_TYPE}}. Schema: {{SCHEMA_DESCRIPTION}}. HTML: {{HTML}}{{HINTS_SECTION}}{{CONTENT_GOAL}}{{CATEGORY}}",
+            hash: "hash-main",
+            version: 3,
           }),
-      });
+        )
+        .mockResolvedValueOnce(
+          mockRemoteTemplateResponse({
+            name: "structural-schema-propositions",
+            templateText: "PROP_SCHEMA",
+          }),
+        );
       globalThis.fetch = mockFetch;
 
       const result = await remoteService.getStructuralAnalysisPrompt({
@@ -852,23 +900,44 @@ describe("PromptClientService", () => {
         html: "<div/>",
       });
 
-      expect(result.promptText).toBe("remote structural");
-      expect(mockFetch).toHaveBeenCalledWith(
+      // Local interpolation: main template with PROP_SCHEMA substituted in.
+      expect(result.promptText).toContain("Analyze propositions");
+      expect(result.promptText).toContain("Schema: PROP_SCHEMA");
+      expect(result.promptText).toContain("HTML: <div/>");
+      // Hash is SHA-256 of the main template — deterministic.
+      expect(result.promptHash).toMatch(/^[a-f0-9]{64}$/);
+
+      // Two GETs: one for the main template, one for the schema sub.
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
         "http://prompt-service:3005/prompts/structural-analysis",
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({ method: "GET" }),
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        "http://prompt-service:3005/prompts/structural-schema-propositions",
+        expect.objectContaining({ method: "GET" }),
       );
     });
 
-    it("should call remote for getDocumentAnalysisPrompt", async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            promptText: "remote document",
-            promptHash: "hash2",
-            promptVersion: "v2",
+    it("should fetch BOTH main template and base instructions for document-analysis", async () => {
+      const mockFetch = jest
+        .fn()
+        .mockResolvedValueOnce(
+          mockRemoteTemplateResponse({
+            name: "document-analysis-petition",
+            templateText: "Analyze: {{TEXT}}",
+            hash: "hash-petition",
+            version: 2,
           }),
-      });
+        )
+        .mockResolvedValueOnce(
+          mockRemoteTemplateResponse({
+            name: "document-analysis-base-instructions",
+            templateText: "JSON ONLY.",
+          }),
+        );
       globalThis.fetch = mockFetch;
 
       const result = await remoteService.getDocumentAnalysisPrompt({
@@ -876,10 +945,16 @@ describe("PromptClientService", () => {
         text: "doc text",
       });
 
-      expect(result.promptText).toBe("remote document");
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://prompt-service:3005/prompts/document-analysis",
-        expect.objectContaining({ method: "POST" }),
+      // composeDocumentAnalysis interpolates the main template and
+      // appends base instructions with a newline separator.
+      expect(result.promptText).toBe("Analyze: doc text\nJSON ONLY.");
+      expect(result.promptHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        "http://prompt-service:3005/prompts/document-analysis-petition",
+      );
+      expect(mockFetch.mock.calls[1][0]).toBe(
+        "http://prompt-service:3005/prompts/document-analysis-base-instructions",
       );
     });
 
@@ -907,7 +982,10 @@ describe("PromptClientService", () => {
 
       expect(result.promptText).toContain("Analyze propositions");
       const metrics = remoteService.getMetrics();
-      expect(metrics.dbFallbacks).toBe(1);
+      // dbFallbacks counts per-TEMPLATE-FETCH after the #729 refactor
+      // (was per-request before). Structural-analysis composes from
+      // 2 templates (main + schema sub) → 2 DB hits.
+      expect(metrics.dbFallbacks).toBe(2);
     });
 
     it("should fall back to DB for document-analysis when remote fails", async () => {
@@ -930,7 +1008,8 @@ describe("PromptClientService", () => {
 
       expect(result.promptText).toContain("Analyze: doc text");
       const metrics = remoteService.getMetrics();
-      expect(metrics.dbFallbacks).toBe(1);
+      // 2 DB hits: main petition template + base instructions sub.
+      expect(metrics.dbFallbacks).toBe(2);
     });
 
     it("should treat HTTP error responses as failures and fall back", async () => {
@@ -1004,15 +1083,12 @@ describe("PromptClientService", () => {
         .fn()
         .mockRejectedValueOnce(new Error("500 Internal Server Error"))
         .mockRejectedValueOnce(new Error("503 Service Unavailable"))
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              promptText: "success after retries",
-              promptHash: "abc",
-              promptVersion: "v1",
-            }),
-        });
+        .mockResolvedValueOnce(
+          mockRemoteTemplateResponse({
+            name: "rag",
+            templateText: "success: {{CONTEXT}} {{QUERY}}",
+          }),
+        );
       globalThis.fetch = mockFetch;
 
       const result = await retryService.getRAGPrompt({
@@ -1020,7 +1096,9 @@ describe("PromptClientService", () => {
         query: "b",
       });
 
-      expect(result.promptText).toBe("success after retries");
+      // After 2 retries the third call succeeds, returning the raw template
+      // which is then interpolated locally.
+      expect(result.promptText).toBe("success: a b");
       expect(mockFetch).toHaveBeenCalledTimes(3);
 
       await retryService.onModuleDestroy();
@@ -1083,13 +1161,122 @@ describe("PromptClientService", () => {
     });
   });
 
-  describe("composeFromDb unknown endpoint", () => {
-    it("should throw for unknown endpoint", async () => {
-      // Access the private method via prototype to test defensive default branch
-      const composeFromDb = (service as any).composeFromDb.bind(service);
-      await expect(composeFromDb("unknown-endpoint", {})).rejects.toThrow(
-        "Unknown prompt endpoint: unknown-endpoint",
+  describe("remote template cache (#729)", () => {
+    let cacheService: PromptClientService;
+    const originalFetch = globalThis.fetch;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PromptClientService,
+          { provide: DbService, useValue: mockDb },
+          {
+            provide: PROMPT_CLIENT_CONFIG,
+            useValue: {
+              promptServiceUrl: "http://prompt-service:3005",
+              promptServiceApiKey: "test-key",
+              retryMaxAttempts: 1,
+            },
+          },
+        ],
+      }).compile();
+      cacheService = module.get(PromptClientService);
+    });
+
+    afterEach(async () => {
+      globalThis.fetch = originalFetch;
+      await cacheService.onModuleDestroy();
+    });
+
+    it("serves a second call from cache without any network round-trip", async () => {
+      const mockFetch = jest.fn().mockResolvedValue(
+        mockRemoteTemplateResponse({
+          name: "rag",
+          templateText: "Cached: {{CONTEXT}} {{QUERY}}",
+          expiresInMs: 60_000,
+        }),
       );
+      globalThis.fetch = mockFetch;
+
+      await cacheService.getRAGPrompt({ context: "first", query: "q1" });
+      await cacheService.getRAGPrompt({ context: "second", query: "q2" });
+
+      // Only one network call — second request served from cache.
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      const metrics = cacheService.getMetrics();
+      expect(metrics.remoteCalls).toBe(1);
+      expect(metrics.templateCacheHits).toBe(1);
+      expect(metrics.cacheHits).toBeGreaterThanOrEqual(1);
+    });
+
+    it("revalidates via /:name/hash when cache is stale and reuses unchanged templates", async () => {
+      // Initial fetch with an already-expired entry (TTL in the past).
+      const mockFetch = jest
+        .fn()
+        // First request: full template, expired immediately.
+        .mockResolvedValueOnce(
+          mockRemoteTemplateResponse({
+            name: "rag",
+            templateText: "Stale: {{CONTEXT}} {{QUERY}}",
+            hash: "stable-hash",
+            expiresInMs: -1,
+          }),
+        )
+        // Second request triggers a hash check — returns SAME hash.
+        .mockResolvedValueOnce(mockRemoteHashResponse("rag", "stable-hash"));
+      globalThis.fetch = mockFetch;
+
+      await cacheService.getRAGPrompt({ context: "a", query: "b" });
+      const second = await cacheService.getRAGPrompt({
+        context: "c",
+        query: "d",
+      });
+
+      // Hash-revalidation succeeded → second call reuses cached template
+      // (no full template refetch).
+      expect(second.promptText).toBe("Stale: c d");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[1][0]).toContain("/prompts/rag/hash");
+
+      const metrics = cacheService.getMetrics();
+      expect(metrics.templateCacheHits).toBe(1); // the second call
+    });
+
+    it("refetches when /:name/hash returns a different hash", async () => {
+      const mockFetch = jest
+        .fn()
+        .mockResolvedValueOnce(
+          mockRemoteTemplateResponse({
+            name: "rag",
+            templateText: "Old: {{CONTEXT}} {{QUERY}}",
+            hash: "old-hash",
+            expiresInMs: -1,
+          }),
+        )
+        // Hash check returns a DIFFERENT hash → cache is invalid.
+        .mockResolvedValueOnce(mockRemoteHashResponse("rag", "new-hash"))
+        // Full refetch returns the new template.
+        .mockResolvedValueOnce(
+          mockRemoteTemplateResponse({
+            name: "rag",
+            templateText: "New: {{CONTEXT}} {{QUERY}}",
+            hash: "new-hash",
+            version: 2,
+            expiresInMs: 60_000,
+          }),
+        );
+      globalThis.fetch = mockFetch;
+
+      await cacheService.getRAGPrompt({ context: "a", query: "b" });
+      const second = await cacheService.getRAGPrompt({
+        context: "c",
+        query: "d",
+      });
+
+      expect(second.promptText).toBe("New: c d");
+      expect(second.promptVersion).toBe("v2");
+      expect(mockFetch).toHaveBeenCalledTimes(3);
     });
   });
 

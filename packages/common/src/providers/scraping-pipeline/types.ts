@@ -369,6 +369,15 @@ export interface DataSourceConfig {
    * deterministic per-source minute offset at registration time.
    */
   syncCadence?: string;
+  /**
+   * 5-field cron expression for a periodic full status-page sweep of all
+   * bills (dataType='bills' only). Runs forceStatusRecheck=true — bypasses
+   * the needsStatusRecheck flag and the sourcePublishedAt skip to catch
+   * governor actions and off-session changes the journal linker can't see.
+   * Per-source minute offset is applied like syncCadence. Typical:
+   * '0 2 * * 0' weekly Sunday 2 AM. See opuspopuli#689.
+   */
+  statusScanCadence?: string;
 }
 
 /**

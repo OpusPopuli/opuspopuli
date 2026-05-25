@@ -8,6 +8,14 @@ export interface RegionSyncJobData {
   depth?: string;
   maxReps?: number;
   maxBills?: number;
+  /**
+   * When true, the bills sync re-fetches each bill's status page and updates
+   * status/lastAction/lastActionDate without LLM extraction, bypassing both
+   * the sourcePublishedAt skip and the needsStatusRecheck flag. Used by the
+   * weekly backstop scheduler to catch governor actions and off-session
+   * changes the journal linker can't see. See #689.
+   */
+  forceStatusRecheck?: boolean;
 }
 
 export interface RegionSyncJobResult {

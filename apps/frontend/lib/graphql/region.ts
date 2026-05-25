@@ -139,6 +139,12 @@ export interface Proposition {
   analysisClaims?: PropositionAnalysisClaim[];
   analysisSource?: string;
   analysisGeneratedAt?: string;
+  /**
+   * Resolved lifecycle stage id from civics.lifecycleStages — powers the
+   * lifecycle progress bar in the proposition detail header. Null when the
+   * proposition's status didn't match any stage pattern. See #679.
+   */
+  lifecycleStageId?: string;
 
   createdAt: string;
   updatedAt: string;
@@ -726,6 +732,7 @@ export const GET_PROPOSITION = gql`
       }
       analysisSource
       analysisGeneratedAt
+      lifecycleStageId
       createdAt
       updatedAt
     }
@@ -1509,6 +1516,7 @@ export interface BillsVars {
   sessionYear?: string;
   authorId?: string;
   committeeId?: string;
+  coAuthorId?: string;
 }
 
 export interface BillIdVars {
@@ -1544,6 +1552,7 @@ export const GET_BILLS = gql`
     $sessionYear: String
     $authorId: ID
     $committeeId: ID
+    $coAuthorId: ID
   ) {
     bills(
       skip: $skip
@@ -1552,6 +1561,7 @@ export const GET_BILLS = gql`
       sessionYear: $sessionYear
       authorId: $authorId
       committeeId: $committeeId
+      coAuthorId: $coAuthorId
     ) {
       items {
         id

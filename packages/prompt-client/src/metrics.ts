@@ -13,6 +13,8 @@ export interface PromptClientMetrics {
   totalRequests: number;
   /** Requests served from cache */
   cacheHits: number;
+  /** Subset of cacheHits served from the REMOTE template cache (#729). */
+  templateCacheHits: number;
   /** Requests sent to remote prompt service */
   remoteCalls: number;
   /** Requests that fell back to DB after remote failure */
@@ -37,6 +39,7 @@ export interface PromptClientMetrics {
 export class MetricsCollector {
   private totalRequests = 0;
   private cacheHits = 0;
+  private templateCacheHits = 0;
   private remoteCalls = 0;
   private dbFallbacks = 0;
   private hardcodedFallbacks = 0;
@@ -46,6 +49,18 @@ export class MetricsCollector {
   recordCacheHit(): void {
     this.totalRequests++;
     this.cacheHits++;
+  }
+
+  /**
+   * Counts a hit on the REMOTE template cache (#729). Implies recordCacheHit
+   * as well — `cacheHits` is the umbrella counter so existing dashboards
+   * keep working, while `templateCacheHits` lets us specifically monitor
+   * the steady-state hit rate of the new remote-cache architecture.
+   */
+  recordTemplateCacheHit(): void {
+    this.totalRequests++;
+    this.cacheHits++;
+    this.templateCacheHits++;
   }
 
   recordRemoteCall(latencyMs: number): void {
@@ -72,6 +87,7 @@ export class MetricsCollector {
     return {
       totalRequests: this.totalRequests,
       cacheHits: this.cacheHits,
+      templateCacheHits: this.templateCacheHits,
       remoteCalls: this.remoteCalls,
       dbFallbacks: this.dbFallbacks,
       hardcodedFallbacks: this.hardcodedFallbacks,
@@ -93,6 +109,7 @@ export class MetricsCollector {
   reset(): void {
     this.totalRequests = 0;
     this.cacheHits = 0;
+    this.templateCacheHits = 0;
     this.remoteCalls = 0;
     this.dbFallbacks = 0;
     this.hardcodedFallbacks = 0;

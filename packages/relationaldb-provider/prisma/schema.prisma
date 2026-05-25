@@ -693,6 +693,11 @@ model Proposition {
   analysisPromptHash   String?   @map("analysis_prompt_hash") @db.VarChar(64)
   analysisGeneratedAt  DateTime? @map("analysis_generated_at") @db.Timestamptz
 
+  /// Resolved lifecycle stage id from civics data. Null for ballot measures
+  /// or bills whose status hasn't been matched against civics.lifecycleStages
+  /// patterns yet. Powers the lifecycle progress bar (#679).
+  lifecycleStageId     String?   @map("lifecycle_stage_id") @db.VarChar(100)
+
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
@@ -705,6 +710,7 @@ model Proposition {
 
   @@index([status])
   @@index([electionDate])
+  @@index([lifecycleStageId])
   @@map("propositions")
 }
 
@@ -1040,6 +1046,11 @@ model Bill {
   /// skip LLM re-extraction when the bill text hasn't changed since the
   /// last sync run.
   sourcePublishedAt DateTime? @map("source_published_at") @db.Timestamptz
+  /// Set true by the legislative-action linker when this bill is cited in
+  /// a newly-ingested journal. The next bills sync re-fetches the status
+  /// page (no LLM) to catch status-only changes the text-page skip would
+  /// otherwise hide. Cleared after the re-check completes. See #689.
+  needsStatusRecheck Boolean  @default(false) @map("needs_status_recheck")
   extractedAt       DateTime  @default(now()) @map("extracted_at") @db.Timestamptz
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -1054,6 +1065,7 @@ model Bill {
   @@index([authorId])
   @@index([status])
   @@index([lastActionDate(sort: Desc)])
+  @@index([needsStatusRecheck])
   @@map("bills")
 }
 
