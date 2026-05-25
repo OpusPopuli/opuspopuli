@@ -69,6 +69,7 @@ export class RegionSyncProcessor
       depth,
       maxReps,
       maxBills,
+      forceStatusRecheck,
     } = job.data;
 
     this.logger.log(
@@ -104,6 +105,7 @@ export class RegionSyncProcessor
         depth,
         regionId,
         effectiveJobId,
+        forceStatusRecheck,
       );
 
       const gqlResults = results.map((r) => ({

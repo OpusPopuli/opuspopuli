@@ -115,6 +115,70 @@ describe('RegionSyncScheduler', () => {
       );
     });
 
+    it('registers a status-scan scheduler when bills source has statusScanCadence (#689)', async () => {
+      regionService.getPluginDataSourceConfigs.mockResolvedValueOnce([
+        {
+          regionId: 'california',
+          sources: [
+            {
+              url: 'https://leginfo.example.com',
+              dataType: 'bills' as never,
+              contentGoal: 'bills',
+              syncCadence: '0 2 * * *',
+              statusScanCadence: '0 2 * * 0',
+            },
+          ],
+        },
+      ]);
+
+      await scheduler.onApplicationBootstrap();
+
+      // One call for the daily sync, one for the weekly status-scan.
+      expect(queueService.upsertScheduler).toHaveBeenCalledTimes(2);
+
+      const calls = queueService.upsertScheduler.mock.calls;
+      const statusScanCall = calls.find(
+        (c) => c[1] === 'california-bills-status-scan-cron',
+      );
+      expect(statusScanCall).toBeDefined();
+      expect(statusScanCall![3]).toEqual(
+        expect.objectContaining({
+          regionId: 'california',
+          dataTypes: ['bills'],
+          forceStatusRecheck: true,
+        }),
+      );
+    });
+
+    it('does not register a status-scan scheduler for non-bills sources', async () => {
+      regionService.getPluginDataSourceConfigs.mockResolvedValueOnce([
+        {
+          regionId: 'california',
+          sources: [
+            {
+              url: 'https://example.com/meetings',
+              dataType: 'meetings' as never,
+              contentGoal: 'meetings',
+              syncCadence: '0 2 * * *',
+              // statusScanCadence is meaningless for non-bills; ignored
+              statusScanCadence: '0 2 * * 0',
+            },
+          ],
+        },
+      ]);
+
+      await scheduler.onApplicationBootstrap();
+
+      // Only the daily syncCadence scheduler — no status-scan job.
+      expect(queueService.upsertScheduler).toHaveBeenCalledTimes(1);
+      expect(queueService.upsertScheduler).toHaveBeenCalledWith(
+        'region-sync',
+        'california-meetings-cron',
+        expect.any(String),
+        expect.any(Object),
+      );
+    });
+
     it('skips sources without syncCadence', async () => {
       regionService.getPluginDataSourceConfigs.mockResolvedValueOnce([
         {

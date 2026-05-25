@@ -45,7 +45,7 @@ export class RegionSyncScheduler implements OnApplicationBootstrap {
     const configs = await this.regionService.getPluginDataSourceConfigs();
 
     const hasCadences = configs.some(({ sources }) =>
-      sources.some((s) => s.syncCadence),
+      sources.some((s) => s.syncCadence || s.statusScanCadence),
     );
 
     if (!hasCadences) {
@@ -65,33 +65,73 @@ export class RegionSyncScheduler implements OnApplicationBootstrap {
 
     const registeredKeys = new Set<string>();
 
+    // Each source can register two independent schedulers — the daily/regular
+    // syncCadence and the bills-only weekly statusScanCadence. Each upsert
+    // has its own try/catch so a failure on one does not prevent the other
+    // from registering. Successfully-registered keys both populate
+    // `registeredKeys` so `removeStaleSchedulers` preserves them.
     for (const { regionId, sources } of configs) {
       for (const source of sources) {
-        if (!source.syncCadence) continue;
-
-        const schedulerKey = `${regionId}-${source.dataType}-cron`;
-        const cron = staggeredCron(
-          source.syncCadence,
-          `${regionId}-${source.dataType}`,
-        );
-
-        try {
-          await this.queueService.upsertScheduler(
-            REGION_SYNC_QUEUE,
-            schedulerKey,
-            cron,
-            {
-              triggerSource: TRIGGER_SOURCE.CRON,
-              regionId,
-              dataTypes: [source.dataType as string],
-            } satisfies Partial<RegionSyncJobData>,
+        if (source.syncCadence) {
+          const schedulerKey = `${regionId}-${source.dataType}-cron`;
+          const cron = staggeredCron(
+            source.syncCadence,
+            `${regionId}-${source.dataType}`,
           );
-          registeredKeys.add(schedulerKey);
-          this.logger.log(`Registered scheduler ${schedulerKey} (${cron})`);
-        } catch (err) {
-          this.logger.warn(
-            `Failed to register scheduler ${schedulerKey}: ${(err as Error).message}`,
+
+          try {
+            await this.queueService.upsertScheduler(
+              REGION_SYNC_QUEUE,
+              schedulerKey,
+              cron,
+              {
+                triggerSource: TRIGGER_SOURCE.CRON,
+                regionId,
+                dataTypes: [source.dataType as string],
+              } satisfies Partial<RegionSyncJobData>,
+            );
+            registeredKeys.add(schedulerKey);
+            this.logger.log(`Registered scheduler ${schedulerKey} (${cron})`);
+          } catch (err) {
+            this.logger.warn(
+              `Failed to register scheduler ${schedulerKey}: ${(err as Error).message}`,
+            );
+          }
+        }
+
+        // Weekly bills status-scan backstop (#689). Bypasses the
+        // sourcePublishedAt skip + the needsStatusRecheck gate to catch
+        // governor actions and off-session changes the journal linker
+        // can't see. Only meaningful for bills sources; runs at the
+        // statusScanCadence (typically '0 2 * * 0' Sunday 2 AM).
+        if (source.statusScanCadence && source.dataType === 'bills') {
+          const statusScanKey = `${regionId}-bills-status-scan-cron`;
+          const statusScanCron = staggeredCron(
+            source.statusScanCadence,
+            `${regionId}-bills-status-scan`,
           );
+
+          try {
+            await this.queueService.upsertScheduler(
+              REGION_SYNC_QUEUE,
+              statusScanKey,
+              statusScanCron,
+              {
+                triggerSource: TRIGGER_SOURCE.CRON,
+                regionId,
+                dataTypes: ['bills'],
+                forceStatusRecheck: true,
+              } satisfies Partial<RegionSyncJobData>,
+            );
+            registeredKeys.add(statusScanKey);
+            this.logger.log(
+              `Registered scheduler ${statusScanKey} (${statusScanCron})`,
+            );
+          } catch (err) {
+            this.logger.warn(
+              `Failed to register scheduler ${statusScanKey}: ${(err as Error).message}`,
+            );
+          }
         }
       }
     }

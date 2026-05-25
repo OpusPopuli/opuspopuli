@@ -75,6 +75,7 @@ type PropositionRecord = {
   analysisSource: string | null;
   analysisPromptHash: string | null;
   analysisGeneratedAt: Date | null;
+  lifecycleStageId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -1110,6 +1111,7 @@ export class RegionQueryService {
     sessionYear?: string,
     authorId?: string,
     committeeId?: string,
+    coAuthorId?: string,
   ): Promise<PaginatedBillsModel> {
     const where = {
       ...(measureTypeCode && { measureTypeCode }),
@@ -1117,6 +1119,9 @@ export class RegionQueryService {
       ...(authorId && { authorId }),
       ...(committeeId && {
         committeeReferrals: { some: { legislativeCommitteeId: committeeId } },
+      }),
+      ...(coAuthorId && {
+        coAuthors: { some: { representativeId: coAuthorId } },
       }),
     };
 

@@ -191,6 +191,9 @@ export class LegislativeActionLinkerService {
 
     const caches = await this.loadCaches();
     let actionsCreated = 0;
+    // Canonical bill citations (e.g. "AB 1234") seen across all processed
+    // minutes. Used to flag matching Bill rows for status re-check (#689).
+    const citedBillNumbers = new Set<string>();
 
     for (const row of minutesRows) {
       if (!row.rawText) {
@@ -212,16 +215,56 @@ export class LegislativeActionLinkerService {
       const candidates = this.extractCandidates(ctx);
       const persisted = await this.persistActions(ctx, candidates);
       actionsCreated += persisted;
+
+      this.collectBillCitations(row.rawText, citedBillNumbers);
     }
 
+    const flagged = await this.markBillsForStatusRecheck(citedBillNumbers);
+
     this.logger.log(
-      `Linker complete: ${minutesRows.length} minutes processed, ${actionsCreated} actions created`,
+      `Linker complete: ${minutesRows.length} minutes processed, ${actionsCreated} actions created, ${flagged} bill(s) flagged for status re-check`,
     );
 
     return {
       minutesProcessed: minutesRows.length,
       actionsCreated,
     };
+  }
+
+  /**
+   * Sweep raw journal text for canonical bill citations and accumulate them
+   * in the provided set. Cheaper than re-running extractCandidates because
+   * we only need the citation strings (not the surrounding context).
+   */
+  private collectBillCitations(text: string, into: Set<string>): void {
+    BILL_CITATION_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = BILL_CITATION_RE.exec(text)) !== null) {
+      into.add(this.normalizeBillCitation(m[1], m[2], m[3]));
+    }
+  }
+
+  /**
+   * Batch-flag bills cited in newly-linked journals so the next bills sync
+   * re-fetches their status pages. See #689 — closes the gap where a bill's
+   * status changes (committee referral, floor vote) without its text-page
+   * `sourcePublishedAt` updating, which would otherwise cause the existing
+   * skip optimization to bypass it.
+   *
+   * Matches on `billNumber` alone (no `sessionYear` filter). This is
+   * intentionally conservative — it may flag bills from prior sessions,
+   * but the re-check itself is cheap and the lastActionDate comparison
+   * will skip them when nothing actually changed.
+   */
+  private async markBillsForStatusRecheck(
+    canonicals: Set<string>,
+  ): Promise<number> {
+    if (canonicals.size === 0) return 0;
+    const result = await this.db.bill.updateMany({
+      where: { billNumber: { in: Array.from(canonicals) } },
+      data: { needsStatusRecheck: true },
+    });
+    return result.count;
   }
 
   /**

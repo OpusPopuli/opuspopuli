@@ -41,6 +41,15 @@ export interface PromptClientConfig {
   cacheTtlMs?: number;
   /** Maximum in-memory cache entries (default: 50, only used for built-in MemoryCache) */
   cacheMaxSize?: number;
+
+  /**
+   * Upper-bound TTL (ms) for the remote-template cache (#729). Per-entry
+   * freshness is governed by the server's `expiresAt` (typically 1 hour);
+   * this is the MemoryCache eviction ceiling. Set above the server's
+   * PROMPT_TTL_SECONDS so the hash-revalidation flow has time to extend
+   * entries. Default 24 hours.
+   */
+  remoteCacheMaxTtlMs?: number;
 }
 
 /**

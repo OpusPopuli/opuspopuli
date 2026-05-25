@@ -79,6 +79,9 @@ export class PropositionModel {
   @Field({ nullable: true })
   analysisGeneratedAt?: Date;
 
+  @Field({ nullable: true })
+  lifecycleStageId?: string;
+
   @Field()
   createdAt!: Date;
 
