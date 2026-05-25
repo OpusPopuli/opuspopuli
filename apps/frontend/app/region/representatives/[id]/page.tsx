@@ -518,13 +518,22 @@ function WhatTheyCareAbout({
   );
 }
 
-function AuthoredBillsList({
+/**
+ * Renders a rep-scoped bills section. Used for both authored and
+ * co-authored bills — the only differences are which GraphQL filter
+ * variable to set and the copy in the empty state / view-all link.
+ */
+function RepBillsList({
   representativeId,
+  filterKind,
+  emptyMessage,
 }: {
   readonly representativeId: string;
+  readonly filterKind: "authorId" | "coAuthorId";
+  readonly emptyMessage: string;
 }) {
   const { data, loading } = useQuery<BillsData, BillsVars>(GET_BILLS, {
-    variables: { authorId: representativeId, take: 10, skip: 0 },
+    variables: { [filterKind]: representativeId, take: 10, skip: 0 },
     fetchPolicy: "cache-and-network",
   });
 
@@ -539,20 +548,29 @@ function AuthoredBillsList({
   }
 
   const bills = data?.bills?.items ?? [];
-
   if (bills.length === 0) {
-    return (
-      <p className="text-sm italic text-slate-400">
-        No authored bills found in the current session.
-      </p>
-    );
+    return <p className="text-sm italic text-slate-400">{emptyMessage}</p>;
   }
 
   return (
     <BillsList
       bills={bills}
       totalCount={data?.bills?.total ?? 0}
-      viewAllHref={`/region/bills?authorId=${representativeId}`}
+      viewAllHref={`/region/bills?${filterKind}=${representativeId}`}
+    />
+  );
+}
+
+function AuthoredBillsList({
+  representativeId,
+}: {
+  readonly representativeId: string;
+}) {
+  return (
+    <RepBillsList
+      representativeId={representativeId}
+      filterKind="authorId"
+      emptyMessage="No authored bills found in the current session."
     />
   );
 }
@@ -562,36 +580,11 @@ function CoAuthoredBillsList({
 }: {
   readonly representativeId: string;
 }) {
-  const { data, loading } = useQuery<BillsData, BillsVars>(GET_BILLS, {
-    variables: { coAuthorId: representativeId, take: 10, skip: 0 },
-    fetchPolicy: "cache-and-network",
-  });
-
-  if (loading && !data) {
-    return (
-      <div className="space-y-2 animate-pulse">
-        {[1, 2, 3].map((n) => (
-          <div key={n} className="h-12 bg-slate-100 rounded-lg" />
-        ))}
-      </div>
-    );
-  }
-
-  const bills = data?.bills?.items ?? [];
-
-  if (bills.length === 0) {
-    return (
-      <p className="text-sm italic text-slate-400">
-        No co-authored bills found in the current session.
-      </p>
-    );
-  }
-
   return (
-    <BillsList
-      bills={bills}
-      totalCount={data?.bills?.total ?? 0}
-      viewAllHref={`/region/bills?coAuthorId=${representativeId}`}
+    <RepBillsList
+      representativeId={representativeId}
+      filterKind="coAuthorId"
+      emptyMessage="No co-authored bills found in the current session."
     />
   );
 }

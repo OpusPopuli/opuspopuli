@@ -402,26 +402,41 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
     return this.hash(template.templateText);
   }
 
-  private async fetchRemoteHash(templateName: string): Promise<string> {
-    const url = this.config!.promptServiceUrl!;
-    const timeout = this.config?.timeoutMs ?? 10000;
-    const path = `/prompts/${encodeURIComponent(templateName)}/hash`;
-
+  /**
+   * Build the auth headers (HMAC-signed or Bearer) for a request to the
+   * prompt service. Throws if neither HMAC nor Bearer is configured.
+   */
+  private buildAuthHeaders(
+    method: "GET" | "POST",
+    path: string,
+    body: string = "",
+  ): Record<string, string> {
     const headers: Record<string, string> = {};
-
     if (this.hmacConfig) {
-      Object.assign(headers, signRequest(this.hmacConfig, "GET", path, ""));
-    } else {
-      const apiKey = this.config!.promptServiceApiKey;
-      if (!apiKey) {
-        throw new Error(
-          "API key is required when prompt service URL is configured",
-        );
-      }
-      headers["Authorization"] = `Bearer ${apiKey}`;
+      Object.assign(headers, signRequest(this.hmacConfig, method, path, body));
+      return headers;
     }
+    const apiKey = this.config!.promptServiceApiKey;
+    if (!apiKey) {
+      throw new Error(
+        "API key is required when prompt service URL is configured",
+      );
+    }
+    headers["Authorization"] = `Bearer ${apiKey}`;
+    return headers;
+  }
 
-    const response = await this.circuitBreaker!.execute(async () => {
+  /**
+   * Execute a GET against the prompt service through the circuit breaker.
+   * Throws on non-OK status; parses the JSON body into T on success.
+   */
+  private async executeAuthedGet<T>(
+    url: string,
+    path: string,
+    headers: Record<string, string>,
+    timeout: number,
+  ): Promise<T> {
+    return this.circuitBreaker!.execute(async () => {
       const res = await fetch(`${url}${path}`, {
         method: "GET",
         headers,
@@ -432,8 +447,22 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
           `Prompt service returned ${res.status}: ${res.statusText}`,
         );
       }
-      return (await res.json()) as { promptHash: string };
+      return (await res.json()) as T;
     });
+  }
+
+  private async fetchRemoteHash(templateName: string): Promise<string> {
+    const url = this.config!.promptServiceUrl!;
+    const timeout = this.config?.timeoutMs ?? 10000;
+    const path = `/prompts/${encodeURIComponent(templateName)}/hash`;
+    const headers = this.buildAuthHeaders("GET", path);
+
+    const response = await this.executeAuthedGet<{ promptHash: string }>(
+      url,
+      path,
+      headers,
+      timeout,
+    );
 
     return response.promptHash;
   }
@@ -746,44 +775,20 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
     const url = this.config!.promptServiceUrl!;
     const timeout = this.config?.timeoutMs ?? 10000;
     const path = `/prompts/${encodeURIComponent(name)}`;
-
-    const headers: Record<string, string> = {};
-    if (this.hmacConfig) {
-      Object.assign(headers, signRequest(this.hmacConfig, "GET", path, ""));
-    } else {
-      const apiKey = this.config!.promptServiceApiKey;
-      if (!apiKey) {
-        throw new Error(
-          "API key is required when prompt service URL is configured",
-        );
-      }
-      headers["Authorization"] = `Bearer ${apiKey}`;
-    }
+    const headers = this.buildAuthHeaders("GET", path);
 
     const result = await withRetry(
       () =>
-        this.circuitBreaker!.execute(async () => {
-          const res = await fetch(`${url}${path}`, {
-            method: "GET",
-            headers,
-            signal: AbortSignal.timeout(timeout),
-          });
-          if (!res.ok) {
-            throw new Error(
-              `Prompt service returned ${res.status}: ${res.statusText}`,
-            );
-          }
-          return (await res.json()) as {
-            name: string;
-            templateText: string;
-            variables: string[];
-            promptHash: string;
-            promptVersion: string;
-            expiresAt: string;
-            experimentId: string | null;
-            variantName: string | null;
-          };
-        }),
+        this.executeAuthedGet<{
+          name: string;
+          templateText: string;
+          variables: string[];
+          promptHash: string;
+          promptVersion: string;
+          expiresAt: string;
+          experimentId: string | null;
+          variantName: string | null;
+        }>(url, path, headers, timeout),
       {
         maxAttempts: this.retryConfig.maxAttempts,
         baseDelayMs: this.retryConfig.baseDelayMs,
