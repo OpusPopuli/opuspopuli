@@ -43,6 +43,47 @@ export class BillCoAuthorModel {
   coAuthorType?: string;
 }
 
+@ObjectType('BillFiscalImpact')
+export class BillFiscalImpactModel {
+  /** Normalized fiscal-impact magnitude: none | low | medium | high. */
+  @Field()
+  level!: string;
+
+  /** One-sentence description of the fiscal effect, paraphrased from the
+   *  official fiscal analysis when available. */
+  @Field()
+  summary!: string;
+}
+
+/**
+ * Structured AI summary for the personalized bill feed (epic #740,
+ * this issue #741). Produced by the bill-analysis prompt-service
+ * endpoint and consumed by the ranking pipeline (#743) and the
+ * briefing feed UI (#744). The controlled vocabularies for `topics`
+ * and `whoItAffects` align with the user-profile schema (#742).
+ */
+@ObjectType('BillAiSummary')
+export class BillAiSummaryModel {
+  /** 2-3 sentence plain-English summary a non-lawyer can understand. */
+  @Field()
+  plainEnglishSummary!: string;
+
+  /** Controlled-vocabulary topic tags (e.g. "housing", "healthcare"). */
+  @Field(() => [String])
+  topics!: string[];
+
+  /** Controlled-vocabulary stakeholder tags (e.g. "renters", "parents"). */
+  @Field(() => [String])
+  whoItAffects!: string[];
+
+  @Field(() => BillFiscalImpactModel)
+  fiscalImpact!: BillFiscalImpactModel;
+
+  /** One-sentence stakeholder impact note. */
+  @Field()
+  stakeholderImpact!: string;
+}
+
 @ObjectType('Bill')
 export class BillModel {
   @Field(() => ID)
@@ -107,6 +148,11 @@ export class BillModel {
 
   @Field(() => [BillCoAuthorModel])
   coAuthors!: BillCoAuthorModel[];
+
+  /** Null when the bill has not yet been enriched or when the LLM emitted
+   *  `{ skip: true }` (input was garbled / not-a-bill). See #741. */
+  @Field(() => BillAiSummaryModel, { nullable: true })
+  aiSummary?: BillAiSummaryModel;
 }
 
 @ObjectType('PaginatedBills')

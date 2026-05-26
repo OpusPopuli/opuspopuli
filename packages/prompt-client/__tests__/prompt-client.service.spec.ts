@@ -275,6 +275,136 @@ describe("PromptClientService", () => {
     });
   });
 
+  describe("getBillAnalysisPrompt (#741)", () => {
+    // The variable shaping below MUST stay byte-for-byte identical to the
+    // bill-analysis descriptor in prompt-service (src/prompts/prompts.service.ts).
+    // Both sides interpolate against the same template — drift in either
+    // direction means the rendered prompt the LLM sees differs from what the
+    // tests on either side validate. These tests are the cross-service
+    // contract guard.
+
+    const BASE = {
+      regionId: "california",
+      billNumber: "AB 1",
+      sessionYear: "2025-2026",
+      title: "An act to add Section 12345.",
+      subject: "Housing",
+      status: "Enrolled",
+      authorName: "Wicks",
+      officialSummary: "Prohibits local agencies from imposing certain fees.",
+      fiscalImpactSummary: "Negligible state costs.",
+      fullText: "<p>SECTION 1. ...</p>",
+    };
+
+    const TEMPLATE = [
+      "Region: {{REGION_ID}}",
+      "Bill: {{BILL_NUMBER}}",
+      "Session: {{SESSION_YEAR}}",
+      "Title: {{TITLE}}",
+      "{{SUBJECT}}{{STATUS}}{{AUTHOR}}NOTICE",
+      "{{OFFICIAL_SUMMARY_BLOCK}}{{FISCAL_IMPACT_BLOCK}}FULL:",
+      "{{FULL_TEXT}}",
+    ].join("\n");
+
+    it("composes bill-analysis prompt with all interpolated fields", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-analysis", TEMPLATE),
+      );
+
+      const result = await service.getBillAnalysisPrompt(BASE);
+
+      expect(result.promptText).toContain("Region: california");
+      expect(result.promptText).toContain("Bill: AB 1");
+      expect(result.promptText).toContain("Session: 2025-2026");
+      expect(result.promptText).toContain(
+        "Title: An act to add Section 12345.",
+      );
+      expect(result.promptText).toContain("Subject: Housing\n");
+      expect(result.promptText).toContain("Status: Enrolled\n");
+      expect(result.promptText).toContain("Primary author: Wicks\n");
+      expect(result.promptText).toContain(BASE.officialSummary);
+      expect(result.promptText).toContain(BASE.fiscalImpactSummary);
+      expect(result.promptText).toContain("FULL:\n<p>SECTION 1. ...</p>");
+      expect(result.promptVersion).toBe("v1");
+      expect(result.promptHash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("omits optional-field headers when those fields are absent", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-analysis", TEMPLATE),
+      );
+
+      const result = await service.getBillAnalysisPrompt({
+        regionId: BASE.regionId,
+        billNumber: BASE.billNumber,
+        sessionYear: BASE.sessionYear,
+        title: BASE.title,
+        fullText: BASE.fullText,
+      });
+
+      expect(result.promptText).not.toContain("Subject:");
+      expect(result.promptText).not.toContain("Status:");
+      expect(result.promptText).not.toContain("Primary author:");
+      expect(result.promptText).not.toContain("## Official summary");
+      expect(result.promptText).not.toContain("## Fiscal-impact summary");
+    });
+
+    it("wraps officialSummary in a fenced block below the SECURITY NOTICE marker", async () => {
+      // Defense-in-depth: extracted strings from upstream scraping must be
+      // presented to the LLM as untrusted content (fenced, after the security
+      // warning), not as trusted metadata in the input header. Locks in the
+      // layout so future template edits can't silently regress.
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-analysis", TEMPLATE),
+      );
+
+      const result = await service.getBillAnalysisPrompt(BASE);
+      const text = result.promptText;
+
+      const noticeIdx = text.indexOf("NOTICE");
+      const officialIdx = text.indexOf(BASE.officialSummary);
+      const fiscalIdx = text.indexOf(BASE.fiscalImpactSummary);
+      const fenceBeforeOfficial = text.lastIndexOf("```text", officialIdx);
+      const fenceBeforeFiscal = text.lastIndexOf("```text", fiscalIdx);
+
+      expect(noticeIdx).toBeGreaterThan(0);
+      expect(officialIdx).toBeGreaterThan(noticeIdx);
+      expect(fiscalIdx).toBeGreaterThan(noticeIdx);
+      expect(fenceBeforeOfficial).toBeGreaterThan(noticeIdx);
+      expect(fenceBeforeOfficial).toBeLessThan(officialIdx);
+      expect(fenceBeforeFiscal).toBeGreaterThan(noticeIdx);
+      expect(fenceBeforeFiscal).toBeLessThan(fiscalIdx);
+    });
+
+    it("omits the fenced summary blocks entirely when their inputs are absent", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate(
+          "bill-analysis",
+          "BEFORE{{OFFICIAL_SUMMARY_BLOCK}}MIDDLE{{FISCAL_IMPACT_BLOCK}}AFTER",
+        ),
+      );
+
+      const result = await service.getBillAnalysisPrompt({
+        regionId: BASE.regionId,
+        billNumber: BASE.billNumber,
+        sessionYear: BASE.sessionYear,
+        title: BASE.title,
+        fullText: BASE.fullText,
+      });
+
+      expect(result.promptText).toBe("BEFOREMIDDLEAFTER");
+    });
+
+    it("returns the prompt template version verbatim for the version-bump re-enrich flow", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-analysis", TEMPLATE, 7),
+      );
+
+      const result = await service.getBillAnalysisPrompt(BASE);
+      expect(result.promptVersion).toBe("v7");
+    });
+  });
+
   describe("caching", () => {
     it("should cache templates after first read", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValueOnce(

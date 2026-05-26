@@ -1058,6 +1058,20 @@ model Bill {
   /// page (no LLM) to catch status-only changes the text-page skip would
   /// otherwise hide. Cleared after the re-check completes. See #689.
   needsStatusRecheck Boolean  @default(false) @map("needs_status_recheck")
+
+  /// Structured plain-English AI summary for the personalized bill feed
+  /// (epic #740, this issue #741). Shape: { plainEnglishSummary, topics[],
+  /// whoItAffects[], fiscalImpact: { level, summary }, stakeholderImpact }.
+  /// Produced by the bill-analysis prompt-service endpoint and consumed by
+  /// the ranking layer (#743) + the briefing feed UI (#744). Null when not
+  /// yet enriched OR when the LLM emitted `{ skip: true }`.
+  aiSummary         Json?     @map("ai_summary") @db.JsonB
+  /// Bill-analysis prompt-template version at the time of generation,
+  /// e.g. "v1". Re-enrichment fires when this differs from the currently-
+  /// active prompt-service template version.
+  aiSummaryVersion  String?   @map("ai_summary_version") @db.VarChar(20)
+  aiSummaryGeneratedAt DateTime? @map("ai_summary_generated_at") @db.Timestamptz
+
   extractedAt       DateTime  @default(now()) @map("extracted_at") @db.Timestamptz
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
