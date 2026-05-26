@@ -139,6 +139,43 @@ type CommitteeRecord = {
   id: string;
 };
 
+/**
+ * Shape we expect from the bill-analysis LLM response. Everything is
+ * optional at the runtime boundary — the LLM may drop fields, and the
+ * `skip` sentinel short-circuits the rest. Stored verbatim in
+ * `Bill.aiSummary` as JSONB. Consumers (ranking pipeline #743, briefing
+ * UI #744) read via the typed GraphQL field added in #741.
+ */
+interface BillAiSummaryShape {
+  plainEnglishSummary?: string;
+  topics?: string[];
+  whoItAffects?: string[];
+  fiscalImpact?: { level?: string; summary?: string };
+  stakeholderImpact?: string;
+  /** LLM sentinel: input was blank / garbled / not a bill. */
+  skip?: boolean;
+}
+
+/**
+ * Subset of Bill columns required by the enrichment loop. Derived from
+ * the Prisma model so the type stays in sync with the schema — adding
+ * a new column to Bill doesn't quietly break the candidate fetch.
+ */
+type BillEnrichmentCandidate = Prisma.BillGetPayload<{
+  select: {
+    id: true;
+    regionId: true;
+    billNumber: true;
+    sessionYear: true;
+    title: true;
+    subject: true;
+    status: true;
+    authorName: true;
+    fiscalImpact: true;
+    fullTextUrl: true;
+  };
+}>;
+
 // State-level rows (parentRegionId IS NULL) sort before county rows so the
 // primary plugin is always a state plugin when one is available.
 function comparePluginRows(
@@ -1471,6 +1508,11 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
 
     await this.pruneStaleBills(regionId, syncedExternalIds, maxBills);
 
+    // Enrichment is a second pass: extraction (above) is the prerequisite,
+    // but enrichment can be re-run independently when the bill-analysis
+    // prompt template version bumps (see #741). Bounded by maxBills.
+    await this.enrichBillSummaries(regionId, maxBills);
+
     return { processed, created, updated, skipped: skippedTotal };
   }
 
@@ -1729,6 +1771,181 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(
         `Bills: removed ${count} stale bill record(s) for ${regionId}`,
       );
+    }
+  }
+
+  /**
+   * Enrich un-summarized bills with structured AI summaries from the
+   * bill-analysis prompt-service endpoint. Runs as a second pass after
+   * `syncBills` so extraction stays decoupled from summarization — a new
+   * prompt-template version triggers re-enrichment without re-extracting.
+   *
+   * Idempotency: queries only bills where `ai_summary IS NULL`. Bills the
+   * LLM marks `{ skip: true }` get that value stored (so they don't churn
+   * on every sync); bills that fail with an LLM error stay NULL and are
+   * retried on the next sync. To force re-enrichment for all bills (e.g.
+   * after a prompt-template version bump), the operator nulls the column.
+   *
+   * Cost telemetry: per-bill debug log + per-job summary log. LLM is local
+   * Ollama (`qwen3.5:9b` by default), so cost is compute time, not $$ —
+   * the telemetry is for noticing spikes and regressions. See #741.
+   */
+  private async enrichBillSummaries(
+    regionId: string,
+    maxBills?: number,
+  ): Promise<{ enriched: number; skipped: number; failed: number }> {
+    if (!this.promptClient || !this.llm) {
+      return { enriched: 0, skipped: 0, failed: 0 };
+    }
+
+    const candidates = await this.db.bill.findMany({
+      where: { regionId, aiSummary: { equals: Prisma.DbNull } },
+      select: {
+        id: true,
+        regionId: true,
+        billNumber: true,
+        sessionYear: true,
+        title: true,
+        subject: true,
+        status: true,
+        authorName: true,
+        fiscalImpact: true,
+        fullTextUrl: true,
+      },
+      take: maxBills,
+    });
+
+    if (candidates.length === 0) {
+      return { enriched: 0, skipped: 0, failed: 0 };
+    }
+
+    this.logger.log(
+      `Bill enrichment: starting ${candidates.length} bill(s) for ${regionId}`,
+    );
+
+    const counts = { enriched: 0, skipped: 0, failed: 0 };
+    let totalTokens = 0;
+    const startMs = Date.now();
+
+    for (const bill of candidates) {
+      const result = await this.enrichSingleBill(bill);
+      counts[result.outcome] += 1;
+      totalTokens += result.tokensUsed;
+    }
+
+    const totalDurationMs = Date.now() - startMs;
+    this.logger.log(
+      {
+        event: 'bill_enrichment_summary',
+        regionId,
+        billsEnriched: counts.enriched,
+        billsSkippedNoText: counts.skipped,
+        billsFailed: counts.failed,
+        totalTokens,
+        totalDurationMs,
+        avgTokensPerEnrichedBill:
+          counts.enriched > 0 ? Math.round(totalTokens / counts.enriched) : 0,
+      },
+      `Bill enrichment ${regionId}: enriched=${counts.enriched} skipped=${counts.skipped} failed=${counts.failed} tokens=${totalTokens} ms=${totalDurationMs}`,
+    );
+
+    return counts;
+  }
+
+  private async enrichSingleBill(bill: BillEnrichmentCandidate): Promise<{
+    outcome: 'enriched' | 'skipped' | 'failed';
+    tokensUsed: number;
+  }> {
+    if (!bill.fullTextUrl) {
+      this.logger.debug(
+        `Bill enrichment: skipping ${bill.billNumber} — no fullTextUrl`,
+      );
+      return { outcome: 'skipped', tokensUsed: 0 };
+    }
+
+    try {
+      const fullText = this.htmlToReadableText(
+        await this.fetchUrlText(bill.fullTextUrl),
+      );
+
+      const { promptText, promptVersion } =
+        await this.promptClient!.getBillAnalysisPrompt({
+          regionId: bill.regionId,
+          billNumber: bill.billNumber,
+          sessionYear: bill.sessionYear,
+          title: bill.title,
+          subject: bill.subject ?? undefined,
+          status: bill.status ?? undefined,
+          authorName: bill.authorName ?? undefined,
+          fiscalImpactSummary: bill.fiscalImpact ?? undefined,
+          fullText,
+        });
+
+      const llmStart = Date.now();
+      const llmResult = await this.llm!.generate(promptText, {
+        maxTokens: 2000,
+        temperature: 0.1,
+      });
+      const llmMs = Date.now() - llmStart;
+
+      const candidate = extractJsonObjectSlice(llmResult.text);
+      if (!candidate) {
+        this.logger.warn(
+          `Bill enrichment: no JSON returned for ${bill.billNumber}`,
+        );
+        return {
+          outcome: 'failed',
+          tokensUsed: llmResult.tokensUsed ?? 0,
+        };
+      }
+
+      const parsed: unknown = JSON.parse(candidate);
+      // Reject non-object payloads (the LLM occasionally returns `null` or
+      // `[]` instead of the structured object). Storing those would lock
+      // the bill out of the retry query (`ai_summary IS NULL`) with garbage
+      // permanently in the column. Counted as failed → retried next sync.
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        this.logger.warn(
+          `Bill enrichment: non-object JSON payload for ${bill.billNumber}`,
+        );
+        return {
+          outcome: 'failed',
+          tokensUsed: llmResult.tokensUsed ?? 0,
+        };
+      }
+
+      const summary = parsed as BillAiSummaryShape;
+      await this.db.bill.update({
+        where: { id: bill.id },
+        data: {
+          aiSummary: summary as Prisma.InputJsonValue,
+          aiSummaryVersion: promptVersion,
+          aiSummaryGeneratedAt: new Date(),
+        },
+      });
+
+      this.logger.debug(
+        {
+          event: 'bill_enrichment',
+          billId: bill.id,
+          billNumber: bill.billNumber,
+          promptVersion,
+          tokensUsed: llmResult.tokensUsed ?? 0,
+          latencyMs: llmMs,
+          llmSkip: summary.skip === true,
+        },
+        `Bill enrichment ok: ${bill.billNumber} v${promptVersion} tokens=${llmResult.tokensUsed ?? 0} ms=${llmMs}`,
+      );
+
+      return {
+        outcome: 'enriched',
+        tokensUsed: llmResult.tokensUsed ?? 0,
+      };
+    } catch (e) {
+      this.logger.warn(
+        `Bill enrichment failed for ${bill.billNumber}: ${(e as Error).message}`,
+      );
+      return { outcome: 'failed', tokensUsed: 0 };
     }
   }
 

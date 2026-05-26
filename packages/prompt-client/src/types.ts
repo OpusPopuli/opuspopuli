@@ -126,6 +126,43 @@ export interface BillExtractionParams {
   html: string;
 }
 
+/**
+ * Parameters for bill-analysis prompt — produces a structured plain-English
+ * summary of a legislative bill for the personalization pipeline. The LLM
+ * returns JSON of shape `{ plainEnglishSummary, topics[], whoItAffects[],
+ * fiscalImpact: { level, summary }, stakeholderImpact }`, with controlled
+ * vocabularies that match the user-profile schema. Epic #740, this issue #741.
+ *
+ * Variable shape MUST stay in lockstep with the bill-analysis template
+ * descriptor in prompt-service — both the variable names and the wrapping
+ * applied to optional fields. The wrapping for OFFICIAL_SUMMARY_BLOCK and
+ * FISCAL_IMPACT_BLOCK is intentional: those strings are extracted from
+ * upstream scraping and must be presented to the LLM as untrusted content
+ * (fenced, below the SECURITY NOTICE), not as trusted input metadata.
+ */
+export interface BillAnalysisParams {
+  /** Region identifier (e.g. "california"). */
+  regionId: string;
+  /** Display bill number (e.g. "AB 1", "SB 500"). */
+  billNumber: string;
+  /** Legislative session, e.g. "2025-2026". */
+  sessionYear: string;
+  /** Full official bill title as it appears on the source page. */
+  title: string;
+  /** Subject tag from the bill page if present (e.g. "Taxation: property tax: exemptions"). */
+  subject?: string;
+  /** Verbatim current status (framing context only, not part of the summary output). */
+  status?: string;
+  /** Primary author full name as listed on the bill page. */
+  authorName?: string;
+  /** Verbatim official summary (legislative-counsel digest etc.) if available. Boosts summary fidelity. */
+  officialSummary?: string;
+  /** Verbatim fiscal-impact summary from the Fiscal Committee / legislative analyst. Sets fiscalImpact.level. */
+  fiscalImpactSummary?: string;
+  /** Full bill text — caller is responsible for truncation to its token budget. */
+  fullText: string;
+}
+
 export const PROMPT_CLIENT_CONFIG = "PROMPT_CLIENT_CONFIG";
 
 export type { PromptServiceResponse };

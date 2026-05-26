@@ -38,6 +38,9 @@ export type {
   StructuralAnalysisParams,
   DocumentAnalysisParams,
   RAGParams,
+  CivicsExtractionParams,
+  BillExtractionParams,
+  BillAnalysisParams,
   PromptServiceResponse,
 } from "./types.js";
 export { PROMPT_CLIENT_CONFIG } from "./types.js";

@@ -32,6 +32,7 @@ import {
   BillModel,
   BillVoteModel,
   BillCoAuthorModel,
+  BillAiSummaryModel,
   PaginatedBillsModel,
 } from './models/bill.model';
 
@@ -1202,6 +1203,7 @@ export class RegionQueryService {
     extractedAt: Date;
     createdAt: Date;
     updatedAt: Date;
+    aiSummary: Prisma.JsonValue | null;
     votes: {
       id: string;
       representativeName: string;
@@ -1238,6 +1240,7 @@ export class RegionQueryService {
       extractedAt: b.extractedAt,
       createdAt: b.createdAt,
       updatedAt: b.updatedAt,
+      aiSummary: this.coerceBillAiSummary(b.aiSummary),
       votes: b.votes.map(
         (v): BillVoteModel => ({
           id: v.id,
@@ -1257,6 +1260,56 @@ export class RegionQueryService {
           coAuthorType: c.coAuthorType ?? undefined,
         }),
       ),
+    };
+  }
+
+  /**
+   * Coerce the raw JSONB `ai_summary` from Prisma into the typed GraphQL
+   * BillAiSummary shape. Returns undefined when the column is SQL NULL,
+   * when the LLM emitted the `{ skip: true }` sentinel, or when any
+   * required field is missing from the stored payload. The enrichment
+   * worker (#741) is the only writer; defensive null-checking here is
+   * for forward-compat with future prompt-template versions that may
+   * drop fields, not for protecting against malicious data.
+   */
+  private coerceBillAiSummary(
+    raw: Prisma.JsonValue | null,
+  ): BillAiSummaryModel | undefined {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const obj = raw as Record<string, unknown>;
+    if (obj.skip === true) return undefined;
+
+    const plainEnglishSummary = obj.plainEnglishSummary;
+    const topics = obj.topics;
+    const whoItAffects = obj.whoItAffects;
+    const stakeholderImpact = obj.stakeholderImpact;
+    const fiscalImpact = obj.fiscalImpact;
+
+    if (
+      typeof plainEnglishSummary !== 'string' ||
+      !Array.isArray(topics) ||
+      !Array.isArray(whoItAffects) ||
+      typeof stakeholderImpact !== 'string' ||
+      !fiscalImpact ||
+      typeof fiscalImpact !== 'object' ||
+      Array.isArray(fiscalImpact)
+    ) {
+      return undefined;
+    }
+
+    const fi = fiscalImpact as Record<string, unknown>;
+    if (typeof fi.level !== 'string' || typeof fi.summary !== 'string') {
+      return undefined;
+    }
+
+    return {
+      plainEnglishSummary,
+      topics: topics.filter((t): t is string => typeof t === 'string'),
+      whoItAffects: whoItAffects.filter(
+        (w): w is string => typeof w === 'string',
+      ),
+      fiscalImpact: { level: fi.level, summary: fi.summary },
+      stakeholderImpact,
     };
   }
 

@@ -1163,4 +1163,118 @@ describe('RegionQueryService — query methods', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('getBill — aiSummary coercion (#741)', () => {
+    // Shared base row that getBill expects from Prisma. Tests vary only
+    // the aiSummary field to exercise the boundary between the JSONB
+    // column and the typed GraphQL BillAiSummary model.
+    const baseBillRow = {
+      id: 'bill-1',
+      externalId: '20252026AB1',
+      billNumber: 'AB 1',
+      sessionYear: '2025-2026',
+      measureTypeCode: 'AB',
+      title: 'An act relating to housing.',
+      subject: 'Housing',
+      status: 'Enrolled',
+      currentStageId: null,
+      lastAction: null,
+      lastActionDate: null,
+      fiscalImpact: null,
+      fullTextUrl: 'https://example.gov/bill.pdf',
+      authorId: null,
+      authorName: 'Wicks',
+      sourceUrl: 'https://example.gov/bill',
+      extractedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      votes: [],
+      coAuthors: [],
+    };
+
+    const validAiSummary = {
+      plainEnglishSummary: 'Caps fees on small ADUs.',
+      topics: ['housing'],
+      whoItAffects: ['renters', 'homeowners'],
+      fiscalImpact: { level: 'low', summary: 'Negligible state costs.' },
+      stakeholderImpact: 'Landlords lose flexibility; renters gain rights.',
+    };
+
+    it('returns aiSummary as a typed object when the JSONB payload is well-formed', async () => {
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        aiSummary: validAiSummary,
+      } as never);
+
+      const result = await service.getBill('bill-1');
+
+      expect(result?.aiSummary).toEqual(validAiSummary);
+      expect(result?.aiSummary?.fiscalImpact.level).toBe('low');
+      expect(result?.aiSummary?.topics).toEqual(['housing']);
+    });
+
+    it('returns undefined aiSummary when the JSONB column is SQL NULL', async () => {
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        aiSummary: null,
+      } as never);
+
+      const result = await service.getBill('bill-1');
+      expect(result?.aiSummary).toBeUndefined();
+    });
+
+    it('returns undefined aiSummary when the LLM emitted the { skip: true } sentinel', async () => {
+      // Worker stores { skip: true } verbatim so the row exits the
+      // re-enrich query (ai_summary IS NULL); the GraphQL layer must
+      // present it as "no summary available", not as a corrupt one.
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        aiSummary: { skip: true },
+      } as never);
+
+      const result = await service.getBill('bill-1');
+      expect(result?.aiSummary).toBeUndefined();
+    });
+
+    it('returns undefined aiSummary when a required field is missing', async () => {
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        aiSummary: { ...validAiSummary, fiscalImpact: undefined },
+      } as never);
+
+      const result = await service.getBill('bill-1');
+      expect(result?.aiSummary).toBeUndefined();
+    });
+
+    it('returns undefined aiSummary when fiscalImpact is missing level/summary', async () => {
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        aiSummary: {
+          ...validAiSummary,
+          fiscalImpact: { level: 'low' }, // summary missing
+        },
+      } as never);
+
+      const result = await service.getBill('bill-1');
+      expect(result?.aiSummary).toBeUndefined();
+    });
+
+    it('filters non-string entries from topics/whoItAffects arrays', async () => {
+      // Defensive: a future prompt template might allow numeric tag IDs
+      // or accidentally emit nulls. Coercion drops them rather than
+      // throwing — better degraded than 500.
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        aiSummary: {
+          ...validAiSummary,
+          topics: ['housing', 42, null, 'taxation'],
+          whoItAffects: ['renters', { invalid: true }, 'parents'],
+        },
+      } as never);
+
+      const result = await service.getBill('bill-1');
+      expect(result?.aiSummary?.topics).toEqual(['housing', 'taxation']);
+      expect(result?.aiSummary?.whoItAffects).toEqual(['renters', 'parents']);
+    });
+  });
 });
