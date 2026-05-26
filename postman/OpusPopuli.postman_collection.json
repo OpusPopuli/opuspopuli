@@ -799,6 +799,150 @@
           }
         },
         {
+          "name": "Sync — PROPOSITIONS (Admin)",
+          "description": "Trigger a PROPOSITIONS data sync (qualified ballot measures). Returns a job ID immediately; the worker processes it async. Saves sync_job_id.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "const job = res.data && res.data.syncRegionData;",
+                  "if (job && job.jobId) {",
+                  "    pm.environment.set('sync_job_id', job.jobId);",
+                  "    console.log('sync_job_id saved:', job.jobId, '— status:', job.status);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $regionId: String) {\n  syncRegionData(dataTypes: $dataTypes, regionId: $regionId) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"PROPOSITIONS\"],\n  \"regionId\": \"california\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Sync — MEETINGS (Admin)",
+          "description": "Trigger a MEETINGS data sync (Assembly/Senate daily journals + weekly histories — pdf_archive sources fetch and extract LegislativeActions per #666). Returns a job ID immediately; the worker processes it async. Saves sync_job_id.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "const job = res.data && res.data.syncRegionData;",
+                  "if (job && job.jobId) {",
+                  "    pm.environment.set('sync_job_id', job.jobId);",
+                  "    console.log('sync_job_id saved:', job.jobId, '— status:', job.status);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $depth: SyncDepth, $regionId: String) {\n  syncRegionData(dataTypes: $dataTypes, depth: $depth, regionId: $regionId) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"MEETINGS\"],\n  \"regionId\": \"california\",\n  \"depth\": \"STATE\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Sync — CAMPAIGN_FINANCE (Admin)",
+          "description": "Trigger a CAMPAIGN_FINANCE data sync (committees, contributions, expenditures from CAL-ACCESS). Returns a job ID immediately; the worker processes it async. Saves sync_job_id.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "const job = res.data && res.data.syncRegionData;",
+                  "if (job && job.jobId) {",
+                  "    pm.environment.set('sync_job_id', job.jobId);",
+                  "    console.log('sync_job_id saved:', job.jobId, '— status:', job.status);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $regionId: String) {\n  syncRegionData(dataTypes: $dataTypes, regionId: $regionId) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"CAMPAIGN_FINANCE\"],\n  \"regionId\": \"california\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Sync — BILLS (Admin)",
+          "description": "Trigger a BILLS data sync (legislative bills + status pages from leginfo). Use maxBills to cap the run for smoke testing; omit for full sync. Returns a job ID immediately; saves sync_job_id.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "const job = res.data && res.data.syncRegionData;",
+                  "if (job && job.jobId) {",
+                  "    pm.environment.set('sync_job_id', job.jobId);",
+                  "    console.log('sync_job_id saved:', job.jobId, '— status:', job.status);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $regionId: String, $maxBills: Int) {\n  syncRegionData(dataTypes: $dataTypes, regionId: $regionId, maxBills: $maxBills) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"BILLS\"],\n  \"regionId\": \"california\",\n  \"maxBills\": 10\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
           "name": "Poll Job Status (by sync_job_id)",
           "description": "Poll the job saved by the last sync mutation. Refresh until status is SUCCEEDED or FAILED.",
           "request": {

@@ -84,7 +84,7 @@
     "@opuspopuli/prompt-client": "workspace:*",
     "@opuspopuli/queue-provider": "workspace:*",
     "@opuspopuli/region-provider": "workspace:*",
-    "@opuspopuli/regions": "^1.0.61",
+    "@opuspopuli/regions": "^1.0.66",
     "@opuspopuli/relationaldb-provider": "workspace:*",
     "@opuspopuli/scraping-pipeline": "workspace:*",
     "@opuspopuli/secrets-provider": "workspace:*",

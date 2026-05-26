@@ -18,14 +18,16 @@ import { LayerNav } from "@/components/region/LayerNav";
 import { ComingSoon } from "@/components/region/ComingSoon";
 import { LifecycleProgressBar } from "@/components/civics/LifecycleProgressBar";
 import { useCivics } from "@/components/civics/CivicsContext";
+import { BillActivityFeed } from "@/components/region/BillActivityFeed";
 import { formatDate } from "@/lib/format";
 import { MEASURE_TYPE_STYLES } from "@/lib/bill-styles";
 import { useState, useMemo } from "react";
 
 const LAYERS = [
   { n: 1, label: "Snapshot" },
-  { n: 2, label: "Votes" },
-  { n: 3, label: "Sources" },
+  { n: 2, label: "History" },
+  { n: 3, label: "Votes" },
+  { n: 4, label: "Sources" },
 ] as const;
 
 const POSITION_STYLES: Record<string, { cls: string; label: string }> = {
@@ -186,7 +188,35 @@ function Snapshot({
         )}
       </div>
 
-      <LayerButton onClick={onNext}>See vote record</LayerButton>
+      <LayerButton onClick={onNext}>See bill history</LayerButton>
+    </div>
+  );
+}
+
+function History({
+  bill,
+  onNext,
+  onBack,
+}: {
+  readonly bill: NonNullable<BillData["bill"]>;
+  readonly onNext: () => void;
+  readonly onBack: () => void;
+}) {
+  return (
+    <div className="animate-layer-enter">
+      <SectionTitle>What has happened to this bill</SectionTitle>
+      <p className="text-sm text-slate-500 mb-4">
+        Committee reports, amendments, and chamber movements extracted from
+        official legislative journals and weekly histories.
+      </p>
+      <BillActivityFeed billId={bill.id} />
+
+      <div className="mt-6 flex flex-wrap gap-3">
+        <LayerButton onClick={onNext}>See vote record</LayerButton>
+        <LayerButton onClick={onBack} variant="secondary">
+          Back to snapshot
+        </LayerButton>
+      </div>
     </div>
   );
 }
@@ -211,7 +241,7 @@ function Votes({
         />
         <div className="mt-6">
           <LayerButton onClick={onBack} variant="secondary">
-            Back to snapshot
+            Back to history
           </LayerButton>
         </div>
       </div>
@@ -268,7 +298,7 @@ function Votes({
       <div className="flex flex-wrap gap-3">
         <LayerButton onClick={onNext}>Sources & deep dive</LayerButton>
         <LayerButton onClick={onBack} variant="secondary">
-          Back to snapshot
+          Back to history
         </LayerButton>
       </div>
     </div>
@@ -462,13 +492,20 @@ export default function BillDetailPage() {
           />
         )}
         {layer === 2 && (
-          <Votes
+          <History
             bill={bill}
             onNext={() => setLayer(3)}
             onBack={() => setLayer(1)}
           />
         )}
-        {layer === 3 && <Sources bill={bill} onBack={() => setLayer(2)} />}
+        {layer === 3 && (
+          <Votes
+            bill={bill}
+            onNext={() => setLayer(4)}
+            onBack={() => setLayer(2)}
+          />
+        )}
+        {layer === 4 && <Sources bill={bill} onBack={() => setLayer(3)} />}
       </div>
     </div>
   );

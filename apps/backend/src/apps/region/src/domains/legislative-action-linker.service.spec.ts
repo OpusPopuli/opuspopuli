@@ -27,15 +27,37 @@ interface CommitteeRow {
   externalId: string;
 }
 
+interface BillRow {
+  id: string;
+  billNumber: string;
+  sessionYear: string;
+}
+
+interface PriorAction {
+  date: Date;
+  minutesId: string;
+  billId: string | null;
+  propositionId: string | null;
+  actionType: string;
+  position: string | null;
+  representativeId: string | null;
+}
+
 const buildLinker = (opts: {
   minutes: MinutesRow[];
   reps?: RepRow[];
   propositions?: PropositionRow[];
   committees?: CommitteeRow[];
+  bills?: BillRow[];
+  /** Pre-existing actions to simulate prior journal/history ingestion
+   *  for cross-source dedup tests. */
+  priorActions?: PriorAction[];
 }) => {
   const reps = opts.reps ?? [];
   const propositions = opts.propositions ?? [];
   const committees = opts.committees ?? [];
+  const bills = opts.bills ?? [];
+  const priorActions = opts.priorActions ?? [];
   const persistedActions: any[] = [];
 
   const db = {
@@ -70,8 +92,35 @@ const buildLinker = (opts: {
         for (const r of args.data) persistedActions.push(r);
         return { count: args.data.length };
       }),
+      // Used by cross-source dedup (#666): returns existing actions in
+      // OTHER Minutes for the same date.
+      findMany: jest.fn(async (args: any) => {
+        const targetDate = args?.where?.date?.getTime?.();
+        const excludeMinutesId = args?.where?.minutesId?.not;
+        const billIdsFilter: string[] | undefined = args?.where?.OR?.find(
+          (o: any) => o?.billId,
+        )?.billId?.in;
+        const propIdsFilter: string[] | undefined = args?.where?.OR?.find(
+          (o: any) => o?.propositionId,
+        )?.propositionId?.in;
+        return priorActions.filter((a) => {
+          if (a.minutesId === excludeMinutesId) return false;
+          if (targetDate != null && a.date.getTime() !== targetDate)
+            return false;
+          const billMatch =
+            billIdsFilter && a.billId
+              ? billIdsFilter.includes(a.billId)
+              : false;
+          const propMatch =
+            propIdsFilter && a.propositionId
+              ? propIdsFilter.includes(a.propositionId)
+              : false;
+          return billMatch || propMatch;
+        });
+      }),
     },
     bill: {
+      findMany: jest.fn(async () => bills),
       updateMany: jest.fn(async () => ({ count: 0 })),
     },
     $transaction: jest.fn(async (ops: any[]) => {
@@ -377,5 +426,177 @@ describe('LegislativeActionLinkerService', () => {
     for (const id of ids) {
       expect(id).toMatch(/^ca-2026-04-28-\d{4}$/);
     }
+  });
+
+  describe('per-bill linkage + cross-source dedup (#666)', () => {
+    it('sets billId on actions whose citation matches a Bill row', async () => {
+      const { linker, persistedActions } = buildLinker({
+        minutes: [
+          {
+            id: 'm-1',
+            externalId: 'ca-2026-04-28',
+            body: 'Assembly',
+            date: new Date('2026-04-28T00:00:00Z'),
+            isActive: true,
+            rawText: FIXTURE_RAWTEXT,
+          },
+        ],
+        bills: [
+          {
+            id: 'bill-ab1897',
+            billNumber: 'AB 1897',
+            sessionYear: '2025-2026',
+          },
+        ],
+      });
+
+      await linker.linkMinutes(['m-1']);
+
+      const ab1897 = persistedActions.filter((a) => a.rawSubject === 'AB 1897');
+      expect(ab1897.length).toBeGreaterThanOrEqual(1);
+      for (const a of ab1897) {
+        expect(a.billId).toBe('bill-ab1897');
+      }
+    });
+
+    it('leaves billId null when no matching Bill exists', async () => {
+      const { linker, persistedActions } = buildLinker({
+        minutes: [
+          {
+            id: 'm-1',
+            externalId: 'ca-2026-04-28',
+            body: 'Assembly',
+            date: new Date('2026-04-28T00:00:00Z'),
+            isActive: true,
+            rawText: FIXTURE_RAWTEXT,
+          },
+        ],
+        // No bills array → no rows match → billId stays null
+      });
+
+      await linker.linkMinutes(['m-1']);
+
+      const ab1897 = persistedActions.filter((a) => a.rawSubject === 'AB 1897');
+      expect(ab1897.length).toBeGreaterThanOrEqual(1);
+      for (const a of ab1897) {
+        expect(a.billId).toBeNull();
+      }
+    });
+
+    it('drops actions already linked to a prior Minutes (cross-source dedup)', async () => {
+      // Simulate the same engrossment action having been recorded earlier
+      // from a daily journal (different minutesId, same date + billId).
+      const { linker, persistedActions } = buildLinker({
+        minutes: [
+          {
+            id: 'm-weekly',
+            externalId: 'ca-weekly-2026-04-28',
+            body: 'Assembly',
+            date: new Date('2026-04-28T00:00:00Z'),
+            isActive: true,
+            rawText: FIXTURE_RAWTEXT,
+          },
+        ],
+        bills: [
+          {
+            id: 'bill-ab1897',
+            billNumber: 'AB 1897',
+            sessionYear: '2025-2026',
+          },
+        ],
+        priorActions: [
+          {
+            date: new Date('2026-04-28T00:00:00Z'),
+            minutesId: 'm-daily-prior',
+            billId: 'bill-ab1897',
+            propositionId: null,
+            actionType: 'engrossment',
+            position: null,
+            representativeId: null,
+          },
+        ],
+      });
+
+      await linker.linkMinutes(['m-weekly']);
+
+      // The engrossment for AB 1897 should NOT have been written this run.
+      const engrossments = persistedActions.filter(
+        (a) => a.actionType === 'engrossment' && a.billId === 'bill-ab1897',
+      );
+      expect(engrossments).toHaveLength(0);
+    });
+
+    it('scopes billId resolution by sessionYear (no cross-session collision)', async () => {
+      // Two bills share billNumber "AB 1897" across different sessions.
+      // The 2026-04-28 Minutes is in the 2025-2026 session, so actions
+      // must resolve to the 2025-2026 bill, NOT the 2023-2024 row.
+      const { linker, persistedActions } = buildLinker({
+        minutes: [
+          {
+            id: 'm-1',
+            externalId: 'ca-2026-04-28',
+            body: 'Assembly',
+            date: new Date('2026-04-28T00:00:00Z'),
+            isActive: true,
+            rawText: FIXTURE_RAWTEXT,
+          },
+        ],
+        bills: [
+          {
+            id: 'bill-ab1897-old',
+            billNumber: 'AB 1897',
+            sessionYear: '2023-2024',
+          },
+          {
+            id: 'bill-ab1897-current',
+            billNumber: 'AB 1897',
+            sessionYear: '2025-2026',
+          },
+        ],
+      });
+
+      await linker.linkMinutes(['m-1']);
+
+      const ab1897 = persistedActions.filter((a) => a.rawSubject === 'AB 1897');
+      expect(ab1897.length).toBeGreaterThanOrEqual(1);
+      for (const a of ab1897) {
+        expect(a.billId).toBe('bill-ab1897-current');
+      }
+    });
+
+    it('resolves billId and propositionId independently on the same action', async () => {
+      // Edge case: a constitutional amendment whose citation matches both
+      // a Bill row (legislative-process record) and a Proposition row
+      // (qualified-for-ballot record). Both FKs should be populated.
+      const { linker, persistedActions } = buildLinker({
+        minutes: [
+          {
+            id: 'm-1',
+            externalId: 'ca-2026-04-28',
+            body: 'Assembly',
+            date: new Date('2026-04-28T00:00:00Z'),
+            isActive: true,
+            rawText: FIXTURE_RAWTEXT,
+          },
+        ],
+        bills: [
+          {
+            id: 'bill-ab1897',
+            billNumber: 'AB 1897',
+            sessionYear: '2025-2026',
+          },
+        ],
+        propositions: [{ id: 'prop-ab1897', externalId: 'AB 1897' }],
+      });
+
+      await linker.linkMinutes(['m-1']);
+
+      const linked = persistedActions.filter((a) => a.rawSubject === 'AB 1897');
+      expect(linked.length).toBeGreaterThanOrEqual(1);
+      for (const a of linked) {
+        expect(a.billId).toBe('bill-ab1897');
+        expect(a.propositionId).toBe('prop-ab1897');
+      }
+    });
   });
 });

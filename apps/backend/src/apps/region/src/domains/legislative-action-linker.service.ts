@@ -27,6 +27,14 @@ interface LinkerCaches {
   repsByLastName: Map<string, Map<string, string[]>>;
   /** canonical proposition externalId (e.g., 'AB 1863') → proposition id. */
   propositionsByExternalId: Map<string, string>;
+  /** Two-level lookup: sessionYear ("2025-2026") → billNumber ("AB 1863")
+   *  → bill id. Session-scoped because billNumber values are reused
+   *  across CA legislative sessions (e.g., `AB 2` exists in 2023-2024
+   *  AND 2025-2026 as distinct rows). Distinct from
+   *  `propositionsByExternalId`: bills are the legislative-process
+   *  records, propositions are the qualified-for-ballot records — a
+   *  citation can resolve to one, both, or neither. See opuspopuli#666. */
+  billsByBillNumber: Map<string, Map<string, string>>;
   /** chamber-scoped normalized committee name → committee id. */
   committeesByExternalId: Map<string, string>;
 }
@@ -35,6 +43,10 @@ interface MinutesContext {
   id: string;
   body: string;
   date: Date;
+  /** CA legislative session ("YYYY-YYYY") derived from {@link date}.
+   *  Computed once per Minutes so bill-citation lookups stay scoped to
+   *  the right session without recomputing on every match. */
+  sessionYear: string;
   externalId: string;
   rawText: string;
   caches: LinkerCaches;
@@ -49,6 +61,7 @@ interface CandidateAction {
   passageEnd: number;
   representativeId?: string;
   propositionId?: string;
+  billId?: string;
   committeeId?: string;
 }
 
@@ -207,6 +220,7 @@ export class LegislativeActionLinkerService {
         id: row.id,
         body: row.body,
         date: row.date,
+        sessionYear: this.deriveSessionYear(row.date),
         externalId: row.externalId,
         rawText: row.rawText,
         caches,
@@ -289,13 +303,16 @@ export class LegislativeActionLinkerService {
   // ============================================
 
   private async loadCaches(): Promise<LinkerCaches> {
-    const [reps, propositions, committees] = await Promise.all([
+    const [reps, propositions, bills, committees] = await Promise.all([
       this.db.representative.findMany({
         where: { deletedAt: null },
         select: { id: true, lastName: true, chamber: true },
       }),
       this.db.proposition.findMany({
         select: { id: true, externalId: true },
+      }),
+      this.db.bill.findMany({
+        select: { id: true, billNumber: true, sessionYear: true },
       }),
       this.db.legislativeCommittee.findMany({
         where: { deletedAt: null },
@@ -323,12 +340,32 @@ export class LegislativeActionLinkerService {
       propositionsByExternalId.set(p.externalId, p.id);
     }
 
+    const billsByBillNumber = new Map<string, Map<string, string>>();
+    for (const b of bills) {
+      // billNumber is "AB 1234" / "SB 99" — same canonical form the
+      // citation extractor produces. Session-scoped so e.g. "AB 2" in
+      // the 2023-2024 session doesn't collide with "AB 2" in 2025-2026.
+      // Single-region today; cross-region collisions would need a
+      // regionId filter (see opuspopuli#731).
+      let inner = billsByBillNumber.get(b.sessionYear);
+      if (!inner) {
+        inner = new Map<string, string>();
+        billsByBillNumber.set(b.sessionYear, inner);
+      }
+      inner.set(b.billNumber, b.id);
+    }
+
     const committeesByExternalId = new Map<string, string>();
     for (const c of committees) {
       committeesByExternalId.set(c.externalId, c.id);
     }
 
-    return { repsByLastName, propositionsByExternalId, committeesByExternalId };
+    return {
+      repsByLastName,
+      propositionsByExternalId,
+      billsByBillNumber,
+      committeesByExternalId,
+    };
   }
 
   // ============================================
@@ -594,6 +631,7 @@ export class LegislativeActionLinkerService {
         blockText,
         blockOffset,
         ctx.caches,
+        ctx.sessionYear,
       )) {
         out.push({
           actionType: 'committee_report',
@@ -608,6 +646,7 @@ export class LegislativeActionLinkerService {
           passageEnd: cite.passageEnd,
           committeeId,
           propositionId: cite.propId,
+          billId: cite.billId,
         });
       }
     }
@@ -637,6 +676,7 @@ export class LegislativeActionLinkerService {
         blockText,
         blockOffset,
         ctx.caches,
+        ctx.sessionYear,
       )) {
         out.push({
           actionType: 'amendment',
@@ -649,6 +689,7 @@ export class LegislativeActionLinkerService {
           passageEnd: cite.passageEnd,
           committeeId,
           propositionId: cite.propId,
+          billId: cite.billId,
         });
       }
     }
@@ -676,7 +717,7 @@ export class LegislativeActionLinkerService {
       // amendment to. Scan backward up to ~600 chars.
       const lookback = Math.max(0, m.index - 600);
       const window = section.text.slice(lookback, m.index);
-      const bills = this.lastBillCitation(window);
+      const bills = this.lastBillCitation(window, ctx.caches, ctx.sessionYear);
 
       out.push({
         actionType: 'amendment',
@@ -691,6 +732,7 @@ export class LegislativeActionLinkerService {
         passageEnd: section.startOffset + m.index + m[0].length,
         committeeId,
         propositionId: bills?.propId,
+        billId: bills?.billId,
       });
     }
     return out;
@@ -723,6 +765,7 @@ export class LegislativeActionLinkerService {
         block.text,
         blockOffset,
         ctx.caches,
+        ctx.sessionYear,
       )) {
         out.push({
           actionType,
@@ -734,6 +777,7 @@ export class LegislativeActionLinkerService {
           passageStart: cite.passageStart,
           passageEnd: cite.passageEnd,
           propositionId: cite.propId,
+          billId: cite.billId,
         });
       }
     }
@@ -759,6 +803,9 @@ export class LegislativeActionLinkerService {
       const propId = canonical
         ? ctx.caches.propositionsByExternalId.get(canonical)
         : undefined;
+      const billId = canonical
+        ? this.resolveBillId(ctx.caches, canonical, ctx.sessionYear)
+        : undefined;
 
       out.push({
         actionType: 'resolution',
@@ -767,6 +814,7 @@ export class LegislativeActionLinkerService {
         passageStart: section.startOffset + m.index,
         passageEnd: section.startOffset + m.index + m[0].length,
         propositionId: propId,
+        billId,
       });
     }
     return out;
@@ -785,9 +833,11 @@ export class LegislativeActionLinkerService {
     blockText: string,
     blockOffset: number,
     caches: LinkerCaches,
+    sessionYear: string,
   ): Array<{
     canonical: string;
     propId: string | undefined;
+    billId: string | undefined;
     passageStart: number;
     passageEnd: number;
   }> {
@@ -795,6 +845,7 @@ export class LegislativeActionLinkerService {
     const results: Array<{
       canonical: string;
       propId: string | undefined;
+      billId: string | undefined;
       passageStart: number;
       passageEnd: number;
     }> = [];
@@ -804,11 +855,34 @@ export class LegislativeActionLinkerService {
       results.push({
         canonical,
         propId: caches.propositionsByExternalId.get(canonical),
+        billId: this.resolveBillId(caches, canonical, sessionYear),
         passageStart: blockOffset + m.index,
         passageEnd: blockOffset + m.index + m[0].length,
       });
     }
     return results;
+  }
+
+  /**
+   * Derive the CA legislative sessionYear ("2025-2026") that contains
+   * the given date. CA sessions are 2-year cycles starting in odd
+   * years — Jan 2025 through Nov 2026 is the "2025-2026" session.
+   * Used to scope bill-citation resolution so we don't mis-link an
+   * action to the same billNumber from a prior session.
+   */
+  private deriveSessionYear(date: Date): string {
+    const y = date.getUTCFullYear();
+    const start = y % 2 === 1 ? y : y - 1;
+    return `${start}-${start + 1}`;
+  }
+
+  /** Session-scoped billNumber → billId lookup. */
+  private resolveBillId(
+    caches: LinkerCaches,
+    canonical: string,
+    sessionYear: string,
+  ): string | undefined {
+    return caches.billsByBillNumber.get(sessionYear)?.get(canonical);
   }
 
   private normalizeBillCitation(
@@ -840,7 +914,9 @@ export class LegislativeActionLinkerService {
 
   private lastBillCitation(
     window: string,
-  ): { canonical: string; propId?: string } | undefined {
+    caches: LinkerCaches,
+    sessionYear: string,
+  ): { canonical: string; propId?: string; billId?: string } | undefined {
     BILL_CITATION_RE.lastIndex = 0;
     let last: RegExpExecArray | null = null;
     let m: RegExpExecArray | null;
@@ -849,7 +925,11 @@ export class LegislativeActionLinkerService {
     }
     if (!last) return undefined;
     const canonical = this.normalizeBillCitation(last[1], last[2], last[3]);
-    return { canonical };
+    return {
+      canonical,
+      propId: caches.propositionsByExternalId.get(canonical),
+      billId: this.resolveBillId(caches, canonical, sessionYear),
+    };
   }
 
   // ============================================
@@ -913,7 +993,13 @@ export class LegislativeActionLinkerService {
       return 0;
     }
 
-    const records = candidates.map((c, i) => ({
+    // Cross-source dedup: the same atomic action can appear in both a
+    // daily journal AND the week's history (opuspopuli#666). Filter out
+    // candidates whose (billId, date, actionType, position, representativeId)
+    // tuple already exists in a *different* Minutes row for this region.
+    const filtered = await this.dedupAgainstPriorMinutes(ctx, candidates);
+
+    const records = filtered.map((c, i) => ({
       externalId: `${ctx.externalId}-${String(i + 1).padStart(4, '0')}`,
       minutesId: ctx.id,
       body: ctx.body,
@@ -921,6 +1007,7 @@ export class LegislativeActionLinkerService {
       actionType: c.actionType,
       representativeId: c.representativeId ?? null,
       propositionId: c.propositionId ?? null,
+      billId: c.billId ?? null,
       committeeId: c.committeeId ?? null,
       position: c.position ?? null,
       text: c.text ?? null,
@@ -935,6 +1022,103 @@ export class LegislativeActionLinkerService {
     ]);
 
     return records.length;
+  }
+
+  /**
+   * Drop candidates that duplicate actions already linked to a different
+   * Minutes row. The same atomic event (e.g. "AB 440 referred to Judiciary
+   * 5/3") appears in both the day-of journal and the week's history; we
+   * want one row, not two.
+   *
+   * Dedup key: (billId|propositionId, date, actionType, position, representativeId).
+   * Actions without a billId/propositionId anchor (e.g. presence rolls)
+   * are bypassed — they're inherently per-Minutes and not duplicated
+   * across sources.
+   */
+  private async dedupAgainstPriorMinutes(
+    ctx: MinutesContext,
+    candidates: CandidateAction[],
+  ): Promise<CandidateAction[]> {
+    const tupleKey = (
+      anchor: string,
+      actionType: string,
+      position?: string | null,
+      representativeId?: string | null,
+    ): string =>
+      `${anchor}|${actionType}|${position ?? ''}|${representativeId ?? ''}`;
+
+    // Collect distinct anchored candidates so we can do ONE Prisma read.
+    const anchored = candidates.filter(
+      (c) => c.billId != null || c.propositionId != null,
+    );
+    if (anchored.length === 0) return candidates;
+
+    const billIds = new Set<string>();
+    const propIds = new Set<string>();
+    for (const c of anchored) {
+      if (c.billId) billIds.add(c.billId);
+      else if (c.propositionId) propIds.add(c.propositionId);
+    }
+
+    const anchorClauses: Array<
+      { billId: { in: string[] } } | { propositionId: { in: string[] } }
+    > = [];
+    if (billIds.size > 0) {
+      anchorClauses.push({ billId: { in: Array.from(billIds) } });
+    }
+    if (propIds.size > 0) {
+      anchorClauses.push({ propositionId: { in: Array.from(propIds) } });
+    }
+
+    const existing = await this.db.legislativeAction.findMany({
+      where: {
+        date: ctx.date,
+        minutesId: { not: ctx.id },
+        OR: anchorClauses,
+      },
+      select: {
+        billId: true,
+        propositionId: true,
+        actionType: true,
+        position: true,
+        representativeId: true,
+      },
+    });
+
+    const seen = new Set<string>();
+    for (const row of existing) {
+      const anchor = row.billId ?? row.propositionId;
+      if (!anchor) continue;
+      seen.add(
+        tupleKey(anchor, row.actionType, row.position, row.representativeId),
+      );
+    }
+
+    let dropped = 0;
+    const out = candidates.filter((c) => {
+      const anchor = c.billId ?? c.propositionId;
+      if (!anchor) return true; // un-anchored events stay (presence rolls, etc.)
+      const key = tupleKey(
+        anchor,
+        c.actionType,
+        c.position,
+        c.representativeId,
+      );
+      if (seen.has(key)) {
+        dropped++;
+        return false;
+      }
+      // Mark intra-batch duplicates too: if two candidates in this single
+      // Minutes share the tuple, keep only the first.
+      seen.add(key);
+      return true;
+    });
+    if (dropped > 0) {
+      this.logger.log(
+        `Linker dedup: dropped ${dropped} duplicate action(s) already present in another Minutes for ${ctx.externalId}`,
+      );
+    }
+    return out;
   }
 
   // ============================================

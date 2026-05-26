@@ -269,39 +269,139 @@ const mockIndependentExpenditures = {
   hasMore: false,
 };
 
-// Returns mock data for a given GraphQL POST body, or null for unknown queries.
-function resolveRegionQueryData(
-  postData: Record<string, unknown> | null,
-): unknown {
-  if (!postData) return null;
-  if (postData.operationName === "GetRepresentative")
-    return { representative: mockRepresentatives.items[0] };
-  const q = (postData.query as string) ?? "";
-  if (q.includes("regionInfo")) return { regionInfo: mockRegionInfo };
-  if (q.includes("petitionDocumentsForProposition"))
-    return { petitionDocumentsForProposition: [] };
-  if (q.match(/proposition[\s(]/))
-    return {
+const mockBill = {
+  id: "bill-ab1897",
+  externalId: "20252026AB1897",
+  billNumber: "AB 1897",
+  sessionYear: "2025-2026",
+  measureTypeCode: "AB",
+  title: "Test bill — placeholder text used by the History-tab e2e",
+  subject: "Testing",
+  status: "In committee",
+  currentStageId: "policy-committee",
+  lastAction: "From committee chair, with author's amendments",
+  lastActionDate: "2026-05-13T00:00:00Z",
+  fiscalImpact: null,
+  fullTextUrl: null,
+  authorId: null,
+  authorName: "Jane Smith",
+  sourceUrl:
+    "https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=ab1897",
+  extractedAt: "2026-05-14T00:00:00Z",
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-05-14T00:00:00Z",
+  votes: [
+    {
+      id: "v-1",
+      representativeName: "Aguiar-Curry, Cecilia",
+      representativeId: null,
+      chamber: "Assembly",
+      voteDate: "2026-04-28T00:00:00Z",
+      position: "yes",
+      motionText: "Do pass",
+      sourceUrl:
+        "https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=ab1897",
+    },
+  ],
+  coAuthors: [],
+};
+
+const mockBillActivity = {
+  items: [
+    {
+      id: "la-1",
+      externalId: "california-meetings-2026-04-28-0042",
+      body: "Assembly",
+      date: "2026-04-28T00:00:00Z",
+      actionType: "committee_report",
+      position: null,
+      text: "AB 1897: Do pass.",
+      passageStart: 12347,
+      passageEnd: 12521,
+      rawSubject: "AB 1897",
+      representativeId: null,
+      propositionId: null,
+      billId: "bill-ab1897",
+      committeeId: null,
+      minutesId: "min-1",
+      minutesExternalId: "california-meetings-2026-04-28",
+    },
+  ],
+  total: 1,
+  hasMore: false,
+};
+
+// Lookup by GraphQL operationName for the queries that have an explicit
+// `query Foo` declaration in the frontend (Apollo sets operationName).
+const OPERATION_RESPONSES: Record<string, () => unknown> = {
+  GetRepresentative: () => ({ representative: mockRepresentatives.items[0] }),
+  GetBill: () => ({ bill: mockBill }),
+  GetBillActivity: () => ({ billActivity: mockBillActivity }),
+};
+
+// Fallback dispatch table for inline / anonymous queries — first matching
+// predicate wins. Order matters: more-specific predicates come first.
+const QUERY_MATCHERS: Array<[(q: string) => boolean, () => unknown]> = [
+  [(q) => q.includes("regionInfo"), () => ({ regionInfo: mockRegionInfo })],
+  [
+    (q) => q.includes("petitionDocumentsForProposition"),
+    () => ({ petitionDocumentsForProposition: [] }),
+  ],
+  [
+    (q) => /proposition[\s(]/.test(q),
+    () => ({
       proposition: {
         ...mockPropositions.items[0],
         fullText:
           "This proposition would amend the California Constitution to require commercial and industrial properties worth more than $3 million to be reassessed at current market value.",
       },
-    };
-  if (q.includes("propositions")) return { propositions: mockPropositions };
-  if (q.includes("meetings")) return { meetings: mockMeetings };
-  if (q.includes("myAddresses")) return { myAddresses: [] };
-  if (q.includes("representativesByDistricts"))
-    return { representativesByDistricts: [] };
-  if (q.includes("myCountySupervisors")) return { myCountySupervisors: [] };
-  if (q.includes("representatives"))
-    return { representatives: mockRepresentatives };
-  if (q.includes("independentExpenditures"))
-    return { independentExpenditures: mockIndependentExpenditures };
-  if (q.includes("expenditures")) return { expenditures: mockExpenditures };
-  if (q.includes("contributions")) return { contributions: mockContributions };
-  if (q.includes("committees")) return { committees: mockCommittees };
-  return null;
+    }),
+  ],
+  [
+    (q) => q.includes("propositions"),
+    () => ({ propositions: mockPropositions }),
+  ],
+  [(q) => q.includes("meetings"), () => ({ meetings: mockMeetings })],
+  [(q) => q.includes("myAddresses"), () => ({ myAddresses: [] })],
+  [
+    (q) => q.includes("representativesByDistricts"),
+    () => ({ representativesByDistricts: [] }),
+  ],
+  [
+    (q) => q.includes("myCountySupervisors"),
+    () => ({ myCountySupervisors: [] }),
+  ],
+  [
+    (q) => q.includes("representatives"),
+    () => ({ representatives: mockRepresentatives }),
+  ],
+  [
+    (q) => q.includes("independentExpenditures"),
+    () => ({ independentExpenditures: mockIndependentExpenditures }),
+  ],
+  [
+    (q) => q.includes("expenditures"),
+    () => ({ expenditures: mockExpenditures }),
+  ],
+  [
+    (q) => q.includes("contributions"),
+    () => ({ contributions: mockContributions }),
+  ],
+  [(q) => q.includes("committees"), () => ({ committees: mockCommittees })],
+];
+
+// Returns mock data for a given GraphQL POST body, or null for unknown queries.
+function resolveRegionQueryData(
+  postData: Record<string, unknown> | null,
+): unknown {
+  if (!postData) return null;
+  const opName = postData.operationName as string | undefined;
+  if (opName && OPERATION_RESPONSES[opName]) {
+    return OPERATION_RESPONSES[opName]();
+  }
+  const q = (postData.query as string) ?? "";
+  const match = QUERY_MATCHERS.find(([predicate]) => predicate(q));
+  return match ? match[1]() : null;
 }
 
 // Helper function to mock GraphQL API
@@ -1726,5 +1826,42 @@ test.describe("Independent Expenditures Page", () => {
 
     await expect(page.getByText("Candidate: Jane Smith")).toBeVisible();
     await expect(page.getByText("Proposition: Proposition X")).toBeVisible();
+  });
+});
+
+test.describe("Bill Detail Page — History tab (#666)", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockRegionGraphQL(page);
+  });
+
+  test("exposes a History tab and renders the activity feed when selected", async ({
+    page,
+  }) => {
+    await page.goto("/region/bills/bill-ab1897");
+
+    await expect(
+      page.getByRole("button", { name: "History", exact: true }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "History", exact: true }).click();
+
+    await expect(
+      page.getByRole("heading", { name: /What has happened to this bill/ }),
+    ).toBeVisible();
+    await expect(page.getByTestId("bill-activity-feed")).toBeVisible();
+    await expect(page.getByText("Showing 1 of 1 record")).toBeVisible();
+  });
+
+  test("filter dropdown narrows the feed by action type", async ({ page }) => {
+    await page.goto("/region/bills/bill-ab1897");
+    await page.getByRole("button", { name: "History", exact: true }).click();
+
+    const filter = page.getByLabel("Filter bill activity by type");
+    await expect(filter).toBeVisible();
+    await filter.selectOption("engrossment");
+    // Mock router returns the same fixture for any filter — assert the
+    // dropdown wiring + persistent feed presence; the value-level filtering
+    // is covered by the backend resolver tests.
+    await expect(page.getByTestId("bill-activity-feed")).toBeVisible();
   });
 });
