@@ -1,4 +1,5 @@
 import { Field, InputType } from '@nestjs/graphql';
+import { Transform } from 'class-transformer';
 import {
   IsOptional,
   IsString,
@@ -19,6 +20,16 @@ import {
   IncomeRange,
   HomeownerStatus,
 } from 'src/common/enums/profile.enum';
+
+/**
+ * Coerces a stray empty string to `undefined` BEFORE validation runs so
+ * `@IsOptional()` (which only short-circuits on null/undefined) can do
+ * its job for format-validated fields. Without this, an unfilled form
+ * input that ships `phone: ""` fails the E.164 regex even though the
+ * user intended "no phone." Apply via `@Transform(emptyToUndefined)`.
+ */
+const emptyToUndefined = ({ value }: { value: unknown }): unknown =>
+  value === '' ? undefined : value;
 
 @InputType()
 export class UpdateProfileDto {
@@ -52,11 +63,13 @@ export class UpdateProfileDto {
   @Field({ nullable: true })
   public preferredName?: string;
 
+  @Transform(emptyToUndefined)
   @IsOptional()
   @IsDateString()
   @Field({ nullable: true })
   public dateOfBirth?: string;
 
+  @Transform(emptyToUndefined)
   @IsOptional()
   @IsString()
   @Matches(/^\+?[1-9]\d{1,14}$/, {
@@ -65,16 +78,19 @@ export class UpdateProfileDto {
   @Field({ nullable: true })
   public phone?: string;
 
+  @Transform(emptyToUndefined)
   @IsOptional()
   @IsTimeZone()
   @Field({ nullable: true })
   public timezone?: string;
 
+  @Transform(emptyToUndefined)
   @IsOptional()
   @IsLocale()
   @Field({ nullable: true })
   public locale?: string;
 
+  @Transform(emptyToUndefined)
   @IsOptional()
   @IsString()
   @Matches(/^(en|es)$/, {
@@ -83,6 +99,7 @@ export class UpdateProfileDto {
   @Field({ nullable: true })
   public preferredLanguage?: string;
 
+  @Transform(emptyToUndefined)
   @IsOptional()
   @IsUrl()
   @MaxLength(500)

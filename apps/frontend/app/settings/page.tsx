@@ -52,6 +52,32 @@ interface ProfileFormProps {
   readonly onSave: () => void;
 }
 
+/**
+ * Pull a human-readable validation message out of an Apollo error.
+ * NestJS class-validator surfaces field-level messages as an array on
+ * `graphQLErrors[0].extensions.originalError.message`. Without this we
+ * end up showing the generic "Bad Request Exception" wrapper, leaving
+ * the user guessing what went wrong.
+ */
+function extractValidationMessage(err: unknown, fallback: string): string {
+  type GraphQLErrorShape = {
+    extensions?: {
+      originalError?: { message?: unknown };
+    };
+  };
+  const graphQLErrors = (err as { graphQLErrors?: GraphQLErrorShape[] })
+    .graphQLErrors;
+  const validationMessages =
+    graphQLErrors?.[0]?.extensions?.originalError?.message;
+  if (Array.isArray(validationMessages) && validationMessages.length > 0) {
+    return validationMessages.join(". ");
+  }
+  if (typeof validationMessages === "string") {
+    return validationMessages;
+  }
+  return err instanceof Error ? err.message : fallback;
+}
+
 function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
   const { t } = useTranslation("settings");
   const { locale, setLocale } = useLocale();
@@ -162,7 +188,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
       onSave();
     } catch (err) {
       setSaveError(
-        err instanceof Error ? err.message : t("common:errors.saveFailed"),
+        extractValidationMessage(err, t("common:errors.saveFailed")),
       );
     }
   };
