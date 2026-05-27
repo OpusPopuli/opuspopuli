@@ -69,6 +69,8 @@ export {
   type CreatePropositionOptions,
   createMeeting,
   type CreateMeetingOptions,
+  createBill,
+  type CreateBillOptions,
   // Campaign finance fixtures
   createCommittee,
   type CreateCommitteeOptions,

@@ -16,6 +16,7 @@ import depthLimit from 'graphql-depth-limit';
 import { createQueryComplexityPlugin } from 'src/common/graphql/query-complexity.plugin';
 
 import { KnowledgeModule } from './domains/knowledge.module';
+import { PersonalizedFeedModule } from './domains/personalized-feed/personalized-feed.module';
 
 import configuration from 'src/config';
 import relationaldbConfig from 'src/config/relationaldb.config';
@@ -67,6 +68,7 @@ import { MetricsModule } from 'src/common/metrics';
     }),
     CaslModule.forRoot(),
     KnowledgeModule,
+    PersonalizedFeedModule,
     HealthModule.forRoot({
       serviceName: 'knowledge-service',
       hasDatabase: true,

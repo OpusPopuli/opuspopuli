@@ -9,6 +9,7 @@ import {
   type Representative,
   type Proposition,
   type Meeting,
+  type Bill,
   type Committee,
   type Contribution,
   type Expenditure,
@@ -347,6 +348,56 @@ export async function createProposition(
       status: options.status ?? 'pending',
       externalId: options.externalId ?? `prop-${id}`,
       electionDate: options.electionDate,
+    },
+  });
+}
+
+export interface CreateBillOptions {
+  id?: string;
+  regionId?: string;
+  billNumber?: string;
+  sessionYear?: string;
+  measureTypeCode?: string;
+  title?: string;
+  status?: string;
+  externalId?: string;
+  sourceUrl?: string;
+  lastActionDate?: Date | null;
+  aiSummary?: Prisma.InputJsonValue | null;
+  aiSummaryVersion?: string | null;
+}
+
+/**
+ * Creates a Bill record. Used by personalized-feed integration tests
+ * that need a corpus of enriched bills to rank against. Defaults
+ * produce a valid bill with a minimal aiSummary so the ranker can
+ * score it. Pass `aiSummary: null` for a bill the ranker should skip.
+ */
+export async function createBill(
+  options: CreateBillOptions = {},
+): Promise<Bill> {
+  const db = await getDbService();
+  const id = options.id ?? generateId();
+  return db.bill.create({
+    data: {
+      id,
+      externalId: options.externalId ?? `bill-${id}`,
+      regionId: options.regionId ?? 'california',
+      billNumber: options.billNumber ?? 'AB 1',
+      sessionYear: options.sessionYear ?? '2025-2026',
+      measureTypeCode: options.measureTypeCode ?? 'AB',
+      title: options.title ?? 'Test Bill',
+      status: options.status ?? null,
+      sourceUrl:
+        options.sourceUrl ??
+        'https://leginfo.legislature.ca.gov/faces/billStatusClient.xhtml?bill_id=test',
+      lastActionDate: options.lastActionDate ?? null,
+      ...(options.aiSummary !== undefined && {
+        aiSummary: options.aiSummary as Prisma.InputJsonValue,
+      }),
+      ...(options.aiSummaryVersion !== undefined && {
+        aiSummaryVersion: options.aiSummaryVersion,
+      }),
     },
   });
 }
