@@ -9,12 +9,14 @@ import { AuthGuard } from 'src/common/guards/auth.guard';
 import { SignalProfileService } from './signal-profile.service';
 import { SensitiveProfileService } from './sensitive-profile.service';
 import { UserEventService } from './user-event.service';
+import { RankingFlagsService } from './ranking-flags.service';
 import { UpdateSignalProfileDto } from './dto/update-signal-profile.dto';
 import { UpdateSensitiveProfileDto } from './dto/update-sensitive-profile.dto';
 import { RecordEventDto } from './dto/record-event.dto';
 import { SignalProfileModel } from './models/signal-profile.model';
 import { SensitiveProfileModel } from './models/sensitive-profile.model';
 import { UserEventModel } from './models/user-event.model';
+import { RankingFlagsModel } from './models/ranking-flags.model';
 import { type SensitiveProfilePayload } from './dto/sensitive-profile-payload';
 
 /**
@@ -33,7 +35,28 @@ export class PersonalizationResolver {
     private readonly signalProfile: SignalProfileService,
     private readonly sensitiveProfile: SensitiveProfileService,
     private readonly userEvent: UserEventService,
+    private readonly rankingFlags: RankingFlagsService,
   ) {}
+
+  // ============================================
+  // RankingFlags (federation boundary for the relevance ranker #743)
+  // ============================================
+
+  /**
+   * Boolean-flag derivations for the relevance ranker (#743). The
+   * knowledge service consumes this via federation; T3 raw values
+   * never cross the service boundary per planning doc §6.3.
+   *
+   * Honors no-fields-mode: every T3-derived flag returns false when
+   * the toggle is on.
+   */
+  @Query(() => RankingFlagsModel, { name: 'myRankingFlags' })
+  async getMyRankingFlags(
+    @Context() context: GqlContext,
+  ): Promise<RankingFlagsModel> {
+    const user = getUserFromContext(context);
+    return this.rankingFlags.getFlagsForUser(user.id);
+  }
 
   // ============================================
   // SignalProfile (T1 + T2)
