@@ -96,7 +96,14 @@ describe('PersonalizedFeedService — integration (real DB)', () => {
     await createBill({
       billNumber: 'AB 300',
       title: 'Agricultural subsidies',
-      lastActionDate: new Date(),
+      // lastActionDate intentionally null so axis 3 = 0. With no
+      // topic or stakeholder overlap either, the composite is 0 and
+      // the drop-zero filter excludes this bill. (A recent action
+      // date would have given it axis 3 = 1.0 = 0.2 composite, which
+      // is correct behavior — recency alone keeps a bill in the feed
+      // at low rank — but defeats this test's intent of validating
+      // the zero-relevance drop.)
+      lastActionDate: null,
       aiSummary: {
         plainEnglishSummary: 'Subsidies for farmers.',
         topics: ['agriculture'],
