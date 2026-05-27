@@ -61,26 +61,10 @@ export class SensitiveProfileService {
     if (!row) return { noFieldsMode: false, payload: null };
     if (row.noFieldsMode) return { noFieldsMode: true, payload: null };
 
-    if (!row.encryptedPayload || !row.encryptionIv || !row.encryptionAuthTag) {
-      return { noFieldsMode: false, payload: null };
-    }
-
-    const plaintext = this.encryption.decrypt({
-      ciphertext: row.encryptedPayload,
-      iv: row.encryptionIv,
-      authTag: row.encryptionAuthTag,
-      keyVersion: row.keyVersion,
-    });
-
-    const parsed: unknown = JSON.parse(plaintext);
-    if (!isSensitiveProfilePayload(parsed)) {
-      this.logger.warn(
-        `SensitiveProfile payload for ${userId} decrypted but failed shape check; treating as empty`,
-      );
-      return { noFieldsMode: false, payload: null };
-    }
-
-    return { noFieldsMode: false, payload: parsed };
+    return {
+      noFieldsMode: false,
+      payload: this.decryptRow(userId, row),
+    };
   }
 
   async setNoFieldsMode(userId: string, on: boolean): Promise<void> {
@@ -123,33 +107,46 @@ export class SensitiveProfileService {
       return null;
     }
 
+    const payload = this.decryptRow(userId, row);
+    this.logger.debug(
+      { event: 'sensitive_profile_read', userId, present: payload !== null },
+      `SensitiveProfile read for ${userId}: ${payload === null ? 'no payload' : 'payload returned'}`,
+    );
+    return payload;
+  }
+
+  /**
+   * Decrypt + shape-validate a sensitive_profiles row. Returns the typed
+   * payload, or null when the row has no ciphertext or the decrypted
+   * content fails the shape check. Does NOT enforce noFieldsMode —
+   * callers gate on that before invoking. Extracted so getDecryptedPayload
+   * and getState share one decrypt/parse path.
+   */
+  private decryptRow(
+    userId: string,
+    row: {
+      encryptedPayload: Buffer | null;
+      encryptionIv: Buffer | null;
+      encryptionAuthTag: Buffer | null;
+      keyVersion: number;
+    },
+  ): SensitiveProfilePayload | null {
     if (!row.encryptedPayload || !row.encryptionIv || !row.encryptionAuthTag) {
-      this.logger.debug(
-        { event: 'sensitive_profile_read', userId, present: false },
-        `SensitiveProfile read for ${userId}: row exists but no ciphertext`,
-      );
       return null;
     }
-
     const plaintext = this.encryption.decrypt({
       ciphertext: row.encryptedPayload,
       iv: row.encryptionIv,
       authTag: row.encryptionAuthTag,
       keyVersion: row.keyVersion,
     });
-
     const parsed: unknown = JSON.parse(plaintext);
     if (!isSensitiveProfilePayload(parsed)) {
       this.logger.warn(
-        `SensitiveProfile payload for ${userId} decrypted but failed shape check; returning null`,
+        `SensitiveProfile payload for ${userId} decrypted but failed shape check; treating as empty`,
       );
       return null;
     }
-
-    this.logger.debug(
-      { event: 'sensitive_profile_read', userId, present: true },
-      `SensitiveProfile read for ${userId}: payload returned`,
-    );
     return parsed;
   }
 
