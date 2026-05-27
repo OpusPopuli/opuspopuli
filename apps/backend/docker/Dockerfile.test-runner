@@ -23,6 +23,11 @@ COPY apps/backend/nest-cli.json ./apps/backend/
 COPY apps/backend/src/ ./apps/backend/src/
 COPY apps/backend/__tests__/ ./apps/backend/__tests__/
 
+# Copy Supabase SQL migrations (vault RPC functions etc.) — db-migrate.sh
+# applies these via pg-meta HTTP at startup. Required so the secrets-
+# provider can read vault entries via the vault_read_secret RPC (#742).
+COPY supabase/ ./supabase/
+
 # Copy migration script for db-migrate service
 COPY apps/backend/docker/scripts/db-migrate.sh /usr/local/bin/db-migrate.sh
 RUN chmod +x /usr/local/bin/db-migrate.sh
