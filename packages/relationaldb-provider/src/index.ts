@@ -64,6 +64,7 @@ export type {
   Representative,
   Proposition,
   Meeting,
+  Bill,
   Committee,
   Contribution,
   Expenditure,
@@ -77,6 +78,9 @@ export type {
   DocumentProposition,
   Jurisdiction,
   UserJurisdiction,
+  SignalProfile,
+  SensitiveProfile,
+  UserEvent,
 } from "@prisma/client";
 
 // Re-export database enums
