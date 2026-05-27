@@ -3,6 +3,7 @@ import { PersonalizationResolver } from './personalization.resolver';
 import { SignalProfileService } from './signal-profile.service';
 import { SensitiveProfileService } from './sensitive-profile.service';
 import { UserEventService } from './user-event.service';
+import { RankingFlagsService } from './ranking-flags.service';
 import type { GqlContext } from 'src/common/utils/graphql-context';
 
 /**
@@ -20,6 +21,7 @@ describe('PersonalizationResolver', () => {
   let signalProfile: jest.Mocked<SignalProfileService>;
   let sensitiveProfile: jest.Mocked<SensitiveProfileService>;
   let userEvent: jest.Mocked<UserEventService>;
+  let rankingFlags: jest.Mocked<RankingFlagsService>;
 
   const ctx = (userId: string): GqlContext =>
     ({ req: { user: { id: userId } } }) as unknown as GqlContext;
@@ -43,12 +45,17 @@ describe('PersonalizationResolver', () => {
       resetForUser: jest.fn(),
     } as unknown as jest.Mocked<UserEventService>;
 
+    rankingFlags = {
+      getFlagsForUser: jest.fn(),
+    } as unknown as jest.Mocked<RankingFlagsService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PersonalizationResolver,
         { provide: SignalProfileService, useValue: signalProfile },
         { provide: SensitiveProfileService, useValue: sensitiveProfile },
         { provide: UserEventService, useValue: userEvent },
+        { provide: RankingFlagsService, useValue: rankingFlags },
       ],
     }).compile();
 
