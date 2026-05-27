@@ -98,9 +98,22 @@ export class SupabaseVaultProvider implements ISecretsProvider {
   }
 
   async getSecret(secretId: string): Promise<string | undefined> {
+    // Try the direct view query first — works when PostgREST is
+    // configured with `vault` in db-schemas. Fall back to the
+    // `vault_read_secret` RPC when it isn't (which is the default in
+    // self-hosted Supabase setups, including local UAT). The RPC is
+    // SECURITY DEFINER and runs with vault access regardless of
+    // PostgREST's exposed-schemas list. See supabase/migrations/
+    // 99_vault_functions.sql for the function definition.
+    const fromView = await this.trySecretViaSchemaView(secretId);
+    if (fromView.handled) return fromView.value;
+    return this.trySecretViaRpc(secretId);
+  }
+
+  private async trySecretViaSchemaView(
+    secretId: string,
+  ): Promise<{ handled: boolean; value?: string }> {
     try {
-      // Query the vault.decrypted_secrets view directly via PostgREST schema()
-      // This avoids needing a custom vault_read_secret() database function.
       const { data, error } = await this.supabase
         .schema("vault")
         .from("decrypted_secrets")
@@ -109,24 +122,73 @@ export class SupabaseVaultProvider implements ISecretsProvider {
         .limit(1);
 
       if (error) {
-        // Handle not found / permission errors
+        // PostgREST hasn't exposed `vault` — fall through to RPC.
         if (
+          error.message.includes("schema must be one of") ||
           error.message.includes("does not exist") ||
-          error.code === "PGRST116"
+          error.code === "PGRST106"
         ) {
-          this.logger.warn(`Secret not found: ${secretId}`);
-          return undefined;
+          this.logger.debug(
+            `vault.decrypted_secrets not exposed via PostgREST; trying vault_read_secret() RPC`,
+          );
+          return { handled: false };
         }
+        // Real error — let the outer catch surface it.
         throw error;
       }
 
       if (!data || data.length === 0) {
         this.logger.warn(`Secret not found: ${secretId}`);
+        return { handled: true, value: undefined };
+      }
+
+      this.logger.log(`Retrieved secret: ${secretId} (via vault schema view)`);
+      return {
+        handled: true,
+        value: (data[0] as { decrypted_secret: string })?.decrypted_secret,
+      };
+    } catch (error) {
+      throw new SecretsError(
+        `Failed to retrieve secret ${secretId}`,
+        "GET_SECRET_ERROR",
+        error as Error,
+      );
+    }
+  }
+
+  private async trySecretViaRpc(secretId: string): Promise<string | undefined> {
+    try {
+      const { data, error } = await this.supabase.rpc("vault_read_secret", {
+        secret_name: secretId,
+      });
+
+      if (error) {
+        // 404-equivalent on a missing function is a clear platform
+        // misconfiguration — surface as not-found rather than crash.
+        if (
+          error.message.includes("does not exist") ||
+          error.code === "PGRST202"
+        ) {
+          this.logger.warn(
+            `vault_read_secret RPC not available — local platform may need supabase/migrations/99_vault_functions.sql applied`,
+          );
+          return undefined;
+        }
+        throw error;
+      }
+
+      // RPC returns a setof — Supabase JS returns the array. An empty
+      // array means the secret name was not found.
+      const rows = data as Array<{ decrypted_secret: string }> | null;
+      if (!rows || rows.length === 0) {
+        this.logger.warn(`Secret not found: ${secretId}`);
         return undefined;
       }
 
-      this.logger.log(`Retrieved secret: ${secretId}`);
-      return (data[0] as { decrypted_secret: string })?.decrypted_secret;
+      this.logger.log(
+        `Retrieved secret: ${secretId} (via vault_read_secret RPC)`,
+      );
+      return rows[0].decrypted_secret;
     } catch (error) {
       this.logger.error(`Error retrieving secret: ${(error as Error).message}`);
       throw new SecretsError(

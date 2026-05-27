@@ -12,12 +12,14 @@ import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggingModule } from '@opuspopuli/logging-provider';
+import { SecretsModule } from '@opuspopuli/secrets-provider';
 import depthLimit from 'graphql-depth-limit';
 import { createQueryComplexityPlugin } from 'src/common/graphql/query-complexity.plugin';
 
 import { AuthModule } from './domains/auth/auth.module';
 import { UsersModule } from './domains/user/users.module';
 import { ProfileModule } from './domains/profile/profile.module';
+import { PersonalizationModule } from './domains/personalization/personalization.module';
 import { ActivityModule } from './domains/activity/activity.module';
 import { EmailDomainModule } from './domains/email/email.module';
 
@@ -51,6 +53,7 @@ import { MetricsModule } from 'src/common/metrics';
       isGlobal: true,
     }),
     LoggingModule.forRootAsync(createLoggingConfig('users-service')),
+    SecretsModule,
     ThrottlerModule.forRoot(THROTTLER_CONFIG),
     DbModule.forRoot(),
     AuditModule.forRoot(),
@@ -70,6 +73,7 @@ import { MetricsModule } from 'src/common/metrics';
     UsersModule,
     AuthModule,
     ProfileModule,
+    PersonalizationModule,
     ActivityModule,
     EmailDomainModule,
     HealthModule.forRoot({ serviceName: 'users-service', hasDatabase: true }),

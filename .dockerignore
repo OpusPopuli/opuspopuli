@@ -17,6 +17,10 @@ infra-backup
 
 # --- Local dev data ---
 supabase
+# Re-include supabase/migrations so backend images can apply vault RPCs
+# via pg-meta at startup (#742). The rest of supabase/ stays excluded —
+# volumes/, init/, etc. are dev-host concerns.
+!supabase/migrations
 observability
 tmp
 
