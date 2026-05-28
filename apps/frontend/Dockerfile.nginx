@@ -1,8 +1,20 @@
 FROM nginx:1.23.3-alpine
 
+# Generate a fresh self-signed localhost cert at build time so we never
+# commit private-key material to the repo. The cert is for local
+# nginx dev only — never use this image in production. Configured via
+# the committed openssl config in nginx/.certs/localhost.conf (only
+# the cert+key, which contain secret material, are gitignored).
+RUN apk add --no-cache openssl
+ADD ./nginx/.certs/localhost.conf /tmp/localhost.conf
+RUN mkdir -p /etc/nginx/certs && \
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout /etc/nginx/certs/server.key \
+      -out /etc/nginx/certs/server.crt \
+      -batch -config /tmp/localhost.conf && \
+    rm /tmp/localhost.conf
+
 ADD ./nginx/nginx.conf /etc/nginx/nginx.conf
-ADD ./nginx/.certs/localhost.crt /etc/nginx/certs/server.crt
-ADD ./nginx/.certs/localhost.key /etc/nginx/certs/server.key
 
 EXPOSE 80 443
 

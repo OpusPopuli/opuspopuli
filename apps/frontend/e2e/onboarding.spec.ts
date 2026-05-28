@@ -1,39 +1,47 @@
 /**
- * Onboarding Flow E2E Tests
+ * Onboarding Flow E2E Tests (#758)
  *
  * Tests for the first-time user onboarding experience:
- * Welcome → Explore → Scan → Analyze → Track → redirect to /region
+ * Welcome → Explore → Scan → Analyze → Track → Address → Topics →
+ * LifeContext → Veteran → redirect to /region
+ *
+ * Marketing steps (0–4) use the global Next button. Data-collection
+ * steps (5–8) own their own primary action — "Save & Continue" /
+ * "Get Started" — and offer per-step "Skip this".
  */
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import {
   setupAuthSession,
   checkAccessibility,
   viewports,
 } from "./utils/test-helpers";
 
-/**
- * Set up an authenticated session WITHOUT onboarding completed.
- * Must be called BEFORE page.goto().
- */
-async function setupNewUserSession(page: import("@playwright/test").Page) {
+async function setupNewUserSession(page: Page) {
   await setupAuthSession(page);
-  // Ensure onboarding flag is NOT set (new user)
   await page.addInitScript(() => {
     localStorage.removeItem("opuspopuli_onboarding_completed");
   });
 }
 
-/**
- * Set up an authenticated session WITH onboarding already completed.
- * Must be called BEFORE page.goto().
- */
-async function setupReturningUserSession(
-  page: import("@playwright/test").Page,
-) {
+async function setupReturningUserSession(page: Page) {
   await setupAuthSession(page);
   await page.addInitScript(() => {
     localStorage.setItem("opuspopuli_onboarding_completed", "true");
   });
+}
+
+async function advanceMarketingSteps(page: Page) {
+  // 4 clicks of "Next" walks Welcome → Explore → Scan → Analyze → Track.
+  // After these clicks the user is on the Track step (last marketing).
+  for (let i = 0; i < 4; i++) {
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+  }
+}
+
+async function advanceToAddressStep(page: Page) {
+  await advanceMarketingSteps(page);
+  // Final marketing step's Next opens the first data step.
+  await page.getByRole("button", { name: "Next", exact: true }).click();
 }
 
 test.describe("Onboarding Flow", () => {
@@ -45,63 +53,69 @@ test.describe("Onboarding Flow", () => {
     await expect(page.getByText(/civic engagement hub/i)).toBeVisible();
   });
 
-  test("should navigate through all steps", async ({ page }) => {
-    await setupNewUserSession(page);
-    await page.goto("/onboarding");
-
-    // Step 1: Welcome
-    await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
-    await page.getByRole("button", { name: "Next", exact: true }).click();
-
-    // Step 2: Explore
-    await expect(page.getByText("Explore Your Region")).toBeVisible();
-    await page.getByRole("button", { name: "Next", exact: true }).click();
-
-    // Step 3: Scan
-    await expect(
-      page.getByRole("heading", { name: "Scan Petitions" }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Next", exact: true }).click();
-
-    // Step 4: Analyze
-    await expect(page.getByText("Instant Analysis")).toBeVisible();
-    await page.getByRole("button", { name: "Next", exact: true }).click();
-
-    // Step 5: Track
-    await expect(page.getByText("Track Progress")).toBeVisible();
-
-    // Should show Get Started button on last step
-    await expect(
-      page.getByRole("button", { name: /get started/i }),
-    ).toBeVisible();
-  });
-
-  test("should complete onboarding and redirect to /region", async ({
+  test("should navigate through marketing steps to address step", async ({
     page,
   }) => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
 
-    // Navigate through all 5 steps
-    await page.getByRole("button", { name: "Next", exact: true }).click();
-    await page.getByRole("button", { name: "Next", exact: true }).click();
-    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
     await page.getByRole("button", { name: "Next", exact: true }).click();
 
-    // Click Get Started
-    await page.getByRole("button", { name: /get started/i }).click();
+    await expect(page.getByText("Explore Your Region")).toBeVisible();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
 
-    // Should redirect to /region
-    await expect(page).toHaveURL(/\/region/);
+    await expect(
+      page.getByRole("heading", { name: "Scan Petitions" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
+    await expect(page.getByText("Instant Analysis")).toBeVisible();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
+    await expect(page.getByText("Track Progress")).toBeVisible();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
+    // First data step
+    await expect(
+      page.getByRole("heading", { name: "Where do you live?" }),
+    ).toBeVisible();
   });
 
-  test("should skip onboarding and redirect to /region", async ({ page }) => {
+  test("should complete onboarding via per-step skip and redirect to /region", async ({
+    page,
+  }) => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
 
-    await page.getByRole("button", { name: /skip/i }).click();
+    await advanceToAddressStep(page);
 
-    // Should redirect to /region
+    // Skip each data step individually (#758 acceptance: each field skippable).
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await expect(
+      page.getByRole("heading", { name: "What matters to you?" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await expect(
+      page.getByRole("heading", { name: "A bit about your day" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await expect(
+      page.getByRole("heading", { name: "One sensitive question" }),
+    ).toBeVisible();
+
+    // Last data step's primary action is "Get Started".
+    await page.getByRole("button", { name: /get started/i }).click();
+    await expect(page).toHaveURL(/\/region/);
+  });
+
+  test("global Skip aborts entire flow from any step", async ({ page }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+
+    // The header "Skip" button is the global abort; data steps render
+    // "Skip this" for the per-field skip.
+    await page.getByRole("button", { name: "Skip", exact: true }).click();
     await expect(page).toHaveURL(/\/region/);
   });
 
@@ -109,11 +123,9 @@ test.describe("Onboarding Flow", () => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
 
-    // Go to step 2 (Explore)
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page.getByText("Explore Your Region")).toBeVisible();
 
-    // Go back to step 1 (Welcome)
     await page.getByRole("button", { name: /back/i }).click();
     await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
   });
@@ -126,23 +138,20 @@ test.describe("Onboarding Flow", () => {
     await expect(backButton).toBeDisabled();
   });
 
-  test("should persist completion in localStorage", async ({ page }) => {
+  test("should persist completion in localStorage on skip", async ({
+    page,
+  }) => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
 
-    // Verify localStorage is empty before skip
     const before = await page.evaluate(() =>
       localStorage.getItem("opuspopuli_onboarding_completed"),
     );
     expect(before).toBeNull();
 
-    // Skip onboarding — this sets localStorage AND navigates to /region
-    await page.getByRole("button", { name: /skip/i }).click();
-
-    // Wait for navigation to complete (skip redirects to /region)
+    await page.getByRole("button", { name: "Skip", exact: true }).click();
     await expect(page).toHaveURL(/\/region/);
 
-    // Verify localStorage was set (persists across navigation on same origin)
     const completed = await page.evaluate(() =>
       localStorage.getItem("opuspopuli_onboarding_completed"),
     );
@@ -150,20 +159,151 @@ test.describe("Onboarding Flow", () => {
   });
 });
 
+test.describe("Onboarding - Data steps", () => {
+  test("Address step: fills in fields and advances on Save & Continue", async ({
+    page,
+  }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+    await advanceToAddressStep(page);
+
+    await page.getByPlaceholder("Street address").fill("100 Main St");
+    await page.getByPlaceholder("City").fill("Sacramento");
+    await page.getByLabel("State").selectOption("CA");
+    await page.getByPlaceholder("ZIP code").fill("95814");
+
+    await page.getByRole("button", { name: /save & continue/i }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "What matters to you?" }),
+    ).toBeVisible();
+  });
+
+  // Idempotent-retry behavior (pre-fill from `myAddresses` + UPDATE
+  // instead of CREATE on resubmit) is hard to exercise in Playwright
+  // because the catch-all GraphQL mock interacts with Apollo's
+  // persisted cache and prevents the test mock from intercepting the
+  // initial query. The contract is unit-tested in
+  // `signal-profile.service.spec.ts` and we verify the address path
+  // manually against the real UAT backend.
+
+  test("Address step: partial fill shows validation error", async ({
+    page,
+  }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+    await advanceToAddressStep(page);
+
+    await page.getByPlaceholder("City").fill("Sacramento");
+    await page.getByRole("button", { name: /save & continue/i }).click();
+
+    // Next.js renders its own `__next-route-announcer__` with role=alert,
+    // so scope to the step's error text.
+    await expect(
+      page.getByText(/please fill in all four fields/i),
+    ).toBeVisible();
+  });
+
+  test("Topics step: selecting chips advances on Save & Continue", async ({
+    page,
+  }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+    await advanceToAddressStep(page);
+    await page.getByRole("button", { name: "Skip this" }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "What matters to you?" }),
+    ).toBeVisible();
+
+    await page.getByText("Housing & rent").click();
+    await page.getByText("Healthcare").click();
+    await page.getByRole("button", { name: /save & continue/i }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "A bit about your day" }),
+    ).toBeVisible();
+  });
+
+  test("Topics step: caps selection at 3 and blocks further picks", async ({
+    page,
+  }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+    await advanceToAddressStep(page);
+    await page.getByRole("button", { name: "Skip this" }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "What matters to you?" }),
+    ).toBeVisible();
+
+    // Pick three.
+    await page.getByText("Housing & rent").click();
+    await page.getByText("Healthcare").click();
+    await page.getByText("Education").click();
+    await expect(page.getByText("3 of 3 selected")).toBeVisible();
+
+    // A fourth click does nothing — the chip stays unchecked.
+    const fourth = page.getByRole("checkbox", { name: "Immigration" });
+    await expect(fourth).toBeDisabled();
+    await expect(fourth).not.toBeChecked();
+  });
+
+  test("Veteran step: no-fields toggle disables the veteran chip", async ({
+    page,
+  }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+    await advanceToAddressStep(page);
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await page.getByRole("button", { name: "Skip this" }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "One sensitive question" }),
+    ).toBeVisible();
+
+    const veteranCheckbox = page.getByRole("checkbox", {
+      name: "I'm a veteran or active-duty",
+    });
+    await expect(veteranCheckbox).toBeEnabled();
+
+    const noFieldsCheckbox = page.getByRole("checkbox", {
+      name: /never store sensitive fields/i,
+    });
+    await noFieldsCheckbox.check();
+    await expect(veteranCheckbox).toBeDisabled();
+  });
+});
+
+test.describe("Onboarding - Language", () => {
+  test("Welcome step: switching language updates UI", async ({ page }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+
+    await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
+    // The radio input is sr-only; click the wrapping label instead so
+    // Playwright doesn't trip over the label intercepting pointer events.
+    await page
+      .locator("label")
+      .filter({ has: page.getByRole("radio", { name: "Español" }) })
+      .click();
+
+    await expect(page.getByText("Bienvenido a Opus Populi")).toBeVisible();
+  });
+});
+
 test.describe("Onboarding - Returning User", () => {
   test("should redirect completed user to /region", async ({ page }) => {
     await setupReturningUserSession(page);
     await page.goto("/onboarding");
-
     await expect(page).toHaveURL(/\/region/);
   });
 });
 
 test.describe("Onboarding - Unauthenticated", () => {
   test("should redirect to /login when not authenticated", async ({ page }) => {
-    // Don't set up auth session
     await page.goto("/onboarding");
-
     await expect(page).toHaveURL(/\/login/);
   });
 });
@@ -175,7 +315,9 @@ test.describe("Onboarding - Responsive Design", () => {
     await page.goto("/onboarding");
 
     await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
-    await expect(page.getByRole("button", { name: /skip/i })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Skip", exact: true }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Next", exact: true }),
     ).toBeVisible();
@@ -190,42 +332,57 @@ test.describe("Onboarding - Responsive Design", () => {
   });
 });
 
-test.describe("Onboarding - Accessibility", () => {
-  test("should have no WCAG 2.2 AA violations on welcome step", async ({
-    page,
-  }) => {
+test.describe("Onboarding - Accessibility (WCAG 2.2 AA)", () => {
+  test("welcome step has no violations", async ({ page }) => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
     await expect(page.getByText("Welcome to Opus Populi")).toBeVisible();
-
-    const violations = await checkAccessibility(page);
-    expect(violations).toEqual([]);
+    expect(await checkAccessibility(page)).toEqual([]);
   });
 
-  test("should have no WCAG 2.2 AA violations on explore step", async ({
-    page,
-  }) => {
+  test("address step has no violations", async ({ page }) => {
     await setupNewUserSession(page);
     await page.goto("/onboarding");
-    await page.getByRole("button", { name: "Next", exact: true }).click();
-    await expect(page.getByText("Explore Your Region")).toBeVisible();
-
-    const violations = await checkAccessibility(page);
-    expect(violations).toEqual([]);
-  });
-
-  test("should have no WCAG 2.2 AA violations on scan step", async ({
-    page,
-  }) => {
-    await setupNewUserSession(page);
-    await page.goto("/onboarding");
-    await page.getByRole("button", { name: "Next", exact: true }).click();
-    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await advanceToAddressStep(page);
     await expect(
-      page.getByRole("heading", { name: "Scan Petitions" }),
+      page.getByRole("heading", { name: "Where do you live?" }),
     ).toBeVisible();
+    expect(await checkAccessibility(page)).toEqual([]);
+  });
 
-    const violations = await checkAccessibility(page);
-    expect(violations).toEqual([]);
+  test("topics step has no violations", async ({ page }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+    await advanceToAddressStep(page);
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await expect(
+      page.getByRole("heading", { name: "What matters to you?" }),
+    ).toBeVisible();
+    expect(await checkAccessibility(page)).toEqual([]);
+  });
+
+  test("life context step has no violations", async ({ page }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+    await advanceToAddressStep(page);
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await expect(
+      page.getByRole("heading", { name: "A bit about your day" }),
+    ).toBeVisible();
+    expect(await checkAccessibility(page)).toEqual([]);
+  });
+
+  test("veteran step has no violations", async ({ page }) => {
+    await setupNewUserSession(page);
+    await page.goto("/onboarding");
+    await advanceToAddressStep(page);
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await page.getByRole("button", { name: "Skip this" }).click();
+    await expect(
+      page.getByRole("heading", { name: "One sensitive question" }),
+    ).toBeVisible();
+    expect(await checkAccessibility(page)).toEqual([]);
   });
 });

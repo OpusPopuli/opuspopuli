@@ -60,4 +60,57 @@ describe('SignalProfileService', () => {
     const call = db.signalProfile.upsert.mock.calls[0][0];
     expect(call.update).toEqual({ housingTenure: 'renter' });
   });
+
+  it('upsert create branch seeds NOT NULL array columns with [] so partial inputs do not violate the constraint', async () => {
+    db.signalProfile.upsert.mockResolvedValue({ id: 'sp-1' } as never);
+
+    // First-time onboarding submits only interestTags — every other
+    // array column on SignalProfile must still receive [] or the
+    // Postgres NOT NULL constraint trips on create.
+    await service.upsert('u-1', { interestTags: ['housing'] });
+
+    const call = db.signalProfile.upsert.mock.calls[0][0];
+    expect(call.create).toMatchObject({
+      interestTags: ['housing'],
+      taxExposure: [],
+      housingFlags: [],
+      childrenAgeBands: [],
+      vehicleTypes: [],
+      specialLicenses: [],
+      parentOfStudent: [],
+      trustedOrganizations: [],
+      accessibilityNeeds: [],
+      user: { connect: { id: 'u-1' } },
+    });
+  });
+
+  it('upsert create branch resists undefined array values from class-validator DTOs', async () => {
+    db.signalProfile.upsert.mockResolvedValue({ id: 'sp-1' } as never);
+
+    // class-validator instantiates the DTO with every optional field
+    // present and set to `undefined`. Prisma converts `undefined` to
+    // NULL on the wire, so the defaults must survive the spread.
+    await service.upsert('u-1', {
+      interestTags: ['housing'],
+      taxExposure: undefined,
+      housingFlags: undefined,
+      childrenAgeBands: undefined,
+      vehicleTypes: undefined,
+      specialLicenses: undefined,
+      parentOfStudent: undefined,
+      trustedOrganizations: undefined,
+      accessibilityNeeds: undefined,
+    });
+
+    const call = db.signalProfile.upsert.mock.calls[0][0];
+    expect(call.create.interestTags).toEqual(['housing']);
+    expect(call.create.taxExposure).toEqual([]);
+    expect(call.create.housingFlags).toEqual([]);
+    expect(call.create.childrenAgeBands).toEqual([]);
+    expect(call.create.vehicleTypes).toEqual([]);
+    expect(call.create.specialLicenses).toEqual([]);
+    expect(call.create.parentOfStudent).toEqual([]);
+    expect(call.create.trustedOrganizations).toEqual([]);
+    expect(call.create.accessibilityNeeds).toEqual([]);
+  });
 });
