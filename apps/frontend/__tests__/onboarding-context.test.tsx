@@ -40,7 +40,7 @@ describe("OnboardingProvider", () => {
 
       expect(result.current.hasCompletedOnboarding).toBe(false);
       expect(result.current.currentStep).toBe(0);
-      expect(result.current.totalSteps).toBe(5);
+      expect(result.current.totalSteps).toBe(9);
     });
 
     it("should return completed when localStorage flag is set", () => {
@@ -106,14 +106,12 @@ describe("OnboardingProvider", () => {
       const { result } = renderHook(() => useOnboarding(), { wrapper });
 
       act(() => {
-        result.current.nextStep();
-        result.current.nextStep();
-        result.current.nextStep();
-        result.current.nextStep(); // Already at last step (4)
-        result.current.nextStep(); // Should not go beyond 4
+        for (let i = 0; i < 10; i++) {
+          result.current.nextStep();
+        }
       });
 
-      expect(result.current.currentStep).toBe(4);
+      expect(result.current.currentStep).toBe(8);
     });
   });
 

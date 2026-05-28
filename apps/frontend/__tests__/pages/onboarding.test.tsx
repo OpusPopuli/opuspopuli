@@ -41,7 +41,7 @@ jest.mock("@/lib/auth-context", () => ({
 const defaultOnboardingContext = {
   hasCompletedOnboarding: false,
   currentStep: 0,
-  totalSteps: 5,
+  totalSteps: 9,
   nextStep: jest.fn(),
   prevStep: jest.fn(),
   skipOnboarding: jest.fn(),

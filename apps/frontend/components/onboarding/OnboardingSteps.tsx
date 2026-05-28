@@ -8,6 +8,14 @@ import { ScanStep } from "./steps/ScanStep";
 import { AnalyzeStep } from "./steps/AnalyzeStep";
 import { ExploreStep } from "./steps/ExploreStep";
 import { TrackStep } from "./steps/TrackStep";
+import { AddressStep } from "./steps/AddressStep";
+import { TopicsStep } from "./steps/TopicsStep";
+import { LifeContextStep } from "./steps/LifeContextStep";
+import { VeteranStep } from "./steps/VeteranStep";
+
+// Indices of steps that own their primary action (Save & Continue button)
+// — the global Next/Get Started footer hides for these.
+const DATA_STEP_INDICES = new Set([5, 6, 7, 8]);
 
 export function OnboardingSteps() {
   const router = useRouter();
@@ -31,17 +39,31 @@ export function OnboardingSteps() {
     router.push("/region");
   };
 
+  const isLastStep = currentStep === totalSteps - 1;
+  const advance = () => {
+    if (isLastStep) {
+      handleComplete();
+    } else {
+      nextStep();
+    }
+  };
+
   const steps = [
     <WelcomeStep key="welcome" />,
     <ExploreStep key="explore" />,
     <ScanStep key="scan" />,
     <AnalyzeStep key="analyze" />,
     <TrackStep key="track" />,
+    <AddressStep key="address" onComplete={advance} isLastStep={false} />,
+    <TopicsStep key="topics" onComplete={advance} isLastStep={false} />,
+    <LifeContextStep key="life" onComplete={advance} isLastStep={false} />,
+    <VeteranStep key="veteran" onComplete={advance} isLastStep={true} />,
   ];
+
+  const stepOwnsAction = DATA_STEP_INDICES.has(currentStep);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#5A7A6A] to-[#2D4A3C] flex flex-col">
-      {/* Skip button */}
       <div className="absolute top-4 right-4 z-10">
         <button
           onClick={handleSkip}
@@ -51,8 +73,14 @@ export function OnboardingSteps() {
         </button>
       </div>
 
-      {/* Progress dots */}
-      <div className="flex justify-center gap-2 pt-8 pb-4">
+      <div
+        role="progressbar"
+        aria-label={t("progress.label", "Onboarding progress")}
+        aria-valuemin={1}
+        aria-valuemax={totalSteps}
+        aria-valuenow={currentStep + 1}
+        className="flex justify-center gap-2 pt-8 pb-4"
+      >
         {Array.from({ length: totalSteps }).map((_, i) => (
           <div
             key={i}
@@ -64,13 +92,11 @@ export function OnboardingSteps() {
         ))}
       </div>
 
-      {/* Step content */}
       <div className="flex-1 flex items-center justify-center px-6">
         {steps[currentStep]}
       </div>
 
-      {/* Navigation */}
-      <div className="p-6 flex justify-between items-center">
+      <div className="p-6 flex justify-between items-center min-h-[80px]">
         <button
           onClick={prevStep}
           disabled={currentStep === 0}
@@ -79,19 +105,16 @@ export function OnboardingSteps() {
           {t("back")}
         </button>
 
-        {currentStep === totalSteps - 1 ? (
+        {!stepOwnsAction && (
           <button
-            onClick={handleComplete}
-            className="px-8 py-3 bg-white text-[#5A7A6A] rounded-full font-semibold hover:bg-white/90 transition-colors"
+            onClick={advance}
+            className={
+              isLastStep
+                ? "px-8 py-3 bg-white text-[#5A7A6A] rounded-full font-semibold hover:bg-white/90 transition-colors"
+                : "px-8 py-3 bg-white/20 text-white rounded-full font-semibold hover:bg-white/30 transition-colors"
+            }
           >
-            {t("getStarted")}
-          </button>
-        ) : (
-          <button
-            onClick={nextStep}
-            className="px-8 py-3 bg-white/20 text-white rounded-full font-semibold hover:bg-white/30 transition-colors"
-          >
-            {t("next")}
+            {isLastStep ? t("getStarted") : t("next")}
           </button>
         )}
       </div>

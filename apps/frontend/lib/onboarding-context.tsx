@@ -46,7 +46,10 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     getServerSnapshot,
   );
   const [currentStep, setCurrentStep] = useState(0);
-  const totalSteps = 5;
+  // 5 marketing steps + 4 data-collection steps (address, topics,
+  // life context, veteran). The data steps own their own submit
+  // buttons; OnboardingSteps hides its global Next for those indices.
+  const totalSteps = 9;
 
   const completeOnboarding = useCallback(() => {
     localStorage.setItem(STORAGE_KEY, "true");

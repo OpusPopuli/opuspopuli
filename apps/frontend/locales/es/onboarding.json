@@ -1,11 +1,22 @@
 {
   "skip": "Omitir",
+  "skipStep": "Omitir este paso",
   "back": "Atrás",
   "next": "Siguiente",
   "getStarted": "Comenzar",
+  "saveAndContinue": "Guardar y continuar",
+  "saving": "Guardando…",
+  "progress": {
+    "label": "Progreso de incorporación"
+  },
   "welcome": {
     "title": "Bienvenido a Opus Populi",
-    "subtitle": "Tu centro de participación cívica — sigue proposiciones, representantes, finanzas de campaña y peticiones en un solo lugar"
+    "subtitle": "Tu centro de participación cívica — sigue proposiciones, representantes, finanzas de campaña y peticiones en un solo lugar",
+    "languageLegend": "Elige tu idioma",
+    "languages": {
+      "en": "English",
+      "es": "Español"
+    }
   },
   "explore": {
     "title": "Explora Tu Región",
@@ -29,5 +40,101 @@
   "track": {
     "title": "Seguir Progreso",
     "description": "Sigue las medidas electorales, la actividad de peticiones y las sesiones legislativas en tu área"
+  },
+  "address": {
+    "title": "¿Dónde vives?",
+    "subtitle": "Usamos tu dirección para encontrar tus elecciones locales, proposiciones y representantes. Puedes omitirlo.",
+    "fields": {
+      "line1": "Dirección",
+      "city": "Ciudad",
+      "state": "Estado",
+      "statePlaceholder": "Elige estado",
+      "postalCode": "Código postal"
+    },
+    "errors": {
+      "allRequired": "Completa los cuatro campos, o omite este paso.",
+      "saveFailed": "No pudimos guardar tu dirección. Inténtalo de nuevo o omítelo por ahora."
+    }
+  },
+  "topics": {
+    "title": "¿Qué te importa?",
+    "subtitle": "Elige tus 3 principales. El enfoque vence a la amplitud — son los temas en los que puedes influir de verdad.",
+    "reasonHeading": "¿Por qué solo 3?",
+    "reasonBody": "La atención cívica es finita. Tres temas en los que puedas escribir a tus representantes, presentarte u organizar gente valen más que una lista de doce que solo vas a mirar de pasada. Puedes ampliarla más tarde en configuración.",
+    "counter": "{{count}} de {{max}} seleccionados",
+    "groupLabel": "Temas",
+    "options": {
+      "housing": "Vivienda y alquiler",
+      "jobs": "Empleo y trabajadores",
+      "healthcare": "Salud",
+      "education": "Educación",
+      "transit": "Transporte y carreteras",
+      "environment": "Medio ambiente",
+      "public_safety": "Seguridad pública",
+      "taxes": "Impuestos y presupuesto",
+      "immigration": "Inmigración",
+      "voting_rights": "Derecho al voto",
+      "justice": "Reforma judicial",
+      "family": "Familia y cuidado"
+    },
+    "errors": {
+      "saveFailed": "No pudimos guardar tus temas. Inténtalo de nuevo o omítelo."
+    }
+  },
+  "lifeContext": {
+    "title": "Un poco sobre tu día a día",
+    "subtitle": "Esto nos ayuda a mostrarte propuestas que afectan tu vida. Cada elección es opcional.",
+    "groups": {
+      "housing": "Vivienda",
+      "family": "Familia",
+      "work": "Trabajo",
+      "workExtras": "Más sobre el trabajo",
+      "education": "Escuela",
+      "transit": "Cómo te mueves"
+    },
+    "chips": {
+      "housing": {
+        "renter": "Alquilo",
+        "owner": "Soy propietario"
+      },
+      "family": {
+        "parent": "Padre/madre de menores en edad escolar",
+        "caregiver": "Cuido a un familiar mayor"
+      },
+      "work": {
+        "employed": "Empleado",
+        "gig": "Autónomo / trabajo por encargo",
+        "businessOwner": "Dueño de pequeño negocio"
+      },
+      "workExtras": {
+        "union": "Miembro de un sindicato"
+      },
+      "education": {
+        "student": "Soy estudiante",
+        "educator": "Educador / docente"
+      },
+      "transit": {
+        "transit": "Principalmente transporte público",
+        "car": "Principalmente conduzco",
+        "active": "Principalmente bici o a pie"
+      }
+    },
+    "errors": {
+      "saveFailed": "No pudimos guardar tus selecciones. Inténtalo de nuevo o omítelo."
+    }
+  },
+  "veteran": {
+    "title": "Una pregunta sensible",
+    "subtitle": "Es el único campo sensible que preguntamos en la incorporación. Siempre puedes omitirlo.",
+    "chip": "Soy veterano o militar en activo",
+    "lockedNote": "Ya quedó marcado en una visita anterior. Para quitarlo, gestiónalo desde tu configuración de privacidad.",
+    "noFieldsToggle": "No guardar nunca campos sensibles sobre mí",
+    "disclosure": {
+      "encryptedBadge": "Cifrado en reposo",
+      "whyWeAsk": "Tu condición de veterano nos ayuda a destacar propuestas sobre salud, beneficios y protección de vivienda que te afectan. Almacenado cifrado; nunca compartido con el motor de recomendaciones en forma cruda — solo como una bandera booleana."
+    },
+    "errors": {
+      "saveFailed": "No pudimos guardar tu respuesta. Inténtalo de nuevo o omítelo."
+    }
   }
 }
