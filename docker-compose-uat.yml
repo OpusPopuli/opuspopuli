@@ -47,6 +47,10 @@ x-backend-env: &backend-env
   API_KEYS: '{"api-gateway":"integration-test-hmac-secret"}'
   JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
   AUTH_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
+  # Resolve secrets via Supabase Vault (prod-matching pattern). The vault
+  # is seeded by db-migrate before any service starts. EncryptionService
+  # falls back to env if the vault read fails, so this stays robust.
+  SECRETS_PROVIDER: supabase
   SMTP_HOST: inbucket
   SMTP_PORT: "2500"
   SMTP_ADMIN_EMAIL: noreply@opuspopuli.local

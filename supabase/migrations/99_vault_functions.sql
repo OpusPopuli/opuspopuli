@@ -55,6 +55,45 @@ $$;
 -- Only service_role can list secrets
 GRANT EXECUTE ON FUNCTION public.vault_list_secrets() TO service_role;
 
+-- Upsert a Vault secret by name. Wraps vault.create_secret + vault.update_secret
+-- so callers can POST a single idempotent RPC over PostgREST without
+-- needing direct vault-schema access. service_role only — this is a
+-- write API. Used by deploy-time seeding (e.g. SENSITIVE_PROFILE_ENCRYPTION_KEY
+-- for #742) so secret bootstrap happens via HTTP rather than psql.
+CREATE OR REPLACE FUNCTION public.vault_create_secret(
+  p_name text,
+  p_value text,
+  p_description text DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = vault, public
+AS $$
+DECLARE
+  existing_id uuid;
+  result_id uuid;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.schemata WHERE schema_name = 'vault'
+  ) THEN
+    RAISE EXCEPTION 'Vault schema does not exist. Please enable Supabase Vault.';
+  END IF;
+
+  SELECT id INTO existing_id FROM vault.secrets WHERE name = p_name;
+  IF existing_id IS NULL THEN
+    SELECT vault.create_secret(p_value, p_name, p_description) INTO result_id;
+    RETURN result_id;
+  ELSE
+    PERFORM vault.update_secret(existing_id, p_value, p_name, p_description);
+    RETURN existing_id;
+  END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.vault_create_secret(text, text, text) TO service_role;
+
 -- Comment on functions
 COMMENT ON FUNCTION public.vault_read_secret(text) IS 'Read a decrypted secret from Supabase Vault by name';
 COMMENT ON FUNCTION public.vault_list_secrets() IS 'List all secret names in Supabase Vault (service_role only)';
+COMMENT ON FUNCTION public.vault_create_secret(text, text, text) IS 'Upsert a Supabase Vault secret by name (service_role only). Idempotent.';

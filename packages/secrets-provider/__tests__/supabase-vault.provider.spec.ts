@@ -5,21 +5,33 @@ import { SecretsError } from "@opuspopuli/common";
 
 // Mock the Supabase client with chainable query builder
 let mockQueryResult: { data: any; error: any } = { data: [], error: null };
+// Separate result for the `.rpc()` fallback path (used when PostgREST
+// doesn't expose the `vault` schema directly — provider falls through
+// to the vault_read_secret RPC).
+let mockRpcResult: { data: any; error: any } = { data: [], error: null };
 
 const mockLimit = jest.fn().mockImplementation(() => mockQueryResult);
 const mockEq = jest.fn().mockImplementation(() => ({ limit: mockLimit }));
 const mockSelect = jest.fn().mockImplementation(() => ({ eq: mockEq }));
 const mockFrom = jest.fn().mockImplementation(() => ({ select: mockSelect }));
 const mockSchema = jest.fn().mockImplementation(() => ({ from: mockFrom }));
+const mockRpc = jest
+  .fn()
+  .mockImplementation(() => Promise.resolve(mockRpcResult));
 
 jest.mock("@supabase/supabase-js", () => ({
   createClient: jest.fn().mockImplementation(() => ({
     schema: mockSchema,
+    rpc: mockRpc,
   })),
 }));
 
 function setMockResult(data: any, error: any = null) {
   mockQueryResult = { data, error };
+}
+
+function setMockRpcResult(data: any, error: any = null) {
+  mockRpcResult = { data, error };
 }
 
 describe("SupabaseVaultProvider", () => {
@@ -44,7 +56,9 @@ describe("SupabaseVaultProvider", () => {
     jest.clearAllMocks();
     // Reset the chainable mock to use the shared mockQueryResult
     mockLimit.mockImplementation(() => mockQueryResult);
+    mockRpc.mockImplementation(() => Promise.resolve(mockRpcResult));
     setMockResult([], null);
+    setMockRpcResult([], null);
     configService = createConfigService();
     provider = new SupabaseVaultProvider(configService);
   });
@@ -95,15 +109,52 @@ describe("SupabaseVaultProvider", () => {
       expect(result).toBeUndefined();
     });
 
-    it("should return undefined when vault view does not exist", async () => {
+    it("should return undefined when vault view does not exist and RPC also returns empty", async () => {
+      // Vault schema isn't exposed via PostgREST → fall through to RPC.
       setMockResult(null, {
-        message: "relation does not exist",
-        code: "PGRST116",
+        message: "schema must be one of: public, storage, graphql_public",
+        code: "PGRST106",
       });
+      setMockRpcResult([]);
 
       const result = await provider.getSecret("my-secret-id");
 
       expect(result).toBeUndefined();
+      expect(mockRpc).toHaveBeenCalledWith("vault_read_secret", {
+        secret_name: "my-secret-id",
+      });
+    });
+
+    it("falls back to vault_read_secret RPC when the vault schema is not exposed", async () => {
+      setMockResult(null, {
+        message: "schema must be one of: public, storage, graphql_public",
+        code: "PGRST106",
+      });
+      setMockRpcResult([{ decrypted_secret: "via-rpc-value" }]);
+
+      const result = await provider.getSecret("my-secret-id");
+
+      expect(result).toBe("via-rpc-value");
+      expect(mockRpc).toHaveBeenCalledWith("vault_read_secret", {
+        secret_name: "my-secret-id",
+      });
+    });
+
+    it("returns undefined when the RPC function itself doesn't exist", async () => {
+      // Local platform without supabase/migrations/99_vault_functions.sql
+      // applied — vault_read_secret() doesn't exist. Surface as not-found
+      // rather than crash, matching the precedent of treating missing
+      // secrets as undefined.
+      setMockResult(null, {
+        message: "schema must be one of: public, storage, graphql_public",
+        code: "PGRST106",
+      });
+      setMockRpcResult(null, {
+        message: "function public.vault_read_secret(text) does not exist",
+        code: "PGRST202",
+      });
+
+      expect(await provider.getSecret("my-secret-id")).toBeUndefined();
     });
 
     it("should throw SecretsError on other errors", async () => {

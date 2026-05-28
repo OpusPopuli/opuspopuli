@@ -132,4 +132,99 @@ if [ -n "$ADMIN_USER_ID" ]; then
   echo "public.users record ensured (id=${ADMIN_USER_ID})."
 fi
 
+# ============================================================
+# Seed SensitiveProfile T3 encryption key into Supabase Vault (#742)
+# ============================================================
+# All-HTTP path matching the existing admin-user seed pattern:
+#  1. pg-meta /query installs/refreshes the vault_read_secret +
+#     vault_create_secret RPC functions (idempotent CREATE OR REPLACE).
+#     pg-meta is the Supabase service that fronts arbitrary SQL over
+#     HTTP — same endpoint Supabase Studio uses for migrations.
+#  2. NOTIFY pgrst tells PostgREST to reload its schema cache so the
+#     just-created RPCs are immediately callable.
+#  3. PostgREST /rest/v1/rpc/vault_create_secret seeds the actual key.
+#     service_role auth required.
+#
+# Seed value is taken from SEED_SENSITIVE_PROFILE_ENCRYPTION_KEY when
+# set; otherwise a deterministic local dev key so UAT just works.
+
+VAULT_FUNCTIONS_FILE="/usr/src/app/supabase/migrations/99_vault_functions.sql"
+PG_META_URL="${PG_META_URL:-http://supabase-meta:8080}"
+SEED_KEY="${SEED_SENSITIVE_PROFILE_ENCRYPTION_KEY:-jv4vjdDIE+PqHm0WunsG3K4gA882jyQnkFaU5AYtAnM=}"
+
+if [ -f "$VAULT_FUNCTIONS_FILE" ] && [ -n "$SERVICE_ROLE_KEY" ]; then
+  echo "=== Installing Supabase Vault RPC functions via pg-meta ==="
+  echo "=== Seeding SENSITIVE_PROFILE_ENCRYPTION_KEY via PostgREST RPC ==="
+  # Pass the file PATH to node — let it read the SQL directly so we
+  # don't try to escape arbitrary SQL into a shell-embedded JS string.
+  node -e "
+const fs = require('fs');
+const http = require('http');
+const { URL } = require('url');
+
+const pgMetaUrl = '${PG_META_URL}';
+const pgrestUrl = '${SUPABASE_INTERNAL_URL}/rest/v1';
+const serviceKey = '${SERVICE_ROLE_KEY}';
+const seedKey = '${SEED_KEY}';
+const vaultFnSql = fs.readFileSync('${VAULT_FUNCTIONS_FILE}', 'utf8');
+
+function request(method, urlStr, headers, body) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlStr);
+    const lib = u.protocol === 'https:' ? require('https') : http;
+    const req = lib.request({
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + u.search,
+      method,
+      headers: { 'Content-Type': 'application/json', ...headers },
+    }, (res) => {
+      let data = '';
+      res.on('data', (c) => (data += c));
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+async function main() {
+  // 1. Apply the vault RPC function definitions via pg-meta
+  const installRes = await request('POST', pgMetaUrl + '/query', {},
+    JSON.stringify({ query: vaultFnSql }));
+  if (installRes.status >= 400) {
+    throw new Error('pg-meta /query failed: ' + installRes.status + ' ' + installRes.body);
+  }
+  console.log('Vault RPC functions installed');
+
+  // 2. Reload PostgREST schema cache so the new functions are immediately callable
+  const reloadRes = await request('POST', pgMetaUrl + '/query', {},
+    JSON.stringify({ query: \"NOTIFY pgrst, 'reload schema';\" }));
+  if (reloadRes.status >= 400) {
+    console.warn('PostgREST schema-reload notify failed: ' + reloadRes.status + ' ' + reloadRes.body);
+  }
+  // Give PostgREST a moment to pick up the new functions before the seed call
+  await new Promise((r) => setTimeout(r, 1000));
+
+  // 3. Seed the secret via PostgREST RPC
+  const auth = { apikey: serviceKey, Authorization: 'Bearer ' + serviceKey };
+  const seedRes = await request('POST', pgrestUrl + '/rpc/vault_create_secret', auth,
+    JSON.stringify({
+      p_name: 'SENSITIVE_PROFILE_ENCRYPTION_KEY',
+      p_value: seedKey,
+      p_description: 'AES-256-GCM key for users.SensitiveProfile T3 column encryption (#742). Local UAT dev value.',
+    }));
+  if (seedRes.status >= 400) {
+    throw new Error('vault_create_secret RPC failed: ' + seedRes.status + ' ' + seedRes.body);
+  }
+  console.log('SENSITIVE_PROFILE_ENCRYPTION_KEY seeded in vault');
+}
+
+main().catch((err) => { console.error('Vault seed failed (non-fatal):', err.message); });
+"
+else
+  echo "=== Skipping vault setup (missing functions file or SERVICE_ROLE_KEY) ==="
+fi
+
 echo "=== Database migration complete ==="

@@ -178,6 +178,9 @@ model User {
   notificationPreference NotificationPreference?
   abuseReports           AbuseReport[]
   userJurisdictions      UserJurisdiction[]
+  signalProfile          SignalProfile?
+  sensitiveProfile       SensitiveProfile?
+  events                 UserEvent[]
 
   @@map("users")
 }
@@ -214,6 +217,154 @@ model UserProfile {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
+}
+
+/// Per-user civic personalization signals (T1 + T2 only — T3 lives in
+/// SensitiveProfile). One-to-one with User. All fields nullable so
+/// existing users aren't broken and new users can opt in progressively.
+///
+/// See docs/architecture/personalized-relevance.md for the full 16-
+/// category taxonomy and sensitivity tier model. Issue #742.
+///
+/// NOTE: Some fields overlap with UserProfile (policyPriorities ↔
+/// interestTags, homeownerStatus ↔ housingTenure, householdSize, occupation,
+/// politicalAffiliation ↔ politicalSelfId, votingFrequency, educationLevel).
+/// Consolidation is a planned follow-up — for first slice the new
+/// SignalProfile lives independently to avoid breaking existing frontend
+/// reads of UserProfile.
+model SignalProfile {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+
+  // §4.2 Housing
+  housingTenure String?  @map("housing_tenure") @db.VarChar(50)
+  buildingType  String?  @map("building_type") @db.VarChar(50)
+  taxExposure   String[] @map("tax_exposure")
+  housingFlags  String[] @map("housing_flags")
+
+  // §4.3 Household
+  childrenAgeBands       String[] @map("children_age_bands")
+  hasEldercareDependents Boolean? @map("has_eldercare_dependents")
+  multigenerational      Boolean? @map("multigenerational")
+  hasPets                Boolean? @map("has_pets")
+  partnerStatus          String?  @map("partner_status") @db.VarChar(50)
+
+  // §4.4 Work (income band lives in SensitiveProfile)
+  employmentStatus   String?  @map("employment_status") @db.VarChar(50)
+  industry           String?  @db.VarChar(100)
+  occupationCategory String?  @map("occupation_category") @db.VarChar(100)
+  employerSizeBand   String?  @map("employer_size_band") @db.VarChar(50)
+  unionMember        Boolean? @map("union_member")
+  gigWorker          Boolean? @map("gig_worker")
+  tippedWorker       Boolean? @map("tipped_worker")
+
+  // §4.6 Transportation
+  primaryTransitMode String?  @map("primary_transit_mode") @db.VarChar(50)
+  vehicleTypes       String[] @map("vehicle_types")
+  commuteBand        String?  @map("commute_band") @db.VarChar(30)
+  specialLicenses    String[] @map("special_licenses")
+  transitPassHolder  Boolean? @map("transit_pass_holder")
+  bikeShareMember    Boolean? @map("bike_share_member")
+
+  // §4.7 Education
+  studentLevel    String?  @map("student_level") @db.VarChar(30)
+  parentOfStudent String[] @map("parent_of_student")
+  educator        Boolean? @map("educator")
+
+  // §4.10 Declared values
+  interestTags       String[] @map("interest_tags")
+  /// Map { tag: 'passing' | 'important' | 'core' } for the user's
+  /// interestTags. JSONB so the shape can evolve without migrations.
+  convictionStrength Json?    @map("conviction_strength") @db.JsonB
+  /// Free-text political self-identification. Optional; no enforced
+  /// scale per the doc's §4.10 commitment.
+  politicalSelfId    String?  @map("political_self_id") @db.VarChar(100)
+
+  // §4.11 Affiliations
+  trustedOrganizations String[] @map("trusted_organizations")
+  unionAffiliation     String?  @map("union_affiliation") @db.VarChar(255)
+  faithCommunity       String?  @map("faith_community") @db.VarChar(255)
+
+  // §4.13 Attention & format
+  weeklyAttentionMinutes Int?     @map("weekly_attention_minutes")
+  preferredDepth         String?  @map("preferred_depth") @db.VarChar(30)
+  accessibilityNeeds     String[] @map("accessibility_needs")
+  readingLevel           String?  @map("reading_level") @db.VarChar(30)
+  // language preference lives on UserProfile.preferredLanguage today;
+  // not duplicated here to avoid two-source-of-truth issues.
+
+  // §4.14 Relational graph — minimal subset for first slice.
+  // Full relational graph (household members, employer location, school
+  // location) deferred per the doc's post-MVP roadmap.
+  agingParentsState String? @map("aging_parents_state") @db.VarChar(2)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("signal_profiles")
+}
+
+/// Per-user T3 sensitive signals (§4.5 health, §4.8 citizenship/justice,
+/// §4.9 cultural identity, §4.4 income band). One-to-one with User.
+///
+/// All sensitive values live in a single AES-256-GCM encrypted JSONB
+/// blob (`encryptedPayload`) rather than per-field columns. Service code
+/// (SensitiveProfileService) decrypts on read and encrypts on write; the
+/// relevance engine in `knowledge` receives only boolean-flag derivations
+/// resolved at the federation boundary (never raw values). See doc §6.3.
+///
+/// `noFieldsMode` is the master toggle for users in high-risk situations
+/// (immigration enforcement, DV, journalists, activists). When true, all
+/// reads return null and writes are no-ops regardless of stored content.
+/// Stored unencrypted because it IS the policy flag, not the data. Doc §9.2.
+model SensitiveProfile {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+
+  encryptedPayload  Bytes? @map("encrypted_payload")
+  encryptionIv      Bytes? @map("encryption_iv")
+  encryptionAuthTag Bytes? @map("encryption_auth_tag")
+  /// Supports future key rotation without breaking historical reads.
+  keyVersion        Int    @default(1) @map("key_version")
+
+  noFieldsMode Boolean @default(false) @map("no_fields_mode")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sensitive_profiles")
+}
+
+/// Append-only behavioral event log (§4.12). Powers behavioral inference
+/// and the "what we've learned about you" surface. Default 24-month
+/// retention; user-configurable retention is a follow-up. See doc §6.2.
+///
+/// Intentionally write-once: no UPDATE or DELETE at the service layer.
+/// Users wipe via account deletion or the "reset behavioral history"
+/// action that DELETEs by user_id in bulk.
+///
+/// objectId references foreign-service primary keys (bills, propositions,
+/// representatives) so no FK constraint is set — those entities live in
+/// other microservices per the bounded-context rule.
+model UserEvent {
+  id         String  @id @default(uuid())
+  userId     String  @map("user_id")
+  verb       String  @db.VarChar(30)
+  objectType String  @map("object_type") @db.VarChar(30)
+  objectId   String  @map("object_id")
+  context    Json?   @db.JsonB
+
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, occurredAt(sort: Desc)])
+  @@index([userId, objectType, occurredAt(sort: Desc)])
+  @@map("user_events")
 }
 
 model UserLogin {
