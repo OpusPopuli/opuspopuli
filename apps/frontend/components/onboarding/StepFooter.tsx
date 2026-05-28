@@ -24,11 +24,11 @@ export function StepFooter({
   isLastStep,
 }: StepFooterProps) {
   const { t } = useTranslation("onboarding");
-  const primaryLabel = loading
-    ? t("saving")
-    : isLastStep
-      ? t("getStarted")
-      : t("saveAndContinue");
+  const primaryLabelKey = (() => {
+    if (loading) return "saving";
+    if (isLastStep) return "getStarted";
+    return "saveAndContinue";
+  })();
 
   return (
     <div className="flex justify-between items-center pt-6 gap-3">
@@ -46,7 +46,7 @@ export function StepFooter({
         disabled={loading}
         className="px-8 py-3 bg-white text-[#2D4A3C] rounded-full font-semibold hover:bg-white/90 transition-colors disabled:opacity-50"
       >
-        {primaryLabel}
+        {t(primaryLabelKey)}
       </button>
     </div>
   );

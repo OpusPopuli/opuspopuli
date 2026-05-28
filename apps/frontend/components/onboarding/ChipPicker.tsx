@@ -40,6 +40,16 @@ const colsClass: Record<2 | 3 | 4, string> = {
   4: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
 };
 
+function chipStateClassFor(blocked: boolean, selected: boolean): string {
+  if (blocked) {
+    return "bg-white/5 text-white/40 border-white/10 cursor-not-allowed";
+  }
+  if (selected) {
+    return "bg-white text-[#2D4A3C] border-white cursor-pointer";
+  }
+  return "bg-white/10 text-white border-white/30 hover:bg-white/15 cursor-pointer";
+}
+
 export function ChipPicker(props: Props) {
   const { options, groupLabel, columns = 2 } = props;
   const groupId = useId();
@@ -80,6 +90,7 @@ export function ChipPicker(props: Props) {
           const selected = isSelected(option.value);
           const blocked = atCap && !selected;
           const inputId = `${groupName}-${option.value}`;
+          const chipStateClass = chipStateClassFor(blocked, selected);
           return (
             <label
               key={option.value}
@@ -90,11 +101,7 @@ export function ChipPicker(props: Props) {
                 "px-3 py-2.5 rounded-xl border",
                 "text-sm font-medium transition-colors",
                 "focus-within:ring-2 focus-within:ring-white focus-within:ring-offset-2 focus-within:ring-offset-transparent",
-                blocked
-                  ? "bg-white/5 text-white/40 border-white/10 cursor-not-allowed"
-                  : selected
-                    ? "bg-white text-[#2D4A3C] border-white cursor-pointer"
-                    : "bg-white/10 text-white border-white/30 hover:bg-white/15 cursor-pointer",
+                chipStateClass,
               ].join(" ")}
             >
               <input
