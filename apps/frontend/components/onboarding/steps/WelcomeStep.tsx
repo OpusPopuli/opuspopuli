@@ -1,8 +1,10 @@
 "use client";
 
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@apollo/client/react";
 import { useLocale } from "@/lib/i18n/context";
+import { useToast } from "@/lib/toast";
 import {
   UPDATE_MY_PROFILE,
   type SupportedLanguage,
@@ -17,7 +19,10 @@ const LANGUAGES: { code: SupportedLanguage; labelKey: string }[] = [
 
 export function WelcomeStep() {
   const { t } = useTranslation("onboarding");
+  const { t: tc } = useTranslation("common");
   const { locale, setLocale } = useLocale();
+  const { showToast } = useToast();
+  const groupName = useId();
   const [updateProfile] = useMutation<
     UpdateMyProfileData,
     { input: UpdateProfileInput }
@@ -26,28 +31,31 @@ export function WelcomeStep() {
   const handleLocale = (code: SupportedLanguage) => {
     if (code === locale) return;
     setLocale(code);
-    // Fire-and-forget persistence. Client-side setLocale already
-    // updated the UI; a failed mutation must not block onboarding. If
-    // the persist fails the locale lives client-side only and reverts
-    // on next visit — log so the inconsistency is debuggable rather
-    // than silent.
+    // Fire-and-forget persistence. Client-side setLocale already updated
+    // the UI; a failed mutation must not block onboarding. Toast surfaces
+    // the inconsistency to the user; warn so it's debuggable in dev.
     updateProfile({ variables: { input: { preferredLanguage: code } } }).catch(
       (err: unknown) => {
         console.warn("Failed to persist preferred language", err);
+        showToast(tc("errors.preferencesNotSaved"), "warning");
       },
     );
   };
 
   return (
-    <div className="text-center text-white max-w-md">
-      <div className="w-24 h-24 bg-white/20 rounded-3xl mx-auto mb-8 flex items-center justify-center">
+    <div className="text-center max-w-md">
+      <div className="w-24 h-24 bg-sage-dark text-white rounded-3xl mx-auto mb-8 flex items-center justify-center shadow-md">
         <span className="text-4xl font-bold">O</span>
       </div>
 
-      <h1 className="text-3xl font-bold mb-4">{t("welcome.title")}</h1>
-      <p className="text-white/80 text-lg mb-8">{t("welcome.subtitle")}</p>
+      <h1 className="text-3xl font-bold mb-4 text-gray-900 dark:text-white">
+        {t("welcome.title")}
+      </h1>
+      <p className="text-gray-600 dark:text-gray-300 text-lg mb-8">
+        {t("welcome.subtitle")}
+      </p>
 
-      <fieldset className="inline-flex bg-white/10 rounded-full p-1 border border-white/20">
+      <fieldset className="inline-flex bg-white dark:bg-gray-800 rounded-full p-1 border border-gray-300 dark:border-gray-700">
         <legend className="sr-only">{t("welcome.languageLegend")}</legend>
         {LANGUAGES.map(({ code, labelKey }) => {
           const active = code === locale;
@@ -56,15 +64,15 @@ export function WelcomeStep() {
               key={code}
               className={[
                 "px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-colors",
-                "focus-within:ring-2 focus-within:ring-white",
+                "focus-within:ring-2 focus-within:ring-sage-dark",
                 active
-                  ? "bg-white text-[#2D4A3C]"
-                  : "text-white/80 hover:text-white",
+                  ? "bg-sage-dark text-white"
+                  : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white",
               ].join(" ")}
             >
               <input
                 type="radio"
-                name="onboarding-locale"
+                name={groupName}
                 value={code}
                 checked={active}
                 onChange={() => handleLocale(code)}

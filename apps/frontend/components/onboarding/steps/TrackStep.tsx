@@ -6,8 +6,8 @@ export function TrackStep() {
   const { t } = useTranslation("onboarding");
 
   return (
-    <div className="text-center text-white max-w-md">
-      <div className="w-20 h-20 bg-white/20 rounded-2xl mx-auto mb-8 flex items-center justify-center">
+    <div className="text-center max-w-md">
+      <div className="w-20 h-20 bg-sage-light/30 dark:bg-sage-dark/20 text-sage-dark dark:text-sage-light rounded-2xl mx-auto mb-8 flex items-center justify-center">
         <svg
           className="w-10 h-10"
           fill="none"
@@ -24,8 +24,12 @@ export function TrackStep() {
         </svg>
       </div>
 
-      <h2 className="text-2xl font-bold mb-4">{t("track.title")}</h2>
-      <p className="text-white/80">{t("track.description")}</p>
+      <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">
+        {t("track.title")}
+      </h2>
+      <p className="text-gray-600 dark:text-gray-300">
+        {t("track.description")}
+      </p>
     </div>
   );
 }

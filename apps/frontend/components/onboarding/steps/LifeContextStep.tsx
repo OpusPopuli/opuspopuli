@@ -180,9 +180,13 @@ export function LifeContextStep({
   };
 
   return (
-    <div className="w-full max-w-lg text-white">
-      <h2 className="text-2xl font-bold mb-2">{t("lifeContext.title")}</h2>
-      <p className="text-white/80 text-sm mb-6">{t("lifeContext.subtitle")}</p>
+    <div className="w-full max-w-lg">
+      <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
+        {t("lifeContext.title")}
+      </h2>
+      <p className="text-gray-600 dark:text-gray-300 text-sm mb-6">
+        {t("lifeContext.subtitle")}
+      </p>
 
       <div className="space-y-5 max-h-[55vh] overflow-y-auto pr-1">
         <ChipPicker
@@ -272,7 +276,7 @@ export function LifeContextStep({
       </div>
 
       {error && (
-        <p role="alert" className="text-red-200 text-sm pt-3">
+        <p role="alert" className="text-red-600 dark:text-red-400 text-sm pt-3">
           {error}
         </p>
       )}

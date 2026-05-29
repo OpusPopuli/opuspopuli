@@ -63,11 +63,11 @@ export function OnboardingSteps() {
   const stepOwnsAction = DATA_STEP_INDICES.has(currentStep);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#5A7A6A] to-[#2D4A3C] flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       <div className="absolute top-4 right-4 z-10">
         <button
           onClick={handleSkip}
-          className="text-white/70 hover:text-white text-sm transition-colors px-3 py-1"
+          className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm transition-colors px-3 py-1"
         >
           {t("skip")}
         </button>
@@ -85,7 +85,9 @@ export function OnboardingSteps() {
           <div
             key={i}
             className={`w-2 h-2 rounded-full transition-colors ${
-              i === currentStep ? "bg-white" : "bg-white/30"
+              i === currentStep
+                ? "bg-sage-dark"
+                : "bg-gray-300 dark:bg-gray-600"
             }`}
             aria-hidden="true"
           />
@@ -100,7 +102,7 @@ export function OnboardingSteps() {
         <button
           onClick={prevStep}
           disabled={currentStep === 0}
-          className="px-6 py-3 text-white/70 hover:text-white disabled:opacity-0 transition-all"
+          className="px-6 py-3 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white disabled:opacity-0 transition-all"
         >
           {t("back")}
         </button>
@@ -108,11 +110,7 @@ export function OnboardingSteps() {
         {!stepOwnsAction && (
           <button
             onClick={advance}
-            className={
-              isLastStep
-                ? "px-8 py-3 bg-white text-[#5A7A6A] rounded-full font-semibold hover:bg-white/90 transition-colors"
-                : "px-8 py-3 bg-white/20 text-white rounded-full font-semibold hover:bg-white/30 transition-colors"
-            }
+            className="px-8 py-3 bg-sage-dark hover:bg-sage-darker text-white rounded-full font-semibold transition-colors"
           >
             {isLastStep ? t("getStarted") : t("next")}
           </button>

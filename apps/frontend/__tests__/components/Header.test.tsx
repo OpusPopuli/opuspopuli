@@ -31,6 +31,29 @@ jest.mock("@/lib/auth-context", () => ({
   useAuth: () => mockAuthContextValue,
 }));
 
+// LanguageToggle (mounted by Header) depends on the i18n locale + toast
+// providers and Apollo. The Header tests assert on nav/auth behavior, not
+// on the language toggle — stub these dependencies so the component
+// renders. Toast assertions live in LanguageToggle's own spec.
+jest.mock("@/lib/i18n/context", () => ({
+  useLocale: () => ({ locale: "en", setLocale: jest.fn() }),
+}));
+
+jest.mock("@/lib/toast", () => ({
+  useToast: () => ({ showToast: jest.fn() }),
+}));
+
+jest.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+jest.mock("@apollo/client/react", () => ({
+  useMutation: () => [
+    jest.fn().mockResolvedValue({ data: {} }),
+    { loading: false },
+  ],
+}));
+
 describe("Header", () => {
   beforeEach(() => {
     jest.clearAllMocks();

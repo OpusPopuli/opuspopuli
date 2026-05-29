@@ -17,8 +17,10 @@
   "errors": {
     "generic": "Algo salio mal. Por favor, intentalo de nuevo.",
     "loadFailed": "Error al cargar los datos. Por favor, intentalo de nuevo.",
-    "saveFailed": "Error al guardar. Por favor, intentalo de nuevo."
+    "saveFailed": "Error al guardar. Por favor, intentalo de nuevo.",
+    "preferencesNotSaved": "No pudimos guardar tu preferencia — se restablecerá en la próxima sesión."
   },
+  "languageLegend": "Idioma",
   "status": {
     "success": "Exito!",
     "primary": "Principal",
@@ -28,6 +30,7 @@
     "granted": "Concedido",
     "withdrawn": "Retirado",
     "denied": "Denegado",
+    "pending": "Pendiente",
     "notSet": "No establecido",
     "loading": "Cargando..."
   },
