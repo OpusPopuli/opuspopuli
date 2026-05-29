@@ -19,6 +19,7 @@ import {
   AddressType,
 } from "@/lib/graphql/profile";
 import { SettingsLoadingSkeleton } from "@/components/settings/SettingsLoadingSkeleton";
+import { US_STATES } from "@/lib/us-states";
 
 // Values are uppercase to match the GraphQL `AddressType` enum's wire format.
 // labelKeys stay lowercase since the i18n translation files key by the
@@ -29,60 +30,6 @@ const ADDRESS_TYPES: { value: AddressType; labelKey: string }[] = [
   { value: "MAILING", labelKey: "addresses.types.mailing" },
   { value: "BUSINESS", labelKey: "addresses.types.business" },
   { value: "VOTING", labelKey: "addresses.types.voting" },
-];
-
-const US_STATES = [
-  "AL",
-  "AK",
-  "AZ",
-  "AR",
-  "CA",
-  "CO",
-  "CT",
-  "DE",
-  "FL",
-  "GA",
-  "HI",
-  "ID",
-  "IL",
-  "IN",
-  "IA",
-  "KS",
-  "KY",
-  "LA",
-  "ME",
-  "MD",
-  "MA",
-  "MI",
-  "MN",
-  "MS",
-  "MO",
-  "MT",
-  "NE",
-  "NV",
-  "NH",
-  "NJ",
-  "NM",
-  "NY",
-  "NC",
-  "ND",
-  "OH",
-  "OK",
-  "OR",
-  "PA",
-  "RI",
-  "SC",
-  "SD",
-  "TN",
-  "TX",
-  "UT",
-  "VT",
-  "VA",
-  "WA",
-  "WV",
-  "WI",
-  "WY",
-  "DC",
 ];
 
 const emptyAddress: CreateAddressInput = {
