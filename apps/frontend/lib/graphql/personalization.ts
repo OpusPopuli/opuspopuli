@@ -7,55 +7,9 @@ import { gql } from "@apollo/client";
 // returns the full row, so over-fetching cost is negligible.
 // ============================================
 
-export interface UpdateSignalProfileInput {
-  // §4.2 Housing
-  housingTenure?: string | null;
-  buildingType?: string | null;
-  taxExposure?: string[];
-  housingFlags?: string[];
-  // §4.3 Household
-  childrenAgeBands?: string[];
-  hasEldercareDependents?: boolean | null;
-  multigenerational?: boolean | null;
-  hasPets?: boolean | null;
-  partnerStatus?: string | null;
-  // §4.4 Work
-  employmentStatus?: string | null;
-  industry?: string | null;
-  occupationCategory?: string | null;
-  employerSizeBand?: string | null;
-  unionMember?: boolean | null;
-  gigWorker?: boolean | null;
-  tippedWorker?: boolean | null;
-  // §4.6 Transportation
-  primaryTransitMode?: string | null;
-  vehicleTypes?: string[];
-  commuteBand?: string | null;
-  specialLicenses?: string[];
-  transitPassHolder?: boolean | null;
-  bikeShareMember?: boolean | null;
-  // §4.7 Education
-  studentLevel?: string | null;
-  parentOfStudent?: string[];
-  educator?: boolean | null;
-  // §4.10 Declared values
-  interestTags?: string[];
-  // convictionStrength (JSON map { tag → strength }) is intentionally
-  // not exposed at the frontend until the per-tag edit UI lands — see
-  // the deferral note in `lib/personalization/vocab.ts`.
-  politicalSelfId?: string | null;
-  // §4.11 Affiliations
-  trustedOrganizations?: string[];
-  unionAffiliation?: string | null;
-  faithCommunity?: string | null;
-  // §4.13 Attention & format
-  weeklyAttentionMinutes?: number | null;
-  preferredDepth?: string | null;
-  accessibilityNeeds?: string[];
-  readingLevel?: string | null;
-  // §4.14 Relational
-  agingParentsState?: string | null;
-}
+// convictionStrength (JSON map { tag → strength }) is intentionally
+// not exposed at the frontend until the per-tag edit UI lands — see
+// the deferral note in `lib/personalization/vocab.ts`.
 
 export interface SignalProfile {
   id: string;
@@ -107,6 +61,16 @@ export interface SignalProfile {
   createdAt?: string;
   updatedAt?: string;
 }
+
+/**
+ * Mutation input for `updateMySignalProfile`. Every editable field is
+ * optional and follows the same per-field shape as the read model —
+ * derived as a `Partial<>` so adding/removing fields in `SignalProfile`
+ * keeps both sides in lockstep without duplicate maintenance.
+ */
+export type UpdateSignalProfileInput = Partial<
+  Omit<SignalProfile, "id" | "userId" | "createdAt" | "updatedAt">
+>;
 
 export interface MySignalProfileData {
   mySignalProfile: SignalProfile | null;
@@ -178,28 +142,6 @@ export const UPDATE_MY_SIGNAL_PROFILE = gql`
 // on — the privacy contract from planning doc §9.2.
 // ============================================
 
-export interface UpdateSensitiveProfileInput {
-  // §4.4 income
-  incomeBand?: string | null;
-  publicBenefits?: string[];
-  // §4.5 Health
-  insuranceType?: string | null;
-  chronicConditionCategories?: string[];
-  caregiverFor?: string[];
-  reproductiveHealthRelevance?: boolean | null;
-  // §4.8 Civic
-  citizenshipStatus?: string | null;
-  veteranStatus?: string | null;
-  justiceInvolvement?: string[];
-  // §4.9 Cultural
-  raceEthnicity?: string[];
-  primaryLanguages?: string[];
-  religiousCommunity?: string | null;
-  lgbtqIdentity?: string | null;
-  immigrationGeneration?: number | null;
-  tribalAffiliation?: string | null;
-}
-
 export interface SensitiveProfile {
   noFieldsMode: boolean;
   incomeBand?: string | null;
@@ -218,6 +160,16 @@ export interface SensitiveProfile {
   immigrationGeneration?: number | null;
   tribalAffiliation?: string | null;
 }
+
+/**
+ * Mutation input for `updateMySensitiveProfile`. Mirrors
+ * `SensitiveProfile` minus the toggle (which has its own mutation),
+ * normalized to nullable-or-empty so callers can clear individual
+ * fields without touching the rest.
+ */
+export type UpdateSensitiveProfileInput = Partial<
+  Omit<SensitiveProfile, "noFieldsMode">
+>;
 
 export interface MySensitiveProfileData {
   mySensitiveProfile: SensitiveProfile;
