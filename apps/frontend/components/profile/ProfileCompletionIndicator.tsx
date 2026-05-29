@@ -21,7 +21,7 @@ export function ProfileCompletionIndicator({
             {t("profile.completion.title", "Profile Completion")}
           </h3>
           {isComplete && (
-            <p className="text-sm text-sage-dark dark:text-sage-light mt-1">
+            <p className="text-sm text-sage-darker dark:text-sage-light mt-1">
               {t("profile.completion.complete", "Your profile is complete!")}
             </p>
           )}

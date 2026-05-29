@@ -261,7 +261,7 @@ export default function PrivacyPage() {
               <p className="text-sm font-medium text-sage-darker dark:text-sage-light">
                 {t("privacy.rightsTitle")}
               </p>
-              <p className="text-sm text-sage-dark dark:text-sage-light/90 mt-1">
+              <p className="text-sm text-sage-darker dark:text-sage-light mt-1">
                 {t("privacy.rightsDescription")}
               </p>
             </div>

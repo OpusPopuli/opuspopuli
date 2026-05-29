@@ -122,7 +122,7 @@ export function VeteranStep({ onComplete, isLastStep }: VeteranStepProps) {
       </p>
 
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 mb-5 text-sm">
-        <div className="flex items-center gap-2 mb-2 font-medium text-sage-dark dark:text-sage-light">
+        <div className="flex items-center gap-2 mb-2 font-medium text-sage-darker dark:text-sage-light">
           <svg
             className="w-4 h-4"
             fill="none"

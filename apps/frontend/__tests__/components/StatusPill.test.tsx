@@ -28,7 +28,7 @@ describe("StatusPill", () => {
       expectedClasses: [
         "border",
         "border-sage-dark",
-        "text-sage-dark",
+        "text-sage-darker",
         "dark:border-sage-light",
         "dark:text-sage-light",
       ],

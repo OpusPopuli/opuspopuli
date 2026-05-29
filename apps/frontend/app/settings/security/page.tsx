@@ -380,7 +380,7 @@ export default function SecurityPage() {
                   <p className="text-sm font-medium text-sage-darker dark:text-sage-light">
                     {t("security.passkeys.whyTitle")}
                   </p>
-                  <ul className="text-sm text-sage-dark dark:text-sage-light/90 mt-1 space-y-1">
+                  <ul className="text-sm text-sage-darker dark:text-sage-light mt-1 space-y-1">
                     <li>• {t("security.passkeys.benefit1")}</li>
                     <li>• {t("security.passkeys.benefit2")}</li>
                     <li>• {t("security.passkeys.benefit3")}</li>

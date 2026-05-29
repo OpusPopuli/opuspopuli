@@ -20,7 +20,7 @@ const TONE_CLASSES: Record<StatusPillTone, string> = {
   "sage-filled":
     "bg-sage-light/20 text-sage-darker dark:bg-sage-dark/20 dark:text-sage-light",
   "sage-outline":
-    "border border-sage-dark text-sage-dark dark:border-sage-light dark:text-sage-light",
+    "border border-sage-dark text-sage-darker dark:border-sage-light dark:text-sage-light",
   warning:
     "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200",
   danger: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200",
