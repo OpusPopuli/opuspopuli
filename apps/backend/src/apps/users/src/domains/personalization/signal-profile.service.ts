@@ -31,10 +31,27 @@ export class SignalProfileService {
     userId: string,
     input: Prisma.SignalProfileUpdateInput,
   ): Promise<Prisma.SignalProfileGetPayload<true>> {
+    const inputAsCreate = input as Prisma.SignalProfileCreateInput;
     return this.db.signalProfile.upsert({
       where: { userId },
       create: {
-        ...(input as Prisma.SignalProfileCreateInput),
+        ...inputAsCreate,
+        // Postgres text[] columns are NOT NULL but Prisma doesn't emit
+        // a schema-level default for them. The DTO instance arrives
+        // from class-validator with every optional field present (as
+        // `undefined`), so a defaults-first spread gets clobbered. Set
+        // each array column explicitly after the spread with `?? []`
+        // — when the user did populate it, the spread already put the
+        // real value here and `??` only fires on undefined.
+        taxExposure: inputAsCreate.taxExposure ?? [],
+        housingFlags: inputAsCreate.housingFlags ?? [],
+        childrenAgeBands: inputAsCreate.childrenAgeBands ?? [],
+        vehicleTypes: inputAsCreate.vehicleTypes ?? [],
+        specialLicenses: inputAsCreate.specialLicenses ?? [],
+        parentOfStudent: inputAsCreate.parentOfStudent ?? [],
+        interestTags: inputAsCreate.interestTags ?? [],
+        trustedOrganizations: inputAsCreate.trustedOrganizations ?? [],
+        accessibilityNeeds: inputAsCreate.accessibilityNeeds ?? [],
         // user.connect comes last so it deterministically wins over any
         // stray `user` field a future caller might include in `input`.
         // At runtime today the input DTO never contains `user`.

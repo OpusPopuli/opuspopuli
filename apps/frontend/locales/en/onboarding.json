@@ -1,11 +1,22 @@
 {
   "skip": "Skip",
+  "skipStep": "Skip this",
   "back": "Back",
   "next": "Next",
   "getStarted": "Get Started",
+  "saveAndContinue": "Save & Continue",
+  "saving": "Saving…",
+  "progress": {
+    "label": "Onboarding progress"
+  },
   "welcome": {
     "title": "Welcome to Opus Populi",
-    "subtitle": "Your civic engagement hub — track propositions, representatives, campaign finance, and petitions all in one place"
+    "subtitle": "Your civic engagement hub — track propositions, representatives, campaign finance, and petitions all in one place",
+    "languageLegend": "Choose your language",
+    "languages": {
+      "en": "English",
+      "es": "Español"
+    }
   },
   "explore": {
     "title": "Explore Your Region",
@@ -29,5 +40,101 @@
   "track": {
     "title": "Track Progress",
     "description": "Follow ballot measures, petition activity, and legislative sessions in your area"
+  },
+  "address": {
+    "title": "Where do you live?",
+    "subtitle": "We use your address to find your local elections, propositions, and representatives. Skippable.",
+    "fields": {
+      "line1": "Street address",
+      "city": "City",
+      "state": "State",
+      "statePlaceholder": "Select state",
+      "postalCode": "ZIP code"
+    },
+    "errors": {
+      "allRequired": "Please fill in all four fields, or skip this step.",
+      "saveFailed": "We couldn't save your address. You can try again or skip for now."
+    }
+  },
+  "topics": {
+    "title": "What matters to you?",
+    "subtitle": "Pick your top 3. Focus beats breadth — these are the issues you can meaningfully influence.",
+    "reasonHeading": "Why just 3?",
+    "reasonBody": "Civic attention is finite. Three issues you can actually write your reps about, show up for, or organize around beats a wishlist of twelve you'll only doom-scroll. You can broaden this later in settings.",
+    "counter": "{{count}} of {{max}} selected",
+    "groupLabel": "Topics",
+    "options": {
+      "housing": "Housing & rent",
+      "jobs": "Jobs & workers",
+      "healthcare": "Healthcare",
+      "education": "Education",
+      "transit": "Transit & roads",
+      "environment": "Environment",
+      "public_safety": "Public safety",
+      "taxes": "Taxes & budget",
+      "immigration": "Immigration",
+      "voting_rights": "Voting rights",
+      "justice": "Justice reform",
+      "family": "Family & care"
+    },
+    "errors": {
+      "saveFailed": "We couldn't save your topics. You can try again or skip."
+    }
+  },
+  "lifeContext": {
+    "title": "A bit about your day",
+    "subtitle": "These help us surface bills that touch your life. Every chip is optional.",
+    "groups": {
+      "housing": "Housing",
+      "family": "Family",
+      "work": "Work",
+      "workExtras": "More about work",
+      "education": "School",
+      "transit": "Getting around"
+    },
+    "chips": {
+      "housing": {
+        "renter": "I rent",
+        "owner": "I own my home"
+      },
+      "family": {
+        "parent": "Parent of school-age kids",
+        "caregiver": "Caring for an aging family member"
+      },
+      "work": {
+        "employed": "Employed",
+        "gig": "Self-employed / gig",
+        "businessOwner": "Small business owner"
+      },
+      "workExtras": {
+        "union": "Union member"
+      },
+      "education": {
+        "student": "I'm a student",
+        "educator": "Educator / teacher"
+      },
+      "transit": {
+        "transit": "Mostly transit",
+        "car": "Mostly drive",
+        "active": "Mostly bike or walk"
+      }
+    },
+    "errors": {
+      "saveFailed": "We couldn't save your selections. You can try again or skip."
+    }
+  },
+  "veteran": {
+    "title": "One sensitive question",
+    "subtitle": "This is the only sensitive field we ask about in onboarding. You can always skip.",
+    "chip": "I'm a veteran or active-duty",
+    "lockedNote": "Already set from a previous visit. To remove it, manage your privacy in settings.",
+    "noFieldsToggle": "Never store sensitive fields about me",
+    "disclosure": {
+      "encryptedBadge": "Encrypted at rest",
+      "whyWeAsk": "Veteran status helps us surface bills on healthcare, benefits, and housing protections that affect you. Stored encrypted; never shared with the recommendation engine in raw form — only a boolean flag."
+    },
+    "errors": {
+      "saveFailed": "We couldn't save your answer. You can try again or skip."
+    }
   }
 }

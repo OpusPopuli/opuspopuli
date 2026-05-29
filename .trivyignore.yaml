@@ -1,0 +1,18 @@
+# Trivy filesystem-scan suppressions. Keep narrow — broad suppressions
+# defeat the point of the scanner. Each entry needs a justification
+# tying back to a non-filesystem-scan source of truth (gitleaks for
+# history, .gitignore for trackability).
+
+secrets:
+  # `.env` carries a GitHub Packages PAT (NODE_AUTH_TOKEN) used by
+  # `pnpm install` to fetch the private `@opuspopuli/regions` package
+  # from GitHub Packages. The file is gitignored
+  # (`.gitignore:4`) and gitleaks confirms zero matches across the full
+  # git history (617 commits scanned). Trivy still flags it because it
+  # scans the on-disk file; we suppress here so the scan signal stays
+  # actionable for any *new* leaks.
+  #
+  # Remove this entry if `.env` ever stops carrying the PAT.
+  - id: github-pat
+    paths:
+      - ".env"

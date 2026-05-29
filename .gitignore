@@ -24,6 +24,15 @@ playwright-report/
 blob-report/
 playwright/.cache/
 
+# TLS / cert material — generated at build time by Dockerfile.nginx,
+# never committed. README in apps/frontend/nginx/.certs/ documents
+# how to regenerate locally if you need them on disk for dev.
+*.key
+*.crt
+*.pem
+!**/test-fixtures/**/*.pem
+!**/__fixtures__/**/*.pem
+
 # macOS
 .DS_Store
 
