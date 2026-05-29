@@ -1,0 +1,500 @@
+{
+  "page": {
+    "title": "Tu modelo de ti",
+    "subtitle": "Todo lo que sabemos — o hemos inferido — sobre ti, con el fin de mostrarte las decisiones cívicas que afectan tu vida. Edita cualquier campo, bórralo, o desactiva toda la capa sensible.",
+    "ownYouCallout": "Esto es tuyo. Nada sobre ti vive en un lugar que no podamos mostrarte."
+  },
+  "noFieldsMode": {
+    "title": "Campos sensibles",
+    "description": "Cuando está activado, no guardamos ni leemos campos sensibles (ingresos, salud, ciudadanía, justicia, identidad cultural, condición militar). El resto de la plataforma sigue funcionando — solo pierde algo de precisión.",
+    "toggleLabel": "No guardar nunca campos sensibles sobre mí",
+    "lockedDescription": "Los campos sensibles están en pausa. Desactiva la opción para verlos y editarlos de nuevo — tus valores anteriores se conservan.",
+    "cacheDisclosure": "Cuando el interruptor está desactivado, los valores se descifran en el servidor y se guardan en la caché local de tu navegador para que la página se cargue sin pedir al servidor en cada visita. Borra los datos del navegador o vuelve a activar el interruptor para eliminarlos localmente."
+  },
+  "category": {
+    "values": {
+      "title": "Lo que te importa",
+      "summary": "Temas, convicción e identificación política."
+    },
+    "housing": {
+      "title": "Vivienda y propiedad",
+      "summary": "Tenencia, tipo de edificio, exposición fiscal."
+    },
+    "household": {
+      "title": "Hogar",
+      "summary": "Composición familiar, dependientes, pareja."
+    },
+    "work": {
+      "title": "Trabajo",
+      "summary": "Empleo, industria, sindicato, trabajo por encargo."
+    },
+    "transit": {
+      "title": "Transporte",
+      "summary": "Modo principal, vehículos, licencias."
+    },
+    "education": {
+      "title": "Educación",
+      "summary": "Estudiante actual, madre/padre de estudiante, educador."
+    },
+    "community": {
+      "title": "Afiliaciones y comunidad",
+      "summary": "Organizaciones de confianza, sindicato, comunidad de fe."
+    },
+    "attention": {
+      "title": "Atención y formato",
+      "summary": "Tiempo disponible, profundidad, accesibilidad."
+    },
+    "relational": {
+      "title": "Personas en tu vida",
+      "summary": "Padres mayores y otra geografía relacional."
+    },
+    "income": {
+      "title": "Ingresos y beneficios",
+      "summary": "Rango de ingresos y beneficios públicos."
+    },
+    "health": {
+      "title": "Salud y cuidados",
+      "summary": "Seguro, condiciones crónicas, cuidador."
+    },
+    "civic_status": {
+      "title": "Estatus cívico",
+      "summary": "Ciudadanía, condición militar, justicia."
+    },
+    "cultural": {
+      "title": "Identidad cultural y comunitaria",
+      "summary": "Raza, idioma, religión, identidad, herencia."
+    }
+  },
+  "categoryLabel": {
+    "expand": "Expandir categoría",
+    "collapse": "Contraer categoría"
+  },
+  "field": {
+    "edit": "Editar",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "clear": "Borrar valor",
+    "clearConfirmTitle": "¿Borrar este valor?",
+    "clearConfirmBody": "Esto elimina el valor de tu perfil. Puedes volver a ponerlo en cualquier momento.",
+    "clearConfirmAction": "Borrar",
+    "savedAnnouncement": "{{label}} actualizado.",
+    "clearedAnnouncement": "{{label}} borrado.",
+    "errorPrefix": "No pudimos guardar:",
+    "notSet": "Sin definir",
+    "yes": "Sí",
+    "no": "No",
+    "off": "Desactivado",
+    "on": "Activado",
+    "lockedByNoFields": "En pausa mientras los campos sensibles estén desactivados."
+  },
+  "placeholder": {
+    "behavioral": {
+      "title": "Señales de comportamiento",
+      "body": "Te mostraremos lo que has abierto, guardado, descartado y en qué has dedicado tiempo cuando se active el registro de comportamiento. Hasta entonces, esta sección está vacía a propósito — no registramos nada que no te hayamos mostrado."
+    },
+    "weights": {
+      "title": "Pesos de relevancia",
+      "body": "Cuando el rankeador personalizado esté en marcha, aquí verás las puntuaciones por eje que produjeron cada recomendación, y qué señales tuyas pesaron más."
+    },
+    "events": {
+      "title": "Registro de eventos",
+      "body": "Registro inmutable de acciones — peticiones firmadas, reuniones asistidas, representantes contactados. Vacío hasta que empecemos a registrar estos eventos."
+    }
+  },
+  "fields": {
+    "housingTenure": {
+      "label": "Tenencia de vivienda",
+      "description": "Si alquilas o eres propietario de tu residencia principal. Detecta legislación de vivienda que afecta a inquilinos vs. propietarios de manera distinta.",
+      "options": {
+        "renter": "Alquilo",
+        "owner": "Soy propietario"
+      }
+    },
+    "buildingType": {
+      "label": "Tipo de edificio",
+      "description": "El tipo de estructura donde vives.",
+      "options": {
+        "single_family": "Casa unifamiliar",
+        "condo": "Condominio",
+        "townhome": "Casa adosada",
+        "adu": "Unidad de vivienda accesoria",
+        "multifamily": "Multifamiliar (apartamentos)",
+        "mobile_home": "Casa móvil",
+        "rural": "Rural",
+        "rv": "Casa rodante"
+      }
+    },
+    "taxExposure": {
+      "label": "Exposición fiscal",
+      "description": "Qué impuestos relacionados con la propiedad afectan a tu hogar.",
+      "options": {
+        "property_tax": "Impuesto sobre la propiedad",
+        "parcel_tax": "Impuesto sobre parcela",
+        "mello_roos": "Tasación Mello-Roos",
+        "hoa": "Cuotas de HOA",
+        "transfer_tax": "Impuesto de transferencia"
+      }
+    },
+    "housingFlags": {
+      "label": "Situación de vivienda",
+      "description": "Categorías especiales que cambian qué proyectos te afectan.",
+      "options": {
+        "rent_regulated": "Alquiler regulado",
+        "section_8": "Sección 8",
+        "first_time_buyer": "Primera compra",
+        "underwater_mortgage": "Hipoteca bajo el agua",
+        "recently_moved": "Mudanza reciente"
+      }
+    },
+    "childrenAgeBands": {
+      "label": "Edades de los hijos",
+      "description": "Rangos amplios de edad de los niños del hogar. Determina relevancia de escuela, cuidado infantil y bienestar de menores.",
+      "options": {
+        "0_5": "0–5",
+        "k_5": "K–5",
+        "6_12": "6–12",
+        "high_school": "Secundaria",
+        "college": "Universidad"
+      }
+    },
+    "hasEldercareDependents": {
+      "label": "Dependientes mayores",
+      "description": "Si cuidas a un familiar mayor."
+    },
+    "multigenerational": {
+      "label": "Hogar multigeneracional",
+      "description": "Varias generaciones bajo el mismo techo."
+    },
+    "hasPets": {
+      "label": "Mascotas en casa",
+      "description": "Activa relevancia para proyectos de bienestar animal, leyes de correa y ordenanzas de ruido."
+    },
+    "partnerStatus": {
+      "label": "Estado de pareja",
+      "description": "Afecta relevancia fiscal, de beneficios y de derecho familiar.",
+      "options": {
+        "single": "Soltero",
+        "partnered": "En pareja",
+        "married": "Casado",
+        "divorced": "Divorciado",
+        "widowed": "Viudo"
+      }
+    },
+    "employmentStatus": {
+      "label": "Situación laboral",
+      "description": "Cómo te ganas la vida.",
+      "options": {
+        "employed": "Empleado",
+        "gig": "Autónomo o por encargo",
+        "business_owner": "Dueño de pequeño negocio"
+      }
+    },
+    "industry": {
+      "label": "Industria",
+      "description": "Industria donde trabajas (libre, p. ej. 'agricultura', 'tecnología', 'salud')."
+    },
+    "occupationCategory": {
+      "label": "Ocupación",
+      "description": "Categoría amplia de ocupación (libre, p. ej. 'conductor', 'docente', 'ingeniero')."
+    },
+    "employerSizeBand": {
+      "label": "Tamaño del empleador",
+      "description": "Aproximadamente cuán grande es tu empleador.",
+      "options": {
+        "under_5": "Menos de 5 empleados",
+        "5_to_50": "5–50",
+        "50_to_500": "50–500",
+        "over_500": "Más de 500",
+        "public_sector": "Sector público",
+        "nonprofit": "Sin ánimo de lucro"
+      }
+    },
+    "unionMember": {
+      "label": "Miembro de un sindicato",
+      "description": "Determina relevancia para proyectos laborales y de negociación colectiva."
+    },
+    "gigWorker": {
+      "label": "Trabajo por encargo",
+      "description": "Contratista independiente o trabajador de plataformas (Uber, DoorDash, etc.)."
+    },
+    "tippedWorker": {
+      "label": "Trabajador con propinas",
+      "description": "Tus ingresos dependen significativamente de propinas — relevante para proyectos sobre salario mínimo con propinas."
+    },
+    "primaryTransitMode": {
+      "label": "Cómo te mueves principalmente",
+      "description": "Cómo te mueves la mayor parte del tiempo.",
+      "options": {
+        "transit": "Principalmente transporte público",
+        "car": "Principalmente conduzco",
+        "active": "Principalmente bici o a pie"
+      }
+    },
+    "vehicleTypes": {
+      "label": "Vehículos",
+      "description": "Qué conduces — relevante para incentivos a vehículos eléctricos, normas de emisiones y regulación vehicular.",
+      "options": {
+        "ev": "Eléctrico",
+        "hybrid": "Híbrido",
+        "ice": "Gasolina / diésel",
+        "truck": "Camioneta",
+        "motorcycle": "Motocicleta",
+        "none": "Sin vehículo"
+      }
+    },
+    "commuteBand": {
+      "label": "Distancia al trabajo",
+      "description": "Aproximadamente cuán largo es tu trayecto.",
+      "options": {
+        "under_5_mi": "Menos de 5 millas",
+        "5_to_15_mi": "5–15 millas",
+        "15_to_30_mi": "15–30 millas",
+        "over_30_mi": "Más de 30 millas",
+        "remote": "Remoto / sin trayecto"
+      }
+    },
+    "specialLicenses": {
+      "label": "Licencias especiales",
+      "description": "Licencias reguladas que activan categorías específicas de proyectos.",
+      "options": {
+        "cdl": "Conductor comercial",
+        "pilot": "Piloto",
+        "mariner": "Marinero",
+        "hazmat": "Materiales peligrosos"
+      }
+    },
+    "transitPassHolder": {
+      "label": "Abono de transporte",
+      "description": "Activa relevancia para proyectos de financiamiento de transporte y tarifas."
+    },
+    "bikeShareMember": {
+      "label": "Miembro de bicicleta compartida",
+      "description": "Activa relevancia para infraestructura de transporte activo."
+    },
+    "studentLevel": {
+      "label": "Estudiante actual",
+      "description": "¿Estás matriculado actualmente?",
+      "options": {
+        "k12": "K–12",
+        "vocational": "Formación profesional",
+        "college": "Universitario",
+        "grad": "Posgrado"
+      }
+    },
+    "parentOfStudent": {
+      "label": "Madre/padre de estudiante",
+      "description": "Si tienes hijos en edad escolar, a qué tipo de escuela asisten.",
+      "options": {
+        "public": "Escuela pública",
+        "private": "Escuela privada",
+        "charter": "Escuela charter",
+        "homeschool": "Educación en casa"
+      }
+    },
+    "educator": {
+      "label": "Educador o personal escolar",
+      "description": "Docente, administrativo o personal de apoyo a cualquier nivel."
+    },
+    "interestTags": {
+      "label": "Temas que sigues",
+      "description": "Los temas sobre los que quieres que destaquemos proyectos. Limitado a 3 durante la incorporación para mantener el enfoque; amplía aquí si lo deseas.",
+      "options": {
+        "housing": "Vivienda y alquiler",
+        "jobs": "Empleo y trabajadores",
+        "healthcare": "Salud",
+        "education": "Educación",
+        "transit": "Transporte y carreteras",
+        "environment": "Medio ambiente",
+        "public_safety": "Seguridad pública",
+        "taxes": "Impuestos y presupuesto",
+        "immigration": "Inmigración",
+        "voting_rights": "Derecho al voto",
+        "justice": "Reforma judicial",
+        "family": "Familia y cuidado"
+      }
+    },
+    "politicalSelfId": {
+      "label": "Autoidentificación política",
+      "description": "Libre, sin escala requerida. Déjalo en blanco si prefieres no responder."
+    },
+    "trustedOrganizations": {
+      "label": "Organizaciones de confianza",
+      "description": "Organizaciones cívicas, de abogacía o comunitarias cuyas posiciones pesas mucho. Las usamos como señales de confianza transitiva — \"X se opone a esta ley\" pesa más cuando X está en tu lista."
+    },
+    "unionAffiliation": {
+      "label": "Afiliación sindical",
+      "description": "Qué sindicato u organización laboral (libre)."
+    },
+    "faithCommunity": {
+      "label": "Comunidad de fe",
+      "description": "Qué congregación o comunidad de fe (libre). Activa relevancia para libertad religiosa y servicios basados en la fe."
+    },
+    "weeklyAttentionMinutes": {
+      "label": "Minutos por semana",
+      "description": "Cuánto tiempo quieres dedicar cada semana a las sesiones cívicas. Determina cuánto te mostramos."
+    },
+    "preferredDepth": {
+      "label": "Profundidad preferida",
+      "description": "Cuán profundamente quieres las sesiones escritas.",
+      "options": {
+        "headline": "Solo titular",
+        "summary": "Resumen corto",
+        "brief": "Sesión profunda",
+        "source": "Muéstrame el documento fuente"
+      }
+    },
+    "accessibilityNeeds": {
+      "label": "Necesidades de accesibilidad",
+      "description": "Cómo deberíamos formatear las sesiones para ti.",
+      "options": {
+        "screen_reader": "Lector de pantalla",
+        "plain_language": "Lenguaje sencillo",
+        "translation": "Traducción",
+        "dyslexia_friendly": "Tipografía amigable con dislexia"
+      }
+    },
+    "readingLevel": {
+      "label": "Nivel de lectura",
+      "description": "Vocabulario y estructura de los resúmenes.",
+      "options": {
+        "plain": "Sencillo",
+        "standard": "Estándar",
+        "technical": "Técnico / legal"
+      }
+    },
+    "agingParentsState": {
+      "label": "Estado de padres mayores",
+      "description": "Su estado de residencia, si ayudas a gestionar su cuidado. Activa relevancia para proyectos en otra jurisdicción que afectan tu vida."
+    },
+    "incomeBand": {
+      "label": "Rango de ingresos",
+      "description": "Autodeclarado, opcional. Lo usamos solo para proyectos sobre umbrales de beneficios — nunca lo mostramos.",
+      "options": {
+        "under_25k": "Menos de $25k",
+        "25k_50k": "$25k–$50k",
+        "50k_75k": "$50k–$75k",
+        "75k_100k": "$75k–$100k",
+        "100k_150k": "$100k–$150k",
+        "150k_200k": "$150k–$200k",
+        "over_200k": "Más de $200k"
+      }
+    },
+    "publicBenefits": {
+      "label": "Beneficios públicos",
+      "description": "Qué beneficios públicos recibes actualmente. Se usa para resaltar proyectos que afectan los beneficios.",
+      "options": {
+        "snap": "SNAP",
+        "medicaid": "Medicaid",
+        "wic": "WIC",
+        "ssdi": "SSDI",
+        "unemployment": "Desempleo",
+        "eitc": "EITC"
+      }
+    },
+    "insuranceType": {
+      "label": "Seguro de salud",
+      "description": "De dónde proviene tu cobertura.",
+      "options": {
+        "employer": "Empleador",
+        "medicare": "Medicare",
+        "medicaid": "Medicaid",
+        "aca": "Mercado ACA",
+        "va": "VA",
+        "tricare": "TRICARE",
+        "uninsured": "Sin seguro"
+      }
+    },
+    "chronicConditionCategories": {
+      "label": "Categorías de condiciones crónicas",
+      "description": "Solo categorías muy amplias — nunca diagnósticos específicos. Activa relevancia para políticas de salud.",
+      "options": {
+        "cardiovascular": "Cardiovascular",
+        "metabolic": "Metabólico (incl. diabetes)",
+        "respiratory": "Respiratorio",
+        "mental_health": "Salud mental",
+        "musculoskeletal": "Musculoesquelético",
+        "neurological": "Neurológico",
+        "other": "Otro"
+      }
+    },
+    "caregiverFor": {
+      "label": "Cuidador de",
+      "description": "Para quién brindas cuidado.",
+      "options": {
+        "child": "Hijo",
+        "parent": "Padre/madre",
+        "disabled_family_member": "Familiar con discapacidad"
+      }
+    },
+    "reproductiveHealthRelevance": {
+      "label": "Relevancia de salud reproductiva",
+      "description": "Actívalo si quieres que destaquemos proyectos sobre salud reproductiva."
+    },
+    "citizenshipStatus": {
+      "label": "Estatus de ciudadanía",
+      "description": "Estrictamente opcional. Lo usamos solo para advertirte cuando proyectos afectan a tu comunidad.",
+      "options": {
+        "citizen": "Ciudadano",
+        "permanent_resident": "Residente permanente",
+        "daca": "DACA",
+        "visa_holder": "Con visa",
+        "asylum_seeking": "En busca de asilo"
+      }
+    },
+    "veteranStatus": {
+      "label": "Veterano o militar en activo",
+      "description": "Activa relevancia para beneficios de veteranos, protecciones de vivienda y proyectos de salud.",
+      "options": {
+        "veteran": "Veterano",
+        "active_duty": "Militar en activo",
+        "military_family": "Familia militar"
+      }
+    },
+    "justiceInvolvement": {
+      "label": "Involucración con la justicia",
+      "description": "Activa relevancia para reformas del sistema penal.",
+      "options": {
+        "currently_incarcerated": "Actualmente encarcelado",
+        "formerly_incarcerated": "Anteriormente encarcelado",
+        "parole": "En libertad condicional",
+        "probation": "En probatoria",
+        "family_affected": "Familiar afectado"
+      }
+    },
+    "raceEthnicity": {
+      "label": "Raza / origen étnico",
+      "description": "Opcional. Nos ayuda a advertirte cuando los proyectos están escritos sobre tu comunidad.",
+      "options": {
+        "asian": "Asiático",
+        "black": "Negro",
+        "hispanic_latino": "Hispano / Latino",
+        "indigenous": "Indígena",
+        "middle_eastern_north_african": "Medio Oriente / Norte de África",
+        "pacific_islander": "Isleño del Pacífico",
+        "white": "Blanco",
+        "multiracial": "Multirracial",
+        "other": "Otro"
+      }
+    },
+    "primaryLanguages": {
+      "label": "Idiomas principales",
+      "description": "Idiomas que hablas en casa. Activa relevancia para proyectos de acceso lingüístico y servicios bilingües."
+    },
+    "religiousCommunity": {
+      "label": "Comunidad religiosa",
+      "description": "Libre. Activa relevancia para libertad religiosa y servicios basados en la fe."
+    },
+    "lgbtqIdentity": {
+      "label": "Identidad LGBTQ+",
+      "description": "Libre. Activa relevancia para proyectos relacionados con LGBTQ."
+    },
+    "immigrationGeneration": {
+      "label": "Generación migratoria",
+      "description": "1ª, 2ª o 3ª+ generación en este país."
+    },
+    "tribalAffiliation": {
+      "label": "Afiliación tribal",
+      "description": "Inscripción tribal o afiliación a una nación soberana, si la hay. Activa relevancia para proyectos sobre soberanía tribal."
+    }
+  }
+}

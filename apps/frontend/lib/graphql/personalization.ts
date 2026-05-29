@@ -1,35 +1,111 @@
 import { gql } from "@apollo/client";
 
 // ============================================
-// SignalProfile (T1 + T2) — mirrors UpdateSignalProfileDto fields the
-// onboarding flow writes to. Backend exposes many more; we include only
-// the slice the onboarding chip vocabulary maps onto (#758).
+// SignalProfile (T1 + T2). #758 onboarding + #752 model-of-me both
+// consume this; queries select every model field so the model-of-me
+// edit page can render and edit any of them. Backend resolver always
+// returns the full row, so over-fetching cost is negligible.
 // ============================================
 
 export interface UpdateSignalProfileInput {
-  housingTenure?: string;
-  hasEldercareDependents?: boolean;
+  // §4.2 Housing
+  housingTenure?: string | null;
+  buildingType?: string | null;
+  taxExposure?: string[];
+  housingFlags?: string[];
+  // §4.3 Household
+  childrenAgeBands?: string[];
+  hasEldercareDependents?: boolean | null;
+  multigenerational?: boolean | null;
+  hasPets?: boolean | null;
+  partnerStatus?: string | null;
+  // §4.4 Work
+  employmentStatus?: string | null;
+  industry?: string | null;
+  occupationCategory?: string | null;
+  employerSizeBand?: string | null;
+  unionMember?: boolean | null;
+  gigWorker?: boolean | null;
+  tippedWorker?: boolean | null;
+  // §4.6 Transportation
+  primaryTransitMode?: string | null;
+  vehicleTypes?: string[];
+  commuteBand?: string | null;
+  specialLicenses?: string[];
+  transitPassHolder?: boolean | null;
+  bikeShareMember?: boolean | null;
+  // §4.7 Education
+  studentLevel?: string | null;
   parentOfStudent?: string[];
-  employmentStatus?: string;
-  unionMember?: boolean;
-  primaryTransitMode?: string;
-  studentLevel?: string;
-  educator?: boolean;
+  educator?: boolean | null;
+  // §4.10 Declared values
   interestTags?: string[];
+  // convictionStrength (JSON map { tag → strength }) is intentionally
+  // not exposed at the frontend until the per-tag edit UI lands — see
+  // the deferral note in `lib/personalization/vocab.ts`.
+  politicalSelfId?: string | null;
+  // §4.11 Affiliations
+  trustedOrganizations?: string[];
+  unionAffiliation?: string | null;
+  faithCommunity?: string | null;
+  // §4.13 Attention & format
+  weeklyAttentionMinutes?: number | null;
+  preferredDepth?: string | null;
+  accessibilityNeeds?: string[];
+  readingLevel?: string | null;
+  // §4.14 Relational
+  agingParentsState?: string | null;
 }
 
 export interface SignalProfile {
   id: string;
   userId: string;
-  housingTenure?: string;
-  hasEldercareDependents?: boolean;
-  parentOfStudent?: string[];
-  employmentStatus?: string;
-  unionMember?: boolean;
-  primaryTransitMode?: string;
-  studentLevel?: string;
-  educator?: boolean;
-  interestTags?: string[];
+  // §4.2 Housing
+  housingTenure?: string | null;
+  buildingType?: string | null;
+  taxExposure: string[];
+  housingFlags: string[];
+  // §4.3 Household
+  childrenAgeBands: string[];
+  hasEldercareDependents?: boolean | null;
+  multigenerational?: boolean | null;
+  hasPets?: boolean | null;
+  partnerStatus?: string | null;
+  // §4.4 Work
+  employmentStatus?: string | null;
+  industry?: string | null;
+  occupationCategory?: string | null;
+  employerSizeBand?: string | null;
+  unionMember?: boolean | null;
+  gigWorker?: boolean | null;
+  tippedWorker?: boolean | null;
+  // §4.6 Transportation
+  primaryTransitMode?: string | null;
+  vehicleTypes: string[];
+  commuteBand?: string | null;
+  specialLicenses: string[];
+  transitPassHolder?: boolean | null;
+  bikeShareMember?: boolean | null;
+  // §4.7 Education
+  studentLevel?: string | null;
+  parentOfStudent: string[];
+  educator?: boolean | null;
+  // §4.10 Declared values
+  interestTags: string[];
+  politicalSelfId?: string | null;
+  // §4.11 Affiliations
+  trustedOrganizations: string[];
+  unionAffiliation?: string | null;
+  faithCommunity?: string | null;
+  // §4.13 Attention & format
+  weeklyAttentionMinutes?: number | null;
+  preferredDepth?: string | null;
+  accessibilityNeeds: string[];
+  readingLevel?: string | null;
+  // §4.14 Relational
+  agingParentsState?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MySignalProfileData {
@@ -40,20 +116,50 @@ export interface UpdateMySignalProfileData {
   updateMySignalProfile: SignalProfile;
 }
 
+const SIGNAL_PROFILE_SELECTION = `
+  id
+  userId
+  housingTenure
+  buildingType
+  taxExposure
+  housingFlags
+  childrenAgeBands
+  hasEldercareDependents
+  multigenerational
+  hasPets
+  partnerStatus
+  employmentStatus
+  industry
+  occupationCategory
+  employerSizeBand
+  unionMember
+  gigWorker
+  tippedWorker
+  primaryTransitMode
+  vehicleTypes
+  commuteBand
+  specialLicenses
+  transitPassHolder
+  bikeShareMember
+  studentLevel
+  parentOfStudent
+  educator
+  interestTags
+  politicalSelfId
+  trustedOrganizations
+  unionAffiliation
+  faithCommunity
+  weeklyAttentionMinutes
+  preferredDepth
+  accessibilityNeeds
+  readingLevel
+  agingParentsState
+`;
+
 export const GET_MY_SIGNAL_PROFILE = gql`
   query MySignalProfile {
     mySignalProfile {
-      id
-      userId
-      housingTenure
-      hasEldercareDependents
-      parentOfStudent
-      employmentStatus
-      unionMember
-      primaryTransitMode
-      studentLevel
-      educator
-      interestTags
+      ${SIGNAL_PROFILE_SELECTION}
     }
   }
 `;
@@ -61,35 +167,56 @@ export const GET_MY_SIGNAL_PROFILE = gql`
 export const UPDATE_MY_SIGNAL_PROFILE = gql`
   mutation UpdateMySignalProfile($input: UpdateSignalProfileDto!) {
     updateMySignalProfile(input: $input) {
-      id
-      userId
-      housingTenure
-      hasEldercareDependents
-      parentOfStudent
-      employmentStatus
-      unionMember
-      primaryTransitMode
-      studentLevel
-      educator
-      interestTags
+      ${SIGNAL_PROFILE_SELECTION}
     }
   }
 `;
 
 // ============================================
-// SensitiveProfile (T3, encrypted at rest). Onboarding only ever writes
-// `veteranStatus` directly; other T3 fields are reserved for the
-// model-of-me settings page (#752) where the disclosure scaffolding is
-// richer.
+// SensitiveProfile (T3, encrypted at rest). The resolver returns
+// `noFieldsMode: true` and every other field null when the toggle is
+// on — the privacy contract from planning doc §9.2.
 // ============================================
 
 export interface UpdateSensitiveProfileInput {
-  veteranStatus?: string;
+  // §4.4 income
+  incomeBand?: string | null;
+  publicBenefits?: string[];
+  // §4.5 Health
+  insuranceType?: string | null;
+  chronicConditionCategories?: string[];
+  caregiverFor?: string[];
+  reproductiveHealthRelevance?: boolean | null;
+  // §4.8 Civic
+  citizenshipStatus?: string | null;
+  veteranStatus?: string | null;
+  justiceInvolvement?: string[];
+  // §4.9 Cultural
+  raceEthnicity?: string[];
+  primaryLanguages?: string[];
+  religiousCommunity?: string | null;
+  lgbtqIdentity?: string | null;
+  immigrationGeneration?: number | null;
+  tribalAffiliation?: string | null;
 }
 
 export interface SensitiveProfile {
   noFieldsMode: boolean;
-  veteranStatus?: string;
+  incomeBand?: string | null;
+  publicBenefits?: string[] | null;
+  insuranceType?: string | null;
+  chronicConditionCategories?: string[] | null;
+  caregiverFor?: string[] | null;
+  reproductiveHealthRelevance?: boolean | null;
+  citizenshipStatus?: string | null;
+  veteranStatus?: string | null;
+  justiceInvolvement?: string[] | null;
+  raceEthnicity?: string[] | null;
+  primaryLanguages?: string[] | null;
+  religiousCommunity?: string | null;
+  lgbtqIdentity?: string | null;
+  immigrationGeneration?: number | null;
+  tribalAffiliation?: string | null;
 }
 
 export interface MySensitiveProfileData {
@@ -104,11 +231,29 @@ export interface SetMyNoFieldsModeData {
   setMyNoFieldsMode: SensitiveProfile;
 }
 
+const SENSITIVE_PROFILE_SELECTION = `
+  noFieldsMode
+  incomeBand
+  publicBenefits
+  insuranceType
+  chronicConditionCategories
+  caregiverFor
+  reproductiveHealthRelevance
+  citizenshipStatus
+  veteranStatus
+  justiceInvolvement
+  raceEthnicity
+  primaryLanguages
+  religiousCommunity
+  lgbtqIdentity
+  immigrationGeneration
+  tribalAffiliation
+`;
+
 export const GET_MY_SENSITIVE_PROFILE = gql`
   query MySensitiveProfile {
     mySensitiveProfile {
-      noFieldsMode
-      veteranStatus
+      ${SENSITIVE_PROFILE_SELECTION}
     }
   }
 `;
@@ -116,8 +261,7 @@ export const GET_MY_SENSITIVE_PROFILE = gql`
 export const UPDATE_MY_SENSITIVE_PROFILE = gql`
   mutation UpdateMySensitiveProfile($input: UpdateSensitiveProfileDto!) {
     updateMySensitiveProfile(input: $input) {
-      noFieldsMode
-      veteranStatus
+      ${SENSITIVE_PROFILE_SELECTION}
     }
   }
 `;
@@ -125,8 +269,12 @@ export const UPDATE_MY_SENSITIVE_PROFILE = gql`
 export const SET_MY_NO_FIELDS_MODE = gql`
   mutation SetMyNoFieldsMode($on: Boolean!) {
     setMyNoFieldsMode(on: $on) {
-      noFieldsMode
-      veteranStatus
+      ${SENSITIVE_PROFILE_SELECTION}
     }
   }
 `;
+
+// The backend exposes `clearMySensitiveProfile` (wipes the entire T3
+// blob in one call) but #752 deliberately doesn't surface it — the
+// per-field Clear affordance covers the user-facing intent. A full-
+// wipe affordance is a planning-doc §8.1 v1.1 follow-up (#759).
