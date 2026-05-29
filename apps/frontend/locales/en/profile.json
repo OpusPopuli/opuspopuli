@@ -1,0 +1,500 @@
+{
+  "page": {
+    "title": "Your model of you",
+    "subtitle": "Everything we know — or have inferred — about you for the purpose of surfacing civic decisions that touch your life. Edit any field, clear any field, or turn the whole sensitive layer off.",
+    "ownYouCallout": "You own this. Nothing about you lives somewhere we cannot show you."
+  },
+  "noFieldsMode": {
+    "title": "Sensitive fields",
+    "description": "When on, we store and read no sensitive fields (income, health, citizenship, justice involvement, cultural identity, veteran status). The rest of the platform still works — relevance just loses some signal richness.",
+    "toggleLabel": "Never store sensitive fields about me",
+    "lockedDescription": "Sensitive fields are paused. Toggle off to see and edit them again — your previously stored values are preserved.",
+    "cacheDisclosure": "When the toggle is off, the values are decrypted server-side and held in your browser's local cache so the page renders without round-tripping the server. Clear your browser data or turn this back on to remove them locally."
+  },
+  "category": {
+    "values": {
+      "title": "What you care about",
+      "summary": "Topics, conviction, and political self-identification."
+    },
+    "housing": {
+      "title": "Housing & property",
+      "summary": "Tenure, building type, tax exposure."
+    },
+    "household": {
+      "title": "Household",
+      "summary": "Family composition, dependents, partner."
+    },
+    "work": {
+      "title": "Work",
+      "summary": "Employment, industry, union, gig status."
+    },
+    "transit": {
+      "title": "Transportation",
+      "summary": "Primary mode, vehicles, licenses."
+    },
+    "education": {
+      "title": "Education",
+      "summary": "Student status, parent of student, educator."
+    },
+    "community": {
+      "title": "Affiliations & community",
+      "summary": "Trusted organizations, union, faith community."
+    },
+    "attention": {
+      "title": "Attention & format",
+      "summary": "Time available, depth, accessibility."
+    },
+    "relational": {
+      "title": "People in your life",
+      "summary": "Aging parents and other relational geography."
+    },
+    "income": {
+      "title": "Income & benefits",
+      "summary": "Income band and public benefits."
+    },
+    "health": {
+      "title": "Health & care",
+      "summary": "Insurance, chronic conditions, caregiver status."
+    },
+    "civic_status": {
+      "title": "Civic status",
+      "summary": "Citizenship, veteran status, justice involvement."
+    },
+    "cultural": {
+      "title": "Cultural & community identity",
+      "summary": "Race, language, religion, identity, heritage."
+    }
+  },
+  "categoryLabel": {
+    "expand": "Expand category",
+    "collapse": "Collapse category"
+  },
+  "field": {
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "clear": "Clear value",
+    "clearConfirmTitle": "Clear this value?",
+    "clearConfirmBody": "This removes the value from your profile. You can set it again any time.",
+    "clearConfirmAction": "Clear",
+    "savedAnnouncement": "{{label}} updated.",
+    "clearedAnnouncement": "{{label}} cleared.",
+    "errorPrefix": "Couldn't save:",
+    "notSet": "Not set",
+    "yes": "Yes",
+    "no": "No",
+    "off": "Off",
+    "on": "On",
+    "lockedByNoFields": "Paused while sensitive fields are off."
+  },
+  "placeholder": {
+    "behavioral": {
+      "title": "Behavioral signals",
+      "body": "We'll show you what you've clicked, saved, dismissed, and dwelled on here once behavioral recording ships. Until then, this section is intentionally empty — we don't record anything we haven't shown you."
+    },
+    "weights": {
+      "title": "Relevance weights",
+      "body": "Once the personalized ranker is live, this is where you'll see the per-axis scores that produced each recommendation, and which of your signals weighed how heavily."
+    },
+    "events": {
+      "title": "Event log",
+      "body": "Append-only record of actions we tracked — petitions signed, meetings attended, representatives contacted. Empty until we start recording these events."
+    }
+  },
+  "fields": {
+    "housingTenure": {
+      "label": "Housing tenure",
+      "description": "Whether you rent or own your primary residence. Surfaces housing-side legislation that targets renters vs. owners differently.",
+      "options": {
+        "renter": "I rent",
+        "owner": "I own my home"
+      }
+    },
+    "buildingType": {
+      "label": "Building type",
+      "description": "What kind of structure you live in.",
+      "options": {
+        "single_family": "Single-family home",
+        "condo": "Condo",
+        "townhome": "Townhome",
+        "adu": "Accessory dwelling unit",
+        "multifamily": "Multifamily (apartments)",
+        "mobile_home": "Mobile home",
+        "rural": "Rural",
+        "rv": "RV"
+      }
+    },
+    "taxExposure": {
+      "label": "Tax exposure",
+      "description": "Which property-related taxes touch your household.",
+      "options": {
+        "property_tax": "Property tax",
+        "parcel_tax": "Parcel tax",
+        "mello_roos": "Mello-Roos assessment",
+        "hoa": "HOA fees",
+        "transfer_tax": "Transfer tax"
+      }
+    },
+    "housingFlags": {
+      "label": "Housing situation",
+      "description": "Special housing categories that change which bills affect you.",
+      "options": {
+        "rent_regulated": "Rent-regulated unit",
+        "section_8": "Section 8",
+        "first_time_buyer": "First-time buyer",
+        "underwater_mortgage": "Underwater mortgage",
+        "recently_moved": "Recently moved"
+      }
+    },
+    "childrenAgeBands": {
+      "label": "Children's ages",
+      "description": "Coarse age bands of any children in your household. Drives school, childcare, and child-welfare relevance.",
+      "options": {
+        "0_5": "0–5",
+        "k_5": "K–5",
+        "6_12": "6–12",
+        "high_school": "High school",
+        "college": "College"
+      }
+    },
+    "hasEldercareDependents": {
+      "label": "Eldercare dependents",
+      "description": "Whether you care for an aging family member."
+    },
+    "multigenerational": {
+      "label": "Multigenerational household",
+      "description": "Multiple generations living under one roof."
+    },
+    "hasPets": {
+      "label": "Pets at home",
+      "description": "Triggers relevance for animal-welfare, leash-law, and noise-ordinance bills."
+    },
+    "partnerStatus": {
+      "label": "Partner status",
+      "description": "Affects tax, benefits, and family-law relevance.",
+      "options": {
+        "single": "Single",
+        "partnered": "Partnered",
+        "married": "Married",
+        "divorced": "Divorced",
+        "widowed": "Widowed"
+      }
+    },
+    "employmentStatus": {
+      "label": "Employment status",
+      "description": "How you earn a living.",
+      "options": {
+        "employed": "Employed",
+        "gig": "Self-employed or gig",
+        "business_owner": "Small business owner"
+      }
+    },
+    "industry": {
+      "label": "Industry",
+      "description": "Industry you work in (free-form, e.g. 'agriculture', 'tech', 'healthcare')."
+    },
+    "occupationCategory": {
+      "label": "Occupation",
+      "description": "Coarse occupation category (free-form, e.g. 'driver', 'teacher', 'engineer')."
+    },
+    "employerSizeBand": {
+      "label": "Employer size",
+      "description": "Roughly how big your employer is.",
+      "options": {
+        "under_5": "Under 5 employees",
+        "5_to_50": "5–50",
+        "50_to_500": "50–500",
+        "over_500": "Over 500",
+        "public_sector": "Public sector",
+        "nonprofit": "Non-profit"
+      }
+    },
+    "unionMember": {
+      "label": "Union member",
+      "description": "Drives relevance for labor and collective-bargaining bills."
+    },
+    "gigWorker": {
+      "label": "Gig worker",
+      "description": "Independent contractor or platform worker (Uber, DoorDash, etc.)."
+    },
+    "tippedWorker": {
+      "label": "Tipped worker",
+      "description": "Earnings depend significantly on tips — drives relevance for tipped-minimum-wage bills."
+    },
+    "primaryTransitMode": {
+      "label": "Primary way you get around",
+      "description": "How you mostly commute or run errands.",
+      "options": {
+        "transit": "Mostly transit",
+        "car": "Mostly drive",
+        "active": "Mostly bike or walk"
+      }
+    },
+    "vehicleTypes": {
+      "label": "Vehicles",
+      "description": "What you drive — drives relevance for EV incentives, emissions rules, and vehicle regulation.",
+      "options": {
+        "ev": "Electric",
+        "hybrid": "Hybrid",
+        "ice": "Gasoline / diesel",
+        "truck": "Truck",
+        "motorcycle": "Motorcycle",
+        "none": "No vehicle"
+      }
+    },
+    "commuteBand": {
+      "label": "Commute distance",
+      "description": "Roughly how far your commute is.",
+      "options": {
+        "under_5_mi": "Under 5 miles",
+        "5_to_15_mi": "5–15 miles",
+        "15_to_30_mi": "15–30 miles",
+        "over_30_mi": "Over 30 miles",
+        "remote": "Remote / no commute"
+      }
+    },
+    "specialLicenses": {
+      "label": "Special licenses",
+      "description": "Niche regulated licenses that unlock specific bill categories.",
+      "options": {
+        "cdl": "Commercial driver",
+        "pilot": "Pilot",
+        "mariner": "Mariner",
+        "hazmat": "Hazmat"
+      }
+    },
+    "transitPassHolder": {
+      "label": "Transit pass holder",
+      "description": "Drives relevance for transit funding and fare-policy bills."
+    },
+    "bikeShareMember": {
+      "label": "Bike-share member",
+      "description": "Drives relevance for active-transit infrastructure."
+    },
+    "studentLevel": {
+      "label": "Current student",
+      "description": "Are you currently enrolled?",
+      "options": {
+        "k12": "K–12",
+        "vocational": "Vocational / trade",
+        "college": "Undergraduate",
+        "grad": "Graduate"
+      }
+    },
+    "parentOfStudent": {
+      "label": "Parent of student",
+      "description": "If you have school-age kids, which types of schools they attend.",
+      "options": {
+        "public": "Public school",
+        "private": "Private school",
+        "charter": "Charter school",
+        "homeschool": "Homeschool"
+      }
+    },
+    "educator": {
+      "label": "Educator or school staff",
+      "description": "Teacher, administrator, or support staff at any level."
+    },
+    "interestTags": {
+      "label": "Topics you follow",
+      "description": "The issues you want us to surface bills about. Capped at 3 during onboarding for focus; broaden here if you want.",
+      "options": {
+        "housing": "Housing & rent",
+        "jobs": "Jobs & workers",
+        "healthcare": "Healthcare",
+        "education": "Education",
+        "transit": "Transit & roads",
+        "environment": "Environment",
+        "public_safety": "Public safety",
+        "taxes": "Taxes & budget",
+        "immigration": "Immigration",
+        "voting_rights": "Voting rights",
+        "justice": "Justice reform",
+        "family": "Family & care"
+      }
+    },
+    "politicalSelfId": {
+      "label": "Political self-identification",
+      "description": "Free-form, no required scale. Leave blank to decline."
+    },
+    "trustedOrganizations": {
+      "label": "Trusted organizations",
+      "description": "Civic, advocacy, or community orgs whose positions you weigh heavily. We use these as transitive trust signals — \"X opposes this bill\" carries more weight when X is on your list."
+    },
+    "unionAffiliation": {
+      "label": "Union affiliation",
+      "description": "Which union or labor organization (free-form)."
+    },
+    "faithCommunity": {
+      "label": "Faith community",
+      "description": "Which congregation or faith community (free-form). Drives relevance for religious-liberty and faith-based-services bills."
+    },
+    "weeklyAttentionMinutes": {
+      "label": "Minutes per week",
+      "description": "How much time you want to spend on civic briefings each week. Drives how much we surface."
+    },
+    "preferredDepth": {
+      "label": "Preferred depth",
+      "description": "How deeply you want briefings written.",
+      "options": {
+        "headline": "Headline only",
+        "summary": "Short summary",
+        "brief": "Deep brief",
+        "source": "Show me the source document"
+      }
+    },
+    "accessibilityNeeds": {
+      "label": "Accessibility needs",
+      "description": "How we should format briefings for you.",
+      "options": {
+        "screen_reader": "Screen-reader friendly",
+        "plain_language": "Plain language",
+        "translation": "Translation",
+        "dyslexia_friendly": "Dyslexia-friendly typography"
+      }
+    },
+    "readingLevel": {
+      "label": "Reading level",
+      "description": "Vocabulary and structure of summaries.",
+      "options": {
+        "plain": "Plain",
+        "standard": "Standard",
+        "technical": "Technical / legal"
+      }
+    },
+    "agingParentsState": {
+      "label": "Aging parents' state",
+      "description": "Their home state, if you help manage their care. Drives relevance for bills in another jurisdiction that affect your life."
+    },
+    "incomeBand": {
+      "label": "Income band",
+      "description": "Self-reported, optional. Used only for benefits-cliff bills — we never display this.",
+      "options": {
+        "under_25k": "Under $25k",
+        "25k_50k": "$25k–$50k",
+        "50k_75k": "$50k–$75k",
+        "75k_100k": "$75k–$100k",
+        "100k_150k": "$100k–$150k",
+        "150k_200k": "$150k–$200k",
+        "over_200k": "Over $200k"
+      }
+    },
+    "publicBenefits": {
+      "label": "Public benefits",
+      "description": "Which public benefits you currently receive. Used to surface benefits-affecting bills.",
+      "options": {
+        "snap": "SNAP",
+        "medicaid": "Medicaid",
+        "wic": "WIC",
+        "ssdi": "SSDI",
+        "unemployment": "Unemployment",
+        "eitc": "EITC"
+      }
+    },
+    "insuranceType": {
+      "label": "Health insurance",
+      "description": "Where your coverage comes from.",
+      "options": {
+        "employer": "Employer-provided",
+        "medicare": "Medicare",
+        "medicaid": "Medicaid",
+        "aca": "ACA marketplace",
+        "va": "VA",
+        "tricare": "TRICARE",
+        "uninsured": "Uninsured"
+      }
+    },
+    "chronicConditionCategories": {
+      "label": "Chronic condition categories",
+      "description": "Very coarse categories only — never specific diagnoses. Drives relevance for healthcare policy.",
+      "options": {
+        "cardiovascular": "Cardiovascular",
+        "metabolic": "Metabolic (incl. diabetes)",
+        "respiratory": "Respiratory",
+        "mental_health": "Mental health",
+        "musculoskeletal": "Musculoskeletal",
+        "neurological": "Neurological",
+        "other": "Other"
+      }
+    },
+    "caregiverFor": {
+      "label": "Caregiver for",
+      "description": "Who you provide care for.",
+      "options": {
+        "child": "Child",
+        "parent": "Parent",
+        "disabled_family_member": "Disabled family member"
+      }
+    },
+    "reproductiveHealthRelevance": {
+      "label": "Reproductive-health relevance",
+      "description": "Opt in if you want us to surface reproductive-health bills."
+    },
+    "citizenshipStatus": {
+      "label": "Citizenship status",
+      "description": "Strictly opt-in. We use this only to warn you when bills target your community.",
+      "options": {
+        "citizen": "Citizen",
+        "permanent_resident": "Permanent resident",
+        "daca": "DACA",
+        "visa_holder": "Visa holder",
+        "asylum_seeking": "Asylum-seeking"
+      }
+    },
+    "veteranStatus": {
+      "label": "Veteran or active duty",
+      "description": "Drives relevance for veterans' benefits, housing protections, and healthcare bills.",
+      "options": {
+        "veteran": "Veteran",
+        "active_duty": "Active duty",
+        "military_family": "Military family"
+      }
+    },
+    "justiceInvolvement": {
+      "label": "Justice involvement",
+      "description": "Drives relevance for criminal-justice reform bills.",
+      "options": {
+        "currently_incarcerated": "Currently incarcerated",
+        "formerly_incarcerated": "Formerly incarcerated",
+        "parole": "On parole",
+        "probation": "On probation",
+        "family_affected": "Family member affected"
+      }
+    },
+    "raceEthnicity": {
+      "label": "Race / ethnicity",
+      "description": "Opt-in. Helps us warn you when bills are written about your community.",
+      "options": {
+        "asian": "Asian",
+        "black": "Black",
+        "hispanic_latino": "Hispanic / Latino",
+        "indigenous": "Indigenous",
+        "middle_eastern_north_african": "Middle Eastern / North African",
+        "pacific_islander": "Pacific Islander",
+        "white": "White",
+        "multiracial": "Multiracial",
+        "other": "Other"
+      }
+    },
+    "primaryLanguages": {
+      "label": "Primary languages",
+      "description": "Languages you speak at home. Drives relevance for language-access and bilingual-services bills."
+    },
+    "religiousCommunity": {
+      "label": "Religious community",
+      "description": "Free-form. Drives relevance for religious-liberty and faith-based-services bills."
+    },
+    "lgbtqIdentity": {
+      "label": "LGBTQ+ identity",
+      "description": "Free-form. Drives relevance for LGBTQ-related bills."
+    },
+    "immigrationGeneration": {
+      "label": "Immigration generation",
+      "description": "1st, 2nd, or 3rd+ generation in this country."
+    },
+    "tribalAffiliation": {
+      "label": "Tribal affiliation",
+      "description": "Tribal enrollment or sovereign nation affiliation, if any. Drives relevance for tribal-sovereignty bills."
+    }
+  }
+}

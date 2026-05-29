@@ -61,6 +61,22 @@ describe('SignalProfileService', () => {
     expect(call.update).toEqual({ housingTenure: 'renter' });
   });
 
+  it('upsert preserves explicit null so individual fields can be cleared (#752)', async () => {
+    db.signalProfile.upsert.mockResolvedValue({ id: 'sp-1' } as never);
+
+    // The model-of-me page sends `{ field: null }` from the
+    // "Clear value" affordance. Prisma converts null to SQL NULL,
+    // clearing the column. If the upsert merge silently drops nulls
+    // (treating them as "no change"), the clear-field UI lies.
+    await service.upsert('u-1', { housingTenure: null });
+
+    const call = db.signalProfile.upsert.mock.calls[0][0];
+    expect(call.update).toEqual({ housingTenure: null });
+    // The create branch should also propagate the explicit null —
+    // not coerce it back to a defaulted value.
+    expect(call.create.housingTenure).toBeNull();
+  });
+
   it('upsert create branch seeds NOT NULL array columns with [] so partial inputs do not violate the constraint', async () => {
     db.signalProfile.upsert.mockResolvedValue({ id: 'sp-1' } as never);
 
