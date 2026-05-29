@@ -16,6 +16,14 @@ import {
   ConsentStatus,
 } from "@/lib/graphql/profile";
 import { SettingsLoadingSkeleton } from "@/components/settings/SettingsLoadingSkeleton";
+import { StatusPill, type StatusPillTone } from "@/components/StatusPill";
+
+const STATUS_TONES: Record<ConsentStatus, StatusPillTone> = {
+  granted: "sage-filled",
+  withdrawn: "warning",
+  denied: "danger",
+  pending: "neutral",
+};
 
 interface ConsentItemProps {
   readonly consent: UserConsent | undefined;
@@ -50,53 +58,32 @@ function ConsentItem({
   };
 
   const getStatusBadge = (status?: ConsentStatus) => {
-    switch (status) {
-      case "granted":
-        return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
-            {t("common:status.granted")}
-          </span>
-        );
-      case "withdrawn":
-        return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-700 rounded">
-            {t("common:status.withdrawn")}
-          </span>
-        );
-      case "denied":
-        return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded">
-            {t("common:status.denied")}
-          </span>
-        );
-      default:
-        return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 rounded">
-            {t("common:status.notSet")}
-          </span>
-        );
-    }
+    const tone = status ? STATUS_TONES[status] : "neutral";
+    const labelKey = status
+      ? `common:status.${status}`
+      : "common:status.notSet";
+    return <StatusPill tone={tone}>{t(labelKey)}</StatusPill>;
   };
 
   return (
-    <div className="flex items-start justify-between py-4 border-b border-gray-100 last:border-0">
+    <div className="flex items-start justify-between py-4 border-b border-gray-100 dark:border-gray-700 last:border-0">
       <div className="flex-1 pr-4">
         <div className="flex items-center gap-2 mb-1">
-          <p className="text-sm font-medium text-[#222222]">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
             {t(`privacy.consents.${consentType}.title`)}
           </p>
           {required && (
-            <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded">
+            <StatusPill tone="sage-outline">
               {t("common:status.required")}
-            </span>
+            </StatusPill>
           )}
           {getStatusBadge(consent?.status)}
         </div>
-        <p className="text-sm text-[#4d4d4d]">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
           {t(`privacy.consents.${consentType}.description`)}
         </p>
         {statusDate && (
-          <p className="text-xs text-[#595959] mt-1">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {consent?.status === "granted"
               ? t("privacy.status.grantedOn")
               : t("privacy.status.updatedOn")}{" "}
@@ -111,8 +98,8 @@ function ConsentItem({
             disabled={loading || required}
             className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
               required
-                ? "bg-gray-100 text-gray-500 cursor-not-allowed"
-                : "bg-red-50 text-red-700 hover:bg-red-100"
+                ? "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                : "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-200 hover:bg-red-100 dark:hover:bg-red-900/50"
             }`}
           >
             {loading ? "..." : t("common:buttons.withdraw")}
@@ -121,7 +108,7 @@ function ConsentItem({
           <button
             onClick={() => onUpdate(consentType, true)}
             disabled={loading}
-            className="px-3 py-1.5 text-sm font-medium bg-[#222222] text-white rounded-lg hover:bg-[#333333] transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-sm font-medium bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-white transition-colors disabled:opacity-50"
           >
             {loading ? "..." : t("common:buttons.grant")}
           </button>
@@ -232,8 +219,8 @@ export default function PrivacyPage() {
 
   if (error) {
     return (
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        <div className="text-center text-red-600">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-none dark:border dark:border-gray-700 p-8">
+        <div className="text-center text-red-600 dark:text-red-300">
           <p>{t("privacy.loadError")}</p>
         </div>
       </div>
@@ -243,19 +230,21 @@ export default function PrivacyPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-none dark:border dark:border-gray-700 p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[#222222]">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             {t("privacy.title")}
           </h1>
-          <p className="text-[#4d4d4d] mt-1">{t("privacy.subtitle")}</p>
+          <p className="text-gray-600 dark:text-gray-300 mt-1">
+            {t("privacy.subtitle")}
+          </p>
         </div>
 
         {/* GDPR/CCPA Notice */}
-        <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="mb-8 p-4 bg-sage-light/10 dark:bg-sage-dark/15 border border-sage-light/30 dark:border-sage-dark/40 rounded-lg">
           <div className="flex items-start gap-3">
             <svg
-              className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"
+              className="w-5 h-5 text-sage-dark dark:text-sage-light mt-0.5 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -269,10 +258,10 @@ export default function PrivacyPage() {
               />
             </svg>
             <div>
-              <p className="text-sm font-medium text-blue-800">
+              <p className="text-sm font-medium text-sage-darker dark:text-sage-light">
                 {t("privacy.rightsTitle")}
               </p>
-              <p className="text-sm text-blue-700 mt-1">
+              <p className="text-sm text-sage-darker dark:text-sage-light mt-1">
                 {t("privacy.rightsDescription")}
               </p>
             </div>
@@ -283,14 +272,14 @@ export default function PrivacyPage() {
         {CONSENT_GROUPS.map((group) => (
           <div key={group.groupKey} className="mb-8 last:mb-0">
             <div className="mb-4">
-              <h2 className="text-lg font-semibold text-[#222222]">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {t(`privacy.groups.${group.groupKey}.title`)}
               </h2>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
                 {t(`privacy.groups.${group.groupKey}.description`)}
               </p>
             </div>
-            <div className="pl-4 border-l-2 border-gray-100">
+            <div className="pl-4 border-l-2 border-gray-100 dark:border-gray-700">
               {group.items.map((item) => (
                 <ConsentItem
                   key={item.consentType}
@@ -307,25 +296,25 @@ export default function PrivacyPage() {
       </div>
 
       {/* Data Export Section */}
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
-        <h2 className="text-lg font-semibold text-[#222222] mb-6">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-none dark:border dark:border-gray-700 p-8">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">
           {t("privacy.dataManagement.title")}
         </h2>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between py-4 border-b border-gray-100 dark:border-gray-700">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                 {t("privacy.dataManagement.exportTitle")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
                 {t("privacy.dataManagement.exportDesc")}
               </p>
             </div>
             <button
               onClick={handleExportData}
               disabled={exporting}
-              className="px-4 py-2 text-sm font-medium border border-gray-200 text-[#222222] rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
             >
               {exporting ? "..." : t("privacy.dataManagement.exportButton")}
             </button>
@@ -333,14 +322,14 @@ export default function PrivacyPage() {
 
           <div className="flex items-center justify-between py-4">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                 {t("privacy.dataManagement.deleteTitle")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
                 {t("privacy.dataManagement.deleteDesc")}
               </p>
             </div>
-            <button className="px-4 py-2 text-sm font-medium bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors">
+            <button className="px-4 py-2 text-sm font-medium bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-200 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">
               {t("privacy.dataManagement.deleteButton")}
             </button>
           </div>

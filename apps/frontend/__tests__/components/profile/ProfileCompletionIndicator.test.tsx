@@ -103,52 +103,33 @@ describe("ProfileCompletionIndicator", () => {
       expect(progressBar).toBeInTheDocument();
     });
 
-    it("should have green color when complete", () => {
-      const { container } = render(
-        <ProfileCompletionIndicator
-          completion={createCompletion({
-            isComplete: true,
-            percentage: 100,
-          })}
-        />,
-      );
+    it.each([
+      { percentage: 30, isComplete: false, label: "below 50%" },
+      { percentage: 60, isComplete: false, label: "50–74%" },
+      { percentage: 80, isComplete: false, label: "75%+" },
+      { percentage: 100, isComplete: true, label: "100% complete" },
+    ])(
+      "uses a single sage track at $label (percentage=$percentage)",
+      ({ percentage, isComplete }) => {
+        const { container } = render(
+          <ProfileCompletionIndicator
+            completion={createCompletion({ percentage, isComplete })}
+          />,
+        );
 
-      const progressBar = container.querySelector(".bg-green-500");
-      expect(progressBar).toBeInTheDocument();
-    });
-
-    it("should have blue color when 75% or more", () => {
-      const { container } = render(
-        <ProfileCompletionIndicator
-          completion={createCompletion({ percentage: 80 })}
-        />,
-      );
-
-      const progressBar = container.querySelector(".bg-blue-500");
-      expect(progressBar).toBeInTheDocument();
-    });
-
-    it("should have yellow color when 50-74%", () => {
-      const { container } = render(
-        <ProfileCompletionIndicator
-          completion={createCompletion({ percentage: 60 })}
-        />,
-      );
-
-      const progressBar = container.querySelector(".bg-yellow-500");
-      expect(progressBar).toBeInTheDocument();
-    });
-
-    it("should have orange color when below 50%", () => {
-      const { container } = render(
-        <ProfileCompletionIndicator
-          completion={createCompletion({ percentage: 30 })}
-        />,
-      );
-
-      const progressBar = container.querySelector(".bg-orange-500");
-      expect(progressBar).toBeInTheDocument();
-    });
+        // Single sage track replaces the legacy 4-tier color ramp
+        // (green/blue/yellow/orange) — see the design conversation that
+        // landed in this PR. Assert positively on the new class, and
+        // negatively on the old ones so a future regression that
+        // reintroduces tier colors fails loudly here.
+        const progressBar = container.querySelector(".bg-sage-dark");
+        expect(progressBar).toBeInTheDocument();
+        expect(container.querySelector(".bg-green-500")).toBeNull();
+        expect(container.querySelector(".bg-blue-500")).toBeNull();
+        expect(container.querySelector(".bg-yellow-500")).toBeNull();
+        expect(container.querySelector(".bg-orange-500")).toBeNull();
+      },
+    );
   });
 
   describe("core fields status", () => {
@@ -178,7 +159,7 @@ describe("ProfileCompletionIndicator", () => {
       );
 
       const nameBadge = screen.getByText("Name").closest("div");
-      expect(nameBadge).toHaveClass("bg-green-50", "text-green-700");
+      expect(nameBadge).toHaveClass("bg-sage-light/20", "text-sage-darker");
     });
 
     it("should show incomplete styling for incomplete fields", () => {
@@ -272,27 +253,23 @@ describe("ProfileCompletionIndicator", () => {
     });
 
     it("should handle exactly 50% completion", () => {
-      const { container } = render(
+      render(
         <ProfileCompletionIndicator
           completion={createCompletion({ percentage: 50 })}
         />,
       );
 
       expect(screen.getByText("50%")).toBeInTheDocument();
-      const progressBar = container.querySelector(".bg-yellow-500");
-      expect(progressBar).toBeInTheDocument();
     });
 
     it("should handle exactly 75% completion", () => {
-      const { container } = render(
+      render(
         <ProfileCompletionIndicator
           completion={createCompletion({ percentage: 75 })}
         />,
       );
 
       expect(screen.getByText("75%")).toBeInTheDocument();
-      const progressBar = container.querySelector(".bg-blue-500");
-      expect(progressBar).toBeInTheDocument();
     });
   });
 });

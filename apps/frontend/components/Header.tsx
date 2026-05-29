@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { LanguageToggle } from "@/components/LanguageToggle";
 
 export function Header() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -148,6 +149,7 @@ export function Header() {
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-4">
+          <LanguageToggle />
           {renderDesktopNav()}
         </nav>
 
@@ -201,6 +203,9 @@ export function Header() {
           className="md:hidden border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 animate-layer-enter"
         >
           <div className="max-w-6xl mx-auto px-8 py-4 flex flex-col gap-3">
+            <div className="flex items-center justify-end">
+              <LanguageToggle />
+            </div>
             {renderMobileNav()}
           </div>
         </nav>
