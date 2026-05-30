@@ -95,7 +95,7 @@ describe("OnboardingPage", () => {
     render(<OnboardingPage />);
 
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith("/region");
+      expect(mockReplace).toHaveBeenCalledWith("/me/briefing");
     });
   });
 

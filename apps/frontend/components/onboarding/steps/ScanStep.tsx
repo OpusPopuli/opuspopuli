@@ -6,8 +6,8 @@ export function ScanStep() {
   const { t } = useTranslation("onboarding");
 
   return (
-    <div className="text-center text-white max-w-md">
-      <div className="w-20 h-20 bg-white/20 rounded-2xl mx-auto mb-8 flex items-center justify-center">
+    <div className="text-center max-w-md">
+      <div className="w-20 h-20 bg-sage-light/30 dark:bg-sage-dark/20 text-sage-dark dark:text-sage-light rounded-2xl mx-auto mb-8 flex items-center justify-center">
         <svg
           className="w-10 h-10"
           fill="none"
@@ -30,10 +30,14 @@ export function ScanStep() {
         </svg>
       </div>
 
-      <h2 className="text-2xl font-bold mb-4">{t("scan.title")}</h2>
-      <p className="text-white/80 mb-6">{t("scan.description")}</p>
+      <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">
+        {t("scan.title")}
+      </h2>
+      <p className="text-gray-600 dark:text-gray-300 mb-6">
+        {t("scan.description")}
+      </p>
 
-      <div className="bg-white/10 rounded-xl p-4 text-sm text-white/70">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-sm text-gray-600 dark:text-gray-300">
         <p>{t("scan.permissionNote")}</p>
       </div>
     </div>

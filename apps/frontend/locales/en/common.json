@@ -17,8 +17,10 @@
   "errors": {
     "generic": "Something went wrong. Please try again.",
     "loadFailed": "Failed to load data. Please try again.",
-    "saveFailed": "Failed to save. Please try again."
+    "saveFailed": "Failed to save. Please try again.",
+    "preferencesNotSaved": "We couldn't save your preference — it'll reset next session."
   },
+  "languageLegend": "Language",
   "status": {
     "success": "Success!",
     "primary": "Primary",
@@ -28,6 +30,7 @@
     "granted": "Granted",
     "withdrawn": "Withdrawn",
     "denied": "Denied",
+    "pending": "Pending",
     "notSet": "Not Set",
     "loading": "Loading..."
   },

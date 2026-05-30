@@ -42,6 +42,10 @@ jest.mock("@/lib/i18n/context", () => ({
   useLocale: () => ({ locale: "en", setLocale: jest.fn() }),
 }));
 
+jest.mock("@/lib/toast", () => ({
+  useToast: () => ({ showToast: jest.fn() }),
+}));
+
 jest.mock("@apollo/client/react", () => ({
   useMutation: () => [
     jest.fn().mockResolvedValue({ data: {} }),
@@ -161,7 +165,7 @@ describe("OnboardingSteps", () => {
       await userEvent.click(screen.getByRole("button", { name: /skip/i }));
 
       expect(mockSkipOnboarding).toHaveBeenCalled();
-      expect(mockPush).toHaveBeenCalledWith("/region");
+      expect(mockPush).toHaveBeenCalledWith("/me/briefing");
     });
   });
 

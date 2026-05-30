@@ -1,0 +1,60 @@
+{
+  "page": {
+    "title": "Your Civic Briefing",
+    "subtitle": "Bills, representatives, and propositions ranked by what matters to your life — based on the signals you've shared.",
+    "browseAllLink": "Browse all civic data →",
+    "browseAllAria": "Browse all civic data — go to the data hub",
+    "errorTitle": "We couldn't load your briefing.",
+    "noProfileTitle": "Tell us what matters to you",
+    "noProfileBody": "Onboarding takes about a minute and unlocks the personalized feed.",
+    "noProfileCta": "Complete onboarding →"
+  },
+  "section": {
+    "seeAll": "See all →"
+  },
+  "bills": {
+    "title": "Bills moving this week",
+    "subtitle": "Legislation ranked by relevance to your interests + life context.",
+    "empty": "No bills above your relevance threshold this week. Broaden your interests to see more.",
+    "broadenLink": "Edit your interests →",
+    "statusLabel": "Status:",
+    "readBillLink": "Read the bill →"
+  },
+  "reps": {
+    "title": "Your representatives",
+    "subtitle": "What the people who represent you are doing this week.",
+    "placeholder": {
+      "body": "Personalized rep activity (upcoming votes, recent stances, public events) is coming soon. Until then, browse representatives in your jurisdictions.",
+      "comingSoonNote": "We'll show ranked moments from your reps here once that signal pipeline ships."
+    }
+  },
+  "committees": {
+    "title": "Committees on your topics",
+    "subtitle": "Hearings + comment windows in your jurisdictions, ranked by topic match.",
+    "placeholder": {
+      "body": "Personalized committee briefings are coming soon. Until then, browse all legislative committees.",
+      "comingSoonNote": "We'll show hearings + open comment windows ranked for you once that signal pipeline ships."
+    }
+  },
+  "propositions": {
+    "title": "Active propositions",
+    "subtitle": "Ballot measures in your jurisdictions, ranked by relevance + your trusted organizations.",
+    "placeholder": {
+      "body": "Personalized proposition briefings are coming soon. Until then, browse all active ballot measures.",
+      "comingSoonNote": "We'll show ranked props with trusted-org endorsements here once that signal pipeline ships."
+    }
+  },
+  "whyThis": {
+    "toggleOpen": "Why is this on my briefing?",
+    "toggleClose": "Hide reason",
+    "axisDirectMaterial": "Touches your money, rights, health, or services.",
+    "axisValuesAlignment": "Aligns with topics you said you care about.",
+    "axisActionability": "Has a vote or comment window you can influence soon.",
+    "placeholderFor745": "We'll write you a plain-language sentence here once the LLM explanation pipeline ships.",
+    "scoreLabel": "Relevance"
+  },
+  "stubs": {
+    "counterFrame": "The opposing position will show here once the counter-frame pipeline ships.",
+    "actionAffordances": "Vote dates, comment windows, and contact buttons will surface here once that data lands."
+  }
+}

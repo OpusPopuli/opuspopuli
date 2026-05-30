@@ -227,7 +227,7 @@ describe("AuthCallbackPage", () => {
       });
       await userEvent.click(continueButton);
 
-      expect(mockPush).toHaveBeenCalledWith("/region");
+      expect(mockPush).toHaveBeenCalledWith("/me/briefing");
     });
   });
 

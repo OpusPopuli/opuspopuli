@@ -143,6 +143,8 @@ PRs must pass lint and build. Do not merge with failing checks.
 - `docs/architecture/system-overview.md` — full architecture with diagrams
 - `docs/architecture/provider-pattern.md` — pluggable provider design
 - `docs/architecture/ai-ml-pipeline.md` — RAG and embeddings
+- `docs/architecture/personalized-relevance.md` — signal taxonomy, T1/T2/T3 tiers, ranking axes, briefing design (epic #740)
+- `docs/architecture/frontend-architecture.md` — Next.js App Router layout, i18n namespaces, /me/* surfaces
 - `docs/guides/getting-started.md` — first-time setup
 - `docs/guides/auth-security.md` — auth flows and HMAC details
 - `docs/guides/region-provider.md` — adding a civic region
