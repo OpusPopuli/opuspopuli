@@ -34,14 +34,19 @@ apps/frontend/
 │   │   ├── forgot-password/  # Password reset request
 │   │   └── reset-password/   # Password reset form
 │   ├── onboarding/           # First-time user onboarding (4 steps)
+│   ├── me/                   # Post-auth personal surfaces
+│   │   ├── briefing/         # "Your Civic Briefing" — post-auth landing page (#744)
+│   │   └── profile/          # Per-field model-of-me editor (#752)
 │   ├── petition/             # Petition feature
 │   │   ├── capture/          # Camera-based petition scanning
 │   │   └── results/          # Petition analysis results & ballot linking
 │   ├── rag-demo/             # RAG Demo (document indexing & querying)
-│   ├── region/               # Civic data browsing
+│   ├── region/               # Civic data browsing (non-personalized)
 │   │   ├── meetings/         # Public meeting agendas & minutes
 │   │   ├── propositions/     # Ballot propositions & measures
-│   │   └── representatives/  # Elected officials directory
+│   │   ├── representatives/  # Elected officials directory
+│   │   ├── bills/            # Legislative bills
+│   │   └── legislative-committees/ # Committees
 │   ├── settings/             # User settings pages
 │   │   ├── page.tsx          # Profile settings
 │   │   ├── activity/         # Activity log & session management
@@ -77,17 +82,34 @@ apps/frontend/
 │   │   └── TrackOnBallotButton.tsx      # Search & link petitions to ballot measures
 │   ├── onboarding/
 │   │   ├── OnboardingSteps.tsx        # Step container/navigation
-│   │   └── steps/
-│   │       ├── WelcomeStep.tsx        # Step 1: Welcome
-│   │       ├── ScanStep.tsx           # Step 2: Scan petitions
-│   │       ├── TrackStep.tsx          # Step 3: Track civic data
-│   │       └── AnalyzeStep.tsx        # Step 4: AI analysis
-│   └── profile/              # Profile management
-│       ├── AvatarUpload.tsx
-│       ├── CivicFieldsSection.tsx
-│       ├── DemographicFieldsSection.tsx
-│       ├── ProfileCompletionIndicator.tsx
-│       └── ProfileVisibilityToggle.tsx
+│   │   ├── ChipPicker.tsx             # Top-3 chip selector used in tier-1 steps
+│   │   ├── StepFooter.tsx             # Shared Back/Next/Skip footer
+│   │   └── steps/                     # 4 onboarding step pages
+│   ├── briefing/             # Your Civic Briefing landing page (#744) — see README.md
+│   │   ├── BriefingPage.tsx           # Shell composer (header + 4 sections)
+│   │   ├── BriefingPageHeader.tsx     # H1 + Browse all civic data link
+│   │   ├── BriefingPageSkeleton.tsx
+│   │   ├── BriefingPageError.tsx
+│   │   ├── BriefingSection.tsx        # Domain-agnostic section shell
+│   │   ├── bills/                     # Bills personalization (3-step fetch)
+│   │   │   ├── BillsBriefingSection.tsx
+│   │   │   ├── useBillBriefing.ts     # Orchestrates prefetch → feed → bill fan-out
+│   │   │   ├── BillBriefingHero.tsx
+│   │   │   ├── BillBriefingCard.tsx
+│   │   │   ├── BillsTopicFilter.tsx
+│   │   │   ├── RelevanceChip.tsx
+│   │   │   └── WhyThisPanel.tsx
+│   │   └── placeholders/              # #769/#770/#771 plug in here
+│   ├── profile/              # Per-field model-of-me editor (#752) — see README.md
+│   │   ├── ModelOfMePage.tsx          # Inline-edit composer for ~50 signal fields
+│   │   ├── EditableField.tsx          # Per-field dispatcher (7 input variants)
+│   │   ├── inputs.tsx
+│   │   ├── CategorySection.tsx
+│   │   ├── NoFieldsModePanel.tsx
+│   │   ├── ClearFieldDialog.tsx
+│   │   ├── AvatarUpload.tsx           # Reused from /settings
+│   │   ├── ProfileCompletionIndicator.tsx
+│   │   └── ProfileVisibilityToggle.tsx
 ├── lib/                       # Shared utilities
 │   ├── apollo-client.ts      # Apollo Client configuration
 │   ├── apollo-provider.tsx   # Apollo Provider wrapper
@@ -112,7 +134,8 @@ apps/frontend/
 │       ├── knowledge.ts      # RAG: index, query, search
 │       ├── activity.ts       # Activity log & session management
 │       ├── email.ts          # Email correspondence & representative contact
-│       ├── region.ts         # Civic data: propositions, meetings, representatives
+│       ├── region.ts         # Civic data: propositions, meetings, representatives, bills
+│       ├── personalized-feed.ts # SignalProfile prefetch + myPersonalizedBillFeed (#744)
 │       └── documents.ts      # Document location management
 ├── locales/                   # Translation files
 │   ├── en/                   # English
@@ -138,12 +161,21 @@ app/
 ├── page.tsx               # Home page (/)
 ├── (auth)/                # Auth route group (login, register, callback)
 ├── onboarding/            # First-time user flow (/onboarding)
+├── me/                    # Post-auth personal surfaces
+│   ├── briefing/          # Your Civic Briefing — post-auth landing (/me/briefing)
+│   └── profile/           # Per-field model-of-me editor (/me/profile)
 ├── petition/capture/      # Petition scanning (/petition/capture)
 ├── petition/results/      # Petition analysis & ballot linking (/petition/results)
 ├── rag-demo/              # RAG Demo (/rag-demo)
 ├── region/                # Civic data (/region, /region/meetings, etc.)
 └── settings/              # User settings (/settings, /settings/security, etc.)
 ```
+
+**Post-auth landing page**: completed onboarding flows and magic-link
+callbacks now resolve to `/me/briefing` (the personalized civic
+briefing), not `/region`. The Header's logo links to `/me/briefing`
+when the user is authenticated and `/` otherwise. See
+`components/briefing/README.md` for the composition pattern.
 
 **Key Features**:
 - Server Components by default for improved performance
@@ -179,7 +211,8 @@ All GraphQL queries and mutations are centralized in `lib/graphql/`:
 | **knowledge.ts** | IndexDocument, AnswerQuery, SearchText |
 | **activity.ts** | GetMyActivityLog, GetMyActivitySummary, GetMySessions, RevokeSession, RevokeAllOtherSessions |
 | **email.ts** | GetEmailHistory, GetEmail, ContactRepresentative, GetMailtoLink |
-| **region.ts** | GetRegionInfo, GetPropositions, GetMeetings, GetRepresentatives, SyncAll, SyncDataType |
+| **region.ts** | GetRegionInfo, GetPropositions, GetMeetings, GetRepresentatives, GetBill, SyncAll, SyncDataType |
+| **personalized-feed.ts** | BriefingPrefetch (`myRankingFlags` + `mySignalProfile.interestTags`), MyPersonalizedBillFeed, `stripTypename` helper, `topAxisFor` helper |
 | **documents.ts** | SetDocumentLocation, AnalyzeDocument, GetLinkedPropositions, SearchPropositions, LinkDocumentToProposition, UnlinkDocumentFromProposition, GetPetitionDocumentsForProposition, PetitionActivityFeed |
 
 ```typescript
@@ -584,13 +617,13 @@ The i18n system is initialized globally via `lib/i18n/index.ts` (imported in `je
 ```
 apps/frontend/locales/
 ├── en/
-│   ├── common.json     # Shared (buttons, errors, status, accessibility)
-│   ├── settings.json   # Settings pages
-│   └── petition.json   # Petition feature (results, ballot tracking)
-└── es/
-    ├── common.json
-    ├── settings.json
-    └── petition.json
+│   ├── common.json      # Shared (buttons, errors, status, accessibility)
+│   ├── settings.json    # Settings pages
+│   ├── petition.json    # Petition feature (results, ballot tracking)
+│   ├── onboarding.json  # First-time onboarding flow
+│   ├── profile.json     # Model-of-me page (/me/profile)
+│   └── briefing.json    # Your Civic Briefing (/me/briefing)
+└── es/                  # Spanish parity for every namespace above
 ```
 
 ### Key Files
@@ -648,6 +681,9 @@ function LanguageSelector() {
 | `common` | Shared UI elements (buttons, errors, status badges) |
 | `settings` | Settings pages (profile, addresses, notifications, privacy, security) |
 | `petition` | Petition feature (results, ballot tracking, activity feed) |
+| `onboarding` | First-time user onboarding (4 steps + top-3 chip pickers) |
+| `profile` | `/me/profile` per-field editor (category labels, field metadata, no-fields mode) |
+| `briefing` | `/me/briefing` page chrome, section titles, "why this" axis explanations, placeholders |
 
 ### Profile-Specific Translation Keys
 

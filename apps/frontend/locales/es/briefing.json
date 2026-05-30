@@ -1,0 +1,60 @@
+{
+  "page": {
+    "title": "Tu Resumen Cívico",
+    "subtitle": "Proyectos de ley, representantes y proposiciones priorizados según lo que importa a tu vida — basado en las señales que has compartido.",
+    "browseAllLink": "Explora todos los datos cívicos →",
+    "browseAllAria": "Explora todos los datos cívicos — ir al centro de datos",
+    "errorTitle": "No pudimos cargar tu resumen.",
+    "noProfileTitle": "Cuéntanos qué te importa",
+    "noProfileBody": "La incorporación toma aproximadamente un minuto y desbloquea el feed personalizado.",
+    "noProfileCta": "Completar incorporación →"
+  },
+  "section": {
+    "seeAll": "Ver todo →"
+  },
+  "bills": {
+    "title": "Proyectos de ley esta semana",
+    "subtitle": "Legislación priorizada por relevancia para tus intereses y contexto de vida.",
+    "empty": "Ningún proyecto sobre tu umbral de relevancia esta semana. Amplía tus intereses para ver más.",
+    "broadenLink": "Editar tus intereses →",
+    "statusLabel": "Estado:",
+    "readBillLink": "Leer el proyecto →"
+  },
+  "reps": {
+    "title": "Tus representantes",
+    "subtitle": "Lo que están haciendo esta semana las personas que te representan.",
+    "placeholder": {
+      "body": "La actividad personalizada de tus representantes (votos próximos, posiciones recientes, eventos públicos) llegará pronto. Por ahora, explora los representantes de tus jurisdicciones.",
+      "comingSoonNote": "Mostraremos aquí momentos priorizados de tus representantes cuando esa señal esté lista."
+    }
+  },
+  "committees": {
+    "title": "Comités sobre tus temas",
+    "subtitle": "Audiencias y ventanas de comentarios en tus jurisdicciones, priorizadas por coincidencia temática.",
+    "placeholder": {
+      "body": "Los resúmenes personalizados de comités llegarán pronto. Por ahora, explora todos los comités legislativos.",
+      "comingSoonNote": "Mostraremos aquí audiencias y ventanas abiertas priorizadas para ti cuando esa señal esté lista."
+    }
+  },
+  "propositions": {
+    "title": "Proposiciones activas",
+    "subtitle": "Medidas electorales en tus jurisdicciones, priorizadas por relevancia y por tus organizaciones de confianza.",
+    "placeholder": {
+      "body": "Los resúmenes personalizados de proposiciones llegarán pronto. Por ahora, explora todas las medidas electorales activas.",
+      "comingSoonNote": "Mostraremos aquí proposiciones priorizadas con respaldos de organizaciones de confianza cuando esa señal esté lista."
+    }
+  },
+  "whyThis": {
+    "toggleOpen": "¿Por qué esto está en mi resumen?",
+    "toggleClose": "Ocultar razón",
+    "axisDirectMaterial": "Afecta tu dinero, derechos, salud o servicios.",
+    "axisValuesAlignment": "Coincide con temas que dijiste que te importan.",
+    "axisActionability": "Tiene una votación o ventana de comentarios que puedes influir pronto.",
+    "placeholderFor745": "Escribiremos aquí una frase en lenguaje claro cuando el pipeline de explicación con IA esté listo.",
+    "scoreLabel": "Relevancia"
+  },
+  "stubs": {
+    "counterFrame": "La posición opuesta aparecerá aquí cuando se active el pipeline de contracuadro.",
+    "actionAffordances": "Fechas de votación, ventanas de comentarios y botones de contacto aparecerán aquí cuando esos datos estén disponibles."
+  }
+}

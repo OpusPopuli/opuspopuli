@@ -16,7 +16,7 @@ export default function OnboardingPage() {
       router.replace("/login");
     }
     if (!authLoading && hasCompletedOnboarding) {
-      router.replace("/region");
+      router.replace("/me/briefing");
     }
   }, [authLoading, isAuthenticated, hasCompletedOnboarding, router]);
 

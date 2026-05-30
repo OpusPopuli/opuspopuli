@@ -33,6 +33,9 @@ export function Header() {
     if (isAuthenticated && user) {
       return (
         <>
+          <Link href="/me/briefing" className={navLinkClass}>
+            Briefing
+          </Link>
           <Link href="/region" className={navLinkClass}>
             Region
           </Link>
@@ -85,6 +88,13 @@ export function Header() {
     if (isAuthenticated && user) {
       return (
         <>
+          <Link
+            href="/me/briefing"
+            className={navLinkClass}
+            onClick={closeMenu}
+          >
+            Briefing
+          </Link>
           <Link href="/region" className={navLinkClass} onClick={closeMenu}>
             Region
           </Link>
@@ -134,7 +144,10 @@ export function Header() {
   return (
     <header className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
       <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
-        <Link href="/" className="hover:opacity-80 transition-opacity">
+        <Link
+          href={isAuthenticated ? "/me/briefing" : "/"}
+          className="hover:opacity-80 transition-opacity"
+        >
           <img
             src="/logos/svg/op-horizontal-light.svg"
             alt="Opus Populi"

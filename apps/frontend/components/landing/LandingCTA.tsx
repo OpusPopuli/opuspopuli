@@ -17,7 +17,7 @@ export function LandingCTA() {
   if (isAuthenticated) {
     return (
       <Link
-        href="/region"
+        href="/me/briefing"
         className="inline-block px-8 py-3 bg-[#5A7A6A] text-white text-lg font-semibold rounded-lg hover:bg-[#4A6A5A] transition-colors"
       >
         {t("hero.ctaSignedIn")}

@@ -11,6 +11,7 @@ As-built documentation describing how the system is designed and implemented.
 - [**Provider Pattern**](architecture/provider-pattern.md) - Pluggable provider architecture
 - [**Data Layer**](architecture/data-layer.md) - Database, vector storage, and user profile data architecture
 - [**AI/ML Pipeline**](architecture/ai-ml-pipeline.md) - Embeddings, RAG, and LLM architecture
+- [**Personalized Civic Relevance**](architecture/personalized-relevance.md) - Signal taxonomy, T1/T2/T3 tiers, ranking axes, model-of-me + briefing design (epic #740)
 - [**Frontend Architecture**](architecture/frontend-architecture.md) - React/Next.js frontend design
 - [**Deployment Architecture**](architecture/deployment.md) - Deployment topology, networking, and multi-environment strategy
 - [**Async Workers**](architecture/async-workers.md) - BullMQ worker pattern, `pipeline_jobs` table, adding new workers
@@ -69,6 +70,7 @@ Practical guides for common tasks and workflows.
 
 ### For AI/ML Engineers
 - [AI/ML Pipeline](architecture/ai-ml-pipeline.md)
+- [Personalized Civic Relevance](architecture/personalized-relevance.md) - Signal taxonomy + relevance scoring
 - [LLM Configuration](guides/llm-configuration.md)
 - [RAG Implementation](guides/rag-implementation.md)
 

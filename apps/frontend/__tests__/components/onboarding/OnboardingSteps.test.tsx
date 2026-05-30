@@ -165,7 +165,7 @@ describe("OnboardingSteps", () => {
       await userEvent.click(screen.getByRole("button", { name: /skip/i }));
 
       expect(mockSkipOnboarding).toHaveBeenCalled();
-      expect(mockPush).toHaveBeenCalledWith("/region");
+      expect(mockPush).toHaveBeenCalledWith("/me/briefing");
     });
   });
 

@@ -74,7 +74,7 @@ function AuthCallbackContent() {
   } = useAuth();
   const rawRedirect = searchParams.get("redirect");
   const skipTarget = resolveRedirect(rawRedirect, "/onboarding");
-  const continueTarget = resolveRedirect(rawRedirect, "/region");
+  const continueTarget = resolveRedirect(rawRedirect, "/me/briefing");
 
   const [status, setStatus] = useState<"verifying" | "success" | "error">(
     "verifying",
