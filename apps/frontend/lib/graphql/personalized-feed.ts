@@ -138,9 +138,8 @@ export const GET_MY_PERSONALIZED_BILL_FEED = gql`
  * passing the object back over the wire.
  */
 export function stripTypename<T extends object>(obj: T): Omit<T, "__typename"> {
-  const { __typename: _typename, ...rest } = obj as T & {
-    __typename?: string;
-  };
+  const rest = { ...obj } as Omit<T, "__typename"> & { __typename?: string };
+  delete rest.__typename;
   return rest;
 }
 
@@ -157,7 +156,8 @@ export function topAxisFor(scores: AxisScores): keyof AxisScores {
     "valuesAlignment",
     "actionability",
   ];
-  return axes.reduce((best, axis) =>
-    (scores[axis] ?? 0) > (scores[best] ?? 0) ? axis : best,
+  return axes.reduce<keyof AxisScores>(
+    (best, axis) => ((scores[axis] ?? 0) > (scores[best] ?? 0) ? axis : best),
+    axes[0],
   );
 }
