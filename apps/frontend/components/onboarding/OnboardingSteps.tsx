@@ -31,12 +31,12 @@ export function OnboardingSteps() {
 
   const handleComplete = () => {
     completeOnboarding();
-    router.push("/region");
+    router.push("/me/briefing");
   };
 
   const handleSkip = () => {
     skipOnboarding();
-    router.push("/region");
+    router.push("/me/briefing");
   };
 
   const isLastStep = currentStep === totalSteps - 1;

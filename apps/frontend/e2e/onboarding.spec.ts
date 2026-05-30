@@ -106,7 +106,7 @@ test.describe("Onboarding Flow", () => {
 
     // Last data step's primary action is "Get Started".
     await page.getByRole("button", { name: /get started/i }).click();
-    await expect(page).toHaveURL(/\/region/);
+    await expect(page).toHaveURL(/\/me\/briefing/);
   });
 
   test("global Skip aborts entire flow from any step", async ({ page }) => {
@@ -116,7 +116,7 @@ test.describe("Onboarding Flow", () => {
     // The header "Skip" button is the global abort; data steps render
     // "Skip this" for the per-field skip.
     await page.getByRole("button", { name: "Skip", exact: true }).click();
-    await expect(page).toHaveURL(/\/region/);
+    await expect(page).toHaveURL(/\/me\/briefing/);
   });
 
   test("should navigate back to previous step", async ({ page }) => {
@@ -150,7 +150,7 @@ test.describe("Onboarding Flow", () => {
     expect(before).toBeNull();
 
     await page.getByRole("button", { name: "Skip", exact: true }).click();
-    await expect(page).toHaveURL(/\/region/);
+    await expect(page).toHaveURL(/\/me\/briefing/);
 
     const completed = await page.evaluate(() =>
       localStorage.getItem("opuspopuli_onboarding_completed"),
@@ -297,7 +297,7 @@ test.describe("Onboarding - Returning User", () => {
   test("should redirect completed user to /region", async ({ page }) => {
     await setupReturningUserSession(page);
     await page.goto("/onboarding");
-    await expect(page).toHaveURL(/\/region/);
+    await expect(page).toHaveURL(/\/me\/briefing/);
   });
 });
 
