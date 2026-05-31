@@ -76,7 +76,7 @@ test.describe("Civic briefing page", () => {
     ).toHaveAttribute("href", "/region/legislative-committees");
   });
 
-  test("Propositions placeholder See all → /region/propositions", async ({
+  test("Propositions section See all → /region/propositions (#771)", async ({
     page,
   }) => {
     await setupAuthed(page);

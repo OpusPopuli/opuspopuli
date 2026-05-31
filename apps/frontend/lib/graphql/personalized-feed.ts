@@ -82,12 +82,31 @@ export const GET_BRIEFING_PREFETCH = gql`
   }
 `;
 
-export interface AxisScores {
+/**
+ * Wire shape of the 7-axis relevance scores produced by the v1.0
+ * personalized ranker — shared between bills (#743/#745) and
+ * propositions (#771). Re-exported as `BriefingAxisScores` so domain
+ * modules can alias it without import-path coupling.
+ *
+ * Axes 4-7 are placeholder 0.0 in v1.0 (planning doc §5.1 follow-ups).
+ *
+ * NB: `actionability` carries different per-domain semantics — bills
+ * read it as "recent legislative activity / vote window", propositions
+ * read it as "election proximity". The wire field is shared so the
+ * frontend's `WhyThisPanel` can drive a single i18n key set across
+ * sections (`whyThis.axisActionability`). The per-domain interpretation
+ * lives in the respective backend scoring service.
+ */
+export interface BriefingAxisScores {
   /** Axis 1: does this change the user's money, rights, health, services? */
   directMaterial: number;
   /** Axis 2: does it advance or threaten priorities the user declared? */
   valuesAlignment: number;
-  /** Axis 3: is there a vote / comment window the user can affect now? */
+  /**
+   * Axis 3: bills → "is there a vote / comment window the user can
+   * affect now?"; propositions → election proximity. Same wire field
+   * for shared rendering, different per-domain semantics.
+   */
   actionability: number;
   // Axes 4-7 — placeholder 0.0 in v1.0 (planning doc §5.1 follow-ups)
   indirectMaterial: number;
@@ -95,6 +114,12 @@ export interface AxisScores {
   counterfactual: number;
   noveltyRepetition: number;
 }
+
+/**
+ * Bill-specific alias for `BriefingAxisScores`. Kept as a separate
+ * named export so existing imports of `AxisScores` continue to work.
+ */
+export type AxisScores = BriefingAxisScores;
 
 export interface PersonalizedBillResult {
   billId: string;

@@ -29,8 +29,14 @@ export function RelevanceChip({ score, size = "sm" }: RelevanceChipProps) {
     size === "md"
       ? "px-3 py-1 text-sm font-semibold"
       : "px-2.5 py-0.5 text-xs font-semibold";
+  // `role="img"` legitimizes the `aria-label` on the span (without it,
+  // axe flags `aria-prohibited-attr` because a bare span doesn't admit
+  // ARIA labels). Screen readers announce the composed label as a
+  // single string — "Relevance 65%" — instead of reading the two inner
+  // spans separately.
   return (
     <span
+      role="img"
       className={`inline-flex items-center gap-1 rounded-full border ${sizeCls} ${tier}`}
       aria-label={`${t("whyThis.scoreLabel")} ${pct}%`}
     >
