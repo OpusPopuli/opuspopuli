@@ -6,6 +6,8 @@ import { useQuery } from "@apollo/client/react";
 import type { CivicsLifecycleStage } from "@/lib/graphql/region";
 import {
   GET_BILL,
+  type BillAiFiscalImpact,
+  type BillAiSummary,
   type BillData,
   type BillIdVars,
   type BillVote,
@@ -38,6 +40,21 @@ const POSITION_STYLES: Record<string, { cls: string; label: string }> = {
   excused: { cls: "bg-blue-100 text-blue-700", label: "Excused" },
   no_vote: { cls: "bg-gray-100 text-gray-400", label: "—" },
 };
+
+const FISCAL_LEVEL_STYLES: Record<string, { cls: string; label: string }> = {
+  none: { cls: "bg-gray-100 text-gray-600", label: "No fiscal impact" },
+  low: { cls: "bg-green-100 text-green-800", label: "Low fiscal impact" },
+  medium: { cls: "bg-amber-100 text-amber-800", label: "Medium fiscal impact" },
+  high: { cls: "bg-red-100 text-red-800", label: "High fiscal impact" },
+};
+
+function humanizeTag(slug: string): string {
+  return slug
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 function MeasureTypeBadge({ code }: { readonly code: string }) {
   const cls = MEASURE_TYPE_STYLES[code] ?? "bg-gray-100 text-gray-800";
@@ -90,6 +107,88 @@ function VoteSummaryBar({ votes }: { readonly votes: BillVote[] }) {
   );
 }
 
+// ── AI summary block (Snapshot layer header) ──────────────────────────────────
+
+function TagChip({ label }: { readonly label: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-[#334155]">
+      {label}
+    </span>
+  );
+}
+
+function ChipRow({
+  label,
+  tags,
+}: {
+  readonly label: string;
+  readonly tags: readonly string[];
+}) {
+  if (tags.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+      <span className="text-xs font-semibold uppercase tracking-wider text-[#595959]">
+        {label}
+      </span>
+      {tags.map((t) => (
+        <TagChip key={t} label={humanizeTag(t)} />
+      ))}
+    </div>
+  );
+}
+
+function FiscalImpactBadge({
+  fiscalImpact,
+}: {
+  readonly fiscalImpact: BillAiFiscalImpact;
+}) {
+  const style =
+    FISCAL_LEVEL_STYLES[fiscalImpact.level] ?? FISCAL_LEVEL_STYLES.none;
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${style.cls}`}
+    >
+      {style.label}
+    </span>
+  );
+}
+
+function AiSummaryBlock({ summary }: { readonly summary: BillAiSummary }) {
+  return (
+    <section
+      aria-label="Plain-English summary"
+      className="mb-6 rounded-lg border-l-4 border-[var(--color-sage)] bg-slate-50 p-5"
+    >
+      <p className="text-base leading-relaxed text-[#222222]">
+        {summary.plainEnglishSummary}
+      </p>
+      {summary.stakeholderImpact && (
+        <p className="mt-3 text-sm leading-relaxed text-[#334155]">
+          <span className="font-semibold">Who this affects: </span>
+          {summary.stakeholderImpact}
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <FiscalImpactBadge fiscalImpact={summary.fiscalImpact} />
+        <ChipRow label="Topics" tags={summary.topics} />
+        <ChipRow label="Audience" tags={summary.whoItAffects} />
+      </div>
+    </section>
+  );
+}
+
+function AiSummaryPending() {
+  return (
+    <section
+      aria-label="Plain-English summary"
+      className="mb-6 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500"
+    >
+      Plain-English summary pending. This bill hasn’t been processed by the
+      summarizer yet — check back shortly.
+    </section>
+  );
+}
+
 // ── Layer components ──────────────────────────────────────────────────────────
 
 function Snapshot({
@@ -103,6 +202,13 @@ function Snapshot({
 }) {
   return (
     <div className="animate-layer-enter">
+      {/* Plain-English AI summary (or pending placeholder) */}
+      {bill.aiSummary ? (
+        <AiSummaryBlock summary={bill.aiSummary} />
+      ) : (
+        <AiSummaryPending />
+      )}
+
       {/* Status + last action */}
       {bill.status && (
         <div className="mb-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-[#334155]">
@@ -312,13 +418,18 @@ function Sources({
   readonly bill: NonNullable<BillData["bill"]>;
   readonly onBack: () => void;
 }) {
+  // `||` (not `??`) so an empty-string summary still falls back to the
+  // legacy column; the LLM contract says summary is non-empty but we don't
+  // want a stray "" to render an empty paragraph.
+  const fiscalImpactBody =
+    bill.aiSummary?.fiscalImpact?.summary || bill.fiscalImpact;
   return (
     <div className="animate-layer-enter">
-      {bill.fiscalImpact && (
+      {fiscalImpactBody && (
         <div className="mb-6">
           <SectionTitle>Fiscal impact</SectionTitle>
           <p className="text-sm text-[#334155] leading-relaxed">
-            {bill.fiscalImpact}
+            {fiscalImpactBody}
           </p>
         </div>
       )}
