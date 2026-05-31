@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ConfigService } from "@nestjs/config";
-import { SupabaseVaultProvider } from "../src/providers/supabase-vault.provider";
+import {
+  SupabaseVaultProvider,
+  getSecrets,
+  lookupSecret,
+} from "../src/providers/supabase-vault.provider";
+import { createClient } from "@supabase/supabase-js";
 import { SecretsError } from "@opuspopuli/common";
 
 // Mock the Supabase client with chainable query builder
@@ -243,5 +248,99 @@ describe("SupabaseVaultProvider", () => {
         provider.getSecretJson("invalid-json-secret"),
       ).rejects.toThrow(SecretsError);
     });
+  });
+});
+
+describe("getSecrets (standalone bootstrap helper)", () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env = {
+      ...originalEnv,
+      SUPABASE_URL: "http://localhost:8000",
+      SUPABASE_SERVICE_ROLE_KEY: "test-service-key",
+    };
+    mockLimit.mockImplementation(() => mockQueryResult);
+    mockRpc.mockImplementation(() => Promise.resolve(mockRpcResult));
+    setMockResult([], null);
+    setMockRpcResult([], null);
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it("returns the secret via the schema view when PostgREST exposes vault", async () => {
+    setMockResult([{ decrypted_secret: "from-view" }]);
+
+    await expect(getSecrets("FOO")).resolves.toBe("from-view");
+    expect(mockSchema).toHaveBeenCalledWith("vault");
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the vault_read_secret RPC when the schema view is not exposed", async () => {
+    setMockResult(null, {
+      message: "The schema must be one of the following: public",
+      code: "PGRST106",
+    });
+    setMockRpcResult([{ decrypted_secret: "from-rpc" }]);
+
+    await expect(getSecrets("FOO")).resolves.toBe("from-rpc");
+    expect(mockRpc).toHaveBeenCalledWith("vault_read_secret", {
+      secret_name: "FOO",
+    });
+  });
+
+  it("throws when both the view and the RPC fail to find the secret", async () => {
+    setMockResult(null, {
+      message: "The schema must be one of the following: public",
+      code: "PGRST106",
+    });
+    setMockRpcResult([], null);
+
+    await expect(getSecrets("MISSING")).rejects.toThrow(/not found: MISSING/);
+  });
+
+  it("throws when SUPABASE_URL is missing", async () => {
+    delete process.env.SUPABASE_URL;
+
+    await expect(getSecrets("FOO")).rejects.toThrow(/Supabase URL and key/);
+  });
+});
+
+describe("lookupSecret (timeout)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLimit.mockImplementation(() => mockQueryResult);
+    mockRpc.mockImplementation(() => Promise.resolve(mockRpcResult));
+    setMockResult([], null);
+    setMockRpcResult([], null);
+  });
+
+  it("rejects with a timeout error when the Vault read exceeds the deadline", async () => {
+    // The schema-view query never resolves — force the race against the
+    // timeout deadline to fire.
+    mockLimit.mockImplementation(() => new Promise(() => {}));
+
+    const client = (createClient as jest.Mock)(
+      "http://localhost:8000",
+      "test-key",
+    );
+
+    await expect(lookupSecret(client, "FOO", 30)).rejects.toThrow(
+      /timed out after 30ms/,
+    );
+  });
+
+  it("returns the value when the Vault read completes before the deadline", async () => {
+    setMockResult([{ decrypted_secret: "in-time" }]);
+
+    const client = (createClient as jest.Mock)(
+      "http://localhost:8000",
+      "test-key",
+    );
+
+    await expect(lookupSecret(client, "FOO", 1000)).resolves.toBe("in-time");
   });
 });
