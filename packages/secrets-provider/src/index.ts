@@ -30,3 +30,6 @@ export {
   SupabaseVaultProvider,
   getSecrets,
 } from "./providers/supabase-vault.provider.js";
+
+// Bootstrap-time hydration of Vault secrets into process.env
+export { hydrateEnvFromVault } from "./bootstrap.js";
