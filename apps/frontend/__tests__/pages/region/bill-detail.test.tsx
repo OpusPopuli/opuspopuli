@@ -52,6 +52,16 @@ const AB_MEASURE_TYPE: CivicsMeasureType = {
   ],
 };
 
+const mockAiSummary = {
+  plainEnglishSummary:
+    "This bill changes how the state housing department designates jurisdictions as prohousing, replacing emergency rules with permanent regulations.",
+  topics: ["housing", "government-operations"],
+  whoItAffects: ["homeowners", "renters"],
+  stakeholderImpact:
+    "Small rural jurisdictions gain reduced administrative burdens.",
+  fiscalImpact: { level: "low", summary: "Not specified in the bill text." },
+};
+
 const mockBill = {
   id: "bill-1",
   externalId: "20252026AB100",
@@ -75,6 +85,7 @@ const mockBill = {
   updatedAt: "2025-10-02T00:00:00Z",
   votes: [],
   coAuthors: [],
+  aiSummary: null as typeof mockAiSummary | null,
 };
 
 let mockQueryResult: {
@@ -177,6 +188,108 @@ describe("BillDetailPage", () => {
       render(<BillDetailPage />);
       expect(screen.getByText("Chaptered")).toBeInTheDocument();
       expect(screen.getByText("Failed")).toBeInTheDocument();
+    });
+  });
+
+  describe("AI summary block (#779)", () => {
+    it("renders the plain-English summary at the top of the snapshot layer", () => {
+      mockQueryResult = {
+        data: { bill: { ...mockBill, aiSummary: mockAiSummary } },
+        loading: false,
+        error: null,
+      };
+      render(<BillDetailPage />);
+      expect(
+        screen.getByText(/state housing department designates jurisdictions/i),
+      ).toBeInTheDocument();
+    });
+
+    it("renders topic and audience chips with humanized labels", () => {
+      mockQueryResult = {
+        data: { bill: { ...mockBill, aiSummary: mockAiSummary } },
+        loading: false,
+        error: null,
+      };
+      render(<BillDetailPage />);
+      // "government-operations" → "Government Operations"
+      expect(screen.getByText("Government Operations")).toBeInTheDocument();
+      expect(screen.getByText("Housing")).toBeInTheDocument();
+      expect(screen.getByText("Renters")).toBeInTheDocument();
+      expect(screen.getByText("Homeowners")).toBeInTheDocument();
+    });
+
+    it("renders the fiscal-impact level badge", () => {
+      mockQueryResult = {
+        data: { bill: { ...mockBill, aiSummary: mockAiSummary } },
+        loading: false,
+        error: null,
+      };
+      render(<BillDetailPage />);
+      expect(screen.getAllByText(/low fiscal impact/i).length).toBeGreaterThan(
+        0,
+      );
+    });
+
+    it("renders stakeholderImpact under a 'Who this affects' label", () => {
+      mockQueryResult = {
+        data: { bill: { ...mockBill, aiSummary: mockAiSummary } },
+        loading: false,
+        error: null,
+      };
+      render(<BillDetailPage />);
+      expect(screen.getByText(/who this affects:/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/small rural jurisdictions gain reduced/i),
+      ).toBeInTheDocument();
+    });
+
+    it("shows the pending placeholder when aiSummary is null", () => {
+      // mockBill already has aiSummary: null
+      render(<BillDetailPage />);
+      expect(
+        screen.getByText(/plain-english summary pending/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("Sources layer fiscal impact (#779)", () => {
+    it("renders the structured aiSummary.fiscalImpact.summary on the Sources tab", () => {
+      mockQueryResult = {
+        data: { bill: { ...mockBill, aiSummary: mockAiSummary } },
+        loading: false,
+        error: null,
+      };
+      render(<BillDetailPage />);
+      // Navigate Snapshot → History → Votes → Sources
+      fireEvent.click(screen.getByRole("button", { name: /^Sources$/ }));
+      expect(
+        screen.getByText(/not specified in the bill text/i),
+      ).toBeInTheDocument();
+    });
+
+    it("falls back to legacy bill.fiscalImpact when aiSummary is null", () => {
+      const legacyBill = {
+        ...mockBill,
+        aiSummary: null,
+        fiscalImpact: "Legacy fiscal note from the data source.",
+      };
+      mockQueryResult = {
+        data: { bill: legacyBill },
+        loading: false,
+        error: null,
+      };
+      render(<BillDetailPage />);
+      fireEvent.click(screen.getByRole("button", { name: /^Sources$/ }));
+      expect(
+        screen.getByText(/legacy fiscal note from the data source/i),
+      ).toBeInTheDocument();
+    });
+
+    it("hides the fiscal-impact section when neither source has a value", () => {
+      // mockBill.aiSummary is null and mockBill.fiscalImpact is null
+      render(<BillDetailPage />);
+      fireEvent.click(screen.getByRole("button", { name: /^Sources$/ }));
+      expect(screen.queryByText(/^Fiscal impact$/)).not.toBeInTheDocument();
     });
   });
 
