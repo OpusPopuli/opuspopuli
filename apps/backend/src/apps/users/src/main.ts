@@ -1,5 +1,4 @@
 import 'src/common/tracing'; // Must be first — OTel patches modules before they load
-import bootstrap from 'src/common/bootstrap';
-import { AppModule } from './app.module';
+import { runService } from 'src/common/preflight';
 
-bootstrap(AppModule, { portEnvVar: 'USERS_PORT' });
+runService(() => import('./app.module'), { portEnvVar: 'USERS_PORT' });

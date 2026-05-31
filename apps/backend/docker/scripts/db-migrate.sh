@@ -150,23 +150,59 @@ fi
 
 VAULT_FUNCTIONS_FILE="/usr/src/app/supabase/migrations/99_vault_functions.sql"
 PG_META_URL="${PG_META_URL:-http://supabase-meta:8080}"
-SEED_KEY="${SEED_SENSITIVE_PROFILE_ENCRYPTION_KEY:-jv4vjdDIE+PqHm0WunsG3K4gA882jyQnkFaU5AYtAnM=}"
+# Export SEED_* values so the child `node` process can read them via
+# `process.env`. Doing it this way instead of shell-interpolating into
+# the JS template avoids shell-quote fragility — a SEED value containing
+# a single quote, backslash, or `${` would break the JS at parse time.
+export SEED_VAULT_KEY="${SEED_SENSITIVE_PROFILE_ENCRYPTION_KEY:-jv4vjdDIE+PqHm0WunsG3K4gA882jyQnkFaU5AYtAnM=}"
+# Default to the well-known self-hosted Supabase dev JWT (anon role). Override
+# via SEED_SUPABASE_ANON_KEY when seeding a hosted Supabase project.
+export SEED_VAULT_ANON_KEY="${SEED_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.KR1jqUlyHtwAxCJf6B0QVoRpobrdPEv8ALnNJUlGxPE}"
+# Default points at the redis service-name in docker-compose.yml. Override
+# via SEED_REDIS_URL when the deploy uses a managed Redis (with auth).
+export SEED_VAULT_REDIS="${SEED_REDIS_URL:-redis://redis:6379}"
 
 if [ -f "$VAULT_FUNCTIONS_FILE" ] && [ -n "$SERVICE_ROLE_KEY" ]; then
+  # Export the platform vars too so the node script can read them
+  # cleanly from process.env.
+  export VAULT_FUNCTIONS_FILE PG_META_URL
+  export SEED_PGREST_URL="${SUPABASE_INTERNAL_URL}/rest/v1"
+  export SEED_SERVICE_KEY="${SERVICE_ROLE_KEY}"
+
   echo "=== Installing Supabase Vault RPC functions via pg-meta ==="
-  echo "=== Seeding SENSITIVE_PROFILE_ENCRYPTION_KEY via PostgREST RPC ==="
-  # Pass the file PATH to node — let it read the SQL directly so we
-  # don't try to escape arbitrary SQL into a shell-embedded JS string.
+  echo "=== Seeding bootstrap secrets via PostgREST RPC ==="
+  # All values come from process.env — no shell interpolation into JS.
   node -e "
 const fs = require('fs');
 const http = require('http');
 const { URL } = require('url');
 
-const pgMetaUrl = '${PG_META_URL}';
-const pgrestUrl = '${SUPABASE_INTERNAL_URL}/rest/v1';
-const serviceKey = '${SERVICE_ROLE_KEY}';
-const seedKey = '${SEED_KEY}';
-const vaultFnSql = fs.readFileSync('${VAULT_FUNCTIONS_FILE}', 'utf8');
+const pgMetaUrl = process.env.PG_META_URL;
+const pgrestUrl = process.env.SEED_PGREST_URL;
+const serviceKey = process.env.SEED_SERVICE_KEY;
+const vaultFnSql = fs.readFileSync(process.env.VAULT_FUNCTIONS_FILE, 'utf8');
+
+// Secrets with sensible dev defaults that the seed script can write
+// idempotently. Anything that needs a real per-deploy credential
+// (RESEND_API_KEY, SMTP_USER/PASS, R2_*, FEC_API_KEY) must be seeded
+// by the operator via SQL — see docs/guides/secrets-management.md.
+const seeds = [
+  {
+    name: 'SENSITIVE_PROFILE_ENCRYPTION_KEY',
+    value: process.env.SEED_VAULT_KEY,
+    description: 'AES-256-GCM key for users.SensitiveProfile T3 column encryption (#742). Local UAT dev value.',
+  },
+  {
+    name: 'SUPABASE_ANON_KEY',
+    value: process.env.SEED_VAULT_ANON_KEY,
+    description: 'Supabase anon-role JWT. Well-known dev default for self-hosted; override via SEED_SUPABASE_ANON_KEY for hosted projects (#792).',
+  },
+  {
+    name: 'REDIS_URL',
+    value: process.env.SEED_VAULT_REDIS,
+    description: 'BullMQ + cache Redis connection string. Defaults to local docker-compose redis service; override via SEED_REDIS_URL for managed Redis (#792).',
+  },
+];
 
 function request(method, urlStr, headers, body) {
   return new Promise((resolve, reject) => {
@@ -207,18 +243,28 @@ async function main() {
   // Give PostgREST a moment to pick up the new functions before the seed call
   await new Promise((r) => setTimeout(r, 1000));
 
-  // 3. Seed the secret via PostgREST RPC
+  // 3. Seed each bootstrap secret via PostgREST RPC. Per-secret error handling
+  //    so one failure (e.g. corrupted-ciphertext upsert on a pre-existing row)
+  //    doesn't abort the rest. Operator can recover manually per
+  //    docs/guides/secrets-management.md.
   const auth = { apikey: serviceKey, Authorization: 'Bearer ' + serviceKey };
-  const seedRes = await request('POST', pgrestUrl + '/rpc/vault_create_secret', auth,
-    JSON.stringify({
-      p_name: 'SENSITIVE_PROFILE_ENCRYPTION_KEY',
-      p_value: seedKey,
-      p_description: 'AES-256-GCM key for users.SensitiveProfile T3 column encryption (#742). Local UAT dev value.',
-    }));
-  if (seedRes.status >= 400) {
-    throw new Error('vault_create_secret RPC failed: ' + seedRes.status + ' ' + seedRes.body);
+  for (const seed of seeds) {
+    try {
+      const seedRes = await request('POST', pgrestUrl + '/rpc/vault_create_secret', auth,
+        JSON.stringify({
+          p_name: seed.name,
+          p_value: seed.value,
+          p_description: seed.description,
+        }));
+      if (seedRes.status >= 400) {
+        console.warn(seed.name + ' seed failed (non-fatal): ' + seedRes.status + ' ' + seedRes.body);
+      } else {
+        console.log(seed.name + ' seeded in vault');
+      }
+    } catch (err) {
+      console.warn(seed.name + ' seed threw (non-fatal):', err.message);
+    }
   }
-  console.log('SENSITIVE_PROFILE_ENCRYPTION_KEY seeded in vault');
 }
 
 main().catch((err) => { console.error('Vault seed failed (non-fatal):', err.message); });
