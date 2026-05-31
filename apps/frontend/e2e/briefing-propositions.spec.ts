@@ -71,9 +71,12 @@ test.describe("Civic briefing — Propositions section (#771)", () => {
     const cards = section.locator('[data-testid="proposition-briefing-card"]');
     const count = await cards.count();
 
-    // Test passes whether or not the seed has personalized matches —
-    // when cards render, we assert their link shape; when none render,
-    // we expect the empty-state copy. Both are valid AC outcomes.
+    // The section legitimately renders one of three states depending on
+    // the auth fixture's seed: cards (signals overlap with props), the
+    // "empty" copy (signals declared but no overlap), or the noProfile
+    // nudge (signals not yet declared). All three are valid AC outcomes;
+    // the test asserts the link shape when cards are present, and that
+    // one of the two empty-shape copies is shown when they aren't.
     if (count > 0) {
       const firstCard = cards.first();
       const titleLink = firstCard
@@ -85,10 +88,14 @@ test.describe("Civic briefing — Propositions section (#771)", () => {
         /^\/region\/propositions\/[a-zA-Z0-9_-]+$/,
       );
     } else {
-      // Empty-state copy is from propositions.empty in i18n.
-      await expect(
-        section.getByText(/no active propositions match your interests/i),
-      ).toBeVisible();
+      // Either propositions.empty ("No active propositions match…") OR
+      // page.noProfileTitle ("Tell us what matters to you"). Match
+      // either since the auth fixture's signal_profile state isn't
+      // guaranteed in this test.
+      const emptyOrNoProfile = section.getByText(
+        /no active propositions match your interests|tell us what matters to you/i,
+      );
+      await expect(emptyOrNoProfile).toBeVisible();
     }
   });
 
