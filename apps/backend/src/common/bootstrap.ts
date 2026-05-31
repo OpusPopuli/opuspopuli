@@ -9,11 +9,20 @@ import compression from 'compression';
 import { env } from 'process';
 
 import { ConfigService } from '@nestjs/config';
+import { hydrateEnvFromVault } from '@opuspopuli/secrets-provider';
 import { getHelmetOptions } from 'src/config/security-headers.config';
 import { getCorsConfig } from 'src/config/cors.config';
 import { GracefulShutdownService } from './services/graceful-shutdown.service';
 
 const logger = new Logger('Bootstrap');
+
+/**
+ * Secrets sourced from Supabase Vault at bootstrap when
+ * `SECRETS_PROVIDER=supabase`. Hydration runs before NestJS is
+ * constructed so `@nestjs/config` factories see the Vault values.
+ * Extended in follow-up PRs as more secrets migrate. See issue #786.
+ */
+const VAULT_BACKED_SECRETS = ['RESEND_API_KEY'] as const;
 
 function setupSwagger(
   app: INestApplication,
@@ -39,6 +48,11 @@ export default async function bootstrap(
   options: BootstrapOptions = {},
 ): Promise<void> {
   const startTime = Date.now();
+
+  // Vault → process.env hydration must run before NestFactory.create()
+  // because @nestjs/config's registerAs factories read process.env at
+  // module-init time. See issue #786.
+  await hydrateEnvFromVault(VAULT_BACKED_SECRETS);
 
   const app = await NestFactory.create(AppModule);
   const configService = app.get<ConfigService>(ConfigService);
