@@ -10,7 +10,11 @@
     "noProfileCta": "Complete onboarding →"
   },
   "section": {
-    "seeAll": "See all →"
+    "seeAll": "See all →",
+    "collapseAria": "Collapse {{title}} section",
+    "expandAria": "Expand {{title}} section",
+    "itemCount_one": "{{count}} item",
+    "itemCount_other": "{{count}} items"
   },
   "bills": {
     "title": "Bills moving this week",
@@ -38,7 +42,11 @@
   },
   "propositions": {
     "title": "Active propositions",
-    "subtitle": "Ballot measures in your jurisdictions, ranked by relevance + your trusted organizations.",
+    "subtitle": "Ballot measures in your jurisdictions, ranked by what matters to you.",
+    "empty": "No active propositions match your interests. Broaden your interests or check back closer to an election.",
+    "electionDate": "Election {{date}}",
+    "yesOutcome": "If yes",
+    "noOutcome": "If no",
     "placeholder": {
       "body": "Personalized proposition briefings are coming soon. Until then, browse all active ballot measures.",
       "comingSoonNote": "We'll show ranked props with trusted-org endorsements here once that signal pipeline ships."
