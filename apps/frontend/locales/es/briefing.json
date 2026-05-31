@@ -10,7 +10,11 @@
     "noProfileCta": "Completar incorporación →"
   },
   "section": {
-    "seeAll": "Ver todo →"
+    "seeAll": "Ver todo →",
+    "collapseAria": "Contraer sección {{title}}",
+    "expandAria": "Expandir sección {{title}}",
+    "itemCount_one": "{{count}} elemento",
+    "itemCount_other": "{{count}} elementos"
   },
   "bills": {
     "title": "Proyectos de ley esta semana",
@@ -38,7 +42,11 @@
   },
   "propositions": {
     "title": "Proposiciones activas",
-    "subtitle": "Medidas electorales en tus jurisdicciones, priorizadas por relevancia y por tus organizaciones de confianza.",
+    "subtitle": "Medidas electorales en tus jurisdicciones, priorizadas según lo que te importa.",
+    "empty": "Ninguna proposición activa coincide con tus intereses. Amplía tus intereses o vuelve a revisar cerca de una elección.",
+    "electionDate": "Elección {{date}}",
+    "yesOutcome": "Si sí",
+    "noOutcome": "Si no",
     "placeholder": {
       "body": "Los resúmenes personalizados de proposiciones llegarán pronto. Por ahora, explora todas las medidas electorales activas.",
       "comingSoonNote": "Mostraremos aquí proposiciones priorizadas con respaldos de organizaciones de confianza cuando esa señal esté lista."

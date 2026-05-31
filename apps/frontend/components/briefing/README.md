@@ -28,11 +28,20 @@ BriefingPage
 ```
 
 `BriefingSection` is the unit of composition. It owns the section
-chrome (title, subtitle, optional icon, "See all →" link) and
-exposes `data-section={slug}` for e2e selectors. When #769/#770/#771
-ship, each replaces its placeholder body with a real
-`<XBriefingSection />` component matching the bills pattern — no
+chrome (title, subtitle, optional icon, "See all →" link, and the
+expand/collapse toggle that lets users compress sections they don't
+want to scan) and exposes `data-section={slug}` for e2e selectors.
+When #769/#770/#771 ship, each replaces its placeholder body with a
+real `<XBriefingSection />` component matching the bills pattern — no
 changes to the shell.
+
+**Collapse state** persists per-section in `localStorage`, keyed on
+the slug (`briefing:section:${slug}:expanded`). Default is expanded;
+the user's choice survives across reloads in the same browser.
+Per-account persistence (Supabase-synced preferences) is a post-MVP
+follow-up. The toggle is fully keyboard-accessible, respects
+`prefers-reduced-motion`, and shows an item count next to the title
+when the section is collapsed so a closed card isn't information-free.
 
 ## Where the data comes from
 
