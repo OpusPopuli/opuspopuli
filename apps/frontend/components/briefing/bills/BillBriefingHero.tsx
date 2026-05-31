@@ -53,7 +53,11 @@ export function BillBriefingHero({ item }: BillBriefingHeroProps) {
         </p>
       )}
       <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <WhyThisPanel axisScores={result.axisScores} scopeId={bill.id} />
+        <WhyThisPanel
+          axisScores={result.axisScores}
+          scopeId={bill.id}
+          llmExplanation={result.relevanceExplanation}
+        />
         <Link
           href={`/region/bills/${bill.id}`}
           className="text-xs font-medium text-[#5A7A6A] hover:text-[#2D4A3C] dark:text-sage-300 dark:hover:text-white"

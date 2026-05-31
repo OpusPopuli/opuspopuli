@@ -163,6 +163,56 @@ export interface BillAnalysisParams {
   fullText: string;
 }
 
+/**
+ * Params for the `bill-relevance-explanation` prompt. Couples the
+ * structured bill summary from `bill-analysis` (opuspopuli #741) with
+ * the user's anonymized declared signals — the only inputs the LLM
+ * needs to write the per-user-per-bill "why this matters to you"
+ * sentence (planning doc §5.2, §5.3). Consumed by the nightly batch
+ * job in the knowledge service (opuspopuli #745).
+ *
+ * Privacy boundary (planning doc §10 commitment 7): callers MUST pass
+ * only declared signals — boolean flag names from the 20 RankingFlags
+ * (TRUE-only) + controlled-vocab interest tag slugs + a coarse region
+ * label. NEVER raw addresses, sensitive T3 fields, or behavioral data.
+ * Anonymization happens in the caller, not here.
+ */
+export interface BillRelevanceExplanationParams {
+  // ---------- Bill context ----------
+  /** Region identifier (e.g. "california"). */
+  regionId: string;
+  /** Display bill number (e.g. "AB 1", "SB 500"). */
+  billNumber: string;
+  /** Legislative session, e.g. "2025-2026". */
+  sessionYear: string;
+  /** Full official bill title. */
+  title: string;
+
+  // ---------- Bill structured summary (from bill-analysis) ----------
+  /** 2-3 sentence plain-English summary from bill-analysis output. */
+  plainEnglishSummary: string;
+  /** Controlled-vocab topic slugs from bill-analysis (1-3 values). */
+  topics: string[];
+  /** Controlled-vocab whoItAffects slugs from bill-analysis (0-4 values). */
+  whoItAffects: string[];
+  /** Normalized fiscal-impact level from bill-analysis. */
+  fiscalImpactLevel?: "none" | "low" | "medium" | "high";
+  /** One-sentence fiscal-impact summary from bill-analysis. */
+  fiscalImpactSummary?: string;
+  /** One-sentence stakeholder-impact summary from bill-analysis. */
+  stakeholderImpact?: string;
+  /** Optional bill section reference (e.g. "Section 1947.12") — passed through verbatim. */
+  billSectionHint?: string;
+
+  // ---------- User anonymized profile ----------
+  /** User's declared interest tags (controlled-vocab slugs — same vocab as `topics`). */
+  userInterestTags: string[];
+  /** Names of the 20 boolean RankingFlags that are TRUE for this user. Only declared signals — never inferred T3. */
+  userRankingFlags: string[];
+  /** Coarse anonymized region label (e.g. "94xxx", "alameda-county"). Caller anonymizes; this never sees raw addresses. */
+  userRegionLabel?: string;
+}
+
 export const PROMPT_CLIENT_CONFIG = "PROMPT_CLIENT_CONFIG";
 
 export type { PromptServiceResponse };

@@ -100,6 +100,15 @@ export interface PersonalizedBillResult {
   billId: string;
   relevanceScore: number;
   axisScores: AxisScores;
+  /**
+   * LLM-written one-sentence "why this matters to you" (#745). Null
+   * until the nightly batch job has computed an explanation for this
+   * (user, bill) pair, or when the LLM call failed / the validator
+   * rejected the output / the per-user token budget capped out.
+   * `WhyThisPanel` falls back to the heuristic axis explanation in
+   * that case.
+   */
+  relevanceExplanation?: string | null;
 }
 
 export interface PersonalizedBillFeedData {
@@ -116,6 +125,7 @@ export const GET_MY_PERSONALIZED_BILL_FEED = gql`
     myPersonalizedBillFeed(input: $input, limit: $limit) {
       billId
       relevanceScore
+      relevanceExplanation
       axisScores {
         directMaterial
         valuesAlignment

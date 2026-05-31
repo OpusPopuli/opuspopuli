@@ -405,6 +405,172 @@ describe("PromptClientService", () => {
     });
   });
 
+  describe("getBillRelevanceExplanationPrompt (#745)", () => {
+    // The variable shaping below MUST stay byte-for-byte identical to the
+    // billRelevanceExplanation descriptor in prompt-service
+    // (src/prompts/prompts.service.ts). Both sides interpolate against
+    // the same template; drift in either direction means the rendered
+    // prompt the LLM sees differs from what the tests on either side
+    // validate. These tests are the cross-service contract guard.
+
+    const BASE = {
+      regionId: "california",
+      billNumber: "AB 1",
+      sessionYear: "2025-2026",
+      title: "An act to add Section 12345.",
+      plainEnglishSummary: "Caps ADU fees at $1000.",
+      topics: ["housing"],
+      whoItAffects: ["homeowners", "renters"],
+      fiscalImpactLevel: "low" as const,
+      fiscalImpactSummary: "Negligible state cost.",
+      stakeholderImpact: "Homeowners benefit.",
+      billSectionHint: "Section 12345",
+      userInterestTags: ["housing"],
+      userRankingFlags: ["isHomeowner", "isParent"],
+      userRegionLabel: "94xxx",
+    };
+
+    const TEMPLATE = [
+      "Region: {{REGION_ID}}",
+      "Bill: {{BILL_NUMBER}}",
+      "Session: {{SESSION_YEAR}}",
+      "Title: {{TITLE}}",
+      "Bill topics: {{BILL_TOPICS}}",
+      "Bill affects: {{BILL_WHO_IT_AFFECTS}}",
+      "{{FISCAL_IMPACT_LINE}}{{STAKEHOLDER_IMPACT_LINE}}{{BILL_SECTION_HINT_LINE}}",
+      "User-declared interests (topic slugs): {{USER_INTEREST_TAGS}}",
+      "User-declared life-context flags (TRUE-only): {{USER_RANKING_FLAGS}}",
+      "{{USER_REGION_LINE}}NOTICE",
+      "{{PLAIN_ENGLISH_SUMMARY_BLOCK}}",
+    ].join("\n");
+
+    it("composes bill-relevance-explanation prompt with all interpolated fields", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-relevance-explanation", TEMPLATE),
+      );
+
+      const result = await service.getBillRelevanceExplanationPrompt(BASE);
+
+      expect(result.promptText).toContain("Region: california");
+      expect(result.promptText).toContain("Bill: AB 1");
+      expect(result.promptText).toContain("Session: 2025-2026");
+      expect(result.promptText).toContain("Bill topics: housing");
+      expect(result.promptText).toContain("Bill affects: homeowners, renters");
+      expect(result.promptText).toContain(
+        "Fiscal impact: low — Negligible state cost.\n",
+      );
+      expect(result.promptText).toContain(
+        "Stakeholder impact: Homeowners benefit.\n",
+      );
+      expect(result.promptText).toContain(
+        "Suggested section to cite: Section 12345\n",
+      );
+      expect(result.promptText).toContain(
+        "User-declared interests (topic slugs): housing",
+      );
+      expect(result.promptText).toContain(
+        "User-declared life-context flags (TRUE-only): isHomeowner, isParent",
+      );
+      expect(result.promptText).toContain("Approximate region: 94xxx\n");
+      expect(result.promptText).toContain(BASE.plainEnglishSummary);
+      expect(result.promptVersion).toBe("v1");
+      expect(result.promptHash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("uses 'none' / 'none declared' sentinels when arrays are empty", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-relevance-explanation", TEMPLATE),
+      );
+
+      const result = await service.getBillRelevanceExplanationPrompt({
+        regionId: BASE.regionId,
+        billNumber: BASE.billNumber,
+        sessionYear: BASE.sessionYear,
+        title: BASE.title,
+        plainEnglishSummary: BASE.plainEnglishSummary,
+        topics: ["housing"],
+        whoItAffects: [],
+        userInterestTags: [],
+        userRankingFlags: [],
+      });
+
+      expect(result.promptText).toContain("Bill affects: none");
+      expect(result.promptText).toContain(
+        "User-declared interests (topic slugs): none declared",
+      );
+      expect(result.promptText).toContain(
+        "User-declared life-context flags (TRUE-only): none",
+      );
+    });
+
+    it("omits optional-field section lines entirely when those fields are absent", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate(
+          "bill-relevance-explanation",
+          "PRE{{FISCAL_IMPACT_LINE}}{{STAKEHOLDER_IMPACT_LINE}}{{BILL_SECTION_HINT_LINE}}{{USER_REGION_LINE}}POST",
+        ),
+      );
+
+      const result = await service.getBillRelevanceExplanationPrompt({
+        regionId: BASE.regionId,
+        billNumber: BASE.billNumber,
+        sessionYear: BASE.sessionYear,
+        title: BASE.title,
+        plainEnglishSummary: BASE.plainEnglishSummary,
+        topics: ["housing"],
+        whoItAffects: [],
+        userInterestTags: [],
+        userRankingFlags: [],
+      });
+
+      expect(result.promptText).toBe("PREPOST");
+    });
+
+    it("renders fiscal-impact level alone when summary is omitted", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate(
+          "bill-relevance-explanation",
+          "ONLY{{FISCAL_IMPACT_LINE}}",
+        ),
+      );
+
+      const result = await service.getBillRelevanceExplanationPrompt({
+        ...BASE,
+        fiscalImpactLevel: "high",
+        fiscalImpactSummary: undefined,
+      });
+
+      expect(result.promptText).toBe("ONLYFiscal impact: high\n");
+    });
+
+    it("wraps plainEnglishSummary in a fenced block below the SECURITY NOTICE marker", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-relevance-explanation", TEMPLATE),
+      );
+
+      const result = await service.getBillRelevanceExplanationPrompt(BASE);
+      const text = result.promptText;
+
+      const noticeIdx = text.indexOf("NOTICE");
+      const summaryIdx = text.indexOf(BASE.plainEnglishSummary);
+      const fenceBeforeSummary = text.lastIndexOf("```text", summaryIdx);
+
+      expect(noticeIdx).toBeGreaterThan(0);
+      expect(summaryIdx).toBeGreaterThan(noticeIdx);
+      expect(fenceBeforeSummary).toBeGreaterThan(noticeIdx);
+      expect(fenceBeforeSummary).toBeLessThan(summaryIdx);
+    });
+
+    it("returns the prompt template version verbatim", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-relevance-explanation", TEMPLATE, 3),
+      );
+
+      const result = await service.getBillRelevanceExplanationPrompt(BASE);
+      expect(result.promptVersion).toBe("v3");
+    });
+  });
+
   describe("caching", () => {
     it("should cache templates after first read", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValueOnce(

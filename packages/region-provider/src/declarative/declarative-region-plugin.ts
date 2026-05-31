@@ -104,7 +104,41 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
   }
 
   async fetchRepresentatives(): Promise<Representative[]> {
-    return this.fetchByDataType<Representative>("representatives");
+    // Multi-source dataType: scraped HTML rosters often don't carry the
+    // chamber identifier explicitly (Assembly/Senate). The chamber lives
+    // on the data source's `category` field — stamp it onto each rep at
+    // extraction time so persistence sees `chamber` populated. Single
+    // place that knows source attribution; the previous fallback in
+    // RegionSyncService relied on `instanceof DeclarativeRegionPlugin`
+    // which silently fails across worker bundles.
+    const sources = this.regionConfig.dataSources.filter(
+      (ds) => ds.dataType === "representatives",
+    );
+    if (sources.length === 0) {
+      this.logger.warn(
+        `No data sources configured for representatives in ${this.regionConfig.regionId}`,
+      );
+      return [];
+    }
+
+    const allReps: Representative[] = [];
+    for (const source of sources) {
+      const { items } = await this.fetchSource<Representative>(
+        source,
+        "representatives",
+      );
+      if (source.category) {
+        for (const rep of items) {
+          if (!rep.chamber) rep.chamber = source.category;
+        }
+      }
+      allReps.push(...items);
+    }
+
+    this.logger.log(
+      `Fetched ${allReps.length} representatives items from ${sources.length} source(s)`,
+    );
+    return allReps;
   }
 
   async fetchBills(): Promise<Bill[]> {

@@ -43,7 +43,11 @@ export function BillBriefingCard({ item }: BillBriefingCardProps) {
         </p>
       )}
       <div className="mt-2">
-        <WhyThisPanel axisScores={result.axisScores} scopeId={bill.id} />
+        <WhyThisPanel
+          axisScores={result.axisScores}
+          scopeId={bill.id}
+          llmExplanation={result.relevanceExplanation}
+        />
       </div>
     </article>
   );

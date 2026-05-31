@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "opus-populi-collection",
     "name": "OpusPopuli Backend",
-    "description": "GraphQL API collection for OpusPopuli backend microservices.\n\nServices:\n- API Gateway (:3000) - federated gateway\n- Users (:3001) - auth, profiles, activity\n- Documents (:3002) - file management, OCR, analysis\n- Knowledge (:3003) - semantic search, RAG\n- Region (:3004) - civic data, scraping pipeline\n- Region Worker (:3005) - async BullMQ job processor",
+    "description": "GraphQL API collection for OpusPopuli backend microservices.\n\nServices:\n- API Gateway (:3000) - federated gateway\n- Users (:3001) - auth, profiles, activity\n- Documents (:3002) - file management, OCR, analysis\n- Knowledge (:3003) - semantic search, RAG\n- Region (:3004) - civic data, scraping pipeline\n- Region Worker (:3005) - async BullMQ job processor\n- Structural Analysis Worker (:3006) - async manifest analysis\n- LLM Rerank Worker (:3007) - personalized feed nightly batch (#745)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -151,6 +151,18 @@
             "url": {
               "raw": "{{region_worker_url}}/health",
               "host": ["{{region_worker_url}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "LLM Rerank Worker - Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{llm_rerank_worker_url}}/health",
+              "host": ["{{llm_rerank_worker_url}}"],
               "path": ["health"]
             }
           }
@@ -992,6 +1004,110 @@
               "mode": "graphql",
               "graphql": {
                 "query": "query {\n  scheduledSyncJobs {\n    id\n    pattern\n    next\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Personalized Feed (LLM Rerank Worker)",
+      "description": "Personalized bill-feed re-rank job management (opuspopuli#745).\n\ntriggerMyLlmRerank enqueues a BullMQ job onto the llm-rerank queue and returns immediately with the lifecycle row jobId (UUID of the llm_rerank_jobs row). The llm-rerank-worker (:3007) consumes the queue, runs LlmRerankService.rerankForUser, and writes per-user, per-bill rows to personalized_feed_cache.\n\nIn UAT the nightly cron is disabled (LLM_RERANK_CRON_ENABLED=false) — use this mutation to trigger an ad-hoc rerank for the authenticated user. Production runs the cron at 3 AM UTC by default.\n\nPoll job status via myLlmRerankJob(jobId) using the llm_rerank_job_id env var the trigger request saves. Status values: QUEUED → RUNNING → SUCCEEDED | FAILED. The result payload (candidatesConsidered, cacheWrites, validatorRejections, totalTokens, budgetExhausted) is populated on success. Polling is scoped to the authenticated user — you only see your own jobs.",
+      "item": [
+        {
+          "name": "Trigger My LLM Rerank",
+          "description": "Enqueue a re-rank job for the authenticated user. Pass the user's interestTags + all 20 ranking flags (the resolver derives the TRUE-only list internally). Saves llm_rerank_job_id from the response.\n\ncandidateLimit is optional (defaults to 20 in the worker). Lower it to ~3-5 during local LLM testing so Ollama doesn't run for several minutes per call.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "const job = res.data && res.data.triggerMyLlmRerank;",
+                  "if (job && job.jobId) {",
+                  "    pm.environment.set('llm_rerank_job_id', job.jobId);",
+                  "    console.log('llm_rerank_job_id saved:', job.jobId, '— status:', job.status);",
+                  "} else {",
+                  "    console.log('No jobId in response:', JSON.stringify(res));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation TriggerMyLlmRerank($input: PersonalizationInputDto!, $candidateLimit: Int) {\n  triggerMyLlmRerank(input: $input, candidateLimit: $candidateLimit) {\n    jobId\n    status\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"interestTags\": [\"housing\", \"healthcare\"],\n    \"flags\": {\n      \"isRenter\": true,\n      \"isHomeowner\": false,\n      \"isParent\": false,\n      \"isCaregiver\": false,\n      \"isStudent\": false,\n      \"isEducator\": false,\n      \"isWorker\": true,\n      \"isBusinessOwner\": false,\n      \"isUnionMember\": false,\n      \"isGigWorker\": false,\n      \"isTransitRider\": true,\n      \"isDriver\": false,\n      \"hasSpecialLicense\": false,\n      \"hasImmigrationConcern\": false,\n      \"hasHealthCondition\": false,\n      \"hasPublicHealthInsurance\": false,\n      \"isVeteran\": false,\n      \"hasJusticeInvolvement\": false,\n      \"isLowIncome\": false,\n      \"receivesPublicBenefits\": false\n    }\n  },\n  \"candidateLimit\": 5\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Poll Rerank Job Status (by llm_rerank_job_id)",
+          "description": "Poll the job saved by the last Trigger My LLM Rerank request. Refresh until status is SUCCEEDED or FAILED. Scoped to the authenticated user — returns null if you try to poll someone else's job id.",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query MyLlmRerankJob($jobId: ID!) {\n  myLlmRerankJob(jobId: $jobId) {\n    jobId\n    status\n    triggerSource\n    candidateLimit\n    attempts\n    enqueuedAt\n    startedAt\n    finishedAt\n    elapsedMs\n    errorMessage\n    result {\n      candidatesConsidered\n      cacheWritesWithExplanation\n      cacheWritesWithoutExplanation\n      llmFailures\n      validatorRejections\n      budgetExhausted\n      totalTokens\n    }\n  }\n}",
+                "variables": "{\n  \"jobId\": \"{{llm_rerank_job_id}}\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "My Recent Rerank Jobs",
+          "description": "List the authenticated user's most-recent rerank jobs. Useful for a dashboard view of rerank history. Limit defaults to 20 and is clamped to 100.",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query MyRecentLlmRerankJobs($limit: Int) {\n  myRecentLlmRerankJobs(limit: $limit) {\n    jobId\n    status\n    triggerSource\n    candidateLimit\n    attempts\n    enqueuedAt\n    startedAt\n    finishedAt\n    elapsedMs\n    errorMessage\n  }\n}",
+                "variables": "{\n  \"limit\": 10\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "My Personalized Bill Feed (verify cache after rerank)",
+          "description": "Reads the user's personalized feed. After the worker processes the triggerMyLlmRerank job, rows in this response should carry a non-null relevanceExplanation (the LLM-written 'why this matters to you' sentence). Rows without it fell back to embedding-only ranking (LLM declined, validator rejected, or budget exhausted — see myLlmRerankJob result for the per-user summary).",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query MyPersonalizedBillFeed($input: PersonalizationInputDto!, $limit: Int) {\n  myPersonalizedBillFeed(input: $input, limit: $limit) {\n    billId\n    relevanceScore\n    relevanceExplanation\n    axisScores {\n      directMaterial\n      valuesAlignment\n      actionability\n      indirectMaterial\n      coalitionSignal\n      counterfactual\n      noveltyRepetition\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"interestTags\": [\"housing\", \"healthcare\"],\n    \"flags\": {\n      \"isRenter\": true,\n      \"isHomeowner\": false,\n      \"isParent\": false,\n      \"isCaregiver\": false,\n      \"isStudent\": false,\n      \"isEducator\": false,\n      \"isWorker\": true,\n      \"isBusinessOwner\": false,\n      \"isUnionMember\": false,\n      \"isGigWorker\": false,\n      \"isTransitRider\": true,\n      \"isDriver\": false,\n      \"hasSpecialLicense\": false,\n      \"hasImmigrationConcern\": false,\n      \"hasHealthCondition\": false,\n      \"hasPublicHealthInsurance\": false,\n      \"isVeteran\": false,\n      \"hasJusticeInvolvement\": false,\n      \"isLowIncome\": false,\n      \"receivesPublicBenefits\": false\n    }\n  },\n  \"limit\": 5\n}"
               }
             },
             "url": {
