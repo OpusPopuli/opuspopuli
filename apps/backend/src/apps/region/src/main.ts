@@ -1,7 +1,6 @@
 import 'src/common/tracing'; // Must be first — OTel patches modules before they load
 import { setGlobalHttpPool } from '@opuspopuli/common';
-import bootstrap from 'src/common/bootstrap';
-import { AppModule } from './app.module';
+import { runService } from 'src/common/preflight';
 
 // Configure the global undici dispatcher BEFORE any fetch calls fire.
 // Default undici headersTimeout is 300_000ms (5 min); civics-extraction
@@ -16,4 +15,4 @@ setGlobalHttpPool({
   bodyTimeoutMs: 1_350_000,
 });
 
-bootstrap(AppModule, { portEnvVar: 'REGION_PORT' });
+runService(() => import('./app.module'), { portEnvVar: 'REGION_PORT' });
