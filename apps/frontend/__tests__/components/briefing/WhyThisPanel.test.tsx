@@ -89,6 +89,44 @@ describe("WhyThisPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the LLM explanation (and hides the heuristic) when llmExplanation is supplied (#745)", async () => {
+    const user = userEvent.setup();
+    render(
+      <WhyThisPanel
+        axisScores={{ ...baseAxes, directMaterial: 0.9 }}
+        scopeId="bill-llm"
+        llmExplanation="Caps rent for renters in 94110 by 3% — affects your housing costs."
+      />,
+    );
+    await user.click(screen.getByRole("button"));
+    expect(
+      screen.getByText(/Caps rent for renters in 94110 by 3%/i),
+    ).toBeInTheDocument();
+    // The heuristic axis sentence + #745 placeholder are hidden when the
+    // LLM line is present — they exist only as the fallback.
+    expect(
+      screen.queryByText(/money, rights, health, or services/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/llm explanation pipeline ships/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("falls back to the heuristic axis explanation when llmExplanation is empty string", async () => {
+    const user = userEvent.setup();
+    render(
+      <WhyThisPanel
+        axisScores={{ ...baseAxes, directMaterial: 0.9 }}
+        scopeId="bill-empty"
+        llmExplanation=""
+      />,
+    );
+    await user.click(screen.getByRole("button"));
+    expect(
+      screen.getByText(/money, rights, health, or services/i),
+    ).toBeInTheDocument();
+  });
+
   it("scopes aria-controls with the supplied scopeId so multiple cards stay isolated", () => {
     render(<WhyThisPanel axisScores={baseAxes} scopeId="bill-42" />);
     const toggle = screen.getByRole("button");

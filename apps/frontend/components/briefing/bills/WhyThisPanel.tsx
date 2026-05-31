@@ -12,6 +12,13 @@ interface WhyThisPanelProps {
    * page have distinct ids.
    */
   readonly scopeId: string;
+  /**
+   * LLM-written explanation from the nightly batch job (#745). When
+   * present, this is rendered as the primary sentence and the
+   * heuristic axis sentence is hidden — the LLM line is strictly
+   * more informative. Falls through to the heuristic when null/empty.
+   */
+  readonly llmExplanation?: string | null;
 }
 
 const AXIS_I18N: Record<keyof AxisScores, string | null> = {
@@ -32,16 +39,26 @@ const AXIS_I18N: Record<keyof AxisScores, string | null> = {
  * When #745 ships an LLM-written sentence the heuristic stays as
  * the offline / opt-out fallback.
  */
-export function WhyThisPanel({ axisScores, scopeId }: WhyThisPanelProps) {
+export function WhyThisPanel({
+  axisScores,
+  scopeId,
+  llmExplanation,
+}: WhyThisPanelProps) {
   const { t } = useTranslation("briefing");
   const [open, setOpen] = useState(false);
   const top = topAxisFor(axisScores);
   // If the top axis itself scored zero (theoretically possible if a bill
   // is surfaced only by axes 4-7, which today emit 0.0), the heuristic
   // sentence is misleading — fall through to the #745 placeholder note.
-  const i18nKey = axisScores[top] > 0 ? AXIS_I18N[top] : null;
+  const heuristicKey = axisScores[top] > 0 ? AXIS_I18N[top] : null;
   const panelId = `why-${scopeId}`;
   const buttonId = `why-toggle-${scopeId}`;
+
+  // The LLM line (#745) is strictly more informative than the heuristic
+  // axis sentence when present. Heuristic stays as the fallback for
+  // bills the nightly batch hasn't computed yet, LLM failures, or
+  // validator-rejected outputs.
+  const hasLlm = !!llmExplanation && llmExplanation.length > 0;
 
   return (
     <div>
@@ -62,14 +79,22 @@ export function WhyThisPanel({ axisScores, scopeId }: WhyThisPanelProps) {
           aria-labelledby={buttonId}
           className="mt-2 rounded-lg bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-700 p-3 space-y-2"
         >
-          {i18nKey ? (
+          {hasLlm ? (
             <p className="text-sm text-[#222222] dark:text-gray-100">
-              {t(i18nKey)}
+              {llmExplanation}
             </p>
-          ) : null}
-          <p className="text-xs text-gray-500 dark:text-gray-400 italic">
-            {t("whyThis.placeholderFor745")}
-          </p>
+          ) : (
+            <>
+              {heuristicKey ? (
+                <p className="text-sm text-[#222222] dark:text-gray-100">
+                  {t(heuristicKey)}
+                </p>
+              ) : null}
+              <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+                {t("whyThis.placeholderFor745")}
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>

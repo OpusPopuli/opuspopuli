@@ -83,22 +83,22 @@ composition function.
 
 ## Key files
 
-| File                                               | Purpose                                                                                               |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `BriefingPage.tsx`                                 | Top-level composer; renders header + 4 sections                                                       |
-| `BriefingPageHeader.tsx`                           | Page H1 + "Browse all civic data →" linkout to `/region`                                              |
-| `BriefingSection.tsx`                              | Domain-agnostic section shell (slug, title, subtitle, icon, seeAllHref)                               |
-| `bills/BillsBriefingSection.tsx`                   | Bills section orchestrator — owns hero + compact list + empty / noProfile / error states              |
-| `bills/useBillBriefing.ts`                         | The three-step fetch hook; returns `BillBriefingState`                                                |
-| `bills/BillBriefingHero.tsx`                       | Featured top card; renders the highest-ranked bill                                                    |
-| `bills/BillBriefingCard.tsx`                       | Compact card for ranks 2–N                                                                            |
-| `bills/RelevanceChip.tsx`                          | 3-tier relevance badge (≥70 / ≥40 / <40)                                                              |
-| `bills/WhyThisPanel.tsx`                           | Collapsible per-card disclosure; picks the top axis via `topAxisFor()` to render the i18n explanation |
-| `bills/BillsTopicFilter.tsx`                       | Read-only chips of `interestTags` + "Edit your interests →" linkout to `/me/profile`                  |
-| `placeholders/PlaceholderBody.tsx`                 | Shared placeholder card layout                                                                        |
-| `placeholders/RepsBriefingPlaceholder.tsx`         | Reps placeholder; references #769                                                                     |
-| `placeholders/CommitteesBriefingPlaceholder.tsx`   | Committees placeholder; references #770                                                               |
-| `placeholders/PropositionsBriefingPlaceholder.tsx` | Propositions placeholder; references #771                                                             |
+| File                                               | Purpose                                                                                                                                                                                                                   |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BriefingPage.tsx`                                 | Top-level composer; renders header + 4 sections                                                                                                                                                                           |
+| `BriefingPageHeader.tsx`                           | Page H1 + "Browse all civic data →" linkout to `/region`                                                                                                                                                                  |
+| `BriefingSection.tsx`                              | Domain-agnostic section shell (slug, title, subtitle, icon, seeAllHref)                                                                                                                                                   |
+| `bills/BillsBriefingSection.tsx`                   | Bills section orchestrator — owns hero + compact list + empty / noProfile / error states                                                                                                                                  |
+| `bills/useBillBriefing.ts`                         | The three-step fetch hook; returns `BillBriefingState`                                                                                                                                                                    |
+| `bills/BillBriefingHero.tsx`                       | Featured top card; renders the highest-ranked bill                                                                                                                                                                        |
+| `bills/BillBriefingCard.tsx`                       | Compact card for ranks 2–N                                                                                                                                                                                                |
+| `bills/RelevanceChip.tsx`                          | 3-tier relevance badge (≥70 / ≥40 / <40)                                                                                                                                                                                  |
+| `bills/WhyThisPanel.tsx`                           | Collapsible per-card disclosure. Renders the LLM-written `relevanceExplanation` from #745 when present; falls back to the top-axis heuristic explanation when null (LLM not yet computed, failed, or validator-rejected). |
+| `bills/BillsTopicFilter.tsx`                       | Read-only chips of `interestTags` + "Edit your interests →" linkout to `/me/profile`                                                                                                                                      |
+| `placeholders/PlaceholderBody.tsx`                 | Shared placeholder card layout                                                                                                                                                                                            |
+| `placeholders/RepsBriefingPlaceholder.tsx`         | Reps placeholder; references #769                                                                                                                                                                                         |
+| `placeholders/CommitteesBriefingPlaceholder.tsx`   | Committees placeholder; references #770                                                                                                                                                                                   |
+| `placeholders/PropositionsBriefingPlaceholder.tsx` | Propositions placeholder; references #771                                                                                                                                                                                 |
 
 ## i18n
 
@@ -109,13 +109,13 @@ keyed there. Add the namespace once in `lib/i18n/index.ts`.
 
 ## Where each follow-up plugs in
 
-| Issue | What it replaces                                                                                                |
-| ----- | --------------------------------------------------------------------------------------------------------------- |
-| #745  | `WhyThisPanel`'s heuristic axis-based explanation → LLM-written sentence (heuristic stays as fallback)          |
-| #761  | `useBillBriefing`'s three-step chain → single `myPersonalizedBillFeed` query that already includes bill details |
-| #769  | `RepsBriefingPlaceholder` → real `RepsBriefingSection`                                                          |
-| #770  | `CommitteesBriefingPlaceholder` → real `CommitteesBriefingSection`                                              |
-| #771  | `PropositionsBriefingPlaceholder` → real `PropositionsBriefingSection`                                          |
+| Issue | What it replaces                                                                                                                                                                                        |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #745  | **shipped** — LLM-written sentence renders in `WhyThisPanel` when `relevanceExplanation` is present on the feed result; heuristic stays as the fallback for bills the nightly batch hasn't computed yet |
+| #761  | `useBillBriefing`'s three-step chain → single `myPersonalizedBillFeed` query that already includes bill details                                                                                         |
+| #769  | `RepsBriefingPlaceholder` → real `RepsBriefingSection`                                                                                                                                                  |
+| #770  | `CommitteesBriefingPlaceholder` → real `CommitteesBriefingSection`                                                                                                                                      |
+| #771  | `PropositionsBriefingPlaceholder` → real `PropositionsBriefingSection`                                                                                                                                  |
 
 Each follow-up should match the bills pattern: a `<XBriefingSection>`
 hosted inside `<BriefingSection slug="x">` with its own

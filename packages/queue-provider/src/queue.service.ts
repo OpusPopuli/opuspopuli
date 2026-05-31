@@ -34,6 +34,31 @@ export class QueueService implements OnModuleDestroy {
     return job.id as string;
   }
 
+  /**
+   * Bulk-enqueue many jobs in a single Redis round-trip. Each entry has
+   * its own optional `EnqueueOptions` so callers can mix deterministic
+   * jobIds (dedup) with auto-generated ones in one call.
+   *
+   * Used by fan-out schedulers (LLM rerank cron, future per-user jobs)
+   * where the per-user loop would otherwise do N round-trips and block
+   * the worker for many seconds at scale.
+   */
+  async enqueueBulk<T>(
+    queueName: string,
+    entries: { data: T; opts?: EnqueueOptions }[],
+  ): Promise<string[]> {
+    if (entries.length === 0) return [];
+    const queue = this.getQueue(queueName);
+    const bulkJobs = entries.map((e) => ({
+      name: queueName,
+      data: e.data,
+      opts: this.buildJobOptions(queueName, e.opts),
+    }));
+    const jobs = await queue.addBulk(bulkJobs);
+    this.logger.debug(`Bulk-enqueued ${jobs.length} jobs on ${queueName}`);
+    return jobs.map((j) => j.id as string);
+  }
+
   async getJobInfo(
     queueName: string,
     jobId: string,
