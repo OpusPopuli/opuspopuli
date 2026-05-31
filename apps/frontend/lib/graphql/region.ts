@@ -1509,6 +1509,25 @@ export interface BillCoAuthor {
   coAuthorType?: string;
 }
 
+export interface BillAiFiscalImpact {
+  /** none | low | medium | high */
+  level: string;
+  summary: string;
+}
+
+/**
+ * Structured AI summary for a bill. Null when the bill has not yet been
+ * enriched, or when the LLM emitted `{ skip: true }` for garbled input.
+ * See `BillAiSummaryModel` on the backend.
+ */
+export interface BillAiSummary {
+  plainEnglishSummary: string;
+  topics: string[];
+  whoItAffects: string[];
+  fiscalImpact: BillAiFiscalImpact;
+  stakeholderImpact: string;
+}
+
 export interface Bill {
   id: string;
   externalId: string;
@@ -1531,6 +1550,7 @@ export interface Bill {
   updatedAt: string;
   votes: BillVote[];
   coAuthors: BillCoAuthor[];
+  aiSummary?: BillAiSummary | null;
 }
 
 export interface PaginatedBills {
@@ -1653,6 +1673,16 @@ export const GET_BILL = gql`
       }
       coAuthors {
         ...BillCoAuthorFields
+      }
+      aiSummary {
+        plainEnglishSummary
+        topics
+        whoItAffects
+        stakeholderImpact
+        fiscalImpact {
+          level
+          summary
+        }
       }
     }
   }
