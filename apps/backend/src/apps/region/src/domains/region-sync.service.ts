@@ -1123,14 +1123,6 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private applyChamberFallback(r: Representative, provider: DataFetcher): void {
-    if (r.chamber || !(provider instanceof DeclarativeRegionPlugin)) return;
-    const source = provider
-      .getDataSources('REPRESENTATIVES' as DataType)
-      .find((s) => s.category);
-    if (source?.category) r.chamber = source.category;
-  }
-
   private async syncRepresentatives(
     provider: DataFetcher = this.regionService,
     maxReps?: number,
@@ -1138,9 +1130,16 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ processed: number; created: number; updated: number }> {
     const reps = await provider.fetchRepresentatives();
 
+    // Chamber attribution happens at fetch time in
+    // DeclarativeRegionPlugin.fetchRepresentatives — each rep is stamped
+    // with the source's `category` (Assembly / Senate / Board of
+    // Supervisors / …) before it leaves the plugin. The old
+    // `applyChamberFallback` here relied on `instanceof
+    // DeclarativeRegionPlugin` which silently failed across worker
+    // bundles, leaving chamber undefined and causing Prisma to reject
+    // every upsert. Removed in the #745 code review.
     for (const r of reps) {
       this.normalizeRep(r);
-      this.applyChamberFallback(r, provider);
     }
 
     if (this.bioGenerator) {
