@@ -128,8 +128,14 @@ export function useBillBriefing(limit: number): BillBriefingState {
     [feedResults, bills],
   );
 
-  const noProfile =
-    !prefetch.loading && (!flags || !interestTags || interestTags.length === 0);
+  // "No scoring inputs" guard — fires when prefetch resolved but the
+  // user has declared neither interest tags NOR any TRUE rankingFlags.
+  // Either one is sufficient for the ranker (axis 1 reads flags,
+  // axis 2 reads tags), so the noProfile nudge only makes sense when
+  // BOTH are empty. Kept in lockstep with the propositions hook.
+  const hasAnyFlag = !!flags && Object.values(flags).some((v) => v === true);
+  const hasAnyTag = !!interestTags && interestTags.length > 0;
+  const noProfile = !prefetch.loading && !hasAnyFlag && !hasAnyTag;
 
   const queryError = prefetch.error ?? feed.error;
   const loading =
