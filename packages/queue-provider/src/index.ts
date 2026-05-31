@@ -5,6 +5,7 @@ export type { WorkerMetrics, CreateWorkerOptions } from "./worker.factory";
 export {
   REGION_SYNC_QUEUE,
   STRUCTURAL_ANALYSIS_QUEUE,
+  LLM_RERANK_QUEUE,
   QUEUE_CONNECTION,
   TRIGGER_SOURCE,
   JOB_STATUS,
@@ -20,6 +21,8 @@ export type {
   RegionSyncJobResult,
   StructuralAnalysisJobData,
   StructuralAnalysisJobResult,
+  LlmRerankJobData,
+  LlmRerankJobResult,
   QueueModuleOptions,
   QueueModuleAsyncOptions,
   EnqueueOptions,

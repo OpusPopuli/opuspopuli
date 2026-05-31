@@ -1,5 +1,6 @@
 export const REGION_SYNC_QUEUE = "region-sync";
 export const STRUCTURAL_ANALYSIS_QUEUE = "pipeline-structural-analysis";
+export const LLM_RERANK_QUEUE = "llm-rerank";
 
 export const ANALYSIS_REQUEST_SOURCE = {
   CACHE_MISS: "cache_miss",

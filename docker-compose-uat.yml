@@ -365,6 +365,55 @@ services:
           cpus: '0.25'
           memory: 512M
 
+  llm-rerank-worker:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.llm-rerank-worker
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-uat-llm-rerank-worker
+    environment:
+      <<: *backend-env
+      APPLICATION: llm-rerank-worker
+      DESCRIPTION: LLM re-rank worker (personalized feed nightly batch, opuspopuli#745)
+      PORT: 8080
+      LLM_RERANK_WORKER_PORT: 8080
+      LLM_URL: http://host.docker.internal:11434
+      LLM_MODEL: qwen3.5:9b
+      OLLAMA_REQUEST_TIMEOUT_MS: "600000"
+      PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
+      PROMPT_SERVICE_API_KEY: dev-key-1
+      # Disable nightly cron in UAT — trigger via triggerMyLlmRerank mutation
+      LLM_RERANK_CRON_ENABLED: "false"
+      # Daily token budget per user. UAT keeps the prod default; raise
+      # to validate near-cap behaviour without waiting a day.
+      LLM_RERANK_PER_USER_DAILY_TOKEN_CAP: ${LLM_RERANK_PER_USER_DAILY_TOKEN_CAP:-10000}
+      # Stale RUNNING-row sweep threshold on worker startup.
+      LLM_RERANK_JOB_STALE_AGE_MS: ${LLM_RERANK_JOB_STALE_AGE_MS:-600000}
+    ports:
+      - "3007:8080"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - opuspopuli-network
+      - prompt-service_default
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 4096M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
   api:
     build:
       context: .

@@ -181,6 +181,7 @@ model User {
   signalProfile          SignalProfile?
   sensitiveProfile       SensitiveProfile?
   events                 UserEvent[]
+  personalizedFeedCache  PersonalizedFeedCache[]
 
   @@map("users")
 }
@@ -351,12 +352,12 @@ model SensitiveProfile {
 /// representatives) so no FK constraint is set — those entities live in
 /// other microservices per the bounded-context rule.
 model UserEvent {
-  id         String  @id @default(uuid())
-  userId     String  @map("user_id")
-  verb       String  @db.VarChar(30)
-  objectType String  @map("object_type") @db.VarChar(30)
-  objectId   String  @map("object_id")
-  context    Json?   @db.JsonB
+  id         String @id @default(uuid())
+  userId     String @map("user_id")
+  verb       String @db.VarChar(30)
+  objectType String @map("object_type") @db.VarChar(30)
+  objectId   String @map("object_id")
+  context    Json?  @db.JsonB
 
   occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz
 
@@ -365,6 +366,91 @@ model UserEvent {
   @@index([userId, occurredAt(sort: Desc)])
   @@index([userId, objectType, occurredAt(sort: Desc)])
   @@map("user_events")
+}
+
+/// Per-user, per-bill cache of the personalized-feed ranker output —
+/// embedding-based composite score plus the optional LLM-written
+/// "why this matters to you" sentence written by the nightly batch job
+/// (epic OpusPopuli/opuspopuli#740, issue #745). The resolver in
+/// `apps/backend/src/apps/knowledge/src/domains/personalized-feed` reads
+/// from here first and falls back to on-the-fly embedding-only ranking
+/// when no cached row exists (e.g. for bills added since the last batch).
+///
+/// `relevanceExplanation` is nullable on purpose: when the LLM call
+/// fails, the validator rejects the output, or the per-user budget
+/// caps out, the row is still written with the embedding score so the
+/// feed serves — just without the personalized sentence. The frontend's
+/// WhyThisPanel already falls back to a heuristic axis explanation
+/// (planning doc §5.3 + frontend `components/briefing/bills/WhyThisPanel`).
+///
+/// Telemetry (`templateHash`, `variantId`, `tokensIn`, `tokensOut`) is
+/// for cost monitoring + A/B analytics. `expiresAt` drives the nightly
+/// recomputation cadence; the cache-eviction sweep that walks
+/// `expires_at_idx` to garbage-collect expired rows is a follow-up
+/// (not in #745 — the rerank job always upserts in place, so stale
+/// rows survive harmlessly until overwritten).
+model PersonalizedFeedCache {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  billId String @map("bill_id")
+
+  /// Composite 0.0-1.0 score from the v1 ranker (planning doc §5.2 axes 1-3).
+  relevanceScore Float @map("relevance_score")
+
+  /// LLM-written sentence (15-30 words) from prompt-service
+  /// `bill-relevance-explanation`. Null when the LLM declined, the
+  /// validator rejected the output, or the per-user budget was exhausted.
+  relevanceExplanation String? @map("relevance_explanation") @db.Text
+
+  // ---------- LLM telemetry ----------
+  /// SHA-256 of the prompt template at generation time. Lets us
+  /// re-rank when the prompt is updated upstream (#745 follow-up).
+  templateHash String? @map("template_hash")
+  /// A/B experiment variant assigned to this user for this batch run.
+  /// "control" or "variant_a" / "variant_b" — see prompt-service
+  /// experiments admin.
+  variantId    String? @map("variant_id") @db.VarChar(50)
+  tokensIn     Int?    @map("tokens_in")
+  tokensOut    Int?    @map("tokens_out")
+
+  computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bill Bill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, billId])
+  @@index([userId, computedAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("personalized_feed_cache")
+}
+
+/// Async-job status tracking for the `llm-rerank` BullMQ queue
+/// (opuspopuli#745). One row per enqueue; lifecycle is queued → running
+/// → (succeeded | failed). Equivalent of `PipelineJob` /
+/// `StructuralAnalysisJob` for the LLM re-rank worker. Per-user
+/// telemetry (token spend, validator rejection count) lands in `result`
+/// JSONB on success.
+model LlmRerankJob {
+  id             String    @id @default(uuid())
+  bullmqJobId    String    @map("bullmq_job_id")
+  status         String    @db.VarChar(20) // queued | running | succeeded | failed
+  triggerSource  String    @map("trigger_source") @db.VarChar(20) // manual | cron | startup
+  userId         String    @map("user_id")
+  candidateLimit Int?      @map("candidate_limit")
+  attempts       Int       @default(0)
+  enqueuedAt     DateTime  @default(now()) @map("enqueued_at") @db.Timestamptz
+  startedAt      DateTime? @map("started_at") @db.Timestamptz
+  finishedAt     DateTime? @map("finished_at") @db.Timestamptz
+  errorMessage   String?   @map("error_message")
+  /// LlmRerankJobResult JSON on success — candidatesConsidered, writes,
+  /// validatorRejections, totalTokens, etc.
+  result         Json?
+
+  @@unique([bullmqJobId])
+  @@index([status, enqueuedAt])
+  @@index([userId, enqueuedAt(sort: Desc)])
+  @@map("llm_rerank_jobs")
 }
 
 model UserLogin {
@@ -482,37 +568,37 @@ model UserConsent {
 }
 
 model UserAddress {
-  id                      String      @id @default(uuid())
-  userId                  String      @map("user_id")
-  addressType             AddressType @default(residential) @map("address_type")
-  isPrimary               Boolean     @default(false) @map("is_primary")
-  label                   String?     @db.VarChar(255)
-  addressLine1            String      @map("address_line_1") @db.VarChar(255)
-  addressLine2            String?     @map("address_line_2") @db.VarChar(255)
-  city                    String      @db.VarChar(100)
-  state                   String      @db.VarChar(100)
-  postalCode              String      @map("postal_code") @db.VarChar(20)
-  country                 String      @default("US") @db.VarChar(2)
-  latitude                Decimal?    @db.Decimal(10, 8)
-  longitude               Decimal?    @db.Decimal(11, 8)
-  formattedAddress        String?     @map("formatted_address") @db.VarChar(255)
-  placeId                 String?     @map("place_id") @db.VarChar(100)
-  geocodedAt              DateTime?   @map("geocoded_at") @db.Timestamptz
-  congressionalDistrict   String?     @map("congressional_district") @db.VarChar(50)
-  stateSenatorialDistrict String?     @map("state_senatorial_district") @db.VarChar(50)
-  stateAssemblyDistrict   String?     @map("state_assembly_district") @db.VarChar(50)
-  county                  String?     @db.VarChar(100)
-  municipality            String?     @db.VarChar(100)
-  schoolDistrict          String?     @map("school_district") @db.VarChar(100)
-  precinctId              String?     @map("precinct_id") @db.VarChar(100)
-  pollingPlace            String?     @map("polling_place") @db.VarChar(100)
+  id                      String                                 @id @default(uuid())
+  userId                  String                                 @map("user_id")
+  addressType             AddressType                            @default(residential) @map("address_type")
+  isPrimary               Boolean                                @default(false) @map("is_primary")
+  label                   String?                                @db.VarChar(255)
+  addressLine1            String                                 @map("address_line_1") @db.VarChar(255)
+  addressLine2            String?                                @map("address_line_2") @db.VarChar(255)
+  city                    String                                 @db.VarChar(100)
+  state                   String                                 @db.VarChar(100)
+  postalCode              String                                 @map("postal_code") @db.VarChar(20)
+  country                 String                                 @default("US") @db.VarChar(2)
+  latitude                Decimal?                               @db.Decimal(10, 8)
+  longitude               Decimal?                               @db.Decimal(11, 8)
+  formattedAddress        String?                                @map("formatted_address") @db.VarChar(255)
+  placeId                 String?                                @map("place_id") @db.VarChar(100)
+  geocodedAt              DateTime?                              @map("geocoded_at") @db.Timestamptz
+  congressionalDistrict   String?                                @map("congressional_district") @db.VarChar(50)
+  stateSenatorialDistrict String?                                @map("state_senatorial_district") @db.VarChar(50)
+  stateAssemblyDistrict   String?                                @map("state_assembly_district") @db.VarChar(50)
+  county                  String?                                @db.VarChar(100)
+  municipality            String?                                @db.VarChar(100)
+  schoolDistrict          String?                                @map("school_district") @db.VarChar(100)
+  precinctId              String?                                @map("precinct_id") @db.VarChar(100)
+  pollingPlace            String?                                @map("polling_place") @db.VarChar(100)
   point                   Unsupported("geography(Point, 4326)")?
-  civicDataUpdatedAt      DateTime?   @map("civic_data_updated_at") @db.Timestamptz
-  isVerified              Boolean     @default(false) @map("is_verified")
-  verifiedAt              DateTime?   @map("verified_at") @db.Timestamptz
-  verificationMethod      String?     @map("verification_method") @db.VarChar(50)
-  createdAt               DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt               DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  civicDataUpdatedAt      DateTime?                              @map("civic_data_updated_at") @db.Timestamptz
+  isVerified              Boolean                                @default(false) @map("is_verified")
+  verifiedAt              DateTime?                              @map("verified_at") @db.Timestamptz
+  verificationMethod      String?                                @map("verification_method") @db.VarChar(50)
+  createdAt               DateTime                               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime                               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   userJurisdictions UserJurisdiction[]
@@ -662,9 +748,9 @@ model Document {
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  abuseReports        AbuseReport[]
-  linkedPropositions  DocumentProposition[]
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  abuseReports       AbuseReport[]
+  linkedPropositions DocumentProposition[]
 
   @@index([userId])
   @@index([userId, deletedAt])
@@ -718,33 +804,33 @@ model AbuseReport {
 // ============================================
 
 model Representative {
-  id          String    @id @default(uuid())
-  externalId  String    @unique @map("external_id")
-  regionId    String    @default("california") @map("region_id") @db.VarChar(100) /// e.g. "california", "california-sonoma", "federal"
-  name        String
-  lastName    String    @default("") @map("last_name") /// derived from `name`, used for alphabetical sorting
-  chamber     String
-  district    String
-  party       String?
-  photoUrl    String?   @map("photo_url")
-  contactInfo Json?     @map("contact_info")
-  committees  Json?     @map("committees")       /// CommitteeAssignment[] as JSON — canonical source for the LegislativeCommittee backfill
-  committeesSummary String? @map("committees_summary") @db.Text /// AI-generated preamble describing the policy areas touched by committee assignments
-  bio         String?   @db.Text
-  bioSource   String?   @map("bio_source") @db.VarChar(20) /// 'scraped' | 'ai-generated'
-  bioClaims   Json?     @map("bio_claims") /// BioClaim[] — per-sentence attribution for ai-generated bios
+  id                         String    @id @default(uuid())
+  externalId                 String    @unique @map("external_id")
+  regionId                   String    @default("california") @map("region_id") @db.VarChar(100) /// e.g. "california", "california-sonoma", "federal"
+  name                       String
+  lastName                   String    @default("") @map("last_name") /// derived from `name`, used for alphabetical sorting
+  chamber                    String
+  district                   String
+  party                      String?
+  photoUrl                   String?   @map("photo_url")
+  contactInfo                Json?     @map("contact_info")
+  committees                 Json?     @map("committees") /// CommitteeAssignment[] as JSON — canonical source for the LegislativeCommittee backfill
+  committeesSummary          String?   @map("committees_summary") @db.Text /// AI-generated preamble describing the policy areas touched by committee assignments
+  bio                        String?   @db.Text
+  bioSource                  String?   @map("bio_source") @db.VarChar(20) /// 'scraped' | 'ai-generated'
+  bioClaims                  Json?     @map("bio_claims") /// BioClaim[] — per-sentence attribution for ai-generated bios
   /// AI-generated 2-3 sentence summary of recent legislative activity
   /// (presence + amendments + hearings + reports linked to this rep).
   /// Refreshed by run-generate-activity-summaries when new minutes
   /// ingest. Issue #665.
-  activitySummary           String?   @map("activity_summary") @db.Text
+  activitySummary            String?   @map("activity_summary") @db.Text
   activitySummaryGeneratedAt DateTime? @map("activity_summary_generated_at") @db.Timestamptz
   /// Window the summary covers, in days. Default 90 to match the L3
   /// stats counters; overridable per-call.
-  activitySummaryWindowDays Int?      @map("activity_summary_window_days")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+  activitySummaryWindowDays  Int?      @map("activity_summary_window_days")
+  createdAt                  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                  DateTime? @map("deleted_at") @db.Timestamptz
 
   committeeAssignments RepresentativeCommitteeAssignment[]
   legislativeActions   LegislativeAction[]
@@ -766,24 +852,24 @@ model Representative {
 /// service. NOT a campaign-finance committee — that's the separate `Committee`
 /// model. See ROADMAP issue for the eventual `Committee` → `FinanceCommittee` rename.
 model LegislativeCommittee {
-  id          String    @id @default(uuid())
-  externalId  String    @unique @map("external_id") /// `<chamber-lowercased>:<normalized-name>` e.g. "assembly:budget"
-  name        String                                 /// Display name as scraped (e.g. "Budget")
-  chamber     String    @db.VarChar(20)              /// "Assembly" | "Senate"
-  url         String?                                /// Optional canonical official link (when present in source data)
+  id                         String    @id @default(uuid())
+  externalId                 String    @unique @map("external_id") /// `<chamber-lowercased>:<normalized-name>` e.g. "assembly:budget"
+  name                       String /// Display name as scraped (e.g. "Budget")
+  chamber                    String    @db.VarChar(20) /// "Assembly" | "Senate"
+  url                        String? /// Optional canonical official link (when present in source data)
   /// AI-generated description placeholder for Phase 2 — kept nullable so the
   /// column ships now and a future analyzer can populate later.
-  description String?   @db.Text
+  description                String?   @db.Text
   /// AI-generated 2-3 sentence summary of recent committee activity
   /// (hearings, bill reports, amendments). Refreshed by
   /// run-generate-activity-summaries when new minutes ingest.
   /// Issue #665.
-  activitySummary           String?   @map("activity_summary") @db.Text
+  activitySummary            String?   @map("activity_summary") @db.Text
   activitySummaryGeneratedAt DateTime? @map("activity_summary_generated_at") @db.Timestamptz
-  activitySummaryWindowDays Int?      @map("activity_summary_window_days")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+  activitySummaryWindowDays  Int?      @map("activity_summary_window_days")
+  createdAt                  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                  DateTime? @map("deleted_at") @db.Timestamptz
 
   assignments        RepresentativeCommitteeAssignment[]
   legislativeActions LegislativeAction[]
@@ -808,7 +894,7 @@ model RepresentativeCommitteeAssignment {
   createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt              DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  representative Representative       @relation(fields: [representativeId],       references: [id], onDelete: Cascade)
+  representative Representative       @relation(fields: [representativeId], references: [id], onDelete: Cascade)
   committee      LegislativeCommittee @relation(fields: [legislativeCommitteeId], references: [id], onDelete: Cascade)
 
   @@unique([representativeId, legislativeCommitteeId])
@@ -827,31 +913,31 @@ model Proposition {
   sourceUrl    String?   @map("source_url")
 
   /// AI-generated plain-language one-liner; populates Layer 1 "Quick View".
-  analysisSummary      String?   @map("analysis_summary") @db.Text
+  analysisSummary     String?   @map("analysis_summary") @db.Text
   /// "This would..." bullets; string[] as JSONB.
-  keyProvisions        Json?     @map("key_provisions")
-  fiscalImpact         String?   @map("fiscal_impact") @db.Text
-  yesOutcome           String?   @map("yes_outcome") @db.Text
-  noOutcome            String?   @map("no_outcome") @db.Text
+  keyProvisions       Json?     @map("key_provisions")
+  fiscalImpact        String?   @map("fiscal_impact") @db.Text
+  yesOutcome          String?   @map("yes_outcome") @db.Text
+  noOutcome           String?   @map("no_outcome") @db.Text
   /// { current, proposed } JSONB for Layer 2 existing-law comparison.
-  existingVsProposed   Json?     @map("existing_vs_proposed")
+  existingVsProposed  Json?     @map("existing_vs_proposed")
   /// AI-segmented section anchors into fullText; [{heading,startOffset,endOffset}] as JSONB.
-  analysisSections     Json?     @map("analysis_sections")
+  analysisSections    Json?     @map("analysis_sections")
   /// Per-claim attribution with char-offset citations into fullText; mirrors BioClaim[] pattern.
-  analysisClaims       Json?     @map("analysis_claims")
-  analysisSource       String?   @map("analysis_source") @db.VarChar(20) /// 'ai-generated' | 'manual'
+  analysisClaims      Json?     @map("analysis_claims")
+  analysisSource      String?   @map("analysis_source") @db.VarChar(20) /// 'ai-generated' | 'manual'
   /// SHA-256 of the prompt template text used for this run; used to detect stale analyses.
-  analysisPromptHash   String?   @map("analysis_prompt_hash") @db.VarChar(64)
-  analysisGeneratedAt  DateTime? @map("analysis_generated_at") @db.Timestamptz
+  analysisPromptHash  String?   @map("analysis_prompt_hash") @db.VarChar(64)
+  analysisGeneratedAt DateTime? @map("analysis_generated_at") @db.Timestamptz
 
   /// Resolved lifecycle stage id from civics data. Null for ballot measures
   /// or bills whose status hasn't been matched against civics.lifecycleStages
   /// patterns yet. Powers the lifecycle progress bar (#679).
-  lifecycleStageId     String?   @map("lifecycle_stage_id") @db.VarChar(100)
+  lifecycleStageId String? @map("lifecycle_stage_id") @db.VarChar(100)
 
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
   linkedDocuments         DocumentProposition[]
   committeePositions      CommitteeMeasurePosition[]
@@ -893,45 +979,45 @@ model Proposition {
 /// against the active revision; superseded rows stay in-place for
 /// audit but UI queries should filter `minutes.isActive = true`.
 model Minutes {
-  id              String    @id @default(uuid())
+  id            String    @id @default(uuid())
   /// `${region}-${body-lowercase}-${YYYY-MM-DD}` for chamber-wide r0;
   /// `${region}-${body-lowercase}-${committee-slug}-${YYYY-MM-DD}` for
   /// per-committee minutes; suffixed `-r${n}` for revisions.
-  externalId      String    @unique @map("external_id")
-  body            String    @db.VarChar(20)
-  date            DateTime  @db.Date
+  externalId    String    @unique @map("external_id")
+  body          String    @db.VarChar(20)
+  date          DateTime  @db.Date
   /// Revision sequence: 0 for the original publication, 1+ for
   /// re-issues. Combined with (body, date, committeeId) gives a stable
   /// natural key.
-  revisionSeq     Int       @default(0) @map("revision_seq")
+  revisionSeq   Int       @default(0) @map("revision_seq")
   /// True for the canonical-current version; false for superseded
   /// predecessors. UI queries filter on this.
-  isActive        Boolean   @default(true) @map("is_active")
+  isActive      Boolean   @default(true) @map("is_active")
   /// Set when the document is a single-committee minutes. Null for
   /// chamber-wide daily journals.
-  committeeId     String?   @map("committee_id")
+  committeeId   String?   @map("committee_id")
   /// Set when this minutes record corresponds to a specific scheduled
   /// meeting. Null when the source PDF doesn't map to a calendared
   /// meeting.
-  meetingId       String?   @map("meeting_id")
-  pageCount       Int?      @map("page_count")
-  sourceUrl       String    @map("source_url")
+  meetingId     String?   @map("meeting_id")
+  pageCount     Int?      @map("page_count")
+  sourceUrl     String    @map("source_url")
   /// Full pdf-parse output. Capped at ~256kB at write time; longer
   /// documents are truncated. Used by downstream passes (linker, AI
   /// summarization) so they can be re-run without re-fetching the PDF.
-  rawText         String?   @map("raw_text") @db.Text
+  rawText       String?   @map("raw_text") @db.Text
   /// V2: AI-generated plain-language summary. Reserved column.
-  summary         String?   @db.Text
+  summary       String?   @db.Text
   /// V2: per-claim attribution into rawText for citizen-facing
   /// "letter to representative with quote" features. Mirrors the
   /// PropositionAnalysisClaim shape (sourceStart/sourceEnd offsets).
-  summaryClaims   Json?     @map("summary_claims")
-  parsedAt        DateTime? @map("parsed_at") @db.Timestamptz
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  summaryClaims Json?     @map("summary_claims")
+  parsedAt      DateTime? @map("parsed_at") @db.Timestamptz
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   committee LegislativeCommittee? @relation(fields: [committeeId], references: [id], onDelete: SetNull)
-  meeting   Meeting?              @relation(fields: [meetingId],   references: [id], onDelete: SetNull)
+  meeting   Meeting?              @relation(fields: [meetingId], references: [id], onDelete: SetNull)
   actions   LegislativeAction[]
 
   @@index([date(sort: Desc)])
@@ -965,47 +1051,47 @@ model Minutes {
 /// canonical "rep activity feed" / "bill history" / "committee history"
 /// indexes don't require a JOIN to filter by date.
 model LegislativeAction {
-  id               String    @id @default(uuid())
-  externalId       String    @unique @map("external_id")
-  minutesId        String    @map("minutes_id")
-  body             String    @db.VarChar(20)
-  date             DateTime  @db.Date
-  actionType       String    @map("action_type") @db.VarChar(40)
-  representativeId String?   @map("representative_id")
-  propositionId    String?   @map("proposition_id")
+  id               String   @id @default(uuid())
+  externalId       String   @unique @map("external_id")
+  minutesId        String   @map("minutes_id")
+  body             String   @db.VarChar(20)
+  date             DateTime @db.Date
+  actionType       String   @map("action_type") @db.VarChar(40)
+  representativeId String?  @map("representative_id")
+  propositionId    String?  @map("proposition_id")
   /// Optional FK to Bill — resolved by the linker when the action's
   /// canonical citation (e.g. "AB 1234") matches a row in `bills`. Set
   /// independently of propositionId: an action can link to one, both,
   /// or neither. See opuspopuli#666.
-  billId           String?   @map("bill_id")
-  committeeId      String?   @map("committee_id")
+  billId           String?  @map("bill_id")
+  committeeId      String?  @map("committee_id")
   /// 'yes' | 'no' | 'abstain' | 'absent' — null for non-vote actions in V1.
-  position         String?   @db.VarChar(20)
+  position         String?  @db.VarChar(20)
   /// Verbatim source excerpt. Capped at 4kB at write time. For the
   /// full source text reach into the parent Minutes' `rawText`.
-  text             String?   @db.Text
+  text             String?  @db.Text
   /// V2: AI-generated summary for long-form actions (speeches, etc.).
-  summary          String?   @db.Text
+  summary          String?  @db.Text
   /// Char offset into the parent Minutes' `rawText` where the action's
   /// source passage begins. Inclusive. Null when offsets can't be
   /// determined (e.g. synthesized from heterogeneous sections).
-  passageStart     Int?      @map("passage_start")
+  passageStart     Int?     @map("passage_start")
   /// Char offset into the parent Minutes' `rawText` where the action's
   /// source passage ends. Exclusive. Null when offsets aren't available.
-  passageEnd       Int?      @map("passage_end")
-  sourcePage       Int?      @map("source_page")
+  passageEnd       Int?     @map("passage_end")
+  sourcePage       Int?     @map("source_page")
   /// Pre-link source text (surname, bill number, committee name). Set
   /// by the linker; useful in the UI when the FK is null because no
   /// matching entity exists yet.
-  rawSubject       String?   @map("raw_subject") @db.VarChar(500)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  rawSubject       String?  @map("raw_subject") @db.VarChar(500)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  minutes        Minutes               @relation(fields: [minutesId],        references: [id], onDelete: Cascade)
+  minutes        Minutes               @relation(fields: [minutesId], references: [id], onDelete: Cascade)
   representative Representative?       @relation(fields: [representativeId], references: [id], onDelete: SetNull)
-  proposition    Proposition?          @relation(fields: [propositionId],    references: [id], onDelete: SetNull)
-  bill           Bill?                 @relation(fields: [billId],           references: [id], onDelete: SetNull)
-  committee      LegislativeCommittee? @relation(fields: [committeeId],      references: [id], onDelete: SetNull)
+  proposition    Proposition?          @relation(fields: [propositionId], references: [id], onDelete: SetNull)
+  bill           Bill?                 @relation(fields: [billId], references: [id], onDelete: SetNull)
+  committee      LegislativeCommittee? @relation(fields: [committeeId], references: [id], onDelete: SetNull)
 
   @@index([minutesId])
   @@index([representativeId, date(sort: Desc)])
@@ -1122,32 +1208,32 @@ model CivicsBlock {
 /// row and `sourceUrl` records which page won. Term-level provenance
 /// is reconstructable from `civics_blocks.glossary` if needed.
 model GlossaryEntry {
-  id              String   @id @default(uuid())
+  id             String   @id @default(uuid())
   /// Region plugin name (e.g. "california"). Matches `region_plugins.name`.
-  regionId        String   @map("region_id")
+  regionId       String   @map("region_id")
   /// Display form of the term (preserves original casing).
-  term            String
+  term           String
   /// URL-safe anchor (kebab-case) for `<CivicTerm>` "Learn more"
   /// deep-links into the civics hub (issue #680).
-  slug            String
+  slug           String
   /// CivicText: { verbatim, plainLanguage, sourceUrl }. Stored as
   /// JSONB to keep the contract single-shape across consumers.
-  definition      Json
+  definition     Json
   /// Optional longer-form definition for the civics hub deep link.
-  longDefinition  Json?    @map("long_definition")
+  longDefinition Json?    @map("long_definition")
   /// Cross-references to other glossary terms (case-insensitive at
   /// query time).
-  relatedTerms    String[] @map("related_terms") @default([])
+  relatedTerms   String[] @default([]) @map("related_terms")
   /// URL the most recent extraction came from. Last-write-wins when
   /// the term appears on multiple crawled pages.
-  sourceUrl       String   @map("source_url")
+  sourceUrl      String   @map("source_url")
   /// SHA-256 of the prompt template used; detects stale entries when
   /// the prompt is revised in the prompt-service.
-  promptHash      String?  @map("prompt_hash") @db.VarChar(64)
-  promptVersion   String?  @map("prompt_version") @db.VarChar(20)
-  extractedAt     DateTime @default(now()) @map("extracted_at") @db.Timestamptz
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  promptHash     String?  @map("prompt_hash") @db.VarChar(64)
+  promptVersion  String?  @map("prompt_version") @db.VarChar(20)
+  extractedAt    DateTime @default(now()) @map("extracted_at") @db.Timestamptz
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   @@unique([regionId, slug])
   @@index([regionId, term])
@@ -1172,43 +1258,43 @@ model GlossaryEntry {
 /// civics data — not a DB foreign key, since lifecycle stages live in
 /// the JSONB civics_blocks table.
 model Bill {
-  id                String    @id @default(uuid())
+  id                 String    @id @default(uuid())
   /// "20232024AB1234" — sessionYear + measureTypeCode + billNumber, no spaces.
-  externalId        String    @unique @map("external_id")
+  externalId         String    @unique @map("external_id")
   /// Region plugin name (e.g. "california").
-  regionId          String    @map("region_id")
+  regionId           String    @map("region_id")
   /// Human-readable number, e.g. "AB 1234".
-  billNumber        String    @map("bill_number") @db.VarChar(30)
+  billNumber         String    @map("bill_number") @db.VarChar(30)
   /// Legislative session, e.g. "2023-2024".
-  sessionYear       String    @map("session_year") @db.VarChar(10)
+  sessionYear        String    @map("session_year") @db.VarChar(10)
   /// Maps to MeasureType.code from civics data: AB, SB, ACA, SCA, etc.
-  measureTypeCode   String    @map("measure_type_code") @db.VarChar(10)
-  title             String    @db.Text
-  subject           String?   @db.VarChar(500)
+  measureTypeCode    String    @map("measure_type_code") @db.VarChar(10)
+  title              String    @db.Text
+  subject            String?   @db.VarChar(500)
   /// Lifecycle status string as it appears on the official source page.
-  status            String?   @db.VarChar(200)
+  status             String?   @db.VarChar(200)
   /// Id of the matching LifecycleStage from civics data (string ref, not FK).
-  currentStageId    String?   @map("current_stage_id") @db.VarChar(100)
-  lastAction        String?   @map("last_action") @db.Text
-  lastActionDate    DateTime? @map("last_action_date") @db.Date
-  fiscalImpact      String?   @map("fiscal_impact") @db.Text
+  currentStageId     String?   @map("current_stage_id") @db.VarChar(100)
+  lastAction         String?   @map("last_action") @db.Text
+  lastActionDate     DateTime? @map("last_action_date") @db.Date
+  fiscalImpact       String?   @map("fiscal_impact") @db.Text
   /// URL to the bill's full text on the official source site.
-  fullTextUrl       String?   @map("full_text_url")
+  fullTextUrl        String?   @map("full_text_url")
   /// Resolved by BillAuthorLinker. Null when no matching rep record found.
-  authorId          String?   @map("author_id")
+  authorId           String?   @map("author_id")
   /// Raw author name from the source page — preserved for linker re-runs.
-  authorName        String?   @map("author_name") @db.VarChar(200)
+  authorName         String?   @map("author_name") @db.VarChar(200)
   /// Page on the official legislature site this bill was extracted from.
-  sourceUrl         String    @map("source_url")
+  sourceUrl          String    @map("source_url")
   /// "Date Published" timestamp scraped from the bill text page. Used to
   /// skip LLM re-extraction when the bill text hasn't changed since the
   /// last sync run.
-  sourcePublishedAt DateTime? @map("source_published_at") @db.Timestamptz
+  sourcePublishedAt  DateTime? @map("source_published_at") @db.Timestamptz
   /// Set true by the legislative-action linker when this bill is cited in
   /// a newly-ingested journal. The next bills sync re-fetches the status
   /// page (no LLM) to catch status-only changes the text-page skip would
   /// otherwise hide. Cleared after the re-check completes. See #689.
-  needsStatusRecheck Boolean  @default(false) @map("needs_status_recheck")
+  needsStatusRecheck Boolean   @default(false) @map("needs_status_recheck")
 
   /// Structured plain-English AI summary for the personalized bill feed
   /// (epic #740, this issue #741). Shape: { plainEnglishSummary, topics[],
@@ -1216,22 +1302,23 @@ model Bill {
   /// Produced by the bill-analysis prompt-service endpoint and consumed by
   /// the ranking layer (#743) + the briefing feed UI (#744). Null when not
   /// yet enriched OR when the LLM emitted `{ skip: true }`.
-  aiSummary         Json?     @map("ai_summary") @db.JsonB
+  aiSummary            Json?     @map("ai_summary") @db.JsonB
   /// Bill-analysis prompt-template version at the time of generation,
   /// e.g. "v1". Re-enrichment fires when this differs from the currently-
   /// active prompt-service template version.
-  aiSummaryVersion  String?   @map("ai_summary_version") @db.VarChar(20)
+  aiSummaryVersion     String?   @map("ai_summary_version") @db.VarChar(20)
   aiSummaryGeneratedAt DateTime? @map("ai_summary_generated_at") @db.Timestamptz
 
-  extractedAt       DateTime  @default(now()) @map("extracted_at") @db.Timestamptz
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  extractedAt DateTime @default(now()) @map("extracted_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  author            Representative?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  coAuthors         BillCoAuthor[]
-  committeeReferrals BillCommitteeAssignment[]
-  votes             BillVote[]
-  actions           LegislativeAction[]
+  author                Representative?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  coAuthors             BillCoAuthor[]
+  committeeReferrals    BillCommitteeAssignment[]
+  votes                 BillVote[]
+  actions               LegislativeAction[]
+  personalizedFeedCache PersonalizedFeedCache[]
 
   @@index([regionId, sessionYear])
   @@index([regionId, measureTypeCode])
@@ -1246,14 +1333,14 @@ model Bill {
 /// `coAuthorType` is the raw string from the source (e.g. "principal coauthor"
 /// | "coauthor") normalised to lowercase.
 model BillCoAuthor {
-  billId            String    @map("bill_id")
-  representativeId  String    @map("representative_id")
+  billId           String   @map("bill_id")
+  representativeId String   @map("representative_id")
   /// "principal coauthor" | "coauthor"
-  coAuthorType      String?   @map("co_author_type") @db.VarChar(50)
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  coAuthorType     String?  @map("co_author_type") @db.VarChar(50)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  bill              Bill            @relation(fields: [billId],           references: [id], onDelete: Cascade)
-  representative    Representative  @relation(fields: [representativeId], references: [id], onDelete: Cascade)
+  bill           Bill           @relation(fields: [billId], references: [id], onDelete: Cascade)
+  representative Representative @relation(fields: [representativeId], references: [id], onDelete: Cascade)
 
   @@id([billId, representativeId])
   @@index([representativeId])
@@ -1269,7 +1356,7 @@ model BillCommitteeAssignment {
   referredAt             DateTime? @map("referred_at") @db.Date
   createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
-  bill      Bill                 @relation(fields: [billId],                 references: [id], onDelete: Cascade)
+  bill      Bill                 @relation(fields: [billId], references: [id], onDelete: Cascade)
   committee LegislativeCommittee @relation(fields: [legislativeCommitteeId], references: [id], onDelete: Cascade)
 
   @@id([billId, legislativeCommitteeId])
@@ -1285,25 +1372,25 @@ model BillCommitteeAssignment {
 /// The raw `representativeName` is preserved for re-linking when new
 /// representative records are added.
 model BillVote {
-  id                  String    @id @default(uuid())
-  billId              String    @map("bill_id")
+  id                 String   @id @default(uuid())
+  billId             String   @map("bill_id")
   /// Resolved FK — null when linker cannot match the name.
-  representativeId    String?   @map("representative_id")
+  representativeId   String?  @map("representative_id")
   /// Raw name from the roll-call table; preserved for linker re-runs.
-  representativeName  String    @map("representative_name") @db.VarChar(200)
+  representativeName String   @map("representative_name") @db.VarChar(200)
   /// "Assembly" | "Senate"
-  chamber             String    @db.VarChar(20)
-  voteDate            DateTime  @map("vote_date") @db.Date
+  chamber            String   @db.VarChar(20)
+  voteDate           DateTime @map("vote_date") @db.Date
   /// yes | no | abstain | absent | excused | no_vote
-  position            String    @db.VarChar(20)
+  position           String   @db.VarChar(20)
   /// The motion being voted on, e.g. "Do Pass" | "Do Pass as Amended".
-  motionText          String?   @map("motion_text") @db.VarChar(200)
-  sourceUrl           String    @map("source_url")
-  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  motionText         String?  @map("motion_text") @db.VarChar(200)
+  sourceUrl          String   @map("source_url")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  bill            Bill            @relation(fields: [billId],            references: [id], onDelete: Cascade)
-  representative  Representative? @relation(fields: [representativeId],  references: [id], onDelete: SetNull)
+  bill           Bill            @relation(fields: [billId], references: [id], onDelete: Cascade)
+  representative Representative? @relation(fields: [representativeId], references: [id], onDelete: SetNull)
 
   @@unique([billId, representativeId, voteDate, chamber])
   @@index([billId])
@@ -1321,15 +1408,15 @@ model BillVote {
 /// The enabled plugin is dynamically loaded at startup.
 model RegionPlugin {
   id             String    @id @default(uuid())
-  name           String    @unique                            /// Plugin identifier: "california", "texas"
+  name           String    @unique /// Plugin identifier: "california", "texas"
   displayName    String    @map("display_name")
   description    String?   @db.Text
   pluginType     String    @default("declarative") @map("plugin_type") @db.VarChar(20)
   version        String    @db.VarChar(50)
   enabled        Boolean   @default(false)
   parentRegionId String?   @map("parent_region_id") @db.VarChar(100) /// regionId of the parent region (null for top-level)
-  fipsCode       String?   @unique @map("fips_code") @db.VarChar(10)  /// Census FIPS code — join key to jurisdictions table
-  config         Json?                                        /// DeclarativeRegionConfig JSON
+  fipsCode       String?   @unique @map("fips_code") @db.VarChar(10) /// Census FIPS code — join key to jurisdictions table
+  config         Json? /// DeclarativeRegionConfig JSON
   lastSyncAt     DateTime? @map("last_sync_at") @db.Timestamptz
   lastSyncStatus String?   @map("last_sync_status") @db.VarChar(50)
   lastError      String?   @map("last_error") @db.Text
@@ -1532,15 +1619,15 @@ model StructuralManifest {
   id              String    @id @default(uuid())
   regionId        String    @map("region_id") @db.VarChar(100)
   sourceUrl       String    @map("source_url") @db.VarChar(1000)
-  dataType        String    @map("data_type") @db.VarChar(50)      /// propositions, meetings, representatives
+  dataType        String    @map("data_type") @db.VarChar(50) /// propositions, meetings, representatives
   version         Int       @default(1)
-  structureHash   String    @map("structure_hash") @db.VarChar(64)  /// SHA-256 of HTML skeleton
-  promptHash      String    @map("prompt_hash") @db.VarChar(64)     /// SHA-256 of analysis prompt
-  extractionRules Json      @map("extraction_rules")                 /// ExtractionRuleSet as JSON
+  structureHash   String    @map("structure_hash") @db.VarChar(64) /// SHA-256 of HTML skeleton
+  promptHash      String    @map("prompt_hash") @db.VarChar(64) /// SHA-256 of analysis prompt
+  extractionRules Json      @map("extraction_rules") /// ExtractionRuleSet as JSON
   confidence      Float     @default(0)
   successCount    Int       @default(0) @map("success_count")
   failureCount    Int       @default(0) @map("failure_count")
-  isActive        Boolean   @default(true) @map("is_active")        /// Only one active per (regionId, sourceUrl, dataType)
+  isActive        Boolean   @default(true) @map("is_active") /// Only one active per (regionId, sourceUrl, dataType)
   llmProvider     String?   @map("llm_provider") @db.VarChar(50)
   llmModel        String?   @map("llm_model") @db.VarChar(100)
   llmTokensUsed   Int?      @map("llm_tokens_used")
@@ -1559,30 +1646,30 @@ model StructuralManifest {
 
 /// Pipeline execution metrics for monitoring and debugging.
 model PipelineExecution {
-  id                  String   @id @default(uuid())
-  regionId            String   @map("region_id") @db.VarChar(100)
-  sourceUrl           String   @map("source_url") @db.VarChar(1000)
-  dataType            String   @map("data_type") @db.VarChar(50)
-  manifestId          String?  @map("manifest_id")
-  manifestVersion     Int?     @map("manifest_version")
-  manifestCacheHit    Boolean  @default(false) @map("manifest_cache_hit")
-  structureChanged    Boolean  @default(false) @map("structure_changed")
-  selfHealTriggered   Boolean  @default(false) @map("self_heal_triggered")
-  itemsExtracted      Int      @default(0) @map("items_extracted")
-  itemsFailed         Int      @default(0) @map("items_failed")
-  analysisTimeMs      Int?     @map("analysis_time_ms")
-  extractionTimeMs    Int      @default(0) @map("extraction_time_ms")
-  totalTimeMs         Int      @default(0) @map("total_time_ms")
-  success             Boolean  @default(true)
-  status              String   @default("completed") @db.VarChar(20)
-  errorMessage        String?  @map("error_message") @db.Text
-  llmProvider         String?  @map("llm_provider") @db.VarChar(50)
-  llmModel            String?  @map("llm_model") @db.VarChar(100)
-  llmTokensUsed       Int?     @map("llm_tokens_used")
-  executedAt          DateTime @default(now()) @map("executed_at") @db.Timestamptz
-  pipelineJobId       String?  @map("pipeline_job_id")
-  pipelineJob         PipelineJob? @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
-  batches             PipelineExecutionBatch[]
+  id                String                   @id @default(uuid())
+  regionId          String                   @map("region_id") @db.VarChar(100)
+  sourceUrl         String                   @map("source_url") @db.VarChar(1000)
+  dataType          String                   @map("data_type") @db.VarChar(50)
+  manifestId        String?                  @map("manifest_id")
+  manifestVersion   Int?                     @map("manifest_version")
+  manifestCacheHit  Boolean                  @default(false) @map("manifest_cache_hit")
+  structureChanged  Boolean                  @default(false) @map("structure_changed")
+  selfHealTriggered Boolean                  @default(false) @map("self_heal_triggered")
+  itemsExtracted    Int                      @default(0) @map("items_extracted")
+  itemsFailed       Int                      @default(0) @map("items_failed")
+  analysisTimeMs    Int?                     @map("analysis_time_ms")
+  extractionTimeMs  Int                      @default(0) @map("extraction_time_ms")
+  totalTimeMs       Int                      @default(0) @map("total_time_ms")
+  success           Boolean                  @default(true)
+  status            String                   @default("completed") @db.VarChar(20)
+  errorMessage      String?                  @map("error_message") @db.Text
+  llmProvider       String?                  @map("llm_provider") @db.VarChar(50)
+  llmModel          String?                  @map("llm_model") @db.VarChar(100)
+  llmTokensUsed     Int?                     @map("llm_tokens_used")
+  executedAt        DateTime                 @default(now()) @map("executed_at") @db.Timestamptz
+  pipelineJobId     String?                  @map("pipeline_job_id")
+  pipelineJob       PipelineJob?             @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
+  batches           PipelineExecutionBatch[]
 
   @@index([regionId, dataType, executedAt])
   @@index([manifestId])
@@ -1594,12 +1681,12 @@ model PipelineExecution {
 /// Per-batch deduplication record for streaming pipeline handlers.
 /// Unique on (execution_id, batch_index) — insert conflict = already applied, skip.
 model PipelineExecutionBatch {
-  id          String   @id @default(uuid())
-  executionId String   @map("execution_id")
+  id          String            @id @default(uuid())
+  executionId String            @map("execution_id")
   execution   PipelineExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
-  batchIndex  Int      @map("batch_index")
-  itemCount   Int      @default(0) @map("item_count")
-  appliedAt   DateTime @default(now()) @map("applied_at") @db.Timestamptz
+  batchIndex  Int               @map("batch_index")
+  itemCount   Int               @default(0) @map("item_count")
+  appliedAt   DateTime          @default(now()) @map("applied_at") @db.Timestamptz
 
   @@unique([executionId, batchIndex])
   @@index([executionId])
@@ -1628,7 +1715,7 @@ model PipelineJob {
   result        Json?
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
-  executions    PipelineExecution[]
+  executions PipelineExecution[]
 
   @@index([status, enqueuedAt])
   @@index([regionId, enqueuedAt(sort: Desc)])
@@ -1641,19 +1728,19 @@ model PipelineJob {
 /// Tracks each LLM structural analysis job — initiated on cache miss/stale
 /// during a scrape run or via the warmManifest admin mutation.
 model StructuralAnalysisJob {
-  id            String    @id @default(uuid())
-  bullmqJobId   String    @map("bullmq_job_id")
-  status        String    @db.VarChar(20) // queued | running | succeeded | failed
-  regionId      String    @map("region_id") @db.VarChar(100)
-  sourceUrl     String    @map("source_url") @db.VarChar(1000)
-  dataType      String    @map("data_type") @db.VarChar(50)
-  requestedBy   String    @map("requested_by") @db.VarChar(20) // cache_miss | cache_stale | manual
-  manifestId    String?   @map("manifest_id") // set on success
-  attempts      Int       @default(0)
-  enqueuedAt    DateTime  @default(now()) @map("enqueued_at") @db.Timestamptz
-  startedAt     DateTime? @map("started_at") @db.Timestamptz
-  finishedAt    DateTime? @map("finished_at") @db.Timestamptz
-  errorMessage  String?   @map("error_message")
+  id           String    @id @default(uuid())
+  bullmqJobId  String    @map("bullmq_job_id")
+  status       String    @db.VarChar(20) // queued | running | succeeded | failed
+  regionId     String    @map("region_id") @db.VarChar(100)
+  sourceUrl    String    @map("source_url") @db.VarChar(1000)
+  dataType     String    @map("data_type") @db.VarChar(50)
+  requestedBy  String    @map("requested_by") @db.VarChar(20) // cache_miss | cache_stale | manual
+  manifestId   String?   @map("manifest_id") // set on success
+  attempts     Int       @default(0)
+  enqueuedAt   DateTime  @default(now()) @map("enqueued_at") @db.Timestamptz
+  startedAt    DateTime? @map("started_at") @db.Timestamptz
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz
+  errorMessage String?   @map("error_message")
 
   @@index([status, enqueuedAt])
   @@index([regionId, sourceUrl, dataType, enqueuedAt(sort: Desc)])
@@ -1676,18 +1763,18 @@ model StructuralAnalysisJob {
 /// FILING_ID watermarks, rep-active-on-date watermarks, etc.) can share
 /// this table by choosing a stable `lastExternalId` form per dataType.
 model IngestionWatermark {
-  id              String    @id @default(uuid())
-  regionId        String    @map("region_id") @db.VarChar(100)
-  sourceUrl       String    @map("source_url") @db.VarChar(1000)
-  dataType        String    @map("data_type") @db.VarChar(50)
+  id             String    @id @default(uuid())
+  regionId       String    @map("region_id") @db.VarChar(100)
+  sourceUrl      String    @map("source_url") @db.VarChar(1000)
+  dataType       String    @map("data_type") @db.VarChar(50)
   /// Most recent externalId (or date string) successfully ingested.
   /// Format depends on dataType: for journals, ISO date `YYYY-MM-DD`.
   /// Null on first run (handler treats absence as "ingest the cap").
-  lastExternalId  String?   @map("last_external_id") @db.VarChar(255)
-  lastIngestedAt  DateTime? @map("last_ingested_at") @db.Timestamptz
-  itemsIngested   Int       @default(0) @map("items_ingested")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  lastExternalId String?   @map("last_external_id") @db.VarChar(255)
+  lastIngestedAt DateTime? @map("last_ingested_at") @db.Timestamptz
+  itemsIngested  Int       @default(0) @map("items_ingested")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   @@unique([regionId, sourceUrl, dataType])
   @@map("ingestion_watermarks")
@@ -1745,14 +1832,14 @@ enum JurisdictionLevel {
 }
 
 model Jurisdiction {
-  id        String            @id @default(uuid())
-  fipsCode  String?           @unique @map("fips_code") @db.VarChar(20)
-  ocdId     String?           @unique @map("ocd_id") @db.VarChar(255)
-  name      String            @db.VarChar(255)
+  id        String                                        @id @default(uuid())
+  fipsCode  String?                                       @unique @map("fips_code") @db.VarChar(20)
+  ocdId     String?                                       @unique @map("ocd_id") @db.VarChar(255)
+  name      String                                        @db.VarChar(255)
   type      JurisdictionType
   level     JurisdictionLevel
-  stateCode String            @map("state_code") @db.VarChar(2)
-  parentId  String?           @map("parent_id")
+  stateCode String                                        @map("state_code") @db.VarChar(2)
+  parentId  String?                                       @map("parent_id")
   // boundary geography(MultiPolygon, 4326) added via raw SQL migration — Prisma Unsupported
   boundary  Unsupported("geography(MultiPolygon, 4326)")?
   metadata  Json?

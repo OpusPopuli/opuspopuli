@@ -60,4 +60,15 @@ export class PersonalizedBillResultModel {
   /** Per-axis breakdown so the why-this panel (#750) can render reasons. */
   @Field(() => AxisScoresModel)
   axisScores!: AxisScoresModel;
+
+  /**
+   * LLM-written one-sentence "why this matters to you" (15-30 words),
+   * cached by the nightly LLM re-rank batch job (#745). Null when the
+   * job hasn't run for this bill yet, the LLM call failed, the validator
+   * rejected the output, or the per-user token budget capped out. The
+   * frontend's WhyThisPanel falls back to a heuristic axis explanation
+   * when this is null (#744 ships that fallback).
+   */
+  @Field({ nullable: true })
+  relevanceExplanation?: string;
 }

@@ -81,22 +81,71 @@ export class PersonalizedFeedService {
       .sort((a, b) => b.relevanceScore - a.relevanceScore)
       .slice(0, limit);
 
+    // Overlay the LLM-written `relevanceExplanation` from the cache
+    // when present (#745). The cache is populated by the nightly batch
+    // job; reading is best-effort here — if the cache lookup fails or
+    // returns nothing, the feed still serves with embedding-only ranks
+    // and the frontend's WhyThisPanel falls back to a heuristic axis
+    // explanation (#744).
+    const enriched = await this.overlayCachedExplanations(userId, scored);
+
     const totalMs = Date.now() - startMs;
     this.logger.log(
       {
         event: 'personalized_bill_feed',
         userId,
         candidates: candidates.length,
-        returned: scored.length,
+        returned: enriched.length,
         requestedLimit,
         appliedLimit: limit,
         fetchMs,
         totalMs,
       },
-      `Personalized feed for ${userId}: ${scored.length}/${candidates.length} bills (limit=${limit}) in ${totalMs}ms`,
+      `Personalized feed for ${userId}: ${enriched.length}/${candidates.length} bills (limit=${limit}) in ${totalMs}ms`,
     );
 
-    return scored;
+    return enriched;
+  }
+
+  /**
+   * Look up cached `relevanceExplanation` values for the result set and
+   * overlay them onto the returned models. Best-effort — a cache miss
+   * (no row, expired row, or DB hiccup) leaves the result unchanged so
+   * the feed never blocks on the cache being warm.
+   */
+  private async overlayCachedExplanations(
+    userId: string,
+    results: PersonalizedBillResultModel[],
+  ): Promise<PersonalizedBillResultModel[]> {
+    if (results.length === 0) return results;
+    try {
+      const billIds = results.map((r) => r.billId);
+      const rows = await this.db.personalizedFeedCache.findMany({
+        where: {
+          userId,
+          billId: { in: billIds },
+          expiresAt: { gt: new Date() },
+        },
+        select: { billId: true, relevanceExplanation: true },
+      });
+      const byBill = new Map(
+        rows.map((r) => [r.billId, r.relevanceExplanation]),
+      );
+      return results.map((r) => ({
+        ...r,
+        relevanceExplanation: byBill.get(r.billId) ?? undefined,
+      }));
+    } catch (err) {
+      this.logger.warn(
+        {
+          event: 'personalized_feed_cache_overlay_failed',
+          userId,
+          error: (err as Error).message,
+        },
+        'cache overlay failed — serving feed with embedding-only ranks',
+      );
+      return results;
+    }
   }
 
   /**

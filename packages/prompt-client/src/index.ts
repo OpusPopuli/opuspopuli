@@ -41,6 +41,7 @@ export type {
   CivicsExtractionParams,
   BillExtractionParams,
   BillAnalysisParams,
+  BillRelevanceExplanationParams,
   PromptServiceResponse,
 } from "./types.js";
 export { PROMPT_CLIENT_CONFIG } from "./types.js";

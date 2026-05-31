@@ -65,6 +65,15 @@
         "tsConfigPath": "src/apps/workers/structural-analysis-worker/tsconfig.app.json"
       }
     },
+    "llm-rerank-worker": {
+      "type": "application",
+      "root": "src/apps/workers/llm-rerank-worker",
+      "entryFile": "main",
+      "sourceRoot": "src/apps/workers/llm-rerank-worker/src",
+      "compilerOptions": {
+        "tsConfigPath": "src/apps/workers/llm-rerank-worker/tsconfig.app.json"
+      }
+    },
     "api": {
       "type": "application",
       "root": "src/api",

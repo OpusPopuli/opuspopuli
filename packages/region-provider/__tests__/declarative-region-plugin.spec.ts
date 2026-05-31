@@ -217,6 +217,124 @@ describe("DeclarativeRegionPlugin", () => {
       expect(pipeline.execute).toHaveBeenCalledTimes(1);
       expect(result).toEqual(reps);
     });
+
+    it("stamps chamber from each source's category when the scraped rep is missing one (multi-source state-level case)", async () => {
+      // Real-world shape: a state region has two REPRESENTATIVES sources
+      // (Assembly / Senate). The scraped HTML doesn't include the chamber
+      // explicitly — it lives on the data source's `category`. The plugin
+      // must attribute per-source so each rep gets the correct chamber.
+      const multiChamberConfig = createMockConfig({
+        dataSources: [
+          {
+            url: "https://www.assembly.example.gov/members",
+            dataType: DataType.REPRESENTATIVES,
+            contentGoal: "Extract assembly members",
+            category: "Assembly",
+          },
+          {
+            url: "https://www.senate.example.gov/members",
+            dataType: DataType.REPRESENTATIVES,
+            contentGoal: "Extract senators",
+            category: "Senate",
+          },
+        ],
+      });
+      plugin = new DeclarativeRegionPlugin(multiChamberConfig, pipeline);
+
+      const assemblyReps = [
+        { externalId: "A-1", name: "Anna Assembly", district: "1" },
+      ];
+      const senateReps = [
+        { externalId: "S-1", name: "Sam Senate", district: "30" },
+      ];
+      pipeline.execute
+        .mockResolvedValueOnce(createExtractionResult(assemblyReps))
+        .mockResolvedValueOnce(createExtractionResult(senateReps));
+
+      const result = await plugin.fetchRepresentatives();
+
+      expect(pipeline.execute).toHaveBeenCalledTimes(2);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        externalId: "A-1",
+        chamber: "Assembly",
+      });
+      expect(result[1]).toMatchObject({ externalId: "S-1", chamber: "Senate" });
+    });
+
+    it("preserves an existing chamber on the scraped rep when the source has a category", async () => {
+      // If the scraper somehow already extracted a chamber, the per-source
+      // stamp must not overwrite it — pre-existing chamber wins.
+      const config = createMockConfig({
+        dataSources: [
+          {
+            url: "https://www.assembly.example.gov/members",
+            dataType: DataType.REPRESENTATIVES,
+            contentGoal: "Extract assembly members",
+            category: "Assembly",
+          },
+        ],
+      });
+      plugin = new DeclarativeRegionPlugin(config, pipeline);
+
+      pipeline.execute.mockResolvedValue(
+        createExtractionResult([
+          {
+            externalId: "R-9",
+            name: "Override Person",
+            chamber: "Senate", // already set by scraper
+            district: "9",
+          },
+        ]),
+      );
+
+      const result = await plugin.fetchRepresentatives();
+
+      expect(result[0]).toMatchObject({ externalId: "R-9", chamber: "Senate" });
+    });
+
+    it("returns reps without chamber when the source has no category", async () => {
+      // No category on the source → nothing to stamp, leave chamber as-is.
+      const config = createMockConfig({
+        dataSources: [
+          {
+            url: "https://www.example.gov/members",
+            dataType: DataType.REPRESENTATIVES,
+            contentGoal: "Extract members",
+            // no category
+          },
+        ],
+      });
+      plugin = new DeclarativeRegionPlugin(config, pipeline);
+
+      pipeline.execute.mockResolvedValue(
+        createExtractionResult([
+          { externalId: "R-x", name: "No Chamber", district: "1" },
+        ]),
+      );
+
+      const result = await plugin.fetchRepresentatives();
+
+      expect(result[0]).not.toHaveProperty("chamber");
+    });
+
+    it("returns an empty array when no representative sources are configured", async () => {
+      const config = createMockConfig({
+        dataSources: [
+          {
+            url: "https://example.com/something-else",
+            dataType: DataType.MEETINGS,
+            contentGoal: "meetings",
+          },
+        ],
+      });
+      plugin = new DeclarativeRegionPlugin(config, pipeline);
+
+      const result = await plugin.fetchRepresentatives();
+
+      expect(result).toEqual([]);
+      expect(pipeline.execute).not.toHaveBeenCalled();
+    });
   });
 
   describe("error handling", () => {

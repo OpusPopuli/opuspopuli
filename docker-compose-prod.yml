@@ -366,6 +366,51 @@ services:
           cpus: '0.25'
           memory: 512M
 
+  llm-rerank-worker:
+    build:
+      context: .
+      dockerfile: apps/backend/docker/Dockerfile.llm-rerank-worker
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    container_name: opuspopuli-prod-llm-rerank-worker
+    environment:
+      <<: *backend-env
+      APPLICATION: llm-rerank-worker
+      DESCRIPTION: LLM re-rank worker (personalized feed nightly batch, opuspopuli#745)
+      PORT: 8080
+      LLM_RERANK_WORKER_PORT: 8080
+      LLM_URL: http://host.docker.internal:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen3.5:35b}
+      PROMPT_SERVICE_URL: ${PROMPT_SERVICE_URL}
+      PROMPT_SERVICE_API_KEY: ${PROMPT_SERVICE_API_KEY}
+      LLM_RERANK_CRON_ENABLED: ${LLM_RERANK_CRON_ENABLED:-true}
+      LLM_RERANK_CRON_PATTERN: ${LLM_RERANK_CRON_PATTERN:-0 3 * * *}
+      # Daily token budget per user — when exhausted, the rerank falls
+      # back to embedding-only cache rows (no LLM call). Raise for users
+      # with deep candidate pools.
+      LLM_RERANK_PER_USER_DAILY_TOKEN_CAP: ${LLM_RERANK_PER_USER_DAILY_TOKEN_CAP:-10000}
+      # Threshold after which a RUNNING llm_rerank_jobs row is presumed
+      # dead and swept to FAILED on worker startup. Default 10 min;
+      # raise to accommodate slow Ollama models or large candidate sets.
+      LLM_RERANK_JOB_STALE_AGE_MS: ${LLM_RERANK_JOB_STALE_AGE_MS:-600000}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    healthcheck: *healthcheck
+    networks:
+      - opuspopuli-prod
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
   api:
     build:
       context: .

@@ -40,3 +40,7 @@ playwright/.cache/
 # settings.json (team config) can be force-added if needed: git add -f .claude/settings.json
 .claude/
 tmp/
+
+# Local scratch — planning notes, ad-hoc test plans, design sketches.
+# Anything in here is intentionally out of git history.
+.scratch/
