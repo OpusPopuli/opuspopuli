@@ -84,10 +84,24 @@ BEGIN
   IF existing_id IS NULL THEN
     SELECT vault.create_secret(p_value, p_name, p_description) INTO result_id;
     RETURN result_id;
-  ELSE
+  END IF;
+
+  -- vault.update_secret internally reads the existing decrypted value
+  -- before writing, so a row with corrupted ciphertext (e.g. encrypted
+  -- under a previous pgsodium master key) makes the upsert fail without
+  -- writing the new value — the exact scenario where re-seeding is needed
+  -- most. Catch the failure, DELETE the unrecoverable row, and CREATE a
+  -- fresh one under the current master key. See issues #789 and #791.
+  BEGIN
     PERFORM vault.update_secret(existing_id, p_value, p_name, p_description);
     RETURN existing_id;
-  END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'vault_create_secret: update_secret failed for %, falling back to delete+create. SQLSTATE=% SQLERRM=%',
+      p_name, SQLSTATE, SQLERRM;
+    DELETE FROM vault.secrets WHERE id = existing_id;
+    SELECT vault.create_secret(p_value, p_name, p_description) INTO result_id;
+    RETURN result_id;
+  END;
 END;
 $$;
 
