@@ -267,12 +267,62 @@ The hydration policy when `SECRETS_PROVIDER=supabase` is that Vault is authorita
 
 ### `pgsodium_crypto_aead_det_decrypt_by_id: invalid ciphertext`
 
-The pgsodium master key has changed since the secret was encrypted — see issue [#791](https://github.com/OpusPopuli/opuspopuli/issues/791) for the durability investigation. Workaround for local dev:
-```sql
-DELETE FROM vault.secrets WHERE name = 'SECRET_NAME';
-SELECT vault.create_secret('value', 'SECRET_NAME', 'description');
+The pgsodium master key has changed since the secret was encrypted. This **shouldn't happen anymore** as of issue #791's fix: the `opuspopuli-db` service in `docker-compose.yml` mounts a custom getkey script (`supabase/init/pgsodium_getkey_env.sh`) that reads the master key from the `PGSODIUM_ROOT_KEY` env var instead of generating a random one inside the (ephemeral) container filesystem.
+
+If you see this error after pulling the fix:
+
+1. **You bypassed the env var** (unset, empty, or set to a different value than when the existing ciphertext was encrypted). Confirm via:
+   ```bash
+   docker exec opuspopuli-db sh -c 'echo "$PGSODIUM_ROOT_KEY"'
+   ```
+2. **You had vault entries before pulling the fix.** They were encrypted under the old random key, which the new env-driven key replaces. Recover by deleting + re-seeding:
+   ```sql
+   DELETE FROM vault.secrets WHERE name = 'SECRET_NAME';
+   SELECT vault.create_secret('value', 'SECRET_NAME', 'description');
+   ```
+   The idempotent `vault_create_secret` RPC cannot recover from this state on its own — tracked as [#789](https://github.com/OpusPopuli/opuspopuli/issues/789).
+3. **In production**, key rotation is a deliberate operation that needs vault re-encryption, not just a value change. Don't change `PGSODIUM_ROOT_KEY` on a live prod database without a documented rotation flow.
+
+## pgsodium Master-Key Management (#791)
+
+Supabase Vault is encrypted at rest with `pgsodium`. The `pgsodium` extension needs a 32-byte master key (the "root key") to derive the data-encryption keys it uses on `vault.secrets`. If that root key ever changes, every previously-encrypted ciphertext becomes permanently un-decryptable.
+
+### How it works in this repo
+
+- `opuspopuli-db`'s `docker-compose.yml` env block sets `PGSODIUM_ROOT_KEY` (64 hex chars, 32 bytes).
+- `supabase/init/pgsodium_getkey_env.sh` is bind-mounted over the image's default getkey script. It reads `PGSODIUM_ROOT_KEY` from env and `printf`s it (no trailing newline, matching the original format).
+- pgsodium's `pgsodium.getkey_script` GUC (set by the supabase/postgres image) already points at `/usr/lib/postgresql/bin/pgsodium_getkey.sh` — the mount overrides the file at that path, so no `postgresql.conf` changes are needed.
+- Result: the key is the same on every container start, regardless of `--force-recreate`. Vault entries survive container recreations.
+
+### Local dev default
+
+The default in `docker-compose.yml` is a deterministic 64-char hex value (`d2f29...259443`). Treat it like the well-known Supabase demo JWTs: a dev convenience, **not** a real secret. It only has meaning against your local postgres data dir.
+
+### Production override
+
+Set `PGSODIUM_ROOT_KEY` in the deploy environment to a real, durable 32-byte hex value. Recommended sources:
+- AWS KMS / GCP KMS — generate a key, export hex via KMS API at deploy time.
+- 1Password CLI / Vault by HashiCorp — pull at container-start.
+- Encrypted GitHub Actions secret + `gh secret set` — sufficient for low-risk deploys.
+
+**The key value must be durable.** Losing it means losing every vault secret. Back it up separately from the postgres volume.
+
+### Generating a new key for a fresh prod deploy
+
+```bash
+head -c 32 /dev/urandom | od -A n -t x1 | tr -d ' \n'
 ```
-The idempotent `vault_create_secret` RPC cannot recover from this state — tracked as [#789](https://github.com/OpusPopuli/opuspopuli/issues/789).
+The output is 64 hex chars (no newline). Store it in your secret manager and pass into the container as `PGSODIUM_ROOT_KEY`.
+
+### Rotation (post-MVP)
+
+There's no built-in `pgsodium` rotation flow. Rotating the root key requires:
+1. Decrypt every `vault.secrets` row with the old key
+2. Re-encrypt every row with the new key
+3. Swap the env var
+4. Restart the postgres container
+
+This must be done atomically (within a postgres transaction or a maintenance window) to avoid mid-flight rows in an inconsistent state. Out of scope for current MVP work — track as a separate item if/when rotation is needed.
 
 ## API Reference
 

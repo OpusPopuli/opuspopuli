@@ -49,12 +49,24 @@ services:
       POSTGRES_DB: postgres
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters}
       JWT_EXP: ${JWT_EXP:-3600}
+      # pgsodium master key — read by the bind-mounted getkey script
+      # below. Default is a deterministic dev value; override with a real
+      # 32-byte hex secret for any environment that holds production data.
+      # Stable across container recreations, so vault.secrets entries
+      # remain decryptable on every `up -d --force-recreate`. See #791 and
+      # docs/guides/secrets-management.md.
+      PGSODIUM_ROOT_KEY: ${PGSODIUM_ROOT_KEY:-d2f294bd82c77492323d9a54692dff2ed274fcfd4665edbefe170c0112259443}
     volumes:
       - opuspopuli-db-data:/var/lib/postgresql/data
       # Custom init script to set passwords on Supabase roles
       # Named zz-* to run AFTER migrate.sh (z > m alphabetically)
       # postgres entrypoint ignores directories, so must mount as a file
       - ./supabase/init/99-set-passwords.sql:/docker-entrypoint-initdb.d/zz-set-passwords.sql:ro
+      # Override the image's pgsodium getkey script (which generates a
+      # random key on first start, INSIDE the container filesystem, and
+      # re-generates on every container recreation — wiping the vault).
+      # Our replacement reads PGSODIUM_ROOT_KEY from env. See #791.
+      - ./supabase/init/pgsodium_getkey_env.sh:/usr/lib/postgresql/bin/pgsodium_getkey.sh:ro
     networks:
       - opuspopuli-network
     healthcheck:
