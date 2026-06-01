@@ -39,21 +39,23 @@ x-backend-env: &backend-env
   RELATIONAL_DB_PASSWORD: your-super-secret-password
   RELATIONAL_DB_DATABASE: postgres
   DATABASE_URL: postgresql://postgres:your-super-secret-password@opuspopuli-db:5432/postgres
-  REDIS_URL: redis://redis:6379
+  # SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY stay as env vars by necessity
+  # — they're required to reach Vault. All other secrets (including
+  # SUPABASE_ANON_KEY and REDIS_URL) are sourced from Vault at bootstrap.
+  # db-migrate auto-seeds the dev defaults; see docs/guides/secrets-management.md.
   SUPABASE_URL: http://supabase-kong:8000
-  SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.KR1jqUlyHtwAxCJf6B0QVoRpobrdPEv8ALnNJUlGxPE
   SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.sF_hc5jg-YhscQGb00SNtjW3ZIyDlGIIQppgOLwHGiM
   GATEWAY_CLIENT_ID: api-gateway
   GATEWAY_HMAC_SECRET: integration-test-hmac-secret
   API_KEYS: '{"api-gateway":"integration-test-hmac-secret"}'
   JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
   AUTH_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
-  # Resolve secrets via Supabase Vault (prod-matching pattern). The vault
-  # is seeded by db-migrate before any service starts. EncryptionService
-  # falls back to env if the vault read fails, so this stays robust.
   SECRETS_PROVIDER: supabase
-  SMTP_HOST: inbucket
-  SMTP_PORT: "2500"
+  # SMTP_HOST default is inherited from docker-compose.yml (= inbucket).
+  # To switch GoTrue to Resend SMTP for real magic-link delivery, set
+  # SMTP_HOST=smtp.resend.com (and SMTP_PORT=465) at shell time before
+  # `docker compose -f docker-compose-uat.yml up`. SMTP_USER/SMTP_PASS
+  # come from Vault. Inbucket remains the default.
   SMTP_ADMIN_EMAIL: noreply@opuspopuli.local
   FRONTEND_URL: http://localhost:3300
 
@@ -220,8 +222,8 @@ services:
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
       # AI Prompt Service for proprietary prompt templates
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
-      # FEC API key for federal campaign finance data
-      FEC_API_KEY: ${FEC_API_KEY:-}
+      # FEC_API_KEY (data.gov key) is sourced from Supabase Vault at bootstrap.
+      # See docs/guides/secrets-management.md for seeding instructions.
       PROMPT_SERVICE_API_KEY: dev-key-1
       # Disable automatic sync scheduler — trigger manually via GraphQL Playground
       REGION_SYNC_ENABLED: "false"

@@ -1,11 +1,15 @@
 import 'src/common/tracing';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
-import { StructuralAnalysisWorkerModule } from './structural-analysis-worker.module';
+import { preflightAndLoad } from 'src/common/preflight';
 
 const logger = new Logger('StructuralAnalysisWorker');
 
 async function bootstrap() {
+  const { StructuralAnalysisWorkerModule } = await preflightAndLoad(
+    () => import('./structural-analysis-worker.module'),
+  );
+
   const app = await NestFactory.create(StructuralAnalysisWorkerModule, {
     bufferLogs: true,
   });
@@ -19,4 +23,10 @@ async function bootstrap() {
   logger.log(`Structural analysis worker listening on port ${port}`);
 }
 
-bootstrap();
+bootstrap().catch((err: unknown) => {
+  logger.error(
+    `Structural analysis worker startup failed: ${err instanceof Error ? err.message : String(err)}`,
+    err instanceof Error ? err.stack : undefined,
+  );
+  process.exit(1);
+});

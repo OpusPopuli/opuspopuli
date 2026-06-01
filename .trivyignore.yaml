@@ -16,3 +16,20 @@ secrets:
   - id: github-pat
     paths:
       - ".env"
+
+  # apps/backend/docker/scripts/db-migrate.sh seeds the well-known
+  # self-hosted Supabase demo anon JWT into Vault as a dev default
+  # (overridable via SEED_SUPABASE_ANON_KEY for hosted projects). This
+  # is the publicly documented Supabase demo value — meaningless without
+  # the matching demo pgsodium_secret_key that ships with the same
+  # self-hosted install. Not a secret in any operational sense. The same
+  # JWT lives unflagged in docker-compose-uat.yml as the
+  # SUPABASE_SERVICE_ROLE_KEY (trivy's YAML scanner accepts dev patterns
+  # there but the shell-script context triggers detection). See
+  # docs/guides/secrets-management.md and issue #792.
+  #
+  # Remove this entry if the dev-default JWT is ever moved out of this
+  # script (e.g., into docker-compose env passthrough).
+  - id: jwt-token
+    paths:
+      - "apps/backend/docker/scripts/db-migrate.sh"

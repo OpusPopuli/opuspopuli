@@ -69,6 +69,77 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
+## Bootstrap-Time Vault Hydration
+
+When `SECRETS_PROVIDER=supabase`, a bootstrap step in the shared backend startup (`apps/backend/src/common/bootstrap.ts`) reads a fixed list of named secrets from Vault and writes them into `process.env` **before** NestJS is constructed. `@nestjs/config`'s `registerAs` factories read `process.env` at module-init time, so the hydration must run earlier — once it does, every existing `process.env.X` read in `config-provider` resolves to the Vault-backed value with zero per-module changes.
+
+### Policy when `SECRETS_PROVIDER=supabase`
+
+- **Vault is authoritative.** When a secret is present in Vault, its value overwrites any existing env value, and the overwrite is logged as a WARN (so operator mistakes are loud, not silent).
+- **Missing secrets are tolerated.** When a secret is not present in Vault, the existing env value (which may be empty) is left in place, and a WARN logs the gap. Service startup is not blocked — a partially-populated Vault during incremental migration won't crash the app.
+- **Per-secret timeout.** Each Vault lookup has a 10s deadline (`Promise.race`). A network partition cannot hang service startup indefinitely.
+- **Parallel reads.** The full secret list is hydrated concurrently with `Promise.all`.
+
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are required to reach Vault and therefore stay as env vars by necessity (chicken-and-egg).
+
+### Vault-Managed Secrets
+
+The current list lives in `apps/backend/src/common/bootstrap.ts` as `VAULT_BACKED_SECRETS`:
+
+| Secret | Auto-seeded by `db-migrate.sh`? | Notes |
+|---|---|---|
+| `RESEND_API_KEY` | ❌ operator | Resend HTTP API key for app emails |
+| `SMTP_USER` | ❌ operator | Resend SMTP relay username (literal `"resend"`) — only needed when `SMTP_HOST=smtp.resend.com` |
+| `SMTP_PASS` | ❌ operator | Resend API key for SMTP relay — only needed when flipping to Resend SMTP |
+| `R2_ACCOUNT_ID` | ❌ operator | Cloudflare R2 storage — only needed when `STORAGE_PROVIDER=cloudflare` |
+| `R2_ACCESS_KEY_ID` | ❌ operator | Same |
+| `R2_SECRET_ACCESS_KEY` | ❌ operator | Same |
+| `REDIS_URL` | ✅ defaults to `redis://redis:6379` | Override via `SEED_REDIS_URL` env at deploy time for managed Redis with auth |
+| `SUPABASE_ANON_KEY` | ✅ defaults to well-known self-hosted dev JWT | Override via `SEED_SUPABASE_ANON_KEY` for hosted Supabase projects |
+| `FEC_API_KEY` | ❌ operator | data.gov API key for federal campaign-finance data |
+| `SENSITIVE_PROFILE_ENCRYPTION_KEY` | ✅ defaults to deterministic dev key | Consumed by `EncryptionService` via per-consumer DI; override via `SEED_SENSITIVE_PROFILE_ENCRYPTION_KEY` |
+
+**`JWT_SECRET`, `AUTH_JWT_SECRET`, `GATEWAY_HMAC_SECRET`, and `API_KEYS` are intentionally NOT in this list.** They need fail-fast semantics on missing-secret rather than the current tolerant warn-and-continue. Migrating them requires extending the hydration mechanism with a strict mode — tracked as a future enhancement.
+
+### Seeding Operator-Required Secrets
+
+Use the idempotent `vault_create_secret` RPC (installed by `db-migrate`):
+
+```sql
+-- From Supabase Studio's SQL Editor, or psql against the project database
+SELECT public.vault_create_secret(
+  'RESEND_API_KEY',
+  're_your_real_key_here',
+  'Resend HTTP API key (sending-access scope)'
+);
+
+SELECT public.vault_create_secret(
+  'FEC_API_KEY',
+  'your_data_gov_api_key',
+  'data.gov / FEC API key for federal campaign-finance ingestion'
+);
+```
+
+For prod deploys, prefer setting `SEED_*` env vars on the `db-migrate` job so the seed values come from your deployment secrets and not from a manual SQL session.
+
+### Switching Magic-Link Delivery (Inbucket ↔ Resend)
+
+By default the local UAT stack routes magic links through Inbucket (the in-cluster email catcher). `docker-compose.yml` sets `GOTRUE_SMTP_HOST: ${SMTP_HOST:-inbucket}`, so without any override magic links land at http://localhost:9000 (Inbucket UI).
+
+To switch GoTrue to send real magic links via Resend SMTP:
+
+1. Seed `SMTP_USER` (literal `resend`) and `SMTP_PASS` (your Resend API key) in Vault — see the SQL example above.
+2. Restart the UAT stack with `SMTP_HOST` and `SMTP_PORT` overridden at shell time:
+
+```bash
+SMTP_HOST=smtp.resend.com SMTP_PORT=465 \
+  docker compose -f docker-compose-uat.yml up -d --force-recreate
+```
+
+3. Drop the override to switch back to Inbucket — no code change, no compose change.
+
+This keeps Inbucket as the friction-free default for local dev while making real Resend delivery a one-command toggle for end-to-end testing.
+
 ## Usage
 
 ### Dependency Injection (Recommended)
@@ -183,6 +254,75 @@ export { MySecretsProvider } from './providers/my-provider.js';
 
 - **EnvProvider**: Check that the environment variable is set
 - **SupabaseVaultProvider**: Check the secret exists in Supabase Vault
+
+### "N secret(s) requested but not found in Vault" at service startup
+
+This is the bootstrap-hydration helper noting that one or more entries in `VAULT_BACKED_SECRETS` aren't seeded yet. Service startup is **not** blocked — the existing env value (which may be empty) is left in place. Resolve by either:
+- Seeding the missing secret via `vault_create_secret` RPC (see "Seeding Operator-Required Secrets").
+- Removing the secret from `VAULT_BACKED_SECRETS` if it's no longer needed.
+
+### "Vault values overwrote existing env vars" at service startup
+
+The hydration policy when `SECRETS_PROVIDER=supabase` is that Vault is authoritative — when a Vault value differs from the existing env value, the env value is overwritten and the difference is logged loudly. This is intentional: env values for vault-managed secrets are a policy violation per CLAUDE.md and shouldn't be silently honored. To resolve, either remove the conflicting env var from compose, or update Vault to match.
+
+### `pgsodium_crypto_aead_det_decrypt_by_id: invalid ciphertext`
+
+The pgsodium master key has changed since the secret was encrypted. This **shouldn't happen anymore** as of issue #791's fix: the `opuspopuli-db` service in `docker-compose.yml` mounts a custom getkey script (`supabase/init/pgsodium_getkey_env.sh`) that reads the master key from the `PGSODIUM_ROOT_KEY` env var instead of generating a random one inside the (ephemeral) container filesystem.
+
+If you see this error after pulling the fix:
+
+1. **You bypassed the env var** (unset, empty, or set to a different value than when the existing ciphertext was encrypted). Confirm via:
+   ```bash
+   docker exec opuspopuli-db sh -c 'echo "$PGSODIUM_ROOT_KEY"'
+   ```
+2. **You had vault entries before pulling the fix.** They were encrypted under the old random key, which the new env-driven key replaces. Recover by deleting + re-seeding:
+   ```sql
+   DELETE FROM vault.secrets WHERE name = 'SECRET_NAME';
+   SELECT vault.create_secret('value', 'SECRET_NAME', 'description');
+   ```
+   The idempotent `vault_create_secret` RPC cannot recover from this state on its own — tracked as [#789](https://github.com/OpusPopuli/opuspopuli/issues/789).
+3. **In production**, key rotation is a deliberate operation that needs vault re-encryption, not just a value change. Don't change `PGSODIUM_ROOT_KEY` on a live prod database without a documented rotation flow.
+
+## pgsodium Master-Key Management (#791)
+
+Supabase Vault is encrypted at rest with `pgsodium`. The `pgsodium` extension needs a 32-byte master key (the "root key") to derive the data-encryption keys it uses on `vault.secrets`. If that root key ever changes, every previously-encrypted ciphertext becomes permanently un-decryptable.
+
+### How it works in this repo
+
+- `opuspopuli-db`'s `docker-compose.yml` env block sets `PGSODIUM_ROOT_KEY` (64 hex chars, 32 bytes).
+- `supabase/init/pgsodium_getkey_env.sh` is bind-mounted over the image's default getkey script. It reads `PGSODIUM_ROOT_KEY` from env and `printf`s it (no trailing newline, matching the original format).
+- pgsodium's `pgsodium.getkey_script` GUC (set by the supabase/postgres image) already points at `/usr/lib/postgresql/bin/pgsodium_getkey.sh` — the mount overrides the file at that path, so no `postgresql.conf` changes are needed.
+- Result: the key is the same on every container start, regardless of `--force-recreate`. Vault entries survive container recreations.
+
+### Local dev default
+
+The default in `docker-compose.yml` is a deterministic 64-char hex value (`d2f29...259443`). Treat it like the well-known Supabase demo JWTs: a dev convenience, **not** a real secret. It only has meaning against your local postgres data dir.
+
+### Production override
+
+Set `PGSODIUM_ROOT_KEY` in the deploy environment to a real, durable 32-byte hex value. Recommended sources:
+- AWS KMS / GCP KMS — generate a key, export hex via KMS API at deploy time.
+- 1Password CLI / Vault by HashiCorp — pull at container-start.
+- Encrypted GitHub Actions secret + `gh secret set` — sufficient for low-risk deploys.
+
+**The key value must be durable.** Losing it means losing every vault secret. Back it up separately from the postgres volume.
+
+### Generating a new key for a fresh prod deploy
+
+```bash
+head -c 32 /dev/urandom | od -A n -t x1 | tr -d ' \n'
+```
+The output is 64 hex chars (no newline). Store it in your secret manager and pass into the container as `PGSODIUM_ROOT_KEY`.
+
+### Rotation (post-MVP)
+
+There's no built-in `pgsodium` rotation flow. Rotating the root key requires:
+1. Decrypt every `vault.secrets` row with the old key
+2. Re-encrypt every row with the new key
+3. Swap the env var
+4. Restart the postgres container
+
+This must be done atomically (within a postgres transaction or a maintenance window) to avoid mid-flight rows in an inconsistent state. Out of scope for current MVP work — track as a separate item if/when rotation is needed.
 
 ## API Reference
 

@@ -51,8 +51,16 @@ x-backend-env: &backend-env
   API_KEYS: ${API_KEYS}
   # OpenTelemetry distributed tracing
   OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
-  # Secrets via env (not AWS)
-  SECRETS_PROVIDER: env
+  # Secrets via Supabase Vault. The hydration step in apps/backend/src/common/
+  # preflight.ts reads the secrets named in VAULT_BACKED_SECRETS and writes
+  # them into process.env before any AppModule is loaded. Vault values
+  # overwrite env when the vault secret is present; env values serve as
+  # fallback only when the vault secret is absent (used during incremental
+  # migration before each secret is seeded in the prod Supabase Cloud vault).
+  # Once a secret is seeded in vault, its env passthrough below becomes
+  # dead code and can be removed in a follow-up. See
+  # docs/guides/secrets-management.md and issues #786 / #792.
+  SECRETS_PROVIDER: supabase
   # Email
   RESEND_API_KEY: ${RESEND_API_KEY}
   SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
