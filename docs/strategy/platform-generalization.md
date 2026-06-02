@@ -1,166 +1,146 @@
-# Platform Generalization — The *Populi* Suite
+# The *Populi* Suite — Platform Generalization & Positioning
 
-> Status: strategy draft / working doc. Not a commitment, a thinking artifact.
+> Status: strategy working doc, converged enough to feed business & funding plans.
 > Goal: turn the Opus Populi codebase from a single civic app (hours → one product)
 > into a **licensable engine + a suite of consumer verticals** (build once → sell N times).
+> Companion deep-dive: `terra-populi-concept.md`.
 
-## 1. Thesis
+## 1. The umbrella thesis — *Vox Populi*
 
-Opus Populi looks like a civic-engagement app. Architecturally it is something more
-valuable and more generic: a **provider-swappable pipeline that turns messy external
-documents into personalized, explainable, audited answers** — autonomous AI scraping on
-the front, 100% self-hosted RAG on the back, passwordless auth and a PII-masked audit
-trail around it.
+Every institution that shapes an ordinary person's life holds information and leverage that
+person can't easily see or use. The records are public, but they're fragmented, jargoned,
+and scattered across agencies and jurisdictions — so the asymmetry stands.
+
+**Vox Populi closes that gap.** One passwordless identity, one personal-relevance profile,
+many domains — each product points the same engine at one axis of the asymmetry and gives
+a person a plain-language, cited, hyper-local answer to *"what does this mean for me, and
+what can I do?"*
+
+- **Opus Populi** levels the asymmetry with **government**.
+- **Pecunia Populi** levels it with **the money and benefits systems**.
+- **Terra Populi** levels it with **polluters and environmental agencies**.
+- **Lex Populi** levels it with **the courts and the law**.
+- **Schola Populi** levels it with **schools**.
+
+The same person is a voter, a claimant, a resident, a litigant, and a parent. No
+single-vertical competitor owns that cross-domain identity. That is the portfolio moat, and
+each product is a funnel into the next.
+
+## 2. What this actually is (the asset)
+
+Opus Populi looks like a civic app. Architecturally it is a **provider-swappable pipeline
+that turns fragmented public data into personalized, explainable, audited answers** —
+autonomous AI scraping on the front, 100% self-hosted RAG on the back, passwordless auth
+and a PII-masked audit trail around it.
 
 The civic domain (`Proposition`, `Bill`, `Meeting`, region plugins) is just *one
-configuration* of that engine. The engine is the asset. Each new "<Name> Populi" product
-is a **config pack** — domain models + scraping plugins + a prompt pack — on top of the
-same spine.
+configuration*. The engine is the asset; each "<Name> Populi" product is a **config pack**
+— domain models + scraping plugins + a prompt pack — on the same spine.
 
-This is the "qckstrt" idea done right: not a starter repo sold once, but a real engine
-with a moat, packaged and licensed repeatedly across verticals.
+This is the "qckstrt" idea done right: not a starter repo sold once, but a real engine with
+a moat, packaged and licensed repeatedly across verticals. **One engine, few brands, many
+config packs.** That ratio — fixed engine cost amortized across every vertical and every
+region — is the escape from trading time for money. Not any single product's revenue.
 
-## 2. The shared engine (the part you build once)
+## 3. The engine (built once)
 
-Everything below is domain-agnostic and already exists in `packages/`:
+Domain-agnostic, already in `packages/`:
 
 | Layer | What it does | Coupling to civic |
 |---|---|---|
-| `scraping-pipeline` | AI "schema-on-read" — LLM derives selectors, self-heals on layout change; handles HTML / REST / bulk / PDF; **declarative JSON plugins** | **Low** — only the output models are civic |
-| `ai-ml-pipeline` (RAG) | embeddings → pgvector → Ollama LLM; zero third-party API calls | **None** |
-| `ocr-` / `extraction-provider` | Tesseract + PDF/HTML extraction, rate-limited, cached | **None** |
-| Provider pattern | DB / vector / LLM / embeddings / auth / storage / secrets / email all behind interfaces, swapped by env var | **None** |
-| `prompt-client` | versioned, DB-backed prompts with private remote service + circuit breaker | **None** (and it's the IP moat) |
-| Auth + audit | passkeys / magic-link, PII-masked audit log, RBAC | **None** |
-| `personalized-relevance` | "why does this matter to *me*, where I live?" ranking (built for the bill briefing) | **Reusable as-is** |
+| `scraping-pipeline` | AI "schema-on-read": LLM derives selectors, self-heals on layout change; HTML / REST / bulk / PDF; **declarative JSON plugins** | Low — only output models are civic |
+| `ai-ml-pipeline` (RAG) | embeddings → pgvector → Ollama LLM; zero third-party API calls | None |
+| `ocr-` / `extraction-provider` | Tesseract + PDF/HTML extraction, rate-limited, cached | None |
+| Provider pattern | DB / vector / LLM / embeddings / auth / storage / secrets / email behind interfaces, swapped by env var | None |
+| `prompt-client` | versioned, DB-backed prompts via private remote service + circuit breaker | None — **and it's the IP moat** |
+| Auth + audit | passkeys / magic-link, PII-masked audit log, RBAC | None |
+| `personalized-relevance` | "why does this matter to *me*, where I live?" ranking | Reusable as-is |
 
-The only civic-specific code is the domain models and the region plugins. The seam to
-generalize is the one you already built: **"region plugins" → generic "vertical packs."**
+Net-new per vertical = domain models + scraping plugins + prompt pack. A config pack, not a
+fork. The enabling refactor: **`region-provider` → generic `vertical-provider`.**
 
-The prompt text lives in the private `prompt-service` repo. That is the moat that keeps a
-pure AGPL fork from cloning the product — protect it.
+The prompt text lives in the private `prompt-service` repo — the moat that stops a pure
+AGPL fork from cloning the product. Protect it.
 
-## 3. The suite: *Vox Populi*
+## 4. The reuse test (the "80%" filter)
 
-Umbrella brand for the engine + identity layer: **Vox Populi** ("voice of the people").
-One consumer account, one personal-relevance profile, many life domains. A citizen who
-uses one product is the same person who needs the others — that shared identity across
-civic life is the portfolio thesis and the differentiator.
+A domain reapplies ~80% of what's built **only if it passes all five**:
 
-| Product | Domain | Latin sense | Status |
-|---|---|---|---|
-| **Opus Populi** | Civic / government | "work of the people" | Live |
-| **Pecunia Populi** | Personal finance / money | "money of the people" | Exists |
-| **Salus Populi** | Health | "health/welfare of the people" — from *salus populi suprema lex* | Proposed |
-| **Schola Populi** | Education | "school of the people" (alt: *Doctrina* / *Sapientia*) | Proposed |
-| **Terra Populi** | Environment | "earth of the people" (alt: *Natura Populi*) | Proposed |
+1. **Public/official data, fragmented** across jurisdictions/agencies → the scraper fits.
+2. **Value is personal or hyper-local** ("for me, at my address") → relevance engine fits.
+3. **The person needs plain-language "what it means + what I can do"** → RAG + prompt pack.
+4. **There is an institutional payer** (gov / nonprofit / foundation) → B2B2C, because
+   consumer D2C willingness-to-pay is weak.
+5. **It's about power asymmetry** between an institution and a person.
 
-Scope per the owner's direction: **consumer-facing only**, focused on health, education,
-environment. Enterprise knowledge is explicitly out.
+Use this filter on any future domain before minting a brand.
 
-## 4. The three consumer verticals
+## 5. The five-product roster
 
-Each reuses 80%+ of the engine. The viability question for a consumer product is never
-"is the tech good" — it's **who actually pays**. Each entry answers that.
+| Product | Tagline | Asymmetry it levels | Primary buyers / funders | Status |
+|---|---|---|---|---|
+| **Opus Populi** | *Self-governance* | Government | civic orgs, municipalities | Live |
+| **Pecunia Populi** | *Get what you're owed* | Money & benefits systems | states, counties, 211/United Way, employers, CDFIs, economic-mobility foundations | Next-strongest |
+| **Terra Populi** | *Safeguard your environment* | Polluters & agencies | environmental NGOs, climate/EJ foundations, municipalities | First mover |
+| **Lex Populi** | *Know and use your rights* | Courts & the law | legal-aid orgs, access-to-justice foundations | Strong add |
+| **Schola Populi** | *Champion your child's education* | Schools | districts, universities, equity foundations | Strong add |
 
-### Salus Populi — health
+**Fold-ins, not new brands** (feature surfaces inside the five): **Domus** (housing/tenant)
+spans Pecunia + Lex + Terra; **consumer-safety / recalls / workers' rights** live inside
+Pecunia and Lex. Discipline: every extra brand is marketing and trust cost, not just code.
 
-- **Consumer:** patients drowning in confusing health paperwork — EOBs, medical bills,
-  benefits/coverage, a new diagnosis, prior-auth denials. "What does this bill mean, was
-  I overcharged, what does this diagnosis mean for me, what are my options?"
-- **Engine reuse:** OCR (scan the bill/letter) → extraction → RAG with citations →
-  audit log. Near-verbatim reuse.
-- **Who pays (viability):** self-insured **employers** (benefits navigation is a funded
-  category), **health systems / clinics** (patient engagement), **payers**, patient-
-  advocacy **nonprofits**, **public-health departments**. Classic B2B2C — free to the
-  patient, paid by the institution.
-- **Moat:** self-hosted / on-prem RAG = the HIPAA / data-residency answer most cloud RAG
-  tools can't give. Your audit + PII-masking is a *requirement* here, not a feature.
-- **Market:** patient engagement / health-navigation is multi-$B and growing; highest
-  willingness-to-pay of the three.
+### Explicit exclusion — health
+**Health is out of scope for the suite.** No `Salus Populi`, no medical-bill / Medicaid /
+ACA-subsidy / Rx-assistance / medical-debt products. (Conflict avoidance — the owner's
+current company builds healthcare financial-assistance products.) The Medicaid / ACA /
+medical-debt boundary is the gray zone; Pecunia explicitly excludes it. Energy, food,
+housing, tax, and worker benefits are clear; medical-adjacent is not. Confirm the precise
+line against the owner's employment/non-compete terms before building Pecunia.
 
-### Schola Populi — education
+## 6. Why consumer-only is viable (the B2B2C model)
 
-- **Consumer:** students and (often non-English-speaking) parents navigating financial
-  aid (FAFSA/appeals), IEPs/504 plans, school choice, course/credit transfer. "Explain my
-  aid award, what does this IEP entitle us to, which school fits my kid?"
-- **Engine reuse:** extraction + RAG + `personalized-relevance` ranking; **your existing
-  EN/ES i18n is a direct asset** for the underserved-family wedge.
-- **Who pays (viability):** **school districts** and **universities** (enrollment /
-  student success budgets), **edtech** partners, **foundations** (equity/access grants),
-  **departments of education**. Again B2B2C + grant-funded.
-- **Moat:** aggregating fragmented public education data + explainability for families who
-  are currently underserved (aid deserts, language barriers). Differentiate on *access*,
-  not on competing with crowded test-prep/LMS edtech.
-- **Market:** edtech is huge but crowded; pick the underserved-access lane, which is
-  grant-rich and less contested.
+Direct-to-consumer alone fails on CAC and low willingness-to-pay. The viable shape is a
+**mission-driven consumer experience funded by institutional buyers**: free to the citizen,
+paid by the clinic-equivalent (here: state, county, NGO, district, municipality). Layered:
 
-### Terra Populi — environment
+1. **B2B2C is the core** — the institution serving a population pays; residents use it free.
+   Fits the existing Network model (`NETWORK.md`).
+2. **Foundations underwrite the build** — esp. Terra (climate/EJ), Lex (access-to-justice),
+   Schola (equity). Grants fund the pack; convert pilots into paying contracts.
+3. **A thin premium tier** ("Populi+") captures high-intent users — a margin layer, not the
+   foundation.
+4. **Data-feed upside (later, optional)** — clean public-data feeds for insurers/proptech
+   (Terra) or measurable benefits-ROI dashboards (Pecunia). Higher margin; don't let it
+   hijack the consumer mission.
 
-- **Consumer:** residents who want to understand the environment *where they live* — air
-  and water quality, permitted polluters nearby, hazard/climate risk, local enforcement.
-  "What's in my air/water, who's allowed to pollute near me, what can I do about it?"
-- **Engine reuse:** **the closest cousin to Opus Populi.** Your civic scraper already
-  eats county PDFs, permits, and agency portals; point it at environmental permit and
-  monitoring data and reuse `personalized-relevance` ("matters to me, at my address")
-  almost unchanged. Fastest to ship of the three.
-- **Who pays (viability):** environmental **NGOs / nonprofits**, **foundations** (this
-  space is unusually grant-rich), **municipalities**, **journalism** orgs, potentially
-  climate-risk **insurers**. Mission-aligned with your existing civic audience.
-- **Moat:** same fragmented-public-data aggregation you already do, plus hyper-local
-  personalization. Strong narrative, strong funder appeal.
-- **Market:** climate / environmental-data and community-monitoring; smaller direct
-  revenue but the most grant-underwritten and the most natural cross-sell from Opus.
+**Pecunia's edge:** benefits-recovery ROI is measurable in dollars, which gives it the
+strongest institutional willingness-to-pay story in the suite — possibly the best B2B2C
+economics even though Terra ships fastest.
 
-## 5. Can a consumer-only suite be viable? — honest read
+## 7. Sequencing
 
-**Yes — but not as pure direct-to-consumer subscriptions.** D2C-only would fail on the
-usual rocks: low willingness to pay for "help with paperwork," high CAC, and churn. The
-viable shape is a **mission-driven consumer experience funded by institutional buyers**:
+Order = fastest-to-ship × strongest-payer (Opus already live):
 
-1. **B2B2C is the core engine of viability.** The product is *free to the citizen*; the
-   payer is the clinic, district, employer, municipality, NGO, or agency that wants its
-   population served. This is how civic-tech and health-navigation businesses actually
-   survive, and it fits your existing Network model (`NETWORK.md`).
-2. **Foundations / grants underwrite the build**, especially Schola (equity/access) and
-   Terra (climate/environment) — both are grant-rich. Use grants to fund the vertical
-   packs; don't let them become the whole business.
-3. **A premium consumer tier** ("Populi+") on top of the free product captures the minority
-   with high intent and ability to pay — a margin layer, not the foundation.
-4. **The shared engine is what makes the math work.** Each new vertical is a config pack
-   on the same spine, so marginal build cost approaches zero. One engine amortized across
-   five products is the actual escape from trading-time-for-money — not any single
-   product's consumer revenue.
+1. **Terra** — least new code (civic data shape), grant-fundable; proves the
+   `region → vertical` pack model at lowest risk.
+2. **Pecunia (get what you're owed, health-excluded)** — strongest measurable-ROI sales
+   motion; stands up the institutional B2B2C channel.
+3. **Lex** — large underserved access-to-justice gap, deeply grant-funded.
+4. **Schola** — broadest reach; reuses i18n (EN/ES) + relevance engine.
 
-**Risks to name honestly:** consumer CAC and retention; grant dependency (mitigate by
-converting grant pilots into paying institutional contracts); regulatory surface in health
-(HIPAA) and education (FERPA) — though your self-hosted + audit posture turns that from a
-liability into the selling point.
+In parallel from day one: refactor `region-provider` → `vertical-provider` so every future
+product is a pack, not a fork.
 
-**Verdict:** viable as a *portfolio*, not as three separate D2C apps. The unit you license
-and sell is **engine + vertical pack + the private prompt IP**. Health (Salus) has the
-strongest institutional willingness-to-pay; Environment (Terra) ships fastest and is the
-most grant-funded; Education (Schola) has the largest reach via the access/equity lane.
+## 8. The line for the funding plan
 
-## 6. The portfolio thesis (why a suite beats three apps)
-
-The same person is a patient, a parent, a resident, a voter, and a taxpayer. **Vox Populi**
-gives them one passwordless identity and one personal-relevance profile across all of it.
-That cross-domain identity is something no single-vertical competitor has, it makes each
-product a funnel for the next, and it compounds the value of the engine you only build
-once.
-
-## 7. Recommended sequence
-
-1. **Terra Populi first** — least new code (civic data shape), grant-fundable, proves the
-   "region plugin → vertical pack" seam with the lowest risk.
-2. **Salus Populi second** — highest willingness-to-pay; lets you stand up the B2B2C
-   institutional sales motion that funds the suite.
-3. **Schola Populi third** — broadest reach, leans on the i18n + relevance assets already
-   built, rides the institutional motion proven by Salus.
-4. In parallel, **refactor the `region-provider` seam into a generic `vertical-provider`**
-   so every future "<Name> Populi" is a pack, not a fork.
+> *Vox Populi is one self-hosted, explainable-AI engine that turns fragmented public records
+> into personalized, plain-language answers — productized across five consumer verticals
+> (government, money & benefits, environment, justice, education) that each level the
+> information asymmetry between people and the institutions over their lives. The engine is
+> built once and licensed many times: each new vertical and each new region is a config
+> pack, not a rebuild. Free to citizens, funded B2B2C by the governments, nonprofits, and
+> foundations that want their communities served.*
 
 ---
-*Next possible deliverables: a one-page concept + funder/buyer map for whichever vertical
-leads; or a concrete refactor plan for the region-plugin → vertical-pack seam.*
+*Next artifacts: Pecunia concept (depth of `terra-populi-concept.md`, scope table + Medicaid
+boundary), and the `region-provider` → `vertical-provider` refactor plan.*
