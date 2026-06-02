@@ -34,12 +34,26 @@ import {
   BillCoAuthorModel,
   BillAiSummaryModel,
   PaginatedBillsModel,
+  BillLifecycle,
 } from './models/bill.model';
 
 import {
   mapPropositionRecord,
   type RepresentativeRecord,
 } from './region.service';
+
+/**
+ * Map the BillLifecycle GraphQL enum to the Prisma where-clause fragment
+ * that filters the `bills` table by lifecycle phase (#747). Returning an
+ * object literal lets callers spread the result into a wider where clause.
+ */
+function lifecycleClause(
+  lifecycle: BillLifecycle,
+): { isActive?: boolean } | Record<string, never> {
+  if (lifecycle === BillLifecycle.ACTIVE) return { isActive: true };
+  if (lifecycle === BillLifecycle.INACTIVE) return { isActive: false };
+  return {};
+}
 
 // ─── Local type aliases ───────────────────────────────────────────────────────
 
@@ -1133,8 +1147,13 @@ export class RegionQueryService {
     authorId?: string,
     committeeId?: string,
     coAuthorId?: string,
+    lifecycle: BillLifecycle = BillLifecycle.ACTIVE,
   ): Promise<PaginatedBillsModel> {
     const where = {
+      // ACTIVE → currently moveable only (partial index `bills_is_active_idx`).
+      // INACTIVE → chaptered + dead together. ALL → no lifecycle filter.
+      // See #747.
+      ...lifecycleClause(lifecycle),
       ...(measureTypeCode && { measureTypeCode }),
       ...(sessionYear && { sessionYear }),
       ...(authorId && { authorId }),
@@ -1204,6 +1223,8 @@ export class RegionQueryService {
     createdAt: Date;
     updatedAt: Date;
     aiSummary: Prisma.JsonValue | null;
+    isDead: boolean;
+    isActive: boolean;
     votes: {
       id: string;
       representativeName: string;
@@ -1241,6 +1262,8 @@ export class RegionQueryService {
       createdAt: b.createdAt,
       updatedAt: b.updatedAt,
       aiSummary: this.coerceBillAiSummary(b.aiSummary),
+      isDead: b.isDead,
+      isActive: b.isActive,
       votes: b.votes.map(
         (v): BillVoteModel => ({
           id: v.id,

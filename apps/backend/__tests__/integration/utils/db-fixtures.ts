@@ -365,6 +365,11 @@ export interface CreateBillOptions {
   lastActionDate?: Date | null;
   aiSummary?: Prisma.InputJsonValue | null;
   aiSummaryVersion?: string | null;
+  /** Procedural lifecycle flags from #747. Defaulted to false so existing
+   *  fixtures keep the pre-#747 behavior; lifecycle tests pass them
+   *  explicitly. */
+  isActive?: boolean;
+  isDead?: boolean;
 }
 
 /**
@@ -398,6 +403,8 @@ export async function createBill(
       ...(options.aiSummaryVersion !== undefined && {
         aiSummaryVersion: options.aiSummaryVersion,
       }),
+      ...(options.isActive !== undefined && { isActive: options.isActive }),
+      ...(options.isDead !== undefined && { isDead: options.isDead }),
     },
   });
 }

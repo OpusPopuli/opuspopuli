@@ -89,6 +89,17 @@ describe('PersonalizedFeedService', () => {
     });
   });
 
+  it('hard-includes only currently-moveable bills regardless of caller flag (#747)', async () => {
+    db.bill.findMany.mockResolvedValue([] as never);
+    await service.getFeedForUser(
+      'u-1',
+      { interestTags: [], flags: FLAGS_OFF },
+      5,
+    );
+    const call = db.bill.findMany.mock.calls[0][0]!;
+    expect(call.where).toMatchObject({ isActive: true });
+  });
+
   it('drops bills with null aiSummary even if returned by the query', async () => {
     db.bill.findMany.mockResolvedValue([mkBillRow('b-null', null)] as never);
     const result = await service.getFeedForUser(
