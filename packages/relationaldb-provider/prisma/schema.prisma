@@ -1309,6 +1309,19 @@ model Bill {
   aiSummaryVersion     String?   @map("ai_summary_version") @db.VarChar(20)
   aiSummaryGeneratedAt DateTime? @map("ai_summary_generated_at") @db.Timestamptz
 
+  /// Procedurally dead — vetoed without override, withdrawn, failed deadline,
+  /// inactive file, failed passage, OR from a closed session that did not
+  /// enact. Computed by domains/bill-lifecycle.ts at sync write time. One-
+  /// way transition: dead bills never re-animate. See #747.
+  isDead              Boolean   @default(false) @map("is_dead")
+  /// Currently moveable — the source has tagged the bill as actively
+  /// progressing (CA leginfo: status starts with "Active Bill - ..."). The
+  /// bills-list Active/Inactive segmented toggle filters on this column;
+  /// the personalized feed hard-excludes anything with isActive=false
+  /// (chaptered AND dead are both unactionable). Pairs with isDead to give
+  /// a 3-way partition: active | passed | dead. See #747.
+  isActive            Boolean   @default(false) @map("is_active")
+
   extractedAt DateTime @default(now()) @map("extracted_at") @db.Timestamptz
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -1326,6 +1339,12 @@ model Bill {
   @@index([status])
   @@index([lastActionDate(sort: Desc)])
   @@index([needsStatusRecheck])
+  /// is_active partial index `bills_is_active_idx` (WHERE is_active = TRUE)
+  /// is defined in 20260531010000_bill_is_active/migration.sql — covers
+  /// the bills-list default + the personalized-feed hot path. Prisma can't
+  /// express partial-WHERE indexes natively. is_dead is uncovered by an
+  /// index — no query filters on it; it's used by the bill-detail banner
+  /// + admin surfaces only.
   @@map("bills")
 }
 

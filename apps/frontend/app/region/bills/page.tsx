@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
 import {
   GET_BILLS,
+  BillLifecycle,
   type BillsData,
   type BillsVars,
   type Bill,
@@ -34,6 +35,62 @@ function MeasureTypeBadge({ code }: { readonly code: string }) {
   );
 }
 
+/**
+ * One option in the Active/Inactive segmented filter. Uses the WAI-ARIA
+ * radio pattern (mutually-exclusive within a parent radiogroup) rather
+ * than the tabs pattern, since the buttons don't control tab panels.
+ * Focus ring matches the rest of the page's controls.
+ */
+function LifecycleOption({
+  value,
+  label,
+  selected,
+  onSelect,
+}: {
+  readonly value: BillLifecycle;
+  readonly label: string;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      data-value={value}
+      onClick={onSelect}
+      className={`px-3 py-1.5 rounded-md font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-sage-dark)] ${
+        selected
+          ? "bg-[var(--color-sage-dark)] text-white"
+          : "text-[#334155] hover:bg-gray-50"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
+ * Per-card lifecycle pill. Active bills get no chip (cleaner default);
+ * chaptered (passed-into-law) bills get a Passed chip; dead bills get a
+ * Historical chip. Maps the isActive + isDead 3-way partition to a visual.
+ */
+function LifecycleChip({ bill }: { readonly bill: Bill }) {
+  if (bill.isActive) return null;
+  if (bill.isDead) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800">
+        Historical
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-green-800">
+      Passed
+    </span>
+  );
+}
+
 function BillCard({ bill }: Readonly<{ bill: Bill }>) {
   return (
     <Link
@@ -48,6 +105,7 @@ function BillCard({ bill }: Readonly<{ bill: Bill }>) {
               {bill.billNumber}
             </span>
             <span className="text-xs text-slate-400">{bill.sessionYear}</span>
+            <LifecycleChip bill={bill} />
           </div>
           <h3 className="text-base font-semibold text-[#222222] line-clamp-2">
             {bill.title}
@@ -89,6 +147,12 @@ export default function BillsPage() {
     measureTypeCode: "",
     sessionYear: "",
   });
+  // Active/Inactive segmented toggle (#747). Default ACTIVE — currently
+  // moveable bills. INACTIVE shows chaptered + dead together with per-card
+  // Passed/Historical chips so users can still distinguish them.
+  const [lifecycle, setLifecycle] = useState<BillLifecycle>(
+    BillLifecycle.ACTIVE,
+  );
 
   // Honour deep-links from representative and committee detail pages
   const authorId = searchParams.get("authorId") ?? undefined;
@@ -106,6 +170,7 @@ export default function BillsPage() {
     ...(filters.sessionYear && { sessionYear: filters.sessionYear }),
     ...(authorId && { authorId }),
     ...(committeeId && { committeeId }),
+    lifecycle,
   };
 
   const { data, loading, error } = useQuery<BillsData, BillsVars>(GET_BILLS, {
@@ -166,6 +231,31 @@ export default function BillsPage() {
           Clear filters
         </button>
       )}
+
+      <div
+        role="radiogroup"
+        aria-label="Bill lifecycle filter"
+        className="ml-auto inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-sm"
+      >
+        <LifecycleOption
+          value={BillLifecycle.ACTIVE}
+          label="Active"
+          selected={lifecycle === BillLifecycle.ACTIVE}
+          onSelect={() => {
+            setLifecycle(BillLifecycle.ACTIVE);
+            setPage(0);
+          }}
+        />
+        <LifecycleOption
+          value={BillLifecycle.INACTIVE}
+          label="Inactive"
+          selected={lifecycle === BillLifecycle.INACTIVE}
+          onSelect={() => {
+            setLifecycle(BillLifecycle.INACTIVE);
+            setPage(0);
+          }}
+        />
+      </div>
     </div>
   );
 

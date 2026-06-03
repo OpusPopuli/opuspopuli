@@ -14,6 +14,7 @@ import {
   createContribution,
   createExpenditure,
   createIndependentExpenditure,
+  createBill,
   getDbService,
   graphqlRequest,
   assertNoErrors,
@@ -1365,6 +1366,178 @@ describe('Region Integration Tests', () => {
   // ==========================================
   // DATABASE CLEANUP
   // ==========================================
+
+  // ============================================
+  // GraphQL: bills lifecycle filter (#747)
+  // ============================================
+
+  describe('GraphQL: bills Query (#747 lifecycle)', () => {
+    /**
+     * Fixtures covering each canonical CA status string the helper
+     * categorises. Real DB writes, no mocks — per CLAUDE.md, the lifecycle
+     * filter must be exercised against the same Prisma where-clause path
+     * the runtime uses.
+     */
+    async function seedLifecycleCorpus(): Promise<void> {
+      // Active (currently moveable) — 2 rows across two active prefixes
+      await createBill({
+        billNumber: 'AB 100',
+        status: 'Active Bill - In Committee Process',
+        isActive: true,
+        isDead: false,
+      });
+      await createBill({
+        billNumber: 'AB 101',
+        status: 'Active Bill - In Floor Process',
+        isActive: true,
+        isDead: false,
+      });
+      // Passed/chaptered — signed into law, not dead but not active either
+      await createBill({
+        billNumber: 'AB 200',
+        status: 'Chaptered',
+        isActive: false,
+        isDead: false,
+      });
+      await createBill({
+        billNumber: 'AB 201',
+        status: 'Inactive Bill - Chaptered',
+        isActive: false,
+        isDead: false,
+      });
+      // Dead — vetoed, died, or moved to inactive file
+      await createBill({
+        billNumber: 'AB 300',
+        status: 'Inactive Bill - Died',
+        isActive: false,
+        isDead: true,
+      });
+      await createBill({
+        billNumber: 'AB 301',
+        status: 'Inactive Bill - Vetoed',
+        isActive: false,
+        isDead: true,
+      });
+      await createBill({
+        billNumber: 'AB 302',
+        status: 'Sen Inactive File - Assembly Bills',
+        isActive: false,
+        isDead: true,
+      });
+    }
+
+    const buildBillsQuery = (lifecycle?: 'ACTIVE' | 'INACTIVE' | 'ALL') => `
+      query {
+        bills(skip: 0, take: 50${lifecycle ? `, lifecycle: ${lifecycle}` : ''}) {
+          items {
+            id
+            billNumber
+            status
+            isActive
+            isDead
+          }
+          total
+          hasMore
+        }
+      }
+    `;
+
+    type BillsResult = {
+      bills: {
+        items: Array<{
+          id: string;
+          billNumber: string;
+          status: string | null;
+          isActive: boolean;
+          isDead: boolean;
+        }>;
+        total: number;
+        hasMore: boolean;
+      };
+    };
+
+    it('returns only the Active bucket by default (lifecycle defaults to ACTIVE)', async () => {
+      await seedLifecycleCorpus();
+
+      const result = await graphqlRequest<BillsResult>(buildBillsQuery());
+
+      assertNoErrors(result);
+      expect(result.data.bills.total).toBe(2);
+      expect(result.data.bills.items.map((b) => b.billNumber).sort()).toEqual([
+        'AB 100',
+        'AB 101',
+      ]);
+      result.data.bills.items.forEach((b) => {
+        expect(b.isActive).toBe(true);
+        expect(b.isDead).toBe(false);
+      });
+    });
+
+    it('returns chaptered + dead together for INACTIVE', async () => {
+      await seedLifecycleCorpus();
+
+      const result = await graphqlRequest<BillsResult>(
+        buildBillsQuery('INACTIVE'),
+      );
+
+      assertNoErrors(result);
+      expect(result.data.bills.total).toBe(5);
+      const numbers = result.data.bills.items.map((b) => b.billNumber).sort();
+      expect(numbers).toEqual([
+        'AB 200',
+        'AB 201',
+        'AB 300',
+        'AB 301',
+        'AB 302',
+      ]);
+      result.data.bills.items.forEach((b) => expect(b.isActive).toBe(false));
+    });
+
+    it('returns the full corpus for ALL', async () => {
+      await seedLifecycleCorpus();
+
+      const result = await graphqlRequest<BillsResult>(buildBillsQuery('ALL'));
+
+      assertNoErrors(result);
+      expect(result.data.bills.total).toBe(7);
+    });
+
+    it('exposes the partition invariant: no row is both isActive and isDead', async () => {
+      await seedLifecycleCorpus();
+
+      const result = await graphqlRequest<BillsResult>(buildBillsQuery('ALL'));
+
+      assertNoErrors(result);
+      result.data.bills.items.forEach((b) => {
+        expect(b.isActive && b.isDead).toBe(false);
+      });
+    });
+
+    it('bill(id) returns Inactive bills so deep links don’t 404', async () => {
+      const dead = await createBill({
+        billNumber: 'AB 999',
+        status: 'Inactive Bill - Died',
+        isActive: false,
+        isDead: true,
+      });
+
+      const result = await graphqlRequest<{
+        bill: { id: string; billNumber: string; isDead: boolean } | null;
+      }>(`
+        query {
+          bill(id: "${dead.id}") {
+            id
+            billNumber
+            isDead
+          }
+        }
+      `);
+
+      assertNoErrors(result);
+      expect(result.data.bill?.billNumber).toBe('AB 999');
+      expect(result.data.bill?.isDead).toBe(true);
+    });
+  });
 
   describe('Database cleanup', () => {
     it('should have clean database at start of each test', async () => {

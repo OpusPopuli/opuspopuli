@@ -67,6 +67,50 @@ function MeasureTypeBadge({ code }: { readonly code: string }) {
   );
 }
 
+/**
+ * Banner shown when the bill is no longer in the active legislative process
+ * (#747). Deep links to chaptered or dead bills still resolve so external
+ * citations don't 404, but the reader deserves a heads-up about the
+ * current state. Dead → amber warning; chaptered (signed into law) → green
+ * informational. Status + final-action date come straight from the DB
+ * columns the sync pipeline populates.
+ */
+function InactiveBillBanner({
+  isDead,
+  status,
+  lastActionDate,
+}: {
+  readonly isDead: boolean;
+  readonly status?: string;
+  readonly lastActionDate?: string;
+}) {
+  const finalAction = [
+    status,
+    lastActionDate ? formatDate(lastActionDate) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const tone = isDead
+    ? "border-amber-400 bg-amber-50 text-amber-900"
+    : "border-green-500 bg-green-50 text-green-900";
+  const headline = isDead
+    ? "This bill is no longer active."
+    : "This bill has been signed into law.";
+
+  return (
+    <div
+      role="status"
+      className={`mb-6 rounded-lg border-l-4 px-4 py-3 text-sm ${tone}`}
+    >
+      <span className="font-semibold">{headline}</span>
+      {finalAction && (
+        <span className="ml-1">Final status: {finalAction}.</span>
+      )}
+    </div>
+  );
+}
+
 function PositionBadge({ position }: { readonly position: string }) {
   const style = POSITION_STYLES[position] ?? POSITION_STYLES.no_vote;
   return (
@@ -591,6 +635,14 @@ export default function BillDetailPage() {
           {bill.title}
         </h1>
       </div>
+
+      {!bill.isActive && (
+        <InactiveBillBanner
+          isDead={bill.isDead}
+          status={bill.status}
+          lastActionDate={bill.lastActionDate}
+        />
+      )}
 
       <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
 

@@ -2,6 +2,137 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type BillVote {
+  id: ID!
+  representativeName: String!
+  representativeId: String
+  chamber: String!
+  voteDate: DateTime!
+  position: String!
+  motionText: String
+  sourceUrl: String!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type BillCoAuthor {
+  representativeId: ID
+  name: String!
+  coAuthorType: String
+}
+
+type BillFiscalImpact {
+  level: String!
+  summary: String!
+}
+
+type BillAiSummary {
+  plainEnglishSummary: String!
+  topics: [String!]!
+  whoItAffects: [String!]!
+  fiscalImpact: BillFiscalImpact!
+  stakeholderImpact: String!
+}
+
+type Bill {
+  id: ID!
+  externalId: String!
+  billNumber: String!
+  sessionYear: String!
+  measureTypeCode: String!
+  title: String!
+  subject: String
+  status: String
+  currentStageId: String
+  lastAction: String
+  lastActionDate: DateTime
+  fiscalImpact: String
+  fullTextUrl: String
+  authorId: String
+  authorName: String
+  sourceUrl: String!
+  extractedAt: DateTime!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  votes: [BillVote!]!
+  coAuthors: [BillCoAuthor!]!
+  aiSummary: BillAiSummary
+  isDead: Boolean!
+  isActive: Boolean!
+}
+
+type PaginatedBills {
+  items: [Bill!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type CivicText {
+  verbatim: String!
+  plainLanguage: String!
+  sourceUrl: String!
+}
+
+type CivicsChamber {
+  name: String!
+  abbreviation: String!
+  size: Float!
+  termYears: Float!
+  leadershipRoles: [String!]!
+  description: CivicText!
+}
+
+type CitizenAction {
+  verb: String!
+  label: CivicText!
+  url: String
+  urgency: String!
+}
+
+type CivicsLifecycleStage {
+  id: String!
+  name: CivicText!
+  shortDescription: CivicText!
+  longDescription: CivicText
+  statusStringPatterns: [String!]!
+  citizenAction: CitizenAction
+}
+
+type CivicsMeasureType {
+  code: String!
+  name: String!
+  chamber: String!
+  votingThreshold: String!
+  reachesGovernor: Boolean!
+  purpose: CivicText!
+  lifecycleStageIds: [String!]!
+}
+
+type CivicsGlossaryEntry {
+  term: String!
+  slug: String!
+  definition: CivicText!
+  longDefinition: CivicText
+  relatedTerms: [String!]!
+}
+
+type CivicsSessionScheme {
+  cadence: String!
+  namingPattern: String!
+  description: CivicText!
+}
+
+type CivicsBlock {
+  chambers: [CivicsChamber!]!
+  measureTypes: [CivicsMeasureType!]!
+  lifecycleStages: [CivicsLifecycleStage!]!
+  sessionScheme: CivicsSessionScheme
+  glossary: [CivicsGlossaryEntry!]!
+}
+
 type RegionInfoModel {
   id: String!
   name: String!
@@ -9,28 +140,94 @@ type RegionInfoModel {
   timezone: String!
   dataSourceUrls: [String!]
   supportedDataTypes: [DataType!]!
+  civics: CivicsBlock
 }
 
-"""Types of civic data available in the region"""
+"""Types of data available in the region"""
 enum DataType {
   PROPOSITIONS
   MEETINGS
   REPRESENTATIVES
+  CAMPAIGN_FINANCE
+  CIVICS
+  BILLS
+}
+
+type RegionPluginModel {
+  name: String!
+  displayName: String!
+  description: String
+  version: String!
+  enabled: Boolean!
+  parentRegionId: String
+  fipsCode: String
 }
 
 type SyncResultModel {
+  regionId: String!
   dataType: DataType!
   itemsProcessed: Float!
   itemsCreated: Float!
   itemsUpdated: Float!
+  itemsSkipped: Float!
   errors: [String!]!
   syncedAt: DateTime!
 }
 
-"""
-A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
-"""
-scalar DateTime
+type ScheduledSyncJob {
+  id: ID!
+  pattern: String!
+  next: Float
+}
+
+type RegionSyncJob {
+  jobId: ID!
+  status: SyncJobStatus!
+  triggerSource: SyncTriggerSource!
+  regionId: String
+  dataTypes: [String!]!
+  enqueuedAt: DateTime!
+  startedAt: DateTime
+  finishedAt: DateTime
+  errorMessage: String
+  results: [SyncResultModel!]
+  elapsedMs: Float
+}
+
+"""Current state of an async region sync job"""
+enum SyncJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+"""What triggered the sync job"""
+enum SyncTriggerSource {
+  MANUAL
+  CRON
+  STARTUP
+  MANIFEST_READY
+}
+
+type PropositionAnalysisSectionModel {
+  heading: String!
+  startOffset: Int!
+  endOffset: Int!
+}
+
+type PropositionAnalysisClaimModel {
+  claim: String!
+  field: String!
+  sourceStart: Int!
+  sourceEnd: Int!
+  confidence: String
+}
+
+type ExistingVsProposedModel {
+  current: String!
+  proposed: String!
+}
 
 type PropositionModel {
   id: ID!
@@ -41,6 +238,17 @@ type PropositionModel {
   status: PropositionStatus!
   electionDate: DateTime
   sourceUrl: String
+  analysisSummary: String
+  keyProvisions: [String!]
+  fiscalImpact: String
+  yesOutcome: String
+  noOutcome: String
+  existingVsProposed: ExistingVsProposedModel
+  analysisSections: [PropositionAnalysisSectionModel!]
+  analysisClaims: [PropositionAnalysisClaimModel!]
+  analysisSource: String
+  analysisGeneratedAt: DateTime
+  lifecycleStageId: String
   createdAt: DateTime!
   updatedAt: DateTime!
 }
@@ -57,6 +265,34 @@ type PaginatedPropositions {
   items: [PropositionModel!]!
   total: Int!
   hasMore: Boolean!
+}
+
+type TopDonorModel {
+  donorName: String!
+  totalAmount: Float!
+  contributionCount: Int!
+}
+
+type CommitteeSummaryModel {
+  id: ID!
+  name: String!
+  totalRaised: Float!
+}
+
+type SidedFundingModel {
+  totalRaised: Float!
+  totalSpent: Float!
+  donorCount: Int!
+  committeeCount: Int!
+  topDonors: [TopDonorModel!]!
+  primaryCommittees: [CommitteeSummaryModel!]!
+}
+
+type PropositionFundingModel {
+  propositionId: ID!
+  asOf: DateTime!
+  support: SidedFundingModel!
+  oppose: SidedFundingModel!
 }
 
 type MeetingModel {
@@ -78,11 +314,32 @@ type PaginatedMeetings {
   hasMore: Boolean!
 }
 
+type OfficeModel {
+  name: String!
+  address: String
+  phone: String
+  fax: String
+}
+
 type ContactInfoModel {
   email: String
-  phone: String
-  address: String
   website: String
+  offices: [OfficeModel!]
+}
+
+type BioClaimModel {
+  sentence: String!
+  origin: String!
+  sourceField: String
+  sourceHint: String
+  confidence: String
+}
+
+type CommitteeAssignmentModel {
+  name: String!
+  role: String
+  url: String
+  legislativeCommitteeId: String
 }
 
 type RepresentativeModel {
@@ -91,9 +348,17 @@ type RepresentativeModel {
   name: String!
   chamber: String!
   district: String!
-  party: String!
+  party: String
   photoUrl: String
   contactInfo: ContactInfoModel
+  committees: [CommitteeAssignmentModel!]
+  committeesSummary: String
+  bio: String
+  bioSource: String
+  bioClaims: [BioClaimModel!]
+  activitySummary: String
+  activitySummaryGeneratedAt: DateTime
+  activitySummaryWindowDays: Float
   createdAt: DateTime!
   updatedAt: DateTime!
 }
@@ -104,16 +369,306 @@ type PaginatedRepresentatives {
   hasMore: Boolean!
 }
 
+type CommitteeModel {
+  id: ID!
+  externalId: String!
+  name: String!
+  type: String!
+  candidateName: String
+  candidateOffice: String
+  propositionId: String
+  party: String
+  status: String!
+  sourceSystem: String!
+  sourceUrl: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type PaginatedCommittees {
+  items: [CommitteeModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type ContributionModel {
+  id: ID!
+  externalId: String!
+  committeeId: String!
+  donorName: String!
+  donorType: String!
+  donorEmployer: String
+  donorOccupation: String
+  donorCity: String
+  donorState: String
+  donorZip: String
+  amount: Float!
+  date: DateTime!
+  electionType: String
+  contributionType: String
+  sourceSystem: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type PaginatedContributions {
+  items: [ContributionModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type ExpenditureModel {
+  id: ID!
+  externalId: String!
+  committeeId: String!
+  payeeName: String!
+  amount: Float!
+  date: DateTime!
+  purposeDescription: String
+  expenditureCode: String
+  candidateName: String
+  propositionTitle: String
+  supportOrOppose: String
+  sourceSystem: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type PaginatedExpenditures {
+  items: [ExpenditureModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type IndependentExpenditureModel {
+  id: ID!
+  externalId: String!
+  committeeId: String!
+  committeeName: String!
+  candidateName: String
+  propositionTitle: String
+  supportOrOppose: String!
+  amount: Float!
+  date: DateTime!
+  electionDate: DateTime
+  description: String
+  sourceSystem: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type PaginatedIndependentExpenditures {
+  items: [IndependentExpenditureModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type LegislativeCommitteeModel {
+  id: ID!
+  externalId: String!
+  name: String!
+  chamber: String!
+  url: String
+  description: String
+  memberCount: Int!
+}
+
+type LegislativeCommitteeMemberModel {
+  representativeId: ID!
+  name: String!
+  role: String
+  party: String
+  photoUrl: String
+}
+
+type LegislativeCommitteeHearingModel {
+  id: ID!
+  title: String!
+  scheduledAt: DateTime!
+  agendaUrl: String
+}
+
+type LegislativeCommitteeDetailModel {
+  id: ID!
+  externalId: String!
+  name: String!
+  chamber: String!
+  url: String
+  description: String
+  memberCount: Int!
+  members: [LegislativeCommitteeMemberModel!]!
+  hearings: [LegislativeCommitteeHearingModel!]!
+  activitySummary: String
+  activitySummaryGeneratedAt: DateTime
+  activitySummaryWindowDays: Float
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type PaginatedLegislativeCommittees {
+  items: [LegislativeCommitteeModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type LegislativeActionModel {
+  id: ID!
+  externalId: String!
+  body: String!
+  date: DateTime!
+  actionType: String!
+  position: String
+  text: String
+  passageStart: Int
+  passageEnd: Int
+  rawSubject: String
+  representativeId: ID
+  propositionId: ID
+  billId: ID
+  committeeId: ID
+  minutesId: ID!
+  minutesExternalId: String!
+}
+
+type RepresentativeActivityStatsModel {
+  presentSessionDays: Int!
+  totalSessionDays: Int!
+  absenceDays: Int!
+  amendments: Int!
+  committeeHearings: Int!
+  committeeReports: Int!
+  resolutions: Int!
+  votes: Int!
+  speeches: Int!
+}
+
+type PaginatedLegislativeActions {
+  items: [LegislativeActionModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type CommitteeActivityStatsModel {
+  hearings: Int!
+  reports: Int!
+  amendments: Int!
+  distinctBills: Int!
+}
+
+type MinutesPassageModel {
+  actionId: ID!
+  minutesExternalId: String!
+  body: String!
+  date: DateTime!
+  sourceUrl: String!
+  passageStart: Int!
+  passageEnd: Int!
+  passageText: String!
+  sectionContext: String
+}
+
+type JurisdictionModel {
+  id: ID!
+  fipsCode: String
+  ocdId: String
+  name: String!
+  type: JurisdictionType!
+  level: JurisdictionLevel!
+  stateCode: String!
+  parent: JurisdictionModel
+}
+
+enum JurisdictionType {
+  STATE
+  CONGRESSIONAL_DISTRICT
+  STATE_SENATE_DISTRICT
+  STATE_ASSEMBLY_DISTRICT
+  COUNTY
+  CITY
+  SCHOOL_DISTRICT_UNIFIED
+  SCHOOL_DISTRICT_ELEMENTARY
+  SCHOOL_DISTRICT_HIGH
+  COMMUNITY_COLLEGE_DISTRICT
+  WATER_DISTRICT
+  FIRE_DISTRICT
+  TRANSIT_DISTRICT
+  SPECIAL_DISTRICT
+  COUNTY_SUPERVISOR_DISTRICT
+}
+
+enum JurisdictionLevel {
+  FEDERAL
+  STATE
+  COUNTY
+  MUNICIPAL
+  DISTRICT
+}
+
+type UserJurisdictionModel {
+  resolvedBy: String!
+  resolvedAt: DateTime!
+  jurisdiction: JurisdictionModel!
+}
+
 type Query {
   regionInfo: RegionInfoModel!
+  regionPlugins: [RegionPluginModel!]!
+  regionPluginByFipsCode(fipsCode: String!): RegionPluginModel
   propositions(skip: Int! = 0, take: Int! = 10): PaginatedPropositions!
   proposition(id: ID!): PropositionModel
+  propositionFunding(propositionId: ID!): PropositionFundingModel
   meetings(skip: Int! = 0, take: Int! = 10): PaginatedMeetings!
   meeting(id: ID!): MeetingModel
   representatives(skip: Int! = 0, take: Int! = 10, chamber: String): PaginatedRepresentatives!
   representative(id: ID!): RepresentativeModel
+  representativesByDistricts(congressionalDistrict: String, stateSenatorialDistrict: String, stateAssemblyDistrict: String, countyRegionId: String): [RepresentativeModel!]!
+  countyRepresentatives(countyRegionId: String!): [RepresentativeModel!]!
+  representativeActivityStats(id: ID!, sinceDays: Int): RepresentativeActivityStatsModel!
+  representativeActivity(id: ID!, actionTypes: [String!], includePresenceYes: Boolean, skip: Int, take: Int): PaginatedLegislativeActions!
+  minutesPassage(actionId: ID!): MinutesPassageModel
+  committeeActivityStats(committeeId: ID!, sinceDays: Int): CommitteeActivityStatsModel!
+  committeeActivity(committeeId: ID!, actionTypes: [String!], skip: Int, take: Int): PaginatedLegislativeActions!
+  billActivity(billId: ID!, actionTypes: [String!], skip: Int, take: Int): PaginatedLegislativeActions!
+  legislativeCommittees(skip: Int! = 0, take: Int! = 10, chamber: String, nameFilter: String): PaginatedLegislativeCommittees!
+  legislativeCommittee(id: ID!): LegislativeCommitteeDetailModel
+  committees(skip: Int! = 0, take: Int! = 10, sourceSystem: String): PaginatedCommittees!
+  committee(id: ID!): CommitteeModel
+  contributions(skip: Int! = 0, take: Int! = 10, committeeId: String, sourceSystem: String): PaginatedContributions!
+  contribution(id: ID!): ContributionModel
+  expenditures(skip: Int! = 0, take: Int! = 10, committeeId: String, sourceSystem: String): PaginatedExpenditures!
+  expenditure(id: ID!): ExpenditureModel
+  independentExpenditures(skip: Int! = 0, take: Int! = 10, committeeId: String, supportOrOppose: String, sourceSystem: String): PaginatedIndependentExpenditures!
+  independentExpenditure(id: ID!): IndependentExpenditureModel
+  bills(skip: Int! = 0, take: Int! = 10, measureTypeCode: String, sessionYear: String, authorId: ID, committeeId: ID, coAuthorId: ID, lifecycle: BillLifecycle = ACTIVE): PaginatedBills!
+  bill(id: ID!): Bill
+  myJurisdictions: [UserJurisdictionModel!]!
+  myCountySupervisors: [RepresentativeModel!]!
+  regionSyncJob(jobId: ID!): RegionSyncJob
+  recentRegionSyncJobs(limit: Int = 20): [RegionSyncJob!]!
+  scheduledSyncJobs: [ScheduledSyncJob!]!
+}
+
+"""
+Active = currently moveable; Inactive = passed/chaptered + dead; All = no filter (#747).
+"""
+enum BillLifecycle {
+  ACTIVE
+  INACTIVE
+  ALL
 }
 
 type Mutation {
-  syncRegionData(dataTypes: [DataType!]): [SyncResultModel!]!
+  regeneratePropositionAnalysis(id: ID!): PropositionModel
+  invalidateManifest(regionId: String!, sourceUrl: String!): Int!
+  updateRegionPlugin(name: String!, enabled: Boolean!): RegionPluginModel!
+  syncRegionData(dataTypes: [DataType!], depth: SyncDepth, regionId: String, maxReps: Int, maxBills: Int): RegionSyncJob!
+}
+
+"""
+STATE = top-level region only; COUNTY = all enabled sub-regions; ALL = both in one pass
+"""
+enum SyncDepth {
+  STATE
+  COUNTY
+  ALL
 }

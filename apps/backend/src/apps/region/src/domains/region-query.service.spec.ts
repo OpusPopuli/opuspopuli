@@ -8,6 +8,7 @@ import {
   createMockDbService,
   type MockDbClient,
 } from '@opuspopuli/relationaldb-provider/testing';
+import { BillLifecycle } from './models/bill.model';
 
 function createMockCache() {
   return {
@@ -1188,6 +1189,8 @@ describe('RegionQueryService — query methods', () => {
       extractedAt: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),
+      isDead: false,
+      isActive: true,
       votes: [],
       coAuthors: [],
     };
@@ -1275,6 +1278,89 @@ describe('RegionQueryService — query methods', () => {
       const result = await service.getBill('bill-1');
       expect(result?.aiSummary?.topics).toEqual(['housing', 'taxation']);
       expect(result?.aiSummary?.whoItAffects).toEqual(['renters', 'parents']);
+    });
+
+    it('exposes isDead and isActive on the mapped record', async () => {
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        isDead: true,
+        isActive: false,
+        aiSummary: null,
+      } as never);
+      const result = await service.getBill('bill-1');
+      expect(result?.isDead).toBe(true);
+      expect(result?.isActive).toBe(false);
+    });
+  });
+
+  describe('getBills — lifecycle filter (#747)', () => {
+    beforeEach(() => {
+      mockDb.bill.findMany.mockResolvedValue([] as never);
+      mockDb.bill.count.mockResolvedValue(0 as never);
+    });
+
+    it('defaults to ACTIVE — adds isActive:true to the where clause', async () => {
+      await service.getBills(0, 10);
+      expect(mockDb.bill.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isActive: true }),
+        }),
+      );
+      expect(mockDb.bill.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isActive: true }),
+        }),
+      );
+    });
+
+    it('INACTIVE adds isActive:false (chaptered + dead together)', async () => {
+      await service.getBills(
+        0,
+        10,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        BillLifecycle.INACTIVE,
+      );
+      expect(mockDb.bill.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isActive: false }),
+        }),
+      );
+    });
+
+    it('ALL omits any lifecycle clause', async () => {
+      await service.getBills(
+        0,
+        10,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        BillLifecycle.ALL,
+      );
+      const args = mockDb.bill.findMany.mock.calls[0][0] as {
+        where: Record<string, unknown>;
+      };
+      expect(args.where).not.toHaveProperty('isActive');
+      expect(args.where).not.toHaveProperty('isDead');
+    });
+
+    it('composes isActive:true with other filters', async () => {
+      await service.getBills(0, 10, 'AB', '2025-2026', 'author-1');
+      expect(mockDb.bill.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            isActive: true,
+            measureTypeCode: 'AB',
+            sessionYear: '2025-2026',
+            authorId: 'author-1',
+          }),
+        }),
+      );
     });
   });
 });
