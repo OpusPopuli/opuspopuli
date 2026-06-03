@@ -29,8 +29,16 @@ x-backend-env: &backend-env
   RELATIONAL_DB_PORT: 5432
   RELATIONAL_DB_USERNAME: postgres
   RELATIONAL_DB_PASSWORD: your-super-secret-password
-  RELATIONAL_DB_DATABASE: postgres
-  DATABASE_URL: postgresql://postgres:your-super-secret-password@opuspopuli-db:5432/postgres
+  # E2E backend services target `postgres_test` so they share a database with
+  # the integration test workers (globalSetup pins to postgres_test, either
+  # explicitly via INTEGRATION_DATABASE_URL or by deriving from DATABASE_URL).
+  # Without this, tests write fixtures to postgres_test and backend services
+  # read empty results from `postgres` — manifesting as 0-count totals and
+  # 'Cannot return null for non-nullable Query.findUser' errors. Mirrors the
+  # docker-compose-integration.yml setup; db-migrate creates the database via
+  # the conditional CREATE-IF-NOT-EXISTS block in db-migrate.sh. See #796.
+  RELATIONAL_DB_DATABASE: postgres_test
+  DATABASE_URL: postgresql://postgres:your-super-secret-password@opuspopuli-db:5432/postgres_test
   REDIS_URL: redis://redis:6379
   SUPABASE_URL: http://supabase-kong:8000
   SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.KR1jqUlyHtwAxCJf6B0QVoRpobrdPEv8ALnNJUlGxPE
