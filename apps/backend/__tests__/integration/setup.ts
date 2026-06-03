@@ -14,6 +14,30 @@ config({ path: resolve(__dirname, '../../.env') });
 const RELATIONALDB_PROVIDER_PACKAGE = '@opuspopuli/relationaldb-provider';
 
 /**
+ * Derive a `*_test` database URL from a base DATABASE_URL by appending
+ * `_test` to the database-name segment of the URL path. Used as a CI
+ * fallback when INTEGRATION_DATABASE_URL isn't explicitly set — the
+ * GitHub Actions runner has DATABASE_URL set on the workflow but doesn't
+ * have apps/backend/.env (gitignored), so the explicit-env-only path
+ * fails CI even though the test DB can be derived deterministically.
+ *
+ * Local dev still sets INTEGRATION_DATABASE_URL explicitly (in the
+ * gitignored .env) and this fallback never fires there. The
+ * `_test`-suffix guard at the caller (and assertTestDatabase in
+ * utils/db-cleanup.ts) still enforces the safety invariant: nothing
+ * touches a database without `_test` in its name.
+ */
+function deriveTestDatabaseUrl(dbUrl: string): string {
+  const url = new URL(dbUrl);
+  const dbName = url.pathname.replace(/^\//, '');
+  if (dbName.endsWith('_test')) {
+    return dbUrl;
+  }
+  url.pathname = `/${dbName}_test`;
+  return url.toString();
+}
+
+/**
  * Swap DATABASE_URL to point at `postgres_test`, create the DB if it doesn't
  * exist, and apply pending migrations. Runs once per `pnpm test:integration`
  * invocation, before any worker process imports the Prisma client. Pairs
@@ -21,11 +45,24 @@ const RELATIONALDB_PROVIDER_PACKAGE = '@opuspopuli/relationaldb-provider';
  * they make it impossible for integration tests to touch the dev DB.
  */
 async function bootstrapTestDatabase(): Promise<void> {
-  const integrationUrl = process.env.INTEGRATION_DATABASE_URL;
+  let integrationUrl = process.env.INTEGRATION_DATABASE_URL;
   if (!integrationUrl) {
-    throw new Error(
-      'INTEGRATION_DATABASE_URL is not set. Copy the value from ' +
-        'apps/backend/.env.example into apps/backend/.env. See #796.',
+    // CI fallback: derive from DATABASE_URL by appending `_test` to the
+    // database name. Lets the workflow set only DATABASE_URL without
+    // needing a second env var for the test-DB suffix. Local dev still
+    // sets INTEGRATION_DATABASE_URL explicitly. See #796.
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+      throw new Error(
+        'Neither INTEGRATION_DATABASE_URL nor DATABASE_URL is set. ' +
+          'Set INTEGRATION_DATABASE_URL explicitly (see apps/backend/.env.example), ' +
+          'or set DATABASE_URL so the test URL can be derived with a "_test" suffix. ' +
+          'See #796.',
+      );
+    }
+    integrationUrl = deriveTestDatabaseUrl(dbUrl);
+    console.log(
+      `INTEGRATION_DATABASE_URL not set; derived from DATABASE_URL → ${integrationUrl.replace(/:[^:@]+@/, ':***@')}`,
     );
   }
   if (!/\/[A-Za-z0-9_]*_test([?#/]|$)/.test(integrationUrl)) {
