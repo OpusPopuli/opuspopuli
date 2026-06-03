@@ -1,4 +1,24 @@
-import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
+import { ObjectType, Field, ID, Int, registerEnumType } from '@nestjs/graphql';
+
+/**
+ * Bills-list filter selector for the Active / Inactive segmented toggle
+ * (#747). Pairs with the `isActive` + `isDead` columns to partition the
+ * corpus into three lifecycle phases.
+ */
+export enum BillLifecycle {
+  /** isActive = true. Currently moveable bills only. Default for list/feed. */
+  ACTIVE = 'ACTIVE',
+  /** isActive = false. Chaptered (passed) and dead bills together. */
+  INACTIVE = 'INACTIVE',
+  /** No lifecycle filter — admin/research callers. */
+  ALL = 'ALL',
+}
+
+registerEnumType(BillLifecycle, {
+  name: 'BillLifecycle',
+  description:
+    'Active = currently moveable; Inactive = passed/chaptered + dead; All = no filter (#747).',
+});
 
 @ObjectType('BillVote')
 export class BillVoteModel {
@@ -153,6 +173,22 @@ export class BillModel {
    *  `{ skip: true }` (input was garbled / not-a-bill). See #741. */
   @Field(() => BillAiSummaryModel, { nullable: true })
   aiSummary?: BillAiSummaryModel;
+
+  /** Procedurally dead — vetoed without override, withdrawn, failed
+   *  deadline, inactive file, failed passage, or from a closed session
+   *  that did not enact. Pairs with `isActive` to give a 3-way partition.
+   *  The bill-detail resolver always returns the bill so deep links
+   *  don't 404. See #747. */
+  @Field()
+  isDead!: boolean;
+
+  /** Currently moveable — the source has tagged this bill as actively
+   *  progressing through the legislature ("Active Bill - ..."). Default
+   *  list/search and the personalized feed filter to isActive=true; the
+   *  Inactive segment of the bills-list toggle shows isActive=false
+   *  (chaptered + dead together). See #747. */
+  @Field()
+  isActive!: boolean;
 }
 
 @ObjectType('PaginatedBills')

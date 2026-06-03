@@ -183,10 +183,28 @@ function createLink(): ApolloLink {
  */
 const cache = new InMemoryCache();
 
+/**
+ * LocalStorage namespace for the persisted Apollo cache. Bump the version
+ * suffix whenever a non-backward-compatible schema change ships so existing
+ * clients drop stale entries on next load rather than serving them while
+ * the network result arrives. See #747 (includeDead → BillLifecycle rename).
+ */
+const APOLLO_CACHE_KEY = "apollo-cache-persist-v2";
+const LEGACY_APOLLO_CACHE_KEYS = ["apollo-cache-persist"];
+
 // Initialize cache persistence for PWA offline support
 if (globalThis.window !== undefined) {
+  for (const legacyKey of LEGACY_APOLLO_CACHE_KEYS) {
+    try {
+      globalThis.localStorage.removeItem(legacyKey);
+    } catch {
+      // Storage may be unavailable (private mode, quota); the live cache
+      // still works without persistence — non-fatal.
+    }
+  }
   persistCache({
     cache,
+    key: APOLLO_CACHE_KEY,
     storage: new LocalStorageWrapper(globalThis.localStorage),
     maxSize: 1048576 * 5, // 5MB limit
     debug: process.env.NODE_ENV === "development",

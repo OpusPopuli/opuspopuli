@@ -1548,9 +1548,18 @@ export interface Bill {
   extractedAt: string;
   createdAt: string;
   updatedAt: string;
+  isDead: boolean;
+  isActive: boolean;
   votes: BillVote[];
   coAuthors: BillCoAuthor[];
   aiSummary?: BillAiSummary | null;
+}
+
+/** Mirrors the backend `BillLifecycle` enum (#747). */
+export enum BillLifecycle {
+  ACTIVE = "ACTIVE",
+  INACTIVE = "INACTIVE",
+  ALL = "ALL",
 }
 
 export interface PaginatedBills {
@@ -1575,6 +1584,8 @@ export interface BillsVars {
   authorId?: string;
   committeeId?: string;
   coAuthorId?: string;
+  /** Defaults to ACTIVE server-side when omitted. See #747. */
+  lifecycle?: BillLifecycle;
 }
 
 export interface BillIdVars {
@@ -1611,6 +1622,7 @@ export const GET_BILLS = gql`
     $authorId: ID
     $committeeId: ID
     $coAuthorId: ID
+    $lifecycle: BillLifecycle
   ) {
     bills(
       skip: $skip
@@ -1620,6 +1632,7 @@ export const GET_BILLS = gql`
       authorId: $authorId
       committeeId: $committeeId
       coAuthorId: $coAuthorId
+      lifecycle: $lifecycle
     ) {
       items {
         id
@@ -1637,6 +1650,8 @@ export const GET_BILLS = gql`
         authorName
         sourceUrl
         updatedAt
+        isDead
+        isActive
       }
       total
       hasMore
@@ -1668,6 +1683,8 @@ export const GET_BILL = gql`
       extractedAt
       createdAt
       updatedAt
+      isDead
+      isActive
       votes {
         ...BillVoteFields
       }

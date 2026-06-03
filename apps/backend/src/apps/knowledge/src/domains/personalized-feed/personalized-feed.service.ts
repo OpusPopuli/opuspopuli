@@ -156,7 +156,12 @@ export class PersonalizedFeedService {
    */
   private async fetchRankableBills(): Promise<RankableBill[]> {
     const rows = await this.db.bill.findMany({
-      where: { aiSummary: { not: Prisma.DbNull } },
+      // Hard-include only currently-moveable bills (#747). The feed's value
+      // is "things you can act on now", so anything not actively progressing
+      // — chaptered/passed AND vetoed/died — destroys the user's trust in
+      // the ranking. Unlike the public `bills` resolver this filter is not
+      // toggle-able; the ranker only ever sees isActive=true bills.
+      where: { aiSummary: { not: Prisma.DbNull }, isActive: true },
       select: {
         id: true,
         lastActionDate: true,

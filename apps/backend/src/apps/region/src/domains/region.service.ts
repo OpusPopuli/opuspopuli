@@ -32,7 +32,11 @@ import { PaginatedCommittees } from './models/committee.model';
 import { PaginatedContributions } from './models/contribution.model';
 import { PaginatedExpenditures } from './models/expenditure.model';
 import { PaginatedIndependentExpenditures } from './models/independent-expenditure.model';
-import { BillModel, PaginatedBillsModel } from './models/bill.model';
+import {
+  BillModel,
+  PaginatedBillsModel,
+  BillLifecycle,
+} from './models/bill.model';
 import type { PropositionFunding } from './proposition-funding.service';
 import type {
   LegislativeCommitteeDetail,
@@ -541,6 +545,7 @@ export class RegionDomainService {
     authorId?: string,
     committeeId?: string,
     coAuthorId?: string,
+    lifecycle: BillLifecycle = BillLifecycle.ACTIVE,
   ): Promise<PaginatedBillsModel> {
     return this.queryService.getBills(
       skip,
@@ -550,6 +555,7 @@ export class RegionDomainService {
       authorId,
       committeeId,
       coAuthorId,
+      lifecycle,
     );
   }
 

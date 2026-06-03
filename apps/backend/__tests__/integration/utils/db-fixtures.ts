@@ -365,6 +365,12 @@ export interface CreateBillOptions {
   lastActionDate?: Date | null;
   aiSummary?: Prisma.InputJsonValue | null;
   aiSummaryVersion?: string | null;
+  /** Procedural lifecycle flags from #747. Default: `isActive=true,
+   *  isDead=false` so existing fixtures produce rankable bills (the
+   *  personalized-feed filter requires isActive=true). #747's lifecycle
+   *  tests override these explicitly to exercise the dead/passed buckets. */
+  isActive?: boolean;
+  isDead?: boolean;
 }
 
 /**
@@ -398,6 +404,8 @@ export async function createBill(
       ...(options.aiSummaryVersion !== undefined && {
         aiSummaryVersion: options.aiSummaryVersion,
       }),
+      isActive: options.isActive ?? true,
+      isDead: options.isDead ?? false,
     },
   });
 }

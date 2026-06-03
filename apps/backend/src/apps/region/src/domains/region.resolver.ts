@@ -78,7 +78,11 @@ import {
   PaginatedLegislativeActions,
   MinutesPassageModel,
 } from './models/legislative-action.model';
-import { BillModel, PaginatedBillsModel } from './models/bill.model';
+import {
+  BillModel,
+  PaginatedBillsModel,
+  BillLifecycle,
+} from './models/bill.model';
 import {
   JurisdictionModel,
   UserJurisdictionModel,
@@ -783,6 +787,10 @@ export class RegionResolver {
    * sessionYear, authorId, committeeId, or coAuthorId. Orders by
    * lastActionDate desc. Combining authorId with coAuthorId is AND-semantic
    * (rare; useful for "all bills this rep touched in any role"). See #594.
+   *
+   * `lifecycle` (#747) defaults to ACTIVE — currently moveable bills only.
+   * INACTIVE returns chaptered + dead together; ALL skips the filter for
+   * admin/research callers.
    */
   @Public()
   @Query(() => PaginatedBillsModel)
@@ -797,6 +805,13 @@ export class RegionResolver {
     committeeId?: string,
     @Args({ name: 'coAuthorId', type: () => ID, nullable: true })
     coAuthorId?: string,
+    @Args({
+      name: 'lifecycle',
+      type: () => BillLifecycle,
+      nullable: true,
+      defaultValue: BillLifecycle.ACTIVE,
+    })
+    lifecycle: BillLifecycle = BillLifecycle.ACTIVE,
   ): Promise<PaginatedBillsModel> {
     return this.regionService.getBills(
       skip,
@@ -806,6 +821,7 @@ export class RegionResolver {
       authorId,
       committeeId,
       coAuthorId,
+      lifecycle,
     );
   }
 

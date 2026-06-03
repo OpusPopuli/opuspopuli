@@ -48,6 +48,11 @@ import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 import { HostThrottle, fetchTextWithRetry } from './resilient-fetch';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
+import {
+  isBillDead,
+  isBillActive,
+  computeActiveCaSessionYears,
+} from './bill-lifecycle';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import { RegionCacheService } from './region-cache.service';
 import {
@@ -2319,21 +2324,40 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         return 'failed';
       }
 
+      const resolvedCurrentStageId =
+        raw.currentStageId ??
+        this.resolveStageFromStatus(raw.status, stagePatterns);
+      const resolvedSessionYear = raw.sessionYear ?? sessionYear;
+      const resolvedLastActionDate = raw.lastActionDate
+        ? new Date(raw.lastActionDate as unknown as string)
+        : null;
+
+      // Snapshot now() once so both lifecycle helpers see the same moment —
+      // avoids a sub-millisecond drift between today and activeSessionYears.
+      const now = new Date();
+      const lifecycleInput = {
+        status: raw.status ?? null,
+        currentStageId: resolvedCurrentStageId,
+        sessionYear: resolvedSessionYear,
+        lastAction: raw.lastAction ?? null,
+        lastActionDate: resolvedLastActionDate,
+      };
+      const lifecycleCtx = {
+        today: now,
+        activeSessionYears: computeActiveCaSessionYears(now),
+      };
+
       const billData = {
         regionId,
         billNumber: raw.billNumber,
-        sessionYear: raw.sessionYear ?? sessionYear,
+        sessionYear: resolvedSessionYear,
         measureTypeCode,
         title: raw.title,
         subject: raw.subject ?? null,
         status: raw.status ?? null,
-        currentStageId:
-          raw.currentStageId ??
-          this.resolveStageFromStatus(raw.status, stagePatterns),
+        currentStageId: resolvedCurrentStageId,
         lastAction: raw.lastAction ?? null,
-        lastActionDate: raw.lastActionDate
-          ? new Date(raw.lastActionDate as unknown as string)
-          : null,
+        lastActionDate: resolvedLastActionDate,
         fiscalImpact: raw.fiscalImpact ?? null,
         fullTextUrl: raw.fullTextUrl ?? null,
         authorId: authorId ?? null,
@@ -2344,7 +2368,15 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         // flag — whether the bill arrived here via the journal flag or the
         // weekly backstop, the LLM update is authoritative. See #689.
         needsStatusRecheck: false,
-        extractedAt: new Date(),
+        // Procedural lifecycle flags (#747). Computed at write time so list/
+        // search/feed queries don't re-evaluate the rules per row. The two
+        // booleans form a 3-way partition (active | passed/chaptered |
+        // dead); see bill-lifecycle.ts for the rules. Sync re-evaluates on
+        // each run — the helpers are deterministic, so re-runs are no-ops
+        // until the source status changes.
+        isDead: isBillDead(lifecycleInput, lifecycleCtx),
+        isActive: isBillActive(lifecycleInput, lifecycleCtx),
+        extractedAt: now,
       };
       const bill = await this.db.bill.upsert({
         where: { externalId },
