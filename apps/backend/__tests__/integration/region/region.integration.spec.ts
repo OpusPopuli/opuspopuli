@@ -1561,7 +1561,32 @@ describe('Region Integration Tests', () => {
             description: 'CA state plugin',
             version: '1.0.0',
             enabled: false,
-            config: { stateCode: 'CA' },
+            // Minimum-valid DeclarativeRegionConfig: regionId + dataSources
+            // are required by PluginLoaderService.loadPlugin (it throws
+            // otherwise, and initLocalPlugins falls through to the example
+            // fallback — which is why earlier runs of these hot-swap tests
+            // saw regionInfo.id stuck at 'example'). The two data sources
+            // back the test assertion that supportedDataTypes contains
+            // BILLS + CIVICS.
+            config: {
+              regionId: 'california',
+              regionName: 'California',
+              description: 'CA state plugin (test stub)',
+              timezone: 'America/Los_Angeles',
+              stateCode: 'CA',
+              dataSources: [
+                {
+                  url: 'https://example.test/ca-bills',
+                  dataType: 'bills',
+                  contentGoal: 'Test stub — extract bills',
+                },
+                {
+                  url: 'https://example.test/ca-civics',
+                  dataType: 'civics',
+                  contentGoal: 'Test stub — extract civics',
+                },
+              ],
+            },
             parentRegionId: null,
             fipsCode: '06',
           },
@@ -1571,7 +1596,16 @@ describe('Region Integration Tests', () => {
             description: 'Test fallback',
             version: '0.0.0',
             enabled: true,
-            config: {},
+            // Same minimum-valid shape — without regionId + dataSources the
+            // loader rejects this row and the test loses its boot-time
+            // "example is active" precondition.
+            config: {
+              regionId: 'example',
+              regionName: 'Example Region',
+              description: 'Test fallback',
+              timezone: 'UTC',
+              dataSources: [],
+            },
             parentRegionId: null,
             fipsCode: null,
           },
