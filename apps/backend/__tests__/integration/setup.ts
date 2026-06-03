@@ -1,9 +1,92 @@
 import { execSync } from 'node:child_process';
 import { config } from 'dotenv';
 import { resolve } from 'node:path';
+import { ensureTestDatabase } from './utils/test-db-bootstrap';
 
 // Load environment variables from .env file (only needed when running from host)
 config({ path: resolve(__dirname, '../../.env') });
+
+/**
+ * Workspace package that owns the Prisma schema + migrations. We shell out
+ * to its bin so we get the locally-pinned Prisma 5 client (the root has a
+ * Prisma 7 binary that doesn't understand this schema). See #796.
+ */
+const RELATIONALDB_PROVIDER_PACKAGE = '@opuspopuli/relationaldb-provider';
+
+/**
+ * Derive a `*_test` database URL from a base DATABASE_URL by appending
+ * `_test` to the database-name segment of the URL path. Used as a CI
+ * fallback when INTEGRATION_DATABASE_URL isn't explicitly set — the
+ * GitHub Actions runner has DATABASE_URL set on the workflow but doesn't
+ * have apps/backend/.env (gitignored), so the explicit-env-only path
+ * fails CI even though the test DB can be derived deterministically.
+ *
+ * Local dev still sets INTEGRATION_DATABASE_URL explicitly (in the
+ * gitignored .env) and this fallback never fires there. The
+ * `_test`-suffix guard at the caller (and assertTestDatabase in
+ * utils/db-cleanup.ts) still enforces the safety invariant: nothing
+ * touches a database without `_test` in its name.
+ */
+function deriveTestDatabaseUrl(dbUrl: string): string {
+  const url = new URL(dbUrl);
+  const dbName = url.pathname.replace(/^\//, '');
+  if (dbName.endsWith('_test')) {
+    return dbUrl;
+  }
+  url.pathname = `/${dbName}_test`;
+  return url.toString();
+}
+
+/**
+ * Swap DATABASE_URL to point at `postgres_test`, create the DB if it doesn't
+ * exist, and apply pending migrations. Runs once per `pnpm test:integration`
+ * invocation, before any worker process imports the Prisma client. Pairs
+ * with the `assertTestDatabase` guard in utils/db-cleanup.ts — together
+ * they make it impossible for integration tests to touch the dev DB.
+ */
+async function bootstrapTestDatabase(): Promise<void> {
+  let integrationUrl = process.env.INTEGRATION_DATABASE_URL;
+  if (!integrationUrl) {
+    // CI fallback: derive from DATABASE_URL by appending `_test` to the
+    // database name. Lets the workflow set only DATABASE_URL without
+    // needing a second env var for the test-DB suffix. Local dev still
+    // sets INTEGRATION_DATABASE_URL explicitly. See #796.
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+      throw new Error(
+        'Neither INTEGRATION_DATABASE_URL nor DATABASE_URL is set. ' +
+          'Set INTEGRATION_DATABASE_URL explicitly (see apps/backend/.env.example), ' +
+          'or set DATABASE_URL so the test URL can be derived with a "_test" suffix. ' +
+          'See #796.',
+      );
+    }
+    integrationUrl = deriveTestDatabaseUrl(dbUrl);
+    console.log(
+      `INTEGRATION_DATABASE_URL not set; derived from DATABASE_URL → ${integrationUrl.replace(/:[^:@]+@/, ':***@')}`,
+    );
+  }
+  if (!/\/[A-Za-z0-9_]*_test([?#/]|$)/.test(integrationUrl)) {
+    throw new Error(
+      'INTEGRATION_DATABASE_URL must end in a *_test database name to be ' +
+        'eligible for cleanDatabase() — refusing to bootstrap. ' +
+        `Got: ${integrationUrl}`,
+    );
+  }
+  await ensureTestDatabase();
+  // Swap BEFORE any test worker imports the Prisma client. Every downstream
+  // import (DbService, helpers, the assertTestDatabase guard) reads this
+  // value at module load time.
+  process.env.DATABASE_URL = integrationUrl;
+
+  // execSync inherits process.env, which we just updated above. No need
+  // to pass `env:` explicitly — that path collides with the dotenv-loaded
+  // PORT (number) vs. ProcessEnv (string) type expectations.
+  execSync(
+    `pnpm --filter ${RELATIONALDB_PROVIDER_PACKAGE} exec prisma migrate deploy`,
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  console.log('✓ postgres_test bootstrapped + migrations applied');
+}
 
 interface ServiceConfig {
   name: string;
@@ -56,6 +139,10 @@ async function checkService(service: ServiceConfig): Promise<boolean> {
 }
 
 export default async function globalSetup() {
+  // Bootstrap the isolated test database BEFORE anything else so every
+  // downstream module sees DATABASE_URL pointed at postgres_test. See #796.
+  await bootstrapTestDatabase();
+
   const services = getServiceConfigs();
 
   // When running inside Docker, skip docker compose check

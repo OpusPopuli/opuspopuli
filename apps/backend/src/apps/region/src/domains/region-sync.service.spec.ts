@@ -237,6 +237,106 @@ describe('RegionSyncService', () => {
     });
   });
 
+  describe('active-plugin hot-swap (#796)', () => {
+    it('re-queries region_plugins and swaps the active local plugin on refresh', async () => {
+      mockDb.regionPlugin.findMany.mockClear();
+      mockRegistry.unregister.mockClear();
+
+      await service.refreshActiveLocalPlugin();
+
+      // Re-reads the enabled rows
+      expect(mockDb.regionPlugin.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { enabled: true, name: { not: 'federal' } },
+        }),
+      );
+      // Tears the slot down before re-init
+      expect(mockRegistry.unregister).toHaveBeenCalled();
+    });
+
+    it('setRegionPluginEnabled triggers a hot-swap after the DB update', async () => {
+      mockDb.regionPlugin.update.mockResolvedValue({
+        name: 'california',
+        displayName: 'California',
+        description: null,
+        version: '1.0.0',
+        enabled: true,
+        parentRegionId: null,
+        fipsCode: '06',
+      } as never);
+      mockDb.regionPlugin.findMany.mockClear();
+
+      await service.setRegionPluginEnabled('california', true);
+
+      // The findMany after the update is the refresh — proves the in-memory
+      // pointer hot-swaps without a service restart.
+      expect(mockDb.regionPlugin.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { enabled: true, name: { not: 'federal' } },
+        }),
+      );
+    });
+
+    it('throws when no local plugin is available after refresh', async () => {
+      mockRegistry.getLocal.mockReturnValueOnce(undefined);
+
+      await expect(service.refreshActiveLocalPlugin()).rejects.toThrow(
+        /No local region plugin available/,
+      );
+    });
+
+    it('setRegionPluginEnabled triggers a hot-swap when disabling a plugin', async () => {
+      // Same shape as the enable test — proves the refresh fires regardless
+      // of direction, not just when enabled flips true.
+      mockDb.regionPlugin.update.mockResolvedValue({
+        name: 'california',
+        displayName: 'California',
+        description: null,
+        version: '1.0.0',
+        enabled: false,
+        parentRegionId: null,
+        fipsCode: '06',
+      } as never);
+      mockDb.regionPlugin.findMany.mockClear();
+      mockRegistry.unregister.mockClear();
+
+      await service.setRegionPluginEnabled('california', false);
+
+      expect(mockRegistry.unregister).toHaveBeenCalled();
+      expect(mockDb.regionPlugin.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { enabled: true, name: { not: 'federal' } },
+        }),
+      );
+    });
+
+    it('back-to-back toggles end in the state of the last call', async () => {
+      // Two rapid awaits — the in-memory state after the second resolve
+      // should reflect the second call's enabled value, not the first. This
+      // smoke-tests that the refresh doesn't have an order-of-operations
+      // bug where the first refresh's tail races with the second's head.
+      mockDb.regionPlugin.update.mockResolvedValue({
+        name: 'california',
+        displayName: 'California',
+        description: null,
+        version: '1.0.0',
+        enabled: true,
+        parentRegionId: null,
+        fipsCode: '06',
+      } as never);
+      // Clear the boot-time refresh that beforeEach() already triggered.
+      mockRegistry.unregister.mockClear();
+      mockDb.regionPlugin.findMany.mockClear();
+
+      await service.setRegionPluginEnabled('california', false);
+      await service.setRegionPluginEnabled('california', true);
+
+      // Two toggles → two unregister + two findMany cycles.
+      expect(mockRegistry.unregister).toHaveBeenCalledTimes(2);
+      expect(mockDb.regionPlugin.findMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('syncAll', () => {
     it('should sync all data types from all plugins and return results', async () => {
       const results = await service.syncAll();
