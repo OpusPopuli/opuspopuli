@@ -17,6 +17,7 @@ import {
   createBill,
   getDbService,
   graphqlRequest,
+  adminGraphqlRequest,
   assertNoErrors,
 } from '../utils';
 
@@ -1599,14 +1600,16 @@ describe('Region Integration Tests', () => {
       await seedRegionPlugins();
 
       // Enable california via the admin mutation — this should hot-swap.
-      const updateResult = await graphqlRequest<{
+      // updateRegionPlugin is @Roles(Role.Admin), so we mint an admin JWT.
+      const updateResult = await adminGraphqlRequest<{
         updateRegionPlugin: { name: string; enabled: boolean };
       }>(updateRegionPluginMutation('california', true));
       assertNoErrors(updateResult);
       expect(updateResult.data.updateRegionPlugin.enabled).toBe(true);
 
       // Same process — no container restart. regionInfo should now report
-      // California, not the previously-active Example fallback.
+      // California, not the previously-active Example fallback. regionInfo
+      // itself is public, so the unauthenticated request still works.
       const infoResult = await graphqlRequest<{
         regionInfo: {
           id: string;
@@ -1633,8 +1636,8 @@ describe('Region Integration Tests', () => {
       });
 
       // Without refresh, the in-memory pointer would still be Example.
-      // refreshActiveRegion forces a re-read.
-      const refreshResult = await graphqlRequest<{
+      // refreshActiveRegion forces a re-read. The mutation is admin-gated.
+      const refreshResult = await adminGraphqlRequest<{
         refreshActiveRegion: boolean;
       }>(refreshActiveRegionMutation);
       assertNoErrors(refreshResult);
