@@ -280,7 +280,43 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     await this.resolveApiKeysFromVault();
     await this.syncRegionConfigs();
+    const { localConfigRow, allLocalConfigRows } =
+      await this.fetchLocalPluginConfigs();
 
+    const stateCode = (
+      localConfigRow?.config as Record<string, unknown> | undefined
+    )?.stateCode as string | undefined;
+
+    await this.initFederalPlugin(stateCode);
+    await this.reloadActiveLocalPlugin(allLocalConfigRows, localConfigRow);
+  }
+
+  /**
+   * Re-read the `region_plugins` table and swap the in-memory active local
+   * plugin to match. Called from `setRegionPluginEnabled` (so admin toggles
+   * take effect without a service restart) and from the public
+   * `refreshActiveLocalPlugin` recovery mutation. See #796 for the failure
+   * mode this prevents.
+   *
+   * Federal plugin is NOT refreshed here — if the toggled plugin changed
+   * the federal `stateCode`, the federal placeholders will still hold the
+   * boot-time value. That's a known limitation; restart the service if
+   * federal needs to re-resolve.
+   */
+  async refreshActiveLocalPlugin(): Promise<void> {
+    const { localConfigRow, allLocalConfigRows } =
+      await this.fetchLocalPluginConfigs();
+    await this.reloadActiveLocalPlugin(allLocalConfigRows, localConfigRow);
+  }
+
+  private async fetchLocalPluginConfigs(): Promise<{
+    localConfigRow: { config: unknown } | undefined;
+    allLocalConfigRows: {
+      name: string;
+      config: unknown;
+      parentRegionId: string | null;
+    }[];
+  }> {
     const allLocalConfigRows = await this.db.regionPlugin.findMany({
       where: { enabled: true, name: { not: 'federal' } },
     });
@@ -290,12 +326,30 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     const localConfigRow =
       allLocalConfigRows.find((r) => !r.parentRegionId) ??
       allLocalConfigRows[0];
+    return { localConfigRow, allLocalConfigRows };
+  }
 
-    const stateCode = (
-      localConfigRow?.config as Record<string, unknown> | undefined
-    )?.stateCode as string | undefined;
+  private async reloadActiveLocalPlugin(
+    allLocalConfigRows: {
+      name: string;
+      config: unknown;
+      parentRegionId: string | null;
+    }[],
+    localConfigRow: { config: unknown } | undefined,
+  ): Promise<void> {
+    // Tear down the existing local registry before re-init so we never
+    // re-register the same plugin name twice (registerLocal would internally
+    // destroy and replace, but draining first keeps the logs honest).
+    //
+    // Concurrency: between this unregister() and the initLocalPlugins()
+    // below, the local plugin slot is empty. Any reader of
+    // `regionService.getRegionInfo()` (or any sync job started in that
+    // window) will see no active plugin and throw. Probability is low —
+    // refresh fires only on admin toggles or the recovery mutation, neither
+    // of which is in a hot path. If concurrent admin toggles ever become a
+    // real concern, swap to a build-then-atomic-swap pattern.
+    await this.pluginRegistry.unregister();
 
-    await this.initFederalPlugin(stateCode);
     await this.initLocalPlugins(allLocalConfigRows);
 
     const localPlugin = this.pluginRegistry.getLocal();
@@ -318,7 +372,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       (p) => new RegExp(p, 'i'),
     );
     this.logger.log(
-      `RegionSyncService initialized — local: ${this.regionService.getProviderName()} (${info.name}), ` +
+      `RegionSyncService active plugin: ${this.regionService.getProviderName()} (${info.name}), ` +
         `federal: ${this.pluginRegistry.getFederal() ? 'loaded' : 'not loaded'}`,
     );
   }
@@ -508,6 +562,11 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Region plugin "${name}" ${enabled ? 'enabled' : 'disabled'}`,
     );
+    // Hot-swap the active plugin so the change takes effect immediately —
+    // without this, the in-memory registry stays on whatever it loaded at
+    // boot and `regionInfo` keeps returning the stale active region. See
+    // #796 for the failure mode this fixes.
+    await this.refreshActiveLocalPlugin();
     return toRegionPluginRow(row);
   }
 

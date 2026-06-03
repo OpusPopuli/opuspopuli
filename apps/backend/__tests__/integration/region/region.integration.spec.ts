@@ -1539,6 +1539,115 @@ describe('Region Integration Tests', () => {
     });
   });
 
+  // ============================================
+  // GraphQL: region plugin hot-swap (#796)
+  // ============================================
+
+  describe('Region plugin hot-swap (#796)', () => {
+    /**
+     * Seeds two local region plugin rows. We mark `california` disabled
+     * initially so the service boot fell back to whatever else was
+     * enabled (the integration stack seeds `example` enabled by default).
+     */
+    async function seedRegionPlugins(): Promise<void> {
+      const db = await getDbService();
+      await db.regionPlugin.deleteMany({});
+      await db.regionPlugin.createMany({
+        data: [
+          {
+            name: 'california',
+            displayName: 'California',
+            description: 'CA state plugin',
+            version: '1.0.0',
+            enabled: false,
+            config: { stateCode: 'CA' },
+            parentRegionId: null,
+            fipsCode: '06',
+          },
+          {
+            name: 'example',
+            displayName: 'Example Region',
+            description: 'Test fallback',
+            version: '0.0.0',
+            enabled: true,
+            config: {},
+            parentRegionId: null,
+            fipsCode: null,
+          },
+        ],
+      });
+    }
+
+    const updateRegionPluginMutation = (name: string, enabled: boolean) => `
+      mutation {
+        updateRegionPlugin(name: "${name}", enabled: ${enabled}) {
+          name
+          enabled
+        }
+      }
+    `;
+
+    const regionInfoQuery = `
+      query { regionInfo { id name supportedDataTypes } }
+    `;
+
+    const refreshActiveRegionMutation = `
+      mutation { refreshActiveRegion }
+    `;
+
+    it('updateRegionPlugin makes regionInfo reflect the new active region without a service restart', async () => {
+      await seedRegionPlugins();
+
+      // Enable california via the admin mutation — this should hot-swap.
+      const updateResult = await graphqlRequest<{
+        updateRegionPlugin: { name: string; enabled: boolean };
+      }>(updateRegionPluginMutation('california', true));
+      assertNoErrors(updateResult);
+      expect(updateResult.data.updateRegionPlugin.enabled).toBe(true);
+
+      // Same process — no container restart. regionInfo should now report
+      // California, not the previously-active Example fallback.
+      const infoResult = await graphqlRequest<{
+        regionInfo: {
+          id: string;
+          name: string;
+          supportedDataTypes: string[];
+        };
+      }>(regionInfoQuery);
+      assertNoErrors(infoResult);
+      expect(infoResult.data.regionInfo.id).toBe('california');
+      expect(infoResult.data.regionInfo.supportedDataTypes).toEqual(
+        expect.arrayContaining(['BILLS', 'CIVICS']),
+      );
+    });
+
+    it('refreshActiveRegion recovers from out-of-band region_plugins changes', async () => {
+      await seedRegionPlugins();
+
+      // Simulate the out-of-band edit (manual SQL / a test that bypasses
+      // the admin mutation): flip california on directly via Prisma.
+      const db = await getDbService();
+      await db.regionPlugin.update({
+        where: { name: 'california' },
+        data: { enabled: true },
+      });
+
+      // Without refresh, the in-memory pointer would still be Example.
+      // refreshActiveRegion forces a re-read.
+      const refreshResult = await graphqlRequest<{
+        refreshActiveRegion: boolean;
+      }>(refreshActiveRegionMutation);
+      assertNoErrors(refreshResult);
+      expect(refreshResult.data.refreshActiveRegion).toBe(true);
+
+      const infoResult = await graphqlRequest<{
+        regionInfo: { id: string };
+      }>(regionInfoQuery);
+      assertNoErrors(infoResult);
+      expect(infoResult.data.regionInfo.id).toBe('california');
+    });
+  });
+
   describe('Database cleanup', () => {
     it('should have clean database at start of each test', async () => {
       await createRepresentative({ name: 'Cleanup Test Rep' });

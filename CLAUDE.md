@@ -97,6 +97,26 @@ Rules:
 - Unit tests (`*.spec.ts`) live co-located with the file they test.
 - Files excluded from coverage (don't add tests): `*.dto.ts`, `*.model.ts`, `*.module.ts`, `main.ts`, `bootstrap.ts`, `tracing.ts`, config files, migration scripts, seed scripts.
 
+### Integration test database isolation (#796)
+
+**Integration tests run against a dedicated `postgres_test` database, never the dev `postgres`.** The dev `postgres` DB holds your manually-synced bills, your user account, your enabled region plugins — losing that to a routine test run cost ~30 minutes of recovery per incident before this safeguard existed.
+
+How it works:
+- `apps/backend/.env` defines `INTEGRATION_DATABASE_URL` pointing at `postgres_test`
+- `apps/backend/__tests__/integration/setup.ts::bootstrapTestDatabase` runs once in `globalSetup`: creates `postgres_test` if missing (via `ensureTestDatabase()`), installs required extensions (postgis/pgvector/etc.), runs `prisma migrate deploy` against it, then swaps `process.env.DATABASE_URL` so every test worker inherits the test DB
+- `docker-compose-integration.yml` services use `postgres_test` for the same reason
+- `apps/backend/__tests__/integration/utils/db-cleanup.ts::cleanDatabase` calls `assertTestDatabase()` first, which **throws** if `DATABASE_URL` doesn't end in `_test` — belt-and-suspenders against accidental dev-DB wipes from future regressions
+
+**DO NOT**:
+- Remove the `assertTestDatabase()` guard
+- Point `INTEGRATION_DATABASE_URL` at the `postgres` database
+- Revert `docker-compose-integration.yml`'s `RELATIONAL_DB_DATABASE`/`DATABASE_URL` back to `postgres`
+- Write tests that go around `cleanDatabase()` directly via `db.someTable.deleteMany()` without calling `assertTestDatabase()` first
+
+#### Region active-plugin hot-swap — federal limitation
+
+`updateRegionPlugin` (and the recovery mutation `refreshActiveRegion`) re-load only the **local** plugin slot. The federal plugin keeps the `stateCode` resolution it picked up at boot. So if you flip from `california` (stateCode=CA) to a different state plugin live, the federal plugin's CA-shaped config placeholders remain in memory until a service restart. In practice the federal plugin almost never needs to change after boot, so this is a documented limitation, not a bug. If you do need federal to re-resolve, restart `region` + `region-worker`.
+
 ## SonarCloud quality gates
 
 - **Cognitive complexity ≤ 15** per function. Extract named helpers rather than nesting.

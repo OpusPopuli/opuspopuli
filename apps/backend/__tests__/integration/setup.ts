@@ -1,9 +1,55 @@
 import { execSync } from 'node:child_process';
 import { config } from 'dotenv';
 import { resolve } from 'node:path';
+import { ensureTestDatabase } from './utils/test-db-bootstrap';
 
 // Load environment variables from .env file (only needed when running from host)
 config({ path: resolve(__dirname, '../../.env') });
+
+/**
+ * Workspace package that owns the Prisma schema + migrations. We shell out
+ * to its bin so we get the locally-pinned Prisma 5 client (the root has a
+ * Prisma 7 binary that doesn't understand this schema). See #796.
+ */
+const RELATIONALDB_PROVIDER_PACKAGE = '@opuspopuli/relationaldb-provider';
+
+/**
+ * Swap DATABASE_URL to point at `postgres_test`, create the DB if it doesn't
+ * exist, and apply pending migrations. Runs once per `pnpm test:integration`
+ * invocation, before any worker process imports the Prisma client. Pairs
+ * with the `assertTestDatabase` guard in utils/db-cleanup.ts — together
+ * they make it impossible for integration tests to touch the dev DB.
+ */
+async function bootstrapTestDatabase(): Promise<void> {
+  const integrationUrl = process.env.INTEGRATION_DATABASE_URL;
+  if (!integrationUrl) {
+    throw new Error(
+      'INTEGRATION_DATABASE_URL is not set. Copy the value from ' +
+        'apps/backend/.env.example into apps/backend/.env. See #796.',
+    );
+  }
+  if (!/\/[A-Za-z0-9_]*_test([?#/]|$)/.test(integrationUrl)) {
+    throw new Error(
+      'INTEGRATION_DATABASE_URL must end in a *_test database name to be ' +
+        'eligible for cleanDatabase() — refusing to bootstrap. ' +
+        `Got: ${integrationUrl}`,
+    );
+  }
+  await ensureTestDatabase();
+  // Swap BEFORE any test worker imports the Prisma client. Every downstream
+  // import (DbService, helpers, the assertTestDatabase guard) reads this
+  // value at module load time.
+  process.env.DATABASE_URL = integrationUrl;
+
+  // execSync inherits process.env, which we just updated above. No need
+  // to pass `env:` explicitly — that path collides with the dotenv-loaded
+  // PORT (number) vs. ProcessEnv (string) type expectations.
+  execSync(
+    `pnpm --filter ${RELATIONALDB_PROVIDER_PACKAGE} exec prisma migrate deploy`,
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  console.log('✓ postgres_test bootstrapped + migrations applied');
+}
 
 interface ServiceConfig {
   name: string;
@@ -56,6 +102,10 @@ async function checkService(service: ServiceConfig): Promise<boolean> {
 }
 
 export default async function globalSetup() {
+  // Bootstrap the isolated test database BEFORE anything else so every
+  // downstream module sees DATABASE_URL pointed at postgres_test. See #796.
+  await bootstrapTestDatabase();
+
   const services = getServiceConfigs();
 
   // When running inside Docker, skip docker compose check

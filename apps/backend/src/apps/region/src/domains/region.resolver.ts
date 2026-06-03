@@ -916,6 +916,22 @@ export class RegionResolver {
     return this.regionService.setRegionPluginEnabled(name, enabled);
   }
 
+  /**
+   * Force a re-read of `region_plugins` and hot-swap the active local
+   * plugin in memory. Recovery mutation for cases where the DB changed
+   * out of band — e.g. integration tests, manual SQL — and the in-memory
+   * active region drifted from the table. The normal `updateRegionPlugin`
+   * mutation now triggers this automatically; only call this directly
+   * when the table changed without going through the mutation. See #796.
+   */
+  @Mutation(() => Boolean)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  async refreshActiveRegion(): Promise<boolean> {
+    await this.regionService.refreshActiveLocalPlugin();
+    return true;
+  }
+
   @Mutation(() => RegionSyncJobModel)
   @UseGuards(AuthGuard)
   @Roles(Role.Admin)
