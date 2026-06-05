@@ -221,6 +221,13 @@
     "zipCode": "Codigo Postal",
     "zipCodePlaceholder": "94102",
     "setPrimary": "Establecer como Principal",
+    "civicResolution": {
+      "pending": "Datos cívicos pendientes",
+      "noMatch": "Datos cívicos no disponibles",
+      "noMatchTooltip": "No se encontraron jurisdicciones coincidentes para esta dirección. La lista de representantes puede estar incompleta.",
+      "failed": "Error en datos cívicos",
+      "failedTooltip": "No se pudieron resolver los datos cívicos para esta dirección. El equipo ha sido notificado."
+    },
     "congressionalDistrict": "Distrito del Congreso",
     "stateSenatorialDistrict": "Distrito del Senado Estatal",
     "stateAssemblyDistrict": "Distrito de la Asamblea Estatal",

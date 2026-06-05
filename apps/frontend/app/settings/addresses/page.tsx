@@ -375,6 +375,42 @@ export default function AddressesPage() {
                         {t("common:status.verified")}
                       </StatusPill>
                     )}
+                    {/* Civic-data resolution surface (#802). Visible only
+                        when status isn't 'resolved' — silent for the happy
+                        path. Gives users a real signal when their
+                        representatives list would otherwise be mysteriously
+                        empty. Tooltips use sanitized i18n strings — the raw
+                        civicResolutionError is logged server-side for ops,
+                        never surfaced to end users. */}
+                    {address.civicResolutionStatus === "pending" && (
+                      <StatusPill tone="warning">
+                        {t("addresses.civicResolution.pending")}
+                      </StatusPill>
+                    )}
+                    {address.civicResolutionStatus === "no_match" && (
+                      <span
+                        title={t("addresses.civicResolution.noMatchTooltip")}
+                        aria-label={t(
+                          "addresses.civicResolution.noMatchTooltip",
+                        )}
+                      >
+                        <StatusPill tone="warning">
+                          {t("addresses.civicResolution.noMatch")}
+                        </StatusPill>
+                      </span>
+                    )}
+                    {address.civicResolutionStatus === "failed" && (
+                      <span
+                        title={t("addresses.civicResolution.failedTooltip")}
+                        aria-label={t(
+                          "addresses.civicResolution.failedTooltip",
+                        )}
+                      >
+                        <StatusPill tone="danger">
+                          {t("addresses.civicResolution.failed")}
+                        </StatusPill>
+                      </span>
+                    )}
                   </div>
                   <p className="text-gray-900 dark:text-gray-100">
                     {address.addressLine1}

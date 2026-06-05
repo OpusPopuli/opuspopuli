@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
+import { MAX_CIVIC_ERROR_LENGTH } from './models/user-address.model';
+
+// Either the top-level Prisma client or a $transaction's interactive tx.
+// Both expose the same `userAddress.update` / `$executeRaw` surface, so
+// our helpers compose either way.
+type Tx = Prisma.TransactionClient | DbService;
 
 interface SpatialJurisdictionRow {
   id: string;
@@ -35,37 +41,91 @@ export class JurisdictionResolutionService {
     lat: number,
     lng: number,
   ): Promise<void> {
-    const [censusIds, postgisIds] = await Promise.all([
-      this.resolveCensusJurisdictions(userAddressId),
-      this.resolvePostgisJurisdictions(lat, lng),
-    ]);
+    // Wrap the whole flow so any unexpected exception lands the address in
+    // FAILED state (rather than the caller seeing an unhandled throw and
+    // the address getting no status update at all). See #802.
+    try {
+      const [censusIds, postgisIds] = await Promise.all([
+        this.resolveCensusJurisdictions(userAddressId),
+        this.resolvePostgisJurisdictions(lat, lng),
+      ]);
 
-    const censusSet = new Map<string, ResolutionSource>(
-      censusIds.map((id) => [id, 'census_geocoder']),
-    );
-    const postgisSet = new Map<string, ResolutionSource>(
-      postgisIds.map((id) => [id, 'postgis']),
-    );
-
-    // Merge: PostGIS wins on resolvedBy if both sources return the same jurisdiction
-    const merged = new Map<string, ResolutionSource>([
-      ...censusSet,
-      ...postgisSet,
-    ]);
-
-    if (merged.size === 0) {
-      this.logger.debug(
-        `No jurisdictions resolved for address ${userAddressId}`,
+      const censusSet = new Map<string, ResolutionSource>(
+        censusIds.map((id) => [id, 'census_geocoder']),
       );
-      return;
+      const postgisSet = new Map<string, ResolutionSource>(
+        postgisIds.map((id) => [id, 'postgis']),
+      );
+
+      // Merge: PostGIS wins on resolvedBy if both sources return the same jurisdiction
+      const merged = new Map<string, ResolutionSource>([
+        ...censusSet,
+        ...postgisSet,
+      ]);
+
+      if (merged.size === 0) {
+        // Distinguish "jurisdictions table empty" (a bootstrap-time state
+        // that resolves itself once #800's boundary load completes) from
+        // "loaded but no match for this address" (a real operational signal
+        // worth investigating). The former is DEBUG noise; the latter is a
+        // WARN that should surface in normal logs.
+        const tableSize = await this.db.jurisdiction.count();
+        if (tableSize === 0) {
+          this.logger.debug(
+            `No jurisdictions resolved for address ${userAddressId} — jurisdictions table is empty (likely bootstrap; see #800)`,
+          );
+        } else {
+          this.logger.warn(
+            `No jurisdictions resolved for address ${userAddressId} despite a populated jurisdictions table (${tableSize} rows). Address geocoding fields may be missing or boundary geometries don't cover this point. See #802.`,
+          );
+        }
+        await this.setStatus(this.db, userAddressId, 'no_match');
+        return;
+      }
+
+      // Persist jurisdictions and the 'resolved' status atomically — if the
+      // status update fails after the jurisdictions are linked, the user
+      // would see "failed" yet have working representatives. Wrapping both
+      // writes in one transaction prevents that split-brain.
+      await this.db.$transaction(async (tx) => {
+        await this.replaceJurisdictions(tx, userId, userAddressId, merged);
+        await this.setStatus(tx, userAddressId, 'resolved');
+      });
+
+      this.logger.log(
+        `Resolved ${merged.size} jurisdictions for address ${userAddressId} ` +
+          `(census: ${censusIds.length}, postgis: ${postgisIds.length})`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Jurisdiction resolution failed for address ${userAddressId}: ${message}`,
+      );
+      await this.setStatus(
+        this.db,
+        userAddressId,
+        'failed',
+        message.slice(0, MAX_CIVIC_ERROR_LENGTH),
+      );
+      // Swallow — caller doesn't need to crash address creation if civic
+      // data is the only thing that broke. Status field surfaces the failure.
     }
+  }
 
-    await this.replaceJurisdictions(userId, userAddressId, merged);
-
-    this.logger.log(
-      `Resolved ${merged.size} jurisdictions for address ${userAddressId} ` +
-        `(census: ${censusIds.length}, postgis: ${postgisIds.length})`,
-    );
+  private async setStatus(
+    tx: Tx,
+    userAddressId: string,
+    status: 'resolved' | 'no_match' | 'failed',
+    errorMessage?: string,
+  ): Promise<void> {
+    await tx.userAddress.update({
+      where: { id: userAddressId },
+      data: {
+        civicResolutionStatus: status,
+        civicResolutionError: errorMessage ?? null,
+        civicDataUpdatedAt: status === 'resolved' ? new Date() : undefined,
+      },
+    });
   }
 
   /**
@@ -129,6 +189,7 @@ export class JurisdictionResolutionService {
   }
 
   private async replaceJurisdictions(
+    tx: Tx,
     userId: string,
     userAddressId: string,
     jurisdictions: Map<string, ResolutionSource>,
@@ -147,24 +208,24 @@ export class JurisdictionResolutionService {
 
     // Atomic delete-then-insert: prevents stale accumulation when an address
     // changes location, and prevents duplicates from concurrent geocoding calls.
-    await this.db.$transaction(async (tx) => {
-      await tx.$executeRaw`
-        DELETE FROM user_jurisdictions WHERE user_address_id = ${userAddressId}
-      `;
+    // Callers pass either the top-level client (own transaction not needed)
+    // or an interactive tx (composed with setStatus for the resolved path).
+    await tx.$executeRaw`
+      DELETE FROM user_jurisdictions WHERE user_address_id = ${userAddressId}
+    `;
 
-      await tx.$executeRaw`
-        INSERT INTO user_jurisdictions
-          (id, user_id, user_address_id, jurisdiction_id, resolved_by, resolved_at)
-        SELECT
-          (elem->>'id')::text,
-          (elem->>'userId')::text,
-          (elem->>'userAddressId')::text,
-          (elem->>'jurisdictionId')::text,
-          (elem->>'resolvedBy')::text,
-          (elem->>'resolvedAt')::timestamptz
-        FROM jsonb_array_elements(${JSON.stringify(rows)}::jsonb) AS elem
-      `;
-    });
+    await tx.$executeRaw`
+      INSERT INTO user_jurisdictions
+        (id, user_id, user_address_id, jurisdiction_id, resolved_by, resolved_at)
+      SELECT
+        (elem->>'id')::text,
+        (elem->>'userId')::text,
+        (elem->>'userAddressId')::text,
+        (elem->>'jurisdictionId')::text,
+        (elem->>'resolvedBy')::text,
+        (elem->>'resolvedAt')::timestamptz
+      FROM jsonb_array_elements(${JSON.stringify(rows)}::jsonb) AS elem
+    `;
   }
 }
 

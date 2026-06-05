@@ -120,6 +120,11 @@ const mockAddresses = {
         postalCode: "94102",
         country: "US",
         isPrimary: true,
+        // Default the new #802 field to the happy-path value so the existing
+        // tests don't accidentally trip the pending/no_match/failed render
+        // branches. The dedicated civic-resolution test below overrides this.
+        civicResolutionStatus: "resolved",
+        civicResolutionError: null,
       },
     ],
     total: 1,
@@ -470,6 +475,67 @@ test.describe("Addresses Settings Page", () => {
     await expect(
       page.getByRole("button", { name: /Add.*Address/i }),
     ).toBeVisible();
+  });
+
+  test("renders the civic-resolution pill with i18n text when status isn't 'resolved' (#802)", async ({
+    page,
+  }) => {
+    // Override the myAddresses route to return a 'pending' status so the
+    // new #802 pill render branch actually executes. The default mock uses
+    // 'resolved' (silent for the happy path).
+    await page.route("**/api", async (route) => {
+      const request = route.request();
+      if (request.method() !== "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
+        return;
+      }
+      const postData = request.postDataJSON();
+      if (postData?.query?.includes("myAddresses")) {
+        // NOTE: GET_MY_ADDRESSES returns `myAddresses: UserAddress[]` (a plain
+        // array), NOT `{ items, total, hasMore }`. The shared mockAddresses
+        // object uses the wrong shape — existing addresses tests pass anyway
+        // because they only assert the page heading is visible, not that an
+        // address renders. We use the correct array shape here so the
+        // address actually lands in the iterated list and the pill renders.
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: {
+              myAddresses: [
+                {
+                  ...mockAddresses.myAddresses.items[0],
+                  civicResolutionStatus: "pending",
+                },
+              ],
+            },
+          }),
+        });
+      } else if (postData?.query?.includes("myProfile")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: mockProfile }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: {} }),
+        });
+      }
+    });
+
+    await page.goto("/settings/addresses");
+
+    // i18n key resolves to "Civic data pending" (en) — assert the localized
+    // string is rendered, not the raw key. Catches t() resolution failures
+    // and proves the new branch executes with the right namespace.
+    await expect(page.getByText("Civic data pending")).toBeVisible();
   });
 
   test("should have no WCAG 2.2 AA violations", async ({ page }) => {
