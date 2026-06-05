@@ -121,22 +121,46 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       return [];
     }
 
+    // Per-source error isolation (#801): a single failing source must not
+    // abort the whole sync. Multi-source regions like California (Senate +
+    // Assembly) previously had Senate land successfully on first sync and
+    // Assembly silently never recover after a transient fetch failure,
+    // because any thrown error in the loop discarded `allReps` and the
+    // persistence layer never ran. We now wrap each iteration in try/catch,
+    // log per-source failures at WARN, and return whatever did succeed so
+    // partial progress persists.
     const allReps: Representative[] = [];
+    let succeededSources = 0;
+    let failedSources = 0;
     for (const source of sources) {
-      const { items } = await this.fetchSource<Representative>(
-        source,
-        "representatives",
-      );
-      if (source.category) {
-        for (const rep of items) {
-          if (!rep.chamber) rep.chamber = source.category;
+      try {
+        const { items } = await this.fetchSource<Representative>(
+          source,
+          "representatives",
+        );
+        if (source.category) {
+          for (const rep of items) {
+            if (!rep.chamber) rep.chamber = source.category;
+          }
         }
+        allReps.push(...items);
+        succeededSources++;
+      } catch (err) {
+        failedSources++;
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `representatives source ${source.url} (category=${source.category ?? "none"}) failed: ${msg}. ` +
+            "Continuing with remaining sources; successful items will still be persisted. See #801.",
+        );
       }
-      allReps.push(...items);
     }
 
+    const suffix =
+      failedSources > 0
+        ? ` (${failedSources} source(s) failed — see prior WARN)`
+        : "";
     this.logger.log(
-      `Fetched ${allReps.length} representatives items from ${sources.length} source(s)`,
+      `Fetched ${allReps.length} representatives items from ${succeededSources}/${sources.length} source(s)${suffix}`,
     );
     return allReps;
   }
@@ -268,23 +292,44 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       return [];
     }
 
+    // Per-source error isolation (#801): mirror the pattern from
+    // fetchRepresentatives. A single source failing must not discard the
+    // items accumulated from previous sources. Without this, one bad bill /
+    // proposition / meeting source aborts the whole batch and the persistence
+    // layer never sees the successes.
     const allItems: T[] = [];
     let batchedItemCount = 0;
+    let succeededSources = 0;
+    let failedSources = 0;
 
     for (const source of sources) {
-      const { items, batched } = await this.fetchSource<T>(
-        source,
-        dataType,
-        onBatch,
-        pipelineJobId,
-      );
-      allItems.push(...items);
-      batchedItemCount += batched;
+      try {
+        const { items, batched } = await this.fetchSource<T>(
+          source,
+          dataType,
+          onBatch,
+          pipelineJobId,
+        );
+        allItems.push(...items);
+        batchedItemCount += batched;
+        succeededSources++;
+      } catch (err) {
+        failedSources++;
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `${dataType} source ${source.url} (category=${source.category ?? "none"}) failed: ${msg}. ` +
+            "Continuing with remaining sources; successful items will still be persisted. See #801.",
+        );
+      }
     }
 
     const totalCount = allItems.length + batchedItemCount;
+    const suffix =
+      failedSources > 0
+        ? ` (${failedSources} source(s) failed — see prior WARN)`
+        : "";
     this.logger.log(
-      `Fetched ${totalCount} ${dataType} items from ${sources.length} source(s)`,
+      `Fetched ${totalCount} ${dataType} items from ${succeededSources}/${sources.length} source(s)${suffix}`,
     );
     return allItems;
   }

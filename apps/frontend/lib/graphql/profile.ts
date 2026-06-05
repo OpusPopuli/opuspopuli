@@ -141,6 +141,13 @@ export interface UpdateProfileInput {
  */
 export type AddressType = "RESIDENTIAL" | "MAILING" | "BUSINESS" | "VOTING";
 
+/** Outcome of jurisdictional resolution on a UserAddress (#802). */
+export type CivicResolutionStatus =
+  | "pending"
+  | "resolved"
+  | "no_match"
+  | "failed";
+
 export interface UserAddress {
   id: string;
   userId: string;
@@ -165,6 +172,8 @@ export interface UserAddress {
   precinctId?: string;
   pollingPlace?: string;
   isVerified: boolean;
+  civicResolutionStatus: CivicResolutionStatus;
+  civicResolutionError?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -430,6 +439,8 @@ export const GET_MY_ADDRESSES = gql`
       precinctId
       pollingPlace
       isVerified
+      civicResolutionStatus
+      civicResolutionError
       createdAt
       updatedAt
     }

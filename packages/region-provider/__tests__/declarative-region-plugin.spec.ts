@@ -198,6 +198,32 @@ describe("DeclarativeRegionPlugin", () => {
       expect(result[0]).toEqual(assemblyMeetings[0]);
       expect(result[1]).toEqual(senateMeetings[0]);
     });
+
+    it("isolates per-source failures in fetchByDataType so one bad source doesn't abort the others (#801)", async () => {
+      // fetchMeetings (and fetchBills / fetchPropositions / fetchCampaignFinance)
+      // go through the shared fetchByDataType helper. Same per-source isolation
+      // guarantee as fetchRepresentatives: a thrown error on one source must
+      // not discard successes from preceding sources.
+      const assemblyMeetings = [
+        { externalId: "M-1", title: "Assembly Meeting" },
+      ];
+      pipeline.execute
+        .mockResolvedValueOnce(createExtractionResult(assemblyMeetings))
+        .mockRejectedValueOnce(new Error("Senate scrape blew up"));
+
+      const result = await plugin.fetchMeetings();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual(assemblyMeetings[0]);
+    });
+
+    it("returns whatever did succeed when ALL fetchByDataType sources fail (#801)", async () => {
+      pipeline.execute
+        .mockRejectedValueOnce(new Error("first source failed"))
+        .mockRejectedValueOnce(new Error("second source failed"));
+
+      await expect(plugin.fetchMeetings()).resolves.toEqual([]);
+    });
   });
 
   describe("fetchRepresentatives", () => {
@@ -334,6 +360,73 @@ describe("DeclarativeRegionPlugin", () => {
 
       expect(result).toEqual([]);
       expect(pipeline.execute).not.toHaveBeenCalled();
+    });
+
+    it("isolates per-source failures so one bad source doesn't abort the others (#801)", async () => {
+      // Before #801, throwing inside the for-loop discarded `allReps` and
+      // the caller saw no items at all — even if other sources succeeded.
+      // California regressed this way: Assembly threw and Senate was lost.
+      // Now: errors are caught per-source, successful items still returned.
+      const multiChamberConfig = createMockConfig({
+        dataSources: [
+          {
+            url: "https://www.assembly.example.gov/members",
+            dataType: DataType.REPRESENTATIVES,
+            contentGoal: "Extract assembly members",
+            category: "Assembly",
+          },
+          {
+            url: "https://www.senate.example.gov/members",
+            dataType: DataType.REPRESENTATIVES,
+            contentGoal: "Extract senators",
+            category: "Senate",
+          },
+        ],
+      });
+      plugin = new DeclarativeRegionPlugin(multiChamberConfig, pipeline);
+
+      const senateReps = [
+        { externalId: "S-1", name: "Sam Senate", district: "30" },
+      ];
+      pipeline.execute
+        .mockRejectedValueOnce(new Error("Assembly scrape blew up"))
+        .mockResolvedValueOnce(createExtractionResult(senateReps));
+
+      const result = await plugin.fetchRepresentatives();
+
+      // Senate still landed, Assembly's failure didn't abort the whole batch.
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ externalId: "S-1", chamber: "Senate" });
+    });
+
+    it("returns an empty array (rather than throwing) when ALL sources fail (#801)", async () => {
+      // Edge of per-source isolation: if every source errors, the caller
+      // still gets a resolved promise with [] — not a rejection.
+      // Persistence layer then writes nothing rather than crashing the
+      // syncRegionData mutation.
+      const config = createMockConfig({
+        dataSources: [
+          {
+            url: "https://a.example.gov/members",
+            dataType: DataType.REPRESENTATIVES,
+            contentGoal: "x",
+            category: "Assembly",
+          },
+          {
+            url: "https://b.example.gov/members",
+            dataType: DataType.REPRESENTATIVES,
+            contentGoal: "y",
+            category: "Senate",
+          },
+        ],
+      });
+      plugin = new DeclarativeRegionPlugin(config, pipeline);
+
+      pipeline.execute
+        .mockRejectedValueOnce(new Error("a failed"))
+        .mockRejectedValueOnce(new Error("b failed"));
+
+      await expect(plugin.fetchRepresentatives()).resolves.toEqual([]);
     });
   });
 

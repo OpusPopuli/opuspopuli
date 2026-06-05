@@ -198,4 +198,82 @@ describe('JurisdictionResolutionService', () => {
       expect((rows[0] as { resolvedBy: string }).resolvedBy).toBe('postgis');
     });
   });
+
+  describe('civic resolution status (#802)', () => {
+    it("sets civicResolutionStatus to 'resolved' on success", async () => {
+      mockDb.userAddress.findUnique.mockResolvedValue(
+        mockAddress as UserAddress,
+      );
+      mockDb.jurisdiction.findMany.mockResolvedValue([
+        { id: 'j-county' },
+      ] as Jurisdiction[]);
+      mockDb.$queryRaw.mockResolvedValue([]);
+      mockDb.$executeRaw.mockResolvedValue(1);
+
+      await service.resolveForAddress('user-1', 'addr-1', 37.8, -122.2);
+
+      expect(mockDb.userAddress.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'addr-1' },
+          data: expect.objectContaining({
+            civicResolutionStatus: 'resolved',
+            civicResolutionError: null,
+          }),
+        }),
+      );
+    });
+
+    it("sets civicResolutionStatus to 'no_match' when zero jurisdictions resolve", async () => {
+      mockDb.userAddress.findUnique.mockResolvedValue({
+        ...mockAddress,
+        congressionalDistrict: null,
+        stateSenatorialDistrict: null,
+        stateAssemblyDistrict: null,
+        county: null,
+        municipality: null,
+        schoolDistrict: null,
+      } as unknown as UserAddress);
+      mockDb.jurisdiction.findMany.mockResolvedValue([]);
+      mockDb.$queryRaw.mockResolvedValue([]);
+      // Simulate populated jurisdictions table (so the WARN-not-DEBUG branch
+      // is exercised — but assertion is just on the status write).
+      mockDb.jurisdiction.count.mockResolvedValue(100);
+
+      await service.resolveForAddress('user-1', 'addr-1', 37.8, -122.2);
+
+      expect(mockDb.userAddress.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'addr-1' },
+          data: expect.objectContaining({
+            civicResolutionStatus: 'no_match',
+          }),
+        }),
+      );
+    });
+
+    it("sets civicResolutionStatus to 'failed' (with error message) on unexpected exception", async () => {
+      mockDb.userAddress.findUnique.mockResolvedValue(
+        mockAddress as UserAddress,
+      );
+      // Force the census-resolution path to throw inside the outer try.
+      mockDb.jurisdiction.findMany.mockRejectedValue(
+        new Error('boom: prisma connection refused'),
+      );
+      mockDb.$queryRaw.mockResolvedValue([]);
+
+      await expect(
+        service.resolveForAddress('user-1', 'addr-1', 37.8, -122.2),
+      ).resolves.not.toThrow();
+
+      expect(mockDb.userAddress.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'addr-1' },
+          data: expect.objectContaining({
+            civicResolutionStatus: 'failed',
+            civicResolutionError: expect.stringContaining('boom'),
+          }),
+        }),
+      );
+    });
+  });
 });

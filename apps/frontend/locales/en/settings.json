@@ -221,6 +221,13 @@
     "zipCode": "ZIP Code",
     "zipCodePlaceholder": "94102",
     "setPrimary": "Set Primary",
+    "civicResolution": {
+      "pending": "Civic data pending",
+      "noMatch": "Civic data unavailable",
+      "noMatchTooltip": "No matching jurisdictions found for this address. Representatives list may be incomplete.",
+      "failed": "Civic data error",
+      "failedTooltip": "Civic data could not be resolved for this address. The team has been notified."
+    },
     "congressionalDistrict": "Congressional District",
     "stateSenatorialDistrict": "State Senate District",
     "stateAssemblyDistrict": "State Assembly District",

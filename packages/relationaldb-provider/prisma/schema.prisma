@@ -71,6 +71,17 @@ enum HomeownerStatus {
   prefer_not_to_say  @map("prefer_not_to_say")
 }
 
+// Civic-data resolution status for a UserAddress (#802). Distinguishes
+// "never tried" from "tried and got 0 matches" from "tried and errored"
+// so the frontend can surface meaningful state and operators can debug
+// from a real signal instead of silent NULL on civic_data_updated_at.
+enum CivicResolutionStatus {
+  pending   @map("pending")   // address persisted; resolution hasn't run yet
+  resolved  @map("resolved")  // resolution succeeded, jurisdictions linked
+  no_match  @map("no_match")  // resolution ran, found zero matching jurisdictions
+  failed    @map("failed")    // resolution errored (Census API down, PostGIS error, etc.)
+}
+
 enum ConsentType {
   terms_of_service       @map("terms_of_service")
   privacy_policy         @map("privacy_policy")
@@ -594,6 +605,8 @@ model UserAddress {
   pollingPlace            String?                                @map("polling_place") @db.VarChar(100)
   point                   Unsupported("geography(Point, 4326)")?
   civicDataUpdatedAt      DateTime?                              @map("civic_data_updated_at") @db.Timestamptz
+  civicResolutionStatus   CivicResolutionStatus                  @default(pending) @map("civic_resolution_status")
+  civicResolutionError    String?                                @map("civic_resolution_error") @db.VarChar(500)
   isVerified              Boolean                                @default(false) @map("is_verified")
   verifiedAt              DateTime?                              @map("verified_at") @db.Timestamptz
   verificationMethod      String?                                @map("verification_method") @db.VarChar(50)
