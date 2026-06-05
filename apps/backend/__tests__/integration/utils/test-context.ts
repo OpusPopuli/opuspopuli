@@ -210,6 +210,58 @@ export async function authenticatedGraphqlRequest<T = unknown>(
 }
 
 /**
+ * Mint an HS256 JWT for an admin user, suitable for hitting resolvers
+ * gated by `@Roles(Role.Admin)`. Matches the payload shape that the
+ * backend's `JwtStrategy.validate()` expects (sub / email /
+ * app_metadata.roles).
+ *
+ * Reads `AUTH_JWT_SECRET` from process.env — the same value the running
+ * backend services were started with. In docker-compose-e2e.yml that's
+ * the well-known dev secret; in local dev it's whatever's in
+ * apps/backend/.env. If the env var is missing, throws so the test
+ * fails loudly rather than producing an invalid token.
+ *
+ * Returns the bearer token string. Pass to `authenticatedGraphqlRequest`.
+ */
+export function signAdminJwt(
+  options: { userId?: string; email?: string } = {},
+): string {
+  // Lazy-require so non-auth-using tests don't pay the import cost.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const jwt = require('jsonwebtoken') as typeof import('jsonwebtoken');
+  const secret = process.env.AUTH_JWT_SECRET;
+  if (!secret) {
+    throw new Error(
+      'AUTH_JWT_SECRET is not set; cannot sign an admin JWT for the test. ' +
+        'Ensure docker-compose-e2e.yml or apps/backend/.env provides it.',
+    );
+  }
+  const payload = {
+    sub: options.userId ?? 'integration-test-admin',
+    email: options.email ?? 'admin@opuspopuli.local',
+    app_metadata: { roles: ['admin'] },
+    user_metadata: { department: '', clearance: '' },
+  };
+  return jwt.sign(payload, secret, {
+    algorithm: 'HS256',
+    expiresIn: '1h',
+  });
+}
+
+/**
+ * Convenience wrapper for admin-only mutations: signs a fresh admin JWT
+ * and routes through `authenticatedGraphqlRequest`. Use for `@Roles(Role.Admin)`
+ * resolvers like `updateRegionPlugin`, `refreshActiveRegion`,
+ * `invalidateManifest`, `syncRegionData`.
+ */
+export async function adminGraphqlRequest<T = unknown>(
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<{ data?: T; errors?: Array<{ message: string }> }> {
+  return authenticatedGraphqlRequest<T>(query, variables, signAdminJwt());
+}
+
+/**
  * Makes a GraphQL request directly to a microservice (bypasses API Gateway).
  * Uses HMAC authentication. Useful for debugging or isolated service testing.
  *

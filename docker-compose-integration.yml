@@ -25,8 +25,12 @@ x-backend-env: &backend-env
   RELATIONAL_DB_PORT: 5432
   RELATIONAL_DB_USERNAME: postgres
   RELATIONAL_DB_PASSWORD: your-super-secret-password
-  RELATIONAL_DB_DATABASE: postgres
-  DATABASE_URL: postgresql://postgres:your-super-secret-password@opuspopuli-db:5432/postgres
+  # Integration stack targets `postgres_test` so it can't wipe dev state.
+  # The test-runner's globalSetup bootstraps the DB before any service
+  # connects. Pairs with the cleanDatabase() guard in db-cleanup.ts.
+  # See OpusPopuli/opuspopuli#796. DO NOT revert to `postgres`.
+  RELATIONAL_DB_DATABASE: postgres_test
+  DATABASE_URL: postgresql://postgres:your-super-secret-password@opuspopuli-db:5432/postgres_test
   REDIS_URL: redis://redis:6379
   SUPABASE_URL: http://supabase-kong:8000
   SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.KR1jqUlyHtwAxCJf6B0QVoRpobrdPEv8ALnNJUlGxPE

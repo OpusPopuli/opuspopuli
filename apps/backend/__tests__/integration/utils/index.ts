@@ -99,6 +99,9 @@ export {
   // GraphQL request functions (through API Gateway)
   graphqlRequest,
   authenticatedGraphqlRequest,
+  // Admin-auth helpers for @Roles(Role.Admin) resolvers
+  signAdminJwt,
+  adminGraphqlRequest,
   // Direct service access (bypasses gateway - for debugging)
   directServiceRequest,
   // CSRF token management

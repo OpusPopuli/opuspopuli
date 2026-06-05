@@ -15,6 +15,27 @@ PGHOST="${RELATIONAL_DB_HOST:-opuspopuli-db}"
 PGUSER="${RELATIONAL_DB_USERNAME:-postgres}"
 PGDB="${RELATIONAL_DB_DATABASE:-postgres}"
 
+# Ensure the target database exists before running migrations. Required for
+# the integration compose stack (#796) where DATABASE_URL points at
+# `postgres_test`, which may not yet exist on a developer's local install.
+# Postgres has no `CREATE DATABASE IF NOT EXISTS`, hence the conditional.
+# Skips quietly for the production-shaped `postgres` database, which is
+# created by the Postgres image itself.
+if [ "$PGDB" != "postgres" ]; then
+  echo "Ensuring database \"$PGDB\" exists..."
+  EXISTS=$(psql -h "$PGHOST" -U "$PGUSER" -d postgres -tA -c \
+    "SELECT 1 FROM pg_database WHERE datname='$PGDB'")
+  if [ "$EXISTS" != "1" ]; then
+    psql -h "$PGHOST" -U "$PGUSER" -d postgres -c "CREATE DATABASE \"$PGDB\""
+  fi
+  echo "Installing required extensions into \"$PGDB\"..."
+  for ext in pgcrypto pg_trgm postgis uuid-ossp vector supabase_vault; do
+    psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -v ON_ERROR_STOP=0 -c \
+      "CREATE EXTENSION IF NOT EXISTS \"$ext\"" || \
+      echo "  (skipped $ext — not installed in this Postgres image)"
+  done
+fi
+
 echo "Running Prisma migrate deploy..."
 npx prisma migrate deploy
 

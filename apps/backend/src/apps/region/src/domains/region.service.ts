@@ -301,6 +301,16 @@ export class RegionDomainService {
     return this.syncService.setRegionPluginEnabled(name, enabled);
   }
 
+  /**
+   * Re-read `region_plugins` and hot-swap the active local plugin. Setup
+   * for the admin recovery mutation (#796): if the table was changed out
+   * of band (manual SQL, integration tests cleaning up, etc.) the in-
+   * memory active region drifts. This forces a re-sync.
+   */
+  refreshActiveLocalPlugin(): Promise<void> {
+    return this.syncService.refreshActiveLocalPlugin();
+  }
+
   listRegionPlugins(): Promise<RegionPluginRow[]> {
     return this.syncService.listRegionPlugins();
   }

@@ -319,8 +319,14 @@ jobs:
         env:
           # API gateway runs on port 4000 in E2E docker-compose
           API_GATEWAY_URL: http://localhost:4000
-          # Database connection for Prisma
+          # Database connection for Prisma. setup.ts derives the test DB
+          # URL by appending `_test` when INTEGRATION_DATABASE_URL is unset.
           DATABASE_URL: postgresql://postgres:your-super-secret-password@localhost:5432/postgres
+          # Match the secret the e2e backend services were started with —
+          # signAdminJwt() in utils/test-context.ts mints HS256 tokens
+          # with this key for admin-gated mutation tests (#796 hot-swap).
+          # Mirror of docker-compose-e2e.yml's AUTH_JWT_SECRET.
+          AUTH_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
 
       - name: Build frontend
         run: pnpm --filter frontend build
