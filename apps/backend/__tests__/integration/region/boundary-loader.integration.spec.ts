@@ -306,13 +306,28 @@ describe('BoundaryLoaderService — integration (#804)', () => {
       mockRegistry.getActive.mockReturnValue(buildPlugin(SAMPLE_SOURCES));
       // Two rows. First has a deliberately malformed GeoJSON — ST_GeomFromGeoJSON
       // rejects it, the row counts as `failed`, and the second row still lands.
+      // Each row needs a distinct ocdId — buildRow's default fills in
+      // 'alameda_county', so without overriding, the Bad Row's failed-but-
+      // committed Prisma upsert claims that ocd_id and the Good Row's upsert
+      // hits a unique-constraint violation instead of succeeding.
+      //
+      // Production-level concern (follow-up, not this test's job): the
+      // current loader inserts via Prisma BEFORE the $executeRaw geometry
+      // write, so a geometry failure leaves a half-committed row in the DB.
+      // The right fix is to wrap both writes in one transaction. Tracked as
+      // a post-MVP follow-up.
       mockTigerFetcher.fetch.mockResolvedValueOnce([
         buildRow({
           name: 'Bad Row',
           fipsCode: '06099',
+          ocdId: 'ocd-division/country:us/state:ca/county:bad_county',
           geometryGeoJSON: { type: 'NotARealType', coordinates: 'broken' },
         }),
-        buildRow({ name: 'Good Row', fipsCode: '06097' }),
+        buildRow({
+          name: 'Good Row',
+          fipsCode: '06097',
+          ocdId: 'ocd-division/country:us/state:ca/county:good_county',
+        }),
       ]);
 
       const result = await service.loadAll();
