@@ -87,6 +87,11 @@ import {
   JurisdictionModel,
   UserJurisdictionModel,
 } from './models/jurisdiction.model';
+import {
+  BoundaryLoadResultModel,
+  BoundarySkipReason,
+} from './models/boundary-load-result.model';
+import { BoundaryLoaderService } from './boundary-loader.service';
 
 /**
  * Region Resolver
@@ -99,6 +104,7 @@ export class RegionResolver {
     private readonly regionService: RegionDomainService,
     private readonly pipelineJobService: PipelineJobService,
     private readonly queueService: QueueService,
+    private readonly boundaryLoader: BoundaryLoaderService,
   ) {}
 
   /**
@@ -930,6 +936,35 @@ export class RegionResolver {
   async refreshActiveRegion(): Promise<boolean> {
     await this.regionService.refreshActiveLocalPlugin();
     return true;
+  }
+
+  /**
+   * Re-run the boundary loader for the active region. Idempotent by
+   * default (skipped if jurisdictions already populated). Pass
+   * `force: true` to override and refresh boundaries from source — useful
+   * after redistricting or when TIGER publishes a new vintage.
+   *
+   * Admin-only; the boot-time loader runs without auth via
+   * onApplicationBootstrap. See opuspopuli#804.
+   */
+  @Mutation(() => BoundaryLoadResultModel)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  async refreshBoundaries(
+    @Args('force', { type: () => Boolean, nullable: true })
+    force?: boolean,
+  ): Promise<BoundaryLoadResultModel> {
+    const result = await this.boundaryLoader.loadAll({
+      force: force ?? false,
+    });
+    // The service's `skipped` is a string literal-union mirroring the
+    // GraphQL enum value strings exactly. Cast through the enum to keep
+    // the GraphQL layer happy without a separate mapping table.
+    return {
+      ok: result.ok,
+      skipped: result.skipped as BoundarySkipReason | undefined,
+      counts: result.counts,
+    };
   }
 
   @Mutation(() => RegionSyncJobModel)

@@ -58,11 +58,16 @@ The platform uses **declarative region plugins** — JSON configuration that des
 │  ├── RegionDomainService (loads plugins at startup, syncs data)     │
 │  │   └── onModuleInit: read local stateCode → resolve federal      │
 │  │       placeholders → load federal plugin → load local plugin     │
+│  ├── BoundaryLoaderService (#804)                                   │
+│  │   ├── onApplicationBootstrap: detached loadAll()                │
+│  │   ├── TigerFetcher: Census TIGER MapServer GeoJSON               │
+│  │   ├── GeoportalFetcher: arbitrary ArcGIS FeatureServer           │
+│  │   └── upsert → jurisdictions (PostGIS geography column)          │
 │  ├── GraphQL resolvers (queries + mutations)                        │
 │  └── Database tables:                                               │
 │      propositions, meetings, representatives,                       │
 │      committees, contributions, expenditures,                       │
-│      independent_expenditures,                                      │
+│      independent_expenditures, jurisdictions,                       │
 │      bills, bill_co_authors, bill_committee_assignments, bill_votes │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -230,6 +235,95 @@ If no local region has a `stateCode`, the federal config loads with unresolved p
 
 The resolution utility (`resolveConfigPlaceholders()` from `@opuspopuli/common`) supports any `${variableName}` pattern, making it extensible for future variables like `${countyFips}`.
 
+## Boundary Loading
+
+The platform populates the `jurisdictions` table — counties, cities, state legislative districts, school districts, special districts — from a `boundarySources` block in the region config. Address resolution (Census-string + PostGIS point-in-polygon) then matches user addresses to their containing jurisdictions, which drives `myCountySupervisors`, `myRepresentatives`, and the personalized civic briefing.
+
+### How it works
+
+`BoundaryLoaderService` (`apps/backend/src/apps/region/src/domains/boundary-loader.service.ts`) reads the active plugin's `boundarySources` and dispatches to two fetchers:
+
+- **TigerFetcher** — US Census TIGER/Line MapServer layers (counties, places, state senate/assembly districts, school districts)
+- **GeoportalFetcher** — arbitrary ArcGIS FeatureServer URLs for region-specific boundaries TIGER doesn't cover (fire districts, water districts, transit districts, etc.)
+
+Both fetchers paginate via `resultOffset`/`resultRecordCount`, return GeoJSON FeatureCollections, and produce idempotent `BoundaryRow` records the loader upserts on `fipsCode` (preferred) or `ocdId` (fallback). PostGIS geometry is written via `ST_Multi(ST_GeomFromGeoJSON(...))` for compatibility with the `geography(MultiPolygon, 4326)` column.
+
+Two trigger paths:
+
+1. **Boot-time auto-load** — `BoundaryLoaderService.onApplicationBootstrap()` fires `loadAll()` in the background once Nest finishes wiring providers. Skips when jurisdictions are already populated (idempotent). Never blocks the health check; per-row failures are logged but never thrown.
+2. **Admin mutation** — `refreshBoundaries(force: Boolean): BoundaryLoadResult` triggers a fresh load on demand. Use `force: true` to override the skip-when-populated guard (after redistricting or when TIGER publishes a new vintage).
+
+```graphql
+mutation {
+  refreshBoundaries(force: false) {
+    ok
+    skipped
+    counts {
+      existing
+      upserted
+      failed
+      missingKey
+    }
+  }
+}
+```
+
+### Disable boot-time load
+
+Set `FORCE_RELOAD_BOUNDARIES=skip-boot` in the region service environment to bypass the boot-time fetch. The admin mutation still works. Useful in integration tests where the boot fetch would otherwise hit real TIGER/Geoportal URLs.
+
+### Schema
+
+A region's `boundarySources` lives at the top level of the JSON config alongside `dataSources`:
+
+```json
+{
+  "config": {
+    "regionId": "california",
+    "stateCode": "CA",
+    "fipsCode": "06",
+    "boundarySources": {
+      "ocdIdPrefix": "ocd-division/country:us/state:ca",
+      "tigerLayers": [
+        {
+          "layer": "State_County/MapServer/1",
+          "outFields": "GEOID,NAME",
+          "jurisdictionType": "COUNTY",
+          "level": "COUNTY",
+          "nameField": "NAME",
+          "ocdIdSegment": "/county:${name}"
+        }
+      ],
+      "geoportalLayers": [
+        {
+          "url": "https://gis.water.ca.gov/arcgis/rest/services/Boundaries/i03_WaterDistricts/FeatureServer/0",
+          "outFields": "OBJECTID,AGENCYNAME",
+          "jurisdictionType": "WATER_DISTRICT",
+          "level": "DISTRICT",
+          "nameField": "AGENCYNAME",
+          "ocdIdSegment": "/water_district:${name}"
+        }
+      ]
+    },
+    "dataSources": [ ... ]
+  }
+}
+```
+
+See the [`opuspopuli-regions` schema](https://github.com/OpusPopuli/opuspopuli-regions/blob/main/schema/region-plugin.schema.json) (`BoundarySourcesConfig`, `TigerLayerConfig`, `GeoportalLayerConfig`) for the full definitions and the supported placeholder set (`${fipsCode}`, `${stateCode}`, `${name}`, `${district}`).
+
+OCD-ID compatibility note: `${name}` inside `ocdIdSegment` is normalized at substitution time (whitespace → underscore, lowercased) so "Alameda County" becomes `alameda_county` in the final OCD-ID. Inside `nameTemplate`, `${name}` is verbatim.
+
+### Skip behavior
+
+`refreshBoundaries` returns `skipped` set to one of:
+
+- `no-active-plugin` — no region plugin loaded
+- `no-boundary-sources` — plugin loaded but its config has no `boundarySources` block (or is missing `fipsCode`/`stateCode`)
+- `already-populated` — jurisdictions table has rows and `force` was not set
+
+Otherwise the load runs and the per-row tally lives on `counts` (`existing`, `upserted`, `failed`, `missingKey`).
+
 ## DeclarativeRegionConfig Reference
 
 ### Top-Level Fields
@@ -241,7 +335,9 @@ The resolution utility (`resolveConfigPlaceholders()` from `@opuspopuli/common`)
 | `description` | `string` | Yes | Short description of the region |
 | `timezone` | `string` | Yes | IANA timezone (e.g., `"America/Los_Angeles"`) |
 | `stateCode` | `string` | No | Two-letter US state code (e.g., `"CA"`). Used to scope federal data. |
+| `fipsCode` | `string` | No | Census FIPS code (2-digit state, 5-digit county, 7-digit place). Required when `boundarySources` is declared — used as the `${fipsCode}` placeholder in TIGER WHERE clauses. |
 | `dataSources` | `DataSourceConfig[]` | Yes | Array of data source definitions |
+| `boundarySources` | `BoundarySourcesConfig` | No | Civic-boundary geometry sources (TIGER + ArcGIS FeatureServer). Read by `BoundaryLoaderService` to populate the `jurisdictions` table. See the [Boundary Loading](#boundary-loading) section. |
 | `rateLimit` | `object` | No | `{ requestsPerSecond, burstSize }` |
 | `cacheTtlMs` | `number` | No | Cache TTL in milliseconds |
 | `requestTimeoutMs` | `number` | No | Request timeout in milliseconds |
@@ -708,6 +804,7 @@ Region config files use a `version` field (semver) to track the config format. T
 | `1.2.0` | 0.1.0+ | Added `sourceType: "pdf"` with `PdfSourceConfig`, `TextExtractionRuleSet` types |
 | `1.3.0` | 0.1.0+ | Detail page crawling: items with `detailUrl` get rich content. Meeting `minutes`, Representative `bio` fields added |
 | `1.4.0` | 0.1.0+ | Added `dataType: "bills"` with `BillDiscoveryConfig` (including optional `textPageTemplate` for skip-optimization). New DB tables: `bills`, `bill_co_authors`, `bill_committee_assignments`, `bill_votes` |
+| `1.5.0` | 0.1.0+ | Added top-level `boundarySources` block (`BoundarySourcesConfig` + `TigerLayerConfig` + `GeoportalLayerConfig`). Replaces the previous manual `scripts/load-ca-boundaries.ts` script with a generic, config-driven loader (`BoundaryLoaderService`) wired to a boot-time hook and an admin `refreshBoundaries` mutation. See opuspopuli#804. |
 
 ### Required Fields (all versions)
 

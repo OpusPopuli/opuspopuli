@@ -6,6 +6,7 @@ import { RegionResolver } from './region.resolver';
 import { RegionDomainService } from './region.service';
 import { PipelineJobService } from './pipeline-job.service';
 import { QueueService } from '@opuspopuli/queue-provider';
+import { BoundaryLoaderService } from './boundary-loader.service';
 import { DataTypeGQL } from './models/region-info.model';
 import { SyncJobStatus, SyncTriggerSource } from './models/pipeline-job.model';
 
@@ -14,6 +15,7 @@ describe('RegionResolver', () => {
   let regionService: jest.Mocked<RegionDomainService>;
   let pipelineJobService: jest.Mocked<PipelineJobService>;
   let queueService: jest.Mocked<QueueService>;
+  let boundaryLoader: { loadAll: jest.Mock };
 
   const mockRegionInfo = {
     id: 'test-region',
@@ -171,6 +173,18 @@ describe('RegionResolver', () => {
         { provide: RegionDomainService, useValue: mockRegionService },
         { provide: PipelineJobService, useValue: mockPipelineJobService },
         { provide: QueueService, useValue: mockQueueService },
+        // Minimal stub — refreshBoundaries is exercised in
+        // boundary-loader.service.spec.ts; existing region.resolver.spec
+        // tests don't touch it, so a noop loadAll suffices.
+        {
+          provide: BoundaryLoaderService,
+          useValue: {
+            loadAll: jest.fn().mockResolvedValue({
+              ok: true,
+              counts: { existing: 0, upserted: 0, failed: 0, missingKey: 0 },
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -178,6 +192,7 @@ describe('RegionResolver', () => {
     regionService = module.get(RegionDomainService);
     pipelineJobService = module.get(PipelineJobService);
     queueService = module.get(QueueService);
+    boundaryLoader = module.get(BoundaryLoaderService);
   });
 
   it('should be defined', () => {
@@ -1162,6 +1177,71 @@ describe('RegionResolver', () => {
         chamber: undefined,
         nameFilter: 'Veterans',
       });
+    });
+  });
+
+  describe('refreshBoundaries (#804)', () => {
+    it('returns the loader result mapped to the GraphQL model — happy path', async () => {
+      boundaryLoader.loadAll.mockResolvedValue({
+        ok: true,
+        counts: {
+          existing: 0,
+          upserted: 7234,
+          failed: 0,
+          missingKey: 12,
+        },
+      });
+
+      const result = await resolver.refreshBoundaries(undefined);
+
+      expect(boundaryLoader.loadAll).toHaveBeenCalledWith({ force: false });
+      expect(result).toEqual({
+        ok: true,
+        skipped: undefined,
+        counts: { existing: 0, upserted: 7234, failed: 0, missingKey: 12 },
+      });
+    });
+
+    it('threads force=true through to loadAll', async () => {
+      boundaryLoader.loadAll.mockResolvedValue({
+        ok: true,
+        counts: { existing: 0, upserted: 10, failed: 0, missingKey: 0 },
+      });
+
+      await resolver.refreshBoundaries(true);
+
+      expect(boundaryLoader.loadAll).toHaveBeenCalledWith({ force: true });
+    });
+
+    it('passes the skipped reason through to the GraphQL enum', async () => {
+      // The service's literal string `'already-populated'` must map cleanly
+      // to BoundarySkipReason.ALREADY_POPULATED (same string value) — the
+      // resolver does a direct cast, so a typo in either layer would break
+      // this assertion.
+      boundaryLoader.loadAll.mockResolvedValue({
+        ok: true,
+        skipped: 'already-populated',
+        counts: { existing: 7000, upserted: 0, failed: 0, missingKey: 0 },
+      });
+
+      const result = await resolver.refreshBoundaries(false);
+
+      expect(result.skipped).toBe('already-populated');
+      expect(result.counts.existing).toBe(7000);
+    });
+
+    it('surfaces ok=false when the loader reports per-row failures', async () => {
+      // ok=false should reach the GraphQL response unchanged so an
+      // operator-facing alarm can wire to it.
+      boundaryLoader.loadAll.mockResolvedValue({
+        ok: false,
+        counts: { existing: 0, upserted: 9000, failed: 234, missingKey: 0 },
+      });
+
+      const result = await resolver.refreshBoundaries(true);
+
+      expect(result.ok).toBe(false);
+      expect(result.counts.failed).toBe(234);
     });
   });
 });

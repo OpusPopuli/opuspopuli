@@ -54,6 +54,18 @@ export type { PluginDefinition } from "./loader/plugin-loader.service.js";
 export { DeclarativeRegionPlugin } from "./declarative/declarative-region-plugin.js";
 export type { IPipelineService } from "./declarative/declarative-region-plugin.js";
 
+// Boundary-loader schema types re-exported from @opuspopuli/common (which
+// mirrors the @opuspopuli/regions JSON schema) so backend consumers
+// (BoundaryLoaderService and its fetchers) have a single import surface
+// alongside the rest of the plugin types. See opuspopuli#804.
+export type {
+  BoundarySourcesConfig,
+  TigerLayerConfig,
+  GeoportalLayerConfig,
+  BoundaryJurisdictionType,
+  BoundaryJurisdictionLevel,
+} from "@opuspopuli/common";
+
 // Region config discovery
 export { discoverRegionConfigs } from "./loader/region-config-discovery.js";
 export type { RegionPluginFile } from "./loader/region-config-discovery.js";

@@ -58,6 +58,18 @@ export interface RegionInfo {
   description: string;
   timezone: string;
   dataSourceUrls?: string[];
+  /**
+   * Two-letter US state code (e.g., "CA"). Optional — federal-only plugins
+   * leave this unset. The boundary loader uses it as the `${stateCode}`
+   * placeholder when fetching from TIGER + ArcGIS sources. See opuspopuli#804.
+   */
+  stateCode?: string;
+  /**
+   * Census FIPS code — 2-digit for states, 5-digit for counties, 7-digit
+   * for places. Used as the `${fipsCode}` placeholder in TIGER WHERE clauses
+   * and as a join key against the consumer's jurisdictions table. See opuspopuli#804.
+   */
+  fipsCode?: string;
 }
 
 /**
