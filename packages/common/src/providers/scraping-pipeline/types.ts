@@ -571,7 +571,133 @@ export interface DeclarativeRegionConfig {
    * nav junk. Defaults to no filtering if omitted.
    */
   bioNoisePatterns?: string[];
+  /**
+   * Civic-boundary geometry sources (TIGER + ArcGIS FeatureServer). Read
+   * by the consumer's BoundaryLoaderService to populate the jurisdictions
+   * table. Mirrors the @opuspopuli/regions schema field of the same name —
+   * kept in sync manually (the @opuspopuli/common types are duplicated from
+   * the schema to avoid a hard dependency on the regions package). See
+   * opuspopuli#804.
+   */
+  boundarySources?: BoundarySourcesConfig;
 }
+
+/**
+ * Civic-boundary geometry sources for one region. The consumer's
+ * BoundaryLoaderService reads this block, dispatches to TIGER and
+ * ArcGIS FeatureServer fetchers, and upserts on fipsCode/ocdId. Mirrors
+ * the BoundarySourcesConfig definition in
+ * @opuspopuli/regions/schema/region-plugin.schema.json. See opuspopuli#804.
+ */
+export interface BoundarySourcesConfig {
+  /**
+   * Open Civic Data ID prefix for this region,
+   * e.g. 'ocd-division/country:us/state:ca'. All jurisdiction OCD-IDs are
+   * composed as `${ocdIdPrefix}${ocdIdSegment}`.
+   */
+  ocdIdPrefix: string;
+  /**
+   * US Census TIGER/Line layers. Each maps one ArcGIS MapServer layer to a
+   * JurisdictionType. Omit entirely when the region has no TIGER coverage.
+   */
+  tigerLayers?: TigerLayerConfig[];
+  /**
+   * Arbitrary ArcGIS FeatureServer endpoints for jurisdictions TIGER
+   * doesn't cover (fire districts, water districts, etc.).
+   */
+  geoportalLayers?: GeoportalLayerConfig[];
+}
+
+/**
+ * Supported `${...}` placeholders inside `where`, `ocdIdSegment`, and
+ * `nameTemplate` fields below: `${fipsCode}` (region's fipsCode),
+ * `${stateCode}` (two-letter), `${name}` (the layer's nameField value
+ * for a given feature), `${district}` (the districtField value).
+ *
+ * Inside `ocdIdSegment`, `${name}` is normalized — whitespace to
+ * underscores, lowercased — for OCD-ID format compatibility. Inside
+ * `nameTemplate`, `${name}` is substituted verbatim.
+ */
+export interface TigerLayerConfig {
+  /** TIGER MapServer service+layer path, e.g. 'State_County/MapServer/1'. */
+  layer: string;
+  /** ESRI WHERE clause. Defaults to `STATE='${fipsCode}'` when omitted. */
+  where?: string;
+  /** Comma-separated TIGER attribute fields to return, e.g. 'GEOID,NAME'. */
+  outFields: string;
+  jurisdictionType: BoundaryJurisdictionType;
+  level: BoundaryJurisdictionLevel;
+  /**
+   * TIGER attribute key whose value supplies `${name}` substitutions.
+   * Typically 'NAME' or a district code like 'SLDUST'/'SLDLST'.
+   */
+  nameField: string;
+  /**
+   * TIGER attribute key holding the canonical fips_code for upsert.
+   * Defaults to 'GEOID'.
+   */
+  fipsField?: string;
+  /**
+   * Prefix prepended to fipsField value before persisting. Disambiguates
+   * GEOID collisions across layers (e.g. 'sldu-' / 'sldl-').
+   */
+  fipsPrefix?: string;
+  /** TIGER attribute key supplying `${district}` substitutions. */
+  districtField?: string;
+  /** Segment appended to ocdIdPrefix to form the full OCD-ID. */
+  ocdIdSegment?: string;
+  /** Template for the persisted jurisdiction name. Defaults to `${name}`. */
+  nameTemplate?: string;
+}
+
+/**
+ * Arbitrary ArcGIS FeatureServer layer descriptor — same placeholder
+ * rules as TigerLayerConfig.
+ */
+export interface GeoportalLayerConfig {
+  /** Full FeatureServer URL ending in /FeatureServer/<n>. HTTPS only. */
+  url: string;
+  /** ESRI WHERE clause. Defaults to '1=1'. */
+  where?: string;
+  /** Comma-separated FeatureServer attribute fields. */
+  outFields: string;
+  jurisdictionType: BoundaryJurisdictionType;
+  level: BoundaryJurisdictionLevel;
+  /** FeatureServer attribute key supplying `${name}`. */
+  nameField: string;
+  /**
+   * FeatureServer attribute key used as fips_code. No default — geoportal
+   * attribute names vary widely. Omit when no FIPS analog exists.
+   */
+  fipsField?: string;
+  fipsPrefix?: string;
+  ocdIdSegment?: string;
+  nameTemplate?: string;
+}
+
+/** Single source of truth for boundary-layer jurisdiction types. */
+export type BoundaryJurisdictionType =
+  | "COUNTY"
+  | "CITY"
+  | "STATE_SENATE_DISTRICT"
+  | "STATE_ASSEMBLY_DISTRICT"
+  | "CONGRESSIONAL_DISTRICT"
+  | "SCHOOL_DISTRICT_UNIFIED"
+  | "SCHOOL_DISTRICT_ELEMENTARY"
+  | "SCHOOL_DISTRICT_HIGH"
+  | "COMMUNITY_COLLEGE_DISTRICT"
+  | "WATER_DISTRICT"
+  | "FIRE_DISTRICT"
+  | "TRANSIT_DISTRICT"
+  | "SPECIAL_DISTRICT";
+
+/** Single source of truth for boundary-layer hierarchy levels. */
+export type BoundaryJurisdictionLevel =
+  | "FEDERAL"
+  | "STATE"
+  | "COUNTY"
+  | "MUNICIPAL"
+  | "DISTRICT";
 
 // ============================================
 // PIPELINE RESULTS

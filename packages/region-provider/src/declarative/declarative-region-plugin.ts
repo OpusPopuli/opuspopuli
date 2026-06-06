@@ -23,6 +23,7 @@ import type {
   DeclarativeRegionConfig,
   DataSourceConfig,
   ExtractionResult,
+  BoundarySourcesConfig,
 } from "@opuspopuli/common";
 
 /**
@@ -59,6 +60,17 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     return "1.0.0-declarative";
   }
 
+  /**
+   * Surface the optional boundarySources block from the region config. The
+   * consumer's BoundaryLoaderService reads this to know which TIGER and
+   * ArcGIS FeatureServer layers to ingest. Plugins backing regions without
+   * boundary data simply have no `boundarySources` in their JSON, and we
+   * return undefined per the IRegionPlugin contract. See opuspopuli#804.
+   */
+  getBoundarySources(): BoundarySourcesConfig | undefined {
+    return this.regionConfig.boundarySources;
+  }
+
   getRegionInfo(): RegionInfo {
     return {
       id: this.regionConfig.regionId,
@@ -66,6 +78,8 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       description: this.regionConfig.description,
       timezone: this.regionConfig.timezone,
       dataSourceUrls: this.regionConfig.dataSources.map((ds) => ds.url),
+      stateCode: this.regionConfig.stateCode,
+      fipsCode: this.regionConfig.fipsCode,
     };
   }
 
