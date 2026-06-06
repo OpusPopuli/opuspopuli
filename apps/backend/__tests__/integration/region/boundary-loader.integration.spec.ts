@@ -75,8 +75,32 @@ const MULTIPOLYGON_GEOJSON = {
   ],
 };
 
+// SAMPLE_SOURCES MUST include at least one tigerLayer and one geoportalLayer
+// — otherwise the loader's fetchAll() iterates over empty arrays and never
+// dispatches to the mocked fetchers, and every test asserting upserted=1
+// fails with upserted=0. The layer configs are only used by the loader to
+// decide which fetcher to call; per-row content comes from the fetcher
+// mocks each test sets up individually.
 const SAMPLE_SOURCES: BoundarySourcesConfig = {
   ocdIdPrefix: 'ocd-division/country:us/state:ca',
+  tigerLayers: [
+    {
+      layer: 'State_County/MapServer/1',
+      outFields: 'GEOID,NAME',
+      jurisdictionType: 'COUNTY',
+      level: 'COUNTY',
+      nameField: 'NAME',
+    },
+  ],
+  geoportalLayers: [
+    {
+      url: 'https://example.gov/x/FeatureServer/0',
+      outFields: 'OBJECTID,Name',
+      jurisdictionType: 'FIRE_DISTRICT',
+      level: 'DISTRICT',
+      nameField: 'Name',
+    },
+  ],
 };
 
 function buildPlugin(
