@@ -96,6 +96,18 @@ type RepWithRelations = Prisma.RepresentativeGetPayload<{
 }>;
 
 /**
+ * Map a raw vote `position` string to the typed RepActionRole used by
+ * the ranker. Abstentions and non-yes/no positions fall through to
+ * `null` and are dropped from the rep's recent-action list — they're
+ * not signal for either Aligned-Action or Counter-Action axes.
+ */
+function voteRoleFromPosition(position: string): RepActionRole | null {
+  if (position === 'yes') return 'voteYes';
+  if (position === 'no') return 'voteNo';
+  return null;
+}
+
+/**
  * Orchestrates the v1.0 personalized rep-activity briefing (#769):
  *
  *   1. Compute the user's bills-of-interest context: score every
@@ -288,12 +300,7 @@ export class PersonalizedRepActivityService {
       recentActions.push({ billId: coauth.billId, role: 'coauthor' });
     }
     for (const vote of row.billVotes) {
-      const role: RepActionRole | null =
-        vote.position === 'yes'
-          ? 'voteYes'
-          : vote.position === 'no'
-            ? 'voteNo'
-            : null;
+      const role = voteRoleFromPosition(vote.position);
       if (role) recentActions.push({ billId: vote.billId, role });
     }
     const committeeNames = row.committeeAssignments.map(
