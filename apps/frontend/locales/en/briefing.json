@@ -27,10 +27,12 @@
   "reps": {
     "title": "Your representatives",
     "subtitle": "What the people who represent you are doing this week.",
-    "placeholder": {
-      "body": "Personalized rep activity (upcoming votes, recent stances, public events) is coming soon. Until then, browse representatives in your jurisdictions.",
-      "comingSoonNote": "We'll show ranked moments from your reps here once that signal pipeline ships."
-    }
+    "chamberDistrict": "{{chamber}} · District {{district}}",
+    "workingOn": "Working on for you",
+    "empty": "None of your representatives crossed the relevance threshold this week. Broaden your interests to see more.",
+    "noDistrictsTitle": "We need your address to find your reps",
+    "noDistrictsBody": "Add a primary address so we can match you to the people who represent you.",
+    "noDistrictsCta": "Add your address →"
   },
   "committees": {
     "title": "Committees on your topics",
@@ -60,6 +62,11 @@
     "axisActionability": "Has a vote or comment window you can influence soon.",
     "placeholderFor745": "We'll write you a plain-language sentence here once the LLM explanation pipeline ships.",
     "scoreLabel": "Relevance"
+  },
+  "repsWhyThis": {
+    "axisChamberMatch": "Sits in the chamber where the bills you care about are moving.",
+    "axisCommitteeMatch": "Serves on committees that handle your topics.",
+    "axisActionAlignment": "Recently moved on bills you care about."
   },
   "stubs": {
     "counterFrame": "The opposing position will show here once the counter-frame pipeline ships.",

@@ -323,6 +323,148 @@ describe("DomainMapperService", () => {
       });
     });
 
+    it("recomposes externalId when LLM emits a bare committee name (no date component)", () => {
+      // The manifest's `name_format` transform doesn't compose across
+      // fields, so the LLM's "construct externalId from committee+date"
+      // call silently degrades to just the committee name. Same
+      // committee meeting on different dates would otherwise collapse
+      // onto one row.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "Rules",
+              title: "Rules",
+              body: "Assembly",
+              scheduledAt: "2026-05-04T10:00:00Z",
+            },
+            {
+              externalId: "Rules",
+              title: "Rules",
+              body: "Assembly",
+              scheduledAt: "2026-05-11T10:00:00Z",
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.MEETINGS }),
+      );
+
+      expect(result.items).toHaveLength(2);
+      const ids = result.items.map(
+        (item) => (item as { externalId: string }).externalId,
+      );
+      expect(ids[0]).not.toBe("Rules");
+      expect(ids[1]).not.toBe("Rules");
+      expect(ids[0]).not.toBe(ids[1]);
+    });
+
+    it("coerces array-shaped agendaUrl to its first non-empty string", () => {
+      // The `structured` extraction method delivers cells with multiple
+      // anchors as arrays. 35 of 36 Assembly meetings on 2026-06-07
+      // were rejected because zod refused the array shape. Mapper now
+      // takes the first usable value (string or { href }).
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "assembly-rules-2026-05-04",
+              title: "Rules",
+              body: "Assembly",
+              scheduledAt: "2026-05-04T10:00:00Z",
+              agendaUrl: [
+                "https://example.com/agenda-a.pdf",
+                "https://example.com/agenda-b.pdf",
+              ],
+            },
+            {
+              externalId: "assembly-utilities-2026-05-04",
+              title: "Utilities",
+              body: "Assembly",
+              scheduledAt: "2026-05-04T13:00:00Z",
+              agendaUrl: [{ href: "https://example.com/agenda-c.pdf" }],
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.MEETINGS }),
+      );
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]).toMatchObject({
+        agendaUrl: "https://example.com/agenda-a.pdf",
+      });
+      expect(result.items[1]).toMatchObject({
+        agendaUrl: "https://example.com/agenda-c.pdf",
+      });
+    });
+
+    it.each([
+      { key: "url", input: [{ url: "https://example.com/agenda-d.pdf" }] },
+      { key: "value", input: [{ value: "https://example.com/agenda-e.pdf" }] },
+    ])("coerces agendaUrl from object array with $key key", ({ input }) => {
+      // Guard the `url` and `value` fallback keys in coerceFirstString —
+      // sibling test above only covers `href`. A refactor that drops one
+      // of these without noticing would silently lose data.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "assembly-test-2026-05-04",
+              title: "Test",
+              body: "Assembly",
+              scheduledAt: "2026-05-04T10:00:00Z",
+              agendaUrl: input,
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.MEETINGS }),
+      );
+
+      expect(result.items).toHaveLength(1);
+      const item = result.items[0] as { agendaUrl: string };
+      expect(item.agendaUrl).toMatch(/^https:\/\/example\.com\/agenda-/);
+    });
+
+    // looksLikeCompositeId is unexported — exercise it transitively through
+    // composeMeetingExternalId by varying rawExternalId across the trust-gate
+    // boundary. Documents the helper's intent next to the failure modes it
+    // exists to prevent.
+    it.each([
+      // [rawExternalId, shouldBeTrustedVerbatim, description]
+      ["assembly-rules-2026-05-04", true, "composite with date"],
+      ["MTG-001", true, "two-segment opaque ID"],
+      ["ca-assembly-30", true, "three-segment opaque ID"],
+      ["Rules", false, "bare single token — the 2026-06-07 regression"],
+      ["", false, "empty string"],
+      ["--", false, "only separators"],
+      ["05/04/26", false, "bare US date (delegated to isBareDate)"],
+      ["2026-05-04", false, "bare ISO date (delegated to isBareDate)"],
+    ])(
+      "looksLikeCompositeId via externalId=%j → trusted=%s (%s)",
+      (externalId, shouldBeTrustedVerbatim) => {
+        const result = mapper.map(
+          createRawResult({
+            items: [
+              {
+                externalId,
+                title: "Rules",
+                body: "Assembly",
+                scheduledAt: "2026-05-04T10:00:00Z",
+              },
+            ],
+          }),
+          createSource({ dataType: DataType.MEETINGS }),
+        );
+        expect(result.items).toHaveLength(1);
+        const id = (result.items[0] as { externalId: string }).externalId;
+        if (shouldBeTrustedVerbatim) {
+          expect(id).toBe(externalId);
+        } else {
+          expect(id).not.toBe(externalId);
+          expect(id.startsWith("assembly-rules-")).toBe(true);
+        }
+      },
+    );
+
     it("preserves a non-bare-date externalId verbatim", () => {
       const result = mapper.map(
         createRawResult({

@@ -637,6 +637,13 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     pipelineJobId?: string,
     forceStatusRecheck?: boolean,
   ): Promise<SyncResult[]> {
+    // Re-read enabled plugins from the DB before every sync. The hot-swap
+    // on `setRegionPluginEnabled` only fires in the *region service* process;
+    // the region-worker has its own Nest instance with its own in-memory
+    // registry that would otherwise drift after an admin toggle, causing
+    // syncs for newly-enabled plugins to silently process 0 data types.
+    await this.refreshActiveLocalPlugin();
+
     const limits = [
       maxReps != null ? `maxReps=${maxReps}` : null,
       maxBills != null ? `maxBills=${maxBills}` : null,
