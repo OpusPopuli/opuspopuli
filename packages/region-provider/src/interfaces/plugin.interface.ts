@@ -4,7 +4,10 @@
  * Extends IRegionProvider with lifecycle hooks for the plugin ecosystem.
  */
 
-import { IRegionProvider } from "@opuspopuli/common";
+import type {
+  BoundarySourcesConfig,
+  IRegionProvider,
+} from "@opuspopuli/common";
 
 /**
  * Plugin health status returned by healthCheck()
@@ -52,4 +55,23 @@ export interface IRegionPlugin extends IRegionProvider {
    * Used for compatibility tracking and diagnostics.
    */
   getVersion(): string;
+
+  /**
+   * Return the region's civic-boundary geometry sources, if any.
+   *
+   * Optional — only plugins backing a region with public boundary data
+   * (TIGER counties, ArcGIS FeatureServer special districts, etc.) supply
+   * this. The consumer's BoundaryLoaderService reads the returned block,
+   * dispatches to TIGER and Geoportal fetchers, and upserts on
+   * fipsCode/ocdId.
+   *
+   * Returning `undefined` is the correct shape for plugins that don't
+   * declare `boundarySources` in their config (federal, plugins backed by
+   * incomplete data, etc.) — addresses in those regions still resolve via
+   * Census Geocoder string fields, but PostGIS point-in-polygon queries
+   * return no matches against jurisdictions populated by this loader.
+   *
+   * See opuspopuli#804 + opuspopuli-regions#51.
+   */
+  getBoundarySources?(): BoundarySourcesConfig | undefined;
 }

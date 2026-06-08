@@ -41,6 +41,9 @@ import { PropositionFinanceLinkerService } from './proposition-finance-linker.se
 import { PropositionFundingService } from './proposition-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
+import { BoundaryLoaderService } from './boundary-loader.service';
+import { TigerFetcher } from './boundary-fetchers/tiger.fetcher';
+import { GeoportalFetcher } from './boundary-fetchers/geoportal.fetcher';
 import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
@@ -195,6 +198,9 @@ const promptClientAsyncConfig = {
     LegislativeCommitteeService,
     LegislativeCommitteeDescriptionGeneratorService,
     LegislativeActionLinkerService,
+    BoundaryLoaderService,
+    TigerFetcher,
+    GeoportalFetcher,
     // Alias for injecting the pipeline into RegionDomainService
     {
       provide: 'SCRAPING_PIPELINE',
@@ -228,6 +234,7 @@ const promptClientAsyncConfig = {
     RegionQueryService,
     PipelineJobService,
     StructuralAnalysisJobService,
+    BoundaryLoaderService,
     QueueModule,
     ScrapingPipelineModule,
   ],

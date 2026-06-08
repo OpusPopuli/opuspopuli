@@ -20,8 +20,7 @@
     "uat:logs": "docker compose -f docker-compose-uat.yml logs -f",
     "prepare": "husky",
     "lint:sonar": "pnpm -r lint:sonar",
-    "jscpd": "jscpd",
-    "db:load-ca-boundaries": "ts-node scripts/load-ca-boundaries.ts"
+    "jscpd": "jscpd"
   },
   "keywords": [],
   "author": "",
