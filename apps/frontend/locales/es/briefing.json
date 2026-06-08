@@ -27,10 +27,12 @@
   "reps": {
     "title": "Tus representantes",
     "subtitle": "Lo que están haciendo esta semana las personas que te representan.",
-    "placeholder": {
-      "body": "La actividad personalizada de tus representantes (votos próximos, posiciones recientes, eventos públicos) llegará pronto. Por ahora, explora los representantes de tus jurisdicciones.",
-      "comingSoonNote": "Mostraremos aquí momentos priorizados de tus representantes cuando esa señal esté lista."
-    }
+    "chamberDistrict": "{{chamber}} · Distrito {{district}}",
+    "workingOn": "Trabajando para ti",
+    "empty": "Ninguno de tus representantes superó el umbral de relevancia esta semana. Amplía tus intereses para ver más.",
+    "noDistrictsTitle": "Necesitamos tu dirección para encontrar a tus representantes",
+    "noDistrictsBody": "Agrega una dirección principal para que podamos vincularte con quienes te representan.",
+    "noDistrictsCta": "Agregar tu dirección →"
   },
   "committees": {
     "title": "Comités sobre tus temas",
@@ -60,6 +62,11 @@
     "axisActionability": "Tiene una votación o ventana de comentarios que puedes influir pronto.",
     "placeholderFor745": "Escribiremos aquí una frase en lenguaje claro cuando el pipeline de explicación con IA esté listo.",
     "scoreLabel": "Relevancia"
+  },
+  "repsWhyThis": {
+    "axisChamberMatch": "Está en la cámara donde se mueven los proyectos que te importan.",
+    "axisCommitteeMatch": "Forma parte de comités que tratan tus temas.",
+    "axisActionAlignment": "Recientemente actuó sobre proyectos que te importan."
   },
   "stubs": {
     "counterFrame": "La posición opuesta aparecerá aquí cuando se active el pipeline de contracuadro.",

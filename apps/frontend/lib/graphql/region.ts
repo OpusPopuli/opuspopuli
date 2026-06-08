@@ -1781,3 +1781,31 @@ export const MY_JURISDICTIONS = gql`
     }
   }
 `;
+
+// ============================================
+// Bill brief — lightweight projection used by the rep-activity
+// briefing card (#769) to render "what they've been working on" tags.
+// GET_BILL returns ~30 fields including the full aiSummary JSON +
+// votes + coauthors — way more than the briefing card needs to show
+// a 1-line tag. This narrow projection is what each card pulls.
+// ============================================
+
+export interface BillBrief {
+  id: string;
+  billNumber: string;
+  title: string;
+}
+
+export interface BillBriefData {
+  bill: BillBrief | null;
+}
+
+export const GET_BILL_BRIEF = gql`
+  query GetBillBrief($id: ID!) {
+    bill(id: $id) {
+      id
+      billNumber
+      title
+    }
+  }
+`;
