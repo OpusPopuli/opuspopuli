@@ -310,6 +310,23 @@ describe('RegionSyncService', () => {
       );
     });
 
+    it('syncAll() re-reads enabled plugins before dispatch — closes worker-process drift', async () => {
+      // The region-worker is a separate Nest instance with its own in-memory
+      // PluginRegistry. When an admin enables a plugin via the region
+      // service's mutation, the worker's registry doesn't see it until the
+      // next process restart — silently producing "Processed 0 data type(s)"
+      // syncs. Guard: every syncAll() must re-read the DB before dispatch.
+      mockDb.regionPlugin.findMany.mockClear();
+
+      await service.syncAll();
+
+      expect(mockDb.regionPlugin.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { enabled: true, name: { not: 'federal' } },
+        }),
+      );
+    });
+
     it('back-to-back toggles end in the state of the last call', async () => {
       // Two rapid awaits — the in-memory state after the second resolve
       // should reflect the second call's enabled value, not the first. This

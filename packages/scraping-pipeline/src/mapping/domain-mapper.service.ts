@@ -469,6 +469,29 @@ function isBareDate(value: string): boolean {
 }
 
 /**
+ * Does the externalId look structured enough to trust verbatim?
+ *
+ * Two acceptable shapes:
+ *   - Contains a date-like substring (`...YYYY-MM-DD...` or `...MM/DD/YY...`)
+ *     → almost certainly composite (e.g. `assembly-rules-2026-05-04`).
+ *   - At least two non-empty segments separated by hyphens or underscores
+ *     (e.g. `MTG-001`, `ca-assembly-30`) → upstream-stable opaque ID.
+ *
+ * Untrusted shapes:
+ *   - Bare token like `Rules` (the LLM-failure case this exists to catch):
+ *     same committee across all dates would collapse onto one row.
+ *   - Bare date like `05/04/26` (already caught by `isBareDate`): multiple
+ *     committees on the same day would collapse.
+ */
+function looksLikeCompositeId(value: string): boolean {
+  const hasDate =
+    /\d{4}-\d{2}-\d{2}/.test(value) || /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(value);
+  if (hasDate) return true;
+  const segments = value.split(/[-_]/).filter((s) => s.length > 0);
+  return segments.length >= 2;
+}
+
+/**
  * Build a meeting externalId from whatever fields the LLM gave us.
  *
  * Cases:
@@ -492,7 +515,16 @@ function composeMeetingExternalId(input: {
   body?: string;
 }): string | undefined {
   const { rawExternalId, title, scheduledAt, body } = input;
-  if (rawExternalId && !isBareDate(rawExternalId)) {
+  // Trust the raw value only when it looks like a real composite ID
+  // and isn't *only* a date. Otherwise the LLM either gave us a bare
+  // date (same-day committees collapse) or a bare committee name
+  // (same-committee meetings across dates collapse onto one row).
+  // Both modes are documented sync regressions.
+  if (
+    rawExternalId &&
+    looksLikeCompositeId(rawExternalId) &&
+    !isBareDate(rawExternalId)
+  ) {
     return rawExternalId;
   }
   // Recomposing a unique id requires BOTH body and title — without one
@@ -503,9 +535,41 @@ function composeMeetingExternalId(input: {
   const titleSlug = slugify(title.slice(0, 50));
   const bodySlug = slugify(body);
   if (!titleSlug || !bodySlug) return undefined;
-  const dateSegment = rawExternalId ?? scheduledAt ?? "";
+  // Use the raw value as the date segment only when it actually looks
+  // like a date (the bare-date LLM failure mode). Otherwise (bare
+  // committee name, etc.) fall through to scheduledAt — using a non-
+  // date raw value would produce the same composed ID across multiple
+  // dates and re-collapse the rows we're trying to keep distinct.
+  const dateSegment =
+    rawExternalId && isBareDate(rawExternalId)
+      ? rawExternalId
+      : (scheduledAt ?? "");
   if (!dateSegment) return undefined;
   return `${bodySlug}-${titleSlug}-${dateSegment}`;
+}
+
+/**
+ * Pull a single string out of the LLM-extracted value, which the
+ * `structured` extraction method can deliver as a string, an array of
+ * strings, or an array of `{href}` / `{url}` / `{value}` objects (one
+ * per anchor in the cell).
+ *
+ * 35 of 36 Assembly meetings on 2026-06-07 were rejected because the
+ * `agendaUrl` cell had multiple links and zod refused the array shape.
+ */
+function coerceFirstString(v: unknown): string | undefined {
+  if (typeof v === "string") return v.trim() || undefined;
+  if (!Array.isArray(v)) return undefined;
+  for (const el of v) {
+    if (typeof el === "string" && el.trim()) return el.trim();
+    if (el && typeof el === "object") {
+      const obj = el as Record<string, unknown>;
+      const candidate = obj.href ?? obj.url ?? obj.value;
+      if (typeof candidate === "string" && candidate.trim())
+        return candidate.trim();
+    }
+  }
+  return undefined;
 }
 
 const MeetingSchema = z.object({
@@ -517,26 +581,10 @@ const MeetingSchema = z.object({
     .default("Untitled Meeting"),
   body: z.string().default("Unknown"),
   scheduledAt: z.coerce.date(),
-  location: z
-    .string()
-    .nullable()
-    .transform((v) => v ?? undefined)
-    .optional(),
-  agendaUrl: z
-    .string()
-    .nullable()
-    .transform((v) => v ?? undefined)
-    .optional(),
-  videoUrl: z
-    .string()
-    .nullable()
-    .transform((v) => v ?? undefined)
-    .optional(),
-  minutes: z
-    .string()
-    .nullable()
-    .transform((v) => v ?? undefined)
-    .optional(),
+  location: z.preprocess(coerceFirstString, z.string().optional()),
+  agendaUrl: z.preprocess(coerceFirstString, z.string().optional()),
+  videoUrl: z.preprocess(coerceFirstString, z.string().optional()),
+  minutes: z.preprocess(coerceFirstString, z.string().optional()),
 });
 
 const partyTransform = (val: string | undefined) => {
