@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 
 import { ScoringService } from '../personalized-feed/scoring.service';
+import { toRankableBill } from '../personalized-feed/to-rankable-bill';
 import type { PersonalizationInputDto } from '../personalized-feed/dto/personalization-input.dto';
 
 import type { RepPersonalizationInputDto } from './dto/rep-personalization-input.dto';
@@ -206,7 +207,7 @@ export class PersonalizedRepActivityService {
     const userBillsByChamber: Record<string, number> = {};
 
     for (const row of rows) {
-      const rankable = this.toRankableBill(row);
+      const rankable = toRankableBill(row);
       if (!rankable) continue;
       const { composite } = this.billScoring.scoreBill(
         rankable,
@@ -248,40 +249,6 @@ export class PersonalizedRepActivityService {
       );
     }
     return rows;
-  }
-
-  /**
-   * Coerce a candidate bill row into the RankableBill shape the bill
-   * scoring service expects. Returns null when the row's aiSummary is
-   * missing or has the `{ skip: true }` sentinel from bill-analysis —
-   * same drop-set as PersonalizedFeedService.toRankableBill.
-   */
-  private toRankableBill(row: BillContextRow): {
-    id: string;
-    lastActionDate: Date | null;
-    aiSummary: { topics: string[]; whoItAffects: string[] };
-  } | null {
-    if (
-      !row.aiSummary ||
-      typeof row.aiSummary !== 'object' ||
-      Array.isArray(row.aiSummary)
-    ) {
-      return null;
-    }
-    const obj = row.aiSummary as Record<string, unknown>;
-    if (obj.skip === true) return null;
-    const topics = Array.isArray(obj.topics)
-      ? obj.topics.filter((t): t is string => typeof t === 'string')
-      : [];
-    const whoItAffects = Array.isArray(obj.whoItAffects)
-      ? obj.whoItAffects.filter((w): w is string => typeof w === 'string')
-      : [];
-    if (topics.length === 0 && whoItAffects.length === 0) return null;
-    return {
-      id: row.id,
-      lastActionDate: row.lastActionDate,
-      aiSummary: { topics, whoItAffects },
-    };
   }
 
   /**

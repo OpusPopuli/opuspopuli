@@ -3,6 +3,7 @@ import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import type { PersonalizationInputDto } from './dto/personalization-input.dto';
 import type { PersonalizedBillResultModel } from './models/personalized-bill-result.model';
 import { ScoringService, type RankableBill } from './scoring.service';
+import { toRankableBill } from './to-rankable-bill';
 
 /**
  * Default and hard cap for `myPersonalizedBillFeed(limit)`. Research +
@@ -178,45 +179,7 @@ export class PersonalizedFeedService {
       );
     }
     return rows
-      .map((r) => this.toRankableBill(r))
+      .map((r) => toRankableBill(r))
       .filter((b): b is RankableBill => b !== null);
-  }
-
-  /**
-   * Coerce the raw row (with JSON aiSummary) into the typed RankableBill
-   * shape. Returns null if aiSummary is missing required fields — the
-   * v1.0 ranker can't score without topics/whoItAffects.
-   */
-  private toRankableBill(row: {
-    id: string;
-    lastActionDate: Date | null;
-    aiSummary: Prisma.JsonValue;
-  }): RankableBill | null {
-    if (
-      !row.aiSummary ||
-      typeof row.aiSummary !== 'object' ||
-      Array.isArray(row.aiSummary)
-    ) {
-      return null;
-    }
-    const obj = row.aiSummary as Record<string, unknown>;
-    // Drop the `{ skip: true }` sentinel — those bills are bill-analysis
-    // opt-outs (not-a-bill / garbled input) and shouldn't reach the ranker.
-    if (obj.skip === true) return null;
-
-    const topics = Array.isArray(obj.topics)
-      ? obj.topics.filter((t): t is string => typeof t === 'string')
-      : [];
-    const whoItAffects = Array.isArray(obj.whoItAffects)
-      ? obj.whoItAffects.filter((w): w is string => typeof w === 'string')
-      : [];
-
-    if (topics.length === 0 && whoItAffects.length === 0) return null;
-
-    return {
-      id: row.id,
-      lastActionDate: row.lastActionDate,
-      aiSummary: { topics, whoItAffects },
-    };
   }
 }
