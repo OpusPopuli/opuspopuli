@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { RegionSyncService } from './region-sync.service';
@@ -463,6 +464,104 @@ describe('RegionSyncService', () => {
     });
   });
 
+  describe('phase observability', () => {
+    let logSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      // The orchestrator constructs its own Logger instance internally —
+      // intercept the prototype so each per-phase tracker call gets
+      // captured no matter which Logger instance lives in which method.
+      logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {
+        /* swallow — test asserts via spy, not real stdout */
+      });
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+    });
+
+    // Concatenate every captured log call into a single haystack so
+    // tests can assert "did phase X complete before phase Y started?"
+    // ordering without per-call indexing fragility.
+    const logTranscript = (): string =>
+      logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+
+    it('emits all 3 propositions phases in order: discover → extract_and_upsert → analysis', async () => {
+      mockDb.proposition.findMany.mockResolvedValue([]);
+
+      await service.syncDataType(DataType.PROPOSITIONS);
+
+      const transcript = logTranscript();
+      const phase1Start = transcript.indexOf(
+        '[PropositionSync] Phase 1/3 (discover) starting',
+      );
+      const phase1Complete = transcript.indexOf(
+        '[PropositionSync] Phase 1/3 (discover) complete',
+      );
+      const phase2Start = transcript.indexOf(
+        '[PropositionSync] Phase 2/3 (extract_and_upsert) starting',
+      );
+      const phase2Complete = transcript.indexOf(
+        '[PropositionSync] Phase 2/3 (extract_and_upsert) complete',
+      );
+      const phase3Start = transcript.indexOf(
+        '[PropositionSync] Phase 3/3 (analysis) starting',
+      );
+
+      // Every phase fires.
+      expect(phase1Start).toBeGreaterThanOrEqual(0);
+      expect(phase1Complete).toBeGreaterThanOrEqual(0);
+      expect(phase2Start).toBeGreaterThanOrEqual(0);
+      expect(phase2Complete).toBeGreaterThanOrEqual(0);
+      expect(phase3Start).toBeGreaterThanOrEqual(0);
+
+      // Phase ordering is strict — no overlap. The campaign-finance
+      // blocker that triggered this test was specifically a phase-2
+      // start landing before phase-1 complete.
+      expect(phase1Complete).toBeGreaterThan(phase1Start);
+      expect(phase2Start).toBeGreaterThan(phase1Complete);
+      expect(phase2Complete).toBeGreaterThan(phase2Start);
+      expect(phase3Start).toBeGreaterThan(phase2Complete);
+    });
+
+    it('per-item line distinguishes created vs updated when the row exists', async () => {
+      // First call (existence check pre-fetch) → row exists.
+      // Second call (upsertByExternalId's own check) → also exists.
+      // Both must return the externalId so the orchestrator marks it
+      // as 'updated' not 'created'.
+      mockDb.proposition.findMany.mockResolvedValue([
+        { externalId: 'prop-1' } as never,
+      ]);
+
+      await service.syncDataType(DataType.PROPOSITIONS);
+
+      const transcript = logTranscript();
+      // The per-item line must report "updated" because the row
+      // already existed. Pre-fix this would have logged "queued for
+      // upsert" with a fictional 'updated' outcome.
+      expect(transcript).toMatch(
+        /\[PropositionSync\] Phase 2\/3 \[1\/1\].*: updated/,
+      );
+      expect(transcript).not.toMatch(
+        /\[PropositionSync\] Phase 2\/3 \[1\/1\].*: created/,
+      );
+    });
+
+    it('per-item line reports created when the row is new', async () => {
+      mockDb.proposition.findMany.mockResolvedValue([]); // no existing rows
+
+      await service.syncDataType(DataType.PROPOSITIONS);
+
+      const transcript = logTranscript();
+      expect(transcript).toMatch(
+        /\[PropositionSync\] Phase 2\/3 \[1\/1\].*: created/,
+      );
+      expect(transcript).not.toMatch(
+        /\[PropositionSync\] Phase 2\/3 \[1\/1\].*: updated/,
+      );
+    });
+  });
+
   describe('syncDataType - REPRESENTATIVES', () => {
     it('should create new representatives using bulk upsert', async () => {
       mockDb.representative.findMany.mockResolvedValue([]);
@@ -486,12 +585,17 @@ describe('RegionSyncService', () => {
   });
 
   describe('bulk upsert performance', () => {
-    it('should use only 2 queries per sync (SELECT existing + transaction)', async () => {
+    it('should use only 2 SELECT queries + transaction(s) per sync', async () => {
       mockDb.proposition.findMany.mockResolvedValue([]);
 
       await service.syncDataType(DataType.PROPOSITIONS);
 
-      expect(mockDb.proposition.findMany).toHaveBeenCalledTimes(1);
+      // 1st findMany: pre-fetch existing externalIds for the per-item
+      // observability log to report accurate created-vs-updated.
+      // 2nd findMany: upsertByExternalId's internal existence check.
+      // The double query is the cost of accurate per-item observability;
+      // each is a bounded single bulk SELECT, no N+1.
+      expect(mockDb.proposition.findMany).toHaveBeenCalledTimes(2);
       expect(mockDb.$transaction).toHaveBeenCalledTimes(1);
     });
 
@@ -517,7 +621,9 @@ describe('RegionSyncService', () => {
       expect(result.itemsProcessed).toBe(1000);
       expect(result.itemsCreated).toBe(1000);
 
-      expect(mockDb.proposition.findMany).toHaveBeenCalledTimes(1);
+      // Two findMany at 1000 rows scales identically — no N+1 even at
+      // bulk scale. The observability pre-fetch is a single SELECT.
+      expect(mockDb.proposition.findMany).toHaveBeenCalledTimes(2);
       // 1000 items / 500 chunk size = 2 batched transactions (#476)
       expect(mockDb.$transaction).toHaveBeenCalledTimes(2);
     });
