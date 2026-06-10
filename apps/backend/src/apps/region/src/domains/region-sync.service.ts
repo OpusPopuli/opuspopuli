@@ -60,6 +60,36 @@ import {
   isLikelyValidBio,
   extractLastName,
 } from './region.service';
+import {
+  billSyncTracker,
+  repSyncTracker,
+  meetingSyncTracker,
+  minutesSyncTracker,
+  propositionSyncTracker,
+  civicsSyncTracker,
+  campaignFinanceSyncTracker,
+  type SyncPhaseTracker,
+  type BillSyncPhase,
+  type CampaignFinanceSyncPhase,
+} from './sync-phase-logger';
+
+/**
+ * Parse "AB 96" out of the externalId "202520260AB96" (CA leginfo format)
+ * so per-item log lines can show the operator-readable bill number even
+ * before the page content has been fetched / parsed. Returns null when
+ * the pattern doesn't match — the per-item line falls back to "--".
+ */
+function billNumberFromExternalId(
+  externalId: string | undefined,
+): string | null {
+  if (!externalId) return null;
+  // Trailing alphabetic measure code (AB, SB, ACA, SCR, AJR, SJR, ...)
+  // + trailing decimal number. Anchored to end so we don't accidentally
+  // match the session-year digits.
+  const m = externalId.match(/([A-Z]{1,4})(\d+)$/);
+  if (!m) return null;
+  return `${m[1]} ${m[2]}`;
+}
 
 // ─── Type aliases (sync-local, not exported) ─────────────────────────────────
 
@@ -918,11 +948,48 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     provider: DataFetcher = this.regionService,
     pipelineJobId?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
-    const propositions = await provider.fetchPropositions(pipelineJobId);
-
     const regionId = provider.getName?.() ?? 'unknown';
+
+    // ─── Phase 1/3 — discover ──────────────────────────────────────
+    const discoverTracker = propositionSyncTracker(this.logger, 'discover', 1, {
+      region: regionId,
+    });
+    const propositions = await provider.fetchPropositions(pipelineJobId);
+    discoverTracker.item({
+      name: 'propositions provider',
+      externalId: null,
+      outcomeLabel: `${propositions.length} proposition(s) discovered`,
+      outcome: 'updated',
+    });
+    discoverTracker.complete();
+
     const stagePatterns = await this.buildStagePatterns(regionId);
 
+    // ─── Phase 2/3 — extract_and_upsert ────────────────────────────
+    // Pre-fetch existing externalIds so the per-item line can report
+    // accurate created-vs-updated outcomes (and the phase-complete
+    // counter matches reality). Without this, every row would log as
+    // "updated" even though many are new. Costs one extra findMany
+    // per sync — acceptable tradeoff for accurate observability.
+    // Skip the pre-fetch entirely when there's nothing to look up.
+    const existingPropIds = new Set<string>(
+      propositions.length === 0
+        ? []
+        : (
+            await this.db.proposition.findMany({
+              where: {
+                externalId: { in: propositions.map((p) => p.externalId) },
+              },
+              select: { externalId: true },
+            })
+          ).map((p: ExternalIdRecord) => p.externalId),
+    );
+    const extractTracker = propositionSyncTracker(
+      this.logger,
+      'extract_and_upsert',
+      propositions.length,
+      { region: regionId },
+    );
     const result = await this.upsertByExternalId(
       propositions,
       (ids) =>
@@ -936,6 +1003,15 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
             prop.status,
             stagePatterns,
           );
+          const isNew = !existingPropIds.has(prop.externalId);
+          extractTracker.item({
+            name: prop.externalId,
+            externalId: prop.externalId,
+            outcomeLabel: lifecycleStageId
+              ? `${isNew ? 'created' : 'updated'} (stage=${lifecycleStageId})`
+              : `${isNew ? 'created' : 'updated'} (stage=unresolved)`,
+            outcome: isNew ? 'created' : 'updated',
+          });
           return this.db.proposition.upsert({
             where: { externalId: prop.externalId },
             update: {
@@ -961,20 +1037,41 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         }),
       'propositions:',
     );
+    extractTracker.complete();
 
     if (stagePatterns.length > 0) {
       await this.backfillPropositionStageIds(stagePatterns);
     }
 
+    // ─── Phase 3/3 — analysis ──────────────────────────────────────
+    const analysisTracker = propositionSyncTracker(
+      this.logger,
+      'analysis',
+      this.propositionAnalysis ? 1 : 0,
+      { region: regionId },
+    );
     if (this.propositionAnalysis) {
       try {
         await this.propositionAnalysis.generateMissing();
+        analysisTracker.item({
+          name: 'propositionAnalysis.generateMissing',
+          externalId: null,
+          outcomeLabel: 'analysis pass complete',
+          outcome: 'updated',
+        });
       } catch (error) {
+        analysisTracker.item({
+          name: 'propositionAnalysis.generateMissing',
+          externalId: null,
+          outcomeLabel: `failed: ${(error as Error).message}`,
+          outcome: 'error',
+        });
         this.logger.warn(
           `Proposition analysis post-sync pass failed: ${(error as Error).message}`,
         );
       }
     }
+    analysisTracker.complete();
 
     return result;
   }
@@ -1034,11 +1131,46 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     provider: DataFetcher = this.regionService,
     pipelineJobId?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
+    const regionId = provider.getName?.() ?? 'unknown';
+
+    // ─── Phase 1/3 — discover ──────────────────────────────────────
+    const discoverTracker = meetingSyncTracker(this.logger, 'discover', 1, {
+      region: regionId,
+    });
     const meetings = await provider.fetchMeetings(pipelineJobId);
+    discoverTracker.item({
+      name: 'meetings provider',
+      externalId: null,
+      outcomeLabel: `${meetings.length} meeting(s) discovered`,
+      outcome: 'updated',
+    });
+    discoverTracker.complete();
+
     if (meetings.length === 0) {
+      // Skip the empty extract+minutes_link phases for clarity.
       return this.syncMeetingMinutes(provider);
     }
 
+    // ─── Phase 2/3 — extract_and_upsert ────────────────────────────
+    // Pre-fetch existing externalIds so the per-item line can report
+    // accurate created-vs-updated outcomes. Skip when there's nothing
+    // to look up.
+    const existingMeetingIds = new Set<string>(
+      meetings.length === 0
+        ? []
+        : (
+            await this.db.meeting.findMany({
+              where: { externalId: { in: meetings.map((m) => m.externalId) } },
+              select: { externalId: true },
+            })
+          ).map((m: ExternalIdRecord) => m.externalId),
+    );
+    const extractTracker = meetingSyncTracker(
+      this.logger,
+      'extract_and_upsert',
+      meetings.length,
+      { region: regionId },
+    );
     const result = await this.upsertByExternalId(
       meetings,
       (ids) =>
@@ -1047,8 +1179,15 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
           select: { externalId: true },
         }),
       (items) =>
-        items.map((meeting) =>
-          this.db.meeting.upsert({
+        items.map((meeting) => {
+          const isNew = !existingMeetingIds.has(meeting.externalId);
+          extractTracker.item({
+            name: meeting.title,
+            externalId: meeting.externalId,
+            outcomeLabel: isNew ? 'created' : 'updated',
+            outcome: isNew ? 'created' : 'updated',
+          });
+          return this.db.meeting.upsert({
             where: { externalId: meeting.externalId },
             update: {
               title: meeting.title,
@@ -1067,10 +1206,23 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
               agendaUrl: meeting.agendaUrl,
               videoUrl: meeting.videoUrl,
             },
-          }),
-        ),
+          });
+        }),
       'meetings:',
     );
+    extractTracker.complete();
+
+    // ─── Phase 3/3 — minutes_link ──────────────────────────────────
+    // minutes_link is a future phase (#814) that ties minutes rows to
+    // their parent meeting via (body, date). Until that lands, this
+    // tracker fires as a no-op marker so the operator sees the phase
+    // even if it does nothing — and so dashboards / log queries that
+    // expect all 3 phases stay correct.
+    const linkTracker = meetingSyncTracker(this.logger, 'minutes_link', 0, {
+      region: regionId,
+      note: 'not-yet-implemented',
+    });
+    linkTracker.complete();
 
     const minutesResult = await this.syncMeetingMinutes(provider);
     return {
@@ -1088,11 +1240,37 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     updated: number;
   }> {
     if (!provider.fetchMeetingMinutes) {
+      // Emit phase markers even on the early-return path so the
+      // operator can distinguish "phase ran and was empty" from
+      // "phase never ran." Matches the pattern other syncs use for
+      // not-yet-implemented sub-phases.
+      const noProvider = minutesSyncTracker(this.logger, 'discover', 0, {
+        note: 'provider does not implement fetchMeetingMinutes',
+      });
+      noProvider.complete();
+      const noIngest = minutesSyncTracker(this.logger, 'ingest', 0);
+      noIngest.complete();
+      const noSummarize = minutesSyncTracker(this.logger, 'summarize', 0);
+      noSummarize.complete();
       return { processed: 0, created: 0, updated: 0 };
     }
 
+    // ─── Phase 1/3 — discover ──────────────────────────────────────
+    const discoverTracker = minutesSyncTracker(this.logger, 'discover', 1);
     const bundles = await provider.fetchMeetingMinutes();
+    discoverTracker.item({
+      name: 'minutes provider',
+      externalId: null,
+      outcomeLabel: `${bundles.length} minutes bundle(s) discovered`,
+      outcome: 'updated',
+    });
+    discoverTracker.complete();
+
     if (bundles.length === 0) {
+      const ingestEmpty = minutesSyncTracker(this.logger, 'ingest', 0);
+      ingestEmpty.complete();
+      const summarizeEmpty = minutesSyncTracker(this.logger, 'summarize', 0);
+      summarizeEmpty.complete();
       return { processed: 0, created: 0, updated: 0 };
     }
 
@@ -1105,8 +1283,15 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       existingRecords.map((r: ExternalIdRecord) => r.externalId),
     );
 
+    // ─── Phase 2/3 — ingest ────────────────────────────────────────
+    const ingestTracker = minutesSyncTracker(
+      this.logger,
+      'ingest',
+      bundles.length,
+    );
     const upsertedIds: string[] = [];
     for (const { minutes } of bundles) {
+      const wasExisting = existingExternalIds.has(minutes.externalId);
       const row = await this.db.minutes.upsert({
         where: { externalId: minutes.externalId },
         update: {
@@ -1133,6 +1318,14 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         select: { id: true },
       });
       upsertedIds.push(row.id);
+      ingestTracker.item({
+        name: `${minutes.body} ${minutes.date.toISOString().slice(0, 10)}`,
+        externalId: minutes.externalId,
+        outcomeLabel: wasExisting
+          ? `updated (rev=${minutes.revisionSeq})`
+          : `created (${minutes.rawText?.length ?? 0} chars)`,
+        outcome: wasExisting ? 'updated' : 'created',
+      });
 
       if (minutes.revisionSeq > 0) {
         await this.db.minutes.updateMany({
@@ -1145,10 +1338,19 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         });
       }
     }
+    ingestTracker.complete();
 
     if (upsertedIds.length > 0 && this.legislativeActionLinker) {
       await this.legislativeActionLinker.linkMinutes(upsertedIds);
     }
+
+    // ─── Phase 3/3 — summarize ─────────────────────────────────────
+    // AI synopsis generation is tracked in #813 and not yet wired —
+    // tracker fires as a no-op marker so the operator sees the phase.
+    const summarizeTracker = minutesSyncTracker(this.logger, 'summarize', 0, {
+      note: 'MinutesSummaryService not yet implemented — see #813',
+    });
+    summarizeTracker.complete();
 
     const created = bundles.filter(
       (b) => !existingExternalIds.has(b.minutes.externalId),
@@ -1199,7 +1401,20 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     maxReps?: number,
     regionId?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
+    const resolvedRegionId = regionId ?? provider.getName?.() ?? 'unknown';
+
+    // ─── Phase 1/5 — discover ──────────────────────────────────────
+    const discoverTracker = repSyncTracker(this.logger, 'discover', 1, {
+      region: resolvedRegionId,
+    });
     const reps = await provider.fetchRepresentatives();
+    discoverTracker.item({
+      name: 'representatives provider',
+      externalId: null,
+      outcomeLabel: `${reps.length} representative(s) discovered`,
+      outcome: 'updated',
+    });
+    discoverTracker.complete();
 
     // Chamber attribution happens at fetch time in
     // DeclarativeRegionPlugin.fetchRepresentatives — each rep is stamped
@@ -1213,10 +1428,26 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       this.normalizeRep(r);
     }
 
-    if (this.bioGenerator) {
-      await this.bioGenerator.enrichBios(reps, this.pluginRegionName, maxReps);
-    }
-
+    // ─── Phase 2/5 — extract_and_upsert ────────────────────────────
+    // Pre-fetch existing externalIds so the per-item line can report
+    // accurate created-vs-updated outcomes. Skip when there's nothing
+    // to look up.
+    const existingRepIds = new Set<string>(
+      reps.length === 0
+        ? []
+        : (
+            await this.db.representative.findMany({
+              where: { externalId: { in: reps.map((r) => r.externalId) } },
+              select: { externalId: true },
+            })
+          ).map((r: ExternalIdRecord) => r.externalId),
+    );
+    const extractTracker = repSyncTracker(
+      this.logger,
+      'extract_and_upsert',
+      reps.length,
+      { region: resolvedRegionId },
+    );
     const result = await this.upsertByExternalId(
       reps,
       (ids) =>
@@ -1228,6 +1459,13 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         items.map((rep) => {
           const lastName = extractLastName(rep.name);
           const district = this.sanitizeDistrict(rep);
+          const isNew = !existingRepIds.has(rep.externalId);
+          extractTracker.item({
+            name: rep.name,
+            externalId: rep.externalId,
+            outcomeLabel: `${isNew ? 'created' : 'updated'} (chamber=${rep.chamber ?? 'unknown'}, district=${district})`,
+            outcome: isNew ? 'created' : 'updated',
+          });
           return this.db.representative.upsert({
             where: { externalId: rep.externalId },
             update: {
@@ -1265,6 +1503,34 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         }),
       'representatives:',
     );
+    extractTracker.complete();
+
+    // ─── Phase 3/5 — detail_crawl ──────────────────────────────────
+    // Detail-page crawling for committees/contact info happens inside
+    // the DeclarativeRegionPlugin.fetchRepresentatives call above —
+    // it's not a separate orchestrator step in the current pipeline.
+    // Phase fires as a marker so the operator sees all 5 phases.
+    const detailCrawlTracker = repSyncTracker(this.logger, 'detail_crawl', 0, {
+      region: resolvedRegionId,
+      note: 'inlined into fetchRepresentatives at plugin layer',
+    });
+    detailCrawlTracker.complete();
+
+    // ─── Phase 4/5 — bio_generation ────────────────────────────────
+    const bioTracker = repSyncTracker(
+      this.logger,
+      'bio_generation',
+      this.bioGenerator ? reps.length : 0,
+      { region: resolvedRegionId },
+    );
+    if (this.bioGenerator) {
+      await this.bioGenerator.enrichBios(reps, this.pluginRegionName, maxReps);
+      // BioGeneratorService is opaque about per-rep outcomes from out
+      // here — it logs its own per-rep DEBUG lines. We just record the
+      // batch boundary as one aggregate item.
+      bioTracker.note(`enrichBios pass complete for ${reps.length} reps`);
+    }
+    bioTracker.complete();
 
     if (this.committeeSummaryGenerator) {
       await this.committeeSummaryGenerator.generateMissingSummaries(maxReps);
@@ -1291,6 +1557,18 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         );
       }
     }
+
+    // ─── Phase 5/5 — prune_stale ───────────────────────────────────
+    // Stale-rep pruning isn't currently wired (reps don't go inactive
+    // by data-source absence the way bills do — they leave office in
+    // discrete elections). Marker for parity with bills' 6-phase
+    // shape; tracked for actual implementation under #816 / #770
+    // alongside the rep↔committee FK work.
+    const pruneTracker = repSyncTracker(this.logger, 'prune_stale', 0, {
+      region: resolvedRegionId,
+      note: 'not-yet-implemented',
+    });
+    pruneTracker.complete();
 
     return result;
   }
@@ -1384,14 +1662,60 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     let totalProcessed = 0;
     let totalCreated = 0;
     let totalUpdated = 0;
+    let batchCount = 0;
+
+    // Campaign finance uses a streaming callback (CAL-ACCESS bulk
+    // download → onBatch per chunk) rather than per-item iteration,
+    // so observability lives at the batch level. Phase trackers are
+    // initialized with total=0 and we use `note()` per batch instead
+    // of `item()` per record — the dataset is too large to log every
+    // contribution/expenditure individually.
+    //
+    // Phase 1 (discover) and Phase 2 (extract_and_upsert) are
+    // intentionally constructed and completed sequentially. The
+    // extract tracker is lazily initialized on the first onBatch
+    // callback so the phase-start log line for Phase 2 lands AFTER
+    // Phase 1's complete line — operator-readable phase ordering.
+    const discoverTracker = campaignFinanceSyncTracker(
+      this.logger,
+      'discover',
+      0,
+    );
+    discoverTracker.note('preparing CAL-ACCESS bulk download stream');
+
+    // Use a single-property ref so TypeScript can't narrow the inner
+    // type to `never` after the if-check below — closures that mutate
+    // a captured `let` variable defeat TS's flow analysis. The ref
+    // pattern sidesteps that without sprinkling `!` assertions.
+    const extractRef: {
+      tracker: SyncPhaseTracker<CampaignFinanceSyncPhase> | null;
+    } = { tracker: null };
+    const ensureExtractTracker =
+      (): SyncPhaseTracker<CampaignFinanceSyncPhase> => {
+        if (!extractRef.tracker) {
+          // First batch arrived → discover phase is functionally done.
+          discoverTracker.complete();
+          extractRef.tracker = campaignFinanceSyncTracker(
+            this.logger,
+            'extract_and_upsert',
+            0,
+          );
+        }
+        return extractRef.tracker;
+      };
 
     const onBatch = async (items: Record<string, unknown>[]) => {
+      const tracker = ensureExtractTracker();
       const batchData = this.sortCampaignFinanceItems(items);
       await this.ensureCommitteeStubs(batchData);
       const result = await this.upsertCampaignFinanceBatch(batchData);
       totalProcessed += result.processed;
       totalCreated += result.created;
       totalUpdated += result.updated;
+      batchCount++;
+      tracker.note(
+        `batch ${batchCount}: ${result.processed} items (${result.created} created, ${result.updated} updated)`,
+      );
     };
 
     const data = await provider.fetchCampaignFinance(onBatch, pipelineJobId);
@@ -1402,11 +1726,32 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       data.independentExpenditures.length > 0 ||
       data.committeeMeasureFilings.length > 0
     ) {
+      const tracker = ensureExtractTracker();
       await this.ensureCommitteeStubs(data);
       const result = await this.upsertCampaignFinanceBatch(data);
       totalProcessed += result.processed;
       totalCreated += result.created;
       totalUpdated += result.updated;
+      tracker.note(
+        `final flush: ${result.processed} items (${result.created} created, ${result.updated} updated)`,
+      );
+    }
+
+    // Either the lazy ensureExtractTracker() ran (and started phase 2
+    // after completing phase 1), or no batches ever arrived. In the
+    // latter case close phase 1 now and emit an empty phase 2 marker
+    // so the operator sees both phase boundaries regardless of data.
+    if (extractRef.tracker) {
+      extractRef.tracker.complete();
+    } else {
+      discoverTracker.complete();
+      const emptyExtractTracker = campaignFinanceSyncTracker(
+        this.logger,
+        'extract_and_upsert',
+        0,
+        { note: 'no data from provider' },
+      );
+      emptyExtractTracker.complete();
     }
 
     if (this.propositionFinanceLinker) {
@@ -1466,18 +1811,70 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     let created = 0;
     let updated = 0;
 
+    // ─── Phase 1/2 — discover ──────────────────────────────────────
+    const discoverTracker = civicsSyncTracker(
+      this.logger,
+      'discover',
+      dataSources.length,
+      { region: regionId },
+    );
+    const allUrls: Array<{ url: string; ds: DataSourceConfig }> = [];
     for (const ds of dataSources) {
       const urls = await this.crawlCivicsUrls(ds, registeredHosts);
-      this.logger.log(
-        `Civics: crawl from ${ds.url} (depth ${ds.crawlDepth ?? 0}) found ${urls.length} page(s)`,
-      );
-      for (const url of urls) {
-        const result = await this.extractAndUpsertCivicsPage(regionId, url, ds);
-        if (result === 'created') created++;
-        else if (result === 'updated') updated++;
-        if (result !== 'failed') processed++;
+      discoverTracker.item({
+        name: ds.url,
+        externalId: null,
+        outcomeLabel: `${urls.length} page(s) at depth ${ds.crawlDepth ?? 0}`,
+        outcome: 'updated',
+      });
+      for (const url of urls) allUrls.push({ url, ds });
+    }
+    discoverTracker.complete();
+
+    // ─── Phase 2/2 — extract_and_upsert ────────────────────────────
+    const extractTracker = civicsSyncTracker(
+      this.logger,
+      'extract_and_upsert',
+      allUrls.length,
+      { region: regionId },
+    );
+    for (const { url, ds } of allUrls) {
+      const result = await this.extractAndUpsertCivicsPage(regionId, url, ds);
+      if (result === 'created') {
+        extractTracker.item({
+          name: url,
+          externalId: null,
+          outcomeLabel: 'created',
+          outcome: 'created',
+        });
+        created++;
+        processed++;
+      } else if (result === 'updated') {
+        extractTracker.item({
+          name: url,
+          externalId: null,
+          outcomeLabel: 'updated',
+          outcome: 'updated',
+        });
+        updated++;
+        processed++;
+      } else if (result === 'failed') {
+        extractTracker.item({
+          name: url,
+          externalId: null,
+          outcomeLabel: 'failed',
+          outcome: 'error',
+        });
+      } else {
+        extractTracker.item({
+          name: url,
+          externalId: null,
+          outcomeLabel: 'skipped',
+          outcome: 'skipped',
+        });
       }
     }
+    extractTracker.complete();
 
     return { processed, created, updated };
   }
@@ -1553,74 +1950,44 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     let skippedTotal = 0;
     const syncedExternalIds = new Set<string>();
 
+    // ─── Phase 1/6 — discover ───────────────────────────────────────
+    // Walk every data source's discovery index up-front so phase 2/3
+    // can announce a real grand-total. Otherwise the per-source
+    // interleaving would force the operator to mentally sum partial
+    // counts.
+    const discoverTracker = billSyncTracker(
+      this.logger,
+      'discover',
+      dataSources.length,
+      { region: regionId },
+    );
+    const allStatusUrls: Array<{ url: string; ds: DataSourceConfig }> = [];
+    const allVotesUrls: Array<{ url: string; ds: DataSourceConfig }> = [];
     for (const ds of dataSources) {
-      const counts = await this.syncBillsFromDataSource(
-        regionId,
+      const { statusUrls, votesUrls } = await this.discoverBillUrls(
         ds,
         registeredHosts,
-        repIndex,
-        committeeIndex,
-        syncedExternalIds,
-        stagePatterns,
-        billsByExternalId,
         maxBills,
-        forceStatusRecheck,
       );
-      processed += counts.processed;
-      created += counts.created;
-      updated += counts.updated;
-      skippedTotal += counts.skipped;
+      discoverTracker.item({
+        name: ds.url,
+        externalId: null,
+        outcomeLabel: `${statusUrls.length} status URL(s), ${votesUrls.length} votes-only URL(s)`,
+        outcome: 'updated',
+      });
+      for (const url of statusUrls) allStatusUrls.push({ url, ds });
+      for (const url of votesUrls) allVotesUrls.push({ url, ds });
     }
+    discoverTracker.complete();
 
-    if (stagePatterns.length > 0) {
-      await this.backfillBillStageIds(regionId, stagePatterns);
-    }
-
-    await this.pruneStaleBills(regionId, syncedExternalIds, maxBills);
-
-    // Enrichment is a second pass: extraction (above) is the prerequisite,
-    // but enrichment can be re-run independently when the bill-analysis
-    // prompt template version bumps (see #741). Bounded by maxBills.
-    await this.enrichBillSummaries(regionId, maxBills);
-
-    return { processed, created, updated, skipped: skippedTotal };
-  }
-
-  private async syncBillsFromDataSource(
-    regionId: string,
-    ds: DataSourceConfig,
-    registeredHosts: Set<string>,
-    repIndex: Map<string, { id: string; chamber: string }>,
-    committeeIndex: Map<string, string>,
-    syncedExternalIds: Set<string>,
-    stagePatterns: StagePattern[],
-    billsByExternalId: Map<string, BillSkipRecord>,
-    maxBills?: number,
-    forceStatusRecheck: boolean = false,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-    skipped: number;
-  }> {
-    const { statusUrls, votesUrls } = await this.discoverBillUrls(
-      ds,
-      registeredHosts,
-      maxBills,
+    // ─── Phase 2/6 — extract_and_upsert ─────────────────────────────
+    const extractTracker = billSyncTracker(
+      this.logger,
+      'extract_and_upsert',
+      allStatusUrls.length,
+      { region: regionId },
     );
-    this.logger.log(
-      `Bills: discovered ${statusUrls.length} bill(s) from ${ds.url}`,
-    );
-
-    const counts = {
-      processed: 0,
-      created: 0,
-      updated: 0,
-      skipped: 0,
-      statusOnlyMatched: 0,
-    };
-
-    for (const url of statusUrls) {
+    for (const { url, ds } of allStatusUrls) {
       await this.processOneBillUrl(url, {
         regionId,
         ds,
@@ -1630,42 +1997,73 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         billsByExternalId,
         forceStatusRecheck,
         syncedExternalIds,
-        counts,
+        tracker: extractTracker,
       });
     }
-    if (counts.skipped > 0) {
-      this.logger.log(
-        `Bills: skipped ${counts.skipped} unchanged bill(s) from ${ds.url}`,
-      );
-    }
-    if (counts.statusOnlyMatched > 0) {
-      this.logger.log(
-        `Bills: status-only re-check matched ${counts.statusOnlyMatched} unchanged bill(s) from ${ds.url} (no LLM)`,
-      );
-    }
+    const extractCounts = extractTracker.complete();
+    processed +=
+      extractCounts.created + extractCounts.updated + extractCounts.skipped;
+    created += extractCounts.created;
+    updated += extractCounts.updated;
+    skippedTotal += extractCounts.skipped;
 
-    for (const url of votesUrls) {
+    // ─── Phase 3/6 — votes_only ─────────────────────────────────────
+    const votesTracker = billSyncTracker(
+      this.logger,
+      'votes_only',
+      allVotesUrls.length,
+      { region: regionId },
+    );
+    for (const { url, ds } of allVotesUrls) {
+      const externalId = this.safeBillIdFromUrl(url) ?? null;
+      const billNumber = billNumberFromExternalId(externalId ?? undefined);
       const result = await this.extractVotesOnlyPage(
         regionId,
         url,
         ds,
         repIndex,
       );
-      if (result === 'updated') counts.updated++;
+      if (result === 'updated') {
+        votesTracker.item({
+          name: billNumber,
+          externalId,
+          outcomeLabel: 'votes upserted',
+          outcome: 'updated',
+        });
+        updated++;
+      } else {
+        // Most votes URLs land on bills without a shell yet — log them
+        // as itemUnknown so the count stays visible in the summary.
+        votesTracker.itemUnknown(
+          `no bill shell yet for ${externalId ?? 'unknown'}`,
+          externalId,
+        );
+      }
+    }
+    votesTracker.complete();
+
+    // ─── Phase 4/6 — stage_backfill ────────────────────────────────
+    if (stagePatterns.length > 0) {
+      await this.backfillBillStageIds(regionId, stagePatterns);
     }
 
-    return {
-      processed: counts.processed,
-      created: counts.created,
-      updated: counts.updated,
-      skipped: counts.skipped,
-    };
+    // ─── Phase 5/6 — prune_stale ───────────────────────────────────
+    await this.pruneStaleBills(regionId, syncedExternalIds, maxBills);
+
+    // ─── Phase 6/6 — summarize ─────────────────────────────────────
+    // Enrichment is a second pass: extraction (above) is the prerequisite,
+    // but enrichment can be re-run independently when the bill-analysis
+    // prompt template version bumps (see #741). Bounded by maxBills.
+    await this.enrichBillSummaries(regionId, maxBills);
+
+    return { processed, created, updated, skipped: skippedTotal };
   }
 
   /**
    * Process a single bill discovery URL: try the cheap status-only
-   * re-check first, then fall through to the full LLM extraction. Mutates
-   * the shared `counts` object and `syncedExternalIds` set in place.
+   * re-check first, then fall through to the full LLM extraction.
+   * Emits one per-item log line via the tracker and mutates the shared
+   * `syncedExternalIds` set in place.
    */
   private async processOneBillUrl(
     url: string,
@@ -1678,16 +2076,11 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       billsByExternalId: Map<string, BillSkipRecord>;
       forceStatusRecheck: boolean;
       syncedExternalIds: Set<string>;
-      counts: {
-        processed: number;
-        created: number;
-        updated: number;
-        skipped: number;
-        statusOnlyMatched: number;
-      };
+      tracker: SyncPhaseTracker<BillSyncPhase>;
     },
   ): Promise<void> {
     const billId = this.safeBillIdFromUrl(url);
+    const billNumber = billNumberFromExternalId(billId);
 
     // Status-only re-check path (#689): flagged-by-linker or forced by
     // weekly backstop. Unchanged → skip cheaply; otherwise fall through.
@@ -1698,9 +2091,13 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         ctx.billsByExternalId.get(billId),
       );
       if (recheck === 'unchanged') {
-        ctx.counts.skipped++;
-        ctx.counts.statusOnlyMatched++;
-        ctx.counts.processed++;
+        ctx.tracker.item({
+          name: billNumber,
+          externalId: billId,
+          outcomeLabel: 'status-only matched (no LLM)',
+          outcome: 'skipped',
+          extraCounters: ['status-only matched'],
+        });
         ctx.syncedExternalIds.add(billId);
         return;
       }
@@ -1715,14 +2112,34 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       ctx.stagePatterns,
     );
     if (result === 'created') {
-      ctx.counts.created++;
-      ctx.counts.processed++;
+      ctx.tracker.item({
+        name: billNumber,
+        externalId: billId ?? null,
+        outcomeLabel: 'created (LLM)',
+        outcome: 'created',
+      });
     } else if (result === 'updated') {
-      ctx.counts.updated++;
-      ctx.counts.processed++;
+      ctx.tracker.item({
+        name: billNumber,
+        externalId: billId ?? null,
+        outcomeLabel: 'updated (LLM)',
+        outcome: 'updated',
+      });
     } else if (result === 'skipped') {
-      ctx.counts.skipped++;
-      ctx.counts.processed++;
+      ctx.tracker.item({
+        name: billNumber,
+        externalId: billId ?? null,
+        outcomeLabel: 'skipped',
+        outcome: 'skipped',
+      });
+    } else {
+      // result === 'failed'
+      ctx.tracker.item({
+        name: billNumber,
+        externalId: billId ?? null,
+        outcomeLabel: 'failed',
+        outcome: 'error',
+      });
     }
     if (result !== 'failed' && billId) {
       ctx.syncedExternalIds.add(billId);
@@ -1797,31 +2214,53 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     const unmatched = await this.db.bill.findMany({
       where: { regionId, currentStageId: null, status: { not: null } },
-      select: { id: true, status: true },
+      select: { id: true, status: true, billNumber: true, externalId: true },
     });
-    if (unmatched.length === 0) return;
 
-    const byStage = new Map<string, string[]>();
+    const tracker = billSyncTracker(
+      this.logger,
+      'stage_backfill',
+      unmatched.length,
+      {
+        region: regionId,
+      },
+    );
+    if (unmatched.length === 0) {
+      tracker.complete();
+      return;
+    }
+
+    const byStage = new Map<string, Array<(typeof unmatched)[number]>>();
     for (const bill of unmatched) {
       const stageId = this.resolveStageFromStatus(bill.status, stagePatterns);
-      if (!stageId) continue;
+      if (!stageId) {
+        tracker.item({
+          name: bill.billNumber,
+          externalId: bill.externalId,
+          outcomeLabel: 'unresolved (no pattern matched)',
+          outcome: 'skipped',
+        });
+        continue;
+      }
       if (!byStage.has(stageId)) byStage.set(stageId, []);
-      byStage.get(stageId)!.push(bill.id);
+      byStage.get(stageId)!.push(bill);
     }
 
-    let filled = 0;
-    for (const [stageId, ids] of byStage) {
+    for (const [stageId, bills] of byStage) {
       await this.db.bill.updateMany({
-        where: { id: { in: ids } },
+        where: { id: { in: bills.map((b) => b.id) } },
         data: { currentStageId: stageId },
       });
-      filled += ids.length;
+      for (const bill of bills) {
+        tracker.item({
+          name: bill.billNumber,
+          externalId: bill.externalId,
+          outcomeLabel: `stage=${stageId}`,
+          outcome: 'updated',
+        });
+      }
     }
-    if (filled > 0) {
-      this.logger.log(
-        `Bills: backfilled currentStageId for ${filled} of ${unmatched.length} bill(s) in ${regionId}`,
-      );
-    }
+    tracker.complete();
   }
 
   private async pruneStaleBills(
@@ -1829,19 +2268,48 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     syncedExternalIds: Set<string>,
     maxBills?: number,
   ): Promise<void> {
-    if (syncedExternalIds.size === 0 || maxBills != null) return;
+    if (syncedExternalIds.size === 0 || maxBills != null) {
+      // Tracker still useful so the operator sees the no-op outcome
+      // rather than wondering whether the phase ran at all.
+      const tracker = billSyncTracker(this.logger, 'prune_stale', 0, {
+        region: regionId,
+        reason:
+          syncedExternalIds.size === 0
+            ? 'no-synced-ids'
+            : 'maxBills-set-skips-prune',
+      });
+      tracker.complete();
+      return;
+    }
 
-    const { count } = await this.db.bill.deleteMany({
+    const stale = await this.db.bill.findMany({
       where: {
         regionId,
         externalId: { notIn: Array.from(syncedExternalIds) },
       },
+      select: { id: true, billNumber: true, externalId: true },
     });
-    if (count > 0) {
-      this.logger.log(
-        `Bills: removed ${count} stale bill record(s) for ${regionId}`,
-      );
+
+    const tracker = billSyncTracker(this.logger, 'prune_stale', stale.length, {
+      region: regionId,
+    });
+    if (stale.length === 0) {
+      tracker.complete();
+      return;
     }
+
+    await this.db.bill.deleteMany({
+      where: { id: { in: stale.map((b) => b.id) } },
+    });
+    for (const bill of stale) {
+      tracker.item({
+        name: bill.billNumber,
+        externalId: bill.externalId,
+        outcomeLabel: 'removed (not seen in this sync)',
+        outcome: 'updated',
+      });
+    }
+    tracker.complete();
   }
 
   /**
@@ -1885,13 +2353,16 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       take: maxBills,
     });
 
+    const tracker = billSyncTracker(
+      this.logger,
+      'summarize',
+      candidates.length,
+      { region: regionId },
+    );
     if (candidates.length === 0) {
+      tracker.complete();
       return { enriched: 0, skipped: 0, failed: 0 };
     }
-
-    this.logger.log(
-      `Bill enrichment: starting ${candidates.length} bill(s) for ${regionId}`,
-    );
 
     const counts = { enriched: 0, skipped: 0, failed: 0 };
     let totalTokens = 0;
@@ -1901,9 +2372,28 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       const result = await this.enrichSingleBill(bill);
       counts[result.outcome] += 1;
       totalTokens += result.tokensUsed;
+      tracker.item({
+        name: bill.billNumber,
+        externalId: null,
+        outcomeLabel:
+          result.outcome === 'enriched'
+            ? `enriched (${result.tokensUsed} tokens)`
+            : result.outcome === 'skipped'
+              ? 'skipped: no fullTextUrl'
+              : 'failed',
+        outcome:
+          result.outcome === 'enriched'
+            ? 'updated'
+            : result.outcome === 'skipped'
+              ? 'skipped'
+              : 'error',
+      });
     }
 
     const totalDurationMs = Date.now() - startMs;
+    tracker.complete();
+    // Structured telemetry retained alongside the human-readable phase
+    // log so the existing dashboards / log queries keep working.
     this.logger.log(
       {
         event: 'bill_enrichment_summary',
