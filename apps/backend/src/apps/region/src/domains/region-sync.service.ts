@@ -91,6 +91,31 @@ function billNumberFromExternalId(
   return `${m[1]} ${m[2]}`;
 }
 
+/**
+ * Map the enrich-single-bill result onto a phase tracker outcome shape.
+ * Lifted to a named helper so the call site avoids two nested ternaries
+ * (one for label, one for counter bucket) — sonarjs/no-nested-conditional
+ * trips on the inline form.
+ */
+function describeEnrichmentResult(
+  outcome: 'enriched' | 'skipped' | 'failed',
+  tokensUsed: number,
+): {
+  outcomeLabel: string;
+  outcome: 'created' | 'updated' | 'skipped' | 'error';
+} {
+  if (outcome === 'enriched') {
+    return {
+      outcomeLabel: `enriched (${tokensUsed} tokens)`,
+      outcome: 'updated',
+    };
+  }
+  if (outcome === 'skipped') {
+    return { outcomeLabel: 'skipped: no fullTextUrl', outcome: 'skipped' };
+  }
+  return { outcomeLabel: 'failed', outcome: 'error' };
+}
+
 // ─── Type aliases (sync-local, not exported) ─────────────────────────────────
 
 type ExternalIdRecord = { externalId: string };
@@ -1004,13 +1029,15 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
             stagePatterns,
           );
           const isNew = !existingPropIds.has(prop.externalId);
+          const verb = isNew ? 'created' : 'updated';
+          const stageDesc = lifecycleStageId
+            ? `stage=${lifecycleStageId}`
+            : 'stage=unresolved';
           extractTracker.item({
             name: prop.externalId,
             externalId: prop.externalId,
-            outcomeLabel: lifecycleStageId
-              ? `${isNew ? 'created' : 'updated'} (stage=${lifecycleStageId})`
-              : `${isNew ? 'created' : 'updated'} (stage=unresolved)`,
-            outcome: isNew ? 'created' : 'updated',
+            outcomeLabel: `${verb} (${stageDesc})`,
+            outcome: verb,
           });
           return this.db.proposition.upsert({
             where: { externalId: prop.externalId },
@@ -1919,24 +1946,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    // Apply per-source rate limits to the shared host throttle. Each bills
-    // data source may override the default 1 req/sec gap via
-    // DataSourceConfig.rateLimitOverride (requests/sec). The override
-    // applies to the source's hostname, which transitively covers the
-    // status / votes / text page templates (all on the same host).
-    for (const ds of dataSources) {
-      if (ds.rateLimitOverride && ds.rateLimitOverride > 0) {
-        try {
-          const host = new URL(ds.url).hostname;
-          this.hostThrottle.setRequestsPerSecond(host, ds.rateLimitOverride);
-          this.logger.log(
-            `Bills: host throttle for ${host} set to ${ds.rateLimitOverride} req/sec`,
-          );
-        } catch {
-          /* invalid URL — surfaced elsewhere */
-        }
-      }
-    }
+    this.applyBillsHostThrottle(dataSources);
 
     const regionId = plugin.getName?.() ?? 'unknown';
     const repIndex = await this.buildRepNameIndex(regionId);
@@ -2057,6 +2067,33 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     await this.enrichBillSummaries(regionId, maxBills);
 
     return { processed, created, updated, skipped: skippedTotal };
+  }
+
+  /**
+   * Apply per-source rate limits to the shared host throttle. Each bills
+   * data source may override the default 1 req/sec gap via
+   * DataSourceConfig.rateLimitOverride (requests/sec). The override
+   * applies to the source's hostname, which transitively covers the
+   * status / votes / text page templates (all on the same host).
+   *
+   * Extracted from `syncBills` to keep that function under SonarCloud's
+   * cognitive-complexity gate. Try/catch on URL parsing isolates a
+   * malformed-URL failure from interrupting the throttle setup for
+   * other sources.
+   */
+  private applyBillsHostThrottle(dataSources: DataSourceConfig[]): void {
+    for (const ds of dataSources) {
+      if (!ds.rateLimitOverride || ds.rateLimitOverride <= 0) continue;
+      try {
+        const host = new URL(ds.url).hostname;
+        this.hostThrottle.setRequestsPerSecond(host, ds.rateLimitOverride);
+        this.logger.log(
+          `Bills: host throttle for ${host} set to ${ds.rateLimitOverride} req/sec`,
+        );
+      } catch {
+        /* invalid URL — surfaced elsewhere */
+      }
+    }
   }
 
   /**
@@ -2372,21 +2409,15 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       const result = await this.enrichSingleBill(bill);
       counts[result.outcome] += 1;
       totalTokens += result.tokensUsed;
+      const { outcomeLabel, outcome } = describeEnrichmentResult(
+        result.outcome,
+        result.tokensUsed,
+      );
       tracker.item({
         name: bill.billNumber,
         externalId: null,
-        outcomeLabel:
-          result.outcome === 'enriched'
-            ? `enriched (${result.tokensUsed} tokens)`
-            : result.outcome === 'skipped'
-              ? 'skipped: no fullTextUrl'
-              : 'failed',
-        outcome:
-          result.outcome === 'enriched'
-            ? 'updated'
-            : result.outcome === 'skipped'
-              ? 'skipped'
-              : 'error',
+        outcomeLabel,
+        outcome,
       });
     }
 
