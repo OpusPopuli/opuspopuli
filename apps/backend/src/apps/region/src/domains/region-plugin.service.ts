@@ -24,36 +24,9 @@ import {
 } from '@opuspopuli/region-provider';
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { ServiceInitializationException } from 'src/common/exceptions/app.exceptions';
+import { toRegionPluginRow, type RegionPluginRow } from './region.service';
 
-export type RegionPluginRow = {
-  name: string;
-  displayName: string;
-  description?: string;
-  version: string;
-  enabled: boolean;
-  parentRegionId?: string;
-  fipsCode?: string;
-};
-
-function toRegionPluginRow(r: {
-  name: string;
-  displayName: string;
-  description: string | null;
-  version: string;
-  enabled: boolean;
-  parentRegionId: string | null;
-  fipsCode: string | null;
-}): RegionPluginRow {
-  return {
-    name: r.name,
-    displayName: r.displayName,
-    description: r.description ?? undefined,
-    version: r.version,
-    enabled: r.enabled,
-    parentRegionId: r.parentRegionId ?? undefined,
-    fipsCode: r.fipsCode ?? undefined,
-  };
-}
+export type { RegionPluginRow };
 
 // State-level rows (parentRegionId IS NULL) sort before county rows so the
 // primary plugin is always a state plugin when one is available.

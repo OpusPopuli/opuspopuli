@@ -313,41 +313,29 @@ export class CivicsSyncService {
     const now = new Date();
     await batchTransaction(
       this.db,
-      valid.map((entry) =>
-        this.db.glossaryEntry.upsert({
+      valid.map((entry) => {
+        // Shared fields are identical between create and update — extract
+        // once to keep the upsert body deduplicated.
+        const shared = {
+          term: entry.term,
+          definition: entry.definition as Prisma.InputJsonValue,
+          longDefinition: toJsonField(entry.longDefinition),
+          relatedTerms: Array.isArray(entry.relatedTerms)
+            ? (entry.relatedTerms as string[]).filter(
+                (t) => typeof t === 'string',
+              )
+            : [],
+          sourceUrl,
+          promptHash,
+          promptVersion,
+          extractedAt: now,
+        };
+        return this.db.glossaryEntry.upsert({
           where: { regionId_slug: { regionId, slug: entry.slug } },
-          create: {
-            regionId,
-            term: entry.term,
-            slug: entry.slug,
-            definition: entry.definition as Prisma.InputJsonValue,
-            longDefinition: toJsonField(entry.longDefinition),
-            relatedTerms: Array.isArray(entry.relatedTerms)
-              ? (entry.relatedTerms as string[]).filter(
-                  (t) => typeof t === 'string',
-                )
-              : [],
-            sourceUrl,
-            promptHash,
-            promptVersion,
-            extractedAt: now,
-          },
-          update: {
-            term: entry.term,
-            definition: entry.definition as Prisma.InputJsonValue,
-            longDefinition: toJsonField(entry.longDefinition),
-            relatedTerms: Array.isArray(entry.relatedTerms)
-              ? (entry.relatedTerms as string[]).filter(
-                  (t) => typeof t === 'string',
-                )
-              : [],
-            sourceUrl,
-            promptHash,
-            promptVersion,
-            extractedAt: now,
-          },
-        }),
-      ),
+          create: { regionId, slug: entry.slug, ...shared },
+          update: shared,
+        });
+      }),
     );
     return valid.length;
   }
