@@ -918,6 +918,448 @@ describe('RegionSyncService', () => {
       expect(result).toBe('fall-through');
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Bill-status-summary merge (#823) — validateStageId / writeStatusSummary
+  // / parseStatusSummaryResponse / enrichBillSummaries taxonomy guard
+  //
+  // These cover the runtime alignment guard between the LLM-classified stage
+  // and the region's civics_blocks taxonomy. The LLM has been told to pick
+  // an id from the supplied list, but a hardened guard is the only thing
+  // standing between prompt drift and a bad stage id landing in the DB.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe('bill-status-summary merge (#823)', () => {
+    const STAGE_PATTERNS = [
+      { stageId: 'in_committee', regex: /Held in Committee/i },
+      {
+        stageId: 'passed_first_chamber',
+        regex: /Passed Assembly|Passed Senate/i,
+      },
+    ];
+    const STAGE_INPUTS = [
+      {
+        id: 'in_committee',
+        name: 'In Committee',
+        description: 'Bill is referred to a policy committee.',
+      },
+      {
+        id: 'passed_first_chamber',
+        name: 'Passed First Chamber',
+        description: 'Bill cleared its house of origin.',
+      },
+    ];
+    const STAGE_ID_SET = new Set(['in_committee', 'passed_first_chamber']);
+
+    const mkBill = (overrides: Record<string, unknown> = {}) => ({
+      id: 'bill-uuid',
+      regionId: 'california',
+      billNumber: 'AB 1',
+      sessionYear: '2025-2026',
+      title: 'A test bill.',
+      subject: null,
+      status: 'Senate - Held in Committee',
+      authorName: null,
+      fiscalImpact: null,
+      fullTextUrl: 'https://example/text',
+      currentStageId: null,
+      ...overrides,
+    });
+
+    type ValidateStageId = (
+      llmStage: string | undefined,
+      statusRaw: string | undefined,
+      bill: ReturnType<typeof mkBill>,
+      stagePatterns: typeof STAGE_PATTERNS,
+      stageIdSet: Set<string>,
+    ) => string | null | undefined;
+
+    const validateStageId = (svc: RegionSyncService) =>
+      (
+        svc as unknown as { validateStageId: ValidateStageId }
+      ).validateStageId.bind(svc);
+
+    describe('validateStageId — runtime taxonomy alignment', () => {
+      it('accepts an LLM-returned stage id that exists in the region taxonomy', () => {
+        const warnSpy = jest
+          .spyOn(
+            (service as unknown as { logger: { warn: jest.Mock } }).logger,
+            'warn',
+          )
+          .mockImplementation(() => undefined);
+
+        const result = validateStageId(service)(
+          'in_committee',
+          'Senate - Held in Committee',
+          mkBill(),
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        expect(result).toBe('in_committee');
+        // No fallback warn for the happy path.
+        expect(warnSpy).not.toHaveBeenCalled();
+      });
+
+      it('falls back to pattern matcher on "unknown" and logs at DEBUG (expected, not a drift signal)', () => {
+        // S-3: "unknown" is the documented "no stage fits" answer — it's
+        // the expected path for bills mid-paperwork. Logging at warn would
+        // drown the actual drift signal. Assert: NOT logged at warn, IS
+        // logged at debug with outOfTaxonomy: false.
+        const warnSpy = jest
+          .spyOn(
+            (service as unknown as { logger: { warn: jest.Mock } }).logger,
+            'warn',
+          )
+          .mockImplementation(() => undefined);
+        const debugSpy = jest
+          .spyOn(
+            (service as unknown as { logger: { debug: jest.Mock } }).logger,
+            'debug',
+          )
+          .mockImplementation(() => undefined);
+
+        const result = validateStageId(service)(
+          'unknown',
+          'Senate - Held in Committee',
+          mkBill(),
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        expect(result).toBe('in_committee');
+        expect(warnSpy).not.toHaveBeenCalled();
+        expect(debugSpy).toHaveBeenCalledTimes(1);
+        const [payload] = debugSpy.mock.calls[0];
+        expect(payload).toMatchObject({
+          event: 'bill_stage_resolution_fallback',
+          billId: 'bill-uuid',
+          billNumber: 'AB 1',
+          regionId: 'california',
+          llmStage: 'unknown',
+          outOfTaxonomy: false,
+          fallback: 'in_committee',
+        });
+      });
+
+      it('falls back on out-of-taxonomy stage and logs at WARN (drift signal)', () => {
+        // The LLM hallucinating "vetoed" when the region taxonomy doesn't
+        // declare that stage is the exact failure mode the guard exists for.
+        // S-3: this path stays at warn so log-based alerting catches drift.
+        const warnSpy = jest
+          .spyOn(
+            (service as unknown as { logger: { warn: jest.Mock } }).logger,
+            'warn',
+          )
+          .mockImplementation(() => undefined);
+
+        const result = validateStageId(service)(
+          'vetoed',
+          'Passed Assembly',
+          mkBill(),
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        expect(result).toBe('passed_first_chamber');
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        const [payload] = warnSpy.mock.calls[0];
+        expect(payload).toMatchObject({
+          event: 'bill_stage_resolution_fallback',
+          llmStage: 'vetoed',
+          outOfTaxonomy: true,
+          fallback: 'passed_first_chamber',
+        });
+      });
+
+      it('returns null when neither the LLM nor the pattern matcher resolves a stage', () => {
+        // Total miss — the column stays NULL so the next sync can retry.
+        // No llmStage means outOfTaxonomy=false → debug, not warn.
+        const warnSpy = jest
+          .spyOn(
+            (service as unknown as { logger: { warn: jest.Mock } }).logger,
+            'warn',
+          )
+          .mockImplementation(() => undefined);
+        const debugSpy = jest
+          .spyOn(
+            (service as unknown as { logger: { debug: jest.Mock } }).logger,
+            'debug',
+          )
+          .mockImplementation(() => undefined);
+
+        const result = validateStageId(service)(
+          undefined,
+          'Some weird status string no pattern catches',
+          mkBill(),
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        expect(result).toBeNull();
+        expect(warnSpy).not.toHaveBeenCalled();
+        expect(debugSpy).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('writeStatusSummary — JSONB shape + status / stage / lastActionDate writes', () => {
+      type WriteFn = (
+        bill: ReturnType<typeof mkBill>,
+        parsed: Record<string, unknown>,
+        promptVersion: string,
+        stagePatterns: typeof STAGE_PATTERNS,
+        stageIdSet: Set<string>,
+      ) => Promise<void>;
+
+      const writeStatusSummary = (svc: RegionSyncService) =>
+        (
+          svc as unknown as { writeStatusSummary: WriteFn }
+        ).writeStatusSummary.bind(svc);
+
+      it('stores the { skip: true } sentinel without touching status / stage / lastActionDate', async () => {
+        const updateMock = jest.fn().mockResolvedValue({});
+        (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+          bill: { update: updateMock },
+        };
+
+        await writeStatusSummary(service)(
+          mkBill(),
+          { skip: true },
+          'v3',
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        expect(updateMock).toHaveBeenCalledTimes(1);
+        const [args] = updateMock.mock.calls;
+        expect(args[0]).toMatchObject({
+          where: { id: 'bill-uuid' },
+          data: expect.objectContaining({
+            aiSummary: { skip: true },
+            aiSummaryVersion: 'v3',
+          }),
+        });
+        // Bill-state columns left untouched.
+        expect(args[0].data).not.toHaveProperty('status');
+        expect(args[0].data).not.toHaveProperty('currentStageId');
+        expect(args[0].data).not.toHaveProperty('lastActionDate');
+      });
+
+      it('writes summary + status + validated stage + parsed lastActionDate on the happy path', async () => {
+        const updateMock = jest.fn().mockResolvedValue({});
+        (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+          bill: { update: updateMock },
+        };
+
+        await writeStatusSummary(service)(
+          mkBill(),
+          {
+            status: {
+              raw: 'Senate - Held in Committee',
+              stage: 'in_committee',
+              lastActionDate: '2026-05-30',
+              lastActionSnippet: 'Referred to Com. on JUD.',
+            },
+            summary: {
+              plainEnglishSummary: 'Caps ADU fees.',
+              topics: ['housing'],
+              whoItAffects: ['homeowners'],
+              fiscalImpact: { level: 'low', summary: 'Negligible.' },
+              stakeholderImpact: 'Homeowners benefit.',
+            },
+          },
+          'v4',
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        expect(updateMock).toHaveBeenCalledTimes(1);
+        const [args] = updateMock.mock.calls;
+        expect(args[0].data).toMatchObject({
+          aiSummary: {
+            plainEnglishSummary: 'Caps ADU fees.',
+            topics: ['housing'],
+            whoItAffects: ['homeowners'],
+            fiscalImpact: { level: 'low', summary: 'Negligible.' },
+            stakeholderImpact: 'Homeowners benefit.',
+          },
+          aiSummaryVersion: 'v4',
+          status: 'Senate - Held in Committee',
+          // S-2: lastActionSnippet flows into bills.lastAction so the
+          // bill-extraction view and the merged-call view stay in sync.
+          lastAction: 'Referred to Com. on JUD.',
+          currentStageId: 'in_committee',
+        });
+        const lastActionDate = args[0].data.lastActionDate as Date;
+        expect(lastActionDate).toBeInstanceOf(Date);
+        expect(lastActionDate.toISOString()).toBe('2026-05-30T00:00:00.000Z');
+      });
+
+      it('falls through to pattern matcher when LLM stage is out-of-taxonomy', async () => {
+        // End-to-end through writeStatusSummary — covers the wiring from
+        // validateStageId back into the DB write.
+        const updateMock = jest.fn().mockResolvedValue({});
+        (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+          bill: { update: updateMock },
+        };
+        jest
+          .spyOn(
+            (service as unknown as { logger: { warn: jest.Mock } }).logger,
+            'warn',
+          )
+          .mockImplementation(() => undefined);
+
+        await writeStatusSummary(service)(
+          mkBill(),
+          {
+            status: {
+              raw: 'Passed Assembly',
+              stage: 'vetoed', // not in the region taxonomy
+              lastActionDate: null,
+              lastActionSnippet: null,
+            },
+            summary: { plainEnglishSummary: '...' },
+          },
+          'v1',
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        const [args] = updateMock.mock.calls;
+        expect(args[0].data.currentStageId).toBe('passed_first_chamber');
+      });
+
+      it('preserves the existing lastActionDate column when the LLM returns an unparseable date', async () => {
+        // undefined return from parseLastActionDate spreads to nothing, so
+        // the existing column value isn't clobbered with null.
+        const updateMock = jest.fn().mockResolvedValue({});
+        (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+          bill: { update: updateMock },
+        };
+
+        await writeStatusSummary(service)(
+          mkBill(),
+          {
+            status: {
+              raw: 'Status text',
+              stage: 'in_committee',
+              lastActionDate: 'not-a-date', // unparseable
+              lastActionSnippet: null,
+            },
+            summary: { plainEnglishSummary: '...' },
+          },
+          'v1',
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        const [args] = updateMock.mock.calls;
+        expect(args[0].data).not.toHaveProperty('lastActionDate');
+      });
+
+      it('writes lastActionDate: null when the LLM explicitly returned null (intentional clear)', async () => {
+        // Distinct from the "unparseable" path: an explicit null is the
+        // LLM telling us the bill has no last-action date. Honor it by
+        // clearing the column rather than preserving stale data.
+        const updateMock = jest.fn().mockResolvedValue({});
+        (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+          bill: { update: updateMock },
+        };
+
+        await writeStatusSummary(service)(
+          mkBill(),
+          {
+            status: {
+              raw: 'Status text',
+              stage: 'in_committee',
+              lastActionDate: null, // explicit null from LLM
+              lastActionSnippet: null,
+            },
+            summary: { plainEnglishSummary: '...' },
+          },
+          'v1',
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        const [args] = updateMock.mock.calls;
+        expect(args[0].data.lastActionDate).toBeNull();
+      });
+    });
+
+    describe('parseStatusSummaryResponse — runtime payload guards', () => {
+      type ParseFn = (
+        text: string,
+        billNumber: string,
+      ) => Record<string, unknown> | null;
+      const parse = (svc: RegionSyncService) =>
+        (
+          svc as unknown as { parseStatusSummaryResponse: ParseFn }
+        ).parseStatusSummaryResponse.bind(svc);
+
+      it('returns null when no JSON object slice can be extracted', () => {
+        expect(parse(service)('no json here', 'AB 1')).toBeNull();
+      });
+
+      it('returns null when the parsed payload is an array (not the structured object)', () => {
+        // The LLM occasionally returns `[]` instead of `{}` — storing that
+        // verbatim would lock the bill out of the retry query.
+        expect(parse(service)('[]', 'AB 1')).toBeNull();
+      });
+
+      it('returns null when the parsed payload is null (not the structured object)', () => {
+        expect(parse(service)('null', 'AB 1')).toBeNull();
+      });
+
+      it('returns the structured object on a well-formed payload', () => {
+        const result = parse(service)('{"skip":true}', 'AB 1');
+        expect(result).toEqual({ skip: true });
+      });
+    });
+
+    describe('enrichBillSummaries — taxonomy guard', () => {
+      it('skips the summarize phase and logs a warn when the region has no lifecycle taxonomy', async () => {
+        // promptClient + llm must be present, otherwise enrichBillSummaries
+        // exits early on its own guard before reaching the taxonomy check.
+        (
+          service as unknown as { promptClient: object; llm: object }
+        ).promptClient = {};
+        (service as unknown as { promptClient: object; llm: object }).llm = {};
+
+        const warnSpy = jest
+          .spyOn(
+            (service as unknown as { logger: { warn: jest.Mock } }).logger,
+            'warn',
+          )
+          .mockImplementation(() => undefined);
+
+        type EnrichFn = (
+          regionId: string,
+          stagePatterns: typeof STAGE_PATTERNS,
+          lifecycleStages: typeof STAGE_INPUTS | null,
+          maxBills?: number,
+        ) => Promise<{ enriched: number; skipped: number; failed: number }>;
+        const enrich = (
+          service as unknown as { enrichBillSummaries: EnrichFn }
+        ).enrichBillSummaries.bind(service);
+
+        const result = await enrich(
+          'california',
+          STAGE_PATTERNS,
+          null,
+          undefined,
+        );
+
+        expect(result).toEqual({ enriched: 0, skipped: 0, failed: 0 });
+        const warnedMessages = warnSpy.mock.calls.map((c) => String(c.at(-1)));
+        expect(
+          warnedMessages.some((m) =>
+            m.includes('no civics_blocks.lifecycleStages taxonomy'),
+          ),
+        ).toBe(true);
+      });
+    });
+  });
 });
 
 // ─── Federal placeholder resolution ───────────────────────────────────────────

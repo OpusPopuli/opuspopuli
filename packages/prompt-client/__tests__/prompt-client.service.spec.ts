@@ -571,6 +571,147 @@ describe("PromptClientService", () => {
     });
   });
 
+  describe("getBillStatusSummaryPrompt (#823)", () => {
+    // The variable shaping below MUST stay byte-for-byte identical to the
+    // billStatusSummary descriptor in prompt-service
+    // (src/prompts/prompts.service.ts). Both sides interpolate against the
+    // same template; drift in either direction means the rendered prompt
+    // the LLM sees differs from what the tests on either side validate.
+    // These tests are the cross-service contract guard.
+
+    const STAGES = [
+      {
+        id: "in_committee",
+        name: "In Committee",
+        description: "Bill is referred to a policy committee.",
+      },
+      {
+        id: "passed_first_chamber",
+        name: "Passed First Chamber",
+        description: "Bill cleared its house of origin.",
+      },
+    ];
+
+    const BASE = {
+      regionId: "california",
+      billNumber: "AB 1",
+      sessionYear: "2025-2026",
+      title: "An act to add Section 12345.",
+      html: "<html>Bill body</html>",
+      lifecycleStages: STAGES,
+      priorStatus: "Senate - Held in Committee",
+      priorStage: "in_committee",
+    };
+
+    const TEMPLATE = [
+      "Region: {{REGION_ID}}",
+      "Bill: {{BILL_NUMBER}}",
+      "Session: {{SESSION_YEAR}}",
+      "Title: {{TITLE}}",
+      "{{PRIOR_STATUS_LINE}}{{PRIOR_STAGE_LINE}}",
+      "Stages:\n{{LIFECYCLE_STAGES_BLOCK}}",
+      "HTML:\n{{HTML}}",
+    ].join("\n");
+
+    it("composes bill-status-summary prompt with all interpolated fields", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-status-summary", TEMPLATE),
+      );
+
+      const result = await service.getBillStatusSummaryPrompt(BASE);
+
+      expect(result.promptText).toContain("Region: california");
+      expect(result.promptText).toContain("Bill: AB 1");
+      expect(result.promptText).toContain("Session: 2025-2026");
+      expect(result.promptText).toContain(
+        "Title: An act to add Section 12345.",
+      );
+      expect(result.promptText).toContain(
+        "Prior known status: Senate - Held in Committee\n",
+      );
+      expect(result.promptText).toContain("Prior known stage: in_committee\n");
+      expect(result.promptText).toContain(
+        '- id: "in_committee" — In Committee: Bill is referred to a policy committee.',
+      );
+      expect(result.promptText).toContain(
+        '- id: "passed_first_chamber" — Passed First Chamber: Bill cleared its house of origin.',
+      );
+      expect(result.promptText).toContain("HTML:\n<html>Bill body</html>");
+      expect(result.promptVersion).toBe("v1");
+      expect(result.promptHash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("omits optional prior-state lines when fields are absent (first ingest)", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-status-summary", TEMPLATE),
+      );
+
+      const result = await service.getBillStatusSummaryPrompt({
+        regionId: BASE.regionId,
+        billNumber: BASE.billNumber,
+        sessionYear: BASE.sessionYear,
+        title: BASE.title,
+        html: BASE.html,
+        lifecycleStages: BASE.lifecycleStages,
+      });
+
+      expect(result.promptText).not.toContain("Prior known status:");
+      expect(result.promptText).not.toContain("Prior known stage:");
+      // Taxonomy block still renders even on first ingest
+      expect(result.promptText).toContain('- id: "in_committee"');
+    });
+
+    it("renders the lifecycle taxonomy with bullets matching the cross-service contract", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-status-summary", "{{LIFECYCLE_STAGES_BLOCK}}"),
+      );
+
+      const result = await service.getBillStatusSummaryPrompt({
+        regionId: BASE.regionId,
+        billNumber: BASE.billNumber,
+        sessionYear: BASE.sessionYear,
+        title: BASE.title,
+        html: BASE.html,
+        lifecycleStages: [
+          { id: "law", name: "Law", description: "Signed into law." },
+        ],
+      });
+
+      // Exact format MUST match prompt-service renderLifecycleStagesBlock —
+      // change either side and the rendered prompt drifts silently.
+      expect(result.promptText).toBe('- id: "law" — Law: Signed into law.');
+    });
+
+    it("falls back to the hardcoded minimal template when DB lookup misses", async () => {
+      // Core ingest pipeline — must work even without prompt-service /
+      // a seeded DB. The fallback preserves the merged-output schema so
+      // region-sync consumers can parse the response.
+      mockDb.promptTemplate.findFirst.mockResolvedValue(null);
+
+      const result = await service.getBillStatusSummaryPrompt(BASE);
+
+      expect(result.promptText).toContain("Region: california");
+      expect(result.promptText).toContain("Bill: AB 1");
+      expect(result.promptText).toContain(
+        "Prior known status: Senate - Held in Committee",
+      );
+      expect(result.promptText).toContain(
+        '- id: "in_committee" — In Committee: Bill is referred to a policy committee.',
+      );
+      expect(result.promptText).toContain("<html>Bill body</html>");
+      expect(result.promptVersion).toBe("v0");
+    });
+
+    it("returns the prompt template version verbatim for the version-bump re-enrich flow", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-status-summary", TEMPLATE, 5),
+      );
+
+      const result = await service.getBillStatusSummaryPrompt(BASE);
+      expect(result.promptVersion).toBe("v5");
+    });
+  });
+
   describe("caching", () => {
     it("should cache templates after first read", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
