@@ -31,6 +31,7 @@ import { RegionDomainService } from './region.service';
 import { RegionCacheService } from './region-cache.service';
 import { RegionSyncService } from './region-sync.service';
 import { PropositionsSyncService } from './propositions-sync.service';
+import { MeetingsSyncService } from './meetings-sync.service';
 import { RegionQueryService } from './region-query.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
@@ -184,6 +185,7 @@ const promptClientAsyncConfig = {
     RegionCacheService,
     RegionSyncService,
     PropositionsSyncService,
+    MeetingsSyncService,
     RegionQueryService,
     RegionDomainService,
     RegionResolver,
