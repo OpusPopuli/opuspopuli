@@ -3,29 +3,20 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
-  OnModuleInit,
   Optional,
 } from '@nestjs/common';
 import {
-  RegionService as RegionProviderService,
   DataType,
   SyncDepth,
   SyncResult,
-  PluginLoaderService,
   PluginRegistryService,
   DeclarativeRegionPlugin,
-  ExampleRegionProvider,
-  discoverRegionConfigs,
-  getRegionsDir,
   type IPipelineService,
   type IRegionPlugin,
 } from '@opuspopuli/region-provider';
-import { ServiceInitializationException } from 'src/common/exceptions/app.exceptions';
 import {
-  resolveConfigPlaceholders,
   batchTransaction,
   extractJsonObjectSlice,
-  type ISecretsProvider,
   type Proposition,
   type Meeting,
   type Representative,
@@ -40,13 +31,16 @@ import {
   PromptClientService,
   type LifecycleStageInput,
 } from '@opuspopuli/prompt-client';
-import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { BioGeneratorService } from './bio-generator.service';
 import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
 import { CivicsSyncService } from './civics-sync.service';
+import {
+  RegionPluginService,
+  type RegionPluginRow,
+} from './region-plugin.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
@@ -170,36 +164,6 @@ interface BillSkipRecord {
 }
 
 /** Region plugin row shape returned by list/lookup queries. */
-type RegionPluginRow = {
-  name: string;
-  displayName: string;
-  description?: string;
-  version: string;
-  enabled: boolean;
-  parentRegionId?: string;
-  fipsCode?: string;
-};
-
-function toRegionPluginRow(r: {
-  name: string;
-  displayName: string;
-  description: string | null;
-  version: string;
-  enabled: boolean;
-  parentRegionId: string | null;
-  fipsCode: string | null;
-}): RegionPluginRow {
-  return {
-    name: r.name,
-    displayName: r.displayName,
-    description: r.description ?? undefined,
-    version: r.version,
-    enabled: r.enabled,
-    parentRegionId: r.parentRegionId ?? undefined,
-    fipsCode: r.fipsCode ?? undefined,
-  };
-}
-
 /**
  * Minimal interface for data fetching used by sync methods.
  * Satisfied by both RegionProviderService and IRegionPlugin.
@@ -283,17 +247,6 @@ type BillEnrichmentCandidate = Prisma.BillGetPayload<{
   };
 }>;
 
-// State-level rows (parentRegionId IS NULL) sort before county rows so the
-// primary plugin is always a state plugin when one is available.
-function comparePluginRows(
-  a: { name: string; parentRegionId: string | null },
-  b: { name: string; parentRegionId: string | null },
-): number {
-  if (!a.parentRegionId && b.parentRegionId) return -1;
-  if (a.parentRegionId && !b.parentRegionId) return 1;
-  return a.name.localeCompare(b.name);
-}
-
 /**
  * RegionSyncService — owns all data-synchronisation logic extracted from
  * the monolithic RegionDomainService (issue DEBT-030). Implements
@@ -301,30 +254,23 @@ function comparePluginRows(
  * cache teardown just as the original class did.
  */
 @Injectable()
-export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
+export class RegionSyncService implements OnModuleDestroy {
   private readonly logger = new Logger(RegionSyncService.name, {
     timestamp: true,
   });
-  private regionService!: RegionProviderService;
-  private pluginRegionName: string | undefined;
-  private pluginNormalizeDistrict = false;
-  private pluginBioNoisePatterns: RegExp[] = [];
   /** Per-host fetch throttle shared across all syncs in this process.
    *  Per-source `rateLimitOverride` values are applied to the relevant
    *  hostname by sync orchestrators before they start their loops. */
   private readonly hostThrottle = new HostThrottle(1000);
 
   constructor(
-    private readonly pluginLoader: PluginLoaderService,
+    private readonly regionPluginService: RegionPluginService,
     private readonly pluginRegistry: PluginRegistryService,
     private readonly db: DbService,
     private readonly cacheService: RegionCacheService,
     @Optional()
     @Inject('SCRAPING_PIPELINE')
     private readonly pipeline?: IPipelineService,
-    @Optional()
-    @Inject(SECRETS_PROVIDER)
-    private readonly secretsProvider?: ISecretsProvider,
     @Optional() private readonly bioGenerator?: BioGeneratorService,
     @Optional()
     private readonly committeeSummaryGenerator?: CommitteeSummaryGeneratorService,
@@ -365,226 +311,39 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Resolve API keys from Supabase Vault and set as environment variables.
-   * Falls back silently to existing env vars if Vault is unavailable.
-   */
-  private async resolveApiKeysFromVault(): Promise<void> {
-    if (!this.secretsProvider) return;
-
-    const apiKeyNames = ['FEC_API_KEY'];
-
-    for (const keyName of apiKeyNames) {
-      if (process.env[keyName]) continue;
-
-      try {
-        const secret = await this.secretsProvider.getSecret(keyName);
-        if (secret) {
-          process.env[keyName] = secret;
-          this.logger.log(`Resolved ${keyName} from secrets vault`);
-        }
-      } catch (error) {
-        this.logger.warn(
-          `Failed to resolve ${keyName} from vault: ${(error as Error).message}. Falling back to env var.`,
-        );
-      }
-    }
-  }
-
-  /**
-   * Load region plugins at startup.
+   * Test-time compatibility shim. Plugin bootstrap moved to
+   * RegionPluginService.onModuleInit (#828 Step 6); Nest invokes it
+   * directly in production. The legacy spec calls `service.onModuleInit()`
+   * to bootstrap the test instance, so we keep a delegate here that
+   * forwards to the plugin service. Will be removed in Step 9 when the
+   * test file is split.
    */
   async onModuleInit(): Promise<void> {
-    await this.resolveApiKeysFromVault();
-    await this.syncRegionConfigs();
-    const { localConfigRow, allLocalConfigRows } =
-      await this.fetchLocalPluginConfigs();
-
-    const stateCode = (
-      localConfigRow?.config as Record<string, unknown> | undefined
-    )?.stateCode as string | undefined;
-
-    await this.initFederalPlugin(stateCode);
-    await this.reloadActiveLocalPlugin(allLocalConfigRows, localConfigRow);
+    return this.regionPluginService.onModuleInit();
   }
 
   /**
-   * Re-read the `region_plugins` table and swap the in-memory active local
-   * plugin to match. Called from `setRegionPluginEnabled` (so admin toggles
-   * take effect without a service restart) and from the public
-   * `refreshActiveLocalPlugin` recovery mutation. See #796 for the failure
-   * mode this prevents.
-   *
-   * Federal plugin is NOT refreshed here — if the toggled plugin changed
-   * the federal `stateCode`, the federal placeholders will still hold the
-   * boot-time value. That's a known limitation; restart the service if
-   * federal needs to re-resolve.
+   * Plugin lifecycle (#828 Step 6) moved to RegionPluginService. The
+   * remaining methods on RegionSyncService that touch plugin state read
+   * via the `regionService` getter on the plugin service, and the public
+   * plugin admin surface is exposed via thin delegates below so the
+   * existing RegionDomainService → RegionSyncService → ... call chain
+   * keeps working unchanged.
    */
+  private get regionService() {
+    return this.regionPluginService.getRegionService();
+  }
+
+  /** Delegate — see RegionPluginService.refreshActiveLocalPlugin (#828 Step 6). */
   async refreshActiveLocalPlugin(): Promise<void> {
-    const { localConfigRow, allLocalConfigRows } =
-      await this.fetchLocalPluginConfigs();
-    await this.reloadActiveLocalPlugin(allLocalConfigRows, localConfigRow);
+    return this.regionPluginService.refreshActiveLocalPlugin();
   }
 
-  private async fetchLocalPluginConfigs(): Promise<{
-    localConfigRow: { config: unknown } | undefined;
-    allLocalConfigRows: {
-      name: string;
-      config: unknown;
-      parentRegionId: string | null;
-    }[];
-  }> {
-    const allLocalConfigRows = await this.db.regionPlugin.findMany({
-      where: { enabled: true, name: { not: 'federal' } },
-    });
-    // State-level plugins (parentRegionId IS NULL) first so the primary plugin
-    // is always a state plugin when one is available.
-    allLocalConfigRows.sort(comparePluginRows);
-    const localConfigRow =
-      allLocalConfigRows.find((r) => !r.parentRegionId) ??
-      allLocalConfigRows[0];
-    return { localConfigRow, allLocalConfigRows };
-  }
-
-  private async reloadActiveLocalPlugin(
-    allLocalConfigRows: {
-      name: string;
-      config: unknown;
-      parentRegionId: string | null;
-    }[],
-    localConfigRow: { config: unknown } | undefined,
-  ): Promise<void> {
-    // Tear down the existing local registry before re-init so we never
-    // re-register the same plugin name twice (registerLocal would internally
-    // destroy and replace, but draining first keeps the logs honest).
-    //
-    // Concurrency: between this unregister() and the initLocalPlugins()
-    // below, the local plugin slot is empty. Any reader of
-    // `regionService.getRegionInfo()` (or any sync job started in that
-    // window) will see no active plugin and throw. Probability is low —
-    // refresh fires only on admin toggles or the recovery mutation, neither
-    // of which is in a hot path. If concurrent admin toggles ever become a
-    // real concern, swap to a build-then-atomic-swap pattern.
-    await this.pluginRegistry.unregister();
-
-    await this.initLocalPlugins(allLocalConfigRows);
-
-    const localPlugin = this.pluginRegistry.getLocal();
-    if (!localPlugin) {
-      throw new ServiceInitializationException(
-        'No local region plugin available after initialization',
-      );
-    }
-
-    this.regionService = new RegionProviderService(localPlugin);
-    const info = this.regionService.getRegionInfo();
-    this.pluginRegionName = info.name;
-
-    const pluginCfg = localConfigRow?.config as unknown as
-      | DeclarativeRegionConfig
-      | undefined;
-    this.pluginNormalizeDistrict =
-      pluginCfg?.normalizeExternalIdDistrict ?? false;
-    this.pluginBioNoisePatterns = (pluginCfg?.bioNoisePatterns ?? []).map(
-      (p) => new RegExp(p, 'i'),
-    );
-    this.logger.log(
-      `RegionSyncService active plugin: ${this.regionService.getProviderName()} (${info.name}), ` +
-        `federal: ${this.pluginRegistry.getFederal() ? 'loaded' : 'not loaded'}`,
-    );
-  }
-
-  private async initFederalPlugin(
-    stateCode: string | undefined,
-  ): Promise<void> {
-    try {
-      const federalConfig = await this.db.regionPlugin.findUnique({
-        where: { name: 'federal' },
-      });
-      if (!federalConfig) {
-        this.logger.warn(
-          'Federal region config not found in database — FEC data will not be available',
-        );
-        return;
-      }
-
-      let config = federalConfig.config as Record<string, unknown>;
-      if (stateCode) {
-        config = resolveConfigPlaceholders(config, { stateCode });
-        this.logger.log(
-          `Resolved federal config placeholders (stateCode="${stateCode}")`,
-        );
-      } else {
-        this.logger.warn(
-          'No local region stateCode available — federal config placeholders will not be resolved',
-        );
-      }
-
-      this.logger.log('Loading federal plugin');
-      await this.pluginLoader.loadFederalPlugin(config, this.pipeline);
-    } catch (error) {
-      this.logger.error(
-        `Failed to load federal plugin: ${(error as Error).message}`,
-      );
-    }
-  }
-
-  private async initLocalPlugins(
-    rows: { name: string; config: unknown; parentRegionId: string | null }[],
-  ): Promise<void> {
-    if (rows.length === 0) {
-      this.logger.warn(
-        'No enabled local region plugins found in database, falling back to ExampleRegionProvider',
-      );
-      await this.pluginRegistry.registerLocal(
-        'example',
-        this.createFallbackPlugin(),
-      );
-      return;
-    }
-
-    for (const row of rows) {
-      try {
-        this.logger.log(
-          `Loading local declarative region plugin "${row.name}"`,
-        );
-        await this.pluginLoader.loadPlugin(
-          {
-            name: row.name,
-            config: row.config as Record<string, unknown> | undefined,
-          },
-          this.pipeline,
-        );
-      } catch (error) {
-        this.logger.error(
-          `Failed to load plugin "${row.name}": ${(error as Error).message}`,
-        );
-      }
-    }
-
-    if (!this.pluginRegistry.hasActive()) {
-      this.logger.warn(
-        'All local plugins failed to load, falling back to ExampleRegionProvider',
-      );
-      await this.pluginRegistry.registerLocal(
-        'example',
-        this.createFallbackPlugin(),
-      );
-    }
-  }
-
-  private createFallbackPlugin(): IRegionPlugin {
-    const provider = new ExampleRegionProvider();
-    return Object.assign(Object.create(provider), {
-      getVersion: () => '0.0.0-fallback',
-      initialize: async () => {},
-      healthCheck: async () => ({
-        healthy: true,
-        message: 'Example fallback provider',
-        lastCheck: new Date(),
-      }),
-      destroy: async () => {},
-    }) as IRegionPlugin;
-  }
+  // Plugin lifecycle methods moved to RegionPluginService below this point.
+  // Originally: resolveApiKeysFromVault, onModuleInit, fetchLocalPluginConfigs,
+  // reloadActiveLocalPlugin, initFederalPlugin, initLocalPlugins,
+  // createFallbackPlugin, syncRegionConfigs. The block they used to occupy
+  // (~220 LOC) is now in region-plugin.service.ts.
 
   // ─── Plugin state / admin reads ──────────────────────────────────────────────
 
@@ -604,142 +363,39 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /** Delegate — see RegionPluginService.listRegionPlugins. */
   async listRegionPlugins(): Promise<RegionPluginRow[]> {
-    const rows = await this.db.regionPlugin.findMany({
-      select: {
-        name: true,
-        displayName: true,
-        description: true,
-        version: true,
-        enabled: true,
-        parentRegionId: true,
-        fipsCode: true,
-      },
-      orderBy: [{ parentRegionId: 'asc' }, { name: 'asc' }],
-    });
-    return rows.map(toRegionPluginRow);
+    return this.regionPluginService.listRegionPlugins();
   }
 
+  /** Delegate — see RegionPluginService.getPluginDataSourceConfigs. */
   async getPluginDataSourceConfigs(): Promise<
     Array<{ regionId: string; sources: DataSourceConfig[] }>
   > {
-    const rows = await this.db.regionPlugin.findMany({
-      where: { enabled: true },
-      select: { name: true, config: true },
-    });
-    return rows
-      .map((row) => {
-        const cfg = row.config as unknown as
-          | DeclarativeRegionConfig
-          | undefined;
-        return {
-          regionId: row.name,
-          sources: cfg?.dataSources ?? [],
-        };
-      })
-      .filter((entry) => entry.sources.length > 0);
+    return this.regionPluginService.getPluginDataSourceConfigs();
   }
 
+  /** Delegate — see RegionPluginService.getRegionPluginByFipsCode. */
   async getRegionPluginByFipsCode(
     fipsCode: string,
   ): Promise<RegionPluginRow | null> {
-    const row = await this.db.regionPlugin.findUnique({
-      where: { fipsCode },
-      select: {
-        name: true,
-        displayName: true,
-        description: true,
-        version: true,
-        enabled: true,
-        parentRegionId: true,
-        fipsCode: true,
-      },
-    });
-    return row ? toRegionPluginRow(row) : null;
+    return this.regionPluginService.getRegionPluginByFipsCode(fipsCode);
   }
 
+  /** Delegate — see RegionPluginService.setRegionPluginEnabled. */
   async setRegionPluginEnabled(
     name: string,
     enabled: boolean,
   ): Promise<RegionPluginRow> {
-    const row = await this.db.regionPlugin.update({
-      where: { name },
-      data: { enabled },
-      select: {
-        name: true,
-        displayName: true,
-        description: true,
-        version: true,
-        enabled: true,
-        parentRegionId: true,
-        fipsCode: true,
-      },
-    });
-    this.logger.log(
-      `Region plugin "${name}" ${enabled ? 'enabled' : 'disabled'}`,
-    );
-    // Hot-swap the active plugin so the change takes effect immediately —
-    // without this, the in-memory registry stays on whatever it loaded at
-    // boot and `regionInfo` keeps returning the stale active region. See
-    // #796 for the failure mode this fixes.
-    await this.refreshActiveLocalPlugin();
-    return toRegionPluginRow(row);
+    return this.regionPluginService.setRegionPluginEnabled(name, enabled);
   }
 
+  /** Delegate — see RegionPluginService.invalidateManifest. */
   async invalidateManifest(
     regionId: string,
     sourceUrl: string,
   ): Promise<number> {
-    if (!this.pipeline) {
-      throw new Error(
-        'ScrapingPipelineService unavailable — cannot invalidate manifest',
-      );
-    }
-    return this.pipeline.invalidateManifest(regionId, sourceUrl);
-  }
-
-  private async syncRegionConfigs(): Promise<void> {
-    const regionsDir = process.env.REGION_CONFIGS_DIR ?? getRegionsDir();
-
-    try {
-      const configs = await discoverRegionConfigs(regionsDir);
-
-      for (const file of configs) {
-        await this.db.regionPlugin.upsert({
-          where: { name: file.name },
-          update: {
-            displayName: file.displayName,
-            description: file.description,
-            version: file.version,
-            pluginType: 'declarative',
-            parentRegionId: file.config.parentRegionId ?? null,
-            fipsCode: file.config.fipsCode ?? null,
-            config: file.config as unknown as Prisma.InputJsonValue,
-          },
-          create: {
-            name: file.name,
-            displayName: file.displayName,
-            description: file.description,
-            version: file.version,
-            pluginType: 'declarative',
-            parentRegionId: file.config.parentRegionId ?? null,
-            fipsCode: file.config.fipsCode ?? null,
-            enabled: file.name === 'federal',
-            config: file.config as unknown as Prisma.InputJsonValue,
-          },
-        });
-      }
-
-      if (configs.length > 0) {
-        this.logger.log(
-          `Auto-synced ${configs.length} region config(s) from ${regionsDir}`,
-        );
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Failed to sync region configs from ${regionsDir}: ${(error as Error).message}`,
-      );
-    }
+    return this.regionPluginService.invalidateManifest(regionId, sourceUrl);
   }
 
   // ─── Sync orchestration ───────────────────────────────────────────────────────
@@ -1093,9 +749,10 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       maxReps,
       regionId,
       {
-        regionName: this.pluginRegionName,
-        normalizeDistrict: this.pluginNormalizeDistrict,
-        bioNoisePatterns: this.pluginBioNoisePatterns,
+        regionName: this.regionPluginService.getPluginRegionName(),
+        normalizeDistrict:
+          this.regionPluginService.getPluginNormalizeDistrict(),
+        bioNoisePatterns: this.regionPluginService.getPluginBioNoisePatterns(),
       },
       this.upsertByExternalId.bind(this),
       deriveDistrictFromExternalId,

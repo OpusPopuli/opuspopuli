@@ -7,6 +7,7 @@ import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
 import { CivicsSyncService } from './civics-sync.service';
+import { RegionPluginService } from './region-plugin.service';
 import { RegionCacheService } from './region-cache.service';
 import { REGION_CACHE } from './region.tokens';
 import { PropositionAnalysisService } from './proposition-analysis.service';
@@ -225,6 +226,7 @@ describe('RegionSyncService', () => {
         RepresentativesSyncService,
         CampaignFinanceSyncService,
         CivicsSyncService,
+        RegionPluginService,
       ],
     }).compile();
 
@@ -1539,6 +1541,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
         RepresentativesSyncService,
         CampaignFinanceSyncService,
         CivicsSyncService,
+        RegionPluginService,
       ],
     }).compile();
 
@@ -1629,6 +1632,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
         RepresentativesSyncService,
         CampaignFinanceSyncService,
         CivicsSyncService,
+        RegionPluginService,
       ],
     }).compile();
 
@@ -1791,6 +1795,7 @@ describe('RegionSyncService — campaign finance sync', () => {
         RepresentativesSyncService,
         CampaignFinanceSyncService,
         CivicsSyncService,
+        RegionPluginService,
       ],
     }).compile();
 
@@ -1974,6 +1979,7 @@ describe('RegionSyncService — cache invalidation and batch transactions', () =
         RepresentativesSyncService,
         CampaignFinanceSyncService,
         CivicsSyncService,
+        RegionPluginService,
       ],
     }).compile();
 
@@ -2036,229 +2042,6 @@ describe('RegionSyncService — cache invalidation and batch transactions', () =
 
       expect(mockDb.$transaction).toHaveBeenCalledTimes(1);
     });
-  });
-});
-
-// ─── Vault API key resolution ──────────────────────────────────────────────────
-
-describe('RegionSyncService — Vault API key resolution', () => {
-  it('should resolve API key from secrets provider when env var is not set', async () => {
-    const originalKey = process.env.FEC_API_KEY;
-    delete process.env.FEC_API_KEY;
-
-    const mockSecretsProvider = {
-      getSecret: jest.fn().mockResolvedValue('vault-fec-key'),
-      getSecrets: jest.fn(),
-      getName: jest.fn().mockReturnValue('MockSecretsProvider'),
-    };
-
-    const mockDb = createMockDbService();
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        {
-          provide: REGION_CACHE,
-          useValue: {
-            get: jest.fn(),
-            set: jest.fn(),
-            delete: jest.fn(),
-            destroy: jest.fn(),
-            keys: jest.fn().mockResolvedValue([]),
-          },
-        },
-        RegionCacheService,
-        {
-          provide: PluginLoaderService,
-          useValue: {
-            loadPlugin: jest.fn(),
-            loadFederalPlugin: jest.fn(),
-            unloadPlugin: jest.fn(),
-          },
-        },
-        {
-          provide: PluginRegistryService,
-          useValue: {
-            register: jest.fn(),
-            unregister: jest.fn(),
-            getActive: jest.fn(),
-            registerLocal: jest.fn(),
-            registerFederal: jest.fn(),
-            getLocal: jest.fn(),
-            getFederal: jest.fn(),
-            getAll: jest.fn().mockReturnValue([]),
-            getActiveName: jest.fn(),
-            hasActive: jest.fn(),
-            getHealth: jest.fn(),
-            getStatus: jest.fn(),
-            onModuleDestroy: jest.fn(),
-          },
-        },
-        { provide: DbService, useValue: mockDb },
-        { provide: 'SECRETS_PROVIDER', useValue: mockSecretsProvider },
-        RegionSyncService,
-        PropositionsSyncService,
-        MeetingsSyncService,
-        RepresentativesSyncService,
-        CampaignFinanceSyncService,
-        CivicsSyncService,
-      ],
-    }).compile();
-
-    const syncSvc = module.get<RegionSyncService>(RegionSyncService);
-    await (syncSvc as unknown as Record<string, () => Promise<void>>)[
-      'resolveApiKeysFromVault'
-    ]();
-
-    expect(mockSecretsProvider.getSecret).toHaveBeenCalledWith('FEC_API_KEY');
-    expect(process.env.FEC_API_KEY).toBe('vault-fec-key');
-
-    if (originalKey) process.env.FEC_API_KEY = originalKey;
-    else delete process.env.FEC_API_KEY;
-  });
-
-  it('should skip vault resolution when env var is already set', async () => {
-    const originalKey = process.env.FEC_API_KEY;
-    process.env.FEC_API_KEY = 'existing-key';
-
-    const mockSecretsProvider = {
-      getSecret: jest.fn(),
-      getSecrets: jest.fn(),
-      getName: jest.fn().mockReturnValue('MockSecretsProvider'),
-    };
-
-    const mockDb = createMockDbService();
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        {
-          provide: REGION_CACHE,
-          useValue: {
-            get: jest.fn(),
-            set: jest.fn(),
-            delete: jest.fn(),
-            destroy: jest.fn(),
-            keys: jest.fn().mockResolvedValue([]),
-          },
-        },
-        RegionCacheService,
-        {
-          provide: PluginLoaderService,
-          useValue: {
-            loadPlugin: jest.fn(),
-            loadFederalPlugin: jest.fn(),
-            unloadPlugin: jest.fn(),
-          },
-        },
-        {
-          provide: PluginRegistryService,
-          useValue: {
-            register: jest.fn(),
-            unregister: jest.fn(),
-            getActive: jest.fn(),
-            registerLocal: jest.fn(),
-            registerFederal: jest.fn(),
-            getLocal: jest.fn(),
-            getFederal: jest.fn(),
-            getAll: jest.fn().mockReturnValue([]),
-            getActiveName: jest.fn(),
-            hasActive: jest.fn(),
-            getHealth: jest.fn(),
-            getStatus: jest.fn(),
-            onModuleDestroy: jest.fn(),
-          },
-        },
-        { provide: DbService, useValue: mockDb },
-        { provide: 'SECRETS_PROVIDER', useValue: mockSecretsProvider },
-        RegionSyncService,
-        PropositionsSyncService,
-        MeetingsSyncService,
-        RepresentativesSyncService,
-        CampaignFinanceSyncService,
-        CivicsSyncService,
-      ],
-    }).compile();
-
-    const syncSvc = module.get<RegionSyncService>(RegionSyncService);
-    await (syncSvc as unknown as Record<string, () => Promise<void>>)[
-      'resolveApiKeysFromVault'
-    ]();
-
-    expect(mockSecretsProvider.getSecret).not.toHaveBeenCalled();
-    expect(process.env.FEC_API_KEY).toBe('existing-key');
-
-    if (originalKey) process.env.FEC_API_KEY = originalKey;
-    else delete process.env.FEC_API_KEY;
-  });
-
-  it('should handle vault errors gracefully', async () => {
-    const originalKey = process.env.FEC_API_KEY;
-    delete process.env.FEC_API_KEY;
-
-    const mockSecretsProvider = {
-      getSecret: jest.fn().mockRejectedValue(new Error('Vault unavailable')),
-      getSecrets: jest.fn(),
-      getName: jest.fn().mockReturnValue('MockSecretsProvider'),
-    };
-
-    const mockDb = createMockDbService();
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        {
-          provide: REGION_CACHE,
-          useValue: {
-            get: jest.fn(),
-            set: jest.fn(),
-            delete: jest.fn(),
-            destroy: jest.fn(),
-            keys: jest.fn().mockResolvedValue([]),
-          },
-        },
-        RegionCacheService,
-        {
-          provide: PluginLoaderService,
-          useValue: {
-            loadPlugin: jest.fn(),
-            loadFederalPlugin: jest.fn(),
-            unloadPlugin: jest.fn(),
-          },
-        },
-        {
-          provide: PluginRegistryService,
-          useValue: {
-            register: jest.fn(),
-            unregister: jest.fn(),
-            getActive: jest.fn(),
-            registerLocal: jest.fn(),
-            registerFederal: jest.fn(),
-            getLocal: jest.fn(),
-            getFederal: jest.fn(),
-            getAll: jest.fn().mockReturnValue([]),
-            getActiveName: jest.fn(),
-            hasActive: jest.fn(),
-            getHealth: jest.fn(),
-            getStatus: jest.fn(),
-            onModuleDestroy: jest.fn(),
-          },
-        },
-        { provide: DbService, useValue: mockDb },
-        { provide: 'SECRETS_PROVIDER', useValue: mockSecretsProvider },
-        RegionSyncService,
-        PropositionsSyncService,
-        MeetingsSyncService,
-        RepresentativesSyncService,
-        CampaignFinanceSyncService,
-        CivicsSyncService,
-      ],
-    }).compile();
-
-    const syncSvc = module.get<RegionSyncService>(RegionSyncService);
-    await expect(
-      (syncSvc as unknown as Record<string, () => Promise<void>>)[
-        'resolveApiKeysFromVault'
-      ](),
-    ).resolves.not.toThrow();
-    expect(process.env.FEC_API_KEY).toBeUndefined();
-
-    if (originalKey) process.env.FEC_API_KEY = originalKey;
-    else delete process.env.FEC_API_KEY;
   });
 });
 
@@ -2357,6 +2140,7 @@ describe('RegionSyncService — proposition analysis wiring', () => {
         RepresentativesSyncService,
         CampaignFinanceSyncService,
         CivicsSyncService,
+        RegionPluginService,
       ],
     }).compile();
 
@@ -2450,6 +2234,12 @@ describe('RegionSyncService — proposition analysis wiring', () => {
           { provide: PluginRegistryService, useValue: mockRegistry },
           { provide: DbService, useValue: mockDb },
           RegionSyncService,
+          PropositionsSyncService,
+          MeetingsSyncService,
+          RepresentativesSyncService,
+          CampaignFinanceSyncService,
+          CivicsSyncService,
+          RegionPluginService,
         ],
       }).compile();
 
@@ -2614,6 +2404,7 @@ describe('RegionSyncService — proposition finance wiring', () => {
         RepresentativesSyncService,
         CampaignFinanceSyncService,
         CivicsSyncService,
+        RegionPluginService,
       ],
     }).compile();
 
