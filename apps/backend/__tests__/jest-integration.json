@@ -7,6 +7,9 @@
     "^.+\\.ts$": "ts-jest"
   },
   "transformIgnorePatterns": ["/node_modules/", "/dist/"],
+  "moduleNameMapper": {
+    "^src/(.*)$": "<rootDir>/src/$1"
+  },
   "globalSetup": "<rootDir>/__tests__/integration/setup.ts",
   "globalTeardown": "<rootDir>/__tests__/integration/teardown.ts",
   "testTimeout": 60000,
