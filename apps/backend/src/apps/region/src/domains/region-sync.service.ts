@@ -42,6 +42,7 @@ import {
 } from '@opuspopuli/prompt-client';
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { BioGeneratorService } from './bio-generator.service';
+import { PropositionsSyncService } from './propositions-sync.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
@@ -68,7 +69,6 @@ import {
   repSyncTracker,
   meetingSyncTracker,
   minutesSyncTracker,
-  propositionSyncTracker,
   civicsSyncTracker,
   campaignFinanceSyncTracker,
   type SyncPhaseTracker,
@@ -364,6 +364,12 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @Inject('LLM_PROVIDER')
     private readonly llm?: ILLMProvider,
+    // Bounded-context services (#828). Optional so existing test modules
+    // that build `RegionSyncService` standalone don't have to register
+    // every extracted service — they can stub the small public surface
+    // they actually exercise.
+    @Optional()
+    private readonly propositionsSyncService?: PropositionsSyncService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -1036,189 +1042,38 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
 
   // ─── Per-type sync methods ────────────────────────────────────────────────────
 
+  /**
+   * Delegates to {@link PropositionsSyncService} (#828 Step 1). The
+   * orchestrator owns stage-pattern construction (because the helpers
+   * still live here pending the shared-helpers extraction) and passes
+   * the patterns + the `upsertByExternalId` callback so the extracted
+   * service stays free of the orchestrator's full surface.
+   */
   private async syncPropositions(
     provider: DataFetcher = this.regionService,
     pipelineJobId?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
+    if (!this.propositionsSyncService) {
+      // Defensive — happens only when a unit-test module instantiates
+      // RegionSyncService standalone without registering the bounded
+      // services. Returning an empty result mirrors the previous
+      // behavior when propositionAnalysis was absent.
+      return { processed: 0, created: 0, updated: 0 };
+    }
     const regionId = provider.getName?.() ?? 'unknown';
-
-    // ─── Phase 1/3 — discover ──────────────────────────────────────
-    const discoverTracker = propositionSyncTracker(this.logger, 'discover', 1, {
-      region: regionId,
-    });
-    const propositions = await provider.fetchPropositions(pipelineJobId);
-    discoverTracker.item({
-      name: 'propositions provider',
-      externalId: null,
-      outcomeLabel: `${propositions.length} proposition(s) discovered`,
-      outcome: 'updated',
-    });
-    discoverTracker.complete();
-
     const stagePatterns = await this.buildStagePatterns(regionId);
-
-    // ─── Phase 2/3 — extract_and_upsert ────────────────────────────
-    // Pre-fetch existing externalIds so the per-item line can report
-    // accurate created-vs-updated outcomes (and the phase-complete
-    // counter matches reality). Without this, every row would log as
-    // "updated" even though many are new. Costs one extra findMany
-    // per sync — acceptable tradeoff for accurate observability.
-    // Skip the pre-fetch entirely when there's nothing to look up.
-    const existingPropIds = new Set<string>(
-      propositions.length === 0
-        ? []
-        : (
-            await this.db.proposition.findMany({
-              where: {
-                externalId: { in: propositions.map((p) => p.externalId) },
-              },
-              select: { externalId: true },
-            })
-          ).map((p: ExternalIdRecord) => p.externalId),
+    return this.propositionsSyncService.sync(
+      provider,
+      pipelineJobId,
+      stagePatterns,
+      this.upsertByExternalId.bind(this),
     );
-    const extractTracker = propositionSyncTracker(
-      this.logger,
-      'extract_and_upsert',
-      propositions.length,
-      { region: regionId },
-    );
-    const result = await this.upsertByExternalId(
-      propositions,
-      (ids) =>
-        this.db.proposition.findMany({
-          where: { externalId: { in: ids } },
-          select: { externalId: true },
-        }),
-      (props) =>
-        props.map((prop) => {
-          const lifecycleStageId = this.resolveStageFromStatus(
-            prop.status,
-            stagePatterns,
-          );
-          const isNew = !existingPropIds.has(prop.externalId);
-          const verb = isNew ? 'created' : 'updated';
-          const stageDesc = lifecycleStageId
-            ? `stage=${lifecycleStageId}`
-            : 'stage=unresolved';
-          extractTracker.item({
-            name: prop.externalId,
-            externalId: prop.externalId,
-            outcomeLabel: `${verb} (${stageDesc})`,
-            outcome: verb,
-          });
-          return this.db.proposition.upsert({
-            where: { externalId: prop.externalId },
-            update: {
-              title: prop.title,
-              summary: prop.summary,
-              fullText: prop.fullText,
-              status: prop.status,
-              electionDate: prop.electionDate,
-              sourceUrl: prop.sourceUrl,
-              lifecycleStageId,
-            },
-            create: {
-              externalId: prop.externalId,
-              title: prop.title,
-              summary: prop.summary,
-              fullText: prop.fullText,
-              status: prop.status,
-              electionDate: prop.electionDate,
-              sourceUrl: prop.sourceUrl,
-              lifecycleStageId,
-            },
-          });
-        }),
-      'propositions:',
-    );
-    extractTracker.complete();
-
-    if (stagePatterns.length > 0) {
-      await this.backfillPropositionStageIds(stagePatterns);
-    }
-
-    // ─── Phase 3/3 — analysis ──────────────────────────────────────
-    const analysisTracker = propositionSyncTracker(
-      this.logger,
-      'analysis',
-      this.propositionAnalysis ? 1 : 0,
-      { region: regionId },
-    );
-    if (this.propositionAnalysis) {
-      try {
-        await this.propositionAnalysis.generateMissing();
-        analysisTracker.item({
-          name: 'propositionAnalysis.generateMissing',
-          externalId: null,
-          outcomeLabel: 'analysis pass complete',
-          outcome: 'updated',
-        });
-      } catch (error) {
-        analysisTracker.item({
-          name: 'propositionAnalysis.generateMissing',
-          externalId: null,
-          outcomeLabel: `failed: ${(error as Error).message}`,
-          outcome: 'error',
-        });
-        this.logger.warn(
-          `Proposition analysis post-sync pass failed: ${(error as Error).message}`,
-        );
-      }
-    }
-    analysisTracker.complete();
-
-    return result;
   }
 
-  /**
-   * Resolve `lifecycleStageId` for propositions that were ingested before
-   * civics patterns were available, or whose status matched no pattern at
-   * the time of upsert. Mirrors `backfillBillStageIds`. Idempotent.
-   *
-   * Unlike the bill equivalent, this is NOT region-scoped because
-   * Proposition has no `regionId` column today. Safe for single-region
-   * deployments; will need a Proposition.regionId migration before a
-   * second region is added. Tracked in opuspopuli#731.
-   */
-  private async backfillPropositionStageIds(
-    stagePatterns: StagePattern[],
-  ): Promise<void> {
-    const unmatched = await this.db.proposition.findMany({
-      where: { lifecycleStageId: null, deletedAt: null },
-      select: { id: true, status: true },
-    });
-    if (unmatched.length === 0) return;
-
-    const byStage = new Map<string, string[]>();
-    for (const prop of unmatched) {
-      const stageId = this.resolveStageFromStatus(prop.status, stagePatterns);
-      if (!stageId) continue;
-      if (!byStage.has(stageId)) byStage.set(stageId, []);
-      byStage.get(stageId)!.push(prop.id);
-    }
-
-    let filled = 0;
-    for (const [stageId, ids] of byStage) {
-      await this.db.proposition.updateMany({
-        where: { id: { in: ids } },
-        data: { lifecycleStageId: stageId },
-      });
-      filled += ids.length;
-    }
-    if (filled > 0) {
-      this.logger.log(
-        `Propositions: backfilled lifecycleStageId for ${filled} of ${unmatched.length} proposition(s)`,
-      );
-    }
-  }
-
+  /** Delegates to {@link PropositionsSyncService} (#828 Step 1). */
   async regeneratePropositionAnalysis(id: string): Promise<boolean> {
-    if (!this.propositionAnalysis) return false;
-    const result = await this.propositionAnalysis.generate(id, true);
-    if (result) {
-      await this.cacheService.invalidateCache('propositions:');
-    }
-    return result;
+    if (!this.propositionsSyncService) return false;
+    return this.propositionsSyncService.regenerate(id);
   }
 
   private async syncMeetings(

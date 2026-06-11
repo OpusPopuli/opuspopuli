@@ -30,6 +30,7 @@ import { PromptClientModule } from '@opuspopuli/prompt-client';
 import { RegionDomainService } from './region.service';
 import { RegionCacheService } from './region-cache.service';
 import { RegionSyncService } from './region-sync.service';
+import { PropositionsSyncService } from './propositions-sync.service';
 import { RegionQueryService } from './region-query.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
@@ -182,6 +183,7 @@ const promptClientAsyncConfig = {
   providers: [
     RegionCacheService,
     RegionSyncService,
+    PropositionsSyncService,
     RegionQueryService,
     RegionDomainService,
     RegionResolver,

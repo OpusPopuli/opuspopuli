@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { RegionSyncService } from './region-sync.service';
+import { PropositionsSyncService } from './propositions-sync.service';
 import { RegionCacheService } from './region-cache.service';
 import { REGION_CACHE } from './region.tokens';
 import { PropositionAnalysisService } from './proposition-analysis.service';
@@ -215,6 +216,7 @@ describe('RegionSyncService', () => {
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: DbService, useValue: mockDb },
         RegionSyncService,
+        PropositionsSyncService,
       ],
     }).compile();
 
@@ -1524,6 +1526,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: DbService, useValue: mockDb },
         RegionSyncService,
+        PropositionsSyncService,
       ],
     }).compile();
 
@@ -1609,6 +1612,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: DbService, useValue: mockDb },
         RegionSyncService,
+        PropositionsSyncService,
       ],
     }).compile();
 
@@ -1766,6 +1770,7 @@ describe('RegionSyncService — campaign finance sync', () => {
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: DbService, useValue: mockDb },
         RegionSyncService,
+        PropositionsSyncService,
       ],
     }).compile();
 
@@ -1944,6 +1949,7 @@ describe('RegionSyncService — cache invalidation and batch transactions', () =
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: DbService, useValue: mockDb },
         RegionSyncService,
+        PropositionsSyncService,
       ],
     }).compile();
 
@@ -2065,6 +2071,7 @@ describe('RegionSyncService — Vault API key resolution', () => {
         { provide: DbService, useValue: mockDb },
         { provide: 'SECRETS_PROVIDER', useValue: mockSecretsProvider },
         RegionSyncService,
+        PropositionsSyncService,
       ],
     }).compile();
 
@@ -2133,6 +2140,7 @@ describe('RegionSyncService — Vault API key resolution', () => {
         { provide: DbService, useValue: mockDb },
         { provide: 'SECRETS_PROVIDER', useValue: mockSecretsProvider },
         RegionSyncService,
+        PropositionsSyncService,
       ],
     }).compile();
 
@@ -2201,6 +2209,7 @@ describe('RegionSyncService — Vault API key resolution', () => {
         { provide: DbService, useValue: mockDb },
         { provide: 'SECRETS_PROVIDER', useValue: mockSecretsProvider },
         RegionSyncService,
+        PropositionsSyncService,
       ],
     }).compile();
 
@@ -2307,6 +2316,7 @@ describe('RegionSyncService — proposition analysis wiring', () => {
         { provide: DbService, useValue: mockDb },
         { provide: PropositionAnalysisService, useValue: analyzer },
         RegionSyncService,
+        PropositionsSyncService,
       ],
     }).compile();
 
@@ -2559,6 +2569,7 @@ describe('RegionSyncService — proposition finance wiring', () => {
         { provide: DbService, useValue: mockDb },
         { provide: PropositionFinanceLinkerService, useValue: linker },
         RegionSyncService,
+        PropositionsSyncService,
       ],
     }).compile();
 
