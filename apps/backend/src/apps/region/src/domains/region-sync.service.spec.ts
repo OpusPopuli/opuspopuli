@@ -758,10 +758,19 @@ describe('RegionSyncService', () => {
     });
   });
 
-  describe('tryStatusOnlyRecheck — status-only re-check gate (#689)', () => {
+  describe('tryStatusOnlyRecheck — status-only re-check (#819 / #689)', () => {
     // Sample real-leginfo-shaped HTML; the parser path is covered by the
     // extractBillStatusFields tests above. These tests focus on the gate
-    // logic: when to read, when to fetch, when to clear the flag.
+    // logic: when to fetch, when to skip the LLM, when forceStatusRecheck
+    // bypasses, when to clear the flag.
+    //
+    // Post-#819: the cheap parse fires for every bill with a prior row,
+    // not just journal-flagged ones (`needsStatusRecheck=true`). The flag
+    // is no longer load-bearing for skip eligibility; it remains as
+    // documentation that the journal linker cited the bill. The
+    // `forceStatusRecheck` parameter's meaning flipped from "force the
+    // cheap parse to fire" to "bypass the cheap parse, force LLM
+    // re-extraction" — see the method docstring for context.
     const matchingHtml = `
       <span id="lastAction" class="statusLabel">10/09/25</span>
       <table><tbody>
@@ -782,7 +791,7 @@ describe('RegionSyncService', () => {
             needsStatusRecheck: boolean;
           }
         | undefined,
-    ) => Promise<'unchanged' | 'no-recheck-needed' | 'fall-through'>;
+    ) => Promise<'unchanged' | 'fall-through'>;
     const callRecheck = (svc: RegionSyncService) =>
       (
         svc as unknown as { tryStatusOnlyRecheck: Recheck }
@@ -806,6 +815,7 @@ describe('RegionSyncService', () => {
     });
 
     let fetchSpy: jest.SpyInstance;
+    let updateMock: jest.Mock;
 
     beforeEach(() => {
       fetchSpy = jest
@@ -816,11 +826,17 @@ describe('RegionSyncService', () => {
           'fetchUrlText',
         )
         .mockResolvedValue(matchingHtml);
+      // The 'unchanged' path clears the flag; spec'd by default to avoid
+      // touching the real `db` instance from the surrounding suite.
+      updateMock = jest.fn().mockResolvedValue({});
+      (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+        bill: { update: updateMock },
+      };
     });
 
     afterEach(() => fetchSpy.mockRestore());
 
-    it('returns "fall-through" when bill is not in the DB map', async () => {
+    it('returns "fall-through" when bill is not in the DB map (brand-new bill, full extract)', async () => {
       const recheck = callRecheck(service);
       const result = await recheck(
         'https://x/billStatusClient.xhtml?bill_id=AB1',
@@ -831,54 +847,105 @@ describe('RegionSyncService', () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it('returns "no-recheck-needed" when flag is false and force is false (no fetch)', async () => {
+    // ─── New: the unflagged-path coverage that closes the silent-drift gap ──
+
+    it('fires for an unflagged bill (#819) — needsStatusRecheck=false + unchanged page → "unchanged" (no LLM)', async () => {
+      // The core gap-closing case. Pre-#819 this returned "no-recheck-needed"
+      // and the bill fell through to Mechanism B (sourcePublishedAt check),
+      // which silently missed status-only changes that didn't republish
+      // the bill text. Now the cheap parse runs for every bill with a
+      // prior row regardless of the flag.
       const recheck = callRecheck(service);
-      const result = await recheck('https://x/x.xhtml', false, mkExisting());
-      expect(result).toBe('no-recheck-needed');
+      const result = await recheck(
+        'https://x/x.xhtml',
+        false,
+        mkExisting({ needsStatusRecheck: false }),
+      );
+      expect(result).toBe('unchanged');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      // The clear-the-flag write still fires even on an already-false flag
+      // (idempotent; documents that the bill was checked this sync).
+      expect(updateMock).toHaveBeenCalledWith({
+        where: { id: 'bill-uuid' },
+        data: { needsStatusRecheck: false },
+      });
+    });
+
+    it('fires for an unflagged bill (#819) — needsStatusRecheck=false + changed lastActionDate → "fall-through" (LLM)', async () => {
+      const recheck = callRecheck(service);
+      const result = await recheck(
+        'https://x/x.xhtml',
+        false,
+        mkExisting({
+          needsStatusRecheck: false,
+          lastActionDate: new Date(Date.UTC(2024, 0, 1)),
+        }),
+      );
+      expect(result).toBe('fall-through');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires for an unflagged bill (#819) — needsStatusRecheck=false + changed lastAction text → "fall-through" (LLM)', async () => {
+      const recheck = callRecheck(service);
+      const result = await recheck(
+        'https://x/x.xhtml',
+        false,
+        mkExisting({
+          needsStatusRecheck: false,
+          lastAction: 'Some different action text',
+        }),
+      );
+      expect(result).toBe('fall-through');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    // ─── forceStatusRecheck semantics — flipped vs pre-#819 ─────────────────
+
+    it('forceStatusRecheck=true bypasses the cheap parse (does NOT fetch)', async () => {
+      // Operator override — "I don't trust DB state, force the LLM."
+      // Pre-#819 this forced the cheap parse to fire; post-#819 it skips
+      // the cheap parse entirely so the caller goes straight to the full
+      // extract path.
+      const recheck = callRecheck(service);
+      const result = await recheck('https://x/x.xhtml', true, mkExisting());
+      expect(result).toBe('fall-through');
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it('fetches when forceStatusRecheck=true even if the flag is false', async () => {
-      const recheck = callRecheck(service);
-      await recheck('https://x/x.xhtml', true, mkExisting());
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it('fetches when the flag is true even if force is false', async () => {
-      const recheck = callRecheck(service);
-      await recheck(
-        'https://x/x.xhtml',
-        false,
-        mkExisting({ needsStatusRecheck: true }),
-      );
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it('returns "fall-through" when fetch throws', async () => {
-      fetchSpy.mockRejectedValueOnce(new Error('503'));
-      const recheck = callRecheck(service);
-      const result = await recheck('https://x/x.xhtml', true, mkExisting());
-      expect(result).toBe('fall-through');
-    });
-
-    it('returns "fall-through" when the regex cannot parse the page', async () => {
-      fetchSpy.mockResolvedValueOnce(
-        '<html><body>no useful markup</body></html>',
-      );
-      const recheck = callRecheck(service);
-      const result = await recheck('https://x/x.xhtml', true, mkExisting());
-      expect(result).toBe('fall-through');
-    });
-
-    it('returns "unchanged" and clears the flag when page matches stored values', async () => {
-      const updateMock = jest.fn().mockResolvedValue({});
-      (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
-        bill: { update: updateMock },
-      };
+    it('forceStatusRecheck=true bypasses even when needsStatusRecheck=true', async () => {
       const recheck = callRecheck(service);
       const result = await recheck(
         'https://x/x.xhtml',
         true,
+        mkExisting({ needsStatusRecheck: true }),
+      );
+      expect(result).toBe('fall-through');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    // ─── Existing-coverage retained ────────────────────────────────────────
+
+    it('returns "fall-through" when fetch throws (defensive — defer to LLM)', async () => {
+      fetchSpy.mockRejectedValueOnce(new Error('503'));
+      const recheck = callRecheck(service);
+      const result = await recheck('https://x/x.xhtml', false, mkExisting());
+      expect(result).toBe('fall-through');
+    });
+
+    it('returns "fall-through" when the regex cannot parse the page (markup drift)', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        '<html><body>no useful markup</body></html>',
+      );
+      const recheck = callRecheck(service);
+      const result = await recheck('https://x/x.xhtml', false, mkExisting());
+      expect(result).toBe('fall-through');
+    });
+
+    it('clears the needsStatusRecheck flag when the page matches and the flag was true', async () => {
+      const recheck = callRecheck(service);
+      const result = await recheck(
+        'https://x/x.xhtml',
+        false,
         mkExisting({ needsStatusRecheck: true }),
       );
       expect(result).toBe('unchanged');
@@ -892,7 +959,7 @@ describe('RegionSyncService', () => {
       const recheck = callRecheck(service);
       const result = await recheck(
         'https://x/x.xhtml',
-        true,
+        false,
         mkExisting({ lastAction: 'Different action' }),
       );
       expect(result).toBe('fall-through');
@@ -902,7 +969,7 @@ describe('RegionSyncService', () => {
       const recheck = callRecheck(service);
       const result = await recheck(
         'https://x/x.xhtml',
-        true,
+        false,
         mkExisting({ lastActionDate: new Date(Date.UTC(2024, 0, 1)) }),
       );
       expect(result).toBe('fall-through');
@@ -912,7 +979,7 @@ describe('RegionSyncService', () => {
       const recheck = callRecheck(service);
       const result = await recheck(
         'https://x/x.xhtml',
-        true,
+        false,
         mkExisting({ lastActionDate: null }),
       );
       expect(result).toBe('fall-through');
