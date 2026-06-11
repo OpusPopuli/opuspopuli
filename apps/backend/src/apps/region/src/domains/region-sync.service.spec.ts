@@ -6,6 +6,7 @@ import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
+import { CivicsSyncService } from './civics-sync.service';
 import { RegionCacheService } from './region-cache.service';
 import { REGION_CACHE } from './region.tokens';
 import { PropositionAnalysisService } from './proposition-analysis.service';
@@ -223,6 +224,7 @@ describe('RegionSyncService', () => {
         MeetingsSyncService,
         RepresentativesSyncService,
         CampaignFinanceSyncService,
+        CivicsSyncService,
       ],
     }).compile();
 
@@ -1536,6 +1538,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
         MeetingsSyncService,
         RepresentativesSyncService,
         CampaignFinanceSyncService,
+        CivicsSyncService,
       ],
     }).compile();
 
@@ -1625,6 +1628,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
         MeetingsSyncService,
         RepresentativesSyncService,
         CampaignFinanceSyncService,
+        CivicsSyncService,
       ],
     }).compile();
 
@@ -1786,6 +1790,7 @@ describe('RegionSyncService — campaign finance sync', () => {
         MeetingsSyncService,
         RepresentativesSyncService,
         CampaignFinanceSyncService,
+        CivicsSyncService,
       ],
     }).compile();
 
@@ -1968,6 +1973,7 @@ describe('RegionSyncService — cache invalidation and batch transactions', () =
         MeetingsSyncService,
         RepresentativesSyncService,
         CampaignFinanceSyncService,
+        CivicsSyncService,
       ],
     }).compile();
 
@@ -2093,6 +2099,7 @@ describe('RegionSyncService — Vault API key resolution', () => {
         MeetingsSyncService,
         RepresentativesSyncService,
         CampaignFinanceSyncService,
+        CivicsSyncService,
       ],
     }).compile();
 
@@ -2165,6 +2172,7 @@ describe('RegionSyncService — Vault API key resolution', () => {
         MeetingsSyncService,
         RepresentativesSyncService,
         CampaignFinanceSyncService,
+        CivicsSyncService,
       ],
     }).compile();
 
@@ -2237,6 +2245,7 @@ describe('RegionSyncService — Vault API key resolution', () => {
         MeetingsSyncService,
         RepresentativesSyncService,
         CampaignFinanceSyncService,
+        CivicsSyncService,
       ],
     }).compile();
 
@@ -2347,6 +2356,7 @@ describe('RegionSyncService — proposition analysis wiring', () => {
         MeetingsSyncService,
         RepresentativesSyncService,
         CampaignFinanceSyncService,
+        CivicsSyncService,
       ],
     }).compile();
 
@@ -2603,6 +2613,7 @@ describe('RegionSyncService — proposition finance wiring', () => {
         MeetingsSyncService,
         RepresentativesSyncService,
         CampaignFinanceSyncService,
+        CivicsSyncService,
       ],
     }).compile();
 

@@ -46,6 +46,7 @@ import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
+import { CivicsSyncService } from './civics-sync.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
@@ -65,7 +66,6 @@ import { RegionCacheService } from './region-cache.service';
 import { deriveDistrictFromExternalId } from './region.service';
 import {
   billSyncTracker,
-  civicsSyncTracker,
   type SyncPhaseTracker,
   type BillSyncPhase,
 } from './sync-phase-logger';
@@ -356,6 +356,8 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly representativesSyncService?: RepresentativesSyncService,
     @Optional()
     private readonly campaignFinanceSyncService?: CampaignFinanceSyncService,
+    @Optional()
+    private readonly civicsSyncService?: CivicsSyncService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -1111,112 +1113,24 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     return this.campaignFinanceSyncService.sync(provider, pipelineJobId);
   }
 
+  /** Delegates to {@link CivicsSyncService} (#828 Step 5). Shared HTTP /
+   *  HTML helpers (fetchUrlText, htmlToReadableText, crawlCivicsUrls)
+   *  are passed in as callbacks because bills sync also uses them; the
+   *  consolidation lands as a follow-up after #828 Step 7 (bills) lifts
+   *  them into a shared module. */
   private async syncCivics(plugin: DataFetcher): Promise<{
     processed: number;
     created: number;
     updated: number;
   }> {
-    if (!this.promptClient || !this.llm) {
-      this.logger.warn(
-        'Civics sync requires PromptClient and LLM provider; skipping',
-      );
+    if (!this.civicsSyncService) {
       return { processed: 0, created: 0, updated: 0 };
     }
-
-    if (!plugin?.getDataSources) {
-      this.logger.warn(
-        'Region plugin does not expose getDataSources(); skipping civics sync',
-      );
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    const dataSources = plugin.getDataSources(DataType.CIVICS);
-    if (dataSources.length === 0) {
-      this.logger.log('No civics data sources configured for this region');
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    const registeredHosts = new Set(
-      plugin.getDataSources().flatMap((s) => {
-        try {
-          return [new URL(s.url).hostname];
-        } catch {
-          return [];
-        }
-      }),
-    );
-
-    const regionId = plugin.getName?.() ?? 'unknown';
-    let processed = 0;
-    let created = 0;
-    let updated = 0;
-
-    // ─── Phase 1/2 — discover ──────────────────────────────────────
-    const discoverTracker = civicsSyncTracker(
-      this.logger,
-      'discover',
-      dataSources.length,
-      { region: regionId },
-    );
-    const allUrls: Array<{ url: string; ds: DataSourceConfig }> = [];
-    for (const ds of dataSources) {
-      const urls = await this.crawlCivicsUrls(ds, registeredHosts);
-      discoverTracker.item({
-        name: ds.url,
-        externalId: null,
-        outcomeLabel: `${urls.length} page(s) at depth ${ds.crawlDepth ?? 0}`,
-        outcome: 'updated',
-      });
-      for (const url of urls) allUrls.push({ url, ds });
-    }
-    discoverTracker.complete();
-
-    // ─── Phase 2/2 — extract_and_upsert ────────────────────────────
-    const extractTracker = civicsSyncTracker(
-      this.logger,
-      'extract_and_upsert',
-      allUrls.length,
-      { region: regionId },
-    );
-    for (const { url, ds } of allUrls) {
-      const result = await this.extractAndUpsertCivicsPage(regionId, url, ds);
-      if (result === 'created') {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'created',
-          outcome: 'created',
-        });
-        created++;
-        processed++;
-      } else if (result === 'updated') {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'updated',
-          outcome: 'updated',
-        });
-        updated++;
-        processed++;
-      } else if (result === 'failed') {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'failed',
-          outcome: 'error',
-        });
-      } else {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'skipped',
-          outcome: 'skipped',
-        });
-      }
-    }
-    extractTracker.complete();
-
-    return { processed, created, updated };
+    return this.civicsSyncService.sync(plugin, {
+      fetchUrlText: this.fetchUrlText.bind(this),
+      htmlToReadableText: this.htmlToReadableText.bind(this),
+      crawlCivicsUrls: this.crawlCivicsUrls.bind(this),
+    });
   }
 
   // ─── Bills sync ───────────────────────────────────────────────────────────────
@@ -2794,175 +2708,6 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     return out;
   }
 
-  private async extractAndUpsertCivicsPage(
-    regionId: string,
-    sourceUrl: string,
-    ds: DataSourceConfig,
-  ): Promise<'created' | 'updated' | 'failed'> {
-    if (!this.promptClient || !this.llm) return 'failed';
-    try {
-      const html = await this.fetchUrlText(sourceUrl);
-      const content = this.htmlToReadableText(html);
-      const { promptText, promptHash, promptVersion } =
-        await this.promptClient.getCivicsExtractionPrompt({
-          regionId,
-          sourceUrl,
-          contentGoal: ds.contentGoal,
-          category: ds.category,
-          hints: ds.hints,
-          html: content,
-        });
-
-      const result = await this.llm.generate(promptText, {
-        maxTokens: ds.llmMaxTokens ?? 32000,
-        temperature: 0.1,
-        requestTimeoutMs: ds.llmRequestTimeoutMs,
-      });
-
-      const candidate = extractJsonObjectSlice(result.text);
-      if (!candidate) {
-        this.logger.warn(
-          `Civics extraction: no JSON object for ${sourceUrl} (${result.text.length} chars)`,
-        );
-        return 'failed';
-      }
-
-      let block: Partial<{
-        chambers: unknown;
-        measureTypes: unknown;
-        lifecycleStages: unknown;
-        sessionScheme: unknown;
-        glossary: unknown;
-      }>;
-      try {
-        block = JSON.parse(candidate) as typeof block;
-      } catch (e) {
-        this.logger.warn(
-          `Civics extraction: JSON.parse failed for ${sourceUrl}: ${(e as Error).message}`,
-        );
-        return 'failed';
-      }
-
-      const existing = await this.db.civicsBlock.findUnique({
-        where: { regionId_sourceUrl: { regionId, sourceUrl } },
-        select: { id: true },
-      });
-
-      const fields = {
-        chambers: this.toJsonField(block.chambers),
-        measureTypes: this.toJsonField(block.measureTypes),
-        lifecycleStages: this.toJsonField(block.lifecycleStages),
-        sessionScheme: this.toJsonField(block.sessionScheme),
-        glossary: this.toJsonField(block.glossary),
-      };
-
-      await this.db.civicsBlock.upsert({
-        where: { regionId_sourceUrl: { regionId, sourceUrl } },
-        create: {
-          regionId,
-          sourceUrl,
-          ...fields,
-          promptHash,
-          promptVersion,
-          extractedAt: new Date(),
-        },
-        update: {
-          ...fields,
-          promptHash,
-          promptVersion,
-          extractedAt: new Date(),
-        },
-      });
-
-      const glossaryUpserted = await this.upsertGlossaryEntries(
-        regionId,
-        sourceUrl,
-        block.glossary,
-        promptHash,
-        promptVersion,
-      );
-
-      const outcome = existing ? 'updated' : 'created';
-      this.logger.log(
-        `Civics extracted from ${sourceUrl} (${outcome}, ${glossaryUpserted} glossary terms)`,
-      );
-      return outcome;
-    } catch (e) {
-      this.logger.error(
-        `Civics extraction failed for ${sourceUrl}: ${(e as Error).message}`,
-      );
-      return 'failed';
-    }
-  }
-
-  private async upsertGlossaryEntries(
-    regionId: string,
-    sourceUrl: string,
-    glossary: unknown,
-    promptHash: string | undefined,
-    promptVersion: string | undefined,
-  ): Promise<number> {
-    if (!Array.isArray(glossary) || glossary.length === 0) return 0;
-    const valid = glossary.filter(
-      (
-        e,
-      ): e is { term: string; slug: string; definition: unknown } & Record<
-        string,
-        unknown
-      > =>
-        !!e &&
-        typeof e === 'object' &&
-        typeof (e as Record<string, unknown>).term === 'string' &&
-        typeof (e as Record<string, unknown>).slug === 'string' &&
-        !!(e as Record<string, unknown>).definition,
-    );
-    if (valid.length < glossary.length) {
-      this.logger.debug(
-        `Glossary upsert: dropped ${glossary.length - valid.length} malformed entries from ${sourceUrl}`,
-      );
-    }
-    const now = new Date();
-    await batchTransaction(
-      this.db,
-      valid.map((entry) =>
-        this.db.glossaryEntry.upsert({
-          where: { regionId_slug: { regionId, slug: entry.slug } },
-          create: {
-            regionId,
-            term: entry.term,
-            slug: entry.slug,
-            definition: entry.definition as Prisma.InputJsonValue,
-            longDefinition: this.toJsonField(entry.longDefinition),
-            relatedTerms: Array.isArray(entry.relatedTerms)
-              ? (entry.relatedTerms as string[]).filter(
-                  (t) => typeof t === 'string',
-                )
-              : [],
-            sourceUrl,
-            promptHash,
-            promptVersion,
-            extractedAt: now,
-          },
-          update: {
-            term: entry.term,
-            definition: entry.definition as Prisma.InputJsonValue,
-            longDefinition: this.toJsonField(entry.longDefinition),
-            relatedTerms: Array.isArray(entry.relatedTerms)
-              ? (entry.relatedTerms as string[]).filter(
-                  (t) => typeof t === 'string',
-                )
-              : [],
-            sourceUrl,
-            promptHash,
-            promptVersion,
-            extractedAt: now,
-          },
-        }),
-      ),
-    );
-    return valid.length;
-  }
-
   /**
    * Throttled + retried HTML fetch. Wraps `fetchTextWithRetry` from
    * `./resilient-fetch` so all per-bill / per-page fetches honor the
@@ -3000,13 +2745,5 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       .replace(/\s*\n\s*/g, '\n')
       .trim();
     return s;
-  }
-
-  private toJsonField(
-    value: unknown,
-  ): Prisma.InputJsonValue | typeof Prisma.DbNull {
-    return value === undefined || value === null
-      ? Prisma.DbNull
-      : (value as Prisma.InputJsonValue);
   }
 }

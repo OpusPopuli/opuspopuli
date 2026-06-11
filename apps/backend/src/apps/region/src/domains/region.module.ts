@@ -34,6 +34,7 @@ import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
+import { CivicsSyncService } from './civics-sync.service';
 import { RegionQueryService } from './region-query.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
@@ -190,6 +191,7 @@ const promptClientAsyncConfig = {
     MeetingsSyncService,
     RepresentativesSyncService,
     CampaignFinanceSyncService,
+    CivicsSyncService,
     RegionQueryService,
     RegionDomainService,
     RegionResolver,
