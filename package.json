@@ -77,7 +77,9 @@
       "next@>=16.0.0 <16.2.6": ">=16.2.6",
       "@opentelemetry/auto-instrumentations-node@<0.75.0": ">=0.75.0",
       "@opentelemetry/sdk-node@<0.217.0": ">=0.217.0",
-      "@opentelemetry/exporter-prometheus@<0.217.0": ">=0.217.0"
+      "@opentelemetry/exporter-prometheus@<0.217.0": ">=0.217.0",
+      "@grpc/grpc-js": ">=1.14.4",
+      "joi": ">=18.2.1"
     }
   }
 }
