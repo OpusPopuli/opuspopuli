@@ -2119,8 +2119,11 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     const billId = this.safeBillIdFromUrl(url);
     const billNumber = billNumberFromExternalId(billId);
 
-    // Status-only re-check path (#689): flagged-by-linker or forced by
-    // weekly backstop. Unchanged → skip cheaply; otherwise fall through.
+    // Status-only re-check path (#819, generalizing #689): fires for every
+    // bill with a prior DB row, not just journal-flagged ones. Unchanged →
+    // skip cheaply (no LLM, just an `updated_at` touch); otherwise fall
+    // through to the full extract path. `forceStatusRecheck=true` bypasses
+    // the cheap parse and forces LLM re-extraction.
     if (billId) {
       const recheck = await this.tryStatusOnlyRecheck(
         url,
@@ -2742,11 +2745,30 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Status-only re-check for bills flagged by the journal linker or forced
-   * by the weekly backstop (#689). Compares lastActionDate + lastAction
-   * text (both LLM-stored verbatim) against the raw page; status is
-   * skipped because the LLM normalizes it ("Inactive Bill - Chaptered" →
-   * "Chaptered") and a raw comparison would false-positive every time.
+   * Status-only re-check for every bill with a prior DB row (#819,
+   * generalizing #689). Fetches the status page, parses lastAction +
+   * lastActionDate cheaply (no LLM), and skips the full extract path
+   * when neither has moved. The LLM-normalized `status` field is
+   * intentionally NOT compared — the LLM rewrites the raw leginfo
+   * status ("Inactive Bill - Chaptered" → "Chaptered") so a raw-vs-
+   * normalized comparison would false-positive every time.
+   *
+   * Coverage: pre-#819 this only fired for bills flagged by the
+   * journal linker (`needsStatusRecheck=true`) or the weekly backstop.
+   * Unflagged bills fell to the text-page `sourcePublishedAt` skip
+   * (Mechanism B) — which silently missed status-only changes (e.g.
+   * committee amendments) that didn't re-publish the bill text.
+   * Removing the flag gate closes that silent-drift gap; the existing
+   * `needsStatusRecheck` flag is retained as documentation (journal
+   * linker still sets it; the clear-after-skip path still clears it)
+   * but is no longer load-bearing for skip eligibility.
+   *
+   * `forceStatusRecheck` semantics: when true, bypass the cheap parse
+   * entirely and fall through to full LLM extraction. This is the
+   * operator override for "I don't trust DB state, re-extract from
+   * scratch." Pre-#819 the same flag meant "force the cheap parse to
+   * fire" — a subtle weaker guarantee since the cheap parse could
+   * still skip the LLM. The new semantics match the parameter name.
    *
    * Takes `existing` as a parameter to avoid a per-bill `findUnique` —
    * callers pre-load via `loadBillSkipMetadata` at sync start.
@@ -2755,11 +2777,10 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     statusUrl: string,
     forceStatusRecheck: boolean,
     existing: BillSkipRecord | undefined,
-  ): Promise<'unchanged' | 'no-recheck-needed' | 'fall-through'> {
+  ): Promise<'unchanged' | 'fall-through'> {
     if (!existing) return 'fall-through'; // brand-new bill, full extraction
-    if (!forceStatusRecheck && !existing.needsStatusRecheck) {
-      return 'no-recheck-needed';
-    }
+    // Operator override — skip the cheap parse, force LLM re-extraction.
+    if (forceStatusRecheck) return 'fall-through';
 
     let html: string;
     try {
@@ -2786,7 +2807,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       return 'fall-through';
     }
 
-    // No material change. Clear the flag and skip.
+    // No material change. Clear the flag (idempotent on already-false) and skip.
     await this.db.bill.update({
       where: { id: existing.id },
       data: { needsStatusRecheck: false },
