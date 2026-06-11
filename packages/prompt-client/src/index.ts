@@ -42,6 +42,8 @@ export type {
   BillExtractionParams,
   BillAnalysisParams,
   BillRelevanceExplanationParams,
+  BillStatusSummaryParams,
+  LifecycleStageInput,
   PromptServiceResponse,
 } from "./types.js";
 export { PROMPT_CLIENT_CONFIG } from "./types.js";

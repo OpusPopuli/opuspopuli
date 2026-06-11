@@ -213,6 +213,85 @@ export interface BillRelevanceExplanationParams {
   userRegionLabel?: string;
 }
 
+/**
+ * One entry in the region's lifecycle-stage taxonomy supplied to the
+ * `bill-status-summary` prompt. Sourced from `civics_blocks.lifecycle_stages`
+ * — the LLM picks one `id` from the list (or returns `"unknown"`) and the
+ * caller writes that id verbatim to `bills.current_stage_id`. Per-region
+ * taxonomy is the source of truth so a new region doesn't have to conform
+ * to whatever the first region's stages happened to be (opuspopuli#823).
+ */
+export interface LifecycleStageInput {
+  /** Stage id — must match a value stored in civics_blocks.lifecycle_stages. */
+  id: string;
+  /** Plain-language stage name shown to the LLM (e.g. "In Committee"). */
+  name: string;
+  /** One-sentence description of when this stage applies. */
+  description: string;
+}
+
+/**
+ * Params for the merged `bill-status-summary` prompt — single call that
+ * returns (a) verbatim status + classified lifecycle stage + last-action +
+ * `changed` flag, (b) plain-English summary tagged with controlled-vocab
+ * topics/whoItAffects/fiscalImpact/stakeholderImpact, and (c) a
+ * `{ skip: true }` sentinel for non-bills. Replaces two prior calls
+ * (status portion of bill-extraction + bill-analysis) plus the
+ * deterministic `resolveStageFromStatus()` pattern matcher which only
+ * resolved 8% of CA bills. See OpusPopuli/opuspopuli#823.
+ *
+ * Variable shape MUST stay in lockstep with the prompt-service
+ * `billStatusSummary` descriptor in `src/prompts/prompts.service.ts`.
+ *
+ * Output shape (returned by the LLM as the rendered prompt instructs):
+ * ```
+ * {
+ *   status: {
+ *     raw: string;                         // verbatim from page
+ *     stage: string;                       // a stage.id from lifecycleStages or "unknown"
+ *     lastActionDate: string | null;       // YYYY-MM-DD
+ *     lastActionSnippet: string | null;
+ *     changed: boolean;
+ *   };
+ *   summary: {
+ *     plainEnglishSummary: string;
+ *     topics: string[];                    // controlled vocab
+ *     whoItAffects: string[];              // controlled vocab
+ *     fiscalImpact: { level: 'none'|'low'|'medium'|'high'; summary: string };
+ *     stakeholderImpact: string;
+ *   };
+ * } | { skip: true }
+ * ```
+ */
+export interface BillStatusSummaryParams {
+  /** Region identifier (e.g. "california"). */
+  regionId: string;
+  /** Bill display number (e.g. "AB 1", "SB 500"). */
+  billNumber: string;
+  /** Legislative session, e.g. "2025-2026". */
+  sessionYear: string;
+  /** Full official bill title. */
+  title: string;
+  /** Raw HTML of the bill detail page — status + body content for summarization. */
+  html: string;
+  /**
+   * Region-specific lifecycle stage taxonomy from civics_blocks.lifecycle_stages.
+   * The LLM picks one stage.id from this list (or "unknown"). MUST contain at
+   * least one entry — the call is meaningless without a taxonomy to classify into.
+   */
+  lifecycleStages: LifecycleStageInput[];
+  /**
+   * Prior known status verbatim (current bills.status). Drives the LLM's
+   * `status.changed` decision. Omit on first ingest.
+   */
+  priorStatus?: string;
+  /**
+   * Prior known stage id (current bills.current_stage_id). Lets the LLM
+   * detect stage transitions even when status text is unchanged.
+   */
+  priorStage?: string;
+}
+
 export const PROMPT_CLIENT_CONFIG = "PROMPT_CLIENT_CONFIG";
 
 export type { PromptServiceResponse };

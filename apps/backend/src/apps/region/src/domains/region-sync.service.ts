@@ -36,7 +36,10 @@ import {
   type DeclarativeRegionConfig,
   type Bill,
 } from '@opuspopuli/common';
-import { PromptClientService } from '@opuspopuli/prompt-client';
+import {
+  PromptClientService,
+  type LifecycleStageInput,
+} from '@opuspopuli/prompt-client';
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
@@ -79,6 +82,41 @@ import {
  * before the page content has been fetched / parsed. Returns null when
  * the pattern doesn't match — the per-item line falls back to "--".
  */
+/**
+ * Pull the plain-language reading out of a CivicText-shaped JSONB blob
+ * ({ verbatim, plainLanguage }). Empty string when the field is missing
+ * or malformed — callers decide whether to substitute a fallback. Used
+ * to build per-region taxonomy inputs for the bill-status-summary
+ * prompt (#823).
+ */
+/**
+ * Parse the merged status-summary `status.lastActionDate` (ISO YYYY-MM-DD
+ * or null) into the value to write back to `bills.lastActionDate`.
+ *
+ * Returns:
+ *   - a Date when the string parses cleanly
+ *   - null when the LLM explicitly returned null (intentional clear)
+ *   - undefined when the field was absent OR the string is unparseable —
+ *     callers spread this with `...(date !== undefined ? { lastActionDate: date } : {})`
+ *     so the existing column value is preserved instead of being clobbered
+ *     with null.
+ */
+function parseLastActionDate(
+  raw: string | null | undefined,
+): Date | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
+  const d = new Date(`${raw}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+function extractPlainLanguage(field: unknown): string {
+  if (!field || typeof field !== 'object') return '';
+  const plain = (field as Record<string, unknown>)['plainLanguage'];
+  return typeof plain === 'string' ? plain : '';
+}
+
 function billNumberFromExternalId(
   externalId: string | undefined,
 ): string | null {
@@ -205,6 +243,11 @@ type CommitteeRecord = {
  * `skip` sentinel short-circuits the rest. Stored verbatim in
  * `Bill.aiSummary` as JSONB. Consumers (ranking pipeline #743, briefing
  * UI #744) read via the typed GraphQL field added in #741.
+ *
+ * Post-#823 this is the inner shape of `summary` on the merged
+ * bill-status-summary response — preserved byte-for-byte so existing
+ * consumers (bill-relevance-explanation #745, briefing UI) keep working
+ * without coordinated changes.
  */
 interface BillAiSummaryShape {
   plainEnglishSummary?: string;
@@ -212,6 +255,29 @@ interface BillAiSummaryShape {
   whoItAffects?: string[];
   fiscalImpact?: { level?: string; summary?: string };
   stakeholderImpact?: string;
+  /** LLM sentinel: input was blank / garbled / not a bill. */
+  skip?: boolean;
+}
+
+/**
+ * Shape we expect from the merged bill-status-summary LLM response. The
+ * `summary` block is structurally identical to {@link BillAiSummaryShape}
+ * so the JSONB written to `bills.aiSummary` stays drop-in compatible with
+ * existing consumers. The `status` block carries the LLM-classified stage
+ * id (validated at runtime against the region's civics_blocks taxonomy)
+ * + verbatim status text + last-action date + a short verbatim snippet.
+ * See opuspopuli#823.
+ */
+interface BillStatusSummaryShape {
+  status?: {
+    raw?: string;
+    /** A stage id from the region's lifecycleStages, or "unknown". */
+    stage?: string;
+    /** ISO YYYY-MM-DD; null when unparseable. */
+    lastActionDate?: string | null;
+    lastActionSnippet?: string | null;
+  };
+  summary?: BillAiSummaryShape;
   /** LLM sentinel: input was blank / garbled / not a bill. */
   skip?: boolean;
 }
@@ -233,6 +299,7 @@ type BillEnrichmentCandidate = Prisma.BillGetPayload<{
     authorName: true;
     fiscalImpact: true;
     fullTextUrl: true;
+    currentStageId: true;
   };
 }>;
 
@@ -2062,9 +2129,20 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
 
     // ─── Phase 6/6 — summarize ─────────────────────────────────────
     // Enrichment is a second pass: extraction (above) is the prerequisite,
-    // but enrichment can be re-run independently when the bill-analysis
-    // prompt template version bumps (see #741). Bounded by maxBills.
-    await this.enrichBillSummaries(regionId, maxBills);
+    // but enrichment can be re-run independently when the bill-status-summary
+    // prompt template version bumps (see #823, #741). Bounded by maxBills.
+    //
+    // Post-#823: the merged call needs the region's lifecycle taxonomy so
+    // the LLM can classify the stage in-band (replacing the 92%-miss
+    // deterministic pattern matcher). Built here so we pay the civics-data
+    // read once per sync rather than per-bill.
+    const lifecycleStages = await this.buildLifecycleStageInputs(regionId);
+    await this.enrichBillSummaries(
+      regionId,
+      stagePatterns,
+      lifecycleStages,
+      maxBills,
+    );
 
     return { processed, created, updated, skipped: skippedTotal };
   }
@@ -2201,12 +2279,21 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Internal helper to load civics data for bill stage pattern compilation.
-   * Reads directly from DB without caching so sync always uses fresh data.
+   * Internal helper to load civics data for bill stage pattern compilation
+   * and (post-#823) for the merged bill-status-summary prompt's per-region
+   * taxonomy. Reads directly from DB without caching so sync always uses
+   * fresh data.
+   *
+   * `name` and `description` are extracted from `name.plainLanguage` and
+   * `shortDescription.plainLanguage` respectively — see the CivicText
+   * shape in region-query.service.ts. Both fall back to empty strings
+   * when the upstream civics extraction didn't populate them.
    */
   private async getCivicsDataForSync(regionId: string): Promise<{
     lifecycleStages: Array<{
       id: string;
+      name: string;
+      description: string;
       statusStringPatterns: string[];
     }>;
   } | null> {
@@ -2217,7 +2304,12 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     if (rows.length === 0) return null;
     const lifecycleStages = new Map<
       string,
-      { id: string; statusStringPatterns: string[] }
+      {
+        id: string;
+        name: string;
+        description: string;
+        statusStringPatterns: string[];
+      }
     >();
     for (const row of rows) {
       const rawL = row.lifecycleStages as Record<string, unknown>[] | null;
@@ -2227,6 +2319,8 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         if (!id || lifecycleStages.has(id)) continue;
         lifecycleStages.set(id, {
           id,
+          name: extractPlainLanguage(ls['name']),
+          description: extractPlainLanguage(ls['shortDescription']),
           statusStringPatterns: Array.isArray(ls['statusStringPatterns'])
             ? (ls['statusStringPatterns'] as string[])
             : [],
@@ -2235,6 +2329,31 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     }
     if (lifecycleStages.size === 0) return null;
     return { lifecycleStages: Array.from(lifecycleStages.values()) };
+  }
+
+  /**
+   * Build the per-region lifecycle taxonomy input the merged
+   * bill-status-summary prompt expects (opuspopuli#823). The LLM picks
+   * one `id` from this list (or returns `"unknown"`); the caller
+   * validates the returned id against this set before writing it to
+   * `bills.current_stage_id`.
+   *
+   * Returns `null` when the region has no civics_blocks taxonomy yet —
+   * callers should skip the merged enrichment path in that case (we'd
+   * have nothing to classify into). Civic data onboarding is a hard
+   * prerequisite of the new path; documenting that as a setup step
+   * beats silently regressing to a fixed enum.
+   */
+  private async buildLifecycleStageInputs(
+    regionId: string,
+  ): Promise<LifecycleStageInput[] | null> {
+    const civics = await this.getCivicsDataForSync(regionId);
+    if (!civics || civics.lifecycleStages.length === 0) return null;
+    return civics.lifecycleStages.map((s) => ({
+      id: s.id,
+      name: s.name || s.id,
+      description: s.description || `Stage ${s.id}.`,
+    }));
   }
 
   private resolveStageFromStatus(
@@ -2351,9 +2470,15 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Enrich un-summarized bills with structured AI summaries from the
-   * bill-analysis prompt-service endpoint. Runs as a second pass after
-   * `syncBills` so extraction stays decoupled from summarization — a new
-   * prompt-template version triggers re-enrichment without re-extracting.
+   * merged bill-status-summary prompt-service endpoint (#823). Runs as a
+   * second pass after `syncBills` so extraction stays decoupled from
+   * summarization — a new prompt-template version triggers re-enrichment
+   * without re-extracting.
+   *
+   * Per #823 the LLM call now also re-classifies the bill's lifecycle
+   * stage (status.stage), overwriting whatever the pattern matcher set.
+   * Stage coverage rises from 8% (pattern-match only) → ~95%+ (LLM with
+   * the region taxonomy in context).
    *
    * Idempotency: queries only bills where `ai_summary IS NULL`. Bills the
    * LLM marks `{ skip: true }` get that value stored (so they don't churn
@@ -2367,9 +2492,21 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
    */
   private async enrichBillSummaries(
     regionId: string,
+    stagePatterns: StagePattern[],
+    lifecycleStages: LifecycleStageInput[] | null,
     maxBills?: number,
   ): Promise<{ enriched: number; skipped: number; failed: number }> {
     if (!this.promptClient || !this.llm) {
+      return { enriched: 0, skipped: 0, failed: 0 };
+    }
+
+    // Civics-data taxonomy is a hard prerequisite for the merged call —
+    // the LLM has nothing to classify into without it. Onboarding a new
+    // region means seeding civics_blocks before bills enrichment.
+    if (!lifecycleStages || lifecycleStages.length === 0) {
+      this.logger.warn(
+        `Bill enrichment ${regionId}: skipping summarize phase — no civics_blocks.lifecycleStages taxonomy. Run a civics-extraction sync first.`,
+      );
       return { enriched: 0, skipped: 0, failed: 0 };
     }
 
@@ -2386,6 +2523,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         authorName: true,
         fiscalImpact: true,
         fullTextUrl: true,
+        currentStageId: true,
       },
       take: maxBills,
     });
@@ -2405,8 +2543,14 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     let totalTokens = 0;
     const startMs = Date.now();
 
+    const stageIdSet = new Set(lifecycleStages.map((s) => s.id));
     for (const bill of candidates) {
-      const result = await this.enrichSingleBill(bill);
+      const result = await this.enrichSingleBill(
+        bill,
+        stagePatterns,
+        lifecycleStages,
+        stageIdSet,
+      );
       counts[result.outcome] += 1;
       totalTokens += result.tokensUsed;
       const { outcomeLabel, outcome } = describeEnrichmentResult(
@@ -2443,7 +2587,12 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     return counts;
   }
 
-  private async enrichSingleBill(bill: BillEnrichmentCandidate): Promise<{
+  private async enrichSingleBill(
+    bill: BillEnrichmentCandidate,
+    stagePatterns: StagePattern[],
+    lifecycleStages: LifecycleStageInput[],
+    stageIdSet: Set<string>,
+  ): Promise<{
     outcome: 'enriched' | 'skipped' | 'failed';
     tokensUsed: number;
   }> {
@@ -2455,21 +2604,20 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const fullText = this.htmlToReadableText(
+      const html = this.htmlToReadableText(
         await this.fetchUrlText(bill.fullTextUrl),
       );
 
       const { promptText, promptVersion } =
-        await this.promptClient!.getBillAnalysisPrompt({
+        await this.promptClient!.getBillStatusSummaryPrompt({
           regionId: bill.regionId,
           billNumber: bill.billNumber,
           sessionYear: bill.sessionYear,
           title: bill.title,
-          subject: bill.subject ?? undefined,
-          status: bill.status ?? undefined,
-          authorName: bill.authorName ?? undefined,
-          fiscalImpactSummary: bill.fiscalImpact ?? undefined,
-          fullText,
+          html,
+          lifecycleStages,
+          priorStatus: bill.status ?? undefined,
+          priorStage: bill.currentStageId ?? undefined,
         });
 
       const llmStart = Date.now();
@@ -2478,42 +2626,23 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
         temperature: 0.1,
       });
       const llmMs = Date.now() - llmStart;
+      const tokensUsed = llmResult.tokensUsed ?? 0;
 
-      const candidate = extractJsonObjectSlice(llmResult.text);
-      if (!candidate) {
-        this.logger.warn(
-          `Bill enrichment: no JSON returned for ${bill.billNumber}`,
-        );
-        return {
-          outcome: 'failed',
-          tokensUsed: llmResult.tokensUsed ?? 0,
-        };
+      const parsed = this.parseStatusSummaryResponse(
+        llmResult.text,
+        bill.billNumber,
+      );
+      if (!parsed) {
+        return { outcome: 'failed', tokensUsed };
       }
 
-      const parsed: unknown = JSON.parse(candidate);
-      // Reject non-object payloads (the LLM occasionally returns `null` or
-      // `[]` instead of the structured object). Storing those would lock
-      // the bill out of the retry query (`ai_summary IS NULL`) with garbage
-      // permanently in the column. Counted as failed → retried next sync.
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        this.logger.warn(
-          `Bill enrichment: non-object JSON payload for ${bill.billNumber}`,
-        );
-        return {
-          outcome: 'failed',
-          tokensUsed: llmResult.tokensUsed ?? 0,
-        };
-      }
-
-      const summary = parsed as BillAiSummaryShape;
-      await this.db.bill.update({
-        where: { id: bill.id },
-        data: {
-          aiSummary: summary as Prisma.InputJsonValue,
-          aiSummaryVersion: promptVersion,
-          aiSummaryGeneratedAt: new Date(),
-        },
-      });
+      await this.writeStatusSummary(
+        bill,
+        parsed,
+        promptVersion,
+        stagePatterns,
+        stageIdSet,
+      );
 
       this.logger.debug(
         {
@@ -2521,23 +2650,162 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
           billId: bill.id,
           billNumber: bill.billNumber,
           promptVersion,
-          tokensUsed: llmResult.tokensUsed ?? 0,
+          tokensUsed,
           latencyMs: llmMs,
-          llmSkip: summary.skip === true,
+          llmSkip: parsed.skip === true,
         },
-        `Bill enrichment ok: ${bill.billNumber} v${promptVersion} tokens=${llmResult.tokensUsed ?? 0} ms=${llmMs}`,
+        `Bill enrichment ok: ${bill.billNumber} ${promptVersion} tokens=${tokensUsed} ms=${llmMs}`,
       );
 
-      return {
-        outcome: 'enriched',
-        tokensUsed: llmResult.tokensUsed ?? 0,
-      };
+      return { outcome: 'enriched', tokensUsed };
     } catch (e) {
       this.logger.warn(
         `Bill enrichment failed for ${bill.billNumber}: ${(e as Error).message}`,
       );
       return { outcome: 'failed', tokensUsed: 0 };
     }
+  }
+
+  /**
+   * Parse the merged bill-status-summary LLM response. Returns null when
+   * the payload is missing/non-object/array — caller treats that as
+   * `failed` so the bill stays eligible for the next sync (its
+   * `aiSummary` column remains NULL).
+   */
+  private parseStatusSummaryResponse(
+    text: string,
+    billNumber: string,
+  ): BillStatusSummaryShape | null {
+    const candidate = extractJsonObjectSlice(text);
+    if (!candidate) {
+      this.logger.warn(`Bill enrichment: no JSON returned for ${billNumber}`);
+      return null;
+    }
+    const raw: unknown = JSON.parse(candidate);
+    // Reject non-object payloads — the LLM occasionally returns `null` or
+    // `[]` instead of the structured object. Storing those would lock the
+    // bill out of the retry query (`ai_summary IS NULL`) with garbage in
+    // the column. Counted as failed → retried next sync.
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      this.logger.warn(
+        `Bill enrichment: non-object JSON payload for ${billNumber}`,
+      );
+      return null;
+    }
+    return raw as BillStatusSummaryShape;
+  }
+
+  /**
+   * Apply the merged response to the bill row:
+   *   - `{ skip: true }` → store the sentinel verbatim in `aiSummary` so
+   *     the bill stops cycling through enrichment on every sync (mirrors
+   *     the pre-#823 behavior).
+   *   - Otherwise → write the `summary` JSONB (drop-in shape for existing
+   *     consumers), the verbatim `status.raw`, a runtime-validated
+   *     `currentStageId`, and the parsed `lastActionDate`. When the LLM
+   *     reports `status.changed === false` we still write because this
+   *     bill arrived here via `ai_summary IS NULL` — the changed flag
+   *     just disambiguates intent for future re-enrich loops.
+   */
+  private async writeStatusSummary(
+    bill: BillEnrichmentCandidate,
+    parsed: BillStatusSummaryShape,
+    promptVersion: string,
+    stagePatterns: StagePattern[],
+    stageIdSet: Set<string>,
+  ): Promise<void> {
+    if (parsed.skip === true) {
+      await this.db.bill.update({
+        where: { id: bill.id },
+        data: {
+          aiSummary: { skip: true } as Prisma.InputJsonValue,
+          aiSummaryVersion: promptVersion,
+          aiSummaryGeneratedAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    const summary: BillAiSummaryShape = parsed.summary ?? {};
+    const status = parsed.status ?? {};
+    const validatedStage = this.validateStageId(
+      status.stage,
+      status.raw,
+      bill,
+      stagePatterns,
+      stageIdSet,
+    );
+    const lastActionDate = parseLastActionDate(status.lastActionDate);
+
+    await this.db.bill.update({
+      where: { id: bill.id },
+      data: {
+        aiSummary: summary as Prisma.InputJsonValue,
+        aiSummaryVersion: promptVersion,
+        aiSummaryGeneratedAt: new Date(),
+        ...(status.raw ? { status: status.raw } : {}),
+        // status.lastActionSnippet is the LLM's fresh read of the most
+        // recent history entry; writing it keeps bills.lastAction in sync
+        // with the merged-call view rather than letting the bill-extraction
+        // value drift.
+        ...(status.lastActionSnippet
+          ? { lastAction: status.lastActionSnippet }
+          : {}),
+        currentStageId: validatedStage,
+        ...(lastActionDate !== undefined ? { lastActionDate } : {}),
+      },
+    });
+  }
+
+  /**
+   * Resolve the stage id we'll write to the bill row. Trust the LLM's
+   * classification when it lands inside the region's taxonomy; otherwise
+   * fall back to the deterministic pattern matcher.
+   *
+   * Logging is split by level so post-launch alerting has a clean drift
+   * signal:
+   *   - `"unknown"` is the documented "no stage fits" answer — expected
+   *     for bills mid-paperwork — and logs at debug.
+   *   - An out-of-taxonomy id is a prompt-template / model-drift signal
+   *     and logs at warn so log-based alerts can target it.
+   *
+   * Returns `null` when neither the LLM nor the pattern matcher resolves —
+   * the column stays NULL and the bill is eligible for the next sync.
+   */
+  private validateStageId(
+    llmStage: string | undefined,
+    statusRaw: string | undefined,
+    bill: BillEnrichmentCandidate,
+    stagePatterns: StagePattern[],
+    stageIdSet: Set<string>,
+  ): string | null {
+    if (llmStage && llmStage !== 'unknown' && stageIdSet.has(llmStage)) {
+      return llmStage;
+    }
+    const fallback = this.resolveStageFromStatus(
+      statusRaw ?? bill.status,
+      stagePatterns,
+    );
+    const outOfTaxonomy = llmStage !== undefined && llmStage !== 'unknown';
+    const logPayload = {
+      event: 'bill_stage_resolution_fallback',
+      billId: bill.id,
+      billNumber: bill.billNumber,
+      regionId: bill.regionId,
+      llmStage: llmStage ?? null,
+      outOfTaxonomy,
+      fallback: fallback ?? null,
+    };
+    const logMessage = `Bill ${bill.billNumber}: stage fallback (llmStage=${llmStage ?? 'null'}) → ${fallback ?? 'null'}`;
+    if (outOfTaxonomy) {
+      // Drift signal — alertable.
+      this.logger.warn(logPayload, logMessage);
+    } else {
+      // Expected sometimes ("unknown" from the LLM, or absent stage field) —
+      // visible at debug only so it doesn't drown the drift signal.
+      this.logger.debug(logPayload, logMessage);
+    }
+    return fallback;
   }
 
   private async discoverBillUrls(
