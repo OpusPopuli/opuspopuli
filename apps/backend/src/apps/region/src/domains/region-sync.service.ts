@@ -45,6 +45,7 @@ import { BioGeneratorService } from './bio-generator.service';
 import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
+import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
@@ -65,10 +66,8 @@ import { deriveDistrictFromExternalId } from './region.service';
 import {
   billSyncTracker,
   civicsSyncTracker,
-  campaignFinanceSyncTracker,
   type SyncPhaseTracker,
   type BillSyncPhase,
-  type CampaignFinanceSyncPhase,
 } from './sync-phase-logger';
 
 /**
@@ -218,20 +217,6 @@ interface DataFetcher {
   getDataSources?(dataType?: DataType): DataSourceConfig[];
 }
 
-type PrismaModelDelegate = {
-  findMany(args: unknown): Promise<ExternalIdRecord[]>;
-  upsert(args: unknown): Prisma.PrismaPromise<unknown>;
-};
-type UpsertConfig = {
-  records: readonly unknown[];
-  model: PrismaModelDelegate;
-  fields: string[];
-};
-type CommitteeRecord = {
-  externalId: string;
-  id: string;
-};
-
 /**
  * Shape we expect from the bill-analysis LLM response. Everything is
  * optional at the runtime boundary — the LLM may drop fields, and the
@@ -369,6 +354,8 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly meetingsSyncService?: MeetingsSyncService,
     @Optional()
     private readonly representativesSyncService?: RepresentativesSyncService,
+    @Optional()
+    private readonly campaignFinanceSyncService?: CampaignFinanceSyncService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -1113,202 +1100,15 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private async ensureCommitteeStubs(
-    data: CampaignFinanceResult,
-  ): Promise<void> {
-    const referencedIds = new Set<string>();
-    const sourceSystemByExternalId = new Map<string, 'cal_access' | 'fec'>();
-    const noteReference = (
-      committeeId: string | undefined | null,
-      sourceSystem: 'cal_access' | 'fec',
-    ) => {
-      if (!committeeId) return;
-      referencedIds.add(committeeId);
-      if (!sourceSystemByExternalId.has(committeeId)) {
-        sourceSystemByExternalId.set(committeeId, sourceSystem);
-      }
-    };
-    for (const c of data.contributions)
-      noteReference(c.committeeId, c.sourceSystem);
-    for (const e of data.expenditures)
-      noteReference(e.committeeId, e.sourceSystem);
-    for (const ie of data.independentExpenditures) {
-      noteReference(ie.committeeId, ie.sourceSystem);
-    }
-
-    if (referencedIds.size === 0) return;
-
-    const existing = await this.db.committee.findMany({
-      where: { externalId: { in: [...referencedIds] } },
-      select: { externalId: true, id: true },
-    });
-    const existingMap = new Map(
-      existing.map((c: CommitteeRecord) => [c.externalId, c.id]),
-    );
-
-    const missingIds = [...referencedIds].filter((id) => !existingMap.has(id));
-
-    if (missingIds.length > 0) {
-      this.logger.log(
-        `Creating ${missingIds.length} stub committee records for FK references`,
-      );
-      await batchTransaction(
-        this.db,
-        missingIds.map((externalId) =>
-          this.db.committee.create({
-            data: {
-              externalId,
-              name: externalId,
-              type: 'OTHER',
-              status: 'active',
-              sourceSystem: sourceSystemByExternalId.get(externalId) ?? 'fec',
-            },
-          }),
-        ),
-      );
-    }
-
-    const allCommittees = await this.db.committee.findMany({
-      where: { externalId: { in: [...referencedIds] } },
-      select: { externalId: true, id: true },
-    });
-    const idMap = new Map(
-      allCommittees.map((c: CommitteeRecord) => [c.externalId, c.id]),
-    );
-
-    for (const c of data.contributions) {
-      c.committeeId = idMap.get(c.committeeId) ?? c.committeeId;
-    }
-    for (const e of data.expenditures) {
-      e.committeeId = idMap.get(e.committeeId) ?? e.committeeId;
-    }
-    for (const ie of data.independentExpenditures) {
-      ie.committeeId = idMap.get(ie.committeeId) ?? ie.committeeId;
-    }
-  }
-
+  /** Delegates to {@link CampaignFinanceSyncService} (#828 Step 4). */
   private async syncCampaignFinance(
     provider: DataFetcher,
     pipelineJobId?: string,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
-    if (!provider.fetchCampaignFinance) {
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    if (!this.campaignFinanceSyncService) {
       return { processed: 0, created: 0, updated: 0 };
     }
-
-    let totalProcessed = 0;
-    let totalCreated = 0;
-    let totalUpdated = 0;
-    let batchCount = 0;
-
-    // Campaign finance uses a streaming callback (CAL-ACCESS bulk
-    // download → onBatch per chunk) rather than per-item iteration,
-    // so observability lives at the batch level. Phase trackers are
-    // initialized with total=0 and we use `note()` per batch instead
-    // of `item()` per record — the dataset is too large to log every
-    // contribution/expenditure individually.
-    //
-    // Phase 1 (discover) and Phase 2 (extract_and_upsert) are
-    // intentionally constructed and completed sequentially. The
-    // extract tracker is lazily initialized on the first onBatch
-    // callback so the phase-start log line for Phase 2 lands AFTER
-    // Phase 1's complete line — operator-readable phase ordering.
-    const discoverTracker = campaignFinanceSyncTracker(
-      this.logger,
-      'discover',
-      0,
-    );
-    discoverTracker.note('preparing CAL-ACCESS bulk download stream');
-
-    // Use a single-property ref so TypeScript can't narrow the inner
-    // type to `never` after the if-check below — closures that mutate
-    // a captured `let` variable defeat TS's flow analysis. The ref
-    // pattern sidesteps that without sprinkling `!` assertions.
-    const extractRef: {
-      tracker: SyncPhaseTracker<CampaignFinanceSyncPhase> | null;
-    } = { tracker: null };
-    const ensureExtractTracker =
-      (): SyncPhaseTracker<CampaignFinanceSyncPhase> => {
-        if (!extractRef.tracker) {
-          // First batch arrived → discover phase is functionally done.
-          discoverTracker.complete();
-          extractRef.tracker = campaignFinanceSyncTracker(
-            this.logger,
-            'extract_and_upsert',
-            0,
-          );
-        }
-        return extractRef.tracker;
-      };
-
-    const onBatch = async (items: Record<string, unknown>[]) => {
-      const tracker = ensureExtractTracker();
-      const batchData = this.sortCampaignFinanceItems(items);
-      await this.ensureCommitteeStubs(batchData);
-      const result = await this.upsertCampaignFinanceBatch(batchData);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-      batchCount++;
-      tracker.note(
-        `batch ${batchCount}: ${result.processed} items (${result.created} created, ${result.updated} updated)`,
-      );
-    };
-
-    const data = await provider.fetchCampaignFinance(onBatch, pipelineJobId);
-
-    if (
-      data.contributions.length > 0 ||
-      data.expenditures.length > 0 ||
-      data.independentExpenditures.length > 0 ||
-      data.committeeMeasureFilings.length > 0
-    ) {
-      const tracker = ensureExtractTracker();
-      await this.ensureCommitteeStubs(data);
-      const result = await this.upsertCampaignFinanceBatch(data);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-      tracker.note(
-        `final flush: ${result.processed} items (${result.created} created, ${result.updated} updated)`,
-      );
-    }
-
-    // Either the lazy ensureExtractTracker() ran (and started phase 2
-    // after completing phase 1), or no batches ever arrived. In the
-    // latter case close phase 1 now and emit an empty phase 2 marker
-    // so the operator sees both phase boundaries regardless of data.
-    if (extractRef.tracker) {
-      extractRef.tracker.complete();
-    } else {
-      discoverTracker.complete();
-      const emptyExtractTracker = campaignFinanceSyncTracker(
-        this.logger,
-        'extract_and_upsert',
-        0,
-        { note: 'no data from provider' },
-      );
-      emptyExtractTracker.complete();
-    }
-
-    if (this.propositionFinanceLinker) {
-      try {
-        await this.propositionFinanceLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Proposition finance linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    return {
-      processed: totalProcessed,
-      created: totalCreated,
-      updated: totalUpdated,
-    };
+    return this.campaignFinanceSyncService.sync(provider, pipelineJobId);
   }
 
   private async syncCivics(plugin: DataFetcher): Promise<{
@@ -3208,181 +3008,5 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     return value === undefined || value === null
       ? Prisma.DbNull
       : (value as Prisma.InputJsonValue);
-  }
-
-  // ─── Campaign finance helpers ─────────────────────────────────────────────────
-
-  private sortCampaignFinanceItems(
-    items: Record<string, unknown>[],
-  ): CampaignFinanceResult {
-    const committees: CampaignFinanceResult['committees'] = [];
-    const contributions: CampaignFinanceResult['contributions'] = [];
-    const expenditures: CampaignFinanceResult['expenditures'] = [];
-    const independentExpenditures: CampaignFinanceResult['independentExpenditures'] =
-      [];
-    const committeeMeasureFilings: CampaignFinanceResult['committeeMeasureFilings'] =
-      [];
-
-    for (const rec of items) {
-      if ('donorName' in rec && 'amount' in rec) {
-        contributions.push(
-          rec as unknown as CampaignFinanceResult['contributions'][0],
-        );
-      } else if ('payeeName' in rec && 'amount' in rec) {
-        expenditures.push(
-          rec as unknown as CampaignFinanceResult['expenditures'][0],
-        );
-      } else if ('supportOrOppose' in rec && 'committeeName' in rec) {
-        independentExpenditures.push(
-          rec as unknown as CampaignFinanceResult['independentExpenditures'][0],
-        );
-      } else if (
-        'filingId' in rec &&
-        ('ballotName' in rec || 'ballotNumber' in rec)
-      ) {
-        committeeMeasureFilings.push(
-          rec as unknown as CampaignFinanceResult['committeeMeasureFilings'][0],
-        );
-      } else if ('sourceSystem' in rec && 'type' in rec) {
-        committees.push(
-          rec as unknown as CampaignFinanceResult['committees'][0],
-        );
-      }
-    }
-
-    return {
-      committees,
-      contributions,
-      expenditures,
-      independentExpenditures,
-      committeeMeasureFilings,
-    };
-  }
-
-  private async upsertCampaignFinanceBatch(
-    data: CampaignFinanceResult,
-  ): Promise<{ processed: number; created: number; updated: number }> {
-    const upsertConfigs: UpsertConfig[] = [
-      {
-        records: data.contributions,
-        model: this.db.contribution,
-        fields: [
-          'committeeId',
-          'donorName',
-          'donorType',
-          'donorEmployer',
-          'donorOccupation',
-          'donorCity',
-          'donorState',
-          'donorZip',
-          'amount',
-          'date',
-          'electionType',
-          'contributionType',
-          'sourceSystem',
-        ],
-      },
-      {
-        records: data.expenditures,
-        model: this.db.expenditure,
-        fields: [
-          'committeeId',
-          'payeeName',
-          'amount',
-          'date',
-          'purposeDescription',
-          'expenditureCode',
-          'candidateName',
-          'propositionTitle',
-          'supportOrOppose',
-          'sourceSystem',
-        ],
-      },
-      {
-        records: data.independentExpenditures,
-        model: this.db.independentExpenditure,
-        fields: [
-          'committeeId',
-          'committeeName',
-          'candidateName',
-          'propositionTitle',
-          'supportOrOppose',
-          'amount',
-          'date',
-          'electionDate',
-          'description',
-          'sourceSystem',
-        ],
-      },
-      {
-        records: data.committeeMeasureFilings,
-        model: this.db.cvr2Filing,
-        fields: [
-          'filingId',
-          'ballotName',
-          'ballotNumber',
-          'ballotJurisdiction',
-          'supportOrOppose',
-          'sourceSystem',
-        ],
-      },
-    ];
-
-    let totalProcessed = 0;
-    let totalCreated = 0;
-    let totalUpdated = 0;
-
-    for (const config of upsertConfigs) {
-      if (config.records.length === 0) continue;
-      const result = await this.upsertRecordsByFields(config);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-    }
-
-    return {
-      processed: totalProcessed,
-      created: totalCreated,
-      updated: totalUpdated,
-    };
-  }
-
-  private async upsertRecordsByFields(
-    config: UpsertConfig,
-  ): Promise<{ processed: number; created: number; updated: number }> {
-    const { model, fields } = config;
-    const rows = config.records as Record<string, unknown>[];
-    const externalIds = rows.map((r) => r.externalId as string);
-
-    const existing = await model.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingSet = new Set(
-      existing.map((r: ExternalIdRecord) => r.externalId),
-    );
-
-    const pick = (r: Record<string, unknown>) =>
-      Object.fromEntries(fields.map((f: string) => [f, r[f]]));
-
-    await batchTransaction(
-      this.db,
-      rows.map((r) =>
-        model.upsert({
-          where: { externalId: r.externalId as string },
-          update: pick(r),
-          create: { externalId: r.externalId, ...pick(r) },
-        }),
-      ),
-    );
-
-    const created = rows.filter(
-      (r) => !existingSet.has(r.externalId as string),
-    ).length;
-    return {
-      processed: rows.length,
-      created,
-      updated: rows.length - created,
-    };
   }
 }
