@@ -39,6 +39,12 @@ import {
 import { RegionSyncService } from '../../../src/apps/region/src/domains/region-sync.service';
 import { RegionCacheService } from '../../../src/apps/region/src/domains/region-cache.service';
 import { REGION_CACHE } from '../../../src/apps/region/src/domains/region.tokens';
+import { PropositionsSyncService } from '../../../src/apps/region/src/domains/propositions-sync.service';
+import { MeetingsSyncService } from '../../../src/apps/region/src/domains/meetings-sync.service';
+import { RepresentativesSyncService } from '../../../src/apps/region/src/domains/representatives-sync.service';
+import { CampaignFinanceSyncService } from '../../../src/apps/region/src/domains/campaign-finance-sync.service';
+import { CivicsSyncService } from '../../../src/apps/region/src/domains/civics-sync.service';
+import { RegionPluginService } from '../../../src/apps/region/src/domains/region-plugin.service';
 import { cleanDatabase, disconnectDatabase, getDbService } from '../utils';
 
 // ---------------------------------------------------------------------------
@@ -218,6 +224,16 @@ describe('bill-status-summary merge — integration (#823)', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RegionSyncService,
+        // Bounded-context services that RegionSyncService now requires
+        // post-#828 (partial refactor). RegionPluginService takes the
+        // OnModuleInit slot that used to live on RegionSyncService — Nest
+        // resolves the DI graph by constructing it first.
+        RegionPluginService,
+        PropositionsSyncService,
+        MeetingsSyncService,
+        RepresentativesSyncService,
+        CampaignFinanceSyncService,
+        CivicsSyncService,
         { provide: DbService, useValue: db },
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: PluginLoaderService, useValue: mockLoader },
