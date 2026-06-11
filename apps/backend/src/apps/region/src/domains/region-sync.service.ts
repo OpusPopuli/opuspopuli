@@ -44,6 +44,7 @@ import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { BioGeneratorService } from './bio-generator.service';
 import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
+import { RepresentativesSyncService } from './representatives-sync.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
@@ -60,14 +61,9 @@ import {
 } from './bill-lifecycle';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import { RegionCacheService } from './region-cache.service';
-import {
-  stripLeadingZerosFromExternalId,
-  isLikelyValidBio,
-  extractLastName,
-} from './region.service';
+import { deriveDistrictFromExternalId } from './region.service';
 import {
   billSyncTracker,
-  repSyncTracker,
   civicsSyncTracker,
   campaignFinanceSyncTracker,
   type SyncPhaseTracker,
@@ -371,6 +367,8 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly propositionsSyncService?: PropositionsSyncService,
     @Optional()
     private readonly meetingsSyncService?: MeetingsSyncService,
+    @Optional()
+    private readonly representativesSyncService?: RepresentativesSyncService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -1092,215 +1090,27 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private sanitizeDistrict(rep: Representative): string {
-    const raw = (rep.district ?? '').trim();
-    if (/^\d+$/.test(raw)) return String(Number.parseInt(raw, 10));
-    const derived = deriveDistrictFromExternalId(rep.externalId);
-    if (derived !== undefined) {
-      this.logger.warn(
-        `Sanitized district for ${rep.name} (${rep.externalId}): scraped value "${raw}" is not numeric, using externalId-derived "${derived}"`,
-      );
-      return derived;
-    }
-    if (raw) {
-      this.logger.warn(
-        `Non-numeric district "${raw}" for ${rep.name} (${rep.externalId}) and no numeric suffix to fall back on; keeping raw value`,
-      );
-    }
-    return raw;
-  }
-
-  private normalizeRep(r: Representative): void {
-    if (this.pluginNormalizeDistrict) {
-      r.externalId = stripLeadingZerosFromExternalId(r.externalId);
-    }
-    if (r.bio && !isLikelyValidBio(r.bio, this.pluginBioNoisePatterns)) {
-      this.logger.warn(
-        `Discarding junk bio for ${r.externalId} (${r.bio.length} chars): ${r.bio.slice(0, 60)}…`,
-      );
-      r.bio = undefined;
-      r.bioSource = undefined;
-    }
-    if (r.bio && !r.bioSource) {
-      r.bioSource = 'scraped';
-    }
-  }
-
+  /** Delegates to {@link RepresentativesSyncService} (#828 Step 3). */
   private async syncRepresentatives(
     provider: DataFetcher = this.regionService,
     maxReps?: number,
     regionId?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
-    const resolvedRegionId = regionId ?? provider.getName?.() ?? 'unknown';
-
-    // ─── Phase 1/5 — discover ──────────────────────────────────────
-    const discoverTracker = repSyncTracker(this.logger, 'discover', 1, {
-      region: resolvedRegionId,
-    });
-    const reps = await provider.fetchRepresentatives();
-    discoverTracker.item({
-      name: 'representatives provider',
-      externalId: null,
-      outcomeLabel: `${reps.length} representative(s) discovered`,
-      outcome: 'updated',
-    });
-    discoverTracker.complete();
-
-    // Chamber attribution happens at fetch time in
-    // DeclarativeRegionPlugin.fetchRepresentatives — each rep is stamped
-    // with the source's `category` (Assembly / Senate / Board of
-    // Supervisors / …) before it leaves the plugin. The old
-    // `applyChamberFallback` here relied on `instanceof
-    // DeclarativeRegionPlugin` which silently failed across worker
-    // bundles, leaving chamber undefined and causing Prisma to reject
-    // every upsert. Removed in the #745 code review.
-    for (const r of reps) {
-      this.normalizeRep(r);
+    if (!this.representativesSyncService) {
+      return { processed: 0, created: 0, updated: 0 };
     }
-
-    // ─── Phase 2/5 — extract_and_upsert ────────────────────────────
-    // Pre-fetch existing externalIds so the per-item line can report
-    // accurate created-vs-updated outcomes. Skip when there's nothing
-    // to look up.
-    const existingRepIds = new Set<string>(
-      reps.length === 0
-        ? []
-        : (
-            await this.db.representative.findMany({
-              where: { externalId: { in: reps.map((r) => r.externalId) } },
-              select: { externalId: true },
-            })
-          ).map((r: ExternalIdRecord) => r.externalId),
+    return this.representativesSyncService.sync(
+      provider,
+      maxReps,
+      regionId,
+      {
+        regionName: this.pluginRegionName,
+        normalizeDistrict: this.pluginNormalizeDistrict,
+        bioNoisePatterns: this.pluginBioNoisePatterns,
+      },
+      this.upsertByExternalId.bind(this),
+      deriveDistrictFromExternalId,
     );
-    const extractTracker = repSyncTracker(
-      this.logger,
-      'extract_and_upsert',
-      reps.length,
-      { region: resolvedRegionId },
-    );
-    const result = await this.upsertByExternalId(
-      reps,
-      (ids) =>
-        this.db.representative.findMany({
-          where: { externalId: { in: ids } },
-          select: { externalId: true },
-        }),
-      (items) =>
-        items.map((rep) => {
-          const lastName = extractLastName(rep.name);
-          const district = this.sanitizeDistrict(rep);
-          const isNew = !existingRepIds.has(rep.externalId);
-          extractTracker.item({
-            name: rep.name,
-            externalId: rep.externalId,
-            outcomeLabel: `${isNew ? 'created' : 'updated'} (chamber=${rep.chamber ?? 'unknown'}, district=${district})`,
-            outcome: isNew ? 'created' : 'updated',
-          });
-          return this.db.representative.upsert({
-            where: { externalId: rep.externalId },
-            update: {
-              regionId: regionId ?? rep.regionId ?? 'california',
-              name: rep.name,
-              lastName,
-              chamber: rep.chamber,
-              district,
-              party: rep.party,
-              photoUrl: rep.photoUrl ?? undefined,
-              contactInfo: (rep.contactInfo as object | null) ?? undefined,
-              committees: (rep.committees as object[] | null) ?? undefined,
-              committeesSummary: rep.committeesSummary ?? undefined,
-              bio: rep.bio ?? undefined,
-              bioSource: rep.bioSource ?? undefined,
-              bioClaims: (rep.bioClaims as object[] | null) ?? undefined,
-            },
-            create: {
-              externalId: rep.externalId,
-              regionId: regionId ?? rep.regionId ?? 'california',
-              name: rep.name,
-              lastName,
-              chamber: rep.chamber,
-              district,
-              party: rep.party,
-              photoUrl: rep.photoUrl,
-              contactInfo: rep.contactInfo as object | undefined,
-              committees: rep.committees as object[] | undefined,
-              committeesSummary: rep.committeesSummary,
-              bio: rep.bio,
-              bioSource: rep.bioSource,
-              bioClaims: rep.bioClaims as object[] | undefined,
-            },
-          });
-        }),
-      'representatives:',
-    );
-    extractTracker.complete();
-
-    // ─── Phase 3/5 — detail_crawl ──────────────────────────────────
-    // Detail-page crawling for committees/contact info happens inside
-    // the DeclarativeRegionPlugin.fetchRepresentatives call above —
-    // it's not a separate orchestrator step in the current pipeline.
-    // Phase fires as a marker so the operator sees all 5 phases.
-    const detailCrawlTracker = repSyncTracker(this.logger, 'detail_crawl', 0, {
-      region: resolvedRegionId,
-      note: 'inlined into fetchRepresentatives at plugin layer',
-    });
-    detailCrawlTracker.complete();
-
-    // ─── Phase 4/5 — bio_generation ────────────────────────────────
-    const bioTracker = repSyncTracker(
-      this.logger,
-      'bio_generation',
-      this.bioGenerator ? reps.length : 0,
-      { region: resolvedRegionId },
-    );
-    if (this.bioGenerator) {
-      await this.bioGenerator.enrichBios(reps, this.pluginRegionName, maxReps);
-      // BioGeneratorService is opaque about per-rep outcomes from out
-      // here — it logs its own per-rep DEBUG lines. We just record the
-      // batch boundary as one aggregate item.
-      bioTracker.note(`enrichBios pass complete for ${reps.length} reps`);
-    }
-    bioTracker.complete();
-
-    if (this.committeeSummaryGenerator) {
-      await this.committeeSummaryGenerator.generateMissingSummaries(maxReps);
-    }
-
-    if (this.legislativeCommitteeLinker) {
-      try {
-        await this.legislativeCommitteeLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Legislative committee linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    if (this.legislativeCommitteeDescriptions) {
-      try {
-        await this.legislativeCommitteeDescriptions.generateMissingDescriptions(
-          maxReps,
-        );
-      } catch (error) {
-        this.logger.warn(
-          `Legislative committee description generation failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    // ─── Phase 5/5 — prune_stale ───────────────────────────────────
-    // Stale-rep pruning isn't currently wired (reps don't go inactive
-    // by data-source absence the way bills do — they leave office in
-    // discrete elections). Marker for parity with bills' 6-phase
-    // shape; tracked for actual implementation under #816 / #770
-    // alongside the rep↔committee FK work.
-    const pruneTracker = repSyncTracker(this.logger, 'prune_stale', 0, {
-      region: resolvedRegionId,
-      note: 'not-yet-implemented',
-    });
-    pruneTracker.complete();
-
-    return result;
   }
 
   private async ensureCommitteeStubs(
@@ -3575,12 +3385,4 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       updated: rows.length - created,
     };
   }
-}
-
-// ─── Module-level utility (needed by both sync + other helpers) ───────────────
-
-function deriveDistrictFromExternalId(externalId: string): string | undefined {
-  const last = externalId.split('-').at(-1);
-  if (!last || !/^\d+$/.test(last)) return undefined;
-  return String(Number.parseInt(last, 10));
 }
