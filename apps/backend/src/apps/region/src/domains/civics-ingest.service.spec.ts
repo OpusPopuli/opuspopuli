@@ -238,51 +238,8 @@ describe('crawlCivicsUrls', () => {
 });
 
 // ── syncCivics — guard paths ──────────────────────────────────────────────────
-
-describe('syncCivics — guard paths', () => {
-  it('returns zero counts and warns when promptClient is not injected', async () => {
-    const svc = buildSvc({ promptClient: undefined, llm: {} });
-    const result = await svc.syncCivics();
-    expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
-    expect(svc.logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('PromptClient'),
-    );
-  });
-
-  it('returns zero counts and warns when llm is not injected', async () => {
-    const svc = buildSvc({ promptClient: {}, llm: undefined });
-    const result = await svc.syncCivics();
-    expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
-    expect(svc.logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('PromptClient'),
-    );
-  });
-
-  it('returns zero counts when plugin has no getDataSources', async () => {
-    const svc = buildSvc({
-      promptClient: {},
-      llm: {},
-      pluginRegistry: { getLocal: jest.fn().mockReturnValue({}) },
-    });
-    const result = await svc.syncCivics();
-    expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
-    expect(svc.logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('getDataSources'),
-    );
-  });
-
-  it('returns zero counts when no civics data sources configured', async () => {
-    const svc = buildSvc({
-      promptClient: {},
-      llm: {},
-      pluginRegistry: {
-        getLocal: jest.fn().mockReturnValue({
-          getDataSources: jest.fn().mockReturnValue([]),
-          getName: jest.fn().mockReturnValue('california'),
-        }),
-      },
-    });
-    const result = await svc.syncCivics();
-    expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
-  });
-});
+//
+// The guard paths (no promptClient / no llm / plugin lacks getDataSources /
+// no data sources configured) moved to CivicsSyncService in #828 Step 5.
+// They are re-covered by civics-sync.service.spec.ts as part of the test
+// file split (#828 Step 9).

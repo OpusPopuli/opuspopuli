@@ -3,29 +3,20 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
-  OnModuleInit,
   Optional,
 } from '@nestjs/common';
 import {
-  RegionService as RegionProviderService,
   DataType,
   SyncDepth,
   SyncResult,
-  PluginLoaderService,
   PluginRegistryService,
   DeclarativeRegionPlugin,
-  ExampleRegionProvider,
-  discoverRegionConfigs,
-  getRegionsDir,
   type IPipelineService,
   type IRegionPlugin,
 } from '@opuspopuli/region-provider';
-import { ServiceInitializationException } from 'src/common/exceptions/app.exceptions';
 import {
-  resolveConfigPlaceholders,
   batchTransaction,
   extractJsonObjectSlice,
-  type ISecretsProvider,
   type Proposition,
   type Meeting,
   type Representative,
@@ -40,8 +31,16 @@ import {
   PromptClientService,
   type LifecycleStageInput,
 } from '@opuspopuli/prompt-client';
-import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { BioGeneratorService } from './bio-generator.service';
+import { PropositionsSyncService } from './propositions-sync.service';
+import { MeetingsSyncService } from './meetings-sync.service';
+import { RepresentativesSyncService } from './representatives-sync.service';
+import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
+import { CivicsSyncService } from './civics-sync.service';
+import {
+  RegionPluginService,
+  type RegionPluginRow,
+} from './region-plugin.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
@@ -58,22 +57,11 @@ import {
 } from './bill-lifecycle';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import { RegionCacheService } from './region-cache.service';
-import {
-  stripLeadingZerosFromExternalId,
-  isLikelyValidBio,
-  extractLastName,
-} from './region.service';
+import { deriveDistrictFromExternalId } from './region.service';
 import {
   billSyncTracker,
-  repSyncTracker,
-  meetingSyncTracker,
-  minutesSyncTracker,
-  propositionSyncTracker,
-  civicsSyncTracker,
-  campaignFinanceSyncTracker,
   type SyncPhaseTracker,
   type BillSyncPhase,
-  type CampaignFinanceSyncPhase,
 } from './sync-phase-logger';
 
 /**
@@ -176,36 +164,6 @@ interface BillSkipRecord {
 }
 
 /** Region plugin row shape returned by list/lookup queries. */
-type RegionPluginRow = {
-  name: string;
-  displayName: string;
-  description?: string;
-  version: string;
-  enabled: boolean;
-  parentRegionId?: string;
-  fipsCode?: string;
-};
-
-function toRegionPluginRow(r: {
-  name: string;
-  displayName: string;
-  description: string | null;
-  version: string;
-  enabled: boolean;
-  parentRegionId: string | null;
-  fipsCode: string | null;
-}): RegionPluginRow {
-  return {
-    name: r.name,
-    displayName: r.displayName,
-    description: r.description ?? undefined,
-    version: r.version,
-    enabled: r.enabled,
-    parentRegionId: r.parentRegionId ?? undefined,
-    fipsCode: r.fipsCode ?? undefined,
-  };
-}
-
 /**
  * Minimal interface for data fetching used by sync methods.
  * Satisfied by both RegionProviderService and IRegionPlugin.
@@ -222,20 +180,6 @@ interface DataFetcher {
   getName?(): string;
   getDataSources?(dataType?: DataType): DataSourceConfig[];
 }
-
-type PrismaModelDelegate = {
-  findMany(args: unknown): Promise<ExternalIdRecord[]>;
-  upsert(args: unknown): Prisma.PrismaPromise<unknown>;
-};
-type UpsertConfig = {
-  records: readonly unknown[];
-  model: PrismaModelDelegate;
-  fields: string[];
-};
-type CommitteeRecord = {
-  externalId: string;
-  id: string;
-};
 
 /**
  * Shape we expect from the bill-analysis LLM response. Everything is
@@ -303,17 +247,6 @@ type BillEnrichmentCandidate = Prisma.BillGetPayload<{
   };
 }>;
 
-// State-level rows (parentRegionId IS NULL) sort before county rows so the
-// primary plugin is always a state plugin when one is available.
-function comparePluginRows(
-  a: { name: string; parentRegionId: string | null },
-  b: { name: string; parentRegionId: string | null },
-): number {
-  if (!a.parentRegionId && b.parentRegionId) return -1;
-  if (a.parentRegionId && !b.parentRegionId) return 1;
-  return a.name.localeCompare(b.name);
-}
-
 /**
  * RegionSyncService — owns all data-synchronisation logic extracted from
  * the monolithic RegionDomainService (issue DEBT-030). Implements
@@ -321,30 +254,23 @@ function comparePluginRows(
  * cache teardown just as the original class did.
  */
 @Injectable()
-export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
+export class RegionSyncService implements OnModuleDestroy {
   private readonly logger = new Logger(RegionSyncService.name, {
     timestamp: true,
   });
-  private regionService!: RegionProviderService;
-  private pluginRegionName: string | undefined;
-  private pluginNormalizeDistrict = false;
-  private pluginBioNoisePatterns: RegExp[] = [];
   /** Per-host fetch throttle shared across all syncs in this process.
    *  Per-source `rateLimitOverride` values are applied to the relevant
    *  hostname by sync orchestrators before they start their loops. */
   private readonly hostThrottle = new HostThrottle(1000);
 
   constructor(
-    private readonly pluginLoader: PluginLoaderService,
+    private readonly regionPluginService: RegionPluginService,
     private readonly pluginRegistry: PluginRegistryService,
     private readonly db: DbService,
     private readonly cacheService: RegionCacheService,
     @Optional()
     @Inject('SCRAPING_PIPELINE')
     private readonly pipeline?: IPipelineService,
-    @Optional()
-    @Inject(SECRETS_PROVIDER)
-    private readonly secretsProvider?: ISecretsProvider,
     @Optional() private readonly bioGenerator?: BioGeneratorService,
     @Optional()
     private readonly committeeSummaryGenerator?: CommitteeSummaryGeneratorService,
@@ -364,6 +290,20 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @Inject('LLM_PROVIDER')
     private readonly llm?: ILLMProvider,
+    // Bounded-context services (#828). Optional so existing test modules
+    // that build `RegionSyncService` standalone don't have to register
+    // every extracted service — they can stub the small public surface
+    // they actually exercise.
+    @Optional()
+    private readonly propositionsSyncService?: PropositionsSyncService,
+    @Optional()
+    private readonly meetingsSyncService?: MeetingsSyncService,
+    @Optional()
+    private readonly representativesSyncService?: RepresentativesSyncService,
+    @Optional()
+    private readonly campaignFinanceSyncService?: CampaignFinanceSyncService,
+    @Optional()
+    private readonly civicsSyncService?: CivicsSyncService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -371,226 +311,39 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Resolve API keys from Supabase Vault and set as environment variables.
-   * Falls back silently to existing env vars if Vault is unavailable.
-   */
-  private async resolveApiKeysFromVault(): Promise<void> {
-    if (!this.secretsProvider) return;
-
-    const apiKeyNames = ['FEC_API_KEY'];
-
-    for (const keyName of apiKeyNames) {
-      if (process.env[keyName]) continue;
-
-      try {
-        const secret = await this.secretsProvider.getSecret(keyName);
-        if (secret) {
-          process.env[keyName] = secret;
-          this.logger.log(`Resolved ${keyName} from secrets vault`);
-        }
-      } catch (error) {
-        this.logger.warn(
-          `Failed to resolve ${keyName} from vault: ${(error as Error).message}. Falling back to env var.`,
-        );
-      }
-    }
-  }
-
-  /**
-   * Load region plugins at startup.
+   * Test-time compatibility shim. Plugin bootstrap moved to
+   * RegionPluginService.onModuleInit (#828 Step 6); Nest invokes it
+   * directly in production. The legacy spec calls `service.onModuleInit()`
+   * to bootstrap the test instance, so we keep a delegate here that
+   * forwards to the plugin service. Will be removed in Step 9 when the
+   * test file is split.
    */
   async onModuleInit(): Promise<void> {
-    await this.resolveApiKeysFromVault();
-    await this.syncRegionConfigs();
-    const { localConfigRow, allLocalConfigRows } =
-      await this.fetchLocalPluginConfigs();
-
-    const stateCode = (
-      localConfigRow?.config as Record<string, unknown> | undefined
-    )?.stateCode as string | undefined;
-
-    await this.initFederalPlugin(stateCode);
-    await this.reloadActiveLocalPlugin(allLocalConfigRows, localConfigRow);
+    return this.regionPluginService.onModuleInit();
   }
 
   /**
-   * Re-read the `region_plugins` table and swap the in-memory active local
-   * plugin to match. Called from `setRegionPluginEnabled` (so admin toggles
-   * take effect without a service restart) and from the public
-   * `refreshActiveLocalPlugin` recovery mutation. See #796 for the failure
-   * mode this prevents.
-   *
-   * Federal plugin is NOT refreshed here — if the toggled plugin changed
-   * the federal `stateCode`, the federal placeholders will still hold the
-   * boot-time value. That's a known limitation; restart the service if
-   * federal needs to re-resolve.
+   * Plugin lifecycle (#828 Step 6) moved to RegionPluginService. The
+   * remaining methods on RegionSyncService that touch plugin state read
+   * via the `regionService` getter on the plugin service, and the public
+   * plugin admin surface is exposed via thin delegates below so the
+   * existing RegionDomainService → RegionSyncService → ... call chain
+   * keeps working unchanged.
    */
+  private get regionService() {
+    return this.regionPluginService.getRegionService();
+  }
+
+  /** Delegate — see RegionPluginService.refreshActiveLocalPlugin (#828 Step 6). */
   async refreshActiveLocalPlugin(): Promise<void> {
-    const { localConfigRow, allLocalConfigRows } =
-      await this.fetchLocalPluginConfigs();
-    await this.reloadActiveLocalPlugin(allLocalConfigRows, localConfigRow);
+    return this.regionPluginService.refreshActiveLocalPlugin();
   }
 
-  private async fetchLocalPluginConfigs(): Promise<{
-    localConfigRow: { config: unknown } | undefined;
-    allLocalConfigRows: {
-      name: string;
-      config: unknown;
-      parentRegionId: string | null;
-    }[];
-  }> {
-    const allLocalConfigRows = await this.db.regionPlugin.findMany({
-      where: { enabled: true, name: { not: 'federal' } },
-    });
-    // State-level plugins (parentRegionId IS NULL) first so the primary plugin
-    // is always a state plugin when one is available.
-    allLocalConfigRows.sort(comparePluginRows);
-    const localConfigRow =
-      allLocalConfigRows.find((r) => !r.parentRegionId) ??
-      allLocalConfigRows[0];
-    return { localConfigRow, allLocalConfigRows };
-  }
-
-  private async reloadActiveLocalPlugin(
-    allLocalConfigRows: {
-      name: string;
-      config: unknown;
-      parentRegionId: string | null;
-    }[],
-    localConfigRow: { config: unknown } | undefined,
-  ): Promise<void> {
-    // Tear down the existing local registry before re-init so we never
-    // re-register the same plugin name twice (registerLocal would internally
-    // destroy and replace, but draining first keeps the logs honest).
-    //
-    // Concurrency: between this unregister() and the initLocalPlugins()
-    // below, the local plugin slot is empty. Any reader of
-    // `regionService.getRegionInfo()` (or any sync job started in that
-    // window) will see no active plugin and throw. Probability is low —
-    // refresh fires only on admin toggles or the recovery mutation, neither
-    // of which is in a hot path. If concurrent admin toggles ever become a
-    // real concern, swap to a build-then-atomic-swap pattern.
-    await this.pluginRegistry.unregister();
-
-    await this.initLocalPlugins(allLocalConfigRows);
-
-    const localPlugin = this.pluginRegistry.getLocal();
-    if (!localPlugin) {
-      throw new ServiceInitializationException(
-        'No local region plugin available after initialization',
-      );
-    }
-
-    this.regionService = new RegionProviderService(localPlugin);
-    const info = this.regionService.getRegionInfo();
-    this.pluginRegionName = info.name;
-
-    const pluginCfg = localConfigRow?.config as unknown as
-      | DeclarativeRegionConfig
-      | undefined;
-    this.pluginNormalizeDistrict =
-      pluginCfg?.normalizeExternalIdDistrict ?? false;
-    this.pluginBioNoisePatterns = (pluginCfg?.bioNoisePatterns ?? []).map(
-      (p) => new RegExp(p, 'i'),
-    );
-    this.logger.log(
-      `RegionSyncService active plugin: ${this.regionService.getProviderName()} (${info.name}), ` +
-        `federal: ${this.pluginRegistry.getFederal() ? 'loaded' : 'not loaded'}`,
-    );
-  }
-
-  private async initFederalPlugin(
-    stateCode: string | undefined,
-  ): Promise<void> {
-    try {
-      const federalConfig = await this.db.regionPlugin.findUnique({
-        where: { name: 'federal' },
-      });
-      if (!federalConfig) {
-        this.logger.warn(
-          'Federal region config not found in database — FEC data will not be available',
-        );
-        return;
-      }
-
-      let config = federalConfig.config as Record<string, unknown>;
-      if (stateCode) {
-        config = resolveConfigPlaceholders(config, { stateCode });
-        this.logger.log(
-          `Resolved federal config placeholders (stateCode="${stateCode}")`,
-        );
-      } else {
-        this.logger.warn(
-          'No local region stateCode available — federal config placeholders will not be resolved',
-        );
-      }
-
-      this.logger.log('Loading federal plugin');
-      await this.pluginLoader.loadFederalPlugin(config, this.pipeline);
-    } catch (error) {
-      this.logger.error(
-        `Failed to load federal plugin: ${(error as Error).message}`,
-      );
-    }
-  }
-
-  private async initLocalPlugins(
-    rows: { name: string; config: unknown; parentRegionId: string | null }[],
-  ): Promise<void> {
-    if (rows.length === 0) {
-      this.logger.warn(
-        'No enabled local region plugins found in database, falling back to ExampleRegionProvider',
-      );
-      await this.pluginRegistry.registerLocal(
-        'example',
-        this.createFallbackPlugin(),
-      );
-      return;
-    }
-
-    for (const row of rows) {
-      try {
-        this.logger.log(
-          `Loading local declarative region plugin "${row.name}"`,
-        );
-        await this.pluginLoader.loadPlugin(
-          {
-            name: row.name,
-            config: row.config as Record<string, unknown> | undefined,
-          },
-          this.pipeline,
-        );
-      } catch (error) {
-        this.logger.error(
-          `Failed to load plugin "${row.name}": ${(error as Error).message}`,
-        );
-      }
-    }
-
-    if (!this.pluginRegistry.hasActive()) {
-      this.logger.warn(
-        'All local plugins failed to load, falling back to ExampleRegionProvider',
-      );
-      await this.pluginRegistry.registerLocal(
-        'example',
-        this.createFallbackPlugin(),
-      );
-    }
-  }
-
-  private createFallbackPlugin(): IRegionPlugin {
-    const provider = new ExampleRegionProvider();
-    return Object.assign(Object.create(provider), {
-      getVersion: () => '0.0.0-fallback',
-      initialize: async () => {},
-      healthCheck: async () => ({
-        healthy: true,
-        message: 'Example fallback provider',
-        lastCheck: new Date(),
-      }),
-      destroy: async () => {},
-    }) as IRegionPlugin;
-  }
+  // Plugin lifecycle methods moved to RegionPluginService below this point.
+  // Originally: resolveApiKeysFromVault, onModuleInit, fetchLocalPluginConfigs,
+  // reloadActiveLocalPlugin, initFederalPlugin, initLocalPlugins,
+  // createFallbackPlugin, syncRegionConfigs. The block they used to occupy
+  // (~220 LOC) is now in region-plugin.service.ts.
 
   // ─── Plugin state / admin reads ──────────────────────────────────────────────
 
@@ -610,142 +363,39 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /** Delegate — see RegionPluginService.listRegionPlugins. */
   async listRegionPlugins(): Promise<RegionPluginRow[]> {
-    const rows = await this.db.regionPlugin.findMany({
-      select: {
-        name: true,
-        displayName: true,
-        description: true,
-        version: true,
-        enabled: true,
-        parentRegionId: true,
-        fipsCode: true,
-      },
-      orderBy: [{ parentRegionId: 'asc' }, { name: 'asc' }],
-    });
-    return rows.map(toRegionPluginRow);
+    return this.regionPluginService.listRegionPlugins();
   }
 
+  /** Delegate — see RegionPluginService.getPluginDataSourceConfigs. */
   async getPluginDataSourceConfigs(): Promise<
     Array<{ regionId: string; sources: DataSourceConfig[] }>
   > {
-    const rows = await this.db.regionPlugin.findMany({
-      where: { enabled: true },
-      select: { name: true, config: true },
-    });
-    return rows
-      .map((row) => {
-        const cfg = row.config as unknown as
-          | DeclarativeRegionConfig
-          | undefined;
-        return {
-          regionId: row.name,
-          sources: cfg?.dataSources ?? [],
-        };
-      })
-      .filter((entry) => entry.sources.length > 0);
+    return this.regionPluginService.getPluginDataSourceConfigs();
   }
 
+  /** Delegate — see RegionPluginService.getRegionPluginByFipsCode. */
   async getRegionPluginByFipsCode(
     fipsCode: string,
   ): Promise<RegionPluginRow | null> {
-    const row = await this.db.regionPlugin.findUnique({
-      where: { fipsCode },
-      select: {
-        name: true,
-        displayName: true,
-        description: true,
-        version: true,
-        enabled: true,
-        parentRegionId: true,
-        fipsCode: true,
-      },
-    });
-    return row ? toRegionPluginRow(row) : null;
+    return this.regionPluginService.getRegionPluginByFipsCode(fipsCode);
   }
 
+  /** Delegate — see RegionPluginService.setRegionPluginEnabled. */
   async setRegionPluginEnabled(
     name: string,
     enabled: boolean,
   ): Promise<RegionPluginRow> {
-    const row = await this.db.regionPlugin.update({
-      where: { name },
-      data: { enabled },
-      select: {
-        name: true,
-        displayName: true,
-        description: true,
-        version: true,
-        enabled: true,
-        parentRegionId: true,
-        fipsCode: true,
-      },
-    });
-    this.logger.log(
-      `Region plugin "${name}" ${enabled ? 'enabled' : 'disabled'}`,
-    );
-    // Hot-swap the active plugin so the change takes effect immediately —
-    // without this, the in-memory registry stays on whatever it loaded at
-    // boot and `regionInfo` keeps returning the stale active region. See
-    // #796 for the failure mode this fixes.
-    await this.refreshActiveLocalPlugin();
-    return toRegionPluginRow(row);
+    return this.regionPluginService.setRegionPluginEnabled(name, enabled);
   }
 
+  /** Delegate — see RegionPluginService.invalidateManifest. */
   async invalidateManifest(
     regionId: string,
     sourceUrl: string,
   ): Promise<number> {
-    if (!this.pipeline) {
-      throw new Error(
-        'ScrapingPipelineService unavailable — cannot invalidate manifest',
-      );
-    }
-    return this.pipeline.invalidateManifest(regionId, sourceUrl);
-  }
-
-  private async syncRegionConfigs(): Promise<void> {
-    const regionsDir = process.env.REGION_CONFIGS_DIR ?? getRegionsDir();
-
-    try {
-      const configs = await discoverRegionConfigs(regionsDir);
-
-      for (const file of configs) {
-        await this.db.regionPlugin.upsert({
-          where: { name: file.name },
-          update: {
-            displayName: file.displayName,
-            description: file.description,
-            version: file.version,
-            pluginType: 'declarative',
-            parentRegionId: file.config.parentRegionId ?? null,
-            fipsCode: file.config.fipsCode ?? null,
-            config: file.config as unknown as Prisma.InputJsonValue,
-          },
-          create: {
-            name: file.name,
-            displayName: file.displayName,
-            description: file.description,
-            version: file.version,
-            pluginType: 'declarative',
-            parentRegionId: file.config.parentRegionId ?? null,
-            fipsCode: file.config.fipsCode ?? null,
-            enabled: file.name === 'federal',
-            config: file.config as unknown as Prisma.InputJsonValue,
-          },
-        });
-      }
-
-      if (configs.length > 0) {
-        this.logger.log(
-          `Auto-synced ${configs.length} region config(s) from ${regionsDir}`,
-        );
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Failed to sync region configs from ${regionsDir}: ${(error as Error).message}`,
-      );
-    }
+    return this.regionPluginService.invalidateManifest(regionId, sourceUrl);
   }
 
   // ─── Sync orchestration ───────────────────────────────────────────────────────
@@ -1036,941 +686,108 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
 
   // ─── Per-type sync methods ────────────────────────────────────────────────────
 
+  /**
+   * Delegates to {@link PropositionsSyncService} (#828 Step 1). The
+   * orchestrator owns stage-pattern construction (because the helpers
+   * still live here pending the shared-helpers extraction) and passes
+   * the patterns + the `upsertByExternalId` callback so the extracted
+   * service stays free of the orchestrator's full surface.
+   */
   private async syncPropositions(
     provider: DataFetcher = this.regionService,
     pipelineJobId?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
+    if (!this.propositionsSyncService) {
+      // Defensive — happens only when a unit-test module instantiates
+      // RegionSyncService standalone without registering the bounded
+      // services. Returning an empty result mirrors the previous
+      // behavior when propositionAnalysis was absent.
+      return { processed: 0, created: 0, updated: 0 };
+    }
     const regionId = provider.getName?.() ?? 'unknown';
-
-    // ─── Phase 1/3 — discover ──────────────────────────────────────
-    const discoverTracker = propositionSyncTracker(this.logger, 'discover', 1, {
-      region: regionId,
-    });
-    const propositions = await provider.fetchPropositions(pipelineJobId);
-    discoverTracker.item({
-      name: 'propositions provider',
-      externalId: null,
-      outcomeLabel: `${propositions.length} proposition(s) discovered`,
-      outcome: 'updated',
-    });
-    discoverTracker.complete();
-
     const stagePatterns = await this.buildStagePatterns(regionId);
-
-    // ─── Phase 2/3 — extract_and_upsert ────────────────────────────
-    // Pre-fetch existing externalIds so the per-item line can report
-    // accurate created-vs-updated outcomes (and the phase-complete
-    // counter matches reality). Without this, every row would log as
-    // "updated" even though many are new. Costs one extra findMany
-    // per sync — acceptable tradeoff for accurate observability.
-    // Skip the pre-fetch entirely when there's nothing to look up.
-    const existingPropIds = new Set<string>(
-      propositions.length === 0
-        ? []
-        : (
-            await this.db.proposition.findMany({
-              where: {
-                externalId: { in: propositions.map((p) => p.externalId) },
-              },
-              select: { externalId: true },
-            })
-          ).map((p: ExternalIdRecord) => p.externalId),
+    return this.propositionsSyncService.sync(
+      provider,
+      pipelineJobId,
+      stagePatterns,
+      this.upsertByExternalId.bind(this),
     );
-    const extractTracker = propositionSyncTracker(
-      this.logger,
-      'extract_and_upsert',
-      propositions.length,
-      { region: regionId },
-    );
-    const result = await this.upsertByExternalId(
-      propositions,
-      (ids) =>
-        this.db.proposition.findMany({
-          where: { externalId: { in: ids } },
-          select: { externalId: true },
-        }),
-      (props) =>
-        props.map((prop) => {
-          const lifecycleStageId = this.resolveStageFromStatus(
-            prop.status,
-            stagePatterns,
-          );
-          const isNew = !existingPropIds.has(prop.externalId);
-          const verb = isNew ? 'created' : 'updated';
-          const stageDesc = lifecycleStageId
-            ? `stage=${lifecycleStageId}`
-            : 'stage=unresolved';
-          extractTracker.item({
-            name: prop.externalId,
-            externalId: prop.externalId,
-            outcomeLabel: `${verb} (${stageDesc})`,
-            outcome: verb,
-          });
-          return this.db.proposition.upsert({
-            where: { externalId: prop.externalId },
-            update: {
-              title: prop.title,
-              summary: prop.summary,
-              fullText: prop.fullText,
-              status: prop.status,
-              electionDate: prop.electionDate,
-              sourceUrl: prop.sourceUrl,
-              lifecycleStageId,
-            },
-            create: {
-              externalId: prop.externalId,
-              title: prop.title,
-              summary: prop.summary,
-              fullText: prop.fullText,
-              status: prop.status,
-              electionDate: prop.electionDate,
-              sourceUrl: prop.sourceUrl,
-              lifecycleStageId,
-            },
-          });
-        }),
-      'propositions:',
-    );
-    extractTracker.complete();
-
-    if (stagePatterns.length > 0) {
-      await this.backfillPropositionStageIds(stagePatterns);
-    }
-
-    // ─── Phase 3/3 — analysis ──────────────────────────────────────
-    const analysisTracker = propositionSyncTracker(
-      this.logger,
-      'analysis',
-      this.propositionAnalysis ? 1 : 0,
-      { region: regionId },
-    );
-    if (this.propositionAnalysis) {
-      try {
-        await this.propositionAnalysis.generateMissing();
-        analysisTracker.item({
-          name: 'propositionAnalysis.generateMissing',
-          externalId: null,
-          outcomeLabel: 'analysis pass complete',
-          outcome: 'updated',
-        });
-      } catch (error) {
-        analysisTracker.item({
-          name: 'propositionAnalysis.generateMissing',
-          externalId: null,
-          outcomeLabel: `failed: ${(error as Error).message}`,
-          outcome: 'error',
-        });
-        this.logger.warn(
-          `Proposition analysis post-sync pass failed: ${(error as Error).message}`,
-        );
-      }
-    }
-    analysisTracker.complete();
-
-    return result;
   }
 
-  /**
-   * Resolve `lifecycleStageId` for propositions that were ingested before
-   * civics patterns were available, or whose status matched no pattern at
-   * the time of upsert. Mirrors `backfillBillStageIds`. Idempotent.
-   *
-   * Unlike the bill equivalent, this is NOT region-scoped because
-   * Proposition has no `regionId` column today. Safe for single-region
-   * deployments; will need a Proposition.regionId migration before a
-   * second region is added. Tracked in opuspopuli#731.
-   */
-  private async backfillPropositionStageIds(
-    stagePatterns: StagePattern[],
-  ): Promise<void> {
-    const unmatched = await this.db.proposition.findMany({
-      where: { lifecycleStageId: null, deletedAt: null },
-      select: { id: true, status: true },
-    });
-    if (unmatched.length === 0) return;
-
-    const byStage = new Map<string, string[]>();
-    for (const prop of unmatched) {
-      const stageId = this.resolveStageFromStatus(prop.status, stagePatterns);
-      if (!stageId) continue;
-      if (!byStage.has(stageId)) byStage.set(stageId, []);
-      byStage.get(stageId)!.push(prop.id);
-    }
-
-    let filled = 0;
-    for (const [stageId, ids] of byStage) {
-      await this.db.proposition.updateMany({
-        where: { id: { in: ids } },
-        data: { lifecycleStageId: stageId },
-      });
-      filled += ids.length;
-    }
-    if (filled > 0) {
-      this.logger.log(
-        `Propositions: backfilled lifecycleStageId for ${filled} of ${unmatched.length} proposition(s)`,
-      );
-    }
-  }
-
+  /** Delegates to {@link PropositionsSyncService} (#828 Step 1). */
   async regeneratePropositionAnalysis(id: string): Promise<boolean> {
-    if (!this.propositionAnalysis) return false;
-    const result = await this.propositionAnalysis.generate(id, true);
-    if (result) {
-      await this.cacheService.invalidateCache('propositions:');
-    }
-    return result;
+    if (!this.propositionsSyncService) return false;
+    return this.propositionsSyncService.regenerate(id);
   }
 
+  /** Delegates to {@link MeetingsSyncService} (#828 Step 2). */
   private async syncMeetings(
     provider: DataFetcher = this.regionService,
     pipelineJobId?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
-    const regionId = provider.getName?.() ?? 'unknown';
-
-    // ─── Phase 1/3 — discover ──────────────────────────────────────
-    const discoverTracker = meetingSyncTracker(this.logger, 'discover', 1, {
-      region: regionId,
-    });
-    const meetings = await provider.fetchMeetings(pipelineJobId);
-    discoverTracker.item({
-      name: 'meetings provider',
-      externalId: null,
-      outcomeLabel: `${meetings.length} meeting(s) discovered`,
-      outcome: 'updated',
-    });
-    discoverTracker.complete();
-
-    if (meetings.length === 0) {
-      // Skip the empty extract+minutes_link phases for clarity.
-      return this.syncMeetingMinutes(provider);
-    }
-
-    // ─── Phase 2/3 — extract_and_upsert ────────────────────────────
-    // Pre-fetch existing externalIds so the per-item line can report
-    // accurate created-vs-updated outcomes. Skip when there's nothing
-    // to look up.
-    const existingMeetingIds = new Set<string>(
-      meetings.length === 0
-        ? []
-        : (
-            await this.db.meeting.findMany({
-              where: { externalId: { in: meetings.map((m) => m.externalId) } },
-              select: { externalId: true },
-            })
-          ).map((m: ExternalIdRecord) => m.externalId),
-    );
-    const extractTracker = meetingSyncTracker(
-      this.logger,
-      'extract_and_upsert',
-      meetings.length,
-      { region: regionId },
-    );
-    const result = await this.upsertByExternalId(
-      meetings,
-      (ids) =>
-        this.db.meeting.findMany({
-          where: { externalId: { in: ids } },
-          select: { externalId: true },
-        }),
-      (items) =>
-        items.map((meeting) => {
-          const isNew = !existingMeetingIds.has(meeting.externalId);
-          extractTracker.item({
-            name: meeting.title,
-            externalId: meeting.externalId,
-            outcomeLabel: isNew ? 'created' : 'updated',
-            outcome: isNew ? 'created' : 'updated',
-          });
-          return this.db.meeting.upsert({
-            where: { externalId: meeting.externalId },
-            update: {
-              title: meeting.title,
-              body: meeting.body,
-              scheduledAt: meeting.scheduledAt,
-              location: meeting.location,
-              agendaUrl: meeting.agendaUrl,
-              videoUrl: meeting.videoUrl,
-            },
-            create: {
-              externalId: meeting.externalId,
-              title: meeting.title,
-              body: meeting.body,
-              scheduledAt: meeting.scheduledAt,
-              location: meeting.location,
-              agendaUrl: meeting.agendaUrl,
-              videoUrl: meeting.videoUrl,
-            },
-          });
-        }),
-      'meetings:',
-    );
-    extractTracker.complete();
-
-    // ─── Phase 3/3 — minutes_link ──────────────────────────────────
-    // minutes_link is a future phase (#814) that ties minutes rows to
-    // their parent meeting via (body, date). Until that lands, this
-    // tracker fires as a no-op marker so the operator sees the phase
-    // even if it does nothing — and so dashboards / log queries that
-    // expect all 3 phases stay correct.
-    const linkTracker = meetingSyncTracker(this.logger, 'minutes_link', 0, {
-      region: regionId,
-      note: 'not-yet-implemented',
-    });
-    linkTracker.complete();
-
-    const minutesResult = await this.syncMeetingMinutes(provider);
-    return {
-      processed: result.processed + minutesResult.processed,
-      created: result.created + minutesResult.created,
-      updated: result.updated + minutesResult.updated,
-    };
-  }
-
-  private async syncMeetingMinutes(
-    provider: DataFetcher = this.regionService,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
-    if (!provider.fetchMeetingMinutes) {
-      // Emit phase markers even on the early-return path so the
-      // operator can distinguish "phase ran and was empty" from
-      // "phase never ran." Matches the pattern other syncs use for
-      // not-yet-implemented sub-phases.
-      const noProvider = minutesSyncTracker(this.logger, 'discover', 0, {
-        note: 'provider does not implement fetchMeetingMinutes',
-      });
-      noProvider.complete();
-      const noIngest = minutesSyncTracker(this.logger, 'ingest', 0);
-      noIngest.complete();
-      const noSummarize = minutesSyncTracker(this.logger, 'summarize', 0);
-      noSummarize.complete();
+    if (!this.meetingsSyncService) {
       return { processed: 0, created: 0, updated: 0 };
     }
-
-    // ─── Phase 1/3 — discover ──────────────────────────────────────
-    const discoverTracker = minutesSyncTracker(this.logger, 'discover', 1);
-    const bundles = await provider.fetchMeetingMinutes();
-    discoverTracker.item({
-      name: 'minutes provider',
-      externalId: null,
-      outcomeLabel: `${bundles.length} minutes bundle(s) discovered`,
-      outcome: 'updated',
-    });
-    discoverTracker.complete();
-
-    if (bundles.length === 0) {
-      const ingestEmpty = minutesSyncTracker(this.logger, 'ingest', 0);
-      ingestEmpty.complete();
-      const summarizeEmpty = minutesSyncTracker(this.logger, 'summarize', 0);
-      summarizeEmpty.complete();
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    const externalIds = bundles.map((b) => b.minutes.externalId);
-    const existingRecords = await this.db.minutes.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingExternalIds = new Set(
-      existingRecords.map((r: ExternalIdRecord) => r.externalId),
+    return this.meetingsSyncService.sync(
+      provider,
+      pipelineJobId,
+      this.upsertByExternalId.bind(this),
     );
-
-    // ─── Phase 2/3 — ingest ────────────────────────────────────────
-    const ingestTracker = minutesSyncTracker(
-      this.logger,
-      'ingest',
-      bundles.length,
-    );
-    const upsertedIds: string[] = [];
-    for (const { minutes } of bundles) {
-      const wasExisting = existingExternalIds.has(minutes.externalId);
-      const row = await this.db.minutes.upsert({
-        where: { externalId: minutes.externalId },
-        update: {
-          body: minutes.body,
-          date: minutes.date,
-          revisionSeq: minutes.revisionSeq,
-          isActive: true,
-          pageCount: minutes.pageCount,
-          sourceUrl: minutes.sourceUrl,
-          rawText: minutes.rawText,
-          parsedAt: minutes.parsedAt ?? new Date(),
-        },
-        create: {
-          externalId: minutes.externalId,
-          body: minutes.body,
-          date: minutes.date,
-          revisionSeq: minutes.revisionSeq,
-          isActive: true,
-          pageCount: minutes.pageCount,
-          sourceUrl: minutes.sourceUrl,
-          rawText: minutes.rawText,
-          parsedAt: minutes.parsedAt ?? new Date(),
-        },
-        select: { id: true },
-      });
-      upsertedIds.push(row.id);
-      ingestTracker.item({
-        name: `${minutes.body} ${minutes.date.toISOString().slice(0, 10)}`,
-        externalId: minutes.externalId,
-        outcomeLabel: wasExisting
-          ? `updated (rev=${minutes.revisionSeq})`
-          : `created (${minutes.rawText?.length ?? 0} chars)`,
-        outcome: wasExisting ? 'updated' : 'created',
-      });
-
-      if (minutes.revisionSeq > 0) {
-        await this.db.minutes.updateMany({
-          where: {
-            body: minutes.body,
-            date: minutes.date,
-            revisionSeq: { lt: minutes.revisionSeq },
-          },
-          data: { isActive: false },
-        });
-      }
-    }
-    ingestTracker.complete();
-
-    if (upsertedIds.length > 0 && this.legislativeActionLinker) {
-      await this.legislativeActionLinker.linkMinutes(upsertedIds);
-    }
-
-    // ─── Phase 3/3 — summarize ─────────────────────────────────────
-    // AI synopsis generation is tracked in #813 and not yet wired —
-    // tracker fires as a no-op marker so the operator sees the phase.
-    const summarizeTracker = minutesSyncTracker(this.logger, 'summarize', 0, {
-      note: 'MinutesSummaryService not yet implemented — see #813',
-    });
-    summarizeTracker.complete();
-
-    const created = bundles.filter(
-      (b) => !existingExternalIds.has(b.minutes.externalId),
-    ).length;
-    const updated = bundles.filter((b) =>
-      existingExternalIds.has(b.minutes.externalId),
-    ).length;
-
-    return { processed: bundles.length, created, updated };
   }
 
-  private sanitizeDistrict(rep: Representative): string {
-    const raw = (rep.district ?? '').trim();
-    if (/^\d+$/.test(raw)) return String(Number.parseInt(raw, 10));
-    const derived = deriveDistrictFromExternalId(rep.externalId);
-    if (derived !== undefined) {
-      this.logger.warn(
-        `Sanitized district for ${rep.name} (${rep.externalId}): scraped value "${raw}" is not numeric, using externalId-derived "${derived}"`,
-      );
-      return derived;
-    }
-    if (raw) {
-      this.logger.warn(
-        `Non-numeric district "${raw}" for ${rep.name} (${rep.externalId}) and no numeric suffix to fall back on; keeping raw value`,
-      );
-    }
-    return raw;
-  }
-
-  private normalizeRep(r: Representative): void {
-    if (this.pluginNormalizeDistrict) {
-      r.externalId = stripLeadingZerosFromExternalId(r.externalId);
-    }
-    if (r.bio && !isLikelyValidBio(r.bio, this.pluginBioNoisePatterns)) {
-      this.logger.warn(
-        `Discarding junk bio for ${r.externalId} (${r.bio.length} chars): ${r.bio.slice(0, 60)}…`,
-      );
-      r.bio = undefined;
-      r.bioSource = undefined;
-    }
-    if (r.bio && !r.bioSource) {
-      r.bioSource = 'scraped';
-    }
-  }
-
+  /** Delegates to {@link RepresentativesSyncService} (#828 Step 3). */
   private async syncRepresentatives(
     provider: DataFetcher = this.regionService,
     maxReps?: number,
     regionId?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
-    const resolvedRegionId = regionId ?? provider.getName?.() ?? 'unknown';
-
-    // ─── Phase 1/5 — discover ──────────────────────────────────────
-    const discoverTracker = repSyncTracker(this.logger, 'discover', 1, {
-      region: resolvedRegionId,
-    });
-    const reps = await provider.fetchRepresentatives();
-    discoverTracker.item({
-      name: 'representatives provider',
-      externalId: null,
-      outcomeLabel: `${reps.length} representative(s) discovered`,
-      outcome: 'updated',
-    });
-    discoverTracker.complete();
-
-    // Chamber attribution happens at fetch time in
-    // DeclarativeRegionPlugin.fetchRepresentatives — each rep is stamped
-    // with the source's `category` (Assembly / Senate / Board of
-    // Supervisors / …) before it leaves the plugin. The old
-    // `applyChamberFallback` here relied on `instanceof
-    // DeclarativeRegionPlugin` which silently failed across worker
-    // bundles, leaving chamber undefined and causing Prisma to reject
-    // every upsert. Removed in the #745 code review.
-    for (const r of reps) {
-      this.normalizeRep(r);
+    if (!this.representativesSyncService) {
+      return { processed: 0, created: 0, updated: 0 };
     }
-
-    // ─── Phase 2/5 — extract_and_upsert ────────────────────────────
-    // Pre-fetch existing externalIds so the per-item line can report
-    // accurate created-vs-updated outcomes. Skip when there's nothing
-    // to look up.
-    const existingRepIds = new Set<string>(
-      reps.length === 0
-        ? []
-        : (
-            await this.db.representative.findMany({
-              where: { externalId: { in: reps.map((r) => r.externalId) } },
-              select: { externalId: true },
-            })
-          ).map((r: ExternalIdRecord) => r.externalId),
+    return this.representativesSyncService.sync(
+      provider,
+      maxReps,
+      regionId,
+      {
+        regionName: this.regionPluginService.getPluginRegionName(),
+        normalizeDistrict:
+          this.regionPluginService.getPluginNormalizeDistrict(),
+        bioNoisePatterns: this.regionPluginService.getPluginBioNoisePatterns(),
+      },
+      this.upsertByExternalId.bind(this),
+      deriveDistrictFromExternalId,
     );
-    const extractTracker = repSyncTracker(
-      this.logger,
-      'extract_and_upsert',
-      reps.length,
-      { region: resolvedRegionId },
-    );
-    const result = await this.upsertByExternalId(
-      reps,
-      (ids) =>
-        this.db.representative.findMany({
-          where: { externalId: { in: ids } },
-          select: { externalId: true },
-        }),
-      (items) =>
-        items.map((rep) => {
-          const lastName = extractLastName(rep.name);
-          const district = this.sanitizeDistrict(rep);
-          const isNew = !existingRepIds.has(rep.externalId);
-          extractTracker.item({
-            name: rep.name,
-            externalId: rep.externalId,
-            outcomeLabel: `${isNew ? 'created' : 'updated'} (chamber=${rep.chamber ?? 'unknown'}, district=${district})`,
-            outcome: isNew ? 'created' : 'updated',
-          });
-          return this.db.representative.upsert({
-            where: { externalId: rep.externalId },
-            update: {
-              regionId: regionId ?? rep.regionId ?? 'california',
-              name: rep.name,
-              lastName,
-              chamber: rep.chamber,
-              district,
-              party: rep.party,
-              photoUrl: rep.photoUrl ?? undefined,
-              contactInfo: (rep.contactInfo as object | null) ?? undefined,
-              committees: (rep.committees as object[] | null) ?? undefined,
-              committeesSummary: rep.committeesSummary ?? undefined,
-              bio: rep.bio ?? undefined,
-              bioSource: rep.bioSource ?? undefined,
-              bioClaims: (rep.bioClaims as object[] | null) ?? undefined,
-            },
-            create: {
-              externalId: rep.externalId,
-              regionId: regionId ?? rep.regionId ?? 'california',
-              name: rep.name,
-              lastName,
-              chamber: rep.chamber,
-              district,
-              party: rep.party,
-              photoUrl: rep.photoUrl,
-              contactInfo: rep.contactInfo as object | undefined,
-              committees: rep.committees as object[] | undefined,
-              committeesSummary: rep.committeesSummary,
-              bio: rep.bio,
-              bioSource: rep.bioSource,
-              bioClaims: rep.bioClaims as object[] | undefined,
-            },
-          });
-        }),
-      'representatives:',
-    );
-    extractTracker.complete();
-
-    // ─── Phase 3/5 — detail_crawl ──────────────────────────────────
-    // Detail-page crawling for committees/contact info happens inside
-    // the DeclarativeRegionPlugin.fetchRepresentatives call above —
-    // it's not a separate orchestrator step in the current pipeline.
-    // Phase fires as a marker so the operator sees all 5 phases.
-    const detailCrawlTracker = repSyncTracker(this.logger, 'detail_crawl', 0, {
-      region: resolvedRegionId,
-      note: 'inlined into fetchRepresentatives at plugin layer',
-    });
-    detailCrawlTracker.complete();
-
-    // ─── Phase 4/5 — bio_generation ────────────────────────────────
-    const bioTracker = repSyncTracker(
-      this.logger,
-      'bio_generation',
-      this.bioGenerator ? reps.length : 0,
-      { region: resolvedRegionId },
-    );
-    if (this.bioGenerator) {
-      await this.bioGenerator.enrichBios(reps, this.pluginRegionName, maxReps);
-      // BioGeneratorService is opaque about per-rep outcomes from out
-      // here — it logs its own per-rep DEBUG lines. We just record the
-      // batch boundary as one aggregate item.
-      bioTracker.note(`enrichBios pass complete for ${reps.length} reps`);
-    }
-    bioTracker.complete();
-
-    if (this.committeeSummaryGenerator) {
-      await this.committeeSummaryGenerator.generateMissingSummaries(maxReps);
-    }
-
-    if (this.legislativeCommitteeLinker) {
-      try {
-        await this.legislativeCommitteeLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Legislative committee linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    if (this.legislativeCommitteeDescriptions) {
-      try {
-        await this.legislativeCommitteeDescriptions.generateMissingDescriptions(
-          maxReps,
-        );
-      } catch (error) {
-        this.logger.warn(
-          `Legislative committee description generation failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    // ─── Phase 5/5 — prune_stale ───────────────────────────────────
-    // Stale-rep pruning isn't currently wired (reps don't go inactive
-    // by data-source absence the way bills do — they leave office in
-    // discrete elections). Marker for parity with bills' 6-phase
-    // shape; tracked for actual implementation under #816 / #770
-    // alongside the rep↔committee FK work.
-    const pruneTracker = repSyncTracker(this.logger, 'prune_stale', 0, {
-      region: resolvedRegionId,
-      note: 'not-yet-implemented',
-    });
-    pruneTracker.complete();
-
-    return result;
   }
 
-  private async ensureCommitteeStubs(
-    data: CampaignFinanceResult,
-  ): Promise<void> {
-    const referencedIds = new Set<string>();
-    const sourceSystemByExternalId = new Map<string, 'cal_access' | 'fec'>();
-    const noteReference = (
-      committeeId: string | undefined | null,
-      sourceSystem: 'cal_access' | 'fec',
-    ) => {
-      if (!committeeId) return;
-      referencedIds.add(committeeId);
-      if (!sourceSystemByExternalId.has(committeeId)) {
-        sourceSystemByExternalId.set(committeeId, sourceSystem);
-      }
-    };
-    for (const c of data.contributions)
-      noteReference(c.committeeId, c.sourceSystem);
-    for (const e of data.expenditures)
-      noteReference(e.committeeId, e.sourceSystem);
-    for (const ie of data.independentExpenditures) {
-      noteReference(ie.committeeId, ie.sourceSystem);
-    }
-
-    if (referencedIds.size === 0) return;
-
-    const existing = await this.db.committee.findMany({
-      where: { externalId: { in: [...referencedIds] } },
-      select: { externalId: true, id: true },
-    });
-    const existingMap = new Map(
-      existing.map((c: CommitteeRecord) => [c.externalId, c.id]),
-    );
-
-    const missingIds = [...referencedIds].filter((id) => !existingMap.has(id));
-
-    if (missingIds.length > 0) {
-      this.logger.log(
-        `Creating ${missingIds.length} stub committee records for FK references`,
-      );
-      await batchTransaction(
-        this.db,
-        missingIds.map((externalId) =>
-          this.db.committee.create({
-            data: {
-              externalId,
-              name: externalId,
-              type: 'OTHER',
-              status: 'active',
-              sourceSystem: sourceSystemByExternalId.get(externalId) ?? 'fec',
-            },
-          }),
-        ),
-      );
-    }
-
-    const allCommittees = await this.db.committee.findMany({
-      where: { externalId: { in: [...referencedIds] } },
-      select: { externalId: true, id: true },
-    });
-    const idMap = new Map(
-      allCommittees.map((c: CommitteeRecord) => [c.externalId, c.id]),
-    );
-
-    for (const c of data.contributions) {
-      c.committeeId = idMap.get(c.committeeId) ?? c.committeeId;
-    }
-    for (const e of data.expenditures) {
-      e.committeeId = idMap.get(e.committeeId) ?? e.committeeId;
-    }
-    for (const ie of data.independentExpenditures) {
-      ie.committeeId = idMap.get(ie.committeeId) ?? ie.committeeId;
-    }
-  }
-
+  /** Delegates to {@link CampaignFinanceSyncService} (#828 Step 4). */
   private async syncCampaignFinance(
     provider: DataFetcher,
     pipelineJobId?: string,
-  ): Promise<{
-    processed: number;
-    created: number;
-    updated: number;
-  }> {
-    if (!provider.fetchCampaignFinance) {
+  ): Promise<{ processed: number; created: number; updated: number }> {
+    if (!this.campaignFinanceSyncService) {
       return { processed: 0, created: 0, updated: 0 };
     }
-
-    let totalProcessed = 0;
-    let totalCreated = 0;
-    let totalUpdated = 0;
-    let batchCount = 0;
-
-    // Campaign finance uses a streaming callback (CAL-ACCESS bulk
-    // download → onBatch per chunk) rather than per-item iteration,
-    // so observability lives at the batch level. Phase trackers are
-    // initialized with total=0 and we use `note()` per batch instead
-    // of `item()` per record — the dataset is too large to log every
-    // contribution/expenditure individually.
-    //
-    // Phase 1 (discover) and Phase 2 (extract_and_upsert) are
-    // intentionally constructed and completed sequentially. The
-    // extract tracker is lazily initialized on the first onBatch
-    // callback so the phase-start log line for Phase 2 lands AFTER
-    // Phase 1's complete line — operator-readable phase ordering.
-    const discoverTracker = campaignFinanceSyncTracker(
-      this.logger,
-      'discover',
-      0,
-    );
-    discoverTracker.note('preparing CAL-ACCESS bulk download stream');
-
-    // Use a single-property ref so TypeScript can't narrow the inner
-    // type to `never` after the if-check below — closures that mutate
-    // a captured `let` variable defeat TS's flow analysis. The ref
-    // pattern sidesteps that without sprinkling `!` assertions.
-    const extractRef: {
-      tracker: SyncPhaseTracker<CampaignFinanceSyncPhase> | null;
-    } = { tracker: null };
-    const ensureExtractTracker =
-      (): SyncPhaseTracker<CampaignFinanceSyncPhase> => {
-        if (!extractRef.tracker) {
-          // First batch arrived → discover phase is functionally done.
-          discoverTracker.complete();
-          extractRef.tracker = campaignFinanceSyncTracker(
-            this.logger,
-            'extract_and_upsert',
-            0,
-          );
-        }
-        return extractRef.tracker;
-      };
-
-    const onBatch = async (items: Record<string, unknown>[]) => {
-      const tracker = ensureExtractTracker();
-      const batchData = this.sortCampaignFinanceItems(items);
-      await this.ensureCommitteeStubs(batchData);
-      const result = await this.upsertCampaignFinanceBatch(batchData);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-      batchCount++;
-      tracker.note(
-        `batch ${batchCount}: ${result.processed} items (${result.created} created, ${result.updated} updated)`,
-      );
-    };
-
-    const data = await provider.fetchCampaignFinance(onBatch, pipelineJobId);
-
-    if (
-      data.contributions.length > 0 ||
-      data.expenditures.length > 0 ||
-      data.independentExpenditures.length > 0 ||
-      data.committeeMeasureFilings.length > 0
-    ) {
-      const tracker = ensureExtractTracker();
-      await this.ensureCommitteeStubs(data);
-      const result = await this.upsertCampaignFinanceBatch(data);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-      tracker.note(
-        `final flush: ${result.processed} items (${result.created} created, ${result.updated} updated)`,
-      );
-    }
-
-    // Either the lazy ensureExtractTracker() ran (and started phase 2
-    // after completing phase 1), or no batches ever arrived. In the
-    // latter case close phase 1 now and emit an empty phase 2 marker
-    // so the operator sees both phase boundaries regardless of data.
-    if (extractRef.tracker) {
-      extractRef.tracker.complete();
-    } else {
-      discoverTracker.complete();
-      const emptyExtractTracker = campaignFinanceSyncTracker(
-        this.logger,
-        'extract_and_upsert',
-        0,
-        { note: 'no data from provider' },
-      );
-      emptyExtractTracker.complete();
-    }
-
-    if (this.propositionFinanceLinker) {
-      try {
-        await this.propositionFinanceLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Proposition finance linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    return {
-      processed: totalProcessed,
-      created: totalCreated,
-      updated: totalUpdated,
-    };
+    return this.campaignFinanceSyncService.sync(provider, pipelineJobId);
   }
 
+  /** Delegates to {@link CivicsSyncService} (#828 Step 5). Shared HTTP /
+   *  HTML helpers (fetchUrlText, htmlToReadableText, crawlCivicsUrls)
+   *  are passed in as callbacks because bills sync also uses them; the
+   *  consolidation lands as a follow-up after #828 Step 7 (bills) lifts
+   *  them into a shared module. */
   private async syncCivics(plugin: DataFetcher): Promise<{
     processed: number;
     created: number;
     updated: number;
   }> {
-    if (!this.promptClient || !this.llm) {
-      this.logger.warn(
-        'Civics sync requires PromptClient and LLM provider; skipping',
-      );
+    if (!this.civicsSyncService) {
       return { processed: 0, created: 0, updated: 0 };
     }
-
-    if (!plugin?.getDataSources) {
-      this.logger.warn(
-        'Region plugin does not expose getDataSources(); skipping civics sync',
-      );
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    const dataSources = plugin.getDataSources(DataType.CIVICS);
-    if (dataSources.length === 0) {
-      this.logger.log('No civics data sources configured for this region');
-      return { processed: 0, created: 0, updated: 0 };
-    }
-
-    const registeredHosts = new Set(
-      plugin.getDataSources().flatMap((s) => {
-        try {
-          return [new URL(s.url).hostname];
-        } catch {
-          return [];
-        }
-      }),
-    );
-
-    const regionId = plugin.getName?.() ?? 'unknown';
-    let processed = 0;
-    let created = 0;
-    let updated = 0;
-
-    // ─── Phase 1/2 — discover ──────────────────────────────────────
-    const discoverTracker = civicsSyncTracker(
-      this.logger,
-      'discover',
-      dataSources.length,
-      { region: regionId },
-    );
-    const allUrls: Array<{ url: string; ds: DataSourceConfig }> = [];
-    for (const ds of dataSources) {
-      const urls = await this.crawlCivicsUrls(ds, registeredHosts);
-      discoverTracker.item({
-        name: ds.url,
-        externalId: null,
-        outcomeLabel: `${urls.length} page(s) at depth ${ds.crawlDepth ?? 0}`,
-        outcome: 'updated',
-      });
-      for (const url of urls) allUrls.push({ url, ds });
-    }
-    discoverTracker.complete();
-
-    // ─── Phase 2/2 — extract_and_upsert ────────────────────────────
-    const extractTracker = civicsSyncTracker(
-      this.logger,
-      'extract_and_upsert',
-      allUrls.length,
-      { region: regionId },
-    );
-    for (const { url, ds } of allUrls) {
-      const result = await this.extractAndUpsertCivicsPage(regionId, url, ds);
-      if (result === 'created') {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'created',
-          outcome: 'created',
-        });
-        created++;
-        processed++;
-      } else if (result === 'updated') {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'updated',
-          outcome: 'updated',
-        });
-        updated++;
-        processed++;
-      } else if (result === 'failed') {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'failed',
-          outcome: 'error',
-        });
-      } else {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'skipped',
-          outcome: 'skipped',
-        });
-      }
-    }
-    extractTracker.complete();
-
-    return { processed, created, updated };
+    return this.civicsSyncService.sync(plugin, {
+      fetchUrlText: this.fetchUrlText.bind(this),
+      htmlToReadableText: this.htmlToReadableText.bind(this),
+      crawlCivicsUrls: this.crawlCivicsUrls.bind(this),
+    });
   }
 
   // ─── Bills sync ───────────────────────────────────────────────────────────────
@@ -2197,8 +1014,11 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     const billId = this.safeBillIdFromUrl(url);
     const billNumber = billNumberFromExternalId(billId);
 
-    // Status-only re-check path (#689): flagged-by-linker or forced by
-    // weekly backstop. Unchanged → skip cheaply; otherwise fall through.
+    // Status-only re-check path (#819, generalizing #689): fires for every
+    // bill with a prior DB row, not just journal-flagged ones. Unchanged →
+    // skip cheaply (no LLM, just an `updated_at` touch); otherwise fall
+    // through to the full extract path. `forceStatusRecheck=true` bypasses
+    // the cheap parse and forces LLM re-extraction.
     if (billId) {
       const recheck = await this.tryStatusOnlyRecheck(
         url,
@@ -3010,11 +1830,30 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Status-only re-check for bills flagged by the journal linker or forced
-   * by the weekly backstop (#689). Compares lastActionDate + lastAction
-   * text (both LLM-stored verbatim) against the raw page; status is
-   * skipped because the LLM normalizes it ("Inactive Bill - Chaptered" →
-   * "Chaptered") and a raw comparison would false-positive every time.
+   * Status-only re-check for every bill with a prior DB row (#819,
+   * generalizing #689). Fetches the status page, parses lastAction +
+   * lastActionDate cheaply (no LLM), and skips the full extract path
+   * when neither has moved. The LLM-normalized `status` field is
+   * intentionally NOT compared — the LLM rewrites the raw leginfo
+   * status ("Inactive Bill - Chaptered" → "Chaptered") so a raw-vs-
+   * normalized comparison would false-positive every time.
+   *
+   * Coverage: pre-#819 this only fired for bills flagged by the
+   * journal linker (`needsStatusRecheck=true`) or the weekly backstop.
+   * Unflagged bills fell to the text-page `sourcePublishedAt` skip
+   * (Mechanism B) — which silently missed status-only changes (e.g.
+   * committee amendments) that didn't re-publish the bill text.
+   * Removing the flag gate closes that silent-drift gap; the existing
+   * `needsStatusRecheck` flag is retained as documentation (journal
+   * linker still sets it; the clear-after-skip path still clears it)
+   * but is no longer load-bearing for skip eligibility.
+   *
+   * `forceStatusRecheck` semantics: when true, bypass the cheap parse
+   * entirely and fall through to full LLM extraction. This is the
+   * operator override for "I don't trust DB state, re-extract from
+   * scratch." Pre-#819 the same flag meant "force the cheap parse to
+   * fire" — a subtle weaker guarantee since the cheap parse could
+   * still skip the LLM. The new semantics match the parameter name.
    *
    * Takes `existing` as a parameter to avoid a per-bill `findUnique` —
    * callers pre-load via `loadBillSkipMetadata` at sync start.
@@ -3023,11 +1862,10 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     statusUrl: string,
     forceStatusRecheck: boolean,
     existing: BillSkipRecord | undefined,
-  ): Promise<'unchanged' | 'no-recheck-needed' | 'fall-through'> {
+  ): Promise<'unchanged' | 'fall-through'> {
     if (!existing) return 'fall-through'; // brand-new bill, full extraction
-    if (!forceStatusRecheck && !existing.needsStatusRecheck) {
-      return 'no-recheck-needed';
-    }
+    // Operator override — skip the cheap parse, force LLM re-extraction.
+    if (forceStatusRecheck) return 'fall-through';
 
     let html: string;
     try {
@@ -3054,7 +1892,7 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       return 'fall-through';
     }
 
-    // No material change. Clear the flag and skip.
+    // No material change. Clear the flag (idempotent on already-false) and skip.
     await this.db.bill.update({
       where: { id: existing.id },
       data: { needsStatusRecheck: false },
@@ -3527,175 +2365,6 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
     return out;
   }
 
-  private async extractAndUpsertCivicsPage(
-    regionId: string,
-    sourceUrl: string,
-    ds: DataSourceConfig,
-  ): Promise<'created' | 'updated' | 'failed'> {
-    if (!this.promptClient || !this.llm) return 'failed';
-    try {
-      const html = await this.fetchUrlText(sourceUrl);
-      const content = this.htmlToReadableText(html);
-      const { promptText, promptHash, promptVersion } =
-        await this.promptClient.getCivicsExtractionPrompt({
-          regionId,
-          sourceUrl,
-          contentGoal: ds.contentGoal,
-          category: ds.category,
-          hints: ds.hints,
-          html: content,
-        });
-
-      const result = await this.llm.generate(promptText, {
-        maxTokens: ds.llmMaxTokens ?? 32000,
-        temperature: 0.1,
-        requestTimeoutMs: ds.llmRequestTimeoutMs,
-      });
-
-      const candidate = extractJsonObjectSlice(result.text);
-      if (!candidate) {
-        this.logger.warn(
-          `Civics extraction: no JSON object for ${sourceUrl} (${result.text.length} chars)`,
-        );
-        return 'failed';
-      }
-
-      let block: Partial<{
-        chambers: unknown;
-        measureTypes: unknown;
-        lifecycleStages: unknown;
-        sessionScheme: unknown;
-        glossary: unknown;
-      }>;
-      try {
-        block = JSON.parse(candidate) as typeof block;
-      } catch (e) {
-        this.logger.warn(
-          `Civics extraction: JSON.parse failed for ${sourceUrl}: ${(e as Error).message}`,
-        );
-        return 'failed';
-      }
-
-      const existing = await this.db.civicsBlock.findUnique({
-        where: { regionId_sourceUrl: { regionId, sourceUrl } },
-        select: { id: true },
-      });
-
-      const fields = {
-        chambers: this.toJsonField(block.chambers),
-        measureTypes: this.toJsonField(block.measureTypes),
-        lifecycleStages: this.toJsonField(block.lifecycleStages),
-        sessionScheme: this.toJsonField(block.sessionScheme),
-        glossary: this.toJsonField(block.glossary),
-      };
-
-      await this.db.civicsBlock.upsert({
-        where: { regionId_sourceUrl: { regionId, sourceUrl } },
-        create: {
-          regionId,
-          sourceUrl,
-          ...fields,
-          promptHash,
-          promptVersion,
-          extractedAt: new Date(),
-        },
-        update: {
-          ...fields,
-          promptHash,
-          promptVersion,
-          extractedAt: new Date(),
-        },
-      });
-
-      const glossaryUpserted = await this.upsertGlossaryEntries(
-        regionId,
-        sourceUrl,
-        block.glossary,
-        promptHash,
-        promptVersion,
-      );
-
-      const outcome = existing ? 'updated' : 'created';
-      this.logger.log(
-        `Civics extracted from ${sourceUrl} (${outcome}, ${glossaryUpserted} glossary terms)`,
-      );
-      return outcome;
-    } catch (e) {
-      this.logger.error(
-        `Civics extraction failed for ${sourceUrl}: ${(e as Error).message}`,
-      );
-      return 'failed';
-    }
-  }
-
-  private async upsertGlossaryEntries(
-    regionId: string,
-    sourceUrl: string,
-    glossary: unknown,
-    promptHash: string | undefined,
-    promptVersion: string | undefined,
-  ): Promise<number> {
-    if (!Array.isArray(glossary) || glossary.length === 0) return 0;
-    const valid = glossary.filter(
-      (
-        e,
-      ): e is { term: string; slug: string; definition: unknown } & Record<
-        string,
-        unknown
-      > =>
-        !!e &&
-        typeof e === 'object' &&
-        typeof (e as Record<string, unknown>).term === 'string' &&
-        typeof (e as Record<string, unknown>).slug === 'string' &&
-        !!(e as Record<string, unknown>).definition,
-    );
-    if (valid.length < glossary.length) {
-      this.logger.debug(
-        `Glossary upsert: dropped ${glossary.length - valid.length} malformed entries from ${sourceUrl}`,
-      );
-    }
-    const now = new Date();
-    await batchTransaction(
-      this.db,
-      valid.map((entry) =>
-        this.db.glossaryEntry.upsert({
-          where: { regionId_slug: { regionId, slug: entry.slug } },
-          create: {
-            regionId,
-            term: entry.term,
-            slug: entry.slug,
-            definition: entry.definition as Prisma.InputJsonValue,
-            longDefinition: this.toJsonField(entry.longDefinition),
-            relatedTerms: Array.isArray(entry.relatedTerms)
-              ? (entry.relatedTerms as string[]).filter(
-                  (t) => typeof t === 'string',
-                )
-              : [],
-            sourceUrl,
-            promptHash,
-            promptVersion,
-            extractedAt: now,
-          },
-          update: {
-            term: entry.term,
-            definition: entry.definition as Prisma.InputJsonValue,
-            longDefinition: this.toJsonField(entry.longDefinition),
-            relatedTerms: Array.isArray(entry.relatedTerms)
-              ? (entry.relatedTerms as string[]).filter(
-                  (t) => typeof t === 'string',
-                )
-              : [],
-            sourceUrl,
-            promptHash,
-            promptVersion,
-            extractedAt: now,
-          },
-        }),
-      ),
-    );
-    return valid.length;
-  }
-
   /**
    * Throttled + retried HTML fetch. Wraps `fetchTextWithRetry` from
    * `./resilient-fetch` so all per-bill / per-page fetches honor the
@@ -3734,196 +2403,4 @@ export class RegionSyncService implements OnModuleInit, OnModuleDestroy {
       .trim();
     return s;
   }
-
-  private toJsonField(
-    value: unknown,
-  ): Prisma.InputJsonValue | typeof Prisma.DbNull {
-    return value === undefined || value === null
-      ? Prisma.DbNull
-      : (value as Prisma.InputJsonValue);
-  }
-
-  // ─── Campaign finance helpers ─────────────────────────────────────────────────
-
-  private sortCampaignFinanceItems(
-    items: Record<string, unknown>[],
-  ): CampaignFinanceResult {
-    const committees: CampaignFinanceResult['committees'] = [];
-    const contributions: CampaignFinanceResult['contributions'] = [];
-    const expenditures: CampaignFinanceResult['expenditures'] = [];
-    const independentExpenditures: CampaignFinanceResult['independentExpenditures'] =
-      [];
-    const committeeMeasureFilings: CampaignFinanceResult['committeeMeasureFilings'] =
-      [];
-
-    for (const rec of items) {
-      if ('donorName' in rec && 'amount' in rec) {
-        contributions.push(
-          rec as unknown as CampaignFinanceResult['contributions'][0],
-        );
-      } else if ('payeeName' in rec && 'amount' in rec) {
-        expenditures.push(
-          rec as unknown as CampaignFinanceResult['expenditures'][0],
-        );
-      } else if ('supportOrOppose' in rec && 'committeeName' in rec) {
-        independentExpenditures.push(
-          rec as unknown as CampaignFinanceResult['independentExpenditures'][0],
-        );
-      } else if (
-        'filingId' in rec &&
-        ('ballotName' in rec || 'ballotNumber' in rec)
-      ) {
-        committeeMeasureFilings.push(
-          rec as unknown as CampaignFinanceResult['committeeMeasureFilings'][0],
-        );
-      } else if ('sourceSystem' in rec && 'type' in rec) {
-        committees.push(
-          rec as unknown as CampaignFinanceResult['committees'][0],
-        );
-      }
-    }
-
-    return {
-      committees,
-      contributions,
-      expenditures,
-      independentExpenditures,
-      committeeMeasureFilings,
-    };
-  }
-
-  private async upsertCampaignFinanceBatch(
-    data: CampaignFinanceResult,
-  ): Promise<{ processed: number; created: number; updated: number }> {
-    const upsertConfigs: UpsertConfig[] = [
-      {
-        records: data.contributions,
-        model: this.db.contribution,
-        fields: [
-          'committeeId',
-          'donorName',
-          'donorType',
-          'donorEmployer',
-          'donorOccupation',
-          'donorCity',
-          'donorState',
-          'donorZip',
-          'amount',
-          'date',
-          'electionType',
-          'contributionType',
-          'sourceSystem',
-        ],
-      },
-      {
-        records: data.expenditures,
-        model: this.db.expenditure,
-        fields: [
-          'committeeId',
-          'payeeName',
-          'amount',
-          'date',
-          'purposeDescription',
-          'expenditureCode',
-          'candidateName',
-          'propositionTitle',
-          'supportOrOppose',
-          'sourceSystem',
-        ],
-      },
-      {
-        records: data.independentExpenditures,
-        model: this.db.independentExpenditure,
-        fields: [
-          'committeeId',
-          'committeeName',
-          'candidateName',
-          'propositionTitle',
-          'supportOrOppose',
-          'amount',
-          'date',
-          'electionDate',
-          'description',
-          'sourceSystem',
-        ],
-      },
-      {
-        records: data.committeeMeasureFilings,
-        model: this.db.cvr2Filing,
-        fields: [
-          'filingId',
-          'ballotName',
-          'ballotNumber',
-          'ballotJurisdiction',
-          'supportOrOppose',
-          'sourceSystem',
-        ],
-      },
-    ];
-
-    let totalProcessed = 0;
-    let totalCreated = 0;
-    let totalUpdated = 0;
-
-    for (const config of upsertConfigs) {
-      if (config.records.length === 0) continue;
-      const result = await this.upsertRecordsByFields(config);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-    }
-
-    return {
-      processed: totalProcessed,
-      created: totalCreated,
-      updated: totalUpdated,
-    };
-  }
-
-  private async upsertRecordsByFields(
-    config: UpsertConfig,
-  ): Promise<{ processed: number; created: number; updated: number }> {
-    const { model, fields } = config;
-    const rows = config.records as Record<string, unknown>[];
-    const externalIds = rows.map((r) => r.externalId as string);
-
-    const existing = await model.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { externalId: true },
-    });
-    const existingSet = new Set(
-      existing.map((r: ExternalIdRecord) => r.externalId),
-    );
-
-    const pick = (r: Record<string, unknown>) =>
-      Object.fromEntries(fields.map((f: string) => [f, r[f]]));
-
-    await batchTransaction(
-      this.db,
-      rows.map((r) =>
-        model.upsert({
-          where: { externalId: r.externalId as string },
-          update: pick(r),
-          create: { externalId: r.externalId, ...pick(r) },
-        }),
-      ),
-    );
-
-    const created = rows.filter(
-      (r) => !existingSet.has(r.externalId as string),
-    ).length;
-    return {
-      processed: rows.length,
-      created,
-      updated: rows.length - created,
-    };
-  }
-}
-
-// ─── Module-level utility (needed by both sync + other helpers) ───────────────
-
-function deriveDistrictFromExternalId(externalId: string): string | undefined {
-  const last = externalId.split('-').at(-1);
-  if (!last || !/^\d+$/.test(last)) return undefined;
-  return String(Number.parseInt(last, 10));
 }

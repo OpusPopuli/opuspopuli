@@ -30,6 +30,13 @@ import { PromptClientModule } from '@opuspopuli/prompt-client';
 import { RegionDomainService } from './region.service';
 import { RegionCacheService } from './region-cache.service';
 import { RegionSyncService } from './region-sync.service';
+import { PropositionsSyncService } from './propositions-sync.service';
+import { MeetingsSyncService } from './meetings-sync.service';
+import { RepresentativesSyncService } from './representatives-sync.service';
+import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
+import { CivicsSyncService } from './civics-sync.service';
+import { RegionPluginService } from './region-plugin.service';
+import { HttpFetcherService } from './http-fetcher.service';
 import { RegionQueryService } from './region-query.service';
 import { RegionResolver } from './region.resolver';
 import { RegionScheduler } from './region.scheduler';
@@ -181,7 +188,14 @@ const promptClientAsyncConfig = {
   ],
   providers: [
     RegionCacheService,
+    RegionPluginService,
+    HttpFetcherService,
     RegionSyncService,
+    PropositionsSyncService,
+    MeetingsSyncService,
+    RepresentativesSyncService,
+    CampaignFinanceSyncService,
+    CivicsSyncService,
     RegionQueryService,
     RegionDomainService,
     RegionResolver,

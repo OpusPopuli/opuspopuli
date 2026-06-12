@@ -246,11 +246,10 @@ export class RegionDomainService {
     private readonly queryService: RegionQueryService,
   ) {}
 
-  // ─── Lifecycle (delegated to sync service) ────────────────────────────────
-
-  async onModuleInit(): Promise<void> {
-    return this.syncService.onModuleInit();
-  }
+  // ─── Lifecycle (delegated) ────────────────────────────────────────────────
+  // Plugin lifecycle moved to RegionPluginService (#828 Step 6); Nest
+  // initializes it directly via its own OnModuleInit, so RegionDomainService
+  // no longer needs to forward onModuleInit through syncService.
 
   async onModuleDestroy(): Promise<void> {
     return this.syncService.onModuleDestroy();
