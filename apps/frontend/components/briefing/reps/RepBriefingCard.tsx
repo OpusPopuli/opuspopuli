@@ -96,6 +96,22 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
             })}
             {rep.party ? ` · ${rep.party}` : ""}
           </p>
+          {/*
+           * "Represents you" badge. Today every rep on the briefing comes
+           * from the user's resolved jurisdiction slate (district reps +
+           * county supervisors) — so the badge fires for all cards and
+           * acts as confirmation rather than differentiation. When the
+           * briefing eventually surfaces non-slate reps (e.g. reps on
+           * committees the user cares about even if they're in a
+           * different district), the badge naturally distinguishes them.
+           */}
+          <p
+            className="mt-1 inline-flex items-center gap-1 rounded-full bg-sage-50 dark:bg-sage-900/30 border border-sage-200 dark:border-sage-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#2D4A3C] dark:text-sage-200"
+            data-testid="rep-represents-you-badge"
+          >
+            <span aria-hidden="true">★</span>
+            {t("reps.representsYou")}
+          </p>
         </div>
 
         <RelevanceChip score={result.relevanceScore} />

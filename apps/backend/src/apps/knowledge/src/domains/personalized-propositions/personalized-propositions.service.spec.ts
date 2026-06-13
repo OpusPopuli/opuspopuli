@@ -71,10 +71,19 @@ const propRow = (overrides: PropRowInput = {}) => ({
 
 describe('PersonalizedPropositionsService', () => {
   let service: PersonalizedPropositionsService;
-  let db: { proposition: { findMany: jest.Mock } };
+  let db: {
+    proposition: { findMany: jest.Mock };
+    propositionRelevanceCache: { findMany: jest.Mock };
+  };
 
   beforeEach(async () => {
-    db = { proposition: { findMany: jest.fn() } };
+    db = {
+      proposition: { findMany: jest.fn() },
+      // Default to empty cache — the explanation field stays undefined
+      // unless a test explicitly seeds the cache (mirrors the day-one
+      // user case before the nightly batch runs).
+      propositionRelevanceCache: { findMany: jest.fn().mockResolvedValue([]) },
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

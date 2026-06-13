@@ -2,16 +2,15 @@
 
 import { BillsBriefingSection } from "./bills/BillsBriefingSection";
 import { BriefingPageHeader } from "./BriefingPageHeader";
-import { CommitteesBriefingPlaceholder } from "./placeholders/CommitteesBriefingPlaceholder";
+import { CommitteesBriefingSection } from "./committees/CommitteesBriefingSection";
 import { PropositionsBriefingSection } from "./propositions/PropositionsBriefingSection";
 import { RepsBriefingSection } from "./reps/RepsBriefingSection";
 
 /**
  * The authenticated home page. Composes the page header (with the
  * "Browse all civic data →" link to /region) and four BriefingSection
- * cards — Bills (#744), Reps (#769), Propositions (#771) — plus the
- * remaining placeholder section for Committees whose personalized
- * variant lands via #770.
+ * cards — Bills (#744), Reps (#769), Propositions (#771), Committees
+ * (#770 placeholder + #836 personalization).
  *
  * Each section owns its own loading / empty / error / no-profile
  * branches so the page composes without a top-level Suspense boundary.
@@ -23,7 +22,7 @@ export function BriefingPage() {
       <div className="space-y-5">
         <BillsBriefingSection />
         <RepsBriefingSection />
-        <CommitteesBriefingPlaceholder />
+        <CommitteesBriefingSection />
         <PropositionsBriefingSection />
       </div>
     </main>

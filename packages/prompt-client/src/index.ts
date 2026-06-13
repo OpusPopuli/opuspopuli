@@ -45,6 +45,10 @@ export type {
   BillStatusSummaryParams,
   LifecycleStageInput,
   PromptServiceResponse,
+  PropositionRelevanceExplanationParams,
+  RepresentativeRelevanceExplanationParams,
+  CommitteeRelevanceExplanationParams,
+  CommitteeUpcomingHearing,
 } from "./types.js";
 export { PROMPT_CLIENT_CONFIG } from "./types.js";
 export { signRequest } from "./hmac-signer.js";

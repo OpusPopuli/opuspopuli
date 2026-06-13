@@ -38,7 +38,7 @@ describe('PersonalizedFeedCache — table integration (real DB)', () => {
     const bill = await createBill({ billNumber: 'AB 1' });
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const row = await db.personalizedFeedCache.create({
+    const row = await db.billRelevanceCache.create({
       data: {
         userId: user.id,
         billId: bill.id,
@@ -53,7 +53,7 @@ describe('PersonalizedFeedCache — table integration (real DB)', () => {
       },
     });
 
-    const readBack = await db.personalizedFeedCache.findUnique({
+    const readBack = await db.billRelevanceCache.findUnique({
       where: { id: row.id },
     });
 
@@ -81,7 +81,7 @@ describe('PersonalizedFeedCache — table integration (real DB)', () => {
     const user = await createUser({ email: 'cache-null@example.com' });
     const bill = await createBill({ billNumber: 'AB 2' });
 
-    const row = await db.personalizedFeedCache.create({
+    const row = await db.billRelevanceCache.create({
       data: {
         userId: user.id,
         billId: bill.id,
@@ -104,7 +104,7 @@ describe('PersonalizedFeedCache — table integration (real DB)', () => {
     const bill = await createBill({ billNumber: 'AB 3' });
     const expiresAt = new Date(Date.now() + 86_400_000);
 
-    await db.personalizedFeedCache.create({
+    await db.billRelevanceCache.create({
       data: {
         userId: user.id,
         billId: bill.id,
@@ -116,7 +116,7 @@ describe('PersonalizedFeedCache — table integration (real DB)', () => {
     // A second insert for the same (userId, billId) must fail — the
     // batch job uses upsert against this exact key.
     await expect(
-      db.personalizedFeedCache.create({
+      db.billRelevanceCache.create({
         data: {
           userId: user.id,
           billId: bill.id,
@@ -133,7 +133,7 @@ describe('PersonalizedFeedCache — table integration (real DB)', () => {
     const bill = await createBill({ billNumber: 'AB 4' });
     const expiresAt = new Date(Date.now() + 86_400_000);
 
-    const initial = await db.personalizedFeedCache.upsert({
+    const initial = await db.billRelevanceCache.upsert({
       where: { userId_billId: { userId: user.id, billId: bill.id } },
       create: {
         userId: user.id,
@@ -145,7 +145,7 @@ describe('PersonalizedFeedCache — table integration (real DB)', () => {
       update: {},
     });
 
-    const updated = await db.personalizedFeedCache.upsert({
+    const updated = await db.billRelevanceCache.upsert({
       where: { userId_billId: { userId: user.id, billId: bill.id } },
       create: {
         userId: user.id,
@@ -166,7 +166,7 @@ describe('PersonalizedFeedCache — table integration (real DB)', () => {
     expect(updated.relevanceExplanation).toBe('refreshed');
     expect(updated.tokensIn).toBe(500);
 
-    const all = await db.personalizedFeedCache.findMany({
+    const all = await db.billRelevanceCache.findMany({
       where: { userId: user.id, billId: bill.id },
     });
     expect(all).toHaveLength(1);
@@ -180,7 +180,7 @@ describe('PersonalizedFeedCache — table integration (real DB)', () => {
     const user = await createUser({ email: 'cache-cascade@example.com' });
     const bill = await createBill({ billNumber: 'AB 5' });
 
-    await db.personalizedFeedCache.create({
+    await db.billRelevanceCache.create({
       data: {
         userId: user.id,
         billId: bill.id,
@@ -191,7 +191,7 @@ describe('PersonalizedFeedCache — table integration (real DB)', () => {
 
     await db.user.delete({ where: { id: user.id } });
 
-    const remaining = await db.personalizedFeedCache.findMany({
+    const remaining = await db.billRelevanceCache.findMany({
       where: { userId: user.id },
     });
     expect(remaining).toHaveLength(0);

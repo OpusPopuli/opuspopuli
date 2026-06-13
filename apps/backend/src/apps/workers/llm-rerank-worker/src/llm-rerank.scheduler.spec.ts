@@ -17,7 +17,12 @@ type BulkEntry = { data: LlmRerankJobData; opts?: { jobId?: string } };
 
 describe('LlmRerankScheduler', () => {
   let scheduler: LlmRerankScheduler;
-  let db: { signalProfile: { findMany: jest.Mock } };
+  let db: {
+    signalProfile: { findMany: jest.Mock };
+    proposition: { findMany: jest.Mock };
+    representative: { findMany: jest.Mock };
+    legislativeCommittee: { findMany: jest.Mock };
+  };
   let queueService: jest.Mocked<QueueService>;
   let jobs: jest.Mocked<LlmRerankJobService>;
   let config: jest.Mocked<ConfigService>;
@@ -63,6 +68,12 @@ describe('LlmRerankScheduler', () => {
   beforeEach(async () => {
     db = {
       signalProfile: { findMany: jest.fn() },
+      // opuspopuli#836: defaults to empty so existing bill-flow tests
+      // continue to assert one job per user without surfacing the
+      // multi-entity fan-out side effects.
+      proposition: { findMany: jest.fn().mockResolvedValue([]) },
+      representative: { findMany: jest.fn().mockResolvedValue([]) },
+      legislativeCommittee: { findMany: jest.fn().mockResolvedValue([]) },
     };
 
     const module: TestingModule = await Test.createTestingModule({

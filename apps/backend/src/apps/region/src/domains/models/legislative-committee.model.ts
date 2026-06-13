@@ -26,6 +26,18 @@ export class LegislativeCommitteeModel {
 
   @Field(() => Int)
   memberCount!: number;
+
+  /**
+   * LLM-written one-sentence "why this committee matters to you"
+   * (opuspopuli#836). Populated by the
+   * `LegislativeCommitteeRelevanceFieldResolver` from the per-user
+   * `committee_relevance_cache` row keyed by (userId, legislativeCommitteeId).
+   * Null when the nightly batch hasn't run yet for this user, the LLM
+   * declined (skip:true), or the validator rejected the output —
+   * frontend's WhyThisPanel falls back to a heuristic display.
+   */
+  @Field({ nullable: true })
+  relevanceExplanation?: string;
 }
 
 @ObjectType()
@@ -109,6 +121,14 @@ export class LegislativeCommitteeDetailModel {
 
   @Field()
   updatedAt!: Date;
+
+  /**
+   * LLM-written one-sentence "why this committee matters to you"
+   * (opuspopuli#836). See LegislativeCommitteeModel.relevanceExplanation
+   * for the resolver wiring.
+   */
+  @Field({ nullable: true })
+  relevanceExplanation?: string;
 }
 
 @ObjectType()

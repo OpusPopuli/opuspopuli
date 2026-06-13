@@ -343,9 +343,13 @@ describe('PersonalizedRepActivityService — integration (#769)', () => {
     expect(result).toEqual([]);
   });
 
-  it('drops zero-relevance reps even when they pass DB hydration', async () => {
+  it('surfaces zero-relevance reps from the user slate (briefing UX contract)', async () => {
     // Rep in Senate, no committees matching user tags, no actions on
-    // user bills. Hydrates fine but should score 0 and be filtered out.
+    // user bills. The orchestrator intentionally returns ALL slate reps
+    // including composite=0 ones — the briefing UI shows them with a
+    // "★ Represents you" chip + a low relevance score so the user sees
+    // their full delegation rather than only the high-signal subset
+    // (see #836: 6/7 of the user's slate were being dropped pre-fix).
     const rep = await createRepresentative({
       name: 'Unmatched Rep',
       chamber: 'Senate',
@@ -363,6 +367,9 @@ describe('PersonalizedRepActivityService — integration (#769)', () => {
       flags: { ...FLAGS_OFF, isRenter: true },
     });
 
-    expect(result).toEqual([]);
+    expect(result).toHaveLength(1);
+    expect(result[0].representativeId).toBe(rep.id);
+    expect(result[0].relevanceScore).toBe(0);
+    expect(result[0].recentActivityBillIds).toEqual([]);
   });
 });

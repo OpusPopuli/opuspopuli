@@ -121,7 +121,7 @@ export class PersonalizedFeedService {
     if (results.length === 0) return results;
     try {
       const billIds = results.map((r) => r.billId);
-      const rows = await this.db.personalizedFeedCache.findMany({
+      const rows = await this.db.billRelevanceCache.findMany({
         where: {
           userId,
           billId: { in: billIds },
@@ -139,7 +139,7 @@ export class PersonalizedFeedService {
     } catch (err) {
       this.logger.warn(
         {
-          event: 'personalized_feed_cache_overlay_failed',
+          event: 'bill_relevance_cache_overlay_failed',
           userId,
           error: (err as Error).message,
         },

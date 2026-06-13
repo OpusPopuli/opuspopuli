@@ -12,7 +12,7 @@ async function makeService(opts: {
   cacheRows?: { tokensIn: number | null; tokensOut: number | null }[];
 }): Promise<{ service: CostBudgetService; db: MockDbClient }> {
   const db = createMockDbService();
-  (db.personalizedFeedCache.findMany as jest.Mock).mockResolvedValue(
+  (db.billRelevanceCache.findMany as jest.Mock).mockResolvedValue(
     opts.cacheRows ?? [],
   );
   const config = {
@@ -76,7 +76,7 @@ describe('CostBudgetService', () => {
 
   it('returns true (fail-open) when the DB lookup throws', async () => {
     const { service, db } = await makeService({});
-    (db.personalizedFeedCache.findMany as jest.Mock).mockRejectedValue(
+    (db.billRelevanceCache.findMany as jest.Mock).mockRejectedValue(
       new Error('DB down'),
     );
     expect(await service.withinBudget('u-1')).toBe(true);

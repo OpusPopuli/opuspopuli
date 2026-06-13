@@ -7,6 +7,7 @@ import {
   LLM_RERANK_QUEUE,
   TRIGGER_SOURCE,
   type LlmRerankJobData,
+  type LlmRerankCommitteeCandidate,
 } from '@opuspopuli/queue-provider';
 import { LlmRerankJobService } from 'src/apps/knowledge/src/domains/personalized-feed/llm-rerank-job.service';
 
@@ -41,6 +42,31 @@ import { LlmRerankJobService } from 'src/apps/knowledge/src/domains/personalized
  *     defaults to "0 3 * * *" (3 AM UTC). Override requires worker restart.
  */
 const DEFAULT_CRON = '0 3 * * *';
+
+/**
+ * Defensive ceiling on the global proposition candidate fetch for the
+ * nightly multi-entity fan-out (opuspopuli#836). CA carries O(10)
+ * statewide propositions per cycle; this leaves headroom. Bumped when
+ * local/county ballots land. Mirrors the
+ * `RANKABLE_PROPS_FETCH_LIMIT` constant in
+ * `personalized-propositions.service.ts`.
+ */
+const PROPOSITION_CANDIDATE_FETCH_LIMIT = 50;
+
+/**
+ * Defensive ceiling on the global representative candidate fetch.
+ * CA has ~120 state legislators + ~52 federal reps; 200 is comfortable
+ * headroom. Bumped when local reps (county supervisors, city council)
+ * land.
+ */
+const REPRESENTATIVE_CANDIDATE_FETCH_LIMIT = 200;
+
+/**
+ * Defensive ceiling on the global legislative-committee candidate fetch.
+ * CA Assembly carries ~80 committees + ~84 subcommittees; 200 leaves
+ * headroom for Senate-side ingest landing.
+ */
+const COMMITTEE_CANDIDATE_FETCH_LIMIT = 200;
 
 @Injectable()
 export class LlmRerankScheduler implements OnApplicationBootstrap {
@@ -116,7 +142,10 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
    * serial round-trips to roughly chunkSize parallel DB writes plus a
    * single Redis call.
    */
-  async fanOutForAllActiveUsers(): Promise<{ enqueued: number }> {
+  async fanOutForAllActiveUsers(): Promise<{
+    enqueued: number;
+    entityBreakdown: Record<string, number>;
+  }> {
     const profiles = await this.db.signalProfile.findMany({
       where: { interestTags: { isEmpty: false } },
       select: {
@@ -136,7 +165,17 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
         specialLicenses: true,
       },
     });
-    if (profiles.length === 0) return { enqueued: 0 };
+    if (profiles.length === 0) {
+      return {
+        enqueued: 0,
+        entityBreakdown: {
+          bill: 0,
+          proposition: 0,
+          representative: 0,
+          committee: 0,
+        },
+      };
+    }
 
     const yyyymmdd = this.utcYyyymmdd(new Date());
     const plan = profiles.map((p) => ({
@@ -145,9 +184,10 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
       bullmqJobId: `cron-${p.userId}-${yyyymmdd}`,
     }));
 
+    // ====== BILL FAN-OUT (existing #745 flow, unchanged) ======
     // Upsert lifecycle rows in parallel (idempotent on bullmqJobId after
     // migration 20260530200000 added the unique constraint).
-    const rows = await Promise.all(
+    const billRows = await Promise.all(
       plan.map((entry) =>
         this.jobs.create({
           bullmqJobId: entry.bullmqJobId,
@@ -159,6 +199,196 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
 
     // Single bulk enqueue with deterministic jobIds — duplicates land
     // as silent no-ops at the BullMQ layer.
+    const billEntries = plan.map((entry, i) => ({
+      data: {
+        rerankJobId: billRows[i].id,
+        triggerSource: TRIGGER_SOURCE.CRON,
+        userId: entry.profile.userId,
+        rankingFlags: entry.rankingFlags,
+        interestTags: [...entry.profile.interestTags],
+        // entityType omitted → processor defaults to 'bill' (backward-compat).
+      } satisfies LlmRerankJobData,
+      opts: { jobId: entry.bullmqJobId },
+    }));
+    await this.queueService.enqueueBulk<LlmRerankJobData>(
+      LLM_RERANK_QUEUE,
+      billEntries,
+    );
+
+    // ====== PROPOSITION + REPRESENTATIVE FAN-OUT (opuspopuli#836) ======
+    // MVP candidate selection: shared global candidate sets across all users.
+    // - Propositions: active future-dated CA props (no per-user jurisdiction
+    //   filter yet — CA has only statewide ballots ingested today)
+    // - Representatives: all CA reps (no per-user slate resolution yet)
+    // Per-user filtering is a clear follow-up: when local/county ballots +
+    // jurisdiction resolution land, the candidate selectors below should
+    // become per-user via the existing UserJurisdiction stack.
+    //
+    // Committees: deferred entirely. The privacy contract requires the
+    // membersOnUserSlate intersect, which depends on per-user rep-slate
+    // resolution. Follow-up issue: implement committee scheduling once
+    // jurisdiction resolution is plumbed through.
+
+    const propositionCandidateIds = await this.fetchPropositionCandidateIds();
+    const representativeCandidateIds =
+      await this.fetchRepresentativeCandidateIds();
+    const committeeCandidates = await this.fetchCommitteeCandidates();
+
+    let propJobs = 0;
+    let repJobs = 0;
+    let committeeJobs = 0;
+
+    if (propositionCandidateIds.length > 0) {
+      propJobs = await this.enqueueEntityFanOut(plan, yyyymmdd, 'proposition', {
+        candidateIds: propositionCandidateIds,
+      });
+    }
+    if (representativeCandidateIds.length > 0) {
+      repJobs = await this.enqueueEntityFanOut(
+        plan,
+        yyyymmdd,
+        'representative',
+        { candidateIds: representativeCandidateIds },
+      );
+    }
+    if (committeeCandidates.length > 0) {
+      committeeJobs = await this.enqueueEntityFanOut(
+        plan,
+        yyyymmdd,
+        'committee',
+        { committeeCandidates },
+      );
+    }
+
+    return {
+      enqueued: plan.length + propJobs + repJobs + committeeJobs,
+      entityBreakdown: {
+        bill: plan.length,
+        proposition: propJobs,
+        representative: repJobs,
+        committee: committeeJobs,
+      },
+    };
+  }
+
+  /**
+   * Fetch the global proposition candidate set for tonight's batch.
+   * Filters: not soft-deleted, election in the future, status active or
+   * pending. CA-only today; once local/county ballots land, this query
+   * must be per-user-jurisdiction-scoped.
+   */
+  private async fetchPropositionCandidateIds(): Promise<string[]> {
+    const rows = await this.db.proposition.findMany({
+      where: {
+        deletedAt: null,
+        electionDate: { gte: new Date() },
+        status: { in: ['active', 'pending'] },
+      },
+      select: { id: true },
+      take: PROPOSITION_CANDIDATE_FETCH_LIMIT,
+    });
+    if (rows.length === PROPOSITION_CANDIDATE_FETCH_LIMIT) {
+      this.logger.warn(
+        `Hit PROPOSITION_CANDIDATE_FETCH_LIMIT (${PROPOSITION_CANDIDATE_FETCH_LIMIT}) — raise the cap or scope per user.`,
+      );
+    }
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Fetch the global representative candidate set for tonight's batch.
+   * Includes ALL non-deleted reps across every region — Assembly,
+   * Senate, county boards of supervisors, etc. The frontend's rep-slate
+   * resolution unions reps from both the district-based query and the
+   * county-supervisors query, so the scheduler must enrich all of them
+   * for the briefing's cache lookup to find a match.
+   *
+   * Follow-up: per-user slate via the existing UserJurisdiction stack —
+   * same refactor that makes the propositions filter per-user.
+   */
+  private async fetchRepresentativeCandidateIds(): Promise<string[]> {
+    const rows = await this.db.representative.findMany({
+      where: { deletedAt: null },
+      select: { id: true },
+      take: REPRESENTATIVE_CANDIDATE_FETCH_LIMIT,
+    });
+    if (rows.length === REPRESENTATIVE_CANDIDATE_FETCH_LIMIT) {
+      this.logger.warn(
+        `Hit REPRESENTATIVE_CANDIDATE_FETCH_LIMIT (${REPRESENTATIVE_CANDIDATE_FETCH_LIMIT}) — raise the cap or scope per user.`,
+      );
+    }
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Defensive ceiling on the global legislative-committee candidate
+   * fetch. CA carries ~80 Assembly committees today (Senate side
+   * pending ingest); 200 leaves headroom.
+   */
+  private async fetchCommitteeCandidates(): Promise<
+    LlmRerankCommitteeCandidate[]
+  > {
+    const rows = await this.db.legislativeCommittee.findMany({
+      where: { deletedAt: null },
+      select: { id: true },
+      take: COMMITTEE_CANDIDATE_FETCH_LIMIT,
+    });
+    if (rows.length === COMMITTEE_CANDIDATE_FETCH_LIMIT) {
+      this.logger.warn(
+        `Hit COMMITTEE_CANDIDATE_FETCH_LIMIT (${COMMITTEE_CANDIDATE_FETCH_LIMIT}) — raise the cap or scope per user.`,
+      );
+    }
+    // Privacy contract (prompt-service#81 / opuspopuli#836): the LLM
+    // template treats `membersOnUserSlate` as the strongest anchor —
+    // "your rep serves on it". The scheduler does NOT yet compute the
+    // per-user rep-slate intersect — that's tracked as opuspopuli#839
+    // (requires plumbing the existing district-reps + county-supervisors
+    // resolvers into the scheduler's per-user fan-out). We pass `[]`
+    // here, which vacuously upholds the contract: an empty list means
+    // no member anchor is asserted, and the LLM falls back to topical
+    // / recent-activity / upcoming-hearing anchors per the template's
+    // priority order. Committees with strong topic overlap still get
+    // useful explanations; committees with weak topic match return skip.
+    return rows.map((r) => ({
+      legislativeCommitteeId: r.id,
+      membersOnUserSlate: [],
+    }));
+  }
+
+  /**
+   * Generic per-entity fan-out: creates one lifecycle row per user and
+   * enqueues one BullMQ job per user with the entityType discriminator
+   * + the entity-specific payload (candidate IDs for proposition/rep,
+   * pre-resolved candidates with membersOnUserSlate for committees).
+   * Same dedup pattern as the bill flow. Single helper for all three
+   * new entity types — the only per-type variation is the payload
+   * shape, which is spread into `LlmRerankJobData` verbatim.
+   */
+  private async enqueueEntityFanOut(
+    plan: ReadonlyArray<{
+      profile: { userId: string; interestTags: string[] };
+      rankingFlags: string[];
+    }>,
+    yyyymmdd: string,
+    entityType: 'proposition' | 'representative' | 'committee',
+    payload:
+      | { candidateIds: string[] }
+      | { committeeCandidates: LlmRerankCommitteeCandidate[] },
+  ): Promise<number> {
+    const bullmqJobIds = plan.map(
+      (entry) => `cron-${entityType}-${entry.profile.userId}-${yyyymmdd}`,
+    );
+
+    const rows = await Promise.all(
+      plan.map((entry, i) =>
+        this.jobs.create({
+          bullmqJobId: bullmqJobIds[i],
+          triggerSource: TRIGGER_SOURCE.CRON,
+          userId: entry.profile.userId,
+        }),
+      ),
+    );
+
     const entries = plan.map((entry, i) => ({
       data: {
         rerankJobId: rows[i].id,
@@ -166,15 +396,17 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
         userId: entry.profile.userId,
         rankingFlags: entry.rankingFlags,
         interestTags: [...entry.profile.interestTags],
+        entityType,
+        ...payload,
       } satisfies LlmRerankJobData,
-      opts: { jobId: entry.bullmqJobId },
+      opts: { jobId: bullmqJobIds[i] },
     }));
     await this.queueService.enqueueBulk<LlmRerankJobData>(
       LLM_RERANK_QUEUE,
       entries,
     );
 
-    return { enqueued: plan.length };
+    return plan.length;
   }
 
   /**
