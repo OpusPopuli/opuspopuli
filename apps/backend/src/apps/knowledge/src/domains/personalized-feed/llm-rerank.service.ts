@@ -665,7 +665,7 @@ export class LlmRerankService {
       counters.budgetExhausted = true;
     }
 
-    // TODO(opuspopuli#836 follow-up): regionId is hardcoded to 'california'
+    // Note (opuspopuli#839 tracks the fix): regionId is hardcoded to 'california'
     // here and in processCommittee. The Proposition + LegislativeCommittee
     // models don't carry a `regionId` column today (CA-only ingest), so the
     // prompt input pins to "california". When local/county data lands,
