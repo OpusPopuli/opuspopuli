@@ -57,6 +57,32 @@ export interface StructuralAnalysisJobResult {
  * signals — never raw T3 data — cross this serialization boundary
  * (planning doc §10 commitment 7).
  */
+/**
+ * Discriminator for the multi-entity rerank pipeline (opuspopuli#836).
+ * 'bill' is the original #745 flow — kept as the default so existing
+ * queued jobs (without an explicit `entityType` field) continue to be
+ * processed as bill reranks. The other three are the new entity types.
+ */
+export type LlmRerankEntityType =
+  | "bill"
+  | "proposition"
+  | "representative"
+  | "committee";
+
+/**
+ * Committee rerank candidate carried on the job. The `membersOnUserSlate`
+ * field is the privacy contract from prompt-service#81 — the enqueuing
+ * path (scheduler) MUST intersect committee members with the user's
+ * resolved rep slate and pass only the intersection (or `[]`). The
+ * prompt-service cannot validate the claim; this is enforced by the
+ * scheduler upstream of this serialization boundary.
+ */
+export interface LlmRerankCommitteeCandidate {
+  legislativeCommitteeId: string;
+  /** Intersection of committee members ∩ user's resolved rep slate. */
+  membersOnUserSlate: string[];
+}
+
 export interface LlmRerankJobData {
   /** FK to the `llm_rerank_jobs` row this BullMQ job corresponds to. */
   rerankJobId: string;
@@ -66,6 +92,26 @@ export interface LlmRerankJobData {
   rankingFlags: string[];
   /** User's declared interest tags (controlled-vocab slugs). */
   interestTags: string[];
+  /**
+   * Entity type for this rerank. Defaults to 'bill' when missing — this
+   * lets in-flight jobs enqueued before opuspopuli#836 continue to
+   * dispatch to the bill path. New code should always set this explicitly.
+   */
+  entityType?: LlmRerankEntityType;
+  /**
+   * Pre-resolved candidate IDs for proposition / representative reranks.
+   * Required when `entityType` is 'proposition' or 'representative'.
+   * Ignored for 'bill' (which uses PersonalizedFeedService internally)
+   * and 'committee' (which uses `committeeCandidates`).
+   */
+  candidateIds?: string[];
+  /**
+   * Pre-resolved committee candidates with each one's
+   * `membersOnUserSlate` intersection already computed. Required when
+   * `entityType` is 'committee'. See LlmRerankCommitteeCandidate docblock
+   * for the privacy contract.
+   */
+  committeeCandidates?: LlmRerankCommitteeCandidate[];
   /** Hard cap on candidates re-ranked per call. Worker defaults to 20. */
   candidateLimit?: number;
   /** Cache TTL override in ms. Worker defaults to 7 days. */

@@ -85,7 +85,7 @@ function makeMocks() {
     // bill.findMany({ where: { id: { in: billIds } } }) once per rerank
     // instead of bill.findUnique per candidate.
     bill: { findMany: jest.fn().mockResolvedValue([]) },
-    personalizedFeedCache: { upsert: jest.fn() },
+    billRelevanceCache: { upsert: jest.fn() },
   } as unknown as jest.Mocked<DbService>;
   const feed = {
     getFeedForUser: jest.fn().mockResolvedValue(FEED_RESULT),
@@ -157,8 +157,8 @@ describe('LlmRerankService', () => {
     expect(summary.llmFailures).toBe(0);
     expect(summary.totalTokens).toBe(42);
 
-    expect(deps.db.personalizedFeedCache.upsert).toHaveBeenCalledTimes(1);
-    const call = (deps.db.personalizedFeedCache.upsert as jest.Mock).mock
+    expect(deps.db.billRelevanceCache.upsert).toHaveBeenCalledTimes(1);
+    const call = (deps.db.billRelevanceCache.upsert as jest.Mock).mock
       .calls[0][0];
     expect(call.where).toEqual({
       userId_billId: { userId: 'u-1', billId: 'b-1' },
@@ -190,7 +190,7 @@ describe('LlmRerankService', () => {
     expect(summary.cacheWritesWithoutExplanation).toBe(1);
     expect(summary.llmFailures).toBe(0);
 
-    const call = (deps.db.personalizedFeedCache.upsert as jest.Mock).mock
+    const call = (deps.db.billRelevanceCache.upsert as jest.Mock).mock
       .calls[0][0];
     expect(call.create.relevanceExplanation).toBeNull();
     // Skip is still a successful LLM call — hash + tokens still recorded
@@ -218,7 +218,7 @@ describe('LlmRerankService', () => {
     expect(summary.cacheWritesWithExplanation).toBe(0);
     expect(summary.cacheWritesWithoutExplanation).toBe(1);
 
-    const call = (deps.db.personalizedFeedCache.upsert as jest.Mock).mock
+    const call = (deps.db.billRelevanceCache.upsert as jest.Mock).mock
       .calls[0][0];
     expect(call.create.relevanceExplanation).toBeNull();
   });
@@ -240,7 +240,7 @@ describe('LlmRerankService', () => {
     expect(summary.cacheWritesWithoutExplanation).toBe(1);
     expect(summary.llmFailures).toBe(1);
 
-    const call = (deps.db.personalizedFeedCache.upsert as jest.Mock).mock
+    const call = (deps.db.billRelevanceCache.upsert as jest.Mock).mock
       .calls[0][0];
     expect(call.create.relevanceExplanation).toBeNull();
     expect(call.create.templateHash).toBeNull();
@@ -300,7 +300,7 @@ describe('LlmRerankService', () => {
     expect(summary.validatorRejections).toBe(1);
     expect(summary.llmFailures).toBe(0);
 
-    const call = (deps.db.personalizedFeedCache.upsert as jest.Mock).mock
+    const call = (deps.db.billRelevanceCache.upsert as jest.Mock).mock
       .calls[0][0];
     expect(call.create.relevanceExplanation).toBeNull();
     // The hash + tokens are still recorded — the LLM call succeeded;
@@ -324,7 +324,7 @@ describe('LlmRerankService', () => {
     ).not.toHaveBeenCalled();
     expect(summary.cacheWritesWithoutExplanation).toBe(1);
 
-    const call = (deps.db.personalizedFeedCache.upsert as jest.Mock).mock
+    const call = (deps.db.billRelevanceCache.upsert as jest.Mock).mock
       .calls[0][0];
     expect(call.create.relevanceExplanation).toBeNull();
     expect(call.create.templateHash).toBeNull();
@@ -340,8 +340,369 @@ describe('LlmRerankService', () => {
     const summary = await service.rerankForUser('u-1', BASE_INPUT);
 
     expect(deps.llm.generate).not.toHaveBeenCalled();
-    expect(deps.db.personalizedFeedCache.upsert).toHaveBeenCalledTimes(1);
+    expect(deps.db.billRelevanceCache.upsert).toHaveBeenCalledTimes(1);
     expect(summary.cacheWritesWithoutExplanation).toBe(1);
+  });
+
+  // ============================================================
+  // Multi-entity rerank (opuspopuli#836) — proposition / representative
+  // / committee variants. Same control flow as bills (budget → prompt →
+  // LLM → validate → upsert), exercised per entity type with the
+  // entity-specific cache table. The committee tests also lock in the
+  // membersOnUserSlate privacy contract.
+  // ============================================================
+
+  describe('rerankPropositionsForUser (#836)', () => {
+    function makeMultiEntityMocks() {
+      const m = makeMocks();
+      // Augment with the entity-specific tables + prompt-client methods
+      // the multi-entity flow touches.
+      (
+        m.db as unknown as { proposition: { findMany: jest.Mock } }
+      ).proposition = { findMany: jest.fn().mockResolvedValue([]) };
+      (
+        m.db as unknown as {
+          propositionRelevanceCache: { upsert: jest.Mock };
+        }
+      ).propositionRelevanceCache = { upsert: jest.fn() };
+      (
+        m.promptClient as unknown as {
+          getPropositionRelevanceExplanationPrompt: jest.Mock;
+        }
+      ).getPropositionRelevanceExplanationPrompt = jest.fn();
+      return m;
+    }
+
+    const PROP_ROW = {
+      id: 'p-1',
+      externalId: 'Measure J',
+      title: 'Rent Control Expansion Act',
+      electionDate: new Date('2026-11-03T00:00:00Z'),
+      analysisSummary: 'Expands rent control to post-1995 buildings.',
+      fiscalImpact: '$50M annual cost.',
+      yesOutcome: 'Renters gain protections.',
+      noOutcome: 'Status quo.',
+    };
+
+    it('writes an explained cache row on a positive LLM response', async () => {
+      const deps = makeMultiEntityMocks();
+      (
+        deps.db as unknown as { proposition: { findMany: jest.Mock } }
+      ).proposition.findMany.mockResolvedValue([PROP_ROW]);
+      (
+        deps.promptClient as unknown as {
+          getPropositionRelevanceExplanationPrompt: jest.Mock;
+        }
+      ).getPropositionRelevanceExplanationPrompt.mockResolvedValue({
+        promptText: 'PROMPT',
+        promptHash: 'h'.repeat(64),
+        promptVersion: 'v1',
+      });
+      deps.llm.generate.mockResolvedValue({
+        text: JSON.stringify({
+          explanation: 'Would expand rent control — relevant to renters.',
+          citedProvision: 'expanding rent-control authority',
+          citedSignals: ['isRenter', 'housing'],
+        }),
+        tokensUsed: 33,
+        finishReason: 'stop',
+      });
+
+      const service = await makeService(deps);
+      const summary = await service.rerankPropositionsForUser(
+        'u-1',
+        BASE_INPUT,
+        ['p-1'],
+      );
+
+      expect(summary.cacheWritesWithExplanation).toBe(1);
+      expect(summary.cacheWritesWithoutExplanation).toBe(0);
+      const upsertCall = (
+        deps.db as unknown as {
+          propositionRelevanceCache: { upsert: jest.Mock };
+        }
+      ).propositionRelevanceCache.upsert.mock.calls[0][0];
+      expect(upsertCall.where).toEqual({
+        userId_propositionId: { userId: 'u-1', propositionId: 'p-1' },
+      });
+      expect(upsertCall.create.relevanceExplanation).toBe(
+        'Would expand rent control — relevant to renters.',
+      );
+    });
+
+    it('skips candidates with no analysisSummary (incomplete ingest)', async () => {
+      const deps = makeMultiEntityMocks();
+      (
+        deps.db as unknown as { proposition: { findMany: jest.Mock } }
+      ).proposition.findMany.mockResolvedValue([
+        { ...PROP_ROW, analysisSummary: null },
+      ]);
+      const service = await makeService(deps);
+      const summary = await service.rerankPropositionsForUser(
+        'u-1',
+        BASE_INPUT,
+        ['p-1'],
+      );
+      expect(summary.cacheWritesWithExplanation).toBe(0);
+      expect(summary.cacheWritesWithoutExplanation).toBe(0);
+      expect(
+        (
+          deps.db as unknown as {
+            propositionRelevanceCache: { upsert: jest.Mock };
+          }
+        ).propositionRelevanceCache.upsert,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rerankRepresentativesForUser (#836)', () => {
+    function makeMultiEntityMocks() {
+      const m = makeMocks();
+      (
+        m.db as unknown as { representative: { findMany: jest.Mock } }
+      ).representative = { findMany: jest.fn().mockResolvedValue([]) };
+      (
+        m.db as unknown as {
+          representativeRelevanceCache: { upsert: jest.Mock };
+        }
+      ).representativeRelevanceCache = { upsert: jest.fn() };
+      (
+        m.promptClient as unknown as {
+          getRepresentativeRelevanceExplanationPrompt: jest.Mock;
+        }
+      ).getRepresentativeRelevanceExplanationPrompt = jest.fn();
+      return m;
+    }
+
+    const REP_ROW = {
+      id: 'r-1',
+      regionId: 'california',
+      name: 'Rep. Zoe Lofgren',
+      chamber: 'U.S. House',
+      district: 'CA-18',
+      party: 'democrat',
+      bio: 'Represents CA-18.',
+      committeesSummary: null,
+      committees: [{ name: 'House Judiciary Committee' }],
+      activitySummary: 'Voted for HR 4821.',
+    };
+
+    it('writes an explained cache row + builds params from the rep row', async () => {
+      const deps = makeMultiEntityMocks();
+      (
+        deps.db as unknown as { representative: { findMany: jest.Mock } }
+      ).representative.findMany.mockResolvedValue([REP_ROW]);
+      const promptMock = (
+        deps.promptClient as unknown as {
+          getRepresentativeRelevanceExplanationPrompt: jest.Mock;
+        }
+      ).getRepresentativeRelevanceExplanationPrompt;
+      promptMock.mockResolvedValue({
+        promptText: 'PROMPT',
+        promptHash: 'h'.repeat(64),
+        promptVersion: 'v1',
+      });
+      deps.llm.generate.mockResolvedValue({
+        text: JSON.stringify({
+          explanation: 'Sits on Judiciary — relevant to your housing focus.',
+          citedAnchor: 'House Judiciary Committee',
+          citedSignals: ['isRenter', 'housing'],
+        }),
+        tokensUsed: 28,
+        finishReason: 'stop',
+      });
+
+      const service = await makeService(deps);
+      const summary = await service.rerankRepresentativesForUser(
+        'u-1',
+        BASE_INPUT,
+        ['r-1'],
+      );
+
+      expect(summary.cacheWritesWithExplanation).toBe(1);
+      const promptArgs = promptMock.mock.calls[0][0];
+      expect(promptArgs.repName).toBe('Rep. Zoe Lofgren');
+      expect(promptArgs.officeTitle).toBe('U.S. House CA-18');
+      expect(promptArgs.jurisdiction).toBe('federal');
+      expect(promptArgs.party).toBe('democrat');
+      expect(promptArgs.committeeMemberships).toEqual([
+        'House Judiciary Committee',
+      ]);
+      expect(promptArgs.recentLegislativeAction).toBe('Voted for HR 4821.');
+    });
+
+    it('coerces unknown party labels to undefined (defensive)', async () => {
+      const deps = makeMultiEntityMocks();
+      (
+        deps.db as unknown as { representative: { findMany: jest.Mock } }
+      ).representative.findMany.mockResolvedValue([
+        { ...REP_ROW, party: 'monarchist' },
+      ]);
+      const promptMock = (
+        deps.promptClient as unknown as {
+          getRepresentativeRelevanceExplanationPrompt: jest.Mock;
+        }
+      ).getRepresentativeRelevanceExplanationPrompt;
+      promptMock.mockResolvedValue({
+        promptText: 'PROMPT',
+        promptHash: 'h'.repeat(64),
+        promptVersion: 'v1',
+      });
+      deps.llm.generate.mockResolvedValue({
+        text: JSON.stringify({ skip: true, reason: 'no match' }),
+        tokensUsed: 5,
+        finishReason: 'stop',
+      });
+      const service = await makeService(deps);
+      await service.rerankRepresentativesForUser('u-1', BASE_INPUT, ['r-1']);
+      expect(promptMock.mock.calls[0][0].party).toBeUndefined();
+    });
+  });
+
+  describe('rerankCommitteesForUser (#836) — privacy contract', () => {
+    function makeMultiEntityMocks() {
+      const m = makeMocks();
+      (
+        m.db as unknown as { legislativeCommittee: { findMany: jest.Mock } }
+      ).legislativeCommittee = { findMany: jest.fn().mockResolvedValue([]) };
+      (
+        m.db as unknown as {
+          committeeRelevanceCache: { upsert: jest.Mock };
+        }
+      ).committeeRelevanceCache = { upsert: jest.fn() };
+      (
+        m.promptClient as unknown as {
+          getCommitteeRelevanceExplanationPrompt: jest.Mock;
+        }
+      ).getCommitteeRelevanceExplanationPrompt = jest.fn();
+      return m;
+    }
+
+    const COMMITTEE_ROW = {
+      id: 'c-1',
+      name: 'Assembly Judiciary Committee',
+      chamber: 'Assembly',
+      description: 'Reviews civil + criminal procedure legislation.',
+      activitySummary: null,
+    };
+
+    it('PRIVACY CONTRACT: passes membersOnUserSlate verbatim — does NOT mutate, does NOT extend, does NOT fabricate', async () => {
+      // This test is the keystone enforcement of the prompt-service#81
+      // contract: the caller-supplied membersOnUserSlate is the intersect
+      // of committee members ∩ user's resolved rep slate. The service
+      // MUST pass it through unchanged. If the service ever lookups
+      // committee members and merges them in, the LLM will fabricate
+      // "your rep serves on it" claims for reps the user doesn't even have.
+      const deps = makeMultiEntityMocks();
+      (
+        deps.db as unknown as { legislativeCommittee: { findMany: jest.Mock } }
+      ).legislativeCommittee.findMany.mockResolvedValue([COMMITTEE_ROW]);
+      const promptMock = (
+        deps.promptClient as unknown as {
+          getCommitteeRelevanceExplanationPrompt: jest.Mock;
+        }
+      ).getCommitteeRelevanceExplanationPrompt;
+      promptMock.mockResolvedValue({
+        promptText: 'PROMPT',
+        promptHash: 'h'.repeat(64),
+        promptVersion: 'v1',
+      });
+      deps.llm.generate.mockResolvedValue({
+        text: JSON.stringify({
+          explanation: 'Your rep Lofgren sits on it.',
+          citedAnchor: 'Lofgren',
+          citedSignals: ['isRenter', 'housing'],
+        }),
+        tokensUsed: 24,
+        finishReason: 'stop',
+      });
+
+      const service = await makeService(deps);
+      await service.rerankCommitteesForUser('u-1', BASE_INPUT, [
+        {
+          legislativeCommitteeId: 'c-1',
+          membersOnUserSlate: ['Lofgren'],
+        },
+      ]);
+
+      const params = promptMock.mock.calls[0][0];
+      // Critical contract assertion: the array on the prompt call args
+      // matches the caller-supplied input EXACTLY.
+      expect(params.membersOnUserSlate).toEqual(['Lofgren']);
+      // No phantom names from the committee_members JSON or anywhere else.
+      expect(params.membersOnUserSlate).not.toContain('Padilla');
+      expect(params.membersOnUserSlate).not.toContain('Wiener');
+    });
+
+    it('PRIVACY CONTRACT: empty membersOnUserSlate stays empty (caller passes [], service does not enrich)', async () => {
+      const deps = makeMultiEntityMocks();
+      (
+        deps.db as unknown as { legislativeCommittee: { findMany: jest.Mock } }
+      ).legislativeCommittee.findMany.mockResolvedValue([COMMITTEE_ROW]);
+      const promptMock = (
+        deps.promptClient as unknown as {
+          getCommitteeRelevanceExplanationPrompt: jest.Mock;
+        }
+      ).getCommitteeRelevanceExplanationPrompt;
+      promptMock.mockResolvedValue({
+        promptText: 'PROMPT',
+        promptHash: 'h'.repeat(64),
+        promptVersion: 'v1',
+      });
+      deps.llm.generate.mockResolvedValue({
+        text: JSON.stringify({ skip: true, reason: 'no overlap' }),
+        tokensUsed: 6,
+        finishReason: 'stop',
+      });
+
+      const service = await makeService(deps);
+      await service.rerankCommitteesForUser('u-1', BASE_INPUT, [
+        { legislativeCommitteeId: 'c-1', membersOnUserSlate: [] },
+      ]);
+
+      expect(promptMock.mock.calls[0][0].membersOnUserSlate).toEqual([]);
+    });
+
+    it('writes the cache row keyed by (userId, legislativeCommitteeId)', async () => {
+      const deps = makeMultiEntityMocks();
+      (
+        deps.db as unknown as { legislativeCommittee: { findMany: jest.Mock } }
+      ).legislativeCommittee.findMany.mockResolvedValue([COMMITTEE_ROW]);
+      (
+        deps.promptClient as unknown as {
+          getCommitteeRelevanceExplanationPrompt: jest.Mock;
+        }
+      ).getCommitteeRelevanceExplanationPrompt.mockResolvedValue({
+        promptText: 'PROMPT',
+        promptHash: 'h'.repeat(64),
+        promptVersion: 'v1',
+      });
+      deps.llm.generate.mockResolvedValue({
+        text: JSON.stringify({
+          explanation: 'Your rep sits on it.',
+          citedSignals: ['isRenter', 'housing'],
+        }),
+        tokensUsed: 20,
+        finishReason: 'stop',
+      });
+
+      const service = await makeService(deps);
+      await service.rerankCommitteesForUser('u-1', BASE_INPUT, [
+        { legislativeCommitteeId: 'c-1', membersOnUserSlate: ['Lofgren'] },
+      ]);
+
+      const upsertCall = (
+        deps.db as unknown as {
+          committeeRelevanceCache: { upsert: jest.Mock };
+        }
+      ).committeeRelevanceCache.upsert.mock.calls[0][0];
+      expect(upsertCall.where).toEqual({
+        userId_legislativeCommitteeId: {
+          userId: 'u-1',
+          legislativeCommitteeId: 'c-1',
+        },
+      });
+    });
   });
 
   it('B3 regression: skips the cache upsert when the candidate bill row is missing (hard-deleted between rank and rerank)', async () => {
@@ -354,7 +715,7 @@ describe('LlmRerankService', () => {
     const summary = await service.rerankForUser('u-1', BASE_INPUT);
 
     expect(deps.llm.generate).not.toHaveBeenCalled();
-    expect(deps.db.personalizedFeedCache.upsert).not.toHaveBeenCalled();
+    expect(deps.db.billRelevanceCache.upsert).not.toHaveBeenCalled();
     expect(summary.cacheWritesWithExplanation).toBe(0);
     expect(summary.cacheWritesWithoutExplanation).toBe(0);
     expect(summary.candidatesConsidered).toBe(1);

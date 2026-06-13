@@ -202,7 +202,7 @@ describe('LlmRerankService + PersonalizedFeedService cache overlay (real DB)', (
     });
     expect(summary.cacheWritesWithoutExplanation).toBe(1);
 
-    const rows = await db.personalizedFeedCache.findMany({
+    const rows = await db.billRelevanceCache.findMany({
       where: { userId: user.id },
     });
     expect(rows).toHaveLength(1);
@@ -225,7 +225,7 @@ describe('LlmRerankService + PersonalizedFeedService cache overlay (real DB)', (
     });
 
     // Pre-seed an EXPIRED cache row.
-    await db.personalizedFeedCache.create({
+    await db.billRelevanceCache.create({
       data: {
         userId: user.id,
         billId: bill.id,
@@ -258,7 +258,7 @@ describe('LlmRerankService + PersonalizedFeedService cache overlay (real DB)', (
     await rerank.rerankForUser(user.id, input);
     await rerank.rerankForUser(user.id, input);
 
-    const rows = await db.personalizedFeedCache.findMany({
+    const rows = await db.billRelevanceCache.findMany({
       where: { userId: user.id },
     });
     expect(rows).toHaveLength(1);

@@ -28,6 +28,7 @@
     "title": "Your representatives",
     "subtitle": "What the people who represent you are doing this week.",
     "chamberDistrict": "{{chamber}} · District {{district}}",
+    "representsYou": "Represents you",
     "workingOn": "Working on for you",
     "empty": "None of your representatives crossed the relevance threshold this week. Broaden your interests to see more.",
     "noDistrictsTitle": "We need your address to find your reps",
@@ -37,6 +38,9 @@
   "committees": {
     "title": "Committees on your topics",
     "subtitle": "Hearings + comment windows in your jurisdictions, ranked by topic match.",
+    "chamberMembers": "{{chamber}} · {{count}} members",
+    "loading": "Loading committees…",
+    "empty": "None of this week's committees crossed the relevance threshold for your signals. Check back after tonight's batch.",
     "placeholder": {
       "body": "Personalized committee briefings are coming soon. Until then, browse all legislative committees.",
       "comingSoonNote": "We'll show hearings + open comment windows ranked for you once that signal pipeline ships."

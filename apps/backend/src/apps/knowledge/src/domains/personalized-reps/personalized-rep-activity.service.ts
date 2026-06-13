@@ -154,31 +154,39 @@ export class PersonalizedRepActivityService {
     const reps = await this.hydrateRankableReps(input.representativeIds);
     const repFetchMs = Date.now() - startMs - billContextMs;
 
-    // Two-pass: score every rep, drop zero-relevance survivors, only
-    // then pick the recent-activity bill IDs. `pickRecentActivityBillIds`
-    // is cheap but pointless work for reps that will never surface;
-    // the readability win is the main reason — the survivors-only loop
-    // makes the "what we return to the client" shape obvious.
-    const allScored = reps.map((rep) => {
-      const { axisScores, composite } = this.repScoring.scoreRep(
-        rep,
-        input,
-        billContext,
-      );
-      return { rep, axisScores, composite };
-    });
-    const survivors = allScored.filter((s) => s.composite > 0);
-    const scored = survivors
-      .map(({ rep, axisScores, composite }) => ({
-        representativeId: rep.id,
-        relevanceScore: composite,
-        axisScores,
-        recentActivityBillIds: this.repScoring.pickRecentActivityBillIds(
+    // Score every rep + sort by composite descending. opuspopuli#836
+    // relaxed the prior `composite > 0` filter: the briefing's rep slate
+    // is itself the personalization signal — these reps already match
+    // the user's jurisdiction (district + county supervisors), so they
+    // ARE relevant by construction. The LLM-written `relevanceExplanation`
+    // (cached by the multi-entity rerank batch) now carries the per-rep
+    // "why this matters to you" differentiation, with the composite
+    // score driving ranking order rather than visibility.
+    const scored = reps
+      .map((rep) => {
+        const { axisScores, composite } = this.repScoring.scoreRep(
           rep,
+          input,
           billContext,
-        ),
-      }))
+        );
+        return {
+          representativeId: rep.id,
+          relevanceScore: composite,
+          axisScores,
+          recentActivityBillIds: this.repScoring.pickRecentActivityBillIds(
+            rep,
+            billContext,
+          ),
+        };
+      })
       .sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+    // Populate relevanceExplanation from the representative relevance cache
+    // (opuspopuli#836). Same pattern as PersonalizedPropositionsService:
+    // one batch query covers all survivors; missing rows mean the nightly
+    // batch hasn't seen this user yet OR the LLM declined / validator
+    // rejected — frontend falls back to the heuristic axis explanation.
+    const enriched = await this.attachRelevanceExplanations(userId, scored);
 
     const totalMs = Date.now() - startMs;
     this.logger.log(
@@ -186,16 +194,51 @@ export class PersonalizedRepActivityService {
         event: 'personalized_rep_activity',
         userId,
         candidateReps: reps.length,
-        returnedReps: scored.length,
+        returnedReps: enriched.length,
+        explanationsPopulated: enriched.filter((r) => r.relevanceExplanation)
+          .length,
         userBillsOfInterest: billContext.userBillIdsOfInterest.size,
         billContextMs,
         repFetchMs,
         totalMs,
       },
-      `Personalized rep activity for ${userId}: ${scored.length}/${reps.length} reps in ${totalMs}ms`,
+      `Personalized rep activity for ${userId}: ${enriched.length}/${reps.length} reps in ${totalMs}ms`,
     );
 
-    return scored;
+    return enriched;
+  }
+
+  /**
+   * Batch-fetch the representative relevance cache for the survivors and
+   * merge `relevanceExplanation` onto each result. Mirrors the proposition
+   * service's `attachRelevanceExplanations`; one query, missing rows yield
+   * undefined.
+   */
+  private async attachRelevanceExplanations(
+    userId: string,
+    scored: ReadonlyArray<PersonalizedRepActivityResultModel>,
+  ): Promise<PersonalizedRepActivityResultModel[]> {
+    if (scored.length === 0) return [];
+
+    const cacheRows = await this.db.representativeRelevanceCache.findMany({
+      where: {
+        userId,
+        representativeId: { in: scored.map((s) => s.representativeId) },
+      },
+      select: {
+        representativeId: true,
+        relevanceExplanation: true,
+      },
+    });
+    const explanationByRepId = new Map(
+      cacheRows.map((r) => [r.representativeId, r.relevanceExplanation]),
+    );
+
+    return scored.map((s) => ({
+      ...s,
+      relevanceExplanation:
+        explanationByRepId.get(s.representativeId) ?? undefined,
+    }));
   }
 
   /**

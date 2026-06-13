@@ -181,22 +181,69 @@ export class PersonalizedPropositionsService {
       .sort((a, b) => b.relevanceScore - a.relevanceScore)
       .slice(0, limit);
 
+    // Populate relevanceExplanation from the proposition relevance cache
+    // (opuspopuli#836). One batch query covers all top-N candidates;
+    // missing rows mean either the nightly batch hasn't run yet for this
+    // user OR the LLM declined / validator rejected — in both cases the
+    // explanation stays null and the frontend falls back to the
+    // heuristic axis explanation in WhyThisPanel.
+    const enriched = await this.attachRelevanceExplanations(userId, scored);
+
     const totalMs = Date.now() - startMs;
     this.logger.log(
       {
         event: 'personalized_proposition_feed',
         userId,
         candidates: candidates.length,
-        returned: scored.length,
+        returned: enriched.length,
+        explanationsPopulated: enriched.filter((r) => r.relevanceExplanation)
+          .length,
         requestedLimit,
         appliedLimit: limit,
         fetchMs,
         totalMs,
       },
-      `Personalized propositions for ${userId}: ${scored.length}/${candidates.length} props (limit=${limit}) in ${totalMs}ms`,
+      `Personalized propositions for ${userId}: ${enriched.length}/${candidates.length} props (limit=${limit}) in ${totalMs}ms`,
     );
 
-    return scored;
+    return enriched;
+  }
+
+  /**
+   * Batch-fetch the proposition relevance cache for the top-N scored
+   * candidates and merge `relevanceExplanation` onto each result. One
+   * query (not N+1). Missing rows yield `undefined` — the model field is
+   * nullable and the frontend falls back to the heuristic explanation.
+   *
+   * Cache freshness is the writer's concern (LlmRerankService + nightly
+   * cron in opuspopuli#836). This read trusts whatever is in the cache;
+   * the writer respects TTL and the resolver doesn't need to.
+   */
+  private async attachRelevanceExplanations(
+    userId: string,
+    scored: ReadonlyArray<PersonalizedPropositionResultModel>,
+  ): Promise<PersonalizedPropositionResultModel[]> {
+    if (scored.length === 0) return [];
+
+    const cacheRows = await this.db.propositionRelevanceCache.findMany({
+      where: {
+        userId,
+        propositionId: { in: scored.map((s) => s.propositionId) },
+      },
+      select: {
+        propositionId: true,
+        relevanceExplanation: true,
+      },
+    });
+    const explanationByPropId = new Map(
+      cacheRows.map((r) => [r.propositionId, r.relevanceExplanation]),
+    );
+
+    return scored.map((s) => ({
+      ...s,
+      relevanceExplanation:
+        explanationByPropId.get(s.propositionId) ?? undefined,
+    }));
   }
 
   /**

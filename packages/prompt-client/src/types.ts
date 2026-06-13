@@ -214,6 +214,167 @@ export interface BillRelevanceExplanationParams {
 }
 
 /**
+ * Params for the `proposition-relevance-explanation` prompt — extends the
+ * universal `relevanceReason` UX contract to ballot propositions
+ * (opuspopuli#836). Cross-repo contract mirrors
+ * `PropositionRelevanceExplanationDto` (prompt-service#79). When the template
+ * gains new variables, update both the service-side seed and the
+ * `composePropositionRelevanceExplanation` variable map.
+ *
+ * Privacy boundary: same as BillRelevanceExplanationParams — only declared
+ * signals reach the prompt-service. NEVER raw addresses, sensitive T3 fields,
+ * or behavioral data. Anonymization happens in the caller.
+ */
+export interface PropositionRelevanceExplanationParams {
+  // ---------- Proposition context ----------
+  /** Region identifier (e.g. "california"). */
+  regionId: string;
+  /** Proposition display number (e.g. "Measure J", "Prop 12"). */
+  propositionNumber: string;
+  /** Election date in YYYY-MM-DD format. */
+  electionDate: string;
+  /** Full official proposition title. */
+  title: string;
+
+  // ---------- Proposition structured summary ----------
+  /** 2-3 sentence plain-English summary of the measure. */
+  plainEnglishSummary: string;
+  /** Controlled-vocab topic slugs (1-3 values). Shares bill-analysis vocab. */
+  topics: string[];
+  /** Controlled-vocab whoItAffects slugs (0-4 values). */
+  whoItAffects: string[];
+  /** Normalized fiscal-impact level. */
+  fiscalImpactLevel?: "none" | "low" | "medium" | "high";
+  /** One-sentence fiscal-impact summary. */
+  fiscalImpactSummary?: string;
+  /** One-sentence stakeholder-impact summary. */
+  stakeholderImpact?: string;
+  /** Optional provision reference (e.g. "Section 3", "the parental-consent clause") — passed through verbatim. */
+  provisionHint?: string;
+
+  // ---------- User anonymized profile ----------
+  /** User's declared interest tags (controlled-vocab slugs — same vocab as `topics`). */
+  userInterestTags: string[];
+  /** Names of the boolean RankingFlags that are TRUE for this user. Only declared signals — never inferred T3. */
+  userRankingFlags: string[];
+  /** Coarse anonymized region label. Caller anonymizes; this never sees raw addresses. */
+  userRegionLabel?: string;
+}
+
+/**
+ * Params for the `representative-relevance-explanation` prompt — extends the
+ * `relevanceReason` contract to elected representatives (opuspopuli#836).
+ * Cross-repo contract mirrors `RepresentativeRelevanceExplanationDto`
+ * (prompt-service#80).
+ *
+ * The template forbids speculation about the rep's beliefs, motives, or
+ * future votes — only documented jurisdictional facts (committee
+ * assignments, topic focus, recent actions) become anchors.
+ */
+export interface RepresentativeRelevanceExplanationParams {
+  // ---------- Rep context ----------
+  /** Region identifier (e.g. "california"). */
+  regionId: string;
+  /** Display name (e.g. "Rep. Zoe Lofgren"). */
+  repName: string;
+  /** Office title with chamber + district (e.g. "U.S. House CA-18"). */
+  officeTitle: string;
+  /** Jurisdiction scope. */
+  jurisdiction: "federal" | "state" | "county" | "city";
+  /** Informational party label — template forbids editorial use. */
+  party?: "democrat" | "republican" | "independent" | "nonpartisan";
+
+  // ---------- Rep structured facts (anchor candidates) ----------
+  /** 1-2 sentence plain-English description of the office. */
+  mandateSummary: string;
+  /** Controlled-vocab topics the rep has been active on this session (0-3). */
+  topicsOfFocus: string[];
+  /** Committee names the rep currently sits on (0-6). */
+  committeeMemberships: string[];
+  /** One-sentence verbatim description of the rep's most recent meaningful action. */
+  recentLegislativeAction?: string;
+  /** Optional single-line description of an upcoming public event. */
+  upcomingEvent?: string;
+
+  // ---------- User anonymized profile ----------
+  /** User's declared interest tags. */
+  userInterestTags: string[];
+  /** Names of the boolean RankingFlags that are TRUE for this user. */
+  userRankingFlags: string[];
+  /** Coarse anonymized region label. */
+  userRegionLabel?: string;
+}
+
+/**
+ * One upcoming-hearing entry supplied to the
+ * `committee-relevance-explanation` prompt. The LLM may cite the date + topic
+ * verbatim as a time-sensitive anchor.
+ */
+export interface CommitteeUpcomingHearing {
+  /** Hearing date in YYYY-MM-DD format. */
+  date: string;
+  /** One-line topic / agenda summary. */
+  topic: string;
+}
+
+/**
+ * Params for the `committee-relevance-explanation` prompt — extends the
+ * `relevanceReason` contract to legislative committees (opuspopuli#836).
+ * Cross-repo contract mirrors `CommitteeRelevanceExplanationDto`
+ * (prompt-service#81).
+ *
+ * The strongest anchor when present is `membersOnUserSlate` — "your rep
+ * serves on it" is a verifiable, jurisdiction-preserving claim. THE CALLER
+ * is responsible for ensuring this list actually intersects with the user's
+ * resolved rep slate; the prompt-service cannot validate the claim. If the
+ * caller passes a rep who is NOT on the user's slate, the LLM will fabricate
+ * a verifiable-sounding but wrong claim. See opuspopuli#836's acceptance
+ * criteria + the DTO docblock in prompt-service#81.
+ */
+export interface CommitteeRelevanceExplanationParams {
+  // ---------- Committee context ----------
+  /** Region identifier (e.g. "california"). */
+  regionId: string;
+  /** Display name (e.g. "Assembly Judiciary Committee"). */
+  committeeName: string;
+  /** Chamber + level the committee sits in. */
+  jurisdiction:
+    | "us_house"
+    | "us_senate"
+    | "state_assembly"
+    | "state_senate"
+    | "joint"
+    | "state_other";
+  /** Committee type. */
+  committeeType?: "standing" | "select" | "joint" | "subcommittee";
+
+  // ---------- Committee structured facts (anchor candidates) ----------
+  /** 1-2 sentence plain-English description of the committee's jurisdiction. */
+  mandateSummary: string;
+  /** Controlled-vocab topics the committee covers (0-3). */
+  topics: string[];
+  /**
+   * Intersection of committee members and the user's resolved rep slate.
+   * Pass `[]` when empty. NEVER pass reps who aren't on the user's slate —
+   * see the DTO docblock in prompt-service#81 and opuspopuli#836's
+   * acceptance criteria. The contract is enforced by the CALLER.
+   */
+  membersOnUserSlate: string[];
+  /** Controlled-vocab topic slugs from bills the committee acted on recently (0-3). */
+  recentBillTopicsTouched: string[];
+  /** Upcoming committee hearings the user could follow (0-3). */
+  upcomingHearings: CommitteeUpcomingHearing[];
+
+  // ---------- User anonymized profile ----------
+  /** User's declared interest tags. */
+  userInterestTags: string[];
+  /** Names of the boolean RankingFlags that are TRUE for this user. */
+  userRankingFlags: string[];
+  /** Coarse anonymized region label. */
+  userRegionLabel?: string;
+}
+
+/**
  * One entry in the region's lifecycle-stage taxonomy supplied to the
  * `bill-status-summary` prompt. Sourced from `civics_blocks.lifecycle_stages`
  * — the LLM picks one `id` from the list (or returns `"unknown"`) and the

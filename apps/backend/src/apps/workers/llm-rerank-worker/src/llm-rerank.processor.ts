@@ -14,8 +14,12 @@ import {
   createWorker,
   type LlmRerankJobData,
   type LlmRerankJobResult,
+  type LlmRerankEntityType,
 } from '@opuspopuli/queue-provider';
-import { LlmRerankService } from 'src/apps/knowledge/src/domains/personalized-feed/llm-rerank.service';
+import {
+  LlmRerankService,
+  type RerankSummary,
+} from 'src/apps/knowledge/src/domains/personalized-feed/llm-rerank.service';
 import { LlmRerankJobService } from 'src/apps/knowledge/src/domains/personalized-feed/llm-rerank-job.service';
 import type { PersonalizationInputDto } from 'src/apps/knowledge/src/domains/personalized-feed/dto/personalization-input.dto';
 
@@ -100,6 +104,9 @@ export class LlmRerankProcessor
       userId,
       rankingFlags,
       interestTags,
+      entityType,
+      candidateIds,
+      committeeCandidates,
       candidateLimit,
       ttlMs,
     } = job.data;
@@ -111,10 +118,20 @@ export class LlmRerankProcessor
         interestTags,
         flags: this.inflateFlags(rankingFlags),
       };
-      const summary = await this.rerank.rerankForUser(userId, input, {
-        candidateLimit,
-        ttlMs,
-      });
+      // Default to 'bill' for backward-compat with in-flight jobs
+      // enqueued before opuspopuli#836 added the entityType discriminator.
+      const resolvedEntityType: LlmRerankEntityType = entityType ?? 'bill';
+      const summary = await this.dispatchRerank(
+        resolvedEntityType,
+        userId,
+        input,
+        {
+          candidateIds: candidateIds ?? [],
+          committeeCandidates: committeeCandidates ?? [],
+          candidateLimit,
+          ttlMs,
+        },
+      );
       const result: LlmRerankJobResult = {
         userId: summary.userId,
         candidatesConsidered: summary.candidatesConsidered,
@@ -148,6 +165,60 @@ export class LlmRerankProcessor
         `LLM-rerank job failed: ${(err as Error).message}`,
       );
       throw err;
+    }
+  }
+
+  /**
+   * Dispatch to the entity-specific rerank method on LlmRerankService
+   * (opuspopuli#836). Pre-resolved candidates are carried on the job —
+   * the scheduler is responsible for candidate selection (and, for
+   * committees, the membersOnUserSlate intersect — see
+   * `LlmRerankCommitteeCandidate` privacy contract).
+   */
+  private async dispatchRerank(
+    entityType: LlmRerankEntityType,
+    userId: string,
+    input: PersonalizationInputDto,
+    opts: {
+      candidateIds: string[];
+      committeeCandidates: ReadonlyArray<{
+        legislativeCommitteeId: string;
+        membersOnUserSlate: string[];
+      }>;
+      candidateLimit?: number;
+      ttlMs?: number;
+    },
+  ): Promise<RerankSummary> {
+    switch (entityType) {
+      case 'bill':
+        // Calls the original API directly (rerankBillsForUser is just an
+        // alias that delegates here). Keeps the dispatcher consistent
+        // with the existing #745 contract that all bill tests mock.
+        return this.rerank.rerankForUser(userId, input, {
+          candidateLimit: opts.candidateLimit,
+          ttlMs: opts.ttlMs,
+        });
+      case 'proposition':
+        return this.rerank.rerankPropositionsForUser(
+          userId,
+          input,
+          opts.candidateIds,
+          { ttlMs: opts.ttlMs },
+        );
+      case 'representative':
+        return this.rerank.rerankRepresentativesForUser(
+          userId,
+          input,
+          opts.candidateIds,
+          { ttlMs: opts.ttlMs },
+        );
+      case 'committee':
+        return this.rerank.rerankCommitteesForUser(
+          userId,
+          input,
+          opts.committeeCandidates,
+          { ttlMs: opts.ttlMs },
+        );
     }
   }
 
