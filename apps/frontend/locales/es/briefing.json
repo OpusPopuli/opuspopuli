@@ -28,6 +28,7 @@
     "title": "Tus representantes",
     "subtitle": "Lo que están haciendo esta semana las personas que te representan.",
     "chamberDistrict": "{{chamber}} · Distrito {{district}}",
+    "representsYou": "Te representa",
     "workingOn": "Trabajando para ti",
     "empty": "Ninguno de tus representantes superó el umbral de relevancia esta semana. Amplía tus intereses para ver más.",
     "noDistrictsTitle": "Necesitamos tu dirección para encontrar a tus representantes",
@@ -37,6 +38,9 @@
   "committees": {
     "title": "Comités sobre tus temas",
     "subtitle": "Audiencias y ventanas de comentarios en tus jurisdicciones, priorizadas por coincidencia temática.",
+    "chamberMembers": "{{chamber}} · {{count}} miembros",
+    "loading": "Cargando comités…",
+    "empty": "Ningún comité de esta semana superó el umbral de relevancia para tus señales. Vuelve después del lote nocturno.",
     "placeholder": {
       "body": "Los resúmenes personalizados de comités llegarán pronto. Por ahora, explora todos los comités legislativos.",
       "comingSoonNote": "Mostraremos aquí audiencias y ventanas abiertas priorizadas para ti cuando esa señal esté lista."
