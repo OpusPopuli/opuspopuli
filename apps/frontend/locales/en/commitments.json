@@ -1,0 +1,78 @@
+{
+  "page": {
+    "title": "Our public commitments",
+    "subtitle": "These are the commitments we make to citizens — not aspirations, not marketing language. They are incorporated into our Terms of Service and we are legally bound by them.",
+    "metaDescription": "Opus Populi's binding public commitments to citizens on data ethics, privacy, and political neutrality.",
+    "versionLabel": "Version {{version}}",
+    "lastUpdatedLabel": "Last updated {{date}}",
+    "printLabel": "Print as PDF"
+  },
+  "intro": {
+    "heading": "What we promise",
+    "body": "Most civic platforms ask you to trust them. We instead tell you exactly what we will and will not do — and we put it in our Terms of Service so that if we break a commitment, you have a contractual remedy, not just a complaint."
+  },
+  "commitments": {
+    "youOwnYou": {
+      "title": "You own you.",
+      "body": "The model of you that this system builds is yours to see, edit, export, or delete in full. Nothing about you lives somewhere we cannot show you."
+    },
+    "askForLess": {
+      "title": "We ask for less, not more.",
+      "body": "We will never require information we do not strictly need to surface a bill you should know about. When we ask, we explain why."
+    },
+    "neverSellData": {
+      "title": "We will never sell your data.",
+      "body": "Not to advertisers. Not to campaigns. Not to data brokers. Not to researchers without your explicit opt-in. This is in our license, our terms, and our architecture."
+    },
+    "neverTargetPolitically": {
+      "title": "We will never use your information to target you politically.",
+      "body": "The relevance engine personalizes which bills you see; it does not modify content to change your mind. We do not produce persuasive content urging votes."
+    },
+    "tellYouWhy": {
+      "title": "We will tell you why.",
+      "body": "Every recommendation is accompanied by the specific signals that produced it. You can disagree."
+    },
+    "showOtherSide": {
+      "title": "We will show you the other side.",
+      "body": "Every high-relevance bill includes a panel showing the opposing position and who holds it. You cannot opt out of this."
+    },
+    "notSilentlyChange": {
+      "title": "We will not silently change the rules.",
+      "body": "Material changes to how the relevance engine works are published in the quarterly model card, before they take effect."
+    },
+    "notRequireLegibility": {
+      "title": "We will not require you to be legible.",
+      "body": "You do not have to disclose race, religion, sexuality, immigration status, health, or justice involvement to use this platform. If you choose to share, it is to help us help you — never to categorize you for someone else."
+    },
+    "publicMission": {
+      "title": "We are accountable to a public mission, not a private return.",
+      "body": "The platform is open source under AGPL-3.0; the data infrastructure is non-profit-governed; the founders do not personally profit from user data."
+    },
+    "discloseFailure": {
+      "title": "If we fail at any of the above, you have the right to know.",
+      "body": "Security incidents are disclosed within 72 hours, with full detail, no marketing language."
+    }
+  },
+  "incorporation": {
+    "heading": "Legal status",
+    "body": "These commitments are incorporated by reference into our <termsLink>Terms of Service</termsLink>. They are contractual obligations, not promotional statements. Per commitment 7, material changes will be announced at least 30 days before they take effect."
+  },
+  "history": {
+    "heading": "Version history",
+    "subhead": "The full revision history is in our public git log. This list summarises material changes.",
+    "v1_0_0": "Initial public commitments published with the MVP launch."
+  },
+  "contact": {
+    "heading": "Questions or concerns",
+    "body": "If you believe we are not living up to these commitments, write to <emailLink>legal@opuspopuli.org</emailLink>. Security incident reports can also go to <securityEmailLink>security@opuspopuli.org</securityEmailLink>."
+  },
+  "ack": {
+    "heading": "Acknowledge these commitments",
+    "body": "Before continuing, please read and acknowledge the commitments above.",
+    "checkbox": "I have read the public commitments and understand they are binding.",
+    "continue": "Get Started",
+    "submitting": "Saving acknowledgement…",
+    "error": "We couldn't record your acknowledgement. Please try again.",
+    "readFullPage": "Read the full commitments page →"
+  }
+}
