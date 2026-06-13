@@ -37,6 +37,25 @@ export class CommitteeRelevanceCacheLookup {
     });
     return cacheRow?.relevanceExplanation ?? null;
   }
+
+  /**
+   * Federation-safe variant for `@Public()` parent queries: extracts
+   * the user id from the request context using the shared
+   * `tryReadFederatedUserId` helper (which mirrors AuthGuard's
+   * HMAC-then-user-header trust model) and returns `null` when no
+   * authenticated user is in scope. The compact + detail field
+   * resolvers both delegate here so the per-class body stays a single
+   * line — see sonarjs no-identical-functions concerning the prior
+   * inline implementations.
+   */
+  async lookupForRequest(
+    context: GqlContext,
+    legislativeCommitteeId: string,
+  ): Promise<string | null> {
+    const userId = tryReadFederatedUserId(context);
+    if (!userId) return null;
+    return this.lookup(userId, legislativeCommitteeId);
+  }
 }
 
 /**
@@ -66,16 +85,7 @@ export class LegislativeCommitteeRelevanceFieldResolver {
     @Parent() committee: LegislativeCommitteeModel,
     @Context() context: GqlContext,
   ): Promise<string | null> {
-    // Parent `legislativeCommittees` query is @Public() so the
-    // federation gateway may forward it without user context. When
-    // there's no authenticated user we return null gracefully — the
-    // frontend treats this the same as a cache miss (no nightly batch
-    // has explained this committee for this user yet). NEVER throw
-    // here: the parent query must keep working for unauthenticated
-    // callers (e.g. the public committees list page).
-    const userId = tryReadFederatedUserId(context);
-    if (!userId) return null;
-    return this.cache.lookup(userId, committee.id);
+    return this.cache.lookupForRequest(context, committee.id);
   }
 }
 
@@ -92,11 +102,6 @@ export class LegislativeCommitteeDetailRelevanceFieldResolver {
     @Parent() committee: LegislativeCommitteeDetailModel,
     @Context() context: GqlContext,
   ): Promise<string | null> {
-    // Parent `legislativeCommittee(id)` query is @Public() — return
-    // null gracefully for unauthenticated callers (same rationale as
-    // the compact resolver above).
-    const userId = tryReadFederatedUserId(context);
-    if (!userId) return null;
-    return this.cache.lookup(userId, committee.id);
+    return this.cache.lookupForRequest(context, committee.id);
   }
 }
