@@ -23,6 +23,8 @@ export type {
   StructuralAnalysisJobResult,
   LlmRerankJobData,
   LlmRerankJobResult,
+  LlmRerankEntityType,
+  LlmRerankCommitteeCandidate,
   QueueModuleOptions,
   QueueModuleAsyncOptions,
   EnqueueOptions,

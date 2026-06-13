@@ -21,7 +21,7 @@ const ESTIMATED_TOKENS_PER_CALL = 500;
 /**
  * Per-user, per-day LLM token-budget gate for the rerank job (#745).
  *
- * Sums `tokensIn + tokensOut` across the user's `personalized_feed_cache`
+ * Sums `tokensIn + tokensOut` across the user's `bill_relevance_cache`
  * rows whose `computed_at` falls within the current UTC day. When the
  * sum is at or above the configured cap, the rerank service skips the
  * LLM call and writes the embedding-only row instead — the no-
@@ -59,7 +59,7 @@ export class CostBudgetService {
     try {
       const startOfUtcDay = new Date();
       startOfUtcDay.setUTCHours(0, 0, 0, 0);
-      const rows = await this.db.personalizedFeedCache.findMany({
+      const rows = await this.db.billRelevanceCache.findMany({
         where: { userId, computedAt: { gte: startOfUtcDay } },
         select: { tokensIn: true, tokensOut: true },
       });

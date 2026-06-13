@@ -39,6 +39,11 @@ import { RegionPluginService } from './region-plugin.service';
 import { HttpFetcherService } from './http-fetcher.service';
 import { RegionQueryService } from './region-query.service';
 import { RegionResolver } from './region.resolver';
+import {
+  CommitteeRelevanceCacheLookup,
+  LegislativeCommitteeRelevanceFieldResolver,
+  LegislativeCommitteeDetailRelevanceFieldResolver,
+} from './legislative-committee-relevance.field.resolver';
 import { RegionScheduler } from './region.scheduler';
 import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
@@ -199,6 +204,9 @@ const promptClientAsyncConfig = {
     RegionQueryService,
     RegionDomainService,
     RegionResolver,
+    CommitteeRelevanceCacheLookup,
+    LegislativeCommitteeRelevanceFieldResolver,
+    LegislativeCommitteeDetailRelevanceFieldResolver,
     RegionScheduler,
     PipelineJobService,
     StructuralAnalysisJobService,

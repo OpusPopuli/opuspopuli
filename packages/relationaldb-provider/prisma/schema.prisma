@@ -76,10 +76,10 @@ enum HomeownerStatus {
 // so the frontend can surface meaningful state and operators can debug
 // from a real signal instead of silent NULL on civic_data_updated_at.
 enum CivicResolutionStatus {
-  pending   @map("pending")   // address persisted; resolution hasn't run yet
-  resolved  @map("resolved")  // resolution succeeded, jurisdictions linked
-  no_match  @map("no_match")  // resolution ran, found zero matching jurisdictions
-  failed    @map("failed")    // resolution errored (Census API down, PostGIS error, etc.)
+  pending  @map("pending") // address persisted; resolution hasn't run yet
+  resolved @map("resolved") // resolution succeeded, jurisdictions linked
+  no_match @map("no_match") // resolution ran, found zero matching jurisdictions
+  failed   @map("failed") // resolution errored (Census API down, PostGIS error, etc.)
 }
 
 enum ConsentType {
@@ -178,21 +178,24 @@ model User {
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
 
   // Relations
-  profile                UserProfile?
-  login                  UserLogin?
-  sessions               UserSession[]
-  consents               UserConsent[]
-  addresses              UserAddress[]
-  documents              Document[]
-  passkeyCredentials     PasskeyCredential[]
-  emailCorrespondence    EmailCorrespondence[]
-  notificationPreference NotificationPreference?
-  abuseReports           AbuseReport[]
-  userJurisdictions      UserJurisdiction[]
-  signalProfile          SignalProfile?
-  sensitiveProfile       SensitiveProfile?
-  events                 UserEvent[]
-  personalizedFeedCache  PersonalizedFeedCache[]
+  profile                      UserProfile?
+  login                        UserLogin?
+  sessions                     UserSession[]
+  consents                     UserConsent[]
+  addresses                    UserAddress[]
+  documents                    Document[]
+  passkeyCredentials           PasskeyCredential[]
+  emailCorrespondence          EmailCorrespondence[]
+  notificationPreference       NotificationPreference?
+  abuseReports                 AbuseReport[]
+  userJurisdictions            UserJurisdiction[]
+  signalProfile                SignalProfile?
+  sensitiveProfile             SensitiveProfile?
+  events                       UserEvent[]
+  billRelevanceCache           BillRelevanceCache[]
+  propositionRelevanceCache    PropositionRelevanceCache[]
+  representativeRelevanceCache RepresentativeRelevanceCache[]
+  committeeRelevanceCache      CommitteeRelevanceCache[]
 
   @@map("users")
 }
@@ -400,7 +403,12 @@ model UserEvent {
 /// `expires_at_idx` to garbage-collect expired rows is a follow-up
 /// (not in #745 — the rerank job always upserts in place, so stale
 /// rows survive harmlessly until overwritten).
-model PersonalizedFeedCache {
+/// Per-(user, bill) relevance cache. Renamed from `PersonalizedFeedCache`
+/// in opuspopuli#836 — alongside the three sibling tables
+/// (PropositionRelevanceCache, RepresentativeRelevanceCache,
+/// CommitteeRelevanceCache) the bill version is one of four cache tables,
+/// each owning its own lifecycle and TTL.
+model BillRelevanceCache {
   id     String @id @default(uuid())
   userId String @map("user_id")
   billId String @map("bill_id")
@@ -433,7 +441,104 @@ model PersonalizedFeedCache {
   @@unique([userId, billId])
   @@index([userId, computedAt(sort: Desc)])
   @@index([expiresAt])
-  @@map("personalized_feed_cache")
+  @@map("bill_relevance_cache")
+}
+
+/// Per-(user, proposition) relevance-explanation cache (opuspopuli#836).
+/// Sibling of BillRelevanceCache — no relevanceScore column because the
+/// candidate set is already "everything on the user's ballot" (no ranker).
+/// LLM-written sentence comes from prompt-service
+/// `proposition-relevance-explanation` (prompt-service#79).
+model PropositionRelevanceCache {
+  id            String @id @default(uuid())
+  userId        String @map("user_id")
+  propositionId String @map("proposition_id")
+
+  /// LLM-written sentence (15-30 words). Null when the LLM declined
+  /// (skip: true) or the validator rejected the output.
+  relevanceExplanation String? @map("relevance_explanation") @db.Text
+
+  // ---------- LLM telemetry (parity with BillRelevanceCache) ----------
+  templateHash String? @map("template_hash")
+  variantId    String? @map("variant_id") @db.VarChar(50)
+  tokensIn     Int?    @map("tokens_in")
+  tokensOut    Int?    @map("tokens_out")
+
+  computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  proposition Proposition @relation(fields: [propositionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, propositionId])
+  @@index([userId, computedAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("proposition_relevance_cache")
+}
+
+/// Per-(user, representative) relevance-explanation cache (opuspopuli#836).
+/// Sibling of BillRelevanceCache. LLM-written sentence comes from
+/// prompt-service `representative-relevance-explanation` (prompt-service#80).
+/// The template forbids belief speculation or future-vote prediction —
+/// outputs cite only documented jurisdictional facts (committee assignments,
+/// topic focus, recent actions).
+model RepresentativeRelevanceCache {
+  id               String @id @default(uuid())
+  userId           String @map("user_id")
+  representativeId String @map("representative_id")
+
+  relevanceExplanation String? @map("relevance_explanation") @db.Text
+
+  templateHash String? @map("template_hash")
+  variantId    String? @map("variant_id") @db.VarChar(50)
+  tokensIn     Int?    @map("tokens_in")
+  tokensOut    Int?    @map("tokens_out")
+
+  computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  representative Representative @relation(fields: [representativeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, representativeId])
+  @@index([userId, computedAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("representative_relevance_cache")
+}
+
+/// Per-(user, legislative committee) relevance-explanation cache
+/// (opuspopuli#836). Sibling of BillRelevanceCache. LLM-written sentence
+/// comes from prompt-service `committee-relevance-explanation`
+/// (prompt-service#81).
+///
+/// **Privacy contract:** the consumer MUST intersect committee members with
+/// the user's resolved rep slate BEFORE calling the prompt-service endpoint
+/// — pass only the intersection as `membersOnUserSlate` (or `[]`). The
+/// prompt-service cannot validate the claim; this contract is enforced
+/// upstream of this cache. See the DTO docblock in
+/// prompt-service#81 + opuspopuli#836's acceptance criteria.
+model CommitteeRelevanceCache {
+  id                     String @id @default(uuid())
+  userId                 String @map("user_id")
+  legislativeCommitteeId String @map("legislative_committee_id")
+
+  relevanceExplanation String? @map("relevance_explanation") @db.Text
+
+  templateHash String? @map("template_hash")
+  variantId    String? @map("variant_id") @db.VarChar(50)
+  tokensIn     Int?    @map("tokens_in")
+  tokensOut    Int?    @map("tokens_out")
+
+  computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  legislativeCommittee LegislativeCommittee @relation(fields: [legislativeCommitteeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, legislativeCommitteeId])
+  @@index([userId, computedAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("committee_relevance_cache")
 }
 
 /// Async-job status tracking for the `llm-rerank` BullMQ queue
@@ -850,6 +955,7 @@ model Representative {
   authoredBills        Bill[]
   billCoAuthorships    BillCoAuthor[]
   billVotes            BillVote[]
+  relevanceCache       RepresentativeRelevanceCache[]
 
   @@index([name])
   @@index([lastName])
@@ -888,6 +994,7 @@ model LegislativeCommittee {
   legislativeActions LegislativeAction[]
   minutes            Minutes[]
   billAssignments    BillCommitteeAssignment[]
+  relevanceCache     CommitteeRelevanceCache[]
 
   @@index([chamber])
   @@index([name])
@@ -957,6 +1064,7 @@ model Proposition {
   expenditures            Expenditure[]
   independentExpenditures IndependentExpenditure[]
   legislativeActions      LegislativeAction[]
+  relevanceCache          PropositionRelevanceCache[]
 
   @@index([status])
   @@index([electionDate])
@@ -1326,25 +1434,25 @@ model Bill {
   /// inactive file, failed passage, OR from a closed session that did not
   /// enact. Computed by domains/bill-lifecycle.ts at sync write time. One-
   /// way transition: dead bills never re-animate. See #747.
-  isDead              Boolean   @default(false) @map("is_dead")
+  isDead   Boolean @default(false) @map("is_dead")
   /// Currently moveable — the source has tagged the bill as actively
   /// progressing (CA leginfo: status starts with "Active Bill - ..."). The
   /// bills-list Active/Inactive segmented toggle filters on this column;
   /// the personalized feed hard-excludes anything with isActive=false
   /// (chaptered AND dead are both unactionable). Pairs with isDead to give
   /// a 3-way partition: active | passed | dead. See #747.
-  isActive            Boolean   @default(false) @map("is_active")
+  isActive Boolean @default(false) @map("is_active")
 
   extractedAt DateTime @default(now()) @map("extracted_at") @db.Timestamptz
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  author                Representative?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  coAuthors             BillCoAuthor[]
-  committeeReferrals    BillCommitteeAssignment[]
-  votes                 BillVote[]
-  actions               LegislativeAction[]
-  personalizedFeedCache PersonalizedFeedCache[]
+  author             Representative?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  coAuthors          BillCoAuthor[]
+  committeeReferrals BillCommitteeAssignment[]
+  votes              BillVote[]
+  actions            LegislativeAction[]
+  billRelevanceCache BillRelevanceCache[]
 
   @@index([regionId, sessionYear])
   @@index([regionId, measureTypeCode])

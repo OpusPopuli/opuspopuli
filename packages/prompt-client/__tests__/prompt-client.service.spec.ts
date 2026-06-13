@@ -571,6 +571,393 @@ describe("PromptClientService", () => {
     });
   });
 
+  describe("getPropositionRelevanceExplanationPrompt (#836)", () => {
+    // Variable shaping MUST stay byte-for-byte identical to the
+    // propositionRelevanceExplanation descriptor in prompt-service.
+    // Cross-service contract guard.
+
+    const BASE = {
+      regionId: "california",
+      propositionNumber: "Measure J",
+      electionDate: "2026-11-03",
+      title: "Rent Control Expansion Act of 2026.",
+      plainEnglishSummary:
+        "Expands rent control to post-1995 buildings statewide.",
+      topics: ["housing"],
+      whoItAffects: ["renters", "homeowners"],
+      fiscalImpactLevel: "medium" as const,
+      fiscalImpactSummary: "$50M annual cost.",
+      stakeholderImpact: "Renters gain, landlords lose flexibility.",
+      provisionHint: "expanding rent-control authority",
+      userInterestTags: ["housing"],
+      userRankingFlags: ["isRenter", "isParent"],
+      userRegionLabel: "94xxx",
+    };
+
+    const TEMPLATE = [
+      "Region: {{REGION_ID}}",
+      "Proposition: {{PROPOSITION_NUMBER}}",
+      "Election date: {{ELECTION_DATE}}",
+      "Title: {{TITLE}}",
+      "Proposition topics: {{PROP_TOPICS}}",
+      "Proposition affects: {{PROP_WHO_IT_AFFECTS}}",
+      "{{FISCAL_IMPACT_LINE}}{{STAKEHOLDER_IMPACT_LINE}}{{PROVISION_HINT_LINE}}",
+      "User-declared interests (topic slugs): {{USER_INTEREST_TAGS}}",
+      "User-declared life-context flags (TRUE-only): {{USER_RANKING_FLAGS}}",
+      "{{USER_REGION_LINE}}NOTICE",
+      "{{PLAIN_ENGLISH_SUMMARY_BLOCK}}",
+    ].join("\n");
+
+    it("composes proposition-relevance-explanation prompt with all interpolated fields", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("proposition-relevance-explanation", TEMPLATE),
+      );
+
+      const result =
+        await service.getPropositionRelevanceExplanationPrompt(BASE);
+
+      expect(result.promptText).toContain("Region: california");
+      expect(result.promptText).toContain("Proposition: Measure J");
+      expect(result.promptText).toContain("Election date: 2026-11-03");
+      expect(result.promptText).toContain("Proposition topics: housing");
+      expect(result.promptText).toContain(
+        "Proposition affects: renters, homeowners",
+      );
+      expect(result.promptText).toContain(
+        "Fiscal impact: medium — $50M annual cost.\n",
+      );
+      expect(result.promptText).toContain(
+        "Stakeholder impact: Renters gain, landlords lose flexibility.\n",
+      );
+      expect(result.promptText).toContain(
+        "Suggested provision to cite: expanding rent-control authority\n",
+      );
+      expect(result.promptText).toContain(
+        "User-declared interests (topic slugs): housing",
+      );
+      expect(result.promptText).toContain(
+        "User-declared life-context flags (TRUE-only): isRenter, isParent",
+      );
+      expect(result.promptText).toContain("Approximate region: 94xxx\n");
+      expect(result.promptText).toContain(BASE.plainEnglishSummary);
+      expect(result.promptVersion).toBe("v1");
+    });
+
+    it("uses 'none' / 'none declared' sentinels when arrays are empty", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("proposition-relevance-explanation", TEMPLATE),
+      );
+
+      const result = await service.getPropositionRelevanceExplanationPrompt({
+        regionId: BASE.regionId,
+        propositionNumber: BASE.propositionNumber,
+        electionDate: BASE.electionDate,
+        title: BASE.title,
+        plainEnglishSummary: BASE.plainEnglishSummary,
+        topics: ["housing"],
+        whoItAffects: [],
+        userInterestTags: [],
+        userRankingFlags: [],
+      });
+
+      expect(result.promptText).toContain("Proposition affects: none");
+      expect(result.promptText).toContain(
+        "User-declared interests (topic slugs): none declared",
+      );
+      expect(result.promptText).toContain(
+        "User-declared life-context flags (TRUE-only): none",
+      );
+    });
+
+    it("omits optional-field section lines entirely when fields are absent", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate(
+          "proposition-relevance-explanation",
+          "PRE{{FISCAL_IMPACT_LINE}}{{STAKEHOLDER_IMPACT_LINE}}{{PROVISION_HINT_LINE}}{{USER_REGION_LINE}}POST",
+        ),
+      );
+
+      const result = await service.getPropositionRelevanceExplanationPrompt({
+        regionId: BASE.regionId,
+        propositionNumber: BASE.propositionNumber,
+        electionDate: BASE.electionDate,
+        title: BASE.title,
+        plainEnglishSummary: BASE.plainEnglishSummary,
+        topics: ["housing"],
+        whoItAffects: [],
+        userInterestTags: [],
+        userRankingFlags: [],
+      });
+
+      expect(result.promptText).toBe("PREPOST");
+    });
+
+    it("wraps plainEnglishSummary in a fenced block below the SECURITY NOTICE marker", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("proposition-relevance-explanation", TEMPLATE),
+      );
+
+      const result =
+        await service.getPropositionRelevanceExplanationPrompt(BASE);
+      const text = result.promptText;
+
+      const noticeIdx = text.indexOf("NOTICE");
+      const summaryIdx = text.indexOf(BASE.plainEnglishSummary);
+      const fenceBeforeSummary = text.lastIndexOf("```text", summaryIdx);
+
+      expect(noticeIdx).toBeGreaterThan(0);
+      expect(summaryIdx).toBeGreaterThan(noticeIdx);
+      expect(fenceBeforeSummary).toBeGreaterThan(noticeIdx);
+      expect(fenceBeforeSummary).toBeLessThan(summaryIdx);
+    });
+  });
+
+  describe("getRepresentativeRelevanceExplanationPrompt (#836)", () => {
+    const BASE = {
+      regionId: "california",
+      repName: "Rep. Zoe Lofgren",
+      officeTitle: "U.S. House CA-18",
+      jurisdiction: "federal" as const,
+      party: "democrat" as const,
+      mandateSummary: "Represents CA-18 in the U.S. House.",
+      topicsOfFocus: ["housing"],
+      committeeMemberships: ["House Judiciary Committee"],
+      recentLegislativeAction: "Voted for HR 4821 on tenant protections.",
+      upcomingEvent: "Town hall 2026-06-28 in San Jose.",
+      userInterestTags: ["housing"],
+      userRankingFlags: ["isRenter", "isParent"],
+      userRegionLabel: "94xxx",
+    };
+
+    const TEMPLATE = [
+      "Region: {{REGION_ID}}",
+      "Representative: {{REP_NAME}}",
+      "Office: {{OFFICE_TITLE}}",
+      "Jurisdiction scope: {{JURISDICTION}}",
+      "{{PARTY_LINE}}Topics of focus this session: {{TOPICS_OF_FOCUS}}",
+      "Current committee memberships: {{COMMITTEE_MEMBERSHIPS}}",
+      "{{RECENT_ACTION_LINE}}{{UPCOMING_EVENT_LINE}}User-declared interests (topic slugs): {{USER_INTEREST_TAGS}}",
+      "User-declared life-context flags (TRUE-only): {{USER_RANKING_FLAGS}}",
+      "{{USER_REGION_LINE}}NOTICE",
+      "{{MANDATE_SUMMARY_BLOCK}}",
+    ].join("\n");
+
+    it("composes representative-relevance-explanation prompt with all interpolated fields", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("representative-relevance-explanation", TEMPLATE),
+      );
+
+      const result =
+        await service.getRepresentativeRelevanceExplanationPrompt(BASE);
+
+      expect(result.promptText).toContain("Region: california");
+      expect(result.promptText).toContain("Representative: Rep. Zoe Lofgren");
+      expect(result.promptText).toContain("Office: U.S. House CA-18");
+      expect(result.promptText).toContain("Jurisdiction scope: federal");
+      expect(result.promptText).toContain("Party (informational): democrat\n");
+      expect(result.promptText).toContain(
+        "Topics of focus this session: housing",
+      );
+      expect(result.promptText).toContain(
+        "Current committee memberships: House Judiciary Committee",
+      );
+      expect(result.promptText).toContain(
+        "Most recent legislative action: Voted for HR 4821 on tenant protections.\n",
+      );
+      expect(result.promptText).toContain(
+        "Upcoming event: Town hall 2026-06-28 in San Jose.\n",
+      );
+      expect(result.promptText).toContain("Approximate region: 94xxx\n");
+      expect(result.promptText).toContain(BASE.mandateSummary);
+    });
+
+    it("uses 'none on record' / 'none declared' sentinels when arrays are empty", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("representative-relevance-explanation", TEMPLATE),
+      );
+
+      const result = await service.getRepresentativeRelevanceExplanationPrompt({
+        regionId: BASE.regionId,
+        repName: "Rep. Jane Doe",
+        officeTitle: "State Senate D-15",
+        jurisdiction: "state",
+        mandateSummary: "Represents District 15.",
+        topicsOfFocus: [],
+        committeeMemberships: [],
+        userInterestTags: [],
+        userRankingFlags: [],
+      });
+
+      expect(result.promptText).toContain(
+        "Topics of focus this session: none on record",
+      );
+      expect(result.promptText).toContain(
+        "Current committee memberships: none on record",
+      );
+      expect(result.promptText).toContain(
+        "User-declared interests (topic slugs): none declared",
+      );
+      expect(result.promptText).toContain(
+        "User-declared life-context flags (TRUE-only): none",
+      );
+    });
+
+    it("omits party / action / event lines when those fields are absent", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate(
+          "representative-relevance-explanation",
+          "PRE{{PARTY_LINE}}{{RECENT_ACTION_LINE}}{{UPCOMING_EVENT_LINE}}{{USER_REGION_LINE}}POST",
+        ),
+      );
+
+      const result = await service.getRepresentativeRelevanceExplanationPrompt({
+        regionId: BASE.regionId,
+        repName: BASE.repName,
+        officeTitle: BASE.officeTitle,
+        jurisdiction: BASE.jurisdiction,
+        mandateSummary: BASE.mandateSummary,
+        topicsOfFocus: [],
+        committeeMemberships: [],
+        userInterestTags: [],
+        userRankingFlags: [],
+      });
+
+      expect(result.promptText).toBe("PREPOST");
+    });
+  });
+
+  describe("getCommitteeRelevanceExplanationPrompt (#836)", () => {
+    const BASE = {
+      regionId: "california",
+      committeeName: "Assembly Judiciary Committee",
+      jurisdiction: "state_assembly" as const,
+      committeeType: "standing" as const,
+      mandateSummary: "Reviews civil and criminal procedure legislation.",
+      topics: ["civil-rights"],
+      membersOnUserSlate: ["Lofgren"],
+      recentBillTopicsTouched: ["housing", "civil-rights"],
+      upcomingHearings: [
+        { date: "2026-06-28", topic: "Rent control reform" },
+        { date: "2026-07-15", topic: "Eviction-process reforms" },
+      ],
+      userInterestTags: ["housing"],
+      userRankingFlags: ["isRenter", "isParent"],
+      userRegionLabel: "94xxx",
+    };
+
+    const TEMPLATE = [
+      "Region: {{REGION_ID}}",
+      "Committee: {{COMMITTEE_NAME}}",
+      "Chamber: {{JURISDICTION}}",
+      "{{COMMITTEE_TYPE_LINE}}Committee topics: {{COMMITTEE_TOPICS}}",
+      "Your reps on this committee: {{MEMBERS_ON_USER_SLATE}}",
+      "{{RECENT_TOPICS_LINE}}{{UPCOMING_HEARINGS_BLOCK}}User-declared interests (topic slugs): {{USER_INTEREST_TAGS}}",
+      "User-declared life-context flags (TRUE-only): {{USER_RANKING_FLAGS}}",
+      "{{USER_REGION_LINE}}NOTICE",
+      "{{MANDATE_SUMMARY_BLOCK}}",
+    ].join("\n");
+
+    it("composes committee-relevance-explanation prompt with all interpolated fields", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("committee-relevance-explanation", TEMPLATE),
+      );
+
+      const result = await service.getCommitteeRelevanceExplanationPrompt(BASE);
+
+      expect(result.promptText).toContain("Region: california");
+      expect(result.promptText).toContain(
+        "Committee: Assembly Judiciary Committee",
+      );
+      expect(result.promptText).toContain("Chamber: state_assembly");
+      expect(result.promptText).toContain("Committee type: standing\n");
+      expect(result.promptText).toContain("Committee topics: civil-rights");
+      expect(result.promptText).toContain(
+        "Your reps on this committee: Lofgren",
+      );
+      expect(result.promptText).toContain(
+        "Recent bill topics touched: housing, civil-rights\n",
+      );
+      expect(result.promptText).toContain("Upcoming hearings:");
+      expect(result.promptText).toContain(
+        "  - 2026-06-28: Rent control reform",
+      );
+      expect(result.promptText).toContain(
+        "  - 2026-07-15: Eviction-process reforms",
+      );
+      expect(result.promptText).toContain("Approximate region: 94xxx\n");
+      expect(result.promptText).toContain(BASE.mandateSummary);
+    });
+
+    it("renders 'none' for empty membersOnUserSlate (the privacy contract: never pass off-slate reps)", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("committee-relevance-explanation", TEMPLATE),
+      );
+
+      // The expected pattern when the user has no reps on this committee:
+      // pass [] (NOT undefined, NOT a partial list) — descriptor renders 'none'.
+      const result = await service.getCommitteeRelevanceExplanationPrompt({
+        regionId: BASE.regionId,
+        committeeName: BASE.committeeName,
+        jurisdiction: BASE.jurisdiction,
+        mandateSummary: BASE.mandateSummary,
+        topics: [],
+        membersOnUserSlate: [],
+        recentBillTopicsTouched: [],
+        upcomingHearings: [],
+        userInterestTags: [],
+        userRankingFlags: [],
+      });
+
+      expect(result.promptText).toContain("Your reps on this committee: none");
+      expect(result.promptText).toContain("Committee topics: none on record");
+    });
+
+    it("omits type / recent-topics / hearings / region lines when those fields are empty", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate(
+          "committee-relevance-explanation",
+          "PRE{{COMMITTEE_TYPE_LINE}}{{RECENT_TOPICS_LINE}}{{UPCOMING_HEARINGS_BLOCK}}{{USER_REGION_LINE}}POST",
+        ),
+      );
+
+      const result = await service.getCommitteeRelevanceExplanationPrompt({
+        regionId: BASE.regionId,
+        committeeName: BASE.committeeName,
+        jurisdiction: BASE.jurisdiction,
+        mandateSummary: BASE.mandateSummary,
+        topics: [],
+        membersOnUserSlate: [],
+        recentBillTopicsTouched: [],
+        upcomingHearings: [],
+        userInterestTags: [],
+        userRankingFlags: [],
+      });
+
+      expect(result.promptText).toBe("PREPOST");
+    });
+
+    it("renders multiple upcoming hearings on separate dash-indented lines", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate(
+          "committee-relevance-explanation",
+          "HEARINGS:\n{{UPCOMING_HEARINGS_BLOCK}}END",
+        ),
+      );
+
+      const result = await service.getCommitteeRelevanceExplanationPrompt({
+        ...BASE,
+        upcomingHearings: [
+          { date: "2026-06-28", topic: "Rent control" },
+          { date: "2026-07-15", topic: "ADU regulations" },
+        ],
+      });
+
+      expect(result.promptText).toContain(
+        "Upcoming hearings:\n  - 2026-06-28: Rent control\n  - 2026-07-15: ADU regulations\n",
+      );
+    });
+  });
+
   describe("getBillStatusSummaryPrompt (#823)", () => {
     // The variable shaping below MUST stay byte-for-byte identical to the
     // billStatusSummary descriptor in prompt-service

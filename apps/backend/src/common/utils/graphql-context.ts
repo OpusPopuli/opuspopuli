@@ -1,5 +1,6 @@
 import { UserInputError } from '@nestjs/apollo';
 import { Response } from 'express';
+import { IncomingHttpHeaders } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { ILogin } from 'src/interfaces/login.interface';
 import { IAuditContext } from '../interfaces/audit.interface';
@@ -60,6 +61,52 @@ export function getUserFromContext(context: GqlContext): ILogin {
     throw new UserInputError('User not authenticated');
   }
   return user;
+}
+
+/**
+ * Try to read the authenticated user's id from a federation request
+ * context WITHOUT throwing on misses. Use this in field resolvers whose
+ * **parent** queries are `@Public()` — the gateway forwards public
+ * queries without invoking AuthGuard on the subgraph side, so
+ * `req.user` never gets populated from the gateway-forwarded `user`
+ * header. This helper mirrors AuthGuard's same trust model:
+ *
+ *   1. Prefer `req.user` (set by AuthMiddleware via JWT/Passport when
+ *      the request actually authenticated against this subgraph).
+ *   2. Fall back to the gateway-forwarded `user` HTTP header, but ONLY
+ *      when the request also carries an HMAC signature — the same
+ *      "HMAC-presence proves it came from our gateway" trust the
+ *      AuthGuard uses at common/guards/auth.guard.ts lines 85-94.
+ *   3. Return `undefined` on any miss/parse failure — never throw, so
+ *      the parent query keeps serving unauthenticated callers.
+ *
+ * SECURITY: HMAC verification itself happens upstream (in the HMAC
+ * guard/middleware that fronts the GraphQL endpoint). This helper just
+ * gates on header presence — same as AuthGuard. If a request reaches
+ * a field resolver, the HMAC has already been verified.
+ *
+ * @see common/guards/auth.guard.ts for the canonical guard behavior
+ *      this safe variant mirrors.
+ */
+export function tryReadFederatedUserId(
+  context: GqlContext,
+): string | undefined {
+  const req = context.req;
+  if (req?.user?.id) return req.user.id;
+  const headers = req?.headers as IncomingHttpHeaders | undefined;
+  const hmacAuthHeader = headers?.['x-hmac-auth'];
+  const userHeader = headers?.['user'];
+  const hmacAuth = Array.isArray(hmacAuthHeader)
+    ? hmacAuthHeader[0]
+    : hmacAuthHeader;
+  const userJson = Array.isArray(userHeader) ? userHeader[0] : userHeader;
+  if (!hmacAuth || !userJson) return undefined;
+  try {
+    const parsed = JSON.parse(userJson) as { id?: unknown };
+    return typeof parsed?.id === 'string' ? parsed.id : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

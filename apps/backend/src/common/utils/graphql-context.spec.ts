@@ -3,6 +3,7 @@ import {
   getUserFromContext,
   getSessionTokenFromContext,
   createAuditContext,
+  tryReadFederatedUserId,
   GqlContext,
 } from './graphql-context';
 import { ILogin } from 'src/interfaces/login.interface';
@@ -76,6 +77,130 @@ describe('getUserFromContext', () => {
         'User not authenticated',
       );
     });
+  });
+});
+
+describe('tryReadFederatedUserId (opuspopuli#836 — @Public() federation auth)', () => {
+  // Safe variant of getUserFromContext for field resolvers whose parent
+  // query is @Public(). Mirrors AuthGuard's HMAC-then-user-header trust
+  // model — see common/guards/auth.guard.ts lines 85-94. Returns
+  // undefined on any miss instead of throwing.
+
+  it('returns req.user.id when AuthMiddleware already populated it', () => {
+    const context = {
+      req: {
+        user: { id: 'user-456' },
+        headers: {},
+      },
+    } as unknown as GqlContext;
+    expect(tryReadFederatedUserId(context)).toBe('user-456');
+  });
+
+  it('returns undefined when there is no user and no HMAC header (anonymous public query)', () => {
+    const context = {
+      req: { headers: {} },
+    } as unknown as GqlContext;
+    expect(tryReadFederatedUserId(context)).toBeUndefined();
+  });
+
+  it('returns undefined when HMAC is present but user header is missing', () => {
+    const context = {
+      req: { headers: { 'x-hmac-auth': 'sig=abc' } },
+    } as unknown as GqlContext;
+    expect(tryReadFederatedUserId(context)).toBeUndefined();
+  });
+
+  it('returns undefined when user header is present but HMAC is missing (defends against spoofed header)', () => {
+    // SECURITY: matches AuthGuard's check — a user header WITHOUT a
+    // valid HMAC signature is untrusted. Even though HMAC verification
+    // happens upstream, the presence check is the gateway-origin proof.
+    const context = {
+      req: {
+        headers: {
+          user: JSON.stringify({ id: 'spoofed-user' }),
+        },
+      },
+    } as unknown as GqlContext;
+    expect(tryReadFederatedUserId(context)).toBeUndefined();
+  });
+
+  it('returns the id from the user header when both HMAC and user are present', () => {
+    const context = {
+      req: {
+        headers: {
+          'x-hmac-auth': 'sig=abc',
+          user: JSON.stringify({
+            id: 'gateway-forwarded-user',
+            email: 'u@example.com',
+          }),
+        },
+      },
+    } as unknown as GqlContext;
+    expect(tryReadFederatedUserId(context)).toBe('gateway-forwarded-user');
+  });
+
+  it('returns undefined when user header contains invalid JSON', () => {
+    const context = {
+      req: {
+        headers: {
+          'x-hmac-auth': 'sig=abc',
+          user: '{not valid json',
+        },
+      },
+    } as unknown as GqlContext;
+    expect(tryReadFederatedUserId(context)).toBeUndefined();
+  });
+
+  it('returns undefined when user header JSON parses but has no id field', () => {
+    const context = {
+      req: {
+        headers: {
+          'x-hmac-auth': 'sig=abc',
+          user: JSON.stringify({ email: 'noId@example.com' }),
+        },
+      },
+    } as unknown as GqlContext;
+    expect(tryReadFederatedUserId(context)).toBeUndefined();
+  });
+
+  it('returns undefined when user header JSON parses but id is not a string', () => {
+    const context = {
+      req: {
+        headers: {
+          'x-hmac-auth': 'sig=abc',
+          user: JSON.stringify({ id: 12345 }),
+        },
+      },
+    } as unknown as GqlContext;
+    expect(tryReadFederatedUserId(context)).toBeUndefined();
+  });
+
+  it('prefers req.user over the gateway-forwarded header even when both are present', () => {
+    // If AuthMiddleware did populate req.user (e.g. this request actually
+    // authenticated against the subgraph directly), it's the source of
+    // truth — the gateway-forwarded header is just a fallback.
+    const context = {
+      req: {
+        user: { id: 'middleware-user' },
+        headers: {
+          'x-hmac-auth': 'sig=abc',
+          user: JSON.stringify({ id: 'header-user' }),
+        },
+      },
+    } as unknown as GqlContext;
+    expect(tryReadFederatedUserId(context)).toBe('middleware-user');
+  });
+
+  it('handles array-valued headers (defensive against Express IncomingHttpHeaders shape)', () => {
+    const context = {
+      req: {
+        headers: {
+          'x-hmac-auth': ['sig=abc'],
+          user: [JSON.stringify({ id: 'array-user' })],
+        },
+      },
+    } as unknown as GqlContext;
+    expect(tryReadFederatedUserId(context)).toBe('array-user');
   });
 });
 

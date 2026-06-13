@@ -81,6 +81,7 @@ describe('PersonalizedRepActivityService', () => {
   let db: {
     bill: { findMany: jest.Mock };
     representative: { findMany: jest.Mock };
+    representativeRelevanceCache: { findMany: jest.Mock };
   };
 
   const baseInput = (
@@ -96,6 +97,11 @@ describe('PersonalizedRepActivityService', () => {
     db = {
       bill: { findMany: jest.fn().mockResolvedValue([]) },
       representative: { findMany: jest.fn().mockResolvedValue([]) },
+      // Default to empty cache — relevanceExplanation stays undefined
+      // unless a test explicitly seeds it (day-one user case).
+      representativeRelevanceCache: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -128,9 +134,15 @@ describe('PersonalizedRepActivityService', () => {
     expect(result).toEqual([]);
   });
 
-  it('drops zero-relevance reps and sorts surviving reps by composite desc', async () => {
+  it('returns all slate reps sorted by composite desc (opuspopuli#836: drops the prior composite>0 filter)', async () => {
     // Rep A: in Assembly with the user's bills, authored b-1 → high score
     // Rep B: in Senate with no user bills, no committees, no actions → zero
+    //
+    // The pre-#836 behavior dropped r-B (composite=0). Post-#836 the
+    // slate is itself the personalization signal — these reps already
+    // match the user's jurisdiction, so the briefing shows them all
+    // (sorted by composite desc) and the LLM `relevanceExplanation`
+    // does the per-rep differentiation.
     db.bill.findMany.mockResolvedValueOnce([
       billRow({ id: 'b-1', author: { chamber: 'Assembly' } }),
     ]);
@@ -151,9 +163,13 @@ describe('PersonalizedRepActivityService', () => {
         flags: { ...FLAGS_OFF, isRenter: true },
       }),
     );
-    expect(result.length).toBe(1);
+    expect(result.length).toBe(2);
+    // Highest composite first.
     expect(result[0].representativeId).toBe('r-A');
     expect(result[0].relevanceScore).toBeGreaterThan(0);
+    // Zero-score rep still surfaces (relaxed filter).
+    expect(result[1].representativeId).toBe('r-B');
+    expect(result[1].relevanceScore).toBe(0);
   });
 
   it('orders results by composite score descending', async () => {
