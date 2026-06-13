@@ -252,10 +252,11 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
       );
     }
     if (committeeCandidates.length > 0) {
-      committeeJobs = await this.enqueueCommitteeFanOut(
+      committeeJobs = await this.enqueueEntityFanOut(
         plan,
         yyyymmdd,
-        committeeCandidates,
+        'committee',
+        { committeeCandidates },
       );
     }
 
@@ -355,57 +356,13 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
   }
 
   /**
-   * Committee-specific fan-out: one job per user with the global
-   * committee candidate set + each candidate's pre-computed
-   * `membersOnUserSlate` (currently `[]` for all — see
-   * fetchCommitteeCandidates docblock for the Phase-2 enrichment plan).
-   */
-  private async enqueueCommitteeFanOut(
-    plan: ReadonlyArray<{
-      profile: { userId: string; interestTags: string[] };
-      rankingFlags: string[];
-    }>,
-    yyyymmdd: string,
-    committeeCandidates: LlmRerankCommitteeCandidate[],
-  ): Promise<number> {
-    const bullmqJobIds = plan.map(
-      (entry) => `cron-committee-${entry.profile.userId}-${yyyymmdd}`,
-    );
-
-    const rows = await Promise.all(
-      plan.map((entry, i) =>
-        this.jobs.create({
-          bullmqJobId: bullmqJobIds[i],
-          triggerSource: TRIGGER_SOURCE.CRON,
-          userId: entry.profile.userId,
-        }),
-      ),
-    );
-
-    const entries = plan.map((entry, i) => ({
-      data: {
-        rerankJobId: rows[i].id,
-        triggerSource: TRIGGER_SOURCE.CRON,
-        userId: entry.profile.userId,
-        rankingFlags: entry.rankingFlags,
-        interestTags: [...entry.profile.interestTags],
-        entityType: 'committee' as const,
-        committeeCandidates,
-      } satisfies LlmRerankJobData,
-      opts: { jobId: bullmqJobIds[i] },
-    }));
-    await this.queueService.enqueueBulk<LlmRerankJobData>(
-      LLM_RERANK_QUEUE,
-      entries,
-    );
-
-    return plan.length;
-  }
-
-  /**
    * Generic per-entity fan-out: creates one lifecycle row per user and
    * enqueues one BullMQ job per user with the entityType discriminator
-   * + pre-resolved candidate IDs. Same dedup pattern as the bill flow.
+   * + the entity-specific payload (candidate IDs for proposition/rep,
+   * pre-resolved candidates with membersOnUserSlate for committees).
+   * Same dedup pattern as the bill flow. Single helper for all three
+   * new entity types — the only per-type variation is the payload
+   * shape, which is spread into `LlmRerankJobData` verbatim.
    */
   private async enqueueEntityFanOut(
     plan: ReadonlyArray<{
@@ -413,8 +370,10 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
       rankingFlags: string[];
     }>,
     yyyymmdd: string,
-    entityType: 'proposition' | 'representative',
-    payload: { candidateIds: string[] },
+    entityType: 'proposition' | 'representative' | 'committee',
+    payload:
+      | { candidateIds: string[] }
+      | { committeeCandidates: LlmRerankCommitteeCandidate[] },
   ): Promise<number> {
     const bullmqJobIds = plan.map(
       (entry) => `cron-${entityType}-${entry.profile.userId}-${yyyymmdd}`,
@@ -438,7 +397,7 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
         rankingFlags: entry.rankingFlags,
         interestTags: [...entry.profile.interestTags],
         entityType,
-        candidateIds: payload.candidateIds,
+        ...payload,
       } satisfies LlmRerankJobData,
       opts: { jobId: bullmqJobIds[i] },
     }));
