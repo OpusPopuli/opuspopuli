@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { BriefingSection } from "../BriefingSection";
 import { useCommitteesBriefing } from "./useCommitteesBriefing";
@@ -18,6 +19,43 @@ import { CommitteeBriefingCard } from "./CommitteeBriefingCard";
 export function CommitteesBriefingSection() {
   const { t } = useTranslation("briefing");
   const { committees, loading } = useCommitteesBriefing();
+
+  // Three exclusive branches — extracted to a `body` variable instead
+  // of an inline nested ternary so the markup stays under sonarjs's
+  // no-nested-conditional rule + the JSX reads top-to-bottom.
+  let body: ReactNode;
+  if (loading && committees.length === 0) {
+    body = (
+      <p
+        className="text-sm text-gray-500 dark:text-gray-400"
+        data-testid="committees-briefing-loading"
+      >
+        {t("committees.loading")}
+      </p>
+    );
+  } else if (committees.length === 0) {
+    body = (
+      <p
+        className="text-sm text-gray-500 dark:text-gray-400"
+        data-testid="committees-briefing-empty"
+      >
+        {t("committees.empty")}
+      </p>
+    );
+  } else {
+    body = (
+      <ul
+        className="flex flex-col gap-3"
+        data-testid="committees-briefing-list"
+      >
+        {committees.map((c) => (
+          <li key={c.id}>
+            <CommitteeBriefingCard item={c} />
+          </li>
+        ))}
+      </ul>
+    );
+  }
 
   return (
     <BriefingSection
@@ -41,32 +79,7 @@ export function CommitteesBriefingSection() {
         </svg>
       }
     >
-      {loading && committees.length === 0 ? (
-        <p
-          className="text-sm text-gray-500 dark:text-gray-400"
-          data-testid="committees-briefing-loading"
-        >
-          {t("committees.loading")}
-        </p>
-      ) : committees.length === 0 ? (
-        <p
-          className="text-sm text-gray-500 dark:text-gray-400"
-          data-testid="committees-briefing-empty"
-        >
-          {t("committees.empty")}
-        </p>
-      ) : (
-        <ul
-          className="flex flex-col gap-3"
-          data-testid="committees-briefing-list"
-        >
-          {committees.map((c) => (
-            <li key={c.id}>
-              <CommitteeBriefingCard item={c} />
-            </li>
-          ))}
-        </ul>
-      )}
+      {body}
     </BriefingSection>
   );
 }
