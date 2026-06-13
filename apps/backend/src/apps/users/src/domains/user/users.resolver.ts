@@ -1,5 +1,6 @@
 import {
   Args,
+  Context,
   Extensions,
   ID,
   Mutation,
@@ -16,6 +17,11 @@ import { UserInputError } from '@nestjs/apollo';
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import { Public } from 'src/common/decorators/public.decorator';
+import {
+  type GqlContext,
+  getUserFromContext,
+} from 'src/common/utils/graphql-context';
+import { CURRENT_COMMITMENTS_VERSION } from './commitments.constants';
 
 import { Role } from 'src/common/enums/role.enum';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -95,6 +101,38 @@ export class UsersResolver {
   @Query(() => User)
   findUser(@Args('email') email: string): Promise<User | null> {
     return this.usersService.findByEmail(email);
+  }
+
+  /**
+   * Record the authenticated user's acknowledgement of the published
+   * ethical commitments (#754). Rejects any `version` other than the
+   * server's `CURRENT_COMMITMENTS_VERSION` so a stale client cannot
+   * skip a re-prompt triggered by a version bump — see
+   * `commitments.constants.ts` for the bump procedure.
+   *
+   * Returns the updated `User` so the Apollo cache picks up the new
+   * `commitmentsAcknowledgedAt` / `commitmentsVersionAcknowledged`
+   * fields without an extra round-trip.
+   */
+  @Mutation(() => User)
+  @UseGuards(AuthGuard)
+  async acknowledgeCommitments(
+    @Args('version') version: string,
+    @Context() context: GqlContext,
+  ): Promise<User> {
+    // Defensive cap — the equality check below makes this redundant
+    // for the happy path, but a 20-char ceiling means we never run
+    // string compare against an attacker-supplied megabyte payload.
+    // The published version format is semver-ish (e.g. `1.0.0`) so
+    // 20 chars is generous.
+    if (typeof version !== 'string' || version.length > 20) {
+      throw new UserInputError('Invalid commitments version.');
+    }
+    if (version !== CURRENT_COMMITMENTS_VERSION) {
+      throw new UserInputError('Unsupported commitments version.');
+    }
+    const me = getUserFromContext(context);
+    return this.usersService.acknowledgeCommitments(me.id, version);
   }
 
   @ResolveReference()

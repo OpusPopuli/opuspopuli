@@ -18,7 +18,7 @@ export default function TermsOfServicePage() {
           Terms of Service
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
-          Last updated: March 2026
+          Last updated: June 2026
         </p>
 
         <div className="space-y-8 text-gray-700 dark:text-gray-300">
@@ -156,10 +156,61 @@ export default function TermsOfServicePage() {
             </ul>
           </section>
 
-          {/* 6. Intellectual Property */}
+          {/* 6. Public Commitments — incorporated by reference (#754) */}
           <section>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
-              6. Intellectual Property
+              6. Public Commitments
+            </h2>
+            <p className="mb-3">
+              Our public ethical commitments are incorporated into these Terms
+              by reference. They are contractual obligations, not promotional
+              statements. Read the current version at{" "}
+              <Link
+                href="/our-commitments"
+                className="text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                /our-commitments
+              </Link>
+              {"."}
+            </p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>
+                Material changes to those commitments will be announced at least
+                30 days before they take effect. Continued use after the
+                effective date constitutes acceptance of the revised
+                commitments.
+              </li>
+              <li>
+                The version of the commitments you acknowledged at account
+                creation (or at re-acknowledgement following a version bump) is
+                recorded against your account as the audit trail.
+              </li>
+              <li>
+                If you believe we are not living up to a specific commitment,
+                you may write to{" "}
+                <a
+                  href="mailto:legal@opuspopuli.org"
+                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  legal@opuspopuli.org
+                </a>
+                {". "}
+                Security incidents may also be reported to{" "}
+                <a
+                  href="mailto:security@opuspopuli.org"
+                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  security@opuspopuli.org
+                </a>
+                {"."}
+              </li>
+            </ul>
+          </section>
+
+          {/* 7. Intellectual Property */}
+          <section>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+              7. Intellectual Property
             </h2>
             <p className="mb-3">
               Opus Populi is an open-source project. The platform&apos;s source
@@ -183,10 +234,10 @@ export default function TermsOfServicePage() {
             </ul>
           </section>
 
-          {/* 7. Limitation of Liability */}
+          {/* 8. Limitation of Liability */}
           <section>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
-              7. Limitation of Liability
+              8. Limitation of Liability
             </h2>
             <p className="mb-3">
               Opus Populi is provided &quot;as is&quot; and &quot;as
@@ -209,10 +260,10 @@ export default function TermsOfServicePage() {
             </ul>
           </section>
 
-          {/* 8. Termination */}
+          {/* 9. Termination */}
           <section>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
-              8. Termination
+              9. Termination
             </h2>
             <p>
               You may delete your account at any time through your{" "}
@@ -235,10 +286,10 @@ export default function TermsOfServicePage() {
             </p>
           </section>
 
-          {/* 9. Governing Law */}
+          {/* 10. Governing Law */}
           <section>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
-              9. Governing Law
+              10. Governing Law
             </h2>
             <p>
               These Terms are governed by the laws of the State of California,
@@ -247,10 +298,10 @@ export default function TermsOfServicePage() {
             </p>
           </section>
 
-          {/* 10. Contact */}
+          {/* 11. Contact */}
           <section>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
-              10. Contact Information
+              11. Contact Information
             </h2>
             <p>
               If you have questions about these Terms of Service, please contact

@@ -21,6 +21,12 @@ export function Footer() {
             Terms of Service
           </Link>
           <Link
+            href="/our-commitments"
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          >
+            Our Commitments
+          </Link>
+          <Link
             href="/transparency"
             className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
           >

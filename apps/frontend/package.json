@@ -23,7 +23,8 @@
     "e2e:ui": "playwright test --ui",
     "e2e:report": "playwright show-report",
     "e2e:a11y": "playwright test e2e/accessibility.spec.ts",
-    "lint:sonar": "eslint -c eslint.config.sonar.mjs ."
+    "lint:sonar": "eslint -c eslint.config.sonar.mjs .",
+    "pdf:commitments": "node scripts/generate-commitments-pdf.mjs"
   },
   "lint-staged": {
     "**/*.{js,jsx,ts,tsx,css,json,md,html,yml,yaml,svg}": "prettier --write --ignore-unknown"

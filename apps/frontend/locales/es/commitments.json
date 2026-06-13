@@ -1,0 +1,78 @@
+{
+  "page": {
+    "title": "Nuestros compromisos públicos",
+    "subtitle": "Estos son los compromisos que asumimos con la ciudadanía — no son aspiraciones ni lenguaje de marketing. Están incorporados en nuestros Términos del Servicio y estamos legalmente obligados por ellos.",
+    "metaDescription": "Compromisos públicos vinculantes de Opus Populi con la ciudadanía sobre ética de datos, privacidad y neutralidad política.",
+    "versionLabel": "Versión {{version}}",
+    "lastUpdatedLabel": "Última actualización {{date}}",
+    "printLabel": "Imprimir como PDF"
+  },
+  "intro": {
+    "heading": "Lo que prometemos",
+    "body": "La mayoría de las plataformas cívicas te piden confianza. Nosotros, en cambio, te decimos exactamente qué haremos y qué no haremos — y lo ponemos en nuestros Términos del Servicio para que, si rompemos un compromiso, tengas un recurso contractual, no solo una queja."
+  },
+  "commitments": {
+    "youOwnYou": {
+      "title": "Tú eres tuyo.",
+      "body": "El modelo de ti que construye este sistema es tuyo: puedes verlo, editarlo, exportarlo o eliminarlo por completo. Nada sobre ti vive en un lugar que no podamos mostrarte."
+    },
+    "askForLess": {
+      "title": "Pedimos menos, no más.",
+      "body": "Nunca exigiremos información que no necesitemos estrictamente para mostrarte un proyecto de ley que debas conocer. Cuando preguntamos, explicamos por qué."
+    },
+    "neverSellData": {
+      "title": "Nunca venderemos tus datos.",
+      "body": "Ni a anunciantes. Ni a campañas. Ni a corredores de datos. Ni a investigadores sin tu autorización expresa. Esto consta en nuestra licencia, en nuestros términos y en nuestra arquitectura."
+    },
+    "neverTargetPolitically": {
+      "title": "Nunca usaremos tu información para dirigirnos a ti políticamente.",
+      "body": "El motor de relevancia personaliza qué proyectos ves; no modifica el contenido para cambiar tu opinión. No producimos contenido persuasivo para influir en tu voto."
+    },
+    "tellYouWhy": {
+      "title": "Te diremos por qué.",
+      "body": "Cada recomendación viene acompañada de las señales específicas que la generaron. Puedes estar en desacuerdo."
+    },
+    "showOtherSide": {
+      "title": "Te mostraremos el otro lado.",
+      "body": "Cada proyecto de alta relevancia incluye un panel que muestra la posición contraria y quién la sostiene. No puedes desactivar esto."
+    },
+    "notSilentlyChange": {
+      "title": "No cambiaremos las reglas en silencio.",
+      "body": "Los cambios materiales en el funcionamiento del motor de relevancia se publican en la ficha trimestral del modelo, antes de entrar en vigor."
+    },
+    "notRequireLegibility": {
+      "title": "No exigiremos que seas legible.",
+      "body": "No tienes que revelar tu raza, religión, sexualidad, situación migratoria, salud o antecedentes judiciales para usar esta plataforma. Si decides compartirlos, es para ayudarnos a ayudarte — nunca para categorizarte ante terceros."
+    },
+    "publicMission": {
+      "title": "Respondemos a una misión pública, no a un retorno privado.",
+      "body": "La plataforma es código abierto bajo AGPL-3.0; la infraestructura de datos se rige por una entidad sin fines de lucro; las personas fundadoras no obtienen beneficios personales de los datos de las usuarias."
+    },
+    "discloseFailure": {
+      "title": "Si fallamos en algo de lo anterior, tienes derecho a saberlo.",
+      "body": "Los incidentes de seguridad se divulgan en un plazo de 72 horas, con todos los detalles, sin lenguaje de marketing."
+    }
+  },
+  "incorporation": {
+    "heading": "Estatus legal",
+    "body": "Estos compromisos quedan incorporados por referencia a nuestros <termsLink>Términos del Servicio</termsLink>. Son obligaciones contractuales, no declaraciones promocionales. Conforme al compromiso 7, los cambios materiales se anunciarán con al menos 30 días de antelación a su entrada en vigor."
+  },
+  "history": {
+    "heading": "Historial de versiones",
+    "subhead": "El historial completo de revisiones está en nuestro registro git público. Esta lista resume los cambios materiales.",
+    "v1_0_0": "Compromisos públicos iniciales publicados con el lanzamiento del MVP."
+  },
+  "contact": {
+    "heading": "Preguntas o inquietudes",
+    "body": "Si crees que no estamos cumpliendo estos compromisos, escribe a <emailLink>legal@opuspopuli.org</emailLink>. Los reportes de incidentes de seguridad también pueden enviarse a <securityEmailLink>security@opuspopuli.org</securityEmailLink>."
+  },
+  "ack": {
+    "heading": "Acepta estos compromisos",
+    "body": "Antes de continuar, por favor lee y acepta los compromisos anteriores.",
+    "checkbox": "He leído los compromisos públicos y entiendo que son vinculantes.",
+    "continue": "Comenzar",
+    "submitting": "Guardando aceptación…",
+    "error": "No pudimos registrar tu aceptación. Inténtalo de nuevo.",
+    "readFullPage": "Leer la página completa de compromisos →"
+  }
+}

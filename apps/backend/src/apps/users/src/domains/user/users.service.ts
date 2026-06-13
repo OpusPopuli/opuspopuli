@@ -184,6 +184,35 @@ export class UsersService {
     return true;
   }
 
+  /**
+   * Record that a user has acknowledged the published ethical
+   * commitments at the given version (#754). Writes `now()` plus the
+   * caller-supplied version verbatim — the resolver enforces that
+   * `version` matches the currently published `COMMITMENTS_VERSION`,
+   * so this layer only needs to do the write.
+   *
+   * Returns the updated user so the caller can refresh its cached
+   * ack state without an extra round-trip.
+   */
+  async acknowledgeCommitments(id: string, version: string): Promise<User> {
+    try {
+      const updated = await this.db.user.update({
+        where: { id },
+        data: {
+          commitmentsAcknowledgedAt: new Date(),
+          commitmentsVersionAcknowledged: version,
+        },
+      });
+      return User.fromDb(updated);
+    } catch (error) {
+      const dbError = evaluateDbError(error);
+      this.logger.warn(
+        `database error acknowledging commitments for user ${id}: ${dbError.message}`,
+      );
+      throw dbError;
+    }
+  }
+
   async delete(id: string): Promise<boolean> {
     const user = await this.db.user.findFirst({
       where: { id, ...softDeleteWhere },

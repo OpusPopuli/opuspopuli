@@ -48,7 +48,8 @@
   "footer": {
     "privacyPolicy": "Privacy Policy",
     "termsOfService": "Terms of Service",
-    "transparency": "Transparency"
+    "transparency": "Transparency",
+    "ourCommitments": "Our Commitments"
   },
   "states": {
     "AL": "Alabama",
