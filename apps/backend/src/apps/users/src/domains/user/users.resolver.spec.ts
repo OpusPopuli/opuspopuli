@@ -132,4 +132,55 @@ describe('UsersResolver', () => {
     ).toEqual(users[0]);
     expect(usersService.findById).toHaveBeenCalledWith(users[0].id);
   });
+
+  describe('acknowledgeCommitments (#754)', () => {
+    const authedContext = {
+      req: {
+        headers: {},
+        user: {
+          id: users[0].id,
+          email: users[0].email,
+          roles: ['User'],
+          department: 'Engineering',
+          clearance: 'Secret',
+        },
+      },
+    } as unknown as Parameters<typeof resolver.acknowledgeCommitments>[1];
+
+    it('delegates to the service with the authenticated user id', async () => {
+      const updated = { ...users[0], commitmentsVersionAcknowledged: '1.0.0' };
+      usersService.acknowledgeCommitments = jest
+        .fn()
+        .mockResolvedValue(updated);
+
+      const result = await resolver.acknowledgeCommitments(
+        '1.0.0',
+        authedContext,
+      );
+
+      expect(usersService.acknowledgeCommitments).toHaveBeenCalledWith(
+        users[0].id,
+        '1.0.0',
+      );
+      expect(result).toEqual(updated);
+    });
+
+    it('rejects a mismatched version without touching the service', async () => {
+      usersService.acknowledgeCommitments = jest.fn();
+
+      await expect(
+        resolver.acknowledgeCommitments('99.0.0', authedContext),
+      ).rejects.toThrow('Unsupported commitments version.');
+      expect(usersService.acknowledgeCommitments).not.toHaveBeenCalled();
+    });
+
+    it('rejects an oversized version string without touching the service', async () => {
+      usersService.acknowledgeCommitments = jest.fn();
+
+      await expect(
+        resolver.acknowledgeCommitments('x'.repeat(21), authedContext),
+      ).rejects.toThrow('Invalid commitments version.');
+      expect(usersService.acknowledgeCommitments).not.toHaveBeenCalled();
+    });
+  });
 });

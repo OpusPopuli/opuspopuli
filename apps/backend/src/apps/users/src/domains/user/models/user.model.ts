@@ -25,6 +25,21 @@ export class User implements IUser {
   public updated!: Date;
 
   /**
+   * Public ethical commitments acknowledgement (#754). NULL until the
+   * user completes the onboarding ack step or accepts a version bump
+   * via the in-app re-acknowledgement prompt.
+   */
+  @Field({ nullable: true })
+  commitmentsAcknowledgedAt?: Date;
+
+  /**
+   * Which COMMITMENTS_VERSION the user agreed to. Compared against the
+   * current published version to decide whether to re-prompt.
+   */
+  @Field({ nullable: true })
+  commitmentsVersionAcknowledged?: string;
+
+  /**
    * Converts a database User to GraphQL User model
    * Handles null -> undefined conversion for optional fields
    */
@@ -36,6 +51,10 @@ export class User implements IUser {
     user.lastName = dbUser.lastName ?? undefined;
     user.created = dbUser.created;
     user.updated = dbUser.updated;
+    user.commitmentsAcknowledgedAt =
+      dbUser.commitmentsAcknowledgedAt ?? undefined;
+    user.commitmentsVersionAcknowledged =
+      dbUser.commitmentsVersionAcknowledged ?? undefined;
     return user;
   }
 

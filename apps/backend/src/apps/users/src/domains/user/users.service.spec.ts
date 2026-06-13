@@ -25,6 +25,8 @@ const createDbUser = (user: (typeof users)[0]) => ({
   created: user.created,
   updated: user.updated,
   deletedAt: null,
+  commitmentsAcknowledgedAt: null,
+  commitmentsVersionAcknowledged: null,
 });
 
 describe('UsersService', () => {
@@ -106,6 +108,8 @@ describe('UsersService', () => {
       created: new Date(),
       updated: new Date(),
       deletedAt: null,
+      commitmentsAcknowledgedAt: null,
+      commitmentsVersionAcknowledged: null,
     };
     dbService.user.create.mockResolvedValue(dbUser);
 
@@ -312,5 +316,39 @@ describe('UsersService', () => {
       expect(dbService.user.update).toHaveBeenCalledTimes(0);
       expect(authService.deleteUser).toHaveBeenCalledTimes(1);
     }
+  });
+
+  describe('acknowledgeCommitments (#754)', () => {
+    it('writes commitments_acknowledged_at + version and returns the updated user', async () => {
+      const dbUser = createDbUser(users[0]);
+      const ackAt = new Date('2026-06-13T17:00:00Z');
+      dbService.user.update.mockResolvedValue({
+        ...dbUser,
+        commitmentsAcknowledgedAt: ackAt,
+        commitmentsVersionAcknowledged: '1.0.0',
+      });
+
+      const result = await usersService.acknowledgeCommitments(
+        users[0].id,
+        '1.0.0',
+      );
+
+      expect(dbService.user.update).toHaveBeenCalledTimes(1);
+      const updateArgs = dbService.user.update.mock.calls[0][0];
+      expect(updateArgs.where).toEqual({ id: users[0].id });
+      expect(updateArgs.data.commitmentsVersionAcknowledged).toBe('1.0.0');
+      expect(updateArgs.data.commitmentsAcknowledgedAt).toBeInstanceOf(Date);
+
+      expect(result.commitmentsVersionAcknowledged).toBe('1.0.0');
+      expect(result.commitmentsAcknowledgedAt).toEqual(ackAt);
+    });
+
+    it('rethrows a sanitised DB error when the update fails', async () => {
+      dbService.user.update.mockRejectedValue(new Error('connection refused'));
+
+      await expect(
+        usersService.acknowledgeCommitments(users[0].id, '1.0.0'),
+      ).rejects.toThrow();
+    });
   });
 });
