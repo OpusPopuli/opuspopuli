@@ -9,6 +9,21 @@
     "noProfileBody": "Onboarding takes about a minute and unlocks the personalized feed.",
     "noProfileCta": "Complete onboarding →"
   },
+  "greeting": {
+    "named": {
+      "morning": "Good morning, {{firstName}}.",
+      "afternoon": "Good afternoon, {{firstName}}.",
+      "evening": "Good evening, {{firstName}}."
+    },
+    "neighbor": {
+      "morning": "Good morning, neighbor.",
+      "afternoon": "Good afternoon, neighbor.",
+      "evening": "Good evening, neighbor."
+    },
+    "summary": "Below: {{billCount}} bills, {{repCount}} representatives, {{committeeCount}} committees, and {{propositionCount}} propositions matched to the signals you've shared.",
+    "urgentCallout_one": "{{count}} of the bills has action you can influence in the next 30 days.",
+    "urgentCallout_other": "{{count}} of the bills have action you can influence in the next 30 days."
+  },
   "section": {
     "seeAll": "See all →",
     "collapseAria": "Collapse {{title}} section",

@@ -50,6 +50,13 @@ export interface RankingFlags {
 export interface BriefingPrefetchData {
   myRankingFlags: RankingFlags;
   mySignalProfile: { interestTags: string[] } | null;
+  /**
+   * Used by `BriefingGreeting` (#849 Phase 1) to render a personalized
+   * greeting line. Null when the user hasn't shared a name — the
+   * greeting falls back to the no-name branch ("Hello, neighbor" /
+   * `"Buenos días"`). T1 data so this is safe to surface.
+   */
+  myProfile: { firstName: string | null } | null;
 }
 
 export const GET_BRIEFING_PREFETCH = gql`
@@ -78,6 +85,9 @@ export const GET_BRIEFING_PREFETCH = gql`
     }
     mySignalProfile {
       interestTags
+    }
+    myProfile {
+      firstName
     }
   }
 `;
