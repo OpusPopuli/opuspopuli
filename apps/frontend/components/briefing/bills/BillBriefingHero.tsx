@@ -57,6 +57,8 @@ export function BillBriefingHero({ item }: BillBriefingHeroProps) {
           axisScores={result.axisScores}
           scopeId={bill.id}
           llmExplanation={result.relevanceExplanation}
+          signals={result.contributingSignals}
+          sourceDocumentUrl={result.sourceDocumentUrl}
         />
         <Link
           href={`/region/bills/${bill.id}`}

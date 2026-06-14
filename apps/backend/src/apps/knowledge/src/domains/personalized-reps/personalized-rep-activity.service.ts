@@ -53,6 +53,10 @@ const RANKABLE_BILLS_FETCH_LIMIT = 5000;
 const BILL_CONTEXT_SELECT = {
   id: true,
   lastActionDate: true,
+  // sourceUrl is required by `toRankableBill`'s row shape (#750). The
+  // rep ranker reads only `composite` from the score result so the
+  // URL itself is unused here, but the select must satisfy the shape.
+  sourceUrl: true,
   aiSummary: true,
   author: { select: { chamber: true } },
 } as const satisfies Prisma.BillSelect;

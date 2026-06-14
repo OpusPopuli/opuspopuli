@@ -47,6 +47,8 @@ export function BillBriefingCard({ item }: BillBriefingCardProps) {
           axisScores={result.axisScores}
           scopeId={bill.id}
           llmExplanation={result.relevanceExplanation}
+          signals={result.contributingSignals}
+          sourceDocumentUrl={result.sourceDocumentUrl}
         />
       </div>
     </article>
