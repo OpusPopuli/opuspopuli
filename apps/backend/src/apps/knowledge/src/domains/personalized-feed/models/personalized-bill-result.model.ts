@@ -1,4 +1,5 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
+import { ContributingSignalModel } from './contributing-signal.model';
 
 /**
  * Per-axis relevance breakdown. Each axis is 0.0-1.0. v1.0 populates
@@ -71,4 +72,26 @@ export class PersonalizedBillResultModel {
    */
   @Field({ nullable: true })
   relevanceExplanation?: string;
+
+  /**
+   * Top contributing signals (#750). Bullet-list companion to the
+   * `relevanceExplanation` narrative: lets the panel show e.g.
+   * "you're a renter", "you care about housing", "moved within 30 days"
+   * as structured items rather than embedded in prose. Capped at
+   * `MAX_SIGNALS_PER_BILL` by the scorer. Always present (empty array
+   * for zero-relevance bills, though those are dropped from the feed
+   * upstream).
+   */
+  @Field(() => [ContributingSignalModel])
+  contributingSignals!: ContributingSignalModel[];
+
+  /**
+   * Canonical legislature URL for the underlying bill (#750). Lets
+   * the why-this panel surface a "Read the source" link so users can
+   * verify our recommendation against the original document. Nullable
+   * because some early-ingest bills lack a source URL — the panel
+   * just hides the link in that case.
+   */
+  @Field({ nullable: true })
+  sourceDocumentUrl?: string;
 }

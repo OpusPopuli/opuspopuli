@@ -21,6 +21,7 @@ import type { RankableBill } from './scoring.service';
 export function toRankableBill(row: {
   id: string;
   lastActionDate: Date | null;
+  sourceUrl: string | null;
   aiSummary: Prisma.JsonValue;
 }): RankableBill | null {
   if (
@@ -45,6 +46,7 @@ export function toRankableBill(row: {
   return {
     id: row.id,
     lastActionDate: row.lastActionDate,
+    sourceUrl: row.sourceUrl,
     aiSummary: { topics, whoItAffects },
   };
 }
