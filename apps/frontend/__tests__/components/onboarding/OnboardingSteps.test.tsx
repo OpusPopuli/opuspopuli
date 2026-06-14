@@ -20,7 +20,7 @@ const mockCompleteOnboarding = jest.fn();
 const defaultOnboardingContext = {
   hasCompletedOnboarding: false,
   currentStep: 0,
-  totalSteps: 9,
+  totalSteps: 10,
   nextStep: mockNextStep,
   prevStep: mockPrevStep,
   skipOnboarding: mockSkipOnboarding,
@@ -90,9 +90,9 @@ describe("OnboardingSteps", () => {
       const { container } = render(<OnboardingSteps />);
 
       const dots = container.querySelectorAll("[aria-hidden='true']");
-      // 9 step dots + decorative SVGs inside marketing steps; assert at
+      // 10 step dots + decorative SVGs inside marketing steps; assert at
       // least one dot per step exists.
-      expect(dots.length).toBeGreaterThanOrEqual(9);
+      expect(dots.length).toBeGreaterThanOrEqual(10);
     });
   });
 
@@ -171,6 +171,26 @@ describe("OnboardingSteps", () => {
 
   // Last-step Get Started + completion behavior is covered by the
   // Playwright e2e spec (e2e/onboarding.spec.ts) — the final step
-  // (VeteranStep) uses Apollo `useMutation`, so testing it here would
-  // require MockedProvider and duplicate the existing e2e coverage.
+  // (CommitmentsStep) uses Apollo `useMutation`, so testing it here
+  // would duplicate the dedicated CommitmentsStep.test.tsx + e2e
+  // coverage.
+
+  describe("commitments step (#754)", () => {
+    const COMMITMENTS_STEP_INDEX = 9;
+
+    it("hides the global Skip and Back chrome on the mandatory commitments step", () => {
+      mockOnboardingContextValue = {
+        ...defaultOnboardingContext,
+        currentStep: COMMITMENTS_STEP_INDEX,
+      };
+      const { queryByRole } = render(<OnboardingSteps />);
+
+      expect(queryByRole("button", { name: /skip/i })).not.toBeInTheDocument();
+      // Back is disabled (rendered but inert) on the commitments step
+      // — its disabled-opacity-0 class effectively hides it but DOM
+      // assertion stays explicit.
+      const backButton = queryByRole("button", { name: /back/i });
+      expect(backButton).toBeDisabled();
+    });
+  });
 });

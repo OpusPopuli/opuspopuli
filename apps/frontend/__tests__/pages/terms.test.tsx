@@ -22,20 +22,28 @@ describe("TermsOfServicePage", () => {
   });
 
   it("should render the last updated date", () => {
-    expect(screen.getByText(/Last updated: March 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/Last updated: June 2026/)).toBeInTheDocument();
   });
 
-  it("should render all 10 sections", () => {
+  it("should render all 11 sections", () => {
     expect(screen.getByText("1. Acceptance of Terms")).toBeInTheDocument();
     expect(screen.getByText("2. Eligibility")).toBeInTheDocument();
     expect(screen.getByText("3. Account Responsibilities")).toBeInTheDocument();
     expect(screen.getByText("4. Acceptable Use")).toBeInTheDocument();
     expect(screen.getByText("5. Civic Data & AI Analysis")).toBeInTheDocument();
-    expect(screen.getByText("6. Intellectual Property")).toBeInTheDocument();
-    expect(screen.getByText("7. Limitation of Liability")).toBeInTheDocument();
-    expect(screen.getByText("8. Termination")).toBeInTheDocument();
-    expect(screen.getByText("9. Governing Law")).toBeInTheDocument();
-    expect(screen.getByText("10. Contact Information")).toBeInTheDocument();
+    expect(screen.getByText("6. Public Commitments")).toBeInTheDocument();
+    expect(screen.getByText("7. Intellectual Property")).toBeInTheDocument();
+    expect(screen.getByText("8. Limitation of Liability")).toBeInTheDocument();
+    expect(screen.getByText("9. Termination")).toBeInTheDocument();
+    expect(screen.getByText("10. Governing Law")).toBeInTheDocument();
+    expect(screen.getByText("11. Contact Information")).toBeInTheDocument();
+  });
+
+  it("should link to /our-commitments from section 6", () => {
+    const commitmentsLink = screen.getByRole("link", {
+      name: "/our-commitments",
+    });
+    expect(commitmentsLink).toHaveAttribute("href", "/our-commitments");
   });
 
   it("should include links to Privacy Policy", () => {
@@ -63,10 +71,16 @@ describe("TermsOfServicePage", () => {
   });
 
   it("should include contact email", () => {
-    const emailLink = screen.getByRole("link", {
+    // Section 6 (Public Commitments) AND Section 11 (Contact) both link
+    // legal@opuspopuli.org. Assert at least one exists and that every
+    // legal-email link routes correctly.
+    const emailLinks = screen.getAllByRole("link", {
       name: "legal@opuspopuli.org",
     });
-    expect(emailLink).toHaveAttribute("href", "mailto:legal@opuspopuli.org");
+    expect(emailLinks.length).toBeGreaterThanOrEqual(1);
+    emailLinks.forEach((link) =>
+      expect(link).toHaveAttribute("href", "mailto:legal@opuspopuli.org"),
+    );
   });
 
   it("should render header and footer", () => {

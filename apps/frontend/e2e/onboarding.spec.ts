@@ -104,7 +104,16 @@ test.describe("Onboarding Flow", () => {
       page.getByRole("heading", { name: "One sensitive question" }),
     ).toBeVisible();
 
-    // Last data step's primary action is "Get Started".
+    // Veteran step's primary action is "Save & Continue" — advances
+    // into the mandatory commitments-acknowledgement step (#754).
+    await page.getByRole("button", { name: /save & continue/i }).click();
+
+    // Commitments step is mandatory: no skip, no back; must check the
+    // box then click Continue to redirect to the briefing.
+    await expect(
+      page.getByRole("heading", { name: /acknowledge these commitments/i }),
+    ).toBeVisible();
+    await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: /get started/i }).click();
     await expect(page).toHaveURL(/\/me\/briefing/);
   });

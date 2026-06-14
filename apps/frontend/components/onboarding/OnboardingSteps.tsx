@@ -12,10 +12,19 @@ import { AddressStep } from "./steps/AddressStep";
 import { TopicsStep } from "./steps/TopicsStep";
 import { LifeContextStep } from "./steps/LifeContextStep";
 import { VeteranStep } from "./steps/VeteranStep";
+import { CommitmentsStep } from "./steps/CommitmentsStep";
 
-// Indices of steps that own their primary action (Save & Continue button)
-// — the global Next/Get Started footer hides for these.
-const DATA_STEP_INDICES = new Set([5, 6, 7, 8]);
+// The commitments-acknowledgement step (#754) is mandatory — issue AC
+// says it MUST be acknowledged, not skippable. Both `DATA_STEP_INDICES`
+// and the in-render `isCommitmentsStep` chrome-suppression check derive
+// from this constant so the two never drift.
+const COMMITMENTS_STEP_INDEX = 9;
+
+// Indices of steps that own their primary action (Save & Continue
+// button) — the global Next/Get Started footer hides for these. The
+// commitments step is included because it owns its own submit button
+// with no Skip affordance.
+const DATA_STEP_INDICES = new Set([5, 6, 7, 8, COMMITMENTS_STEP_INDEX]);
 
 export function OnboardingSteps() {
   const router = useRouter();
@@ -57,21 +66,25 @@ export function OnboardingSteps() {
     <AddressStep key="address" onComplete={advance} isLastStep={false} />,
     <TopicsStep key="topics" onComplete={advance} isLastStep={false} />,
     <LifeContextStep key="life" onComplete={advance} isLastStep={false} />,
-    <VeteranStep key="veteran" onComplete={advance} isLastStep={true} />,
+    <VeteranStep key="veteran" onComplete={advance} isLastStep={false} />,
+    <CommitmentsStep key="commitments" onComplete={advance} />,
   ];
 
   const stepOwnsAction = DATA_STEP_INDICES.has(currentStep);
+  const isCommitmentsStep = currentStep === COMMITMENTS_STEP_INDEX;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-      <div className="absolute top-4 right-4 z-10">
-        <button
-          onClick={handleSkip}
-          className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm transition-colors px-3 py-1"
-        >
-          {t("skip")}
-        </button>
-      </div>
+      {!isCommitmentsStep && (
+        <div className="absolute top-4 right-4 z-10">
+          <button
+            onClick={handleSkip}
+            className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm transition-colors px-3 py-1"
+          >
+            {t("skip")}
+          </button>
+        </div>
+      )}
 
       <div
         role="progressbar"
@@ -101,7 +114,7 @@ export function OnboardingSteps() {
       <div className="p-6 flex justify-between items-center min-h-[80px]">
         <button
           onClick={prevStep}
-          disabled={currentStep === 0}
+          disabled={currentStep === 0 || isCommitmentsStep}
           className="px-6 py-3 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white disabled:opacity-0 transition-all"
         >
           {t("back")}

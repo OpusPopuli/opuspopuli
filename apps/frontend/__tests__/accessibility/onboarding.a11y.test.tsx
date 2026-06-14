@@ -26,7 +26,7 @@ jest.mock("next/navigation", () => ({
 const defaultContext = {
   hasCompletedOnboarding: false,
   currentStep: 0,
-  totalSteps: 9,
+  totalSteps: 10,
   nextStep: jest.fn(),
   prevStep: jest.fn(),
   skipOnboarding: jest.fn(),
@@ -109,7 +109,7 @@ describe("Onboarding accessibility (WCAG 2.2 AA, structural)", () => {
       const { container } = renderStep(3);
       const bar = container.querySelector("[role='progressbar']");
       expect(bar).toHaveAttribute("aria-valuemin", "1");
-      expect(bar).toHaveAttribute("aria-valuemax", "9");
+      expect(bar).toHaveAttribute("aria-valuemax", "10");
       expect(bar).toHaveAttribute("aria-valuenow", "4");
     });
   });

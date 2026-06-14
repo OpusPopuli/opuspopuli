@@ -177,6 +177,13 @@ model User {
   updated      DateTime  @default(now()) @updatedAt @db.Timestamptz
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
 
+  // Public ethical commitments (#754). NULL = never acknowledged.
+  // Version is the COMMITMENTS_VERSION the user agreed to — when we
+  // ship a new version, the onboarding step re-fires for users whose
+  // acknowledged version is older than the current one.
+  commitmentsAcknowledgedAt      DateTime? @map("commitments_acknowledged_at") @db.Timestamptz
+  commitmentsVersionAcknowledged String?   @map("commitments_version_acknowledged") @db.VarChar(20)
+
   // Relations
   profile                      UserProfile?
   login                        UserLogin?
