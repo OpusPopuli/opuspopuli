@@ -65,7 +65,39 @@
     "axisValuesAlignment": "Aligns with topics you said you care about.",
     "axisActionability": "Has a vote or comment window you can influence soon.",
     "placeholderFor745": "We'll write you a plain-language sentence here once the LLM explanation pipeline ships.",
-    "scoreLabel": "Relevance"
+    "scoreLabel": "Relevance",
+    "signalsHeading": "Signals that contributed",
+    "sourceLink": "Read the source →",
+    "signals": {
+      "sensitiveFlag": "A sensitive signal you shared",
+      "flag": {
+        "isRenter": "You're a renter",
+        "isHomeowner": "You're a homeowner",
+        "isParent": "You're a parent",
+        "isCaregiver": "You're a caregiver",
+        "isStudent": "You're a student",
+        "isEducator": "You're an educator",
+        "isWorker": "You're a worker",
+        "isBusinessOwner": "You run a small business",
+        "isUnionMember": "You're a union member",
+        "isGigWorker": "You're a gig worker",
+        "isTransitRider": "You ride transit",
+        "isDriver": "You drive",
+        "hasSpecialLicense": "You hold a special license",
+        "hasImmigrationConcern": "You flagged immigration as a concern",
+        "hasHealthCondition": "You flagged a health condition",
+        "hasPublicHealthInsurance": "You use public health insurance",
+        "isVeteran": "You're a veteran",
+        "hasJusticeInvolvement": "You flagged justice-system involvement",
+        "isLowIncome": "Income range you shared",
+        "receivesPublicBenefits": "You receive public benefits"
+      },
+      "actionability": {
+        "within_30_days": "Action within the last 30 days",
+        "within_60_days": "Action within the last 60 days",
+        "future_action_scheduled": "Future action scheduled"
+      }
+    }
   },
   "repsWhyThis": {
     "axisChamberMatch": "Sits in the chamber where the bills you care about are moving.",

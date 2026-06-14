@@ -121,6 +121,35 @@ export interface BriefingAxisScores {
  */
 export type AxisScores = BriefingAxisScores;
 
+/**
+ * Backend AxisName enum mirror. Stays in lockstep with
+ * `apps/backend/.../models/contributing-signal.model.ts::AxisName`.
+ * Only the three v1.0 axes emit signals; axes 4-7 are placeholder
+ * zeros until they ship.
+ */
+export type SignalAxis = "directMaterial" | "valuesAlignment" | "actionability";
+
+/**
+ * One structured reason the bill landed on the feed (#750). The
+ * frontend's `WhyThisPanel` renders these as bullet points beneath
+ * the LLM narrative — citizens see prose, auditors see the structured
+ * list. (type, key) maps to a plain-language i18n label; unknown
+ * keys fall back to the raw slug so per-region interest taxonomies
+ * stay open-set.
+ *
+ * `isSensitive: true` means the signal was derived from a T3 profile
+ * field (veteran, immigration concern, health, etc.) — the panel
+ * collapses these to a single neutral label rather than naming the
+ * specific trait. Per AC, "show me why" mode (post-MVP) flips this
+ * rendering on-demand.
+ */
+export interface ContributingSignal {
+  type: "flag" | "interest_tag" | "actionability";
+  key: string;
+  axis: SignalAxis;
+  isSensitive: boolean;
+}
+
 export interface PersonalizedBillResult {
   billId: string;
   relevanceScore: number;
@@ -134,6 +163,18 @@ export interface PersonalizedBillResult {
    * that case.
    */
   relevanceExplanation?: string | null;
+  /**
+   * Top contributing signals (#750). Always present — the resolver
+   * field is non-null `[ContributingSignal!]!`; emit an empty array
+   * for zero-relevance bills (filtered upstream from the feed).
+   * Capped per-axis and globally by the scorer.
+   */
+  contributingSignals: ContributingSignal[];
+  /**
+   * Canonical legislature URL for the bill (#750). Surfaces as
+   * "Read the source" inside the why-this panel.
+   */
+  sourceDocumentUrl?: string | null;
 }
 
 export interface PersonalizedBillFeedData {
@@ -151,6 +192,7 @@ export const GET_MY_PERSONALIZED_BILL_FEED = gql`
       billId
       relevanceScore
       relevanceExplanation
+      sourceDocumentUrl
       axisScores {
         directMaterial
         valuesAlignment
@@ -159,6 +201,12 @@ export const GET_MY_PERSONALIZED_BILL_FEED = gql`
         coalitionSignal
         counterfactual
         noveltyRepetition
+      }
+      contributingSignals {
+        type
+        key
+        axis
+        isSensitive
       }
     }
   }

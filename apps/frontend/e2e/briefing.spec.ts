@@ -130,6 +130,36 @@ test.describe("Civic briefing page", () => {
     await expect(logoLink).toHaveAttribute("href", "/me/briefing");
   });
 
+  test("Why-this panel surfaces a source link on at least one bill (#750)", async ({
+    page,
+  }) => {
+    await setupAuthed(page);
+    await page.goto("/me/briefing");
+
+    // Open every visible Why-this toggle — the panels are independent
+    // disclosures so we can have multiple expanded at once. After the
+    // sweep, assert that at least one source link rendered. Source
+    // URL is more reliable to assert on than signals: every CA bill
+    // ingested via leginfo carries a sourceUrl, but a particular
+    // user's profile may produce zero contributing signals against
+    // the top-ranked bills in some test states.
+    const toggles = page.getByRole("button", {
+      name: /why is this on my briefing/i,
+    });
+    const toggleCount = await toggles.count();
+    expect(toggleCount).toBeGreaterThan(0);
+    for (let i = 0; i < toggleCount; i++) {
+      const toggle = toggles.nth(i);
+      await toggle.scrollIntoViewIfNeeded();
+      await toggle.click();
+    }
+
+    const sourceLinks = page.getByRole("link", { name: /read the source/i });
+    await expect(sourceLinks.first()).toBeVisible();
+    await expect(sourceLinks.first()).toHaveAttribute("target", "_blank");
+    await expect(sourceLinks.first()).toHaveAttribute("rel", /noopener/);
+  });
+
   test("unauthenticated user is redirected to /login", async ({ page }) => {
     await page.goto("/me/briefing");
     await expect(page).toHaveURL(/\/login/);
