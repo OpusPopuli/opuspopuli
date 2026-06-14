@@ -20,6 +20,7 @@
       "afternoon": "Buenas tardes.",
       "evening": "Buenas noches."
     },
+    "mission": "El autogobierno se ejerce en audiencias, ventanas de comentarios y votos que puedes influir — cuando sabes que están sucediendo. Esta es tu oportunidad.",
     "summary": "A continuación: {{billCount}} proyectos de ley, {{repCount}} representantes, {{committeeCount}} comités y {{propositionCount}} proposiciones según las señales que compartiste.",
     "urgentCallout_one": "{{count}} de los proyectos tiene acción que puedes influir en los próximos 30 días.",
     "urgentCallout_other": "{{count}} de los proyectos tienen acción que puedes influir en los próximos 30 días."

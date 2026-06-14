@@ -109,6 +109,19 @@ describe("BriefingGreeting", () => {
     });
   });
 
+  describe("mission line", () => {
+    it("renders the static mission sentence between the greeting and the summary", () => {
+      render(
+        <BriefingGreeting firstName="Rodney" counts={counts} nowHour={9} />,
+      );
+      // Anchor on phrases that pin the EN mission copy — narrow enough
+      // that a future rewording of the i18n key gets caught, broad
+      // enough that small punctuation tweaks won't flake.
+      expect(screen.getByText(/self-governance shows up/i)).toBeInTheDocument();
+      expect(screen.getByText(/here's your opportunity/i)).toBeInTheDocument();
+    });
+  });
+
   describe("summary line", () => {
     it("renders counts of every section", () => {
       render(

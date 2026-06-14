@@ -106,6 +106,9 @@ export function BriefingGreeting({
           >
             {greetingLine}
           </h1>
+          <p className="mt-2 text-sm sm:text-base text-[#222222] dark:text-sage-50 italic">
+            {t("greeting.mission")}
+          </p>
           <p className="mt-2 text-sm sm:text-base text-[#4d4d4d] dark:text-gray-300">
             {summaryLine}
           </p>
