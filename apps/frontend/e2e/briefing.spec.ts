@@ -25,17 +25,25 @@ async function setupAuthed(page: Page) {
 const MOBILE_PROJECTS = ["mobile-chrome", "mobile-safari"];
 
 test.describe("Civic briefing page", () => {
-  test("authenticated user lands on the page with header + four sections", async ({
+  test("authenticated user lands on the page with greeting + four sections", async ({
     page,
   }) => {
     await setupAuthed(page);
     await page.goto("/me/briefing");
 
+    // The h1 is the personalized greeting (#849) — replaces the
+    // static "Your Civic Briefing" title to declutter the top of
+    // the page. Matches any time-of-day variant + named OR
+    // neighbor branch.
     await expect(
-      page.getByRole("heading", { level: 1, name: /your civic briefing/i }),
+      page.getByRole("heading", {
+        level: 1,
+        name: /good (morning|afternoon|evening)/i,
+      }),
     ).toBeVisible();
 
-    // 4 section headings (Bills + Reps + Committees + Propositions)
+    // 4 h2 headings — one per section (Bills + Reps + Committees +
+    // Propositions). The greeting block is the h1, not an h2.
     const sectionHeadings = page.getByRole("heading", { level: 2 });
     await expect(sectionHeadings).toHaveCount(4);
   });
@@ -167,6 +175,31 @@ test.describe("Civic briefing page", () => {
     await expect(sourceLinks.first()).toHaveAttribute("rel", /noopener/);
   });
 
+  test("greeting block renders above the sections with a summary line (#849)", async ({
+    page,
+  }) => {
+    await setupAuthed(page);
+    await page.goto("/me/briefing");
+
+    const greeting = page.getByTestId("briefing-greeting");
+    await expect(greeting).toBeVisible();
+
+    // Heading is a friendly time-of-day greeting; assert one of the
+    // three EN variants (named OR neighbor branch). Avoid asserting on
+    // a specific firstName because the seeded user can be either with
+    // or without a name across CI states.
+    const heading = greeting.getByRole("heading", { level: 1 });
+    await expect(heading).toBeVisible();
+    await expect(heading).toHaveText(/good (morning|afternoon|evening),? \S+/i);
+
+    // Summary sentence mentions all four section types so the citizen
+    // sees a count anchor before scrolling.
+    await expect(greeting).toContainText(/bills/i);
+    await expect(greeting).toContainText(/representatives/i);
+    await expect(greeting).toContainText(/committees/i);
+    await expect(greeting).toContainText(/propositions/i);
+  });
+
   test("unauthenticated user is redirected to /login", async ({ page }) => {
     await page.goto("/me/briefing");
     await expect(page).toHaveURL(/\/login/);
@@ -182,7 +215,10 @@ test.describe("Civic briefing page", () => {
     await page.goto("/me/briefing");
 
     await expect(
-      page.getByRole("heading", { level: 1, name: /your civic briefing/i }),
+      page.getByRole("heading", {
+        level: 1,
+        name: /good (morning|afternoon|evening)/i,
+      }),
     ).toBeVisible();
   });
 });
@@ -192,7 +228,10 @@ test.describe("Civic briefing — Accessibility (WCAG 2.2 AA)", () => {
     await setupAuthed(page);
     await page.goto("/me/briefing");
     await expect(
-      page.getByRole("heading", { level: 1, name: /your civic briefing/i }),
+      page.getByRole("heading", {
+        level: 1,
+        name: /good (morning|afternoon|evening)/i,
+      }),
     ).toBeVisible();
     expect(await checkAccessibility(page)).toEqual([]);
   });
