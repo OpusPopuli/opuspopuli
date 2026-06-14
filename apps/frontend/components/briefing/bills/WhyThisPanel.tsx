@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { topAxisFor, type AxisScores } from "@/lib/graphql/personalized-feed";
+import {
+  topAxisFor,
+  type AxisScores,
+  type ContributingSignal,
+} from "@/lib/graphql/personalized-feed";
+import { signalLabel } from "@/lib/personalized-feed-signal-labels";
 
 interface WhyThisPanelProps {
   readonly axisScores: AxisScores;
@@ -19,6 +24,20 @@ interface WhyThisPanelProps {
    * more informative. Falls through to the heuristic when null/empty.
    */
   readonly llmExplanation?: string | null;
+  /**
+   * Structured signal list from the scorer (#750). The resolver field
+   * is non-null `[ContributingSignal!]!` so callers always pass an
+   * array — empty array hides the section.
+   */
+  readonly signals: ReadonlyArray<ContributingSignal>;
+  /**
+   * Canonical legislature source URL (#750). When present, renders
+   * a "Read the source" link at the bottom of the panel so users can
+   * verify the recommendation against the original document. Opens
+   * in a new tab — the user is in their personalized briefing flow
+   * and we don't want to disrupt that context.
+   */
+  readonly sourceDocumentUrl?: string | null;
 }
 
 const AXIS_I18N: Record<keyof AxisScores, string | null> = {
@@ -43,10 +62,14 @@ export function WhyThisPanel({
   axisScores,
   scopeId,
   llmExplanation,
+  signals,
+  sourceDocumentUrl,
 }: WhyThisPanelProps) {
   const { t } = useTranslation("briefing");
   const [open, setOpen] = useState(false);
   const top = topAxisFor(axisScores);
+  const hasSignals = signals.length > 0;
+  const hasSource = !!sourceDocumentUrl && sourceDocumentUrl.length > 0;
   // If the top axis itself scored zero (theoretically possible if a bill
   // is surfaced only by axes 4-7, which today emit 0.0), the heuristic
   // sentence is misleading — fall through to the #745 placeholder note.
@@ -94,6 +117,34 @@ export function WhyThisPanel({
                 {t("whyThis.placeholderFor745")}
               </p>
             </>
+          )}
+
+          {hasSignals && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#4d4d4d] dark:text-gray-400">
+                {t("whyThis.signalsHeading")}
+              </p>
+              <ul className="mt-1 list-disc list-inside space-y-0.5 text-xs text-gray-700 dark:text-gray-200">
+                {signals.map((signal, i) => (
+                  <li key={`${signal.type}-${signal.key}-${i}`}>
+                    {signalLabel(signal, t)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {hasSource && (
+            <p className="pt-1">
+              <a
+                href={sourceDocumentUrl!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-[#5A7A6A] hover:text-[#2D4A3C] dark:text-sage-300 dark:hover:text-white underline"
+              >
+                {t("whyThis.sourceLink")}
+              </a>
+            </p>
           )}
         </div>
       )}

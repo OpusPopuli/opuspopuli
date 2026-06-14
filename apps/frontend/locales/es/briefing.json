@@ -65,7 +65,39 @@
     "axisValuesAlignment": "Coincide con temas que dijiste que te importan.",
     "axisActionability": "Tiene una votación o ventana de comentarios que puedes influir pronto.",
     "placeholderFor745": "Escribiremos aquí una frase en lenguaje claro cuando el pipeline de explicación con IA esté listo.",
-    "scoreLabel": "Relevancia"
+    "scoreLabel": "Relevancia",
+    "signalsHeading": "Señales que contribuyeron",
+    "sourceLink": "Leer la fuente →",
+    "signals": {
+      "sensitiveFlag": "Una señal sensible que compartiste",
+      "flag": {
+        "isRenter": "Eres inquilino",
+        "isHomeowner": "Eres propietario",
+        "isParent": "Eres madre o padre",
+        "isCaregiver": "Cuidas a alguien",
+        "isStudent": "Eres estudiante",
+        "isEducator": "Eres educador",
+        "isWorker": "Eres trabajador",
+        "isBusinessOwner": "Tienes un pequeño negocio",
+        "isUnionMember": "Eres miembro de un sindicato",
+        "isGigWorker": "Trabajas por encargo",
+        "isTransitRider": "Usas transporte público",
+        "isDriver": "Conduces",
+        "hasSpecialLicense": "Tienes una licencia especial",
+        "hasImmigrationConcern": "Señalaste la inmigración como preocupación",
+        "hasHealthCondition": "Señalaste una condición de salud",
+        "hasPublicHealthInsurance": "Usas seguro de salud público",
+        "isVeteran": "Eres veterano",
+        "hasJusticeInvolvement": "Señalaste involucramiento con el sistema judicial",
+        "isLowIncome": "Rango de ingresos que compartiste",
+        "receivesPublicBenefits": "Recibes beneficios públicos"
+      },
+      "actionability": {
+        "within_30_days": "Acción en los últimos 30 días",
+        "within_60_days": "Acción en los últimos 60 días",
+        "future_action_scheduled": "Acción futura programada"
+      }
+    }
   },
   "repsWhyThis": {
     "axisChamberMatch": "Está en la cámara donde se mueven los proyectos que te importan.",

@@ -64,7 +64,7 @@ export class PersonalizedFeedService {
     const now = new Date();
     const scored = candidates
       .map((bill) => {
-        const { axisScores, composite } = this.scoring.scoreBill(
+        const { axisScores, composite, signals } = this.scoring.scoreBill(
           bill,
           input,
           now,
@@ -73,6 +73,8 @@ export class PersonalizedFeedService {
           billId: bill.id,
           relevanceScore: composite,
           axisScores,
+          contributingSignals: signals,
+          sourceDocumentUrl: bill.sourceUrl ?? undefined,
         };
       })
       // Drop zero-relevance bills so the feed doesn't pad with garbage
@@ -166,6 +168,7 @@ export class PersonalizedFeedService {
       select: {
         id: true,
         lastActionDate: true,
+        sourceUrl: true,
         aiSummary: true,
       },
       // Defensive bound: see RANKABLE_BILLS_FETCH_LIMIT. The warn below

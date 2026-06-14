@@ -112,6 +112,11 @@ export function PropositionBriefingCard({
           axisScores={result.axisScores}
           scopeId={proposition.id}
           llmExplanation={result.relevanceExplanation}
+          /* Propositions don't surface a structured signal list yet —
+             the proposition scorer is a separate module from the bill
+             ranker. Passing [] keeps the contract honest while
+             reserving room for a future PropositionContributingSignal. */
+          signals={[]}
         />
       </div>
     </article>
