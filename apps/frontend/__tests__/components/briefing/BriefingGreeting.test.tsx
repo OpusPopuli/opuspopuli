@@ -122,6 +122,65 @@ describe("BriefingGreeting", () => {
     });
   });
 
+  describe("LLM summary fallback (#849 Phase 2)", () => {
+    it("renders the LLM paragraph in place of the template when llmSummary is supplied", () => {
+      const llm =
+        "Welcome back, Rodney. Below are 5 bills and 7 reps matched to your signals — 3 of the bills have a comment window opening within the next 30 days.";
+      render(
+        <BriefingGreeting
+          firstName="Rodney"
+          counts={counts}
+          urgentBillCount={3}
+          llmSummary={llm}
+          nowHour={9}
+        />,
+      );
+      expect(
+        screen.getByTestId("briefing-greeting-llm-summary"),
+      ).toHaveTextContent(llm);
+      // The Phase 1 template chrome (mission line + count summary)
+      // does NOT render when the LLM paragraph is present.
+      expect(
+        screen.queryByTestId("briefing-greeting-template-mission"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/self-governance shows up/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it("falls back to the Phase 1 template when llmSummary is null", () => {
+      render(
+        <BriefingGreeting
+          firstName="Rodney"
+          counts={counts}
+          urgentBillCount={3}
+          llmSummary={null}
+          nowHour={9}
+        />,
+      );
+      expect(
+        screen.getByTestId("briefing-greeting-template-mission"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("briefing-greeting-llm-summary"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("falls back to the Phase 1 template when llmSummary is whitespace-only", () => {
+      render(
+        <BriefingGreeting
+          firstName="Rodney"
+          counts={counts}
+          llmSummary="   "
+          nowHour={9}
+        />,
+      );
+      expect(
+        screen.getByTestId("briefing-greeting-template-mission"),
+      ).toBeInTheDocument();
+    });
+  });
+
   describe("summary line", () => {
     it("renders counts of every section", () => {
       render(

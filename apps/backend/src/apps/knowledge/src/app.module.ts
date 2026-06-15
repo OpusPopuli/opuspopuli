@@ -18,6 +18,7 @@ import { createQueryComplexityPlugin } from 'src/common/graphql/query-complexity
 import { KnowledgeModule } from './domains/knowledge.module';
 import { PersonalizedFeedModule } from './domains/personalized-feed/personalized-feed.module';
 import { PersonalizedPropositionsModule } from './domains/personalized-propositions/personalized-propositions.module';
+import { BriefingSummaryModule } from './domains/briefing-summary/briefing-summary.module';
 import { PersonalizedRepsModule } from './domains/personalized-reps/personalized-reps.module';
 
 import configuration from 'src/config';
@@ -73,6 +74,7 @@ import { MetricsModule } from 'src/common/metrics';
     PersonalizedFeedModule,
     PersonalizedPropositionsModule,
     PersonalizedRepsModule,
+    BriefingSummaryModule,
     HealthModule.forRoot({
       serviceName: 'knowledge-service',
       hasDatabase: true,

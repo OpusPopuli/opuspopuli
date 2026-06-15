@@ -223,6 +223,53 @@ export const GET_MY_PERSONALIZED_BILL_FEED = gql`
 `;
 
 /**
+ * Personalized briefing-summary paragraph (#849 Phase 2). Returns the
+ * LLM-polished 2-3 sentence opening line for `/me/briefing`, or null
+ * on any failure path (cache miss + LLM down / validator rejection /
+ * malformed output / `{ skip: true }`). The frontend falls back to the
+ * Phase 1 deterministic template uniformly on null — see
+ * `BriefingGreeting` for the render branch.
+ */
+export interface BriefingSummaryVars {
+  language: string;
+  billCount: number;
+  repCount: number;
+  committeeCount: number;
+  propositionCount: number;
+  urgentBillCount: number;
+  firstName?: string | null;
+  topBillTopAxis?: string | null;
+}
+
+export interface BriefingSummaryData {
+  myBriefingSummary: string | null;
+}
+
+export const GET_MY_BRIEFING_SUMMARY = gql`
+  query MyBriefingSummary(
+    $language: String!
+    $billCount: Float!
+    $repCount: Float!
+    $committeeCount: Float!
+    $propositionCount: Float!
+    $urgentBillCount: Float!
+    $firstName: String
+    $topBillTopAxis: String
+  ) {
+    myBriefingSummary(
+      language: $language
+      billCount: $billCount
+      repCount: $repCount
+      committeeCount: $committeeCount
+      propositionCount: $propositionCount
+      urgentBillCount: $urgentBillCount
+      firstName: $firstName
+      topBillTopAxis: $topBillTopAxis
+    )
+  }
+`;
+
+/**
  * Apollo Client auto-decorates every fetched object with `__typename`
  * (and for our RankingFlags it tags it as "RankingFlags"). When that
  * shape is fed back as the `RankingFlagsInputDto` argument of the
