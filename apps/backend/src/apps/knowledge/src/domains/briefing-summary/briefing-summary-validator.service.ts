@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { checkWordWindow } from './check-word-window';
 
 /**
  * Outcome of running a candidate LLM-generated briefing summary
@@ -113,18 +114,17 @@ export class BriefingSummaryValidatorService {
     paragraph: string,
     context: BriefingSummaryValidationContext,
   ): BriefingSummaryValidationResult {
-    const trimmed = paragraph.trim();
-    if (trimmed.length === 0) {
+    const shape = checkWordWindow(paragraph, MIN_WORDS, MAX_WORDS);
+    if (shape.kind === 'empty') {
       return { valid: false, rejectionReason: 'empty' };
     }
-
-    const words = trimmed.split(/\s+/u).filter((w) => w.length > 0);
-    if (words.length < MIN_WORDS || words.length > MAX_WORDS) {
+    if (shape.kind === 'out_of_window') {
       this.logger.debug(
-        `Dropped briefing summary: word count ${words.length} outside [${MIN_WORDS},${MAX_WORDS}]`,
+        `Dropped briefing summary: word count ${shape.wordCount} outside [${MIN_WORDS},${MAX_WORDS}]`,
       );
       return { valid: false, rejectionReason: 'word-count' };
     }
+    const trimmed = shape.trimmed;
 
     const persuasionEn = PERSUASION_PHRASES_EN.find((p) => p.test(trimmed));
     if (persuasionEn) {
