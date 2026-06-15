@@ -227,13 +227,13 @@ export class BriefingSummaryService {
     const params = this.contextToParams(context);
 
     let promptText: string;
-    let templateHash: string | null = expectedHash ?? null;
+    let templateHash: string | null;
     try {
       const prompt = await this.promptClient.getBriefingSummaryPrompt(params);
       promptText = prompt.promptText;
-      // The just-fetched hash supersedes the probe hash for cache
-      // writes — captures any race where the template changed between
-      // the probe and this call.
+      // Prefer the just-fetched hash over the probe hash — captures
+      // any race where the template changed between the probe and
+      // this call. Falls back to the probe hash, then null.
       templateHash = prompt.promptHash ?? expectedHash ?? null;
     } catch (err) {
       this.logger.warn(

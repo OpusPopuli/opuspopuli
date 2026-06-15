@@ -112,7 +112,9 @@ export class BriefingSummaryValidatorService {
 
   validate(
     paragraph: string,
-    context: BriefingSummaryValidationContext,
+    // Currently unused — kept on the signature so future bilingual
+    // rules can branch on declared language without a contract change.
+    _context: BriefingSummaryValidationContext,
   ): BriefingSummaryValidationResult {
     const shape = checkWordWindow(paragraph, MIN_WORDS, MAX_WORDS);
     if (shape.kind === 'empty') {
@@ -156,10 +158,6 @@ export class BriefingSummaryValidatorService {
       return { valid: false, rejectionReason: 'fabricated-claim' };
     }
 
-    // Context is currently unused — kept on the signature so future
-    // bilingual rules can branch on declared language without a
-    // contract change.
-    void context;
     return { valid: true };
   }
 }
