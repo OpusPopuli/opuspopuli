@@ -203,6 +203,7 @@ model User {
   propositionRelevanceCache    PropositionRelevanceCache[]
   representativeRelevanceCache RepresentativeRelevanceCache[]
   committeeRelevanceCache      CommitteeRelevanceCache[]
+  briefingSummaryCache         BriefingSummaryCache[]
 
   @@map("users")
 }
@@ -546,6 +547,54 @@ model CommitteeRelevanceCache {
   @@index([userId, computedAt(sort: Desc)])
   @@index([expiresAt])
   @@map("committee_relevance_cache")
+}
+
+/// Per-(user, language) briefing-summary cache (opuspopuli#849 Phase 2).
+/// LLM-written 2-3 sentence opening paragraph for the user's
+/// `/me/briefing` page, produced by the prompt-service `briefing-summary`
+/// template. Frontend's `BriefingGreeting` reads this field via the
+/// federated User type; on null / validator-rejection / expired row, it
+/// silently falls back to the Phase 1 deterministic template so the
+/// greeting block NEVER breaks.
+model BriefingSummaryCache {
+  id       String @id @default(uuid())
+  userId   String @map("user_id")
+  /// Two-letter language code matching the user's UI language at
+  /// generation time. The LLM produces EN and ES outputs separately;
+  /// they're stored on independent rows so a user switching languages
+  /// reads a freshly-validated cached paragraph immediately.
+  language String @db.VarChar(5)
+
+  /// LLM-written 2-3 sentence paragraph (30-60 words) for the briefing
+  /// top. Null is impossible here — we only insert when the validator
+  /// accepted the output. Cache misses are conveyed by row absence.
+  summaryText String @map("summary_text") @db.Text
+
+  // ---------- LLM telemetry ----------
+  /// SHA-256 of the prompt template text at generation time. Compared
+  /// on read so a rephrased prompt-service template naturally
+  /// invalidates every cached briefing summary on next visit — no
+  /// manual cache flush needed when the prompt changes upstream.
+  templateHash String? @map("template_hash")
+  /// Active A/B-experiment variant for this user/language pair, if
+  /// any. Reserved for future use; sibling caches use the same field.
+  variantId    String? @map("variant_id") @db.VarChar(50)
+  /// Total LLM tokens spent on this generation (prompt + completion).
+  /// `tokensIn` was dropped because @opuspopuli/llm-provider's
+  /// `ILLMProvider.generate()` returns a single `tokensUsed` counter
+  /// rather than the prompt-vs-completion split; tracking a dead
+  /// `tokens_in: 0` column would be misleading.
+  tokensOut    Int?    @map("tokens_out")
+
+  computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, language])
+  @@index([userId, computedAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("briefing_summary_cache")
 }
 
 /// Async-job status tracking for the `llm-rerank` BullMQ queue

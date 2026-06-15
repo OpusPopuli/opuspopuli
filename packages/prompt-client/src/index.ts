@@ -49,6 +49,7 @@ export type {
   RepresentativeRelevanceExplanationParams,
   CommitteeRelevanceExplanationParams,
   CommitteeUpcomingHearing,
+  BriefingSummaryParams,
 } from "./types.js";
 export { PROMPT_CLIENT_CONFIG } from "./types.js";
 export { signRequest } from "./hmac-signer.js";

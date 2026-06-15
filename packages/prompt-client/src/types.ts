@@ -453,6 +453,60 @@ export interface BillStatusSummaryParams {
   priorStage?: string;
 }
 
+/**
+ * Params for the `briefing-summary` prompt (opuspopuli#849 Phase 2).
+ * The LLM produces a 2-3 sentence opening paragraph (30-60 words) for
+ * the user's `/me/briefing` page — the warm narrative companion to
+ * the deterministic Phase 1 greeting/summary template that the
+ * frontend always renders as fallback.
+ *
+ * MUST stay descriptive ("here's what's open"), NEVER persuasive
+ * ("you should read"). The prompt-service template's HARD CONSTRAINTS
+ * block forbids the §10 commitment-4 vocabulary; the opuspopuli-side
+ * validator independently scans LLM output and silently falls back
+ * to the Phase 1 template on any match.
+ *
+ * Privacy boundary: this endpoint receives ONLY non-sensitive
+ * anonymized context — first name (T1, user-provided), aggregate
+ * counts of cards already on the briefing, and the top bill's axis
+ * label. NEVER T3 traits, raw addresses, behavioral event rows, or
+ * UserSession timestamps. Same anonymization rule as bill-relevance-
+ * explanation (planning doc §6.3 + §10 commitment 7).
+ */
+export interface BriefingSummaryParams {
+  /** Output language. Must match the user's UI language. */
+  language: "en" | "es";
+  /**
+   * User's first name (T1, user-provided). Pass null/undefined to
+   * use the no-name register: the LLM addresses the user as
+   * `neighbor` in EN, or drops the address word entirely in ES.
+   */
+  firstName?: string | null;
+  /** Number of bills the user will see on the briefing. */
+  billCount: number;
+  /** Number of representatives. */
+  repCount: number;
+  /** Number of committees. */
+  committeeCount: number;
+  /** Number of propositions. */
+  propositionCount: number;
+  /**
+   * How many of the user's top-ranked bills have an actionability
+   * axis score >= 0.5 — i.e. a vote, hearing, or comment window
+   * within ~30 days. Drives the urgency beat in the paragraph.
+   */
+  urgentBillCount: number;
+  /**
+   * Top-ranking axis on the highest-scoring bill — lets the LLM
+   * frame the stake of the top match. null when no bills exist.
+   */
+  topBillTopAxis?:
+    | "directMaterial"
+    | "valuesAlignment"
+    | "actionability"
+    | null;
+}
+
 export const PROMPT_CLIENT_CONFIG = "PROMPT_CLIENT_CONFIG";
 
 export type { PromptServiceResponse };

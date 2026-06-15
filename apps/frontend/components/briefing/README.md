@@ -18,7 +18,7 @@ The page is a domain-agnostic **shell + N sections** composer:
 
 ```
 BriefingPage
-├── BriefingPageHeader            ("Your Civic Briefing" + Browse all civic data →)
+├── BriefingGreeting              (h1 personalized greeting + counts summary + Browse all civic data →; #849 Phase 1)
 ├── BriefingSection slug="bills"  ← BillsBriefingSection (real)
 ├── BriefingSection slug="reps"   ← RepsBriefingPlaceholder
 ├── BriefingSection slug="committees"
@@ -94,8 +94,9 @@ composition function.
 
 | File                                               | Purpose                                                                                                                                                                                                                   |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BriefingPage.tsx`                                 | Top-level composer; renders header + 4 sections                                                                                                                                                                           |
-| `BriefingPageHeader.tsx`                           | Page H1 + "Browse all civic data →" linkout to `/region`                                                                                                                                                                  |
+| `BriefingPage.tsx`                                 | Top-level composer; renders the greeting block + 4 sections                                                                                                                                                               |
+| `BriefingGreeting.tsx`                             | Page H1 (personalized "Good evening, {firstName}" + counts summary + Browse all civic data →); #849 Phase 1                                                                                                               |
+| `useBriefingGreetingData.ts`                       | Composes firstName + counts + urgentBillCount for `BriefingGreeting`; subscribes to the same section hooks (Apollo cache dedupes)                                                                                         |
 | `BriefingSection.tsx`                              | Domain-agnostic section shell (slug, title, subtitle, icon, seeAllHref)                                                                                                                                                   |
 | `bills/BillsBriefingSection.tsx`                   | Bills section orchestrator — owns hero + compact list + empty / noProfile / error states                                                                                                                                  |
 | `bills/useBillBriefing.ts`                         | The three-step fetch hook; returns `BillBriefingState`                                                                                                                                                                    |

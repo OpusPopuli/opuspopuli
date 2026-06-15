@@ -9,6 +9,22 @@
     "noProfileBody": "La incorporación toma aproximadamente un minuto y desbloquea el feed personalizado.",
     "noProfileCta": "Completar incorporación →"
   },
+  "greeting": {
+    "named": {
+      "morning": "Buenos días, {{firstName}}.",
+      "afternoon": "Buenas tardes, {{firstName}}.",
+      "evening": "Buenas noches, {{firstName}}."
+    },
+    "timeOnly": {
+      "morning": "Buenos días.",
+      "afternoon": "Buenas tardes.",
+      "evening": "Buenas noches."
+    },
+    "mission": "El autogobierno se ejerce en audiencias, ventanas de comentarios y votos que puedes influir — cuando sabes que están sucediendo. Esta es tu oportunidad.",
+    "summary": "A continuación: {{billCount}} proyectos de ley, {{repCount}} representantes, {{committeeCount}} comités y {{propositionCount}} proposiciones según las señales que compartiste.",
+    "urgentCallout_one": "{{count}} de los proyectos tiene acción que puedes influir en los próximos 30 días.",
+    "urgentCallout_other": "{{count}} de los proyectos tienen acción que puedes influir en los próximos 30 días."
+  },
   "section": {
     "seeAll": "Ver todo →",
     "collapseAria": "Contraer sección {{title}}",

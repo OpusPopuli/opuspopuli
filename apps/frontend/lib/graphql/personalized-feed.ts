@@ -50,6 +50,13 @@ export interface RankingFlags {
 export interface BriefingPrefetchData {
   myRankingFlags: RankingFlags;
   mySignalProfile: { interestTags: string[] } | null;
+  /**
+   * Used by `BriefingGreeting` (#849 Phase 1) to render a personalized
+   * greeting line. Null when the user hasn't shared a name — the
+   * greeting falls back to the no-name branch ("Hello, neighbor" /
+   * `"Buenos días"`). T1 data so this is safe to surface.
+   */
+  myProfile: { firstName: string | null } | null;
 }
 
 export const GET_BRIEFING_PREFETCH = gql`
@@ -78,6 +85,9 @@ export const GET_BRIEFING_PREFETCH = gql`
     }
     mySignalProfile {
       interestTags
+    }
+    myProfile {
+      firstName
     }
   }
 `;
@@ -209,6 +219,53 @@ export const GET_MY_PERSONALIZED_BILL_FEED = gql`
         isSensitive
       }
     }
+  }
+`;
+
+/**
+ * Personalized briefing-summary paragraph (#849 Phase 2). Returns the
+ * LLM-polished 2-3 sentence opening line for `/me/briefing`, or null
+ * on any failure path (cache miss + LLM down / validator rejection /
+ * malformed output / `{ skip: true }`). The frontend falls back to the
+ * Phase 1 deterministic template uniformly on null — see
+ * `BriefingGreeting` for the render branch.
+ */
+export interface BriefingSummaryVars {
+  language: string;
+  billCount: number;
+  repCount: number;
+  committeeCount: number;
+  propositionCount: number;
+  urgentBillCount: number;
+  firstName?: string | null;
+  topBillTopAxis?: string | null;
+}
+
+export interface BriefingSummaryData {
+  myBriefingSummary: string | null;
+}
+
+export const GET_MY_BRIEFING_SUMMARY = gql`
+  query MyBriefingSummary(
+    $language: String!
+    $billCount: Float!
+    $repCount: Float!
+    $committeeCount: Float!
+    $propositionCount: Float!
+    $urgentBillCount: Float!
+    $firstName: String
+    $topBillTopAxis: String
+  ) {
+    myBriefingSummary(
+      language: $language
+      billCount: $billCount
+      repCount: $repCount
+      committeeCount: $committeeCount
+      propositionCount: $propositionCount
+      urgentBillCount: $urgentBillCount
+      firstName: $firstName
+      topBillTopAxis: $topBillTopAxis
+    )
   }
 `;
 
