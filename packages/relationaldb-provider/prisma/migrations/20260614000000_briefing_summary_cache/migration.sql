@@ -7,9 +7,14 @@
 -- to the Phase 1 deterministic template so the greeting block
 -- never breaks.
 
+-- NOTE: `id` and `user_id` are TEXT, not UUID. `users.id` was created as
+-- TEXT in the baseline migration; declaring `user_id` as UUID here would
+-- make the FK uncreatable (Postgres rejects mixed-type FKs). The Prisma
+-- model uses `String @default(uuid())` which generates UUIDs in client
+-- code and stores them as TEXT — matching the rest of the schema.
 CREATE TABLE "briefing_summary_cache" (
-  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-  "user_id" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "user_id" TEXT NOT NULL,
   "language" VARCHAR(5) NOT NULL,
   "summary_text" TEXT NOT NULL,
   "template_hash" TEXT,
