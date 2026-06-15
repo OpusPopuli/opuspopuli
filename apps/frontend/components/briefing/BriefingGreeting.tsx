@@ -26,6 +26,15 @@ export interface BriefingGreetingProps {
    */
   readonly urgentBillCount?: number;
   /**
+   * Optional LLM-polished briefing-summary paragraph (#849 Phase 2).
+   * When present and non-empty, this REPLACES the static Phase 1
+   * mission line + count summary — the LLM weaves the same data into a
+   * warmer paragraph that's still descriptive (validator on the backend
+   * enforces commitment 4). Null/empty falls back to the Phase 1
+   * template so the greeting block NEVER breaks.
+   */
+  readonly llmSummary?: string | null;
+  /**
    * Override for testing — when omitted the component reads the local
    * clock for the time-of-day greeting selection. Tests inject a fixed
    * hour so the assertions don't depend on wall-clock time.
@@ -67,6 +76,7 @@ export function BriefingGreeting({
   firstName,
   counts,
   urgentBillCount = 0,
+  llmSummary,
   nowHour,
 }: BriefingGreetingProps) {
   const { t, i18n } = useTranslation("briefing");
@@ -106,16 +116,38 @@ export function BriefingGreeting({
           >
             {greetingLine}
           </h1>
-          <p className="mt-2 text-sm sm:text-base text-[#222222] dark:text-sage-50 italic">
-            {t("greeting.mission")}
-          </p>
-          <p className="mt-2 text-sm sm:text-base text-[#4d4d4d] dark:text-gray-300">
-            {summaryLine}
-          </p>
-          {urgentLine && (
-            <p className="mt-1 text-sm sm:text-base font-medium text-[#5A7A6A] dark:text-sage-200">
-              {urgentLine}
+          {llmSummary && llmSummary.trim().length > 0 ? (
+            // Phase 2: the LLM paragraph weaves the counts + urgency
+            // into a single warm narrative. Validator on the backend
+            // already enforced commitment-4 vocab; the frontend trusts
+            // the field is safe-to-render or null.
+            <p
+              className="mt-2 text-sm sm:text-base text-[#222222] dark:text-sage-50"
+              data-testid="briefing-greeting-llm-summary"
+            >
+              {llmSummary}
             </p>
+          ) : (
+            // Phase 1 fallback: static mission line + deterministic
+            // count summary + urgent callout. Renders on null LLM
+            // (cache miss / validator rejection / LLM failure) so the
+            // greeting block never breaks.
+            <>
+              <p
+                className="mt-2 text-sm sm:text-base text-[#222222] dark:text-sage-50 italic"
+                data-testid="briefing-greeting-template-mission"
+              >
+                {t("greeting.mission")}
+              </p>
+              <p className="mt-2 text-sm sm:text-base text-[#4d4d4d] dark:text-gray-300">
+                {summaryLine}
+              </p>
+              {urgentLine && (
+                <p className="mt-1 text-sm sm:text-base font-medium text-[#5A7A6A] dark:text-sage-200">
+                  {urgentLine}
+                </p>
+              )}
+            </>
           )}
         </div>
         <Link

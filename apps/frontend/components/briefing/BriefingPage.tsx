@@ -33,6 +33,7 @@ export function BriefingPage() {
         firstName={greeting.firstName}
         counts={greeting.counts}
         urgentBillCount={greeting.urgentBillCount}
+        llmSummary={greeting.llmSummary}
       />
       <div className="space-y-5">
         <BillsBriefingSection />
