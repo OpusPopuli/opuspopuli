@@ -25,7 +25,7 @@ set -euo pipefail
 # Configuration
 # ---------------------------------------------------------------------------
 REGISTRY="ghcr.io/opuspopuli"
-SERVICES=(api users documents knowledge region)
+SERVICES=(api users documents knowledge region region-worker structural-analysis-worker llm-rerank-worker db-migrate)
 CERT_IDENTITY_REGEXP="https://github\\.com/OpusPopuli/opuspopuli/\\.github/workflows/release\\.yml@.*"
 CERT_OIDC_ISSUER="https://token.actions.githubusercontent.com"
 
@@ -60,7 +60,9 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: $0 [--service <name>] [--sbom <name>] [--tag <tag>]"
       echo ""
       echo "Options:"
-      echo "  --service <name>   Verify a single service (api|users|documents|knowledge|region)"
+      echo "  --service <name>   Verify a single service"
+      echo "                     (api|users|documents|knowledge|region|region-worker|"
+      echo "                      structural-analysis-worker|llm-rerank-worker|db-migrate)"
       echo "  --sbom <name>      Show SBOM for a service"
       echo "  --tag <tag>        Image tag to verify (default: latest)"
       echo ""

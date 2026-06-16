@@ -47,6 +47,19 @@ jobs:
             dockerfile: apps/backend/docker/Dockerfile.knowledge
           - service: region
             dockerfile: apps/backend/docker/Dockerfile.region
+          # Async workers — same Dockerfile pattern, published so the prod
+          # compose can pull them instead of building locally on the Studio.
+          - service: region-worker
+            dockerfile: apps/backend/docker/Dockerfile.region-worker
+          - service: structural-analysis-worker
+            dockerfile: apps/backend/docker/Dockerfile.structural-analysis-worker
+          - service: llm-rerank-worker
+            dockerfile: apps/backend/docker/Dockerfile.llm-rerank-worker
+          # Migration runner — image name = compose service name (db-migrate).
+          # Shares Dockerfile.test-runner with the test/integration harness;
+          # the prod use case runs db-migrate.sh as its CMD.
+          - service: db-migrate
+            dockerfile: apps/backend/docker/Dockerfile.test-runner
 
     steps:
       - name: Checkout
