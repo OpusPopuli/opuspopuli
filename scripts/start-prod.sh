@@ -9,8 +9,10 @@
 # Usage:
 #   ./scripts/start-prod.sh                        # defaults to .env.production
 #   ./scripts/start-prod.sh --env-file .env.staging
-#   ./scripts/start-prod.sh --skip-pull             # skip model pull check
-#   ./scripts/start-prod.sh --build                 # force rebuild containers
+#   ./scripts/start-prod.sh --skip-pull             # skip Ollama model pull check
+#   ./scripts/start-prod.sh --build                 # rebuild from source (rare —
+#                                                  # default pulls signed images
+#                                                  # from ghcr.io/opuspopuli/*)
 #
 # =============================================================================
 
@@ -175,7 +177,8 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-docker compose -f docker-compose-prod.yml --env-file "$ENV_FILE" up -d $BUILD_FLAG
+docker compose -f docker-compose-prod.yml --env-file "$ENV_FILE" pull
+docker compose -f docker-compose-prod.yml --env-file "$ENV_FILE" up -d --remove-orphans $BUILD_FLAG
 
 echo ""
 echo "============================================"
