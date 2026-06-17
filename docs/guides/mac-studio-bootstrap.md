@@ -1,359 +1,404 @@
-# Mac Studio Bootstrap — From Unboxing to Live
+# Mac Studio Bootstrap — From Sealed Box to Live
 
-A single-pass runbook to take a brand-new Mac Studio from sealed box to a fully running Opus Populi node serving production traffic. Aimed at IT staff or first-time operators; assumes no prior familiarity with the codebase.
+Step-by-step to take a Mac Studio from first boot to serving production traffic at `api.opuspopuli.org`.
 
-**Audience:** IT, DevOps, the founder doing it themselves at 2am.
-**Scope:** Reference hardware (Mac Studio M4 Max, 128 GB) running the full stack: Ollama (native), the opuspopuli backend microservices, the prompt-service, the frontend, and the Cloudflare tunnel.
-**Time estimate:** 3–5 hours end-to-end if everything goes well. 1–2 of those hours are downloads (model weights, docker image base layers).
-**Out of scope:** Cloud VM deployment, Linux workstations, multi-region setups. See [`deployment.md`](deployment.md) for those.
+**Hardware:** Mac Studio M4 Max, 128 GB, 1 TB internal SSD + UPS.
+**Account:** `opuspopuli` (only account on the box).
+**Time:**
+- 5.5 h of step time (commands in sequence).
+- **10–14 h realistic** with first-time friction (LaunchAgent timing, rclone config, first restore drill).
+- **8–11 h to "live on the internet"** if Phase 10 observability is deferred.
+- Calendar: long Saturday + Sunday end-to-end, OR 3–4 evenings (4 h each).
+**MVP gate:** 2026-07-04 — 20 days of slack against an 8–11 h critical path.
 
-This guide intentionally **references** the topical guides ([`docker-setup.md`](docker-setup.md), [`ollama-setup.md`](ollama-setup.md), [`secrets-management.md`](secrets-management.md), etc.) instead of duplicating them. When you hit a section that says "see X for details," go read X — this runbook only covers the orchestration.
+## Decisions
 
----
-
-## Phase 0 — Pre-arrival checklist (do BEFORE the Mac arrives)
-
-These don't need the hardware. Do them in parallel with shipping so you're not blocked when the box lands.
-
-- [ ] **Apple ID** for the production machine (separate from anyone's personal account; bind to the org's shared inbox).
-- [ ] **GitHub access** — confirm an SSH key exists for whichever account will pull the three repos (`opuspopuli`, `prompt-service`, `opuspopuli-regions`). If using a deploy key, generate it now.
-- [ ] **Cloudflare tunnel** — provision via Terraform per [`deployment.md` §7](deployment.md#7-set-up-the-edge-proxy). Capture the tunnel token; it'll go into the Mac later.
-- [ ] **DNS records** for the public hostnames pointing at the Cloudflare tunnel.
-- [ ] **External secrets** — Resend API key, FEC API key, any other 3rd-party tokens. Stash them in 1Password or your secrets vault — see [`secrets-management.md`](secrets-management.md).
-- [ ] **Static IP / DHCP reservation** on the LAN side (Cloudflare tunnel doesn't need it but troubleshooting is much easier with a stable address).
-- [ ] **Hostname** decided (e.g., `opuspopuli-prod-01`).
-
-If any of these are missing when the hardware arrives, you'll stall mid-setup. Resolve them first.
-
----
-
-## Phase 1 — Hardware unboxing and macOS first-boot (~30 min)
-
-### 1.1 — Plug in
-
-Connect, in this order:
-
-1. Power
-2. Ethernet (preferred) or confirm Wi-Fi credentials in advance
-3. Display via HDMI or USB-C → DisplayPort
-4. USB keyboard + pointer (initial setup only; can go headless after)
-
-Apple's "monitor required for first boot" caveat is real — don't skip step 3.
-
-### 1.2 — Setup Assistant
-
-Walk through the macOS Setup Assistant:
-
-- **Region/keyboard** as appropriate.
-- **Network** — connect via Ethernet if available; Wi-Fi otherwise.
-- **Apple ID** — sign in with the production Apple ID from Phase 0. **Do not** use a personal account.
-- **Account name** — use `admin` or `opuspopuli-admin`. The username will become the home directory (`/Users/<name>`); pick something stable.
-- **Skip** Touch ID, Apple Pay, Siri, Screen Time, and the analytics opt-ins for the production machine.
-- **FileVault** — enable. Production data is on Supabase volumes, but your `.env` files and Cloudflare tunnel token will live on disk. Stash the recovery key in your secrets vault.
-- **iCloud Drive / Photos / Mail / Contacts / Calendar** — disable all. This is a server, not a desktop.
-
-### 1.3 — System settings to lock down
-
-After first boot, open **System Settings**:
-
-- **General → Software Update** — install all available updates, then enable automatic updates.
-- **Displays → Sleep** — Never. The Mac is a server; sleep kills running services.
-- **Energy** (under Battery on laptops; on Mac Studio it's **Energy**) — enable **"Start up automatically after a power failure"**. The `mac-studio-setup.sh` script also sets this via `pmset`, but verifying in the GUI catches edge cases on first run.
-- **Screen Lock** — set to require password immediately after sleep, but since sleep is disabled, this only matters for screen-locked-while-awake.
-- **Sharing**:
-  - **Remote Login (SSH)** — enable. Restrict to the admin user.
-  - **Screen Sharing** — enable for emergency GUI access. Restrict to admin user. Use a strong password.
-  - **File Sharing** — leave off.
-  - **Computer Name** — set to the hostname from Phase 0 (e.g., `opuspopuli-prod-01`). The local DNS name becomes `<hostname>.local`.
-- **Users & Groups → Login Options** — disable **automatic login** (FileVault requires it disabled anyway).
-
-### 1.4 — Verify network identity
-
-```bash
-hostname              # should match the Computer Name you set
-ipconfig getifaddr en0  # current IP — verify it matches your DHCP reservation
-ping -c 1 1.1.1.1     # confirm internet reachability
-```
+| Decision | Choice |
+|---|---|
+| Edge / TLS | Cloudflare Tunnel |
+| Frontend | Cloudflare Pages (already deploys via `pnpm cf:deploy`) |
+| Backend images | Built in GitHub Actions, pushed to `ghcr.io/opuspopuli/*`, Studio pulls — no local builds |
+| Container runtime | Docker Desktop — **never resize the disk image; size it 200 GB up front** |
+| Storage | Internal 1 TB SSD, Docker-managed named volumes |
+| Supabase | Self-hosted on the Studio (no Supabase Cloud) |
+| Email | Resend (DKIM on `opuspopuli.org`) |
+| Backups | Nightly `pg_dump -Fc` → Cloudflare R2, 30-day retention |
+| LLM | Local Ollama, `qwen3.5:9b` to start |
+| FileVault | Off (Secure Enclave still encrypts the SSD; trade is unattended boot) |
+| pgsodium key | 1Password `opuspopuli-prod-pgsodium-root-key`, mirrored locally at `/Users/opuspopuli/.config/opuspopuli/pgsodium_root_key` mode 0400 |
+| Out-of-band admin | Tailscale |
 
 ---
 
-## Phase 2 — Developer tooling (~30 min, mostly downloads)
+## Phase 1 — Workstation prep (≈ 1 h, no Studio needed)
 
-### 2.1 — Xcode Command Line Tools
+Do these from your laptop today.
 
-```bash
-xcode-select --install
-```
+1. **Apply Cloudflare prod Terraform** — creates Tunnel, DNS (`api.`, `grafana.`), R2 bucket.
+   ```bash
+   cd infra/cloudflare
+   terraform workspace select prod || terraform workspace new prod
+   terraform apply -var-file=environments/prod.tfvars
+   ```
 
-A GUI dialog appears; accept and let it run. Re-running the command shows `command line tools are already installed` once it's done.
+2. **Capture Tunnel token to 1Password** as `opuspopuli-prod-tunnel-token`.
+   ```bash
+   terraform output -raw tunnel_token
+   ```
 
-### 2.2 — Homebrew
+3. **R2 backup token** — Cloudflare dashboard → R2 → API tokens → scoped to `opuspopuli-prod-db-backups`, Object Read+Write only. Save to 1Password.
 
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
+4. **Verify DNS + TLS** (origin will 530 until Phase 9):
+   ```bash
+   dig api.opuspopuli.org +short          # CNAME to *.cfargotunnel.com
+   curl -I https://api.opuspopuli.org     # HTTP/2 530
+   ```
 
-After install finishes it prints **two lines** to add Homebrew to the PATH — actually run them. Verify:
+5. **Resend DKIM** — add SPF + DKIM records on `opuspopuli.org` per Resend dashboard. Test-send to your inbox.
 
-```bash
-brew --version
-```
-
-### 2.3 — Core CLI tools
-
-```bash
-brew install git gh pnpm jq
-brew install --cask docker          # Docker Desktop
-```
-
-`pnpm` ships with corepack-enabled Node, so a separate Node install isn't needed for the workspace tools. If you need a freestanding Node for one-off scripts, `brew install fnm` and `fnm install --lts`.
-
-Open Docker Desktop once from `/Applications` so it can grant kernel extensions; accept the EULA. Then set:
-
-- **Settings → General → Start Docker Desktop when you sign in to your computer** — enable.
-- **Settings → Resources → Memory** — at least 16 GB. The region service alone reserves 6 GB during finance sync.
-- **Settings → Resources → Disk image size** — at least 200 GB.
-
-Verify:
-
-```bash
-docker --version && docker compose version
-```
-
-### 2.4 — GitHub auth
-
-```bash
-gh auth login
-```
-
-Pick HTTPS + browser flow, sign in with the production GitHub account. Then test:
-
-```bash
-gh repo view OpusPopuli/opuspopuli
-```
-
-If the account uses an SSH key instead, place it at `~/.ssh/id_ed25519` and `chmod 600` it.
+6. **Generate the pgsodium master key** (on laptop, not Studio):
+   ```bash
+   set +o history
+   head -c 32 /dev/urandom | od -A n -t x1 | tr -d ' \n'
+   ```
+   Save the 64-hex output to 1Password as `opuspopuli-prod-pgsodium-root-key`.
 
 ---
 
-## Phase 3 — Clone the three repos (~5 min)
+## Phase 2 — Studio first-boot (≈ 30 min, at the Studio)
+
+1. **Plug in:** power → Ethernet → display → USB keyboard.
+
+2. **Setup Assistant:**
+   - Apple ID: production account (not personal).
+   - Account name: **`opuspopuli`**.
+   - Skip Touch ID, Apple Pay, Siri, Screen Time, analytics.
+   - **FileVault: OFF.**
+   - Disable iCloud Drive / Photos / Mail / Contacts / Calendar.
+
+3. **System Settings:**
+   - General → Software Update → install all → Automatic: security responses **on**, macOS updates **off**.
+   - Displays → Sleep: Never.
+   - Energy → **Start up automatically after a power failure**.
+   - Lock Screen → require password immediately.
+   - Sharing → Remote Login (SSH) **on** (admin only); Screen Sharing **on** (admin only); File Sharing **off**; Computer Name **`opuspopuli-prod-01`**.
+   - Users & Groups → Login Options → automatic login **off**.
+
+4. **Verify:**
+   ```bash
+   hostname                              # opuspopuli-prod-01
+   ipconfig getifaddr en0
+   ping -c 1 1.1.1.1
+   sudo pmset -g | grep autorestart      # autorestart  1
+   ```
+
+---
+
+## Phase 3 — Dev tooling (≈ 45 min)
+
+1. **Xcode CLI tools:**
+   ```bash
+   xcode-select --install
+   ```
+
+2. **Homebrew:**
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+   Run the PATH lines it prints.
+
+3. **Core tools** (all MIT / Apache-2 — no GPL):
+   ```bash
+   brew install git gh pnpm jq cloudflared rclone
+   brew install --cask docker tailscale
+   ```
+
+4. **Docker Desktop config** — open once from `/Applications`, accept EULA, then:
+   - Settings → General → Start Docker Desktop when you sign in: **on**.
+   - Settings → Resources → Memory: **40 GB**, CPU: all cores.
+   - Settings → Resources → **Disk image size: 200 GB** (set this once and **never change it** — resizing wipes volumes).
+   ```bash
+   docker --version && docker compose version
+   ```
+
+5. **GitHub auth:**
+   ```bash
+   gh auth login
+   gh repo view OpusPopuli/opuspopuli   # smoke test
+   ```
+
+6. **Tailscale** — sign in, accept Studio as a node, enable SSH. Verify from laptop:
+   ```bash
+   tailscale ssh opuspopuli@opuspopuli-prod-01
+   ```
+
+7. **Ollama** (kick off downloads now, ~6 GB, comes back at Phase 7):
+   ```bash
+   brew install ollama
+   brew services start ollama
+   ollama pull qwen3.5:9b &
+   ollama pull nomic-embed-text &
+   ```
+
+---
+
+## Phase 4 — pgsodium key + LaunchAgent (≈ 20 min, load-bearing)
+
+1. **Materialize the key file** from 1Password:
+   ```bash
+   set +o history
+   mkdir -p /Users/opuspopuli/.config/opuspopuli
+   chmod 700 /Users/opuspopuli/.config/opuspopuli
+   printf '%s' '<paste-64-hex-from-1password>' > /Users/opuspopuli/.config/opuspopuli/pgsodium_root_key
+   chmod 400 /Users/opuspopuli/.config/opuspopuli/pgsodium_root_key
+   wc -c /Users/opuspopuli/.config/opuspopuli/pgsodium_root_key   # 64
+   ```
+
+2. **Author LaunchAgent** at `~/Library/LaunchAgents/org.opuspopuli.envloader.plist`:
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+   <plist version="1.0">
+   <dict>
+     <key>Label</key><string>org.opuspopuli.envloader</string>
+     <key>ProgramArguments</key>
+     <array>
+       <string>/bin/sh</string>
+       <string>-c</string>
+       <string>launchctl setenv PGSODIUM_ROOT_KEY "$(cat /Users/opuspopuli/.config/opuspopuli/pgsodium_root_key)"; launchctl setenv TUNNEL_TOKEN "<paste-tunnel-token>"</string>
+     </array>
+     <key>RunAtLoad</key><true/>
+   </dict>
+   </plist>
+   ```
+   Load + verify:
+   ```bash
+   launchctl load ~/Library/LaunchAgents/org.opuspopuli.envloader.plist
+   # Log out and back in, then in a fresh shell:
+   echo ${PGSODIUM_ROOT_KEY:0:8}     # 8 hex chars
+   echo ${TUNNEL_TOKEN:0:8}          # 8 chars
+   ```
+
+3. **Prepare operator-secret seed SQL** at `/Users/opuspopuli/.config/opuspopuli/seed-operator-vault.sql` (mode 0400, source values from 1Password). Used at Phase 8.3.
+   ```sql
+   SELECT vault_create_secret('<resend_key>',  'RESEND_API_KEY',   'Resend');
+   SELECT vault_create_secret('<fec_key>',     'FEC_API_KEY',      'FEC');
+   SELECT vault_create_secret('<r2_account>',  'R2_ACCOUNT_ID',    'R2 account');
+   SELECT vault_create_secret('<r2_key>',      'R2_ACCESS_KEY_ID', 'R2 access');
+   SELECT vault_create_secret('<r2_secret>',   'R2_SECRET_ACCESS_KEY', 'R2 secret');
+   ```
+   **Do not commit.**
+
+---
+
+## Phase 5 — Clone opuspopuli (≈ 5 min, compose + bind-mount sources only)
+
+Backend + prompt-service images are pulled from `ghcr.io`, not built on the Studio. We still need a working tree of `opuspopuli` on disk for the compose files and the bind-mount sources (`supabase/init/`, `backup/scripts/`, `observability/`). Don't clone `prompt-service` or `opuspopuli-regions` — their code lives inside ghcr.io images.
 
 ```bash
-mkdir -p ~/Development/Opus
-cd ~/Development/Opus
+mkdir -p /Users/opuspopuli/Development/Opus
+cd /Users/opuspopuli/Development/Opus
 gh repo clone OpusPopuli/opuspopuli
-gh repo clone OpusPopuli/prompt-service
-gh repo clone OpusPopuli/opuspopuli-regions
 ```
 
-Confirm the layout:
-
+Then log in to ghcr.io so the next `docker compose pull` can authenticate:
 ```bash
-ls ~/Development/Opus
-# expected: opuspopuli  opuspopuli-regions  prompt-service
+gh auth token | docker login ghcr.io -u "$(gh api user --jq .login)" --password-stdin
 ```
-
-The opuspopuli `docker-compose-uat.yml` and the prompt-service compose both reference each other on the `prompt-service_default` Docker network — **the directory layout matters**, don't rename them.
 
 ---
 
-## Phase 4 — Run `mac-studio-setup.sh` (~30–60 min)
+## Phase 6 — Backup-restore drill (≈ 45 min, before any real data lands)
 
-The automation script handles Ollama, Docker auto-start verification, cloudflared, and the auto-restart-on-power-failure setting.
+Rehearse recovery before there's anything worth recovering.
 
-```bash
-cd ~/Development/Opus/opuspopuli
-chmod +x scripts/mac-studio-setup.sh
-./scripts/mac-studio-setup.sh
-```
+1. **Configure rclone for R2** at `~/.config/rclone/rclone.conf` (mode 0400) using the token from Phase 1.3.
 
-What this does (see the script source for specifics):
+2. **Stand up a throwaway DB + seed a tiny fixture.**
+   ```bash
+   cd /Users/opuspopuli/Development/Opus/opuspopuli
+   pnpm install
+   docker compose -f docker-compose-uat.yml up -d opuspopuli-db
+   # seed: one region, one user, ten bills
+   ```
 
-1. **Ollama (native macOS)** — installs and starts via launchd. Pulls the production model weights via [`scripts/setup-ollama.sh --prod`](../../scripts/setup-ollama.sh). Models are several GB each — this is the longest single step.
-2. **Docker** — verifies Docker Desktop is installed and running.
-3. **cloudflared** — installs and registers the tunnel as a launchd service. You'll be prompted for the tunnel token from Phase 0.
-4. **Auto-restart on power failure** — `sudo pmset -a autorestart 1`.
+3. **Backup → R2.**
+   ```bash
+   docker compose -f docker-compose-prod.yml -f docker-compose-backup.yml \
+                  --env-file .env.backup.prod \
+                  run --rm opuspopuli-backup /scripts/backup-db.sh
+   rclone copyto <local-dump-path> r2:opuspopuli-prod-db-backups/<filename>.dump.gz
+   rclone hashsum md5 r2:opuspopuli-prod-db-backups/<filename>.dump.gz   # compare to local md5sum
+   ```
 
-If any sub-step fails, the script exits non-zero. Re-run after fixing — it's idempotent.
+4. **Restore drill from R2** (simulate full Studio loss):
+   ```bash
+   docker compose down -v
+   docker compose -f docker-compose-uat.yml up -d opuspopuli-db
+   rclone copy r2:opuspopuli-prod-db-backups/<latest>.dump.gz /tmp/
+   docker compose ... run --rm opuspopuli-backup /scripts/restore-db.sh --full
+   ```
+   Time it. Target: **< 60 min**. Record RTO in `docs/site-notes/opuspopuli-prod-01.md`.
 
-Verify when it's done:
+5. **pgsodium key drill** — stash a wrong key file, restore from R2, watch `vault.secrets` reads fail. Proves the 1Password key is the only recovery path.
 
-```bash
-ollama list                         # production models present
-launchctl list | grep cloudflared   # tunnel daemon registered
-pmset -g | grep autorestart         # autorestart       1
-```
-
-For deeper Ollama tuning (GPU layers, num_parallel), see [`ollama-setup.md`](ollama-setup.md) and [`llm-configuration.md`](llm-configuration.md).
-
----
-
-## Phase 5 — Configure secrets (~15 min)
-
-The compose stack pulls some secrets from env vars and others from Supabase Vault. See [`secrets-management.md`](secrets-management.md) for the model.
-
-Minimum env vars to populate before bringing up the stack — drop them in `~/.opuspopuli.env` or wherever your secrets-manager workflow points to:
-
-```bash
-# External APIs
-FEC_API_KEY=...                # required for federal campaign-finance sync
-RESEND_API_KEY=...             # required for transactional email
-
-# Prompt-service auth (matches docker-compose API_KEYS env)
-PROMPT_SERVICE_API_KEY=dev-key-1   # OR your production key
-
-# Optional but recommended
-SUPABASE_VAULT_URL=...
-SUPABASE_VAULT_SERVICE_ROLE_KEY=...
-```
-
-If you're running the UAT compose for validation, the file at [`docker-compose-uat.yml`](../../docker-compose-uat.yml) ships with safe-default test keys — **do not** use that compose file for production traffic.
-
-For production, use [`docker-compose.yml`](../../docker-compose.yml) + the deployment-specific override per [`deployment.md` §6](deployment.md#6-configure-secrets-and-environment).
+6. **Reset:** `docker compose down -v`.
 
 ---
 
-## Phase 6 — Bring up the prompt-service first (~10 min)
+## Phase 7 — Ollama smoke (≈ 10 min)
 
-The opuspopuli backend depends on the prompt-service over the `prompt-service_default` Docker network, so this comes first.
-
-```bash
-cd ~/Development/Opus/prompt-service
-docker compose up -d --build
-```
-
-Apply migrations + seed prompts:
+Ollama downloads from Phase 3.7 should be done by now.
 
 ```bash
-docker compose exec <prompt-service-container-name> pnpm db:migrate deploy
-docker compose exec <prompt-service-container-name> pnpm db:seed
+ollama list                                # qwen3.5:9b + nomic-embed-text present
+curl http://localhost:11434/api/tags | jq '.models[].name'
+docker run --rm alpine sh -c 'apk add curl && curl http://host.docker.internal:11434/api/tags'
+# warm the model so first user request isn't a 90s cold start:
+curl -X POST http://localhost:11434/api/generate \
+     -d '{"model":"qwen3.5:9b","prompt":"hi","stream":false}'
 ```
-
-(Find the container name with `docker compose ps`.)
-
-Smoke test:
-
-```bash
-curl -s -X POST http://localhost:3210/api/render \
-  -H 'authorization: Bearer dev-key-1' \
-  -H 'content-type: application/json' \
-  -d '{"name":"document-analysis-representative-bio","inputs":{"TEXT":"test"}}' \
-  | jq '.promptText | length'
-```
-
-Expect a positive integer (the rendered prompt length). If you get a 401, the API key is wrong; 404 means the prompt isn't seeded.
 
 ---
 
-## Phase 7 — Bring up the opuspopuli stack (~15–30 min, mostly image build)
+## Phase 8 — Pull + start the stack (≈ 20 min)
 
-```bash
-cd ~/Development/Opus/opuspopuli
-pnpm install
-pnpm --filter @opuspopuli/relationaldb-provider db:generate
-docker compose -f docker-compose-uat.yml up -d --build
-```
+**Prerequisite:** `docker-compose-prod.yml` must reference `ghcr.io/opuspopuli/<service>` images instead of `build:` directives, and must include the prompt-service definitions (image, env, networks) so we don't need a separate prompt-service compose. This is a separate workstream tracked alongside the GitHub Actions deploy workflow.
 
-(Use the production compose instead of `-uat` once you're past validation. The flow is identical.)
+1. **Pull images.**
+   ```bash
+   cd /Users/opuspopuli/Development/Opus/opuspopuli
+   docker compose -f docker-compose-prod.yml -f docker-compose-backup.yml pull
+   ```
 
-Watch service health:
+2. **Bring up the stack.**
+   ```bash
+   docker compose -f docker-compose-prod.yml -f docker-compose-backup.yml up -d
+   ```
+   Watch `db-migrate` exit 0:
+   ```bash
+   docker compose logs -f db-migrate
+   ```
 
-```bash
-docker compose -f docker-compose-uat.yml ps
-docker compose -f docker-compose-uat.yml logs -f db-migrate region api
-```
+3. **Seed operator secrets** into the Vault using the SQL from Phase 4.3:
+   ```bash
+   docker compose exec opuspopuli-db psql -U postgres -d postgres \
+          < /Users/opuspopuli/.config/opuspopuli/seed-operator-vault.sql
+   ```
 
-Wait until `region` and `api` show `(healthy)` — typically 60–90 s after `db-migrate` finishes.
+4. **Smoke prompt-service** (now running inside the unified compose):
+   ```bash
+   curl -s -X POST http://localhost:3210/api/render \
+        -H 'authorization: Bearer dev-key-1' \
+        -H 'content-type: application/json' \
+        -d '{"name":"document-analysis-representative-bio","inputs":{"TEXT":"test"}}' \
+        | jq '.promptText | length'
+   ```
+   Expect a positive integer.
 
-For container-level troubleshooting see [`docker-setup.md`](docker-setup.md), [`docker-healthchecks.md`](docker-healthchecks.md), and [`container-resources.md`](container-resources.md).
+5. **Wait for healthy:**
+   ```bash
+   for port in 3000 3001 3002 3003 3004 3005 3210; do
+     printf "port %s: " $port
+     curl -fsS "http://localhost:$port/health" && echo
+   done
+   ```
+   All `{"status":"ok"}`.
 
----
-
-## Phase 8 — Bring up the frontend (~5 min)
-
-```bash
-cd ~/Development/Opus/opuspopuli
-docker compose -f docker-compose-frontend.yml up -d --build
-```
-
-The frontend image bakes in `next build` — first build takes 5–8 min; subsequent rebuilds with no source changes are cached.
-
----
-
-## Phase 9 — Smoke test the live stack (~10 min)
-
-### 9.1 — Health endpoints
-
-```bash
-for port in 3000 3001 3002 3003 3004 3210; do
-  printf "port %s: " $port
-  curl -fsS "http://localhost:$port/health" && echo
-done
-```
-
-All six should return `{"status":"ok"}`.
-
-### 9.2 — GraphQL
-
-```bash
-curl -s -X POST http://localhost:3000/api \
-  -H 'content-type: application/json' \
-  -H 'apollo-require-preflight: true' \
-  -d '{"query":"{ regionInfo { name supportedDataTypes } }"}' | jq
-```
-
-Expect the configured region's name and at least `[PROPOSITIONS, MEETINGS, REPRESENTATIVES, CAMPAIGN_FINANCE]`.
-
-### 9.3 — End-to-end via the frontend
-
-In a browser:
-
-1. Visit `https://<your-tunnel-hostname>` (or `http://<mac-hostname>.local:3300` on the LAN).
-2. Sign up + verify email through Inbucket at `http://localhost:54324` (UAT) or your real SMTP (prod).
-3. Add an address with full district info.
-4. Visit `/region` — both your Assemblymember and your Senator should appear under "My Representatives," and the Legislative Committees card should be visible.
-5. Click into a committee → all four layers (Snapshot/Members/Hearings/Deep Dive) render.
-
-### 9.4 — Trigger an initial sync
-
-GraphQL Playground at `http://localhost:3000/graphql` (or via curl with the auth header):
-
-```graphql
-mutation {
-  syncDataType(dataType: REPRESENTATIVES) { dataType processed created updated }
-}
-```
-
-Watch the region log — you should see `Legislative committee linker complete` and `Generated N/N legislative committee descriptions successfully`. See [`region-setup-and-validation-guide.md`](region-setup-and-validation-guide.md) for the full validation matrix.
+6. **Run ad-hoc backup** to verify R2 upload from the real stack:
+   ```bash
+   docker compose -f docker-compose-prod.yml -f docker-compose-backup.yml \
+                  run --rm opuspopuli-backup /scripts/backup-db.sh
+   wrangler r2 object list opuspopuli-prod-db-backups | head
+   ```
 
 ---
 
-## Phase 10 — Lock down + handoff (~30 min)
+## Phase 9 — Cloudflare Tunnel cutover (≈ 30 min, the visible moment)
 
-- [ ] Confirm cloudflared is reachable via the public hostname (`curl -I https://<hostname>` returns 200 from the frontend).
-- [ ] Confirm SSH from a remote workstation works: `ssh admin@opuspopuli-prod-01.local`.
-- [ ] Confirm screen sharing as a fallback.
-- [ ] Reboot the Mac and confirm everything comes back automatically:
-  - Ollama daemon
-  - Docker Desktop
-  - The compose stacks (Docker Desktop's autostart restarts the previously-running containers)
-  - cloudflared tunnel
-- [ ] Pull the FileVault recovery key into your secrets vault (you should already have it from Phase 1.3 — verify it's still there).
-- [ ] Document any deviation from this runbook in `docs/site-notes/<hostname>.md` so the next operator knows what's different.
-- [ ] Add the host to your monitoring (uptime checks, log aggregation) per [`observability.md`](observability.md) and [`distributed-tracing.md`](distributed-tracing.md).
+1. **Connect cloudflared.** Already defined in `docker-compose-prod.yml`; reads `TUNNEL_TOKEN` from launchd env (Phase 4.2).
+   ```bash
+   docker compose -f docker-compose-prod.yml up -d cloudflared
+   docker logs opuspopuli-prod-cloudflared --tail 50
+   # expect "Registered tunnel connection" from 2+ edge POPs
+   ```
+
+2. **Verify from off-LAN** (phone tethered, or a friend's laptop):
+   ```bash
+   curl -i https://api.opuspopuli.org/health     # HTTP/2 200, cf-cache-status header
+   curl -s -X POST https://api.opuspopuli.org/api \
+        -H 'content-type: application/json' \
+        -H 'apollo-require-preflight: true' \
+        -d '{"query":"{ regionInfo { name } }"}' | jq
+   ```
+
+3. **Point Cloudflare Pages at prod.** In Pages settings:
+   ```
+   NEXT_PUBLIC_GRAPHQL_URL=https://api.opuspopuli.org/api
+   ```
+   Deploy:
+   ```bash
+   cd apps/frontend
+   pnpm cf:deploy
+   ```
+
+4. **End-to-end browser check.** Visit `https://app.opuspopuli.org`. Sign up → magic link arrives via Resend → add address → `/region` page renders representatives + committees → click into a committee → all four layers render.
+
+---
+
+## Phase 10 — Observability + alerts (≈ 45 min)
+
+1. **Grafana behind Cloudflare Access.** Extend `infra/cloudflare/tunnel.tf` with an ingress rule for `grafana.opuspopuli.org` → `http://localhost:3101`. Apply. Add Cloudflare Access policy requiring login as your email.
+   ```bash
+   curl -I https://grafana.opuspopuli.org    # redirect to Access login
+   ```
+
+2. **Grafana alerts → Resend SMTP.** Grafana → Alerting → Notification channels.
+
+3. **External uptime monitor** — UptimeRobot or Better Stack free tier: `GET https://api.opuspopuli.org/health` every 1 min, page on 3 failures.
+
+4. **Smoke an alert:**
+   ```bash
+   docker compose stop knowledge
+   # wait 5 min, confirm email arrives
+   docker compose start knowledge
+   ```
+
+5. **Confirm `audit_logs` table is in nightly `pg_dump`.**
+
+---
+
+## Cold-restore rehearsal (≈ 4 h, optional, post-MVP if time-pressed)
+
+Run the entire bootstrap from Phase 2 onward against a second Mac (your dev MacBook works) using the R2 backup. The only honest RTO answer is what the rehearsal measures. Record in `docs/site-notes/cold-restore-runbook.md`.
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Where to look |
+| Symptom | Cause | Fix |
 |---|---|---|
-| `db-migrate` exits non-zero | Migration SQL conflict or DB unreachable | [`database-migration.md`](database-migration.md) |
-| `region` keeps restarting (OOM) | Docker Desktop memory cap too low | Phase 2.3 — bump to 16 GB+ |
-| `network prompt-service_default not found` | Prompt-service stack not running | Phase 6 |
-| Frontend serves 404 from agenda links / stale data | Service worker cache | DevTools → Application → Service Workers → Unregister + Reload |
-| Ollama responses timing out | `OLLAMA_NUM_PARALLEL` mismatch with `BIO_GENERATOR_CONCURRENCY` | [`ollama-setup.md`](ollama-setup.md), [`llm-configuration.md`](llm-configuration.md) |
-| `apollo-require-preflight` request still 403s | NestJS CSRF middleware is also active | Use the in-browser fetch instead — same-origin cookies bypass both layers |
-| Cloudflare tunnel reports unhealthy | Token rotated or DNS not pointing at the tunnel | [`deployment.md` §7](deployment.md#7-set-up-the-edge-proxy) |
+| `db-migrate` exits non-zero | Migration SQL conflict, FK type drift vs `users.id` (TEXT) | `docker logs opuspopuli-e2e-db-migrate` |
+| Container OOMs (region, knowledge) | Docker memory cap too low | Settings → Resources → bump from 40 → 48 GB |
+| `network prompt-service_default not found` | prompt-service stack not running | Phase 8.1 |
+| Stale frontend after Pages deploy | Service worker cache | DevTools → Application → Service Workers → Unregister + Reload |
+| Ollama timeouts | `OLLAMA_NUM_PARALLEL` vs `BIO_GENERATOR_CONCURRENCY` mismatch | `docs/guides/ollama-setup.md` |
+| `apollo-require-preflight` 403 | NestJS CSRF on the path | Use in-browser fetch — same-origin cookies bypass |
+| Tunnel reports unhealthy | Token rotated or DNS not pointing at tunnel | Re-apply Terraform; reload LaunchAgent |
+| `vault.secrets` all error after restore | pgsodium key drift | Restore 1Password key to `/Users/opuspopuli/.config/opuspopuli/pgsodium_root_key`; relogin |
+| Stack doesn't come back after reboot | LaunchAgent didn't inject `PGSODIUM_ROOT_KEY` | `launchctl list | grep opuspopuli.envloader`; reload `.plist`; relogin |
+| Docker disk image full | Volumes accumulated | `docker system prune --volumes` (READ docs first); **never resize the disk image** — that wipes volumes |
 
-If you hit something not in the table, the topical guides under `docs/guides/` are the next stop. After that, the architecture docs under `docs/architecture/` explain the why.
+---
+
+## Critical files
+
+- `docker-compose-prod.yml` — base prod stack
+- `docker-compose-backup.yml` — nightly `pg_dump` overlay
+- `supabase/init/pgsodium_getkey_env.sh` — reads `PGSODIUM_ROOT_KEY` from env
+- `infra/cloudflare/tunnel.tf` — Tunnel ingress rules
+- `backup/scripts/backup-db.sh` — dump + verify
+- `apps/backend/src/common/bootstrap.ts` — `VAULT_BACKED_SECRETS` list
+- `~/Library/LaunchAgents/org.opuspopuli.envloader.plist` — boot-time env injection
+- `/Users/opuspopuli/.config/opuspopuli/pgsodium_root_key` — local mirror of the 1Password key (mode 0400)
+- `/Users/opuspopuli/.config/opuspopuli/seed-operator-vault.sql` — operator-secret seed SQL (mode 0400, not committed)

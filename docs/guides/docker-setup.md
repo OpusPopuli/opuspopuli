@@ -35,7 +35,8 @@ The project uses a layered Docker Compose architecture. Each environment-specifi
 docker-compose.yml                       ← Base infrastructure (Supabase, Redis, observability)
   ├── docker-compose-integration.yml     ← Integration testing (API on port 3000, test-runner)
   ├── docker-compose-e2e.yml             ← E2E testing (API on port 4000 for Playwright)
-  └── docker-compose-uat.yml             ← Manual UAT (LLM config, region sync disabled)
+  ├── docker-compose-uat.yml             ← Manual UAT (LLM config, region sync disabled)
+  └── docker-compose-prod.yml            ← Production (pulls signed images from ghcr.io)
 ```
 
 | File | When to Use | Command |
@@ -44,6 +45,9 @@ docker-compose.yml                       ← Base infrastructure (Supabase, Redi
 | `docker-compose-integration.yml` | Running integration tests | `pnpm test:integration:docker` |
 | `docker-compose-e2e.yml` | Running E2E tests with Playwright | `docker compose -f docker-compose-e2e.yml up -d --build` |
 | `docker-compose-uat.yml` | Manual region validation and UAT | `docker compose -f docker-compose-uat.yml up -d --build` |
+| `docker-compose-prod.yml` | Production deploy on the Mac Studio | `docker compose -f docker-compose-prod.yml pull && docker compose -f docker-compose-prod.yml up -d` |
+
+**Build vs pull:** the dev / integration / e2e / uat composes all build images locally so they exercise your current source. The prod compose **never** builds — it pulls pre-built, cosign-signed images from `ghcr.io/opuspopuli/*` (published by `.github/workflows/release.yml` on push to `main`). The Studio is a pure runtime host; no `pnpm install`, no `docker compose build`. See [`deployment.md`](deployment.md) and [`container-verification.md`](container-verification.md).
 
 ## Quick Start
 

@@ -267,35 +267,47 @@ Add this to your `.env.production` as `TUNNEL_TOKEN`.
 
 ### 8.1 Start Production Docker Compose
 
-Use the startup script, which verifies Ollama health before launching Docker:
+Production images are built and signed by the release workflow on push to `main`, then pulled from `ghcr.io/opuspopuli/*`. The Studio never builds locally.
+
+Use the startup script, which verifies Ollama health before pulling + launching:
 
 ```bash
-./scripts/start-prod.sh --build
+./scripts/start-prod.sh
 ```
 
-Or start manually (if Ollama is already verified):
+Or run the steps manually:
 
 ```bash
-docker compose -f docker-compose-prod.yml --env-file .env.production up -d --build
+docker compose -f docker-compose-prod.yml --env-file .env.production pull
+docker compose -f docker-compose-prod.yml --env-file .env.production up -d
+```
+
+To pin a specific build (rollback or hot-fix), set `TAG`:
+
+```bash
+TAG=sha-abc1234 docker compose -f docker-compose-prod.yml --env-file .env.production up -d
 ```
 
 This starts:
 
-| Container | Service | Port |
-|-----------|---------|------|
-| `opuspopuli-prod-cloudflared` | Cloudflare Tunnel daemon | (outbound only) |
-| `opuspopuli-prod-db` | Local PostgreSQL (AI scratch data) | 5432 (internal) |
-| `opuspopuli-prod-redis` | Redis cache | 6379 (internal) |
-| `opuspopuli-prod-db-migrate` | Database migrations (init, then exits) | - |
-| `opuspopuli-prod-users` | Users microservice | 8080 (internal) |
-| `opuspopuli-prod-documents` | Documents microservice | 8080 (internal) |
-| `opuspopuli-prod-knowledge` | Knowledge microservice | 8080 (internal) |
-| `opuspopuli-prod-region` | Region microservice | 8080 (internal) |
-| `opuspopuli-prod-api` | API Gateway (Apollo Federation) | 8080 (exposed) |
-| `opuspopuli-prod-prometheus` | Metrics collection | 9090 (internal) |
-| `opuspopuli-prod-loki` | Log aggregation | 3100 (internal) |
-| `opuspopuli-prod-promtail` | Log shipping | (internal) |
-| `opuspopuli-prod-grafana` | Dashboards | 3101 (localhost only) |
+| Container | Service | Port | Image |
+|-----------|---------|------|-------|
+| `opuspopuli-prod-cloudflared` | Cloudflare Tunnel daemon | (outbound only) | `cloudflare/cloudflared` |
+| `opuspopuli-prod-db` | Local PostgreSQL (AI scratch data) | 5432 (internal) | `pgvector/pgvector:pg16` |
+| `opuspopuli-prod-redis` | Redis cache + BullMQ queue | 6379 (internal) | `redis:7-alpine` |
+| `opuspopuli-prod-db-migrate` | Database migrations (init, then exits) | - | `ghcr.io/opuspopuli/db-migrate` |
+| `opuspopuli-prod-users` | Users microservice | 8080 (internal) | `ghcr.io/opuspopuli/users` |
+| `opuspopuli-prod-documents` | Documents microservice | 8080 (internal) | `ghcr.io/opuspopuli/documents` |
+| `opuspopuli-prod-knowledge` | Knowledge microservice | 8080 (internal) | `ghcr.io/opuspopuli/knowledge` |
+| `opuspopuli-prod-region` | Region microservice | 8080 (internal) | `ghcr.io/opuspopuli/region` |
+| `opuspopuli-prod-region-worker` | Region async worker (BullMQ) | 8080 (internal) | `ghcr.io/opuspopuli/region-worker` |
+| `opuspopuli-prod-structural-analysis-worker` | Structural analysis worker | 8080 (internal) | `ghcr.io/opuspopuli/structural-analysis-worker` |
+| `opuspopuli-prod-llm-rerank-worker` | Personalized-feed LLM rerank | 8080 (internal) | `ghcr.io/opuspopuli/llm-rerank-worker` |
+| `opuspopuli-prod-api` | API Gateway (Apollo Federation) | 8080 (exposed) | `ghcr.io/opuspopuli/api` |
+| `opuspopuli-prod-prometheus` | Metrics collection | 9090 (internal) | `prom/prometheus` |
+| `opuspopuli-prod-loki` | Log aggregation | 3100 (internal) | `grafana/loki` |
+| `opuspopuli-prod-promtail` | Log shipping | (internal) | `grafana/promtail` |
+| `opuspopuli-prod-grafana` | Dashboards | 3101 (localhost only) | `grafana/grafana` |
 
 ### 8.2 Verify Containers
 
@@ -405,14 +417,18 @@ See [Region Setup and Validation Guide](region-setup-and-validation-guide.md) fo
 
 ### 11.1 Updating the Application
 
+Production images publish to `ghcr.io/opuspopuli/*` on push to `main` (see `.github/workflows/release.yml`). On the Studio:
+
 ```bash
 cd opuspopuli
-git pull origin main
-pnpm install
-docker compose -f docker-compose-prod.yml up -d --build
+git pull origin main                                # picks up compose + bind-mount source changes
+docker compose -f docker-compose-prod.yml pull      # fetches new images from ghcr.io
+docker compose -f docker-compose-prod.yml up -d --remove-orphans
 ```
 
-For the frontend (if using Cloudflare Workers):
+No `pnpm install` or `docker compose build` runs on the Studio — the published image already contains the built artifacts.
+
+For the frontend (Cloudflare Pages):
 ```bash
 cd apps/frontend
 pnpm cf:deploy

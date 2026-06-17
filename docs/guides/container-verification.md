@@ -6,7 +6,7 @@ Opus Populi uses [Sigstore](https://www.sigstore.dev/) keyless signing to ensure
 
 When code is merged to `main`, the [release workflow](../../.github/workflows/release.yml) runs:
 
-1. **Build** — Docker images are built for each microservice (api, users, documents, knowledge, region)
+1. **Build** — Docker images are built for each microservice and async worker (`api`, `users`, `documents`, `knowledge`, `region`, `region-worker`, `structural-analysis-worker`, `llm-rerank-worker`, `db-migrate`). The `prompt-service` image is built by the [paired workflow in the `prompt-service` repo](https://github.com/OpusPopuli/prompt-service/blob/main/.github/workflows/release.yml).
 2. **Push** — Images are pushed to `ghcr.io/opuspopuli/<service>`
 3. **Sign** — Each image is signed using cosign with Sigstore keyless signing (GitHub Actions OIDC identity)
 4. **SBOM** — An SPDX SBOM is generated with syft and attached as a cosign attestation

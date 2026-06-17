@@ -5,20 +5,28 @@
 # Runs on the Mac Studio behind a Cloudflare Tunnel. Frontend is hosted on
 # Cloudflare Pages (not in this compose file).
 #
+# Image source: ghcr.io/opuspopuli/* — built and signed by .github/workflows/
+# release.yml on push to main. The Studio NEVER builds locally; it pulls
+# pre-built, cosign-signed images and runs them. `${TAG:-latest}` defaults to
+# the rolling latest tag; pin to a specific sha-prefixed tag for a hot-fix or
+# rollback (e.g. TAG=sha-abc1234 docker compose -f docker-compose-prod.yml ...).
+#
 # Architecture:
 #   - cloudflared: Encrypted tunnel to Cloudflare edge
-#   - NestJS microservices: API Gateway + 4 subgraph services
+#   - NestJS microservices: API Gateway + 4 subgraph services + 3 workers
 #   - Local PostgreSQL: AI scratch data (manifests, pipeline state, prompts)
-#   - Redis: Caching
+#   - Redis: BullMQ queue + caching
 #   - Observability: Prometheus + Loki + Grafana
 #   - Ollama: Runs NATIVELY on macOS (not Docker) for Metal GPU access
 #
-# User-facing data (users, documents, auth, storage) lives in Supabase Cloud.
-# Configure via .env.production (see .env.production.example).
+# Configure via .env.production (see .env.production.example). Runtime secrets
+# (RESEND_API_KEY, R2_*, FEC_API_KEY) come from the local Supabase Vault via
+# the hydration path in apps/backend/src/common/preflight.ts.
 #
 # Usage:
-#   docker compose -f docker-compose-prod.yml up -d --build
-#   docker compose -f docker-compose-prod.yml down
+#   docker compose -f docker-compose-prod.yml pull            # fetch new images
+#   docker compose -f docker-compose-prod.yml up -d           # start the stack
+#   docker compose -f docker-compose-prod.yml down            # stop (volumes kept)
 #   docker compose -f docker-compose-prod.yml logs -f api
 #
 # =============================================================================
@@ -161,11 +169,7 @@ services:
   # Database Migrations
   # ---------------------------------------------------------------------------
   db-migrate:
-    build:
-      context: .
-      dockerfile: apps/backend/docker/Dockerfile.test-runner
-      args:
-        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    image: ghcr.io/opuspopuli/db-migrate:${TAG:-latest}
     container_name: opuspopuli-prod-db-migrate
     environment:
       <<: *backend-env
@@ -188,11 +192,7 @@ services:
   # NestJS Microservices
   # ---------------------------------------------------------------------------
   users:
-    build:
-      context: .
-      dockerfile: apps/backend/docker/Dockerfile.users
-      args:
-        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    image: ghcr.io/opuspopuli/users:${TAG:-latest}
     container_name: opuspopuli-prod-users
     environment:
       <<: *backend-env
@@ -216,11 +216,7 @@ services:
           memory: 256M
 
   documents:
-    build:
-      context: .
-      dockerfile: apps/backend/docker/Dockerfile.documents
-      args:
-        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    image: ghcr.io/opuspopuli/documents:${TAG:-latest}
     container_name: opuspopuli-prod-documents
     environment:
       <<: *backend-env
@@ -244,11 +240,7 @@ services:
           memory: 256M
 
   knowledge:
-    build:
-      context: .
-      dockerfile: apps/backend/docker/Dockerfile.knowledge
-      args:
-        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    image: ghcr.io/opuspopuli/knowledge:${TAG:-latest}
     container_name: opuspopuli-prod-knowledge
     environment:
       <<: *backend-env
@@ -275,11 +267,7 @@ services:
           memory: 256M
 
   region:
-    build:
-      context: .
-      dockerfile: apps/backend/docker/Dockerfile.region
-      args:
-        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    image: ghcr.io/opuspopuli/region:${TAG:-latest}
     container_name: opuspopuli-prod-region
     environment:
       <<: *backend-env
@@ -306,11 +294,7 @@ services:
           memory: 256M
 
   region-worker:
-    build:
-      context: .
-      dockerfile: apps/backend/docker/Dockerfile.region-worker
-      args:
-        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    image: ghcr.io/opuspopuli/region-worker:${TAG:-latest}
     container_name: opuspopuli-prod-region-worker
     environment:
       <<: *backend-env
@@ -342,11 +326,7 @@ services:
           memory: 1G
 
   structural-analysis-worker:
-    build:
-      context: .
-      dockerfile: apps/backend/docker/Dockerfile.structural-analysis-worker
-      args:
-        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    image: ghcr.io/opuspopuli/structural-analysis-worker:${TAG:-latest}
     container_name: opuspopuli-prod-structural-analysis-worker
     environment:
       <<: *backend-env
@@ -375,11 +355,7 @@ services:
           memory: 512M
 
   llm-rerank-worker:
-    build:
-      context: .
-      dockerfile: apps/backend/docker/Dockerfile.llm-rerank-worker
-      args:
-        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    image: ghcr.io/opuspopuli/llm-rerank-worker:${TAG:-latest}
     container_name: opuspopuli-prod-llm-rerank-worker
     environment:
       <<: *backend-env
@@ -420,11 +396,7 @@ services:
           memory: 512M
 
   api:
-    build:
-      context: .
-      dockerfile: apps/backend/docker/Dockerfile.api
-      args:
-        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
+    image: ghcr.io/opuspopuli/api:${TAG:-latest}
     container_name: opuspopuli-prod-api
     environment:
       <<: *backend-env
