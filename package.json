@@ -75,6 +75,7 @@
       "axios": ">=1.15.0",
       "basic-ftp": ">=5.2.1",
       "form-data": ">=4.0.6",
+      "multer": ">=2.2.0",
       "next@>=16.0.0 <16.2.6": ">=16.2.6",
       "@opentelemetry/auto-instrumentations-node@<0.75.0": ">=0.75.0",
       "@opentelemetry/sdk-node@<0.217.0": ">=0.217.0",
