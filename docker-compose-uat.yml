@@ -30,26 +30,48 @@ x-backend-env: &backend-env
   VERSION: 1.0.0
   OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
   OTEL_TRACING_ENABLED: "true"
-  # RESEND_API_KEY is sourced from Supabase Vault at bootstrap (see issue #786).
-  # SECRETS_PROVIDER=supabase below activates the hydration step.
+  # ---- Credentials hydration ----------------------------------------------
+  # UAT mirrors the opuspopuli-node prod pattern: secrets live in macOS
+  # Keychain (managed by `create-op-node bootstrap --local-only --region
+  # uat`) and are exported into the launchd session via the LaunchAgent.
+  # Docker Desktop, launched by launchd, inherits them automatically.
+  #
+  # `${VAR:?msg}` form HARD-FAILS docker compose if the var is unset — we
+  # deliberately removed the old `your-super-secret-password` fallback,
+  # which silently downgraded to a known-weak credential when the
+  # operator's shell predated the LaunchAgent load.
+  #
+  # If you see "variable is not set," run:
+  #   create-op-node bootstrap --local-only --region uat
+  # then reopen your terminal so `docker compose` inherits the new env.
+  #
+  # RESEND_API_KEY + SUPABASE_ANON_KEY + REDIS_URL are still sourced from
+  # Supabase Vault at bootstrap (see issue #786) — SECRETS_PROVIDER=supabase
+  # below activates that hydration step.
+  # ------------------------------------------------------------------------
   RELATIONAL_DB_PROVIDER: postgres
   RELATIONAL_DB_HOST: opuspopuli-db
   RELATIONAL_DB_PORT: 5432
   RELATIONAL_DB_USERNAME: postgres
-  RELATIONAL_DB_PASSWORD: your-super-secret-password
+  RELATIONAL_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — run create-op-node bootstrap and reopen your shell}
   RELATIONAL_DB_DATABASE: postgres
-  DATABASE_URL: postgresql://postgres:your-super-secret-password@opuspopuli-db:5432/postgres
-  # SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY stay as env vars by necessity
-  # — they're required to reach Vault. All other secrets (including
-  # SUPABASE_ANON_KEY and REDIS_URL) are sourced from Vault at bootstrap.
-  # db-migrate auto-seeds the dev defaults; see docs/guides/secrets-management.md.
+  DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@opuspopuli-db:5432/postgres
+  # SUPABASE_URL stays a literal — it's the in-network address for the
+  # included docker-compose.yml's kong service. SUPABASE_SERVICE_ROLE_KEY
+  # is required to reach Vault during bootstrap.
   SUPABASE_URL: http://supabase-kong:8000
-  SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.sF_hc5jg-YhscQGb00SNtjW3ZIyDlGIIQppgOLwHGiM
+  SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY is required — run create-op-node bootstrap}
   GATEWAY_CLIENT_ID: api-gateway
-  GATEWAY_HMAC_SECRET: integration-test-hmac-secret
-  API_KEYS: '{"api-gateway":"integration-test-hmac-secret"}'
-  JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
-  AUTH_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
+  # GATEWAY_HMAC_SECRET + API_KEYS are platform-internal HMAC keys, not yet
+  # Keychain-managed (tracked in #811 — vault-first secrets refactor). Set
+  # via shell env or .env when running UAT; the dev-grade defaults below
+  # preserve the existing UAT workflow until #811 lands.
+  GATEWAY_HMAC_SECRET: ${GATEWAY_HMAC_SECRET:-integration-test-hmac-secret}
+  API_KEYS: ${API_KEYS:-'{"api-gateway":"integration-test-hmac-secret"}'}
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — run create-op-node bootstrap}
+  # AUTH_JWT_SECRET historically equals JWT_SECRET in dev/UAT — falls back
+  # to JWT_SECRET when not set independently.
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-$JWT_SECRET}
   SECRETS_PROVIDER: supabase
   # SMTP_HOST default is inherited from docker-compose.yml (= inbucket).
   # To switch GoTrue to Resend SMTP for real magic-link delivery, set
