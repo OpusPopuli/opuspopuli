@@ -73,7 +73,7 @@
   },
   "dependencies": {
     "cockatiel": "^3.2.1",
-    "undici": "^7.24.0"
+    "undici": "^7.28.0"
   },
   "peerDependencies": {
     "@supabase/supabase-js": "^2.0.0"
