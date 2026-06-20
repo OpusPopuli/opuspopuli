@@ -79,9 +79,14 @@ All documentation is located in the [`docs/`](docs/) directory:
 
 ### Infrastructure
 - [Docker](https://www.docker.com) - Containerization
-- [Docker Compose](https://docs.docker.com/compose/) - Local orchestration
-- [Terraform](https://www.terraform.io) - Cloudflare infrastructure as code
-- [Kubernetes](https://kubernetes.io) - Production orchestration
+- [Docker Compose](https://docs.docker.com/compose/) - Local dev / test orchestration
+- [Terraform](https://www.terraform.io) - Cloudflare infrastructure as code (in the [node template repo](https://github.com/OpusPopuli/opuspopuli-node))
+
+### Production deployment
+
+Each Opus Populi region is operated independently. Production deployment lives in [**OpusPopuli/opuspopuli-node**](https://github.com/OpusPopuli/opuspopuli-node) — a GitHub Template repo containing the per-region deployment kit (Terraform for Cloudflare, `docker-compose-prod.yml`, Mac Studio bootstrap, backup pipeline, observability configs). Each region operator uses the template to create their own repo (e.g. `OpusPopuli/opuspopuli-node-ca`), configures their Cloudflare account and Mac Studio, and runs the bootstrap.
+
+This monorepo is the **source of record**: code, builds, signed images at `ghcr.io/opuspopuli/*`, and npm packages at `npm.pkg.github.com/opuspopuli`. No operator secrets ever live here. See [`docs/guides/deployment.md`](docs/guides/deployment.md) for the platform/operator split.
 
 ### Platform Services
 - [Supabase](https://supabase.com) - Auth (with Passkeys/Magic Links), Storage, and Vault (self-hosted or cloud)
