@@ -417,9 +417,10 @@ services:
     ports:
       - "6379:6379"
     # noeviction required by BullMQ — allkeys-lru would evict job data under
-    # memory pressure. Conflicts with cache-as-LRU usage; see #725 for the
-    # production split into dedicated Redis instances.
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    # memory pressure. Job data must never be silently dropped, so this
+    # instance has NO hard maxmemory (jobs are transient and bounded by the
+    # worker cadence). The app cache lives on redis-cache below (#725).
+    command: redis-server --appendonly yes --maxmemory-policy noeviction
     volumes:
       - redis-data:/data
     networks:
@@ -435,7 +436,37 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 256M
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # Redis (cache) — dedicated app-cache instance (#725). allkeys-lru so it
+  # evicts cold cache entries under memory pressure instead of failing writes
+  # (the opposite policy from the BullMQ queue instance above). Ephemeral: no
+  # appendonly / volume — cache data is disposable and re-derived from source.
+  # Backend reads it via REDIS_CACHE_URL (falls back to REDIS_URL when unset).
+  # Host-published on 6380 so `pnpm dev` on the host can target the split too.
+  redis-cache:
+    image: redis:7-alpine
+    container_name: opuspopuli-redis-cache
+    ports:
+      - "6380:6379"
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    networks:
+      - opuspopuli-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
         reservations:
           cpus: '0.1'
           memory: 64M
