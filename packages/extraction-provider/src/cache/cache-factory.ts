@@ -106,18 +106,23 @@ export class CacheFactory {
    * Determine provider from environment
    */
   static getProviderFromEnv(): CacheProvider {
-    const redisUrl = process.env.REDIS_URL;
-    if (redisUrl) {
+    // Either the dedicated cache URL or the shared queue URL enables redis.
+    if (process.env.REDIS_CACHE_URL || process.env.REDIS_URL) {
       return "redis";
     }
     return "memory";
   }
 
   /**
-   * Get Redis URL from environment
+   * Get Redis URL for the application CACHE from environment.
+   *
+   * Prefers REDIS_CACHE_URL (the dedicated allkeys-lru cache instance, #725),
+   * falling back to REDIS_URL (the BullMQ noeviction instance) when it isn't
+   * set — so deployments that haven't split Redis yet keep working unchanged.
+   * BullMQ itself always reads REDIS_URL directly and is unaffected.
    */
   static getRedisUrlFromEnv(): string | undefined {
-    return process.env.REDIS_URL;
+    return process.env.REDIS_CACHE_URL ?? process.env.REDIS_URL;
   }
 
   /**
@@ -141,28 +146,54 @@ export class FallbackCache<T = string> implements ICache<T> {
   private readonly logger = new Logger(FallbackCache.name);
   private readonly primary: ICache<T>;
   private readonly fallback: ICache<T>;
+  private readonly retryAfterMs: number;
   private useFallback: boolean = false;
+  private lastFailureAt: number = 0;
 
-  constructor(primary: ICache<T>, fallback: ICache<T>) {
+  /**
+   * @param retryAfterMs once the primary has failed and we're serving from the
+   *   in-memory fallback, wait at least this long before probing the primary
+   *   again. Prevents a brief Redis outage from pinning the cache to memory
+   *   permanently (the old behavior required a manual resetToPrimary()).
+   */
+  constructor(primary: ICache<T>, fallback: ICache<T>, retryAfterMs = 30_000) {
     this.primary = primary;
     this.fallback = fallback;
+    this.retryAfterMs = retryAfterMs;
   }
 
   private async withFallback<R>(
     operation: () => Promise<R> | R,
     fallbackOperation: () => Promise<R> | R,
   ): Promise<R> {
-    if (this.useFallback) {
+    if (this.useFallback && !this.shouldProbePrimary()) {
       return fallbackOperation();
     }
 
     try {
-      return await operation();
+      const result = await operation();
+      if (this.useFallback) {
+        this.logger.log(
+          "Primary cache recovered, switching back from fallback",
+        );
+        this.useFallback = false;
+      }
+      return result;
     } catch (error) {
-      this.logger.warn(`Primary cache failed, switching to fallback: ${error}`);
-      this.useFallback = true;
+      if (!this.useFallback) {
+        this.logger.warn(
+          `Primary cache failed, switching to fallback: ${error}`,
+        );
+        this.useFallback = true;
+      }
+      this.lastFailureAt = Date.now();
       return fallbackOperation();
     }
+  }
+
+  /** True once the fallback cooldown has elapsed and it's time to re-probe. */
+  private shouldProbePrimary(): boolean {
+    return Date.now() - this.lastFailureAt >= this.retryAfterMs;
   }
 
   async get(key: string): Promise<T | undefined> {
@@ -228,9 +259,11 @@ export class FallbackCache<T = string> implements ICache<T> {
   }
 
   /**
-   * Reset to primary (for recovery)
+   * Reset to primary (for recovery). Rarely needed now that withFallback()
+   * auto-probes the primary after retryAfterMs; kept for explicit control.
    */
   resetToPrimary(): void {
     this.useFallback = false;
+    this.lastFailureAt = 0;
   }
 }
