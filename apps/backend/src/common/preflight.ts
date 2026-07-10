@@ -36,6 +36,10 @@ export const VAULT_BACKED_SECRETS = [
   'R2_ACCESS_KEY_ID',
   'R2_SECRET_ACCESS_KEY',
   'REDIS_URL',
+  // Dedicated app-cache Redis (#725). Optional: when unset, the cache falls
+  // back to REDIS_URL (see CacheFactory.getRedisUrlFromEnv). BullMQ always
+  // uses REDIS_URL regardless.
+  'REDIS_CACHE_URL',
   'SUPABASE_ANON_KEY',
   'FEC_API_KEY',
 ] as const;

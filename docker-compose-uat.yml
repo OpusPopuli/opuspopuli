@@ -49,6 +49,10 @@ x-backend-env: &backend-env
   # Supabase Vault at bootstrap (see issue #786) — SECRETS_PROVIDER=supabase
   # below activates that hydration step.
   # ------------------------------------------------------------------------
+  # Dedicated app-cache Redis (#725) — in-network literal (not a secret),
+  # points at the redis-cache service from the included docker-compose.yml.
+  # BullMQ keeps using the vault-sourced REDIS_URL.
+  REDIS_CACHE_URL: redis://redis-cache:6379
   RELATIONAL_DB_PROVIDER: postgres
   RELATIONAL_DB_HOST: opuspopuli-db
   RELATIONAL_DB_PORT: 5432
