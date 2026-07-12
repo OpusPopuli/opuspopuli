@@ -35,8 +35,9 @@ describe('AuthGuard', () => {
 
     (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
 
-    // Create a minimal ExecutionContext mock
+    // Create a minimal ExecutionContext mock (GraphQL context type)
     const context = {
+      getType: () => 'graphql',
       getHandler: jest.fn(),
       getClass: jest.fn(),
     } as unknown as ExecutionContext;
@@ -154,6 +155,7 @@ describe('AuthGuard', () => {
       (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
 
       return {
+        getType: () => 'graphql',
         getHandler: jest.fn(),
         getClass: jest.fn(),
       } as unknown as ExecutionContext;
@@ -221,6 +223,7 @@ describe('AuthGuard', () => {
 
       return {
         context: {
+          getType: () => 'graphql',
           getHandler: jest.fn(),
           getClass: jest.fn(),
         } as unknown as ExecutionContext,
@@ -308,6 +311,7 @@ describe('AuthGuard', () => {
       );
 
       const context = {
+        getType: () => 'graphql',
         getHandler: jest.fn(),
         getClass: jest.fn(),
       } as unknown as ExecutionContext;
@@ -361,6 +365,7 @@ describe('AuthGuard', () => {
       (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
 
       const context = {
+        getType: () => 'graphql',
         getHandler: jest.fn(),
         getClass: jest.fn(),
       } as unknown as ExecutionContext;
@@ -369,6 +374,26 @@ describe('AuthGuard', () => {
 
       // Should deny because request.user is null, ignoring spoofed headers.user
       expect(result).toBe(false);
+    });
+  });
+
+  describe('non-GraphQL (REST) routes (#864)', () => {
+    it('allows a REST request through without touching the GraphQL context', async () => {
+      // /metrics (Prometheus), /health, /api/csrf reach this global guard as an
+      // 'http' context. The guard governs GraphQL only, so it must defer to the
+      // REST layer — not 403 every scrape.
+      const context = {
+        getType: () => 'http',
+        getHandler: jest.fn(),
+        getClass: jest.fn(),
+      } as unknown as ExecutionContext;
+
+      const result = await guard.canActivate(context);
+
+      expect(result).toBe(true);
+      // Must short-circuit BEFORE building a GraphQL context or checking @Public.
+      expect(GqlExecutionContext.create as jest.Mock).not.toHaveBeenCalled();
+      expect(mockReflector.getAllAndOverride).not.toHaveBeenCalled();
     });
   });
 });
