@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   batchTransaction,
@@ -57,7 +57,12 @@ export class CivicsSyncService {
   constructor(
     private readonly db: DbService,
     @Optional() private readonly promptClient?: PromptClientService,
-    @Optional() private readonly llm?: ILLMProvider,
+    // ILLMProvider is an interface (erased at runtime), so there is no
+    // implicit injection token — NestJS resolves it by the explicit
+    // 'LLM_PROVIDER' token that LLMModule provides. Without @Inject here,
+    // @Optional() silently yields `undefined` and civics sync no-ops.
+    // Mirrors LlmGeneratorBase. See #869.
+    @Optional() @Inject('LLM_PROVIDER') private readonly llm?: ILLMProvider,
   ) {}
 
   async sync(
