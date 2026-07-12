@@ -29,6 +29,7 @@ describe('CivicsSyncService', () => {
     const mockPromptClient = createMock<PromptClientService>();
     const mockLlm = {
       generate: jest.fn(),
+      getModelName: jest.fn().mockReturnValue('qwen-test'),
     } as unknown as jest.Mocked<ILLMProvider>;
     const mockDb = createMock<DbService>();
 
@@ -126,6 +127,13 @@ describe('CivicsSyncService', () => {
     );
 
     expect(mockDb.civicsBlock.upsert).toHaveBeenCalledTimes(1);
+    // #873: the producing model is stamped for provenance on both paths.
+    expect(mockDb.civicsBlock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ llmModel: 'qwen-test' }),
+        update: expect.objectContaining({ llmModel: 'qwen-test' }),
+      }),
+    );
     expect(result).toEqual({ processed: 1, created: 1, updated: 0 });
   });
 

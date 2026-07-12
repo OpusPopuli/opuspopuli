@@ -253,6 +253,10 @@ export class CivicsSyncService {
         lifecycleStages: toJsonField(block.lifecycleStages),
         sessionScheme: toJsonField(block.sessionScheme),
         glossary: toJsonField(block.glossary),
+        // Provenance: stamp which model produced this block, alongside
+        // promptHash/promptVersion, so re-ranking/re-extraction can tell what
+        // came from where. `llm` is non-null past the guard above. See #873.
+        llmModel: this.llm.getModelName(),
       };
 
       await this.db.civicsBlock.upsert({
