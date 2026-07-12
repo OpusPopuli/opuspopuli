@@ -57,6 +57,14 @@ test.describe("Home Page", () => {
   });
 
   test("should be accessible", async ({ page }) => {
+    // Wait for the page to finish rendering before scanning. axe on a
+    // mid-hydration DOM catches transient violations (unlabeled controls,
+    // duplicate ids during hydration) that resolve once settled — which
+    // flaked intermittently and recovered on retry.
+    await expect(
+      page.getByRole("heading", { name: /Know your ballot/i, level: 1 }),
+    ).toBeVisible();
+
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
       .analyze();

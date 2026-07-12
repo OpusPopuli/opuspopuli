@@ -344,6 +344,12 @@ test.describe("PWA - Mobile Experience", () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto("/login");
 
+    // Wait for the page's interactive buttons to render before enumerating.
+    // `goto` resolves on `load`, but the login form's buttons are client-
+    // rendered, so a one-shot `.all()` immediately after can race the render
+    // and find zero buttons (flaky: passed mobile-safari but failed tablet).
+    await expect(page.locator("button:visible").first()).toBeVisible();
+
     // Buttons should be at least 44x44 (iOS) or 48x48 (Android) for touch
     // Only check primary interactive buttons (not icon buttons or small controls)
     const buttons = await page.locator("button:visible").all();
