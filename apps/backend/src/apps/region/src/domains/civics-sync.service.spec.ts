@@ -29,6 +29,7 @@ describe('CivicsSyncService', () => {
     const mockPromptClient = createMock<PromptClientService>();
     const mockLlm = {
       generate: jest.fn(),
+      getModelName: jest.fn().mockReturnValue('qwen-test'),
     } as unknown as jest.Mocked<ILLMProvider>;
     const mockDb = createMock<DbService>();
 
@@ -47,13 +48,110 @@ describe('CivicsSyncService', () => {
       >[0]['providers'],
     }).compile();
 
-    return { service: module.get(CivicsSyncService), mockLlm };
+    return {
+      service: module.get(CivicsSyncService),
+      mockLlm,
+      mockDb,
+      mockPromptClient,
+    };
   };
 
   const makeHelpers = (): jest.Mocked<CivicsCrawlHelpers> => ({
     fetchUrlText: jest.fn(),
     htmlToReadableText: jest.fn(),
     crawlCivicsUrls: jest.fn().mockResolvedValue([]),
+  });
+
+  /**
+   * Drive exactly one civics page end-to-end through `sync()` with the LLM
+   * returning `extractedJson`. Returns the sync result plus the db mock so a
+   * test can assert whether the block was persisted.
+   */
+  const drivePage = async (extractedJson: string) => {
+    const { service, mockLlm, mockDb, mockPromptClient } = await buildService();
+    mockPromptClient.getCivicsExtractionPrompt.mockResolvedValue({
+      promptText: 'prompt',
+      promptHash: 'hash',
+      promptVersion: '1.0.0',
+    } as never);
+    mockLlm.generate.mockResolvedValue({ text: extractedJson } as never);
+    (mockDb.civicsBlock.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const sourceUrl = 'https://www.assembly.ca.gov/resources/x';
+    const getDataSources = jest
+      .fn()
+      .mockReturnValue([
+        { url: sourceUrl, contentGoal: 'goal', category: 'Assembly' },
+      ]);
+    const plugin = {
+      getName: () => 'california',
+      getDataSources,
+    } as unknown as CivicsProvider;
+
+    const helpers: jest.Mocked<CivicsCrawlHelpers> = {
+      fetchUrlText: jest.fn().mockResolvedValue('<html/>'),
+      htmlToReadableText: jest.fn().mockReturnValue('readable text'),
+      crawlCivicsUrls: jest.fn().mockResolvedValue([sourceUrl]),
+    };
+
+    const result = await service.sync(plugin, helpers);
+    return { result, mockDb };
+  };
+
+  // ── #874: don't persist empty CivicsBlocks ────────────────────────────
+  const EMPTY_BLOCK = JSON.stringify({
+    chambers: [],
+    measureTypes: [],
+    lifecycleStages: [],
+    glossary: [],
+    sessionScheme: null,
+  });
+
+  it('skips the upsert when the extracted block has no civic content (#874)', async () => {
+    const { result, mockDb } = await drivePage(EMPTY_BLOCK);
+
+    expect(mockDb.civicsBlock.upsert).not.toHaveBeenCalled();
+    // A skipped page counts as neither processed nor created/updated.
+    expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
+  });
+
+  it('persists a block that has any list content (#874)', async () => {
+    const { result, mockDb } = await drivePage(
+      JSON.stringify({
+        chambers: [{ name: 'Assembly' }],
+        measureTypes: [],
+        lifecycleStages: [],
+        glossary: [],
+        sessionScheme: null,
+      }),
+    );
+
+    expect(mockDb.civicsBlock.upsert).toHaveBeenCalledTimes(1);
+    // #873: the producing model is stamped for provenance on both paths.
+    expect(mockDb.civicsBlock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ llmModel: 'qwen-test' }),
+        update: expect.objectContaining({ llmModel: 'qwen-test' }),
+      }),
+    );
+    expect(result).toEqual({ processed: 1, created: 1, updated: 0 });
+  });
+
+  it('persists a block whose only content is the session scheme (#874)', async () => {
+    // Mirrors real CA pages that yielded only sessionScheme — must NOT be
+    // treated as empty.
+    const { result, mockDb } = await drivePage(
+      JSON.stringify({
+        chambers: [],
+        measureTypes: [],
+        lifecycleStages: [],
+        glossary: [],
+        sessionScheme: { cadence: 'biennial' },
+      }),
+    );
+
+    expect(mockDb.civicsBlock.upsert).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ processed: 1, created: 1, updated: 0 });
   });
 
   it('receives the LLM provider via the LLM_PROVIDER token and gets past the guard (#869)', async () => {

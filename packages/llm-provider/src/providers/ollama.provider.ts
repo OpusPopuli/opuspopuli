@@ -218,11 +218,22 @@ export class OllamaLLMProvider implements ILLMProvider {
         const data = (await response.json()) as {
           response?: string;
           eval_count?: number;
+          eval_duration?: number; // nanoseconds spent generating tokens
           done?: boolean;
         };
 
+        // Log generation throughput. Output volume (tokens), not context
+        // window or reasoning, is what governs latency here — surfacing
+        // tokens + tok/s makes perf regressions visible in one line
+        // instead of an ad-hoc benchmark. See #872.
+        const tokens = data.eval_count ?? 0;
+        const tokPerSec =
+          data.eval_duration && data.eval_duration > 0
+            ? ((tokens * 1e9) / data.eval_duration).toFixed(1)
+            : "n/a";
         this.logger.log(
-          `Generated ${data.response?.length || 0} chars with Ollama`,
+          `Generated ${data.response?.length || 0} chars ` +
+            `(${tokens} tokens, ${tokPerSec} tok/s) with Ollama`,
         );
 
         return {

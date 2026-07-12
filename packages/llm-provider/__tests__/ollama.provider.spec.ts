@@ -83,6 +83,52 @@ describe("OllamaLLMProvider", () => {
       );
     });
 
+    it("logs generation throughput as tokens + tok/s (#872)", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            response: "hello world",
+            eval_count: 100,
+            eval_duration: 2_000_000_000, // 2s in ns → 50 tok/s
+            done: true,
+          }),
+      });
+
+      await provider.generate("Test prompt");
+
+      const { Logger } = jest.requireMock("@nestjs/common");
+      const results = (Logger as jest.Mock).mock.results as unknown as Array<{
+        value: { log: jest.Mock };
+      }>;
+      const logged = results
+        .flatMap((r) => r.value.log.mock.calls)
+        .map((c: unknown[]) => String(c[0]))
+        .join("\n");
+      expect(logged).toContain("100 tokens");
+      expect(logged).toContain("50.0 tok/s");
+    });
+
+    it("reports tok/s as n/a when the model omits eval_duration (#872)", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ response: "hi", eval_count: 5, done: true }),
+      });
+
+      await provider.generate("Test prompt");
+
+      const { Logger } = jest.requireMock("@nestjs/common");
+      const results = (Logger as jest.Mock).mock.results as unknown as Array<{
+        value: { log: jest.Mock };
+      }>;
+      const logged = results
+        .flatMap((r) => r.value.log.mock.calls)
+        .map((c: unknown[]) => String(c[0]))
+        .join("\n");
+      expect(logged).toContain("n/a tok/s");
+    });
+
     it("should pass generation options", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
