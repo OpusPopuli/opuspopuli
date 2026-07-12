@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { GqlExecutionContext } from '@nestjs/graphql';
+import { GqlExecutionContext, type GqlContextType } from '@nestjs/graphql';
 import { randomUUID } from 'node:crypto';
 import { isLoggedIn } from 'src/common/auth/jwt.strategy';
 import { IS_PUBLIC_KEY } from 'src/common/decorators/public.decorator';
@@ -54,6 +54,22 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // This guard governs GraphQL operations only (see class docstring). It is
+    // registered as a global APP_GUARD, so it also fires on the gateway's REST
+    // routes — /metrics (Prometheus scrape), /health, /api/csrf. Those are
+    // protected by CsrfMiddleware/AuthMiddleware and their own controllers; a
+    // non-GraphQL request has no GraphQL context or user, so the checks below
+    // would deny it — e.g. a 403 on every Prometheus scrape of /metrics. Defer
+    // to the REST layer for anything that isn't a GraphQL operation.
+    //
+    // NOTE: this keys off the execution-context TYPE, not the URL. Our GraphQL
+    // endpoint is `POST /api` (not /graphql); it executes in the 'graphql'
+    // context, so it does NOT short-circuit here and stays fully guarded. Only
+    // true REST requests ('http' context) are deferred. `/api/csrf` is REST.
+    if (context.getType<GqlContextType>() !== 'graphql') {
+      return true;
+    }
+
     // Check if the endpoint is marked as public
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
