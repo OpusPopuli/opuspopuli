@@ -186,7 +186,7 @@ export class CivicsSyncService {
     sourceUrl: string,
     ds: DataSourceConfig,
     helpers: CivicsCrawlHelpers,
-  ): Promise<'created' | 'updated' | 'failed'> {
+  ): Promise<'created' | 'updated' | 'failed' | 'skipped'> {
     if (!this.promptClient || !this.llm) return 'failed';
     try {
       const html = await helpers.fetchUrlText(sourceUrl);
@@ -229,6 +229,17 @@ export class CivicsSyncService {
           `Civics extraction: JSON.parse failed for ${sourceUrl}: ${(e as Error).message}`,
         );
         return 'failed';
+      }
+
+      // A page the crawler reached under the source's scope but that holds no
+      // civic content (e.g. dining services, records-request) extracts to a
+      // well-formed but entirely empty block. Persisting it creates a noise
+      // CivicsBlock, so skip the upsert entirely. See #874.
+      if (isEmptyCivicsExtraction(block)) {
+        this.logger.log(
+          `Civics extraction: no civic content on ${sourceUrl} — skipping empty block`,
+        );
+        return 'skipped';
       }
 
       const existing = await this.db.civicsBlock.findUnique({
@@ -357,4 +368,33 @@ function toJsonField(
   return value === undefined || value === null
     ? Prisma.DbNull
     : (value as Prisma.InputJsonValue);
+}
+
+/**
+ * True when an extracted civics block carries no civic content at all — every
+ * list field empty/absent and no session scheme. The crawler reaches non-civic
+ * utility pages under a source's scope (dining services, records requests),
+ * and the model faithfully returns an empty shell for them; persisting those
+ * as `civics_blocks` rows is pure noise. Callers skip the upsert. See #874.
+ */
+function isEmptyCivicsExtraction(block: {
+  chambers?: unknown;
+  measureTypes?: unknown;
+  lifecycleStages?: unknown;
+  sessionScheme?: unknown;
+  glossary?: unknown;
+}): boolean {
+  const isEmptyList = (v: unknown): boolean =>
+    !Array.isArray(v) || v.length === 0;
+  const isEmptyScheme =
+    block.sessionScheme == null ||
+    (typeof block.sessionScheme === 'object' &&
+      Object.keys(block.sessionScheme as Record<string, unknown>).length === 0);
+  return (
+    isEmptyList(block.chambers) &&
+    isEmptyList(block.measureTypes) &&
+    isEmptyList(block.lifecycleStages) &&
+    isEmptyList(block.glossary) &&
+    isEmptyScheme
+  );
 }
