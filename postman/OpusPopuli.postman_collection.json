@@ -89,9 +89,10 @@
             "method": "GET",
             "header": [{ "key": "apollo-require-preflight", "value": "true" }],
             "url": {
-              "raw": "{{gateway_url}}/api",
+              "raw": "{{gateway_url}}/api?query={__typename}",
               "host": ["{{gateway_url}}"],
-              "path": ["api"]
+              "path": ["api"],
+              "query": [{ "key": "query", "value": "{__typename}" }]
             }
           }
         },
@@ -267,7 +268,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation LoginUser($input: LoginUserDto!) {\n  loginUser(loginUserDto: $input) {\n    accessToken\n    refreshToken\n    expiresIn\n  }\n}",
+                "query": "mutation LoginUser($input: LoginUserDto!) {\n  loginUser(loginUserDto: $input) {\n    accessToken\n    idToken\n    refreshToken\n  }\n}",
                 "variables": "{\n  \"input\": {\n    \"email\": \"{{test_email}}\",\n    \"password\": \"{{test_password}}\"\n  }\n}"
               }
             },
@@ -329,7 +330,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query {\n  getUsers {\n    id\n    email\n    firstName\n    lastName\n    role\n    createdAt\n  }\n}"
+                "query": "query {\n  getUsers {\n    id\n    email\n    firstName\n    lastName\n    created\n  }\n}"
               }
             },
             "url": {
@@ -348,7 +349,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query FindUser($email: String!) {\n  findUser(email: $email) {\n    id\n    email\n    firstName\n    lastName\n    role\n  }\n}",
+                "query": "query FindUser($email: String!) {\n  findUser(email: $email) {\n    id\n    email\n    firstName\n    lastName\n    created\n  }\n}",
                 "variables": "{\n  \"email\": \"{{test_email}}\"\n}"
               }
             },
@@ -372,7 +373,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query {\n  myProfile {\n    userId\n    displayName\n    bio\n    avatarUrl\n    region\n    timezone\n    language\n    updatedAt\n  }\n}"
+                "query": "query {\n  myProfile {\n    userId\n    displayName\n    bio\n    avatarUrl\n    timezone\n    preferredLanguage\n    locale\n    updatedAt\n  }\n}"
               }
             },
             "url": {
@@ -390,7 +391,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query {\n  myProfileCompletion {\n    completionPercentage\n    completedSteps\n    totalSteps\n    missingFields\n  }\n}"
+                "query": "query {\n  myProfileCompletion {\n    percentage\n    isComplete\n    suggestedNextSteps\n    coreFieldsComplete {\n      hasName\n      hasPhoto\n      hasAddress\n      hasCivic\n      hasDemographic\n    }\n  }\n}"
               }
             },
             "url": {
@@ -408,7 +409,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query {\n  myAddresses {\n    id\n    street\n    city\n    state\n    zipCode\n    country\n    isPrimary\n  }\n}"
+                "query": "query {\n  myAddresses {\n    id\n    addressLine1\n    city\n    state\n    postalCode\n    country\n    isPrimary\n  }\n}"
               }
             },
             "url": {
@@ -451,7 +452,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query Propositions($skip: Int!, $take: Int!) {\n  propositions(skip: $skip, take: $take) {\n    items {\n      id\n      title\n      status\n      dataType\n      sourceSystem\n    }\n    total\n    hasMore\n  }\n}",
+                "query": "query Propositions($skip: Int!, $take: Int!) {\n  propositions(skip: $skip, take: $take) {\n    items {\n      id\n      externalId\n      title\n      status\n      summary\n    }\n    total\n    hasMore\n  }\n}",
                 "variables": "{\n  \"skip\": 0,\n  \"take\": 10\n}"
               }
             },
@@ -491,7 +492,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query Meetings($skip: Int!, $take: Int!) {\n  meetings(skip: $skip, take: $take) {\n    items {\n      id\n      title\n      date\n      location\n    }\n    total\n    hasMore\n  }\n}",
+                "query": "query Meetings($skip: Int!, $take: Int!) {\n  meetings(skip: $skip, take: $take) {\n    items {\n      id\n      title\n      scheduledAt\n      location\n    }\n    total\n    hasMore\n  }\n}",
                 "variables": "{\n  \"skip\": 0,\n  \"take\": 10\n}"
               }
             },
@@ -551,7 +552,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query CountyRepresentatives($countyRegionId: String!) {\n  countyRepresentatives(countyRegionId: $countyRegionId) {\n    id\n    name\n    title\n    district\n    party\n    phone\n    email\n    photoUrl\n    website\n  }\n}",
+                "query": "query CountyRepresentatives($countyRegionId: String!) {\n  countyRepresentatives(countyRegionId: $countyRegionId) {\n    id\n    name\n    chamber\n    district\n    party\n    photoUrl\n    contactInfo {\n      email\n      website\n    }\n  }\n}",
                 "variables": "{\n  \"countyRegionId\": \"california-sonoma\"\n}"
               }
             },
@@ -571,7 +572,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query {\n  myCountySupervisors {\n    id\n    name\n    title\n    district\n    party\n    phone\n    email\n    photoUrl\n    website\n  }\n}",
+                "query": "query {\n  myCountySupervisors {\n    id\n    name\n    chamber\n    district\n    party\n    photoUrl\n    contactInfo {\n      email\n      website\n    }\n  }\n}",
                 "variables": ""
               }
             },
@@ -1130,7 +1131,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query {\n  listFiles {\n    name\n    size\n    contentType\n    createdAt\n  }\n}"
+                "query": "query {\n  listFiles {\n    filename\n    size\n    status\n    createdAt\n  }\n}"
               }
             },
             "url": {
@@ -1148,7 +1149,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation AnalyzeDocument($input: AnalyzeDocumentInput!) {\n  analyzeDocument(input: $input) {\n    documentId\n    analysisType\n    summary\n    confidence\n  }\n}",
+                "query": "mutation AnalyzeDocument($input: AnalyzeDocumentInput!) {\n  analyzeDocument(input: $input) {\n    analysis {\n      documentType\n      summary\n      keyPoints\n      provider\n      model\n    }\n    fromCache\n  }\n}",
                 "variables": "{\n  \"input\": {\n    \"documentId\": \"your-document-id\",\n    \"analysisType\": \"general\"\n  }\n}"
               }
             },
@@ -1168,7 +1169,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query {\n  petitionMapLocations {\n    locations {\n      documentId\n      latitude\n      longitude\n      title\n    }\n    total\n  }\n}"
+                "query": "query {\n  petitionMapLocations {\n    markers {\n      id\n      latitude\n      longitude\n      documentType\n      createdAt\n    }\n    totalCount\n    truncated\n  }\n}"
               }
             },
             "url": {
@@ -1191,7 +1192,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query SearchText($input: SearchInput!) {\n  searchText(input: $input) {\n    items {\n      content\n      score\n      metadata\n    }\n    total\n  }\n}",
+                "query": "query SearchText($input: SearchInput!) {\n  searchText(input: $input) {\n    results {\n      content\n      documentId\n      score\n    }\n    total\n    hasMore\n  }\n}",
                 "variables": "{\n  \"input\": {\n    \"query\": \"California water policy\",\n    \"limit\": 5\n  }\n}"
               }
             },
@@ -1210,7 +1211,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation AnswerQuery($input: QueryInput!) {\n  answerQuery(input: $input)\n}",
+                "query": "mutation AnswerQuery($input: QueryInput!) {\n  answerQuery(input: $input) {\n    answer\n    sourcedFrom\n  }\n}",
                 "variables": "{\n  \"input\": {\n    \"query\": \"What are the latest California ballot propositions?\"\n  }\n}"
               }
             },
@@ -1234,7 +1235,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query MyActivityLog($limit: Int!, $offset: Int!) {\n  myActivityLog(limit: $limit, offset: $offset) {\n    items {\n      action\n      details\n      createdAt\n      ipAddress\n    }\n    total\n  }\n}",
+                "query": "query MyActivityLog($limit: Int!, $offset: Int!) {\n  myActivityLog(limit: $limit, offset: $offset) {\n    items {\n      action\n      operationName\n      success\n      ipAddress\n      timestamp\n    }\n    total\n  }\n}",
                 "variables": "{\n  \"limit\": 20,\n  \"offset\": 0\n}"
               }
             },
@@ -1253,7 +1254,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query {\n  mySessions {\n    items {\n      id\n      userAgent\n      ipAddress\n      createdAt\n      lastActiveAt\n      isRevoked\n    }\n    total\n  }\n}"
+                "query": "query {\n  mySessions {\n    items {\n      id\n      deviceName\n      browser\n      operatingSystem\n      city\n      region\n      isActive\n      isCurrent\n      lastActivityAt\n      createdAt\n      revokedAt\n    }\n    total\n  }\n}"
               }
             },
             "url": {
