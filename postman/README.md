@@ -42,12 +42,19 @@ host-scoped, so seeding on one host and mutating on another won't carry it.
 
 ### One secret to paste
 
-`supabase_anon_key` is per-node. On the node (unlocked-Keychain terminal):
+`supabase_anon_key` must match what **kong validates against** — the value the
+running gateway container actually uses. A wrong/placeholder value makes kong
+return `{"message":"Unauthorized","request_id":...}` on login (before gotrue
+ever checks the password). Read the authoritative value straight from the
+container (this is the source of truth — the Keychain copy can drift from what's
+actually running):
 ```bash
-security find-generic-password -s org.opuspopuli.<region> -a supabase-anon-key -w
+docker exec opuspopuli-api printenv SUPABASE_ANON_KEY
 ```
-(`<region>` = e.g. `us-ca`.) Change `test_password` only if the node was
-bootstrapped with a custom `SEED_ADMIN_PASSWORD`.
+(The anon key is public/non-secret, but it's not committed here — the pre-push
+secret scanner flags any JWT.)
+Change `test_password` only if the node was bootstrapped with a custom
+`SEED_ADMIN_PASSWORD`.
 
 ## Run order
 
