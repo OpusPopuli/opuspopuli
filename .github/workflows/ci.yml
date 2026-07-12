@@ -198,15 +198,43 @@ jobs:
       - name: Build frontend
         run: pnpm --filter frontend build
 
-  e2e:
-    name: E2E Tests
+  # Compute the E2E shard matrix: the full browser matrix on main is split
+  # across 4 parallel shards (Playwright --shard) so it finishes well under the
+  # timeout; PRs run a single Chromium shard. Previously the un-sharded full
+  # matrix on main cancelled at the 45m job timeout on every release.
+  e2e-shards:
+    name: Compute E2E shard matrix
     runs-on: ubuntu-latest
-    needs: [packages-build, test]
+    outputs:
+      shards: ${{ steps.set.outputs.shards }}
+      total: ${{ steps.set.outputs.total }}
+    steps:
+      - id: set
+        name: Select shard count (full matrix on main, single on PRs)
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo 'shards=[1,2,3,4]' >> "$GITHUB_OUTPUT"
+            echo 'total=4' >> "$GITHUB_OUTPUT"
+          else
+            echo 'shards=[1]' >> "$GITHUB_OUTPUT"
+            echo 'total=1' >> "$GITHUB_OUTPUT"
+          fi
+
+  e2e:
+    name: E2E Tests (shard ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    needs: [packages-build, test, e2e-shards]
     permissions:
       contents: read
       packages: read
       security-events: write
-    timeout-minutes: 45
+    # Sharded (below) keeps each job's runtime low; the bump from 45m covers
+    # the heaviest shard (shard 1 also runs Trivy + integration once).
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.e2e-shards.outputs.shards) }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -246,6 +274,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trivy container scan — users
+        if: ${{ matrix.shard == 1 }}
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: 'opuspopuli-users:latest'
@@ -254,6 +283,7 @@ jobs:
           output: 'trivy-users.sarif'
 
       - name: Trivy container scan — documents
+        if: ${{ matrix.shard == 1 }}
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: 'opuspopuli-documents:latest'
@@ -262,6 +292,7 @@ jobs:
           output: 'trivy-documents.sarif'
 
       - name: Trivy container scan — knowledge
+        if: ${{ matrix.shard == 1 }}
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: 'opuspopuli-knowledge:latest'
@@ -270,6 +301,7 @@ jobs:
           output: 'trivy-knowledge.sarif'
 
       - name: Trivy container scan — region
+        if: ${{ matrix.shard == 1 }}
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: 'opuspopuli-region:latest'
@@ -279,28 +311,28 @@ jobs:
 
       - name: Upload Trivy scan — users
         uses: github/codeql-action/upload-sarif@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
-        if: ${{ always() && hashFiles('trivy-users.sarif') != '' }}
+        if: ${{ always() && matrix.shard == 1 && hashFiles('trivy-users.sarif') != '' }}
         with:
           sarif_file: 'trivy-users.sarif'
           category: 'container-scanning-users'
 
       - name: Upload Trivy scan — documents
         uses: github/codeql-action/upload-sarif@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
-        if: ${{ always() && hashFiles('trivy-documents.sarif') != '' }}
+        if: ${{ always() && matrix.shard == 1 && hashFiles('trivy-documents.sarif') != '' }}
         with:
           sarif_file: 'trivy-documents.sarif'
           category: 'container-scanning-documents'
 
       - name: Upload Trivy scan — knowledge
         uses: github/codeql-action/upload-sarif@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
-        if: ${{ always() && hashFiles('trivy-knowledge.sarif') != '' }}
+        if: ${{ always() && matrix.shard == 1 && hashFiles('trivy-knowledge.sarif') != '' }}
         with:
           sarif_file: 'trivy-knowledge.sarif'
           category: 'container-scanning-knowledge'
 
       - name: Upload Trivy scan — region
         uses: github/codeql-action/upload-sarif@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
-        if: ${{ always() && hashFiles('trivy-region.sarif') != '' }}
+        if: ${{ always() && matrix.shard == 1 && hashFiles('trivy-region.sarif') != '' }}
         with:
           sarif_file: 'trivy-region.sarif'
           category: 'container-scanning-region'
@@ -315,6 +347,8 @@ jobs:
         run: pnpm --filter @opuspopuli/relationaldb-provider db:generate
 
       - name: Run backend integration tests
+        # Not E2E-sharded — run once (each shard has its own isolated backend).
+        if: ${{ matrix.shard == 1 }}
         run: pnpm test:integration
         env:
           # API gateway runs on port 4000 in E2E docker-compose
@@ -346,9 +380,10 @@ jobs:
 
       - name: Run E2E tests
         run: |
-          # Full browser matrix on main, Chromium only on PRs
+          # Full browser matrix on main (sharded across parallel jobs),
+          # Chromium only on PRs (single shard).
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            pnpm --filter frontend e2e
+            pnpm --filter frontend e2e --shard=${{ matrix.shard }}/${{ needs.e2e-shards.outputs.total }}
           else
             pnpm --filter frontend e2e --project=chromium
           fi
@@ -379,6 +414,6 @@ jobs:
         uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4
         if: ${{ !cancelled() }}
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: apps/frontend/playwright-report/
           retention-days: 7
