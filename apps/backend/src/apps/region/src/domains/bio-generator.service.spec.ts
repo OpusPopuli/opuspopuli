@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { createMock } from '@golevelup/ts-jest';
+import { createMock, type DeepMocked } from '@golevelup/ts-jest';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import type { ILLMProvider, Representative } from '@opuspopuli/common';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 
 import { BioGeneratorService } from './bio-generator.service';
 
@@ -10,6 +11,7 @@ describe('BioGeneratorService', () => {
   let service: BioGeneratorService;
   let promptClient: jest.Mocked<PromptClientService>;
   let llm: jest.Mocked<ILLMProvider>;
+  let db: DeepMocked<DbService>;
 
   const baseRep = (
     overrides: Partial<Representative> = {},
@@ -29,6 +31,7 @@ describe('BioGeneratorService', () => {
     service: BioGeneratorService;
     promptClient: jest.Mocked<PromptClientService>;
     llm: jest.Mocked<ILLMProvider>;
+    db: DeepMocked<DbService>;
   }> {
     const mockPromptClient = createMock<PromptClientService>();
     mockPromptClient.getDocumentAnalysisPrompt.mockResolvedValue({
@@ -45,12 +48,15 @@ describe('BioGeneratorService', () => {
       get: jest.fn((key: string) => configValues[key]),
     } as unknown as ConfigService;
 
+    const mockDb = createMock<DbService>();
+
     const providers = withDeps
       ? [
           BioGeneratorService,
           { provide: ConfigService, useValue: mockConfig },
           { provide: PromptClientService, useValue: mockPromptClient },
           { provide: 'LLM_PROVIDER', useValue: mockLlm },
+          { provide: DbService, useValue: mockDb },
         ]
       : [BioGeneratorService];
 
@@ -62,6 +68,7 @@ describe('BioGeneratorService', () => {
       service: module.get(BioGeneratorService),
       promptClient: mockPromptClient,
       llm: mockLlm,
+      db: mockDb,
     };
   }
 
@@ -84,6 +91,7 @@ describe('BioGeneratorService', () => {
       service = built.service;
       promptClient = built.promptClient;
       llm = built.llm;
+      db = built.db;
     });
 
     it('generates bios only for reps with empty bio', async () => {
@@ -107,6 +115,42 @@ describe('BioGeneratorService', () => {
       );
       expect(result[1].bioSource).toBe('ai-generated');
       expect(result[2].bioSource).toBe('ai-generated');
+    });
+
+    it('persists each generated bio back to the DB by externalId (#881)', async () => {
+      llm.generate.mockResolvedValue({
+        text: '{"bio": "Jane Smith represents District 5 in the California Senate."}',
+      } as Awaited<ReturnType<ILLMProvider['generate']>>);
+
+      const reps = [
+        baseRep({ externalId: 'sen-5' }),
+        baseRep({ externalId: 'sen-6', bio: '' }),
+      ];
+
+      await service.enrichBios(reps, undefined);
+
+      // Regression for #828: the mutated bios must be WRITTEN BACK, not just
+      // held in memory (the extraction dropped the persist, so a full reps
+      // sync produced 0 persisted bios). Two reps needed a bio → two writes.
+      expect(db.representative.update).toHaveBeenCalledTimes(2);
+      expect(db.representative.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { externalId: 'sen-5' },
+          data: expect.objectContaining({
+            bio: 'Jane Smith represents District 5 in the California Senate.',
+            bioSource: 'ai-generated',
+          }),
+        }),
+      );
+    });
+
+    it('does not write to the DB for reps that already have a bio (#881)', async () => {
+      const reps = [baseRep({ externalId: 'has-bio', bio: 'Existing bio.' })];
+
+      await service.enrichBios(reps, undefined);
+
+      expect(llm.generate).not.toHaveBeenCalled();
+      expect(db.representative.update).not.toHaveBeenCalled();
     });
 
     it('returns early when no reps need bios', async () => {

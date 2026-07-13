@@ -5,6 +5,7 @@ import {
   type BioClaim,
   type Representative,
 } from '@opuspopuli/common';
+import { Prisma } from '@opuspopuli/relationaldb-provider';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
 import { LlmGeneratorBase } from './llm-generator.base';
 
@@ -148,6 +149,7 @@ export class BioGeneratorService extends LlmGeneratorBase {
         // Persist the full claims array (#602). Undefined on tier-2
         // salvage since only the bio string survived parsing.
         rep.bioClaims = parsed.claims;
+        await this.persistBio(rep);
         return true;
       }
     } catch (error) {
@@ -156,6 +158,34 @@ export class BioGeneratorService extends LlmGeneratorBase {
       );
     }
     return false;
+  }
+
+  /**
+   * Write a freshly-generated bio back to the representative row. The rep was
+   * already upserted (keyed by externalId) in the sync's extract phase, so this
+   * persists the bio fields the generator just mutated in memory. The #828
+   * extraction of RepresentativesSyncService dropped the monolith's
+   * post-enrichBios upsert — without this write-back, generated bios are held
+   * only in memory and discarded (the whole reps sync produced 0 persisted
+   * bios). See #881.
+   */
+  private async persistBio(rep: Representative): Promise<void> {
+    if (!this.db) {
+      this.logger.warn(
+        `No DbService available — generated bio for ${rep.name} not persisted`,
+      );
+      return;
+    }
+    await this.db.representative.update({
+      where: { externalId: rep.externalId },
+      data: {
+        bio: rep.bio,
+        bioSource: rep.bioSource,
+        ...(rep.bioClaims
+          ? { bioClaims: rep.bioClaims as unknown as Prisma.InputJsonValue }
+          : {}),
+      },
+    });
   }
 
   /**
