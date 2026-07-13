@@ -186,8 +186,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/region-provider
       '@opuspopuli/regions':
-        specifier: ^1.0.68
-        version: 1.0.68
+        specifier: ^1.0.70
+        version: 1.0.70
       '@opuspopuli/relationaldb-provider':
         specifier: workspace:*
         version: link:../../packages/relationaldb-provider
@@ -996,8 +996,8 @@ importers:
         specifier: workspace:*
         version: link:../config-provider
       '@opuspopuli/regions':
-        specifier: ^1.0.69
-        version: 1.0.69
+        specifier: ^1.0.70
+        version: 1.0.70
     devDependencies:
       '@nestjs/common':
         specifier: ^11.1.9
@@ -4999,12 +4999,8 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.1.0
 
-  '@opuspopuli/regions@1.0.68':
-    resolution: {integrity: sha512-gNk3Zbm1S7vaX/mazxzySss7wCHCWA7gx5DWRGCtUvXv/oJ1BIDOlT5A90Et9XRZ7BOUatYC9FHt0xWtUNgMcw==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.68/41a608bec17e2b313efac4250c7afe3ded29a5f6}
-    hasBin: true
-
-  '@opuspopuli/regions@1.0.69':
-    resolution: {integrity: sha512-hUEXPiScSmliOvMfAFN6pQkSMz466s5WHPHHdpI1uAH7qOejIGhK0CcRZLcJr4FcrFOkJsYImT85wgipKh4Z8w==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.69/ea789fd1b6ddfd47c90f313bd1a9bef3d8f66aa1}
+  '@opuspopuli/regions@1.0.70':
+    resolution: {integrity: sha512-k5kkvQcOlrdJXriJ7I7HolUPMlF3T70h59X8IFKupAkcwSA/b18PFsg04Nz0P0Zt9C0Baai1Nah1SFQ222Dm7A==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.70/f22a2ba4b110caa0bff87c067042179c9d9d07bd}
     hasBin: true
 
   '@paralleldrive/cuid2@2.3.1':
@@ -16803,16 +16799,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.6.1(@opentelemetry/api@1.9.1)
 
-  '@opuspopuli/regions@1.0.68':
-    dependencies:
-      ajv: 8.20.0
-      ajv-formats: 3.0.1(ajv@8.20.0)
-      chalk: 5.6.2
-      cheerio: 1.2.0
-      commander: 12.1.0
-      ollama: 0.6.3
-
-  '@opuspopuli/regions@1.0.69':
+  '@opuspopuli/regions@1.0.70':
     dependencies:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
