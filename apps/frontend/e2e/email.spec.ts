@@ -479,8 +479,11 @@ test.describe("Email History Page - Loading State", () => {
 
     await page.goto("/settings/email-history");
 
-    const skeletons = await page.locator(".animate-pulse").count();
-    expect(skeletons).toBeGreaterThan(0);
+    // Web-first assertion auto-retries until the skeleton appears during the
+    // 500ms mocked API delay. A one-shot `.count()` immediately after `goto`
+    // can sample before the skeleton renders (or after the delayed response
+    // already resolved it away), which flaked intermittently.
+    await expect(page.locator(".animate-pulse").first()).toBeVisible();
   });
 });
 
