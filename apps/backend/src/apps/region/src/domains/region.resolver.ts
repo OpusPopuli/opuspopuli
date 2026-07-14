@@ -918,8 +918,13 @@ export class RegionResolver {
   async updateRegionPlugin(
     @Args('name') name: string,
     @Args('enabled') enabled: boolean,
+    // Cascade-down: also toggle every descendant plugin (e.g. enable a whole
+    // state's counties in one call). Defaults false → unchanged single-row
+    // behavior. `cascadedCount` on the result reports how many were touched.
+    // See #886.
+    @Args('cascade', { defaultValue: false }) cascade: boolean,
   ): Promise<RegionPluginModel> {
-    return this.regionService.setRegionPluginEnabled(name, enabled);
+    return this.regionService.setRegionPluginEnabled(name, enabled, cascade);
   }
 
   /**

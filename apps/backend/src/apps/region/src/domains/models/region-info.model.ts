@@ -1,4 +1,4 @@
-import { ObjectType, Field, registerEnumType } from '@nestjs/graphql';
+import { ObjectType, Field, Int, registerEnumType } from '@nestjs/graphql';
 
 // ── Civics GQL types ─────────────────────────────────────────────────────────
 
@@ -228,6 +228,14 @@ export class RegionPluginModel {
 
   @Field({ nullable: true })
   fipsCode?: string;
+
+  /**
+   * Number of descendant plugins also toggled by a cascade mutation
+   * (`updateRegionPlugin(..., cascade: true)`). 0 when cascade was not
+   * requested or the target has no descendants. See #886.
+   */
+  @Field(() => Int, { nullable: true })
+  cascadedCount?: number;
 }
 
 /**

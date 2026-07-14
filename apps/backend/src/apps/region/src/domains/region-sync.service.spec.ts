@@ -367,6 +367,98 @@ describe('RegionSyncService', () => {
     });
   });
 
+  describe('cascade enable/disable (#886)', () => {
+    // A parent row for the primary `update` to resolve to. `enabled` is
+    // overridden per-test to match the direction under test.
+    const parentRow = (enabled: boolean) =>
+      ({
+        name: 'california',
+        displayName: 'California',
+        description: null,
+        version: '1.0.0',
+        enabled,
+        parentRegionId: null,
+        fipsCode: '06',
+      }) as never;
+
+    it('cascade:true enable also enables every descendant via updateMany', async () => {
+      mockDb.regionPlugin.update.mockResolvedValue(parentRow(true));
+      mockDb.regionPlugin.updateMany.mockResolvedValue({ count: 58 } as never);
+
+      const result = await service.setRegionPluginEnabled(
+        'california',
+        true,
+        true,
+      );
+
+      // Descendants matched by parentRegionId === parent's name; federal is
+      // excluded for symmetry with fetchLocalPluginConfigs.
+      expect(mockDb.regionPlugin.updateMany).toHaveBeenCalledWith({
+        where: { parentRegionId: 'california', name: { not: 'federal' } },
+        data: { enabled: true },
+      });
+      expect(result.cascadedCount).toBe(58);
+    });
+
+    it('cascade:true disable also disables every descendant', async () => {
+      mockDb.regionPlugin.update.mockResolvedValue(parentRow(false));
+      mockDb.regionPlugin.updateMany.mockResolvedValue({ count: 58 } as never);
+
+      const result = await service.setRegionPluginEnabled(
+        'california',
+        false,
+        true,
+      );
+
+      expect(mockDb.regionPlugin.updateMany).toHaveBeenCalledWith({
+        where: { parentRegionId: 'california', name: { not: 'federal' } },
+        data: { enabled: false },
+      });
+      expect(result.cascadedCount).toBe(58);
+    });
+
+    it('cascade on a leaf (no descendants) is a no-op count of 0, not an error', async () => {
+      mockDb.regionPlugin.update.mockResolvedValue(parentRow(true));
+      mockDb.regionPlugin.updateMany.mockResolvedValue({ count: 0 } as never);
+
+      const result = await service.setRegionPluginEnabled(
+        'california-sonoma',
+        true,
+        true,
+      );
+
+      expect(result.cascadedCount).toBe(0);
+    });
+
+    it('default (no cascade) leaves single-row behavior unchanged — updateMany not called', async () => {
+      mockDb.regionPlugin.update.mockResolvedValue(parentRow(true));
+      mockDb.regionPlugin.updateMany.mockClear();
+
+      const result = await service.setRegionPluginEnabled('california', true);
+
+      expect(mockDb.regionPlugin.updateMany).not.toHaveBeenCalled();
+      expect(result.cascadedCount).toBe(0);
+    });
+
+    it('cascade write lands before the hot-swap refresh so children are picked up', async () => {
+      // Ordering guard: the cascade updateMany must run BEFORE the
+      // refreshActiveLocalPlugin() findMany, otherwise the single hot-swap
+      // would re-read the DB before the children were toggled.
+      mockDb.regionPlugin.update.mockResolvedValue(parentRow(true));
+      mockDb.regionPlugin.updateMany.mockResolvedValue({ count: 3 } as never);
+      mockDb.regionPlugin.updateMany.mockClear();
+      mockDb.regionPlugin.findMany.mockClear();
+
+      await service.setRegionPluginEnabled('california', true, true);
+
+      const updateManyOrder = (mockDb.regionPlugin.updateMany as jest.Mock).mock
+        .invocationCallOrder[0];
+      const findManyOrder = (mockDb.regionPlugin.findMany as jest.Mock).mock
+        .invocationCallOrder[0];
+      expect(updateManyOrder).toBeLessThan(findManyOrder);
+    });
+  });
+
   describe('syncAll', () => {
     it('should sync all data types from all plugins and return results', async () => {
       const results = await service.syncAll();
