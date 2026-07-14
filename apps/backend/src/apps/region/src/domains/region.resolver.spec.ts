@@ -1244,4 +1244,46 @@ describe('RegionResolver', () => {
       expect(result.counts.failed).toBe(234);
     });
   });
+
+  describe('updateRegionPlugin (#886)', () => {
+    const pluginRow = {
+      name: 'california',
+      displayName: 'California',
+      version: '1.0.0',
+      enabled: true,
+      cascadedCount: 0,
+    };
+
+    it('forwards cascade=true to the service', async () => {
+      regionService.setRegionPluginEnabled.mockResolvedValue({
+        ...pluginRow,
+        cascadedCount: 58,
+      });
+
+      const result = await resolver.updateRegionPlugin(
+        'california',
+        true,
+        true,
+      );
+
+      expect(regionService.setRegionPluginEnabled).toHaveBeenCalledWith(
+        'california',
+        true,
+        true,
+      );
+      expect(result.cascadedCount).toBe(58);
+    });
+
+    it('forwards cascade=false (default single-row path) to the service', async () => {
+      regionService.setRegionPluginEnabled.mockResolvedValue(pluginRow);
+
+      await resolver.updateRegionPlugin('california', false, false);
+
+      expect(regionService.setRegionPluginEnabled).toHaveBeenCalledWith(
+        'california',
+        false,
+        false,
+      );
+    });
+  });
 });

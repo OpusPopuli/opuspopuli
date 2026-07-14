@@ -206,29 +206,66 @@ export class RegionPluginService implements OnModuleInit {
   async setRegionPluginEnabled(
     name: string,
     enabled: boolean,
+    cascade = false,
   ): Promise<RegionPluginRow> {
-    const row = await this.db.regionPlugin.update({
-      where: { name },
-      data: { enabled },
-      select: {
-        name: true,
-        displayName: true,
-        description: true,
-        version: true,
-        enabled: true,
-        parentRegionId: true,
-        fipsCode: true,
-      },
-    });
+    const select = {
+      name: true,
+      displayName: true,
+      description: true,
+      version: true,
+      enabled: true,
+      parentRegionId: true,
+      fipsCode: true,
+    } as const;
+
+    // Optional cascade-down: also toggle every descendant. A child's
+    // `parentRegionId` equals its parent's `name`, so a single `updateMany`
+    // covers the current one-level (state → county) hierarchy. `federal` is
+    // excluded for symmetry with fetchLocalPluginConfigs — it never has a
+    // state parent. The primary update and the cascade run in ONE
+    // transaction so a partial failure can't leave the subtree half-toggled
+    // (the exact "partially-enabled state" risk #886 exists to remove).
+    let row: Prisma.RegionPluginGetPayload<{ select: typeof select }>;
+    let cascadedCount = 0;
+    if (cascade) {
+      const [updated, cascadeResult] = await this.db.$transaction([
+        this.db.regionPlugin.update({
+          where: { name },
+          data: { enabled },
+          select,
+        }),
+        this.db.regionPlugin.updateMany({
+          where: { parentRegionId: name, name: { not: 'federal' } },
+          data: { enabled },
+        }),
+      ]);
+      row = updated;
+      cascadedCount = cascadeResult.count;
+    } else {
+      // Default path: a single atomic row update — unchanged behavior.
+      row = await this.db.regionPlugin.update({
+        where: { name },
+        data: { enabled },
+        select,
+      });
+    }
+
     this.logger.log(
       `Region plugin "${name}" ${enabled ? 'enabled' : 'disabled'}`,
     );
+    if (cascade) {
+      this.logger.log(
+        `Cascade ${enabled ? 'enabled' : 'disabled'} ${cascadedCount} ` +
+          `descendant plugin(s) of "${name}"`,
+      );
+    }
     // Hot-swap the active plugin so the change takes effect immediately —
     // without this, the in-memory registry stays on whatever it loaded at
     // boot and `regionInfo` keeps returning the stale active region. See
-    // #796 for the failure mode this fixes.
+    // #796 for the failure mode this fixes. Runs after the (committed)
+    // cascade so the refresh sees the newly-toggled children.
     await this.refreshActiveLocalPlugin();
-    return toRegionPluginRow(row);
+    return { ...toRegionPluginRow(row), cascadedCount };
   }
 
   async invalidateManifest(

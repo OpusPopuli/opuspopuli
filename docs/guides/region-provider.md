@@ -182,7 +182,29 @@ On startup, the service auto-discovers JSON config files and syncs them to the d
 UPDATE region_plugins SET enabled = true WHERE name = 'my-state';
 ```
 
-Only one local region can be enabled at a time. The federal plugin is always loaded alongside the active local plugin.
+Only one local region can be **active** at a time — the active region is the top-level state plugin (`parentRegionId: null`) that backs `regionInfo`. Its county sub-plugins (`parentRegionId` set) are separate rows that can be enabled independently and in bulk; they feed county-level syncs rather than becoming the active region. The federal plugin is always loaded alongside the active local plugin.
+
+#### Enabling via GraphQL (with cascade)
+
+Instead of raw SQL, admins toggle a plugin through the `updateRegionPlugin` mutation. County sub-plugins ship **`enabled: false`** and reference their state via `parentRegionId` (which equals the parent's `name` — e.g. `california-sonoma.parentRegionId = "california"`). To light up a whole state's counties in one call, pass `cascade: true`:
+
+```graphql
+mutation {
+  # Enable California AND every county under it (cascade descends one level).
+  updateRegionPlugin(name: "california", enabled: true, cascade: true) {
+    name
+    enabled
+    cascadedCount   # number of descendant plugins also toggled
+  }
+}
+```
+
+- `cascade: false` (the default) toggles only the named row — byte-for-byte the old single-row behavior. Backward compatible.
+- `cascade: true` also runs an `updateMany` over every row where `parentRegionId = <name>`, applying the **same** `enabled` value. It works in both directions: `enabled: false, cascade: true` shuts the whole state off.
+- `cascadedCount` reports how many descendants were touched (0 on a leaf plugin or when cascade is not requested).
+- Cascaded children are reflected in subsequent scoped and unscoped syncs — the region-worker re-reads enabled plugins from the DB before every sync run, and the region service hot-swaps its active plugin in the same call.
+
+Cascade currently descends exactly one level (state → county), matching the present hierarchy. There is intentionally **no parent-gate constraint** (enabling a child whose parent is disabled is not blocked) — see issue #886.
 
 ### Step 3: Restart and Sync
 

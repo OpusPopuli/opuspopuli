@@ -65,6 +65,12 @@ export type RegionPluginRow = {
   enabled: boolean;
   parentRegionId?: string;
   fipsCode?: string;
+  /**
+   * Number of descendant plugins also updated by a cascade toggle
+   * (`setRegionPluginEnabled(..., cascade)`). Present only on the row
+   * returned by a cascade mutation; undefined on plain list/lookup rows.
+   */
+  cascadedCount?: number;
 };
 
 export function toRegionPluginRow(r: {
@@ -296,8 +302,9 @@ export class RegionDomainService {
   setRegionPluginEnabled(
     name: string,
     enabled: boolean,
+    cascade = false,
   ): Promise<RegionPluginRow> {
-    return this.syncService.setRegionPluginEnabled(name, enabled);
+    return this.syncService.setRegionPluginEnabled(name, enabled, cascade);
   }
 
   /**

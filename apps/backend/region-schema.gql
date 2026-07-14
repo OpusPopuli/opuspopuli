@@ -161,6 +161,7 @@ type RegionPluginModel {
   enabled: Boolean!
   parentRegionId: String
   fipsCode: String
+  cascadedCount: Int
 }
 
 type SyncResultModel {
@@ -660,7 +661,7 @@ enum BillLifecycle {
 type Mutation {
   regeneratePropositionAnalysis(id: ID!): PropositionModel
   invalidateManifest(regionId: String!, sourceUrl: String!): Int!
-  updateRegionPlugin(name: String!, enabled: Boolean!): RegionPluginModel!
+  updateRegionPlugin(name: String!, enabled: Boolean!, cascade: Boolean = false): RegionPluginModel!
   syncRegionData(dataTypes: [DataType!], depth: SyncDepth, regionId: String, maxReps: Int, maxBills: Int): RegionSyncJob!
 }
 
