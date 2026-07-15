@@ -769,6 +769,171 @@ describe('RegionSyncService', () => {
         expect(res.outcome).toBe('fetch-failed');
         fetchSpy.mockRestore();
       });
+
+      it('returns extraction-empty when the LLM output has no JSON object (truncation) (#894)', async () => {
+        // Truncated mid-object → no balanced {…} → extractJsonObjectSlice
+        // returns undefined. This is the dominant maxTokens-truncation shape.
+        setProviders('{"votes": [{"chamber": "Assembly", "members": [');
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        const res = await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+        expect(res.outcome).toBe('extraction-empty');
+        expect(mockDb.billVote.createMany).not.toHaveBeenCalled();
+        fetchSpy.mockRestore();
+      });
+
+      it('returns extraction-unparseable when a balanced slice is invalid JSON (#894)', async () => {
+        // Balanced braces but invalid contents → slice returned, JSON.parse
+        // throws → distinct from the empty case.
+        setProviders('{"votes": [1 2 3]}');
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        const res = await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+        expect(res.outcome).toBe('extraction-unparseable');
+        expect(mockDb.billVote.createMany).not.toHaveBeenCalled();
+        fetchSpy.mockRestore();
+      });
+
+      it('defaults votes-extraction maxTokens to 8000 (#894)', async () => {
+        setProviders(JSON.stringify({ votes: [] }));
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+        const generate = (internals().llm as { generate: jest.Mock }).generate;
+        expect(generate).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ maxTokens: 8000 }),
+        );
+        fetchSpy.mockRestore();
+      });
+
+      it('lets a per-source llmMaxTokens override the default (#894)', async () => {
+        setProviders(JSON.stringify({ votes: [] }));
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          { llmMaxTokens: 12000 },
+          repIndex,
+        );
+        const generate = (internals().llm as { generate: jest.Mock }).generate;
+        expect(generate).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ maxTokens: 12000 }),
+        );
+        fetchSpy.mockRestore();
+      });
+    });
+
+    describe('runVotesPhase — throughput (#892)', () => {
+      type RunVotesFn = (
+        regionId: string,
+        allVotesUrls: Array<{ url: string; ds: Record<string, unknown> }>,
+        repIndex: Map<string, { id: string; chamber: string }>,
+      ) => Promise<{ updated: number }>;
+
+      const repIndex = new Map<string, { id: string; chamber: string }>();
+
+      const callRunVotes = (urls: string[]): Promise<{ updated: number }> =>
+        (
+          service as unknown as { runVotesPhase: RunVotesFn }
+        ).runVotesPhase.bind(service)(
+          'california',
+          urls.map((url) => ({ url, ds: {} })),
+          repIndex,
+        );
+
+      const setConcurrency = (n: number) => {
+        (
+          service as unknown as { billVotesConcurrency: number }
+        ).billVotesConcurrency = n;
+      };
+
+      const mkUrls = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `https://leginfo.legislature.ca.gov/faces/billVotesClient.xhtml?bill_id=2025202600AB${i}`,
+        );
+
+      /** Spy extractVotesOnlyPage, tracking max concurrent in-flight calls. */
+      const spyExtract = (outcomes?: string[]) => {
+        let inFlight = 0;
+        let maxInFlight = 0;
+        let call = 0;
+        jest
+          .spyOn(
+            service as unknown as {
+              extractVotesOnlyPage: (...a: unknown[]) => Promise<unknown>;
+            },
+            'extractVotesOnlyPage',
+          )
+          .mockImplementation(async () => {
+            inFlight++;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            await new Promise((r) => setTimeout(r, 5));
+            inFlight--;
+            const outcome = outcomes ? outcomes[call++] : 'votes-upserted';
+            return { outcome, count: outcome === 'votes-upserted' ? 3 : 0 };
+          });
+        return { getMax: () => maxInFlight };
+      };
+
+      it('runs bills in parallel batches when concurrency > 1 (max in-flight == concurrency)', async () => {
+        setConcurrency(3);
+        const { getMax } = spyExtract();
+
+        const result = await callRunVotes(mkUrls(7));
+
+        expect(getMax()).toBe(3);
+        expect(result.updated).toBe(7);
+      });
+
+      it('stays serial by default (max in-flight == 1)', async () => {
+        // No setConcurrency → constructor default of 1.
+        const { getMax } = spyExtract();
+
+        const result = await callRunVotes(mkUrls(4));
+
+        expect(getMax()).toBe(1);
+        expect(result.updated).toBe(4);
+      });
+
+      it('keeps the updated tally identical regardless of concurrency', async () => {
+        setConcurrency(3);
+        // 3 upserted, the rest non-success → only upserts count toward updated.
+        spyExtract([
+          'votes-upserted',
+          'shell-missing',
+          'votes-upserted',
+          'extraction-failed',
+          'votes-upserted',
+        ]);
+
+        const result = await callRunVotes(mkUrls(5));
+
+        expect(result.updated).toBe(3);
+      });
     });
   });
 
