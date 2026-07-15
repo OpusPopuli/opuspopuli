@@ -127,6 +127,31 @@ export interface BillExtractionParams {
 }
 
 /**
+ * Parameters for bill-votes-extraction prompt — produces roll-call vote
+ * data from a bill's dedicated vote-history page (billVotesClient.xhtml on
+ * leginfo.legislature.ca.gov). Distinct from bill-extraction: the source is
+ * the votes page, not the bill detail page, and the LLM is instructed to
+ * emit ONLY vote records (chamber-level roll-calls with a per-member array),
+ * never bill metadata. Issue #889.
+ *
+ * Variable shape MUST stay in lockstep with the `bill-votes-extraction`
+ * descriptor in prompt-service (src/prompts/prompts.service.ts) — including
+ * the explicit BILL_ID, which the votes page is keyed by.
+ */
+export interface BillVotesExtractionParams {
+  /** Region identifier (e.g. "california"). */
+  regionId: string;
+  /** URL of the votes page the HTML was scraped from. */
+  sourceUrl: string;
+  /** Legislative session, e.g. "2025-2026". */
+  sessionYear: string;
+  /** Raw bill_id query param keying the votes page (e.g. "202520260AB42"). */
+  billId: string;
+  /** Readable text of the votes page. */
+  html: string;
+}
+
+/**
  * Parameters for bill-analysis prompt — produces a structured plain-English
  * summary of a legislative bill for the personalization pipeline. The LLM
  * returns JSON of shape `{ plainEnglishSummary, topics[], whoItAffects[],

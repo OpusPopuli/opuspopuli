@@ -40,6 +40,7 @@ export type {
   RAGParams,
   CivicsExtractionParams,
   BillExtractionParams,
+  BillVotesExtractionParams,
   BillAnalysisParams,
   BillRelevanceExplanationParams,
   BillStatusSummaryParams,
