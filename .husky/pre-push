@@ -19,13 +19,26 @@ pnpm lint:sonar || exit 1
 # Run `pnpm audit --fix` or add a pnpm.overrides entry to resolve failures.
 echo ""
 echo "Running dependency vulnerability audit..."
-pnpm audit --prod --audit-level=high 2>&1
-AUDIT_EXIT=$?
+# `&& … || …` keeps the real exit code without tripping the hook's `set -e`
+# (husky runs this via `sh -e`, so a bare failing assignment would abort
+# the script before the 410-vs-CVE check below).
+AUDIT_OUT=$(pnpm audit --prod --audit-level=high 2>&1) && AUDIT_EXIT=0 || AUDIT_EXIT=$?
+printf '%s\n' "$AUDIT_OUT"
 if [ $AUDIT_EXIT -ne 0 ]; then
-  printf '\nPush blocked: HIGH or CRITICAL CVEs found in production dependencies.\n'
-  printf 'Fix with: pnpm audit --fix   or add a version override to package.json > pnpm.overrides\n'
-  printf 'Then run /op-security to confirm clean before pushing.\n'
-  exit 1
+  # npm retired the quick-audit endpoint (HTTP 410). Until pnpm is upgraded
+  # or this migrates to the bulk advisory endpoint, treat that specific
+  # transport failure as a non-blocking warning instead of blocking every
+  # push — it's an endpoint outage, not a CVE finding. A real HIGH/CRITICAL
+  # result exits non-zero WITHOUT this signature and still blocks below.
+  if printf '%s' "$AUDIT_OUT" | grep -qE 'ERR_PNPM_AUDIT_BAD_RESPONSE|being retired|410'; then
+    printf '\nWarning: dependency audit skipped — npm audit endpoint returned 410 (retired).\n'
+    printf 'Not blocking this push. Track the pnpm bulk-advisory-endpoint migration separately.\n'
+  else
+    printf '\nPush blocked: HIGH or CRITICAL CVEs found in production dependencies.\n'
+    printf 'Fix with: pnpm audit --fix   or add a version override to package.json > pnpm.overrides\n'
+    printf 'Then run /op-security to confirm clean before pushing.\n'
+    exit 1
+  fi
 fi
 
 # ── 5. Trivy filesystem scan ──────────────────────────────────────────────────

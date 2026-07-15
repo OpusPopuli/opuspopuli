@@ -405,6 +405,74 @@ describe("PromptClientService", () => {
     });
   });
 
+  describe("getBillVotesExtractionPrompt (#889)", () => {
+    // Cross-service contract guard: the variable map MUST match the
+    // bill-votes-extraction descriptor in prompt-service. Notably BILL_ID,
+    // which bill-extraction does NOT carry — the votes page is keyed by it.
+    const BASE = {
+      regionId: "california",
+      sourceUrl:
+        "https://leginfo.legislature.ca.gov/faces/billVotesClient.xhtml?bill_id=202520260AB42",
+      sessionYear: "2025-2026",
+      billId: "202520260AB42",
+      html: "<table>Ayes Count 79</table>",
+    };
+
+    const TEMPLATE = [
+      "Region: {{REGION_ID}}",
+      "Source URL: {{SOURCE_URL}}",
+      "Session: {{SESSION_YEAR}}",
+      "Bill ID: {{BILL_ID}}",
+      "HTML:",
+      "{{HTML}}",
+    ].join("\n");
+
+    it("composes bill-votes-extraction prompt with all interpolated fields, incl. BILL_ID", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-votes-extraction", TEMPLATE),
+      );
+
+      const result = await service.getBillVotesExtractionPrompt(BASE);
+
+      expect(result.promptText).toContain("Region: california");
+      expect(result.promptText).toContain(`Source URL: ${BASE.sourceUrl}`);
+      expect(result.promptText).toContain("Session: 2025-2026");
+      expect(result.promptText).toContain("Bill ID: 202520260AB42");
+      expect(result.promptText).toContain("Ayes Count 79");
+      expect(result.promptVersion).toBe("v1");
+      expect(result.promptHash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("reads the bill-votes-extraction template, not bill-extraction", async () => {
+      // Guards the core #889 defect: votes_only must NOT reuse the
+      // bill-metadata prompt.
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("bill-votes-extraction", TEMPLATE),
+      );
+
+      await service.getBillVotesExtractionPrompt(BASE);
+
+      expect(mockDb.promptTemplate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ name: "bill-votes-extraction" }),
+        }),
+      );
+    });
+
+    it("falls back to the hardcoded votes template (roll-call contract) when DB is empty", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValue(null);
+
+      const result = await service.getBillVotesExtractionPrompt(BASE);
+
+      // Fallback emits the same roll-call shape (members[] + position) so
+      // votes still extract in degraded mode.
+      expect(result.promptText).toContain("202520260AB42");
+      expect(result.promptText).toContain("members");
+      expect(result.promptText).toContain("position");
+      expect(result.promptVersion).toBe("v0");
+    });
+  });
+
   describe("getBillRelevanceExplanationPrompt (#745)", () => {
     // The variable shaping below MUST stay byte-for-byte identical to the
     // billRelevanceExplanation descriptor in prompt-service
