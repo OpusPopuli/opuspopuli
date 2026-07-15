@@ -411,6 +411,11 @@ export class RegionSyncService implements OnModuleDestroy {
       'BILL_ENRICHMENT_REQUEST_TIMEOUT_MS',
       120_000,
     );
+    this.billVotesConcurrency = readPositiveInt(
+      this.config,
+      'BILL_VOTES_CONCURRENCY',
+      1,
+    );
   }
 
   // Bill-enrichment throughput knobs (#889 follow-up). Defaults reproduce
@@ -423,6 +428,12 @@ export class RegionSyncService implements OnModuleDestroy {
   //    bills (~4.4% aborted); a generous cap converts those to successes.
   private readonly billEnrichmentConcurrency: number;
   private readonly billEnrichmentTimeoutMs: number;
+  // Votes-phase (Phase 3, votes_only) throughput knob (#892). Mirrors
+  // BILL_ENRICHMENT_CONCURRENCY: bills whose votes pages are fetched +
+  // LLM-extracted in parallel per batch. Only helps if the Ollama server
+  // also accepts parallel requests (OLLAMA_NUM_PARALLEL ≥ this); otherwise
+  // calls queue server-side. Default 1 reproduces the prior serial loop.
+  private readonly billVotesConcurrency: number;
 
   async onModuleDestroy(): Promise<void> {
     await this.cacheService.destroy();
@@ -1025,36 +1036,12 @@ export class RegionSyncService implements OnModuleDestroy {
     skippedTotal += extractCounts.skipped;
 
     // ─── Phase 3/6 — votes_only ─────────────────────────────────────
-    const votesTracker = billSyncTracker(
-      this.logger,
-      'votes_only',
-      allVotesUrls.length,
-      { region: regionId },
+    const votesResult = await this.runVotesPhase(
+      regionId,
+      allVotesUrls,
+      repIndex,
     );
-    for (const { url, ds } of allVotesUrls) {
-      const externalId = this.safeBillIdFromUrl(url) ?? null;
-      const billNumber = billNumberFromExternalId(externalId ?? undefined);
-      const { outcome, count } = await this.extractVotesOnlyPage(
-        regionId,
-        url,
-        ds,
-        repIndex,
-      );
-      // Report the TRUE per-bill outcome (#889). The extraCounter bucket
-      // (== the outcome string) makes the phase-complete summary show the
-      // distribution, e.g. "... 4998 shell-missing, 20 extraction-failed".
-      const mapped = VOTES_OUTCOME_TRACKING[outcome];
-      votesTracker.item({
-        name: billNumber,
-        externalId,
-        outcomeLabel:
-          outcome === 'votes-upserted' ? `votes upserted (${count})` : outcome,
-        outcome: mapped.counter,
-        extraCounters: [outcome],
-      });
-      if (outcome === 'votes-upserted') updated++;
-    }
-    votesTracker.complete();
+    updated += votesResult.updated;
 
     // ─── Phase 4/6 — stage_backfill ────────────────────────────────
     if (stagePatterns.length > 0) {
@@ -1564,6 +1551,79 @@ export class RegionSyncService implements OnModuleDestroy {
       outcomeLabel,
       outcome,
     });
+  }
+
+  /**
+   * Phase 3 (votes_only): fetch + LLM-extract each bill's votes page and
+   * upsert per-member rows. Runs in bounded-concurrency batches (#892) —
+   * extractVotesOnlyPage is self-contained (findUnique → fetch → LLM →
+   * linkBillVotes, all per-bill with no shared mutable state), so votes
+   * pages are safe to run in parallel. Batch results are applied in slice
+   * order, so tracker lines and the `updated` tally stay deterministic —
+   * identical to the prior serial loop. concurrency=1 == that serial loop,
+   * and only helps if the Ollama server accepts parallel requests
+   * (OLLAMA_NUM_PARALLEL ≥ concurrency); otherwise calls queue server-side.
+   */
+  private async runVotesPhase(
+    regionId: string,
+    allVotesUrls: Array<{ url: string; ds: DataSourceConfig }>,
+    repIndex: Map<string, { id: string; chamber: string }>,
+  ): Promise<{ updated: number }> {
+    const votesTracker = billSyncTracker(
+      this.logger,
+      'votes_only',
+      allVotesUrls.length,
+      { region: regionId },
+    );
+    const concurrency = this.billVotesConcurrency;
+    if (concurrency > 1) {
+      votesTracker.note(`extracting votes with concurrency=${concurrency}`);
+    }
+    const updatedRef = { total: 0 };
+    for (let i = 0; i < allVotesUrls.length; i += concurrency) {
+      const batch = allVotesUrls.slice(i, i + concurrency);
+      const results = await Promise.all(
+        batch.map(({ url, ds }) =>
+          this.extractVotesOnlyPage(regionId, url, ds, repIndex),
+        ),
+      );
+      results.forEach((result, j) => {
+        this.applyVotesResult(result, batch[j].url, updatedRef, votesTracker);
+      });
+    }
+    votesTracker.complete();
+    return { updated: updatedRef.total };
+  }
+
+  /**
+   * Fold one votes_only extraction into the phase tracker and the boxed
+   * `updated` tally. Extracted from the Phase 3 batch loop (#892) so
+   * runVotesPhase stays under the SonarCloud cognitive-complexity gate.
+   * Derives externalId/billNumber from the URL here (not in the parallel
+   * map) so the tracker line is emitted in deterministic slice order.
+   */
+  private applyVotesResult(
+    result: VotesExtractionResult,
+    url: string,
+    updatedRef: { total: number },
+    tracker: SyncPhaseTracker<BillSyncPhase>,
+  ): void {
+    const externalId = this.safeBillIdFromUrl(url) ?? null;
+    const billNumber = billNumberFromExternalId(externalId ?? undefined);
+    const { outcome, count } = result;
+    // Report the TRUE per-bill outcome (#889). The extraCounter bucket
+    // (== the outcome string) makes the phase-complete summary show the
+    // distribution, e.g. "... 4998 shell-missing, 20 extraction-failed".
+    const mapped = VOTES_OUTCOME_TRACKING[outcome];
+    tracker.item({
+      name: billNumber,
+      externalId,
+      outcomeLabel:
+        outcome === 'votes-upserted' ? `votes upserted (${count})` : outcome,
+      outcome: mapped.counter,
+      extraCounters: [outcome],
+    });
+    if (outcome === 'votes-upserted') updatedRef.total += 1;
   }
 
   private async enrichSingleBill(

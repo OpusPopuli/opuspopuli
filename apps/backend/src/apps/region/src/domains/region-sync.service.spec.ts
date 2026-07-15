@@ -770,6 +770,97 @@ describe('RegionSyncService', () => {
         fetchSpy.mockRestore();
       });
     });
+
+    describe('runVotesPhase — throughput (#892)', () => {
+      type RunVotesFn = (
+        regionId: string,
+        allVotesUrls: Array<{ url: string; ds: Record<string, unknown> }>,
+        repIndex: Map<string, { id: string; chamber: string }>,
+      ) => Promise<{ updated: number }>;
+
+      const repIndex = new Map<string, { id: string; chamber: string }>();
+
+      const callRunVotes = (urls: string[]): Promise<{ updated: number }> =>
+        (
+          service as unknown as { runVotesPhase: RunVotesFn }
+        ).runVotesPhase.bind(service)(
+          'california',
+          urls.map((url) => ({ url, ds: {} })),
+          repIndex,
+        );
+
+      const setConcurrency = (n: number) => {
+        (
+          service as unknown as { billVotesConcurrency: number }
+        ).billVotesConcurrency = n;
+      };
+
+      const mkUrls = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `https://leginfo.legislature.ca.gov/faces/billVotesClient.xhtml?bill_id=2025202600AB${i}`,
+        );
+
+      /** Spy extractVotesOnlyPage, tracking max concurrent in-flight calls. */
+      const spyExtract = (outcomes?: string[]) => {
+        let inFlight = 0;
+        let maxInFlight = 0;
+        let call = 0;
+        jest
+          .spyOn(
+            service as unknown as {
+              extractVotesOnlyPage: (...a: unknown[]) => Promise<unknown>;
+            },
+            'extractVotesOnlyPage',
+          )
+          .mockImplementation(async () => {
+            inFlight++;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            await new Promise((r) => setTimeout(r, 5));
+            inFlight--;
+            const outcome = outcomes ? outcomes[call++] : 'votes-upserted';
+            return { outcome, count: outcome === 'votes-upserted' ? 3 : 0 };
+          });
+        return { getMax: () => maxInFlight };
+      };
+
+      it('runs bills in parallel batches when concurrency > 1 (max in-flight == concurrency)', async () => {
+        setConcurrency(3);
+        const { getMax } = spyExtract();
+
+        const result = await callRunVotes(mkUrls(7));
+
+        expect(getMax()).toBe(3);
+        expect(result.updated).toBe(7);
+      });
+
+      it('stays serial by default (max in-flight == 1)', async () => {
+        // No setConcurrency → constructor default of 1.
+        const { getMax } = spyExtract();
+
+        const result = await callRunVotes(mkUrls(4));
+
+        expect(getMax()).toBe(1);
+        expect(result.updated).toBe(4);
+      });
+
+      it('keeps the updated tally identical regardless of concurrency', async () => {
+        setConcurrency(3);
+        // 3 upserted, the rest non-success → only upserts count toward updated.
+        spyExtract([
+          'votes-upserted',
+          'shell-missing',
+          'votes-upserted',
+          'extraction-failed',
+          'votes-upserted',
+        ]);
+
+        const result = await callRunVotes(mkUrls(5));
+
+        expect(result.updated).toBe(3);
+      });
+    });
   });
 
   describe('syncAll', () => {
