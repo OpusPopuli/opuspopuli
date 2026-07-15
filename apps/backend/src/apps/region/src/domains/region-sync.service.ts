@@ -386,8 +386,13 @@ export class RegionSyncService implements OnModuleDestroy {
   async setRegionPluginEnabled(
     name: string,
     enabled: boolean,
+    cascade = false,
   ): Promise<RegionPluginRow> {
-    return this.regionPluginService.setRegionPluginEnabled(name, enabled);
+    return this.regionPluginService.setRegionPluginEnabled(
+      name,
+      enabled,
+      cascade,
+    );
   }
 
   /** Delegate — see RegionPluginService.invalidateManifest. */

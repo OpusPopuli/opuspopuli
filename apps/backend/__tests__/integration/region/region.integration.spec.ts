@@ -1685,6 +1685,167 @@ describe('Region Integration Tests', () => {
     });
   });
 
+  // ============================================
+  // GraphQL: region plugin cascade (#886)
+  // ============================================
+
+  describe('Region plugin cascade enable/disable (#886)', () => {
+    /**
+     * Seeds a state parent (`california`, enabled) plus two county children
+     * that ship `enabled: false` and reference the parent via
+     * `parentRegionId === parent.name`. Mirrors the inaugural us-ca node,
+     * where all 58 counties register disabled under the enabled state.
+     */
+    async function seedCascadeHierarchy(): Promise<void> {
+      const db = await getDbService();
+      await db.regionPlugin.deleteMany({});
+      const countyConfig = (regionId: string) => ({
+        regionId,
+        regionName: regionId,
+        description: `${regionId} county plugin (test stub)`,
+        timezone: 'America/Los_Angeles',
+        stateCode: 'CA',
+        dataSources: [
+          {
+            url: `https://example.test/${regionId}-reps`,
+            dataType: 'representatives',
+            contentGoal: 'Test stub — extract county reps',
+          },
+        ],
+      });
+      await db.regionPlugin.createMany({
+        data: [
+          {
+            name: 'california',
+            displayName: 'California',
+            description: 'CA state plugin',
+            version: '1.0.0',
+            enabled: true,
+            config: {
+              regionId: 'california',
+              regionName: 'California',
+              description: 'CA state plugin (test stub)',
+              timezone: 'America/Los_Angeles',
+              stateCode: 'CA',
+              dataSources: [
+                {
+                  url: 'https://example.test/ca-bills',
+                  dataType: 'bills',
+                  contentGoal: 'Test stub — extract bills',
+                },
+              ],
+            },
+            parentRegionId: null,
+            fipsCode: '06',
+          },
+          {
+            name: 'california-sonoma',
+            displayName: 'Sonoma County',
+            description: 'Sonoma County plugin',
+            version: '1.0.0',
+            enabled: false,
+            config: countyConfig('california-sonoma'),
+            parentRegionId: 'california',
+            fipsCode: '06097',
+          },
+          {
+            name: 'california-marin',
+            displayName: 'Marin County',
+            description: 'Marin County plugin',
+            version: '1.0.0',
+            enabled: false,
+            config: countyConfig('california-marin'),
+            parentRegionId: 'california',
+            fipsCode: '06041',
+          },
+        ],
+      });
+    }
+
+    const cascadeMutation = (
+      name: string,
+      enabled: boolean,
+      cascade: boolean,
+    ) => `
+      mutation {
+        updateRegionPlugin(name: "${name}", enabled: ${enabled}, cascade: ${cascade}) {
+          name
+          enabled
+          cascadedCount
+        }
+      }
+    `;
+
+    async function childEnabledFlags(): Promise<boolean[]> {
+      const db = await getDbService();
+      const children = await db.regionPlugin.findMany({
+        where: { parentRegionId: 'california' },
+        orderBy: { name: 'asc' },
+        select: { enabled: true },
+      });
+      return children.map((c) => c.enabled);
+    }
+
+    it('cascade:true enable flips every county child to enabled and reports the count', async () => {
+      await seedCascadeHierarchy();
+
+      // Precondition: both counties start disabled.
+      expect(await childEnabledFlags()).toEqual([false, false]);
+
+      const result = await adminGraphqlRequest<{
+        updateRegionPlugin: { enabled: boolean; cascadedCount: number };
+      }>(cascadeMutation('california', true, true));
+      assertNoErrors(result);
+      expect(result.data.updateRegionPlugin.enabled).toBe(true);
+      expect(result.data.updateRegionPlugin.cascadedCount).toBe(2);
+
+      // Children are now enabled in the DB — a subsequent scoped/unscoped
+      // county sync (which filters on enabled: true) will pick them up.
+      expect(await childEnabledFlags()).toEqual([true, true]);
+    });
+
+    it('cascade:true disable shuts the whole subtree back off', async () => {
+      await seedCascadeHierarchy();
+      // Start from a fully-enabled subtree.
+      await adminGraphqlRequest(cascadeMutation('california', true, true));
+      expect(await childEnabledFlags()).toEqual([true, true]);
+
+      const result = await adminGraphqlRequest<{
+        updateRegionPlugin: { enabled: boolean; cascadedCount: number };
+      }>(cascadeMutation('california', false, true));
+      assertNoErrors(result);
+      expect(result.data.updateRegionPlugin.cascadedCount).toBe(2);
+      expect(await childEnabledFlags()).toEqual([false, false]);
+    });
+
+    it('default (no cascade) leaves children untouched — backward compatible', async () => {
+      await seedCascadeHierarchy();
+      const db = await getDbService();
+      // Precondition: children ship disabled from the seed.
+      expect(await childEnabledFlags()).toEqual([false, false]);
+      // Disable the parent WITHOUT cascade; children must stay as-seeded.
+      await db.regionPlugin.update({
+        where: { name: 'california' },
+        data: { enabled: false },
+      });
+
+      const result = await adminGraphqlRequest<{
+        updateRegionPlugin: { cascadedCount: number };
+      }>(`
+        mutation {
+          updateRegionPlugin(name: "california", enabled: true) {
+            name
+            cascadedCount
+          }
+        }
+      `);
+      assertNoErrors(result);
+      // No cascade requested → no descendants touched, count is 0.
+      expect(result.data.updateRegionPlugin.cascadedCount).toBe(0);
+      expect(await childEnabledFlags()).toEqual([false, false]);
+    });
+  });
+
   describe('Database cleanup', () => {
     it('should have clean database at start of each test', async () => {
       await createRepresentative({ name: 'Cleanup Test Rep' });
