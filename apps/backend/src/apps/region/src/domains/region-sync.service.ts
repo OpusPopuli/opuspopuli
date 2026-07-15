@@ -5,6 +5,7 @@ import {
   OnModuleDestroy,
   Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   DataType,
   SyncDepth,
@@ -26,6 +27,7 @@ import {
   type DataSourceConfig,
   type DeclarativeRegionConfig,
   type Bill,
+  type BillVotePosition,
 } from '@opuspopuli/common';
 import {
   PromptClientService,
@@ -63,6 +65,7 @@ import {
   type SyncPhaseTracker,
   type BillSyncPhase,
 } from './sync-phase-logger';
+import { readPositiveInt } from './config-helpers';
 
 /**
  * Parse "AB 96" out of the externalId "202520260AB96" (CA leginfo format)
@@ -118,13 +121,96 @@ function billNumberFromExternalId(
 }
 
 /**
+ * Distinct outcomes of a single votes_only page extraction (#889). Kept
+ * granular so the phase summary reports the real distribution rather than
+ * the previous blanket "no bill shell yet".
+ */
+type VotesOutcome =
+  | 'votes-upserted'
+  | 'no-bill-id'
+  | 'shell-missing'
+  | 'providers-unavailable'
+  | 'fetch-failed'
+  | 'no-votes-on-page'
+  | 'extraction-failed';
+
+interface VotesExtractionResult {
+  outcome: VotesOutcome;
+  /** Number of per-member vote rows upserted; 0 for every non-success outcome. */
+  count: number;
+}
+
+/**
+ * Maps each votes outcome onto its phase-tracker counter bucket. Success →
+ * 'updated'; genuine failures (providers down, fetch/extraction errors) →
+ * 'error'; benign no-ops (missing shell, no votes on page, unparseable URL)
+ * → 'skipped'. The outcome string itself is also passed as an extraCounter
+ * so the summary breaks the total down by reason.
+ */
+const VOTES_OUTCOME_TRACKING: Record<
+  VotesOutcome,
+  { counter: 'updated' | 'skipped' | 'error' }
+> = {
+  'votes-upserted': { counter: 'updated' },
+  'no-bill-id': { counter: 'skipped' },
+  'shell-missing': { counter: 'skipped' },
+  'no-votes-on-page': { counter: 'skipped' },
+  'providers-unavailable': { counter: 'error' },
+  'fetch-failed': { counter: 'error' },
+  'extraction-failed': { counter: 'error' },
+};
+
+/** One chamber-level roll-call record in a bill-votes-extraction response. */
+interface RollCallRecord {
+  chamber?: string;
+  date?: string;
+  motionText?: string;
+  yesCount?: number;
+  noCount?: number;
+  members?: Array<{ name?: string; position?: string; party?: string }>;
+}
+
+/** Raw shape emitted by the bill-votes-extraction prompt (chamber roll-call). */
+interface RollCallExtraction {
+  skip?: boolean;
+  votes?: RollCallRecord[];
+}
+
+/** Outcome of enriching a single bill (summarize phase). */
+type EnrichmentOutcome = 'enriched' | 'skipped' | 'failed';
+
+const VALID_VOTE_POSITIONS: ReadonlySet<string> = new Set<BillVotePosition>([
+  'yes',
+  'no',
+  'abstain',
+  'absent',
+  'excused',
+  'no_vote',
+]);
+
+/**
+ * Coerce a raw LLM position string to a valid BillVotePosition, or null when
+ * unrecognized (so the member row is dropped, never fabricated).
+ */
+function normalizeVotePosition(
+  raw: string | undefined,
+): BillVotePosition | null {
+  if (!raw) return null;
+  const v = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return VALID_VOTE_POSITIONS.has(v) ? (v as BillVotePosition) : null;
+}
+
+/**
  * Map the enrich-single-bill result onto a phase tracker outcome shape.
  * Lifted to a named helper so the call site avoids two nested ternaries
  * (one for label, one for counter bucket) — sonarjs/no-nested-conditional
  * trips on the inline form.
  */
 function describeEnrichmentResult(
-  outcome: 'enriched' | 'skipped' | 'failed',
+  outcome: EnrichmentOutcome,
   tokensUsed: number,
 ): {
   outcomeLabel: string;
@@ -304,7 +390,39 @@ export class RegionSyncService implements OnModuleDestroy {
     private readonly campaignFinanceSyncService?: CampaignFinanceSyncService,
     @Optional()
     private readonly civicsSyncService?: CivicsSyncService,
-  ) {}
+    // Optional so existing standalone test modules (which don't register
+    // ConfigService) resolve `undefined` → readPositiveInt returns the
+    // fallback, preserving default behavior with no test-module changes.
+    @Optional() private readonly config?: ConfigService,
+  ) {
+    // Assigned in the constructor body, not as field initializers: `config`
+    // is a same-class parameter property, which TS assigns only once the
+    // body runs — a field initializer reading `this.config` fails with
+    // TS2729 (used-before-init). (bio-generator can use field initializers
+    // because its `config` comes from a base class via super(), which
+    // completes before subclass field initializers run.)
+    this.billEnrichmentConcurrency = readPositiveInt(
+      this.config,
+      'BILL_ENRICHMENT_CONCURRENCY',
+      1,
+    );
+    this.billEnrichmentTimeoutMs = readPositiveInt(
+      this.config,
+      'BILL_ENRICHMENT_REQUEST_TIMEOUT_MS',
+      120_000,
+    );
+  }
+
+  // Bill-enrichment throughput knobs (#889 follow-up). Defaults reproduce
+  // the prior serial, provider-default-timeout behavior when unset.
+  //  - BILL_ENRICHMENT_CONCURRENCY: bills enriched in parallel per batch.
+  //    Only helps if the Ollama server also accepts parallel requests
+  //    (OLLAMA_NUM_PARALLEL ≥ this); otherwise calls queue server-side.
+  //  - BILL_ENRICHMENT_REQUEST_TIMEOUT_MS: per-bill LLM timeout. The
+  //    provider default is too short for the node's largest full-text
+  //    bills (~4.4% aborted); a generous cap converts those to successes.
+  private readonly billEnrichmentConcurrency: number;
+  private readonly billEnrichmentTimeoutMs: number;
 
   async onModuleDestroy(): Promise<void> {
     await this.cacheService.destroy();
@@ -916,28 +1034,25 @@ export class RegionSyncService implements OnModuleDestroy {
     for (const { url, ds } of allVotesUrls) {
       const externalId = this.safeBillIdFromUrl(url) ?? null;
       const billNumber = billNumberFromExternalId(externalId ?? undefined);
-      const result = await this.extractVotesOnlyPage(
+      const { outcome, count } = await this.extractVotesOnlyPage(
         regionId,
         url,
         ds,
         repIndex,
       );
-      if (result === 'updated') {
-        votesTracker.item({
-          name: billNumber,
-          externalId,
-          outcomeLabel: 'votes upserted',
-          outcome: 'updated',
-        });
-        updated++;
-      } else {
-        // Most votes URLs land on bills without a shell yet — log them
-        // as itemUnknown so the count stays visible in the summary.
-        votesTracker.itemUnknown(
-          `no bill shell yet for ${externalId ?? 'unknown'}`,
-          externalId,
-        );
-      }
+      // Report the TRUE per-bill outcome (#889). The extraCounter bucket
+      // (== the outcome string) makes the phase-complete summary show the
+      // distribution, e.g. "... 4998 shell-missing, 20 extraction-failed".
+      const mapped = VOTES_OUTCOME_TRACKING[outcome];
+      votesTracker.item({
+        name: billNumber,
+        externalId,
+        outcomeLabel:
+          outcome === 'votes-upserted' ? `votes upserted (${count})` : outcome,
+        outcome: mapped.counter,
+        extraCounters: [outcome],
+      });
+      if (outcome === 'votes-upserted') updated++;
     }
     votesTracker.complete();
 
@@ -1365,30 +1480,42 @@ export class RegionSyncService implements OnModuleDestroy {
     }
 
     const counts = { enriched: 0, skipped: 0, failed: 0 };
-    let totalTokens = 0;
+    const tokensRef = { total: 0 };
     const startMs = Date.now();
 
     const stageIdSet = new Set(lifecycleStages.map((s) => s.id));
-    for (const bill of candidates) {
-      const result = await this.enrichSingleBill(
-        bill,
-        stagePatterns,
-        lifecycleStages,
-        stageIdSet,
+    const concurrency = this.billEnrichmentConcurrency;
+    if (concurrency > 1) {
+      tracker.note(`enriching with concurrency=${concurrency}`);
+    }
+    // Bounded-concurrency batches (#889 follow-up). enrichSingleBill is
+    // self-contained and persists per-bill (writeStatusSummary) with no
+    // shared mutable state, so bills are safe to run in parallel. Counter
+    // and tracker updates happen after each batch resolves, in order, so
+    // tallies stay deterministic. concurrency=1 == the prior serial loop.
+    for (let i = 0; i < candidates.length; i += concurrency) {
+      const batch = candidates.slice(i, i + concurrency);
+      const results = await Promise.all(
+        batch.map((bill) =>
+          this.enrichSingleBill(
+            bill,
+            stagePatterns,
+            lifecycleStages,
+            stageIdSet,
+          ),
+        ),
       );
-      counts[result.outcome] += 1;
-      totalTokens += result.tokensUsed;
-      const { outcomeLabel, outcome } = describeEnrichmentResult(
-        result.outcome,
-        result.tokensUsed,
-      );
-      tracker.item({
-        name: bill.billNumber,
-        externalId: null,
-        outcomeLabel,
-        outcome,
+      results.forEach((result, j) => {
+        this.applyEnrichmentResult(
+          result,
+          batch[j],
+          counts,
+          tokensRef,
+          tracker,
+        );
       });
     }
+    const totalTokens = tokensRef.total;
 
     const totalDurationMs = Date.now() - startMs;
     tracker.complete();
@@ -1412,13 +1539,40 @@ export class RegionSyncService implements OnModuleDestroy {
     return counts;
   }
 
+  /**
+   * Fold one enrich result into the running tallies and emit its tracker
+   * line. Extracted from the batch loop so enrichBillSummaries stays under
+   * the SonarCloud cognitive-complexity gate. `tokensRef` is a boxed
+   * accumulator so the running total survives across batches.
+   */
+  private applyEnrichmentResult(
+    result: { outcome: EnrichmentOutcome; tokensUsed: number },
+    bill: { billNumber: string },
+    counts: { enriched: number; skipped: number; failed: number },
+    tokensRef: { total: number },
+    tracker: SyncPhaseTracker<BillSyncPhase>,
+  ): void {
+    counts[result.outcome] += 1;
+    tokensRef.total += result.tokensUsed;
+    const { outcomeLabel, outcome } = describeEnrichmentResult(
+      result.outcome,
+      result.tokensUsed,
+    );
+    tracker.item({
+      name: bill.billNumber,
+      externalId: null,
+      outcomeLabel,
+      outcome,
+    });
+  }
+
   private async enrichSingleBill(
     bill: BillEnrichmentCandidate,
     stagePatterns: StagePattern[],
     lifecycleStages: LifecycleStageInput[],
     stageIdSet: Set<string>,
   ): Promise<{
-    outcome: 'enriched' | 'skipped' | 'failed';
+    outcome: EnrichmentOutcome;
     tokensUsed: number;
   }> {
     if (!bill.fullTextUrl) {
@@ -1449,6 +1603,9 @@ export class RegionSyncService implements OnModuleDestroy {
       const llmResult = await this.llm!.generate(promptText, {
         maxTokens: 2000,
         temperature: 0.1,
+        // Provider default is too short for the largest full-text bills
+        // (#889 follow-up) — ~4.4% aborted without this. Env-tunable.
+        requestTimeoutMs: this.billEnrichmentTimeoutMs,
       });
       const llmMs = Date.now() - llmStart;
       const tokensUsed = llmResult.tokensUsed ?? 0;
@@ -2100,38 +2257,63 @@ export class RegionSyncService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Per-bill outcome of votes_only extraction. Split out (#889) so the
+   * caller can report the TRUE reason instead of blanket-logging
+   * "no bill shell yet" — which conflated shell-missing, no-votes, and
+   * extraction failures and masked a real extraction bug as a lookup miss.
+   */
   private async extractVotesOnlyPage(
     regionId: string,
     sourceUrl: string,
     ds: DataSourceConfig,
     repIndex: Map<string, { id: string; chamber: string }>,
-  ): Promise<'updated' | 'failed' | 'skipped'> {
-    if (!this.promptClient || !this.llm) return 'failed';
+  ): Promise<VotesExtractionResult> {
+    if (!this.promptClient || !this.llm) {
+      return { outcome: 'providers-unavailable', count: 0 };
+    }
+
+    let billIdParam: string | null;
     try {
-      const billIdParam = new URL(sourceUrl).searchParams.get('bill_id');
-      if (!billIdParam) return 'skipped';
+      billIdParam = new URL(sourceUrl).searchParams.get('bill_id');
+    } catch {
+      return { outcome: 'no-bill-id', count: 0 };
+    }
+    if (!billIdParam) return { outcome: 'no-bill-id', count: 0 };
 
-      const bill = await this.db.bill.findUnique({
-        where: { externalId: billIdParam },
-        select: { id: true },
-      });
-      if (!bill) {
-        this.logger.debug(
-          `Bills: votes page skipped — no bill record yet for ${billIdParam}`,
-        );
-        return 'skipped';
-      }
+    const bill = await this.db.bill.findUnique({
+      where: { externalId: billIdParam },
+      select: { id: true },
+    });
+    if (!bill) return { outcome: 'shell-missing', count: 0 };
 
+    // Fetch is a separate failure mode from extraction — a votes page that
+    // 404s or times out shouldn't read as "extraction-failed".
+    let content: string;
+    try {
       const html = await this.fetchUrlText(sourceUrl);
-      const content = this.htmlToReadableText(html);
+      content = this.htmlToReadableText(html);
+    } catch (e) {
+      this.logger.warn(
+        `Bills: votes page fetch failed for ${sourceUrl}: ${(e as Error).message}`,
+      );
+      return { outcome: 'fetch-failed', count: 0 };
+    }
+
+    try {
       const sessionYear = this.inferSessionYear(sourceUrl);
 
-      const { promptText } = await this.promptClient.getBillExtractionPrompt({
-        regionId,
-        sourceUrl,
-        sessionYear,
-        html: content,
-      });
+      // Votes-specific prompt (#889). Previously this reused
+      // getBillExtractionPrompt — a bill-METADATA prompt — which never
+      // emitted a votes[] array, so every bill extracted 0 votes.
+      const { promptText } =
+        await this.promptClient.getBillVotesExtractionPrompt({
+          regionId,
+          sourceUrl,
+          sessionYear,
+          billId: billIdParam,
+          html: content,
+        });
 
       const llmResult = await this.llm.generate(promptText, {
         maxTokens: ds.llmMaxTokens ?? 4000,
@@ -2140,28 +2322,101 @@ export class RegionSyncService implements OnModuleDestroy {
       });
 
       const candidate = extractJsonObjectSlice(llmResult.text);
-      if (!candidate) return 'failed';
+      if (!candidate) return { outcome: 'extraction-failed', count: 0 };
 
-      let raw: { votes?: Bill['votes'] };
+      let raw: RollCallExtraction;
       try {
-        raw = JSON.parse(candidate) as { votes?: Bill['votes'] };
+        raw = JSON.parse(candidate) as RollCallExtraction;
       } catch {
-        return 'failed';
+        return { outcome: 'extraction-failed', count: 0 };
       }
 
-      if (!raw.votes?.length) return 'skipped';
+      // The votes template emits chamber-level roll-call records; flatten to
+      // the per-member BillVote[] shape linkBillVotes / bill_votes expect.
+      const votes = this.flattenRollCall(raw, billIdParam, sourceUrl);
+      if (votes.length === 0) return { outcome: 'no-votes-on-page', count: 0 };
 
-      await this.linkBillVotes(bill.id, raw.votes, repIndex, sourceUrl);
+      await this.linkBillVotes(bill.id, votes, repIndex, sourceUrl);
       this.logger.log(
-        `Bills: merged ${raw.votes.length} vote(s) for ${billIdParam}`,
+        `Bills: merged ${votes.length} vote(s) for ${billIdParam}`,
       );
-      return 'updated';
+      return { outcome: 'votes-upserted', count: votes.length };
     } catch (e) {
       this.logger.warn(
         `Bills: votes extraction failed for ${sourceUrl}: ${(e as Error).message}`,
       );
-      return 'failed';
+      return { outcome: 'extraction-failed', count: 0 };
     }
+  }
+
+  /**
+   * Flatten the votes-extraction roll-call shape
+   * `{ votes: [{ chamber, date, motionText, members: [{ name, position }] }] }`
+   * into the flat per-member `BillVote[]` the linker consumes. Chamber-level
+   * yesCount/noCount tallies are not persisted (the bill_votes table is
+   * per-member); members with an unrecognized position — and whole records
+   * with a missing/unparseable `date` — are dropped rather than fabricated
+   * (`voteDate` is a NOT NULL DATE column; an Invalid Date would reject the
+   * entire per-bill insert). Returns [] on `{ skip: true }` or absent votes.
+   */
+  private flattenRollCall(
+    raw: RollCallExtraction,
+    billExternalId: string,
+    sourceUrl: string,
+  ): Bill['votes'] {
+    if (raw.skip || !Array.isArray(raw.votes)) return [];
+    const flat: Bill['votes'] = [];
+    for (const record of raw.votes) {
+      if (!record || !Array.isArray(record.members)) continue;
+      // Drop the whole record if the date is missing or unparseable — a
+      // NOT NULL @db.Date column can't take an Invalid Date, and one bad
+      // row would abort createMany for every vote on the bill.
+      const voteDate = record.date ? new Date(record.date) : new Date(NaN);
+      if (Number.isNaN(voteDate.getTime())) continue;
+      const rows = this.flattenRecordMembers(
+        record,
+        voteDate,
+        billExternalId,
+        sourceUrl,
+      );
+      // Surface the "parsed a roll-call but kept nothing" case — it's an
+      // extraction-quality signal, not a benign no-votes page (#889 S2).
+      if (record.members.length > 0 && rows.length === 0) {
+        this.logger.debug(
+          `Bills: votes record for ${billExternalId} had ${record.members.length} member(s) but none survived normalization`,
+        );
+      }
+      flat.push(...rows);
+    }
+    return flat;
+  }
+
+  /**
+   * Map one roll-call record's members to flat BillVote rows, dropping any
+   * member with a missing name or unrecognized position (never fabricated).
+   * Extracted from flattenRollCall to keep both under the complexity gate.
+   */
+  private flattenRecordMembers(
+    record: RollCallRecord,
+    voteDate: Date,
+    billExternalId: string,
+    sourceUrl: string,
+  ): Bill['votes'] {
+    const rows: Bill['votes'] = [];
+    for (const m of record.members ?? []) {
+      const position = normalizeVotePosition(m?.position);
+      if (!m?.name || !position) continue;
+      rows.push({
+        billExternalId,
+        representativeName: m.name,
+        chamber: record.chamber ?? '',
+        voteDate,
+        position,
+        motionText: record.motionText ?? undefined,
+        sourceUrl,
+      });
+    }
+    return rows;
   }
 
   private buildBillExternalId(raw: Partial<Bill>): string {

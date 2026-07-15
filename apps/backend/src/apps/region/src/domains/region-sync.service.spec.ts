@@ -459,6 +459,319 @@ describe('RegionSyncService', () => {
     });
   });
 
+  describe('votes extraction (#889)', () => {
+    // Access the private methods under test via a narrow cast — same
+    // approach the status-recheck suite uses for fetchUrlText.
+    type VotesInternals = {
+      flattenRollCall: (
+        raw: unknown,
+        billExternalId: string,
+        sourceUrl: string,
+      ) => Array<{
+        representativeName: string;
+        chamber: string;
+        position: string;
+        voteDate: Date;
+        motionText?: string;
+      }>;
+      extractVotesOnlyPage: (
+        regionId: string,
+        sourceUrl: string,
+        ds: Record<string, unknown>,
+        repIndex: Map<string, { id: string; chamber: string }>,
+      ) => Promise<{ outcome: string; count: number }>;
+      promptClient?: unknown;
+      llm?: unknown;
+    };
+
+    const internals = () => service as unknown as VotesInternals;
+    const VOTES_URL =
+      'https://leginfo.legislature.ca.gov/faces/billVotesClient.xhtml?bill_id=202520260AB42';
+
+    describe('flattenRollCall', () => {
+      it('flattens chamber roll-call records into per-member rows', () => {
+        const raw = {
+          billId: '202520260AB42',
+          votes: [
+            {
+              chamber: 'Assembly',
+              date: '2025-05-01',
+              motionText: 'Do Pass',
+              yesCount: 2,
+              noCount: 1,
+              members: [
+                { name: 'Alice Smith', position: 'yes', party: 'D' },
+                { name: 'Bob Jones', position: 'no', party: 'R' },
+              ],
+            },
+          ],
+        };
+
+        const flat = internals().flattenRollCall(
+          raw,
+          '202520260AB42',
+          VOTES_URL,
+        );
+
+        expect(flat).toHaveLength(2);
+        expect(flat[0]).toMatchObject({
+          representativeName: 'Alice Smith',
+          chamber: 'Assembly',
+          position: 'yes',
+          motionText: 'Do Pass',
+        });
+        expect(flat[0].voteDate).toEqual(new Date('2025-05-01'));
+        expect(flat[1].position).toBe('no');
+      });
+
+      it('returns [] for { skip: true }', () => {
+        expect(
+          internals().flattenRollCall({ skip: true }, 'AB42', VOTES_URL),
+        ).toEqual([]);
+      });
+
+      it('returns [] when votes array is absent', () => {
+        expect(internals().flattenRollCall({}, 'AB42', VOTES_URL)).toEqual([]);
+      });
+
+      it('drops members with unrecognized or missing positions, never fabricates', () => {
+        const raw = {
+          votes: [
+            {
+              chamber: 'Senate',
+              date: '2025-06-02',
+              members: [
+                { name: 'Valid Yes', position: 'YES' }, // normalized
+                { name: 'Bad Position', position: 'maybe' }, // dropped
+                { name: 'No Position' }, // dropped
+                { position: 'yes' }, // no name → dropped
+              ],
+            },
+          ],
+        };
+
+        const flat = internals().flattenRollCall(raw, 'AB1', VOTES_URL);
+
+        expect(flat).toHaveLength(1);
+        expect(flat[0]).toMatchObject({
+          representativeName: 'Valid Yes',
+          position: 'yes',
+        });
+      });
+
+      it('normalizes position casing and separators (NO_VOTE / no-vote → no_vote)', () => {
+        const raw = {
+          votes: [
+            {
+              chamber: 'Assembly',
+              date: '2025-01-01',
+              members: [
+                { name: 'A', position: 'NO_VOTE' },
+                { name: 'B', position: 'no-vote' },
+              ],
+            },
+          ],
+        };
+
+        const flat = internals().flattenRollCall(raw, 'AB1', VOTES_URL);
+        expect(flat.map((v) => v.position)).toEqual(['no_vote', 'no_vote']);
+      });
+
+      it('drops a record with a missing date — never emits an Invalid Date (NOT NULL column guard)', () => {
+        // Without this guard, new Date(NaN) would reach a NOT NULL @db.Date
+        // column and abort createMany for the WHOLE bill (#889 B1).
+        const raw = {
+          votes: [
+            {
+              chamber: 'Assembly',
+              // no date
+              members: [{ name: 'Alice Smith', position: 'yes' }],
+            },
+          ],
+        };
+        expect(internals().flattenRollCall(raw, 'AB1', VOTES_URL)).toEqual([]);
+      });
+
+      it('drops a record with an unparseable date, keeps records with a valid one', () => {
+        const raw = {
+          votes: [
+            {
+              chamber: 'Assembly',
+              date: 'pending',
+              members: [{ name: 'Bad Date', position: 'yes' }],
+            },
+            {
+              chamber: 'Senate',
+              date: '2025-06-02',
+              members: [{ name: 'Good Date', position: 'no' }],
+            },
+          ],
+        };
+
+        const flat = internals().flattenRollCall(raw, 'AB1', VOTES_URL);
+        expect(flat).toHaveLength(1);
+        expect(flat[0].representativeName).toBe('Good Date');
+        expect(flat.every((v) => !Number.isNaN(v.voteDate.getTime()))).toBe(
+          true,
+        );
+      });
+    });
+
+    describe('extractVotesOnlyPage outcomes', () => {
+      const ds = {};
+      const repIndex = new Map<string, { id: string; chamber: string }>();
+
+      const setProviders = (rollCallJson: string) => {
+        internals().promptClient = {
+          getBillVotesExtractionPrompt: jest
+            .fn()
+            .mockResolvedValue({ promptText: 'PROMPT' }),
+        };
+        internals().llm = {
+          generate: jest.fn().mockResolvedValue({ text: rollCallJson }),
+        };
+      };
+
+      const stubFetch = () =>
+        jest
+          .spyOn(
+            service as unknown as {
+              fetchUrlText: (u: string) => Promise<string>;
+            },
+            'fetchUrlText',
+          )
+          .mockResolvedValue('<html>Ayes Count 79</html>');
+
+      it('returns providers-unavailable when promptClient/llm are unset', async () => {
+        internals().promptClient = undefined;
+        internals().llm = undefined;
+
+        const res = await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+        expect(res.outcome).toBe('providers-unavailable');
+      });
+
+      it('returns no-bill-id when the URL lacks a bill_id param', async () => {
+        setProviders('{}');
+        const res = await internals().extractVotesOnlyPage(
+          'california',
+          'https://leginfo.ca.gov/faces/billVotesClient.xhtml',
+          ds,
+          repIndex,
+        );
+        expect(res.outcome).toBe('no-bill-id');
+      });
+
+      it('returns shell-missing when no bill row exists for the bill_id', async () => {
+        setProviders('{}');
+        mockDb.bill.findUnique.mockResolvedValue(null);
+
+        const res = await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+        expect(res.outcome).toBe('shell-missing');
+      });
+
+      it('upserts votes and returns votes-upserted with a count when the page has a roll-call', async () => {
+        setProviders(
+          JSON.stringify({
+            billId: '202520260AB42',
+            votes: [
+              {
+                chamber: 'Assembly',
+                date: '2025-05-01',
+                motionText: 'Do Pass',
+                members: [
+                  { name: 'Alice Smith', position: 'yes' },
+                  { name: 'Bob Jones', position: 'no' },
+                ],
+              },
+            ],
+          }),
+        );
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        const res = await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+
+        expect(res).toEqual({ outcome: 'votes-upserted', count: 2 });
+        expect(mockDb.billVote.createMany).toHaveBeenCalled();
+        fetchSpy.mockRestore();
+      });
+
+      it('uses the votes-specific prompt, NOT getBillExtractionPrompt (#889 core defect)', async () => {
+        setProviders(JSON.stringify({ skip: true }));
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+
+        const pc = internals().promptClient as {
+          getBillVotesExtractionPrompt: jest.Mock;
+        };
+        expect(pc.getBillVotesExtractionPrompt).toHaveBeenCalledWith(
+          expect.objectContaining({ billId: '202520260AB42' }),
+        );
+        fetchSpy.mockRestore();
+      });
+
+      it('returns no-votes-on-page when extraction yields an empty roll-call', async () => {
+        setProviders(JSON.stringify({ skip: true }));
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        const res = await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+        expect(res.outcome).toBe('no-votes-on-page');
+        expect(mockDb.billVote.createMany).not.toHaveBeenCalled();
+        fetchSpy.mockRestore();
+      });
+
+      it('returns fetch-failed when the votes page fetch throws', async () => {
+        setProviders('{}');
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = jest
+          .spyOn(
+            service as unknown as {
+              fetchUrlText: (u: string) => Promise<string>;
+            },
+            'fetchUrlText',
+          )
+          .mockRejectedValue(new Error('503'));
+
+        const res = await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+        expect(res.outcome).toBe('fetch-failed');
+        fetchSpy.mockRestore();
+      });
+    });
+  });
+
   describe('syncAll', () => {
     it('should sync all data types from all plugins and return results', async () => {
       const results = await service.syncAll();
@@ -1528,6 +1841,158 @@ describe('RegionSyncService', () => {
             m.includes('no civics_blocks.lifecycleStages taxonomy'),
           ),
         ).toBe(true);
+      });
+    });
+
+    describe('enrichBillSummaries — throughput (#889 follow-up)', () => {
+      type EnrichFn = (
+        regionId: string,
+        stagePatterns: typeof STAGE_PATTERNS,
+        lifecycleStages: typeof STAGE_INPUTS | null,
+        maxBills?: number,
+      ) => Promise<{ enriched: number; skipped: number; failed: number }>;
+
+      const callEnrich = (): Promise<{
+        enriched: number;
+        skipped: number;
+        failed: number;
+      }> =>
+        (
+          service as unknown as { enrichBillSummaries: EnrichFn }
+        ).enrichBillSummaries.bind(service)(
+          'california',
+          STAGE_PATTERNS,
+          STAGE_INPUTS,
+        );
+
+      const setConcurrency = (n: number) => {
+        (
+          service as unknown as { billEnrichmentConcurrency: number }
+        ).billEnrichmentConcurrency = n;
+      };
+
+      // Present-but-empty stubs satisfy the `!promptClient || !llm` guard;
+      // enrichSingleBill itself is spied so they're never invoked.
+      const setProviders = () => {
+        (
+          service as unknown as { promptClient: object; llm: object }
+        ).promptClient = {};
+        (service as unknown as { promptClient: object; llm: object }).llm = {};
+      };
+
+      /** Spy enrichSingleBill, tracking max concurrent in-flight calls. */
+      const spyEnrichSingle = (
+        outcomes?: Array<'enriched' | 'skipped' | 'failed'>,
+      ) => {
+        let inFlight = 0;
+        let maxInFlight = 0;
+        let call = 0;
+        const spy = jest
+          .spyOn(
+            service as unknown as {
+              enrichSingleBill: (...a: unknown[]) => Promise<unknown>;
+            },
+            'enrichSingleBill',
+          )
+          .mockImplementation(async () => {
+            inFlight++;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            await new Promise((r) => setTimeout(r, 5));
+            inFlight--;
+            const outcome = outcomes ? outcomes[call++] : 'enriched';
+            return { outcome, tokensUsed: 10 };
+          });
+        return { spy, getMax: () => maxInFlight };
+      };
+
+      const seedCandidates = (n: number) => {
+        const bills = Array.from({ length: n }, (_, i) =>
+          mkBill({ id: `bill-${i}`, billNumber: `AB ${i}` }),
+        );
+        mockDb.bill.findMany.mockResolvedValue(bills as never);
+      };
+
+      beforeEach(() => setProviders());
+
+      it('runs bills in parallel batches when concurrency > 1 (max in-flight == concurrency)', async () => {
+        setConcurrency(3);
+        seedCandidates(7);
+        const { getMax } = spyEnrichSingle();
+
+        const result = await callEnrich();
+
+        expect(getMax()).toBe(3);
+        expect(result.enriched).toBe(7);
+      });
+
+      it('stays serial by default (max in-flight == 1)', async () => {
+        // No setConcurrency → constructor default of 1.
+        seedCandidates(4);
+        const { getMax } = spyEnrichSingle();
+
+        const result = await callEnrich();
+
+        expect(getMax()).toBe(1);
+        expect(result.enriched).toBe(4);
+      });
+
+      it('keeps tallies + token totals identical regardless of concurrency', async () => {
+        setConcurrency(3);
+        seedCandidates(5);
+        // 3 enriched, 1 skipped, 1 failed → deterministic tally.
+        spyEnrichSingle([
+          'enriched',
+          'skipped',
+          'enriched',
+          'failed',
+          'enriched',
+        ]);
+
+        const result = await callEnrich();
+
+        expect(result).toEqual({ enriched: 3, skipped: 1, failed: 1 });
+      });
+
+      it('passes the configured requestTimeoutMs through to llm.generate', async () => {
+        // Exercises enrichSingleBill directly (not spied) so the real
+        // llm.generate call is observed. Stub the HTTP + prompt + LLM deps.
+        const generate = jest
+          .fn()
+          .mockResolvedValue({ text: '{"skip":true}', tokensUsed: 5 });
+        (service as unknown as { llm: unknown }).llm = { generate };
+        (service as unknown as { promptClient: unknown }).promptClient = {
+          getBillStatusSummaryPrompt: jest
+            .fn()
+            .mockResolvedValue({ promptText: 'P', promptVersion: 'v1' }),
+        };
+        jest
+          .spyOn(
+            service as unknown as {
+              fetchUrlText: (u: string) => Promise<string>;
+            },
+            'fetchUrlText',
+          )
+          .mockResolvedValue('<html>body</html>');
+
+        type EnrichSingleFn = (
+          bill: ReturnType<typeof mkBill>,
+          stagePatterns: typeof STAGE_PATTERNS,
+          lifecycleStages: typeof STAGE_INPUTS,
+          stageIdSet: Set<string>,
+        ) => Promise<{ outcome: string; tokensUsed: number }>;
+        await (
+          service as unknown as { enrichSingleBill: EnrichSingleFn }
+        ).enrichSingleBill.bind(service)(
+          mkBill(),
+          STAGE_PATTERNS,
+          STAGE_INPUTS,
+          STAGE_ID_SET,
+        );
+
+        expect(generate).toHaveBeenCalledWith(
+          'P',
+          expect.objectContaining({ requestTimeoutMs: 120_000 }),
+        );
       });
     });
   });
