@@ -132,6 +132,11 @@ type VotesOutcome =
   | 'providers-unavailable'
   | 'fetch-failed'
   | 'no-votes-on-page'
+  // Split out from a blanket 'extraction-failed' (#894) so the phase summary
+  // distinguishes truncation (empty/unparseable — raise BILL_VOTES_MAX_TOKENS)
+  // from genuine post-parse errors.
+  | 'extraction-empty'
+  | 'extraction-unparseable'
   | 'extraction-failed';
 
 interface VotesExtractionResult {
@@ -157,6 +162,8 @@ const VOTES_OUTCOME_TRACKING: Record<
   'no-votes-on-page': { counter: 'skipped' },
   'providers-unavailable': { counter: 'error' },
   'fetch-failed': { counter: 'error' },
+  'extraction-empty': { counter: 'error' },
+  'extraction-unparseable': { counter: 'error' },
   'extraction-failed': { counter: 'error' },
 };
 
@@ -416,6 +423,11 @@ export class RegionSyncService implements OnModuleDestroy {
       'BILL_VOTES_CONCURRENCY',
       1,
     );
+    this.billVotesMaxTokens = readPositiveInt(
+      this.config,
+      'BILL_VOTES_MAX_TOKENS',
+      8000,
+    );
   }
 
   // Bill-enrichment throughput knobs (#889 follow-up). Defaults reproduce
@@ -434,6 +446,13 @@ export class RegionSyncService implements OnModuleDestroy {
   // also accepts parallel requests (OLLAMA_NUM_PARALLEL ≥ this); otherwise
   // calls queue server-side. Default 1 reproduces the prior serial loop.
   private readonly billVotesConcurrency: number;
+  // Max output tokens for votes extraction (#894). A large roll-call
+  // (an 80-member chamber × multiple motions) serializes to a votes JSON
+  // that overran the prior 4000-token cap → truncated mid-object →
+  // unparseable → ~33% of bills silently lost their votes. Default 8000
+  // clears typical CA roll-calls; a per-source DataSourceConfig.llmMaxTokens
+  // still overrides when set.
+  private readonly billVotesMaxTokens: number;
 
   async onModuleDestroy(): Promise<void> {
     await this.cacheService.destroy();
@@ -2376,19 +2395,34 @@ export class RegionSyncService implements OnModuleDestroy {
         });
 
       const llmResult = await this.llm.generate(promptText, {
-        maxTokens: ds.llmMaxTokens ?? 4000,
+        maxTokens: ds.llmMaxTokens ?? this.billVotesMaxTokens,
         temperature: 0.1,
         requestTimeoutMs: ds.llmRequestTimeoutMs,
       });
 
+      // A large roll-call whose votes JSON exceeds maxTokens is truncated
+      // mid-object, so no complete `{...}` slice is found (#894). Surface it
+      // as its own outcome — the fix is to raise BILL_VOTES_MAX_TOKENS, not
+      // to debug the parser.
       const candidate = extractJsonObjectSlice(llmResult.text);
-      if (!candidate) return { outcome: 'extraction-failed', count: 0 };
+      if (!candidate) {
+        this.logger.warn(
+          `Bills: votes extraction produced no JSON object for ${sourceUrl} ` +
+            `(${llmResult.text.length} chars; likely maxTokens truncation)`,
+        );
+        return { outcome: 'extraction-empty', count: 0 };
+      }
 
       let raw: RollCallExtraction;
       try {
         raw = JSON.parse(candidate) as RollCallExtraction;
-      } catch {
-        return { outcome: 'extraction-failed', count: 0 };
+      } catch (e) {
+        this.logger.warn(
+          `Bills: votes JSON parse failed for ${sourceUrl}: ` +
+            `${(e as Error).message} (candidate ${candidate.length} chars; ` +
+            `likely maxTokens truncation)`,
+        );
+        return { outcome: 'extraction-unparseable', count: 0 };
       }
 
       // The votes template emits chamber-level roll-call records; flatten to

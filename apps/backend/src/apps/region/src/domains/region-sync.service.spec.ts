@@ -769,6 +769,80 @@ describe('RegionSyncService', () => {
         expect(res.outcome).toBe('fetch-failed');
         fetchSpy.mockRestore();
       });
+
+      it('returns extraction-empty when the LLM output has no JSON object (truncation) (#894)', async () => {
+        // Truncated mid-object → no balanced {…} → extractJsonObjectSlice
+        // returns undefined. This is the dominant maxTokens-truncation shape.
+        setProviders('{"votes": [{"chamber": "Assembly", "members": [');
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        const res = await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+        expect(res.outcome).toBe('extraction-empty');
+        expect(mockDb.billVote.createMany).not.toHaveBeenCalled();
+        fetchSpy.mockRestore();
+      });
+
+      it('returns extraction-unparseable when a balanced slice is invalid JSON (#894)', async () => {
+        // Balanced braces but invalid contents → slice returned, JSON.parse
+        // throws → distinct from the empty case.
+        setProviders('{"votes": [1 2 3]}');
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        const res = await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+        expect(res.outcome).toBe('extraction-unparseable');
+        expect(mockDb.billVote.createMany).not.toHaveBeenCalled();
+        fetchSpy.mockRestore();
+      });
+
+      it('defaults votes-extraction maxTokens to 8000 (#894)', async () => {
+        setProviders(JSON.stringify({ votes: [] }));
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+        const generate = (internals().llm as { generate: jest.Mock }).generate;
+        expect(generate).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ maxTokens: 8000 }),
+        );
+        fetchSpy.mockRestore();
+      });
+
+      it('lets a per-source llmMaxTokens override the default (#894)', async () => {
+        setProviders(JSON.stringify({ votes: [] }));
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          { llmMaxTokens: 12000 },
+          repIndex,
+        );
+        const generate = (internals().llm as { generate: jest.Mock }).generate;
+        expect(generate).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ maxTokens: 12000 }),
+        );
+        fetchSpy.mockRestore();
+      });
     });
 
     describe('runVotesPhase — throughput (#892)', () => {
