@@ -732,6 +732,46 @@ describe('RegionSyncService', () => {
         fetchSpy.mockRestore();
       });
 
+      it('passes the votes request timeout (BILL_VOTES_REQUEST_TIMEOUT_MS default 150s), not the 60s provider default (#897)', async () => {
+        setProviders(JSON.stringify({ skip: true }));
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          ds,
+          repIndex,
+        );
+
+        const generate = (internals().llm as { generate: jest.Mock }).generate;
+        expect(generate).toHaveBeenCalledWith(
+          'PROMPT',
+          expect.objectContaining({ requestTimeoutMs: 150_000 }),
+        );
+        fetchSpy.mockRestore();
+      });
+
+      it('lets a per-source DataSourceConfig.llmRequestTimeoutMs override the default (#897)', async () => {
+        setProviders(JSON.stringify({ skip: true }));
+        mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
+        const fetchSpy = stubFetch();
+
+        await internals().extractVotesOnlyPage(
+          'california',
+          VOTES_URL,
+          { llmRequestTimeoutMs: 90_000 },
+          repIndex,
+        );
+
+        const generate = (internals().llm as { generate: jest.Mock }).generate;
+        expect(generate).toHaveBeenCalledWith(
+          'PROMPT',
+          expect.objectContaining({ requestTimeoutMs: 90_000 }),
+        );
+        fetchSpy.mockRestore();
+      });
+
       it('returns no-votes-on-page when extraction yields an empty roll-call', async () => {
         setProviders(JSON.stringify({ skip: true }));
         mockDb.bill.findUnique.mockResolvedValue({ id: 'bill-uuid' } as never);
