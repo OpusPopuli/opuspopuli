@@ -1573,14 +1573,15 @@ model BillVote {
   /// Resolved FK — null when linker cannot match the name.
   representativeId   String?  @map("representative_id")
   /// Raw name from the roll-call table; preserved for linker re-runs.
-  representativeName String   @map("representative_name") @db.VarChar(200)
+  representativeName String   @map("representative_name")
   /// "Assembly" | "Senate"
   chamber            String   @db.VarChar(20)
   voteDate           DateTime @map("vote_date") @db.Date
   /// yes | no | abstain | absent | excused | no_vote
-  position           String   @db.VarChar(20)
-  /// The motion being voted on, e.g. "Do Pass" | "Do Pass as Amended".
-  motionText         String?  @map("motion_text") @db.VarChar(200)
+  position           String   @db.VarChar(50)
+  /// The motion being voted on. Free-form roll-call motion text (no natural
+  /// length); e.g. "Do Pass" or a verbose multi-clause CA reading motion (#901).
+  motionText         String?  @map("motion_text")
   sourceUrl          String   @map("source_url")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz

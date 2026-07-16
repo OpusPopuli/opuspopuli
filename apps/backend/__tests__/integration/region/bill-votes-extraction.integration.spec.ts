@@ -309,4 +309,41 @@ describe('votes_only extraction — integration (#889)', () => {
     const rows = await db.billVote.findMany({ where: { billId } });
     expect(rows.map((r) => r.representativeName)).toEqual(['Kept Member']);
   });
+
+  it('persists a verbose (>200 char) motion at full length — the whole vote set is not dropped (#901)', async () => {
+    // Pre-fix, motion_text was VARCHAR(200); a real CA reading motion exceeds
+    // that and, because createMany is atomic, dropped the bill's entire vote
+    // set → extraction-failed, 0 votes. This guards the widen to `text`.
+    const billId = await seedBillShell(db);
+    const longMotion =
+      'Assembly Third Reading. Do pass as amended and re-refer to the ' +
+      'Committee on Appropriations, and when so amended the bill shall be ' +
+      'ordered to a third reading and re-referred for further consideration ' +
+      'consistent with the standing rules of the Assembly and Senate.';
+    expect(longMotion.length).toBeGreaterThan(200);
+    mockLlm.generate.mockResolvedValue({
+      text: JSON.stringify({
+        billId: BILL_EXTERNAL_ID,
+        votes: [
+          {
+            chamber: 'Assembly',
+            date: '2025-05-01',
+            motionText: longMotion,
+            members: [
+              { name: 'Alice Smith', position: 'yes' },
+              { name: 'Bob Jones', position: 'no' },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const result = await callExtract();
+
+    expect(result).toEqual({ outcome: 'votes-upserted', count: 2 });
+    const rows = await db.billVote.findMany({ where: { billId } });
+    expect(rows.length).toBe(2);
+    // Full motion round-trips — not truncated, not dropped.
+    expect(rows[0].motionText).toBe(longMotion);
+  });
 });
