@@ -64,14 +64,14 @@ export function AnalysisDisplay({
             </span>
           </div>
           {readOnly ? (
-            <div className="w-full bg-gray-900 text-gray-200 rounded-lg p-4 text-sm leading-relaxed border border-gray-700 whitespace-pre-wrap">
+            <div className="w-full bg-inverse-surface text-on-inverse rounded-lg p-4 text-sm leading-relaxed border border-line whitespace-pre-wrap">
               {ocrText}
             </div>
           ) : (
             <textarea
               value={ocrText}
               onChange={(e) => onOcrTextChange?.(e.target.value)}
-              className="w-full bg-gray-900 text-gray-200 rounded-lg p-4 text-sm leading-relaxed border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-y min-h-[120px]"
+              className="w-full bg-inverse-surface text-on-inverse rounded-lg p-4 text-sm leading-relaxed border border-line focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-y min-h-[120px]"
               rows={6}
               aria-label={t("results.extractedTextLabel")}
             />
@@ -174,7 +174,7 @@ export function AnalysisDisplay({
       {(linkedPropositions.length > 0 ||
         (analysis.relatedMeasures && analysis.relatedMeasures.length > 0)) && (
         <div>
-          <h3 className="text-md font-semibold text-gray-400 mb-2">
+          <h3 className="text-md font-semibold text-content-dim mb-2">
             {t("results.relatedMeasures")}
           </h3>
 
@@ -185,7 +185,7 @@ export function AnalysisDisplay({
                 <Link
                   key={prop.id}
                   href={`/region/propositions/${prop.propositionId}`}
-                  className="block bg-gray-800 hover:bg-gray-700 rounded-lg p-3 transition-colors"
+                  className="block bg-inverse-surface hover:bg-gray-700 rounded-lg p-3 transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-white font-medium truncate">
@@ -197,7 +197,7 @@ export function AnalysisDisplay({
                         : t("results.linkedManually")}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-content-dim mt-1">
                     {prop.status}
                     {prop.electionDate &&
                       ` · ${new Date(prop.electionDate).toLocaleDateString()}`}
@@ -230,14 +230,14 @@ export function AnalysisDisplay({
       {/* Entities */}
       {analysis.entities.length > 0 && (
         <div>
-          <h3 className="text-md font-semibold text-gray-400 mb-2">
+          <h3 className="text-md font-semibold text-content-dim mb-2">
             {t("results.entities")}
           </h3>
           <div className="flex flex-wrap gap-2">
             {analysis.entities.map((entity) => (
               <span
                 key={entity}
-                className="bg-gray-800 text-gray-300 px-3 py-1 rounded-full text-sm"
+                className="bg-inverse-surface text-on-inverse px-3 py-1 rounded-full text-sm"
               >
                 {entity}
               </span>
@@ -249,11 +249,11 @@ export function AnalysisDisplay({
       {/* Data Completeness (#425) */}
       {analysis.completenessScore != null && (
         <div>
-          <h3 className="text-md font-semibold text-gray-400 mb-2">
+          <h3 className="text-md font-semibold text-content-dim mb-2">
             {t("results.dataCompleteness")}
           </h3>
           <div className="flex items-center gap-3 mb-2">
-            <div className="flex-1 bg-gray-800 rounded-full h-2.5">
+            <div className="flex-1 bg-inverse-surface rounded-full h-2.5">
               <div
                 className={`h-2.5 rounded-full ${getCompletenessBarColor(analysis.completenessScore)}`}
                 style={{ width: `${analysis.completenessScore}%` }}
@@ -268,7 +268,7 @@ export function AnalysisDisplay({
             </span>
           </div>
           {analysis.completenessDetails && (
-            <p className="text-xs text-gray-400 mb-2">
+            <p className="text-xs text-content-dim mb-2">
               {t("results.completenessExplanation", {
                 available: analysis.completenessDetails.availableCount,
                 ideal: analysis.completenessDetails.idealCount,
@@ -283,7 +283,10 @@ export function AnalysisDisplay({
                 </summary>
                 <ul className="mt-1 space-y-1 pl-4">
                   {analysis.completenessDetails.missingItems.map((item) => (
-                    <li key={item} className="text-xs text-gray-400 list-disc">
+                    <li
+                      key={item}
+                      className="text-xs text-content-dim list-disc"
+                    >
                       {item}
                     </li>
                   ))}
@@ -296,7 +299,7 @@ export function AnalysisDisplay({
       {/* Data Sources (#423) */}
       {analysis.sources && analysis.sources.length > 0 && (
         <details>
-          <summary className="text-md font-semibold text-gray-400 cursor-pointer hover:text-gray-300">
+          <summary className="text-md font-semibold text-content-dim cursor-pointer hover:text-gray-300">
             {t("results.dataSources")}
           </summary>
           <div className="mt-2 space-y-2">
@@ -320,13 +323,13 @@ export function AnalysisDisplay({
               return (
                 <div
                   key={source.name}
-                  className="flex items-center justify-between bg-gray-900 rounded-lg px-3 py-2"
+                  className="flex items-center justify-between bg-inverse-surface rounded-lg px-3 py-2"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-300 truncate">
                       {source.name}
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-content-dim">
                       {t("results.sourceAccessedAt", {
                         date: accessedDate.toLocaleDateString(),
                       })}
@@ -345,7 +348,7 @@ export function AnalysisDisplay({
       )}
 
       {/* Provider info footer */}
-      <div className="text-xs text-gray-400 pt-4 border-t border-gray-800">
+      <div className="text-xs text-content-dim pt-4 border-t border-line">
         <p>
           {t("results.analyzedBy", {
             provider: analysis.provider,

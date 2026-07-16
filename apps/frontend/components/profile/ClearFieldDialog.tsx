@@ -40,23 +40,23 @@ export function ClearFieldDialog({
         if (e.key === "Escape") onCancel();
       }}
     >
-      <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
+      <div className="bg-surface rounded-lg max-w-sm w-full p-6">
         <h2
           id="clear-field-title"
-          className="text-lg font-bold text-gray-900 mb-2"
+          className="text-lg font-bold text-content mb-2"
         >
           {t("field.clearConfirmTitle")}
         </h2>
-        <p className="text-sm text-gray-700 mb-2">
+        <p className="text-sm text-content mb-2">
           {t("field.clearConfirmBody")}
         </p>
-        <p className="text-sm font-medium text-gray-900 mb-5">{fieldLabel}</p>
+        <p className="text-sm font-medium text-content mb-5">{fieldLabel}</p>
         <div className="flex justify-end gap-3">
           <button
             ref={cancelRef}
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-sm text-gray-700 hover:text-gray-900 rounded-lg"
+            className="px-4 py-2 text-sm text-content hover:text-content rounded-lg"
           >
             {t("field.cancel")}
           </button>

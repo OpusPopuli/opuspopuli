@@ -17,8 +17,8 @@ export function LayerButton({
       onClick={onClick}
       className={
         variant === "primary"
-          ? "px-6 py-3 bg-gray-900 text-white rounded-lg font-semibold text-sm hover:bg-gray-800 transition-colors"
-          : "px-5 py-2.5 bg-white text-gray-900 border-2 border-gray-200 rounded-lg font-semibold text-sm hover:border-gray-900 transition-colors"
+          ? "px-6 py-3 bg-inverse-surface text-on-inverse rounded-lg font-semibold text-sm hover:opacity-90 transition-opacity"
+          : "px-5 py-2.5 bg-surface text-content border-2 border-line rounded-lg font-semibold text-sm hover:border-content transition-colors"
       }
     >
       {children}

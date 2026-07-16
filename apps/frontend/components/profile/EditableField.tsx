@@ -204,17 +204,17 @@ export function EditableField({
   return (
     <div
       data-field={descriptor.name}
-      className="py-4 border-b border-gray-200 last:border-b-0"
+      className="py-4 border-b border-line last:border-b-0"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium text-gray-900"
+            className="block text-sm font-medium text-content"
           >
             {label}
           </label>
-          <p id={descriptionId} className="text-xs text-gray-500 mt-0.5">
+          <p id={descriptionId} className="text-xs text-content-dim mt-0.5">
             {description}
           </p>
           {locked && (
@@ -228,7 +228,7 @@ export function EditableField({
             <button
               type="button"
               onClick={enterEdit}
-              className="text-sm text-[#5A7A6A] hover:text-[#2D4A3C] font-medium px-2 py-1"
+              className="text-sm text-content hover:text-content font-medium px-2 py-1"
             >
               {t("field.edit")}
             </button>
@@ -237,7 +237,7 @@ export function EditableField({
                 type="button"
                 onClick={() => setDialogOpen(true)}
                 aria-label={`${t("field.clear")} — ${label}`}
-                className="text-sm text-gray-500 hover:text-red-700 px-2 py-1"
+                className="text-sm text-content-dim hover:text-red-700 px-2 py-1"
               >
                 {t("field.clear")}
               </button>
@@ -274,7 +274,7 @@ export function EditableField({
               type="button"
               onClick={cancelEdit}
               disabled={saving}
-              className="px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 rounded-lg disabled:opacity-50"
+              className="px-3 py-1.5 text-sm text-content hover:text-content rounded-lg disabled:opacity-50"
             >
               {t("field.cancel")}
             </button>
@@ -282,7 +282,7 @@ export function EditableField({
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-1.5 text-sm font-semibold bg-[#5A7A6A] text-white rounded-lg hover:bg-[#2D4A3C] disabled:opacity-50"
+              className="px-4 py-1.5 text-sm font-semibold bg-accent text-white rounded-lg hover:bg-accent disabled:opacity-50"
             >
               {t("field.save")}
             </button>
@@ -325,11 +325,13 @@ function ReadModeValue({
   const { t } = useTranslation("profile");
   if (!present) {
     return (
-      <p className="mt-1 text-sm text-gray-500 italic">{t("field.notSet")}</p>
+      <p className="mt-1 text-sm text-content-dim italic">
+        {t("field.notSet")}
+      </p>
     );
   }
   return (
-    <p className="mt-1 text-sm text-gray-900">
+    <p className="mt-1 text-sm text-content">
       {formatValue(descriptor, currentValue)}
     </p>
   );

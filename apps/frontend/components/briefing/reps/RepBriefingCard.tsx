@@ -39,7 +39,7 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
 
   return (
     <article
-      className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
+      className="rounded-lg border border-line bg-surface p-4"
       data-testid="rep-briefing-card"
       data-representative-id={rep.id}
     >
@@ -65,12 +65,12 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
             alt=""
             width={48}
             height={48}
-            className="rounded-full object-cover h-12 w-12 flex-shrink-0 bg-gray-100 dark:bg-gray-700"
+            className="rounded-full object-cover h-12 w-12 flex-shrink-0 bg-surface-alt"
             unoptimized
           />
         ) : (
           <div
-            className="rounded-full h-12 w-12 flex-shrink-0 bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-sm font-medium text-gray-400 dark:text-gray-500"
+            className="rounded-full h-12 w-12 flex-shrink-0 bg-surface-alt flex items-center justify-center text-sm font-medium text-content-dim"
             aria-hidden="true"
           >
             {rep.name
@@ -85,11 +85,11 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/representatives/${rep.id}`}
-            className="block text-base font-semibold text-[#222222] dark:text-white hover:text-[#5A7A6A] dark:hover:text-sage-300 transition-colors line-clamp-1"
+            className="block text-base font-semibold text-content hover:text-content transition-colors line-clamp-1"
           >
             {rep.name}
           </Link>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-0.5 text-xs text-content-dim">
             {t("reps.chamberDistrict", {
               chamber: rep.chamber,
               district: rep.district,
@@ -106,7 +106,7 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
            * different district), the badge naturally distinguishes them.
            */}
           <p
-            className="mt-1 inline-flex items-center gap-1 rounded-full bg-sage-50 dark:bg-sage-900/30 border border-sage-200 dark:border-sage-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#2D4A3C] dark:text-sage-200"
+            className="mt-1 inline-flex items-center gap-1 rounded-full bg-surface-alt border border-line px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-content"
             data-testid="rep-represents-you-badge"
           >
             <span aria-hidden="true">★</span>
@@ -119,7 +119,7 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
 
       {recentBills.length > 0 && (
         <div className="mt-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#4d4d4d] dark:text-gray-400">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-content-dim">
             {t("reps.workingOn")}
           </p>
           <ul className="mt-1 flex flex-wrap gap-1.5">
@@ -127,7 +127,7 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
               <li key={bill.id}>
                 <Link
                   href={`/region/bills/${bill.id}`}
-                  className="inline-block rounded-md bg-sage-50 dark:bg-sage-900/30 border border-sage-200 dark:border-sage-700 px-2 py-0.5 text-xs font-medium text-[#2D4A3C] dark:text-sage-200 hover:bg-sage-100 dark:hover:bg-sage-800/40 transition-colors"
+                  className="inline-block rounded-md bg-surface-alt border border-line px-2 py-0.5 text-xs font-medium text-content hover:bg-surface-alt transition-colors"
                   title={bill.title}
                 >
                   {bill.billNumber}

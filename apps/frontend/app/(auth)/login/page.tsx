@@ -128,7 +128,7 @@ function LoginPageContent() {
 
       {/* Auth Mode Tabs — hidden in launch mode, shown when AUTH_FULL_OPTIONS=true */}
       {AUTH_FULL_OPTIONS && (
-        <div className="flex mb-6 border-b border-[#DDDDDD]">
+        <div className="flex mb-6 border-b border-line">
           {supportsPasskeys && (
             <button
               type="button"
@@ -136,8 +136,8 @@ function LoginPageContent() {
               className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
                 ${
                   authMode === "passkey"
-                    ? "text-[#222222] border-[#222222]"
-                    : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
+                    ? "text-content border-content"
+                    : "text-content-dim border-transparent hover:text-content"
                 }`}
             >
               Passkey
@@ -149,8 +149,8 @@ function LoginPageContent() {
             className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
               ${
                 authMode === "magic-link"
-                  ? "text-[#222222] border-[#222222]"
-                  : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
+                  ? "text-content border-content"
+                  : "text-content-dim border-transparent hover:text-content"
               }`}
           >
             Email Link
@@ -161,8 +161,8 @@ function LoginPageContent() {
             className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 -mb-px
               ${
                 authMode === "password"
-                  ? "text-[#222222] border-[#222222]"
-                  : "text-[#4d4d4d] border-transparent hover:text-[#222222]"
+                  ? "text-content border-content"
+                  : "text-content-dim border-transparent hover:text-content"
               }`}
           >
             Password
@@ -190,7 +190,7 @@ function LoginPageContent() {
                 />
               </svg>
             </div>
-            <p className="text-[#4d4d4d] text-sm mb-4">
+            <p className="text-content-dim text-sm mb-4">
               Sign in instantly with your fingerprint, face, or device PIN
             </p>
           </div>
@@ -251,20 +251,20 @@ function LoginPageContent() {
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-[#222222] mb-2">
+              <h3 className="text-lg font-semibold text-content mb-2">
                 Check your email
               </h3>
-              <p className="text-[#4d4d4d] text-sm">
+              <p className="text-content-dim text-sm">
                 We sent a sign-in link to <strong>{email}</strong>
               </p>
-              <p className="text-[#595959] text-xs mt-2">
+              <p className="text-content-dim text-xs mt-2">
                 The link expires in 2 hours
               </p>
             </div>
           ) : (
             <form onSubmit={handleMagicLinkLogin} className="space-y-5">
               <div className="text-center py-2">
-                <p className="text-[#4d4d4d] text-sm">
+                <p className="text-content-dim text-sm">
                   We&apos;ll send you a magic link to sign in instantly
                 </p>
               </div>
@@ -335,7 +335,7 @@ function LoginPageContent() {
           <div className="text-right">
             <Link
               href="/forgot-password"
-              className="text-sm text-[#4d4d4d] hover:text-[#222222] transition-colors"
+              className="text-sm text-content-dim hover:text-content transition-colors"
             >
               Forgot your password?
             </Link>
@@ -354,11 +354,11 @@ function LoginPageContent() {
       <AuthDivider />
 
       {/* Register Link */}
-      <p className="text-center text-[#4d4d4d]">
+      <p className="text-center text-content-dim">
         Don&apos;t have an account?{" "}
         <Link
           href="/register"
-          className="text-[#222222] font-semibold hover:underline"
+          className="text-content font-semibold hover:underline"
         >
           Create one
         </Link>

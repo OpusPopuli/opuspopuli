@@ -36,13 +36,13 @@ const POSITION_STYLES: Record<string, { cls: string; label: string }> = {
   yes: { cls: "bg-green-100 text-green-800", label: "Yes" },
   no: { cls: "bg-red-100 text-red-800", label: "No" },
   abstain: { cls: "bg-yellow-100 text-yellow-800", label: "Abstain" },
-  absent: { cls: "bg-gray-100 text-gray-600", label: "Absent" },
+  absent: { cls: "bg-surface-alt text-content-dim", label: "Absent" },
   excused: { cls: "bg-blue-100 text-blue-700", label: "Excused" },
-  no_vote: { cls: "bg-gray-100 text-gray-400", label: "—" },
+  no_vote: { cls: "bg-surface-alt text-content-dim", label: "—" },
 };
 
 const FISCAL_LEVEL_STYLES: Record<string, { cls: string; label: string }> = {
-  none: { cls: "bg-gray-100 text-gray-600", label: "No fiscal impact" },
+  none: { cls: "bg-surface-alt text-content-dim", label: "No fiscal impact" },
   low: { cls: "bg-green-100 text-green-800", label: "Low fiscal impact" },
   medium: { cls: "bg-amber-100 text-amber-800", label: "Medium fiscal impact" },
   high: { cls: "bg-red-100 text-red-800", label: "High fiscal impact" },
@@ -57,7 +57,7 @@ function humanizeTag(slug: string): string {
 }
 
 function MeasureTypeBadge({ code }: { readonly code: string }) {
-  const cls = MEASURE_TYPE_STYLES[code] ?? "bg-gray-100 text-gray-800";
+  const cls = MEASURE_TYPE_STYLES[code] ?? "bg-surface-alt text-content";
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}`}
@@ -143,7 +143,7 @@ function VoteSummaryBar({ votes }: { readonly votes: BillVote[] }) {
         counts[pos] ? (
           <div key={pos} className="flex items-center gap-1.5 text-sm">
             <PositionBadge position={pos} />
-            <span className="font-semibold text-[#222222]">{counts[pos]}</span>
+            <span className="font-semibold text-content">{counts[pos]}</span>
           </div>
         ) : null,
       )}
@@ -155,7 +155,7 @@ function VoteSummaryBar({ votes }: { readonly votes: BillVote[] }) {
 
 function TagChip({ label }: { readonly label: string }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-[#334155]">
+    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-content-dim">
       {label}
     </span>
   );
@@ -171,7 +171,7 @@ function ChipRow({
   if (tags.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-      <span className="text-xs font-semibold uppercase tracking-wider text-[#595959]">
+      <span className="text-xs font-semibold uppercase tracking-wider text-content-dim">
         {label}
       </span>
       {tags.map((t) => (
@@ -203,11 +203,11 @@ function AiSummaryBlock({ summary }: { readonly summary: BillAiSummary }) {
       aria-label="Plain-English summary"
       className="mb-6 rounded-lg border-l-4 border-[var(--color-sage)] bg-slate-50 p-5"
     >
-      <p className="text-base leading-relaxed text-[#222222]">
+      <p className="text-base leading-relaxed text-content">
         {summary.plainEnglishSummary}
       </p>
       {summary.stakeholderImpact && (
-        <p className="mt-3 text-sm leading-relaxed text-[#334155]">
+        <p className="mt-3 text-sm leading-relaxed text-content-dim">
           <span className="font-semibold">Who this affects: </span>
           {summary.stakeholderImpact}
         </p>
@@ -255,7 +255,7 @@ function Snapshot({
 
       {/* Status + last action */}
       {bill.status && (
-        <div className="mb-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-[#334155]">
+        <div className="mb-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-content-dim">
           <span className="font-semibold">Status:</span> {bill.status}
         </div>
       )}
@@ -275,7 +275,7 @@ function Snapshot({
       {bill.lastAction && (
         <div className="mb-6">
           <SectionTitle>Latest action</SectionTitle>
-          <p className="text-sm text-[#334155]">
+          <p className="text-sm text-content-dim">
             {bill.lastActionDate && (
               <span className="text-slate-400 mr-2">
                 {formatDate(bill.lastActionDate)}
@@ -301,7 +301,7 @@ function Snapshot({
                   {bill.authorName}
                 </Link>
               ) : (
-                <span className="text-[#334155] font-medium">
+                <span className="text-content-dim font-medium">
                   {bill.authorName}
                 </span>
               )}
@@ -322,7 +322,7 @@ function Snapshot({
                         {ca.name}
                       </Link>
                     ) : (
-                      <span key={ca.name} className="text-[#334155]">
+                      <span key={ca.name} className="text-content-dim">
                         {ca.name}
                       </span>
                     ),
@@ -418,7 +418,7 @@ function Votes({
                 <tbody className="divide-y divide-slate-100">
                   {chamberVotes.map((v) => (
                     <tr key={v.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5 font-medium text-[#222222]">
+                      <td className="px-4 py-2.5 font-medium text-content">
                         {v.representativeId ? (
                           <Link
                             href={`/region/representatives/${v.representativeId}`}
@@ -472,7 +472,7 @@ function Sources({
       {fiscalImpactBody && (
         <div className="mb-6">
           <SectionTitle>Fiscal impact</SectionTitle>
-          <p className="text-sm text-[#334155] leading-relaxed">
+          <p className="text-sm text-content-dim leading-relaxed">
             {fiscalImpactBody}
           </p>
         </div>
@@ -482,32 +482,32 @@ function Sources({
       <dl className="bg-slate-50 rounded-lg p-4 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
         {bill.subject && (
           <div>
-            <dt className="font-bold uppercase tracking-wider text-xs text-[#595959] mb-0.5">
+            <dt className="font-bold uppercase tracking-wider text-xs text-content-dim mb-0.5">
               Subject
             </dt>
-            <dd className="text-[#334155]">{bill.subject}</dd>
+            <dd className="text-content-dim">{bill.subject}</dd>
           </div>
         )}
         <div>
-          <dt className="font-bold uppercase tracking-wider text-xs text-[#595959] mb-0.5">
+          <dt className="font-bold uppercase tracking-wider text-xs text-content-dim mb-0.5">
             Bill number
           </dt>
-          <dd className="font-mono text-[#334155]">{bill.billNumber}</dd>
+          <dd className="font-mono text-content-dim">{bill.billNumber}</dd>
         </div>
         <div>
-          <dt className="font-bold uppercase tracking-wider text-xs text-[#595959] mb-0.5">
+          <dt className="font-bold uppercase tracking-wider text-xs text-content-dim mb-0.5">
             Session
           </dt>
-          <dd className="text-[#334155]">{bill.sessionYear}</dd>
+          <dd className="text-content-dim">{bill.sessionYear}</dd>
         </div>
         <div>
-          <dt className="font-bold uppercase tracking-wider text-xs text-[#595959] mb-0.5">
+          <dt className="font-bold uppercase tracking-wider text-xs text-content-dim mb-0.5">
             Last updated
           </dt>
-          <dd className="text-[#334155]">{formatDate(bill.updatedAt)}</dd>
+          <dd className="text-content-dim">{formatDate(bill.updatedAt)}</dd>
         </div>
         <div className="sm:col-span-2">
-          <dt className="font-bold uppercase tracking-wider text-xs text-[#595959] mb-0.5">
+          <dt className="font-bold uppercase tracking-wider text-xs text-content-dim mb-0.5">
             Official source
           </dt>
           <dd>
@@ -523,7 +523,7 @@ function Sources({
         </div>
         {bill.fullTextUrl && (
           <div className="sm:col-span-2">
-            <dt className="font-bold uppercase tracking-wider text-xs text-[#595959] mb-0.5">
+            <dt className="font-bold uppercase tracking-wider text-xs text-content-dim mb-0.5">
               Full text
             </dt>
             <dd>
@@ -600,8 +600,8 @@ export default function BillDetailPage() {
   if (!bill) {
     return (
       <div className="max-w-4xl mx-auto px-8 py-12">
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#4d4d4d] mb-4">Bill not found.</p>
+        <div className="bg-surface-alt border border-line rounded-lg p-8 text-center">
+          <p className="text-content-dim mb-4">Bill not found.</p>
           <Link
             href="/region/bills"
             className="text-blue-600 hover:underline text-sm font-medium"
@@ -626,12 +626,12 @@ export default function BillDetailPage() {
       <div className="mb-6">
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <MeasureTypeBadge code={bill.measureTypeCode} />
-          <span className="font-mono text-sm font-semibold text-[#334155]">
+          <span className="font-mono text-sm font-semibold text-content-dim">
             {bill.billNumber}
           </span>
           <span className="text-sm text-slate-400">{bill.sessionYear}</span>
         </div>
-        <h1 className="text-2xl font-extrabold text-[#222222] leading-tight">
+        <h1 className="text-2xl font-extrabold text-content leading-tight">
           {bill.title}
         </h1>
       </div>
@@ -646,7 +646,7 @@ export default function BillDetailPage() {
 
       <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
 
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+      <div className="bg-surface rounded-lg p-8">
         {layer === 1 && (
           <Snapshot
             bill={bill}

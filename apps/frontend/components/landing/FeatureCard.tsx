@@ -16,13 +16,11 @@ export function FeatureCard({
 }: FeatureCardProps) {
   const content = (
     <>
-      <div className="w-12 h-12 bg-[#7F9C8E]/10 dark:bg-[#7F9C8E]/20 rounded-xl flex items-center justify-center mb-4 text-[#7F9C8E]">
+      <div className="w-12 h-12 bg-surface-alt/10 rounded-lg flex items-center justify-center mb-4 text-content-dim">
         {icon}
       </div>
-      <h3 className="text-lg font-semibold text-[#222222] dark:text-white mb-2">
-        {title}
-      </h3>
-      <p className="text-sm text-[#4d4d4d] dark:text-gray-300">{description}</p>
+      <h3 className="text-lg font-semibold text-content mb-2">{title}</h3>
+      <p className="text-sm text-content-dim">{description}</p>
     </>
   );
 
@@ -30,16 +28,12 @@ export function FeatureCard({
     return (
       <Link
         href={href}
-        className="group block p-6 bg-white dark:bg-gray-800 rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow"
+        className="group block p-6 bg-surface rounded-lg transition-shadow"
       >
         {content}
       </Link>
     );
   }
 
-  return (
-    <div className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
-      {content}
-    </div>
-  );
+  return <div className="p-6 bg-surface rounded-lg">{content}</div>;
 }

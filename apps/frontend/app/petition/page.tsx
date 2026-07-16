@@ -7,7 +7,7 @@ export default function PetitionPage() {
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 text-center text-white">
       <svg
-        className="w-20 h-20 mb-6 text-gray-400"
+        className="w-20 h-20 mb-6 text-content-dim"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -21,7 +21,7 @@ export default function PetitionPage() {
         />
       </svg>
       <h1 className="text-2xl font-bold mb-3">Scan a Petition</h1>
-      <p className="text-gray-400 mb-8 max-w-sm">
+      <p className="text-content-dim mb-8 max-w-sm">
         Use your camera to capture petition pages. Images are processed securely
         and never stored on your device.
       </p>
@@ -46,7 +46,7 @@ export default function PetitionPage() {
       <ActivityFeed />
       <Link
         href="/"
-        className="mt-4 text-sm text-gray-400 hover:text-gray-300 transition-colors"
+        className="mt-4 text-sm text-content-dim hover:text-gray-300 transition-colors"
       >
         Back to Home
       </Link>

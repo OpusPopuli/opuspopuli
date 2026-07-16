@@ -1,10 +1,17 @@
+// Measure-type chips. The brand rations gold to earned moments, so bill types
+// are NOT colour-coded (the old 8-colour rainbow violated "gold is the only
+// accent"). All types share one neutral chip; the type code itself (AB / SB /
+// ACA …) carries the distinction. Kept as a map so a future single-hue scale
+// can slot in without touching call sites.
+const NEUTRAL_CHIP = "bg-surface-alt text-content-dim";
+
 export const MEASURE_TYPE_STYLES: Record<string, string> = {
-  AB: "bg-blue-100 text-blue-800",
-  SB: "bg-purple-100 text-purple-800",
-  ACA: "bg-indigo-100 text-indigo-800",
-  SCA: "bg-violet-100 text-violet-800",
-  ACR: "bg-sky-100 text-sky-800",
-  SCR: "bg-cyan-100 text-cyan-800",
-  AJR: "bg-teal-100 text-teal-800",
-  SJR: "bg-emerald-100 text-emerald-800",
+  AB: NEUTRAL_CHIP,
+  SB: NEUTRAL_CHIP,
+  ACA: NEUTRAL_CHIP,
+  SCA: NEUTRAL_CHIP,
+  ACR: NEUTRAL_CHIP,
+  SCR: NEUTRAL_CHIP,
+  AJR: NEUTRAL_CHIP,
+  SJR: NEUTRAL_CHIP,
 };

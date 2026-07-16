@@ -99,12 +99,12 @@ function FundingSideCard({
   readonly side: SidedFunding;
 }) {
   return (
-    <div className="border-2 border-gray-200 rounded-xl p-5">
-      <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-[#595959] mb-3">
+    <div className="border-2 border-line rounded-lg p-5">
+      <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-content-dim mb-3">
         {label}
       </p>
 
-      <p className="text-2xl font-extrabold text-[#222222]">
+      <p className="text-2xl font-extrabold text-content">
         {formatCurrency(side.totalRaised)}
       </p>
       <p className="text-xs text-slate-600 mb-4">
@@ -123,10 +123,10 @@ function FundingSideCard({
                 key={donor.donorName}
                 className="flex items-baseline justify-between gap-3 text-sm"
               >
-                <span className="text-[#334155] truncate">
+                <span className="text-content-dim truncate">
                   {donor.donorName}
                 </span>
-                <span className="text-[#222222] font-semibold whitespace-nowrap">
+                <span className="text-content font-semibold whitespace-nowrap">
                   {formatCurrency(donor.totalAmount)}
                 </span>
               </li>
@@ -142,7 +142,7 @@ function FundingSideCard({
           </p>
           <ul className="space-y-1.5">
             {side.primaryCommittees.map((committee) => (
-              <li key={committee.id} className="text-sm text-[#334155]">
+              <li key={committee.id} className="text-sm text-content-dim">
                 {committee.name}
               </li>
             ))}
@@ -155,8 +155,8 @@ function FundingSideCard({
 
 function FundingSkeleton({ label }: { readonly label: string }) {
   return (
-    <div className="border-2 border-gray-200 rounded-xl p-5 animate-pulse">
-      <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-[#595959] mb-3">
+    <div className="border-2 border-line rounded-lg p-5 animate-pulse">
+      <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-content-dim mb-3">
         {label}
       </p>
       <div className="h-7 w-32 bg-slate-200 rounded mb-2" />
@@ -172,7 +172,7 @@ function FundingSkeleton({ label }: { readonly label: string }) {
 
 function FundingEmpty() {
   return (
-    <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-6 text-center">
+    <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-6 text-center">
       <p className="text-sm text-slate-700">
         No campaign-finance filings linked to this measure yet.
       </p>

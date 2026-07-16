@@ -44,7 +44,7 @@ export function PropositionBriefingCard({
 
   return (
     <article
-      className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
+      className="rounded-lg border border-line bg-surface p-4"
       data-testid="proposition-briefing-card"
       data-proposition-id={proposition.id}
     >
@@ -52,11 +52,11 @@ export function PropositionBriefingCard({
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/propositions/${proposition.id}`}
-            className="block text-base font-semibold text-[#222222] dark:text-white hover:text-[#5A7A6A] dark:hover:text-sage-300 transition-colors line-clamp-2"
+            className="block text-base font-semibold text-content hover:text-content transition-colors line-clamp-2"
           >
             {proposition.title}
           </Link>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-0.5 text-xs text-content-dim">
             {proposition.externalId}
             {electionDate
               ? ` · ${t("propositions.electionDate", {
@@ -77,29 +77,27 @@ export function PropositionBriefingCard({
       </div>
 
       {summary && (
-        <p className="mt-2 text-sm text-[#4d4d4d] dark:text-gray-300 line-clamp-3">
-          {summary}
-        </p>
+        <p className="mt-2 text-sm text-content-dim line-clamp-3">{summary}</p>
       )}
 
       {(proposition.yesOutcome || proposition.noOutcome) && (
         <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
           {proposition.yesOutcome && (
-            <div className="rounded-md bg-sage-50 dark:bg-sage-900/30 border border-sage-200 dark:border-sage-700 p-2">
-              <dt className="font-semibold text-[#2D4A3C] dark:text-sage-200 uppercase tracking-wide text-[10px]">
+            <div className="rounded-md bg-surface-alt border border-line p-2">
+              <dt className="font-semibold text-content uppercase tracking-wide text-[10px]">
                 {t("propositions.yesOutcome")}
               </dt>
-              <dd className="text-[#222222] dark:text-gray-100 line-clamp-2 mt-0.5">
+              <dd className="text-content line-clamp-2 mt-0.5">
                 {proposition.yesOutcome}
               </dd>
             </div>
           )}
           {proposition.noOutcome && (
-            <div className="rounded-md bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-700 p-2">
-              <dt className="font-semibold text-[#4d4d4d] dark:text-gray-300 uppercase tracking-wide text-[10px]">
+            <div className="rounded-md bg-surface-alt border border-line p-2">
+              <dt className="font-semibold text-content-dim uppercase tracking-wide text-[10px]">
                 {t("propositions.noOutcome")}
               </dt>
-              <dd className="text-[#222222] dark:text-gray-100 line-clamp-2 mt-0.5">
+              <dd className="text-content line-clamp-2 mt-0.5">
                 {proposition.noOutcome}
               </dd>
             </div>

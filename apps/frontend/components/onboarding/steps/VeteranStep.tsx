@@ -114,15 +114,13 @@ export function VeteranStep({ onComplete, isLastStep }: VeteranStepProps) {
 
   return (
     <div className="w-full max-w-md">
-      <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
+      <h2 className="text-2xl font-bold mb-2 text-content">
         {t("veteran.title")}
       </h2>
-      <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
-        {t("veteran.subtitle")}
-      </p>
+      <p className="text-content-dim text-sm mb-4">{t("veteran.subtitle")}</p>
 
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 mb-5 text-sm">
-        <div className="flex items-center gap-2 mb-2 font-medium text-sage-darker dark:text-sage-light">
+      <div className="bg-surface border border-line rounded-lg p-4 mb-5 text-sm">
+        <div className="flex items-center gap-2 mb-2 font-medium text-content">
           <svg
             className="w-4 h-4"
             fill="none"
@@ -139,19 +137,17 @@ export function VeteranStep({ onComplete, isLastStep }: VeteranStepProps) {
           </svg>
           {t("veteran.disclosure.encryptedBadge")}
         </div>
-        <p className="text-gray-600 dark:text-gray-300">
-          {t("veteran.disclosure.whyWeAsk")}
-        </p>
+        <p className="text-content-dim">{t("veteran.disclosure.whyWeAsk")}</p>
       </div>
 
       <label
         className={[
           "flex items-center justify-between gap-3",
-          "px-4 py-3 rounded-xl border transition-colors",
-          "focus-within:ring-2 focus-within:ring-sage-dark",
+          "px-4 py-3 rounded-lg border transition-colors",
+          "focus-within:ring-2 focus-within:ring-accent",
           veteranChipChecked && !noFieldsMode
-            ? "bg-sage-dark text-white border-sage-dark"
-            : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700",
+            ? "bg-surface-alt text-white border-line"
+            : "bg-surface text-content border-line hover:bg-surface-alt ",
           veteranChipDisabled
             ? "opacity-60 cursor-not-allowed"
             : "cursor-pointer",
@@ -173,7 +169,7 @@ export function VeteranStep({ onComplete, isLastStep }: VeteranStepProps) {
           className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
             veteranChipChecked && !noFieldsMode
               ? "border-white"
-              : "border-gray-400 dark:border-gray-500"
+              : "border-gray-400 "
           }`}
         >
           {veteranChipChecked && !noFieldsMode && (
@@ -194,12 +190,12 @@ export function VeteranStep({ onComplete, isLastStep }: VeteranStepProps) {
         </span>
       </label>
       {veteranLocked && (
-        <p className="text-gray-500 dark:text-gray-400 text-xs mt-1 px-1">
+        <p className="text-content-dim text-xs mt-1 px-1">
           {t("veteran.lockedNote")}
         </p>
       )}
 
-      <label className="flex items-center justify-between gap-3 mt-3 px-1 cursor-pointer text-sm text-gray-600 dark:text-gray-300">
+      <label className="flex items-center justify-between gap-3 mt-3 px-1 cursor-pointer text-sm text-content-dim">
         <span>{t("veteran.noFieldsToggle")}</span>
         <input
           type="checkbox"

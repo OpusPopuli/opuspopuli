@@ -7,7 +7,7 @@ export function AnalyzeStep() {
 
   return (
     <div className="text-center max-w-md">
-      <div className="w-20 h-20 bg-sage-light/30 dark:bg-sage-dark/20 text-sage-dark dark:text-sage-light rounded-2xl mx-auto mb-8 flex items-center justify-center">
+      <div className="w-20 h-20 bg-surface-alt text-content rounded-lg mx-auto mb-8 flex items-center justify-center">
         <svg
           className="w-10 h-10"
           fill="none"
@@ -24,12 +24,10 @@ export function AnalyzeStep() {
         </svg>
       </div>
 
-      <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">
+      <h2 className="text-2xl font-bold mb-4 text-content">
         {t("analyze.title")}
       </h2>
-      <p className="text-gray-600 dark:text-gray-300">
-        {t("analyze.description")}
-      </p>
+      <p className="text-content-dim">{t("analyze.description")}</p>
     </div>
   );
 }

@@ -14,9 +14,9 @@ export default function HowItWorksPage() {
     return (
       <main className="mx-auto max-w-4xl px-4 py-8">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 w-64 rounded bg-gray-200 dark:bg-gray-700" />
-          <div className="h-4 w-96 rounded bg-gray-200 dark:bg-gray-700" />
-          <div className="h-48 rounded bg-gray-200 dark:bg-gray-700" />
+          <div className="h-8 w-64 rounded bg-surface-sunk" />
+          <div className="h-4 w-96 rounded bg-surface-sunk" />
+          <div className="h-48 rounded bg-surface-sunk" />
         </div>
       </main>
     );
@@ -28,7 +28,7 @@ export default function HowItWorksPage() {
   ) {
     return (
       <main className="mx-auto max-w-4xl px-4 py-8">
-        <p className="text-gray-500 dark:text-gray-400">{t("hub.noData")}</p>
+        <p className="text-content-dim">{t("hub.noData")}</p>
       </main>
     );
   }
@@ -37,11 +37,9 @@ export default function HowItWorksPage() {
     <main className="mx-auto max-w-4xl px-4 py-8">
       {/* Page header */}
       <header className="mb-10">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-          {t("hub.title")}
-        </h1>
+        <h1 className="text-3xl font-bold text-content">{t("hub.title")}</h1>
         {civics.sessionScheme && (
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
+          <p className="mt-2 text-content-dim">
             {civics.sessionScheme.description.plainLanguage}
           </p>
         )}
@@ -52,11 +50,11 @@ export default function HowItWorksPage() {
         <section aria-labelledby="measure-types-heading" className="mb-12">
           <h2
             id="measure-types-heading"
-            className="mb-1 text-xl font-semibold text-gray-900 dark:text-gray-100"
+            className="mb-1 text-xl font-semibold text-content"
           >
             {t("measureTypes.title")}
           </h2>
-          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mb-4 text-sm text-content-dim">
             {t("measureTypes.description", { regionName: "California" })}
           </p>
           <MeasureTypeTable
@@ -71,11 +69,11 @@ export default function HowItWorksPage() {
         <section aria-labelledby="lifecycle-heading" className="mb-12">
           <h2
             id="lifecycle-heading"
-            className="mb-1 text-xl font-semibold text-gray-900 dark:text-gray-100"
+            className="mb-1 text-xl font-semibold text-content"
           >
             {t("lifecycle.title")}
           </h2>
-          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mb-4 text-sm text-content-dim">
             {t("lifecycle.abstractMode")}
           </p>
           <HowABillBecomesLaw
@@ -90,11 +88,11 @@ export default function HowItWorksPage() {
         <section aria-labelledby="glossary-heading">
           <h2
             id="glossary-heading"
-            className="mb-1 text-xl font-semibold text-gray-900 dark:text-gray-100"
+            className="mb-1 text-xl font-semibold text-content"
           >
             {t("glossary.title")}
           </h2>
-          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mb-4 text-sm text-content-dim">
             {civics.glossary.length} terms
           </p>
           <GlossaryList entries={civics.glossary} />

@@ -48,12 +48,12 @@ export function BillsList({ bills, totalCount, viewAllHref }: BillsListProps) {
  */
 export function BillListItem({ bill }: BillListItemProps) {
   const typeCls =
-    MEASURE_TYPE_STYLES[bill.measureTypeCode] ?? "bg-gray-100 text-gray-700";
+    MEASURE_TYPE_STYLES[bill.measureTypeCode] ?? "bg-surface-alt text-content";
 
   return (
     <Link
       href={`/region/bills/${bill.id}`}
-      className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white p-3 hover:border-slate-200 hover:shadow-sm transition-all"
+      className="flex items-start gap-3 rounded-lg border border-slate-100 bg-surface p-3 hover:border-slate-200 transition-all"
     >
       <span
         className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${typeCls}`}
@@ -61,7 +61,7 @@ export function BillListItem({ bill }: BillListItemProps) {
         {bill.billNumber}
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-[#222222] line-clamp-1">
+        <p className="text-sm font-medium text-content line-clamp-1">
           {bill.title}
         </p>
         {bill.status && (

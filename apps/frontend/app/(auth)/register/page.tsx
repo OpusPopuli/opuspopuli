@@ -49,14 +49,14 @@ export default function RegisterPage() {
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-[#222222] mb-2">
+        <h1 className="text-2xl font-bold text-content mb-2">
           Check your email
         </h1>
-        <p className="text-[#4d4d4d] mb-2">
+        <p className="text-content-dim mb-2">
           We&apos;ve sent a verification link to
         </p>
-        <p className="font-medium text-[#222222] mb-4">{email}</p>
-        <p className="text-[#4d4d4d] text-sm mb-6">
+        <p className="font-medium text-content mb-4">{email}</p>
+        <p className="text-content-dim text-sm mb-6">
           Click the link in your email to complete your registration.
           <br />
           The link expires in 2 hours.
@@ -64,14 +64,14 @@ export default function RegisterPage() {
         <div className="space-y-3">
           <Link
             href="/login"
-            className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
           >
             Back to Sign in
           </Link>
           <button
             type="button"
             onClick={() => globalThis.location.reload()}
-            className="inline-block w-full py-3 px-6 bg-white text-[#222222] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-surface text-content font-semibold rounded-lg border border-line hover:bg-surface transition-colors"
           >
             Use a different email
           </button>
@@ -157,18 +157,18 @@ export default function RegisterPage() {
         </AuthSubmitButton>
 
         {/* Terms */}
-        <p className="text-xs text-[#4d4d4d] text-center">
+        <p className="text-xs text-content-dim text-center">
           By creating an account, you agree to our{" "}
           <Link
             href="/terms"
-            className="text-[#222222] underline hover:no-underline"
+            className="text-content underline hover:no-underline"
           >
             Terms of Service
           </Link>{" "}
           and{" "}
           <Link
             href="/privacy"
-            className="text-[#222222] underline hover:no-underline"
+            className="text-content underline hover:no-underline"
           >
             Privacy Policy
           </Link>
@@ -178,11 +178,11 @@ export default function RegisterPage() {
       <AuthDivider />
 
       {/* Login Link */}
-      <p className="text-center text-[#4d4d4d]">
+      <p className="text-center text-content-dim">
         Already have an account?{" "}
         <Link
           href="/login"
-          className="text-[#222222] font-semibold hover:underline"
+          className="text-content font-semibold hover:underline"
         >
           Sign in
         </Link>

@@ -127,22 +127,17 @@ export function TopicsStep({ onComplete, isLastStep }: TopicsStepProps) {
 
   return (
     <div className="w-full max-w-md">
-      <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
+      <h2 className="text-2xl font-bold mb-2 text-content">
         {t("topics.title")}
       </h2>
-      <p className="text-gray-600 dark:text-gray-300 text-sm mb-3">
-        {t("topics.subtitle")}
-      </p>
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 mb-3 text-xs text-gray-600 dark:text-gray-300">
-        <span className="font-medium text-gray-800 dark:text-gray-100">
+      <p className="text-content-dim text-sm mb-3">{t("topics.subtitle")}</p>
+      <div className="bg-surface border border-line rounded-lg p-3 mb-3 text-xs text-content-dim">
+        <span className="font-medium text-content">
           {t("topics.reasonHeading")}{" "}
         </span>
         {t("topics.reasonBody")}
       </div>
-      <p
-        aria-live="polite"
-        className="text-gray-500 dark:text-gray-400 text-xs mb-5"
-      >
+      <p aria-live="polite" className="text-content-dim text-xs mb-5">
         {t("topics.counter", { count: selected.length, max: MAX_TOPICS })}
       </p>
 

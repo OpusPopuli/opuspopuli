@@ -21,6 +21,11 @@
     "preferencesNotSaved": "We couldn't save your preference — it'll reset next session."
   },
   "languageLegend": "Language",
+  "theme": {
+    "toggle": "Toggle light or dark theme",
+    "light": "Light",
+    "dark": "Dark"
+  },
   "status": {
     "success": "Success!",
     "primary": "Primary",

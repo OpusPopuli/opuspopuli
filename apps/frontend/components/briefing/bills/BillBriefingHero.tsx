@@ -26,28 +26,24 @@ export function BillBriefingHero({ item }: BillBriefingHeroProps) {
   const summary = bill.subject ?? bill.lastAction ?? null;
 
   return (
-    <article className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 sm:p-6">
+    <article className="rounded-lg border border-line bg-surface p-5 sm:p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/bills/${bill.id}`}
-            className="block text-xl sm:text-2xl font-bold text-[#222222] dark:text-white hover:text-[#5A7A6A] dark:hover:text-sage-300 transition-colors"
+            className="block text-xl sm:text-2xl font-bold text-content hover:text-content transition-colors"
           >
             {bill.title}
           </Link>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          <p className="mt-1 text-xs text-content-dim uppercase tracking-wider">
             {bill.billNumber} · {bill.sessionYear}
           </p>
         </div>
         <RelevanceChip score={result.relevanceScore} size="md" />
       </div>
-      {summary && (
-        <p className="mt-3 text-sm text-[#4d4d4d] dark:text-gray-300">
-          {summary}
-        </p>
-      )}
+      {summary && <p className="mt-3 text-sm text-content-dim">{summary}</p>}
       {bill.status && (
-        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-3 text-xs text-content-dim">
           <span className="font-semibold">{t("bills.statusLabel")}</span>{" "}
           {bill.status}
         </p>
@@ -62,16 +58,16 @@ export function BillBriefingHero({ item }: BillBriefingHeroProps) {
         />
         <Link
           href={`/region/bills/${bill.id}`}
-          className="text-xs font-medium text-[#5A7A6A] hover:text-[#2D4A3C] dark:text-sage-300 dark:hover:text-white"
+          className="text-xs font-medium text-content hover:text-content"
         >
           {t("bills.readBillLink")}
         </Link>
       </div>
-      <div className="mt-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 p-3 space-y-1">
-        <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+      <div className="mt-4 rounded-lg border border-dashed border-line p-3 space-y-1">
+        <p className="text-xs text-content-dim italic">
           {t("stubs.counterFrame")}
         </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+        <p className="text-xs text-content-dim italic">
           {t("stubs.actionAffordances")}
         </p>
       </div>

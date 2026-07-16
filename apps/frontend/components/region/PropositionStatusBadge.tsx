@@ -9,7 +9,7 @@ const STATUS_STYLES: Record<
   PENDING: { bg: "bg-yellow-100", text: "text-yellow-800", label: "Pending" },
   PASSED: { bg: "bg-green-100", text: "text-green-800", label: "Passed" },
   FAILED: { bg: "bg-red-100", text: "text-red-800", label: "Failed" },
-  WITHDRAWN: { bg: "bg-gray-100", text: "text-gray-800", label: "Withdrawn" },
+  WITHDRAWN: { bg: "bg-surface-alt", text: "text-content", label: "Withdrawn" },
 };
 
 interface PropositionStatusBadgeProps {

@@ -117,12 +117,11 @@ describe("ProfileCompletionIndicator", () => {
           />,
         );
 
-        // Single sage track replaces the legacy 4-tier color ramp
-        // (green/blue/yellow/orange) — see the design conversation that
-        // landed in this PR. Assert positively on the new class, and
-        // negatively on the old ones so a future regression that
+        // Single gold (earned-accent) track replaces the legacy 4-tier color
+        // ramp (green/blue/yellow/orange). Assert positively on the new class,
+        // and negatively on the old ones so a future regression that
         // reintroduces tier colors fails loudly here.
-        const progressBar = container.querySelector(".bg-sage-dark");
+        const progressBar = container.querySelector(".bg-accent");
         expect(progressBar).toBeInTheDocument();
         expect(container.querySelector(".bg-green-500")).toBeNull();
         expect(container.querySelector(".bg-blue-500")).toBeNull();
@@ -159,7 +158,7 @@ describe("ProfileCompletionIndicator", () => {
       );
 
       const nameBadge = screen.getByText("Name").closest("div");
-      expect(nameBadge).toHaveClass("bg-sage-light/20", "text-sage-darker");
+      expect(nameBadge).toHaveClass("bg-accent/15", "text-content");
     });
 
     it("should show incomplete styling for incomplete fields", () => {
@@ -178,7 +177,7 @@ describe("ProfileCompletionIndicator", () => {
       );
 
       const nameBadge = screen.getByText("Name").closest("div");
-      expect(nameBadge).toHaveClass("bg-gray-50", "text-gray-500");
+      expect(nameBadge).toHaveClass("bg-surface-alt", "text-content-dim");
     });
   });
 

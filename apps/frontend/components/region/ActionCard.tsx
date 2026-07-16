@@ -41,7 +41,7 @@ export function ActionCard({
     typeof action.passageEnd === "number";
 
   return (
-    <article className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-sm transition-shadow">
+    <article className="bg-surface rounded-lg border border-slate-200 p-4 transition-shadow">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           {!compact && (
@@ -51,14 +51,14 @@ export function ActionCard({
               >
                 {typeLabel}
               </span>
-              <time dateTime={action.date} className="text-xs text-[#595959]">
+              <time dateTime={action.date} className="text-xs text-content-dim">
                 {formatDate(action.date)}
               </time>
             </div>
           )}
-          <p className="font-medium text-[#222222]">{title}</p>
+          <p className="font-medium text-content">{title}</p>
           {action.text && (
-            <p className="mt-2 text-sm text-[#4d4d4d] leading-relaxed whitespace-pre-line">
+            <p className="mt-2 text-sm text-content-dim leading-relaxed whitespace-pre-line">
               {action.text}
             </p>
           )}

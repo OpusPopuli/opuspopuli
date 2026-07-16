@@ -36,7 +36,7 @@ export function StepFooter({
         type="button"
         onClick={onSkip}
         disabled={loading}
-        className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm px-3 py-2 disabled:opacity-50"
+        className="text-content-dim hover:text-content text-sm px-3 py-2 disabled:opacity-50"
       >
         {t("skipStep")}
       </button>
@@ -44,7 +44,7 @@ export function StepFooter({
         type="button"
         onClick={onSubmit}
         disabled={loading}
-        className="px-8 py-3 bg-sage-dark hover:bg-sage-darker text-white rounded-full font-semibold transition-colors disabled:opacity-50"
+        className="px-8 py-3 bg-surface-alt hover:bg-surface-alt text-white rounded-full font-semibold transition-colors disabled:opacity-50"
       >
         {t(primaryLabelKey)}
       </button>

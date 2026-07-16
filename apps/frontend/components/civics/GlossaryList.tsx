@@ -45,7 +45,7 @@ export function GlossaryList({ entries }: GlossaryListProps) {
         </label>
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-content-dim"
         >
           🔍
         </span>
@@ -56,7 +56,7 @@ export function GlossaryList({ entries }: GlossaryListProps) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("glossary.searchPlaceholder")}
           aria-controls={resultsId}
-          className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          className="w-full rounded-lg border border-line py-2 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
@@ -69,7 +69,7 @@ export function GlossaryList({ entries }: GlossaryListProps) {
         className="space-y-6"
       >
         {filtered.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          <p className="py-8 text-center text-sm text-content-dim">
             {t("glossary.noResults", { query })}
           </p>
         ) : (
@@ -92,16 +92,16 @@ function GlossaryEntry({ entry }: { entry: CivicsGlossaryEntry }) {
     <section
       id={`term-${entry.slug}`}
       aria-labelledby={`term-heading-${entry.slug}`}
-      className="scroll-mt-20 border-b border-gray-100 pb-4 last:border-0 dark:border-gray-800"
+      className="scroll-mt-20 border-b border-line pb-4 last:border-0"
     >
       <h3
         id={`term-heading-${entry.slug}`}
-        className="text-base font-semibold text-gray-900 dark:text-gray-100"
+        className="text-base font-semibold text-content"
       >
         {entry.term}
       </h3>
 
-      <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+      <p className="mt-1 text-sm text-content-dim">
         {entry.definition.plainLanguage}
       </p>
 
@@ -120,7 +120,7 @@ function GlossaryEntry({ entry }: { entry: CivicsGlossaryEntry }) {
           {expanded && (
             <p
               id={longDefId}
-              className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400"
+              className="mt-2 text-sm leading-relaxed text-content-dim"
             >
               {entry.longDefinition.plainLanguage}
             </p>
@@ -131,7 +131,7 @@ function GlossaryEntry({ entry }: { entry: CivicsGlossaryEntry }) {
       {/* Related terms — look up real slug via glossaryByTerm */}
       {entry.relatedTerms.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-content-dim">
             {t("glossary.relatedTerms")}:
           </span>
           {entry.relatedTerms.map((rt) => {
@@ -142,7 +142,7 @@ function GlossaryEntry({ entry }: { entry: CivicsGlossaryEntry }) {
               <Link
                 key={rt}
                 href={`#term-${slug}`}
-                className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                className="rounded-full bg-surface-alt px-2 py-0.5 text-xs text-content-dim hover:bg-surface-sunk"
               >
                 {rt}
               </Link>

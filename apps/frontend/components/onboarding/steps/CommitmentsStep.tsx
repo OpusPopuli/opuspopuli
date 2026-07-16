@@ -53,14 +53,12 @@ export function CommitmentsStep({ onComplete }: CommitmentsStepProps) {
 
   return (
     <div className="w-full max-w-lg" data-testid="onboarding-commitments-step">
-      <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
+      <h2 className="text-2xl font-bold mb-2 text-content">
         {t("ack.heading")}
       </h2>
-      <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
-        {t("ack.body")}
-      </p>
+      <p className="text-content-dim text-sm mb-4">{t("ack.body")}</p>
 
-      <div className="max-h-72 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 text-sm text-gray-700 dark:text-gray-300 mb-4">
+      <div className="max-h-72 overflow-y-auto rounded-lg border border-line bg-surface p-4 text-sm text-content mb-4">
         <ol className="space-y-3 list-decimal list-inside">
           {COMMITMENT_SLUGS.map((slug) => (
             <li key={slug}>
@@ -73,7 +71,7 @@ export function CommitmentsStep({ onComplete }: CommitmentsStepProps) {
         </ol>
       </div>
 
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+      <p className="text-xs text-content-dim mb-4">
         <Link
           href="/our-commitments"
           target="_blank"
@@ -86,7 +84,7 @@ export function CommitmentsStep({ onComplete }: CommitmentsStepProps) {
 
       <label
         htmlFor="commitments-accept"
-        className="flex items-start gap-3 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        className="flex items-start gap-3 px-4 py-3 rounded-lg border border-line bg-surface cursor-pointer hover:bg-surface-alt transition-colors"
       >
         <input
           id="commitments-accept"
@@ -99,9 +97,7 @@ export function CommitmentsStep({ onComplete }: CommitmentsStepProps) {
           }}
           className="mt-0.5 w-4 h-4 accent-sage-dark"
         />
-        <span className="text-sm text-gray-700 dark:text-gray-200">
-          {t("ack.checkbox")}
-        </span>
+        <span className="text-sm text-content">{t("ack.checkbox")}</span>
       </label>
 
       {error && (
@@ -116,7 +112,7 @@ export function CommitmentsStep({ onComplete }: CommitmentsStepProps) {
           onClick={submit}
           disabled={!accepted || loading}
           aria-disabled={!accepted || loading}
-          className="px-8 py-3 bg-sage-dark hover:bg-sage-darker text-white rounded-full font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-8 py-3 bg-surface-alt hover:bg-surface-alt text-white rounded-full font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? t("ack.submitting") : t("ack.continue")}
         </button>

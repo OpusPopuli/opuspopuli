@@ -44,18 +44,16 @@ export function WelcomeStep() {
 
   return (
     <div className="text-center max-w-md">
-      <div className="w-24 h-24 bg-sage-dark text-white rounded-3xl mx-auto mb-8 flex items-center justify-center shadow-md">
+      <div className="w-24 h-24 bg-surface-alt text-white rounded-lg mx-auto mb-8 flex items-center justify-center">
         <span className="text-4xl font-bold">O</span>
       </div>
 
-      <h1 className="text-3xl font-bold mb-4 text-gray-900 dark:text-white">
+      <h1 className="text-3xl font-bold mb-4 text-content">
         {t("welcome.title")}
       </h1>
-      <p className="text-gray-600 dark:text-gray-300 text-lg mb-8">
-        {t("welcome.subtitle")}
-      </p>
+      <p className="text-content-dim text-lg mb-8">{t("welcome.subtitle")}</p>
 
-      <fieldset className="inline-flex bg-white dark:bg-gray-800 rounded-full p-1 border border-gray-300 dark:border-gray-700">
+      <fieldset className="inline-flex bg-surface rounded-full p-1 border border-line">
         <legend className="sr-only">{t("welcome.languageLegend")}</legend>
         {LANGUAGES.map(({ code, labelKey }) => {
           const active = code === locale;
@@ -64,10 +62,10 @@ export function WelcomeStep() {
               key={code}
               className={[
                 "px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-colors",
-                "focus-within:ring-2 focus-within:ring-sage-dark",
+                "focus-within:ring-2 focus-within:ring-accent",
                 active
-                  ? "bg-sage-dark text-white"
-                  : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white",
+                  ? "bg-surface-alt text-white"
+                  : "text-content-dim hover:text-content ",
               ].join(" ")}
             >
               <input

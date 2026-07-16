@@ -72,7 +72,7 @@ describe("ProfileVisibilityToggle", () => {
       );
 
       const statusLabel = screen.getByText("Private");
-      expect(statusLabel).toHaveClass("text-gray-500");
+      expect(statusLabel).toHaveClass("text-content-dim");
     });
   });
 

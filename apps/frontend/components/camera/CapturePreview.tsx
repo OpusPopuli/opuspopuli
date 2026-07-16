@@ -45,7 +45,7 @@ export function CapturePreview({
         <button
           onClick={onRetake}
           disabled={isProcessing}
-          className="flex-1 max-w-[160px] py-3 bg-white/20 text-white font-medium rounded-lg transition-colors hover:bg-white/30 disabled:opacity-50"
+          className="flex-1 max-w-[160px] py-3 bg-surface/20 text-white font-medium rounded-lg transition-colors hover:bg-surface/30 disabled:opacity-50"
         >
           Retake
         </button>

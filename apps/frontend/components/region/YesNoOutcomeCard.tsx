@@ -28,11 +28,11 @@ function OutcomeColumn({
   readonly body?: string;
 }) {
   return (
-    <div className="border-2 border-gray-200 rounded-xl p-5">
-      <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-[#595959] mb-3">
+    <div className="border-2 border-line rounded-lg p-5">
+      <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-content-dim mb-3">
         {label}
       </p>
-      <p className="text-sm text-[#334155] leading-relaxed">
+      <p className="text-sm text-content-dim leading-relaxed">
         {body ?? "Not specified in the measure text."}
       </p>
     </div>

@@ -29,7 +29,7 @@ export function CaptureControls({
             className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
               torchEnabled
                 ? "bg-yellow-500 text-black"
-                : "bg-white/20 text-white"
+                : "bg-surface/20 text-white"
             }`}
             aria-label={torchEnabled ? "Turn off flash" : "Turn on flash"}
           >
@@ -58,7 +58,7 @@ export function CaptureControls({
         className="w-[72px] h-[72px] rounded-full border-4 border-white flex items-center justify-center disabled:opacity-50 transition-transform active:scale-95"
         aria-label="Capture photo"
       >
-        <div className="w-[60px] h-[60px] rounded-full bg-white" />
+        <div className="w-[60px] h-[60px] rounded-full bg-surface" />
       </button>
 
       {/* Camera switch */}
@@ -66,7 +66,7 @@ export function CaptureControls({
         {hasMultipleCameras && onSwitchCamera && (
           <button
             onClick={onSwitchCamera}
-            className="w-11 h-11 rounded-full bg-white/20 text-white flex items-center justify-center transition-colors"
+            className="w-11 h-11 rounded-full bg-surface/20 text-white flex items-center justify-center transition-colors"
             aria-label="Switch camera"
           >
             <svg

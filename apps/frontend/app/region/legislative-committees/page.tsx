@@ -43,22 +43,22 @@ function CommitteeCard({
   return (
     <Link
       href={`/region/legislative-committees/${committee.id}`}
-      className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow"
+      className="block bg-surface rounded-lg p-6 transition-shadow"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-[#222222]">
+          <h3 className="text-lg font-semibold text-content">
             {committee.name}
           </h3>
           {committee.description ? (
-            <p className="mt-2 text-sm text-[#4d4d4d] line-clamp-2">
+            <p className="mt-2 text-sm text-content-dim line-clamp-2">
               {committee.description}
             </p>
           ) : null}
         </div>
         <ChamberBadge chamber={committee.chamber} />
       </div>
-      <div className="mt-4 text-sm text-[#4d4d4d]">
+      <div className="mt-4 text-sm text-content-dim">
         {committee.memberCount}{" "}
         {committee.memberCount === 1 ? "member" : "members"}
       </div>
@@ -114,7 +114,7 @@ export default function LegislativeCommitteesPage() {
     if (items.length === 0) {
       if (isSearching) {
         return (
-          <p className="text-sm text-[#4d4d4d] italic">
+          <p className="text-sm text-content-dim italic">
             No committees match &ldquo;{searchQuery}&rdquo;. Check spelling or
             try a broader term.
           </p>
@@ -152,10 +152,10 @@ export default function LegislativeCommitteesPage() {
         ]}
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#222222]">
+        <h1 className="text-3xl font-bold text-content">
           Legislative Committees
         </h1>
-        <p className="mt-2 text-[#4d4d4d]">
+        <p className="mt-2 text-content-dim">
           Where bills get debated and shaped before they reach the floor. Click
           a committee to see who sits on it and what hearings it has held.
         </p>
@@ -169,7 +169,7 @@ export default function LegislativeCommitteesPage() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search committees by name (e.g. 'Health', 'Veterans')…"
-            className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-[#222222] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-surface text-content placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             aria-label="Search committees by name"
           />
         </label>
@@ -183,8 +183,8 @@ export default function LegislativeCommitteesPage() {
                 onClick={() => onChamberChange(f.value)}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                   active
-                    ? "bg-[#222222] text-white"
-                    : "bg-white text-[#4d4d4d] hover:bg-slate-100"
+                    ? "bg-inverse-surface text-white"
+                    : "bg-surface text-content-dim hover:bg-slate-100"
                 }`}
               >
                 {f.label}
@@ -195,7 +195,7 @@ export default function LegislativeCommitteesPage() {
       </div>
 
       {isSearching && !loading && items.length > 0 && (
-        <p className="mb-3 text-xs text-[#4d4d4d]">
+        <p className="mb-3 text-xs text-content-dim">
           {total} match{total === 1 ? "" : "es"} for &ldquo;{searchQuery}
           &rdquo;
         </p>

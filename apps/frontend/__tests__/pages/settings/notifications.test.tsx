@@ -184,7 +184,7 @@ describe("NotificationsPage", () => {
       const toggles = screen.getAllByRole("button", { name: "" });
       const marketingToggle = toggles.find(
         (btn) =>
-          btn.classList.contains("bg-gray-200") &&
+          btn.classList.contains("bg-surface-sunk") &&
           btn.classList.contains("rounded-full"),
       );
 
@@ -208,7 +208,7 @@ describe("NotificationsPage", () => {
       const toggles = screen.getAllByRole("button", { name: "" });
       const marketingToggle = toggles.find(
         (btn) =>
-          btn.classList.contains("bg-gray-200") &&
+          btn.classList.contains("bg-surface-sunk") &&
           btn.classList.contains("rounded-full"),
       );
 
@@ -235,7 +235,7 @@ describe("NotificationsPage", () => {
       const toggles = screen.getAllByRole("button", { name: "" });
       const marketingToggle = toggles.find(
         (btn) =>
-          btn.classList.contains("bg-gray-200") &&
+          btn.classList.contains("bg-surface-sunk") &&
           btn.classList.contains("rounded-full"),
       );
 
@@ -262,7 +262,7 @@ describe("NotificationsPage", () => {
       const toggles = screen.getAllByRole("button", { name: "" });
       const marketingToggle = toggles.find(
         (btn) =>
-          btn.classList.contains("bg-gray-200") &&
+          btn.classList.contains("bg-surface-sunk") &&
           btn.classList.contains("rounded-full"),
       );
 
