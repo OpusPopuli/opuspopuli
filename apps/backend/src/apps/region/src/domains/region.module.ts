@@ -44,7 +44,6 @@ import {
   LegislativeCommitteeRelevanceFieldResolver,
   LegislativeCommitteeDetailRelevanceFieldResolver,
 } from './legislative-committee-relevance.field.resolver';
-import { RegionScheduler } from './region.scheduler';
 import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { EntityActivitySummaryGeneratorService } from './entity-activity-summary-generator.service';
@@ -207,7 +206,6 @@ const promptClientAsyncConfig = {
     CommitteeRelevanceCacheLookup,
     LegislativeCommitteeRelevanceFieldResolver,
     LegislativeCommitteeDetailRelevanceFieldResolver,
-    RegionScheduler,
     PipelineJobService,
     StructuralAnalysisJobService,
     BioGeneratorService,
