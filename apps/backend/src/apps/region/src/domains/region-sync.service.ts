@@ -428,6 +428,11 @@ export class RegionSyncService implements OnModuleDestroy {
       'BILL_VOTES_MAX_TOKENS',
       8000,
     );
+    this.billVotesRequestTimeoutMs = readPositiveInt(
+      this.config,
+      'BILL_VOTES_REQUEST_TIMEOUT_MS',
+      150_000,
+    );
   }
 
   // Bill-enrichment throughput knobs (#889 follow-up). Defaults reproduce
@@ -453,6 +458,12 @@ export class RegionSyncService implements OnModuleDestroy {
   // clears typical CA roll-calls; a per-source DataSourceConfig.llmMaxTokens
   // still overrides when set.
   private readonly billVotesMaxTokens: number;
+  // Per-bill LLM request timeout for votes extraction (#897). The #894 bump to
+  // 8000 output tokens made large roll-calls take ~100s at ~80 tok/s, which
+  // overran the provider's 60s default → ~82% of bills timed out. Default
+  // 150000 leaves headroom (8000 tok / ~80 tps ≈ 100s); a per-source
+  // DataSourceConfig.llmRequestTimeoutMs still overrides when set.
+  private readonly billVotesRequestTimeoutMs: number;
 
   async onModuleDestroy(): Promise<void> {
     await this.cacheService.destroy();
@@ -2397,7 +2408,8 @@ export class RegionSyncService implements OnModuleDestroy {
       const llmResult = await this.llm.generate(promptText, {
         maxTokens: ds.llmMaxTokens ?? this.billVotesMaxTokens,
         temperature: 0.1,
-        requestTimeoutMs: ds.llmRequestTimeoutMs,
+        requestTimeoutMs:
+          ds.llmRequestTimeoutMs ?? this.billVotesRequestTimeoutMs,
       });
 
       // A large roll-call whose votes JSON exceeds maxTokens is truncated
