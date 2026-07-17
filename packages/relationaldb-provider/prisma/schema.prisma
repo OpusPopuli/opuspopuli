@@ -1574,8 +1574,9 @@ model BillVote {
   representativeId   String?  @map("representative_id")
   /// Raw name from the roll-call table; preserved for linker re-runs.
   representativeName String   @map("representative_name")
-  /// "Assembly" | "Senate"
-  chamber            String   @db.VarChar(20)
+  /// Typically "Assembly" | "Senate", but LLM votes-extraction can emit a
+  /// longer roll-call label (e.g. a full committee name), so no length cap (#905).
+  chamber            String
   voteDate           DateTime @map("vote_date") @db.Date
   /// yes | no | abstain | absent | excused | no_vote
   position           String   @db.VarChar(50)
