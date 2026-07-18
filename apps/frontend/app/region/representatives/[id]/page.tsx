@@ -86,6 +86,14 @@ function isLeadershipRole(role?: string): boolean {
   return !!role && /chair|ranking/i.test(role);
 }
 
+// Committee assignments have no unique id — a rep can sit on two distinct
+// committees that scrape to the same name (e.g. a full committee and its
+// "Budget" subcommittee). Prefer the stable resolved id/url when present,
+// falling back to the name, with the list index as a uniqueness tiebreaker.
+function committeeKey(c: CommitteeAssignment, index: number): string {
+  return `${c.legislativeCommitteeId ?? c.url ?? c.name}-${index}`;
+}
+
 function CommitteeRow({ c }: { readonly c: CommitteeAssignment }) {
   // Three rendering tiers, in priority order:
   //  1. Internal link to the new committee detail page when the linker
@@ -266,8 +274,8 @@ function Committees({
             Leadership
           </h4>
           <div className="space-y-1">
-            {leadership.map((c) => (
-              <CommitteeRow key={c.name} c={c} />
+            {leadership.map((c, i) => (
+              <CommitteeRow key={committeeKey(c, i)} c={c} />
             ))}
           </div>
         </div>
@@ -279,8 +287,8 @@ function Committees({
             Member
           </h4>
           <div className="space-y-1">
-            {membership.map((c) => (
-              <CommitteeRow key={c.name} c={c} />
+            {membership.map((c, i) => (
+              <CommitteeRow key={committeeKey(c, i)} c={c} />
             ))}
           </div>
         </div>
