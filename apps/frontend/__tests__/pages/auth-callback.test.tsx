@@ -229,6 +229,30 @@ describe("AuthCallbackPage", () => {
 
       expect(mockPush).toHaveBeenCalledWith("/me/briefing");
     });
+
+    it("routes a new user without passkeys to onboarding (#758)", async () => {
+      // Regression: when the passkey prompt can't render (no WebAuthn /
+      // support check unresolved), a fresh registrant must still be sent
+      // through onboarding instead of skipping straight to the briefing.
+      mockSearchParamsGet = jest.fn().mockImplementation((key: string) => {
+        if (key === "email") return "test@example.com";
+        if (key === "token") return "valid-token";
+        if (key === "type") return "register";
+        return null;
+      });
+      mockVerifyMagicLink.mockResolvedValue(undefined);
+      mockAuthContextValue = { ...defaultAuthContext, supportsPasskeys: false };
+
+      render(<AuthCallbackPage />);
+
+      const continueButton = await screen.findByRole("button", {
+        name: "Continue to App",
+      });
+      await userEvent.click(continueButton);
+
+      expect(mockPush).toHaveBeenCalledWith("/onboarding");
+      expect(mockPush).not.toHaveBeenCalledWith("/me/briefing");
+    });
   });
 
   describe("success state - new user with passkey support", () => {

@@ -75,6 +75,23 @@ export class ProfileService {
     });
   }
 
+  /**
+   * Mark first-run onboarding complete for a user (#758). Stamps
+   * `onboardingCompletedAt` with `now()` so returning users on any
+   * device are not re-prompted. Idempotent — re-running keeps the
+   * profile complete and simply refreshes the timestamp. Ensures a
+   * profile row exists first, since a user can reach the final
+   * onboarding step without having saved any profile fields.
+   */
+  async completeOnboarding(userId: string): Promise<DbUserProfile> {
+    await this.getOrCreateProfile(userId);
+
+    return this.db.userProfile.update({
+      where: { userId },
+      data: { onboardingCompletedAt: new Date() },
+    });
+  }
+
   // ============================================
   // Profile Completion Methods
   // ============================================

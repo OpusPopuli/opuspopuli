@@ -10,6 +10,22 @@ jest.mock("next/navigation", () => ({
   }),
 }));
 
+// Mock the server read (#758). The page reads onboarding completion from
+// `myProfile` and treats the server as authoritative; the local cache is
+// only a fallback when the query hasn't resolved.
+type MockQueryResult = {
+  data?: { myProfile: { onboardingCompletedAt: string | null } | null };
+  loading: boolean;
+};
+const NOT_COMPLETED: MockQueryResult = {
+  data: { myProfile: { onboardingCompletedAt: null } },
+  loading: false,
+};
+let mockUseQueryValue: MockQueryResult = { ...NOT_COMPLETED };
+jest.mock("@apollo/client/react", () => ({
+  useQuery: () => mockUseQueryValue,
+}));
+
 // Mock auth context
 const defaultAuthContext = {
   isAuthenticated: true,
@@ -65,6 +81,7 @@ describe("OnboardingPage", () => {
     jest.clearAllMocks();
     mockAuthContextValue = { ...defaultAuthContext };
     mockOnboardingContextValue = { ...defaultOnboardingContext };
+    mockUseQueryValue = { ...NOT_COMPLETED };
   });
 
   it("should render OnboardingSteps when authenticated and not completed", () => {
@@ -86,11 +103,44 @@ describe("OnboardingPage", () => {
     });
   });
 
-  it("should redirect to /region when onboarding is completed", async () => {
+  it("should redirect to /me/briefing when the server flag is set", async () => {
+    mockUseQueryValue = {
+      data: {
+        myProfile: { onboardingCompletedAt: "2026-07-18T00:00:00.000Z" },
+      },
+      loading: false,
+    };
+
+    render(<OnboardingPage />);
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith("/me/briefing");
+    });
+  });
+
+  it("server 'not completed' overrides a stale local cache (#758)", async () => {
+    // The exact original bug: a leftover localStorage flag must NOT skip
+    // onboarding once the server says this account hasn't completed it.
     mockOnboardingContextValue = {
       ...defaultOnboardingContext,
       hasCompletedOnboarding: true,
     };
+    mockUseQueryValue = { ...NOT_COMPLETED };
+
+    render(<OnboardingPage />);
+
+    expect(screen.getByTestId("onboarding-steps")).toBeInTheDocument();
+    expect(mockReplace).not.toHaveBeenCalledWith("/me/briefing");
+  });
+
+  it("falls back to the local cache when the query hasn't resolved", async () => {
+    // Query errored / offline: data undefined. A returning user with a
+    // warm cache should not be re-onboarded.
+    mockOnboardingContextValue = {
+      ...defaultOnboardingContext,
+      hasCompletedOnboarding: true,
+    };
+    mockUseQueryValue = { data: undefined, loading: false };
 
     render(<OnboardingPage />);
 
@@ -110,11 +160,8 @@ describe("OnboardingPage", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("should render nothing when onboarding is already completed", () => {
-    mockOnboardingContextValue = {
-      ...defaultOnboardingContext,
-      hasCompletedOnboarding: true,
-    };
+  it("should render nothing while the server flag is still loading", () => {
+    mockUseQueryValue = { data: undefined, loading: true };
 
     const { container } = render(<OnboardingPage />);
 

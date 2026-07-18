@@ -53,6 +53,22 @@ export class ProfileResolver {
     return profile as unknown as UserProfileModel;
   }
 
+  /**
+   * Mark first-run onboarding complete for the authenticated user
+   * (#758). Returns the updated profile so the Apollo cache picks up
+   * the new `onboardingCompletedAt` without a refetch. Server-side
+   * persistence means a returning user on a new device is not
+   * re-prompted through onboarding.
+   */
+  @Mutation(() => UserProfileModel)
+  async completeOnboarding(
+    @Context() context: GqlContext,
+  ): Promise<UserProfileModel> {
+    const user = getUserFromContext(context);
+    const profile = await this.profileService.completeOnboarding(user.id);
+    return profile as unknown as UserProfileModel;
+  }
+
   // ============================================
   // Profile Completion Queries
   // ============================================

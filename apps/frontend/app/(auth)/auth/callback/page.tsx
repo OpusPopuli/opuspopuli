@@ -260,7 +260,15 @@ function AuthCallbackContent() {
     );
   }
 
-  // Success state - redirect to app
+  // Success state - redirect to app.
+  //
+  // New users still need onboarding even when the passkey prompt above
+  // didn't render (browser without WebAuthn, or the async support check
+  // hadn't resolved yet). Without this, a fresh registrant would land on
+  // /me/briefing and skip the questionnaire entirely (#758). Returning
+  // users continue to their briefing. An explicit ?redirect= wins in
+  // both cases via resolveRedirect().
+  const successTarget = isNewUser ? skipTarget : continueTarget;
   return (
     <div className="bg-surface rounded-lg p-8 text-center">
       <AuthCheckIcon />
@@ -270,7 +278,7 @@ function AuthCallbackContent() {
       <p className="text-content-dim mb-6">Redirecting you to the app...</p>
       <button
         type="button"
-        onClick={() => router.push(continueTarget)}
+        onClick={() => router.push(successTarget)}
         className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
       >
         Continue to App
