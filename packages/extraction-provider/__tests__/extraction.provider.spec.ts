@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ExtractionProvider } from "../src/extraction.provider";
+import { ExtractionProvider, stripNulBytes } from "../src/extraction.provider";
 import { FetchError } from "../src/types";
 
 // Mock fetch globally
@@ -285,6 +285,40 @@ describe("ExtractionProvider", () => {
       const text = await provider.extractPdfText(buffer);
 
       expect(text).toBe("Extracted PDF text");
+    });
+
+    // #912: scanned / mixed-encoding PDFs emit NUL bytes (0x00) that Postgres
+    // text columns reject ("invalid byte sequence for encoding UTF8"), crashing
+    // any downstream DB write (e.g. minutes.rawText). extractPdfText is the
+    // single choke point every PDF path flows through, so it must sanitize.
+    it("should strip NUL bytes emitted by the underlying PDF extractor", async () => {
+      const { PDFParse } = jest.requireMock("pdf-parse");
+      PDFParse.mockImplementationOnce(() => ({
+        getText: jest
+          .fn()
+          .mockResolvedValue({ text: "clean\u0000text\u0000here" }),
+        destroy: jest.fn().mockResolvedValue(undefined),
+      }));
+
+      const text = await provider.extractPdfText(Buffer.from("fake pdf"));
+
+      expect(text).toBe("cleantexthere");
+      expect(text).not.toContain("\u0000");
+    });
+  });
+
+  describe("stripNulBytes", () => {
+    it("removes every NUL byte (0x00) from the input", () => {
+      expect(stripNulBytes("a\u0000b\u0000c")).toBe("abc");
+    });
+
+    it("returns non-NUL text unchanged", () => {
+      expect(stripNulBytes("no nuls here")).toBe("no nuls here");
+    });
+
+    it("handles empty and all-NUL strings", () => {
+      expect(stripNulBytes("")).toBe("");
+      expect(stripNulBytes("\u0000\u0000\u0000")).toBe("");
     });
   });
 

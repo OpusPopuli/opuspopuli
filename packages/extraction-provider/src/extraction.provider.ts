@@ -47,6 +47,16 @@ import {
 import { normalizeUrl } from "./utils/url-normalize.js";
 
 /**
+ * Remove NUL bytes (0x00) from extracted text. Postgres `text`/`utf8` columns
+ * reject 0x00 ("invalid byte sequence for encoding UTF8"), so any downstream DB
+ * write of PDF text would crash. Scanned / mixed-encoding PDFs emit these. See
+ * #912. Exported for unit testing.
+ */
+export function stripNulBytes(text: string): string {
+  return text.replace(/\u0000/g, "");
+}
+
+/**
  * Selected element from HTML parsing
  */
 export interface SelectedElement {
@@ -217,7 +227,13 @@ export class ExtractionProvider {
    */
   async extractPdfText(buffer: Buffer): Promise<string> {
     this.logger.debug("Extracting text from PDF");
-    return PdfExtractor.extract(buffer, this.ocrService);
+    const text = await PdfExtractor.extract(buffer, this.ocrService);
+    // Strip NUL bytes (0x00) that scanned / mixed-encoding PDFs can emit.
+    // Postgres text columns reject 0x00 ("invalid byte sequence for encoding
+    // UTF8"), which would crash any downstream DB write of the extracted text
+    // (minutes.rawText, bill/meeting fields). Single choke point for every PDF
+    // path — see #912.
+    return stripNulBytes(text);
   }
 
   /**

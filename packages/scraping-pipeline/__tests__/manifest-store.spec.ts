@@ -57,6 +57,7 @@ function createRecord(overrides: Partial<ManifestRecord> = {}): ManifestRecord {
     confidence: 0.8,
     successCount: 5,
     failureCount: 1,
+    lastItemCount: null,
     isActive: true,
     llmProvider: "ollama",
     llmModel: "llama3",
@@ -195,6 +196,28 @@ describe("ManifestStoreService", () => {
       await store.incrementSuccess("nonexistent");
 
       expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it("persists lastItemCount as the drift baseline when given a count (#911)", async () => {
+      repo.findFirst.mockResolvedValue(createRecord({ successCount: 5 }));
+      repo.update.mockResolvedValue(createRecord());
+
+      await store.incrementSuccess("manifest-1", 13);
+
+      expect(repo.update).toHaveBeenCalledWith({
+        where: { id: "manifest-1" },
+        data: expect.objectContaining({ successCount: 6, lastItemCount: 13 }),
+      });
+    });
+
+    it("leaves lastItemCount untouched when no count is supplied", async () => {
+      repo.findFirst.mockResolvedValue(createRecord({ successCount: 5 }));
+      repo.update.mockResolvedValue(createRecord());
+
+      await store.incrementSuccess("manifest-1");
+
+      const data = repo.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty("lastItemCount");
     });
   });
 

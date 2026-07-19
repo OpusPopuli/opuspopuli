@@ -1833,6 +1833,7 @@ model StructuralManifest {
   confidence      Float     @default(0)
   successCount    Int       @default(0) @map("success_count")
   failureCount    Int       @default(0) @map("failure_count")
+  lastItemCount   Int?      @map("last_item_count") /// Items from last successful extraction — baseline for count-drift self-heal (#911)
   isActive        Boolean   @default(true) @map("is_active") /// Only one active per (regionId, sourceUrl, dataType)
   llmProvider     String?   @map("llm_provider") @db.VarChar(50)
   llmModel        String?   @map("llm_model") @db.VarChar(100)

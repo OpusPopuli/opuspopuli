@@ -148,7 +148,8 @@ describe("ScrapingPipelineService", () => {
       expect(result.success).toBe(true);
       expect(result.items).toHaveLength(1);
       expect(mockAnalyzer.analyze).not.toHaveBeenCalled();
-      expect(mockStore.incrementSuccess).toHaveBeenCalledWith("manifest-1");
+      // Records success with the extracted item count as the drift baseline (#911)
+      expect(mockStore.incrementSuccess).toHaveBeenCalledWith("manifest-1", 1);
       expect(mockStore.markChecked).toHaveBeenCalledWith("manifest-1");
     });
 
@@ -230,8 +231,8 @@ describe("ScrapingPipelineService", () => {
       expect(mockStore.save).toHaveBeenCalled();
       // Should re-extract with new manifest
       expect(mockExtractor.extract).toHaveBeenCalledTimes(2);
-      // Should record success on new manifest
-      expect(mockStore.incrementSuccess).toHaveBeenCalledWith("manifest-2");
+      // Should record success on new manifest with its item count baseline
+      expect(mockStore.incrementSuccess).toHaveBeenCalledWith("manifest-2", 1);
     });
 
     it("should record failure when healing also fails", async () => {
@@ -260,6 +261,83 @@ describe("ScrapingPipelineService", () => {
 
       expect(mockStore.incrementFailure).toHaveBeenCalledWith(
         "manifest-healed",
+      );
+    });
+
+    it("re-analyzes in-run even in async/worker mode on zero-yield (#911)", async () => {
+      // Regression: previously the async path (onManifestMissing wired) only
+      // enqueued a background refresh and returned the degraded 0-item result,
+      // so a stale cached manifest silently zeroed out meetings until a later
+      // sync converged. The pipeline must now heal in the same run.
+      const onManifestMissing = jest.fn().mockResolvedValue(undefined);
+      pipeline = new ScrapingPipelineService(
+        { generate: jest.fn() } as any,
+        mockExtraction,
+        mockAnalyzer,
+        mockStore,
+        mockExtractor,
+        mockMapper,
+        mockHealing,
+        {} as unknown as BulkDownloadHandler,
+        {} as unknown as ApiIngestHandler,
+        {} as any,
+        {} as any,
+        { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
+        onManifestMissing,
+      );
+
+      // Cache hit (hashes match) whose stale selectors yield 0 items, then a
+      // healthy re-extraction after re-analysis.
+      mockHealing.evaluate
+        .mockReturnValueOnce({
+          shouldHeal: true,
+          reason: "Zero items extracted",
+          validation: {
+            valid: false,
+            issues: [{ severity: "error", message: "Zero items extracted" }],
+          },
+        })
+        .mockReturnValueOnce({
+          shouldHeal: false,
+          reason: "Extraction passed validation",
+          validation: { valid: true, issues: [] },
+        });
+      mockExtractor.extract
+        .mockReturnValueOnce({
+          items: [],
+          success: false,
+          warnings: [],
+          errors: [],
+        })
+        .mockReturnValueOnce({
+          items: [{ name: "Recovered" }],
+          success: true,
+          warnings: [],
+          errors: [],
+        });
+      mockAnalyzer.analyze.mockResolvedValue(
+        createManifest({ id: "manifest-2", version: 2 }),
+      );
+
+      await pipeline.execute(createSource(), "california");
+
+      // Healed in-run: re-analyzed and re-extracted rather than deferring.
+      expect(mockAnalyzer.analyze).toHaveBeenCalledTimes(1);
+      expect(mockExtractor.extract).toHaveBeenCalledTimes(2);
+      expect(mockStore.incrementSuccess).toHaveBeenCalledWith("manifest-2", 1);
+    });
+
+    it("passes the stored lastItemCount as the drift baseline (#911)", async () => {
+      mockStore.findLatest.mockResolvedValue(
+        createManifest({ lastItemCount: 13 }),
+      );
+
+      await pipeline.execute(createSource(), "california");
+
+      expect(mockHealing.evaluate).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.any(Object),
+        13,
       );
     });
   });
