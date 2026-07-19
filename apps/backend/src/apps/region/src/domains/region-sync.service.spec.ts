@@ -1,7 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { RegionSyncService } from './region-sync.service';
+import {
+  RegionSyncService,
+  normalizeCommitteeName,
+} from './region-sync.service';
 import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
@@ -3194,5 +3197,40 @@ describe('RegionSyncService — proposition finance wiring', () => {
       expect(cf?.errors).toEqual([]);
       expect(linker.linkAll).toHaveBeenCalled();
     });
+  });
+});
+
+describe('normalizeCommitteeName (#908)', () => {
+  it('strips chamber + "committee on" boilerplate to the core policy area', () => {
+    expect(normalizeCommitteeName('Assembly Committee on Appropriations')).toBe(
+      'appropriations',
+    );
+    expect(normalizeCommitteeName('Committee on Public Safety')).toBe(
+      'public safety',
+    );
+    expect(normalizeCommitteeName('Senate Judiciary')).toBe('judiciary');
+    expect(
+      normalizeCommitteeName('Select Committee on Youth Mental Health'),
+    ).toBe('youth mental health');
+  });
+
+  it('is symmetric — verbose extracted name and short canonical name normalize equal', () => {
+    expect(normalizeCommitteeName('Assembly Committee on Appropriations')).toBe(
+      normalizeCommitteeName('Appropriations'),
+    );
+    expect(
+      normalizeCommitteeName('Committee on Governmental Organization'),
+    ).toBe(normalizeCommitteeName('Governmental Organization'));
+  });
+
+  it('leaves boilerplate-free names essentially unchanged (lowercased)', () => {
+    expect(
+      normalizeCommitteeName('Environmental Safety and Toxic Materials'),
+    ).toBe('environmental safety and toxic materials');
+  });
+
+  it('returns empty string for boilerplate-only input (never aliased)', () => {
+    expect(normalizeCommitteeName('Committee')).toBe('');
+    expect(normalizeCommitteeName('Assembly Committee')).toBe('');
   });
 });
