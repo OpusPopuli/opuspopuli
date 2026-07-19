@@ -211,6 +211,27 @@ function normalizeVotePosition(
 }
 
 /**
+ * Reduce a committee name to its core policy area for fuzzy matching. The LLM
+ * extracts verbose page strings ("Assembly Committee on Appropriations",
+ * "Committee on Public Safety") while legislative_committees stores short
+ * canonical names ("Appropriations", "Public Safety"), so an exact match linked
+ * almost nothing (#908). Strips chamber/qualifier words + the "committee (on)"
+ * boilerplate and collapses whitespace. Applied to BOTH sides so the comparison
+ * is symmetric; returns '' when a name is only boilerplate (never aliased).
+ */
+export function normalizeCommitteeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(
+      /\b(assembly|senate|joint|select|standing|legislative|subcommittee|committee|on)\b/g,
+      ' ',
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Map the enrich-single-bill result onto a phase tracker outcome shape.
  * Lifted to a named helper so the call site avoids two nested ternaries
  * (one for label, one for counter bucket) — sonarjs/no-nested-conditional
@@ -1965,8 +1986,25 @@ export class RegionSyncService implements OnModuleDestroy {
       select: { id: true, name: true },
     });
     const index = new Map<string, string>();
+    // Exact canonical keys first — the original behavior, never regressed.
     for (const c of committees) {
       index.set(c.name.toLowerCase().trim(), c.id);
+    }
+    // Normalized-core aliases so verbose extracted names ("Assembly Committee on
+    // Appropriations") resolve to short canonical committees ("Appropriations").
+    // Collect ids per normalized key, then add only unambiguous ones (a core
+    // shared by ≥2 committees is skipped — never mis-link) that aren't already
+    // an exact key (#908).
+    const byNorm = new Map<string, string[]>();
+    for (const c of committees) {
+      const norm = normalizeCommitteeName(c.name);
+      if (!norm) continue;
+      const ids = byNorm.get(norm) ?? [];
+      ids.push(c.id);
+      byNorm.set(norm, ids);
+    }
+    for (const [norm, ids] of byNorm) {
+      if (ids.length === 1 && !index.has(norm)) index.set(norm, ids[0]);
     }
     return index;
   }
@@ -2586,7 +2624,11 @@ export class RegionSyncService implements OnModuleDestroy {
     await this.db.billCommitteeAssignment.deleteMany({ where: { billId } });
     const rows = names
       .map((name) => {
-        const committeeId = committeeIndex.get(name.toLowerCase().trim());
+        // Exact match first; fall back to the normalized-core alias so verbose
+        // extracted names link to short canonical committees (#908).
+        const committeeId =
+          committeeIndex.get(name.toLowerCase().trim()) ??
+          committeeIndex.get(normalizeCommitteeName(name));
         return committeeId
           ? { billId, legislativeCommitteeId: committeeId }
           : null;
