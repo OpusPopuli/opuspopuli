@@ -83,7 +83,7 @@ export function RepWhyThisPanel({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="text-xs font-medium text-[#5A7A6A] hover:text-[#2D4A3C] dark:text-sage-300 dark:hover:text-white"
+        className="text-xs font-medium text-content hover:text-content"
       >
         {open ? t("whyThis.toggleClose") : t("whyThis.toggleOpen")}
       </button>
@@ -92,20 +92,16 @@ export function RepWhyThisPanel({
           id={panelId}
           role="region"
           aria-labelledby={buttonId}
-          className="mt-2 rounded-lg bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-700 p-3 space-y-2"
+          className="mt-2 rounded-lg bg-surface-alt border border-line p-3 space-y-2"
         >
           {hasLlm ? (
-            <p className="text-sm text-[#222222] dark:text-gray-100">
-              {llmExplanation}
-            </p>
+            <p className="text-sm text-content">{llmExplanation}</p>
           ) : (
             <>
               {heuristicKey ? (
-                <p className="text-sm text-[#222222] dark:text-gray-100">
-                  {t(heuristicKey)}
-                </p>
+                <p className="text-sm text-content">{t(heuristicKey)}</p>
               ) : null}
-              <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+              <p className="text-xs text-content-dim italic">
                 {t("whyThis.placeholderFor745")}
               </p>
             </>

@@ -56,15 +56,15 @@ function PropositionCard({
   return (
     <Link
       href={`/region/propositions/${proposition.id}`}
-      className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow"
+      className="block bg-surface rounded-lg p-6 transition-shadow"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-[#222222] line-clamp-2">
+          <h3 className="text-lg font-semibold text-content line-clamp-2">
             {proposition.title}
           </h3>
           {description ? (
-            <p className="mt-2 text-sm text-[#4d4d4d] line-clamp-3">
+            <p className="mt-2 text-sm text-content-dim line-clamp-3">
               {description}
             </p>
           ) : (
@@ -77,7 +77,7 @@ function PropositionCard({
       </div>
 
       {electionDate && (
-        <div className="mt-4 text-sm text-[#4d4d4d]">
+        <div className="mt-4 text-sm text-content-dim">
           Election: {electionDate}
         </div>
       )}
@@ -127,8 +127,8 @@ export default function PropositionsPage() {
         ]}
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#222222]">Propositions</h1>
-        <p className="mt-2 text-[#4d4d4d]">
+        <h1 className="text-3xl font-bold text-content">Propositions</h1>
+        <p className="mt-2 text-content-dim">
           Ballot measures and initiatives for your region
         </p>
       </div>

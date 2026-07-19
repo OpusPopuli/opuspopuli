@@ -100,7 +100,7 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
           />
         </svg>
         <h2 className="text-xl font-semibold mb-2">Camera Error</h2>
-        <p className="text-gray-400 mb-6 max-w-sm">{camera.error.message}</p>
+        <p className="text-content-dim mb-6 max-w-sm">{camera.error.message}</p>
         <div className="flex gap-3">
           {onCancel && (
             <button

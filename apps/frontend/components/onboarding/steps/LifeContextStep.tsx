@@ -181,10 +181,10 @@ export function LifeContextStep({
 
   return (
     <div className="w-full max-w-lg">
-      <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
+      <h2 className="text-2xl font-bold mb-2 text-content">
         {t("lifeContext.title")}
       </h2>
-      <p className="text-gray-600 dark:text-gray-300 text-sm mb-6">
+      <p className="text-content-dim text-sm mb-6">
         {t("lifeContext.subtitle")}
       </p>
 

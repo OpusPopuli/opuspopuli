@@ -65,7 +65,7 @@ describe("CitizenActionCallout", () => {
       />,
     );
     expect(
-      document.querySelector(".text-gray-600, .bg-gray-50"),
+      document.querySelector(".text-content-dim, .bg-surface-alt"),
     ).toBeInTheDocument();
   });
 });

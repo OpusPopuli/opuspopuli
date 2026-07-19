@@ -32,13 +32,11 @@ const pages = [
 
 export default function TransparencyPage() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="min-h-screen bg-surface-alt flex flex-col">
       <Header />
       <main className="flex-1 max-w-4xl mx-auto px-8 py-12">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Transparency
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400 mb-8">
+        <h1 className="text-3xl font-bold text-content mb-2">Transparency</h1>
+        <p className="text-content-dim mb-8">
           Opus Populi is committed to AI transparency. We believe you have the
           right to understand how our AI analyzes documents, what commitments
           govern its behavior, and how we verify its neutrality.
@@ -49,14 +47,12 @@ export default function TransparencyPage() {
             <Link
               key={page.href}
               href={page.href}
-              className="group block p-6 bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-shadow"
+              className="group block p-6 bg-surface rounded-lg transition-shadow"
             >
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+              <h2 className="text-xl font-semibold text-content mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400">
                 {page.title}
               </h2>
-              <p className="text-gray-600 dark:text-gray-300 text-sm">
-                {page.description}
-              </p>
+              <p className="text-content-dim text-sm">{page.description}</p>
             </Link>
           ))}
         </div>

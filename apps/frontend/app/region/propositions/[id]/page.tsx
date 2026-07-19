@@ -82,7 +82,9 @@ function QuickView({
   return (
     <div className="animate-layer-enter">
       {summary ? (
-        <p className="text-lg text-[#475569] leading-relaxed mb-6">{summary}</p>
+        <p className="text-lg text-content-dim leading-relaxed mb-6">
+          {summary}
+        </p>
       ) : (
         <p className="text-base italic text-slate-400 mb-6">
           AI analysis pending — a plain-language summary will appear here once
@@ -92,10 +94,10 @@ function QuickView({
 
       {topProvisions.length > 0 && (
         <div className="mb-6">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#595959] mb-2">
+          <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-2">
             What this would do
           </p>
-          <ul className="space-y-2 text-[#334155]">
+          <ul className="space-y-2 text-content-dim">
             {topProvisions.map((provision) => (
               <li key={provision} className="flex gap-2 leading-relaxed">
                 <span aria-hidden className="text-slate-400 mt-0.5">
@@ -115,8 +117,8 @@ function QuickView({
       )}
 
       {proposition.fiscalImpact && (
-        <div className="inline-flex items-start gap-3 px-4 py-3 bg-slate-100 rounded-lg text-sm text-[#334155] mb-6 max-w-2xl">
-          <span className="text-xs font-bold uppercase tracking-wider text-[#595959] whitespace-nowrap pt-0.5">
+        <div className="inline-flex items-start gap-3 px-4 py-3 bg-slate-100 rounded-lg text-sm text-content-dim mb-6 max-w-2xl">
+          <span className="text-xs font-bold uppercase tracking-wider text-content-dim whitespace-nowrap pt-0.5">
             Fiscal impact
           </span>
           <span className="leading-relaxed">{proposition.fiscalImpact}</span>
@@ -152,13 +154,13 @@ function LinkedPetitionScans({
     <div className="mb-8">
       <SectionTitle>Community Petition Scans</SectionTitle>
       {loading && (
-        <div className="bg-slate-50 rounded-xl p-4 text-center text-sm text-slate-500">
+        <div className="bg-slate-50 rounded-lg p-4 text-center text-sm text-slate-500">
           Loading petition scans...
         </div>
       )}
 
       {!loading && docs.length === 0 && (
-        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-6 text-center">
+        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-6 text-center">
           <p className="text-sm text-slate-700">
             Petition scans related to this measure will appear here as they are
             scanned.
@@ -169,8 +171,8 @@ function LinkedPetitionScans({
       {!loading && docs.length > 0 && (
         <div className="space-y-3">
           {docs.map((doc) => (
-            <div key={doc.id} className="border border-gray-200 rounded-xl p-4">
-              <p className="text-sm text-[#334155] leading-relaxed">
+            <div key={doc.id} className="border border-line rounded-lg p-4">
+              <p className="text-sm text-content-dim leading-relaxed">
                 {doc.summary}
               </p>
               <div className="flex items-center gap-3 mt-2">
@@ -213,7 +215,7 @@ function Details({
       <div className="mb-8">
         <SectionTitle>Key Provisions</SectionTitle>
         {proposition.keyProvisions && proposition.keyProvisions.length > 0 ? (
-          <ul className="list-disc pl-5 space-y-2 text-[#334155]">
+          <ul className="list-disc pl-5 space-y-2 text-content-dim">
             {proposition.keyProvisions.map((provision) => (
               <li key={provision} className="leading-relaxed">
                 <span>{provision}</span>
@@ -242,7 +244,7 @@ function Details({
       {proposition.fiscalImpact && (
         <div className="mb-8">
           <SectionTitle>Fiscal Impact</SectionTitle>
-          <p className="text-[#334155] leading-relaxed">
+          <p className="text-content-dim leading-relaxed">
             {proposition.fiscalImpact}
             <ClaimAttribution
               claims={claimsForField(
@@ -271,11 +273,11 @@ function Details({
           <div className="mb-8">
             <SectionTitle>Existing Law vs. This Measure</SectionTitle>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div className="border-2 border-gray-200 rounded-xl p-5">
-                <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-[#595959] mb-3">
+              <div className="border-2 border-line rounded-lg p-5">
+                <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-content-dim mb-3">
                   Under Existing Law
                 </p>
-                <p className="text-sm text-[#334155] leading-relaxed">
+                <p className="text-sm text-content-dim leading-relaxed">
                   {proposition.existingVsProposed.current || "Not specified."}
                   <ClaimAttribution
                     claims={claimsForField(
@@ -286,11 +288,11 @@ function Details({
                   />
                 </p>
               </div>
-              <div className="border-2 border-gray-200 rounded-xl p-5">
-                <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-[#595959] mb-3">
+              <div className="border-2 border-line rounded-lg p-5">
+                <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-content-dim mb-3">
                   If This Passes
                 </p>
-                <p className="text-sm text-[#334155] leading-relaxed">
+                <p className="text-sm text-content-dim leading-relaxed">
                   {proposition.existingVsProposed.proposed || "Not specified."}
                   <ClaimAttribution
                     claims={claimsForField(
@@ -328,7 +330,7 @@ function BothSides({
       <div className="mb-8">
         <SectionTitle>Best Arguments From Each Side</SectionTitle>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <div className="border-2 border-gray-200 rounded-xl p-5">
+          <div className="border-2 border-line rounded-lg p-5">
             <h4 className="flex items-center gap-2 text-xs uppercase tracking-[1.5px] font-extrabold mb-4">
               <span className="w-5 h-5 rounded-full bg-blue-100 border-2 border-blue-500" />{" "}
               Arguments For
@@ -337,7 +339,7 @@ function BothSides({
               AI-generated arguments coming soon
             </div>
           </div>
-          <div className="border-2 border-gray-200 rounded-xl p-5">
+          <div className="border-2 border-line rounded-lg p-5">
             <h4 className="flex items-center gap-2 text-xs uppercase tracking-[1.5px] font-extrabold mb-4">
               <span className="w-5 h-5 rounded-full bg-red-100 border-2 border-red-500" />{" "}
               Arguments Against
@@ -378,8 +380,8 @@ function DeepDive({
 }) {
   return (
     <div className="animate-layer-enter">
-      <div className="bg-[#fafafa] rounded-xl border-l-4 border-[#222222] p-6 mb-8">
-        <h3 className="text-sm uppercase tracking-[1.5px] font-bold text-[#222222] mb-4">
+      <div className="bg-surface-alt rounded-lg border-l-4 border-content p-6 mb-8">
+        <h3 className="text-sm uppercase tracking-[1.5px] font-bold text-content mb-4">
           Full Documentation
         </h3>
         <ul className="space-y-3">
@@ -480,8 +482,8 @@ export default function PropositionDetailPage() {
       entity="proposition"
       notFound={!proposition}
       notFoundContent={
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#4d4d4d] mb-4">Proposition not found.</p>
+        <div className="bg-surface-alt border border-line rounded-lg p-8 text-center">
+          <p className="text-content-dim mb-4">Proposition not found.</p>
           <Link
             href="/region/propositions"
             className="text-blue-600 hover:text-blue-700 hover:underline text-sm font-medium"
@@ -503,20 +505,20 @@ export default function PropositionDetailPage() {
 
           {/* Persistent Header */}
           <div className="mb-6">
-            <p className="text-xs font-bold uppercase tracking-[1px] text-[#595959] mb-2">
+            <p className="text-xs font-bold uppercase tracking-[1px] text-content-dim mb-2">
               <CivicTerm
                 term={proposition.externalId.replace(/\d+$/, "").trim()}
               >
                 {proposition.externalId}
               </CivicTerm>
             </p>
-            <h1 className="text-2xl font-extrabold text-[#222222] leading-tight mb-3">
+            <h1 className="text-2xl font-extrabold text-content leading-tight mb-3">
               {proposition.title}
             </h1>
             <div className="flex flex-wrap items-center gap-3">
               <PropositionStatusBadge status={proposition.status} />
               {electionDate && (
-                <span className="text-sm text-[#4d4d4d]">
+                <span className="text-sm text-content-dim">
                   Election: {electionDate}
                 </span>
               )}
@@ -540,7 +542,7 @@ export default function PropositionDetailPage() {
           <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
 
           {/* Layer Content */}
-          <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+          <div className="bg-surface rounded-lg p-8">
             {layer === 1 && (
               <QuickView
                 proposition={proposition}

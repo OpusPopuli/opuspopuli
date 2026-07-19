@@ -44,10 +44,10 @@ export function ProtectedRoute({
   // Show loading state while checking authentication
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FFFFFF]">
+      <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#222222] mx-auto mb-4" />
-          <p className="text-[#4d4d4d]">Loading...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-content mx-auto mb-4" />
+          <p className="text-content-dim">Loading...</p>
         </div>
       </div>
     );

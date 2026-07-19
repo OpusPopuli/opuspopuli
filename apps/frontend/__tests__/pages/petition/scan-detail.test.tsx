@@ -164,7 +164,7 @@ describe("ScanDetailPage", () => {
 
     render(<ScanDetailPage />);
 
-    expect(document.querySelector(".animate-spin")).toBeInTheDocument();
+    expect(document.querySelector(".s-loading")).toBeInTheDocument();
   });
 
   it("should show back button to history", () => {

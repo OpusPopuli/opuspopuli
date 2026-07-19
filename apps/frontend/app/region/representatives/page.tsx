@@ -31,7 +31,7 @@ function RepresentativeCard({
   return (
     <Link
       href={`/region/representatives/${representative.id}`}
-      className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow"
+      className="block bg-surface rounded-lg p-6 transition-shadow"
     >
       <div className="flex items-start gap-4">
         <div className="flex-shrink-0">
@@ -45,9 +45,9 @@ function RepresentativeCard({
               unoptimized
             />
           ) : (
-            <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-surface-sunk flex items-center justify-center">
               <svg
-                className="w-8 h-8 text-gray-400"
+                className="w-8 h-8 text-content-dim"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -64,22 +64,22 @@ function RepresentativeCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-[#222222]">
+          <h3 className="text-lg font-semibold text-content">
             {representative.name}
           </h3>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <PartyBadge party={representative.party} />
-            <span className="text-sm text-[#4d4d4d]">
+            <span className="text-sm text-content-dim">
               {representative.chamber}
             </span>
           </div>
-          <p className="mt-1 text-sm text-[#4d4d4d]">
+          <p className="mt-1 text-sm text-content-dim">
             District {representative.district}
           </p>
         </div>
 
         <svg
-          className="w-5 h-5 text-gray-400 flex-shrink-0 mt-1"
+          className="w-5 h-5 text-content-dim flex-shrink-0 mt-1"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -104,7 +104,7 @@ function RepGroup({
   if (reps.length === 0) return null;
   return (
     <div>
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-[#6b7280] mb-3">
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-content-dim mb-3">
         {title}
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -131,15 +131,15 @@ function MyRepresentativesSection({
 
   if (!hasAddress) {
     return (
-      <div className="mb-10 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6">
-        <h2 className="text-xl font-semibold text-[#222222] mb-2">
+      <div className="mb-10 bg-surface rounded-lg p-6">
+        <h2 className="text-xl font-semibold text-content mb-2">
           My Representatives
         </h2>
-        <p className="text-sm text-[#4d4d4d]">
+        <p className="text-sm text-content-dim">
           Add an address in your{" "}
           <Link
             href="/settings/addresses"
-            className="text-[#222222] underline font-medium"
+            className="text-content underline font-medium"
           >
             profile settings
           </Link>{" "}
@@ -153,7 +153,7 @@ function MyRepresentativesSection({
 
   return (
     <div className="mb-10">
-      <h2 className="text-xl font-semibold text-[#222222] mb-6">
+      <h2 className="text-xl font-semibold text-content mb-6">
         My Representatives
       </h2>
       <div className="space-y-6">
@@ -228,7 +228,7 @@ export default function RepresentativesPage() {
       return <EmptyState entity="representatives" />;
     if (masterReps.length === 0)
       return (
-        <p className="text-sm text-[#4d4d4d]">
+        <p className="text-sm text-content-dim">
           All representatives for your area appear above.
         </p>
       );
@@ -261,8 +261,10 @@ export default function RepresentativesPage() {
       />
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#222222]">Representatives</h1>
-        <p className="mt-2 text-[#4d4d4d]">Elected officials and legislators</p>
+        <h1 className="text-3xl font-bold text-content">Representatives</h1>
+        <p className="mt-2 text-content-dim">
+          Elected officials and legislators
+        </p>
       </div>
 
       <MyRepresentativesSection
@@ -274,14 +276,14 @@ export default function RepresentativesPage() {
 
       <div>
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h2 className="text-xl font-semibold text-[#222222]">
+          <h2 className="text-xl font-semibold text-content">
             All Representatives
           </h2>
           {chambers.length > 0 && (
             <div className="flex items-center gap-2">
               <label
                 htmlFor="chamber"
-                className="text-sm font-medium text-[#4d4d4d]"
+                className="text-sm font-medium text-content-dim"
               >
                 Filter:
               </label>
@@ -292,7 +294,7 @@ export default function RepresentativesPage() {
                   setChamber(e.target.value || undefined);
                   setPage(0);
                 }}
-                className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
+                className="px-3 py-2 text-sm border border-line rounded-lg bg-surface focus:border-content focus:ring-1 focus:ring-content outline-none"
               >
                 <option value="">All Chambers</option>
                 {chambers.map((c) => (

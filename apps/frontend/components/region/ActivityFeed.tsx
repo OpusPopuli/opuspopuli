@@ -96,10 +96,10 @@ export function ActivityFeed({
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-[#595959]">
+        <p className="text-xs text-content-dim">
           Showing {items.length} of {total} record{total === 1 ? "" : "s"}
         </p>
-        <label className="inline-flex items-center gap-2 text-xs text-[#595959] cursor-pointer">
+        <label className="inline-flex items-center gap-2 text-xs text-content-dim cursor-pointer">
           <input
             type="checkbox"
             checked={includePresenceYes}
@@ -115,7 +115,7 @@ export function ActivityFeed({
 
       {groupActionsByType(items).map((group) => (
         <section key={group.actionType} className="mb-6">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[#595959] mb-2 flex items-baseline gap-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-content-dim mb-2 flex items-baseline gap-2">
             <span>{group.label}</span>
             <span className="text-[10px] font-medium text-slate-400">
               · {group.items.length} record

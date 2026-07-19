@@ -32,7 +32,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 
   return (
     <div
-      className={`${toastStyles[toast.type]} text-white px-4 py-3 rounded-lg shadow-lg max-w-md animate-slide-in`}
+      className={`${toastStyles[toast.type]} text-white px-4 py-3 rounded-lg max-w-md animate-slide-in`}
       role="alert"
       aria-live="assertive"
       aria-atomic="true"

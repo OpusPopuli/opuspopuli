@@ -95,17 +95,17 @@ function CurrencyIcon() {
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="min-h-screen bg-surface-alt flex flex-col">
       <Header />
       <main className="flex-1">
         {/* Hero */}
         <section className="max-w-6xl mx-auto px-8 pt-20 pb-16 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-[#222222] dark:text-white mb-6 leading-tight">
+          <h1 className="text-4xl md:text-5xl font-bold text-content mb-6 leading-tight">
             Know your ballot.
             <br />
             Hold power accountable.
           </h1>
-          <p className="text-lg text-[#4d4d4d] dark:text-gray-300 max-w-2xl mx-auto mb-10">
+          <p className="text-lg text-content-dim max-w-2xl mx-auto mb-10">
             Transparent access to propositions, representatives, campaign
             finance, and petition tracking — powered by AI, built for citizens.
           </p>
@@ -114,7 +114,7 @@ export default function Home() {
 
         {/* Features */}
         <section className="max-w-6xl mx-auto px-8 pb-20">
-          <h2 className="text-2xl font-bold text-[#222222] dark:text-white text-center mb-12">
+          <h2 className="text-2xl font-bold text-content text-center mb-12">
             Everything you need to stay informed
           </h2>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -146,14 +146,14 @@ export default function Home() {
         </section>
 
         {/* Trust Signals */}
-        <section className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <section className="border-t border-line bg-surface">
           <div className="max-w-6xl mx-auto px-8 py-20">
-            <h2 className="text-2xl font-bold text-[#222222] dark:text-white text-center mb-12">
+            <h2 className="text-2xl font-bold text-content text-center mb-12">
               Built on trust and transparency
             </h2>
             <div className="grid gap-8 sm:grid-cols-3">
               <Link href="/transparency" className="text-center group">
-                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center mx-auto mb-4 text-blue-600 dark:text-blue-400">
+                <div className="w-12 h-12 bg-surface-alt rounded-lg flex items-center justify-center mx-auto mb-4 text-content">
                   <svg
                     className="w-6 h-6"
                     fill="none"
@@ -175,17 +175,17 @@ export default function Home() {
                     />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-[#222222] dark:text-white mb-2 group-hover:text-[#5A7A6A] transition-colors">
+                <h3 className="font-semibold text-content mb-2 group-hover:text-content transition-colors">
                   AI Transparency
                 </h3>
-                <p className="text-sm text-[#4d4d4d] dark:text-gray-300">
+                <p className="text-sm text-content-dim">
                   Our AI commitments, system cards, and prompt charter are
                   public. You always know how AI is used.
                 </p>
               </Link>
 
               <Link href="/privacy" className="text-center group">
-                <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center mx-auto mb-4 text-green-600 dark:text-green-400">
+                <div className="w-12 h-12 bg-surface-alt rounded-lg flex items-center justify-center mx-auto mb-4 text-content">
                   <svg
                     className="w-6 h-6"
                     fill="none"
@@ -201,17 +201,17 @@ export default function Home() {
                     />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-[#222222] dark:text-white mb-2 group-hover:text-[#5A7A6A] transition-colors">
+                <h3 className="font-semibold text-content mb-2 group-hover:text-content transition-colors">
                   Privacy First
                 </h3>
-                <p className="text-sm text-[#4d4d4d] dark:text-gray-300">
+                <p className="text-sm text-content-dim">
                   GDPR and CCPA compliant. You control your data with granular
                   consent management and full data export.
                 </p>
               </Link>
 
               <div className="text-center">
-                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center mx-auto mb-4 text-purple-600 dark:text-purple-400">
+                <div className="w-12 h-12 bg-surface-alt rounded-lg flex items-center justify-center mx-auto mb-4 text-content">
                   <svg
                     className="w-6 h-6"
                     fill="none"
@@ -227,10 +227,8 @@ export default function Home() {
                     />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-[#222222] dark:text-white mb-2">
-                  Open Source
-                </h3>
-                <p className="text-sm text-[#4d4d4d] dark:text-gray-300">
+                <h3 className="font-semibold text-content mb-2">Open Source</h3>
+                <p className="text-sm text-content-dim">
                   Our platform is open source. Inspect the code, contribute, and
                   help build better civic tools.
                 </p>

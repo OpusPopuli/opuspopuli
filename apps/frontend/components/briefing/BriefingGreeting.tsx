@@ -106,13 +106,13 @@ export function BriefingGreeting({
     <section
       aria-labelledby="briefing-greeting-heading"
       data-testid="briefing-greeting"
-      className="rounded-2xl border border-sage-200 dark:border-sage-700 bg-sage-50/60 dark:bg-sage-900/20 px-5 py-5 sm:px-6 sm:py-6"
+      className="rounded-lg border border-line bg-surface-alt px-5 py-5 sm:px-6 sm:py-6"
     >
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <h1
             id="briefing-greeting-heading"
-            className="text-2xl sm:text-3xl font-bold text-[#2D4A3C] dark:text-sage-100"
+            className="text-2xl sm:text-3xl font-bold text-content"
           >
             {greetingLine}
           </h1>
@@ -122,7 +122,7 @@ export function BriefingGreeting({
             // already enforced commitment-4 vocab; the frontend trusts
             // the field is safe-to-render or null.
             <p
-              className="mt-2 text-sm sm:text-base text-[#222222] dark:text-sage-50"
+              className="mt-2 text-sm sm:text-base text-content"
               data-testid="briefing-greeting-llm-summary"
             >
               {llmSummary}
@@ -134,16 +134,16 @@ export function BriefingGreeting({
             // greeting block never breaks.
             <>
               <p
-                className="mt-2 text-sm sm:text-base text-[#222222] dark:text-sage-50 italic"
+                className="mt-2 text-sm sm:text-base text-content italic"
                 data-testid="briefing-greeting-template-mission"
               >
                 {t("greeting.mission")}
               </p>
-              <p className="mt-2 text-sm sm:text-base text-[#4d4d4d] dark:text-gray-300">
+              <p className="mt-2 text-sm sm:text-base text-content-dim">
                 {summaryLine}
               </p>
               {urgentLine && (
-                <p className="mt-1 text-sm sm:text-base font-medium text-[#5A7A6A] dark:text-sage-200">
+                <p className="mt-1 text-sm sm:text-base font-medium text-content">
                   {urgentLine}
                 </p>
               )}
@@ -153,7 +153,7 @@ export function BriefingGreeting({
         <Link
           href="/region"
           aria-label={t("page.browseAllAria")}
-          className="text-sm font-medium text-[#5A7A6A] hover:text-[#2D4A3C] dark:text-sage-200 dark:hover:text-white whitespace-nowrap shrink-0"
+          className="text-sm font-medium text-content hover:text-content whitespace-nowrap shrink-0"
         >
           {t("page.browseAllLink")}
         </Link>

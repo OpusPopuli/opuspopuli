@@ -3,7 +3,8 @@
     "title": "Conoce tu boleta. Exige rendición de cuentas.",
     "subtitle": "Opus Populi te da acceso transparente a proposiciones, representantes, finanzas de campaña y seguimiento de peticiones — impulsado por IA, creado para ciudadanos.",
     "ctaSignedOut": "Comenzar",
-    "ctaSignedIn": "Ir al Panel"
+    "ctaSignedIn": "Ir al Panel",
+    "ctaSignIn": "Iniciar sesión"
   },
   "features": {
     "sectionTitle": "Todo lo que necesitas para mantenerte informado",

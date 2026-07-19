@@ -15,13 +15,16 @@ export function SettingsLoadingSkeleton({
   rowHeight = "h-16",
 }: SettingsLoadingSkeletonProps) {
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+    <div className="bg-surface rounded-lg p-8">
       <div className="animate-pulse space-y-4">
-        <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-        <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+        <div className="h-8 bg-surface-sunk rounded w-1/4"></div>
+        <div className="h-4 bg-surface-sunk rounded w-1/2"></div>
         <div className="space-y-3 mt-8">
           {Array.from({ length: rows }, (_, i) => (
-            <div key={i} className={`${rowHeight} bg-gray-200 rounded`}></div>
+            <div
+              key={i}
+              className={`${rowHeight} bg-surface-sunk rounded`}
+            ></div>
           ))}
         </div>
       </div>

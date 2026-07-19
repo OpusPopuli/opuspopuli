@@ -36,14 +36,14 @@ export default function CampaignFinancePage() {
         >
           Region
         </Link>
-        <span className="mx-2 text-[#4d4d4d]">/</span>
-        <span className="text-sm text-[#4d4d4d]">Campaign Finance</span>
+        <span className="mx-2 text-content-dim">/</span>
+        <span className="text-sm text-content-dim">Campaign Finance</span>
       </nav>
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#222222]">Campaign Finance</h1>
-        <p className="mt-2 text-[#4d4d4d]">
+        <h1 className="text-3xl font-bold text-content">Campaign Finance</h1>
+        <p className="mt-2 text-content-dim">
           Committees, contributions, and expenditures for your region
         </p>
       </div>
@@ -54,12 +54,12 @@ export default function CampaignFinancePage() {
           <Link
             key={card.href}
             href={card.href}
-            className="group bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-all duration-200"
+            className="group bg-surface rounded-lg p-6 transition-all duration-200"
           >
-            <h2 className="text-lg font-semibold text-[#222222] group-hover:text-blue-600 transition-colors">
+            <h2 className="text-lg font-semibold text-content group-hover:text-blue-600 transition-colors">
               {card.title}
             </h2>
-            <p className="mt-1 text-sm text-[#4d4d4d]">{card.description}</p>
+            <p className="mt-1 text-sm text-content-dim">{card.description}</p>
           </Link>
         ))}
       </div>

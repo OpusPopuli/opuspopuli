@@ -23,10 +23,10 @@ export function PlaceholderBody({
   const { t } = useTranslation("briefing");
   return (
     <div className="space-y-3">
-      <p className="text-sm text-[#4d4d4d] dark:text-gray-300">
+      <p className="text-sm text-content-dim">
         {t(`${i18nKey}.placeholder.body`)}
       </p>
-      <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+      <p className="text-xs text-content-dim italic">
         {t(`${i18nKey}.placeholder.comingSoonNote`)}
         <span className="ml-1">(#{issueNumber})</span>
       </p>

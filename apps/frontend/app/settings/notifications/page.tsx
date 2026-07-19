@@ -29,12 +29,12 @@ function Toggle({ enabled, onChange, disabled }: Readonly<ToggleProps>) {
       type="button"
       onClick={() => onChange(!enabled)}
       disabled={disabled}
-      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#222222] focus:ring-offset-2 ${
-        enabled ? "bg-[#222222]" : "bg-gray-200"
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-content focus:ring-offset-2 ${
+        enabled ? "bg-inverse-surface" : "bg-surface-sunk"
       } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
     >
       <span
-        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface ring-0 transition duration-200 ease-in-out ${
           enabled ? "translate-x-5" : "translate-x-0"
         }`}
       />
@@ -137,13 +137,13 @@ function NotificationForm({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+    <div className="bg-surface rounded-lg p-8">
       <div className="flex justify-between items-start mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-[#222222]">
+          <h1 className="text-2xl font-bold text-content">
             {t("notifications.title")}
           </h1>
-          <p className="text-[#4d4d4d] mt-1">{t("notifications.subtitle")}</p>
+          <p className="text-content-dim mt-1">{t("notifications.subtitle")}</p>
         </div>
         <button
           onClick={onUnsubscribeAll}
@@ -171,7 +171,7 @@ function NotificationForm({
       {/* Email Notifications */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-[#222222]">
+          <h2 className="text-lg font-semibold text-content">
             {t("notifications.email.title")}
           </h2>
           <Toggle
@@ -179,13 +179,13 @@ function NotificationForm({
             onChange={(v) => updatePref("emailEnabled", v)}
           />
         </div>
-        <div className="space-y-4 pl-4 border-l-2 border-gray-100">
+        <div className="space-y-4 pl-4 border-l-2 border-line">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-content">
                 {t("notifications.email.productUpdates")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-content-dim">
                 {t("notifications.email.productUpdatesDesc")}
               </p>
             </div>
@@ -197,10 +197,10 @@ function NotificationForm({
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-content">
                 {t("notifications.email.securityAlerts")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-content-dim">
                 {t("notifications.email.securityAlertsDesc")}
               </p>
             </div>
@@ -212,10 +212,10 @@ function NotificationForm({
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-content">
                 {t("notifications.email.marketing")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-content-dim">
                 {t("notifications.email.marketingDesc")}
               </p>
             </div>
@@ -226,7 +226,7 @@ function NotificationForm({
             />
           </div>
           <div className="flex items-center justify-between pt-2">
-            <p className="text-sm font-medium text-[#222222]">
+            <p className="text-sm font-medium text-content">
               {t("notifications.email.frequency")}
             </p>
             <select
@@ -238,7 +238,7 @@ function NotificationForm({
                 )
               }
               disabled={!prefs.emailEnabled}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white disabled:opacity-50"
+              className="px-3 py-2 rounded-lg border border-line text-sm bg-surface disabled:opacity-50"
             >
               <FrequencyOptions />
             </select>
@@ -249,7 +249,7 @@ function NotificationForm({
       {/* Push Notifications */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-[#222222]">
+          <h2 className="text-lg font-semibold text-content">
             {t("notifications.push.title")}
           </h2>
           <Toggle
@@ -257,13 +257,13 @@ function NotificationForm({
             onChange={(v) => updatePref("pushEnabled", v)}
           />
         </div>
-        <div className="space-y-4 pl-4 border-l-2 border-gray-100">
+        <div className="space-y-4 pl-4 border-l-2 border-line">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-content">
                 {t("notifications.push.productUpdates")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-content-dim">
                 {t("notifications.push.productUpdatesDesc")}
               </p>
             </div>
@@ -275,10 +275,10 @@ function NotificationForm({
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-content">
                 {t("notifications.push.securityAlerts")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-content-dim">
                 {t("notifications.push.securityAlertsDesc")}
               </p>
             </div>
@@ -293,16 +293,16 @@ function NotificationForm({
 
       {/* Civic Notifications */}
       <div className="mb-8">
-        <h2 className="text-lg font-semibold text-[#222222] mb-4">
+        <h2 className="text-lg font-semibold text-content mb-4">
           {t("notifications.civic.title")}
         </h2>
-        <div className="space-y-4 pl-4 border-l-2 border-gray-100">
+        <div className="space-y-4 pl-4 border-l-2 border-line">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-content">
                 {t("notifications.civic.electionReminders")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-content-dim">
                 {t("notifications.civic.electionRemindersDesc")}
               </p>
             </div>
@@ -313,10 +313,10 @@ function NotificationForm({
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-content">
                 {t("notifications.civic.voterDeadlines")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-content-dim">
                 {t("notifications.civic.voterDeadlinesDesc")}
               </p>
             </div>
@@ -327,10 +327,10 @@ function NotificationForm({
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-content">
                 {t("notifications.civic.ballotUpdates")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-content-dim">
                 {t("notifications.civic.ballotUpdatesDesc")}
               </p>
             </div>
@@ -341,10 +341,10 @@ function NotificationForm({
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-content">
                 {t("notifications.civic.localNews")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-content-dim">
                 {t("notifications.civic.localNewsDesc")}
               </p>
             </div>
@@ -355,10 +355,10 @@ function NotificationForm({
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#222222]">
+              <p className="text-sm font-medium text-content">
                 {t("notifications.civic.representativeUpdates")}
               </p>
-              <p className="text-sm text-[#4d4d4d]">
+              <p className="text-sm text-content-dim">
                 {t("notifications.civic.representativeUpdatesDesc")}
               </p>
             </div>
@@ -368,7 +368,7 @@ function NotificationForm({
             />
           </div>
           <div className="flex items-center justify-between pt-2">
-            <p className="text-sm font-medium text-[#222222]">
+            <p className="text-sm font-medium text-content">
               {t("notifications.civic.frequency")}
             </p>
             <select
@@ -379,7 +379,7 @@ function NotificationForm({
                   e.target.value as NotificationFrequency,
                 )
               }
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white"
+              className="px-3 py-2 rounded-lg border border-line text-sm bg-surface"
             >
               <FrequencyOptions />
             </select>
@@ -391,10 +391,10 @@ function NotificationForm({
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-semibold text-[#222222]">
+            <h2 className="text-lg font-semibold text-content">
               {t("notifications.quietHours.title")}
             </h2>
-            <p className="text-sm text-[#4d4d4d]">
+            <p className="text-sm text-content-dim">
               {t("notifications.quietHours.subtitle")}
             </p>
           </div>
@@ -406,25 +406,25 @@ function NotificationForm({
         {prefs.quietHoursEnabled && (
           <div className="flex items-center gap-4 pl-4">
             <div>
-              <label className="block text-sm text-[#4d4d4d] mb-1">
+              <label className="block text-sm text-content-dim mb-1">
                 {t("notifications.quietHours.from")}
               </label>
               <input
                 type="time"
                 value={prefs.quietHoursStart || "22:00"}
                 onChange={(e) => updatePref("quietHoursStart", e.target.value)}
-                className="px-3 py-2 rounded-lg border border-gray-200 text-sm"
+                className="px-3 py-2 rounded-lg border border-line text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm text-[#4d4d4d] mb-1">
+              <label className="block text-sm text-content-dim mb-1">
                 {t("notifications.quietHours.to")}
               </label>
               <input
                 type="time"
                 value={prefs.quietHoursEnd || "08:00"}
                 onChange={(e) => updatePref("quietHoursEnd", e.target.value)}
-                className="px-3 py-2 rounded-lg border border-gray-200 text-sm"
+                className="px-3 py-2 rounded-lg border border-line text-sm"
               />
             </div>
           </div>
@@ -436,7 +436,7 @@ function NotificationForm({
         <button
           onClick={handleSave}
           disabled={!hasChanges || updating}
-          className="px-6 py-3 bg-[#222222] text-white rounded-lg font-medium hover:bg-[#333333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-6 py-3 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:bg-inverse-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {updating ? t("common:buttons.saving") : t("common:buttons.save")}
         </button>
@@ -469,7 +469,7 @@ export default function NotificationsPage() {
 
   if (error) {
     return (
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+      <div className="bg-surface rounded-lg p-8">
         <div className="text-center text-red-600">
           <p>{t("notifications.loadError")}</p>
         </div>

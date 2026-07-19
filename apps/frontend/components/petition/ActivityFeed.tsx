@@ -44,11 +44,11 @@ function Sparkline({
 
 function ActivityItem({ item }: { item: PetitionActivityItem }) {
   return (
-    <div className="px-4 py-3 bg-gray-800 rounded-lg">
+    <div className="px-4 py-3 bg-inverse-surface rounded-lg">
       <p className="text-sm text-gray-200 mb-1">
         {truncate(item.summary || "Petition document", 120)}
       </p>
-      <div className="flex items-center gap-3 text-xs text-gray-400">
+      <div className="flex items-center gap-3 text-xs text-content-dim">
         <span>
           Scanned {item.scanCount} {item.scanCount === 1 ? "time" : "times"} in{" "}
           {item.locationCount}{" "}
@@ -67,9 +67,9 @@ function LoadingSkeleton() {
       data-testid="activity-feed-loading"
     >
       <div className="h-4 bg-gray-700 rounded w-3/4" />
-      <div className="h-10 bg-gray-800 rounded" />
-      <div className="h-16 bg-gray-800 rounded" />
-      <div className="h-16 bg-gray-800 rounded" />
+      <div className="h-10 bg-inverse-surface rounded" />
+      <div className="h-16 bg-inverse-surface rounded" />
+      <div className="h-16 bg-inverse-surface rounded" />
     </div>
   );
 }
@@ -90,7 +90,7 @@ export function ActivityFeed() {
   if (!feed || (feed.totalScansLast24h === 0 && feed.items.length === 0)) {
     return (
       <section className="w-full max-w-sm mt-8 text-center">
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-content-dim">
           No petition activity in the last 24 hours. Be the first to scan!
         </p>
       </section>
@@ -122,7 +122,7 @@ export function ActivityFeed() {
       {feed.hourlyTrend.length > 0 && (
         <div className="mb-4">
           <Sparkline hourlyTrend={feed.hourlyTrend} />
-          <p className="text-xs text-gray-400 mt-1">Last 24 hours</p>
+          <p className="text-xs text-content-dim mt-1">Last 24 hours</p>
         </div>
       )}
 

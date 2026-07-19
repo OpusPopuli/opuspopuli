@@ -40,7 +40,7 @@ export function CitizenActionCallout({ action }: CitizenActionCalloutProps) {
     "flex items-center gap-2 rounded-lg px-4 py-3 text-sm transition-colors",
     isActive
       ? "bg-orange-50 text-orange-800 border border-orange-200 hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800"
-      : "bg-gray-50 text-gray-600 border border-gray-200 dark:bg-gray-800/50 dark:text-gray-400 dark:border-gray-700",
+      : "bg-surface-alt text-content-dim border border-line ",
   ].join(" ");
 
   // Defense-in-depth: only render the link if the URL is http(s).

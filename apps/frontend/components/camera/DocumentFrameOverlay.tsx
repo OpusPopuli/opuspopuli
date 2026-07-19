@@ -63,14 +63,14 @@ export function DocumentFrameOverlay({
           className={`absolute top-0 left-0 ${animated ? "animate-pulse" : ""}`}
         >
           <div
-            className="absolute top-0 left-0 bg-white rounded-full"
+            className="absolute top-0 left-0 bg-paper rounded-full"
             style={{
               width: `${cornerLength}px`,
               height: `${cornerWidth}px`,
             }}
           />
           <div
-            className="absolute top-0 left-0 bg-white rounded-full"
+            className="absolute top-0 left-0 bg-paper rounded-full"
             style={{
               width: `${cornerWidth}px`,
               height: `${cornerLength}px`,
@@ -83,14 +83,14 @@ export function DocumentFrameOverlay({
           className={`absolute top-0 right-0 ${animated ? "animate-pulse" : ""}`}
         >
           <div
-            className="absolute top-0 right-0 bg-white rounded-full"
+            className="absolute top-0 right-0 bg-paper rounded-full"
             style={{
               width: `${cornerLength}px`,
               height: `${cornerWidth}px`,
             }}
           />
           <div
-            className="absolute top-0 right-0 bg-white rounded-full"
+            className="absolute top-0 right-0 bg-paper rounded-full"
             style={{
               width: `${cornerWidth}px`,
               height: `${cornerLength}px`,
@@ -103,14 +103,14 @@ export function DocumentFrameOverlay({
           className={`absolute bottom-0 left-0 ${animated ? "animate-pulse" : ""}`}
         >
           <div
-            className="absolute bottom-0 left-0 bg-white rounded-full"
+            className="absolute bottom-0 left-0 bg-paper rounded-full"
             style={{
               width: `${cornerLength}px`,
               height: `${cornerWidth}px`,
             }}
           />
           <div
-            className="absolute bottom-0 left-0 bg-white rounded-full"
+            className="absolute bottom-0 left-0 bg-paper rounded-full"
             style={{
               width: `${cornerWidth}px`,
               height: `${cornerLength}px`,
@@ -123,14 +123,14 @@ export function DocumentFrameOverlay({
           className={`absolute bottom-0 right-0 ${animated ? "animate-pulse" : ""}`}
         >
           <div
-            className="absolute bottom-0 right-0 bg-white rounded-full"
+            className="absolute bottom-0 right-0 bg-paper rounded-full"
             style={{
               width: `${cornerLength}px`,
               height: `${cornerWidth}px`,
             }}
           />
           <div
-            className="absolute bottom-0 right-0 bg-white rounded-full"
+            className="absolute bottom-0 right-0 bg-paper rounded-full"
             style={{
               width: `${cornerWidth}px`,
               height: `${cornerLength}px`,

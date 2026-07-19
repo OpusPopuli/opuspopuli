@@ -43,26 +43,24 @@ function StatusBadge({ status }: { readonly status: EmailStatus }) {
 
 function EmailCard({ email }: { readonly email: EmailCorrespondence }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+    <div className="bg-surface rounded-lg border border-line p-4 transition-shadow">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <StatusBadge status={email.status} />
-            <span className="text-xs text-[#4d4d4d]">
+            <span className="text-xs text-content-dim">
               {EMAIL_TYPE_LABELS[email.emailType]}
             </span>
-            <span className="text-xs text-[#4d4d4d]">
+            <span className="text-xs text-content-dim">
               {new Date(email.createdAt).toLocaleDateString()}
             </span>
           </div>
-          <h3 className="font-medium text-[#222222] truncate">
-            {email.subject}
-          </h3>
-          <p className="text-sm text-[#4d4d4d] mt-1">
+          <h3 className="font-medium text-content truncate">{email.subject}</h3>
+          <p className="text-sm text-content-dim mt-1">
             To: {email.recipientName || email.recipientEmail}
           </p>
           {email.bodyPreview && (
-            <p className="text-sm text-[#4d4d4d] mt-2 line-clamp-2">
+            <p className="text-sm text-content-dim mt-2 line-clamp-2">
               {email.bodyPreview}
             </p>
           )}
@@ -110,7 +108,7 @@ export default function EmailHistoryPage() {
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="animate-pulse">
-              <div className="bg-gray-200 rounded-lg h-24"></div>
+              <div className="bg-surface-sunk rounded-lg h-24"></div>
             </div>
           ))}
         </div>
@@ -127,7 +125,7 @@ export default function EmailHistoryPage() {
 
     if (emails.length === 0) {
       return (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+        <div className="bg-surface-alt border border-line rounded-lg p-8 text-center">
           <svg
             className="w-12 h-12 text-gray-300 mx-auto mb-4"
             fill="none"
@@ -141,8 +139,8 @@ export default function EmailHistoryPage() {
               d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
             />
           </svg>
-          <p className="text-[#4d4d4d]">No emails found.</p>
-          <p className="text-sm text-[#4d4d4d] mt-1">
+          <p className="text-content-dim">No emails found.</p>
+          <p className="text-sm text-content-dim mt-1">
             Emails you send will appear here.
           </p>
         </div>
@@ -159,7 +157,7 @@ export default function EmailHistoryPage() {
 
         {/* Pagination */}
         <div className="mt-8 flex items-center justify-between">
-          <p className="text-sm text-[#4d4d4d]">
+          <p className="text-sm text-content-dim">
             Showing {page * PAGE_SIZE + 1} -{" "}
             {Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </p>
@@ -167,14 +165,14 @@ export default function EmailHistoryPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-content bg-surface border border-line rounded-lg hover:bg-surface-alt disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Previous
             </button>
             <button
               onClick={() => setPage((p) => p + 1)}
               disabled={!hasMore}
-              className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-content bg-surface border border-line rounded-lg hover:bg-surface-alt disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Next
             </button>
@@ -194,21 +192,21 @@ export default function EmailHistoryPage() {
         >
           Settings
         </Link>
-        <span className="mx-2 text-[#4d4d4d]">/</span>
-        <span className="text-sm text-[#4d4d4d]">Email History</span>
+        <span className="mx-2 text-content-dim">/</span>
+        <span className="text-sm text-content-dim">Email History</span>
       </nav>
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#222222]">Email History</h1>
-        <p className="mt-2 text-[#4d4d4d]">
+        <h1 className="text-3xl font-bold text-content">Email History</h1>
+        <p className="mt-2 text-content-dim">
           View your sent emails and correspondence
         </p>
       </div>
 
       {/* Filter */}
       <div className="mb-6 flex items-center gap-2">
-        <label htmlFor="email-type-filter" className="text-sm text-[#4d4d4d]">
+        <label htmlFor="email-type-filter" className="text-sm text-content-dim">
           Filter by type:
         </label>
         <select
@@ -218,7 +216,7 @@ export default function EmailHistoryPage() {
             setTypeFilter(e.target.value as EmailType | "");
             setPage(0);
           }}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none"
+          className="px-3 py-2 text-sm border border-line rounded-lg bg-surface focus:border-content focus:ring-1 focus:ring-content outline-none"
         >
           <option value="">All Types</option>
           <option value="REPRESENTATIVE_CONTACT">Representative Contact</option>

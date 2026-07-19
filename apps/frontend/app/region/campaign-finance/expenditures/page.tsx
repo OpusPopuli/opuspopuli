@@ -23,29 +23,29 @@ function ExpenditureCard({
   expenditure,
 }: Readonly<{ expenditure: Expenditure }>) {
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow">
+    <div className="bg-surface rounded-lg p-6 transition-shadow">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-[#222222]">
+          <h3 className="text-lg font-semibold text-content">
             {expenditure.payeeName}
           </h3>
-          <p className="mt-1 text-sm text-[#4d4d4d]">
+          <p className="mt-1 text-sm text-content-dim">
             {formatDate(expenditure.date)}
           </p>
           {expenditure.purposeDescription && (
-            <p className="mt-2 text-sm text-[#4d4d4d] line-clamp-2">
+            <p className="mt-2 text-sm text-content-dim line-clamp-2">
               {expenditure.purposeDescription}
             </p>
           )}
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <span className="text-lg font-semibold text-[#222222]">
+          <span className="text-lg font-semibold text-content">
             {formatCurrency(expenditure.amount)}
           </span>
           <SupportOpposeBadge value={expenditure.supportOrOppose} />
         </div>
       </div>
-      <div className="mt-4 text-sm text-[#4d4d4d]">
+      <div className="mt-4 text-sm text-content-dim">
         Source: {expenditure.sourceSystem}
       </div>
     </div>
@@ -95,8 +95,8 @@ export default function ExpendituresPage() {
         ]}
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#222222]">Expenditures</h1>
-        <p className="mt-2 text-[#4d4d4d]">
+        <h1 className="text-3xl font-bold text-content">Expenditures</h1>
+        <p className="mt-2 text-content-dim">
           Campaign spending and payments for your region
         </p>
       </div>

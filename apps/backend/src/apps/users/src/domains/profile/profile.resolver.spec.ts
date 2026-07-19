@@ -151,6 +151,31 @@ describe('ProfileResolver', () => {
     });
   });
 
+  describe('completeOnboarding', () => {
+    it('marks onboarding complete for the authenticated user (#758)', async () => {
+      const completedProfile = {
+        ...mockProfile,
+        onboardingCompletedAt: new Date(),
+      } as unknown as UserProfileModel;
+      profileService.completeOnboarding = jest
+        .fn()
+        .mockResolvedValue(completedProfile);
+
+      const result = await resolver.completeOnboarding(mockContext);
+
+      expect(result).toEqual(completedProfile);
+      expect(profileService.completeOnboarding).toHaveBeenCalledWith(
+        mockUserId,
+      );
+    });
+
+    it('throws UserInputError if user not authenticated', async () => {
+      await expect(
+        resolver.completeOnboarding(mockContextNoUser),
+      ).rejects.toThrow();
+    });
+  });
+
   // ============================================
   // Address Tests
   // ============================================

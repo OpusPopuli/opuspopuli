@@ -58,7 +58,7 @@ function MemberRow({
   return (
     <Link
       href={`/region/representatives/${member.representativeId}`}
-      className="flex items-center gap-4 p-4 bg-white rounded-lg border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all"
+      className="flex items-center gap-4 p-4 bg-surface rounded-lg border border-slate-200 hover:border-slate-300 transition-all"
     >
       {member.photoUrl ? (
         <Image
@@ -73,9 +73,9 @@ function MemberRow({
         <div className="w-12 h-12 rounded-full bg-slate-100" aria-hidden />
       )}
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-[#222222] truncate">{member.name}</p>
+        <p className="font-medium text-content truncate">{member.name}</p>
         {member.role && member.role !== "Member" && (
-          <p className="text-xs text-[#595959]">{member.role}</p>
+          <p className="text-xs text-content-dim">{member.role}</p>
         )}
       </div>
       <PartyBadge party={member.party} />
@@ -96,26 +96,26 @@ function Snapshot({
     <div className="animate-layer-enter">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-slate-50 rounded-lg p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#595959] mb-1">
+          <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-1">
             Members
           </p>
-          <p className="text-2xl font-semibold text-[#222222]">
+          <p className="text-2xl font-semibold text-content">
             {committee.memberCount}
           </p>
         </div>
         <div className="bg-slate-50 rounded-lg p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#595959] mb-1">
+          <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-1">
             Chamber
           </p>
-          <p className="text-2xl font-semibold text-[#222222]">
+          <p className="text-2xl font-semibold text-content">
             {committee.chamber}
           </p>
         </div>
         <div className="bg-slate-50 rounded-lg p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#595959] mb-1">
+          <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-1">
             Chair
           </p>
-          <p className="text-base font-semibold text-[#222222] truncate">
+          <p className="text-base font-semibold text-content truncate">
             {chair ? (
               chair.name
             ) : (
@@ -127,7 +127,7 @@ function Snapshot({
 
       <SectionTitle>What this committee does</SectionTitle>
       {committee.description ? (
-        <p className="text-[#334155] leading-relaxed mb-6">
+        <p className="text-content-dim leading-relaxed mb-6">
           {committee.description}
         </p>
       ) : (
@@ -189,11 +189,11 @@ function HearingRow({
   readonly hearing: LegislativeCommitteeHearing;
 }) {
   return (
-    <li className="bg-white rounded-lg border border-slate-200 p-4">
+    <li className="bg-surface rounded-lg border border-slate-200 p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-[#222222]">{hearing.title}</p>
-          <p className="mt-1 text-sm text-[#4d4d4d]">
+          <p className="font-medium text-content">{hearing.title}</p>
+          <p className="mt-1 text-sm text-content-dim">
             {formatDate(hearing.scheduledAt)}
           </p>
         </div>
@@ -295,7 +295,7 @@ function Hearings({
       {committee.hearings.length > 0 && (
         <div className="mb-8">
           <SectionTitle>Upcoming scheduled meetings</SectionTitle>
-          <p className="text-sm text-[#4d4d4d] mb-3">
+          <p className="text-sm text-content-dim mb-3">
             Best-effort match against the chamber&apos;s daily file for
             forward-looking context.
           </p>
@@ -329,22 +329,24 @@ function DeepDive({
       <SectionTitle>Sources</SectionTitle>
       <dl className="bg-slate-50 rounded-lg p-4 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
         <div>
-          <dt className="font-bold uppercase tracking-wider text-xs text-[#595959]">
+          <dt className="font-bold uppercase tracking-wider text-xs text-content-dim">
             External ID
           </dt>
-          <dd className="font-mono text-[#334155] break-all">
+          <dd className="font-mono text-content-dim break-all">
             {committee.externalId}
           </dd>
         </div>
         <div>
-          <dt className="font-bold uppercase tracking-wider text-xs text-[#595959]">
+          <dt className="font-bold uppercase tracking-wider text-xs text-content-dim">
             Last updated
           </dt>
-          <dd className="text-[#334155]">{formatDate(committee.updatedAt)}</dd>
+          <dd className="text-content-dim">
+            {formatDate(committee.updatedAt)}
+          </dd>
         </div>
         {committee.url && (
           <div className="sm:col-span-2">
-            <dt className="font-bold uppercase tracking-wider text-xs text-[#595959]">
+            <dt className="font-bold uppercase tracking-wider text-xs text-content-dim">
               Official link
             </dt>
             <dd>
@@ -394,8 +396,8 @@ export default function LegislativeCommitteeDetailPage() {
       entity="legislative committee"
       notFound={!committee}
       notFoundContent={
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-[#4d4d4d] mb-4">Committee not found.</p>
+        <div className="bg-surface-alt border border-line rounded-lg p-8 text-center">
+          <p className="text-content-dim mb-4">Committee not found.</p>
           <Link
             href="/region/legislative-committees"
             className="text-blue-600 hover:text-blue-700 hover:underline text-sm font-medium"
@@ -420,12 +422,12 @@ export default function LegislativeCommitteeDetailPage() {
           />
 
           <div className="mb-6">
-            <h1 className="text-2xl font-extrabold text-[#222222] leading-tight mb-3">
+            <h1 className="text-2xl font-extrabold text-content leading-tight mb-3">
               {committee.name}
             </h1>
             <div className="flex flex-wrap items-center gap-3">
               <ChamberBadge chamber={committee.chamber} />
-              <span className="text-sm text-[#4d4d4d]">
+              <span className="text-sm text-content-dim">
                 <CivicTerm term="committee">Committee</CivicTerm>
                 {" · "}
                 {committee.memberCount}{" "}
@@ -436,7 +438,7 @@ export default function LegislativeCommitteeDetailPage() {
 
           <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
 
-          <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+          <div className="bg-surface rounded-lg p-8">
             {layer === 1 && (
               <Snapshot committee={committee} onNext={() => setLayer(2)} />
             )}

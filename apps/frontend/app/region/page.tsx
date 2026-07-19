@@ -170,12 +170,12 @@ export default function RegionPage() {
       <div className="max-w-4xl mx-auto px-8 py-12">
         <div className="animate-pulse space-y-8">
           <div className="space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+            <div className="h-8 bg-surface-sunk rounded w-1/3"></div>
+            <div className="h-4 bg-surface-sunk rounded w-2/3"></div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-40 bg-gray-200 rounded-xl"></div>
+              <div key={i} className="h-40 bg-surface-sunk rounded-lg"></div>
             ))}
           </div>
         </div>
@@ -186,7 +186,7 @@ export default function RegionPage() {
   if (error) {
     return (
       <div className="max-w-4xl mx-auto px-8 py-12">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
           <p className="text-red-600">
             Failed to load region information. Please try again later.
           </p>
@@ -201,14 +201,14 @@ export default function RegionPage() {
     <div className="max-w-4xl mx-auto px-8 py-12">
       {/* Region Header */}
       <div className="mb-10">
-        <h1 className="text-3xl font-bold text-[#222222]">
+        <h1 className="text-3xl font-bold text-content">
           {regionInfo?.name || "Region"}
         </h1>
-        <p className="mt-2 text-[#4d4d4d]">
+        <p className="mt-2 text-content-dim">
           {regionInfo?.description || "Explore civic data for your region"}
         </p>
         {regionInfo?.timezone && (
-          <p className="mt-1 text-sm text-[#4d4d4d]">
+          <p className="mt-1 text-sm text-content-dim">
             Timezone: {regionInfo.timezone}
           </p>
         )}
@@ -224,15 +224,17 @@ export default function RegionPage() {
             <Link
               key={dataType}
               href={card.href}
-              className="group bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-all duration-200"
+              className="group bg-surface rounded-lg p-6 transition-all duration-200"
             >
-              <div className="text-[#4d4d4d] group-hover:text-[#222222] transition-colors mb-4">
+              <div className="text-content-dim group-hover:text-content transition-colors mb-4">
                 <DataTypeIcon type={card.icon} />
               </div>
-              <h2 className="text-lg font-semibold text-[#222222] group-hover:text-blue-600 transition-colors">
+              <h2 className="text-lg font-semibold text-content group-hover:text-blue-600 transition-colors">
                 {card.title}
               </h2>
-              <p className="mt-1 text-sm text-[#4d4d4d]">{card.description}</p>
+              <p className="mt-1 text-sm text-content-dim">
+                {card.description}
+              </p>
             </Link>
           );
         })}
@@ -242,7 +244,7 @@ export default function RegionPage() {
       <div className="mt-8">
         <Link
           href="/region/how-it-works"
-          className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-6 py-4 hover:bg-blue-100 transition-colors dark:border-blue-900 dark:bg-blue-900/20 dark:hover:bg-blue-900/30"
+          className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-6 py-4 hover:bg-blue-100 transition-colors dark:border-blue-900 dark:bg-blue-900/20 dark:hover:bg-blue-900/30"
         >
           <div>
             <h2 className="text-base font-semibold text-blue-800 dark:text-blue-300">
@@ -260,8 +262,8 @@ export default function RegionPage() {
 
       {/* Data Sources */}
       {regionInfo?.dataSourceUrls && regionInfo.dataSourceUrls.length > 0 && (
-        <div className="mt-12 pt-8 border-t border-gray-100">
-          <h3 className="text-sm font-medium text-[#4d4d4d] uppercase tracking-wider mb-3">
+        <div className="mt-12 pt-8 border-t border-line">
+          <h3 className="text-sm font-medium text-content-dim uppercase tracking-wider mb-3">
             Data Sources
           </h3>
           <ul className="space-y-2">

@@ -56,7 +56,7 @@ export function CommitteeActivityStats({
 
   return (
     <section aria-label="Committee activity at a glance" className="mb-8">
-      <p className="text-xs font-bold uppercase tracking-wider text-[#595959] mb-3">
+      <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-3">
         Last {sinceDays} days
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -84,11 +84,13 @@ function StatTile({
 }) {
   return (
     <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-[#595959] mb-1">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-content-dim mb-1">
         {label}
       </p>
-      <p className="text-2xl font-semibold text-[#222222]">{value}</p>
-      {sub && <p className="text-[11px] text-[#595959] mt-1 truncate">{sub}</p>}
+      <p className="text-2xl font-semibold text-content">{value}</p>
+      {sub && (
+        <p className="text-[11px] text-content-dim mt-1 truncate">{sub}</p>
+      )}
     </div>
   );
 }

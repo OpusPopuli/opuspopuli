@@ -69,15 +69,15 @@ export function CivicTerm({ term, children }: CivicTermProps) {
           id={descId}
           className={[
             "pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2",
-            "rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-lg",
-            "text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100",
+            "rounded-lg border border-line bg-surface px-3 py-2 ",
+            "text-sm text-content ",
             "opacity-0 transition-opacity duration-150",
             "group-hover:pointer-events-auto group-hover:opacity-100",
             "group-focus-within:pointer-events-auto group-focus-within:opacity-100",
           ].join(" ")}
         >
           <span className="block font-semibold">{displayTerm}</span>
-          <span className="mt-1 block leading-snug text-gray-600 dark:text-gray-300">
+          <span className="mt-1 block leading-snug text-content-dim">
             {shortDef}
           </span>
           {learnMoreSlug && (

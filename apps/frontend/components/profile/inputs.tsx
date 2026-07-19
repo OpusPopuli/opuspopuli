@@ -6,7 +6,7 @@ import type { FieldDescriptor } from "@/lib/personalization/vocab";
 import { US_STATES } from "@/lib/us-states";
 
 const baseInputClass =
-  "w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#5A7A6A] focus:border-[#5A7A6A] disabled:bg-gray-100 disabled:text-gray-500";
+  "w-full px-3 py-2 rounded-lg border border-line bg-surface text-content focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:bg-surface-alt disabled:text-content-dim";
 
 interface BaseProps {
   readonly descriptor: FieldDescriptor;
@@ -106,7 +106,7 @@ export function BooleanField({
       id={inputId}
       disabled={disabled}
       aria-describedby={ariaDescribedBy}
-      className="inline-flex bg-gray-100 rounded-lg p-1 border border-gray-200"
+      className="inline-flex bg-surface-alt rounded-lg p-1 border border-line"
     >
       {options.map(({ v, labelKey }) => {
         const active = value === v;
@@ -115,10 +115,10 @@ export function BooleanField({
             key={String(v)}
             className={[
               "px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors",
-              "focus-within:ring-2 focus-within:ring-[#5A7A6A]",
+              "focus-within:ring-2 focus-within:ring-accent",
               active
-                ? "bg-white text-gray-900 shadow-sm font-medium"
-                : "text-gray-600 hover:text-gray-900",
+                ? "bg-surface text-content font-medium"
+                : "text-content-dim hover:text-content",
               disabled ? "cursor-not-allowed opacity-50" : "",
             ].join(" ")}
           >
@@ -177,10 +177,10 @@ export function MultiSelectChipsField({
             key={opt}
             className={[
               "px-3 py-1.5 rounded-full text-sm cursor-pointer border transition-colors",
-              "focus-within:ring-2 focus-within:ring-[#5A7A6A]",
+              "focus-within:ring-2 focus-within:ring-accent",
               active
-                ? "bg-[#5A7A6A] text-white border-[#5A7A6A]"
-                : "bg-white text-gray-800 border-gray-300 hover:border-gray-400",
+                ? "bg-accent text-content border-accent"
+                : "bg-surface text-content border-line hover:border-gray-400",
               disabled ? "cursor-not-allowed opacity-50" : "",
             ].join(" ")}
           >
@@ -242,7 +242,7 @@ export function MultiTagInputField({
         {value.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#5A7A6A] text-white text-sm"
+            className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-accent text-content text-sm"
           >
             {tag}
             {!disabled && (
@@ -250,7 +250,7 @@ export function MultiTagInputField({
                 type="button"
                 onClick={() => remove(tag)}
                 aria-label={`Remove ${tag}`}
-                className="hover:bg-white/20 rounded-full w-4 h-4 flex items-center justify-center text-xs"
+                className="hover:bg-surface/20 rounded-full w-4 h-4 flex items-center justify-center text-xs"
               >
                 ×
               </button>

@@ -132,7 +132,7 @@ describe("PetitionHistoryPage", () => {
 
     render(<PetitionHistoryPage />);
 
-    expect(document.querySelector(".animate-spin")).toBeInTheDocument();
+    expect(document.querySelector(".s-loading")).toBeInTheDocument();
   });
 
   it("should show error state", () => {

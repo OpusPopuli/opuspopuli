@@ -838,7 +838,7 @@ test.describe("Representatives Page", () => {
 
     // Verify chambers exist by checking card content contains chamber text
     const cardContent = await page
-      .locator("article, [class*='rounded-xl']")
+      .locator('a[href*="/region/representatives/"]')
       .first()
       .textContent();
     expect(cardContent).toBeTruthy();

@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Sunflower } from "@/components/brand";
+import { buttonVariants } from "@/components/ui/Button";
 
 export function Header() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -24,11 +27,11 @@ export function Header() {
   }, [menuOpen, handleKeyDown]);
 
   const navLinkClass =
-    "text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors";
+    "text-sm text-content-dim hover:text-content transition-colors";
 
   function renderDesktopNav() {
     if (isLoading) {
-      return <span className="text-sm text-gray-400">Loading...</span>;
+      return <span className="text-sm text-content-dim">Loading...</span>;
     }
     if (isAuthenticated && user) {
       return (
@@ -44,7 +47,7 @@ export function Header() {
           </Link>
           <Link
             href="/settings"
-            className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+            className="text-content-dim hover:text-content transition-colors"
             aria-label="Profile settings"
             title={user.email}
           >
@@ -73,7 +76,7 @@ export function Header() {
         </Link>
         <Link
           href="/register"
-          className="text-sm px-4 py-2 bg-[#5A7A6A] text-white rounded-md hover:bg-[#4A6A5A] transition-colors"
+          className={buttonVariants({ variant: "gold", size: "sm" })}
         >
           Get started
         </Link>
@@ -83,7 +86,7 @@ export function Header() {
 
   function renderMobileNav() {
     if (isLoading) {
-      return <span className="text-sm text-gray-400">Loading...</span>;
+      return <span className="text-sm text-content-dim">Loading...</span>;
     }
     if (isAuthenticated && user) {
       return (
@@ -103,7 +106,7 @@ export function Header() {
           </Link>
           <Link
             href="/settings"
-            className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+            className="flex items-center gap-2 text-sm text-content-dim hover:text-content transition-colors"
             onClick={closeMenu}
           >
             <svg
@@ -132,7 +135,7 @@ export function Header() {
         </Link>
         <Link
           href="/register"
-          className="text-sm px-4 py-2 bg-[#5A7A6A] text-white rounded-md hover:bg-[#4A6A5A] transition-colors text-center"
+          className={buttonVariants({ variant: "gold", size: "sm" })}
           onClick={closeMenu}
         >
           Get started
@@ -142,26 +145,27 @@ export function Header() {
   }
 
   return (
-    <header className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+    <header className="border-b border-line bg-surface">
       <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
         <Link
           href={isAuthenticated ? "/me/briefing" : "/"}
-          className="hover:opacity-80 transition-opacity"
+          className="group flex items-center gap-2.5 hover:opacity-90 transition-opacity"
+          aria-label="Opus Populi — home"
         >
-          <img
-            src="/logos/svg/op-horizontal-light.svg"
-            alt="Opus Populi"
-            className="h-8 dark:hidden"
-          />
-          <img
-            src="/logos/svg/op-horizontal-dark.svg"
-            alt="Opus Populi"
-            className="h-8 hidden dark:block"
-          />
+          <Sunflower state="idle" size={34} title="Opus Populi" />
+          <span className="flex flex-col leading-none">
+            <span className="font-display text-lg font-bold text-content">
+              Opus Populi
+            </span>
+            <span className="font-display text-[11px] italic text-content-dim">
+              The Work of the People
+            </span>
+          </span>
         </Link>
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-4">
+          <ThemeToggle />
           <LanguageToggle />
           {renderDesktopNav()}
         </nav>
@@ -169,7 +173,7 @@ export function Header() {
         {/* Mobile hamburger button */}
         <button
           type="button"
-          className="md:hidden p-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+          className="md:hidden p-2 text-content-dim hover:text-content"
           onClick={() => setMenuOpen(!menuOpen)}
           aria-expanded={menuOpen}
           aria-controls="mobile-menu"
@@ -213,10 +217,11 @@ export function Header() {
       {menuOpen && (
         <nav
           id="mobile-menu"
-          className="md:hidden border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 animate-layer-enter"
+          className="md:hidden border-t border-line bg-surface animate-layer-enter"
         >
           <div className="max-w-6xl mx-auto px-8 py-4 flex flex-col gap-3">
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-end gap-2">
+              <ThemeToggle />
               <LanguageToggle />
             </div>
             {renderMobileNav()}

@@ -11,7 +11,7 @@ function AuthSpinner() {
   return (
     <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
       <svg
-        className="animate-spin h-10 w-10 text-[#222222]"
+        className="animate-spin h-10 w-10 text-content"
         fill="none"
         viewBox="0 0 24 24"
       >
@@ -36,10 +36,10 @@ function AuthSpinner() {
 // Loading component for Suspense fallback
 function CallbackLoading() {
   return (
-    <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
+    <div className="bg-surface rounded-lg p-8 text-center">
       <AuthSpinner />
-      <h1 className="text-xl font-bold text-[#222222] mb-2">Loading...</h1>
-      <p className="text-[#4d4d4d]">Please wait.</p>
+      <h1 className="text-xl font-bold text-content mb-2">Loading...</h1>
+      <p className="text-content-dim">Please wait.</p>
     </div>
   );
 }
@@ -151,12 +151,12 @@ function AuthCallbackContent() {
   // Verifying state
   if (status === "verifying" || isLoading) {
     return (
-      <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
+      <div className="bg-surface rounded-lg p-8 text-center">
         <AuthSpinner />
-        <h1 className="text-xl font-bold text-[#222222] mb-2">
+        <h1 className="text-xl font-bold text-content mb-2">
           Verifying your link...
         </h1>
-        <p className="text-[#4d4d4d]">Please wait while we sign you in.</p>
+        <p className="text-content-dim">Please wait while we sign you in.</p>
       </div>
     );
   }
@@ -164,7 +164,7 @@ function AuthCallbackContent() {
   // Error state
   if (status === "error" || error) {
     return (
-      <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
+      <div className="bg-surface rounded-lg p-8 text-center">
         <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <svg
             className="w-8 h-8 text-red-600"
@@ -180,17 +180,17 @@ function AuthCallbackContent() {
             />
           </svg>
         </div>
-        <h1 className="text-xl font-bold text-[#222222] mb-2">
+        <h1 className="text-xl font-bold text-content mb-2">
           Link expired or invalid
         </h1>
-        <p className="text-[#4d4d4d] mb-6">
+        <p className="text-content-dim mb-6">
           {error ||
             "This magic link has expired or is invalid. Please request a new one."}
         </p>
         <div className="space-y-3">
           <Link
             href="/login"
-            className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
           >
             Back to Sign in
           </Link>
@@ -202,12 +202,12 @@ function AuthCallbackContent() {
   // Success state - show passkey prompt for new users
   if (isNewUser && supportsPasskeys) {
     return (
-      <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
+      <div className="bg-surface rounded-lg p-8 text-center">
         <AuthCheckIcon />
-        <h1 className="text-xl font-bold text-[#222222] mb-2">
+        <h1 className="text-xl font-bold text-content mb-2">
           Welcome! Your account is ready
         </h1>
-        <p className="text-[#4d4d4d] mb-6">
+        <p className="text-content-dim mb-6">
           Would you like to add a passkey for faster sign-in next time?
         </p>
 
@@ -244,14 +244,14 @@ function AuthCallbackContent() {
         <div className="space-y-3">
           <Link
             href="/register/add-passkey"
-            className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
           >
             Add a Passkey
           </Link>
           <button
             type="button"
             onClick={() => router.push(skipTarget)}
-            className="inline-block w-full py-3 px-6 bg-white text-[#4d4d4d] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
+            className="inline-block w-full py-3 px-6 bg-surface text-content-dim font-semibold rounded-lg border border-line hover:bg-surface transition-colors"
           >
             Skip for now
           </button>
@@ -260,18 +260,26 @@ function AuthCallbackContent() {
     );
   }
 
-  // Success state - redirect to app
+  // Success state - redirect to app.
+  //
+  // New users still need onboarding even when the passkey prompt above
+  // didn't render (browser without WebAuthn, or the async support check
+  // hadn't resolved yet). Without this, a fresh registrant would land on
+  // /me/briefing and skip the questionnaire entirely (#758). Returning
+  // users continue to their briefing. An explicit ?redirect= wins in
+  // both cases via resolveRedirect().
+  const successTarget = isNewUser ? skipTarget : continueTarget;
   return (
-    <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
+    <div className="bg-surface rounded-lg p-8 text-center">
       <AuthCheckIcon />
-      <h1 className="text-xl font-bold text-[#222222] mb-2">
+      <h1 className="text-xl font-bold text-content mb-2">
         You&apos;re signed in!
       </h1>
-      <p className="text-[#4d4d4d] mb-6">Redirecting you to the app...</p>
+      <p className="text-content-dim mb-6">Redirecting you to the app...</p>
       <button
         type="button"
-        onClick={() => router.push(continueTarget)}
-        className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
+        onClick={() => router.push(successTarget)}
+        className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
       >
         Continue to App
       </button>

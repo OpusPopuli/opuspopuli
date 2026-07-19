@@ -17,11 +17,13 @@ describe("LoadingSpinner", () => {
     expect(svg).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("should apply animate-spin class", () => {
+  it("should apply the loading-state animation class (pinwheel)", () => {
     const { container } = render(<LoadingSpinner />);
 
+    // The spinner is now the sunflower mark; `.s-loading` drives the pinwheel
+    // animation in globals.css.
     const svg = container.querySelector("svg");
-    expect(svg).toHaveClass("animate-spin");
+    expect(svg).toHaveClass("s-loading");
   });
 
   describe("sizes", () => {
@@ -29,21 +31,24 @@ describe("LoadingSpinner", () => {
       const { container } = render(<LoadingSpinner />);
 
       const svg = container.querySelector("svg");
-      expect(svg).toHaveClass("h-4", "w-4");
+      expect(svg).toHaveAttribute("width", "24");
+      expect(svg).toHaveAttribute("height", "24");
     });
 
     it("should render medium size", () => {
       const { container } = render(<LoadingSpinner size="md" />);
 
       const svg = container.querySelector("svg");
-      expect(svg).toHaveClass("h-6", "w-6");
+      expect(svg).toHaveAttribute("width", "40");
+      expect(svg).toHaveAttribute("height", "40");
     });
 
     it("should render large size", () => {
       const { container } = render(<LoadingSpinner size="lg" />);
 
       const svg = container.querySelector("svg");
-      expect(svg).toHaveClass("h-10", "w-10");
+      expect(svg).toHaveAttribute("width", "64");
+      expect(svg).toHaveAttribute("height", "64");
     });
   });
 

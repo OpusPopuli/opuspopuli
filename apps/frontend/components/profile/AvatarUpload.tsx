@@ -156,7 +156,7 @@ export function AvatarUpload({
         type="button"
         onClick={handleClick}
         disabled={isUploading}
-        className="relative group w-24 h-24 rounded-full overflow-hidden bg-gray-100 border-2 border-gray-200 hover:border-blue-500 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="relative group w-24 h-24 rounded-full overflow-hidden bg-surface-alt border-2 border-line hover:border-blue-500 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
         aria-label={t("profile.avatar.change", "Change profile photo")}
       >
         {displayUrl ? (
@@ -169,9 +169,9 @@ export function AvatarUpload({
             unoptimized
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-200">
+          <div className="w-full h-full flex items-center justify-center bg-surface-sunk">
             <svg
-              className="w-10 h-10 text-gray-400"
+              className="w-10 h-10 text-content-dim"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -227,7 +227,7 @@ export function AvatarUpload({
       />
 
       {/* Upload Label */}
-      <p className="text-sm text-[#4d4d4d]">
+      <p className="text-sm text-content-dim">
         {t("profile.avatar.hint", "Click to upload a photo")}
       </p>
 

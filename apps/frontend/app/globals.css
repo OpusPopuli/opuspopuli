@@ -1,65 +1,85 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Opus Populi — Sunflower brand system (ported from opuspopuli.org)
+
+   Gold is EARNED, never decorative: only ever a filled shape, a ≥3px accent,
+   or text on ink. Never gold text on paper (fails WCAG AA at ~1.6:1). Depth is
+   carried by hairline borders + warm tonal steps — no shadows.
+
+   Theming is class-based: semantic tokens (surface/content/line/…) are declared
+   with LIGHT values in @theme and re-declared under `.dark`, so every utility
+   built from them flips automatically. Gold does NOT flip (gold-on-ink is valid
+   in both themes). See docs: plan "Core architectural decision".
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  /* Font families — generates font-heading, font-sans, font-mono utilities */
+  /* Font families — Inter + Playfair loaded via next/font in app/layout.tsx.
+     Mono is dropped from the brand ramp; kept only for genuine <code>/<pre>. */
   --font-family-heading: var(--font-playfair-display), Georgia, serif;
   --font-family-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
-  --font-family-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
+  --font-family-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
 
-  /* Light mode */
-  --color-background-light: #ffffff;
-  --color-foreground-light: #222222;
-  --color-background-dark: #111111;
-  --color-foreground-dark: #f0f0f0;
+  /* ── Fixed brand constants — identical in both themes ── */
+  --color-gold: #e8c000; /* the mark's disc; never recolored */
+  --color-ink: #1a1714; /* literal ink — the mark, fixed inverse panels */
+  --color-paper: #fafaf8; /* literal paper — text on ink */
 
-  /* Brand palette — Light */
-  --color-primary: #222222;
-  --color-secondary: #555555;
-  --color-muted: #888888;
-  --color-border: #dddddd;
-  --color-sage: #7f9c8e;
-  --color-sage-dark: #5a7a6a;
-  --color-sage-darker: #4a6a5a;
-  --color-sage-light: #a3beb0;
-  --color-slate-dark: #222222;
-  --color-light-bg: #fafafa;
-  --color-dark-bg: #111111;
-
-  /* Brand palette — Dark */
-  --color-primary-dark: #f0f0f0;
-  --color-secondary-dark: #c2c2c2;
-  --color-muted-dark: #9a9a9a;
-  --color-border-dark: #2a2a2a;
+  /* ── Semantic tokens — LIGHT defaults ──
+     Generate bg-surface / text-content / border-line / bg-accent / … */
+  --color-surface: #fafaf8; /* page background (paper) */
+  --color-surface-alt: #f4f2ec; /* alt sections / pills (off) */
+  --color-surface-sunk: #edeae3; /* deeper inset wells */
+  --color-content: #1a1714; /* primary text (ink) */
+  --color-content-dim: #726e66; /* secondary text — WCAG-tuned, do NOT lighten */
+  --color-line: #e0ddd8; /* hairline borders */
+  --color-accent: #e8c000; /* gold — earned; fill / ≥3px / text-on-ink only */
+  --color-accent-strong: #cfa900; /* darkened gold, hover on gold fills */
+  --color-on-accent: #1a1714; /* ink text on gold fills */
+  --color-inverse-surface: #1a1714; /* deliberate dark panels within light theme */
+  --color-on-inverse: #fafaf8; /* text on inverse-surface / .on-ink */
 }
 
-:root {
-  --background: var(--color-background-light);
-  --foreground: var(--color-foreground-light);
+/* ── DARK theme — override the semantic vars only. Warm, ink-grounded. ── */
+.dark {
+  --color-surface: #14110f; /* near-ink page bg, lifted a hair off pure ink */
+  --color-surface-alt: #1f1b18; /* elevated panel */
+  --color-surface-sunk: #100e0c; /* recessed well */
+  --color-content: #f2efe9; /* warm paper-white — ~14:1 on surface */
+  --color-content-dim: #a8a29a; /* dim on dark — ~6.9:1 on surface ✓ */
+  --color-line: #322d28; /* hairline on dark */
+  --color-accent: #e8c000; /* gold stays gold — ~10:1 on dark surface */
+  --color-accent-strong: #f2cf1f; /* hover lightens on dark */
+  --color-on-accent: #1a1714; /* ink text still rides the gold fill */
+  --color-inverse-surface: #fafaf8; /* inverse panels invert to light in dark theme */
+  --color-on-inverse: #1a1714;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: var(--color-background-dark);
-    --foreground: var(--color-foreground-dark);
-  }
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
+/* ── Base ── */
+html {
   font-family:
     var(--font-inter),
     system-ui,
     -apple-system,
     sans-serif;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-content);
   line-height: 1.7;
 }
 
+/* Genuine code blocks only — mono is no longer part of the brand ramp */
 code,
 pre {
-  font-family: var(--font-ibm-plex-mono), ui-monospace, monospace;
+  font-family: var(--font-family-mono);
 }
 
+/* ── Typography ── */
 h1,
 h2,
 h3,
@@ -97,12 +117,142 @@ h6 {
   font-weight: 600;
 }
 
-/* Use on h3 in editorial/section contexts to switch to Playfair Display */
 .font-display {
   font-family: var(--font-playfair-display), Georgia, serif;
 }
 
-/* Toast slide-in animation */
+/* ── Editorial helpers (from the brand system, retargeted to semantic tokens
+   so they flip with the theme) ── */
+.eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--color-content-dim);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.eyebrow::before {
+  content: "";
+  width: 16px;
+  height: 1px;
+  background: var(--color-content);
+}
+
+.stitle {
+  font-family: var(--font-playfair-display), Georgia, serif;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* Gold left-border pull-quote — gold as a ≥3px accent, never text */
+.declaration {
+  border-left: 3px solid var(--color-accent);
+  padding: 8px 0 8px 28px;
+}
+
+.philosophy {
+  font-family: var(--font-playfair-display), Georgia, serif;
+  font-style: italic;
+  line-height: 1.65;
+}
+
+/* Ink surfaces: remap semantic tokens so nested utilities invert. Any element
+   inside .on-ink using bg-surface / text-content / text-content-dim / border-line
+   flips to the inverse treatment, in both themes. Gold stays gold. */
+.on-ink {
+  --color-surface: var(--color-inverse-surface);
+  --color-surface-alt: color-mix(
+    in oklab,
+    var(--color-on-inverse) 8%,
+    var(--color-inverse-surface)
+  );
+  --color-content: var(--color-on-inverse);
+  --color-content-dim: color-mix(
+    in oklab,
+    var(--color-on-inverse) 55%,
+    transparent
+  );
+  --color-line: color-mix(in oklab, var(--color-on-inverse) 15%, transparent);
+  background: var(--color-inverse-surface);
+  color: var(--color-on-inverse);
+}
+.on-ink .eyebrow::before {
+  background: var(--color-accent);
+}
+
+/* ── Animation system ──
+   Every glyph rotates about the sun (the disc center), never the stem. */
+.op-head {
+  transform-origin: 50px 40px;
+  transform-box: view-box;
+}
+@keyframes sway {
+  0%,
+  100% {
+    transform: rotate(-9deg);
+  }
+  50% {
+    transform: rotate(9deg);
+  }
+}
+@keyframes pinwheel {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes bloom {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes seedfill {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.s-idle .op-head {
+  animation: sway 8s ease-in-out infinite;
+}
+.s-loading .op-head {
+  animation: pinwheel 6s linear infinite;
+}
+.s-success .op-head {
+  animation: bloom 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Field flowers each sway on their own phase, like wind */
+.field-flower {
+  transform-origin: 50px 40px;
+  transform-box: view-box;
+  animation: sway ease-in-out infinite;
+}
+
+.seed-fill {
+  animation: seedfill 0.5s ease both;
+  transform-origin: center;
+}
+
+/* ── App animations (pre-existing — keep) ── */
 @keyframes slide-in {
   from {
     transform: translateX(100%);
@@ -113,12 +263,10 @@ h6 {
     opacity: 1;
   }
 }
-
 .animate-slide-in {
   animation: slide-in 0.3s ease-out forwards;
 }
 
-/* Progressive disclosure layer transition */
 @keyframes layer-enter {
   from {
     opacity: 0;
@@ -129,7 +277,42 @@ h6 {
     transform: translateY(0);
   }
 }
-
 .animate-layer-enter {
   animation: layer-enter 0.25s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .op-head,
+  .field-flower,
+  .seed-fill {
+    animation: none !important;
+    opacity: 1;
+  }
+}
+
+/* Links — content color with underline; never gold text on paper */
+@layer base {
+  main a:not([class*="bg-"]):not([class*="text-"]) {
+    color: var(--color-content);
+    text-decoration: underline;
+    text-decoration-color: var(--color-line);
+    text-underline-offset: 2px;
+    transition: text-decoration-color 0.15s ease;
+  }
+  @media (hover: hover) {
+    main a:not([class*="bg-"]):not([class*="text-"]):hover {
+      text-decoration-color: var(--color-accent);
+    }
+  }
+}
+
+/* Focus — gold ring reads on both surfaces at 2px+ */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 25%, transparent);
 }

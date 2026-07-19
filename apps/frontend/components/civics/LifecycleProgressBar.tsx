@@ -15,8 +15,7 @@ interface LifecycleProgressBarProps {
 const urgencyColors: Record<CitizenAction["urgency"], string> = {
   active:
     "bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-800 dark:text-orange-300",
-  passive:
-    "bg-gray-50 border-gray-200 text-gray-600 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-400",
+  passive: "bg-surface-alt border-line text-content-dim ",
   none: "hidden",
 };
 
@@ -26,12 +25,11 @@ function getStepDotClass(
   isCompleted: boolean,
   isCurrent: boolean,
 ): string {
-  if (isSelected) return "scale-110 border-blue-700 bg-blue-700 shadow-md";
-  if (isAbstract)
-    return "border-gray-400 bg-white hover:border-blue-400 dark:border-gray-500 dark:bg-gray-800";
+  if (isSelected) return "scale-110 border-blue-700 bg-blue-700 ";
+  if (isAbstract) return "border-gray-400 bg-surface hover:border-blue-400 ";
   if (isCompleted) return "border-blue-500 bg-blue-500";
   if (isCurrent) return "border-blue-600 bg-blue-600 ring-2 ring-blue-300";
-  return "border-gray-300 bg-white hover:border-blue-400 dark:border-gray-600 dark:bg-gray-900";
+  return "border-line bg-surface hover:border-blue-400 ";
 }
 
 function getStageLabelClass(
@@ -41,8 +39,8 @@ function getStageLabelClass(
 ): string {
   if (isSelected || isCurrent)
     return "font-semibold text-blue-700 dark:text-blue-400";
-  if (isCompleted) return "text-gray-400 dark:text-gray-500";
-  return "text-gray-500 dark:text-gray-400";
+  if (isCompleted) return "text-content-dim ";
+  return "text-content-dim ";
 }
 
 /**
@@ -92,9 +90,7 @@ export function LifecycleProgressBar({
                     aria-hidden="true"
                     className={[
                       "absolute left-1/2 top-3 h-0.5 w-full",
-                      isCompleted
-                        ? "bg-blue-500"
-                        : "bg-gray-200 dark:bg-gray-700",
+                      isCompleted ? "bg-blue-500" : "bg-surface-sunk ",
                     ].join(" ")}
                   />
                 )}
@@ -137,7 +133,7 @@ export function LifecycleProgressBar({
                   {isSelected && (
                     <span
                       aria-hidden="true"
-                      className="h-2 w-2 rounded-full bg-white"
+                      className="h-2 w-2 rounded-full bg-surface"
                     />
                   )}
                 </button>
@@ -180,7 +176,7 @@ export function LifecycleProgressBar({
           </p>
 
           {selectedStage.longDescription && (
-            <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+            <p className="mt-2 text-sm leading-relaxed text-content-dim">
               {selectedStage.longDescription.plainLanguage}
             </p>
           )}

@@ -21,11 +21,11 @@ interface PlaceholderProps {
 function Placeholder({ i18nKey }: PlaceholderProps) {
   const { t } = useTranslation("profile");
   return (
-    <section className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-5">
-      <h2 className="text-base font-semibold text-gray-900">
+    <section className="rounded-lg border border-dashed border-line bg-surface-alt p-5">
+      <h2 className="text-base font-semibold text-content">
         {t(`placeholder.${i18nKey}.title`)}
       </h2>
-      <p className="text-sm text-gray-600 mt-1">
+      <p className="text-sm text-content-dim mt-1">
         {t(`placeholder.${i18nKey}.body`)}
       </p>
     </section>

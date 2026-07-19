@@ -68,7 +68,7 @@ export function LocationPrompt({
           />
         </svg>
         <h2 className="text-xl font-semibold mb-2">Location Unavailable</h2>
-        <p className="text-gray-400 mb-8 max-w-sm">{error.message}</p>
+        <p className="text-content-dim mb-8 max-w-sm">{error.message}</p>
         <button
           onClick={onSkip}
           className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
@@ -98,7 +98,7 @@ export function LocationPrompt({
           />
         </svg>
         <h2 className="text-xl font-semibold mb-2">Location Access Denied</h2>
-        <p className="text-gray-400 mb-8 max-w-sm">
+        <p className="text-content-dim mb-8 max-w-sm">
           Location access was denied. You can continue without sharing your
           location.
         </p>
@@ -116,7 +116,7 @@ export function LocationPrompt({
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-white">
       <svg
-        className="w-16 h-16 mb-6 text-gray-400"
+        className="w-16 h-16 mb-6 text-content-dim"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -136,7 +136,7 @@ export function LocationPrompt({
         />
       </svg>
       <h2 className="text-xl font-semibold mb-2">Add Scan Location?</h2>
-      <p className="text-gray-400 mb-8 max-w-sm">
+      <p className="text-content-dim mb-8 max-w-sm">
         Adding your location helps track where petitions are being circulated.
         Your exact position is never stored — we round to roughly a city block
         (~100m) for privacy.

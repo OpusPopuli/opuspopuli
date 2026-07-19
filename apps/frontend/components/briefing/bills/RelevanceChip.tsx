@@ -14,11 +14,11 @@ interface RelevanceChipProps {
  * glance without burying the citizen in numbers.
  */
 function tierFor(pct: number): string {
-  if (pct >= 70) return "bg-[#5A7A6A] text-white border-[#5A7A6A]";
+  if (pct >= 70) return "bg-accent text-content border-accent";
   if (pct >= 40) {
-    return "bg-[#5A7A6A]/15 text-[#2D4A3C] border-[#5A7A6A]/40 dark:bg-sage-900/30 dark:text-sage-200 dark:border-sage-700";
+    return "bg-accent/15 text-content border-accent/40 ";
   }
-  return "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600";
+  return "bg-surface-alt text-content border-line ";
 }
 
 export function RelevanceChip({ score, size = "sm" }: RelevanceChipProps) {

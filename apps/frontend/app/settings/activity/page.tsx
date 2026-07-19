@@ -73,7 +73,7 @@ function getActionColor(action: AuditAction, success: boolean): string {
       if (BLUE_ACTIONS.includes(action)) {
         return "text-blue-600 bg-blue-50";
       }
-      return "text-gray-600 bg-gray-50";
+      return "text-content-dim bg-surface-alt";
   }
 }
 
@@ -159,7 +159,7 @@ function ActivityLogItem({ entry }: { entry: ActivityLogEntry }) {
   const translationKey = actionTranslationKeys[entry.action];
 
   return (
-    <div className="flex items-start gap-4 py-4 border-b border-gray-100 last:border-0">
+    <div className="flex items-start gap-4 py-4 border-b border-line last:border-0">
       <div
         className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${colorClasses}`}
       >
@@ -167,20 +167,20 @@ function ActivityLogItem({ entry }: { entry: ActivityLogEntry }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <p className="font-medium text-gray-900">
+          <p className="font-medium text-content">
             {t(`activity.actions.${translationKey}`)}
             {entry.entityType && (
-              <span className="text-gray-500 font-normal">
+              <span className="text-content-dim font-normal">
                 {" "}
                 {entry.entityType.toLowerCase()}
               </span>
             )}
           </p>
-          <span className="text-sm text-gray-500 flex-shrink-0">
+          <span className="text-sm text-content-dim flex-shrink-0">
             {formatRelativeTime(entry.timestamp)}
           </span>
         </div>
-        <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
+        <div className="flex items-center gap-2 mt-1 text-sm text-content-dim">
           {entry.browser && <span>{entry.browser}</span>}
           {entry.browser && entry.ipAddress && <span>•</span>}
           {entry.ipAddress && <span>{entry.ipAddress}</span>}
@@ -220,18 +220,18 @@ function SessionCard({
 
   return (
     <div
-      className={`p-4 rounded-lg border ${session.isCurrent ? "border-blue-200 bg-blue-50" : "border-gray-200 bg-white"}`}
+      className={`p-4 rounded-lg border ${session.isCurrent ? "border-blue-200 bg-blue-50" : "border-line bg-surface"}`}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <div
-            className={`flex-shrink-0 p-2 rounded-lg ${session.isCurrent ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-600"}`}
+            className={`flex-shrink-0 p-2 rounded-lg ${session.isCurrent ? "bg-blue-100 text-blue-600" : "bg-surface-alt text-content-dim"}`}
           >
             <DeviceIcon deviceType={session.deviceType} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <p className="font-medium text-gray-900">
+              <p className="font-medium text-content">
                 {session.deviceName || t("activity.sessions.unknownDevice")}
               </p>
               {session.isCurrent && (
@@ -240,11 +240,11 @@ function SessionCard({
                 </span>
               )}
             </div>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-content-dim">
               {session.browser} • {session.operatingSystem}
             </p>
-            {location && <p className="text-sm text-gray-500">{location}</p>}
-            <p className="text-sm text-gray-400 mt-1">
+            {location && <p className="text-sm text-content-dim">{location}</p>}
+            <p className="text-sm text-content-dim mt-1">
               {session.lastActivityAt
                 ? t("activity.sessions.lastActive", {
                     time: formatRelativeTime(session.lastActivityAt),
@@ -261,7 +261,7 @@ function SessionCard({
               <div className="flex gap-2">
                 <button
                   onClick={() => setConfirmRevoke(false)}
-                  className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-800"
+                  className="px-3 py-1.5 text-sm font-medium text-content-dim hover:text-content"
                   disabled={isRevoking}
                 >
                   {t("common:buttons.cancel")}
@@ -310,7 +310,7 @@ function useTabPlaceholder(
   if (loading) {
     return (
       <div className="text-center py-8">
-        <p className="text-gray-500">{loadingText}</p>
+        <p className="text-content-dim">{loadingText}</p>
       </div>
     );
   }
@@ -330,7 +330,7 @@ function useTabPlaceholder(
   if (emptyCheck) {
     return (
       <div className="text-center py-8">
-        <p className="text-gray-500">{emptyText}</p>
+        <p className="text-content-dim">{emptyText}</p>
       </div>
     );
   }
@@ -378,8 +378,8 @@ function ActivityTab({
 
       {/* Pagination */}
       {activityLog && activityLog.total > PAGE_SIZE && (
-        <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
-          <p className="text-sm text-gray-500">
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-line">
+          <p className="text-sm text-content-dim">
             {t("activity.showing", {
               from: offset + 1,
               to: Math.min(offset + PAGE_SIZE, activityLog.total),
@@ -390,14 +390,14 @@ function ActivityTab({
             <button
               onClick={onPrev}
               disabled={offset === 0}
-              className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-sm font-medium text-content-dim bg-surface-alt rounded-lg hover:bg-surface-sunk disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {t("activity.previous")}
             </button>
             <button
               onClick={onNext}
               disabled={!activityLog.hasMore}
-              className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-sm font-medium text-content-dim bg-surface-alt rounded-lg hover:bg-surface-sunk disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {t("activity.next")}
             </button>
@@ -575,31 +575,33 @@ export default function ActivityPage() {
     `px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
       activeTab === tab
         ? "border-blue-500 text-blue-600"
-        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+        : "border-transparent text-content-dim hover:text-content hover:border-line"
     }`;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">
+        <h1 className="text-2xl font-semibold text-content">
           {t("activity.title")}
         </h1>
-        <p className="mt-1 text-sm text-gray-500">{t("activity.subtitle")}</p>
+        <p className="mt-1 text-sm text-content-dim">
+          {t("activity.subtitle")}
+        </p>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-sm font-medium text-gray-500">
+        <div className="bg-surface rounded-lg p-4 border border-line">
+          <p className="text-sm font-medium text-content-dim">
             {t("activity.summary.totalActions")}
           </p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">
+          <p className="mt-1 text-2xl font-semibold text-content">
             {summaryLoading ? "..." : (summary?.totalActions ?? 0)}
           </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-sm font-medium text-gray-500">
+        <div className="bg-surface rounded-lg p-4 border border-line">
+          <p className="text-sm font-medium text-content-dim">
             {t("activity.summary.successRate")}
           </p>
           <p className="mt-1 text-2xl font-semibold text-green-600">
@@ -610,19 +612,19 @@ export default function ActivityPage() {
             )}
           </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-sm font-medium text-gray-500">
+        <div className="bg-surface rounded-lg p-4 border border-line">
+          <p className="text-sm font-medium text-content-dim">
             {t("activity.summary.activeSessions")}
           </p>
           <p className="mt-1 text-2xl font-semibold text-blue-600">
             {summaryLoading ? "..." : (summary?.activeSessions ?? 0)}
           </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-sm font-medium text-gray-500">
+        <div className="bg-surface rounded-lg p-4 border border-line">
+          <p className="text-sm font-medium text-content-dim">
             {t("activity.summary.lastLogin")}
           </p>
-          <p className="mt-1 text-lg font-semibold text-gray-900">
+          <p className="mt-1 text-lg font-semibold text-content">
             {formatLastLogin(
               summaryLoading,
               summary?.lastLoginAt,
@@ -633,8 +635,8 @@ export default function ActivityPage() {
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="border-b border-gray-200">
+      <div className="bg-surface rounded-lg border border-line">
+        <div className="border-b border-line">
           <nav className="flex -mb-px">
             <button
               onClick={() => {
@@ -651,7 +653,7 @@ export default function ActivityPage() {
             >
               {t("activity.tabs.sessions")}
               {sessions && (
-                <span className="ml-2 px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded-full">
+                <span className="ml-2 px-2 py-0.5 text-xs bg-surface-alt text-content-dim rounded-full">
                   {sessions.total}
                 </span>
               )}

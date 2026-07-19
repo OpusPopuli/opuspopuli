@@ -36,7 +36,7 @@ describe("DocumentFrameOverlay", () => {
     const { container } = render(<DocumentFrameOverlay />);
 
     // Each corner has 2 divs (horizontal + vertical bar), so 8 white bars total
-    const whiteBars = container.querySelectorAll(".bg-white.rounded-full");
+    const whiteBars = container.querySelectorAll(".bg-paper.rounded-full");
     expect(whiteBars.length).toBe(8);
   });
 

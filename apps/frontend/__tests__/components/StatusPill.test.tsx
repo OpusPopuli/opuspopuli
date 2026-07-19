@@ -15,30 +15,21 @@ describe("StatusPill", () => {
   // size) so a structural rewrite doesn't slip past either.
   describe.each<{ tone: StatusPillTone; expectedClasses: string[] }>([
     {
+      // Positive/brand tone is the earned gold fill with ink text.
       tone: "sage-filled",
-      expectedClasses: [
-        "bg-sage-light/20",
-        "text-sage-darker",
-        "dark:bg-sage-dark/20",
-        "dark:text-sage-light",
-      ],
+      expectedClasses: ["bg-accent", "text-on-accent"],
     },
     {
       tone: "sage-outline",
-      expectedClasses: [
-        "border",
-        "border-sage-dark",
-        "text-sage-darker",
-        "dark:border-sage-light",
-        "dark:text-sage-light",
-      ],
+      expectedClasses: ["border", "border-accent", "text-content"],
     },
     {
+      // warning/danger keep semantic traffic-light colours (legit dark: survivors).
       tone: "warning",
       expectedClasses: [
         "bg-yellow-100",
-        "text-yellow-700",
-        "dark:bg-yellow-900/30",
+        "text-yellow-800",
+        "dark:bg-yellow-900/40",
         "dark:text-yellow-200",
       ],
     },
@@ -46,19 +37,14 @@ describe("StatusPill", () => {
       tone: "danger",
       expectedClasses: [
         "bg-red-100",
-        "text-red-700",
-        "dark:bg-red-900/30",
+        "text-red-800",
+        "dark:bg-red-900/40",
         "dark:text-red-200",
       ],
     },
     {
       tone: "neutral",
-      expectedClasses: [
-        "bg-gray-100",
-        "text-gray-700",
-        "dark:bg-gray-700",
-        "dark:text-gray-200",
-      ],
+      expectedClasses: ["bg-surface-alt", "text-content-dim"],
     },
   ])("tone=$tone", ({ tone, expectedClasses }) => {
     it("applies the expected token classes", () => {

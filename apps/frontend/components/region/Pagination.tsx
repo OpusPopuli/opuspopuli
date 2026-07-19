@@ -13,7 +13,7 @@ export function Pagination({
 }) {
   return (
     <div className="mt-8 flex items-center justify-between">
-      <p className="text-sm text-[#4d4d4d]">
+      <p className="text-sm text-content-dim">
         Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, total)}{" "}
         of {total}
       </p>
@@ -21,14 +21,14 @@ export function Pagination({
         <button
           onClick={() => onPageChange(Math.max(0, page - 1))}
           disabled={page === 0}
-          className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 text-sm font-medium text-content bg-surface border border-line rounded-lg hover:bg-surface-alt disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Previous
         </button>
         <button
           onClick={() => onPageChange(page + 1)}
           disabled={!hasMore}
-          className="px-4 py-2 text-sm font-medium text-[#222222] bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 text-sm font-medium text-content bg-surface border border-line rounded-lg hover:bg-surface-alt disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Next
         </button>

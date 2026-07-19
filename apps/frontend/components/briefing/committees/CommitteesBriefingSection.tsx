@@ -27,7 +27,7 @@ export function CommitteesBriefingSection() {
   if (loading && committees.length === 0) {
     body = (
       <p
-        className="text-sm text-gray-500 dark:text-gray-400"
+        className="text-sm text-content-dim"
         data-testid="committees-briefing-loading"
       >
         {t("committees.loading")}
@@ -36,7 +36,7 @@ export function CommitteesBriefingSection() {
   } else if (committees.length === 0) {
     body = (
       <p
-        className="text-sm text-gray-500 dark:text-gray-400"
+        className="text-sm text-content-dim"
         data-testid="committees-briefing-empty"
       >
         {t("committees.empty")}

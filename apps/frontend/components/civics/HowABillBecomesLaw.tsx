@@ -40,17 +40,14 @@ export function HowABillBecomesLaw({
     <div className="space-y-4">
       {/* Measure type selector */}
       <div className="flex flex-wrap items-center gap-3">
-        <label
-          htmlFor={selectId}
-          className="text-sm font-medium text-gray-700 dark:text-gray-300"
-        >
+        <label htmlFor={selectId} className="text-sm font-medium text-content">
           {t("lifecycle.measureTypeLabel")}
         </label>
         <select
           id={selectId}
           value={selectedCode}
           onChange={(e) => setSelectedCode(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          className="rounded-lg border border-line px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           {measureTypes.map((mt) => (
             <option key={mt.code} value={mt.code}>
@@ -61,22 +58,20 @@ export function HowABillBecomesLaw({
       </div>
 
       {/* Abstract hint */}
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        {t("lifecycle.abstractMode")}
-      </p>
+      <p className="text-xs text-content-dim">{t("lifecycle.abstractMode")}</p>
 
       {/* Progress bar in abstract mode */}
       {stages.length > 0 ? (
         <LifecycleProgressBar stages={stages} currentStageId={null} />
       ) : (
-        <p className="py-4 text-center text-sm text-gray-400">
+        <p className="py-4 text-center text-sm text-content-dim">
           {t("hub.noData")}
         </p>
       )}
 
       {/* Selected type purpose */}
       {selectedType && (
-        <p className="mt-2 rounded-lg bg-gray-50 p-3 text-sm text-gray-600 dark:bg-gray-800/50 dark:text-gray-400">
+        <p className="mt-2 rounded-lg bg-surface-alt p-3 text-sm text-content-dim">
           {selectedType.purpose.plainLanguage}
         </p>
       )}

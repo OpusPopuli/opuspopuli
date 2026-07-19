@@ -13,7 +13,7 @@ export function LoadingSkeleton({
     >
       {Array.from({ length: count }, (_, i) => (
         <div key={i} className="animate-pulse">
-          <div className={`bg-gray-200 rounded-xl ${height}`}></div>
+          <div className={`bg-surface-sunk rounded-lg ${height}`}></div>
         </div>
       ))}
     </div>
@@ -22,7 +22,7 @@ export function LoadingSkeleton({
 
 export function ErrorState({ entity }: { readonly entity: string }) {
   return (
-    <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+    <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
       <p className="text-red-600">
         Failed to load {entity}. Please try again later.
       </p>
@@ -32,8 +32,8 @@ export function ErrorState({ entity }: { readonly entity: string }) {
 
 export function EmptyState({ entity }: { readonly entity: string }) {
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-      <p className="text-[#4d4d4d]">No {entity} found.</p>
+    <div className="bg-surface-alt border border-line rounded-lg p-8 text-center">
+      <p className="text-content-dim">No {entity} found.</p>
     </div>
   );
 }

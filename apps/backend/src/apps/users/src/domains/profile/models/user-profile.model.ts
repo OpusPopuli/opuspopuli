@@ -84,6 +84,15 @@ export class UserProfileModel {
   @Field(() => HomeownerStatus, { nullable: true })
   homeownerStatus?: HomeownerStatus;
 
+  /**
+   * First-run onboarding completion (#758). NULL until the user finishes
+   * or skips onboarding. Server-side source of truth so a returning user
+   * on a new device isn't re-prompted — the frontend reads this via the
+   * `myProfile` query and falls back to localStorage only as a cache.
+   */
+  @Field({ nullable: true })
+  onboardingCompletedAt?: Date;
+
   @Field()
   createdAt!: Date;
 
