@@ -51,6 +51,7 @@ export interface ManifestRecord {
   confidence: number;
   successCount: number;
   failureCount: number;
+  lastItemCount: number | null;
   isActive: boolean;
   llmProvider: string | null;
   llmModel: string | null;
@@ -149,6 +150,7 @@ export class ManifestStoreService {
         confidence: manifest.confidence,
         successCount: 0,
         failureCount: 0,
+        lastItemCount: null,
         isActive: true,
         llmProvider: manifest.llmProvider ?? null,
         llmModel: manifest.llmModel ?? null,
@@ -168,9 +170,14 @@ export class ManifestStoreService {
   }
 
   /**
-   * Record a successful extraction using this manifest.
+   * Record a successful extraction using this manifest. When `itemCount` is
+   * supplied it is persisted as the drift baseline (`lastItemCount`) that the
+   * self-healing validator compares future extractions against (#911).
    */
-  async incrementSuccess(manifestId: string): Promise<void> {
+  async incrementSuccess(
+    manifestId: string,
+    itemCount?: number,
+  ): Promise<void> {
     const record = await this.repository.findFirst({
       where: { id: manifestId },
     });
@@ -180,6 +187,7 @@ export class ManifestStoreService {
         data: {
           successCount: record.successCount + 1,
           lastUsedAt: new Date(),
+          ...(itemCount === undefined ? {} : { lastItemCount: itemCount }),
         },
       });
     }
@@ -275,6 +283,7 @@ export class ManifestStoreService {
       confidence: record.confidence,
       successCount: record.successCount,
       failureCount: record.failureCount,
+      lastItemCount: record.lastItemCount ?? undefined,
       isActive: record.isActive,
       llmProvider: record.llmProvider ?? undefined,
       llmModel: record.llmModel ?? undefined,
