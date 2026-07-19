@@ -33,7 +33,7 @@ export function LightingFeedback({ level }: LightingFeedbackProps) {
   return (
     <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
       <div
-        className={`${feedback.color} text-white px-3 py-1.5 rounded-full flex items-center gap-2 text-sm font-medium shadow-lg transition-colors duration-300`}
+        className={`${feedback.color} text-white px-3 py-1.5 rounded-full flex items-center gap-2 text-sm font-medium transition-colors duration-300`}
       >
         <svg
           className="w-4 h-4 shrink-0"

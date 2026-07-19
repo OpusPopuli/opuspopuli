@@ -29,7 +29,7 @@ export function OfflineIndicator() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-4 left-4 bg-yellow-500 text-black px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2"
+      className="fixed bottom-4 left-4 bg-yellow-500 text-black px-4 py-2 rounded-lg z-50 flex items-center gap-2"
     >
       <svg
         className="w-5 h-5"

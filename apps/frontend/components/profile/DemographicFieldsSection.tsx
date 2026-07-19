@@ -111,12 +111,12 @@ export function DemographicFieldsSection({
   );
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-line rounded-lg overflow-hidden">
       {/* Collapsible Header */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+        className="w-full px-4 py-3 flex items-center justify-between bg-surface-alt hover:bg-surface-alt transition-colors"
         aria-expanded={isExpanded}
       >
         <div className="flex items-center gap-2">
@@ -134,15 +134,15 @@ export function DemographicFieldsSection({
               d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
             />
           </svg>
-          <span className="font-medium text-[#222222]">
+          <span className="font-medium text-content">
             {t("profile.demographic.title", "Demographic Information")}
           </span>
-          <span className="text-xs text-gray-500 ml-2">
+          <span className="text-xs text-content-dim ml-2">
             {t("profile.demographic.optional", "(Optional)")}
           </span>
         </div>
         <svg
-          className={`w-5 h-5 text-gray-500 transition-transform ${
+          className={`w-5 h-5 text-content-dim transition-transform ${
             isExpanded ? "rotate-180" : ""
           }`}
           fill="none"
@@ -161,8 +161,8 @@ export function DemographicFieldsSection({
 
       {/* Collapsible Content */}
       {isExpanded && (
-        <div className="p-4 space-y-4 bg-white">
-          <p className="text-sm text-gray-500 mb-4">
+        <div className="p-4 space-y-4 bg-surface">
+          <p className="text-sm text-content-dim mb-4">
             {t(
               "profile.demographic.description",
               "This information helps us better understand how policies and ballot measures may affect you personally. All information is kept private and secure.",
@@ -173,7 +173,7 @@ export function DemographicFieldsSection({
           <div>
             <label
               htmlFor="occupation"
-              className="block text-sm font-medium text-[#222222] mb-1"
+              className="block text-sm font-medium text-content mb-1"
             >
               {t("profile.demographic.occupation", "Occupation")}
             </label>
@@ -188,7 +188,7 @@ export function DemographicFieldsSection({
                 "e.g., Software Engineer, Teacher, Nurse",
               )}
               maxLength={100}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-gray-100"
+              className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-surface-alt"
             />
           </div>
 
@@ -197,7 +197,7 @@ export function DemographicFieldsSection({
             <div>
               <label
                 htmlFor="educationLevel"
-                className="block text-sm font-medium text-[#222222] mb-1"
+                className="block text-sm font-medium text-content mb-1"
               >
                 {t("profile.demographic.educationLevel", "Education Level")}
               </label>
@@ -206,7 +206,7 @@ export function DemographicFieldsSection({
                 value={educationLevel || ""}
                 onChange={handleEducationChange}
                 disabled={disabled}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-gray-100"
+                className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-surface-alt"
               >
                 <option value="">
                   {t("profile.demographic.selectOption", "Select an option")}
@@ -227,7 +227,7 @@ export function DemographicFieldsSection({
             <div>
               <label
                 htmlFor="incomeRange"
-                className="block text-sm font-medium text-[#222222] mb-1"
+                className="block text-sm font-medium text-content mb-1"
               >
                 {t(
                   "profile.demographic.incomeRange",
@@ -239,7 +239,7 @@ export function DemographicFieldsSection({
                 value={incomeRange || ""}
                 onChange={handleIncomeChange}
                 disabled={disabled}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-gray-100"
+                className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-surface-alt"
               >
                 <option value="">
                   {t("profile.demographic.selectOption", "Select an option")}
@@ -260,7 +260,7 @@ export function DemographicFieldsSection({
             <div>
               <label
                 htmlFor="householdSize"
-                className="block text-sm font-medium text-[#222222] mb-1"
+                className="block text-sm font-medium text-content mb-1"
               >
                 {t("profile.demographic.householdSize", "Household Size")}
               </label>
@@ -269,7 +269,7 @@ export function DemographicFieldsSection({
                 value={householdSize || ""}
                 onChange={handleHouseholdChange}
                 disabled={disabled}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-gray-100"
+                className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-surface-alt"
               >
                 <option value="">
                   {t("profile.demographic.selectOption", "Select an option")}
@@ -301,7 +301,7 @@ export function DemographicFieldsSection({
             <div>
               <label
                 htmlFor="homeownerStatus"
-                className="block text-sm font-medium text-[#222222] mb-1"
+                className="block text-sm font-medium text-content mb-1"
               >
                 {t("profile.demographic.homeownerStatus", "Housing Status")}
               </label>
@@ -310,7 +310,7 @@ export function DemographicFieldsSection({
                 value={homeownerStatus || ""}
                 onChange={handleHomeownerChange}
                 disabled={disabled}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-gray-100"
+                className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-surface-alt"
               >
                 <option value="">
                   {t("profile.demographic.selectOption", "Select an option")}

@@ -25,17 +25,17 @@ export function CommitteeBriefingCard({ item }: CommitteeBriefingCardProps) {
 
   return (
     <article
-      className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
+      className="rounded-lg border border-line bg-surface p-4"
       data-testid="committee-briefing-card"
       data-committee-id={item.id}
     >
       <Link
         href={`/region/legislative-committees/${item.id}`}
-        className="block text-base font-semibold text-[#222222] dark:text-white hover:text-[#5A7A6A] dark:hover:text-sage-300 transition-colors line-clamp-1"
+        className="block text-base font-semibold text-content hover:text-content transition-colors line-clamp-1"
       >
         {item.name}
       </Link>
-      <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+      <p className="mt-0.5 text-xs text-content-dim">
         {t("committees.chamberMembers", {
           chamber: item.chamber,
           count: item.memberCount,

@@ -30,24 +30,24 @@ function MeetingCard({ meeting }: Readonly<{ meeting: Meeting }>) {
   });
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow">
+    <div className="bg-surface rounded-lg p-6 transition-shadow">
       <div className="flex items-start gap-4">
         {/* Date Badge */}
         <div
           className={`flex-shrink-0 w-16 h-16 rounded-lg flex flex-col items-center justify-center ${
-            isPast ? "bg-gray-100" : "bg-blue-100"
+            isPast ? "bg-surface-alt" : "bg-blue-100"
           }`}
         >
           <span
             className={`text-xs font-medium uppercase ${
-              isPast ? "text-gray-600" : "text-blue-700"
+              isPast ? "text-content-dim" : "text-blue-700"
             }`}
           >
             {scheduledAt.toLocaleDateString("en-US", { month: "short" })}
           </span>
           <span
             className={`text-xl font-bold ${
-              isPast ? "text-gray-700" : "text-blue-700"
+              isPast ? "text-content" : "text-blue-700"
             }`}
           >
             {scheduledAt.getDate()}
@@ -57,17 +57,17 @@ function MeetingCard({ meeting }: Readonly<{ meeting: Meeting }>) {
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold text-[#222222] line-clamp-1">
+            <h3 className="text-lg font-semibold text-content line-clamp-1">
               {meeting.title}
             </h3>
             {isPast && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-surface-alt text-content-dim">
                 Past
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-[#4d4d4d]">{meeting.body}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#4d4d4d]">
+          <p className="mt-1 text-sm text-content-dim">{meeting.body}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-content-dim">
             <span>{formattedDate}</span>
             <span>{formattedTime}</span>
             {meeting.location && <span>{meeting.location}</span>}
@@ -77,7 +77,7 @@ function MeetingCard({ meeting }: Readonly<{ meeting: Meeting }>) {
 
       {/* Links */}
       {(meeting.agendaUrl || meeting.videoUrl) && (
-        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-4">
+        <div className="mt-4 pt-4 border-t border-line flex items-center gap-4">
           {meeting.agendaUrl && (
             <a
               href={meeting.agendaUrl}
@@ -166,8 +166,8 @@ export default function MeetingsPage() {
         segments={[{ label: "Region", href: "/region" }, { label: "Meetings" }]}
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#222222]">Meetings</h1>
-        <p className="mt-2 text-[#4d4d4d]">
+        <h1 className="text-3xl font-bold text-content">Meetings</h1>
+        <p className="mt-2 text-content-dim">
           Legislative sessions and public hearings
         </p>
       </div>

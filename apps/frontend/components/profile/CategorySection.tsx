@@ -26,7 +26,7 @@ export function CategorySection({
   const panelId = `cat-panel-${presentation.category}`;
 
   return (
-    <section className="border border-gray-300 rounded-xl overflow-hidden bg-white">
+    <section className="border border-line rounded-lg overflow-hidden bg-surface">
       <h3 className="m-0">
         <button
           id={headerId}
@@ -37,19 +37,19 @@ export function CategorySection({
           aria-label={
             expanded ? t("categoryLabel.collapse") : t("categoryLabel.expand")
           }
-          className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-50 focus:ring-2 focus:ring-inset focus:ring-[#5A7A6A]"
+          className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left hover:bg-surface-alt focus:outline-none focus:bg-surface-alt focus:ring-2 focus:ring-inset focus:ring-accent"
         >
           <span className="flex-1 min-w-0">
-            <span className="block text-base font-semibold text-gray-900">
+            <span className="block text-base font-semibold text-content">
               {t(`category.${presentation.category}.title`)}
             </span>
-            <span className="block text-xs text-gray-500 mt-0.5">
+            <span className="block text-xs text-content-dim mt-0.5">
               {t(`category.${presentation.category}.summary`)}
             </span>
           </span>
           <span
             aria-hidden="true"
-            className={`text-gray-400 transition-transform ${
+            className={`text-content-dim transition-transform ${
               expanded ? "rotate-180" : ""
             }`}
           >
@@ -62,7 +62,7 @@ export function CategorySection({
           id={panelId}
           role="region"
           aria-labelledby={headerId}
-          className="px-4 py-1 bg-white"
+          className="px-4 py-1 bg-surface"
         >
           {presentation.fields.map((descriptor) => (
             <EditableField

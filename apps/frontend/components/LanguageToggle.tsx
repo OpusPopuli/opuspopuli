@@ -51,7 +51,7 @@ export function LanguageToggle() {
   };
 
   return (
-    <fieldset className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-full p-0.5 border border-gray-200 dark:border-gray-700">
+    <fieldset className="inline-flex bg-surface-alt rounded-full p-0.5 border border-line">
       <legend className="sr-only">{t("languageLegend")}</legend>
       {LANGUAGES.map(({ code, label }) => {
         const active = code === locale;
@@ -60,10 +60,10 @@ export function LanguageToggle() {
             key={code}
             className={[
               "px-2.5 py-1 rounded-full text-xs font-semibold cursor-pointer transition-colors",
-              "focus-within:ring-2 focus-within:ring-sage-dark",
+              "focus-within:ring-2 focus-within:ring-accent",
               active
-                ? "bg-sage-dark text-white"
-                : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white",
+                ? "bg-inverse-surface text-on-inverse"
+                : "text-content-dim hover:text-content ",
             ].join(" ")}
           >
             <input

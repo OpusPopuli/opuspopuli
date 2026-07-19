@@ -63,24 +63,24 @@ export default function ForgotPasswordPage() {
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-[#222222] mb-2">
+        <h1 className="text-2xl font-bold text-content mb-2">
           Check your email
         </h1>
-        <p className="text-[#4d4d4d] mb-6">
+        <p className="text-content-dim mb-6">
           We&apos;ve sent a password reset code to{" "}
-          <span className="font-medium text-[#222222]">{email}</span>
+          <span className="font-medium text-content">{email}</span>
         </p>
         <button
           onClick={() => router.push("/reset-password")}
-          className="inline-block py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
+          className="inline-block py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
         >
           Enter reset code
         </button>
-        <p className="mt-4 text-sm text-[#4d4d4d]">
+        <p className="mt-4 text-sm text-content-dim">
           Didn&apos;t receive the email?{" "}
           <button
             onClick={() => setSuccess(false)}
-            className="text-[#222222] font-medium hover:underline"
+            className="text-content font-medium hover:underline"
           >
             Try again
           </button>
@@ -120,11 +120,11 @@ export default function ForgotPasswordPage() {
       </form>
 
       {/* Back to Login Link */}
-      <p className="mt-8 text-center text-[#4d4d4d]">
+      <p className="mt-8 text-center text-content-dim">
         Remember your password?{" "}
         <Link
           href="/login"
-          className="text-[#222222] font-semibold hover:underline"
+          className="text-content font-semibold hover:underline"
         >
           Sign in
         </Link>

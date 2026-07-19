@@ -43,6 +43,12 @@ jest.mock("@/lib/toast", () => ({
   useToast: () => ({ showToast: jest.fn() }),
 }));
 
+// ThemeToggle (mounted by Header) needs the theme provider; stub it the same
+// way as i18n/toast above. Theme behavior is covered by its own context.
+jest.mock("@/lib/theme-context", () => ({
+  useTheme: () => ({ theme: "light", setTheme: jest.fn(), toggle: jest.fn() }),
+}));
+
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));

@@ -6,8 +6,14 @@ import {
   useState,
   useSyncExternalStore,
   useCallback,
+  useMemo,
   ReactNode,
 } from "react";
+import { useMutation } from "@apollo/client/react";
+import {
+  COMPLETE_ONBOARDING,
+  CompleteOnboardingData,
+} from "@/lib/graphql/onboarding";
 
 interface OnboardingContextType {
   hasCompletedOnboarding: boolean;
@@ -52,10 +58,23 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   // OnboardingSteps hides its global Next for those indices.
   const totalSteps = 10;
 
+  // Server-side persistence of onboarding completion (#758). localStorage
+  // stays the instant, offline-safe cache; the mutation is the durable,
+  // cross-device source of truth. Fire-and-forget so navigation isn't
+  // blocked on the round-trip — a failed write just leaves the server
+  // flag unset, and the next completion (or the localStorage cache)
+  // covers this device until then.
+  const [persistOnboardingComplete] =
+    useMutation<CompleteOnboardingData>(COMPLETE_ONBOARDING);
+
   const completeOnboarding = useCallback(() => {
     localStorage.setItem(STORAGE_KEY, "true");
     globalThis.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
-  }, []);
+    persistOnboardingComplete().catch(() => {
+      // Non-fatal: localStorage already reflects completion on this
+      // device; the server flag will catch up on a later completion.
+    });
+  }, [persistOnboardingComplete]);
 
   const skipOnboarding = useCallback(() => {
     completeOnboarding();
@@ -76,19 +95,31 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const value = useMemo(
+    () => ({
+      hasCompletedOnboarding,
+      currentStep,
+      totalSteps,
+      nextStep,
+      prevStep,
+      skipOnboarding,
+      completeOnboarding,
+      resetOnboarding,
+    }),
+    [
+      hasCompletedOnboarding,
+      currentStep,
+      totalSteps,
+      nextStep,
+      prevStep,
+      skipOnboarding,
+      completeOnboarding,
+      resetOnboarding,
+    ],
+  );
+
   return (
-    <OnboardingContext.Provider
-      value={{
-        hasCompletedOnboarding,
-        currentStep,
-        totalSteps,
-        nextStep,
-        prevStep,
-        skipOnboarding,
-        completeOnboarding,
-        resetOnboarding,
-      }}
-    >
+    <OnboardingContext.Provider value={value}>
       {children}
     </OnboardingContext.Provider>
   );

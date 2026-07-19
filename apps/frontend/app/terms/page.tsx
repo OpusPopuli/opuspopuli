@@ -11,17 +11,15 @@ export const metadata: Metadata = {
 
 export default function TermsOfServicePage() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="min-h-screen bg-surface-alt flex flex-col">
       <Header />
       <main className="flex-1 max-w-3xl mx-auto px-8 py-12">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+        <h1 className="text-3xl font-bold text-content mb-2">
           Terms of Service
         </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
-          Last updated: June 2026
-        </p>
+        <p className="text-sm text-content-dim mb-8">Last updated: June 2026</p>
 
-        <div className="space-y-8 text-gray-700 dark:text-gray-300">
+        <div className="space-y-8 text-content">
           {/* Introduction */}
           <section>
             <p>
@@ -33,7 +31,7 @@ export default function TermsOfServicePage() {
 
           {/* 1. Acceptance of Terms */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               1. Acceptance of Terms
             </h2>
             <p>
@@ -53,7 +51,7 @@ export default function TermsOfServicePage() {
 
           {/* 2. Eligibility */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               2. Eligibility
             </h2>
             <p>
@@ -66,7 +64,7 @@ export default function TermsOfServicePage() {
 
           {/* 3. Account Responsibilities */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               3. Account Responsibilities
             </h2>
             <ul className="list-disc pl-6 space-y-2">
@@ -91,7 +89,7 @@ export default function TermsOfServicePage() {
 
           {/* 4. Acceptable Use */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               4. Acceptable Use
             </h2>
             <p className="mb-3">
@@ -124,7 +122,7 @@ export default function TermsOfServicePage() {
 
           {/* 5. Civic Data & AI Analysis */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               5. Civic Data &amp; AI Analysis
             </h2>
             <p className="mb-3">
@@ -158,7 +156,7 @@ export default function TermsOfServicePage() {
 
           {/* 6. Public Commitments — incorporated by reference (#754) */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               6. Public Commitments
             </h2>
             <p className="mb-3">
@@ -209,7 +207,7 @@ export default function TermsOfServicePage() {
 
           {/* 7. Intellectual Property */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               7. Intellectual Property
             </h2>
             <p className="mb-3">
@@ -236,7 +234,7 @@ export default function TermsOfServicePage() {
 
           {/* 8. Limitation of Liability */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               8. Limitation of Liability
             </h2>
             <p className="mb-3">
@@ -262,7 +260,7 @@ export default function TermsOfServicePage() {
 
           {/* 9. Termination */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               9. Termination
             </h2>
             <p>
@@ -288,7 +286,7 @@ export default function TermsOfServicePage() {
 
           {/* 10. Governing Law */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               10. Governing Law
             </h2>
             <p>
@@ -300,7 +298,7 @@ export default function TermsOfServicePage() {
 
           {/* 11. Contact */}
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               11. Contact Information
             </h2>
             <p>

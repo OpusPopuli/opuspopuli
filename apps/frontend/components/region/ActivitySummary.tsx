@@ -54,15 +54,15 @@ export function ActivitySummary({ summary, generatedAt, windowDays }: Props) {
           </svg>
           AI-generated
         </span>
-        <span className="text-[11px] uppercase tracking-wider font-bold text-[#595959]">
+        <span className="text-[11px] uppercase tracking-wider font-bold text-content-dim">
           Recent activity at a glance
         </span>
       </div>
-      <p className="text-[#334155] leading-relaxed whitespace-pre-line">
+      <p className="text-content-dim leading-relaxed whitespace-pre-line">
         {summary}
       </p>
       {(generatedLabel || windowDays) && (
-        <p className="mt-3 text-[11px] text-[#94a3b8] italic">
+        <p className="mt-3 text-[11px] text-content-dim italic">
           Generated{generatedLabel ? ` ${generatedLabel}` : ""}
           {windowDays ? ` over the last ${windowDays} days` : ""}. May contain
           inaccuracies — verify against source records before citing.

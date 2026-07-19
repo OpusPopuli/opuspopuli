@@ -159,7 +159,7 @@ test.describe("PWA - HTML Meta Tags", () => {
     expect(themeColor).not.toBeNull();
 
     const content = await themeColor?.getAttribute("content");
-    expect(content).toBe("#5A7A6A");
+    expect(content).toBe("#FAFAF8");
   });
 
   test("should have viewport meta tag with correct settings", async ({

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function SystemCardPage() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="min-h-screen bg-surface-alt flex flex-col">
       <Header />
       <main className="flex-1 max-w-3xl mx-auto px-8 py-12">
         <div className="mb-6">
@@ -23,16 +23,16 @@ export default function SystemCardPage() {
           </Link>
         </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+        <h1 className="text-3xl font-bold text-content mb-2">
           AI System Overview
         </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
+        <p className="text-sm text-content-dim mb-8">
           Last updated: March 2026
         </p>
 
-        <div className="space-y-8 text-gray-700 dark:text-gray-300">
+        <div className="space-y-8 text-content">
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               1. What the AI Does
             </h2>
             <p className="mb-3">
@@ -65,7 +65,7 @@ export default function SystemCardPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               2. Data Processed
             </h2>
             <p className="mb-3">
@@ -93,7 +93,7 @@ export default function SystemCardPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               3. Training Data and Models
             </h2>
             <ul className="list-disc pl-6 space-y-2">
@@ -117,7 +117,7 @@ export default function SystemCardPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               4. Prompt Architecture
             </h2>
             <p className="mb-3">
@@ -157,7 +157,7 @@ export default function SystemCardPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               5. Known Limitations
             </h2>
             <p className="mb-3">
@@ -189,7 +189,7 @@ export default function SystemCardPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               6. Failure Modes
             </h2>
             <p className="mb-3">
@@ -218,7 +218,7 @@ export default function SystemCardPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               7. Abuse Reporting
             </h2>
             <p className="mb-3">
@@ -248,26 +248,26 @@ export default function SystemCardPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               8. Changelog
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-700">
-                    <th className="text-left py-2 pr-4 font-semibold text-gray-900 dark:text-white">
+                  <tr className="border-b border-line">
+                    <th className="text-left py-2 pr-4 font-semibold text-content">
                       Version
                     </th>
-                    <th className="text-left py-2 pr-4 font-semibold text-gray-900 dark:text-white">
+                    <th className="text-left py-2 pr-4 font-semibold text-content">
                       Date
                     </th>
-                    <th className="text-left py-2 font-semibold text-gray-900 dark:text-white">
+                    <th className="text-left py-2 font-semibold text-content">
                       Changes
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-b border-gray-100 dark:border-gray-800">
+                  <tr className="border-b border-line">
                     <td className="py-2 pr-4">v1.0</td>
                     <td className="py-2 pr-4">March 2026</td>
                     <td className="py-2">Initial system card publication.</td>
@@ -277,8 +277,8 @@ export default function SystemCardPage() {
             </div>
           </section>
 
-          <section className="pt-4 border-t border-gray-200 dark:border-gray-700">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+          <section className="pt-4 border-t border-line">
+            <p className="text-sm text-content-dim">
               See also:{" "}
               <Link
                 href="/transparency/ai-commitments"

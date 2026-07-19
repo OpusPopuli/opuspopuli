@@ -119,27 +119,27 @@ export function TrackOnBallotButton({
       </button>
 
       {open && (
-        <div className="absolute bottom-full mb-2 left-0 right-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-20 overflow-hidden">
+        <div className="absolute bottom-full mb-2 left-0 right-0 bg-inverse-surface border border-line rounded-lg z-20 overflow-hidden">
           <div className="p-3">
             <input
               type="text"
               value={query}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={t("results.searchPropositions")}
-              className="w-full bg-gray-800 text-white rounded-md px-3 py-2 text-sm border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+              className="w-full bg-inverse-surface text-on-inverse rounded-md px-3 py-2 text-sm border border-line focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
               autoFocus
             />
           </div>
 
           <div className="max-h-48 overflow-y-auto">
             {searching && (
-              <p className="px-3 py-2 text-gray-400 text-sm">
+              <p className="px-3 py-2 text-content-dim text-sm">
                 {t("activityFeed.loading")}
               </p>
             )}
 
             {!searching && query.length >= 3 && results.length === 0 && (
-              <p className="px-3 py-2 text-gray-400 text-sm">
+              <p className="px-3 py-2 text-content-dim text-sm">
                 {t("results.noMatchesFound")}
               </p>
             )}
@@ -149,10 +149,10 @@ export function TrackOnBallotButton({
                 key={prop.id}
                 onClick={() => handleLink(prop.id)}
                 disabled={linking}
-                className="w-full text-left px-3 py-2 hover:bg-gray-800 transition-colors border-t border-gray-800"
+                className="w-full text-left px-3 py-2 hover:bg-inverse-surface transition-colors border-t border-line"
               >
                 <p className="text-sm text-white truncate">{prop.title}</p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-content-dim">
                   {prop.externalId} &middot; {prop.status}
                 </p>
               </button>

@@ -21,6 +21,11 @@
     "preferencesNotSaved": "No pudimos guardar tu preferencia — se restablecerá en la próxima sesión."
   },
   "languageLegend": "Idioma",
+  "theme": {
+    "toggle": "Cambiar entre tema claro u oscuro",
+    "light": "Claro",
+    "dark": "Oscuro"
+  },
   "status": {
     "success": "Exito!",
     "primary": "Principal",

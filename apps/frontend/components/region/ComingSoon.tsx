@@ -11,7 +11,7 @@ export function ComingSoon({
   readonly description: string;
 }) {
   return (
-    <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-6 text-center">
+    <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-6 text-center">
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
         {title}
       </p>

@@ -186,7 +186,7 @@ export default function PetitionResultsPage() {
               ? t("results.extractingText")
               : t("results.analyzingDocument")}
           </p>
-          <p className="text-gray-400 text-sm mt-2">
+          <p className="text-content-dim text-sm mt-2">
             {step === "extracting"
               ? t("results.extractingDescription")
               : t("results.analyzingDescription")}
@@ -219,7 +219,7 @@ export default function PetitionResultsPage() {
       {step === "analyzing" && ocrText && (
         <div className="flex items-center gap-3 px-4 py-4">
           <LoadingSpinner size="sm" className="text-blue-500" />
-          <p className="text-gray-400 text-sm">
+          <p className="text-content-dim text-sm">
             {t("results.analyzingDocument")}
           </p>
         </div>
@@ -244,7 +244,7 @@ export default function PetitionResultsPage() {
         <div className="px-4 py-6 flex gap-3">
           <button
             onClick={handleShare}
-            className="flex-1 py-3 bg-white/10 text-white font-medium rounded-lg hover:bg-white/20 transition-colors"
+            className="flex-1 py-3 bg-surface/10 text-white font-medium rounded-lg hover:bg-surface/20 transition-colors"
           >
             {t("results.share")}
           </button>
@@ -291,7 +291,7 @@ export default function PetitionResultsPage() {
           <h2 className="text-xl font-semibold text-white mb-2">
             {t("results.errorTitle")}
           </h2>
-          <p className="text-gray-400 mb-6">{error}</p>
+          <p className="text-content-dim mb-6">{error}</p>
           <div className="flex gap-3">
             <button
               onClick={() => router.push("/petition")}

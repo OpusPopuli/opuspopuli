@@ -2,6 +2,14 @@ import { act, renderHook } from "@testing-library/react";
 import { OnboardingProvider, useOnboarding } from "@/lib/onboarding-context";
 import "@testing-library/jest-dom";
 
+// The provider persists completion to the server via useMutation (#758).
+// Mock the Apollo hook so the context can be exercised without an
+// ApolloProvider, and so we can assert the mutation fires on complete.
+const mockPersistOnboarding = jest.fn().mockResolvedValue({ data: {} });
+jest.mock("@apollo/client/react", () => ({
+  useMutation: () => [mockPersistOnboarding, { loading: false }],
+}));
+
 // Mock localStorage
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
@@ -139,6 +147,16 @@ describe("OnboardingProvider", () => {
       });
 
       expect(result.current.hasCompletedOnboarding).toBe(true);
+    });
+
+    it("should persist completion to the server on complete (#758)", () => {
+      const { result } = renderHook(() => useOnboarding(), { wrapper });
+
+      act(() => {
+        result.current.completeOnboarding();
+      });
+
+      expect(mockPersistOnboarding).toHaveBeenCalledTimes(1);
     });
   });
 

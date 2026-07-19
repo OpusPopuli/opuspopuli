@@ -131,16 +131,16 @@ export default function ResetPasswordPage() {
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-[#222222] mb-2">
+        <h1 className="text-2xl font-bold text-content mb-2">
           Password reset successful
         </h1>
-        <p className="text-[#4d4d4d] mb-6">
+        <p className="text-content-dim mb-6">
           Your password has been updated. You can now sign in with your new
           password.
         </p>
         <Link
           href="/login"
-          className="inline-block py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
+          className="inline-block py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
         >
           Sign in
         </Link>
@@ -198,7 +198,7 @@ export default function ResetPasswordPage() {
           {password.length > 0 && (
             <div className="mt-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-[#4d4d4d]">
+                <span className="text-xs text-content-dim">
                   Password strength
                 </span>
                 <span
@@ -208,7 +208,7 @@ export default function ResetPasswordPage() {
                   {passwordStrength.label}
                 </span>
               </div>
-              <div className="h-1.5 bg-[#DDDDDD] rounded-full overflow-hidden">
+              <div className="h-1.5 bg-surface-sunk rounded-full overflow-hidden">
                 <div
                   className="h-full transition-all duration-300"
                   style={{
@@ -222,7 +222,7 @@ export default function ResetPasswordPage() {
                   <li
                     key={req.text}
                     className={`text-xs flex items-center gap-2 ${
-                      req.met ? "text-green-600" : "text-[#595959]"
+                      req.met ? "text-green-600" : "text-content-dim"
                     }`}
                   >
                     {req.met ? (
@@ -258,7 +258,7 @@ export default function ResetPasswordPage() {
         <div>
           <label
             htmlFor="confirmPassword"
-            className="block text-xs font-semibold text-[#4d4d4d] uppercase tracking-wider mb-2"
+            className="block text-xs font-semibold text-content-dim uppercase tracking-wider mb-2"
           >
             Confirm Password
           </label>
@@ -267,14 +267,14 @@ export default function ResetPasswordPage() {
             type={showPassword ? "text" : "password"}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className={`w-full px-4 py-3 bg-[#FFFFFF] border rounded-lg
-                     text-[#222222] placeholder-[#888888]
-                     focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
+            className={`w-full px-4 py-3 bg-surface border rounded-lg
+                     text-content placeholder-[#888888]
+                     focus:outline-none focus:ring-2 focus:ring-content focus:border-transparent
                      transition-all duration-200
                      ${
                        confirmPassword.length > 0 && !passwordsMatch
                          ? "border-red-300"
-                         : "border-[#DDDDDD]"
+                         : "border-line"
                      }`}
             placeholder="Confirm your new password"
             required
@@ -298,20 +298,20 @@ export default function ResetPasswordPage() {
 
       {/* Back Links */}
       <div className="mt-8 text-center space-y-2">
-        <p className="text-[#4d4d4d]">
+        <p className="text-content-dim">
           Need a new code?{" "}
           <Link
             href="/forgot-password"
-            className="text-[#222222] font-semibold hover:underline"
+            className="text-content font-semibold hover:underline"
           >
             Request again
           </Link>
         </p>
-        <p className="text-[#4d4d4d]">
+        <p className="text-content-dim">
           Remember your password?{" "}
           <Link
             href="/login"
-            className="text-[#222222] font-semibold hover:underline"
+            className="text-content font-semibold hover:underline"
           >
             Sign in
           </Link>

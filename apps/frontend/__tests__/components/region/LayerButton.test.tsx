@@ -24,7 +24,7 @@ describe("LayerButton", () => {
   it("applies primary styling by default", () => {
     render(<LayerButton onClick={() => {}}>Primary</LayerButton>);
 
-    expect(screen.getByRole("button")).toHaveClass("bg-gray-900");
+    expect(screen.getByRole("button")).toHaveClass("bg-inverse-surface");
   });
 
   it("applies secondary styling when variant='secondary'", () => {
@@ -34,6 +34,6 @@ describe("LayerButton", () => {
       </LayerButton>,
     );
 
-    expect(screen.getByRole("button")).toHaveClass("bg-white");
+    expect(screen.getByRole("button")).toHaveClass("bg-surface");
   });
 });

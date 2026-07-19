@@ -18,7 +18,7 @@ export function CameraPermission({
       {state === "prompt" && (
         <>
           <svg
-            className="w-16 h-16 mb-6 text-gray-400"
+            className="w-16 h-16 mb-6 text-content-dim"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -38,7 +38,7 @@ export function CameraPermission({
             />
           </svg>
           <h2 className="text-xl font-semibold mb-2">Camera Access Needed</h2>
-          <p className="text-gray-400 mb-8 max-w-sm">
+          <p className="text-content-dim mb-8 max-w-sm">
             To scan petitions, we need access to your camera. Your images are
             processed securely and never saved to your device.
           </p>
@@ -68,10 +68,10 @@ export function CameraPermission({
             />
           </svg>
           <h2 className="text-xl font-semibold mb-2">Camera Access Denied</h2>
-          <p className="text-gray-400 mb-4 max-w-sm">
+          <p className="text-content-dim mb-4 max-w-sm">
             Camera access was denied. To scan petitions:
           </p>
-          <ol className="text-gray-400 text-left text-sm space-y-1 mb-6 max-w-sm">
+          <ol className="text-content-dim text-left text-sm space-y-1 mb-6 max-w-sm">
             <li>1. Open your browser settings</li>
             <li>2. Find permissions for this site</li>
             <li>3. Enable camera access</li>
@@ -103,7 +103,7 @@ export function CameraPermission({
             />
           </svg>
           <h2 className="text-xl font-semibold mb-2">Camera Not Supported</h2>
-          <p className="text-gray-400 max-w-sm">
+          <p className="text-content-dim max-w-sm">
             Your browser doesn&apos;t support camera access. Try using Chrome,
             Safari, or Firefox on a mobile device.
           </p>

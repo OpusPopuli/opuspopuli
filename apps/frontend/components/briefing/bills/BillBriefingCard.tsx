@@ -21,16 +21,16 @@ export function BillBriefingCard({ item }: BillBriefingCardProps) {
   const summary = bill.subject ?? bill.lastAction ?? null;
 
   return (
-    <article className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+    <article className="rounded-lg border border-line bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/bills/${bill.id}`}
-            className="block text-base font-semibold text-[#222222] dark:text-white hover:text-[#5A7A6A] dark:hover:text-sage-300 transition-colors line-clamp-2"
+            className="block text-base font-semibold text-content hover:text-content transition-colors line-clamp-2"
           >
             {bill.title}
           </Link>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-0.5 text-xs text-content-dim">
             {bill.billNumber} · {bill.sessionYear}
             {bill.status ? ` · ${bill.status}` : ""}
           </p>
@@ -38,9 +38,7 @@ export function BillBriefingCard({ item }: BillBriefingCardProps) {
         <RelevanceChip score={result.relevanceScore} />
       </div>
       {summary && (
-        <p className="mt-2 text-sm text-[#4d4d4d] dark:text-gray-300 line-clamp-2">
-          {summary}
-        </p>
+        <p className="mt-2 text-sm text-content-dim line-clamp-2">{summary}</p>
       )}
       <div className="mt-2">
         <WhyThisPanel

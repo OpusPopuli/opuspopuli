@@ -170,8 +170,8 @@ export function SettingsShellLayout({
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-white dark:bg-gray-900">
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="min-h-screen bg-surface">
+        <header className="bg-surface border-b border-line">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <Link
@@ -188,7 +188,7 @@ export function SettingsShellLayout({
                 <LanguageToggle />
                 <Link
                   href="/region"
-                  className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
+                  className="text-sm text-content-dim hover:text-content transition-colors"
                 >
                   {t("common:navigation.backToApp")}
                 </Link>
@@ -200,8 +200,8 @@ export function SettingsShellLayout({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex gap-8">
             <nav className="w-64 flex-shrink-0">
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-none dark:border dark:border-gray-700 p-2">
-                <h2 className="px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+              <div className="bg-surface rounded-lg dark:border p-2">
+                <h2 className="px-4 py-2 text-xs font-semibold text-content-dim uppercase tracking-wider">
                   {t("nav.settings")}
                 </h2>
                 <ul className="space-y-1">
@@ -211,8 +211,8 @@ export function SettingsShellLayout({
                         href={item.href}
                         className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                           isActive(item.href)
-                            ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
-                            : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
+                            ? "bg-inverse-surface text-white "
+                            : "text-content-dim hover:bg-surface-alt hover:text-content "
                         }`}
                       >
                         {item.icon}
@@ -221,7 +221,7 @@ export function SettingsShellLayout({
                     </li>
                   ))}
                 </ul>
-                <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                <div className="mt-2 pt-2 border-t border-line">
                   <button
                     onClick={logout}
                     className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300 transition-colors"

@@ -67,7 +67,7 @@ export function ActivityStats({
 
   return (
     <section aria-label="Activity at a glance" className="mb-8">
-      <p className="text-xs font-bold uppercase tracking-wider text-[#595959] mb-3">
+      <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-3">
         Last {sinceDays} days
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -130,16 +130,18 @@ function StatTile({
   readonly sub?: string;
   readonly tone?: "neutral" | "good" | "warn";
 }) {
-  let valueClass = "text-[#222222]";
+  let valueClass = "text-content";
   if (tone === "good") valueClass = "text-emerald-700";
   else if (tone === "warn") valueClass = "text-amber-700";
   return (
     <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-[#595959] mb-1">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-content-dim mb-1">
         {label}
       </p>
       <p className={`text-2xl font-semibold ${valueClass}`}>{value}</p>
-      {sub && <p className="text-[11px] text-[#595959] mt-1 truncate">{sub}</p>}
+      {sub && (
+        <p className="text-[11px] text-content-dim mt-1 truncate">{sub}</p>
+      )}
     </div>
   );
 }

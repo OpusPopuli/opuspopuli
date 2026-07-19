@@ -24,7 +24,7 @@ const TYPE_STYLES: Record<string, { bg: string; text: string }> = {
   super_pac: { bg: "bg-indigo-100", text: "text-indigo-800" },
   party: { bg: "bg-orange-100", text: "text-orange-800" },
   small_contributor: { bg: "bg-teal-100", text: "text-teal-800" },
-  other: { bg: "bg-gray-100", text: "text-gray-800" },
+  other: { bg: "bg-surface-alt", text: "text-content" },
 };
 
 function TypeBadge({ type }: { readonly type: string }) {
@@ -44,7 +44,7 @@ function StatusBadge({ status }: { readonly status: string }) {
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-        isActive ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
+        isActive ? "bg-green-100 text-green-800" : "bg-surface-alt text-content"
       }`}
     >
       {status}
@@ -54,14 +54,14 @@ function StatusBadge({ status }: { readonly status: string }) {
 
 function CommitteeCard({ committee }: Readonly<{ committee: Committee }>) {
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow">
+    <div className="bg-surface rounded-lg p-6 transition-shadow">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-[#222222] line-clamp-2">
+          <h3 className="text-lg font-semibold text-content line-clamp-2">
             {committee.name}
           </h3>
           {committee.candidateName && (
-            <p className="mt-1 text-sm text-[#4d4d4d]">
+            <p className="mt-1 text-sm text-content-dim">
               Candidate: {committee.candidateName}
             </p>
           )}
@@ -71,7 +71,7 @@ function CommitteeCard({ committee }: Readonly<{ committee: Committee }>) {
           <StatusBadge status={committee.status} />
         </div>
       </div>
-      <div className="mt-4 flex items-center justify-between text-sm text-[#4d4d4d]">
+      <div className="mt-4 flex items-center justify-between text-sm text-content-dim">
         <span>Source: {committee.sourceSystem}</span>
         {committee.sourceUrl && (
           <a
@@ -128,8 +128,8 @@ export default function CommitteesPage() {
         ]}
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#222222]">Committees</h1>
-        <p className="mt-2 text-[#4d4d4d]">
+        <h1 className="text-3xl font-bold text-content">Committees</h1>
+        <p className="mt-2 text-content-dim">
           Campaign committees and PACs for your region
         </p>
       </div>

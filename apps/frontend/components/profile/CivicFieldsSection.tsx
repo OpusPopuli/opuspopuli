@@ -98,12 +98,12 @@ export function CivicFieldsSection({
   );
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-line rounded-lg overflow-hidden">
       {/* Collapsible Header */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+        className="w-full px-4 py-3 flex items-center justify-between bg-surface-alt hover:bg-surface-alt transition-colors"
         aria-expanded={isExpanded}
       >
         <div className="flex items-center gap-2">
@@ -121,15 +121,15 @@ export function CivicFieldsSection({
               d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"
             />
           </svg>
-          <span className="font-medium text-[#222222]">
+          <span className="font-medium text-content">
             {t("profile.civic.title", "Civic Information")}
           </span>
-          <span className="text-xs text-gray-500 ml-2">
+          <span className="text-xs text-content-dim ml-2">
             {t("profile.civic.optional", "(Optional)")}
           </span>
         </div>
         <svg
-          className={`w-5 h-5 text-gray-500 transition-transform ${
+          className={`w-5 h-5 text-content-dim transition-transform ${
             isExpanded ? "rotate-180" : ""
           }`}
           fill="none"
@@ -148,8 +148,8 @@ export function CivicFieldsSection({
 
       {/* Collapsible Content */}
       {isExpanded && (
-        <div className="p-4 space-y-4 bg-white">
-          <p className="text-sm text-gray-500 mb-4">
+        <div className="p-4 space-y-4 bg-surface">
+          <p className="text-sm text-content-dim mb-4">
             {t(
               "profile.civic.description",
               "This information helps us provide more relevant civic engagement recommendations and ballot information tailored to your interests.",
@@ -160,7 +160,7 @@ export function CivicFieldsSection({
           <div>
             <label
               htmlFor="politicalAffiliation"
-              className="block text-sm font-medium text-[#222222] mb-1"
+              className="block text-sm font-medium text-content mb-1"
             >
               {t("profile.civic.politicalAffiliation", "Political Affiliation")}
             </label>
@@ -169,7 +169,7 @@ export function CivicFieldsSection({
               value={politicalAffiliation || ""}
               onChange={handlePoliticalChange}
               disabled={disabled}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-gray-100"
+              className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-surface-alt"
             >
               <option value="">
                 {t("profile.civic.selectOption", "Select an option")}
@@ -190,7 +190,7 @@ export function CivicFieldsSection({
           <div>
             <label
               htmlFor="votingFrequency"
-              className="block text-sm font-medium text-[#222222] mb-1"
+              className="block text-sm font-medium text-content mb-1"
             >
               {t("profile.civic.votingFrequency", "Voting Frequency")}
             </label>
@@ -199,7 +199,7 @@ export function CivicFieldsSection({
               value={votingFrequency || ""}
               onChange={handleVotingChange}
               disabled={disabled}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-gray-100"
+              className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-surface-alt"
             >
               <option value="">
                 {t("profile.civic.selectOption", "Select an option")}
@@ -218,9 +218,9 @@ export function CivicFieldsSection({
 
           {/* Policy Priorities */}
           <div>
-            <label className="block text-sm font-medium text-[#222222] mb-2">
+            <label className="block text-sm font-medium text-content mb-2">
               {t("profile.civic.policyPriorities", "Policy Priorities")}
-              <span className="text-xs text-gray-500 ml-2">
+              <span className="text-xs text-content-dim ml-2">
                 {t("profile.civic.selectMultiple", "(Select all that apply)")}
               </span>
             </label>
@@ -234,7 +234,7 @@ export function CivicFieldsSection({
                     ${
                       policyPriorities?.includes(priority)
                         ? "bg-blue-50 border-blue-300 text-blue-700"
-                        : "bg-white border-gray-200 text-gray-700 hover:border-gray-300"
+                        : "bg-surface border-line text-content hover:border-line"
                     }
                     ${disabled ? "opacity-50 cursor-not-allowed" : ""}
                   `}
@@ -252,7 +252,7 @@ export function CivicFieldsSection({
                       ${
                         policyPriorities?.includes(priority)
                           ? "bg-blue-500 border-blue-500"
-                          : "border-gray-300"
+                          : "border-line"
                       }
                     `}
                   >

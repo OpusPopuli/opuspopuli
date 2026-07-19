@@ -156,15 +156,15 @@ export function ModelOfMePage() {
     return (
       <main className="max-w-3xl mx-auto space-y-6">
         <div className="space-y-3 animate-pulse">
-          <div className="h-8 w-2/3 bg-gray-200 rounded" />
-          <div className="h-4 w-full bg-gray-200 rounded" />
-          <div className="h-4 w-1/2 bg-gray-200 rounded" />
+          <div className="h-8 w-2/3 bg-surface-sunk rounded" />
+          <div className="h-4 w-full bg-surface-sunk rounded" />
+          <div className="h-4 w-1/2 bg-surface-sunk rounded" />
         </div>
         <div className="space-y-3">
           {[0, 1, 2, 3].map((i) => (
             <div
               key={i}
-              className="animate-pulse h-16 bg-gray-100 rounded-xl border border-gray-200"
+              className="animate-pulse h-16 bg-surface-alt rounded-lg border border-line"
             />
           ))}
         </div>
@@ -185,9 +185,9 @@ export function ModelOfMePage() {
   return (
     <main className="max-w-3xl mx-auto space-y-8">
       <header>
-        <h1 className="text-3xl font-bold text-gray-900">{t("page.title")}</h1>
-        <p className="text-base text-gray-700 mt-3">{t("page.subtitle")}</p>
-        <p className="text-sm text-gray-500 mt-2 italic">
+        <h1 className="text-3xl font-bold text-content">{t("page.title")}</h1>
+        <p className="text-base text-content mt-3">{t("page.subtitle")}</p>
+        <p className="text-sm text-content-dim mt-2 italic">
           {t("page.ownYouCallout")}
         </p>
       </header>

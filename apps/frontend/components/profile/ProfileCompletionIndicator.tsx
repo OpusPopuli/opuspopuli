@@ -14,29 +14,27 @@ export function ProfileCompletionIndicator({
   const { percentage, isComplete, suggestedNextSteps } = completion;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-none dark:border dark:border-gray-700 p-6 mb-6">
+    <div className="bg-surface rounded-lg dark:border p-6 mb-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          <h3 className="text-lg font-semibold text-content">
             {t("profile.completion.title", "Profile Completion")}
           </h3>
           {isComplete && (
-            <p className="text-sm text-sage-darker dark:text-sage-light mt-1">
+            <p className="text-sm text-content mt-1">
               {t("profile.completion.complete", "Your profile is complete!")}
             </p>
           )}
         </div>
         <div className="text-right">
-          <span className="text-3xl font-bold text-gray-900 dark:text-white">
-            {percentage}%
-          </span>
+          <span className="text-3xl font-bold text-content">{percentage}%</span>
         </div>
       </div>
 
       {/* Progress Bar */}
-      <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-4">
+      <div className="h-3 bg-surface-sunk rounded-full overflow-hidden mb-4">
         <div
-          className="h-full bg-sage-dark transition-all duration-500 ease-out"
+          className="h-full bg-accent transition-all duration-500 ease-out"
           style={{ width: `${percentage}%` }}
         />
       </div>
@@ -67,17 +65,17 @@ export function ProfileCompletionIndicator({
 
       {/* Suggested Next Steps */}
       {!isComplete && suggestedNextSteps.length > 0 && (
-        <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
-          <p className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">
+        <div className="border-t border-line pt-4">
+          <p className="text-sm font-medium text-content-dim mb-2">
             {t("profile.completion.nextSteps", "Suggested next steps:")}
           </p>
           <ul className="space-y-2">
             {suggestedNextSteps.map((step, idx) => (
               <li
                 key={idx}
-                className="text-sm text-gray-900 dark:text-gray-100 flex items-start gap-2"
+                className="text-sm text-content flex items-start gap-2"
               >
-                <span className="w-1.5 h-1.5 bg-sage-dark rounded-full mt-1.5 flex-shrink-0" />
+                <span className="w-1.5 h-1.5 bg-surface-alt rounded-full mt-1.5 flex-shrink-0" />
                 {step}
               </li>
             ))}
@@ -98,8 +96,8 @@ function StatusBadge({ label, complete }: StatusBadgeProps) {
     <div
       className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
         complete
-          ? "bg-sage-light/20 text-sage-darker dark:bg-sage-dark/20 dark:text-sage-light"
-          : "bg-gray-50 text-gray-500 dark:bg-gray-900 dark:text-gray-400"
+          ? "bg-accent/15 text-content "
+          : "bg-surface-alt text-content-dim "
       }`}
     >
       {complete ? (

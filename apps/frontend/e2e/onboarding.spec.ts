@@ -12,12 +12,27 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
   setupAuthSession,
+  mockGraphQL,
   checkAccessibility,
   viewports,
 } from "./utils/test-helpers";
 
+// The onboarding page reads completion from the server (#758): the
+// `myProfile.onboardingCompletedAt` flag is authoritative, and localStorage
+// is only a fallback for when that query has not resolved. So the session
+// helpers mock MyProfile to drive the two cases — NULL = never onboarded
+// (show the flow), a timestamp = already onboarded (redirect away).
+const profileBase = {
+  __typename: "UserProfileModel",
+  id: "p-1",
+  userId: "user-123",
+};
+
 async function setupNewUserSession(page: Page) {
   await setupAuthSession(page);
+  await mockGraphQL(page, {
+    MyProfile: { myProfile: { ...profileBase, onboardingCompletedAt: null } },
+  });
   await page.addInitScript(() => {
     localStorage.removeItem("opuspopuli_onboarding_completed");
   });
@@ -25,6 +40,14 @@ async function setupNewUserSession(page: Page) {
 
 async function setupReturningUserSession(page: Page) {
   await setupAuthSession(page);
+  await mockGraphQL(page, {
+    MyProfile: {
+      myProfile: {
+        ...profileBase,
+        onboardingCompletedAt: "2026-07-18T00:00:00.000Z",
+      },
+    },
+  });
   await page.addInitScript(() => {
     localStorage.setItem("opuspopuli_onboarding_completed", "true");
   });

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function PromptCharterPage() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="min-h-screen bg-surface-alt flex flex-col">
       <Header />
       <main className="flex-1 max-w-3xl mx-auto px-8 py-12">
         <div className="mb-6">
@@ -23,16 +23,16 @@ export default function PromptCharterPage() {
           </Link>
         </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+        <h1 className="text-3xl font-bold text-content mb-2">
           Prompt Service Charter
         </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
+        <p className="text-sm text-content-dim mb-8">
           Last updated: March 2026
         </p>
 
-        <div className="space-y-8 text-gray-700 dark:text-gray-300">
+        <div className="space-y-8 text-content">
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               1. What Prompts Do
             </h2>
             <p className="mb-3">
@@ -60,7 +60,7 @@ export default function PromptCharterPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               2. Design Principles
             </h2>
             <p className="mb-4">
@@ -70,9 +70,7 @@ export default function PromptCharterPage() {
 
             <div className="space-y-4">
               <div className="pl-4 border-l-2 border-blue-500">
-                <h3 className="font-semibold text-gray-900 dark:text-white">
-                  Neutrality
-                </h3>
+                <h3 className="font-semibold text-content">Neutrality</h3>
                 <p className="text-sm">
                   Prompts never include partisan language, leading questions, or
                   instructions that could steer the AI toward a particular
@@ -82,9 +80,7 @@ export default function PromptCharterPage() {
               </div>
 
               <div className="pl-4 border-l-2 border-blue-500">
-                <h3 className="font-semibold text-gray-900 dark:text-white">
-                  Completeness
-                </h3>
+                <h3 className="font-semibold text-content">Completeness</h3>
                 <p className="text-sm">
                   Prompts require the AI to address all substantive provisions
                   in a document, not cherry-pick favorable or unfavorable
@@ -94,7 +90,7 @@ export default function PromptCharterPage() {
               </div>
 
               <div className="pl-4 border-l-2 border-blue-500">
-                <h3 className="font-semibold text-gray-900 dark:text-white">
+                <h3 className="font-semibold text-content">
                   Source Attribution
                 </h3>
                 <p className="text-sm">
@@ -106,9 +102,7 @@ export default function PromptCharterPage() {
               </div>
 
               <div className="pl-4 border-l-2 border-blue-500">
-                <h3 className="font-semibold text-gray-900 dark:text-white">
-                  Transparency
-                </h3>
+                <h3 className="font-semibold text-content">Transparency</h3>
                 <p className="text-sm">
                   Prompt versions and cryptographic hashes are published with
                   every analysis result. Users can detect when prompts change
@@ -119,7 +113,7 @@ export default function PromptCharterPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               3. How Prompts Are Managed
             </h2>
             <ul className="list-disc pl-6 space-y-2">
@@ -147,7 +141,7 @@ export default function PromptCharterPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               4. Verification and Auditability
             </h2>
             <p className="mb-3">We design for auditability at every level:</p>
@@ -179,7 +173,7 @@ export default function PromptCharterPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            <h2 className="text-xl font-semibold text-content mb-3">
               5. What We Do Not Disclose
             </h2>
             <p className="mb-3">
@@ -210,8 +204,8 @@ export default function PromptCharterPage() {
             </p>
           </section>
 
-          <section className="pt-4 border-t border-gray-200 dark:border-gray-700">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+          <section className="pt-4 border-t border-line">
+            <p className="text-sm text-content-dim">
               See also:{" "}
               <Link
                 href="/transparency/system-card"

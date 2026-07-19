@@ -56,16 +56,16 @@ export function RepsBriefingSection() {
       itemCount={itemCount}
     >
       {noProfile && (
-        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-4">
-          <p className="text-sm font-medium text-[#222222] dark:text-white">
+        <div className="rounded-lg border border-dashed border-line p-4">
+          <p className="text-sm font-medium text-content">
             {t("page.noProfileTitle")}
           </p>
-          <p className="text-sm text-[#4d4d4d] dark:text-gray-300 mt-1">
+          <p className="text-sm text-content-dim mt-1">
             {t("page.noProfileBody")}
           </p>
           <Link
             href="/onboarding"
-            className="inline-block mt-2 text-sm font-medium text-[#5A7A6A] hover:text-[#2D4A3C] dark:text-sage-300 dark:hover:text-white"
+            className="inline-block mt-2 text-sm font-medium text-content hover:text-content"
           >
             {t("page.noProfileCta")}
           </Link>
@@ -73,16 +73,16 @@ export function RepsBriefingSection() {
       )}
 
       {noDistricts && !noProfile && (
-        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-4">
-          <p className="text-sm font-medium text-[#222222] dark:text-white">
+        <div className="rounded-lg border border-dashed border-line p-4">
+          <p className="text-sm font-medium text-content">
             {t("reps.noDistrictsTitle")}
           </p>
-          <p className="text-sm text-[#4d4d4d] dark:text-gray-300 mt-1">
+          <p className="text-sm text-content-dim mt-1">
             {t("reps.noDistrictsBody")}
           </p>
           <Link
             href="/me/addresses"
-            className="inline-block mt-2 text-sm font-medium text-[#5A7A6A] hover:text-[#2D4A3C] dark:text-sage-300 dark:hover:text-white"
+            className="inline-block mt-2 text-sm font-medium text-content hover:text-content"
           >
             {t("reps.noDistrictsCta")}
           </Link>
@@ -100,17 +100,13 @@ export function RepsBriefingSection() {
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="animate-pulse h-24 rounded-xl bg-gray-100 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-700"
+              className="animate-pulse h-24 rounded-lg bg-surface-alt border border-line"
             />
           ))}
         </div>
       )}
 
-      {empty && (
-        <p className="text-sm text-[#4d4d4d] dark:text-gray-300">
-          {t("reps.empty")}
-        </p>
-      )}
+      {empty && <p className="text-sm text-content-dim">{t("reps.empty")}</p>}
 
       {visibleReps.length > 0 && (
         <div className="space-y-3">

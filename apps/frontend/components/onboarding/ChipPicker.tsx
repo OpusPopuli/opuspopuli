@@ -42,12 +42,12 @@ const colsClass: Record<2 | 3 | 4, string> = {
 
 function chipStateClassFor(blocked: boolean, selected: boolean): string {
   if (blocked) {
-    return "bg-gray-100 dark:bg-gray-800/50 text-gray-400 border-gray-200 dark:border-gray-700 cursor-not-allowed";
+    return "bg-surface-alt text-content-dim border-line cursor-not-allowed";
   }
   if (selected) {
-    return "bg-sage-dark text-white border-sage-dark cursor-pointer";
+    return "bg-inverse-surface text-on-inverse border-line cursor-pointer";
   }
-  return "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer";
+  return "bg-surface text-content border-line hover:bg-surface-alt cursor-pointer";
 }
 
 export function ChipPicker(props: Props) {
@@ -82,7 +82,7 @@ export function ChipPicker(props: Props) {
 
   return (
     <fieldset className="w-full">
-      <legend className="block text-gray-800 dark:text-gray-100 font-medium mb-3 text-sm">
+      <legend className="block text-content font-medium mb-3 text-sm">
         {groupLabel}
       </legend>
       <div className={`grid ${colsClass[columns]} gap-2`}>
@@ -98,9 +98,9 @@ export function ChipPicker(props: Props) {
               aria-disabled={blocked || undefined}
               className={[
                 "flex items-center justify-center text-center",
-                "px-3 py-2.5 rounded-xl border",
+                "px-3 py-2.5 rounded-lg border",
                 "text-sm font-medium transition-colors",
-                "focus-within:ring-2 focus-within:ring-sage-dark focus-within:ring-offset-2 focus-within:ring-offset-gray-50 dark:focus-within:ring-offset-gray-900",
+                "focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2 focus-within:ring-offset-gray-50 dark:focus-within:ring-offset-gray-900",
                 chipStateClass,
               ].join(" ")}
             >

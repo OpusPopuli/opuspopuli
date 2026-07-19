@@ -211,7 +211,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Avatar Upload */}
-        <div className="flex justify-center py-4 border-b border-gray-100">
+        <div className="flex justify-center py-4 border-b border-line">
           <AvatarUpload
             currentAvatarUrl={currentAvatarUrl}
             onAvatarUpdated={handleAvatarUpdated}
@@ -223,7 +223,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <div>
             <label
               htmlFor="firstName"
-              className="block text-sm font-medium text-[#222222] mb-2"
+              className="block text-sm font-medium text-content mb-2"
             >
               {t("profile.firstName")}
             </label>
@@ -233,14 +233,14 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
               name="firstName"
               value={formData.firstName}
               onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors"
+              className="w-full px-4 py-3 rounded-lg border border-line focus:border-content focus:ring-1 focus:ring-content outline-none transition-colors"
               placeholder={t("profile.firstNamePlaceholder")}
             />
           </div>
           <div>
             <label
               htmlFor="lastName"
-              className="block text-sm font-medium text-[#222222] mb-2"
+              className="block text-sm font-medium text-content mb-2"
             >
               {t("profile.lastName")}
             </label>
@@ -250,7 +250,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
               name="lastName"
               value={formData.lastName}
               onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors"
+              className="w-full px-4 py-3 rounded-lg border border-line focus:border-content focus:ring-1 focus:ring-content outline-none transition-colors"
               placeholder={t("profile.lastNamePlaceholder")}
             />
           </div>
@@ -260,7 +260,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
         <div>
           <label
             htmlFor="displayName"
-            className="block text-sm font-medium text-[#222222] mb-2"
+            className="block text-sm font-medium text-content mb-2"
           >
             {t("profile.displayName")}
           </label>
@@ -270,16 +270,16 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
             name="displayName"
             value={formData.displayName}
             onChange={handleChange}
-            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors"
+            className="w-full px-4 py-3 rounded-lg border border-line focus:border-content focus:ring-1 focus:ring-content outline-none transition-colors"
             placeholder={t("profile.displayNamePlaceholder")}
           />
-          <p className="mt-1 text-sm text-[#4d4d4d]">
+          <p className="mt-1 text-sm text-content-dim">
             {t("profile.displayNameHint")}
           </p>
         </div>
 
         {/* Profile Visibility Toggle */}
-        <div className="border-t border-gray-100 pt-4">
+        <div className="border-t border-line pt-4">
           <ProfileVisibilityToggle
             isPublic={formData.isPublic ?? false}
             onChange={handleVisibilityChange}
@@ -291,7 +291,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
         <div>
           <label
             htmlFor="phone"
-            className="block text-sm font-medium text-[#222222] mb-2"
+            className="block text-sm font-medium text-content mb-2"
           >
             {t("profile.phone")}
           </label>
@@ -301,7 +301,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
             name="phone"
             value={formData.phone}
             onChange={handleChange}
-            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors"
+            className="w-full px-4 py-3 rounded-lg border border-line focus:border-content focus:ring-1 focus:ring-content outline-none transition-colors"
             placeholder={t("profile.phonePlaceholder")}
           />
         </div>
@@ -311,7 +311,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <div>
             <label
               htmlFor="timezone"
-              className="block text-sm font-medium text-[#222222] mb-2"
+              className="block text-sm font-medium text-content mb-2"
             >
               {t("profile.timezone")}
             </label>
@@ -320,7 +320,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
               name="timezone"
               value={formData.timezone}
               onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors bg-white"
+              className="w-full px-4 py-3 rounded-lg border border-line focus:border-content focus:ring-1 focus:ring-content outline-none transition-colors bg-surface"
             >
               {TIMEZONES.map((tz) => (
                 <option key={tz.value} value={tz.value}>
@@ -332,7 +332,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <div>
             <label
               htmlFor="preferredLanguage"
-              className="block text-sm font-medium text-[#222222] mb-2"
+              className="block text-sm font-medium text-content mb-2"
             >
               {t("profile.language")}
             </label>
@@ -341,7 +341,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
               name="preferredLanguage"
               value={formData.preferredLanguage}
               onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors bg-white"
+              className="w-full px-4 py-3 rounded-lg border border-line focus:border-content focus:ring-1 focus:ring-content outline-none transition-colors bg-surface"
             >
               {LANGUAGES.map((lang) => (
                 <option key={lang.value} value={lang.value}>
@@ -349,7 +349,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-sm text-[#4d4d4d]">
+            <p className="mt-1 text-sm text-content-dim">
               {t("profile.languageHint")}
             </p>
           </div>
@@ -359,7 +359,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
         <div>
           <label
             htmlFor="bio"
-            className="block text-sm font-medium text-[#222222] mb-2"
+            className="block text-sm font-medium text-content mb-2"
           >
             {t("profile.bio")}
           </label>
@@ -369,10 +369,12 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
             value={formData.bio}
             onChange={handleChange}
             rows={4}
-            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-[#222222] focus:ring-1 focus:ring-[#222222] outline-none transition-colors resize-none"
+            className="w-full px-4 py-3 rounded-lg border border-line focus:border-content focus:ring-1 focus:ring-content outline-none transition-colors resize-none"
             placeholder={t("profile.bioPlaceholder")}
           />
-          <p className="mt-1 text-sm text-[#4d4d4d]">{t("profile.bioHint")}</p>
+          <p className="mt-1 text-sm text-content-dim">
+            {t("profile.bioHint")}
+          </p>
         </div>
 
         {/* Civic Fields Section */}
@@ -400,7 +402,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <button
             type="submit"
             disabled={updating}
-            className="px-6 py-3 bg-[#222222] text-white rounded-lg font-medium hover:bg-[#333333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-3 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:bg-inverse-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {updating ? t("common:buttons.saving") : t("common:buttons.save")}
           </button>
@@ -436,26 +438,26 @@ export default function ProfileSettingsPage() {
     return (
       <div className="space-y-6">
         {/* Completion Indicator Skeleton */}
-        <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6">
+        <div className="bg-surface rounded-lg p-6">
           <div className="animate-pulse space-y-4">
-            <div className="h-6 bg-gray-200 rounded w-1/4"></div>
-            <div className="h-3 bg-gray-200 rounded-full w-full"></div>
+            <div className="h-6 bg-surface-sunk rounded w-1/4"></div>
+            <div className="h-3 bg-surface-sunk rounded-full w-full"></div>
             <div className="grid grid-cols-4 gap-3">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-10 bg-gray-200 rounded-lg"></div>
+                <div key={i} className="h-10 bg-surface-sunk rounded-lg"></div>
               ))}
             </div>
           </div>
         </div>
 
         {/* Form Skeleton */}
-        <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+        <div className="bg-surface rounded-lg p-8">
           <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            <div className="h-8 bg-surface-sunk rounded w-1/4"></div>
+            <div className="h-4 bg-surface-sunk rounded w-1/2"></div>
             <div className="space-y-3 mt-8">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-12 bg-gray-200 rounded"></div>
+                <div key={i} className="h-12 bg-surface-sunk rounded"></div>
               ))}
             </div>
           </div>
@@ -466,7 +468,7 @@ export default function ProfileSettingsPage() {
 
   if (profileError) {
     return (
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+      <div className="bg-surface rounded-lg p-8">
         <div className="text-center text-red-600">
           <p>{t("profile.loadError")}</p>
         </div>
@@ -491,12 +493,12 @@ export default function ProfileSettingsPage() {
       />
 
       {/* Profile Form */}
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+      <div className="bg-surface rounded-lg p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[#222222]">
+          <h1 className="text-2xl font-bold text-content">
             {t("profile.title")}
           </h1>
-          <p className="text-[#4d4d4d] mt-1">{t("profile.subtitle")}</p>
+          <p className="text-content-dim mt-1">{t("profile.subtitle")}</p>
         </div>
 
         <ProfileForm
@@ -552,28 +554,28 @@ function JurisdictionsSection({
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-6">
+    <div className="bg-surface rounded-lg p-6">
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="text-lg font-semibold text-[#222222]">
+        <h2 className="text-lg font-semibold text-content">
           {t("profile.jurisdictions.title")}
         </h2>
         {hasJurisdictions && (
-          <span className="text-xs text-[#6b7280]">
+          <span className="text-xs text-content-dim">
             {t("profile.jurisdictions.primaryAddressNote")}
           </span>
         )}
       </div>
-      <p className="text-sm text-[#4d4d4d] mb-4">
+      <p className="text-sm text-content-dim mb-4">
         {t("profile.jurisdictions.subtitle")}
       </p>
 
       {/* No primary address set — prompt to add one */}
       {jurisdictions === null && (
-        <p className="text-sm text-[#4d4d4d]">
+        <p className="text-sm text-content-dim">
           {t("profile.jurisdictions.empty")}{" "}
           <Link
             href="/settings/addresses"
-            className="text-[#222222] underline underline-offset-2 hover:no-underline"
+            className="text-content underline underline-offset-2 hover:no-underline"
           >
             {t("profile.jurisdictions.emptyLink")}
           </Link>{" "}
@@ -583,25 +585,22 @@ function JurisdictionsSection({
 
       {/* Primary address exists but geocoding hasn't resolved yet */}
       {isResolving && (
-        <p className="text-sm text-[#4d4d4d] italic">
+        <p className="text-sm text-content-dim italic">
           {t("profile.jurisdictions.resolving")}
         </p>
       )}
 
       {/* Resolved jurisdictions grouped by level */}
       {hasJurisdictions && (
-        <div className="divide-y divide-gray-100 -mx-6 border-t border-gray-100">
+        <div className="divide-y divide-gray-100 -mx-6 border-t border-line">
           {LEVEL_ORDER.filter((l) => byLevel.has(l)).map((level) => (
             <div key={level} className="px-6 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-[#6b7280] mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-content-dim mb-2">
                 {t(`profile.jurisdictions.levels.${level}`)}
               </p>
               <ul className="space-y-1">
                 {byLevel.get(level)!.map((uj) => (
-                  <li
-                    key={uj.jurisdiction.id}
-                    className="text-sm text-[#222222]"
-                  >
+                  <li key={uj.jurisdiction.id} className="text-sm text-content">
                     {uj.jurisdiction.name}
                   </li>
                 ))}

@@ -105,7 +105,7 @@ export function BriefingSection({
     <section
       data-section={slug}
       aria-labelledby={titleId}
-      className="bg-white dark:bg-gray-800 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-none dark:border dark:border-gray-700 overflow-hidden"
+      className="bg-surface rounded-lg dark:border overflow-hidden"
     >
       <header
         className={`flex items-start justify-between gap-4 px-6 pt-6 ${
@@ -118,11 +118,11 @@ export function BriefingSection({
           aria-expanded={isExpanded}
           aria-controls={contentId}
           aria-label={ariaLabel}
-          className="flex items-start gap-3 min-w-0 flex-1 text-left -mt-1 -mb-1 pt-1 pb-1 rounded focus:outline-none focus:ring-2 focus:ring-sage-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+          className="flex items-start gap-3 min-w-0 flex-1 text-left -mt-1 -mb-1 pt-1 pb-1 rounded focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-gray-800"
         >
           <span
             aria-hidden="true"
-            className="text-gray-500 dark:text-gray-400 shrink-0 mt-1 transition-transform motion-reduce:transition-none"
+            className="text-content-dim shrink-0 mt-1 transition-transform motion-reduce:transition-none"
             style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
           >
             {/* Right-pointing chevron — text-only to match the WhyThisPanel
@@ -134,33 +134,28 @@ export function BriefingSection({
           {icon && (
             <span
               aria-hidden="true"
-              className="text-gray-500 dark:text-gray-400 shrink-0 mt-0.5"
+              className="text-content-dim shrink-0 mt-0.5"
             >
               {icon}
             </span>
           )}
           <div className="min-w-0">
-            <h2
-              id={titleId}
-              className="text-xl font-semibold text-[#222222] dark:text-white"
-            >
+            <h2 id={titleId} className="text-xl font-semibold text-content">
               {title}
               {!isExpanded && typeof itemCount === "number" && (
-                <span className="ml-2 text-sm font-normal text-[#4d4d4d] dark:text-gray-300">
+                <span className="ml-2 text-sm font-normal text-content-dim">
                   ({t("section.itemCount", { count: itemCount })})
                 </span>
               )}
             </h2>
             {subtitle && (
-              <p className="text-sm text-[#4d4d4d] dark:text-gray-300 mt-0.5">
-                {subtitle}
-              </p>
+              <p className="text-sm text-content-dim mt-0.5">{subtitle}</p>
             )}
           </div>
         </button>
         <Link
           href={seeAllHref}
-          className="text-sm font-medium text-[#5A7A6A] hover:text-[#2D4A3C] dark:text-sage-200 dark:hover:text-white shrink-0 mt-1 whitespace-nowrap"
+          className="text-sm font-medium text-content hover:text-content shrink-0 mt-1 whitespace-nowrap"
         >
           {seeAllLabel ?? t("section.seeAll")}
         </Link>

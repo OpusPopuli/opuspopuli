@@ -12,19 +12,17 @@ interface StatusPillProps {
   readonly children: ReactNode;
 }
 
-// Token-driven status pill — sage tones map to brand, warning/danger/neutral
-// preserve the conventional traffic-light semantics for transitional/negative/
-// informational states. Lookup table dispatch keeps cognitive complexity at
-// 1 regardless of how many tones get added.
+// Status pill. The positive/brand tones are the earned gold (fill / outline —
+// never gold text on paper). warning/danger keep conventional traffic-light
+// semantics (these are the few legitimate `dark:` survivors — semantic status
+// colours, not structure). Lookup-table dispatch keeps cognitive complexity at 1.
 const TONE_CLASSES: Record<StatusPillTone, string> = {
-  "sage-filled":
-    "bg-sage-light/20 text-sage-darker dark:bg-sage-dark/20 dark:text-sage-light",
-  "sage-outline":
-    "border border-sage-dark text-sage-darker dark:border-sage-light dark:text-sage-light",
+  "sage-filled": "bg-accent text-on-accent",
+  "sage-outline": "border border-accent text-content",
   warning:
-    "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200",
-  danger: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200",
-  neutral: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
+    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200",
+  danger: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200",
+  neutral: "bg-surface-alt text-content-dim",
 };
 
 export function StatusPill({ tone, children }: StatusPillProps) {

@@ -32,14 +32,14 @@ export function LayerNav({
           onClick={() => onChange(n)}
           className={`flex items-center gap-2 text-sm font-medium transition-colors ${
             current === n
-              ? "text-[#222222]"
-              : "text-[#595959] hover:text-[#444444]"
+              ? "text-content"
+              : "text-content-dim hover:text-content-dim"
           }`}
           aria-current={current === n ? "step" : undefined}
         >
           <span
             className={`w-2.5 h-2.5 rounded-full transition-colors ${
-              current === n ? "bg-[#222222]" : "bg-[#767676]"
+              current === n ? "bg-inverse-surface" : "bg-[#767676]"
             }`}
           />
           {label}

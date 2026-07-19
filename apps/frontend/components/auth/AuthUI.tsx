@@ -10,11 +10,7 @@ export function AuthCard({
   className = "",
 }: Readonly<{ children: ReactNode; className?: string }>) {
   return (
-    <div
-      className={`bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 ${className}`}
-    >
-      {children}
-    </div>
+    <div className={`bg-surface rounded-lg p-8 ${className}`}>{children}</div>
   );
 }
 
@@ -26,8 +22,8 @@ export function AuthHeader({
 }: Readonly<{ title: string; subtitle: string }>) {
   return (
     <div className="text-center mb-8">
-      <h1 className="text-2xl font-bold text-[#222222] mb-2">{title}</h1>
-      <p className="text-[#4d4d4d]">{subtitle}</p>
+      <h1 className="text-2xl font-bold text-content mb-2">{title}</h1>
+      <p className="text-content-dim">{subtitle}</p>
     </div>
   );
 }
@@ -76,7 +72,7 @@ export function AuthInput({
     <div>
       <label
         htmlFor={id}
-        className="block text-xs font-semibold text-[#4d4d4d] uppercase tracking-wider mb-2"
+        className="block text-xs font-semibold text-content-dim uppercase tracking-wider mb-2"
       >
         {label}
       </label>
@@ -85,9 +81,9 @@ export function AuthInput({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
-                   text-[#222222] placeholder-[#888888]
-                   focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
+        className={`w-full px-4 py-3 bg-surface border border-line rounded-lg
+                   text-content placeholder-[#888888]
+                   focus:outline-none focus:ring-2 focus:ring-content focus:border-transparent
                    transition-all duration-200 ${className}`}
         placeholder={placeholder}
         required={required}
@@ -124,8 +120,8 @@ export function AuthSubmitButton({
       type={type}
       disabled={disabled || loading}
       onClick={onClick}
-      className={`w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
-               hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
+      className={`w-full py-3 px-4 bg-inverse-surface text-white font-semibold rounded-lg
+               hover:bg-inverse-surface focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-content
                disabled:opacity-50 disabled:cursor-not-allowed
                transition-all duration-200 flex items-center justify-center gap-2 ${className}`}
     >
@@ -176,7 +172,7 @@ export function PasswordInput({
     <div>
       <label
         htmlFor={id}
-        className="block text-xs font-semibold text-[#4d4d4d] uppercase tracking-wider mb-2"
+        className="block text-xs font-semibold text-content-dim uppercase tracking-wider mb-2"
       >
         {label}
       </label>
@@ -186,10 +182,7 @@ export function PasswordInput({
           type={showPassword ? "text" : "password"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
-                   text-[#222222] placeholder-[#888888]
-                   focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
-                   transition-all duration-200 pr-12"
+          className="w-full px-4 py-3 bg-surface border border-line rounded-lg text-content placeholder-[#888888] focus:outline-none focus:ring-2 focus:ring-content focus:border-transparent transition-all duration-200 pr-12"
           placeholder={placeholder}
           required={required}
           autoComplete={autoComplete}
@@ -200,7 +193,7 @@ export function PasswordInput({
           aria-label={
             ariaLabel || (showPassword ? "Hide password" : "Show password")
           }
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4d4d4d] hover:text-[#222222] transition-colors"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-content-dim hover:text-content transition-colors"
         >
           {showPassword ? (
             <svg
@@ -272,9 +265,9 @@ export function AuthCheckIcon() {
 export function AuthDivider() {
   return (
     <div className="my-8 flex items-center">
-      <div className="flex-1 border-t border-[#DDDDDD]" />
-      <span className="px-4 text-sm text-[#4d4d4d]">or</span>
-      <div className="flex-1 border-t border-[#DDDDDD]" />
+      <div className="flex-1 border-t border-line" />
+      <span className="px-4 text-sm text-content-dim">or</span>
+      <div className="flex-1 border-t border-line" />
     </div>
   );
 }

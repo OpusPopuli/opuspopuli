@@ -93,7 +93,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
   // After successful report, show static "Reported" state
   if (reported) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-sm text-gray-400">
+      <span className="inline-flex items-center gap-1.5 text-sm text-content-dim">
         <svg
           className="w-4 h-4"
           fill="none"
@@ -117,7 +117,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
     <div className="relative" ref={panelRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-400 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-content-dim hover:text-red-400 transition-colors"
         aria-label={t("report.buttonLabel")}
       >
         <svg
@@ -138,7 +138,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full right-0 mb-2 w-72 bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-4 z-20">
+        <div className="absolute bottom-full right-0 mb-2 w-72 bg-inverse-surface border border-line rounded-lg p-4 z-20">
           <h3 className="text-sm font-semibold text-white mb-3">
             {t("report.title")}
           </h3>
@@ -168,7 +168,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
             placeholder={t("report.descriptionPlaceholder")}
             maxLength={1000}
             rows={2}
-            className="w-full bg-gray-900 text-gray-200 rounded p-2 text-sm border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none mb-3"
+            className="w-full bg-inverse-surface text-on-inverse rounded p-2 text-sm border border-line focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none mb-3"
           />
 
           <button

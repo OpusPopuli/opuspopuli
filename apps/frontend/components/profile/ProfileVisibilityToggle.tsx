@@ -36,7 +36,7 @@ export function ProfileVisibilityToggle({
   return (
     <div className="flex items-center justify-between py-3">
       <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-[#222222]">
+        <span className="text-sm font-medium text-content">
           {t("profile.visibility.label", "Profile Visibility")}
         </span>
 
@@ -48,7 +48,7 @@ export function ProfileVisibilityToggle({
             onMouseLeave={() => setShowTooltip(false)}
             onFocus={() => setShowTooltip(true)}
             onBlur={() => setShowTooltip(false)}
-            className="text-gray-400 hover:text-gray-600 focus:outline-none focus:text-gray-600"
+            className="text-content-dim hover:text-content-dim focus:outline-none focus:text-content-dim"
             aria-label={t(
               "profile.visibility.infoLabel",
               "Visibility information",
@@ -73,7 +73,7 @@ export function ProfileVisibilityToggle({
           {showTooltip && (
             <div
               role="tooltip"
-              className="absolute left-0 bottom-full mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-10"
+              className="absolute left-0 bottom-full mb-2 w-64 p-3 bg-inverse-surface text-on-inverse text-xs rounded-lg z-10"
             >
               <p>
                 {t(
@@ -90,7 +90,7 @@ export function ProfileVisibilityToggle({
       <div className="flex items-center gap-3">
         {/* Status Label */}
         <span
-          className={`text-sm ${isPublic ? "text-green-600" : "text-gray-500"}`}
+          className={`text-sm ${isPublic ? "text-green-600" : "text-content-dim"}`}
         >
           {isPublic
             ? t("profile.visibility.public", "Public")
@@ -120,7 +120,7 @@ export function ProfileVisibilityToggle({
             aria-hidden="true"
             className={`
               pointer-events-none inline-block h-5 w-5 transform rounded-full
-              bg-white shadow ring-0 transition duration-200 ease-in-out
+              bg-surface ring-0 transition duration-200 ease-in-out
               ${isPublic ? "translate-x-5" : "translate-x-0"}
             `}
           >
@@ -148,7 +148,7 @@ export function ProfileVisibilityToggle({
               </svg>
             ) : (
               <svg
-                className="absolute inset-0 h-full w-full p-1 text-gray-400"
+                className="absolute inset-0 h-full w-full p-1 text-content-dim"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

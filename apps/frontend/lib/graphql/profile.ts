@@ -96,6 +96,9 @@ export interface UserProfile {
   incomeRange?: IncomeRange;
   householdSize?: string;
   homeownerStatus?: HomeownerStatus;
+  // First-run onboarding completion (#758). Undefined/null = not yet
+  // completed. Server-side source of truth for cross-device state.
+  onboardingCompletedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -330,6 +333,7 @@ export const GET_MY_PROFILE = gql`
       incomeRange
       householdSize
       homeownerStatus
+      onboardingCompletedAt
       createdAt
       updatedAt
     }

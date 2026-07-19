@@ -38,7 +38,7 @@ describe("AuthCard", () => {
       </AuthCard>,
     );
 
-    expect(container.firstChild).toHaveClass("bg-white", "rounded-2xl", "p-8");
+    expect(container.firstChild).toHaveClass("bg-surface", "rounded-lg", "p-8");
   });
 });
 

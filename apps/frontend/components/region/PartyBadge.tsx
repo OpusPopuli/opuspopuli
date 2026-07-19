@@ -16,8 +16,8 @@ export function PartyBadge({
 }) {
   if (!party) return null;
   const colors = PARTY_COLORS[party] || {
-    bg: "bg-gray-100",
-    text: "text-gray-800",
+    bg: "bg-surface-alt",
+    text: "text-content",
   };
   const sizeClass =
     size === "md"

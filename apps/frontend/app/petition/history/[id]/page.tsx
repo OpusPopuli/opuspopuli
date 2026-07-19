@@ -65,10 +65,10 @@ export default function ScanDetailPage() {
   return (
     <div className="h-full overflow-y-auto">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-black/90 backdrop-blur-sm px-4 py-4 flex items-center gap-3 border-b border-gray-800">
+      <div className="sticky top-0 z-10 bg-black/90 backdrop-blur-sm px-4 py-4 flex items-center gap-3 border-b border-line">
         <button
           onClick={() => router.push("/petition/history")}
-          className="text-gray-400 hover:text-white transition-colors"
+          className="text-content-dim hover:text-white transition-colors"
           aria-label={t("history.backToHistory")}
         >
           <svg
@@ -102,7 +102,7 @@ export default function ScanDetailPage() {
       {(error || (!loading && !scan)) && (
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
           <svg
-            className="w-16 h-16 mb-4 text-gray-600"
+            className="w-16 h-16 mb-4 text-content-dim"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -118,7 +118,7 @@ export default function ScanDetailPage() {
           <h2 className="text-lg font-semibold text-white mb-2">
             {t("history.scanNotFound")}
           </h2>
-          <p className="text-gray-400 mb-6">
+          <p className="text-content-dim mb-6">
             {t("history.scanNotFoundDescription")}
           </p>
           <button
@@ -172,7 +172,7 @@ export default function ScanDetailPage() {
             {scan.analysis && (
               <button
                 onClick={handleShare}
-                className="flex-1 py-3 bg-white/10 text-white font-medium rounded-lg hover:bg-white/20 transition-colors"
+                className="flex-1 py-3 bg-surface/10 text-white font-medium rounded-lg hover:bg-surface/20 transition-colors"
               >
                 {t("history.share")}
               </button>
@@ -196,7 +196,7 @@ export default function ScanDetailPage() {
           </div>
 
           {/* Meta */}
-          <div className="px-4 pb-8 text-xs text-gray-600">
+          <div className="px-4 pb-8 text-xs text-content-dim">
             <p>Scanned {new Date(scan.createdAt).toLocaleString()}</p>
             {scan.ocrProvider && <p>OCR: {scan.ocrProvider}</p>}
           </div>

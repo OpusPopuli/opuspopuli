@@ -3,7 +3,8 @@
     "title": "Know your ballot. Hold power accountable.",
     "subtitle": "Opus Populi gives you transparent access to propositions, representatives, campaign finance, and petition tracking — powered by AI, built for citizens.",
     "ctaSignedOut": "Get Started",
-    "ctaSignedIn": "Go to Dashboard"
+    "ctaSignedIn": "Go to Dashboard",
+    "ctaSignIn": "Sign in"
   },
   "features": {
     "sectionTitle": "Everything you need to stay informed",

@@ -241,6 +241,46 @@ describe('ProfileService', () => {
     });
   });
 
+  describe('completeOnboarding', () => {
+    it('stamps onboardingCompletedAt on the profile (#758)', async () => {
+      const completedProfile = {
+        ...mockProfile,
+        onboardingCompletedAt: new Date(),
+      };
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.userProfile.update.mockResolvedValue(completedProfile);
+
+      const result = await service.completeOnboarding(mockUserId);
+
+      expect(result).toEqual(completedProfile);
+      expect(mockDb.userProfile.update).toHaveBeenCalledWith({
+        where: { userId: mockUserId },
+        data: { onboardingCompletedAt: expect.any(Date) },
+      });
+    });
+
+    it('creates the profile first when one does not exist', async () => {
+      // A user can reach the final onboarding step without having saved
+      // any profile fields, so there may be no profile row yet.
+      mockDb.userProfile.findUnique.mockResolvedValue(null);
+      mockDb.userProfile.create.mockResolvedValue(mockProfile);
+      mockDb.userProfile.update.mockResolvedValue({
+        ...mockProfile,
+        onboardingCompletedAt: new Date(),
+      });
+
+      await service.completeOnboarding(mockUserId);
+
+      expect(mockDb.userProfile.create).toHaveBeenCalledWith({
+        data: { userId: mockUserId },
+      });
+      expect(mockDb.userProfile.update).toHaveBeenCalledWith({
+        where: { userId: mockUserId },
+        data: { onboardingCompletedAt: expect.any(Date) },
+      });
+    });
+  });
+
   // ============================================
   // Address Tests
   // ============================================

@@ -75,7 +75,7 @@ export function BillActivityFeed({
   return (
     <div data-testid="bill-activity-feed">
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-        <p className="text-xs text-[#595959]">
+        <p className="text-xs text-content-dim">
           Showing {items.length} of {total} record{total === 1 ? "" : "s"}
         </p>
         <select
@@ -84,7 +84,7 @@ export function BillActivityFeed({
             setFilter(e.target.value);
             setPageSize(PAGE_SIZE);
           }}
-          className="text-xs px-2 py-1 rounded border border-slate-300 bg-white text-[#334155] focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="text-xs px-2 py-1 rounded border border-slate-300 bg-surface text-content-dim focus:outline-none focus:ring-2 focus:ring-blue-500"
           aria-label="Filter bill activity by type"
         >
           <option value="all">All activity</option>
@@ -102,7 +102,7 @@ export function BillActivityFeed({
       ) : (
         groupActionsByType(items).map((group) => (
           <section key={group.actionType} className="mb-6">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#595959] mb-2 flex items-baseline gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-content-dim mb-2 flex items-baseline gap-2">
               <span>{group.label}</span>
               <span className="text-[10px] font-medium text-slate-400">
                 · {group.items.length} record

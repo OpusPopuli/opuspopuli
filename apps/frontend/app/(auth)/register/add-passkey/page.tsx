@@ -24,7 +24,7 @@ export default function AddPasskeyPage() {
   // Check if passkeys are supported
   if (!supportsPasskeys) {
     return (
-      <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
+      <div className="bg-surface rounded-lg p-8 text-center">
         <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <svg
             className="w-8 h-8 text-amber-600"
@@ -40,17 +40,17 @@ export default function AddPasskeyPage() {
             />
           </svg>
         </div>
-        <h1 className="text-xl font-bold text-[#222222] mb-2">
+        <h1 className="text-xl font-bold text-content mb-2">
           Passkeys not supported
         </h1>
-        <p className="text-[#4d4d4d] mb-6">
+        <p className="text-content-dim mb-6">
           Your browser or device doesn&apos;t support passkeys yet. You can
           still use magic links to sign in.
         </p>
         <button
           type="button"
           onClick={() => router.push("/onboarding")}
-          className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
+          className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
         >
           Continue to App
         </button>
@@ -61,19 +61,17 @@ export default function AddPasskeyPage() {
   // Success state
   if (success) {
     return (
-      <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8 text-center">
+      <div className="bg-surface rounded-lg p-8 text-center">
         <AuthCheckIcon />
-        <h1 className="text-xl font-bold text-[#222222] mb-2">
-          Passkey added!
-        </h1>
-        <p className="text-[#4d4d4d] mb-6">
+        <h1 className="text-xl font-bold text-content mb-2">Passkey added!</h1>
+        <p className="text-content-dim mb-6">
           You can now sign in instantly with your fingerprint, face, or device
           PIN.
         </p>
         <button
           type="button"
           onClick={() => router.push("/onboarding")}
-          className="inline-block w-full py-3 px-6 bg-[#222222] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors"
+          className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
         >
           Continue to App
         </button>
@@ -82,7 +80,7 @@ export default function AddPasskeyPage() {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-8">
+    <div className="bg-surface rounded-lg p-8">
       {/* Header */}
       <div className="text-center mb-6">
         <div className="w-16 h-16 mx-auto mb-4 bg-[#f0f9ff] rounded-full flex items-center justify-center">
@@ -100,10 +98,8 @@ export default function AddPasskeyPage() {
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-[#222222] mb-2">
-          Add a Passkey
-        </h1>
-        <p className="text-[#4d4d4d]">
+        <h1 className="text-2xl font-bold text-content mb-2">Add a Passkey</h1>
+        <p className="text-content-dim">
           Set up faster, more secure sign-in for your account
         </p>
       </div>
@@ -135,7 +131,7 @@ export default function AddPasskeyPage() {
         ).map(({ title, desc }) => (
           <div
             key={title}
-            className="flex items-start gap-3 p-3 bg-[#FFFFFF] rounded-lg"
+            className="flex items-start gap-3 p-3 bg-surface rounded-lg"
           >
             <svg
               className="w-5 h-5 text-[#22c55e] mt-0.5"
@@ -151,8 +147,8 @@ export default function AddPasskeyPage() {
               />
             </svg>
             <div>
-              <p className="text-sm font-medium text-[#222222]">{title}</p>
-              <p className="text-xs text-[#4d4d4d]">{desc}</p>
+              <p className="text-sm font-medium text-content">{title}</p>
+              <p className="text-xs text-content-dim">{desc}</p>
             </div>
           </div>
         ))}
@@ -162,7 +158,7 @@ export default function AddPasskeyPage() {
       <div className="mb-6">
         <label
           htmlFor="friendlyName"
-          className="block text-xs font-semibold text-[#4d4d4d] uppercase tracking-wider mb-2"
+          className="block text-xs font-semibold text-content-dim uppercase tracking-wider mb-2"
         >
           Passkey Name (Optional)
         </label>
@@ -171,10 +167,7 @@ export default function AddPasskeyPage() {
           type="text"
           value={friendlyName}
           onChange={(e) => setFriendlyName(e.target.value)}
-          className="w-full px-4 py-3 bg-[#FFFFFF] border border-[#DDDDDD] rounded-lg
-                   text-[#222222] placeholder-[#888888]
-                   focus:outline-none focus:ring-2 focus:ring-[#222222] focus:border-transparent
-                   transition-all duration-200"
+          className="w-full px-4 py-3 bg-surface border border-line rounded-lg text-content placeholder-[#888888] focus:outline-none focus:ring-2 focus:ring-content focus:border-transparent transition-all duration-200"
           placeholder="e.g., MacBook Pro, iPhone"
         />
       </div>
@@ -185,10 +178,7 @@ export default function AddPasskeyPage() {
           type="button"
           onClick={handleAddPasskey}
           disabled={isLoading}
-          className="w-full py-3 px-4 bg-[#222222] text-white font-semibold rounded-lg
-                   hover:bg-[#333333] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#222222]
-                   disabled:opacity-50 disabled:cursor-not-allowed
-                   transition-all duration-200 flex items-center justify-center gap-2"
+          className="w-full py-3 px-4 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-content disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
         >
           {isLoading ? (
             <span className="inline-flex items-center gap-2">
@@ -235,13 +225,13 @@ export default function AddPasskeyPage() {
         <button
           type="button"
           onClick={() => router.push("/onboarding")}
-          className="w-full py-3 px-6 bg-white text-[#4d4d4d] font-semibold rounded-lg border border-[#DDDDDD] hover:bg-[#FFFFFF] transition-colors"
+          className="w-full py-3 px-6 bg-surface text-content-dim font-semibold rounded-lg border border-line hover:bg-surface transition-colors"
         >
           Skip for now
         </button>
       </div>
 
-      <p className="mt-6 text-xs text-[#595959] text-center">
+      <p className="mt-6 text-xs text-content-dim text-center">
         You can add more passkeys later in your account settings.
       </p>
     </div>

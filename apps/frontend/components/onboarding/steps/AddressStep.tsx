@@ -173,12 +173,10 @@ export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
 
   return (
     <div className="w-full max-w-md">
-      <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
+      <h2 className="text-2xl font-bold mb-2 text-content">
         {t("address.title")}
       </h2>
-      <p className="text-gray-600 dark:text-gray-300 text-sm mb-6">
-        {t("address.subtitle")}
-      </p>
+      <p className="text-content-dim text-sm mb-6">{t("address.subtitle")}</p>
 
       <form
         onSubmit={(e) => {
@@ -198,7 +196,7 @@ export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
             placeholder={t("address.fields.line1")}
             value={form.addressLine1}
             onChange={update("addressLine1")}
-            className="w-full px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sage-dark"
+            className="w-full px-4 py-3 rounded-lg bg-surface border border-line text-content placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -212,7 +210,7 @@ export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
             placeholder={t("address.fields.city")}
             value={form.city}
             onChange={update("city")}
-            className="w-full px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sage-dark"
+            className="w-full px-4 py-3 rounded-lg bg-surface border border-line text-content placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -225,7 +223,7 @@ export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
               autoComplete="address-level1"
               value={form.state}
               onChange={update("state")}
-              className="w-full px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sage-dark"
+              className="w-full px-4 py-3 rounded-lg bg-surface border border-line text-content focus:outline-none focus:ring-2 focus:ring-accent"
             >
               <option value="">{t("address.fields.statePlaceholder")}</option>
               {US_STATES.map((s) => (
@@ -248,7 +246,7 @@ export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
               placeholder={t("address.fields.postalCode")}
               value={form.postalCode}
               onChange={update("postalCode")}
-              className="w-full px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sage-dark"
+              className="w-full px-4 py-3 rounded-lg bg-surface border border-line text-content placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
         </div>

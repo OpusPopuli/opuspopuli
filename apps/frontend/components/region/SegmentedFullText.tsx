@@ -141,14 +141,14 @@ export function SegmentedFullText({
               ref={(el) => {
                 sectionRefs.current[idx] = el;
               }}
-              className="bg-white border border-gray-200 rounded-xl overflow-hidden"
+              className="bg-surface border border-line rounded-lg overflow-hidden"
             >
               <button
                 type="button"
                 onClick={() => toggle(idx)}
                 className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-slate-50 transition-colors"
               >
-                <span className="text-sm font-semibold text-[#222222]">
+                <span className="text-sm font-semibold text-content">
                   {section.heading}
                 </span>
                 <span className="text-xs text-slate-500">
@@ -156,7 +156,7 @@ export function SegmentedFullText({
                 </span>
               </button>
               {expanded.has(idx) && (
-                <div className="px-5 pb-5 pt-1 border-t border-gray-100">
+                <div className="px-5 pb-5 pt-1 border-t border-line">
                   <SectionBody
                     fullText={fullText}
                     section={section}
@@ -182,9 +182,9 @@ function TableOfContents({
   return (
     <nav
       aria-label="Proposition text sections"
-      className="md:sticky md:top-6 self-start bg-[#fafafa] border border-gray-200 rounded-xl p-4 text-sm"
+      className="md:sticky md:top-6 self-start bg-surface-alt border border-line rounded-lg p-4 text-sm"
     >
-      <p className="text-xs uppercase tracking-[1.5px] font-bold text-[#595959] mb-2">
+      <p className="text-xs uppercase tracking-[1.5px] font-bold text-content-dim mb-2">
         Sections
       </p>
       <ol className="space-y-1">
@@ -225,7 +225,7 @@ function SectionBody({
 
   if (sectionClaims.length === 0) {
     return (
-      <p className="text-sm text-[#334155] leading-relaxed whitespace-pre-line">
+      <p className="text-sm text-content-dim leading-relaxed whitespace-pre-line">
         {fullText.slice(section.startOffset, section.endOffset)}
       </p>
     );
@@ -234,7 +234,7 @@ function SectionBody({
   const segments = buildHighlightedSegments(fullText, section, sectionClaims);
 
   return (
-    <p className="text-sm text-[#334155] leading-relaxed whitespace-pre-line">
+    <p className="text-sm text-content-dim leading-relaxed whitespace-pre-line">
       {segments.map((seg, i) =>
         seg.claim ? (
           <mark

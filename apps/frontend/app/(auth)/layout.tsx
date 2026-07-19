@@ -12,7 +12,7 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-[#FFFFFF] flex flex-col">
+    <div className="min-h-screen bg-surface flex flex-col">
       {/* Header */}
       <header className="p-6">
         <Link href="/" className="hover:opacity-80 transition-opacity">

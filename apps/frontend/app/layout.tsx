@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, IBM_Plex_Mono, Playfair_Display } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "@/lib/theme-context";
 import { ApolloProvider } from "@/lib/apollo-provider";
 import { ToastProvider } from "@/lib/toast";
 import { OnboardingProvider } from "@/lib/onboarding-context";
@@ -22,12 +23,8 @@ const playfairDisplay = Playfair_Display({
   display: "swap",
 });
 
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-ibm-plex-mono",
-  display: "swap",
-});
+// Sets the .dark class before first paint to avoid a theme flash (FOUC).
+const noFlashScript = `(function(){try{var t=localStorage.getItem('op-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark');}catch(e){}})();`;
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3200";
 
@@ -101,7 +98,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#5A7A6A",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FAFAF8" },
+    { media: "(prefers-color-scheme: dark)", color: "#1A1714" },
+  ],
 };
 
 const organizationJsonLd = {
@@ -135,20 +135,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: noFlashScript }} />
         <JsonLd data={organizationJsonLd} />
         <JsonLd data={webApplicationJsonLd} />
       </head>
       <body
-        className={`${inter.variable} ${playfairDisplay.variable} ${ibmPlexMono.variable} antialiased`}
+        className={`${inter.variable} ${playfairDisplay.variable} antialiased`}
       >
-        <ApolloProvider>
-          <ToastProvider>
-            <OnboardingProvider>{children}</OnboardingProvider>
-            <OfflineIndicator />
-          </ToastProvider>
-        </ApolloProvider>
+        <ThemeProvider>
+          <ApolloProvider>
+            <ToastProvider>
+              <OnboardingProvider>{children}</OnboardingProvider>
+              <OfflineIndicator />
+            </ToastProvider>
+          </ApolloProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

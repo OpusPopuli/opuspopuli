@@ -234,6 +234,14 @@ model UserProfile {
   incomeRange          IncomeRange?          @map("income_range")
   householdSize        String?               @map("household_size") @db.VarChar(50)
   homeownerStatus      HomeownerStatus?      @map("homeowner_status")
+
+  // First-run onboarding completion (#758). NULL = the user has never
+  // finished (or skipped) onboarding. Server-side source of truth so a
+  // returning user on a new device/browser isn't re-prompted — the
+  // frontend reads it via the `myProfile` query and only falls back to
+  // localStorage as a fast-path cache.
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at") @db.Timestamptz
+
   createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -1574,8 +1582,9 @@ model BillVote {
   representativeId   String?  @map("representative_id")
   /// Raw name from the roll-call table; preserved for linker re-runs.
   representativeName String   @map("representative_name")
-  /// "Assembly" | "Senate"
-  chamber            String   @db.VarChar(20)
+  /// Typically "Assembly" | "Senate", but LLM votes-extraction can emit a
+  /// longer roll-call label (e.g. a full committee name), so no length cap (#905).
+  chamber            String
   voteDate           DateTime @map("vote_date") @db.Date
   /// yes | no | abstain | absent | excused | no_vote
   position           String   @db.VarChar(50)

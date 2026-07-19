@@ -42,23 +42,23 @@ export function GroupedBillBatch({
       : "Recorded";
 
   return (
-    <article className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-sm transition-shadow">
+    <article className="bg-surface rounded-lg border border-slate-200 p-4 transition-shadow">
       <div className="flex items-center gap-2 mb-2">
         <span
           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${accent}`}
         >
           {typeLabel}
         </span>
-        <time dateTime={date} className="text-xs text-[#595959]">
+        <time dateTime={date} className="text-xs text-content-dim">
           {formatDate(date)}
         </time>
-        <span className="text-xs text-[#595959]">·</span>
-        <span className="text-xs font-medium text-[#595959]">
+        <span className="text-xs text-content-dim">·</span>
+        <span className="text-xs font-medium text-content-dim">
           {actions.length} bills
         </span>
       </div>
 
-      <p className="font-medium text-[#222222] mb-3">{verdictDisplay}</p>
+      <p className="font-medium text-content mb-3">{verdictDisplay}</p>
 
       <ul className="flex flex-wrap gap-1.5" aria-label="Bills in this batch">
         {actions.map((a) => {
@@ -72,7 +72,7 @@ export function GroupedBillBatch({
                 <button
                   type="button"
                   onClick={() => onSeePassage(a.id)}
-                  className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-medium text-[#334155] hover:bg-slate-100 hover:border-slate-300 transition-colors"
+                  className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-medium text-content-dim hover:bg-slate-100 hover:border-slate-300 transition-colors"
                   title="See source passage"
                 >
                   {label}
@@ -82,7 +82,7 @@ export function GroupedBillBatch({
           }
           return (
             <li key={a.id}>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-medium text-[#334155]">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-medium text-content-dim">
                 {label}
               </span>
             </li>

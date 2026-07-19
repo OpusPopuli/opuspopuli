@@ -26,7 +26,7 @@ export function BillsTopicFilter({ topics }: BillsTopicFilterProps) {
       {topics.map((topic) => (
         <span
           key={topic}
-          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#5A7A6A]/10 text-[#2D4A3C] border border-[#5A7A6A]/30 dark:bg-sage-900/30 dark:text-sage-200 dark:border-sage-700"
+          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-content border border-accent/30"
         >
           {t(`fields.interestTags.options.${topic}`, {
             ns: "profile",
@@ -36,7 +36,7 @@ export function BillsTopicFilter({ topics }: BillsTopicFilterProps) {
       ))}
       <Link
         href="/me/profile"
-        className="text-xs font-medium text-[#5A7A6A] hover:text-[#2D4A3C] dark:text-sage-300 dark:hover:text-white ml-auto"
+        className="text-xs font-medium text-content hover:text-content ml-auto"
       >
         {t("bills.broadenLink")}
       </Link>

@@ -25,7 +25,7 @@ import { MEASURE_TYPE_STYLES } from "@/lib/bill-styles";
 const PAGE_SIZE = 20;
 
 function MeasureTypeBadge({ code }: { readonly code: string }) {
-  const cls = MEASURE_TYPE_STYLES[code] ?? "bg-gray-100 text-gray-800";
+  const cls = MEASURE_TYPE_STYLES[code] ?? "bg-surface-alt text-content";
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}`}
@@ -62,7 +62,7 @@ function LifecycleOption({
       className={`px-3 py-1.5 rounded-md font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-sage-dark)] ${
         selected
           ? "bg-[var(--color-sage-dark)] text-white"
-          : "text-[#334155] hover:bg-gray-50"
+          : "text-content-dim hover:bg-surface-alt"
       }`}
     >
       {label}
@@ -95,23 +95,23 @@ function BillCard({ bill }: Readonly<{ bill: Bill }>) {
   return (
     <Link
       href={`/region/bills/${bill.id}`}
-      className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-5 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-shadow"
+      className="block bg-surface rounded-lg p-5 transition-shadow"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <MeasureTypeBadge code={bill.measureTypeCode} />
-            <span className="font-mono text-sm font-semibold text-[#334155]">
+            <span className="font-mono text-sm font-semibold text-content-dim">
               {bill.billNumber}
             </span>
             <span className="text-xs text-slate-400">{bill.sessionYear}</span>
             <LifecycleChip bill={bill} />
           </div>
-          <h3 className="text-base font-semibold text-[#222222] line-clamp-2">
+          <h3 className="text-base font-semibold text-content line-clamp-2">
             {bill.title}
           </h3>
           {bill.authorName && (
-            <p className="mt-1 text-xs text-[#595959]">
+            <p className="mt-1 text-xs text-content-dim">
               Author: {bill.authorName}
             </p>
           )}
@@ -124,7 +124,7 @@ function BillCard({ bill }: Readonly<{ bill: Bill }>) {
       </div>
 
       {bill.lastAction && (
-        <div className="mt-3 flex items-baseline gap-2 text-xs text-[#4d4d4d]">
+        <div className="mt-3 flex items-baseline gap-2 text-xs text-content-dim">
           <span className="text-slate-400 whitespace-nowrap">
             {bill.lastActionDate ? formatDate(bill.lastActionDate) : ""}
           </span>
@@ -194,7 +194,7 @@ export default function BillsPage() {
       <select
         value={filters.measureTypeCode}
         onChange={(e) => setFilter("measureTypeCode", e.target.value)}
-        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-[#334155] focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim focus:outline-none focus:ring-2 focus:ring-blue-500"
         aria-label="Filter by measure type"
       >
         <option value="">All types</option>
@@ -208,7 +208,7 @@ export default function BillsPage() {
       <select
         value={filters.sessionYear}
         onChange={(e) => setFilter("sessionYear", e.target.value)}
-        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-[#334155] focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim focus:outline-none focus:ring-2 focus:ring-blue-500"
         aria-label="Filter by session year"
       >
         <option value="">All sessions</option>
@@ -226,7 +226,7 @@ export default function BillsPage() {
             setFilters({ measureTypeCode: "", sessionYear: "" });
             setPage(0);
           }}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-500 hover:bg-gray-50"
+          className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-slate-500 hover:bg-surface-alt"
         >
           Clear filters
         </button>
@@ -235,7 +235,7 @@ export default function BillsPage() {
       <div
         role="radiogroup"
         aria-label="Bill lifecycle filter"
-        className="ml-auto inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-sm"
+        className="ml-auto inline-flex rounded-lg border border-line bg-surface p-0.5 text-sm"
       >
         <LifecycleOption
           value={BillLifecycle.ACTIVE}
@@ -288,8 +288,8 @@ export default function BillsPage() {
         segments={[{ label: "Region", href: "/region" }, { label: "Bills" }]}
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-[#222222]">Bills</h1>
-        <p className="mt-2 text-[#4d4d4d]">
+        <h1 className="text-3xl font-bold text-content">Bills</h1>
+        <p className="mt-2 text-content-dim">
           Legislative bills moving through your region&apos;s legislature
         </p>
       </div>

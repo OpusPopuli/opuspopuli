@@ -16,7 +16,7 @@ export function NoFieldsModePanel({
   const { t } = useTranslation("profile");
   return (
     <section
-      className="rounded-2xl border border-amber-300 bg-amber-50 p-5"
+      className="rounded-lg border border-amber-300 bg-amber-50 p-5"
       aria-labelledby="no-fields-title"
     >
       <div className="flex items-start gap-4">

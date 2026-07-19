@@ -29,50 +29,50 @@ export function MeasureTypeTable({
   if (measureTypes.length === 0) return null;
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-      <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+    <div className="overflow-x-auto rounded-lg border border-line">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
         <caption className="sr-only">{t("measureTypes.title")}</caption>
-        <thead className="bg-gray-50 dark:bg-gray-800">
+        <thead className="bg-surface-alt">
           <tr>
             <th
               scope="col"
-              className="sticky left-0 bg-gray-50 px-4 py-3 text-left font-semibold text-gray-900 dark:bg-gray-800 dark:text-gray-100"
+              className="sticky left-0 bg-surface-alt px-4 py-3 text-left font-semibold text-content"
             >
               {t("measureTypes.columns.code")}
             </th>
             <th
               scope="col"
-              className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-gray-100"
+              className="px-4 py-3 text-left font-semibold text-content"
             >
               {t("measureTypes.columns.name")}
             </th>
             <th
               scope="col"
-              className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-gray-100"
+              className="px-4 py-3 text-left font-semibold text-content"
             >
               {t("measureTypes.columns.chamber")}
             </th>
             <th
               scope="col"
-              className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-gray-100"
+              className="px-4 py-3 text-left font-semibold text-content"
             >
               {t("measureTypes.columns.votingThreshold")}
             </th>
             <th
               scope="col"
-              className="px-4 py-3 text-center font-semibold text-gray-900 dark:text-gray-100"
+              className="px-4 py-3 text-center font-semibold text-content"
             >
               {t("measureTypes.columns.reachesGovernor")}
             </th>
             <th
               scope="col"
-              className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-gray-100"
+              className="px-4 py-3 text-left font-semibold text-content"
             >
               {t("measureTypes.columns.lifecycleStages")}
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100 bg-white dark:divide-gray-800 dark:bg-gray-900">
+        <tbody className="divide-y divide-gray-100 bg-surface">
           {measureTypes.map((mt) => (
             <MeasureTypeRow
               key={mt.code}
@@ -133,21 +133,17 @@ function MeasureTypeRow({
   }, [popoverOpen]);
 
   return (
-    <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-      <td className="sticky left-0 bg-white px-4 py-3 font-mono font-semibold text-blue-700 dark:bg-gray-900 dark:text-blue-400">
+    <tr className="hover:bg-surface-alt">
+      <td className="sticky left-0 bg-surface px-4 py-3 font-mono font-semibold text-blue-700 dark:text-blue-400">
         {mt.code}
       </td>
-      <td className="px-4 py-3 text-gray-800 dark:text-gray-200">
+      <td className="px-4 py-3 text-content">
         <span title={mt.purpose.plainLanguage} className="cursor-help">
           {mt.name}
         </span>
       </td>
-      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-        {mt.chamber}
-      </td>
-      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-        {threshold}
-      </td>
+      <td className="px-4 py-3 text-content-dim">{mt.chamber}</td>
+      <td className="px-4 py-3 text-content-dim">{threshold}</td>
       <td className="px-4 py-3 text-center">
         {mt.reachesGovernor ? (
           <span
@@ -157,7 +153,7 @@ function MeasureTypeRow({
             ✓
           </span>
         ) : (
-          <span aria-label={t("measureTypes.no")} className="text-gray-400">
+          <span aria-label={t("measureTypes.no")} className="text-content-dim">
             ✗
           </span>
         )}
@@ -188,18 +184,18 @@ function MeasureTypeRow({
                     left: popoverPos.left,
                     zIndex: 9999,
                   }}
-                  className="w-64 rounded-lg border border-gray-200 bg-white py-2 shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                  className="w-64 rounded-lg border border-line bg-surface py-2"
                 >
-                  <p className="px-3 pb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                  <p className="px-3 pb-1 text-xs font-semibold text-content-dim">
                     {mt.name} — stages
                   </p>
                   {stages.map((s, i) => (
                     <div
                       key={s.id}
                       role="listitem"
-                      className="px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300"
+                      className="px-3 py-1.5 text-xs text-content"
                     >
-                      <span className="mr-1.5 text-gray-400">{i + 1}.</span>
+                      <span className="mr-1.5 text-content-dim">{i + 1}.</span>
                       {s.name.plainLanguage}
                     </div>
                   ))}
@@ -208,7 +204,7 @@ function MeasureTypeRow({
               )}
           </>
         ) : (
-          <span className="text-xs text-gray-400">—</span>
+          <span className="text-xs text-content-dim">—</span>
         )}
       </td>
     </tr>
