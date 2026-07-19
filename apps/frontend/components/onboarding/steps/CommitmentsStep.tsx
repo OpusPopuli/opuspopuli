@@ -112,7 +112,7 @@ export function CommitmentsStep({ onComplete }: CommitmentsStepProps) {
           onClick={submit}
           disabled={!accepted || loading}
           aria-disabled={!accepted || loading}
-          className="px-8 py-3 bg-surface-alt hover:bg-surface-alt text-white rounded-full font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-8 py-3 bg-inverse-surface hover:opacity-90 text-on-inverse rounded-full font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? t("ack.submitting") : t("ack.continue")}
         </button>

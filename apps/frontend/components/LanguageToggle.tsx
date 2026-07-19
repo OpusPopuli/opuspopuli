@@ -62,7 +62,7 @@ export function LanguageToggle() {
               "px-2.5 py-1 rounded-full text-xs font-semibold cursor-pointer transition-colors",
               "focus-within:ring-2 focus-within:ring-accent",
               active
-                ? "bg-surface-alt text-white"
+                ? "bg-inverse-surface text-on-inverse"
                 : "text-content-dim hover:text-content ",
             ].join(" ")}
           >

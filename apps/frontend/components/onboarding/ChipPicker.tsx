@@ -45,7 +45,7 @@ function chipStateClassFor(blocked: boolean, selected: boolean): string {
     return "bg-surface-alt text-content-dim border-line cursor-not-allowed";
   }
   if (selected) {
-    return "bg-surface-alt text-white border-line cursor-pointer";
+    return "bg-inverse-surface text-on-inverse border-line cursor-pointer";
   }
   return "bg-surface text-content border-line hover:bg-surface-alt cursor-pointer";
 }

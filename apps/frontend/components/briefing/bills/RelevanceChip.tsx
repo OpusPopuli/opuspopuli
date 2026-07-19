@@ -14,7 +14,7 @@ interface RelevanceChipProps {
  * glance without burying the citizen in numbers.
  */
 function tierFor(pct: number): string {
-  if (pct >= 70) return "bg-accent text-white border-accent";
+  if (pct >= 70) return "bg-accent text-content border-accent";
   if (pct >= 40) {
     return "bg-accent/15 text-content border-accent/40 ";
   }

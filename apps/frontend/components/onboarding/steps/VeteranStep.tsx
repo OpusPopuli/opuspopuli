@@ -146,7 +146,7 @@ export function VeteranStep({ onComplete, isLastStep }: VeteranStepProps) {
           "px-4 py-3 rounded-lg border transition-colors",
           "focus-within:ring-2 focus-within:ring-accent",
           veteranChipChecked && !noFieldsMode
-            ? "bg-surface-alt text-white border-line"
+            ? "bg-inverse-surface text-on-inverse border-line"
             : "bg-surface text-content border-line hover:bg-surface-alt ",
           veteranChipDisabled
             ? "opacity-60 cursor-not-allowed"

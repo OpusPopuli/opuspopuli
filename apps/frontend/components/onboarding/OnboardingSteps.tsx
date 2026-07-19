@@ -121,7 +121,7 @@ export function OnboardingSteps() {
         {!stepOwnsAction && (
           <button
             onClick={advance}
-            className="px-8 py-3 bg-surface-alt hover:bg-surface-alt text-white rounded-full font-semibold transition-colors"
+            className="px-8 py-3 bg-inverse-surface hover:opacity-90 text-on-inverse rounded-full font-semibold transition-colors"
           >
             {isLastStep ? t("getStarted") : t("next")}
           </button>

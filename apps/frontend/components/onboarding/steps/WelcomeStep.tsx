@@ -44,7 +44,7 @@ export function WelcomeStep() {
 
   return (
     <div className="text-center max-w-md">
-      <div className="w-24 h-24 bg-surface-alt text-white rounded-lg mx-auto mb-8 flex items-center justify-center">
+      <div className="w-24 h-24 bg-inverse-surface text-on-inverse rounded-lg mx-auto mb-8 flex items-center justify-center">
         <span className="text-4xl font-bold">O</span>
       </div>
 
@@ -64,7 +64,7 @@ export function WelcomeStep() {
                 "px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-colors",
                 "focus-within:ring-2 focus-within:ring-accent",
                 active
-                  ? "bg-surface-alt text-white"
+                  ? "bg-inverse-surface text-on-inverse"
                   : "text-content-dim hover:text-content ",
               ].join(" ")}
             >

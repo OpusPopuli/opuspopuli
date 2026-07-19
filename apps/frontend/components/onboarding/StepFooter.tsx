@@ -44,7 +44,7 @@ export function StepFooter({
         type="button"
         onClick={onSubmit}
         disabled={loading}
-        className="px-8 py-3 bg-surface-alt hover:bg-surface-alt text-white rounded-full font-semibold transition-colors disabled:opacity-50"
+        className="px-8 py-3 bg-inverse-surface hover:opacity-90 text-on-inverse rounded-full font-semibold transition-colors disabled:opacity-50"
       >
         {t(primaryLabelKey)}
       </button>

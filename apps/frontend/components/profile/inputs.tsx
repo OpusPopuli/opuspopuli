@@ -179,7 +179,7 @@ export function MultiSelectChipsField({
               "px-3 py-1.5 rounded-full text-sm cursor-pointer border transition-colors",
               "focus-within:ring-2 focus-within:ring-accent",
               active
-                ? "bg-accent text-white border-accent"
+                ? "bg-accent text-content border-accent"
                 : "bg-surface text-content border-line hover:border-gray-400",
               disabled ? "cursor-not-allowed opacity-50" : "",
             ].join(" ")}
@@ -242,7 +242,7 @@ export function MultiTagInputField({
         {value.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-accent text-white text-sm"
+            className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-accent text-content text-sm"
           >
             {tag}
             {!disabled && (

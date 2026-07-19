@@ -282,7 +282,7 @@ export function EditableField({
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-1.5 text-sm font-semibold bg-accent text-white rounded-lg hover:bg-accent disabled:opacity-50"
+              className="px-4 py-1.5 text-sm font-semibold bg-accent text-content rounded-lg hover:bg-accent disabled:opacity-50"
             >
               {t("field.save")}
             </button>
