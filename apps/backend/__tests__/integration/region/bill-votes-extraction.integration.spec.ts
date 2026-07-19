@@ -346,4 +346,34 @@ describe('votes_only extraction — integration (#889)', () => {
     // Full motion round-trips — not truncated, not dropped.
     expect(rows[0].motionText).toBe(longMotion);
   });
+
+  it('persists a >20 char chamber label — the whole vote set is not dropped (#905)', async () => {
+    // Pre-fix, chamber was VARCHAR(20); once #901 widened motion_text, a
+    // longer LLM-emitted chamber label became the next createMany overflow,
+    // atomically dropping the bill's votes. This guards the widen to `text`.
+    const billId = await seedBillShell(db);
+    const longChamber =
+      'Assembly Standing Committee on Appropriations Suspense File';
+    expect(longChamber.length).toBeGreaterThan(20);
+    mockLlm.generate.mockResolvedValue({
+      text: JSON.stringify({
+        billId: BILL_EXTERNAL_ID,
+        votes: [
+          {
+            chamber: longChamber,
+            date: '2025-05-01',
+            motionText: 'Do Pass',
+            members: [{ name: 'Alice Smith', position: 'yes' }],
+          },
+        ],
+      }),
+    });
+
+    const result = await callExtract();
+
+    expect(result).toEqual({ outcome: 'votes-upserted', count: 1 });
+    const rows = await db.billVote.findMany({ where: { billId } });
+    expect(rows.length).toBe(1);
+    expect(rows[0].chamber).toBe(longChamber);
+  });
 });
