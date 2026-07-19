@@ -28,7 +28,7 @@
   "dependencies": {
     "@opuspopuli/common": "workspace:*",
     "@opuspopuli/prompt-client": "workspace:*",
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.0",
     "cheerio": "^1.1.2",
     "yauzl": "^3.3.0",
     "zod": "^3.23.0"
