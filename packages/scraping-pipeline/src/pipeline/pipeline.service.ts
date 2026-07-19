@@ -15,7 +15,9 @@ import type {
   DataSourceConfig,
   ExtractionResult,
   ILLMProvider,
+  RawExtractionResult,
   StructuralAnalysisResult,
+  StructuralManifest,
   DataType,
 } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
@@ -254,55 +256,35 @@ export class ScrapingPipelineService {
 
     // Stage 3: Extract content using manifest
     let rawResult = this.extractor.extract(html, manifest, source.url);
+    let effectiveVersion = manifest.version;
 
-    // Self-healing: check if extraction results are acceptable
-    const healingDecision = this.healing.evaluate(rawResult, manifest);
+    // Self-healing: check if extraction results are acceptable. Passing the
+    // stored lastItemCount lets the validator flag a sharp *drop* (e.g. 13 → 1),
+    // not just a total zero (#911).
+    const healingDecision = this.healing.evaluate(
+      rawResult,
+      manifest,
+      manifest.lastItemCount,
+    );
 
     if (healingDecision.shouldHeal) {
+      // Stale cached rules produced degraded output. Re-derive and re-extract
+      // in THIS run — even in async/worker mode — so the sync self-heals
+      // immediately instead of silently returning the degraded set and
+      // deferring to a background refresh that may not converge (#911).
       this.logger.warn(
         `Self-healing: re-analyzing ${source.url} — ${healingDecision.reason}`,
       );
-
-      if (this.onManifestMissing) {
-        // Async path: enqueue refresh, continue with degraded extraction.
-        await this.onManifestMissing({
-          regionId,
-          sourceUrl: source.url,
-          dataType: source.dataType,
-          contentGoal: source.contentGoal,
-          category: source.category,
-          hints: source.hints,
-          requestedBy: "cache_stale",
-        });
-        await this.manifestStore.incrementFailure(manifest.id);
-      } else {
-        // Inline path: re-analyze immediately.
-        const newManifest = await this.analyzer.analyze(html, source);
-        newManifest.regionId = regionId;
-        newManifest.version = await this.manifestStore.getNextVersion(
-          regionId,
-          source.url,
-          source.dataType,
-        );
-        await this.manifestStore.save(newManifest);
-
-        rawResult = this.extractor.extract(html, newManifest, source.url);
-
-        const secondCheck = this.healing.evaluate(
-          rawResult,
-          newManifest,
-          undefined,
-          true,
-        );
-        if (secondCheck.shouldHeal) {
-          await this.manifestStore.incrementFailure(newManifest.id);
-        } else {
-          await this.manifestStore.incrementSuccess(newManifest.id);
-        }
-      }
+      const healed = await this.healManifest(source, regionId, html, manifest);
+      rawResult = healed.rawResult;
+      effectiveVersion = healed.version;
     } else {
-      // Original manifest worked — record success and update timestamps
-      await this.manifestStore.incrementSuccess(manifest.id);
+      // Original manifest worked — record success (updating the drift baseline)
+      // and refresh the checked timestamp.
+      await this.manifestStore.incrementSuccess(
+        manifest.id,
+        rawResult.items.length,
+      );
       await this.manifestStore.markChecked(manifest.id);
     }
 
@@ -325,7 +307,7 @@ export class ScrapingPipelineService {
 
     // Stage 4: Map to domain types
     const result = this.mapper.map<T>(rawResult, source);
-    result.manifestVersion = manifest.version;
+    result.manifestVersion = effectiveVersion;
 
     const totalMs = Date.now() - pipelineStart;
     this.logger.log(
@@ -334,6 +316,55 @@ export class ScrapingPipelineService {
     );
 
     return result;
+  }
+
+  /**
+   * Re-derive a manifest for a source whose cached rules produced degraded
+   * output, then re-extract with the fresh manifest. Bounded to a single
+   * re-analysis per run (healAttempted=true) so a genuinely-empty or
+   * genuinely-shrunken source can't loop. Records the new drift baseline on
+   * success. Returns the re-extracted result and the new manifest version.
+   * See #911.
+   */
+  private async healManifest(
+    source: DataSourceConfig,
+    regionId: string,
+    html: string,
+    staleManifest: StructuralManifest,
+  ): Promise<{ rawResult: RawExtractionResult; version: number }> {
+    await this.manifestStore.incrementFailure(staleManifest.id);
+
+    const newManifest = await this.analyzer.analyze(html, source);
+    newManifest.regionId = regionId;
+    newManifest.version = await this.manifestStore.getNextVersion(
+      regionId,
+      source.url,
+      source.dataType,
+    );
+    newManifest.structureHash = computeStructureHash(html);
+    const saved = await this.manifestStore.save(newManifest);
+
+    const rawResult = this.extractor.extract(html, saved, source.url);
+    const secondCheck = this.healing.evaluate(
+      rawResult,
+      saved,
+      undefined,
+      true,
+    );
+    if (secondCheck.shouldHeal) {
+      await this.manifestStore.incrementFailure(saved.id);
+      this.logger.warn(
+        `Self-heal re-extraction still degraded for ${source.url}: ` +
+          `${rawResult.items.length} item(s)`,
+      );
+    } else {
+      await this.manifestStore.incrementSuccess(
+        saved.id,
+        rawResult.items.length,
+      );
+    }
+
+    return { rawResult, version: saved.version };
   }
 
   /**

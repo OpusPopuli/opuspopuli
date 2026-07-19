@@ -42,6 +42,8 @@ export interface StructuralManifest {
   successCount: number;
   /** Number of failed extractions using this manifest */
   failureCount: number;
+  /** Item count from the last successful extraction — baseline for count-drift self-heal (#911) */
+  lastItemCount?: number;
   /** Whether this is the active manifest for this (regionId, sourceUrl, dataType) */
   isActive: boolean;
   /** LLM provider used for analysis */

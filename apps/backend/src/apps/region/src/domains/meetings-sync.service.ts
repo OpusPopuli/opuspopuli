@@ -62,6 +62,14 @@ export class MeetingsSyncService {
     discoverTracker.complete();
 
     if (meetings.length === 0) {
+      // A zero result can be legitimate (recess) OR a degraded extraction. A
+      // silent skip previously masked stale-manifest zero-yield (#911), so make
+      // it visible. The pipeline now self-heals a stale manifest in-run, so a
+      // persistent zero here points at the source itself, not a stale cache.
+      this.logger.warn(
+        `No meetings extracted for ${regionId} — if this source normally lists ` +
+          `meetings, check source/extraction health (see #911). Proceeding to minutes.`,
+      );
       // Skip the empty extract+minutes_link phases for clarity.
       return this.syncMinutes(provider);
     }
