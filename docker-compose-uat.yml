@@ -71,7 +71,11 @@ x-backend-env: &backend-env
   # via shell env or .env when running UAT; the dev-grade defaults below
   # preserve the existing UAT workflow until #811 lands.
   GATEWAY_HMAC_SECRET: ${GATEWAY_HMAC_SECRET:-integration-test-hmac-secret}
-  API_KEYS: ${API_KEYS:-'{"api-gateway":"integration-test-hmac-secret"}'}
+  # Wrap the whole value in YAML single-quotes (stripped by the YAML parser)
+  # so the `:-` default is clean JSON. Quoting the default *inside* the `${…}`
+  # instead would leave literal quotes in the value — Compose interpolation
+  # doesn't strip them — breaking JSON.parse in the subgraphs (401s). See #915.
+  API_KEYS: '${API_KEYS:-{"api-gateway":"integration-test-hmac-secret"}}'
   JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — run create-op-node bootstrap}
   # AUTH_JWT_SECRET historically equals JWT_SECRET in dev/UAT — falls back
   # to JWT_SECRET when not set independently.
