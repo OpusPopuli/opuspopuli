@@ -39,12 +39,25 @@ fi
 echo "Running Prisma migrate deploy..."
 npx prisma migrate deploy
 
-# NOTE: local prompt_templates seeding intentionally removed. When the
-# region is configured with PROMPT_SERVICE_URL the prompt-service is the
-# authoritative source for templates; the local prompt_templates table is
-# only used as a failover cache and does not need to be seeded at deploy
-# time. seed-prompts.ts can be run manually in dev environments that lack
-# access to a prompt-service. See issue #605.
+# Seed the prompt_templates failover cache — but ONLY when the node is not
+# configured to use the remote prompt-service. #605 removed this seeding on
+# the assumption that PROMPT_SERVICE_URL is always set (prompt-service is then
+# authoritative and the local table is just a failover cache). But --local-only
+# nodes run WITHOUT PROMPT_SERVICE_URL, so PromptClientService reads this table
+# directly. A create-op-node regen / DB restore wipes prompt_templates (a seed
+# table, never in the backup), and with no reseed the structural-analysis and
+# schema prompts fall back to hardcoded stubs → broken manifests → extraction
+# silently yields records the domain mapper rejects (meetings went to 0). See
+# #920. seed-prompts.ts upserts by name, so this is idempotent and safe to run
+# on every deploy. Kept non-fatal so a seed hiccup never blocks startup, matching
+# the admin-user / vault seeds below.
+if [ -z "${PROMPT_SERVICE_URL:-}" ]; then
+  echo "=== Seeding prompt_templates failover cache (PROMPT_SERVICE_URL unset) ==="
+  npx --yes tsx prisma/seed-prompts.ts || \
+    echo "  (prompt_templates seed skipped — non-fatal; run db:seed-prompts manually)"
+else
+  echo "=== Skipping prompt_templates seed (PROMPT_SERVICE_URL set — prompt-service authoritative) ==="
+fi
 
 echo "Checking spatial_ref_sys BEFORE setup..."
 psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -c "SELECT schemaname, tablename FROM pg_tables WHERE tablename = 'spatial_ref_sys';"
