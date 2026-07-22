@@ -16,6 +16,7 @@ import { regionValidationSchema } from 'src/config/env.validation';
 
 import { RegionSyncProcessor } from './region-sync.processor';
 import { RegionSyncScheduler } from './region-sync.scheduler';
+import { MinutesSummaryProcessor } from './minutes-summary.processor';
 
 @Module({
   imports: [
@@ -32,6 +33,10 @@ import { RegionSyncScheduler } from './region-sync.scheduler';
     MetricsModule.forRoot({ serviceName: 'region-worker' }),
     HealthModule.forRoot({ serviceName: 'region-worker', hasDatabase: true }),
   ],
-  providers: [RegionSyncProcessor, RegionSyncScheduler],
+  providers: [
+    RegionSyncProcessor,
+    RegionSyncScheduler,
+    MinutesSummaryProcessor,
+  ],
 })
 export class RegionWorkerModule {}

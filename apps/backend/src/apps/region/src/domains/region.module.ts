@@ -256,6 +256,7 @@ const promptClientAsyncConfig = {
     RegionQueryService,
     PipelineJobService,
     StructuralAnalysisJobService,
+    MinutesSummaryService,
     BoundaryLoaderService,
     QueueModule,
     ScrapingPipelineModule,

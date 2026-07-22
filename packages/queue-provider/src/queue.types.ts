@@ -42,6 +42,15 @@ export interface RegionSyncJobResult {
   syncedAt: string;
 }
 
+/** Job data for the minutes-summary queue — one job per minutes row (#813). */
+export interface MinutesSummaryJobData {
+  minutesId: string;
+  /** External id, for log correlation. */
+  externalId?: string;
+  /** When true, re-summarize even if a summary already exists (operator backfill). */
+  force?: boolean;
+}
+
 export interface StructuralAnalysisJobData {
   structuralAnalysisJobId: string;
   regionId: string;
