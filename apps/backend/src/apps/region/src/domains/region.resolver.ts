@@ -47,6 +47,7 @@ import {
 } from './models/proposition.model';
 import { PropositionFundingModel } from './models/proposition-funding.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
+import { MinutesModel, PaginatedMinutes } from './models/minutes.model';
 import {
   BioClaimModel,
   CommitteeAssignmentModel,
@@ -234,6 +235,30 @@ export class RegionResolver {
       agendaUrl: result.agendaUrl ?? undefined,
       videoUrl: result.videoUrl ?? undefined,
     };
+  }
+
+  /**
+   * Get paginated meeting minutes / journals with AI synopsis + claims (#813).
+   */
+  @Public()
+  @Query(() => PaginatedMinutes)
+  @Extensions({ complexity: 15 }) // Paginated list query
+  async minutesList(
+    @Args() { skip, take }: PaginationArgs,
+    @Args({ name: 'body', type: () => String, nullable: true }) body?: string,
+  ): Promise<PaginatedMinutes> {
+    return this.regionService.getMinutes(skip, take, body);
+  }
+
+  /**
+   * Get a single minutes document (with synopsis + claims) by ID (#813).
+   */
+  @Public()
+  @Query(() => MinutesModel, { nullable: true })
+  async minutes(
+    @Args({ name: 'id', type: () => ID }) id: string,
+  ): Promise<MinutesModel | null> {
+    return this.regionService.getMinutesById(id);
   }
 
   /**

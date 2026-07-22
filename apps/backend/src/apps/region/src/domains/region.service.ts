@@ -26,6 +26,7 @@ import {
   PropositionStatusGQL,
 } from './models/proposition.model';
 import { PaginatedMeetings } from './models/meeting.model';
+import { MinutesModel, PaginatedMinutes } from './models/minutes.model';
 import { PaginatedRepresentatives } from './models/representative.model';
 import {
   PropositionAnalysisClaimModel,
@@ -361,6 +362,18 @@ export class RegionDomainService {
 
   getMeetings(skip?: number, take?: number): Promise<PaginatedMeetings> {
     return this.queryService.getMeetings(skip, take);
+  }
+
+  getMinutes(
+    skip?: number,
+    take?: number,
+    body?: string,
+  ): Promise<PaginatedMinutes> {
+    return this.queryService.getMinutes(skip, take, body);
+  }
+
+  getMinutesById(id: string): Promise<MinutesModel | null> {
+    return this.queryService.getMinutesById(id);
   }
 
   getMeeting(id: string) {
