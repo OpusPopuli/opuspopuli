@@ -18,6 +18,7 @@ import {
 import {
   batchTransaction,
   extractJsonObjectSlice,
+  type ArchiveIngestOptions,
   type Proposition,
   type Meeting,
   type Representative,
@@ -593,6 +594,7 @@ export class RegionSyncService implements OnModuleDestroy {
     scopedRegionId?: string,
     pipelineJobId?: string,
     forceStatusRecheck?: boolean,
+    archiveOptions?: ArchiveIngestOptions,
   ): Promise<SyncResult[]> {
     // Re-read enabled plugins from the DB before every sync. The hot-swap
     // on `setRegionPluginEnabled` only fires in the *region service* process;
@@ -633,6 +635,7 @@ export class RegionSyncService implements OnModuleDestroy {
           maxBills,
           pipelineJobId,
           forceStatusRecheck,
+          archiveOptions,
         )),
       );
     }
@@ -646,6 +649,7 @@ export class RegionSyncService implements OnModuleDestroy {
           scopedRegionId,
           pipelineJobId,
           forceStatusRecheck,
+          archiveOptions,
         )),
       );
     }
@@ -662,6 +666,7 @@ export class RegionSyncService implements OnModuleDestroy {
     maxBills?: number,
     pipelineJobId?: string,
     forceStatusRecheck?: boolean,
+    archiveOptions?: ArchiveIngestOptions,
   ): Promise<SyncResult[]> {
     const supported = instance.getSupportedDataTypes();
     const filtered = dataTypes
@@ -679,6 +684,7 @@ export class RegionSyncService implements OnModuleDestroy {
           name,
           pipelineJobId,
           forceStatusRecheck,
+          archiveOptions,
         );
         results.push(result);
       } catch (error) {
@@ -705,6 +711,7 @@ export class RegionSyncService implements OnModuleDestroy {
     scopedRegionId?: string,
     pipelineJobId?: string,
     forceStatusRecheck?: boolean,
+    archiveOptions?: ArchiveIngestOptions,
   ): Promise<SyncResult[]> {
     const where = scopedRegionId
       ? { name: scopedRegionId, parentRegionId: { not: null }, enabled: true }
@@ -745,6 +752,7 @@ export class RegionSyncService implements OnModuleDestroy {
             maxBills,
             pipelineJobId,
             forceStatusRecheck,
+            archiveOptions,
           )),
         );
       } catch (error) {
@@ -784,6 +792,7 @@ export class RegionSyncService implements OnModuleDestroy {
     regionId?: string,
     pipelineJobId?: string,
     forceStatusRecheck?: boolean,
+    archiveOptions?: ArchiveIngestOptions,
   ): Promise<SyncResult> {
     this.logger.log(`Syncing ${dataType} from ${pluginName}`);
     const startTime = Date.now();
@@ -801,7 +810,8 @@ export class RegionSyncService implements OnModuleDestroy {
     > = {
       [DataType.PROPOSITIONS]: () =>
         this.syncPropositions(provider, pipelineJobId),
-      [DataType.MEETINGS]: () => this.syncMeetings(provider, pipelineJobId),
+      [DataType.MEETINGS]: () =>
+        this.syncMeetings(provider, pipelineJobId, archiveOptions),
       [DataType.REPRESENTATIVES]: () =>
         this.syncRepresentatives(provider, maxReps, regionId),
       [DataType.CAMPAIGN_FINANCE]: () =>
@@ -909,6 +919,7 @@ export class RegionSyncService implements OnModuleDestroy {
   private async syncMeetings(
     provider: DataFetcher = this.regionService,
     pipelineJobId?: string,
+    archiveOptions?: ArchiveIngestOptions,
   ): Promise<{ processed: number; created: number; updated: number }> {
     if (!this.meetingsSyncService) {
       return { processed: 0, created: 0, updated: 0 };
@@ -917,6 +928,7 @@ export class RegionSyncService implements OnModuleDestroy {
       provider,
       pipelineJobId,
       this.upsertByExternalId.bind(this),
+      archiveOptions,
     );
   }
 

@@ -21,6 +21,7 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import * as cheerio from "cheerio";
 import {
+  type ArchiveIngestOptions,
   type DataSourceConfig,
   type ExtractionResult,
   type Minutes,
@@ -52,6 +53,7 @@ export class MinutesIngestHandler {
   async execute(
     source: DataSourceConfig,
     regionId: string,
+    options?: ArchiveIngestOptions,
   ): Promise<ExtractionResult<MinutesWithActions>> {
     const start = Date.now();
     const warnings: string[] = [];
@@ -64,14 +66,20 @@ export class MinutesIngestHandler {
 
     const cfg = source.pdfArchive;
     const maxPages = cfg.maxPages ?? 10;
-    const maxNew = cfg.maxNew ?? 10;
+    // Per-run maxDocuments override (API backfill) wins over the source
+    // config's maxNew.
+    const maxNew = options?.maxDocuments ?? cfg.maxNew ?? 10;
 
     this.logger.log(
-      `Pipeline started [pdf_archive]: ${regionId}/${source.dataType} from ${source.url} (maxNew=${maxNew})`,
+      `Pipeline started [pdf_archive]: ${regionId}/${source.dataType} from ${source.url} ` +
+        `(maxNew=${maxNew}${options?.resetWatermark ? ", watermark reset" : ""})`,
     );
 
+    // resetWatermark: ignore the stored watermark for this run so the walk
+    // re-processes from the top (bounded by maxNew). The watermark still
+    // advances normally afterward, so later runs resume incrementally.
     let watermarkLastId: string | undefined;
-    if (this.watermarks) {
+    if (this.watermarks && !options?.resetWatermark) {
       const watermark = await this.watermarks.read(
         regionId,
         source.url,

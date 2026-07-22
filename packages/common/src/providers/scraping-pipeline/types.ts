@@ -12,6 +12,33 @@
 import type { DataType } from "../region/types.js";
 
 // ============================================
+// ARCHIVE INGEST OPTIONS
+// ============================================
+
+/**
+ * Per-run overrides for `pdf_archive` ingestion (daily-journals /
+ * weekly-histories). Threaded from the `syncRegionData` mutation down to
+ * {@link MinutesIngestHandler} so an operator can trigger a historical
+ * backfill from the API instead of editing region config or hand-deleting
+ * watermark rows. See region-worker backfill controls.
+ */
+export interface ArchiveIngestOptions {
+  /**
+   * Overrides `pdfArchive.maxNew` for this run — how many archive documents
+   * (PDFs) to ingest. Each document is dense (~140 legislative actions), so a
+   * larger value means a heavier, longer sync. Falls back to the source
+   * config's `maxNew` (default 10) when unset.
+   */
+  maxDocuments?: number;
+  /**
+   * When true, the archive walk ignores the stored ingestion watermark for
+   * this run and re-processes from the top (bounded by `maxDocuments`). Item
+   * upserts are idempotent; the watermark still advances normally afterward.
+   */
+  resetWatermark?: boolean;
+}
+
+// ============================================
 // STRUCTURAL MANIFEST
 // ============================================
 

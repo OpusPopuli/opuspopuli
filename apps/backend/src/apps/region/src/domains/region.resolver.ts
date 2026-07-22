@@ -986,6 +986,10 @@ export class RegionResolver {
     maxReps?: number,
     @Args('maxBills', { type: () => Int, nullable: true })
     maxBills?: number,
+    @Args('maxDocuments', { type: () => Int, nullable: true })
+    maxDocuments?: number,
+    @Args('resetWatermark', { type: () => Boolean, nullable: true })
+    resetWatermark?: boolean,
     @Context() ctx?: { req: { user?: { id?: string } } },
   ): Promise<RegionSyncJobModel> {
     const userId = ctx?.req?.user?.id;
@@ -996,6 +1000,8 @@ export class RegionResolver {
         depth: depth as string,
         maxReps,
         maxBills,
+        maxDocuments,
+        resetWatermark,
       },
       userId,
     );
@@ -1034,6 +1040,8 @@ export class RegionResolver {
       depth?: string;
       maxReps?: number;
       maxBills?: number;
+      maxDocuments?: number;
+      resetWatermark?: boolean;
     },
     userId?: string,
   ): Promise<RegionSyncJobModel> {

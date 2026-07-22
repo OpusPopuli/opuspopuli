@@ -12,6 +12,7 @@
 import { Logger } from "@nestjs/common";
 import { BaseRegionPlugin } from "../base/base-plugin.js";
 import type {
+  ArchiveIngestOptions,
   DataType,
   RegionInfo,
   Proposition,
@@ -36,6 +37,7 @@ export interface IPipelineService {
     regionId: string,
     onBatch?: (items: T[]) => Promise<void>,
     pipelineJobId?: string,
+    options?: ArchiveIngestOptions,
   ): Promise<ExtractionResult<T>>;
   invalidateManifest(regionId: string, sourceUrl: string): Promise<number>;
 }
@@ -192,11 +194,15 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
    * LegislativeActionLinkerService mines the stored rawText
    * post-sync to produce action records. Issue #665.
    */
-  async fetchMeetingMinutes(): Promise<MinutesWithActions[]> {
+  async fetchMeetingMinutes(
+    options?: ArchiveIngestOptions,
+  ): Promise<MinutesWithActions[]> {
     return this.fetchByDataType<MinutesWithActions>(
       "meetings",
       undefined,
       (s) => s.sourceType === "pdf_archive",
+      undefined,
+      options,
     );
   }
 
@@ -293,6 +299,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     onBatch?: (items: T[]) => Promise<void>,
     sourceFilter?: (source: DataSourceConfig) => boolean,
     pipelineJobId?: string,
+    options?: ArchiveIngestOptions,
   ): Promise<T[]> {
     const sources = this.regionConfig.dataSources.filter(
       (ds) =>
@@ -323,6 +330,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
           dataType,
           onBatch,
           pipelineJobId,
+          options,
         );
         allItems.push(...items);
         batchedItemCount += batched;
@@ -353,6 +361,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     dataType: string,
     onBatch?: (items: T[]) => Promise<void>,
     pipelineJobId?: string,
+    options?: ArchiveIngestOptions,
   ): Promise<{ items: T[]; batched: number }> {
     try {
       const category = source.category ? " (" + source.category + ")" : "";
@@ -366,6 +375,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
         this.regionConfig.regionId,
         useBatch ? onBatch : undefined,
         pipelineJobId,
+        options,
       );
 
       this.logResultDiagnostics(source.url, result);

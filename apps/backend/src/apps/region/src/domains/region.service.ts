@@ -13,7 +13,10 @@
  */
 import { Injectable } from '@nestjs/common';
 import { DataType, SyncResult } from '@opuspopuli/region-provider';
-import type { DataSourceConfig } from '@opuspopuli/common';
+import type {
+  ArchiveIngestOptions,
+  DataSourceConfig,
+} from '@opuspopuli/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
 import { CivicsBlockModel } from './models/region-info.model';
 import { RegionInfoModel } from './models/region-info.model';
@@ -271,6 +274,7 @@ export class RegionDomainService {
     scopedRegionId?: string,
     pipelineJobId?: string,
     forceStatusRecheck?: boolean,
+    archiveOptions?: ArchiveIngestOptions,
   ): Promise<SyncResult[]> {
     return this.syncService.syncAll(
       dataTypes,
@@ -280,6 +284,7 @@ export class RegionDomainService {
       scopedRegionId,
       pipelineJobId,
       forceStatusRecheck,
+      archiveOptions,
     );
   }
 
