@@ -311,19 +311,46 @@ export class MeetingsSyncService {
   }
 
   /**
-   * Enqueue a minutes-summary job per upserted minutes row (#813). Deduped
-   * by minutesId so repeated syncs don't pile up jobs for the same row.
-   * Returns the number enqueued; a no-op returning 0 when no QueueService is
-   * wired (e.g. unit tests / a region service without the worker stack).
+   * Operator backfill (#813): enqueue force-summary jobs for existing minutes
+   * rows (optionally filtered by chamber `body`, capped by `limit`). Returns
+   * the number enqueued. Used by the regenerateMinutesSummaries mutation to
+   * (re)generate synopses for already-ingested rows and after prompt tweaks.
    */
-  private async enqueueSummaries(minutesIds: string[]): Promise<number> {
+  async regenerateSummaries(body?: string, limit?: number): Promise<number> {
+    const where = {
+      isActive: true,
+      rawText: { not: null },
+      ...(body ? { body } : {}),
+    };
+    const rows = await this.db.minutes.findMany({
+      where,
+      select: { id: true },
+      orderBy: { date: 'desc' },
+      take: limit && limit > 0 ? limit : undefined,
+    });
+    return this.enqueueSummaries(
+      rows.map((r) => r.id),
+      true,
+    );
+  }
+
+  /**
+   * Enqueue a minutes-summary job per minutes id (#813). Deduped by minutesId
+   * so repeated syncs don't pile up jobs for the same row. Returns the number
+   * enqueued; a no-op returning 0 when no QueueService is wired (e.g. unit
+   * tests / a region service without the worker stack).
+   */
+  private async enqueueSummaries(
+    minutesIds: string[],
+    force = false,
+  ): Promise<number> {
     if (!this.queueService || minutesIds.length === 0) return 0;
     let enqueued = 0;
     for (const minutesId of minutesIds) {
       try {
         await this.queueService.enqueue<MinutesSummaryJobData>(
           MINUTES_SUMMARY_QUEUE,
-          { minutesId },
+          { minutesId, force },
           { jobId: `minutes-summary:${minutesId}` },
         );
         enqueued++;

@@ -297,6 +297,10 @@ export class RegionDomainService {
     return this.syncService.getRegionInfo();
   }
 
+  regenerateMinutesSummaries(body?: string, limit?: number): Promise<number> {
+    return this.syncService.regenerateMinutesSummaries(body, limit);
+  }
+
   regeneratePropositionAnalysis(id: string): Promise<boolean> {
     return this.syncService.regeneratePropositionAnalysis(id);
   }

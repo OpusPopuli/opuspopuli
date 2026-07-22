@@ -176,6 +176,15 @@ export class MinutesSummaryService extends LlmGeneratorBase {
       temperature: 0.2,
     });
 
+    // Cost telemetry — the per-row output is capped by maxTokens; log the
+    // actual spend so an operator can watch cumulative usage during a
+    // backfill. A Prometheus counter / dashboard panel is a fast-follow.
+    if (result.tokensUsed != null) {
+      this.logger.debug(
+        `minutes-summary ${row.externalId}: ${result.tokensUsed} tokens`,
+      );
+    }
+
     return this.parsePayload(result.text, row);
   }
 

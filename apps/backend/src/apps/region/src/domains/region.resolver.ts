@@ -207,6 +207,22 @@ export class RegionResolver {
   }
 
   /**
+   * Enqueue AI-synopsis (re)generation for existing minutes rows (#813).
+   * Async — returns the number of jobs enqueued; the minutes-summary worker
+   * fans out. Use to backfill the corpus or re-run after a prompt revision.
+   */
+  @Mutation(() => Int)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @Extensions({ complexity: 50 })
+  async regenerateMinutesSummaries(
+    @Args({ name: 'body', type: () => String, nullable: true }) body?: string,
+    @Args({ name: 'limit', type: () => Int, nullable: true }) limit?: number,
+  ): Promise<number> {
+    return this.regionService.regenerateMinutesSummaries(body, limit);
+  }
+
+  /**
    * Get paginated meetings
    */
   @Public()
