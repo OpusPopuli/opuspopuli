@@ -1912,6 +1912,8 @@ model PipelineJob {
   depth         String?
   maxReps       Int?      @map("max_reps")
   maxBills      Int?      @map("max_bills")
+  maxDocuments  Int?      @map("max_documents") /// Meetings pdf_archive maxNew override (API backfill)
+  resetWatermark Boolean? @map("reset_watermark") /// Ignore ingestion watermark for this run (API backfill)
   status        String
   attempts      Int       @default(0)
   enqueuedBy    String?   @map("enqueued_by")

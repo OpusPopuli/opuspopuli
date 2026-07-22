@@ -206,6 +206,42 @@ describe("MinutesIngestHandler", () => {
     expect(ids).toEqual(["ca-meetings-2026-04-27", "ca-meetings-2026-04-28"]);
   });
 
+  it("maxDocuments override wins over the source config's maxNew (API backfill)", async () => {
+    const fake = setupExtraction();
+    const handler = new MinutesIngestHandler(fake as never);
+    // Source config says maxNew:10 — the per-run override caps ingestion at 2.
+    const result = await handler.execute(SOURCE, "ca", { maxDocuments: 2 });
+    expect(result.items).toHaveLength(2);
+  });
+
+  it("resetWatermark ignores the stored watermark and re-walks from the top", async () => {
+    const fake = setupExtraction();
+    const repo = new InMemoryWatermarkRepo();
+    const watermarks = new IngestionWatermarkService(repo);
+    // Apr 27 already ingested — a normal run would stop after Apr 28 only.
+    await watermarks.advance(
+      "ca",
+      SOURCE.url,
+      SOURCE.dataType,
+      "ca-meetings-2026-04-27",
+      0,
+    );
+
+    const handler = new MinutesIngestHandler(fake as never, watermarks);
+    const result = await handler.execute(SOURCE, "ca", {
+      resetWatermark: true,
+    });
+
+    // Watermark ignored → the walk re-processes the already-seen documents.
+    const ids = result.items.map((b) => b.minutes.externalId);
+    expect(ids.length).toBeGreaterThan(1);
+    expect(ids).toContain("ca-meetings-2026-04-27");
+
+    // Watermark still advances normally afterward.
+    const wm = await watermarks.read("ca", SOURCE.url, SOURCE.dataType);
+    expect(wm?.lastExternalId).toBe("ca-meetings-2026-04-28");
+  });
+
   it("captures revisionSeq from filenames matching revisionPattern", async () => {
     const fake = setupExtraction();
     const handler = new MinutesIngestHandler(fake as never);

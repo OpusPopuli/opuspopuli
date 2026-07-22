@@ -157,6 +157,7 @@ describe("DeclarativeRegionPlugin", () => {
         "california",
         undefined,
         undefined,
+        undefined,
       );
       expect(result).toEqual(mockProps);
     });

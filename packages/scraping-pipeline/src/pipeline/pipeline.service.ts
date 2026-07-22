@@ -12,6 +12,7 @@
 
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type {
+  ArchiveIngestOptions,
   DataSourceConfig,
   ExtractionResult,
   ILLMProvider,
@@ -119,6 +120,7 @@ export class ScrapingPipelineService {
     regionId: string,
     onBatch?: (items: T[]) => Promise<void>,
     pipelineJobId?: string,
+    options?: ArchiveIngestOptions,
   ): Promise<ExtractionResult<T>> {
     const sourceType = source.sourceType ?? "html_scrape";
 
@@ -135,7 +137,7 @@ export class ScrapingPipelineService {
       case "pdf":
         return this.executePdfExtract<T>(source, regionId);
       case "pdf_archive":
-        return this.executePdfArchive<T>(source, regionId);
+        return this.executePdfArchive<T>(source, regionId, options);
       case "html_scrape":
       default:
         return this.executeHtmlScrape<T>(source, regionId);
@@ -151,10 +153,13 @@ export class ScrapingPipelineService {
   private async executePdfArchive<T>(
     source: DataSourceConfig,
     regionId: string,
+    options?: ArchiveIngestOptions,
   ): Promise<ExtractionResult<T>> {
-    return this.minutesIngest.execute(source, regionId) as unknown as Promise<
-      ExtractionResult<T>
-    >;
+    return this.minutesIngest.execute(
+      source,
+      regionId,
+      options,
+    ) as unknown as Promise<ExtractionResult<T>>;
   }
 
   /**

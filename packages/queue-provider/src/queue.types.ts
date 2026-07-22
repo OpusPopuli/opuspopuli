@@ -16,6 +16,19 @@ export interface RegionSyncJobData {
    * changes the journal linker can't see. See #689.
    */
   forceStatusRecheck?: boolean;
+  /**
+   * Per-run override for the meetings `pdf_archive` walk (daily-journals /
+   * weekly-histories): number of archive documents to ingest this run,
+   * overriding the region config's `pdfArchive.maxNew`. Operator-facing
+   * backfill control from the `syncRegionData` mutation.
+   */
+  maxDocuments?: number;
+  /**
+   * When true, the meetings `pdf_archive` walk ignores the stored ingestion
+   * watermark for this run and re-processes from the top (bounded by
+   * `maxDocuments`), enabling an on-demand historical backfill.
+   */
+  resetWatermark?: boolean;
 }
 
 export interface RegionSyncJobResult {
