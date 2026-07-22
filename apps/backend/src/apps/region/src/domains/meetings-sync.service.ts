@@ -1,6 +1,10 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
-import type { Meeting, MinutesWithActions } from '@opuspopuli/common';
+import type {
+  ArchiveIngestOptions,
+  Meeting,
+  MinutesWithActions,
+} from '@opuspopuli/common';
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { meetingSyncTracker, minutesSyncTracker } from './sync-phase-logger';
 import type { UpsertByExternalId } from './propositions-sync.service';
@@ -14,7 +18,9 @@ import type { UpsertByExternalId } from './propositions-sync.service';
 export interface MeetingsProvider {
   getName?(): string;
   fetchMeetings(pipelineJobId?: string): Promise<Meeting[]>;
-  fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
+  fetchMeetingMinutes?(
+    options?: ArchiveIngestOptions,
+  ): Promise<MinutesWithActions[]>;
 }
 
 /**
@@ -45,6 +51,7 @@ export class MeetingsSyncService {
     provider: MeetingsProvider,
     pipelineJobId: string | undefined,
     upsertByExternalId: UpsertByExternalId,
+    options?: ArchiveIngestOptions,
   ): Promise<{ processed: number; created: number; updated: number }> {
     const regionId = provider.getName?.() ?? 'unknown';
 
@@ -71,7 +78,7 @@ export class MeetingsSyncService {
           `meetings, check source/extraction health (see #911). Proceeding to minutes.`,
       );
       // Skip the empty extract+minutes_link phases for clarity.
-      return this.syncMinutes(provider);
+      return this.syncMinutes(provider, options);
     }
 
     // ─── Phase 2/3 — extract_and_upsert ────────────────────────────
@@ -147,7 +154,7 @@ export class MeetingsSyncService {
     });
     linkTracker.complete();
 
-    const minutesResult = await this.syncMinutes(provider);
+    const minutesResult = await this.syncMinutes(provider, options);
     return {
       processed: result.processed + minutesResult.processed,
       created: result.created + minutesResult.created,
@@ -165,6 +172,7 @@ export class MeetingsSyncService {
    */
   private async syncMinutes(
     provider: MeetingsProvider,
+    options?: ArchiveIngestOptions,
   ): Promise<{ processed: number; created: number; updated: number }> {
     if (!provider.fetchMeetingMinutes) {
       // Emit phase markers even on the early-return path so the
@@ -184,7 +192,7 @@ export class MeetingsSyncService {
 
     // ─── Phase 1/3 — discover ──────────────────────────────────────
     const discoverTracker = minutesSyncTracker(this.logger, 'discover', 1);
-    const bundles = await provider.fetchMeetingMinutes();
+    const bundles = await provider.fetchMeetingMinutes(options);
     discoverTracker.item({
       name: 'minutes provider',
       externalId: null,

@@ -101,7 +101,17 @@ export class RegionSyncProcessor
       maxReps,
       maxBills,
       forceStatusRecheck,
+      maxDocuments,
+      resetWatermark,
     } = job.data;
+
+    // Build the archive-ingest override only when the operator supplied one,
+    // so a normal sync is unaffected (undefined → source-config maxNew, no
+    // watermark reset).
+    const archiveOptions =
+      maxDocuments != null || resetWatermark != null
+        ? { maxDocuments, resetWatermark }
+        : undefined;
 
     this.logger.log(
       {
@@ -137,6 +147,7 @@ export class RegionSyncProcessor
         regionId,
         effectiveJobId,
         forceStatusRecheck,
+        archiveOptions,
       );
 
       const gqlResults = results.map((r) => ({

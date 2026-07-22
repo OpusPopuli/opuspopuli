@@ -18,6 +18,8 @@ export interface CreatePipelineJobInput {
   depth?: string;
   maxReps?: number;
   maxBills?: number;
+  maxDocuments?: number;
+  resetWatermark?: boolean;
 }
 
 @Injectable()
@@ -36,6 +38,8 @@ export class PipelineJobService {
         depth: input.depth ?? null,
         maxReps: input.maxReps ?? null,
         maxBills: input.maxBills ?? null,
+        maxDocuments: input.maxDocuments ?? null,
+        resetWatermark: input.resetWatermark ?? null,
         status: JOB_STATUS.QUEUED,
       },
       select: { id: true },

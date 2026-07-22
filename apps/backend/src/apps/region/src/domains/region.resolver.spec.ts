@@ -808,6 +808,29 @@ describe('RegionResolver', () => {
       expect(createCall.bullmqJobId).toBe(createCall.id);
       expect(createCall.triggerSource).toBe('manual');
     });
+
+    it('threads maxDocuments + resetWatermark into the job (backfill controls)', async () => {
+      // syncRegionData(dataTypes, depth, regionId, maxReps, maxBills,
+      //                maxDocuments, resetWatermark, ctx)
+      await resolver.syncRegionData(
+        [DataTypeGQL.MEETINGS],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        25,
+        true,
+      );
+
+      expect(queueService.enqueue).toHaveBeenCalledWith(
+        'region-sync',
+        expect.objectContaining({ maxDocuments: 25, resetWatermark: true }),
+        expect.anything(),
+      );
+      const createCall = pipelineJobService.create.mock.calls[0][0];
+      expect(createCall.maxDocuments).toBe(25);
+      expect(createCall.resetWatermark).toBe(true);
+    });
   });
 
   // ==========================================
