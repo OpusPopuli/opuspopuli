@@ -41,5 +41,39 @@
     "title": "Cómo funciona su gobierno",
     "subtitle": "Una guía en lenguaje sencillo del proceso legislativo de {{regionName}}",
     "noData": "Los datos cívicos aún se están indexando. Vuelva pronto."
+  },
+  "minutes": {
+    "disclosure": {
+      "show": "Síntesis de la sesión e inquietudes",
+      "hide": "Ocultar la síntesis de la sesión",
+      "loading": "Cargando síntesis…",
+      "error": "No se pudo cargar la síntesis de la sesión. Inténtelo de nuevo.",
+      "empty": "Aún no se ha generado una síntesis con IA para esta sesión."
+    },
+    "aiPanel": {
+      "badge": "Generado por IA",
+      "heading": "Síntesis de la sesión",
+      "disclaimer": "Puede contener imprecisiones — verifique con el acta original antes de citar."
+    },
+    "claims": {
+      "empty": "No se extrajeron decisiones ni inquietudes estructuradas de esta sesión.",
+      "billRefsLabel": "Proyectos"
+    },
+    "claimKind": {
+      "decision": "Decisión",
+      "concern": "Inquietud",
+      "controversy": "Controversia",
+      "publicComment": "Comentario público",
+      "disclosure": "Divulgación"
+    },
+    "severity": {
+      "low": "Baja",
+      "medium": "Media",
+      "high": "Alta"
+    },
+    "concerns": {
+      "badge_one": "{{count}} inquietud",
+      "badge_other": "{{count}} inquietudes"
+    }
   }
 }
