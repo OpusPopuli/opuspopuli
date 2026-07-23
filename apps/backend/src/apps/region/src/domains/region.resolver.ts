@@ -47,6 +47,7 @@ import {
 } from './models/proposition.model';
 import { PropositionFundingModel } from './models/proposition-funding.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
+import { MinutesModel, PaginatedMinutes } from './models/minutes.model';
 import {
   BioClaimModel,
   CommitteeAssignmentModel,
@@ -206,6 +207,22 @@ export class RegionResolver {
   }
 
   /**
+   * Enqueue AI-synopsis (re)generation for existing minutes rows (#813).
+   * Async — returns the number of jobs enqueued; the minutes-summary worker
+   * fans out. Use to backfill the corpus or re-run after a prompt revision.
+   */
+  @Mutation(() => Int)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @Extensions({ complexity: 50 })
+  async regenerateMinutesSummaries(
+    @Args({ name: 'body', type: () => String, nullable: true }) body?: string,
+    @Args({ name: 'limit', type: () => Int, nullable: true }) limit?: number,
+  ): Promise<number> {
+    return this.regionService.regenerateMinutesSummaries(body, limit);
+  }
+
+  /**
    * Get paginated meetings
    */
   @Public()
@@ -234,6 +251,30 @@ export class RegionResolver {
       agendaUrl: result.agendaUrl ?? undefined,
       videoUrl: result.videoUrl ?? undefined,
     };
+  }
+
+  /**
+   * Get paginated meeting minutes / journals with AI synopsis + claims (#813).
+   */
+  @Public()
+  @Query(() => PaginatedMinutes)
+  @Extensions({ complexity: 15 }) // Paginated list query
+  async minutesList(
+    @Args() { skip, take }: PaginationArgs,
+    @Args({ name: 'body', type: () => String, nullable: true }) body?: string,
+  ): Promise<PaginatedMinutes> {
+    return this.regionService.getMinutes(skip, take, body);
+  }
+
+  /**
+   * Get a single minutes document (with synopsis + claims) by ID (#813).
+   */
+  @Public()
+  @Query(() => MinutesModel, { nullable: true })
+  async minutes(
+    @Args({ name: 'id', type: () => ID }) id: string,
+  ): Promise<MinutesModel | null> {
+    return this.regionService.getMinutesById(id);
   }
 
   /**

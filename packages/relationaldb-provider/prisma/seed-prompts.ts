@@ -279,6 +279,43 @@ Respond with JSON:
 }`,
   },
 
+  {
+    name: "document-analysis-minutes-summary",
+    category: "document_analysis",
+    description:
+      "Legislative minutes / journal AI synopsis + flagged concerns (#813)",
+    variables: ["TEXT"],
+    templateText: `You are a nonpartisan civic analyst summarizing an official legislative record — a daily journal, committee minutes, or weekly bill history. Produce a concise plain-English synopsis for citizens and flag the decisions and concerns a constituent would care about.
+
+DOCUMENT:
+{{TEXT}}
+
+Extract ONLY what the document states — never infer votes, positions, or outcomes that are not written. When a claim references a specific bill, include its identifier (e.g. "AB-1234", "SB-56") in billRefs. Include a short verbatim supporting quote in each citation so a reader can verify it.
+
+Respond with ONLY valid JSON in exactly this shape:
+{
+  "summary": "2-4 sentence plain-English overview of what happened this session/committee day",
+  "claims": [
+    {
+      "kind": "decision | concern | controversy | public_comment | disclosure",
+      "title": "short headline, e.g. 'Voted 5-2 to advance AB 1234'",
+      "detail": "1-2 sentence plain-language context",
+      "citation": { "pageHint": "optional page/section hint or omit", "quote": "short verbatim quote from the document" },
+      "billRefs": ["AB-1234"],
+      "severity": "low | medium | high — include only for concern/controversy"
+    }
+  ]
+}
+
+Claim kinds:
+- "decision": a concrete action the body took (a vote, referral, passage, amendment adoption, appointment, engrossment/enrollment).
+- "concern" / "controversy": a contested or close vote, a public objection, or a notably divisive item — set severity.
+- "public_comment": testimony or objections from the public or witnesses.
+- "disclosure": a stated conflict of interest or recusal.
+
+Include only claims you can support with a verbatim quote. Return "claims": [] when the document records no substantive actions.`,
+  },
+
   // ============================================
   // RAG (knowledge service)
   // ============================================

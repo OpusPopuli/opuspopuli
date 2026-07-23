@@ -704,6 +704,44 @@
           }
         },
         {
+          "name": "Sync — Meetings Historical Backfill (Admin)",
+          "description": "Backfill the meetings pdf_archive sources (Assembly daily-journals + weekly-histories) with per-run overrides.\n\n- maxDocuments overrides pdfArchive.maxNew for this run — how many archive PDFs to ingest. Each journal is dense (~140 legislative actions) and is an LLM extraction, so a large value makes a long, heavy sync.\n- resetWatermark re-walks the archive from the top, ignoring the stored ingestion watermark (idempotent upserts; the watermark still advances afterward).\n\nUse this to backfill historical legislative actions, presence rolls (attendance), and committee hearings. Saves sync_job_id.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "const job = res.data && res.data.syncRegionData;",
+                  "if (job && job.jobId) {",
+                  "    pm.environment.set('sync_job_id', job.jobId);",
+                  "    console.log('sync_job_id saved:', job.jobId, '— status:', job.status);",
+                  "} else {",
+                  "    console.log('No jobId in response:', JSON.stringify(res));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $regionId: String, $maxDocuments: Int, $resetWatermark: Boolean) {\n  syncRegionData(dataTypes: $dataTypes, regionId: $regionId, maxDocuments: $maxDocuments, resetWatermark: $resetWatermark) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"MEETINGS\"],\n  \"regionId\": \"california\",\n  \"maxDocuments\": 25,\n  \"resetWatermark\": true\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
           "name": "Sync — County Reps, All Counties (Admin)",
           "description": "Sync Board of Supervisors for all 58 enabled CA county sub-regions. Saves sync_job_id.",
           "event": [
