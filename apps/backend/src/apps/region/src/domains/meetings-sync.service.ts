@@ -335,10 +335,12 @@ export class MeetingsSyncService {
   }
 
   /**
-   * Enqueue a minutes-summary job per minutes id (#813). Deduped by minutesId
-   * so repeated syncs don't pile up jobs for the same row. Returns the number
-   * enqueued; a no-op returning 0 when no QueueService is wired (e.g. unit
-   * tests / a region service without the worker stack).
+   * Enqueue a minutes-summary job per minutes id (#813). Normal ingest jobs are
+   * deduped by the row's own id so repeated syncs don't pile up jobs for the
+   * same row. A `force` run (operator backfill) omits the id so BullMQ always
+   * enqueues a fresh job even if a prior one is still retained. Returns the
+   * number enqueued; a no-op returning 0 when no QueueService is wired (e.g.
+   * unit tests / a region service without the worker stack).
    */
   private async enqueueSummaries(
     minutesIds: string[],
@@ -348,10 +350,13 @@ export class MeetingsSyncService {
     let enqueued = 0;
     for (const minutesId of minutesIds) {
       try {
+        // BullMQ custom job ids must NOT contain ':' (it's the internal key
+        // separator) — the row's UUID is used bare as the dedup id. force
+        // omits the id so a re-run isn't deduped against a retained job.
         await this.queueService.enqueue<MinutesSummaryJobData>(
           MINUTES_SUMMARY_QUEUE,
           { minutesId, force },
-          { jobId: `minutes-summary:${minutesId}` },
+          force ? undefined : { jobId: minutesId },
         );
         enqueued++;
       } catch (err) {

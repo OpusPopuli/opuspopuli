@@ -18,14 +18,20 @@ function build(rows: { id: string }[] = [{ id: 'a' }, { id: 'b' }]): Built {
 }
 
 describe('MeetingsSyncService.regenerateSummaries (#813)', () => {
-  it('enqueues a force job per matching minutes row', async () => {
+  it('enqueues a force job per matching minutes row (no deduped id, no colon)', async () => {
     const { svc, enqueue } = build();
     const n = await svc.regenerateSummaries();
     expect(n).toBe(2);
     expect(enqueue).toHaveBeenCalledTimes(2);
     // (queueName, data, opts)
     expect(enqueue.mock.calls[0][1]).toEqual({ minutesId: 'a', force: true });
-    expect(enqueue.mock.calls[0][2]).toEqual({ jobId: 'minutes-summary:a' });
+    // force omits the job id so a re-run isn't deduped against a retained job.
+    expect(enqueue.mock.calls[0][2]).toBeUndefined();
+    // Any custom job id must never contain ':' (BullMQ rejects it).
+    for (const call of enqueue.mock.calls) {
+      const jobId = call[2]?.jobId as string | undefined;
+      if (jobId) expect(jobId).not.toContain(':');
+    }
   });
 
   it('applies the body + limit filters to the query', async () => {
