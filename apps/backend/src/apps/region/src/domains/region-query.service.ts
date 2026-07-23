@@ -19,6 +19,13 @@ import {
 } from './models/proposition.model';
 import { PaginatedMeetings } from './models/meeting.model';
 import {
+  ClaimSeverityGQL,
+  MinutesClaimKindGQL,
+  MinutesModel,
+  PaginatedMinutes,
+} from './models/minutes.model';
+import type { MinutesSummaryClaim } from '@opuspopuli/common';
+import {
   BioClaimModel,
   CommitteeAssignmentModel,
   ContactInfoModel,
@@ -69,6 +76,58 @@ type MeetingRecord = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+const MINUTES_SELECT = {
+  id: true,
+  externalId: true,
+  body: true,
+  date: true,
+  summary: true,
+  summaryClaims: true,
+  sourceUrl: true,
+  pageCount: true,
+  parsedAt: true,
+} as const;
+
+type MinutesRecord = {
+  id: string;
+  externalId: string;
+  body: string;
+  date: Date;
+  summary: string | null;
+  summaryClaims: unknown;
+  sourceUrl: string;
+  pageCount: number | null;
+  parsedAt: Date | null;
+};
+
+/** Map a minutes row (summaryClaims is untyped JSON) to the GraphQL model. */
+function toMinutesModel(m: MinutesRecord): MinutesModel {
+  const claims = Array.isArray(m.summaryClaims)
+    ? (m.summaryClaims as MinutesSummaryClaim[]).map((c) => ({
+        kind: c.kind as unknown as MinutesClaimKindGQL,
+        title: c.title,
+        detail: c.detail,
+        citation: {
+          pageHint: c.citation?.pageHint,
+          quote: c.citation?.quote,
+        },
+        billRefs: c.billRefs ?? [],
+        severity: c.severity as unknown as ClaimSeverityGQL | undefined,
+      }))
+    : [];
+  return {
+    id: m.id,
+    externalId: m.externalId,
+    body: m.body,
+    date: m.date,
+    summary: m.summary ?? undefined,
+    claims,
+    sourceUrl: m.sourceUrl,
+    pageCount: m.pageCount ?? undefined,
+    parsedAt: m.parsedAt ?? undefined,
+  };
+}
 
 type PropositionRecord = {
   id: string;
@@ -538,6 +597,40 @@ export class RegionQueryService {
 
   async getMeeting(id: string) {
     return this.db.meeting.findUnique({ where: { id } });
+  }
+
+  // ─── Minutes ──────────────────────────────────────────────────────────────────
+
+  async getMinutes(
+    skip: number = 0,
+    take: number = 10,
+    body?: string,
+  ): Promise<PaginatedMinutes> {
+    const where = { isActive: true, ...(body ? { body } : {}) };
+    const [items, total] = await Promise.all([
+      this.db.minutes.findMany({
+        where,
+        orderBy: { date: 'desc' },
+        skip,
+        take: take + 1,
+        select: MINUTES_SELECT,
+      }),
+      this.db.minutes.count({ where }),
+    ]);
+    const hasMore = items.length > take;
+    return {
+      items: items.slice(0, take).map((m) => toMinutesModel(m)),
+      total,
+      hasMore,
+    };
+  }
+
+  async getMinutesById(id: string): Promise<MinutesModel | null> {
+    const m = await this.db.minutes.findUnique({
+      where: { id },
+      select: MINUTES_SELECT,
+    });
+    return m ? toMinutesModel(m) : null;
   }
 
   // ─── Representatives ──────────────────────────────────────────────────────────

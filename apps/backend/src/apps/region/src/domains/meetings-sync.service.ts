@@ -5,6 +5,11 @@ import type {
   Meeting,
   MinutesWithActions,
 } from '@opuspopuli/common';
+import {
+  MINUTES_SUMMARY_QUEUE,
+  QueueService,
+  type MinutesSummaryJobData,
+} from '@opuspopuli/queue-provider';
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { meetingSyncTracker, minutesSyncTracker } from './sync-phase-logger';
 import type { UpsertByExternalId } from './propositions-sync.service';
@@ -45,6 +50,8 @@ export class MeetingsSyncService {
     private readonly db: DbService,
     @Optional()
     private readonly legislativeActionLinker?: LegislativeActionLinkerService,
+    @Optional()
+    private readonly queueService?: QueueService,
   ) {}
 
   async sync(
@@ -280,11 +287,17 @@ export class MeetingsSyncService {
     }
 
     // ─── Phase 3/3 — summarize ─────────────────────────────────────
-    // AI synopsis generation is tracked in #813 and not yet wired —
-    // tracker fires as a no-op marker so the operator sees the phase.
-    const summarizeTracker = minutesSyncTracker(this.logger, 'summarize', 0, {
-      note: 'MinutesSummaryService not yet implemented — see #813',
-    });
+    // Enqueue an async AI-synopsis job per upserted minutes row (#813).
+    // Kept out of the ingest path (no inline LLM call) so the sync stays
+    // fast; MinutesSummaryService skips rows that already have a summary
+    // unless a job carries `force`. Deduped by minutesId so repeated syncs
+    // don't pile up jobs for the same row.
+    const enqueued = await this.enqueueSummaries(upsertedIds);
+    const summarizeTracker = minutesSyncTracker(
+      this.logger,
+      'summarize',
+      enqueued,
+    );
     summarizeTracker.complete();
 
     const created = bundles.filter(
@@ -295,5 +308,58 @@ export class MeetingsSyncService {
     ).length;
 
     return { processed: bundles.length, created, updated };
+  }
+
+  /**
+   * Operator backfill (#813): enqueue force-summary jobs for existing minutes
+   * rows (optionally filtered by chamber `body`, capped by `limit`). Returns
+   * the number enqueued. Used by the regenerateMinutesSummaries mutation to
+   * (re)generate synopses for already-ingested rows and after prompt tweaks.
+   */
+  async regenerateSummaries(body?: string, limit?: number): Promise<number> {
+    const where = {
+      isActive: true,
+      rawText: { not: null },
+      ...(body ? { body } : {}),
+    };
+    const rows = await this.db.minutes.findMany({
+      where,
+      select: { id: true },
+      orderBy: { date: 'desc' },
+      take: limit && limit > 0 ? limit : undefined,
+    });
+    return this.enqueueSummaries(
+      rows.map((r) => r.id),
+      true,
+    );
+  }
+
+  /**
+   * Enqueue a minutes-summary job per minutes id (#813). Deduped by minutesId
+   * so repeated syncs don't pile up jobs for the same row. Returns the number
+   * enqueued; a no-op returning 0 when no QueueService is wired (e.g. unit
+   * tests / a region service without the worker stack).
+   */
+  private async enqueueSummaries(
+    minutesIds: string[],
+    force = false,
+  ): Promise<number> {
+    if (!this.queueService || minutesIds.length === 0) return 0;
+    let enqueued = 0;
+    for (const minutesId of minutesIds) {
+      try {
+        await this.queueService.enqueue<MinutesSummaryJobData>(
+          MINUTES_SUMMARY_QUEUE,
+          { minutesId, force },
+          { jobId: `minutes-summary:${minutesId}` },
+        );
+        enqueued++;
+      } catch (err) {
+        this.logger.warn(
+          `Failed to enqueue minutes-summary for ${minutesId}: ${(err as Error).message}`,
+        );
+      }
+    }
+    return enqueued;
   }
 }

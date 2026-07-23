@@ -48,6 +48,7 @@ import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { EntityActivitySummaryGeneratorService } from './entity-activity-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
+import { MinutesSummaryService } from './minutes-summary.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { PropositionFundingService } from './proposition-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
@@ -212,6 +213,7 @@ const promptClientAsyncConfig = {
     CommitteeSummaryGeneratorService,
     EntityActivitySummaryGeneratorService,
     PropositionAnalysisService,
+    MinutesSummaryService,
     PropositionFinanceLinkerService,
     PropositionFundingService,
     LegislativeCommitteeLinkerService,
@@ -254,6 +256,7 @@ const promptClientAsyncConfig = {
     RegionQueryService,
     PipelineJobService,
     StructuralAnalysisJobService,
+    MinutesSummaryService,
     BoundaryLoaderService,
     QueueModule,
     ScrapingPipelineModule,

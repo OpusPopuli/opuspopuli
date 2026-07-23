@@ -915,6 +915,18 @@ export class RegionSyncService implements OnModuleDestroy {
     return this.propositionsSyncService.regenerate(id);
   }
 
+  /**
+   * Enqueue force-summary jobs for existing minutes rows (#813). Delegates to
+   * {@link MeetingsSyncService}. Returns the number of jobs enqueued.
+   */
+  async regenerateMinutesSummaries(
+    body?: string,
+    limit?: number,
+  ): Promise<number> {
+    if (!this.meetingsSyncService) return 0;
+    return this.meetingsSyncService.regenerateSummaries(body, limit);
+  }
+
   /** Delegates to {@link MeetingsSyncService} (#828 Step 2). */
   private async syncMeetings(
     provider: DataFetcher = this.regionService,

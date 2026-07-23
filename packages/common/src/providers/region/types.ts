@@ -274,13 +274,65 @@ export interface Minutes {
   sourceUrl: string;
   /** Full pdf-parse output. Capped ~256kB at write time. */
   rawText?: string;
-  /** V2 — AI-generated plain-language summary. */
+  /** V2 — AI-generated plain-language synopsis of the session/committee day. */
   summary?: string;
-  /** V2 — per-claim attribution into rawText for citizen-facing
-   *  "letter to representative with quote" features. Mirrors the
-   *  PropositionAnalysisClaim shape (sourceStart/sourceEnd offsets). */
-  summaryClaims?: PropositionAnalysisClaim[];
+  /** V2 — structured decisions + flagged concerns extracted from rawText,
+   *  each with a citation for verification (#813). */
+  summaryClaims?: MinutesSummaryClaim[];
   parsedAt?: Date;
+}
+
+/**
+ * Kind of claim surfaced from a minutes/journal AI synopsis — drives the
+ * frontend badge and filtering (#813).
+ */
+export type MinutesSummaryClaimKind =
+  | "decision"
+  | "concern"
+  | "controversy"
+  | "public_comment"
+  | "disclosure";
+
+/**
+ * Citation anchoring a {@link MinutesSummaryClaim} back into the minutes
+ * rawText, so a citizen-facing view can show the supporting passage.
+ */
+export interface MinutesSummaryCitation {
+  /** Optional page/section hint from the PDF, e.g. "p. 12". */
+  pageHint?: string;
+  /** Verbatim supporting quote from rawText. */
+  quote?: string;
+}
+
+/**
+ * A single structured claim extracted from a minutes document by the
+ * MinutesSummaryService — a decision the committee made or a concern worth
+ * flagging — with a citation back into rawText for verification (#813).
+ */
+export interface MinutesSummaryClaim {
+  /** What kind of claim this is. */
+  kind: MinutesSummaryClaimKind;
+  /** Short headline, e.g. "Voted 5-2 to advance AB 1234". */
+  title: string;
+  /** 1–2 sentence plain-language context. */
+  detail: string;
+  /** Citation back into the source for trust/verification. */
+  citation: MinutesSummaryCitation;
+  /** External IDs of bills referenced by this claim (links to bill data). */
+  billRefs?: string[];
+  /** Severity, meaningful for `concern` / `controversy` kinds. */
+  severity?: "low" | "medium" | "high";
+}
+
+/**
+ * Structured output of the minutes AI synopsis pass — written to
+ * `Minutes.summary` + `Minutes.summaryClaims` (#813).
+ */
+export interface MinutesSummaryResult {
+  /** 2–4 sentence plain-English overview of the session/committee day. */
+  summary: string;
+  /** Decisions + flagged concerns extracted from the minutes. */
+  claims: MinutesSummaryClaim[];
 }
 
 /**
