@@ -7,6 +7,7 @@ import {
   formatActionTypeLabel,
   actionTypeAccentClass,
 } from "@/lib/format-action";
+import { MinutesDisclosure } from "./MinutesDisclosure";
 
 /**
  * One activity-feed row. Renders a type-coded badge, the date,
@@ -73,6 +74,11 @@ export function ActionCard({
           </button>
         )}
       </div>
+      {/* Session synopsis + flagged concerns for the source journal (#932).
+          Full cards only — compact bill-batch chips stay dense. */}
+      {!compact && action.minutesId && (
+        <MinutesDisclosure minutesId={action.minutesId} />
+      )}
     </article>
   );
 }

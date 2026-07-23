@@ -343,6 +343,72 @@ export interface PaginatedLegislativeActions {
   hasMore: boolean;
 }
 
+// ============================================
+// MINUTES AI SYNOPSIS + CLAIMS (issue #932 — data from #813 / #926)
+// ============================================
+
+/**
+ * Category of a minutes summary claim. GraphQL `MinutesClaimKind` enum —
+ * the wire value is the SCREAMING_SNAKE key (backend maps to lowercase).
+ */
+export type MinutesClaimKind =
+  | "DECISION"
+  | "CONCERN"
+  | "CONTROVERSY"
+  | "PUBLIC_COMMENT"
+  | "DISCLOSURE";
+
+/** Severity of a flagged minutes concern. GraphQL `ClaimSeverity` enum. */
+export type ClaimSeverity = "LOW" | "MEDIUM" | "HIGH";
+
+/** Citation anchoring a claim back into the minutes source text. */
+export interface MinutesSummaryCitation {
+  /** Optional page/section hint from the PDF, e.g. "p. 12". */
+  pageHint?: string;
+  /** Verbatim supporting quote from the minutes text. */
+  quote?: string;
+}
+
+/**
+ * A structured decision or flagged concern extracted from a minutes
+ * document by MinutesSummaryService (#813). Rendered as a per-claim row
+ * (kind badge + severity + citation + bill links) mirroring BioClaims.
+ */
+export interface MinutesSummaryClaim {
+  kind: MinutesClaimKind;
+  /** Short headline, e.g. "Voted 5-2 to advance AB 1234". */
+  title: string;
+  /** 1-2 sentence plain-language context. */
+  detail: string;
+  citation: MinutesSummaryCitation;
+  /** External IDs of bills referenced — link to bill pages. */
+  billRefs: string[];
+  severity?: ClaimSeverity;
+}
+
+/**
+ * A meeting-minutes / journal document with its AI synopsis + claims (#813).
+ * `summary` is null and `claims` empty until MinutesSummaryService runs.
+ */
+export interface Minutes {
+  id: string;
+  externalId: string;
+  /** "Assembly" | "Senate". */
+  body: string;
+  date: string;
+  /** Plain-English synopsis — null until generated. */
+  summary?: string;
+  claims: MinutesSummaryClaim[];
+  sourceUrl: string;
+  pageCount?: number;
+  parsedAt?: string;
+}
+
+/** Result shape for GET_MINUTES (nullable — id may not resolve). */
+export interface MinutesData {
+  minutes: Minutes | null;
+}
+
 /**
  * At-a-glance counters for the rep detail page Layer 3
  * ("What They've Done"). Drives the top-of-L3 stats grid.
@@ -1398,6 +1464,35 @@ export const GET_MINUTES_PASSAGE = gql`
       passageEnd
       passageText
       sectionContext
+    }
+  }
+`;
+
+/**
+ * A single minutes / journal document with its AI synopsis + structured
+ * claims (#813). Lazy-loaded on demand from an ActionCard when the action
+ * carries a `minutesId`. Reuses the shared `IdVars` variables type.
+ */
+export const GET_MINUTES = gql`
+  query GetMinutes($id: ID!) {
+    minutes(id: $id) {
+      id
+      externalId
+      body
+      date
+      summary
+      sourceUrl
+      claims {
+        kind
+        title
+        detail
+        severity
+        billRefs
+        citation {
+          pageHint
+          quote
+        }
+      }
     }
   }
 `;

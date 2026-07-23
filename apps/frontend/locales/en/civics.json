@@ -41,5 +41,40 @@
     "title": "How Your Government Works",
     "subtitle": "A plain-language guide to {{regionName}}'s legislative process",
     "noData": "Civics data is still being indexed. Check back soon."
+  },
+  "minutes": {
+    "disclosure": {
+      "show": "Session synopsis & concerns",
+      "hide": "Hide session synopsis",
+      "loading": "Loading synopsis…",
+      "error": "Couldn't load the session synopsis. Try again.",
+      "empty": "No AI synopsis has been generated for this session yet."
+    },
+    "aiPanel": {
+      "badge": "AI-generated",
+      "heading": "Session synopsis",
+      "disclaimer": "May contain inaccuracies — verify against the source journal before citing."
+    },
+    "claims": {
+      "heading": "Decisions & flagged items",
+      "empty": "No structured decisions or concerns were extracted for this session.",
+      "billRefsLabel": "Bills"
+    },
+    "claimKind": {
+      "decision": "Decision",
+      "concern": "Concern",
+      "controversy": "Controversy",
+      "publicComment": "Public comment",
+      "disclosure": "Disclosure"
+    },
+    "severity": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "concerns": {
+      "badge_one": "{{count}} concern",
+      "badge_other": "{{count}} concerns"
+    }
   }
 }
