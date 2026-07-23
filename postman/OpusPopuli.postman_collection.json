@@ -742,6 +742,26 @@
           }
         },
         {
+          "name": "Regenerate Minutes Summaries (Admin)",
+          "description": "Enqueue AI-synopsis (re)generation for existing minutes rows (#813). Optionally filter by chamber via `body` (\"Assembly\" | \"Senate\") and cap with `limit`. Returns the number of jobs enqueued; the minutes-summary worker fans out and MinutesSummaryService writes minutes.summary + summary_claims. Use to backfill synopses over the historical corpus or re-run after a prompt tweak (force is applied). Requires an admin session.",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation RegenerateMinutesSummaries($body: String, $limit: Int) {\n  regenerateMinutesSummaries(body: $body, limit: $limit)\n}",
+                "variables": "{\n  \"limit\": 50\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
           "name": "Sync — County Reps, All Counties (Admin)",
           "description": "Sync Board of Supervisors for all 58 enabled CA county sub-regions. Saves sync_job_id.",
           "event": [
