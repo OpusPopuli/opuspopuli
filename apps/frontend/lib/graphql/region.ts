@@ -397,7 +397,7 @@ export interface Minutes {
   body: string;
   date: string;
   /** Plain-English synopsis — null until generated. */
-  summary?: string;
+  summary?: string | null;
   claims: MinutesSummaryClaim[];
   sourceUrl: string;
   pageCount?: number;
@@ -1477,11 +1477,7 @@ export const GET_MINUTES = gql`
   query GetMinutes($id: ID!) {
     minutes(id: $id) {
       id
-      externalId
-      body
-      date
       summary
-      sourceUrl
       claims {
         kind
         title

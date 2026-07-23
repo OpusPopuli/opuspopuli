@@ -45,7 +45,7 @@ function ClaimRow({
       )}
       {claim.billRefs.length > 0 && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] uppercase tracking-wide text-slate-500">
+          <span className="text-[11px] uppercase tracking-wide text-slate-600">
             {billsLabel}
           </span>
           {claim.billRefs.map((ref) => (

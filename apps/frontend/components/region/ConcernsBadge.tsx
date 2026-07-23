@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 
 import type { ClaimSeverity, MinutesSummaryClaim } from "@/lib/graphql/region";
 
+import { SEVERITY_STYLES } from "./claim-severity";
+
 /**
  * At-a-glance badge aggregating a session's `concern` + `controversy` claims
  * (#932): a count plus a colour keyed to the highest severity present, so a
@@ -15,12 +17,6 @@ const SEVERITY_RANK: Record<ClaimSeverity, number> = {
   LOW: 1,
   MEDIUM: 2,
   HIGH: 3,
-};
-
-const BADGE_STYLE: Record<ClaimSeverity, string> = {
-  LOW: "bg-green-100 text-green-800",
-  MEDIUM: "bg-amber-100 text-amber-800",
-  HIGH: "bg-red-100 text-red-800",
 };
 
 function highestSeverity(
@@ -43,7 +39,7 @@ export function ConcernsBadge({
   );
   if (flagged.length === 0) return null;
 
-  const style = BADGE_STYLE[highestSeverity(flagged)];
+  const style = SEVERITY_STYLES[highestSeverity(flagged)];
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${style}`}

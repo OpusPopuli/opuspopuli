@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 
 import type { ClaimSeverity, MinutesClaimKind } from "@/lib/graphql/region";
 
+import { SEVERITY_STYLES } from "./claim-severity";
+
 /**
  * Badges for a minutes summary claim (#932). `ClaimKindBadge` colour-codes the
  * claim category (decision / concern / controversy / public comment /
@@ -42,12 +44,6 @@ export function ClaimKindBadge({ kind }: { readonly kind: MinutesClaimKind }) {
     </span>
   );
 }
-
-const SEVERITY_STYLES: Record<ClaimSeverity, string> = {
-  LOW: "bg-green-100 text-green-800",
-  MEDIUM: "bg-amber-100 text-amber-800",
-  HIGH: "bg-red-100 text-red-800",
-};
 
 const SEVERITY_I18N_KEY: Record<ClaimSeverity, string> = {
   LOW: "low",

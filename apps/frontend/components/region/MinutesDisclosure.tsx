@@ -60,12 +60,14 @@ export function MinutesDisclosure({
   const toggle = () => {
     const next = !open;
     setOpen(next);
-    if (next && !called) void load({ variables: { id: minutesId } });
+    // Fetch on first expand; also re-fire after a failed load so the "Try
+    // again" copy is actionable (a prior error leaves `called` true).
+    if (next && (!called || error)) {
+      void load({ variables: { id: minutesId } });
+    }
   };
 
-  // Apollo types lazy `data` as possibly-partial; the query selects every
-  // field the panel renders, so a full-shape narrowing is safe.
-  const minutes = data?.minutes as Minutes | null | undefined;
+  const minutes = data?.minutes;
   return (
     <div className="mt-3 border-t border-slate-100 pt-3">
       <button
@@ -78,23 +80,23 @@ export function MinutesDisclosure({
         <span aria-hidden="true">{open ? "▾" : "▸"}</span>
         {open ? t("minutes.disclosure.hide") : t("minutes.disclosure.show")}
       </button>
-      {open && (
-        <div id={panelId} className="mt-3 space-y-3">
-          {loading && (
-            <p className="text-sm text-content-dim italic">
-              {t("minutes.disclosure.loading")}
-            </p>
-          )}
-          {error && (
-            <p className="text-sm text-red-700">
-              {t("minutes.disclosure.error")}
-            </p>
-          )}
-          {!loading && !error && minutes && (
-            <MinutesPanelBody minutes={minutes} />
-          )}
-        </div>
-      )}
+      {/* Panel always present (with a stable id) so `aria-controls` resolves
+          even while collapsed; `hidden` toggles visibility for AT + sighted. */}
+      <div id={panelId} hidden={!open} className="mt-3 space-y-3">
+        {open && loading && (
+          <p className="text-sm text-content-dim italic">
+            {t("minutes.disclosure.loading")}
+          </p>
+        )}
+        {open && error && (
+          <p className="text-sm text-red-700">
+            {t("minutes.disclosure.error")}
+          </p>
+        )}
+        {open && !loading && !error && minutes && (
+          <MinutesPanelBody minutes={minutes} />
+        )}
+      </div>
     </div>
   );
 }

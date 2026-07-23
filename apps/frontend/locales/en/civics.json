@@ -56,7 +56,6 @@
       "disclaimer": "May contain inaccuracies — verify against the source journal before citing."
     },
     "claims": {
-      "heading": "Decisions & flagged items",
       "empty": "No structured decisions or concerns were extracted for this session.",
       "billRefsLabel": "Bills"
     },
