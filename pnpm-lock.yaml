@@ -189,8 +189,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/region-provider
       '@opuspopuli/regions':
-        specifier: ^1.0.71
-        version: 1.0.71
+        specifier: ^1.0.72
+        version: 1.0.72
       '@opuspopuli/relationaldb-provider':
         specifier: workspace:*
         version: link:../../packages/relationaldb-provider
@@ -1008,8 +1008,8 @@ importers:
         specifier: workspace:*
         version: link:../config-provider
       '@opuspopuli/regions':
-        specifier: ^1.0.71
-        version: 1.0.71
+        specifier: ^1.0.72
+        version: 1.0.72
     devDependencies:
       '@nestjs/common':
         specifier: ^11.1.9
@@ -4912,8 +4912,8 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.1.0
 
-  '@opuspopuli/regions@1.0.71':
-    resolution: {integrity: sha512-LdTEIOoliUg1tWgiGvAxHFB+R4Q38IyeAH4T1cMMglGBA5esQjhc0uy1VfN4w8CqMpYlfopowG7QE9ROo8h/mA==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.71/505d649ceb4c36ddfd78692a2fc6d203bdfcdd03}
+  '@opuspopuli/regions@1.0.72':
+    resolution: {integrity: sha512-zur6I0JM0dReOk1wklbB36llvAbalZdzmSsLpiy2yYmI5eZHGeXvMk1JyV5NBIZIv+eh8+z57ZVxthpIYAw1PQ==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.72/bb277b2ecc3ed9af58d3c91bb7bb34549feb240d}
     hasBin: true
 
   '@paralleldrive/cuid2@2.3.1':
@@ -16587,7 +16587,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.6.1(@opentelemetry/api@1.9.1)
 
-  '@opuspopuli/regions@1.0.71':
+  '@opuspopuli/regions@1.0.72':
     dependencies:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
@@ -20891,7 +20891,7 @@ snapshots:
       jsonwebtoken: 9.0.3
       load-esm: 1.0.3
       mime-types: 2.1.35
-      retry-axios: 2.6.0(axios@1.18.1)
+      retry-axios: 2.6.0(axios@1.18.1(debug@4.4.3))
       tough-cookie: 4.1.4
     transitivePeerDependencies:
       - supports-color
@@ -23600,7 +23600,7 @@ snapshots:
       onetime: 7.0.0
       signal-exit: 4.1.0
 
-  retry-axios@2.6.0(axios@1.18.1):
+  retry-axios@2.6.0(axios@1.18.1(debug@4.4.3)):
     dependencies:
       axios: 1.18.1(debug@4.4.3)
 
