@@ -887,6 +887,66 @@ export const GET_PROPOSITION_FUNDING = gql`
   }
 `;
 
+// ============================================
+// REPRESENTATIVE FUNDING — the money trail (issue #943 / epic #936)
+// ============================================
+
+/** Aggregated giving by donor employer — the industry / conflict-of-interest lens. */
+export interface FinanceTopEmployer {
+  employer: string;
+  totalAmount: number;
+  contributionCount: number;
+}
+
+/**
+ * Campaign finance aggregated across the committees linked to a representative
+ * (by the candidate-committee linker, #941). Empty-shaped until a rep has
+ * linked committees + a finance sync has run.
+ */
+export interface RepresentativeFunding {
+  representativeId: string;
+  asOf: string;
+  totalRaised: number;
+  totalSpent: number;
+  donorCount: number;
+  committeeCount: number;
+  topDonors: TopDonor[];
+  topEmployers: FinanceTopEmployer[];
+  committees: CommitteeSummaryFunding[];
+}
+
+export interface RepresentativeFundingData {
+  representativeFunding: RepresentativeFunding | null;
+}
+
+export const GET_REPRESENTATIVE_FUNDING = gql`
+  query GetRepresentativeFunding($id: ID!) {
+    representativeFunding(id: $id) {
+      representativeId
+      asOf
+      totalRaised
+      totalSpent
+      donorCount
+      committeeCount
+      topDonors {
+        donorName
+        totalAmount
+        contributionCount
+      }
+      topEmployers {
+        employer
+        totalAmount
+        contributionCount
+      }
+      committees {
+        id
+        name
+        totalRaised
+      }
+    }
+  }
+`;
+
 export const REGENERATE_PROPOSITION_ANALYSIS = gql`
   mutation RegeneratePropositionAnalysis($id: ID!) {
     regeneratePropositionAnalysis(id: $id) {

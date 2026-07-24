@@ -24,6 +24,7 @@ import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
 import { PartyBadge } from "@/components/region/PartyBadge";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { ComingSoon } from "@/components/region/ComingSoon";
+import { RepresentativeFundingPanel } from "@/components/region/RepresentativeFundingPanel";
 import { LayerButton } from "@/components/region/LayerButton";
 import { LayerNav } from "@/components/region/LayerNav";
 import { ActivityStats } from "@/components/region/ActivityStats";
@@ -659,10 +660,7 @@ function HowTheyAreSupported({
     <div className="animate-layer-enter">
       <div className="mb-8">
         <SectionTitle>Campaign Finance</SectionTitle>
-        <ComingSoon
-          title="Coming Soon"
-          description="Top contributors, total raised, expenditures, and independent spending supporting or opposing this representative. Tracked in #566."
-        />
+        <RepresentativeFundingPanel representativeId={rep.id} />
       </div>
 
       <div className="bg-surface-alt rounded-lg border-l-4 border-content p-6 mb-8">
