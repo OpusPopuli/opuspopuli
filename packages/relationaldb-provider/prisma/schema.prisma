@@ -1020,6 +1020,7 @@ model Representative {
   billCoAuthorships    BillCoAuthor[]
   billVotes            BillVote[]
   relevanceCache       RepresentativeRelevanceCache[]
+  financeCommittees    Committee[]
 
   @@index([name])
   @@index([lastName])
@@ -1654,6 +1655,10 @@ model Committee {
   candidateName   String?   @map("candidate_name")
   candidateOffice String?   @map("candidate_office")
   propositionId   String?   @map("proposition_id")
+  /// Resolved by the candidate-committee → representative linker from
+  /// candidateName + candidateOffice (#941). Null for non-candidate committees
+  /// or when the candidate doesn't match a tracked representative.
+  representativeId String?  @map("representative_id")
   party           String?   @db.VarChar(50)
   status          String    @default("active") @db.VarChar(20)
   sourceSystem    String    @map("source_system") @db.VarChar(20) /// cal_access, fec
@@ -1666,11 +1671,13 @@ model Committee {
   expenditures            Expenditure[]
   independentExpenditures IndependentExpenditure[]
   measurePositions        CommitteeMeasurePosition[]
+  representative          Representative? @relation(fields: [representativeId], references: [id], onDelete: SetNull)
 
   @@index([name])
   @@index([type])
   @@index([sourceSystem])
   @@index([propositionId])
+  @@index([representativeId])
   @@map("committees")
 }
 
