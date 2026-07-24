@@ -19,6 +19,7 @@ import {
   type Contribution,
   type Expenditure,
   type IndependentExpenditure,
+  type CommitteeMeasureFiling,
   type RawExtractionResult,
   type ExtractionResult,
   type DataSourceConfig,
@@ -78,6 +79,7 @@ export class DomainMapperService {
     | Contribution
     | Expenditure
     | IndependentExpenditure
+    | CommitteeMeasureFiling
     | null {
     switch (source.dataType) {
       case DataType.PROPOSITIONS:
@@ -99,13 +101,27 @@ export class DomainMapperService {
   private mapCampaignFinanceItem(
     record: Record<string, unknown>,
     category?: string,
-  ): Committee | Contribution | Expenditure | IndependentExpenditure | null {
+  ):
+    | Committee
+    | Contribution
+    | Expenditure
+    | IndependentExpenditure
+    | CommitteeMeasureFiling
+    | null {
     const cat = (category ?? "").toLowerCase();
 
-    if (cat.includes("committee")) {
-      return this.mapCommittee(record);
+    // CVR2 / Form 410 ballot-measure declarations MUST be checked before the
+    // generic "committee" branch: the CA source category is "CAL-ACCESS
+    // Committee Positions", which also contains "committee" and would
+    // otherwise misroute to mapCommittee and be rejected for having no `name`
+    // — the reason cvr2_filings sat at 0 and no committee→measure link ever
+    // formed (#936).
+    if (cat.includes("committee position") || cat.includes("cvr2")) {
+      return this.mapCommitteeMeasureFiling(record);
     } else if (cat.includes("independent") || cat.includes("s496")) {
       return this.mapIndependentExpenditure(record);
+    } else if (cat.includes("committee")) {
+      return this.mapCommittee(record);
     } else if (cat.includes("expenditure")) {
       return this.mapExpenditure(record);
     } else if (cat.includes("contribution")) {
@@ -208,6 +224,27 @@ export class DomainMapperService {
       return null;
     }
     return result.data;
+  }
+
+  private mapCommitteeMeasureFiling(
+    record: Record<string, unknown>,
+  ): CommitteeMeasureFiling | null {
+    const result = CommitteeMeasureFilingSchema.safeParse(record);
+    if (!result.success) {
+      this.logger.debug(
+        `Committee measure filing validation failed: ${result.error.message}`,
+      );
+      return null;
+    }
+    const filing = result.data;
+    // Most CVR2 rows are non-ballot entity declarations. Only ballot-measure
+    // declarations (a ballotName or ballotNumber) are useful — the
+    // proposition-finance-linker resolves by those — so drop the rest here
+    // rather than persisting noise the linker would skip anyway. #936.
+    if (!filing.ballotName && !filing.ballotNumber) {
+      return null;
+    }
+    return filing;
   }
 
   private mapContribution(
@@ -689,10 +726,57 @@ const donorTypeTransform = (val: string | undefined) => {
   return "other" as const;
 };
 
+// FEC (CMTE_TP) + CAL-ACCESS (CMTTE_TYPE) committee-type codes → CommitteeType
+// (#940). Without this, roster records carry raw codes that z.nativeEnum would
+// reject — dropping the whole committee — so everything defaulted to OTHER.
+// An already-canonical value (e.g. "candidate") passes through unchanged.
+const committeeTypeTransform = (val: string | undefined): CommitteeType => {
+  if (!val) return CommitteeType.OTHER;
+  const lower = val.toLowerCase().trim();
+  if ((Object.values(CommitteeType) as string[]).includes(lower)) {
+    return lower as CommitteeType;
+  }
+  switch (val.toUpperCase().trim()) {
+    // FEC CMTE_TP
+    case "P": // presidential
+    case "H": // house
+    case "S": // senate
+      return CommitteeType.CANDIDATE;
+    case "N": // non-qualified PAC
+    case "Q": // qualified PAC
+    case "V": // hybrid PAC (non-qualified)
+    case "W": // hybrid PAC (qualified)
+      return CommitteeType.PAC;
+    case "O": // super PAC (independent-expenditure-only)
+    case "U": // single-candidate super PAC
+      return CommitteeType.SUPER_PAC;
+    case "X": // party (non-qualified)
+    case "Y": // party (qualified)
+    case "Z": // national party organization
+      return CommitteeType.PARTY;
+    // CAL-ACCESS CMTTE_TYPE
+    case "CTL": // controlled (candidate-controlled)
+    case "CAO": // candidate/officeholder
+      return CommitteeType.CANDIDATE;
+    case "BMC": // ballot-measure committee
+      return CommitteeType.BALLOT_MEASURE;
+    case "RCP": // recipient committee
+    case "GPC": // general-purpose committee
+      return CommitteeType.PAC;
+    case "PTY": // political party
+      return CommitteeType.PARTY;
+    default:
+      return CommitteeType.OTHER;
+  }
+};
+
 const CommitteeSchema = z.object({
   externalId: z.string().min(1),
   name: z.string().min(1),
-  type: z.nativeEnum(CommitteeType).default(CommitteeType.OTHER),
+  type: z
+    .string()
+    .optional()
+    .transform((v) => committeeTypeTransform(v)),
   candidateName: z.string().optional(),
   candidateOffice: z.string().optional(),
   propositionId: z.string().optional(),
@@ -833,5 +917,36 @@ const IndependentExpenditureSchema = z.object({
     .nullable()
     .transform((v) => v ?? undefined)
     .optional(),
+  sourceSystem: z.enum(["cal_access", "fec"]),
+});
+
+// CVR2 / Form 410 ballot-measure declaration (#936). externalId + filingId are
+// required; ballot fields are optional at the schema level, but
+// mapCommitteeMeasureFiling drops any row carrying neither a ballotName nor a
+// ballotNumber — only ballot-measure declarations are useful for the
+// proposition-finance-linker, which resolves by ballotName/ballotNumber.
+const CommitteeMeasureFilingSchema = z.object({
+  externalId: z.string().min(1),
+  filingId: z.string().min(1),
+  ballotName: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  ballotNumber: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  ballotJurisdiction: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  supportOrOppose: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((val) => (val ? supportOpposeTransform(val) : undefined)),
   sourceSystem: z.enum(["cal_access", "fec"]),
 });
