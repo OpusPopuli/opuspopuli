@@ -757,5 +757,76 @@ describe("BulkDownloadHandler", () => {
       expect(onBatch).toHaveBeenCalledTimes(3);
       expect(result.itemCount).toBe(5);
     });
+
+    // #950: multiple bulk sources share one archive URL (all CAL-ACCESS
+    // tables come from dbwebexport.zip). The execution identity must include
+    // the extracted filePattern, else same-URL sources collide on one
+    // checkpoint and every source after the first skips its whole stream.
+    function createArchiveSource(filePattern: string) {
+      return createSource({
+        url: "https://example.com/dbwebexport.zip",
+        bulk: {
+          format: "csv", // filePattern drives the tracked identity regardless of format
+          filePattern,
+          columnMappings: { CMTE_ID: "committeeId", NAME: "donorName" },
+          batchSize: 2,
+        },
+      });
+    }
+
+    it("encodes filePattern into the tracked identity for shared-archive sources (#950)", async () => {
+      const tracker = createTracker(new Set());
+      handler = new BulkDownloadHandler(mapper, tracker);
+
+      await handler.execute(
+        createArchiveSource("RCPT_CD.TSV"),
+        "california",
+        jest.fn().mockResolvedValue(undefined),
+        "job-1",
+      );
+
+      expect(tracker.startExecution).toHaveBeenCalledWith({
+        pipelineJobId: "job-1",
+        regionId: "california",
+        sourceUrl: "https://example.com/dbwebexport.zip#RCPT_CD.TSV",
+        dataType: "campaign_finance",
+      });
+    });
+
+    it("gives same-URL sources distinct tracked identities so neither skips the other's batches (#950)", async () => {
+      const tracker = createTracker(new Set());
+      handler = new BulkDownloadHandler(mapper, tracker);
+
+      // Fresh stream per call — a stream is consumed once, and this test
+      // runs two executes.
+      (globalThis.fetch as jest.Mock).mockImplementation(() =>
+        Promise.resolve(mockStreamResponse(csvContent)),
+      );
+
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+      // Two files from the SAME archive URL — the exact CAL-ACCESS shape.
+      await handler.execute(
+        createArchiveSource("RCPT_CD.TSV"),
+        "california",
+        onBatch,
+        "job-1",
+      );
+      await handler.execute(
+        createArchiveSource("CVR_CAMPAIGN_DISCLOSURE_CD.TSV"),
+        "california",
+        onBatch,
+        "job-1",
+      );
+
+      const trackedUrls = tracker.startExecution.mock.calls.map(
+        (c) => (c[0] as { sourceUrl: string }).sourceUrl,
+      );
+      expect(trackedUrls).toEqual([
+        "https://example.com/dbwebexport.zip#RCPT_CD.TSV",
+        "https://example.com/dbwebexport.zip#CVR_CAMPAIGN_DISCLOSURE_CD.TSV",
+      ]);
+      // Both sources fully ingested (3 batches each) — no cross-source skip.
+      expect(onBatch).toHaveBeenCalledTimes(6);
+    });
   });
 });
