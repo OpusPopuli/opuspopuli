@@ -22,7 +22,7 @@ function build(opts: {
     _sum: { amount: unknown };
     _count: { _all: number };
   }[];
-  distinctDonors?: { donorName: string }[];
+  donorCount?: number;
   perCommittee?: { committeeId: string; _sum: { amount: unknown } }[];
 }) {
   const groupBy = jest.fn((args: GroupByArgs) => {
@@ -42,13 +42,14 @@ function build(opts: {
         _sum: { amount: dec(opts.contributionSum ?? 0) },
       }),
       groupBy,
-      findMany: jest.fn().mockResolvedValue(opts.distinctDonors ?? []),
     },
     expenditure: {
       aggregate: jest
         .fn()
         .mockResolvedValue({ _sum: { amount: dec(opts.expenditureSum ?? 0) } }),
     },
+    // $queryRaw is a tagged-template fn — return the DB-side distinct count.
+    $queryRaw: jest.fn().mockResolvedValue([{ count: opts.donorCount ?? 0 }]),
   } as unknown as DbService;
   return new RepresentativeFundingService(db);
 }
@@ -88,7 +89,7 @@ describe('RepresentativeFundingService (#943)', () => {
           _count: { _all: 2 },
         },
       ],
-      distinctDonors: [{ donorName: 'ACME PAC' }, { donorName: 'Jane' }],
+      donorCount: 2,
       perCommittee: [{ committeeId: 'c1', _sum: { amount: dec(1000) } }],
     });
 
@@ -135,5 +136,47 @@ describe('RepresentativeFundingService (#943)', () => {
     const f = await svc.getFunding('rep-1');
     expect(f.committeeCount).toBe(0);
     expect(f.topDonors).toEqual([]);
+  });
+
+  it('serves a cached result and revives the asOf Date without recomputing', async () => {
+    const cached = {
+      representativeId: 'rep-1',
+      asOf: '2026-07-24T00:00:00.000Z',
+      totalRaised: 500,
+      totalSpent: 100,
+      donorCount: 10,
+      committeeCount: 1,
+      topDonors: [],
+      topEmployers: [],
+      committees: [],
+    };
+    const committeeFindMany = jest.fn();
+    const cache = {
+      get: jest.fn().mockResolvedValue(JSON.stringify(cached)),
+      set: jest.fn(),
+    };
+    const db = {
+      committee: { findMany: committeeFindMany },
+    } as unknown as DbService;
+    const svc = new RepresentativeFundingService(db, cache as unknown as never);
+
+    const f = await svc.getFunding('rep-1');
+    expect(committeeFindMany).not.toHaveBeenCalled(); // cache hit → no compute
+    expect(f.asOf).toBeInstanceOf(Date);
+    expect(f.totalRaised).toBe(500);
+  });
+
+  it('does not cache an empty-shaped result (so a freshly-linked rep is not stuck empty)', async () => {
+    const cache = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn(),
+    };
+    const db = {
+      committee: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as DbService;
+    const svc = new RepresentativeFundingService(db, cache as unknown as never);
+
+    await svc.getFunding('rep-1');
+    expect(cache.set).not.toHaveBeenCalled();
   });
 });

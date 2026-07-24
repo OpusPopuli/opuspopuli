@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
 
@@ -9,11 +10,7 @@ import {
   type IdVars,
 } from "@/lib/graphql/region";
 
-const usd = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
+type Formatter = (n: number) => string;
 
 /**
  * The rep-page "money trail" (#943, epic #936). Aggregates the campaign finance
@@ -26,7 +23,18 @@ export function RepresentativeFundingPanel({
 }: {
   readonly representativeId: string;
 }) {
-  const { t } = useTranslation("civics");
+  const { t, i18n } = useTranslation("civics");
+  // Currency is USD (US campaign finance) but grouping follows the active
+  // locale so the ES surface reads naturally.
+  const usd = useMemo<Intl.NumberFormat>(
+    () =>
+      new Intl.NumberFormat(i18n.language || "en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0,
+      }),
+    [i18n.language],
+  );
   const { data, loading } = useQuery<RepresentativeFundingData, IdVars>(
     GET_REPRESENTATIVE_FUNDING,
     { variables: { id: representativeId }, fetchPolicy: "cache-and-network" },
@@ -78,6 +86,7 @@ export function RepresentativeFundingPanel({
             amount: d.totalAmount,
             count: d.contributionCount,
           }))}
+          format={usd.format}
           countLabel={(n) => t("repFinance.contributions", { count: n })}
         />
       )}
@@ -91,6 +100,7 @@ export function RepresentativeFundingPanel({
             amount: e.totalAmount,
             count: e.contributionCount,
           }))}
+          format={usd.format}
           countLabel={(n) => t("repFinance.contributions", { count: n })}
         />
       )}
@@ -103,6 +113,7 @@ export function RepresentativeFundingPanel({
             name: c.name,
             amount: c.totalRaised,
           }))}
+          format={usd.format}
         />
       )}
 
@@ -135,6 +146,7 @@ function Stat({
 function MoneyList({
   heading,
   rows,
+  format,
   countLabel,
 }: {
   readonly heading: string;
@@ -144,6 +156,7 @@ function MoneyList({
     amount: number;
     count?: number;
   }[];
+  readonly format: Formatter;
   readonly countLabel?: (n: number) => string;
 }) {
   return (
@@ -160,7 +173,7 @@ function MoneyList({
             <span className="text-content truncate">{r.name}</span>
             <span className="flex-shrink-0 text-content-dim tabular-nums">
               <span className="font-semibold text-content">
-                {usd.format(r.amount)}
+                {format(r.amount)}
               </span>
               {countLabel && r.count != null && (
                 <span className="text-[11px] text-content-dim">

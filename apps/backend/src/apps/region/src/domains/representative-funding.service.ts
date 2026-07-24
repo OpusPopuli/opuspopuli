@@ -63,7 +63,12 @@ export class RepresentativeFundingService {
       return parsed;
     }
     const fresh = await this.computeFunding(representativeId);
-    await this.cache?.set(cacheKey, JSON.stringify(fresh));
+    // Don't cache the empty-shaped result: a rep freshly attributed committees
+    // by the linker (#941) + a finance sync would otherwise stay empty until
+    // the 4h TTL expires. Populated results are safe to cache.
+    if (fresh.committeeCount > 0) {
+      await this.cache?.set(cacheKey, JSON.stringify(fresh));
+    }
     return fresh;
   }
 
@@ -85,7 +90,7 @@ export class RepresentativeFundingService {
       expenditureAgg,
       donorAgg,
       employerAgg,
-      uniqueDonors,
+      donorCountRows,
       perCommittee,
     ] = await Promise.all([
       this.db.contribution.aggregate({ where, _sum: { amount: true } }),
@@ -106,11 +111,15 @@ export class RepresentativeFundingService {
         orderBy: { _sum: { amount: 'desc' } },
         take: TOP_EMPLOYERS_LIMIT,
       }),
-      this.db.contribution.findMany({
-        where,
-        distinct: ['donorName'],
-        select: { donorName: true },
-      }),
+      // DB-side distinct count — returns a single row instead of materializing
+      // every distinct donor name just to `.length` it (the @Public endpoint
+      // could otherwise force a large unbounded scan). committeeIds are bound
+      // via Prisma.join, so this is parameterized.
+      this.db.$queryRaw<{ count: number }[]>`
+        SELECT COUNT(DISTINCT donor_name)::int AS count
+        FROM contributions
+        WHERE committee_id IN (${Prisma.join(committeeIds)})
+      `,
       this.db.contribution.groupBy({
         by: ['committeeId'],
         where,
@@ -127,7 +136,7 @@ export class RepresentativeFundingService {
       asOf: new Date(),
       totalRaised: toNumber(contributionAgg._sum.amount),
       totalSpent: toNumber(expenditureAgg._sum.amount),
-      donorCount: uniqueDonors.length,
+      donorCount: donorCountRows[0]?.count ?? 0,
       committeeCount: committees.length,
       topDonors: donorAgg.map((d) => ({
         donorName: d.donorName,
@@ -141,11 +150,14 @@ export class RepresentativeFundingService {
           totalAmount: toNumber(e._sum.amount),
           contributionCount: e._count._all,
         })),
-      committees: committees.map((c) => ({
-        id: c.id,
-        name: c.name,
-        totalRaised: raisedByCommittee.get(c.id) ?? 0,
-      })),
+      // Ordered by money so the "flows through" list is meaningful + stable.
+      committees: committees
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          totalRaised: raisedByCommittee.get(c.id) ?? 0,
+        }))
+        .sort((a, b) => b.totalRaised - a.totalRaised),
     };
   }
 
