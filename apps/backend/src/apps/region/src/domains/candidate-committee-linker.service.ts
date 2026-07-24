@@ -48,6 +48,9 @@ export class CandidateCommitteeLinkerService {
         type: 'candidate',
         candidateName: { not: null },
         representativeId: null,
+        // Only CAL-ACCESS (state) committees carry ASM/SEN offices that map to
+        // our tracked legislators; skip the recurring no-op scan over FEC rows.
+        sourceSystem: 'cal_access',
         deletedAt: null,
       },
       select: { id: true, candidateName: true, candidateOffice: true },
@@ -59,7 +62,10 @@ export class CandidateCommitteeLinkerService {
 
     for (const c of committees) {
       const chamber = this.officeToChamber(c.candidateOffice);
-      const key = chamber ? this.repKey(c.candidateName ?? '', chamber) : null;
+      // candidateName is CAL-ACCESS CAND_NAML (last name); defensively take the
+      // portion before a comma in case a filing carries "Last, First".
+      const last = (c.candidateName ?? '').split(',')[0];
+      const key = chamber ? this.repKey(last, chamber) : null;
       const hit = key ? repIndex.get(key) : undefined;
       if (hit === AMBIGUOUS) {
         skippedAmbiguous++;
@@ -99,21 +105,21 @@ export class CandidateCommitteeLinkerService {
   /** Build `normalize(lastName)|chamber` → repId, marking collisions AMBIGUOUS. */
   private async buildRepIndex(): Promise<Map<string, RepSlot>> {
     const reps = await this.db!.representative.findMany({
-      where: { deletedAt: null },
+      // Exclude federal reps: a US-Senate rep (chamber "Senate") would
+      // otherwise collide with CA State Senate on the last-name+chamber key.
+      where: { deletedAt: null, regionId: { not: 'federal' } },
       select: { id: true, lastName: true, name: true, chamber: true },
     });
     const index = new Map<string, RepSlot>();
     for (const r of reps) {
       const last = r.lastName || this.lastNameOf(r.name);
-      if (!last || !r.chamber) continue;
+      if (!this.normalize(last) || !r.chamber) continue;
       const key = this.repKey(last, r.chamber);
-      if (!key.startsWith('|')) {
-        const existing = index.get(key);
-        if (existing && existing !== r.id) {
-          index.set(key, AMBIGUOUS);
-        } else if (!existing) {
-          index.set(key, r.id);
-        }
+      const existing = index.get(key);
+      if (existing && existing !== r.id) {
+        index.set(key, AMBIGUOUS);
+      } else if (!existing) {
+        index.set(key, r.id);
       }
     }
     return index;
@@ -140,7 +146,7 @@ export class CandidateCommitteeLinkerService {
 
   private lastNameOf(fullName: string): string {
     const parts = fullName.trim().split(/\s+/);
-    return parts.length > 0 ? parts[parts.length - 1] : '';
+    return parts[parts.length - 1];
   }
 
   /**

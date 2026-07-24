@@ -16,13 +16,15 @@ interface Cmte {
 function build(reps: Rep[], committees: Cmte[]) {
   const update = jest.fn((args: unknown) => ({ __op: args }));
   const $transaction = jest.fn().mockResolvedValue([]);
+  const repFindMany = jest.fn().mockResolvedValue(reps);
+  const cmteFindMany = jest.fn().mockResolvedValue(committees);
   const db = {
-    representative: { findMany: jest.fn().mockResolvedValue(reps) },
-    committee: { findMany: jest.fn().mockResolvedValue(committees), update },
+    representative: { findMany: repFindMany },
+    committee: { findMany: cmteFindMany, update },
     $transaction,
   } as unknown as DbService;
   const svc = new CandidateCommitteeLinkerService(db);
-  return { svc, update };
+  return { svc, update, repFindMany, cmteFindMany };
 }
 
 describe('CandidateCommitteeLinkerService (#941)', () => {
@@ -107,6 +109,37 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
     expect(res.linked).toBe(0);
     expect(res.unmatched).toBe(2);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('derives the last name from full name when lastName is empty', async () => {
+    const { svc, update } = build(
+      [{ id: 'rep-1', lastName: '', name: 'Jane Doe', chamber: 'Assembly' }],
+      [{ id: 'c-1', candidateName: 'Doe', candidateOffice: 'ASM' }],
+    );
+    const res = await svc.linkAll();
+    expect(res.linked).toBe(1);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'c-1' },
+      data: { representativeId: 'rep-1' },
+    });
+  });
+
+  it('scopes queries: only unlinked cal_access committees, and excludes federal reps', async () => {
+    const { svc, repFindMany, cmteFindMany } = build(
+      [{ id: 'rep-1', lastName: 'Doe', name: 'Jane Doe', chamber: 'Assembly' }],
+      [{ id: 'c-1', candidateName: 'Doe', candidateOffice: 'ASM' }],
+    );
+    await svc.linkAll();
+    // idempotent: never re-scans already-linked committees; state-scoped
+    expect(cmteFindMany.mock.calls[0][0].where).toMatchObject({
+      type: 'candidate',
+      representativeId: null,
+      sourceSystem: 'cal_access',
+    });
+    // federal reps excluded so US-Senate can't collide with CA State Senate
+    expect(repFindMany.mock.calls[0][0].where).toMatchObject({
+      regionId: { not: 'federal' },
+    });
   });
 
   it('is a no-op with no db wired', async () => {
