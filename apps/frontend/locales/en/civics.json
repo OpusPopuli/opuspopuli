@@ -75,5 +75,20 @@
       "badge_one": "{{count}} concern",
       "badge_other": "{{count}} concerns"
     }
+  },
+  "repFinance": {
+    "heading": "Campaign finance",
+    "loading": "Loading campaign finance…",
+    "empty": "No campaign-finance filings are linked to this representative yet.",
+    "totalRaised": "Total raised",
+    "totalSpent": "Total spent",
+    "donors": "Donors",
+    "committees": "Committees",
+    "topDonors": "Top donors",
+    "topEmployers": "Top employers behind the money",
+    "throughCommittees": "Money flows through these committees",
+    "contributions_one": "{{count}} gift",
+    "contributions_other": "{{count}} gifts",
+    "provenance": "Source: public CAL-ACCESS / FEC campaign-finance filings."
   }
 }
