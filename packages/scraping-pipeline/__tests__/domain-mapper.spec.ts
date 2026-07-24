@@ -804,8 +804,10 @@ describe("DomainMapperService", () => {
       ["CTL", "candidate"], // CAL-ACCESS controlled committee
       ["BMC", "ballot_measure"], // CAL-ACCESS ballot-measure committee
       ["RCP", "pac"], // CAL-ACCESS recipient committee
+      ["GPC", "pac"], // CAL-ACCESS general-purpose committee
       ["candidate", "candidate"], // already-canonical passes through
       ["ZZ", "other"], // unknown code → other
+      ["", "other"], // empty code → other (previously dropped by nativeEnum)
     ])(
       "maps roster committee-type code %s → %s (#940)",
       (rawType, expected) => {
@@ -862,6 +864,23 @@ describe("DomainMapperService", () => {
         candidateName: "Doe",
         candidateOffice: "ASM",
       });
+    });
+
+    it("defaults an absent type to other (preserves the old .default behavior) (#940)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            { externalId: "C-NOTYPE", name: "No Type Co", sourceSystem: "fec" },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "FEC Committees",
+        }),
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({ type: "other" });
     });
   });
 

@@ -12,7 +12,9 @@ function build() {
   return { svc, upsert, $transaction };
 }
 
-function committee(over: Partial<RosterCommittee> = {}): RosterCommittee {
+function committee(
+  over: Partial<Omit<RosterCommittee, 'type'>> & { type?: string } = {},
+): RosterCommittee {
   return {
     externalId: 'C001',
     name: 'Friends of Jane Doe',
@@ -110,6 +112,34 @@ describe('CampaignFinanceSyncService.enrichCommittees (#939)', () => {
     // name + type always refresh (roster is authoritative for those)
     expect(update.name).toBeDefined();
     expect(update.type).toBeDefined();
+  });
+
+  it('does not overwrite an enriched type with a later blank (other) filing', async () => {
+    const { svc, upsert } = build();
+    await enrich(svc, result([committee({ type: 'other' })]));
+
+    const update = (
+      upsert.mock.calls[0][0] as { update: Record<string, unknown> }
+    ).update;
+    // 'other' must not downgrade a committee already typed candidate/pac/etc.
+    expect(update).not.toHaveProperty('type');
+    // a recognized type still refreshes
+    upsert.mockClear();
+    await enrich(svc, result([committee({ type: 'candidate' })]));
+    const update2 = (
+      upsert.mock.calls[0][0] as { update: Record<string, unknown> }
+    ).update;
+    expect(update2.type).toBe('candidate');
+  });
+
+  it('skips roster records with no externalId', async () => {
+    const { svc, upsert, $transaction } = build();
+    await enrich(
+      svc,
+      result([committee({ externalId: '' as unknown as string })]),
+    );
+    expect(upsert).not.toHaveBeenCalled();
+    expect($transaction).not.toHaveBeenCalled();
   });
 
   it('is a no-op when there are no roster committees', async () => {

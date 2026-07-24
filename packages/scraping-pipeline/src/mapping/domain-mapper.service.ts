@@ -761,6 +761,7 @@ const committeeTypeTransform = (val: string | undefined): CommitteeType => {
     case "BMC": // ballot-measure committee
       return CommitteeType.BALLOT_MEASURE;
     case "RCP": // recipient committee
+    case "GPC": // general-purpose committee
       return CommitteeType.PAC;
     case "PTY": // political party
       return CommitteeType.PARTY;

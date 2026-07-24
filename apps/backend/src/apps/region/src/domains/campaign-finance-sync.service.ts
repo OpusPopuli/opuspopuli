@@ -242,7 +242,7 @@ export class CampaignFinanceSyncService {
             data: {
               externalId,
               name: externalId,
-              type: 'OTHER',
+              type: 'other',
               status: 'active',
               sourceSystem: sourceSystemByExternalId.get(externalId) ?? 'fec',
             },
@@ -302,20 +302,25 @@ export class CampaignFinanceSyncService {
             type: c.type,
             candidateName: c.candidateName ?? null,
             candidateOffice: c.candidateOffice ?? null,
-            party: c.party ?? null,
+            // party is a VarChar(50) — cap so a malformed oversized value
+            // skips this field rather than failing the whole 500-row chunk.
+            party: c.party ? c.party.slice(0, 50) : null,
             status: c.status ?? 'active',
             sourceSystem: c.sourceSystem,
             sourceUrl: c.sourceUrl ?? null,
           },
           update: {
             name: c.name,
-            type: c.type,
             sourceSystem: c.sourceSystem,
+            // Only overwrite `type` with a recognized value — a later filing
+            // whose CMTTE_TYPE was blank/unknown maps to 'other', which must
+            // not downgrade a committee already enriched to candidate/pac/etc.
+            ...(c.type && c.type !== 'other' ? { type: c.type } : {}),
             ...(c.candidateName ? { candidateName: c.candidateName } : {}),
             ...(c.candidateOffice
               ? { candidateOffice: c.candidateOffice }
               : {}),
-            ...(c.party ? { party: c.party } : {}),
+            ...(c.party ? { party: c.party.slice(0, 50) } : {}),
             ...(c.sourceUrl ? { sourceUrl: c.sourceUrl } : {}),
           },
         }),
