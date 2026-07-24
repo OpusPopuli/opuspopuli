@@ -116,7 +116,7 @@ export class DomainMapperService {
     // otherwise misroute to mapCommittee and be rejected for having no `name`
     // — the reason cvr2_filings sat at 0 and no committee→measure link ever
     // formed (#936).
-    if (cat.includes("position") || cat.includes("cvr2")) {
+    if (cat.includes("committee position") || cat.includes("cvr2")) {
       return this.mapCommitteeMeasureFiling(record);
     } else if (cat.includes("independent") || cat.includes("s496")) {
       return this.mapIndependentExpenditure(record);
@@ -236,7 +236,15 @@ export class DomainMapperService {
       );
       return null;
     }
-    return result.data;
+    const filing = result.data;
+    // Most CVR2 rows are non-ballot entity declarations. Only ballot-measure
+    // declarations (a ballotName or ballotNumber) are useful — the
+    // proposition-finance-linker resolves by those — so drop the rest here
+    // rather than persisting noise the linker would skip anyway. #936.
+    if (!filing.ballotName && !filing.ballotNumber) {
+      return null;
+    }
+    return filing;
   }
 
   private mapContribution(
@@ -866,9 +874,10 @@ const IndependentExpenditureSchema = z.object({
 });
 
 // CVR2 / Form 410 ballot-measure declaration (#936). externalId + filingId are
-// required; ballot fields are optional because most CVR2 rows are non-ballot
-// entity declarations — the proposition-finance-linker filters those out at
-// resolve time by requiring a non-empty ballotName/ballotNumber.
+// required; ballot fields are optional at the schema level, but
+// mapCommitteeMeasureFiling drops any row carrying neither a ballotName nor a
+// ballotNumber — only ballot-measure declarations are useful for the
+// proposition-finance-linker, which resolves by ballotName/ballotNumber.
 const CommitteeMeasureFilingSchema = z.object({
   externalId: z.string().min(1),
   filingId: z.string().min(1),

@@ -239,5 +239,27 @@ describe("RegionPage", () => {
         screen.queryByText("Legislative Committees"),
       ).not.toBeInTheDocument();
     });
+
+    it("gates Legislative Committees on MEETINGS without hiding Campaign Finance (#936)", () => {
+      // MEETINGS absent → no committees card; CAMPAIGN_FINANCE still renders
+      // its own finance card (the two are decoupled).
+      mockQueryResult = {
+        data: {
+          regionInfo: {
+            ...mockRegionInfo,
+            supportedDataTypes: ["PROPOSITIONS", "CAMPAIGN_FINANCE"],
+          },
+        },
+        loading: false,
+        error: null,
+      };
+
+      render(<RegionPage />);
+
+      expect(screen.getByText("Campaign Finance")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Legislative Committees"),
+      ).not.toBeInTheDocument();
+    });
   });
 });
