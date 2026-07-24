@@ -795,6 +795,74 @@ describe("DomainMapperService", () => {
         sourceSystem: "fec",
       });
     });
+
+    it.each([
+      ["S", "candidate"], // FEC senate campaign
+      ["N", "pac"], // FEC non-qualified PAC
+      ["O", "super_pac"], // FEC IE-only super PAC
+      ["Y", "party"], // FEC qualified party
+      ["CTL", "candidate"], // CAL-ACCESS controlled committee
+      ["BMC", "ballot_measure"], // CAL-ACCESS ballot-measure committee
+      ["RCP", "pac"], // CAL-ACCESS recipient committee
+      ["candidate", "candidate"], // already-canonical passes through
+      ["ZZ", "other"], // unknown code → other
+    ])(
+      "maps roster committee-type code %s → %s (#940)",
+      (rawType, expected) => {
+        const result = mapper.map(
+          createRawResult({
+            items: [
+              {
+                externalId: "C-TYPE",
+                name: "Some Committee",
+                type: rawType,
+                sourceSystem: "cal_access",
+              },
+            ],
+          }),
+          createSource({
+            dataType: DataType.CAMPAIGN_FINANCE,
+            category: "CAL-ACCESS Committees",
+          }),
+        );
+
+        expect(result.items).toHaveLength(1);
+        expect(result.items[0]).toMatchObject({ type: expected });
+      },
+    );
+
+    it("does not drop a roster committee whose type is a raw code (#940)", () => {
+      // Regression: z.nativeEnum rejected raw codes, failing the whole
+      // CommitteeSchema so the committee was dropped — everything defaulted
+      // to OTHER because only stub rows survived.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "C-KEEP",
+              name: "Friends of Jane Doe",
+              type: "CTL",
+              candidateName: "Doe",
+              candidateOffice: "ASM",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Committees",
+        }),
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        externalId: "C-KEEP",
+        name: "Friends of Jane Doe",
+        type: "candidate",
+        candidateName: "Doe",
+        candidateOffice: "ASM",
+      });
+    });
   });
 
   describe("campaign finance — contributions", () => {

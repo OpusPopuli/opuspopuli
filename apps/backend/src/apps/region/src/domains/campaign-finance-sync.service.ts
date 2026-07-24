@@ -118,6 +118,7 @@ export class CampaignFinanceSyncService {
     const onBatch = async (items: Record<string, unknown>[]) => {
       const tracker = ensureExtractTracker();
       const batchData = this.sortItems(items);
+      await this.enrichCommittees(batchData);
       await this.ensureCommitteeStubs(batchData);
       const result = await this.upsertBatch(batchData);
       totalProcessed += result.processed;
@@ -132,12 +133,14 @@ export class CampaignFinanceSyncService {
     const data = await provider.fetchCampaignFinance(onBatch, pipelineJobId);
 
     if (
+      data.committees.length > 0 ||
       data.contributions.length > 0 ||
       data.expenditures.length > 0 ||
       data.independentExpenditures.length > 0 ||
       data.committeeMeasureFilings.length > 0
     ) {
       const tracker = ensureExtractTracker();
+      await this.enrichCommittees(data);
       await this.ensureCommitteeStubs(data);
       const result = await this.upsertBatch(data);
       totalProcessed += result.processed;
@@ -265,6 +268,62 @@ export class CampaignFinanceSyncService {
     for (const ie of data.independentExpenditures) {
       ie.committeeId = idMap.get(ie.committeeId) ?? ie.committeeId;
     }
+  }
+
+  /**
+   * Enrich committee rows from roster records (FEC cm.txt / CAL-ACCESS CVR
+   * cover pages). Upserts by externalId so a stub created from a transaction
+   * (name = externalId, type = OTHER) is updated IN PLACE with its real
+   * identity — same DB id, so every Contribution/Expenditure/IE FK is
+   * preserved (#939). Never deletes or recreates a committee, and never
+   * blanks out an existing candidate/party field from a filing that lacked
+   * it (cover pages repeat per filing and some carry less data).
+   */
+  private async enrichCommittees(data: CampaignFinanceResult): Promise<void> {
+    if (data.committees.length === 0) return;
+    // Cover pages repeat per filing — dedup within the batch (last wins).
+    const byExternalId = new Map<
+      string,
+      CampaignFinanceResult['committees'][number]
+    >();
+    for (const c of data.committees) {
+      if (c.externalId) byExternalId.set(c.externalId, c);
+    }
+    if (byExternalId.size === 0) return;
+
+    await batchTransaction(
+      this.db,
+      [...byExternalId.values()].map((c) =>
+        this.db.committee.upsert({
+          where: { externalId: c.externalId },
+          create: {
+            externalId: c.externalId,
+            name: c.name,
+            type: c.type,
+            candidateName: c.candidateName ?? null,
+            candidateOffice: c.candidateOffice ?? null,
+            party: c.party ?? null,
+            status: c.status ?? 'active',
+            sourceSystem: c.sourceSystem,
+            sourceUrl: c.sourceUrl ?? null,
+          },
+          update: {
+            name: c.name,
+            type: c.type,
+            sourceSystem: c.sourceSystem,
+            ...(c.candidateName ? { candidateName: c.candidateName } : {}),
+            ...(c.candidateOffice
+              ? { candidateOffice: c.candidateOffice }
+              : {}),
+            ...(c.party ? { party: c.party } : {}),
+            ...(c.sourceUrl ? { sourceUrl: c.sourceUrl } : {}),
+          },
+        }),
+      ),
+    );
+    this.logger.log(
+      `Enriched ${byExternalId.size} committee(s) from roster records`,
+    );
   }
 
   /**
