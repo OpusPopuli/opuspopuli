@@ -6,6 +6,10 @@ import {
   PropositionFundingService,
   type PropositionFunding,
 } from './proposition-funding.service';
+import {
+  RepresentativeFundingService,
+  type RepresentativeFunding,
+} from './representative-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
 import {
   LegislativeCommitteeService,
@@ -269,6 +273,8 @@ export class RegionQueryService {
     private readonly legislativeCommittees?: LegislativeCommitteeService,
     @Optional()
     private readonly legislativeCommitteeLinker?: LegislativeCommitteeLinkerService,
+    @Optional()
+    private readonly representativeFunding?: RepresentativeFundingService,
   ) {}
 
   // ─── Civics data ──────────────────────────────────────────────────────────────
@@ -558,6 +564,13 @@ export class RegionQueryService {
   ): Promise<PropositionFunding | null> {
     if (!this.propositionFunding) return null;
     return this.propositionFunding.getFunding(propositionId);
+  }
+
+  async getRepresentativeFunding(
+    representativeId: string,
+  ): Promise<RepresentativeFunding | null> {
+    if (!this.representativeFunding) return null;
+    return this.representativeFunding.getFunding(representativeId);
   }
 
   // ─── Meetings ─────────────────────────────────────────────────────────────────

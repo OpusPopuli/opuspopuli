@@ -42,6 +42,7 @@ import {
   BillLifecycle,
 } from './models/bill.model';
 import type { PropositionFunding } from './proposition-funding.service';
+import type { RepresentativeFunding } from './representative-funding.service';
 import type {
   LegislativeCommitteeDetail,
   PaginatedLegislativeCommittees as PaginatedLegislativeCommitteesShape,
@@ -362,6 +363,12 @@ export class RegionDomainService {
     propositionId: string,
   ): Promise<PropositionFunding | null> {
     return this.queryService.getPropositionFunding(propositionId);
+  }
+
+  getRepresentativeFunding(
+    representativeId: string,
+  ): Promise<RepresentativeFunding | null> {
+    return this.queryService.getRepresentativeFunding(representativeId);
   }
 
   getMeetings(skip?: number, take?: number): Promise<PaginatedMeetings> {

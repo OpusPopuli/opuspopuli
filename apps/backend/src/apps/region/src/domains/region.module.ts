@@ -50,7 +50,9 @@ import { EntityActivitySummaryGeneratorService } from './entity-activity-summary
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { MinutesSummaryService } from './minutes-summary.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
+import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
 import { PropositionFundingService } from './proposition-funding.service';
+import { RepresentativeFundingService } from './representative-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { BoundaryLoaderService } from './boundary-loader.service';
@@ -215,7 +217,9 @@ const promptClientAsyncConfig = {
     PropositionAnalysisService,
     MinutesSummaryService,
     PropositionFinanceLinkerService,
+    CandidateCommitteeLinkerService,
     PropositionFundingService,
+    RepresentativeFundingService,
     LegislativeCommitteeLinkerService,
     LegislativeCommitteeService,
     LegislativeCommitteeDescriptionGeneratorService,

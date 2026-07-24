@@ -75,5 +75,20 @@
       "badge_one": "{{count}} inquietud",
       "badge_other": "{{count}} inquietudes"
     }
+  },
+  "repFinance": {
+    "heading": "Financiamiento de campaña",
+    "loading": "Cargando financiamiento de campaña…",
+    "empty": "Aún no hay informes de financiamiento de campaña vinculados a este representante.",
+    "totalRaised": "Total recaudado",
+    "totalSpent": "Total gastado",
+    "donors": "Donantes",
+    "committees": "Comités",
+    "topDonors": "Principales donantes",
+    "topEmployers": "Principales empleadores detrás del dinero",
+    "throughCommittees": "El dinero fluye a través de estos comités",
+    "contributions_one": "{{count}} aporte",
+    "contributions_other": "{{count}} aportes",
+    "provenance": "Fuente: informes públicos de financiamiento de campaña de CAL-ACCESS / FEC."
   }
 }

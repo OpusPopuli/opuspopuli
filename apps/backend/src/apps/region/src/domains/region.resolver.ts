@@ -46,6 +46,7 @@ import {
   PaginatedPropositions,
 } from './models/proposition.model';
 import { PropositionFundingModel } from './models/proposition-funding.model';
+import { RepresentativeFundingModel } from './models/representative-funding.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
 import { MinutesModel, PaginatedMinutes } from './models/minutes.model';
 import {
@@ -185,6 +186,17 @@ export class RegionResolver {
       await this.regionService.getPropositionFunding(propositionId);
     if (!funding) return null;
     return funding as unknown as PropositionFundingModel;
+  }
+
+  @Public()
+  @Query(() => RepresentativeFundingModel, { nullable: true })
+  @Extensions({ complexity: 25 })
+  async representativeFunding(
+    @Args({ name: 'id', type: () => ID }) id: string,
+  ): Promise<RepresentativeFundingModel | null> {
+    const funding = await this.regionService.getRepresentativeFunding(id);
+    if (!funding) return null;
+    return funding as unknown as RepresentativeFundingModel;
   }
 
   /**
