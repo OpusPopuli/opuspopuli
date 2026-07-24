@@ -35,18 +35,16 @@ const DATA_TYPE_CARDS: Partial<
     href: "/region/representatives",
     icon: "users",
   },
-  // Repurposed — the underlying DataType key (CAMPAIGN_FINANCE) is what
-  // the backend advertises in `supportedDataTypes`, but the home-page card
-  // now points at the new legislative-committees hub. The campaign-finance
-  // hub at /region/campaign-finance stays reachable via direct URL and
-  // from each proposition's funding section; only the home front door
-  // changes — voters get more value from "what shapes a bill before it
-  // hits the floor" than from disconnected donor lists.
+  // Campaign finance gets its own front door again (#936). It was briefly
+  // repurposed to point at legislative-committees, which orphaned finance
+  // (no inbound link for signed-in users) and conflated two unrelated
+  // "committee" concepts — FPPC campaign filers vs. Assembly/Senate policy
+  // committees. Legislative Committees now renders as its own card below.
   CAMPAIGN_FINANCE: {
-    title: "Legislative Committees",
-    description: "Where bills get debated and shaped before the floor vote",
-    href: "/region/legislative-committees",
-    icon: "committee",
+    title: "Campaign Finance",
+    description: "Follow the money — donors, committees, and spending",
+    href: "/region/campaign-finance",
+    icon: "finance",
   },
   BILLS: {
     title: "Bills",
@@ -162,6 +160,36 @@ function DataTypeIcon({ type }: { readonly type: string }) {
   }
 }
 
+/** A single region-hub navigation card. Shared by the data-type-driven
+ *  cards and the derived Legislative Committees card so the markup lives
+ *  in one place (#936). */
+function RegionCard({
+  href,
+  icon,
+  title,
+  description,
+}: {
+  readonly href: string;
+  readonly icon: string;
+  readonly title: string;
+  readonly description: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group bg-surface rounded-lg p-6 transition-all duration-200"
+    >
+      <div className="text-content-dim group-hover:text-content transition-colors mb-4">
+        <DataTypeIcon type={icon} />
+      </div>
+      <h2 className="text-lg font-semibold text-content group-hover:text-blue-600 transition-colors">
+        {title}
+      </h2>
+      <p className="mt-1 text-sm text-content-dim">{description}</p>
+    </Link>
+  );
+}
+
 export default function RegionPage() {
   const { data, loading, error } = useQuery<RegionInfoData>(GET_REGION_INFO);
 
@@ -219,25 +247,20 @@ export default function RegionPage() {
         {regionInfo?.supportedDataTypes.map((dataType) => {
           const card = DATA_TYPE_CARDS[dataType];
           if (!card) return null;
-
-          return (
-            <Link
-              key={dataType}
-              href={card.href}
-              className="group bg-surface rounded-lg p-6 transition-all duration-200"
-            >
-              <div className="text-content-dim group-hover:text-content transition-colors mb-4">
-                <DataTypeIcon type={card.icon} />
-              </div>
-              <h2 className="text-lg font-semibold text-content group-hover:text-blue-600 transition-colors">
-                {card.title}
-              </h2>
-              <p className="mt-1 text-sm text-content-dim">
-                {card.description}
-              </p>
-            </Link>
-          );
+          return <RegionCard key={dataType} {...card} />;
         })}
+        {/* Legislative Committees isn't a backend DataType — it's derived
+            from minutes/meetings ingestion — so it renders as its own card
+            (no longer hijacking the CAMPAIGN_FINANCE key), gated on MEETINGS
+            support. #936. */}
+        {regionInfo?.supportedDataTypes.includes("MEETINGS") && (
+          <RegionCard
+            href="/region/legislative-committees"
+            icon="committee"
+            title="Legislative Committees"
+            description="Where bills get debated and shaped before the floor vote"
+          />
+        )}
       </div>
 
       {/* Civics Hub */}

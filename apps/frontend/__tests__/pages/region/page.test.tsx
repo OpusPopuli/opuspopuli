@@ -109,11 +109,12 @@ describe("RegionPage", () => {
       // forward-looking calendar entries are lower civic-action value.
       expect(screen.queryByText("Meetings")).not.toBeInTheDocument();
       expect(screen.getByText("Representatives")).toBeInTheDocument();
-      // The CAMPAIGN_FINANCE data-type slot now displays as the
-      // Legislative Committees card on the home page; the campaign-finance
-      // hub stays reachable via direct URL and from proposition pages.
+      // Campaign Finance has its own front door again (#936) — no longer
+      // hijacked to render legislative-committees.
+      expect(screen.getByText("Campaign Finance")).toBeInTheDocument();
+      // Legislative Committees renders as its own card, gated on MEETINGS
+      // support (derived from minutes ingestion, not a backend DataType).
       expect(screen.getByText("Legislative Committees")).toBeInTheDocument();
-      expect(screen.queryByText("Campaign Finance")).not.toBeInTheDocument();
     });
 
     it("should render data type descriptions", () => {
@@ -162,6 +163,15 @@ describe("RegionPage", () => {
       expect(legislativeCommitteesLink).toHaveAttribute(
         "href",
         "/region/legislative-committees",
+      );
+
+      // Campaign Finance now links to its own hub (#936).
+      const campaignFinanceLink = screen.getByRole("link", {
+        name: /Campaign Finance/i,
+      });
+      expect(campaignFinanceLink).toHaveAttribute(
+        "href",
+        "/region/campaign-finance",
       );
     });
 
