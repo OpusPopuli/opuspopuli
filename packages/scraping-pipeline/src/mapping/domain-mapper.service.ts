@@ -726,10 +726,57 @@ const donorTypeTransform = (val: string | undefined) => {
   return "other" as const;
 };
 
+// FEC (CMTE_TP) + CAL-ACCESS (CMTTE_TYPE) committee-type codes → CommitteeType
+// (#940). Without this, roster records carry raw codes that z.nativeEnum would
+// reject — dropping the whole committee — so everything defaulted to OTHER.
+// An already-canonical value (e.g. "candidate") passes through unchanged.
+const committeeTypeTransform = (val: string | undefined): CommitteeType => {
+  if (!val) return CommitteeType.OTHER;
+  const lower = val.toLowerCase().trim();
+  if ((Object.values(CommitteeType) as string[]).includes(lower)) {
+    return lower as CommitteeType;
+  }
+  switch (val.toUpperCase().trim()) {
+    // FEC CMTE_TP
+    case "P": // presidential
+    case "H": // house
+    case "S": // senate
+      return CommitteeType.CANDIDATE;
+    case "N": // non-qualified PAC
+    case "Q": // qualified PAC
+    case "V": // hybrid PAC (non-qualified)
+    case "W": // hybrid PAC (qualified)
+      return CommitteeType.PAC;
+    case "O": // super PAC (independent-expenditure-only)
+    case "U": // single-candidate super PAC
+      return CommitteeType.SUPER_PAC;
+    case "X": // party (non-qualified)
+    case "Y": // party (qualified)
+    case "Z": // national party organization
+      return CommitteeType.PARTY;
+    // CAL-ACCESS CMTTE_TYPE
+    case "CTL": // controlled (candidate-controlled)
+    case "CAO": // candidate/officeholder
+      return CommitteeType.CANDIDATE;
+    case "BMC": // ballot-measure committee
+      return CommitteeType.BALLOT_MEASURE;
+    case "RCP": // recipient committee
+    case "GPC": // general-purpose committee
+      return CommitteeType.PAC;
+    case "PTY": // political party
+      return CommitteeType.PARTY;
+    default:
+      return CommitteeType.OTHER;
+  }
+};
+
 const CommitteeSchema = z.object({
   externalId: z.string().min(1),
   name: z.string().min(1),
-  type: z.nativeEnum(CommitteeType).default(CommitteeType.OTHER),
+  type: z
+    .string()
+    .optional()
+    .transform((v) => committeeTypeTransform(v)),
   candidateName: z.string().optional(),
   candidateOffice: z.string().optional(),
   propositionId: z.string().optional(),
