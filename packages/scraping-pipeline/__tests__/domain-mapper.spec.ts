@@ -1127,5 +1127,102 @@ describe("DomainMapperService", () => {
         supportOrOppose: "oppose",
       });
     });
+
+    it("routes 'Committee Positions' (CVR2/Form 410) to measure filings, not committees (#936)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "CVR2-1",
+              filingId: "F123",
+              ballotName: "Clean Water Act",
+              ballotNumber: "Prop 5",
+              ballotJurisdiction: "STATEWIDE",
+              supportOrOppose: "S",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          // Category contains "committee" — must NOT misroute to mapCommittee.
+          category: "CAL-ACCESS Committee Positions",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        externalId: "CVR2-1",
+        filingId: "F123",
+        ballotName: "Clean Water Act",
+        ballotNumber: "Prop 5",
+        supportOrOppose: "support",
+      });
+    });
+
+    it("maps an 'O' support/oppose code on a measure filing to oppose (#936)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "CVR2-2",
+              filingId: "F200",
+              ballotNumber: "Prop 9",
+              supportOrOppose: "O",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Committee Positions",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({ supportOrOppose: "oppose" });
+    });
+
+    it("drops a CVR2 row that carries no ballotName/ballotNumber (non-ballot declaration) (#936)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "CVR2-3",
+              filingId: "F300",
+              // no ballotName, no ballotNumber — entity declaration, not a measure
+              supportOrOppose: "S",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Committee Positions",
+        }),
+      );
+
+      expect(result.items).toHaveLength(0);
+    });
+
+    it("drops a 'Committee Positions' row missing filingId rather than treating it as a committee (#936)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "x",
+              name: "Some PAC",
+              type: "OTHER",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Committee Positions",
+        }),
+      );
+
+      expect(result.items).toHaveLength(0);
+    });
   });
 });
