@@ -1127,5 +1127,58 @@ describe("DomainMapperService", () => {
         supportOrOppose: "oppose",
       });
     });
+
+    it("routes 'Committee Positions' (CVR2/Form 410) to measure filings, not committees (#936)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "CVR2-1",
+              filingId: "F123",
+              ballotName: "Clean Water Act",
+              ballotNumber: "Prop 5",
+              ballotJurisdiction: "STATEWIDE",
+              supportOrOppose: "S",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          // Category contains "committee" — must NOT misroute to mapCommittee.
+          category: "CAL-ACCESS Committee Positions",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        externalId: "CVR2-1",
+        filingId: "F123",
+        ballotName: "Clean Water Act",
+        ballotNumber: "Prop 5",
+        supportOrOppose: "support",
+      });
+    });
+
+    it("drops a 'Committee Positions' row missing filingId rather than treating it as a committee (#936)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "x",
+              name: "Some PAC",
+              type: "OTHER",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Committee Positions",
+        }),
+      );
+
+      expect(result.items).toHaveLength(0);
+    });
   });
 });
