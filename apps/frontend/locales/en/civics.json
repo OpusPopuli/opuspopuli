@@ -86,6 +86,7 @@
     "committees": "Committees",
     "topDonors": "Top donors",
     "topEmployers": "Top employers behind the money",
+    "throughCommittees": "Money flows through these committees",
     "contributions_one": "{{count}} gift",
     "contributions_other": "{{count}} gifts",
     "provenance": "Source: public CAL-ACCESS / FEC campaign-finance filings."

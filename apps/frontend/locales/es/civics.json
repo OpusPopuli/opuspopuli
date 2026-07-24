@@ -86,6 +86,7 @@
     "committees": "Comités",
     "topDonors": "Principales donantes",
     "topEmployers": "Principales empleadores detrás del dinero",
+    "throughCommittees": "El dinero fluye a través de estos comités",
     "contributions_one": "{{count}} aporte",
     "contributions_other": "{{count}} aportes",
     "provenance": "Fuente: informes públicos de financiamiento de campaña de CAL-ACCESS / FEC."

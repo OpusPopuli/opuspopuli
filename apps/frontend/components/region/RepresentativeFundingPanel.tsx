@@ -95,6 +95,17 @@ export function RepresentativeFundingPanel({
         />
       )}
 
+      {funding.committees.length > 0 && (
+        <MoneyList
+          heading={t("repFinance.throughCommittees")}
+          rows={funding.committees.map((c) => ({
+            key: c.id,
+            name: c.name,
+            amount: c.totalRaised,
+          }))}
+        />
+      )}
+
       <p className="text-[11px] text-content-dim italic">
         {t("repFinance.provenance")}
       </p>
@@ -131,9 +142,9 @@ function MoneyList({
     key: string;
     name: string;
     amount: number;
-    count: number;
+    count?: number;
   }[];
-  readonly countLabel: (n: number) => string;
+  readonly countLabel?: (n: number) => string;
 }) {
   return (
     <div>
@@ -150,10 +161,13 @@ function MoneyList({
             <span className="flex-shrink-0 text-content-dim tabular-nums">
               <span className="font-semibold text-content">
                 {usd.format(r.amount)}
-              </span>{" "}
-              <span className="text-[11px] text-content-dim">
-                {countLabel(r.count)}
               </span>
+              {countLabel && r.count != null && (
+                <span className="text-[11px] text-content-dim">
+                  {" "}
+                  {countLabel(r.count)}
+                </span>
+              )}
             </span>
           </li>
         ))}

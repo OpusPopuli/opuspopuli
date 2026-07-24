@@ -38,6 +38,9 @@ describe("RepresentativeFundingPanel (#943)", () => {
     expect(screen.getByText("$25,000")).toBeInTheDocument();
     expect(screen.getByText("Big Oil Co")).toBeInTheDocument(); // the industry lens
     expect(screen.getByText("$18,000")).toBeInTheDocument();
+    // money's path — the real (roster-identified) committee names
+    expect(screen.getByText("Re-Elect Jane Doe")).toBeInTheDocument();
+    expect(screen.getByText("$100,000")).toBeInTheDocument();
   });
 
   it("shows the empty state when the rep has no linked committees", () => {
