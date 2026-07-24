@@ -5,6 +5,7 @@ import {
   type CampaignFinanceResult,
 } from '@opuspopuli/common';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
+import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
 import {
   campaignFinanceSyncTracker,
   type SyncPhaseTracker,
@@ -60,6 +61,8 @@ export class CampaignFinanceSyncService {
     private readonly db: DbService,
     @Optional()
     private readonly propositionFinanceLinker?: PropositionFinanceLinkerService,
+    @Optional()
+    private readonly candidateCommitteeLinker?: CandidateCommitteeLinkerService,
   ) {}
 
   async sync(
@@ -174,6 +177,18 @@ export class CampaignFinanceSyncService {
       } catch (error) {
         this.logger.warn(
           `Proposition finance linker failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    // Attribute candidate committees to representatives (#941) — runs after
+    // enrichment so it sees committees with their real candidateName/office.
+    if (this.candidateCommitteeLinker) {
+      try {
+        await this.candidateCommitteeLinker.linkAll();
+      } catch (error) {
+        this.logger.warn(
+          `Candidate-committee linker failed: ${(error as Error).message}`,
         );
       }
     }
