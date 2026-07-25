@@ -16,12 +16,28 @@ interface Cmte {
   candidateName: string | null;
   candidateOffice: string | null;
 }
+/** An already-linked committee, as the reconcile pass reads it. */
+interface LinkedCmte {
+  id: string;
+  name: string;
+  candidateName: string | null;
+}
 
-function build(reps: Rep[], committees: Cmte[]) {
+function build(reps: Rep[], committees: Cmte[], linked: LinkedCmte[] = []) {
   const update = jest.fn((args: unknown) => ({ __op: args }));
   const $transaction = jest.fn().mockResolvedValue([]);
   const repFindMany = jest.fn().mockResolvedValue(reps);
-  const cmteFindMany = jest.fn().mockResolvedValue(committees);
+  // linkAll queries committee.findMany twice: the reconcile pass filters
+  // `representativeId: { not: null }`, the link pass filters `representativeId: null`.
+  const cmteFindMany = jest.fn(
+    (args: { where?: { representativeId?: unknown } }) => {
+      const rid = args?.where?.representativeId;
+      if (rid && typeof rid === 'object' && 'not' in rid) {
+        return Promise.resolve(linked); // reconcile pass
+      }
+      return Promise.resolve(committees); // link pass
+    },
+  );
   const db = {
     representative: { findMany: repFindMany },
     committee: { findMany: cmteFindMany, update },
@@ -274,8 +290,13 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
       ],
     );
     await svc.linkAll();
-    // idempotent: never re-scans already-linked committees; state-scoped
-    expect(cmteFindMany.mock.calls[0][0].where).toMatchObject({
+    // The link pass (representativeId: null) is state-scoped to unlinked
+    // cal_access candidate committees. (calls[0] is now the reconcile pass.)
+    const linkCall = cmteFindMany.mock.calls.find(
+      (c: [{ where?: { representativeId?: unknown } }]) =>
+        c[0]?.where?.representativeId === null,
+    );
+    expect(linkCall?.[0].where).toMatchObject({
       type: 'candidate',
       representativeId: null,
       sourceSystem: 'cal_access',
@@ -286,6 +307,43 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
     });
   });
 
+  it('self-heals: unlinks an already-linked committee that fails the controlled gate (#953)', async () => {
+    const { svc, update } = build(
+      [
+        {
+          id: 'rep-1',
+          lastName: 'Gonzalez',
+          name: 'Lena Gonzalez',
+          chamber: 'Senate',
+        },
+      ],
+      [], // nothing new to link this run
+      [
+        {
+          id: 'c-badpac',
+          name: 'Los Angeles County Federation of Labor AFL-CIO Council on Political Education',
+          candidateName: 'Gonzalez',
+        },
+        {
+          id: 'c-good',
+          name: 'Gonzalez for Senate 2024',
+          candidateName: 'Gonzalez',
+        },
+      ],
+    );
+    const res = await svc.linkAll();
+    expect(res.reconciledUnlinked).toBe(1);
+    // The union PAC is unlinked; the genuine controlled committee is left alone.
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'c-badpac' },
+      data: { representativeId: null },
+    });
+    expect(update).not.toHaveBeenCalledWith({
+      where: { id: 'c-good' },
+      data: { representativeId: null },
+    });
+  });
+
   it('is a no-op with no db wired', async () => {
     const svc = new CandidateCommitteeLinkerService();
     const res = await svc.linkAll();
@@ -293,6 +351,7 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
       linked: 0,
       skippedAmbiguous: 0,
       skippedNonControlled: 0,
+      reconciledUnlinked: 0,
       unmatched: 0,
       candidateCommittees: 0,
     });

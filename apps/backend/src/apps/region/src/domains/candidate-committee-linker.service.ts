@@ -13,6 +13,10 @@ export interface CandidateCommitteeLinkResult {
    * controlled committee (a support/oppose, ballot-measure, sponsored, or PAC
    * committee that merely references the candidate). Never attributed (#953). */
   skippedNonControlled: number;
+  /** Previously-linked committees that no longer pass the controlled-committee
+   * gate and were unlinked this run — self-heals stale links from before #953
+   * without manual SQL. */
+  reconciledUnlinked: number;
   unmatched: number;
   candidateCommittees: number;
 }
@@ -103,13 +107,21 @@ export class CandidateCommitteeLinkerService {
       linked: 0,
       skippedAmbiguous: 0,
       skippedNonControlled: 0,
+      reconciledUnlinked: 0,
       unmatched: 0,
       candidateCommittees: 0,
     };
     if (!this.db) return empty;
 
     const repIndex = await this.buildRepIndex();
+    // Guard: an empty rep index means reps aren't loaded (transient/degenerate)
+    // — do NOT reconcile then, or a bad load would nuke every existing link.
     if (repIndex.size === 0) return empty;
+
+    // Self-heal first: unlink any currently-linked committee that no longer
+    // passes the controlled-committee gate (e.g. links made before #953). This
+    // removes the need to manually clear representative_id before a re-sync.
+    const reconciledUnlinked = await this.reconcileExistingLinks();
 
     const committees = await this.db.committee.findMany({
       where: {
@@ -172,6 +184,7 @@ export class CandidateCommitteeLinkerService {
       linked: updates.length,
       skippedAmbiguous,
       skippedNonControlled,
+      reconciledUnlinked,
       unmatched,
       candidateCommittees: committees.length,
     };
@@ -179,10 +192,47 @@ export class CandidateCommitteeLinkerService {
       `Candidate-committee linker: linked=${result.linked}, ` +
         `ambiguous=${result.skippedAmbiguous}, ` +
         `nonControlled=${result.skippedNonControlled}, ` +
+        `reconciledUnlinked=${result.reconciledUnlinked}, ` +
         `unmatched=${result.unmatched} ` +
         `(of ${result.candidateCommittees} candidate committees)`,
     );
     return result;
+  }
+
+  /**
+   * Re-validate already-linked candidate committees against the controlled-
+   * committee gate and unlink any that no longer qualify. This self-heals stale
+   * attributions — e.g. the IE / ballot-measure / union-PAC links made before
+   * the #953 gate existed — so operators never have to null `representative_id`
+   * by hand before a re-sync. Only touches CAL-ACCESS candidate committees that
+   * are currently linked; correctly-linked controlled committees are untouched.
+   */
+  private async reconcileExistingLinks(): Promise<number> {
+    const linked = await this.db!.committee.findMany({
+      where: {
+        representativeId: { not: null },
+        type: 'candidate',
+        sourceSystem: 'cal_access',
+        deletedAt: null,
+      },
+      select: { id: true, name: true, candidateName: true },
+    });
+    const stale = linked.filter(
+      (c) =>
+        !isCandidateOwnCommittee(c.name, (c.candidateName ?? '').split(',')[0]),
+    );
+    if (stale.length > 0) {
+      await batchTransaction(
+        this.db!,
+        stale.map((c) =>
+          this.db!.committee.update({
+            where: { id: c.id },
+            data: { representativeId: null },
+          }),
+        ),
+      );
+    }
+    return stale.length;
   }
 
   /** Build `normalize(lastName)|chamber` → repId, marking collisions AMBIGUOUS. */
