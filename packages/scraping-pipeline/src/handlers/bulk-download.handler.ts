@@ -117,13 +117,27 @@ export class BulkDownloadHandler {
 
         // On retry, the session exposes already-applied batch indexes so we
         // skip re-sending them to onBatch. Disabled sessions are silent.
+        //
+        // The resume session is keyed by (job, sourceUrl, dataType) and
+        // `batchIndex` restarts at 0 for each source. Multiple bulk sources
+        // routinely share ONE archive URL — every CAL-ACCESS table
+        // (RCPT/EXPN/S496/CVR/CVR2) is extracted from the same
+        // dbwebexport.zip. Without a per-file discriminator the second and
+        // later same-URL sources resume the first source's execution row,
+        // inherit its applied-batch set, and (having fewer batches) skip
+        // their entire stream — silently ingesting nothing (#950). Encode the
+        // extracted filePattern into the tracked identity so each file in a
+        // shared archive gets its own execution row + batch checkpoint.
+        const trackingUrl = bulk.filePattern
+          ? `${source.url}#${bulk.filePattern}`
+          : source.url;
         const session: ExecutionSession =
           await ExecutionTrackerService.beginSession(
             this.executionTracker,
             pipelineJobId,
             {
               regionId,
-              sourceUrl: source.url,
+              sourceUrl: trackingUrl,
               dataType: source.dataType,
             },
           );
@@ -149,7 +163,7 @@ export class BulkDownloadHandler {
 
               if (session.appliedBatches.has(currentBatch)) {
                 this.logger.debug(
-                  `Skipping already-applied batch ${currentBatch} for ${source.url}`,
+                  `Skipping already-applied batch ${currentBatch} for ${trackingUrl}`,
                 );
                 return;
               }
