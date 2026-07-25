@@ -85,6 +85,39 @@ export function isCandidateOwnCommittee(
 }
 
 /**
+ * Infer which chamber a controlled committee is for from its name
+ * ("… for Assembly", "… for State Senate"). Used to recover the chamber when a
+ * committee has no OFFICE_CD (#953 yield). Null when neither chamber appears.
+ */
+export function chamberFromName(name: string): 'Assembly' | 'Senate' | null {
+  const n = soften(name);
+  if (n.includes('assembly')) return 'Assembly';
+  if (n.includes('senate')) return 'Senate';
+  return null;
+}
+
+/** A representative reduced to what surname-in-name matching needs. */
+interface RepEntry {
+  id: string;
+  surname: string;
+  surnameKey: string;
+}
+
+/** Outcome of resolving a committee to a representative. */
+type Resolution =
+  | { kind: 'match'; repId: string; surname: string }
+  | { kind: 'ambiguous' }
+  | { kind: 'unmatched' };
+
+/** The rep-row shape both index builders read. */
+type RepRow = {
+  id: string;
+  lastName: string;
+  name: string;
+  chamber: string;
+};
+
+/**
  * Link candidate campaign committees to the representatives we track, so the
  * money (contributions/expenditures a committee raised) becomes attributable
  * to a named official (#941, epic #936).
@@ -113,23 +146,27 @@ export class CandidateCommitteeLinkerService {
     };
     if (!this.db) return empty;
 
-    const repIndex = await this.buildRepIndex();
+    const reps = await this.loadReps();
+    const repIndex = this.buildRepIndex(reps);
     // Guard: an empty rep index means reps aren't loaded (transient/degenerate)
     // — do NOT reconcile then, or a bad load would nuke every existing link.
     if (repIndex.size === 0) return empty;
+    const repsByChamber = this.buildRepsByChamber(reps);
 
     // Self-heal first: unlink any currently-linked committee that no longer
     // passes the controlled-committee gate (e.g. links made before #953). This
     // removes the need to manually clear representative_id before a re-sync.
     const reconciledUnlinked = await this.reconcileExistingLinks();
 
+    // Consider every unlinked CAL-ACCESS candidate committee — INCLUDING those
+    // missing CAND_NAML. A controlled committee is still titled after the
+    // candidate ("Friends of {name} for Senate"), so we recover the rep from the
+    // committee NAME when the field is blank (#953 yield). Only CAL-ACCESS
+    // committees carry ASM/SEN offices that map to our tracked legislators.
     const committees = await this.db.committee.findMany({
       where: {
         type: 'candidate',
-        candidateName: { not: null },
         representativeId: null,
-        // Only CAL-ACCESS (state) committees carry ASM/SEN offices that map to
-        // our tracked legislators; skip the recurring no-op scan over FEC rows.
         sourceSystem: 'cal_access',
         deletedAt: null,
       },
@@ -147,24 +184,19 @@ export class CandidateCommitteeLinkerService {
     let unmatched = 0;
 
     for (const c of committees) {
-      const chamber = this.officeToChamber(c.candidateOffice);
-      // candidateName is CAL-ACCESS CAND_NAML (last name); defensively take the
-      // portion before a comma in case a filing carries "Last, First".
-      const last = (c.candidateName ?? '').split(',')[0];
-      const key = chamber ? this.repKey(last, chamber) : null;
-      const hit = key ? repIndex.get(key) : undefined;
-      if (hit === AMBIGUOUS) {
+      const res = this.resolveRep(c, repIndex, repsByChamber);
+      if (res.kind === 'ambiguous') {
         skippedAmbiguous++;
-      } else if (!hit) {
+      } else if (res.kind === 'unmatched') {
         unmatched++;
-      } else if (!isCandidateOwnCommittee(c.name, last)) {
-        // Name/office matched a rep, but the committee only references the
-        // candidate (IE/ballot-measure/sponsored/PAC) — not their controlled
-        // committee. Never attribute it, or the money trail shows money that is
-        // not the representative's (#953).
+      } else if (!isCandidateOwnCommittee(c.name, res.surname)) {
+        // Matched a rep, but the committee only references the candidate
+        // (IE/ballot-measure/sponsored/PAC) — not their controlled committee.
+        // Never attribute it, or the money trail shows money that isn't the
+        // representative's (#953).
         skippedNonControlled++;
       } else {
-        updates.push({ id: c.id, representativeId: hit });
+        updates.push({ id: c.id, representativeId: res.repId });
       }
     }
 
@@ -235,14 +267,18 @@ export class CandidateCommitteeLinkerService {
     return stale.length;
   }
 
-  /** Build `normalize(lastName)|chamber` → repId, marking collisions AMBIGUOUS. */
-  private async buildRepIndex(): Promise<Map<string, RepSlot>> {
-    const reps = await this.db!.representative.findMany({
-      // Exclude federal reps: a US-Senate rep (chamber "Senate") would
-      // otherwise collide with CA State Senate on the last-name+chamber key.
+  /** Load tracked (non-federal) reps once; both index builders read the result. */
+  private async loadReps(): Promise<RepRow[]> {
+    // Exclude federal reps: a US-Senate rep (chamber "Senate") would otherwise
+    // collide with CA State Senate on the last-name+chamber key.
+    return this.db!.representative.findMany({
       where: { deletedAt: null, regionId: { not: 'federal' } },
       select: { id: true, lastName: true, name: true, chamber: true },
     });
+  }
+
+  /** Build `normalize(lastName)|chamber` → repId, marking collisions AMBIGUOUS. */
+  private buildRepIndex(reps: RepRow[]): Map<string, RepSlot> {
     const index = new Map<string, RepSlot>();
     for (const r of reps) {
       const last = r.lastName || this.lastNameOf(r.name);
@@ -256,6 +292,75 @@ export class CandidateCommitteeLinkerService {
       }
     }
     return index;
+  }
+
+  /** Group reps by lowercased chamber for surname-in-name recovery (#953). */
+  private buildRepsByChamber(reps: RepRow[]): Map<string, RepEntry[]> {
+    const byChamber = new Map<string, RepEntry[]>();
+    for (const r of reps) {
+      const surname = r.lastName || this.lastNameOf(r.name);
+      const surnameKey = this.normalize(surname);
+      if (!surnameKey || !r.chamber) continue;
+      const chamberKey = r.chamber.toLowerCase().trim();
+      const list = byChamber.get(chamberKey) ?? [];
+      list.push({ id: r.id, surname, surnameKey });
+      byChamber.set(chamberKey, list);
+    }
+    return byChamber;
+  }
+
+  /**
+   * Resolve a committee to a representative. Primary path uses CAND_NAML +
+   * OFFICE_CD; when CAND_NAML is absent (#953 yield) the chamber is inferred
+   * from the name and the surname is recovered by finding the unique tracked
+   * rep in that chamber whose surname appears in the committee name.
+   */
+  private resolveRep(
+    c: {
+      name: string;
+      candidateName: string | null;
+      candidateOffice: string | null;
+    },
+    repIndex: Map<string, RepSlot>,
+    repsByChamber: Map<string, RepEntry[]>,
+  ): Resolution {
+    const chamber =
+      this.officeToChamber(c.candidateOffice) ?? chamberFromName(c.name);
+    if (!chamber) return { kind: 'unmatched' };
+    if (c.candidateName) {
+      // candidateName is CAND_NAML (last name); take the part before a comma in
+      // case a filing carries "Last, First".
+      const last = c.candidateName.split(',')[0];
+      const hit = repIndex.get(this.repKey(last, chamber));
+      if (hit === AMBIGUOUS) return { kind: 'ambiguous' };
+      if (hit) return { kind: 'match', repId: hit, surname: last };
+      return { kind: 'unmatched' };
+    }
+    return this.resolveByName(c.name, chamber, repsByChamber);
+  }
+
+  /** Recover the rep for a CAND_NAML-less committee by unique surname-in-name. */
+  private resolveByName(
+    name: string,
+    chamber: string,
+    repsByChamber: Map<string, RepEntry[]>,
+  ): Resolution {
+    const nameKey = alnumKey(name);
+    const reps = repsByChamber.get(chamber.toLowerCase().trim()) ?? [];
+    const matches = reps.filter(
+      (r) =>
+        r.surnameKey.length >= SURNAME_MIN_GATE_LEN &&
+        nameKey.includes(r.surnameKey),
+    );
+    if (matches.length > 1) return { kind: 'ambiguous' };
+    if (matches.length === 1) {
+      return {
+        kind: 'match',
+        repId: matches[0].id,
+        surname: matches[0].surname,
+      };
+    }
+    return { kind: 'unmatched' };
   }
 
   private repKey(lastName: string, chamber: string): string {
