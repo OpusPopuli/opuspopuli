@@ -9,8 +9,75 @@ type RepSlot = string | typeof AMBIGUOUS;
 export interface CandidateCommitteeLinkResult {
   linked: number;
   skippedAmbiguous: number;
+  /** Name/office matched a rep, but the committee is not the candidate's OWN
+   * controlled committee (a support/oppose, ballot-measure, sponsored, or PAC
+   * committee that merely references the candidate). Never attributed (#953). */
+  skippedNonControlled: number;
   unmatched: number;
   candidateCommittees: number;
+}
+
+/**
+ * Markers in a committee NAME that identify it as a support/oppose, ballot-
+ * measure, sponsored, or general-purpose committee rather than the candidate's
+ * OWN controlled committee. CAL-ACCESS populates CAND_NAML/OFFICE_CD on the
+ * cover page of ANY committee that references a candidate, so those fields alone
+ * mislinked union PACs, IE committees, and ballot-measure committees to
+ * legislators (#953). The committee name is the reliable signal.
+ */
+const NON_CONTROLLED_MARKERS = [
+  'in support of',
+  'in opposition to',
+  'opposed to',
+  'opposing',
+  'supporting',
+  'sponsored by',
+  'ballot measure',
+  'independent expenditure',
+  'recall',
+];
+
+/** Lowercase and collapse every run of non-alphanumerics to a single space —
+ * used for phrase-marker matching (keeps word boundaries). */
+function soften(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** Lowercase and drop everything but [a-z0-9]. Matches the surname key the
+ * linker builds, so "O'Brien" / "OBRIEN" / "Alvarado-Gil" reduce to one token
+ * regardless of how CAL-ACCESS punctuates the committee name. */
+function alnumKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** Below this many alnum chars a surname can't be substring-gated without false
+ * matches (e.g. "Vo" inside "vote"); such reps fall back to office/name + marker
+ * matching only. */
+const SURNAME_MIN_GATE_LEN = 3;
+
+/**
+ * True only when a committee looks like the candidate's OWN controlled
+ * committee: (1) the committee name carries no support/oppose/ballot/sponsored
+ * marker (those name the candidate but spend independently), and (2) the name
+ * actually contains the candidate surname — a real controlled committee is
+ * titled after them ("{Surname} for Assembly", "Friends of {Surname}"), while a
+ * union/issue PAC is not. Surname matching uses the alnum key so it tolerates
+ * CAL-ACCESS punctuation ("O'Brien" vs "OBRIEN") and hyphenated names (#953).
+ */
+export function isCandidateOwnCommittee(
+  committeeName: string,
+  surname: string,
+): boolean {
+  const softened = soften(committeeName);
+  if (NON_CONTROLLED_MARKERS.some((marker) => softened.includes(marker))) {
+    return false;
+  }
+  const surnameKey = alnumKey(surname);
+  if (surnameKey.length < SURNAME_MIN_GATE_LEN) return true;
+  return alnumKey(committeeName).includes(surnameKey);
 }
 
 /**
@@ -35,6 +102,7 @@ export class CandidateCommitteeLinkerService {
     const empty: CandidateCommitteeLinkResult = {
       linked: 0,
       skippedAmbiguous: 0,
+      skippedNonControlled: 0,
       unmatched: 0,
       candidateCommittees: 0,
     };
@@ -53,11 +121,17 @@ export class CandidateCommitteeLinkerService {
         sourceSystem: 'cal_access',
         deletedAt: null,
       },
-      select: { id: true, candidateName: true, candidateOffice: true },
+      select: {
+        id: true,
+        name: true,
+        candidateName: true,
+        candidateOffice: true,
+      },
     });
 
     const updates: Array<{ id: string; representativeId: string }> = [];
     let skippedAmbiguous = 0;
+    let skippedNonControlled = 0;
     let unmatched = 0;
 
     for (const c of committees) {
@@ -69,10 +143,16 @@ export class CandidateCommitteeLinkerService {
       const hit = key ? repIndex.get(key) : undefined;
       if (hit === AMBIGUOUS) {
         skippedAmbiguous++;
-      } else if (hit) {
-        updates.push({ id: c.id, representativeId: hit });
-      } else {
+      } else if (!hit) {
         unmatched++;
+      } else if (!isCandidateOwnCommittee(c.name, last)) {
+        // Name/office matched a rep, but the committee only references the
+        // candidate (IE/ballot-measure/sponsored/PAC) — not their controlled
+        // committee. Never attribute it, or the money trail shows money that is
+        // not the representative's (#953).
+        skippedNonControlled++;
+      } else {
+        updates.push({ id: c.id, representativeId: hit });
       }
     }
 
@@ -91,12 +171,15 @@ export class CandidateCommitteeLinkerService {
     const result: CandidateCommitteeLinkResult = {
       linked: updates.length,
       skippedAmbiguous,
+      skippedNonControlled,
       unmatched,
       candidateCommittees: committees.length,
     };
     this.logger.log(
       `Candidate-committee linker: linked=${result.linked}, ` +
-        `ambiguous=${result.skippedAmbiguous}, unmatched=${result.unmatched} ` +
+        `ambiguous=${result.skippedAmbiguous}, ` +
+        `nonControlled=${result.skippedNonControlled}, ` +
+        `unmatched=${result.unmatched} ` +
         `(of ${result.candidateCommittees} candidate committees)`,
     );
     return result;
