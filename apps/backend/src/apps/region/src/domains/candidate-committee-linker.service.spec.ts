@@ -1,5 +1,8 @@
 import { DbService } from '@opuspopuli/relationaldb-provider';
-import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
+import {
+  CandidateCommitteeLinkerService,
+  isCandidateOwnCommittee,
+} from './candidate-committee-linker.service';
 
 interface Rep {
   id: string;
@@ -9,15 +12,32 @@ interface Rep {
 }
 interface Cmte {
   id: string;
+  name: string;
   candidateName: string | null;
   candidateOffice: string | null;
 }
+/** An already-linked committee, as the reconcile pass reads it. */
+interface LinkedCmte {
+  id: string;
+  name: string;
+  candidateName: string | null;
+}
 
-function build(reps: Rep[], committees: Cmte[]) {
+function build(reps: Rep[], committees: Cmte[], linked: LinkedCmte[] = []) {
   const update = jest.fn((args: unknown) => ({ __op: args }));
   const $transaction = jest.fn().mockResolvedValue([]);
   const repFindMany = jest.fn().mockResolvedValue(reps);
-  const cmteFindMany = jest.fn().mockResolvedValue(committees);
+  // linkAll queries committee.findMany twice: the reconcile pass filters
+  // `representativeId: { not: null }`, the link pass filters `representativeId: null`.
+  const cmteFindMany = jest.fn(
+    (args: { where?: { representativeId?: unknown } }) => {
+      const rid = args?.where?.representativeId;
+      if (rid && typeof rid === 'object' && 'not' in rid) {
+        return Promise.resolve(linked); // reconcile pass
+      }
+      return Promise.resolve(committees); // link pass
+    },
+  );
   const db = {
     representative: { findMany: repFindMany },
     committee: { findMany: cmteFindMany, update },
@@ -27,11 +47,81 @@ function build(reps: Rep[], committees: Cmte[]) {
   return { svc, update, repFindMany, cmteFindMany };
 }
 
+describe('isCandidateOwnCommittee (#953)', () => {
+  it('accepts a committee named after the candidate with no IE/ballot marker', () => {
+    expect(isCandidateOwnCommittee('NGUYEN FOR ASSEMBLY 2020', 'Nguyen')).toBe(
+      true,
+    );
+    expect(
+      isCandidateOwnCommittee('Friends of Jane Doe for Senate', 'Doe'),
+    ).toBe(true);
+  });
+
+  it('tolerates CAL-ACCESS punctuation variance on the surname', () => {
+    // Committee keeps the apostrophe, candidateName drops it (or vice-versa).
+    expect(isCandidateOwnCommittee("O'Brien for Senate 2024", 'OBRIEN')).toBe(
+      true,
+    );
+    expect(
+      isCandidateOwnCommittee('Alvarado Gil for Senate', 'Alvarado-Gil'),
+    ).toBe(true);
+  });
+
+  it('rejects an independent-expenditure "in support of" committee', () => {
+    expect(
+      isCandidateOwnCommittee(
+        'Legislative Action PAC in support of Marie Alvarado-Gil for Senate 2026',
+        'Alvarado-Gil',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects a ballot-measure committee even though it names the candidate', () => {
+    expect(
+      isCandidateOwnCommittee(
+        'Safe Communities, Strong Futures: A Nick Schultz Ballot Measure Committee',
+        'Schultz',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects a sponsored PAC', () => {
+    expect(
+      isCandidateOwnCommittee(
+        'Nurses and Working Families for Better Healthcare, sponsored by SEIU',
+        'Umberg',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects a committee that does not name the candidate at all (union/issue PAC)', () => {
+    expect(
+      isCandidateOwnCommittee(
+        'Los Angeles County Federation of Labor AFL-CIO Council on Political Education',
+        'Gonzalez',
+      ),
+    ).toBe(false);
+  });
+
+  it('does not gate on surnames too short to match safely', () => {
+    // "Vo" (2 chars) would substring-match "vote"/"advocacy"; fall back to
+    // office/name matching for these rather than false-reject.
+    expect(isCandidateOwnCommittee('Committee to Elect Vo', 'Vo')).toBe(true);
+  });
+});
+
 describe('CandidateCommitteeLinkerService (#941)', () => {
-  it('links a candidate committee to a rep by last name + office→chamber', async () => {
+  it('links a candidate’s own controlled committee by last name + office→chamber', async () => {
     const { svc, update } = build(
       [{ id: 'rep-1', lastName: 'Doe', name: 'Jane Doe', chamber: 'Assembly' }],
-      [{ id: 'c-1', candidateName: 'Doe', candidateOffice: 'ASM' }],
+      [
+        {
+          id: 'c-1',
+          name: 'Doe for Assembly 2024',
+          candidateName: 'Doe',
+          candidateOffice: 'ASM',
+        },
+      ],
     );
     const res = await svc.linkAll();
     expect(res.linked).toBe(1);
@@ -39,6 +129,31 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
       where: { id: 'c-1' },
       data: { representativeId: 'rep-1' },
     });
+  });
+
+  it('skips a committee that matches a rep but is not the candidate’s own (#953)', async () => {
+    const { svc, update } = build(
+      [
+        {
+          id: 'rep-1',
+          lastName: 'Alvarado-Gil',
+          name: 'Marie Alvarado-Gil',
+          chamber: 'Senate',
+        },
+      ],
+      [
+        {
+          id: 'c-ie',
+          name: 'Legislative Action PAC in support of Marie Alvarado-Gil for Senate 2026',
+          candidateName: 'Alvarado-Gil',
+          candidateOffice: 'SEN',
+        },
+      ],
+    );
+    const res = await svc.linkAll();
+    expect(res.linked).toBe(0);
+    expect(res.skippedNonControlled).toBe(1);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it('skips an ambiguous last name shared by two reps in the same chamber', async () => {
@@ -57,7 +172,14 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
           chamber: 'Assembly',
         },
       ],
-      [{ id: 'c-1', candidateName: 'Garcia', candidateOffice: 'ASM' }],
+      [
+        {
+          id: 'c-1',
+          name: 'Garcia for Assembly',
+          candidateName: 'Garcia',
+          candidateOffice: 'ASM',
+        },
+      ],
     );
     const res = await svc.linkAll();
     expect(res.linked).toBe(0);
@@ -71,7 +193,14 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
         { id: 'rep-asm', lastName: 'Lee', name: 'A Lee', chamber: 'Assembly' },
         { id: 'rep-sen', lastName: 'Lee', name: 'B Lee', chamber: 'Senate' },
       ],
-      [{ id: 'c-1', candidateName: 'Lee', candidateOffice: 'SEN' }],
+      [
+        {
+          id: 'c-1',
+          name: 'Lee for Senate 2024',
+          candidateName: 'Lee',
+          candidateOffice: 'SEN',
+        },
+      ],
     );
     const res = await svc.linkAll();
     expect(res.linked).toBe(1);
@@ -81,7 +210,7 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
     });
   });
 
-  it('matches case/punctuation-insensitively', async () => {
+  it('matches case/punctuation-insensitively on the surname', async () => {
     const { svc } = build(
       [
         {
@@ -91,7 +220,14 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
           chamber: 'Senate',
         },
       ],
-      [{ id: 'c-1', candidateName: 'OBRIEN', candidateOffice: 'senate' }],
+      [
+        {
+          id: 'c-1',
+          name: "O'Brien for Senate 2024",
+          candidateName: 'OBRIEN',
+          candidateOffice: 'senate',
+        },
+      ],
     );
     const res = await svc.linkAll();
     expect(res.linked).toBe(1);
@@ -101,8 +237,18 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
     const { svc, update } = build(
       [{ id: 'rep-1', lastName: 'Doe', name: 'Jane Doe', chamber: 'Assembly' }],
       [
-        { id: 'c-unknown', candidateName: 'Nobody', candidateOffice: 'ASM' },
-        { id: 'c-gov', candidateName: 'Doe', candidateOffice: 'GOV' },
+        {
+          id: 'c-unknown',
+          name: 'Nobody for Assembly',
+          candidateName: 'Nobody',
+          candidateOffice: 'ASM',
+        },
+        {
+          id: 'c-gov',
+          name: 'Doe for Governor',
+          candidateName: 'Doe',
+          candidateOffice: 'GOV',
+        },
       ],
     );
     const res = await svc.linkAll();
@@ -114,7 +260,14 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
   it('derives the last name from full name when lastName is empty', async () => {
     const { svc, update } = build(
       [{ id: 'rep-1', lastName: '', name: 'Jane Doe', chamber: 'Assembly' }],
-      [{ id: 'c-1', candidateName: 'Doe', candidateOffice: 'ASM' }],
+      [
+        {
+          id: 'c-1',
+          name: 'Doe for Assembly',
+          candidateName: 'Doe',
+          candidateOffice: 'ASM',
+        },
+      ],
     );
     const res = await svc.linkAll();
     expect(res.linked).toBe(1);
@@ -127,11 +280,23 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
   it('scopes queries: only unlinked cal_access committees, and excludes federal reps', async () => {
     const { svc, repFindMany, cmteFindMany } = build(
       [{ id: 'rep-1', lastName: 'Doe', name: 'Jane Doe', chamber: 'Assembly' }],
-      [{ id: 'c-1', candidateName: 'Doe', candidateOffice: 'ASM' }],
+      [
+        {
+          id: 'c-1',
+          name: 'Doe for Assembly',
+          candidateName: 'Doe',
+          candidateOffice: 'ASM',
+        },
+      ],
     );
     await svc.linkAll();
-    // idempotent: never re-scans already-linked committees; state-scoped
-    expect(cmteFindMany.mock.calls[0][0].where).toMatchObject({
+    // The link pass (representativeId: null) is state-scoped to unlinked
+    // cal_access candidate committees. (calls[0] is now the reconcile pass.)
+    const linkCall = cmteFindMany.mock.calls.find(
+      (c: [{ where?: { representativeId?: unknown } }]) =>
+        c[0]?.where?.representativeId === null,
+    );
+    expect(linkCall?.[0].where).toMatchObject({
       type: 'candidate',
       representativeId: null,
       sourceSystem: 'cal_access',
@@ -142,12 +307,51 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
     });
   });
 
+  it('self-heals: unlinks an already-linked committee that fails the controlled gate (#953)', async () => {
+    const { svc, update } = build(
+      [
+        {
+          id: 'rep-1',
+          lastName: 'Gonzalez',
+          name: 'Lena Gonzalez',
+          chamber: 'Senate',
+        },
+      ],
+      [], // nothing new to link this run
+      [
+        {
+          id: 'c-badpac',
+          name: 'Los Angeles County Federation of Labor AFL-CIO Council on Political Education',
+          candidateName: 'Gonzalez',
+        },
+        {
+          id: 'c-good',
+          name: 'Gonzalez for Senate 2024',
+          candidateName: 'Gonzalez',
+        },
+      ],
+    );
+    const res = await svc.linkAll();
+    expect(res.reconciledUnlinked).toBe(1);
+    // The union PAC is unlinked; the genuine controlled committee is left alone.
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'c-badpac' },
+      data: { representativeId: null },
+    });
+    expect(update).not.toHaveBeenCalledWith({
+      where: { id: 'c-good' },
+      data: { representativeId: null },
+    });
+  });
+
   it('is a no-op with no db wired', async () => {
     const svc = new CandidateCommitteeLinkerService();
     const res = await svc.linkAll();
     expect(res).toEqual({
       linked: 0,
       skippedAmbiguous: 0,
+      skippedNonControlled: 0,
+      reconciledUnlinked: 0,
       unmatched: 0,
       candidateCommittees: 0,
     });
