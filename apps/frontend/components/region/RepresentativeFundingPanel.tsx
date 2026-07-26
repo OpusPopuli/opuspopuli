@@ -9,6 +9,7 @@ import {
   type RepresentativeFundingData,
   type IdVars,
 } from "@/lib/graphql/region";
+import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
 
 type Formatter = (n: number) => string;
 
@@ -117,9 +118,7 @@ export function RepresentativeFundingPanel({
         />
       )}
 
-      <p className="text-[11px] text-content-dim italic">
-        {t("repFinance.provenance")}
-      </p>
+      <FinanceDisclaimer className="mt-1" />
     </section>
   );
 }
