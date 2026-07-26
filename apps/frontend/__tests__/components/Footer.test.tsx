@@ -29,4 +29,11 @@ describe("Footer", () => {
     const link = screen.getByRole("link", { name: "Transparency" });
     expect(link).toHaveAttribute("href", "/transparency");
   });
+
+  it("renders the illustrative-purpose / not-an-allegation notice (#962)", () => {
+    expect(screen.getByText(/illustrative purposes/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/not\s+an allegation of wrongdoing/i),
+    ).toBeInTheDocument();
+  });
 });
