@@ -2,6 +2,7 @@ import { DbService } from '@opuspopuli/relationaldb-provider';
 import {
   CandidateCommitteeLinkerService,
   isCandidateOwnCommittee,
+  chamberFromName,
 } from './candidate-committee-linker.service';
 
 interface Rep {
@@ -107,6 +108,22 @@ describe('isCandidateOwnCommittee (#953)', () => {
     // "Vo" (2 chars) would substring-match "vote"/"advocacy"; fall back to
     // office/name matching for these rather than false-reject.
     expect(isCandidateOwnCommittee('Committee to Elect Vo', 'Vo')).toBe(true);
+  });
+});
+
+describe('chamberFromName (#953)', () => {
+  it('infers the chamber from a controlled committee name', () => {
+    expect(chamberFromName('Friends of Jane Doe for Assembly 2024')).toBe(
+      'Assembly',
+    );
+    expect(chamberFromName('Gonzalez for Senate 2024')).toBe('Senate');
+    expect(chamberFromName('Committee to Elect Doe for State Assembly')).toBe(
+      'Assembly',
+    );
+  });
+
+  it('returns null when no chamber word is present', () => {
+    expect(chamberFromName('Some Random Committee 2024')).toBeNull();
   });
 });
 
@@ -305,6 +322,111 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
     expect(repFindMany.mock.calls[0][0].where).toMatchObject({
       regionId: { not: 'federal' },
     });
+  });
+
+  it('recovers a controlled committee that has no CAND_NAML, from its name (#953 yield)', async () => {
+    const { svc, update } = build(
+      [
+        {
+          id: 'rep-g',
+          lastName: 'Gonzalez',
+          name: 'Lena Gonzalez',
+          chamber: 'Senate',
+        },
+      ],
+      [
+        {
+          id: 'c-friends',
+          name: 'Friends of Lena Gonzalez for Senate 2024',
+          candidateName: null,
+          candidateOffice: null,
+        },
+      ],
+    );
+    const res = await svc.linkAll();
+    expect(res.linked).toBe(1);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'c-friends' },
+      data: { representativeId: 'rep-g' },
+    });
+  });
+
+  it('recovers the chamber from the name when CAND_NAML is present but OFFICE_CD is blank (#953 yield)', async () => {
+    const { svc } = build(
+      [{ id: 'rep-1', lastName: 'Doe', name: 'Jane Doe', chamber: 'Assembly' }],
+      [
+        {
+          id: 'c-1',
+          name: 'Doe for Assembly 2024',
+          candidateName: 'Doe',
+          candidateOffice: null,
+        },
+      ],
+    );
+    const res = await svc.linkAll();
+    expect(res.linked).toBe(1);
+  });
+
+  it('skips a CAND_NAML-less committee whose name matches two reps in the chamber (ambiguous)', async () => {
+    const { svc, update } = build(
+      [
+        { id: 'rep-a', lastName: 'Lee', name: 'A Lee', chamber: 'Assembly' },
+        { id: 'rep-b', lastName: 'Lee', name: 'B Lee', chamber: 'Assembly' },
+      ],
+      [
+        {
+          id: 'c-1',
+          name: 'Lee for Assembly 2024',
+          candidateName: null,
+          candidateOffice: null,
+        },
+      ],
+    );
+    const res = await svc.linkAll();
+    expect(res.linked).toBe(0);
+    expect(res.skippedAmbiguous).toBe(1);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('leaves a CAND_NAML-less committee unmatched when its name has no chamber', async () => {
+    const { svc } = build(
+      [{ id: 'rep-1', lastName: 'Doe', name: 'Jane Doe', chamber: 'Assembly' }],
+      [
+        {
+          id: 'c-1',
+          name: 'Doe Ventures LLC',
+          candidateName: null,
+          candidateOffice: null,
+        },
+      ],
+    );
+    const res = await svc.linkAll();
+    expect(res.linked).toBe(0);
+    expect(res.unmatched).toBe(1);
+  });
+
+  it('still excludes a name-recovered committee that is actually an IE (#953)', async () => {
+    const { svc } = build(
+      [
+        {
+          id: 'rep-g',
+          lastName: 'Gonzalez',
+          name: 'Lena Gonzalez',
+          chamber: 'Senate',
+        },
+      ],
+      [
+        {
+          id: 'c-ie',
+          name: 'Workers United in support of Gonzalez for Senate',
+          candidateName: null,
+          candidateOffice: null,
+        },
+      ],
+    );
+    const res = await svc.linkAll();
+    expect(res.linked).toBe(0);
+    expect(res.skippedNonControlled).toBe(1);
   });
 
   it('self-heals: unlinks an already-linked committee that fails the controlled gate (#953)', async () => {
