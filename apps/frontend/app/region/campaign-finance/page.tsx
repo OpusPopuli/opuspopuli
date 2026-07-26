@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 
+import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
+
 const CAMPAIGN_FINANCE_CARDS = [
   {
     title: "Committees",
@@ -63,6 +65,8 @@ export default function CampaignFinancePage() {
           </Link>
         ))}
       </div>
+
+      <FinanceDisclaimer className="mt-8" />
     </div>
   );
 }

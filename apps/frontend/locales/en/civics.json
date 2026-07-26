@@ -88,7 +88,11 @@
     "topEmployers": "Top employers behind the money",
     "throughCommittees": "Money flows through these committees",
     "contributions_one": "{{count}} gift",
-    "contributions_other": "{{count}} gifts",
-    "provenance": "Source: public CAL-ACCESS / FEC campaign-finance filings."
+    "contributions_other": "{{count}} gifts"
+  },
+  "finance": {
+    "disclaimerLabel": "Campaign-finance data disclaimer",
+    "sources": "This data comes directly from official public records — the California Secretary of State's CAL-ACCESS database and the U.S. Federal Election Commission (FEC).",
+    "bestEffort": "Those filings are authoritative; the links this site draws between committees and representatives, and its grouping of donors, are generated automatically and may be incomplete or inaccurate — they are not an allegation of wrongdoing by anyone named. Verify against the official filings before relying on or republishing this information."
   }
 }

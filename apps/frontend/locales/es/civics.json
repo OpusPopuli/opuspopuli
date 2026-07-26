@@ -88,7 +88,11 @@
     "topEmployers": "Principales empleadores detrás del dinero",
     "throughCommittees": "El dinero fluye a través de estos comités",
     "contributions_one": "{{count}} aporte",
-    "contributions_other": "{{count}} aportes",
-    "provenance": "Fuente: informes públicos de financiamiento de campaña de CAL-ACCESS / FEC."
+    "contributions_other": "{{count}} aportes"
+  },
+  "finance": {
+    "disclaimerLabel": "Aviso sobre los datos de financiamiento de campaña",
+    "sources": "Estos datos provienen directamente de registros públicos oficiales: la base de datos CAL-ACCESS de la Secretaría de Estado de California y la Comisión Federal Electoral (FEC) de EE. UU.",
+    "bestEffort": "Esos informes son la fuente autorizada; los vínculos que este sitio establece entre comités y representantes, y su agrupación de donantes, se generan automáticamente y pueden estar incompletos o ser inexactos; no constituyen una acusación de conducta indebida contra ninguna persona mencionada. Verifique los informes oficiales antes de utilizar o republicar esta información."
   }
 }

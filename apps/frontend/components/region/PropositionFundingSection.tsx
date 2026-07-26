@@ -9,6 +9,7 @@ import {
 } from "@/lib/graphql/region";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { SectionTitle } from "@/components/region/SectionTitle";
+import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
 
 /**
  * "Who's Funding This" section for the proposition detail page (Layer 2).
@@ -83,6 +84,7 @@ export function PropositionFundingSection({
       <p className="mt-3 text-xs text-slate-500">
         Reflects CalAccess records as of {formatDate(funding.asOf)}.
       </p>
+      <FinanceDisclaimer className="mt-2" />
     </section>
   );
 }
