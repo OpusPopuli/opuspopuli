@@ -137,6 +137,9 @@ Check for:
 5. Hardcoded credentials, API keys, or tokens committed in code
 6. Path traversal in file operations
 7. Insecure deserialization (eval, Function constructor with user input)
+8. PHI/PII exposure (HIPAA) — real personal/health data (names, DOB, SSN, medical/insurance IDs,
+   addresses) written to logs, error messages, OpenTelemetry attributes, test fixtures, or seed data
+   without masking, or interpolated into a model prompt. Synthetic/faker data is fine; real data is not.
 
 Respond with EXACTLY one of:
   PASS
