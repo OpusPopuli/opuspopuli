@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "opuspopuli-sdlc": {
+      "source": {
+        "source": "github",
+        "repo": "OpusPopuli/opuspopuli-sdlc"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "opuspopuli-sdlc@opuspopuli-sdlc": true
+  }
+}
