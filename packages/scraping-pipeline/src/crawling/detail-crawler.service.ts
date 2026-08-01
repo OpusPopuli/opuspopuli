@@ -22,6 +22,7 @@ import type {
   DataSourceConfig,
   RawExtractionResult,
   ILLMProvider,
+  SelectorFailure,
   StructuredFieldConfig,
 } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
@@ -76,6 +77,7 @@ export class DetailCrawlerService {
     // Derive extraction plan from the first detail page, reuse for the rest
     let extractionPlan: Record<string, string | StructuredFieldConfig> | null =
       null;
+    const detailFailures = new Map<string, SelectorFailure>();
 
     for (let i = 0; i < toFetch.length; i++) {
       extractionPlan = await this.enrichSingleItem(
@@ -84,12 +86,22 @@ export class DetailCrawlerService {
         source,
         llm,
         rawResult.warnings,
+        detailFailures,
       );
 
       // Rate limit between fetches
       if (i < toFetch.length - 1) {
         await this.delay(DETAIL_FETCH_DELAY_MS);
       }
+    }
+
+    if (detailFailures.size > 0) {
+      const failures = [...detailFailures.values()];
+      rawResult.selectorFailures = [
+        ...(rawResult.selectorFailures ?? []),
+        ...failures,
+      ];
+      rawResult.warnings.push(...failures.map((f) => f.message));
     }
 
     return rawResult;
@@ -105,6 +117,7 @@ export class DetailCrawlerService {
     source: DataSourceConfig,
     llm: ILLMProvider,
     warnings: string[],
+    failures?: Map<string, SelectorFailure>,
   ): Promise<Record<string, string | StructuredFieldConfig> | null> {
     const rawUrl = item.detailUrl as string;
     const detailUrl = DetailCrawlerService.resolveUrl(rawUrl, source.url);
@@ -133,6 +146,7 @@ export class DetailCrawlerService {
         isHtml,
         extractionPlan,
         source.dataType,
+        failures,
       );
       this.mergeContent(item, content);
     } catch (error) {
@@ -181,9 +195,10 @@ export class DetailCrawlerService {
     isHtml: boolean,
     plan: Record<string, string | StructuredFieldConfig>,
     dataType: string,
+    failures?: Map<string, SelectorFailure>,
   ): Record<string, unknown> {
     if (Object.keys(plan).length > 0 && isHtml) {
-      const content = this.extractContent(pageContent, plan);
+      const content = this.extractContent(pageContent, plan, failures);
       if (Object.keys(content).length > 0) {
         this.logger.debug(
           `Extracted fields: ${Object.keys(content).join(", ")}`,
@@ -401,6 +416,7 @@ Respond with ONLY valid JSON, no explanation. Example:
   private extractContent(
     html: string,
     plan: Record<string, string | StructuredFieldConfig>,
+    failures?: Map<string, SelectorFailure>,
   ): Record<string, unknown> {
     const $ = cheerio.load(html);
     $("script, style, noscript, svg, iframe").remove();
@@ -416,8 +432,25 @@ Respond with ONLY valid JSON, no explanation. Example:
           const value = this.extractSimpleField($, field, config);
           if (value) result[field] = value;
         }
-      } catch {
-        // Skip fields with invalid selectors
+      } catch (error) {
+        // Invalid selector (e.g. Cheerio parse failure). Previously a bare
+        // catch {} — detailFields drift produced no diagnostic at all
+        // (#966 W1). Keyed by field so the same broken selector isn't
+        // recorded once per enriched item.
+        const selector =
+          typeof config === "string" ? config : (config.selector ?? "");
+        failures?.set(field, {
+          kind: "detail_field_error",
+          field,
+          selector,
+          message:
+            'Detail field "' +
+            field +
+            '" selector failed: "' +
+            selector +
+            '" — ' +
+            (error as Error).message,
+        });
       }
     }
 

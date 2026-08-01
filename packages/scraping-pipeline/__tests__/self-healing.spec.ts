@@ -127,3 +127,78 @@ describe("SelfHealingService", () => {
     expect(decision.validation.issues.length).toBeGreaterThan(0);
   });
 });
+
+describe("evaluateMapping (#966 W1)", () => {
+  let healing: SelfHealingService;
+
+  function createMapped(
+    missRatio: number | undefined,
+    items: unknown[] = [],
+  ) {
+    return {
+      items,
+      manifestVersion: 0,
+      success: items.length > 0,
+      warnings: [],
+      errors: [],
+      extractionTimeMs: 1,
+      ...(missRatio !== undefined && {
+        selectorFailures: [
+          {
+            kind: "schema_reject" as const,
+            missRatio,
+            schemaIssues: ["Proposition.externalId: Required"],
+            message: "rejected",
+          },
+        ],
+      }),
+    };
+  }
+
+  beforeEach(() => {
+    healing = new SelfHealingService();
+  });
+
+  it("heals when the schema rejected a majority of extracted items", () => {
+    const decision = healing.evaluateMapping(
+      createResult(),
+      createMapped(0.9),
+      createManifest(),
+    );
+
+    expect(decision.shouldHeal).toBe(true);
+    expect(decision.reason).toContain("90%");
+    expect(decision.reason).toContain("Proposition.externalId");
+  });
+
+  it("does not heal when healing was already attempted this run", () => {
+    const decision = healing.evaluateMapping(
+      createResult(),
+      createMapped(1),
+      createManifest(),
+      true,
+    );
+
+    expect(decision.shouldHeal).toBe(false);
+  });
+
+  it("does not heal without a schema_reject failure", () => {
+    const decision = healing.evaluateMapping(
+      createResult(),
+      createMapped(undefined, [{ ok: true }]),
+      createManifest(),
+    );
+
+    expect(decision.shouldHeal).toBe(false);
+  });
+
+  it("does not heal at or below the 50% rejection threshold", () => {
+    const decision = healing.evaluateMapping(
+      createResult(),
+      createMapped(0.5),
+      createManifest(),
+    );
+
+    expect(decision.shouldHeal).toBe(false);
+  });
+});

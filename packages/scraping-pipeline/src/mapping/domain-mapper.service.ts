@@ -23,7 +23,20 @@ import {
   type RawExtractionResult,
   type ExtractionResult,
   type DataSourceConfig,
+  type SelectorFailure,
 } from "@opuspopuli/common";
+
+/**
+ * Per-map() collection of Zod schema rejections (#966 W1).
+ *
+ * Only genuine schema failures count here — intentional drops (meetings
+ * without any identity, CVR2 rows without a ballot link) are filtering,
+ * not drift, and must not feed the heal loop.
+ */
+interface MappingDiagnostics {
+  schemaRejects: number;
+  issues: string[];
+}
 
 @Injectable()
 export class DomainMapperService {
@@ -44,10 +57,11 @@ export class DomainMapperService {
     const warnings = [...raw.warnings];
     const errors = [...raw.errors];
     const items: T[] = [];
+    const diagnostics: MappingDiagnostics = { schemaRejects: 0, issues: [] };
 
     for (let i = 0; i < raw.items.length; i++) {
       try {
-        const mapped = this.mapItem(raw.items[i], source);
+        const mapped = this.mapItem(raw.items[i], source, diagnostics);
         if (mapped) {
           items.push(mapped as T);
         }
@@ -58,6 +72,13 @@ export class DomainMapperService {
       }
     }
 
+    const selectorFailures = this.buildSelectorFailures(
+      raw,
+      source,
+      diagnostics,
+      warnings,
+    );
+
     return {
       items,
       manifestVersion: 0, // Set by pipeline orchestrator
@@ -65,12 +86,75 @@ export class DomainMapperService {
       warnings,
       errors,
       extractionTimeMs: Date.now() - startTime,
+      ...(selectorFailures.length > 0 && { selectorFailures }),
     };
+  }
+
+  /**
+   * Carry the extractor's selector diagnostics through mapping and append a
+   * schema_reject entry when Zod turned items away. Before #966 W1 these
+   * rejections were logger.debug'd and discarded — a selector matching the
+   * wrong element could drop every item without any surviving signal.
+   */
+  private buildSelectorFailures(
+    raw: RawExtractionResult,
+    source: DataSourceConfig,
+    diagnostics: MappingDiagnostics,
+    warnings: string[],
+  ): SelectorFailure[] {
+    const failures: SelectorFailure[] = [...(raw.selectorFailures ?? [])];
+
+    if (diagnostics.schemaRejects > 0 && raw.items.length > 0) {
+      const schemaIssues = [...new Set(diagnostics.issues)].slice(0, 10);
+      const message =
+        diagnostics.schemaRejects +
+        "/" +
+        raw.items.length +
+        " extracted items rejected by the " +
+        source.dataType +
+        " schema";
+      failures.push({
+        kind: "schema_reject",
+        missRatio: diagnostics.schemaRejects / raw.items.length,
+        schemaIssues,
+        message,
+      });
+      warnings.push(
+        message + (schemaIssues.length > 0 ? " — " + schemaIssues[0] : ""),
+      );
+    }
+
+    return failures;
+  }
+
+  /**
+   * Validate a record against a schema, collecting Zod issues on failure.
+   * The collected issues are the expected-schema-vs-actual-shape diff the
+   * selector-repair agent consumes (#966).
+   */
+  private parseOrCollect<S extends z.ZodType>(
+    schema: S,
+    record: unknown,
+    label: string,
+    diag: MappingDiagnostics,
+  ): z.infer<S> | null {
+    const result = schema.safeParse(record);
+    if (result.success) {
+      return result.data;
+    }
+    this.logger.debug(label + " validation failed: " + result.error.message);
+    diag.schemaRejects++;
+    for (const issue of result.error.issues) {
+      const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
+      diag.issues.push(label + "." + path + ": " + issue.message);
+    }
+    return null;
   }
 
   private mapItem(
     record: Record<string, unknown>,
     source: DataSourceConfig,
+    diag: MappingDiagnostics,
   ):
     | Proposition
     | Meeting
@@ -83,13 +167,13 @@ export class DomainMapperService {
     | null {
     switch (source.dataType) {
       case DataType.PROPOSITIONS:
-        return this.mapProposition(record);
+        return this.mapProposition(record, diag);
       case DataType.MEETINGS:
-        return this.mapMeeting(record, source.category);
+        return this.mapMeeting(record, diag, source.category);
       case DataType.REPRESENTATIVES:
-        return this.mapRepresentative(record, source.category);
+        return this.mapRepresentative(record, diag, source.category);
       case DataType.CAMPAIGN_FINANCE:
-        return this.mapCampaignFinanceItem(record, source.category);
+        return this.mapCampaignFinanceItem(record, diag, source.category);
       default:
         return null;
     }
@@ -100,6 +184,7 @@ export class DomainMapperService {
    */
   private mapCampaignFinanceItem(
     record: Record<string, unknown>,
+    diag: MappingDiagnostics,
     category?: string,
   ):
     | Committee
@@ -117,22 +202,25 @@ export class DomainMapperService {
     // — the reason cvr2_filings sat at 0 and no committee→measure link ever
     // formed (#936).
     if (cat.includes("committee position") || cat.includes("cvr2")) {
-      return this.mapCommitteeMeasureFiling(record);
+      return this.mapCommitteeMeasureFiling(record, diag);
     } else if (cat.includes("independent") || cat.includes("s496")) {
-      return this.mapIndependentExpenditure(record);
+      return this.mapIndependentExpenditure(record, diag);
     } else if (cat.includes("committee")) {
-      return this.mapCommittee(record);
+      return this.mapCommittee(record, diag);
     } else if (cat.includes("expenditure")) {
-      return this.mapExpenditure(record);
+      return this.mapExpenditure(record, diag);
     } else if (cat.includes("contribution")) {
-      return this.mapContribution(record);
+      return this.mapContribution(record, diag);
     }
 
     // Default: try contribution (most common campaign finance record type)
-    return this.mapContribution(record);
+    return this.mapContribution(record, diag);
   }
 
-  private mapProposition(record: Record<string, unknown>): Proposition | null {
+  private mapProposition(
+    record: Record<string, unknown>,
+    diag: MappingDiagnostics,
+  ): Proposition | null {
     // The CA SOS qualified-ballot-measures page emits each measure as an
     // anchor whose href points to the bill PDF. The regions config
     // extracts that href as `detailUrl`, but the proposition domain
@@ -141,18 +229,12 @@ export class DomainMapperService {
       ...record,
       sourceUrl: record.sourceUrl ?? record.detailUrl,
     };
-    const result = PropositionSchema.safeParse(enriched);
-    if (!result.success) {
-      this.logger.debug(
-        `Proposition validation failed: ${result.error.message}`,
-      );
-      return null;
-    }
-    return result.data;
+    return this.parseOrCollect(PropositionSchema, enriched, "Proposition", diag);
   }
 
   private mapMeeting(
     record: Record<string, unknown>,
+    diag: MappingDiagnostics,
     category?: string,
   ): Meeting | null {
     const title = typeof record.title === "string" ? record.title : undefined;
@@ -189,16 +271,17 @@ export class DomainMapperService {
       return null;
     }
 
-    const result = MeetingSchema.safeParse({ ...record, body, externalId });
-    if (!result.success) {
-      this.logger.debug(`Meeting validation failed: ${result.error.message}`);
-      return null;
-    }
-    return result.data;
+    return this.parseOrCollect(
+      MeetingSchema,
+      { ...record, body, externalId },
+      "Meeting",
+      diag,
+    );
   }
 
   private mapRepresentative(
     record: Record<string, unknown>,
+    diag: MappingDiagnostics,
     category?: string,
   ): Representative | null {
     // Inject chamber from category if not in record
@@ -207,36 +290,34 @@ export class DomainMapperService {
       chamber: record.chamber ?? category ?? "Unknown",
     };
 
-    const result = RepresentativeSchema.safeParse(enriched);
-    if (!result.success) {
-      this.logger.debug(
-        `Representative validation failed: ${result.error.message}`,
-      );
-      return null;
-    }
-    return result.data;
+    return this.parseOrCollect(
+      RepresentativeSchema,
+      enriched,
+      "Representative",
+      diag,
+    );
   }
 
-  private mapCommittee(record: Record<string, unknown>): Committee | null {
-    const result = CommitteeSchema.safeParse(record);
-    if (!result.success) {
-      this.logger.debug(`Committee validation failed: ${result.error.message}`);
-      return null;
-    }
-    return result.data;
+  private mapCommittee(
+    record: Record<string, unknown>,
+    diag: MappingDiagnostics,
+  ): Committee | null {
+    return this.parseOrCollect(CommitteeSchema, record, "Committee", diag);
   }
 
   private mapCommitteeMeasureFiling(
     record: Record<string, unknown>,
+    diag: MappingDiagnostics,
   ): CommitteeMeasureFiling | null {
-    const result = CommitteeMeasureFilingSchema.safeParse(record);
-    if (!result.success) {
-      this.logger.debug(
-        `Committee measure filing validation failed: ${result.error.message}`,
-      );
+    const filing = this.parseOrCollect(
+      CommitteeMeasureFilingSchema,
+      record,
+      "CommitteeMeasureFiling",
+      diag,
+    );
+    if (!filing) {
       return null;
     }
-    const filing = result.data;
     // Most CVR2 rows are non-ballot entity declarations. Only ballot-measure
     // declarations (a ballotName or ballotNumber) are useful — the
     // proposition-finance-linker resolves by those — so drop the rest here
@@ -249,6 +330,7 @@ export class DomainMapperService {
 
   private mapContribution(
     record: Record<string, unknown>,
+    diag: MappingDiagnostics,
   ): Contribution | null {
     // Combine first/last name fields if donorName not already set
     const enriched = { ...record };
@@ -261,38 +343,31 @@ export class DomainMapperService {
       enriched.donorName = first ? `${last}, ${first}`.trim() : last;
     }
 
-    const result = ContributionSchema.safeParse(enriched);
-    if (!result.success) {
-      this.logger.debug(
-        `Contribution validation failed: ${result.error.message}`,
-      );
-      return null;
-    }
-    return result.data;
+    return this.parseOrCollect(
+      ContributionSchema,
+      enriched,
+      "Contribution",
+      diag,
+    );
   }
 
-  private mapExpenditure(record: Record<string, unknown>): Expenditure | null {
-    const result = ExpenditureSchema.safeParse(record);
-    if (!result.success) {
-      this.logger.debug(
-        `Expenditure validation failed: ${result.error.message}`,
-      );
-      return null;
-    }
-    return result.data;
+  private mapExpenditure(
+    record: Record<string, unknown>,
+    diag: MappingDiagnostics,
+  ): Expenditure | null {
+    return this.parseOrCollect(ExpenditureSchema, record, "Expenditure", diag);
   }
 
   private mapIndependentExpenditure(
     record: Record<string, unknown>,
+    diag: MappingDiagnostics,
   ): IndependentExpenditure | null {
-    const result = IndependentExpenditureSchema.safeParse(record);
-    if (!result.success) {
-      this.logger.debug(
-        `IndependentExpenditure validation failed: ${result.error.message}`,
-      );
-      return null;
-    }
-    return result.data;
+    return this.parseOrCollect(
+      IndependentExpenditureSchema,
+      record,
+      "IndependentExpenditure",
+      diag,
+    );
   }
 }
 

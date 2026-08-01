@@ -15,6 +15,7 @@ import type {
   FieldMapping,
   PreprocessingStep,
   RawExtractionResult,
+  SelectorFailure,
 } from "@opuspopuli/common";
 import { FieldTransformer } from "./field-transformer.js";
 import { safeRegex } from "./safe-regex.js";
@@ -61,6 +62,13 @@ export class ManifestExtractorService {
         success: false,
         warnings: [],
         errors: ["Container not found: " + rules.containerSelector],
+        selectorFailures: [
+          {
+            kind: "container_miss",
+            selector: rules.containerSelector,
+            message: "Container not found: " + rules.containerSelector,
+          },
+        ],
       };
     }
 
@@ -106,17 +114,32 @@ export class ManifestExtractorService {
             " within " +
             rules.containerSelector,
         ],
+        selectorFailures: [
+          {
+            kind: "item_miss",
+            selector: rules.itemSelector,
+            containerSelector: rules.containerSelector,
+            message:
+              "No items found: " +
+              rules.itemSelector +
+              " within " +
+              rules.containerSelector,
+          },
+        ],
       };
     }
 
-    // Extract each item
+    // Extract each item, counting per-field selector misses across all
+    // attempted items (dropped items included — their misses are the signal).
     const items: Record<string, unknown>[] = [];
+    const fieldMissCounts = new Map<string, number>();
     itemElements.each((_i, el) => {
       const result = this.extractItem(
         $,
         $(el as Element),
         firstContainer,
         rules.fieldMappings,
+        fieldMissCounts,
         baseUrl,
       );
 
@@ -125,6 +148,13 @@ export class ManifestExtractorService {
         warnings.push(...result.warnings);
       }
     });
+
+    const selectorFailures = this.collectFieldMissFailures(
+      rules.fieldMappings,
+      fieldMissCounts,
+      itemElements.length,
+      warnings,
+    );
 
     const duration = Date.now() - startTime;
     this.logger.debug(
@@ -142,7 +172,64 @@ export class ManifestExtractorService {
       success: items.length > 0,
       warnings,
       errors,
+      ...(selectorFailures.length > 0 && { selectorFailures }),
     };
+  }
+
+  /**
+   * Turn per-field selector-miss counts into structured failures.
+   *
+   * A field whose selector missed in ≥50% of attempted items has almost
+   * certainly drifted — that includes non-required fields, which produced no
+   * signal at all before #966 W1 (defaults and optionality masked them).
+   */
+  private collectFieldMissFailures(
+    mappings: FieldMapping[],
+    missCounts: Map<string, number>,
+    attemptedItems: number,
+    warnings: string[],
+  ): SelectorFailure[] {
+    const failures: SelectorFailure[] = [];
+    if (attemptedItems === 0) {
+      return failures;
+    }
+
+    for (const mapping of mappings) {
+      const misses = missCounts.get(mapping.fieldName) ?? 0;
+      const missRatio = misses / attemptedItems;
+      if (missRatio < 0.5) {
+        continue;
+      }
+
+      const pct = Math.round(missRatio * 100);
+      const message =
+        'Field "' +
+        mapping.fieldName +
+        '" selector matched nothing in ' +
+        pct +
+        "% of items (" +
+        misses +
+        "/" +
+        attemptedItems +
+        '): "' +
+        (mapping.selector ?? "") +
+        '"';
+      failures.push({
+        kind: "field_miss",
+        field: mapping.fieldName,
+        selector: mapping.selector,
+        required: mapping.required === true,
+        missRatio,
+        message,
+      });
+      // Required-field misses already warn per item; surface the aggregate
+      // for non-required fields, which were previously invisible.
+      if (mapping.required !== true) {
+        warnings.push(message);
+      }
+    }
+
+    return failures;
   }
 
   /**
@@ -153,6 +240,7 @@ export class ManifestExtractorService {
     element: Cheerio<Element>,
     container: Cheerio<Element>,
     mappings: FieldMapping[],
+    fieldMissCounts: Map<string, number>,
     baseUrl?: string,
   ): { data: Record<string, unknown>; warnings: string[] } | null {
     const data: Record<string, unknown> = {};
@@ -166,7 +254,21 @@ export class ManifestExtractorService {
       }
 
       const scope = mapping.scope === "container" ? container : element;
-      const value = this.resolveFieldValue($, scope, mapping, baseUrl);
+      const { value, selectorMiss } = this.resolveFieldValue(
+        $,
+        scope,
+        mapping,
+        baseUrl,
+      );
+
+      // Selector-level miss, counted before defaults/transforms so a
+      // defaultValue can't mask a drifted selector (#966 W1).
+      if (selectorMiss) {
+        fieldMissCounts.set(
+          mapping.fieldName,
+          (fieldMissCounts.get(mapping.fieldName) ?? 0) + 1,
+        );
+      }
 
       const isEmpty =
         value === undefined ||
@@ -194,30 +296,50 @@ export class ManifestExtractorService {
 
   /**
    * Extract, transform, and apply defaults for a single field.
-   * Returns a string for scalar methods, an array of objects for 'structured'.
+   * Returns a string for scalar methods, an array of objects for 'structured',
+   * plus whether the field's selector matched nothing (measured before
+   * transforms and defaults are applied, so they can't mask drift).
    */
   private resolveFieldValue(
     $: CheerioAPI,
     element: Cheerio<Element>,
     mapping: FieldMapping,
     baseUrl?: string,
-  ): unknown {
-    // Structured extraction produces an array — transforms/defaults don't apply
-    if (mapping.extractionMethod === "structured") {
-      return this.extractStructuredArray($, element, mapping, baseUrl);
+  ): { value: unknown; selectorMiss: boolean } {
+    // "constant" has no selector to break
+    if (mapping.extractionMethod === "constant") {
+      return {
+        value: mapping.defaultValue || undefined,
+        selectorMiss: false,
+      };
     }
 
-    let value = this.extractFieldValue($, element, mapping);
+    // Structured extraction produces an array — transforms/defaults don't apply
+    if (mapping.extractionMethod === "structured") {
+      const value = this.extractStructuredArray($, element, mapping, baseUrl);
+      return {
+        value,
+        selectorMiss: Boolean(mapping.selector) && value.length === 0,
+      };
+    }
 
+    const raw = this.extractFieldValue($, element, mapping);
+    const selectorMiss = Boolean(mapping.selector) && raw === undefined;
+
+    let value: unknown = raw;
     if (value && mapping.transform) {
-      value = FieldTransformer.apply(value, mapping.transform, baseUrl);
+      value = FieldTransformer.apply(
+        value as string,
+        mapping.transform,
+        baseUrl,
+      );
     }
 
     if (!value && mapping.defaultValue !== undefined) {
       value = mapping.defaultValue;
     }
 
-    return value;
+    return { value, selectorMiss };
   }
 
   /**
@@ -278,12 +400,7 @@ export class ManifestExtractorService {
     element: Cheerio<Element>,
     mapping: FieldMapping,
   ): string | undefined {
-    // "constant" extraction method returns the defaultValue directly (no selector needed)
-    if (mapping.extractionMethod === "constant") {
-      return mapping.defaultValue || undefined;
-    }
-
-    // Skip if no selector provided
+    // "constant" is short-circuited in resolveFieldValue; skip if no selector
     if (!mapping.selector) {
       return undefined;
     }
