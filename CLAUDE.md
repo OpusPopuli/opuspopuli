@@ -90,6 +90,7 @@ Rules:
 - **Additive only** on existing tables in production. Never drop columns or rename them in a single migration — deprecate, then remove in a follow-up after deploy.
 - Secrets go in Supabase Vault. Never store credentials in migration SQL or `.env` files committed to the repo.
 - `.env` files are local dev overrides only — never commit them.
+- `MCP_DATABASE_URL` (used by the Postgres MCP server in `.mcp.json`) must be a **read-only** DSN against a **local/non-prod** database — MCP query results flow to the hosted model, so never point it at production personal data.
 
 ## Testing conventions
 
