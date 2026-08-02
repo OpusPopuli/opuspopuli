@@ -929,3 +929,168 @@ describe("ManifestExtractorService", () => {
     });
   });
 });
+
+describe("selector failure diagnostics (#966 W1)", () => {
+  let extractor: ManifestExtractorService;
+
+  beforeEach(() => {
+    extractor = new ManifestExtractorService();
+  });
+
+  it("records a container_miss failure when the container selector matches nothing", () => {
+    const manifest = createTestManifest({
+      extractionRules: {
+        containerSelector: ".vanished",
+        itemSelector: ".item",
+        fieldMappings: [],
+      },
+    });
+
+    const result = extractor.extract('<div class="other"></div>', manifest);
+
+    expect(result.success).toBe(false);
+    expect(result.selectorFailures).toEqual([
+      expect.objectContaining({
+        kind: "container_miss",
+        selector: ".vanished",
+      }),
+    ]);
+  });
+
+  it("records an item_miss failure when the item selector matches nothing in a found container", () => {
+    const manifest = createTestManifest({
+      extractionRules: {
+        containerSelector: ".container",
+        itemSelector: ".row",
+        fieldMappings: [],
+      },
+    });
+
+    const result = extractor.extract(
+      '<div class="container"><p>no rows here</p></div>',
+      manifest,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.selectorFailures).toEqual([
+      expect.objectContaining({
+        kind: "item_miss",
+        selector: ".row",
+        containerSelector: ".container",
+      }),
+    ]);
+  });
+
+  it("records a field_miss for a non-required field whose selector matches nothing", () => {
+    const manifest = createTestManifest({
+      extractionRules: {
+        containerSelector: ".container",
+        itemSelector: ".card",
+        fieldMappings: [
+          {
+            fieldName: "name",
+            selector: ".name",
+            extractionMethod: "text",
+            required: true,
+          },
+          {
+            fieldName: "party",
+            selector: ".party-renamed",
+            extractionMethod: "text",
+            required: false,
+          },
+        ],
+      },
+    });
+
+    const html =
+      '<div class="container">' +
+      '<div class="card"><span class="name">A</span></div>' +
+      '<div class="card"><span class="name">B</span></div>' +
+      "</div>";
+    const result = extractor.extract(html, manifest);
+
+    expect(result.items).toHaveLength(2);
+    expect(result.selectorFailures).toEqual([
+      expect.objectContaining({
+        kind: "field_miss",
+        field: "party",
+        selector: ".party-renamed",
+        required: false,
+        missRatio: 1,
+      }),
+    ]);
+    expect(
+      result.warnings.some((w) => w.includes('"party"')),
+    ).toBe(true);
+  });
+
+  it("counts a selector miss even when a defaultValue masks it", () => {
+    const manifest = createTestManifest({
+      extractionRules: {
+        containerSelector: ".container",
+        itemSelector: ".card",
+        fieldMappings: [
+          {
+            fieldName: "name",
+            selector: ".name",
+            extractionMethod: "text",
+            required: true,
+          },
+          {
+            fieldName: "status",
+            selector: ".status-gone",
+            extractionMethod: "text",
+            required: false,
+            defaultValue: "active",
+          },
+        ],
+      },
+    });
+
+    const html =
+      '<div class="container">' +
+      '<div class="card"><span class="name">A</span></div>' +
+      "</div>";
+    const result = extractor.extract(html, manifest);
+
+    // Default fills the value…
+    expect(result.items[0].status).toBe("active");
+    // …but the drifted selector is still reported.
+    expect(result.selectorFailures).toEqual([
+      expect.objectContaining({ kind: "field_miss", field: "status" }),
+    ]);
+  });
+
+  it("does not record field_miss for constant fields or working selectors", () => {
+    const manifest = createTestManifest({
+      extractionRules: {
+        containerSelector: ".container",
+        itemSelector: ".card",
+        fieldMappings: [
+          {
+            fieldName: "name",
+            selector: ".name",
+            extractionMethod: "text",
+            required: true,
+          },
+          {
+            fieldName: "source",
+            selector: "",
+            extractionMethod: "constant",
+            required: false,
+            defaultValue: "ca-sos",
+          },
+        ],
+      },
+    });
+
+    const html =
+      '<div class="container">' +
+      '<div class="card"><span class="name">A</span></div>' +
+      "</div>";
+    const result = extractor.extract(html, manifest);
+
+    expect(result.selectorFailures).toBeUndefined();
+  });
+});

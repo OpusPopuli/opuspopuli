@@ -1313,3 +1313,70 @@ describe("DomainMapperService", () => {
     });
   });
 });
+
+describe("schema rejection diagnostics (#966 W1)", () => {
+  let mapper: DomainMapperService;
+
+  beforeEach(() => {
+    mapper = new DomainMapperService();
+  });
+
+  it("records a schema_reject failure with Zod issues when items fail validation", () => {
+    const raw = createRawResult({
+      items: [{ junk: "a" }, { junk: "b" }],
+    });
+
+    const result = mapper.map(raw, createSource());
+
+    expect(result.items).toHaveLength(0);
+    const reject = (result.selectorFailures ?? []).find(
+      (f) => f.kind === "schema_reject",
+    );
+    expect(reject).toBeDefined();
+    expect(reject!.missRatio).toBe(1);
+    expect(
+      reject!.schemaIssues!.some((i) => i.startsWith("Proposition.")),
+    ).toBe(true);
+    expect(
+      result.warnings.some((w) => w.includes("rejected by the")),
+    ).toBe(true);
+  });
+
+  it("passes extractor selectorFailures through to the mapped result", () => {
+    const raw = createRawResult({
+      items: [],
+      success: false,
+      selectorFailures: [
+        {
+          kind: "container_miss",
+          selector: ".gone",
+          message: 'Container not found: ".gone"',
+        },
+      ],
+    });
+
+    const result = mapper.map(raw, createSource());
+
+    expect(result.selectorFailures).toEqual([
+      expect.objectContaining({ kind: "container_miss", selector: ".gone" }),
+    ]);
+  });
+
+  it("does not count intentional drops as schema rejects", () => {
+    // A meeting with neither externalId nor title is dropped by design
+    // (identity gate), not by the Zod schema — it must not feed the heal loop.
+    const raw = createRawResult({
+      items: [{ location: "Room 101" }],
+    });
+
+    const result = mapper.map(
+      raw,
+      createSource({ dataType: DataType.MEETINGS }),
+    );
+
+    expect(result.items).toHaveLength(0);
+    expect(
+      (result.selectorFailures ?? []).find((f) => f.kind === "schema_reject"),
+    ).toBeUndefined();
+  });
+});

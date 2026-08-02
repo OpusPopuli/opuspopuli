@@ -208,3 +208,59 @@ describe("ExtractionValidator", () => {
     expect(result.valid).toBe(true);
   });
 });
+
+describe("field selector failures (#966 W1)", () => {
+  let validator: ExtractionValidator;
+
+  beforeEach(() => {
+    validator = new ExtractionValidator();
+  });
+
+  it("surfaces non-required field misses as warnings without failing validation", () => {
+    const result = validator.validate(
+      createResult({
+        selectorFailures: [
+          {
+            kind: "field_miss",
+            field: "party",
+            selector: ".party-renamed",
+            required: false,
+            missRatio: 1,
+            message: 'Field "party" selector matched nothing in 100% of items',
+          },
+        ],
+      }),
+      createManifest(),
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        message: expect.stringContaining('"party"'),
+      }),
+    ]);
+  });
+
+  it("does not duplicate required-field misses (covered by coverage check)", () => {
+    const result = validator.validate(
+      createResult({
+        selectorFailures: [
+          {
+            kind: "field_miss",
+            field: "name",
+            selector: ".name",
+            required: true,
+            missRatio: 1,
+            message: 'Field "name" selector matched nothing',
+          },
+        ],
+      }),
+      createManifest(),
+    );
+
+    expect(
+      result.issues.filter((i) => i.message.includes("matched nothing")),
+    ).toHaveLength(0);
+  });
+});

@@ -566,3 +566,64 @@ describe("DetailCrawlerService", () => {
     });
   });
 });
+
+describe("detail field failure diagnostics (#966 W1)", () => {
+  it("records a detail_field_error instead of silently swallowing an invalid selector", async () => {
+    const mockExtraction = createMockExtraction();
+    const mockLlm = createMockLlm();
+    const crawler = new DetailCrawlerService(
+      mockExtraction as unknown as never,
+    );
+
+    const raw = createRawResult([
+      { title: "Measure A", detailUrl: "https://example.com/detail/a" },
+      { title: "Measure B", detailUrl: "https://example.com/detail/b" },
+    ]);
+    const source = createSource({
+      detailFields: {
+        // Unclosed pseudo-class — Cheerio throws on parse
+        fullText: "div:nth-child(",
+        summary: "main p",
+      },
+    });
+
+    const result = await crawler.enrichItems(raw, source, mockLlm);
+
+    const failure = (result.selectorFailures ?? []).find(
+      (f) => f.kind === "detail_field_error",
+    );
+    expect(failure).toBeDefined();
+    expect(failure!.field).toBe("fullText");
+    expect(failure!.selector).toBe("div:nth-child(");
+    expect(
+      result.warnings.some((w) => w.includes('"fullText"')),
+    ).toBe(true);
+    // The valid selector still extracted
+    expect(result.items[0].summary).toBeDefined();
+  });
+
+  it("records a broken selector once, not once per enriched item", async () => {
+    const mockExtraction = createMockExtraction();
+    const mockLlm = createMockLlm();
+    const crawler = new DetailCrawlerService(
+      mockExtraction as unknown as never,
+    );
+
+    const raw = createRawResult([
+      { title: "A", detailUrl: "https://example.com/a" },
+      { title: "B", detailUrl: "https://example.com/b" },
+      { title: "C", detailUrl: "https://example.com/c" },
+    ]);
+    const source = createSource({
+      detailFields: { fullText: "div:nth-child(" },
+    });
+
+    const result = await crawler.enrichItems(raw, source, mockLlm);
+
+    expect(
+      (result.selectorFailures ?? []).filter(
+        (f) => f.kind === "detail_field_error",
+      ),
+    ).toHaveLength(1);
+  });
+});

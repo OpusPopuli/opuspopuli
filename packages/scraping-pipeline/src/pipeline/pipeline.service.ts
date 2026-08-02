@@ -272,6 +272,7 @@ export class ScrapingPipelineService {
       manifest.lastItemCount,
     );
 
+    let healAttempted = false;
     if (healingDecision.shouldHeal) {
       // Stale cached rules produced degraded output. Re-derive and re-extract
       // in THIS run — even in async/worker mode — so the sync self-heals
@@ -283,6 +284,7 @@ export class ScrapingPipelineService {
       const healed = await this.healManifest(source, regionId, html, manifest);
       rawResult = healed.rawResult;
       effectiveVersion = healed.version;
+      healAttempted = true;
     } else {
       // Original manifest worked — record success (updating the drift baseline)
       // and refresh the checked timestamp.
@@ -294,7 +296,57 @@ export class ScrapingPipelineService {
     }
 
     // Stage 3.5: Enrich items with detail page content (if detailUrl extracted)
-    // Also check contactInfo.website — AI sometimes maps homepage links there instead of detailUrl
+    rawResult = await this.enrichWithDetails(rawResult, source);
+
+    // Stage 4: Map to domain types
+    let result = this.mapper.map<T>(rawResult, source);
+
+    // Stage 4.5: Mapping-aware heal (#966 W1). A drifted selector that
+    // matches the wrong elements passes the pre-mapping gate — extraction
+    // "succeeds" — while the domain schema rejects everything. Re-derive
+    // once when mapping losses reveal that, bounded by the same
+    // one-heal-per-run rule as the pre-mapping path.
+    const mappingDecision = this.healing.evaluateMapping(
+      rawResult,
+      result,
+      manifest,
+      healAttempted,
+    );
+    if (mappingDecision.shouldHeal) {
+      this.logger.warn(
+        `Self-healing: re-analyzing ${source.url} — ${mappingDecision.reason}`,
+      );
+      const healed = await this.healManifest(source, regionId, html, manifest);
+      healAttempted = true;
+      const healedRaw = await this.enrichWithDetails(healed.rawResult, source);
+      const remapped = this.mapper.map<T>(healedRaw, source);
+      // Keep whichever outcome mapped more items — a failed heal must not
+      // discard the (partial) original result.
+      if (remapped.items.length > result.items.length) {
+        result = remapped;
+        effectiveVersion = healed.version;
+      }
+    }
+    result.manifestVersion = effectiveVersion;
+
+    const totalMs = Date.now() - pipelineStart;
+    this.logger.log(
+      `Pipeline complete: ${result.items.length} items extracted in ${totalMs}ms ` +
+        `(cache: ${analysisResult.fromCache}, heal: ${healAttempted})`,
+    );
+
+    return result;
+  }
+
+  /**
+   * Stage 3.5: enrich items that carry a detailUrl with detail-page content.
+   * Also checks contactInfo.website — AI sometimes maps homepage links there
+   * instead of detailUrl. Shared by the main path and the mapping-aware heal.
+   */
+  private async enrichWithDetails(
+    rawResult: RawExtractionResult,
+    source: DataSourceConfig,
+  ): Promise<RawExtractionResult> {
     for (const item of rawResult.items) {
       if (!item.detailUrl) {
         item.detailUrl =
@@ -303,24 +355,9 @@ export class ScrapingPipelineService {
       }
     }
     if (rawResult.items.some((item) => item.detailUrl)) {
-      rawResult = await this.detailCrawler.enrichItems(
-        rawResult,
-        source,
-        this.llm,
-      );
+      return this.detailCrawler.enrichItems(rawResult, source, this.llm);
     }
-
-    // Stage 4: Map to domain types
-    const result = this.mapper.map<T>(rawResult, source);
-    result.manifestVersion = effectiveVersion;
-
-    const totalMs = Date.now() - pipelineStart;
-    this.logger.log(
-      `Pipeline complete: ${result.items.length} items extracted in ${totalMs}ms ` +
-        `(cache: ${analysisResult.fromCache}, heal: ${healingDecision.shouldHeal})`,
-    );
-
-    return result;
+    return rawResult;
   }
 
   /**

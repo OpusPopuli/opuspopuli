@@ -152,7 +152,7 @@ Use `git push --no-verify` only for explicit WIP/draft pushes to your own branch
 
 ## MVP target
 
-**July 4, 2026** is the public MVP launch deadline. Prioritize citizen-facing flows over internal tooling or polish. Flag anything that risks this date.
+**September 1, 2026** is the public MVP launch deadline. Prioritize citizen-facing flows over internal tooling or polish. Flag anything that risks this date.
 
 ## CI
 
