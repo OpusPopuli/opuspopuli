@@ -25,7 +25,13 @@ Note: the full rework (reconcile + name-recovery) already exists on `develop` bu
    - No schema migration (`representative_id` FK exists); no GraphQL/resolver change (rep-funding panel already reads `representativeId`) → **no federation impact.**
 2. **Tests** — extend `candidate-committee-linker.service.spec.ts`: `"First Last"` + suffix names link; a `type='other'` **controlled** committee links; a `type='other'` **support/oppose** committee does **not** link (precision); ambiguous surname still skipped.
 3. **Deploy** — rebuild `region` + `region-worker` images → ghcr → pull + restart on the `opuspopuli-us-ca` node.
-4. **Re-run the linker on prod** — linker-only trigger (avoid a full ~286k-row finance re-sync); it self-heals stale links via the reconcile pass. *Confirm the trigger mechanism before touching prod.*
+4. **Re-run the linker on prod** — via the new one-off script
+   `apps/backend/src/apps/region/src/scripts/run-candidate-committee-linker.ts` (mirrors the existing
+   `run-finance-linker.ts`): after `pnpm --filter backend build:region`, run
+   `node apps/backend/dist/…/run-candidate-committee-linker.js` inside the region container. Re-links
+   against existing DB data — **no ~286k-row finance re-sync**. Idempotent + self-healing via the
+   reconcile pass. (The linker also runs automatically at the end of a full campaign-finance sync,
+   `campaign-finance-sync.service.ts`, but the script avoids the expensive re-fetch.)
 5. **Re-verify** — re-run the yield diagnostic (expect ~111/120) and spot-check ~10 newly-linked committees for precision.
 
 ## Risk register (severity × likelihood → mitigation)
