@@ -3,6 +3,7 @@ import {
   CandidateCommitteeLinkerService,
   isCandidateOwnCommittee,
   chamberFromName,
+  candidateSurname,
 } from './candidate-committee-linker.service';
 
 interface Rep {
@@ -124,6 +125,24 @@ describe('chamberFromName (#953)', () => {
 
   it('returns null when no chamber word is present', () => {
     expect(chamberFromName('Some Random Committee 2024')).toBeNull();
+  });
+});
+
+describe('candidateSurname (#953)', () => {
+  it('returns a bare surname unchanged', () => {
+    expect(candidateSurname('Doe')).toBe('Doe');
+  });
+  it('takes the part before a comma for "Last, First"', () => {
+    expect(candidateSurname('Doe, Jane')).toBe('Doe');
+  });
+  it('takes the final token for "First [Middle] Last" (the case that capped yield)', () => {
+    expect(candidateSurname('Tina McKinnor')).toBe('McKinnor');
+    expect(candidateSurname('Jane Marie Doe')).toBe('Doe');
+  });
+  it('drops a trailing generational suffix', () => {
+    expect(candidateSurname('John Smith Jr')).toBe('Smith');
+    expect(candidateSurname('John Smith Jr.')).toBe('Smith');
+    expect(candidateSurname('Bob Jones III')).toBe('Jones');
   });
 });
 
@@ -250,6 +269,35 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
     expect(res.linked).toBe(1);
   });
 
+  it('links a committee whose candidateName is a full "First Last" (#953)', async () => {
+    // CAL-ACCESS stores many CAND_NAML as "First Last"; before the fix this
+    // normalized to the whole name and matched nothing, capping yield at ~5/120.
+    const { svc, update } = build(
+      [
+        {
+          id: 'rep-m',
+          lastName: 'McKinnor',
+          name: 'Tina McKinnor',
+          chamber: 'Assembly',
+        },
+      ],
+      [
+        {
+          id: 'c-1',
+          name: 'Tina McKinnor for Assembly 2024',
+          candidateName: 'Tina McKinnor',
+          candidateOffice: 'ASM',
+        },
+      ],
+    );
+    const res = await svc.linkAll();
+    expect(res.linked).toBe(1);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'c-1' },
+      data: { representativeId: 'rep-m' },
+    });
+  });
+
   it('counts unmatched for a non-legislative office or an unknown name', async () => {
     const { svc, update } = build(
       [{ id: 'rep-1', lastName: 'Doe', name: 'Jane Doe', chamber: 'Assembly' }],
@@ -308,16 +356,19 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
     );
     await svc.linkAll();
     // The link pass (representativeId: null) is state-scoped to unlinked
-    // cal_access candidate committees. (calls[0] is now the reconcile pass.)
+    // cal_access committees. (calls[0] is now the reconcile pass.)
     const linkCall = cmteFindMany.mock.calls.find(
       (c: [{ where?: { representativeId?: unknown } }]) =>
         c[0]?.where?.representativeId === null,
     );
+    // Eligibility no longer gates on type='candidate' (#953): CAL-ACCESS
+    // mis-types many candidate committees as 'other', so all unlinked cal_access
+    // committees are considered and precision is enforced by the name-gate.
     expect(linkCall?.[0].where).toMatchObject({
-      type: 'candidate',
       representativeId: null,
       sourceSystem: 'cal_access',
     });
+    expect(linkCall?.[0].where).not.toHaveProperty('type');
     // federal reps excluded so US-Senate can't collide with CA State Senate
     expect(repFindMany.mock.calls[0][0].where).toMatchObject({
       regionId: { not: 'federal' },
