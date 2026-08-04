@@ -770,6 +770,40 @@ export interface ExtractionResult<T> {
    * the next run will find the freshly-derived manifest in cache.
    */
   pendingManifestAnalysis?: boolean;
+  /** Structured selector/schema failure diagnostics (#966 W1) */
+  selectorFailures?: SelectorFailure[];
+}
+
+/**
+ * Structured diagnostic for a selector or schema failure during extraction.
+ *
+ * This is the "which selector failed" record (#966 W1): unlike the flat
+ * `warnings`/`errors` strings, it survives with enough structure for the
+ * self-heal evaluation — and later the selector-repair agent — to act on
+ * without re-parsing English.
+ */
+export interface SelectorFailure {
+  /** Failure class */
+  kind:
+    | "container_miss"
+    | "item_miss"
+    | "field_miss"
+    | "detail_field_error"
+    | "schema_reject";
+  /** The selector that failed to match, when one is implicated */
+  selector?: string;
+  /** Enclosing scope selector (item/field misses) */
+  containerSelector?: string;
+  /** Field name, for field-level and schema failures */
+  field?: string;
+  /** Whether the field was marked required (field_miss only) */
+  required?: boolean;
+  /** Fraction of extracted items affected (field_miss / schema_reject) */
+  missRatio?: number;
+  /** Deduplicated Zod issue summaries (schema_reject only) */
+  schemaIssues?: string[];
+  /** Human-readable summary */
+  message: string;
 }
 
 /**
@@ -784,6 +818,8 @@ export interface RawExtractionResult {
   warnings: string[];
   /** Fatal errors */
   errors: string[];
+  /** Structured selector-level failure diagnostics (#966 W1) */
+  selectorFailures?: SelectorFailure[];
 }
 
 /**

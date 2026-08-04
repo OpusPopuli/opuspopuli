@@ -40,6 +40,7 @@ export class ExtractionValidator {
     this.checkRequiredFieldCoverage(result, manifest, issues);
     this.checkItemCountDrift(result, previousItemCount, issues);
     this.checkWarningCount(result, issues);
+    this.checkFieldSelectorFailures(result, issues);
 
     const hasErrors = issues.some((i) => i.severity === "error");
     if (hasErrors) {
@@ -169,6 +170,24 @@ export class ExtractionValidator {
           pct +
           "%)",
       });
+    }
+  }
+
+  /**
+   * Surface non-required field selector misses from the extractor's
+   * structured diagnostics (#966 W1). Warning severity on purpose: an
+   * optional field that is legitimately absent from a page shape must not
+   * trigger an LLM re-analysis on every run — required-field breakage
+   * already escalates via checkRequiredFieldCoverage.
+   */
+  private checkFieldSelectorFailures(
+    result: RawExtractionResult,
+    issues: ValidationIssue[],
+  ): void {
+    for (const failure of result.selectorFailures ?? []) {
+      if (failure.kind === "field_miss" && failure.required !== true) {
+        issues.push({ severity: "warning", message: failure.message });
+      }
     }
   }
 

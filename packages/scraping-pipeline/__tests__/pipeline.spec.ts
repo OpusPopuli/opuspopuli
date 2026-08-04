@@ -122,6 +122,11 @@ describe("ScrapingPipelineService", () => {
         reason: "Extraction passed validation",
         validation: { valid: true, issues: [] },
       }),
+      evaluateMapping: jest.fn().mockReturnValue({
+        shouldHeal: false,
+        reason: "Mapping losses within tolerance",
+        validation: { valid: true, issues: [] },
+      }),
     } as unknown as jest.Mocked<SelfHealingService>;
 
     pipeline = new ScrapingPipelineService(
@@ -493,6 +498,103 @@ describe("ScrapingPipelineService", () => {
         ]),
       );
       expect(mockApiIngest.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("mapping-aware self-healing (#966 W1)", () => {
+    it("re-analyzes once when domain mapping rejects a majority of items", async () => {
+      // Extraction looks healthy both times…
+      mockHealing.evaluate.mockReturnValue({
+        shouldHeal: false,
+        reason: "Extraction passed validation",
+        validation: { valid: true, issues: [] },
+      });
+      // …but mapping rejects everything on the first pass.
+      (mockHealing.evaluateMapping as jest.Mock)
+        .mockReturnValueOnce({
+          shouldHeal: true,
+          reason: "Domain mapping rejected 100% of extracted items",
+          validation: {
+            valid: false,
+            issues: [{ severity: "error", message: "mapping loss" }],
+          },
+        })
+        .mockReturnValue({
+          shouldHeal: false,
+          reason: "Mapping losses within tolerance",
+          validation: { valid: true, issues: [] },
+        });
+      (mockMapper.map as jest.Mock)
+        .mockReturnValueOnce({
+          items: [],
+          manifestVersion: 0,
+          success: false,
+          warnings: [],
+          errors: [],
+          extractionTimeMs: 1,
+          selectorFailures: [
+            { kind: "schema_reject", missRatio: 1, message: "rejected" },
+          ],
+        })
+        .mockReturnValueOnce({
+          items: [{ id: "fixed" }],
+          manifestVersion: 0,
+          success: true,
+          warnings: [],
+          errors: [],
+          extractionTimeMs: 1,
+        });
+
+      const newManifest = createManifest({ id: "manifest-2", version: 2 });
+      mockAnalyzer.analyze.mockResolvedValue(newManifest);
+
+      const result = await pipeline.execute(createSource(), "california");
+
+      // Healed via re-analysis and kept the better (remapped) outcome
+      expect(mockAnalyzer.analyze).toHaveBeenCalled();
+      expect(mockExtractor.extract).toHaveBeenCalledTimes(2);
+      expect(result.items).toEqual([{ id: "fixed" }]);
+    });
+
+    it("keeps the original result when the mapping-heal remap is not better", async () => {
+      mockHealing.evaluate.mockReturnValue({
+        shouldHeal: false,
+        reason: "Extraction passed validation",
+        validation: { valid: true, issues: [] },
+      });
+      (mockHealing.evaluateMapping as jest.Mock).mockReturnValueOnce({
+        shouldHeal: true,
+        reason: "Domain mapping rejected 100% of extracted items",
+        validation: {
+          valid: false,
+          issues: [{ severity: "error", message: "mapping loss" }],
+        },
+      });
+      const emptyMapped = {
+        items: [],
+        manifestVersion: 0,
+        success: false,
+        warnings: [],
+        errors: [],
+        extractionTimeMs: 1,
+      };
+      (mockMapper.map as jest.Mock)
+        .mockReturnValueOnce({
+          ...emptyMapped,
+          selectorFailures: [
+            { kind: "schema_reject", missRatio: 1, message: "rejected" },
+          ],
+        })
+        .mockReturnValueOnce(emptyMapped);
+
+      const newManifest = createManifest({ id: "manifest-2", version: 2 });
+      mockAnalyzer.analyze.mockResolvedValue(newManifest);
+
+      const result = await pipeline.execute(createSource(), "california");
+
+      expect(result.items).toEqual([]);
+      // Original manifest version retained — the failed heal didn't win
+      expect(result.manifestVersion).toBe(1);
     });
   });
 });

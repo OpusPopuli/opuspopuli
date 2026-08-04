@@ -90,6 +90,7 @@ Rules:
 - **Additive only** on existing tables in production. Never drop columns or rename them in a single migration — deprecate, then remove in a follow-up after deploy.
 - Secrets go in Supabase Vault. Never store credentials in migration SQL or `.env` files committed to the repo.
 - `.env` files are local dev overrides only — never commit them.
+- `MCP_DATABASE_URL` (used by the Postgres MCP server in `.mcp.json`) must be a **read-only** DSN against a **local/non-prod** database — MCP query results flow to the hosted model, so never point it at production personal data.
 
 ## Testing conventions
 
@@ -136,10 +137,14 @@ How it works:
 - WCAG 2.2 AA required for all UI — run `pnpm test:a11y` before marking UI work done
 - Deployed to Cloudflare Pages via `@opennextjs/cloudflare`
 
+## SDLC tooling (Claude Code plugin)
+
+The `op-*` workflow commands — `/op-review`, `/op-issue-plan`, `/op-release`, `/op-verify`, `/op-phi-scan`, `/op-trace`, `/op-change-record`, `/op-validate`, and the rest — ship as the shared **[opuspopuli-sdlc](https://github.com/OpusPopuli/opuspopuli-sdlc)** Claude Code plugin. It's auto-enabled in every session (local or remote) via the committed `.claude/settings.json`; the only per-developer step is trusting the repo folder once. Repo-specific commands (`/op-migration`) live in `.claude/skills/`. The plugin's `docs/compliance-model.md` maps the lifecycle to HIPAA / SOC 2 / 21 CFR Part 11 controls.
+
 ## Pre-push workflow (mandatory)
 
 Before running any `git push`, always:
-1. Run `/op-review` — fix any blocking findings before proceeding
+1. Run `/op-review` (from the opuspopuli-sdlc plugin) — fix any blocking findings before proceeding
 2. Run `/security-review` — fix any security issues before proceeding
 3. Only push after both pass cleanly
 
@@ -147,7 +152,7 @@ Use `git push --no-verify` only for explicit WIP/draft pushes to your own branch
 
 ## MVP target
 
-**July 4, 2026** is the public MVP launch deadline. Prioritize citizen-facing flows over internal tooling or polish. Flag anything that risks this date.
+**September 1, 2026** is the public MVP launch deadline. Prioritize citizen-facing flows over internal tooling or polish. Flag anything that risks this date.
 
 ## CI
 

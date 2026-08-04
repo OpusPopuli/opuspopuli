@@ -96,6 +96,25 @@ export function chamberFromName(name: string): 'Assembly' | 'Senate' | null {
   return null;
 }
 
+/** Generational suffixes dropped before taking the final token of a full name. */
+const NAME_SUFFIXES = new Set(['jr', 'sr', 'ii', 'iii', 'iv', 'v']);
+
+/**
+ * Extract the surname from a CAL-ACCESS candidate name. `CAND_NAML` is
+ * inconsistently populated — it arrives as a bare "Last", as "Last, First", or
+ * as a full "First [Middle] Last" — and the last shape matched nothing before,
+ * capping yield at ~5/120 (#953). Strip a trailing generational suffix, then
+ * take the part before a comma, otherwise the final token.
+ */
+export function candidateSurname(candidateName: string): string {
+  const raw = candidateName.trim();
+  if (raw.includes(',')) return raw.split(',')[0].trim();
+  const tokens = raw
+    .split(/\s+/)
+    .filter((t) => !NAME_SUFFIXES.has(t.toLowerCase().replace(/[^a-z]/g, '')));
+  return tokens.length ? tokens[tokens.length - 1] : raw;
+}
+
 /** A representative reduced to what surname-in-name matching needs. */
 interface RepEntry {
   id: string;
@@ -158,14 +177,18 @@ export class CandidateCommitteeLinkerService {
     // removes the need to manually clear representative_id before a re-sync.
     const reconciledUnlinked = await this.reconcileExistingLinks();
 
-    // Consider every unlinked CAL-ACCESS candidate committee — INCLUDING those
-    // missing CAND_NAML. A controlled committee is still titled after the
-    // candidate ("Friends of {name} for Senate"), so we recover the rep from the
-    // committee NAME when the field is blank (#953 yield). Only CAL-ACCESS
-    // committees carry ASM/SEN offices that map to our tracked legislators.
+    // Consider every unlinked CAL-ACCESS committee — NOT just type='candidate'.
+    // CAL-ACCESS mis-types many candidate-controlled committees as 'other'
+    // (CMTTE_TYPE ≠ CTL/CAO), so gating on type first excluded most legislators
+    // and capped yield at ~5/120 (#953). Eligibility is instead the match
+    // signals themselves — CAND_NAML/OFFICE_CD or a chamber+surname recoverable
+    // from the committee NAME — and precision is enforced downstream by
+    // isCandidateOwnCommittee (surname-in-name + no support/oppose marker), so a
+    // union/IE/ballot committee that merely references a candidate is never
+    // attributed. Only CAL-ACCESS committees carry ASM/SEN offices that map to
+    // our tracked legislators.
     const committees = await this.db.committee.findMany({
       where: {
-        type: 'candidate',
         representativeId: null,
         sourceSystem: 'cal_access',
         deletedAt: null,
@@ -243,7 +266,6 @@ export class CandidateCommitteeLinkerService {
     const linked = await this.db!.committee.findMany({
       where: {
         representativeId: { not: null },
-        type: 'candidate',
         sourceSystem: 'cal_access',
         deletedAt: null,
       },
@@ -251,7 +273,10 @@ export class CandidateCommitteeLinkerService {
     });
     const stale = linked.filter(
       (c) =>
-        !isCandidateOwnCommittee(c.name, (c.candidateName ?? '').split(',')[0]),
+        !isCandidateOwnCommittee(
+          c.name,
+          candidateSurname(c.candidateName ?? ''),
+        ),
     );
     if (stale.length > 0) {
       await batchTransaction(
@@ -328,9 +353,10 @@ export class CandidateCommitteeLinkerService {
       this.officeToChamber(c.candidateOffice) ?? chamberFromName(c.name);
     if (!chamber) return { kind: 'unmatched' };
     if (c.candidateName) {
-      // candidateName is CAND_NAML (last name); take the part before a comma in
-      // case a filing carries "Last, First".
-      const last = c.candidateName.split(',')[0];
+      // CAND_NAML arrives as "Last", "Last, First", or a full "First Last";
+      // reduce all three to the surname (#953 — the "First Last" case never
+      // matched before).
+      const last = candidateSurname(c.candidateName);
       const hit = repIndex.get(this.repKey(last, chamber));
       if (hit === AMBIGUOUS) return { kind: 'ambiguous' };
       if (hit) return { kind: 'match', repId: hit, surname: last };
