@@ -2465,6 +2465,7 @@ describe('RegionSyncService — campaign finance sync', () => {
       },
     ],
     committeeMeasureFilings: [],
+    cvrFilings: [],
   };
 
   beforeEach(async () => {
@@ -2611,6 +2612,7 @@ describe('RegionSyncService — campaign finance sync', () => {
       expenditures: [],
       independentExpenditures: [],
       committeeMeasureFilings: [],
+      cvrFilings: [],
     });
 
     const results = await service.syncAll();
@@ -2650,6 +2652,7 @@ describe('RegionSyncService — campaign finance sync', () => {
         },
       ],
       committeeMeasureFilings: [],
+      cvrFilings: [],
     });
 
     await service.syncAll();
@@ -3085,6 +3088,7 @@ describe('RegionSyncService — proposition finance wiring', () => {
       expenditures: [],
       independentExpenditures: [],
       committeeMeasureFilings: [],
+      cvrFilings: [],
     });
 
     const mockPlugin = {

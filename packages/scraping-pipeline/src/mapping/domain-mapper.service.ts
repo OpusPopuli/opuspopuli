@@ -20,6 +20,7 @@ import {
   type Expenditure,
   type IndependentExpenditure,
   type CommitteeMeasureFiling,
+  type CvrFiling,
   type RawExtractionResult,
   type ExtractionResult,
   type DataSourceConfig,
@@ -164,6 +165,7 @@ export class DomainMapperService {
     | Expenditure
     | IndependentExpenditure
     | CommitteeMeasureFiling
+    | CvrFiling
     | null {
     switch (source.dataType) {
       case DataType.PROPOSITIONS:
@@ -192,6 +194,7 @@ export class DomainMapperService {
     | Expenditure
     | IndependentExpenditure
     | CommitteeMeasureFiling
+    | CvrFiling
     | null {
     const cat = (category ?? "").toLowerCase();
 
@@ -203,6 +206,12 @@ export class DomainMapperService {
     // formed (#936).
     if (cat.includes("committee position") || cat.includes("cvr2")) {
       return this.mapCommitteeMeasureFiling(record, diag);
+    } else if (cat.includes("cover page")) {
+      // Form 496 cover pages (CVR_CAMPAIGN_DISCLOSURE_CD, FORM_TYPE=F496).
+      // Checked before the "committee"/"independent" branches: the category is
+      // "CAL-ACCESS IE Cover Pages" and must route to the cvr_filings map the IE
+      // linker joins S496 line items against, not to a committee/IE row (#955).
+      return this.mapCvrFiling(record, diag);
     } else if (cat.includes("independent") || cat.includes("s496")) {
       return this.mapIndependentExpenditure(record, diag);
     } else if (cat.includes("committee")) {
@@ -229,7 +238,12 @@ export class DomainMapperService {
       ...record,
       sourceUrl: record.sourceUrl ?? record.detailUrl,
     };
-    return this.parseOrCollect(PropositionSchema, enriched, "Proposition", diag);
+    return this.parseOrCollect(
+      PropositionSchema,
+      enriched,
+      "Proposition",
+      diag,
+    );
   }
 
   private mapMeeting(
@@ -368,6 +382,19 @@ export class DomainMapperService {
       "IndependentExpenditure",
       diag,
     );
+  }
+
+  private mapCvrFiling(
+    record: Record<string, unknown>,
+    diag: MappingDiagnostics,
+  ): CvrFiling | null {
+    // The config maps FILING_ID -> filingId; the sync upserts cvr_filings by
+    // externalId, so key each cover page by its FILING_ID (one row per filing).
+    const enriched = {
+      ...record,
+      externalId: record.externalId ?? record.filingId,
+    };
+    return this.parseOrCollect(CvrFilingSchema, enriched, "CvrFiling", diag);
   }
 }
 
@@ -962,7 +989,10 @@ const ExpenditureSchema = z
 
 const IndependentExpenditureSchema = z.object({
   externalId: z.string().min(1),
-  committeeId: z.string().min(1),
+  // Optional: S496_CD line items carry no committee — resolved post-sync by
+  // IndependentExpenditureLinkerService via filingId -> Form 496 cover page (#955).
+  committeeId: z.string().min(1).optional(),
+  filingId: z.string().min(1).optional(),
   committeeName: z
     .string()
     .nullable()
@@ -992,6 +1022,37 @@ const IndependentExpenditureSchema = z.object({
     .nullable()
     .transform((v) => v ?? undefined)
     .optional(),
+  sourceSystem: z.enum(["cal_access", "fec"]),
+});
+
+// Form 496 cover page (CVR_CAMPAIGN_DISCLOSURE_CD, FORM_TYPE=F496). externalId
+// keys the cvr_filings upsert (= FILING_ID); filingId is the join key S496 line
+// items resolve against; filerId resolves to a committee. Target fields
+// (candidate/measure + support/oppose) attribute the IE downstream (#955).
+const CvrFilingSchema = z.object({
+  externalId: z.string().min(1),
+  filingId: z.string().min(1),
+  filerId: z.string().min(1),
+  candidateName: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  candidateOffice: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  propositionTitle: z
+    .string()
+    .nullable()
+    .transform((v) => v ?? undefined)
+    .optional(),
+  supportOrOppose: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((val) => (val ? supportOpposeTransform(val) : undefined)),
   sourceSystem: z.enum(["cal_access", "fec"]),
 });
 

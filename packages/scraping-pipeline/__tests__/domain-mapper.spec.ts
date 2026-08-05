@@ -1158,6 +1158,43 @@ describe("DomainMapperService", () => {
         amount: 50000,
       });
     });
+
+    it("maps a real S496 line item that has no committeeId (#955)", () => {
+      // S496_CD carries only TRAN_ID/FILING_ID/AMOUNT/EXP_DATE/EXPN_DSCR — no
+      // committee. Before #955 the required committeeId dropped every such row,
+      // leaving independent_expenditures at 0. It must now validate, carrying
+      // filingId for the linker and no committeeId until it is resolved post-sync.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "TRAN-496-1",
+              filingId: "F-100200",
+              amount: "12000",
+              date: "2026-10-15",
+              description: "Mailer opposing candidate",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Independent Expenditures",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        externalId: "TRAN-496-1",
+        filingId: "F-100200",
+        amount: 12000,
+        committeeName: "Unknown", // defaulted; the linker fills it post-sync
+      });
+      expect(
+        (result.items[0] as { committeeId?: string }).committeeId,
+      ).toBeUndefined();
+    });
   });
 
   describe("campaign finance — category routing", () => {
@@ -1211,6 +1248,38 @@ describe("DomainMapperService", () => {
       expect(result.success).toBe(true);
       expect(result.items[0]).toMatchObject({
         committeeName: "Late IE PAC",
+        supportOrOppose: "oppose",
+      });
+    });
+
+    it("routes 'IE Cover Pages' (Form 496) to cvr filings with filer + target (#955)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              filingId: "F-100200",
+              filerId: "C0099",
+              candidateName: "Jane Doe",
+              candidateOffice: "ASM",
+              supportOrOppose: "O",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS IE Cover Pages",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        externalId: "F-100200", // keyed by FILING_ID for the cvr_filings upsert
+        filingId: "F-100200",
+        filerId: "C0099",
+        candidateName: "Jane Doe",
+        candidateOffice: "ASM",
         supportOrOppose: "oppose",
       });
     });
@@ -1337,9 +1406,9 @@ describe("schema rejection diagnostics (#966 W1)", () => {
     expect(
       reject!.schemaIssues!.some((i) => i.startsWith("Proposition.")),
     ).toBe(true);
-    expect(
-      result.warnings.some((w) => w.includes("rejected by the")),
-    ).toBe(true);
+    expect(result.warnings.some((w) => w.includes("rejected by the"))).toBe(
+      true,
+    );
   });
 
   it("passes extractor selectorFailures through to the mapped result", () => {
