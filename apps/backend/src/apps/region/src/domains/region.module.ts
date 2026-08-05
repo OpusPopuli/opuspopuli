@@ -51,6 +51,7 @@ import { PropositionAnalysisService } from './proposition-analysis.service';
 import { MinutesSummaryService } from './minutes-summary.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
+import { IndependentExpenditureLinkerService } from './independent-expenditure-linker.service';
 import { PropositionFundingService } from './proposition-funding.service';
 import { RepresentativeFundingService } from './representative-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
@@ -218,6 +219,7 @@ const promptClientAsyncConfig = {
     MinutesSummaryService,
     PropositionFinanceLinkerService,
     CandidateCommitteeLinkerService,
+    IndependentExpenditureLinkerService,
     PropositionFundingService,
     RepresentativeFundingService,
     LegislativeCommitteeLinkerService,

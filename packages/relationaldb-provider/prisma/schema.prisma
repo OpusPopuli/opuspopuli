@@ -242,8 +242,8 @@ model UserProfile {
   // localStorage as a fast-path cache.
   onboardingCompletedAt DateTime? @map("onboarding_completed_at") @db.Timestamptz
 
-  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt            DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1648,30 +1648,30 @@ enum CommitteeMeasurePositionType {
 /// Campaign committee — the entity that raises and spends money.
 /// Covers candidate committees, ballot measure committees, PACs, Super PACs, and party committees.
 model Committee {
-  id              String    @id @default(uuid())
-  externalId      String    @unique @map("external_id")
-  name            String
-  type            String    @db.VarChar(50) /// candidate, ballot_measure, pac, super_pac, party, small_contributor, other
-  candidateName   String?   @map("candidate_name")
-  candidateOffice String?   @map("candidate_office")
-  propositionId   String?   @map("proposition_id")
+  id               String    @id @default(uuid())
+  externalId       String    @unique @map("external_id")
+  name             String
+  type             String    @db.VarChar(50) /// candidate, ballot_measure, pac, super_pac, party, small_contributor, other
+  candidateName    String?   @map("candidate_name")
+  candidateOffice  String?   @map("candidate_office")
+  propositionId    String?   @map("proposition_id")
   /// Resolved by the candidate-committee → representative linker from
   /// candidateName + candidateOffice (#941). Null for non-candidate committees
   /// or when the candidate doesn't match a tracked representative.
-  representativeId String?  @map("representative_id")
-  party           String?   @db.VarChar(50)
-  status          String    @default("active") @db.VarChar(20)
-  sourceSystem    String    @map("source_system") @db.VarChar(20) /// cal_access, fec
-  sourceUrl       String?   @map("source_url")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+  representativeId String?   @map("representative_id")
+  party            String?   @db.VarChar(50)
+  status           String    @default("active") @db.VarChar(20)
+  sourceSystem     String    @map("source_system") @db.VarChar(20) /// cal_access, fec
+  sourceUrl        String?   @map("source_url")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
 
   contributions           Contribution[]
   expenditures            Expenditure[]
   independentExpenditures IndependentExpenditure[]
   measurePositions        CommitteeMeasurePosition[]
-  representative          Representative? @relation(fields: [representativeId], references: [id], onDelete: SetNull)
+  representative          Representative?            @relation(fields: [representativeId], references: [id], onDelete: SetNull)
 
   @@index([name])
   @@index([type])
@@ -1724,6 +1724,30 @@ model Cvr2Filing {
   @@index([filingId])
   @@index([ballotName])
   @@map("cvr2_filings")
+}
+
+/// Raw Form 496 cover pages (CVR_CAMPAIGN_DISCLOSURE_CD filtered to
+/// FORM_TYPE=F496). S496_CD line items carry only FILING_ID — the filer
+/// committee (FILER_ID) and the IE target (candidate/measure + support/oppose)
+/// live here. Persisted (like Cvr2Filing) so IndependentExpenditureLinkerService
+/// can resolve each S496 line to its committee + target by FILING_ID, decoupled
+/// from the bulk-download cycle (#955).
+model CvrFiling {
+  id               String   @id @default(uuid())
+  externalId       String   @unique @map("external_id") /// FILING_ID (one cover page per filing)
+  filingId         String   @map("filing_id") @db.VarChar(50)
+  filerId          String   @map("filer_id") @db.VarChar(50) /// CalAccess FILER_ID — same id space as committees.external_id
+  candidateName    String?  @map("candidate_name")
+  candidateOffice  String?  @map("candidate_office") @db.VarChar(50)
+  propositionTitle String?  @map("proposition_title")
+  supportOrOppose  String?  @map("support_or_oppose") @db.VarChar(10) /// CalAccess SUP_OPP_CD: 'S' or 'O'
+  sourceSystem     String   @map("source_system") @db.VarChar(20)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([filingId])
+  @@index([filerId])
+  @@map("cvr_filings")
 }
 
 /// Campaign contribution — money received by a committee from a donor.
@@ -1792,7 +1816,12 @@ model Expenditure {
 model IndependentExpenditure {
   id               String    @id @default(uuid())
   externalId       String    @unique @map("external_id")
-  committeeId      String    @map("committee_id")
+  /// Nullable + resolved post-sync by IndependentExpenditureLinkerService:
+  /// S496_CD line items carry no committee, so committeeId is stamped by joining
+  /// filingId -> the Form 496 cover page (cvr_filings) -> committee (#955).
+  committeeId      String?   @map("committee_id")
+  /// CalAccess FILING_ID from S496_CD — the join key to the Form 496 cover page.
+  filingId         String?   @map("filing_id") @db.VarChar(50)
   committeeName    String    @map("committee_name")
   candidateName    String?   @map("candidate_name")
   propositionTitle String?   @map("proposition_title")
@@ -1808,10 +1837,11 @@ model IndependentExpenditure {
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  committee   Committee    @relation(fields: [committeeId], references: [id])
+  committee   Committee?   @relation(fields: [committeeId], references: [id], onDelete: Restrict)
   proposition Proposition? @relation(fields: [propositionId], references: [id], onDelete: SetNull)
 
   @@index([committeeId])
+  @@index([filingId])
   @@index([candidateName])
   @@index([propositionTitle])
   @@index([propositionId])
@@ -1911,25 +1941,25 @@ model PipelineExecutionBatch {
 /// Canonical job history — BullMQ Redis state is ephemeral (removeOnComplete/removeOnFail).
 /// Template for future job families: each queue gets its own status table.
 model PipelineJob {
-  id            String    @id @default(uuid())
-  bullmqJobId   String    @map("bullmq_job_id")
-  triggerSource String    @map("trigger_source")
-  regionId      String?   @map("region_id")
-  dataTypes     String[]  @map("data_types")
-  depth         String?
-  maxReps       Int?      @map("max_reps")
-  maxBills      Int?      @map("max_bills")
-  maxDocuments  Int?      @map("max_documents") /// Meetings pdf_archive maxNew override (API backfill)
-  resetWatermark Boolean? @map("reset_watermark") /// Ignore ingestion watermark for this run (API backfill)
-  status        String
-  attempts      Int       @default(0)
-  enqueuedBy    String?   @map("enqueued_by")
-  enqueuedAt    DateTime  @default(now()) @map("enqueued_at") @db.Timestamptz
-  startedAt     DateTime? @map("started_at") @db.Timestamptz
-  finishedAt    DateTime? @map("finished_at") @db.Timestamptz
-  errorMessage  String?   @map("error_message")
-  result        Json?
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  id             String    @id @default(uuid())
+  bullmqJobId    String    @map("bullmq_job_id")
+  triggerSource  String    @map("trigger_source")
+  regionId       String?   @map("region_id")
+  dataTypes      String[]  @map("data_types")
+  depth          String?
+  maxReps        Int?      @map("max_reps")
+  maxBills       Int?      @map("max_bills")
+  maxDocuments   Int?      @map("max_documents") /// Meetings pdf_archive maxNew override (API backfill)
+  resetWatermark Boolean?  @map("reset_watermark") /// Ignore ingestion watermark for this run (API backfill)
+  status         String
+  attempts       Int       @default(0)
+  enqueuedBy     String?   @map("enqueued_by")
+  enqueuedAt     DateTime  @default(now()) @map("enqueued_at") @db.Timestamptz
+  startedAt      DateTime? @map("started_at") @db.Timestamptz
+  finishedAt     DateTime? @map("finished_at") @db.Timestamptz
+  errorMessage   String?   @map("error_message")
+  result         Json?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   executions PipelineExecution[]
 

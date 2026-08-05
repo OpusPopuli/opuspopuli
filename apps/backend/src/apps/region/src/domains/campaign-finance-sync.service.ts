@@ -6,6 +6,7 @@ import {
 } from '@opuspopuli/common';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
+import { IndependentExpenditureLinkerService } from './independent-expenditure-linker.service';
 import {
   campaignFinanceSyncTracker,
   type SyncPhaseTracker,
@@ -63,6 +64,8 @@ export class CampaignFinanceSyncService {
     private readonly propositionFinanceLinker?: PropositionFinanceLinkerService,
     @Optional()
     private readonly candidateCommitteeLinker?: CandidateCommitteeLinkerService,
+    @Optional()
+    private readonly independentExpenditureLinker?: IndependentExpenditureLinkerService,
   ) {}
 
   async sync(
@@ -140,7 +143,8 @@ export class CampaignFinanceSyncService {
       data.contributions.length > 0 ||
       data.expenditures.length > 0 ||
       data.independentExpenditures.length > 0 ||
-      data.committeeMeasureFilings.length > 0
+      data.committeeMeasureFilings.length > 0 ||
+      data.cvrFilings.length > 0
     ) {
       const tracker = ensureExtractTracker();
       await this.enrichCommittees(data);
@@ -169,6 +173,19 @@ export class CampaignFinanceSyncService {
         { note: 'no data from provider' },
       );
       emptyExtractTracker.complete();
+    }
+
+    // Attribute independent expenditures to their committee + target (#955) —
+    // runs BEFORE the proposition linker so the propositionTitle it stamps onto
+    // S496 IEs gets resolved to a propositionId in the same pass.
+    if (this.independentExpenditureLinker) {
+      try {
+        await this.independentExpenditureLinker.linkAll();
+      } catch (error) {
+        this.logger.warn(
+          `Independent-expenditure linker failed: ${(error as Error).message}`,
+        );
+      }
     }
 
     if (this.propositionFinanceLinker) {
@@ -281,7 +298,11 @@ export class CampaignFinanceSyncService {
       e.committeeId = idMap.get(e.committeeId) ?? e.committeeId;
     }
     for (const ie of data.independentExpenditures) {
-      ie.committeeId = idMap.get(ie.committeeId) ?? ie.committeeId;
+      // S496 IEs arrive with no committeeId (resolved later by the IE linker) —
+      // only rewrite the externalId -> UUID for IEs that reference one (#955).
+      if (ie.committeeId) {
+        ie.committeeId = idMap.get(ie.committeeId) ?? ie.committeeId;
+      }
     }
   }
 
@@ -360,6 +381,7 @@ export class CampaignFinanceSyncService {
       [];
     const committeeMeasureFilings: CampaignFinanceResult['committeeMeasureFilings'] =
       [];
+    const cvrFilings: CampaignFinanceResult['cvrFilings'] = [];
 
     for (const rec of items) {
       if ('donorName' in rec && 'amount' in rec) {
@@ -373,6 +395,12 @@ export class CampaignFinanceSyncService {
       } else if ('supportOrOppose' in rec && 'committeeName' in rec) {
         independentExpenditures.push(
           rec as unknown as CampaignFinanceResult['independentExpenditures'][0],
+        );
+      } else if ('filerId' in rec && 'filingId' in rec) {
+        // Form 496 cover page — filerId + filingId, no committeeName/ballot
+        // fields. Feeds the IE linker's FILING_ID -> committee join (#955).
+        cvrFilings.push(
+          rec as unknown as CampaignFinanceResult['cvrFilings'][0],
         );
       } else if (
         'filingId' in rec &&
@@ -394,6 +422,7 @@ export class CampaignFinanceSyncService {
       expenditures,
       independentExpenditures,
       committeeMeasureFilings,
+      cvrFilings,
     };
   }
 
@@ -446,6 +475,7 @@ export class CampaignFinanceSyncService {
         model: this.db.independentExpenditure,
         fields: [
           'committeeId',
+          'filingId',
           'committeeName',
           'candidateName',
           'propositionTitle',
@@ -465,6 +495,19 @@ export class CampaignFinanceSyncService {
           'ballotName',
           'ballotNumber',
           'ballotJurisdiction',
+          'supportOrOppose',
+          'sourceSystem',
+        ],
+      },
+      {
+        records: data.cvrFilings,
+        model: this.db.cvrFiling,
+        fields: [
+          'filingId',
+          'filerId',
+          'candidateName',
+          'candidateOffice',
+          'propositionTitle',
           'supportOrOppose',
           'sourceSystem',
         ],

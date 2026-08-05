@@ -829,6 +829,8 @@ export class RegionResolver {
     if (!result) return null;
     return {
       ...result,
+      // Non-null: getIndependentExpenditure filters committeeId != null (#955).
+      committeeId: result.committeeId as string,
       amount: Number(result.amount),
       candidateName: result.candidateName ?? undefined,
       propositionTitle: result.propositionTitle ?? undefined,

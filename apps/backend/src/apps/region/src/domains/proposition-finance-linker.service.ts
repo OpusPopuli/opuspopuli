@@ -326,6 +326,9 @@ export class PropositionFinanceLinkerService {
     const seen = new Set<string>();
     for (const r of [...expRows, ...ieRows]) {
       if (!r.propositionId) continue;
+      // IE.committeeId is nullable since #955 (unresolved S496 rows) — skip any
+      // not yet attributed to a committee; they can't seed a measure position.
+      if (!r.committeeId) continue;
       const position = this.mapPosition(r.supportOrOppose ?? null);
       if (!position) continue;
       const key = `${r.committeeId}:${r.propositionId}:${position}`;

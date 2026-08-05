@@ -1089,20 +1089,22 @@ describe('RegionQueryService — query methods', () => {
   describe('getIndependentExpenditure', () => {
     it('should return a single independent expenditure by ID', async () => {
       const mockIE = { id: '1', committeeName: 'Test IE Committee' };
-      mockDb.independentExpenditure.findUnique.mockResolvedValue(
+      mockDb.independentExpenditure.findFirst.mockResolvedValue(
         mockIE as never,
       );
 
       const result = await service.getIndependentExpenditure('1');
 
       expect(result).toEqual(mockIE);
-      expect(mockDb.independentExpenditure.findUnique).toHaveBeenCalledWith({
-        where: { id: '1' },
+      // findFirst (not findUnique) so it can also require a resolved committee —
+      // unresolved S496 staging rows are treated as not-found for GraphQL (#955).
+      expect(mockDb.independentExpenditure.findFirst).toHaveBeenCalledWith({
+        where: { id: '1', committeeId: { not: null } },
       });
     });
 
     it('should return null if independent expenditure not found', async () => {
-      mockDb.independentExpenditure.findUnique.mockResolvedValue(null);
+      mockDb.independentExpenditure.findFirst.mockResolvedValue(null);
 
       const result = await service.getIndependentExpenditure('nonexistent');
 

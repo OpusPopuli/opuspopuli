@@ -587,7 +587,8 @@ export interface Expenditure {
  */
 export interface IndependentExpenditure {
   externalId: string;
-  committeeId: string;
+  committeeId?: string; // resolved post-sync by IndependentExpenditureLinkerService via filingId (#955)
+  filingId?: string; // CalAccess FILING_ID from S496_CD — join key to the Form 496 cover page (#955)
   committeeName: string;
   candidateName?: string;
   propositionTitle?: string;
@@ -618,6 +619,24 @@ export interface CommitteeMeasureFiling {
 }
 
 /**
+ * Raw Form 496 cover page (CVR_CAMPAIGN_DISCLOSURE_CD filtered to FORM_TYPE=F496)
+ * from CalAccess. S496_CD line items carry only FILING_ID — the filer committee
+ * (FILER_ID) and the IE target (candidate/measure + support/oppose) live here.
+ * Persisted so IndependentExpenditureLinkerService can resolve each S496 line to
+ * its committee + target by FILING_ID, decoupled from the bulk-download cycle (#955).
+ */
+export interface CvrFiling {
+  externalId: string; // FILING_ID (one cover page per filing)
+  filingId: string; // FILING_ID — join key from S496_CD line items
+  filerId: string; // FILER_ID — same id space as Committee.externalId
+  candidateName?: string; // CAND_NAML — IE target candidate
+  candidateOffice?: string; // OFFICE_CD
+  propositionTitle?: string; // BAL_NAME — IE target measure
+  supportOrOppose?: "support" | "oppose"; // mapped from SUP_OPP_CD
+  sourceSystem: "cal_access" | "fec";
+}
+
+/**
  * Aggregated result from campaign finance data fetch
  */
 export interface CampaignFinanceResult {
@@ -626,6 +645,7 @@ export interface CampaignFinanceResult {
   expenditures: Expenditure[];
   independentExpenditures: IndependentExpenditure[];
   committeeMeasureFilings: CommitteeMeasureFiling[];
+  cvrFilings: CvrFiling[];
 }
 
 /**

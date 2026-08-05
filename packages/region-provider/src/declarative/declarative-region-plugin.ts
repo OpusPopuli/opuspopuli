@@ -228,6 +228,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       [];
     const committeeMeasureFilings: CampaignFinanceResult["committeeMeasureFilings"] =
       [];
+    const cvrFilings: CampaignFinanceResult["cvrFilings"] = [];
 
     for (const item of allItems) {
       const rec = item;
@@ -242,6 +243,12 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       } else if ("supportOrOppose" in rec && "committeeName" in rec) {
         independentExpenditures.push(
           rec as unknown as CampaignFinanceResult["independentExpenditures"][0],
+        );
+      } else if ("filerId" in rec && "filingId" in rec) {
+        // Form 496 cover page — has filerId + filingId (no committeeName, no
+        // ballot fields). Feeds the IE linker's FILING_ID -> committee join (#955).
+        cvrFilings.push(
+          rec as unknown as CampaignFinanceResult["cvrFilings"][0],
         );
       } else if (
         "filingId" in rec &&
@@ -266,6 +273,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       expenditures,
       independentExpenditures,
       committeeMeasureFilings,
+      cvrFilings,
     };
   }
 

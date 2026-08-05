@@ -35,6 +35,7 @@ function result(committees: RosterCommittee[]): CampaignFinanceResult {
     expenditures: [],
     independentExpenditures: [],
     committeeMeasureFilings: [],
+    cvrFilings: [],
   };
 }
 
