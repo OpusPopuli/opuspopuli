@@ -212,23 +212,6 @@ type ExpenditureRecord = {
   updatedAt: Date;
 };
 
-type IndependentExpenditureRecord = {
-  id: string;
-  externalId: string;
-  committeeId: string;
-  committeeName: string;
-  candidateName: string | null;
-  propositionTitle: string | null;
-  supportOrOppose: string;
-  amount: Prisma.Decimal;
-  date: Date;
-  electionDate: Date | null;
-  description: string | null;
-  sourceSystem: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
 interface LegislativeActionFeedItem {
   id: string;
   externalId: string;
@@ -1179,11 +1162,15 @@ export class RegionQueryService {
     supportOrOppose?: string,
     sourceSystem?: string,
   ): Promise<PaginatedIndependentExpenditures> {
-    const where: Record<string, unknown> = {};
+    // Only surface resolved IEs: S496 line items sit with a null committeeId
+    // until IndependentExpenditureLinkerService attributes them (#955).
+    // Unresolved rows are staging, not public money-trail data, and the GraphQL
+    // committeeId is non-null — exclude them from every IE query.
+    const where: Record<string, unknown> = { committeeId: { not: null } };
     if (committeeId) where.committeeId = committeeId;
     if (supportOrOppose) where.supportOrOppose = supportOrOppose;
     if (sourceSystem) where.sourceSystem = sourceSystem;
-    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+    const whereClause = where;
 
     const [items, total] = await Promise.all([
       this.db.independentExpenditure.findMany({
@@ -1199,8 +1186,10 @@ export class RegionQueryService {
     const paginatedItems = items.slice(0, take);
 
     return {
-      items: paginatedItems.map((item: IndependentExpenditureRecord) => ({
+      items: paginatedItems.map((item) => ({
         ...item,
+        // Non-null by the committeeId filter above; Prisma's type stays nullable.
+        committeeId: item.committeeId as string,
         amount: Number(item.amount),
         candidateName: item.candidateName ?? undefined,
         propositionTitle: item.propositionTitle ?? undefined,
@@ -1213,7 +1202,11 @@ export class RegionQueryService {
   }
 
   async getIndependentExpenditure(id: string) {
-    return this.db.independentExpenditure.findUnique({ where: { id } });
+    // findFirst (not findUnique) so we can also require a resolved committee —
+    // an unresolved S496 staging row is treated as not-found for GraphQL (#955).
+    return this.db.independentExpenditure.findFirst({
+      where: { id, committeeId: { not: null } },
+    });
   }
 
   // ─── County supervisors ───────────────────────────────────────────────────────
