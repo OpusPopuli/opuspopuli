@@ -57,6 +57,15 @@ export function RepresentativeFundingPanel({
     );
   }
 
+  // CAL-ACCESS itemization reaches us thinly (~11 contributions per committee),
+  // so these counts describe donors we could identify from the filings on hand,
+  // not everyone who gave. The labels say so rather than overstating (#980).
+  // Employer is frequently filed as a literal "N/A" placeholder — showing that
+  // as a top employer reads as a finding when it is a blank field.
+  const namedEmployers = funding.topEmployers.filter(
+    (e) => e.employer && !/^(n\/?a|none|unknown)$/i.test(e.employer.trim()),
+  );
+
   return (
     <section aria-label={t("repFinance.heading")} className="space-y-5">
       <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -78,6 +87,10 @@ export function RepresentativeFundingPanel({
         />
       </dl>
 
+      <p className="text-xs text-content-dim">
+        {t("repFinance.itemizationNote")}
+      </p>
+
       {funding.topDonors.length > 0 && (
         <MoneyList
           heading={t("repFinance.topDonors")}
@@ -92,10 +105,10 @@ export function RepresentativeFundingPanel({
         />
       )}
 
-      {funding.topEmployers.length > 0 && (
+      {namedEmployers.length > 0 && (
         <MoneyList
           heading={t("repFinance.topEmployers")}
-          rows={funding.topEmployers.map((e) => ({
+          rows={namedEmployers.map((e) => ({
             key: e.employer,
             name: e.employer,
             amount: e.totalAmount,
