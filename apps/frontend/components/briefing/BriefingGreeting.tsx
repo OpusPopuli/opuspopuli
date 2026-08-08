@@ -153,7 +153,7 @@ export function BriefingGreeting({
         <Link
           href="/region"
           aria-label={t("page.browseAllAria")}
-          className="text-sm font-medium text-content hover:text-content whitespace-nowrap shrink-0"
+          className="text-sm font-medium text-content hover:underline whitespace-nowrap shrink-0"
         >
           {t("page.browseAllLink")}
         </Link>

@@ -62,7 +62,7 @@ export function CommitteeActivityFeed({
         {Array.from({ length: 3 }, (_, i) => (
           <div
             key={`cmt-feed-skel-${i.toString()}`}
-            className="h-24 rounded-lg bg-slate-100 animate-pulse"
+            className="h-24 rounded-lg bg-surface-alt animate-pulse"
           />
         ))}
       </div>
@@ -71,7 +71,7 @@ export function CommitteeActivityFeed({
 
   if (error) {
     return (
-      <p className="text-sm text-red-600">
+      <p className="text-sm text-danger">
         Couldn&apos;t load committee activity. Try refreshing.
       </p>
     );
@@ -84,7 +84,7 @@ export function CommitteeActivityFeed({
   return (
     <div>
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-        <p className="text-xs text-content-dim">
+        <p className="text-sm text-content-dim">
           Showing {items.length} of {total} record{total === 1 ? "" : "s"}
         </p>
         <select
@@ -93,7 +93,7 @@ export function CommitteeActivityFeed({
             setFilter(e.target.value);
             setPageSize(PAGE_SIZE);
           }}
-          className="text-xs px-2 py-1 rounded border border-slate-300 bg-surface text-content-dim focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="text-xs px-2 py-1 rounded border border-line bg-surface text-content-dim focus:outline-none focus:ring-2 focus:ring-accent"
           aria-label="Filter activity by type"
         >
           <option value="all">All activity</option>
@@ -104,7 +104,7 @@ export function CommitteeActivityFeed({
       </div>
 
       {total === 0 ? (
-        <p className="italic text-slate-400 text-sm">
+        <p className="italic text-content-dim text-sm">
           No recorded activity in the last 90 days.
         </p>
       ) : (
@@ -112,7 +112,7 @@ export function CommitteeActivityFeed({
           <section key={group.actionType} className="mb-6">
             <h3 className="text-xs font-bold uppercase tracking-wider text-content-dim mb-2 flex items-baseline gap-2">
               <span>{group.label}</span>
-              <span className="text-[10px] font-medium text-slate-400">
+              <span className="text-[10px] font-medium text-content-dim">
                 · {group.items.length} record
                 {group.items.length === 1 ? "" : "s"}
               </span>
@@ -153,7 +153,7 @@ export function CommitteeActivityFeed({
             type="button"
             onClick={() => setPageSize((p) => p + PAGE_SIZE)}
             disabled={loading}
-            className="text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-sm font-medium text-info hover:text-info-strong disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Loading…" : "Load more"}
           </button>

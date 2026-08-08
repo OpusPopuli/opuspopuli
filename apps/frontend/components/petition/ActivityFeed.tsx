@@ -32,7 +32,7 @@ function Sparkline({
         return (
           <div
             key={i}
-            className="flex-1 bg-blue-500 rounded-t-sm min-w-[2px] transition-all"
+            className="flex-1 bg-accent rounded-t-sm min-w-[2px] transition-all"
             style={{ height: `${Math.max(heightPct, 4)}%` }}
             title={`${bucket.scanCount} scans`}
           />
@@ -45,7 +45,7 @@ function Sparkline({
 function ActivityItem({ item }: { item: PetitionActivityItem }) {
   return (
     <div className="px-4 py-3 bg-inverse-surface rounded-lg">
-      <p className="text-sm text-gray-200 mb-1">
+      <p className="text-sm text-content-dim mb-1">
         {truncate(item.summary || "Petition document", 120)}
       </p>
       <div className="flex items-center gap-3 text-xs text-content-dim">
@@ -66,7 +66,7 @@ function LoadingSkeleton() {
       className="space-y-3 animate-pulse"
       data-testid="activity-feed-loading"
     >
-      <div className="h-4 bg-gray-700 rounded w-3/4" />
+      <div className="h-4 bg-surface-alt rounded w-3/4" />
       <div className="h-10 bg-inverse-surface rounded" />
       <div className="h-16 bg-inverse-surface rounded" />
       <div className="h-16 bg-inverse-surface rounded" />
@@ -101,19 +101,19 @@ export function ActivityFeed() {
     <section className="w-full max-w-sm mt-8" data-testid="activity-feed">
       <div className="flex items-center gap-2 mb-3">
         <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive-solid opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-positive-solid" />
         </span>
-        <span className="text-xs font-medium text-green-400">Live</span>
+        <span className="text-xs font-medium text-positive">Live</span>
       </div>
 
-      <p className="text-sm text-gray-300 mb-3">
-        <span className="text-white font-semibold">
+      <p className="text-sm text-content-dim mb-3">
+        <span className="text-paper font-semibold">
           {feed.totalScansLast24h}
         </span>{" "}
         {feed.totalScansLast24h === 1 ? "scan" : "scans"} in the last 24 hours
         across{" "}
-        <span className="text-white font-semibold">
+        <span className="text-paper font-semibold">
           {feed.activePetitionsLast24h}
         </span>{" "}
         {feed.activePetitionsLast24h === 1 ? "petition" : "petitions"}
@@ -122,7 +122,7 @@ export function ActivityFeed() {
       {feed.hourlyTrend.length > 0 && (
         <div className="mb-4">
           <Sparkline hourlyTrend={feed.hourlyTrend} />
-          <p className="text-xs text-content-dim mt-1">Last 24 hours</p>
+          <p className="text-sm text-content-dim mt-1">Last 24 hours</p>
         </div>
       )}
 

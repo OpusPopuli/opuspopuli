@@ -18,7 +18,7 @@ export function Breadcrumb({
           {segment.href ? (
             <Link
               href={segment.href}
-              className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+              className="text-sm text-info hover:text-info-strong hover:underline"
             >
               {segment.label}
             </Link>

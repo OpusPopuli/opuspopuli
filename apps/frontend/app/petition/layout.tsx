@@ -9,11 +9,10 @@ export default function PetitionLayout({
 }>) {
   return (
     <ProtectedRoute>
-      {/* The on-ink class marks this a fixed-dark (camera) surface so the
-          semantic tokens resolve to their inverse treatment. Without it,
-          nested text-content-dim stays the light-theme dim (#726e66) and
-          fails WCAG contrast on the black background. */}
-      <div className="fixed inset-0 bg-black on-ink">{children}</div>
+      {/* on-fixed-dark, not on-ink: the camera feed is black in both themes.
+          on-ink INVERTS in dark theme (to a paper panel), which would put ink
+          text on the black video. on-fixed-dark pins the tokens instead. */}
+      <div className="fixed inset-0 bg-black on-fixed-dark">{children}</div>
     </ProtectedRoute>
   );
 }

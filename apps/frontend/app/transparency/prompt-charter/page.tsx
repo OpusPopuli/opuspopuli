@@ -17,7 +17,7 @@ export default function PromptCharterPage() {
         <div className="mb-6">
           <Link
             href="/transparency"
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            className="text-sm text-info hover:underline"
           >
             &larr; Back to Transparency
           </Link>
@@ -69,7 +69,7 @@ export default function PromptCharterPage() {
             </p>
 
             <div className="space-y-4">
-              <div className="pl-4 border-l-2 border-blue-500">
+              <div className="pl-4 border-l-2 border-accent">
                 <h3 className="font-semibold text-content">Neutrality</h3>
                 <p className="text-sm">
                   Prompts never include partisan language, leading questions, or
@@ -79,7 +79,7 @@ export default function PromptCharterPage() {
                 </p>
               </div>
 
-              <div className="pl-4 border-l-2 border-blue-500">
+              <div className="pl-4 border-l-2 border-accent">
                 <h3 className="font-semibold text-content">Completeness</h3>
                 <p className="text-sm">
                   Prompts require the AI to address all substantive provisions
@@ -89,7 +89,7 @@ export default function PromptCharterPage() {
                 </p>
               </div>
 
-              <div className="pl-4 border-l-2 border-blue-500">
+              <div className="pl-4 border-l-2 border-accent">
                 <h3 className="font-semibold text-content">
                   Source Attribution
                 </h3>
@@ -101,7 +101,7 @@ export default function PromptCharterPage() {
                 </p>
               </div>
 
-              <div className="pl-4 border-l-2 border-blue-500">
+              <div className="pl-4 border-l-2 border-accent">
                 <h3 className="font-semibold text-content">Transparency</h3>
                 <p className="text-sm">
                   Prompt versions and cryptographic hashes are published with
@@ -155,7 +155,7 @@ export default function PromptCharterPage() {
                 The{" "}
                 <Link
                   href="/transparency/system-card"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-info hover:underline"
                 >
                   System Overview
                 </Link>{" "}
@@ -209,14 +209,14 @@ export default function PromptCharterPage() {
               See also:{" "}
               <Link
                 href="/transparency/system-card"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-info hover:underline"
               >
                 AI System Overview
               </Link>
               {" \u00B7 "}
               <Link
                 href="/transparency/ai-commitments"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-info hover:underline"
               >
                 AI Commitments
               </Link>

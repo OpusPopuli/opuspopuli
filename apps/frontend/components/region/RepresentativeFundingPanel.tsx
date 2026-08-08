@@ -53,7 +53,7 @@ export function RepresentativeFundingPanel({
 
   if (!funding || funding.committeeCount === 0) {
     return (
-      <p className="text-sm text-slate-600 italic">{t("repFinance.empty")}</p>
+      <p className="text-sm text-content-dim italic">{t("repFinance.empty")}</p>
     );
   }
 

@@ -52,11 +52,11 @@ export function PropositionBriefingCard({
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/propositions/${proposition.id}`}
-            className="block text-base font-semibold text-content hover:text-content transition-colors line-clamp-2"
+            className="block text-base font-semibold text-content hover:underline transition-colors line-clamp-2"
           >
             {proposition.title}
           </Link>
-          <p className="mt-0.5 text-xs text-content-dim">
+          <p className="mt-0.5 text-sm text-content-dim">
             {proposition.externalId}
             {electionDate
               ? ` · ${t("propositions.electionDate", {

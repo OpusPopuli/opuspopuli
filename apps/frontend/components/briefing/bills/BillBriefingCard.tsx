@@ -26,11 +26,11 @@ export function BillBriefingCard({ item }: BillBriefingCardProps) {
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/bills/${bill.id}`}
-            className="block text-base font-semibold text-content hover:text-content transition-colors line-clamp-2"
+            className="block text-base font-semibold text-content hover:underline transition-colors line-clamp-2"
           >
             {bill.title}
           </Link>
-          <p className="mt-0.5 text-xs text-content-dim">
+          <p className="mt-0.5 text-sm text-content-dim">
             {bill.billNumber} · {bill.sessionYear}
             {bill.status ? ` · ${bill.status}` : ""}
           </p>

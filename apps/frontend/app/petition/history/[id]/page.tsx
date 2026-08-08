@@ -68,7 +68,7 @@ export default function ScanDetailPage() {
       <div className="sticky top-0 z-10 bg-black/90 backdrop-blur-sm px-4 py-4 flex items-center gap-3 border-b border-line">
         <button
           onClick={() => router.push("/petition/history")}
-          className="text-content-dim hover:text-white transition-colors"
+          className="text-content-dim hover:text-content transition-colors"
           aria-label={t("history.backToHistory")}
         >
           <svg
@@ -86,7 +86,7 @@ export default function ScanDetailPage() {
             />
           </svg>
         </button>
-        <h1 className="text-lg font-semibold text-white">
+        <h1 className="text-lg font-semibold text-paper">
           {t("results.title")}
         </h1>
       </div>
@@ -94,7 +94,7 @@ export default function ScanDetailPage() {
       {/* Loading */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-16">
-          <LoadingSpinner size="lg" className="text-blue-500 mb-4" />
+          <LoadingSpinner size="lg" className="text-info mb-4" />
         </div>
       )}
 
@@ -115,7 +115,7 @@ export default function ScanDetailPage() {
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
             />
           </svg>
-          <h2 className="text-lg font-semibold text-white mb-2">
+          <h2 className="text-lg font-semibold text-paper mb-2">
             {t("history.scanNotFound")}
           </h2>
           <p className="text-content-dim mb-6">
@@ -123,7 +123,7 @@ export default function ScanDetailPage() {
           </p>
           <button
             onClick={() => router.push("/petition/history")}
-            className="px-6 py-3 bg-gray-700 text-white font-medium rounded-lg hover:bg-gray-600 transition-colors"
+            className="px-6 py-3 bg-paper/15 text-paper font-medium rounded-lg hover:bg-surface-sunk transition-colors"
           >
             {t("history.backToHistory")}
           </button>
@@ -172,7 +172,7 @@ export default function ScanDetailPage() {
             {scan.analysis && (
               <button
                 onClick={handleShare}
-                className="flex-1 py-3 bg-surface/10 text-white font-medium rounded-lg hover:bg-surface/20 transition-colors"
+                className="flex-1 py-3 bg-paper/10 text-paper font-medium rounded-lg hover:bg-paper/20 transition-colors"
               >
                 {t("history.share")}
               </button>
@@ -189,7 +189,7 @@ export default function ScanDetailPage() {
             <ReportIssueButton documentId={documentId} />
             <button
               onClick={handleDelete}
-              className="text-sm text-red-400 hover:text-red-300 transition-colors"
+              className="text-sm text-danger hover:text-danger-strong transition-colors"
             >
               {t("history.delete")}
             </button>

@@ -180,7 +180,7 @@ export function MultiSelectChipsField({
               "focus-within:ring-2 focus-within:ring-accent",
               active
                 ? "bg-accent text-content border-accent"
-                : "bg-surface text-content border-line hover:border-gray-400",
+                : "bg-surface text-content border-line hover:border-line",
               disabled ? "cursor-not-allowed opacity-50" : "",
             ].join(" ")}
           >

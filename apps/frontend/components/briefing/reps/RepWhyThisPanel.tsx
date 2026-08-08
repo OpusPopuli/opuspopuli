@@ -83,7 +83,7 @@ export function RepWhyThisPanel({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="text-xs font-medium text-content hover:text-content"
+        className="text-xs font-medium text-content hover:underline"
       >
         {open ? t("whyThis.toggleClose") : t("whyThis.toggleOpen")}
       </button>
@@ -101,7 +101,7 @@ export function RepWhyThisPanel({
               {heuristicKey ? (
                 <p className="text-sm text-content">{t(heuristicKey)}</p>
               ) : null}
-              <p className="text-xs text-content-dim italic">
+              <p className="text-sm text-content-dim italic">
                 {t("whyThis.placeholderFor745")}
               </p>
             </>

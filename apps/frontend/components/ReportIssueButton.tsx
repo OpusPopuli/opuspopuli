@@ -117,7 +117,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
     <div className="relative" ref={panelRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="inline-flex items-center gap-1.5 text-sm text-content-dim hover:text-red-400 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-content-dim hover:text-danger transition-colors"
         aria-label={t("report.buttonLabel")}
       >
         <svg
@@ -139,7 +139,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
 
       {isOpen && (
         <div className="absolute bottom-full right-0 mb-2 w-72 bg-inverse-surface border border-line rounded-lg p-4 z-20">
-          <h3 className="text-sm font-semibold text-white mb-3">
+          <h3 className="text-sm font-semibold text-paper mb-3">
             {t("report.title")}
           </h3>
 
@@ -147,7 +147,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
             {REPORT_REASONS.map((r) => (
               <label
                 key={r}
-                className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-white"
+                className="flex items-center gap-2 text-sm text-content-dim cursor-pointer hover:text-content"
               >
                 <input
                   type="radio"
@@ -155,7 +155,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
                   value={r}
                   checked={reason === r}
                   onChange={() => setReason(r)}
-                  className="accent-blue-500"
+                  className="accent-accent"
                 />
                 {t(REASON_I18N_KEYS[r])}
               </label>
@@ -168,13 +168,13 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
             placeholder={t("report.descriptionPlaceholder")}
             maxLength={1000}
             rows={2}
-            className="w-full bg-inverse-surface text-on-inverse rounded p-2 text-sm border border-line focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none mb-3"
+            className="w-full bg-inverse-surface text-on-inverse rounded p-2 text-sm border border-line focus:border-accent focus:ring-1 focus:ring-accent outline-none resize-none mb-3"
           />
 
           <button
             onClick={handleSubmit}
             disabled={!reason || loading}
-            className="w-full py-2 text-sm font-medium rounded bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-2 text-sm font-medium rounded bg-danger-solid text-on-danger hover:bg-danger-strong transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? t("report.submitting") : t("report.submit")}
           </button>

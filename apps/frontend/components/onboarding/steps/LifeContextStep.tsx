@@ -276,7 +276,7 @@ export function LifeContextStep({
       </div>
 
       {error && (
-        <p role="alert" className="text-red-600 dark:text-red-400 text-sm pt-3">
+        <p role="alert" className="text-danger text-sm pt-3">
           {error}
         </p>
       )}

@@ -22,8 +22,8 @@ export function LoadingSkeleton({
 
 export function ErrorState({ entity }: { readonly entity: string }) {
   return (
-    <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-      <p className="text-red-600">
+    <div className="bg-danger-surface border border-danger-line rounded-lg p-6 text-center">
+      <p className="text-danger">
         Failed to load {entity}. Please try again later.
       </p>
     </div>

@@ -84,9 +84,9 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
   // Show error state
   if (camera.error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-white">
+      <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-paper">
         <svg
-          className="w-16 h-16 mb-6 text-red-400"
+          className="w-16 h-16 mb-6 text-danger"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -105,14 +105,14 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
           {onCancel && (
             <button
               onClick={onCancel}
-              className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+              className="px-6 py-3 bg-paper/15 hover:bg-paper/25 text-paper font-medium rounded-lg transition-colors"
             >
               Go Back
             </button>
           )}
           <button
             onClick={handleRequestPermission}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+            className="px-6 py-3 bg-accent hover:bg-accent-strong text-on-accent font-medium rounded-lg transition-colors"
           >
             Try Again
           </button>
@@ -136,7 +136,7 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
     return (
       <div className="flex items-center justify-center h-full bg-black">
         <svg
-          className="w-8 h-8 text-white animate-spin"
+          className="w-8 h-8 text-paper animate-spin"
           fill="none"
           viewBox="0 0 24 24"
           aria-hidden="true"

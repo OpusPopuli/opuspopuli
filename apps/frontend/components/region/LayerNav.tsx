@@ -39,7 +39,7 @@ export function LayerNav({
         >
           <span
             className={`w-2.5 h-2.5 rounded-full transition-colors ${
-              current === n ? "bg-inverse-surface" : "bg-[#767676]"
+              current === n ? "bg-inverse-surface" : "bg-content-dim"
             }`}
           />
           {label}

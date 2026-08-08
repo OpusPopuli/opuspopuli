@@ -118,7 +118,7 @@ export function BriefingSection({
           aria-expanded={isExpanded}
           aria-controls={contentId}
           aria-label={ariaLabel}
-          className="flex items-start gap-3 min-w-0 flex-1 text-left -mt-1 -mb-1 pt-1 pb-1 rounded focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+          className="flex items-start gap-3 min-w-0 flex-1 text-left -mt-1 -mb-1 pt-1 pb-1 rounded focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface"
         >
           <span
             aria-hidden="true"
@@ -155,7 +155,7 @@ export function BriefingSection({
         </button>
         <Link
           href={seeAllHref}
-          className="text-sm font-medium text-content hover:text-content shrink-0 mt-1 whitespace-nowrap"
+          className="text-sm font-medium text-content hover:underline shrink-0 mt-1 whitespace-nowrap"
         >
           {seeAllLabel ?? t("section.seeAll")}
         </Link>

@@ -35,19 +35,19 @@ function MeetingCard({ meeting }: Readonly<{ meeting: Meeting }>) {
         {/* Date Badge */}
         <div
           className={`flex-shrink-0 w-16 h-16 rounded-lg flex flex-col items-center justify-center ${
-            isPast ? "bg-surface-alt" : "bg-blue-100"
+            isPast ? "bg-surface-alt" : "bg-info-surface"
           }`}
         >
           <span
             className={`text-xs font-medium uppercase ${
-              isPast ? "text-content-dim" : "text-blue-700"
+              isPast ? "text-content-dim" : "text-info"
             }`}
           >
             {scheduledAt.toLocaleDateString("en-US", { month: "short" })}
           </span>
           <span
             className={`text-xl font-bold ${
-              isPast ? "text-content" : "text-blue-700"
+              isPast ? "text-content" : "text-info"
             }`}
           >
             {scheduledAt.getDate()}
@@ -83,7 +83,7 @@ function MeetingCard({ meeting }: Readonly<{ meeting: Meeting }>) {
               href={meeting.agendaUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm text-info hover:text-info-strong hover:underline"
             >
               <svg
                 className="w-4 h-4"
@@ -106,7 +106,7 @@ function MeetingCard({ meeting }: Readonly<{ meeting: Meeting }>) {
               href={meeting.videoUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm text-info hover:text-info-strong hover:underline"
             >
               <svg
                 className="w-4 h-4"

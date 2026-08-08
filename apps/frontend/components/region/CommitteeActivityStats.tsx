@@ -42,7 +42,7 @@ export function CommitteeActivityStats({
         {Array.from({ length: 4 }, (_, i) => (
           <div
             key={`cmt-stat-skel-${i.toString()}`}
-            className="h-24 rounded-lg bg-slate-100"
+            className="h-24 rounded-lg bg-surface-alt"
           />
         ))}
       </div>
@@ -83,7 +83,7 @@ function StatTile({
   readonly sub?: string;
 }) {
   return (
-    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+    <div className="bg-surface-alt rounded-lg p-4 border border-line">
       <p className="text-[11px] font-bold uppercase tracking-wider text-content-dim mb-1">
         {label}
       </p>

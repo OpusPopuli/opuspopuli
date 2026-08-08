@@ -53,9 +53,9 @@ describe("LoadingSpinner", () => {
   });
 
   it("should apply custom className", () => {
-    const { container } = render(<LoadingSpinner className="text-blue-500" />);
+    const { container } = render(<LoadingSpinner className="text-info" />);
 
     const svg = container.querySelector("svg");
-    expect(svg).toHaveClass("text-blue-500");
+    expect(svg).toHaveClass("text-info");
   });
 });

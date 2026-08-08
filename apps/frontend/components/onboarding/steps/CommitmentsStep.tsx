@@ -71,12 +71,12 @@ export function CommitmentsStep({ onComplete }: CommitmentsStepProps) {
         </ol>
       </div>
 
-      <p className="text-xs text-content-dim mb-4">
+      <p className="text-sm text-content-dim mb-4">
         <Link
           href="/our-commitments"
           target="_blank"
           rel="noopener"
-          className="text-blue-600 dark:text-blue-400 hover:underline"
+          className="text-info hover:underline"
         >
           {t("ack.readFullPage")}
         </Link>
@@ -101,7 +101,7 @@ export function CommitmentsStep({ onComplete }: CommitmentsStepProps) {
       </label>
 
       {error && (
-        <p role="alert" className="text-red-600 dark:text-red-400 text-sm pt-3">
+        <p role="alert" className="text-danger text-sm pt-3">
           {error}
         </p>
       )}

@@ -31,11 +31,11 @@ export function CommitteeBriefingCard({ item }: CommitteeBriefingCardProps) {
     >
       <Link
         href={`/region/legislative-committees/${item.id}`}
-        className="block text-base font-semibold text-content hover:text-content transition-colors line-clamp-1"
+        className="block text-base font-semibold text-content hover:underline transition-colors line-clamp-1"
       >
         {item.name}
       </Link>
-      <p className="mt-0.5 text-xs text-content-dim">
+      <p className="mt-0.5 text-sm text-content-dim">
         {t("committees.chamberMembers", {
           chamber: item.chamber,
           count: item.memberCount,

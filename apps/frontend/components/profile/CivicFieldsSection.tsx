@@ -103,12 +103,12 @@ export function CivicFieldsSection({
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center justify-between bg-surface-alt hover:bg-surface-alt transition-colors"
+        className="w-full px-4 py-3 flex items-center justify-between bg-surface-alt hover:bg-surface-sunk transition-colors"
         aria-expanded={isExpanded}
       >
         <div className="flex items-center gap-2">
           <svg
-            className="w-5 h-5 text-blue-600"
+            className="w-5 h-5 text-info"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -169,7 +169,7 @@ export function CivicFieldsSection({
               value={politicalAffiliation || ""}
               onChange={handlePoliticalChange}
               disabled={disabled}
-              className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-surface-alt"
+              className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-accent disabled:opacity-50 disabled:bg-surface-alt"
             >
               <option value="">
                 {t("profile.civic.selectOption", "Select an option")}
@@ -199,7 +199,7 @@ export function CivicFieldsSection({
               value={votingFrequency || ""}
               onChange={handleVotingChange}
               disabled={disabled}
-              className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:bg-surface-alt"
+              className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-accent disabled:opacity-50 disabled:bg-surface-alt"
             >
               <option value="">
                 {t("profile.civic.selectOption", "Select an option")}
@@ -233,7 +233,7 @@ export function CivicFieldsSection({
                     transition-colors
                     ${
                       policyPriorities?.includes(priority)
-                        ? "bg-blue-50 border-blue-300 text-blue-700"
+                        ? "bg-info-surface border-info-line text-info"
                         : "bg-surface border-line text-content hover:border-line"
                     }
                     ${disabled ? "opacity-50 cursor-not-allowed" : ""}
@@ -251,14 +251,14 @@ export function CivicFieldsSection({
                       w-4 h-4 flex items-center justify-center rounded border
                       ${
                         policyPriorities?.includes(priority)
-                          ? "bg-blue-500 border-blue-500"
+                          ? "bg-accent border-accent"
                           : "border-line"
                       }
                     `}
                   >
                     {policyPriorities?.includes(priority) && (
                       <svg
-                        className="w-3 h-3 text-white"
+                        className="w-3 h-3 text-paper"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"

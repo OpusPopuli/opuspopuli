@@ -181,8 +181,8 @@ describe("IndependentExpendituresPage", () => {
       const supportBadge = screen.getByText("support");
       const opposeBadge = screen.getByText("oppose");
 
-      expect(supportBadge).toHaveClass("bg-green-100", "text-green-800");
-      expect(opposeBadge).toHaveClass("bg-red-100", "text-red-800");
+      expect(supportBadge).toHaveClass("bg-positive-surface", "text-positive");
+      expect(opposeBadge).toHaveClass("bg-danger-surface", "text-danger");
     });
   });
 

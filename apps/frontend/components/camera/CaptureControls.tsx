@@ -28,8 +28,8 @@ export function CaptureControls({
             onClick={onToggleTorch}
             className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
               torchEnabled
-                ? "bg-yellow-500 text-black"
-                : "bg-surface/20 text-white"
+                ? "bg-warning-solid text-black"
+                : "bg-paper/20 text-paper"
             }`}
             aria-label={torchEnabled ? "Turn off flash" : "Turn on flash"}
           >
@@ -66,7 +66,7 @@ export function CaptureControls({
         {hasMultipleCameras && onSwitchCamera && (
           <button
             onClick={onSwitchCamera}
-            className="w-11 h-11 rounded-full bg-surface/20 text-white flex items-center justify-center transition-colors"
+            className="w-11 h-11 rounded-full bg-paper/20 text-paper flex items-center justify-center transition-colors"
             aria-label="Switch camera"
           >
             <svg

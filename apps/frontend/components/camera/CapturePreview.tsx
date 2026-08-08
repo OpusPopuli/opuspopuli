@@ -45,14 +45,14 @@ export function CapturePreview({
         <button
           onClick={onRetake}
           disabled={isProcessing}
-          className="flex-1 max-w-[160px] py-3 bg-surface/20 text-white font-medium rounded-lg transition-colors hover:bg-surface/30 disabled:opacity-50"
+          className="flex-1 max-w-[160px] py-3 bg-paper/20 text-paper font-medium rounded-lg transition-colors hover:bg-paper/30 disabled:opacity-50"
         >
           Retake
         </button>
         <button
           onClick={onConfirm}
           disabled={isProcessing}
-          className="flex-1 max-w-[160px] py-3 bg-blue-600 text-white font-medium rounded-lg transition-colors hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+          className="flex-1 max-w-[160px] py-3 bg-accent text-on-accent font-medium rounded-lg transition-colors hover:bg-accent-strong disabled:opacity-50 flex items-center justify-center gap-2"
         >
           {isProcessing ? (
             <>

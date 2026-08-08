@@ -242,7 +242,7 @@ export default function SecurityPage() {
               <button
                 onClick={() => setShowAddModal(true)}
                 disabled={!supportsPasskeys || passkeyActionLoading}
-                className="px-4 py-2 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:bg-inverse-surface transition-colors disabled:opacity-50"
+                className="px-4 py-2 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:opacity-90 transition-colors disabled:opacity-50"
               >
                 {t("security.passkeys.addButton")}
               </button>
@@ -250,21 +250,21 @@ export default function SecurityPage() {
 
             {/* Error display */}
             {passkeyError && (
-              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900 rounded-lg text-red-700 dark:text-red-200 text-sm">
+              <div className="mb-4 p-3 bg-danger-surface/20 border border-danger-line rounded-lg text-danger text-sm">
                 {passkeyError}
               </div>
             )}
 
             {/* Not supported warning */}
             {!supportsPasskeys && (
-              <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-900 rounded-lg text-yellow-700 dark:text-yellow-200 text-sm">
+              <div className="mb-4 p-3 bg-warning-surface/20 border border-warning-line rounded-lg text-warning text-sm">
                 {t("security.passkeys.notSupported")}
               </div>
             )}
 
             {passkeysLoading && (
               <div className="text-center py-8">
-                <div className="animate-spin w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full mx-auto" />
+                <div className="animate-spin w-8 h-8 border-2 border-line border-t-transparent rounded-full mx-auto" />
                 <p className="text-content-dim mt-2">
                   {t("common:status.loading")}
                 </p>
@@ -294,7 +294,7 @@ export default function SecurityPage() {
                           {formatDate(passkey.createdAt)}
                         </p>
                         {passkey.lastUsedAt && (
-                          <p className="text-xs text-content-dim">
+                          <p className="text-sm text-content-dim">
                             {t("security.passkeys.lastUsed")}:{" "}
                             {formatDate(passkey.lastUsedAt)}
                           </p>
@@ -306,7 +306,7 @@ export default function SecurityPage() {
                         <button
                           onClick={() => handleDeletePasskey(passkey.id)}
                           disabled={passkeyActionLoading}
-                          className="text-sm text-red-600 dark:text-red-400 font-medium hover:text-red-700 dark:hover:text-red-300 transition-colors disabled:opacity-50"
+                          className="text-sm text-danger font-medium hover:text-danger-strong dark:hover:text-danger-strong transition-colors disabled:opacity-50"
                         >
                           {t("common:buttons.confirm")}
                         </button>
@@ -320,7 +320,7 @@ export default function SecurityPage() {
                     ) : (
                       <button
                         onClick={() => setDeleteConfirmId(passkey.id)}
-                        className="text-sm text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                        className="text-sm text-danger hover:text-danger-strong dark:hover:text-danger-strong transition-colors"
                       >
                         {t("common:buttons.remove")}
                       </button>
@@ -403,7 +403,7 @@ export default function SecurityPage() {
             </div>
             <button
               onClick={handleSignOutAllSessions}
-              className="text-sm text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+              className="text-sm text-danger hover:text-danger-strong dark:hover:text-danger-strong transition-colors"
             >
               {t("security.sessions.signOutAll")}
             </button>
@@ -428,14 +428,14 @@ export default function SecurityPage() {
                   <p className="text-sm text-content-dim">
                     {currentSession.browser}
                   </p>
-                  <p className="text-xs text-content-dim">
+                  <p className="text-sm text-content-dim">
                     {currentSession.lastActivity}
                   </p>
                 </div>
               </div>
               <button
                 onClick={handleSignOut}
-                className="text-sm text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                className="text-sm text-danger hover:text-danger-strong dark:hover:text-danger-strong transition-colors"
               >
                 {t("security.sessions.signOut")}
               </button>
@@ -580,15 +580,15 @@ export default function SecurityPage() {
                 value={friendlyName}
                 onChange={(e) => setFriendlyName(e.target.value)}
                 placeholder={t("security.passkeys.friendlyNamePlaceholder")}
-                className="w-full px-4 py-2 border border-line bg-surface text-content placeholder-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                className="w-full px-4 py-2 border border-line bg-surface text-content placeholder-content-dim rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
               />
-              <p className="text-xs text-content-dim mt-1">
+              <p className="text-sm text-content-dim mt-1">
                 {t("security.passkeys.friendlyNameHint")}
               </p>
             </div>
 
             {passkeyError && (
-              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900 rounded-lg text-red-700 dark:text-red-200 text-sm">
+              <div className="mb-4 p-3 bg-danger-surface/20 border border-danger-line rounded-lg text-danger text-sm">
                 {passkeyError}
               </div>
             )}
@@ -608,7 +608,7 @@ export default function SecurityPage() {
               <button
                 onClick={handleAddPasskey}
                 disabled={passkeyActionLoading}
-                className="px-4 py-2 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:bg-inverse-surface transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:opacity-90 transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 {passkeyActionLoading && (
                   <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />

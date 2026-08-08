@@ -97,10 +97,7 @@ export default function OurCommitmentsPage() {
               t={t}
               components={{
                 termsLink: (
-                  <Link
-                    href="/terms"
-                    className="text-blue-600 dark:text-blue-400 hover:underline"
-                  />
+                  <Link href="/terms" className="text-info hover:underline" />
                 ),
               }}
             />
@@ -144,13 +141,13 @@ export default function OurCommitmentsPage() {
                 emailLink: (
                   <a
                     href="mailto:legal@opuspopuli.org"
-                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                    className="text-info hover:underline"
                   />
                 ),
                 securityEmailLink: (
                   <a
                     href="mailto:security@opuspopuli.org"
-                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                    className="text-info hover:underline"
                   />
                 ),
               }}

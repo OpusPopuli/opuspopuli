@@ -47,7 +47,7 @@ export function HowABillBecomesLaw({
           id={selectId}
           value={selectedCode}
           onChange={(e) => setSelectedCode(e.target.value)}
-          className="rounded-lg border border-line px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="rounded-lg border border-line px-3 py-1.5 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         >
           {measureTypes.map((mt) => (
             <option key={mt.code} value={mt.code}>
@@ -58,7 +58,7 @@ export function HowABillBecomesLaw({
       </div>
 
       {/* Abstract hint */}
-      <p className="text-xs text-content-dim">{t("lifecycle.abstractMode")}</p>
+      <p className="text-sm text-content-dim">{t("lifecycle.abstractMode")}</p>
 
       {/* Progress bar in abstract mode */}
       {stages.length > 0 ? (

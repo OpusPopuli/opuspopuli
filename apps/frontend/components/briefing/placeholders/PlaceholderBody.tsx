@@ -26,7 +26,7 @@ export function PlaceholderBody({
       <p className="text-sm text-content-dim">
         {t(`${i18nKey}.placeholder.body`)}
       </p>
-      <p className="text-xs text-content-dim italic">
+      <p className="text-sm text-content-dim italic">
         {t(`${i18nKey}.placeholder.comingSoonNote`)}
         <span className="ml-1">(#{issueNumber})</span>
       </p>

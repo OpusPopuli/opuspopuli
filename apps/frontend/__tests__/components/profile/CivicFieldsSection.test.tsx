@@ -267,7 +267,7 @@ describe("CivicFieldsSection", () => {
 
       // The healthcare label should have selected styling
       const healthcareLabel = screen.getByText("healthcare").closest("label");
-      expect(healthcareLabel).toHaveClass("bg-blue-50");
+      expect(healthcareLabel).toHaveClass("bg-info-surface");
     });
   });
 

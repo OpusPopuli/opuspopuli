@@ -121,8 +121,8 @@ export function ContactRepresentativeForm({
       </div>
 
       {!hasEmail && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-yellow-800">
+        <div className="bg-warning-surface border border-warning-line rounded-lg p-4">
+          <p className="text-warning">
             No email address available for this representative.
           </p>
         </div>
@@ -195,7 +195,7 @@ export function ContactRepresentativeForm({
               className="w-full px-4 py-2 border border-line rounded-lg focus:border-content focus:ring-1 focus:ring-content outline-none resize-y"
               placeholder="Write your message here..."
             />
-            <p className="text-xs text-content-dim mt-1">
+            <p className="text-sm text-content-dim mt-1">
               {message.length}/5000 characters
             </p>
           </div>
@@ -217,8 +217,8 @@ export function ContactRepresentativeForm({
 
           {/* Error Display */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-600 text-sm">{error.message}</p>
+            <div className="bg-danger-surface border border-danger-line rounded-lg p-4">
+              <p className="text-danger text-sm">{error.message}</p>
             </div>
           )}
 
@@ -237,7 +237,7 @@ export function ContactRepresentativeForm({
               <button
                 type="submit"
                 disabled={loading || !subject || message.length < 10}
-                className="px-6 py-2 text-sm font-medium text-on-inverse bg-inverse-surface rounded-lg hover:bg-inverse-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-6 py-2 text-sm font-medium text-on-inverse bg-inverse-surface rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? "Sending..." : "Send Message"}
               </button>
@@ -246,7 +246,7 @@ export function ContactRepresentativeForm({
                 type="button"
                 onClick={handleMailtoClick}
                 disabled={!subject || message.length < 10}
-                className="px-6 py-2 text-sm font-medium text-on-inverse bg-inverse-surface rounded-lg hover:bg-inverse-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-6 py-2 text-sm font-medium text-on-inverse bg-inverse-surface rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Open in Email Client
               </button>

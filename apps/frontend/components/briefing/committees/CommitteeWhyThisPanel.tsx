@@ -43,7 +43,7 @@ export function CommitteeWhyThisPanel({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="text-xs font-medium text-content hover:text-content"
+        className="text-xs font-medium text-content hover:underline"
       >
         {open ? t("whyThis.toggleClose") : t("whyThis.toggleOpen")}
       </button>

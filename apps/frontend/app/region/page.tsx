@@ -182,7 +182,7 @@ function RegionCard({
       <div className="text-content-dim group-hover:text-content transition-colors mb-4">
         <DataTypeIcon type={icon} />
       </div>
-      <h2 className="text-lg font-semibold text-content group-hover:text-blue-600 transition-colors">
+      <h2 className="text-lg font-semibold text-content group-hover:text-info-strong transition-colors">
         {title}
       </h2>
       <p className="mt-1 text-sm text-content-dim">{description}</p>
@@ -214,8 +214,8 @@ export default function RegionPage() {
   if (error) {
     return (
       <div className="max-w-4xl mx-auto px-8 py-12">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-600">
+        <div className="bg-danger-surface border border-danger-line rounded-lg p-6 text-center">
+          <p className="text-danger">
             Failed to load region information. Please try again later.
           </p>
         </div>
@@ -267,13 +267,13 @@ export default function RegionPage() {
       <div className="mt-8">
         <Link
           href="/region/how-it-works"
-          className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-6 py-4 hover:bg-blue-100 transition-colors dark:border-blue-900 dark:bg-blue-900/20 dark:hover:bg-blue-900/30"
+          className="flex items-center justify-between rounded-lg border border-info-line bg-info-surface px-6 py-4 hover:bg-info-line transition-colors/20 dark:hover:bg-info-surface/30"
         >
           <div>
-            <h2 className="text-base font-semibold text-blue-800 dark:text-blue-300">
+            <h2 className="text-base font-semibold text-info">
               How your government works →
             </h2>
-            <p className="mt-0.5 text-sm text-blue-600 dark:text-blue-400">
+            <p className="mt-0.5 text-sm text-info">
               Measure types, glossary, and the legislative process explained
             </p>
           </div>
@@ -296,7 +296,7 @@ export default function RegionPage() {
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+                  className="text-sm text-info hover:text-info-strong hover:underline"
                 >
                   {url}
                 </a>

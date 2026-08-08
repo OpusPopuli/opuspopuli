@@ -271,9 +271,9 @@ describe("PropositionsPage", () => {
       const passedBadge = screen.getByText("Passed");
       const failedBadge = screen.getByText("Failed");
 
-      expect(pendingBadge).toHaveClass("bg-yellow-100", "text-yellow-800");
-      expect(passedBadge).toHaveClass("bg-green-100", "text-green-800");
-      expect(failedBadge).toHaveClass("bg-red-100", "text-red-800");
+      expect(pendingBadge).toHaveClass("bg-warning-surface", "text-warning");
+      expect(passedBadge).toHaveClass("bg-positive-surface", "text-positive");
+      expect(failedBadge).toHaveClass("bg-danger-surface", "text-danger");
     });
   });
 });

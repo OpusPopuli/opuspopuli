@@ -49,7 +49,7 @@ export default function TransparencyPage() {
               href={page.href}
               className="group block p-6 bg-surface rounded-lg transition-shadow"
             >
-              <h2 className="text-xl font-semibold text-content mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+              <h2 className="text-xl font-semibold text-content mb-2 group-hover:text-info-strong dark:group-hover:text-info-strong">
                 {page.title}
               </h2>
               <p className="text-content-dim text-sm">{page.description}</p>

@@ -5,7 +5,7 @@ import { ActivityFeed } from "@/components/petition/ActivityFeed";
 
 export default function PetitionPage() {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 text-center text-white">
+    <div className="flex flex-col items-center justify-center h-full px-6 text-center text-paper">
       <svg
         className="w-20 h-20 mb-6 text-content-dim"
         fill="none"
@@ -27,26 +27,26 @@ export default function PetitionPage() {
       </p>
       <Link
         href="/petition/capture"
-        className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+        className="px-8 py-3 bg-accent hover:bg-accent-strong text-on-accent font-medium rounded-lg transition-colors"
       >
         Start Scanning
       </Link>
       <Link
         href="/petition/map"
-        className="mt-4 px-8 py-3 border border-gray-600 hover:border-gray-400 text-gray-300 font-medium rounded-lg transition-colors"
+        className="mt-4 px-8 py-3 border border-line hover:border-accent text-content-dim font-medium rounded-lg transition-colors"
       >
         View Map
       </Link>
       <Link
         href="/petition/history"
-        className="mt-4 px-8 py-3 border border-gray-600 hover:border-gray-400 text-gray-300 font-medium rounded-lg transition-colors"
+        className="mt-4 px-8 py-3 border border-line hover:border-accent text-content-dim font-medium rounded-lg transition-colors"
       >
         My Scans
       </Link>
       <ActivityFeed />
       <Link
         href="/"
-        className="mt-4 text-sm text-content-dim hover:text-gray-300 transition-colors"
+        className="mt-4 text-sm text-content-dim hover:text-content transition-colors"
       >
         Back to Home
       </Link>

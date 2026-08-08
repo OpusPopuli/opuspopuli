@@ -154,7 +154,7 @@ export default function AddressesPage() {
   if (error) {
     return (
       <div className="bg-surface rounded-lg dark:border p-8">
-        <div className="text-center text-red-600 dark:text-red-300">
+        <div className="text-center text-danger">
           <p>{t("common:errors.loadFailed")}</p>
         </div>
       </div>
@@ -187,7 +187,7 @@ export default function AddressesPage() {
           {!showForm && (
             <button
               onClick={() => setShowForm(true)}
-              className="px-4 py-2 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:bg-inverse-surface transition-colors"
+              className="px-4 py-2 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:opacity-90 transition-colors"
             >
               {t("addresses.addAddress")}
             </button>
@@ -207,10 +207,8 @@ export default function AddressesPage() {
             </h2>
 
             {formError && (
-              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900 rounded-lg">
-                <p className="text-sm text-red-600 dark:text-red-300">
-                  {formError}
-                </p>
+              <div className="mb-6 p-4 bg-danger-surface/20 border border-danger-line rounded-lg">
+                <p className="text-sm text-danger">{formError}</p>
               </div>
             )}
 
@@ -223,7 +221,7 @@ export default function AddressesPage() {
                   name="addressType"
                   value={formData.addressType}
                   onChange={handleChange}
-                  className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content focus:border-line focus:ring-1 focus:ring-accent outline-none"
+                  className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content focus:border-accent focus:ring-1 focus:ring-accent outline-none"
                 >
                   {ADDRESS_TYPES.map((type) => (
                     <option key={type.value} value={type.value}>
@@ -242,7 +240,7 @@ export default function AddressesPage() {
                   value={formData.label}
                   onChange={handleChange}
                   placeholder={t("addresses.labelPlaceholder")}
-                  className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content placeholder-gray-500 focus:border-line focus:ring-1 focus:ring-accent outline-none"
+                  className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content placeholder-content-dim focus:border-accent focus:ring-1 focus:ring-accent outline-none"
                 />
               </div>
             </div>
@@ -257,7 +255,7 @@ export default function AddressesPage() {
                 value={formData.addressLine1}
                 onChange={handleChange}
                 placeholder={t("addresses.streetAddressPlaceholder")}
-                className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content placeholder-gray-500 focus:border-line focus:ring-1 focus:ring-accent outline-none"
+                className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content placeholder-content-dim focus:border-accent focus:ring-1 focus:ring-accent outline-none"
                 required
               />
             </div>
@@ -272,7 +270,7 @@ export default function AddressesPage() {
                 value={formData.addressLine2}
                 onChange={handleChange}
                 placeholder={t("addresses.aptSuitePlaceholder")}
-                className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content placeholder-gray-500 focus:border-line focus:ring-1 focus:ring-accent outline-none"
+                className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content placeholder-content-dim focus:border-accent focus:ring-1 focus:ring-accent outline-none"
               />
             </div>
 
@@ -287,7 +285,7 @@ export default function AddressesPage() {
                   value={formData.city}
                   onChange={handleChange}
                   placeholder={t("addresses.cityPlaceholder")}
-                  className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content placeholder-gray-500 focus:border-line focus:ring-1 focus:ring-accent outline-none"
+                  className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content placeholder-content-dim focus:border-accent focus:ring-1 focus:ring-accent outline-none"
                   required
                 />
               </div>
@@ -299,7 +297,7 @@ export default function AddressesPage() {
                   name="state"
                   value={formData.state}
                   onChange={handleChange}
-                  className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content focus:border-line focus:ring-1 focus:ring-accent outline-none"
+                  className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content focus:border-accent focus:ring-1 focus:ring-accent outline-none"
                   required
                 >
                   <option value="">{t("addresses.selectState")}</option>
@@ -320,7 +318,7 @@ export default function AddressesPage() {
                   value={formData.postalCode}
                   onChange={handleChange}
                   placeholder={t("addresses.zipCodePlaceholder")}
-                  className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content placeholder-gray-500 focus:border-line focus:ring-1 focus:ring-accent outline-none"
+                  className="w-full px-4 py-3 rounded-lg border border-line bg-surface text-content placeholder-content-dim focus:border-accent focus:ring-1 focus:ring-accent outline-none"
                   required
                 />
               </div>
@@ -330,7 +328,7 @@ export default function AddressesPage() {
               <button
                 type="submit"
                 disabled={creating || updating}
-                className="px-6 py-3 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:bg-inverse-surface transition-colors disabled:opacity-50"
+                className="px-6 py-3 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:opacity-90 transition-colors disabled:opacity-50"
               >
                 {getSubmitButtonText()}
               </button>
@@ -450,7 +448,7 @@ export default function AddressesPage() {
                   <button
                     onClick={() => handleDelete(address.id)}
                     disabled={deleting}
-                    className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors disabled:opacity-50"
+                    className="p-2 text-danger hover:text-danger-strong dark:hover:text-danger-strong transition-colors disabled:opacity-50"
                     aria-label={t("common:buttons.delete")}
                   >
                     <svg

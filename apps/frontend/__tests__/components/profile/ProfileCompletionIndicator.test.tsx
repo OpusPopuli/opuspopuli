@@ -118,15 +118,15 @@ describe("ProfileCompletionIndicator", () => {
         );
 
         // Single gold (earned-accent) track replaces the legacy 4-tier color
-        // ramp (green/blue/yellow/orange). Assert positively on the new class,
-        // and negatively on the old ones so a future regression that
-        // reintroduces tier colors fails loudly here.
+        // ramp. Assert positively on the accent track, and negatively on the
+        // status ramp so a future regression that reintroduces per-tier
+        // colouring fails loudly here.
         const progressBar = container.querySelector(".bg-accent");
         expect(progressBar).toBeInTheDocument();
-        expect(container.querySelector(".bg-green-500")).toBeNull();
-        expect(container.querySelector(".bg-blue-500")).toBeNull();
-        expect(container.querySelector(".bg-yellow-500")).toBeNull();
-        expect(container.querySelector(".bg-orange-500")).toBeNull();
+        expect(container.querySelector(".bg-positive-solid")).toBeNull();
+        expect(container.querySelector(".bg-warning-solid")).toBeNull();
+        expect(container.querySelector(".bg-danger-solid")).toBeNull();
+        expect(container.querySelector(".bg-info-solid")).toBeNull();
       },
     );
   });

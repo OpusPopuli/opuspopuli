@@ -15,12 +15,125 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Raw ramps — NOT semantic, and deliberately outside @theme so they generate
+   no utilities. Nothing in the app should reference --ramp-* directly.
+
+   These exist so that every scope which flips a status or categorical colour
+   flips the ENTIRE tuple (text + surface + line + solid) by re-pointing at one
+   of the two sets, instead of hand-listing members. Overriding a text colour
+   without its matching surface is exactly what shipped `text-positive`
+   (#6fc98c, the dark value) on top of `bg-positive-surface` (#e9f4ec, the
+   light value) inside .on-fixed-dark — a 1.78:1 badge that failed CI.
+
+   Rule: if you re-point one member of a tuple in a scope, re-point all of
+   them. Prefer adding a scope block below over editing these values.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Status — light surfaces */
+  --ramp-danger-fg-light: #a3231b;
+  --ramp-danger-bg-light: #fbedeb;
+  --ramp-danger-line-light: #efc9c4;
+  --ramp-danger-solid-light: #a3231b;
+  --ramp-danger-strong-light: #7f1a14;
+  --ramp-warning-fg-light: #8a5a00;
+  --ramp-warning-bg-light: #fbf2e0;
+  --ramp-warning-line-light: #e8d3a6;
+  --ramp-warning-solid-light: #8a5a00;
+  --ramp-warning-strong-light: #6d4700;
+  --ramp-positive-fg-light: #216b41;
+  --ramp-positive-bg-light: #e9f4ec;
+  --ramp-positive-line-light: #c3dfcb;
+  --ramp-positive-solid-light: #216b41;
+  --ramp-positive-strong-light: #19542f;
+  --ramp-info-fg-light: #1f5aa8;
+  --ramp-info-bg-light: #e9f0fa;
+  --ramp-info-line-light: #c4d6ee;
+  --ramp-info-solid-light: #1f5aa8;
+  --ramp-info-strong-light: #16447f;
+
+  /* Status — dark surfaces. Text lightens; tints become deep wells. */
+  --ramp-danger-fg-dark: #f08a7e;
+  --ramp-danger-bg-dark: #2a1614;
+  --ramp-danger-line-dark: #4a2622;
+  --ramp-danger-solid-dark: #c4382e;
+  --ramp-danger-strong-dark: #d9564a;
+  --ramp-warning-fg-dark: #e8b54d;
+  --ramp-warning-bg-dark: #2a2113;
+  --ramp-warning-line-dark: #463620;
+  --ramp-warning-solid-dark: #8a5a00;
+  --ramp-warning-strong-dark: #a06a00;
+  --ramp-positive-fg-dark: #6fc98c;
+  --ramp-positive-bg-dark: #14251a;
+  --ramp-positive-line-dark: #22402c;
+  --ramp-positive-solid-dark: #2b7d4e;
+  --ramp-positive-strong-dark: #35935c;
+  --ramp-info-fg-dark: #7fb0ee;
+  --ramp-info-bg-dark: #141f2e;
+  --ramp-info-line-dark: #22334a;
+  --ramp-info-solid-dark: #2a68bd;
+  --ramp-info-strong-dark: #3a7ccf;
+
+  /* Categorical — light surfaces */
+  --ramp-cat-blue-fg-light: #1f4e96;
+  --ramp-cat-blue-bg-light: #e4edf9;
+  --ramp-cat-red-fg-light: #a32b22;
+  --ramp-cat-red-bg-light: #fbe7e5;
+  --ramp-cat-purple-fg-light: #5b3c9b;
+  --ramp-cat-purple-bg-light: #ede7f7;
+  --ramp-cat-green-fg-light: #216b41;
+  --ramp-cat-green-bg-light: #e4f1e8;
+  --ramp-cat-amber-fg-light: #7a5a00;
+  --ramp-cat-amber-bg-light: #f7edd4;
+  --ramp-cat-teal-fg-light: #14625f;
+  --ramp-cat-teal-bg-light: #dff0ef;
+
+  /* Categorical — dark surfaces */
+  --ramp-cat-blue-fg-dark: #93baf0;
+  --ramp-cat-blue-bg-dark: #16213a;
+  --ramp-cat-red-fg-dark: #f0968a;
+  --ramp-cat-red-bg-dark: #2e1714;
+  --ramp-cat-purple-fg-dark: #b9a2e8;
+  --ramp-cat-purple-bg-dark: #221b36;
+  --ramp-cat-green-fg-dark: #7ccf95;
+  --ramp-cat-green-bg-dark: #14251a;
+  --ramp-cat-amber-fg-dark: #e0bc5e;
+  --ramp-cat-amber-bg-dark: #2a2213;
+  --ramp-cat-teal-fg-dark: #6cc7c2;
+  --ramp-cat-teal-bg-dark: #102a29;
+}
+
 @theme {
-  /* Font families — Inter + Playfair loaded via next/font in app/layout.tsx.
-     Mono is dropped from the brand ramp; kept only for genuine <code>/<pre>. */
-  --font-family-heading: var(--font-playfair-display), Georgia, serif;
-  --font-family-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
-  --font-family-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  /* Font families — Inter + Playfair loaded via next/font in app/layout.tsx,
+     whose CSS variables are attached to <html> so :root can resolve them.
+     Mono is dropped from the brand ramp; kept only for genuine <code>/<pre>.
+
+     These MUST use Tailwind v4's `--font-*` namespace (not `--font-family-*`)
+     or the font-sans / font-serif / font-mono utilities silently fall back to
+     Tailwind's stock stacks instead of the brand ramp.
+
+     The inner var() fallbacks matter: if next/font ever fails to attach its
+     class, `var(--font-inter)` alone would be invalid-at-computed-value-time
+     and drop the element to the browser default serif. With a fallback the
+     chain degrades to system-ui instead. */
+  --font-sans:
+    var(--font-inter, system-ui), system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-playfair-display, Georgia), Georgia, serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* ── Type scale ──
+     opuspopuli.org is a marketing page with short measures; this app is dense
+     civic data, where two thirds of all sizing classes are text-sm/text-xs.
+     At Tailwind's stock 14px/12px that reads as squinty, so the small end of
+     the ramp is lifted one notch (and given roomier leading) rather than
+     rewriting ~670 call sites. Relative hierarchy is unchanged.
+     lg and up keep their stock values — headings are already sized explicitly. */
+  --text-xs: 0.8125rem; /* 13px (was 12) — badges, micro-labels */
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.9375rem; /* 15px (was 14) — the app's workhorse size */
+  --text-sm--line-height: 1.4rem;
+  --text-base: 1.0625rem; /* 17px (was 16) — body copy */
+  --text-base--line-height: 1.65rem;
 
   /* ── Fixed brand constants — identical in both themes ── */
   --color-gold: #e8c000; /* the mark's disc; never recolored */
@@ -33,13 +146,155 @@
   --color-surface-alt: #f4f2ec; /* alt sections / pills (off) */
   --color-surface-sunk: #edeae3; /* deeper inset wells */
   --color-content: #1a1714; /* primary text (ink) */
-  --color-content-dim: #726e66; /* secondary text — WCAG-tuned, do NOT lighten */
+  /* Secondary text — WCAG-tuned, do NOT lighten. Darkened from #726e66 so it
+     also clears 4.5:1 against surface-sunk (#edeae3), which it lands on via
+     hover states; the old value was 4.22:1 there. Ratios now: 5.23 on surface,
+     4.88 on surface-alt, 4.55 on surface-sunk. */
+  --color-content-dim: #6d6961;
   --color-line: #e0ddd8; /* hairline borders */
   --color-accent: #e8c000; /* gold — earned; fill / ≥3px / text-on-ink only */
   --color-accent-strong: #cfa900; /* darkened gold, hover on gold fills */
   --color-on-accent: #1a1714; /* ink text on gold fills */
   --color-inverse-surface: #1a1714; /* deliberate dark panels within light theme */
   --color-on-inverse: #fafaf8; /* text on inverse-surface / .on-ink */
+
+  /* ── Status ramp — LIGHT ──
+     Gold is "earned" and carries no status meaning, so state still needs its
+     own hues. Each status has five roles:
+       --color-X          text/icon on a normal surface (≥4.5:1 on paper)
+       --color-X-surface  tint background for banners/badges
+       --color-X-line     hairline border for those banners/badges
+       --color-X-solid    filled button/bar, paired with --color-on-X
+       --color-X-strong   hover partner for the filled variant
+     Values live in the --ramp-* block above so inverted scopes can re-point
+     the whole tuple at once. --color-on-X is a fixed constant in both themes:
+     paper always rides a status fill. */
+  --color-danger: var(--ramp-danger-fg-light);
+  --color-danger-surface: var(--ramp-danger-bg-light);
+  --color-danger-line: var(--ramp-danger-line-light);
+  --color-danger-solid: var(--ramp-danger-solid-light);
+  --color-danger-strong: var(--ramp-danger-strong-light);
+  --color-on-danger: #fafaf8;
+
+  --color-warning: var(--ramp-warning-fg-light);
+  --color-warning-surface: var(--ramp-warning-bg-light);
+  --color-warning-line: var(--ramp-warning-line-light);
+  --color-warning-solid: var(--ramp-warning-solid-light);
+  --color-warning-strong: var(--ramp-warning-strong-light);
+  --color-on-warning: #fafaf8;
+
+  --color-positive: var(--ramp-positive-fg-light);
+  --color-positive-surface: var(--ramp-positive-bg-light);
+  --color-positive-line: var(--ramp-positive-line-light);
+  --color-positive-solid: var(--ramp-positive-solid-light);
+  --color-positive-strong: var(--ramp-positive-strong-light);
+  --color-on-positive: #fafaf8;
+
+  --color-info: var(--ramp-info-fg-light);
+  --color-info-surface: var(--ramp-info-bg-light);
+  --color-info-line: var(--ramp-info-line-light);
+  --color-info-solid: var(--ramp-info-solid-light);
+  --color-info-strong: var(--ramp-info-strong-light);
+  --color-on-info: #fafaf8;
+
+  /* ── Categorical ramp — LIGHT ──
+     For DATA ENCODING only: party, chamber, bill type, claim type. Readers
+     expect blue/red to carry meaning in a civic context, so these sit
+     deliberately outside the restrained brand ramp. Pick by category, never
+     by sentiment (that is what the status ramp is for) and never for
+     decoration. Every text value clears 4.5:1 on its own surface and on the
+     page surface. */
+  --color-cat-blue: var(--ramp-cat-blue-fg-light);
+  --color-cat-blue-surface: var(--ramp-cat-blue-bg-light);
+  --color-cat-red: var(--ramp-cat-red-fg-light);
+  --color-cat-red-surface: var(--ramp-cat-red-bg-light);
+  --color-cat-purple: var(--ramp-cat-purple-fg-light);
+  --color-cat-purple-surface: var(--ramp-cat-purple-bg-light);
+  --color-cat-green: var(--ramp-cat-green-fg-light);
+  --color-cat-green-surface: var(--ramp-cat-green-bg-light);
+  --color-cat-amber: var(--ramp-cat-amber-fg-light);
+  --color-cat-amber-surface: var(--ramp-cat-amber-bg-light);
+  --color-cat-teal: var(--ramp-cat-teal-fg-light);
+  --color-cat-teal-surface: var(--ramp-cat-teal-bg-light);
+}
+
+/* ── Full-tuple flips ──
+   Every scope below re-points ALL status + categorical members at one ramp
+   set. Keeping these as two named blocks (rather than inline lists per scope)
+   is what makes a partial override impossible to write by accident. */
+.op-status-dark,
+.dark,
+.on-ink,
+.dark .on-fixed-dark,
+.on-fixed-dark {
+  --color-danger: var(--ramp-danger-fg-dark);
+  --color-danger-surface: var(--ramp-danger-bg-dark);
+  --color-danger-line: var(--ramp-danger-line-dark);
+  --color-danger-solid: var(--ramp-danger-solid-dark);
+  --color-danger-strong: var(--ramp-danger-strong-dark);
+  --color-warning: var(--ramp-warning-fg-dark);
+  --color-warning-surface: var(--ramp-warning-bg-dark);
+  --color-warning-line: var(--ramp-warning-line-dark);
+  --color-warning-solid: var(--ramp-warning-solid-dark);
+  --color-warning-strong: var(--ramp-warning-strong-dark);
+  --color-positive: var(--ramp-positive-fg-dark);
+  --color-positive-surface: var(--ramp-positive-bg-dark);
+  --color-positive-line: var(--ramp-positive-line-dark);
+  --color-positive-solid: var(--ramp-positive-solid-dark);
+  --color-positive-strong: var(--ramp-positive-strong-dark);
+  --color-info: var(--ramp-info-fg-dark);
+  --color-info-surface: var(--ramp-info-bg-dark);
+  --color-info-line: var(--ramp-info-line-dark);
+  --color-info-solid: var(--ramp-info-solid-dark);
+  --color-info-strong: var(--ramp-info-strong-dark);
+  --color-cat-blue: var(--ramp-cat-blue-fg-dark);
+  --color-cat-blue-surface: var(--ramp-cat-blue-bg-dark);
+  --color-cat-red: var(--ramp-cat-red-fg-dark);
+  --color-cat-red-surface: var(--ramp-cat-red-bg-dark);
+  --color-cat-purple: var(--ramp-cat-purple-fg-dark);
+  --color-cat-purple-surface: var(--ramp-cat-purple-bg-dark);
+  --color-cat-green: var(--ramp-cat-green-fg-dark);
+  --color-cat-green-surface: var(--ramp-cat-green-bg-dark);
+  --color-cat-amber: var(--ramp-cat-amber-fg-dark);
+  --color-cat-amber-surface: var(--ramp-cat-amber-bg-dark);
+  --color-cat-teal: var(--ramp-cat-teal-fg-dark);
+  --color-cat-teal-surface: var(--ramp-cat-teal-bg-dark);
+}
+
+.op-status-light,
+.dark .on-ink {
+  --color-danger: var(--ramp-danger-fg-light);
+  --color-danger-surface: var(--ramp-danger-bg-light);
+  --color-danger-line: var(--ramp-danger-line-light);
+  --color-danger-solid: var(--ramp-danger-solid-light);
+  --color-danger-strong: var(--ramp-danger-strong-light);
+  --color-warning: var(--ramp-warning-fg-light);
+  --color-warning-surface: var(--ramp-warning-bg-light);
+  --color-warning-line: var(--ramp-warning-line-light);
+  --color-warning-solid: var(--ramp-warning-solid-light);
+  --color-warning-strong: var(--ramp-warning-strong-light);
+  --color-positive: var(--ramp-positive-fg-light);
+  --color-positive-surface: var(--ramp-positive-bg-light);
+  --color-positive-line: var(--ramp-positive-line-light);
+  --color-positive-solid: var(--ramp-positive-solid-light);
+  --color-positive-strong: var(--ramp-positive-strong-light);
+  --color-info: var(--ramp-info-fg-light);
+  --color-info-surface: var(--ramp-info-bg-light);
+  --color-info-line: var(--ramp-info-line-light);
+  --color-info-solid: var(--ramp-info-solid-light);
+  --color-info-strong: var(--ramp-info-strong-light);
+  --color-cat-blue: var(--ramp-cat-blue-fg-light);
+  --color-cat-blue-surface: var(--ramp-cat-blue-bg-light);
+  --color-cat-red: var(--ramp-cat-red-fg-light);
+  --color-cat-red-surface: var(--ramp-cat-red-bg-light);
+  --color-cat-purple: var(--ramp-cat-purple-fg-light);
+  --color-cat-purple-surface: var(--ramp-cat-purple-bg-light);
+  --color-cat-green: var(--ramp-cat-green-fg-light);
+  --color-cat-green-surface: var(--ramp-cat-green-bg-light);
+  --color-cat-amber: var(--ramp-cat-amber-fg-light);
+  --color-cat-amber-surface: var(--ramp-cat-amber-bg-light);
+  --color-cat-teal: var(--ramp-cat-teal-fg-light);
+  --color-cat-teal-surface: var(--ramp-cat-teal-bg-light);
 }
 
 /* ── DARK theme — override the semantic vars only. Warm, ink-grounded. ── */
@@ -55,19 +310,22 @@
   --color-on-accent: #1a1714; /* ink text still rides the gold fill */
   --color-inverse-surface: #fafaf8; /* inverse panels invert to light in dark theme */
   --color-on-inverse: #1a1714;
+
+  /* Status + categorical: the whole dark tuple, via the shared block below.
+     `@apply` would be circular here (the block is a plain class, not a
+     utility), so .dark is added to the selector list on .op-status-dark. */
 }
 
 /* ── Base ── */
 html {
-  font-family:
-    var(--font-inter),
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
   scroll-behavior: smooth;
 }
 
 body {
+  /* Re-declared (not just inherited) so the sans ramp survives even if the
+     `html` rule is ever overridden by a stray reset. */
+  font-family: var(--font-sans);
   background: var(--color-surface);
   color: var(--color-content);
   line-height: 1.7;
@@ -76,7 +334,7 @@ body {
 /* Genuine code blocks only — mono is no longer part of the brand ramp */
 code,
 pre {
-  font-family: var(--font-family-mono);
+  font-family: var(--font-mono);
 }
 
 /* ── Typography ── */
@@ -92,16 +350,12 @@ h6 {
 
 h1,
 h2 {
-  font-family: var(--font-playfair-display), Georgia, serif;
+  font-family: var(--font-serif);
   letter-spacing: -0.01em;
 }
 
 h3 {
-  font-family:
-    var(--font-inter),
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -109,16 +363,12 @@ h3 {
 h4,
 h5,
 h6 {
-  font-family:
-    var(--font-inter),
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
 }
 
 .font-display {
-  font-family: var(--font-playfair-display), Georgia, serif;
+  font-family: var(--font-serif);
 }
 
 /* ── Editorial helpers (from the brand system, retargeted to semantic tokens
@@ -142,7 +392,7 @@ h6 {
 }
 
 .stitle {
-  font-family: var(--font-playfair-display), Georgia, serif;
+  font-family: var(--font-serif);
   font-weight: 700;
   line-height: 1.2;
 }
@@ -154,7 +404,7 @@ h6 {
 }
 
 .philosophy {
-  font-family: var(--font-playfair-display), Georgia, serif;
+  font-family: var(--font-serif);
   font-style: italic;
   line-height: 1.65;
 }
@@ -179,6 +429,30 @@ h6 {
   background: var(--color-inverse-surface);
   color: var(--color-on-inverse);
 }
+
+/* Fixed-dark surface — a camera viewfinder is black in EVERY theme, so its
+   tokens are pinned rather than inverted. `.on-ink` is the wrong tool here:
+   it flips to a paper panel in dark theme, which would put ink-coloured text
+   on the black video feed. Values are built from the fixed brand constants
+   (--color-paper / --color-ink), which never flip. */
+.on-fixed-dark {
+  --color-surface: #000000;
+  --color-surface-alt: color-mix(in oklab, var(--color-paper) 12%, transparent);
+  --color-surface-sunk: #000000;
+  --color-content: var(--color-paper);
+  --color-content-dim: color-mix(in oklab, var(--color-paper) 65%, transparent);
+  --color-line: color-mix(in oklab, var(--color-paper) 20%, transparent);
+  --color-inverse-surface: var(--color-paper);
+  --color-on-inverse: var(--color-ink);
+  color: var(--color-paper);
+  /* Status + categorical come from the dark tuple — .on-fixed-dark is in that
+     block's selector list above. Do NOT re-list individual members here: a
+     partial override is what caused the 1.78:1 badge regression. */
+}
+
+/* Status/categorical inside an ink panel flip as a COMPLETE tuple via the
+   shared blocks above (.on-ink → dark set; .dark .on-ink → light set, because
+   an ink panel inverts to paper in dark theme). Nothing to declare here. */
 .on-ink .eyebrow::before {
   background: var(--color-accent);
 }

@@ -38,7 +38,7 @@ describe("Toast Component", () => {
 
       const toast = screen.getByRole("alert");
       expect(toast).toHaveTextContent("Test message");
-      expect(toast).toHaveClass("bg-green-600");
+      expect(toast).toHaveClass("bg-positive-solid");
     });
 
     it("should render error toast with correct styling", () => {
@@ -50,7 +50,7 @@ describe("Toast Component", () => {
       );
 
       const toast = screen.getByRole("alert");
-      expect(toast).toHaveClass("bg-red-600");
+      expect(toast).toHaveClass("bg-danger-solid");
     });
 
     it("should render warning toast with correct styling", () => {
@@ -62,7 +62,7 @@ describe("Toast Component", () => {
       );
 
       const toast = screen.getByRole("alert");
-      expect(toast).toHaveClass("bg-amber-500");
+      expect(toast).toHaveClass("bg-warning-solid");
     });
 
     it("should render info toast with correct styling", () => {
@@ -74,7 +74,7 @@ describe("Toast Component", () => {
       );
 
       const toast = screen.getByRole("alert");
-      expect(toast).toHaveClass("bg-blue-600");
+      expect(toast).toHaveClass("bg-info-solid");
     });
 
     it("should have correct accessibility attributes", () => {

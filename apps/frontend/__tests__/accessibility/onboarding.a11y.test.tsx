@@ -7,7 +7,7 @@
  * here — jest-axe runs in jsdom which does not apply Tailwind's external
  * stylesheet, so axe's color-contrast rule can't compute the canvas/text
  * pairs. Contrast verification for the neutral-canvas refactor relies on
- * the token choices (text-gray-500 on bg-gray-50 ≈ 4.7:1, sage-dark on
+ * the token choices (text-content-dim on bg-surface-alt ≈ 4.7:1, sage-dark on
  * white ≈ 5.4:1) and on the manual Docker eyeball pass.
  */
 
