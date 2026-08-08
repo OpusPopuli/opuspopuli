@@ -4,6 +4,9 @@ import {
   isCandidateOwnCommittee,
   chamberFromName,
   candidateSurname,
+  committeeGivenNames,
+  givenNamesMatch,
+  representativeGivenName,
 } from './candidate-committee-linker.service';
 
 interface Rep {
@@ -23,6 +26,8 @@ interface LinkedCmte {
   id: string;
   name: string;
   candidateName: string | null;
+  /** The linked rep, joined so the given-name gate can run (#979). */
+  representative?: { name: string; lastName: string } | null;
 }
 
 function build(reps: Rep[], committees: Cmte[], linked: LinkedCmte[] = []) {
@@ -109,6 +114,147 @@ describe('isCandidateOwnCommittee (#953)', () => {
     // "Vo" (2 chars) would substring-match "vote"/"advocacy"; fall back to
     // office/name matching for these rather than false-reject.
     expect(isCandidateOwnCommittee('Committee to Elect Vo', 'Vo')).toBe(true);
+  });
+});
+
+describe('given-name gate (#979)', () => {
+  it('rejects a same-surname predecessor or relative committee', () => {
+    // Rob Bonta held this Assembly seat before Mia Bonta, so his committees
+    // share surname + chamber and the ambiguity guard (current reps only)
+    // never fired — ~$1.07M of his money showed on her page.
+    expect(
+      isCandidateOwnCommittee('Rob Bonta for Assembly 2014', 'Bonta', 'Mia'),
+    ).toBe(false);
+    expect(
+      isCandidateOwnCommittee(
+        'Ian Calderon for Assembly 2016',
+        'Calderon',
+        'Lisa',
+      ),
+    ).toBe(false);
+    expect(
+      isCandidateOwnCommittee(
+        'Eduardo Garcia for Assembly 2020',
+        'Garcia',
+        'Robert',
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps the representative's own committee", () => {
+    expect(
+      isCandidateOwnCommittee('Mia Bonta for Assembly 2024', 'Bonta', 'Mia'),
+    ).toBe(true);
+    expect(
+      isCandidateOwnCommittee(
+        'Lisa Calderon for Assembly 2022',
+        'Calderon',
+        'Lisa',
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps a committee filed under a diminutive of the given name', () => {
+    expect(
+      isCandidateOwnCommittee('Tom Umberg for Senate 2018', 'Umberg', 'Thomas'),
+    ).toBe(true);
+    expect(
+      isCandidateOwnCommittee(
+        'Stephen Bennett for Assembly 2024',
+        'Bennett',
+        'Steve',
+      ),
+    ).toBe(true);
+    // Prefix rule covers short forms the nickname table omits.
+    expect(
+      isCandidateOwnCommittee('Dan Rivera for Assembly', 'Rivera', 'Daniel'),
+    ).toBe(true);
+  });
+
+  it('keeps titles carrying a middle name, compound surname, or office', () => {
+    expect(
+      isCandidateOwnCommittee(
+        'Maria Elena Durazo for State Senate 2026',
+        'Durazo',
+        'Maria',
+      ),
+    ).toBe(true);
+    expect(
+      isCandidateOwnCommittee(
+        'Rick Chavez Zbur for Assembly 2022',
+        'Zbur',
+        'Rick',
+      ),
+    ).toBe(true);
+    expect(
+      isCandidateOwnCommittee(
+        'Speaker Rivas Legal Defense Fund',
+        'Rivas',
+        'Robert',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects the inverted CAL-ACCESS "SURNAME FOR OFFICE; FIRST" form', () => {
+    expect(
+      isCandidateOwnCommittee(
+        'GARCIA FOR ASSEMBLY 2024; VICTORIA',
+        'Garcia',
+        'Robert',
+      ),
+    ).toBe(false);
+    expect(
+      isCandidateOwnCommittee(
+        'GARCIA FOR STATE ASSEMBLY 2024; COMMITTEE TO ELECT EDGARD',
+        'Garcia',
+        'Robert',
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps a title that names nobody before the surname', () => {
+    // No given name anywhere to discriminate on — stay conservative rather
+    // than drop a link the data cannot disprove.
+    expect(
+      isCandidateOwnCommittee('BONTA FOR ASSEMBLY 2021', 'Bonta', 'Mia'),
+    ).toBe(true);
+    expect(
+      isCandidateOwnCommittee('Garcia for Assembly 2024', 'Garcia', 'Robert'),
+    ).toBe(true);
+  });
+
+  it('is unchanged when no representative given name is supplied', () => {
+    expect(
+      isCandidateOwnCommittee('Rob Bonta for Assembly 2014', 'Bonta'),
+    ).toBe(true);
+  });
+
+  it('extracts given-name candidates around the surname', () => {
+    expect(committeeGivenNames('Rob Bonta for Assembly 2014', 'Bonta')).toEqual(
+      ['rob'],
+    );
+    expect(
+      committeeGivenNames('Maria Elena Durazo for Senate', 'Durazo'),
+    ).toEqual(['maria', 'elena']);
+    expect(committeeGivenNames('BONTA FOR ASSEMBLY 2021', 'Bonta')).toEqual([]);
+    expect(
+      committeeGivenNames('GARCIA FOR ASSEMBLY 2024; VICTORIA', 'Garcia'),
+    ).toEqual(['victoria']);
+  });
+
+  it('matches given names across nicknames and prefixes only', () => {
+    expect(givenNamesMatch('Tom', 'Thomas')).toBe(true);
+    expect(givenNamesMatch('Steve', 'Stephen')).toBe(true);
+    expect(givenNamesMatch('Dan', 'Daniel')).toBe(true);
+    expect(givenNamesMatch('Rob', 'Mia')).toBe(false);
+    expect(givenNamesMatch('Eduardo', 'Robert')).toBe(false);
+    expect(givenNamesMatch('Luz', 'Robert')).toBe(false);
+  });
+
+  it('reads a representative given name past honorifics', () => {
+    expect(representativeGivenName('Dr. Corey A. Jackson')).toBe('corey');
+    expect(representativeGivenName('Mia Bonta')).toBe('mia');
+    expect(representativeGivenName('Rosilicie Ochoa Bogh')).toBe('rosilicie');
   });
 });
 
@@ -513,6 +659,59 @@ describe('CandidateCommitteeLinkerService (#941)', () => {
     });
     expect(update).not.toHaveBeenCalledWith({
       where: { id: 'c-good' },
+      data: { representativeId: null },
+    });
+  });
+
+  it('self-heals a predecessor committee already linked to a sitting member (#979)', async () => {
+    // The production path that clears the bad rows: Rob Bonta's Assembly-era
+    // committees are already linked to Mia Bonta, and reconcile must drop them
+    // on the next run. `Rob Bonta for Assembly 2018` also has a blank
+    // CAND_NAML, so the surname has to come from the linked rep.
+    const rep = { name: 'Mia Bonta', lastName: 'Bonta' };
+    const { svc, update } = build(
+      [
+        {
+          id: 'rep-1',
+          lastName: 'Bonta',
+          name: 'Mia Bonta',
+          chamber: 'Assembly',
+        },
+      ],
+      [],
+      [
+        {
+          id: 'c-rob-2014',
+          name: 'Rob Bonta for Assembly 2014',
+          candidateName: 'Bonta',
+          representative: rep,
+        },
+        {
+          id: 'c-rob-2018',
+          name: 'Rob Bonta for Assembly 2018',
+          candidateName: null,
+          representative: rep,
+        },
+        {
+          id: 'c-mia-2024',
+          name: 'Mia Bonta for Assembly 2024',
+          candidateName: 'Bonta',
+          representative: rep,
+        },
+      ],
+    );
+
+    const res = await svc.linkAll();
+
+    expect(res.reconciledUnlinked).toBe(2);
+    for (const id of ['c-rob-2014', 'c-rob-2018']) {
+      expect(update).toHaveBeenCalledWith({
+        where: { id },
+        data: { representativeId: null },
+      });
+    }
+    expect(update).not.toHaveBeenCalledWith({
+      where: { id: 'c-mia-2024' },
       data: { representativeId: null },
     });
   });
