@@ -48,7 +48,7 @@ export function ProfileVisibilityToggle({
             onMouseLeave={() => setShowTooltip(false)}
             onFocus={() => setShowTooltip(true)}
             onBlur={() => setShowTooltip(false)}
-            className="text-content-dim hover:text-content-dim focus:outline-none focus:text-content-dim"
+            className="text-content-dim hover:text-content focus:outline-none focus:text-content"
             aria-label={t(
               "profile.visibility.infoLabel",
               "Visibility information",
@@ -81,7 +81,7 @@ export function ProfileVisibilityToggle({
                   "Public profiles can be discovered by other users. Private profiles are only visible to you.",
                 )}
               </p>
-              <div className="absolute left-3 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+              <div className="absolute left-3 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-inverse-surface" />
             </div>
           )}
         </div>
@@ -90,7 +90,7 @@ export function ProfileVisibilityToggle({
       <div className="flex items-center gap-3">
         {/* Status Label */}
         <span
-          className={`text-sm ${isPublic ? "text-green-600" : "text-content-dim"}`}
+          className={`text-sm ${isPublic ? "text-positive" : "text-content-dim"}`}
         >
           {isPublic
             ? t("profile.visibility.public", "Public")
@@ -108,8 +108,8 @@ export function ProfileVisibilityToggle({
           className={`
             relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full
             border-2 border-transparent transition-colors duration-200 ease-in-out
-            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-            ${isPublic ? "bg-green-500" : "bg-gray-300"}
+            focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2
+            ${isPublic ? "bg-positive-solid" : "bg-surface-sunk"}
             ${disabled ? "opacity-50 cursor-not-allowed" : ""}
           `}
         >
@@ -127,7 +127,7 @@ export function ProfileVisibilityToggle({
             {/* Icon inside toggle */}
             {isPublic ? (
               <svg
-                className="absolute inset-0 h-full w-full p-1 text-green-500"
+                className="absolute inset-0 h-full w-full p-1 text-positive"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

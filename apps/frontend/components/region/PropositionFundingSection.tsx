@@ -81,7 +81,7 @@ export function PropositionFundingSection({
         <FundingSideCard label="Supporting" side={funding.support} />
         <FundingSideCard label="Opposing" side={funding.oppose} />
       </div>
-      <p className="mt-3 text-xs text-slate-500">
+      <p className="mt-3 text-sm text-content-dim">
         Reflects CalAccess records as of {formatDate(funding.asOf)}.
       </p>
       <FinanceDisclaimer className="mt-2" />
@@ -109,14 +109,14 @@ function FundingSideCard({
       <p className="text-2xl font-extrabold text-content">
         {formatCurrency(side.totalRaised)}
       </p>
-      <p className="text-xs text-slate-600 mb-4">
+      <p className="text-sm text-content-dim mb-4">
         raised by {pluralize(side.committeeCount, "committee")} from{" "}
         {pluralize(side.donorCount, "donor")}
       </p>
 
       {side.topDonors.length > 0 && (
         <div className="mb-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+          <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-2">
             Top donors
           </p>
           <ul className="space-y-1.5">
@@ -139,7 +139,7 @@ function FundingSideCard({
 
       {side.primaryCommittees.length > 0 && (
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+          <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-2">
             Primary committees
           </p>
           <ul className="space-y-1.5">
@@ -161,12 +161,12 @@ function FundingSkeleton({ label }: { readonly label: string }) {
       <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-content-dim mb-3">
         {label}
       </p>
-      <div className="h-7 w-32 bg-slate-200 rounded mb-2" />
-      <div className="h-3 w-40 bg-slate-100 rounded mb-5" />
+      <div className="h-7 w-32 bg-surface-sunk rounded mb-2" />
+      <div className="h-3 w-40 bg-surface-alt rounded mb-5" />
       <div className="space-y-2">
-        <div className="h-3 bg-slate-100 rounded w-full" />
-        <div className="h-3 bg-slate-100 rounded w-5/6" />
-        <div className="h-3 bg-slate-100 rounded w-4/6" />
+        <div className="h-3 bg-surface-alt rounded w-full" />
+        <div className="h-3 bg-surface-alt rounded w-5/6" />
+        <div className="h-3 bg-surface-alt rounded w-4/6" />
       </div>
     </div>
   );
@@ -174,11 +174,11 @@ function FundingSkeleton({ label }: { readonly label: string }) {
 
 function FundingEmpty() {
   return (
-    <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-6 text-center">
-      <p className="text-sm text-slate-700">
+    <div className="bg-surface-alt border border-dashed border-line rounded-lg p-6 text-center">
+      <p className="text-sm text-content">
         No campaign-finance filings linked to this measure yet.
       </p>
-      <p className="text-xs text-slate-500 mt-1">
+      <p className="text-sm text-content-dim mt-1">
         Funding data appears once committees file Form 410 declarations or
         report expenditures targeting this measure.
       </p>

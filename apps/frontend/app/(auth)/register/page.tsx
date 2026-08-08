@@ -34,9 +34,9 @@ export default function RegisterPage() {
   if (magicLinkSent) {
     return (
       <AuthCard className="text-center">
-        <div className="w-16 h-16 bg-[#f0fdf4] rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className="w-16 h-16 bg-positive-surface rounded-full flex items-center justify-center mx-auto mb-4">
           <svg
-            className="w-8 h-8 text-[#22c55e]"
+            className="w-8 h-8 text-positive"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -64,14 +64,14 @@ export default function RegisterPage() {
         <div className="space-y-3">
           <Link
             href="/login"
-            className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
+            className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:opacity-90 transition-colors"
           >
             Back to Sign in
           </Link>
           <button
             type="button"
             onClick={() => globalThis.location.reload()}
-            className="inline-block w-full py-3 px-6 bg-surface text-content font-semibold rounded-lg border border-line hover:bg-surface transition-colors"
+            className="inline-block w-full py-3 px-6 bg-surface text-content font-semibold rounded-lg border border-line hover:bg-surface-alt transition-colors"
           >
             Use a different email
           </button>
@@ -88,11 +88,11 @@ export default function RegisterPage() {
       />
 
       {/* Benefits */}
-      <div className="mb-6 p-4 bg-[#f0f9ff] rounded-lg">
+      <div className="mb-6 p-4 bg-info-surface rounded-lg">
         <div className="flex items-start gap-3">
-          <div className="w-8 h-8 bg-[#0ea5e9] rounded-full flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 bg-info-solid rounded-full flex items-center justify-center flex-shrink-0">
             <svg
-              className="w-4 h-4 text-white"
+              className="w-4 h-4 text-paper"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -106,10 +106,10 @@ export default function RegisterPage() {
             </svg>
           </div>
           <div>
-            <p className="text-sm font-medium text-[#0c4a6e]">
+            <p className="text-sm font-medium text-content">
               No password required
             </p>
-            <p className="text-xs text-[#0369a1] mt-1">
+            <p className="text-sm text-info mt-1">
               We&apos;ll send you a secure link to verify your email and set up
               your account.
               {AUTH_FULL_OPTIONS && (
@@ -157,7 +157,7 @@ export default function RegisterPage() {
         </AuthSubmitButton>
 
         {/* Terms */}
-        <p className="text-xs text-content-dim text-center">
+        <p className="text-sm text-content-dim text-center">
           By creating an account, you agree to our{" "}
           <Link
             href="/terms"

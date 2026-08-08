@@ -16,11 +16,36 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Font families — Inter + Playfair loaded via next/font in app/layout.tsx.
-     Mono is dropped from the brand ramp; kept only for genuine <code>/<pre>. */
-  --font-family-heading: var(--font-playfair-display), Georgia, serif;
-  --font-family-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
-  --font-family-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  /* Font families — Inter + Playfair loaded via next/font in app/layout.tsx,
+     whose CSS variables are attached to <html> so :root can resolve them.
+     Mono is dropped from the brand ramp; kept only for genuine <code>/<pre>.
+
+     These MUST use Tailwind v4's `--font-*` namespace (not `--font-family-*`)
+     or the font-sans / font-serif / font-mono utilities silently fall back to
+     Tailwind's stock stacks instead of the brand ramp.
+
+     The inner var() fallbacks matter: if next/font ever fails to attach its
+     class, `var(--font-inter)` alone would be invalid-at-computed-value-time
+     and drop the element to the browser default serif. With a fallback the
+     chain degrades to system-ui instead. */
+  --font-sans:
+    var(--font-inter, system-ui), system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-playfair-display, Georgia), Georgia, serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* ── Type scale ──
+     opuspopuli.org is a marketing page with short measures; this app is dense
+     civic data, where two thirds of all sizing classes are text-sm/text-xs.
+     At Tailwind's stock 14px/12px that reads as squinty, so the small end of
+     the ramp is lifted one notch (and given roomier leading) rather than
+     rewriting ~670 call sites. Relative hierarchy is unchanged.
+     lg and up keep their stock values — headings are already sized explicitly. */
+  --text-xs: 0.8125rem; /* 13px (was 12) — badges, micro-labels */
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.9375rem; /* 15px (was 14) — the app's workhorse size */
+  --text-sm--line-height: 1.4rem;
+  --text-base: 1.0625rem; /* 17px (was 16) — body copy */
+  --text-base--line-height: 1.65rem;
 
   /* ── Fixed brand constants — identical in both themes ── */
   --color-gold: #e8c000; /* the mark's disc; never recolored */
@@ -33,13 +58,73 @@
   --color-surface-alt: #f4f2ec; /* alt sections / pills (off) */
   --color-surface-sunk: #edeae3; /* deeper inset wells */
   --color-content: #1a1714; /* primary text (ink) */
-  --color-content-dim: #726e66; /* secondary text — WCAG-tuned, do NOT lighten */
+  /* Secondary text — WCAG-tuned, do NOT lighten. Darkened from #726e66 so it
+     also clears 4.5:1 against surface-sunk (#edeae3), which it lands on via
+     hover states; the old value was 4.22:1 there. Ratios now: 5.23 on surface,
+     4.88 on surface-alt, 4.55 on surface-sunk. */
+  --color-content-dim: #6d6961;
   --color-line: #e0ddd8; /* hairline borders */
   --color-accent: #e8c000; /* gold — earned; fill / ≥3px / text-on-ink only */
   --color-accent-strong: #cfa900; /* darkened gold, hover on gold fills */
   --color-on-accent: #1a1714; /* ink text on gold fills */
   --color-inverse-surface: #1a1714; /* deliberate dark panels within light theme */
   --color-on-inverse: #fafaf8; /* text on inverse-surface / .on-ink */
+
+  /* ── Status ramp — LIGHT ──
+     Gold is "earned" and carries no status meaning, so state still needs its
+     own hues. Each status has four roles:
+       --color-X          text/icon on a normal surface (≥4.5:1 on paper)
+       --color-X-surface  tint background for banners/badges
+       --color-X-line     hairline border for those banners/badges
+       --color-X-solid    filled button/bar, paired with --color-on-X
+     Hues are warm-shifted to sit with paper rather than fight it. */
+  --color-danger: #a3231b;
+  --color-danger-surface: #fbedeb;
+  --color-danger-line: #efc9c4;
+  --color-danger-solid: #a3231b;
+  --color-danger-strong: #7f1a14; /* hover on danger fills */
+  --color-on-danger: #fafaf8;
+
+  --color-warning: #8a5a00;
+  --color-warning-surface: #fbf2e0;
+  --color-warning-line: #e8d3a6;
+  --color-warning-solid: #8a5a00;
+  --color-warning-strong: #6d4700;
+  --color-on-warning: #fafaf8;
+
+  --color-positive: #216b41;
+  --color-positive-surface: #e9f4ec;
+  --color-positive-line: #c3dfcb;
+  --color-positive-solid: #216b41;
+  --color-positive-strong: #19542f;
+  --color-on-positive: #fafaf8;
+
+  --color-info: #1f5aa8;
+  --color-info-surface: #e9f0fa;
+  --color-info-line: #c4d6ee;
+  --color-info-solid: #1f5aa8;
+  --color-info-strong: #16447f;
+  --color-on-info: #fafaf8;
+
+  /* ── Categorical ramp — LIGHT ──
+     For DATA ENCODING only: party, chamber, bill type, claim type. Readers
+     expect blue/red to carry meaning in a civic context, so these sit
+     deliberately outside the restrained brand ramp. Pick by category, never
+     by sentiment (that is what the status ramp is for) and never for
+     decoration. Every text value clears 4.5:1 on its own surface and on the
+     page surface. */
+  --color-cat-blue: #1f4e96;
+  --color-cat-blue-surface: #e4edf9;
+  --color-cat-red: #a32b22;
+  --color-cat-red-surface: #fbe7e5;
+  --color-cat-purple: #5b3c9b;
+  --color-cat-purple-surface: #ede7f7;
+  --color-cat-green: #216b41;
+  --color-cat-green-surface: #e4f1e8;
+  --color-cat-amber: #7a5a00;
+  --color-cat-amber-surface: #f7edd4;
+  --color-cat-teal: #14625f;
+  --color-cat-teal-surface: #dff0ef;
 }
 
 /* ── DARK theme — override the semantic vars only. Warm, ink-grounded. ── */
@@ -55,19 +140,64 @@
   --color-on-accent: #1a1714; /* ink text still rides the gold fill */
   --color-inverse-surface: #fafaf8; /* inverse panels invert to light in dark theme */
   --color-on-inverse: #1a1714;
+
+  /* ── Status ramp — DARK ──
+     Text roles lighten (they must clear 4.5:1 on #14110f); surfaces become
+     deep tinted wells rather than pale boxes; solids keep enough chroma to
+     read as a filled control. */
+  --color-danger: #f08a7e;
+  --color-danger-surface: #2a1614;
+  --color-danger-line: #4a2622;
+  --color-danger-solid: #c4382e;
+  --color-danger-strong: #d9564a;
+  --color-on-danger: #fafaf8;
+
+  --color-warning: #e8b54d;
+  --color-warning-surface: #2a2113;
+  --color-warning-line: #463620;
+  --color-warning-solid: #8a5a00;
+  --color-warning-strong: #a06a00; /* hover LIGHTENS on dark, unlike light theme */
+  --color-on-warning: #fafaf8;
+
+  --color-positive: #6fc98c;
+  --color-positive-surface: #14251a;
+  --color-positive-line: #22402c;
+  --color-positive-solid: #2b7d4e;
+  --color-positive-strong: #35935c;
+  --color-on-positive: #fafaf8;
+
+  --color-info: #7fb0ee;
+  --color-info-surface: #141f2e;
+  --color-info-line: #22334a;
+  --color-info-solid: #2a68bd;
+  --color-info-strong: #3a7ccf;
+  --color-on-info: #fafaf8;
+
+  /* ── Categorical ramp — DARK ── */
+  --color-cat-blue: #93baf0;
+  --color-cat-blue-surface: #16213a;
+  --color-cat-red: #f0968a;
+  --color-cat-red-surface: #2e1714;
+  --color-cat-purple: #b9a2e8;
+  --color-cat-purple-surface: #221b36;
+  --color-cat-green: #7ccf95;
+  --color-cat-green-surface: #14251a;
+  --color-cat-amber: #e0bc5e;
+  --color-cat-amber-surface: #2a2213;
+  --color-cat-teal: #6cc7c2;
+  --color-cat-teal-surface: #102a29;
 }
 
 /* ── Base ── */
 html {
-  font-family:
-    var(--font-inter),
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
   scroll-behavior: smooth;
 }
 
 body {
+  /* Re-declared (not just inherited) so the sans ramp survives even if the
+     `html` rule is ever overridden by a stray reset. */
+  font-family: var(--font-sans);
   background: var(--color-surface);
   color: var(--color-content);
   line-height: 1.7;
@@ -76,7 +206,7 @@ body {
 /* Genuine code blocks only — mono is no longer part of the brand ramp */
 code,
 pre {
-  font-family: var(--font-family-mono);
+  font-family: var(--font-mono);
 }
 
 /* ── Typography ── */
@@ -92,16 +222,12 @@ h6 {
 
 h1,
 h2 {
-  font-family: var(--font-playfair-display), Georgia, serif;
+  font-family: var(--font-serif);
   letter-spacing: -0.01em;
 }
 
 h3 {
-  font-family:
-    var(--font-inter),
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -109,16 +235,12 @@ h3 {
 h4,
 h5,
 h6 {
-  font-family:
-    var(--font-inter),
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
 }
 
 .font-display {
-  font-family: var(--font-playfair-display), Georgia, serif;
+  font-family: var(--font-serif);
 }
 
 /* ── Editorial helpers (from the brand system, retargeted to semantic tokens
@@ -142,7 +264,7 @@ h6 {
 }
 
 .stitle {
-  font-family: var(--font-playfair-display), Georgia, serif;
+  font-family: var(--font-serif);
   font-weight: 700;
   line-height: 1.2;
 }
@@ -154,7 +276,7 @@ h6 {
 }
 
 .philosophy {
-  font-family: var(--font-playfair-display), Georgia, serif;
+  font-family: var(--font-serif);
   font-style: italic;
   line-height: 1.65;
 }
@@ -178,6 +300,45 @@ h6 {
   --color-line: color-mix(in oklab, var(--color-on-inverse) 15%, transparent);
   background: var(--color-inverse-surface);
   color: var(--color-on-inverse);
+}
+
+/* Fixed-dark surface — a camera viewfinder is black in EVERY theme, so its
+   tokens are pinned rather than inverted. `.on-ink` is the wrong tool here:
+   it flips to a paper panel in dark theme, which would put ink-coloured text
+   on the black video feed. Values are built from the fixed brand constants
+   (--color-paper / --color-ink), which never flip. */
+.on-fixed-dark {
+  --color-surface: #000000;
+  --color-surface-alt: color-mix(in oklab, var(--color-paper) 12%, transparent);
+  --color-surface-sunk: #000000;
+  --color-content: var(--color-paper);
+  --color-content-dim: color-mix(in oklab, var(--color-paper) 65%, transparent);
+  --color-line: color-mix(in oklab, var(--color-paper) 20%, transparent);
+  --color-inverse-surface: var(--color-paper);
+  --color-on-inverse: var(--color-ink);
+  --color-danger: #f08a7e;
+  --color-warning: #e8b54d;
+  --color-positive: #6fc98c;
+  --color-info: #7fb0ee;
+  color: var(--color-paper);
+}
+
+/* Status text inside an ink panel must lighten, or it sinks into the panel
+   (#a3231b on #1a1714 is ~1.6:1). Surfaces/lines are left alone: status
+   banners are not nested inside .on-ink panels anywhere today, and a tint
+   would fight the panel. Light theme only — in dark theme .on-ink inverts to
+   a PAPER panel, where the light-theme status values are already correct. */
+.on-ink {
+  --color-danger: #f08a7e;
+  --color-warning: #e8b54d;
+  --color-positive: #6fc98c;
+  --color-info: #7fb0ee;
+}
+.dark .on-ink {
+  --color-danger: #a3231b;
+  --color-warning: #8a5a00;
+  --color-positive: #216b41;
+  --color-info: #1f5aa8;
 }
 .on-ink .eyebrow::before {
   background: var(--color-accent);

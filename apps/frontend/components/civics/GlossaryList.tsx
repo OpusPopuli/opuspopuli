@@ -56,7 +56,7 @@ export function GlossaryList({ entries }: GlossaryListProps) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("glossary.searchPlaceholder")}
           aria-controls={resultsId}
-          className="w-full rounded-lg border border-line py-2 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full rounded-lg border border-line py-2 pl-10 pr-4 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
 
@@ -113,7 +113,7 @@ function GlossaryEntry({ entry }: { entry: CivicsGlossaryEntry }) {
             aria-expanded={expanded}
             aria-controls={longDefId}
             onClick={() => setExpanded((v) => !v)}
-            className="text-xs font-medium text-blue-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-blue-400"
+            className="text-xs font-medium text-info hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             {expanded ? "▲" : "▼"} {t("glossary.longDefinitionLabel")}
           </button>

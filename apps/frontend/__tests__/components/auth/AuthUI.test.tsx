@@ -86,7 +86,10 @@ describe("AuthErrorAlert", () => {
   it("should have error styling", () => {
     const { container } = render(<AuthErrorAlert error="Error" />);
 
-    expect(container.firstChild).toHaveClass("bg-red-50", "border-red-200");
+    expect(container.firstChild).toHaveClass(
+      "bg-danger-surface",
+      "border-danger-line",
+    );
   });
 });
 

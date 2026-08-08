@@ -9,7 +9,7 @@ export function Footer() {
           misreading derived views (esp. campaign-finance attributions) as
           authoritative or as allegations. */}
       <div className="max-w-6xl mx-auto px-8 pt-6">
-        <p className="text-xs leading-relaxed text-content-dim">
+        <p className="text-sm leading-relaxed text-content-dim">
           Opus Populi is a civic-education tool for illustrative purposes. Its
           data comes from official public records (such as the California
           Secretary of State&apos;s CAL-ACCESS database and the U.S. Federal

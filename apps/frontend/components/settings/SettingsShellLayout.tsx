@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Footer } from "@/components/Footer";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { Logo } from "@/components/Logo";
 import { useAuth } from "@/lib/auth-context";
 
 /**
@@ -173,16 +174,12 @@ export function SettingsShellLayout({
       <div className="min-h-screen bg-surface">
         <header className="bg-surface border-b border-line">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
+            <div className="flex justify-between items-center h-20">
               <Link
                 href="/"
                 className="inline-flex items-center gap-3 hover:opacity-80 transition-opacity"
               >
-                <img
-                  src="/logos/svg/op-horizontal-light.svg"
-                  alt="Opus Populi"
-                  className="h-8"
-                />
+                <Logo className="h-14" />
               </Link>
               <div className="flex items-center gap-4">
                 <LanguageToggle />
@@ -211,7 +208,7 @@ export function SettingsShellLayout({
                         href={item.href}
                         className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                           isActive(item.href)
-                            ? "bg-inverse-surface text-white "
+                            ? "bg-inverse-surface text-on-inverse "
                             : "text-content-dim hover:bg-surface-alt hover:text-content "
                         }`}
                       >
@@ -224,7 +221,7 @@ export function SettingsShellLayout({
                 <div className="mt-2 pt-2 border-t border-line">
                   <button
                     onClick={logout}
-                    className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300 transition-colors"
+                    className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium text-danger hover:bg-danger-surface hover:text-danger-strong dark:hover:bg-danger-surface/20 dark:hover:text-danger-strong transition-colors"
                   >
                     <svg
                       className="w-5 h-5"

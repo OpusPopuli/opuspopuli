@@ -34,7 +34,7 @@ export default function CampaignFinancePage() {
       <nav className="mb-6">
         <Link
           href="/region"
-          className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+          className="text-sm text-info hover:text-info-strong hover:underline"
         >
           Region
         </Link>
@@ -58,7 +58,7 @@ export default function CampaignFinancePage() {
             href={card.href}
             className="group bg-surface rounded-lg p-6 transition-all duration-200"
           >
-            <h2 className="text-lg font-semibold text-content group-hover:text-blue-600 transition-colors">
+            <h2 className="text-lg font-semibold text-content group-hover:text-info-strong transition-colors">
               {card.title}
             </h2>
             <p className="mt-1 text-sm text-content-dim">{card.description}</p>

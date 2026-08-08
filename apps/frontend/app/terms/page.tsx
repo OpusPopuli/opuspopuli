@@ -37,10 +37,7 @@ export default function TermsOfServicePage() {
             <p>
               By creating an account or using Opus Populi, you agree to these
               Terms and our{" "}
-              <Link
-                href="/privacy"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
-              >
+              <Link href="/privacy" className="text-info hover:underline">
                 Privacy Policy
               </Link>
               . If you do not agree, you may not use the platform. We may update
@@ -145,7 +142,7 @@ export default function TermsOfServicePage() {
                 Our AI transparency commitments are detailed on our{" "}
                 <Link
                   href="/transparency"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-info hover:underline"
                 >
                   Transparency
                 </Link>{" "}
@@ -165,7 +162,7 @@ export default function TermsOfServicePage() {
               statements. Read the current version at{" "}
               <Link
                 href="/our-commitments"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-info hover:underline"
               >
                 /our-commitments
               </Link>
@@ -188,7 +185,7 @@ export default function TermsOfServicePage() {
                 you may write to{" "}
                 <a
                   href="mailto:legal@opuspopuli.org"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-info hover:underline"
                 >
                   legal@opuspopuli.org
                 </a>
@@ -196,7 +193,7 @@ export default function TermsOfServicePage() {
                 Security incidents may also be reported to{" "}
                 <a
                   href="mailto:security@opuspopuli.org"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-info hover:underline"
                 >
                   security@opuspopuli.org
                 </a>
@@ -267,17 +264,14 @@ export default function TermsOfServicePage() {
               You may delete your account at any time through your{" "}
               <Link
                 href="/settings/privacy"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-info hover:underline"
               >
                 privacy settings
               </Link>
               . We may suspend or terminate your account if you violate these
               Terms. Upon termination, your data will be handled in accordance
               with our{" "}
-              <Link
-                href="/privacy"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
-              >
+              <Link href="/privacy" className="text-info hover:underline">
                 Privacy Policy
               </Link>
               .
@@ -306,7 +300,7 @@ export default function TermsOfServicePage() {
               us at{" "}
               <a
                 href="mailto:legal@opuspopuli.org"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-info hover:underline"
               >
                 legal@opuspopuli.org
               </a>

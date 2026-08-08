@@ -24,21 +24,21 @@ describe("LightingFeedback", () => {
   it("should apply green background for good lighting", () => {
     const { container } = render(<LightingFeedback level="good" />);
 
-    const badge = container.querySelector(".bg-green-600");
+    const badge = container.querySelector(".bg-positive-solid");
     expect(badge).toBeInTheDocument();
   });
 
   it("should apply yellow background for dark lighting", () => {
     const { container } = render(<LightingFeedback level="dark" />);
 
-    const badge = container.querySelector(".bg-yellow-600");
+    const badge = container.querySelector(".bg-warning-solid");
     expect(badge).toBeInTheDocument();
   });
 
   it("should apply orange background for bright lighting", () => {
     const { container } = render(<LightingFeedback level="bright" />);
 
-    const badge = container.querySelector(".bg-orange-600");
+    const badge = container.querySelector(".bg-warning-solid");
     expect(badge).toBeInTheDocument();
   });
 

@@ -9,10 +9,12 @@ interface ToastProps {
 }
 
 const toastStyles: Record<ToastType, string> = {
-  success: "bg-green-600 dark:bg-green-700",
-  error: "bg-red-600 dark:bg-red-700",
-  warning: "bg-amber-500 dark:bg-amber-600",
-  info: "bg-blue-600 dark:bg-blue-700",
+  success: "bg-positive-solid",
+  error: "bg-danger-solid",
+  warning: "bg-warning-solid",
+  // Not bg-accent: the toast body is paper-on-fill, and paper on gold is
+  // ~1.9:1. Gold fills require ink text, which the other three tones don't use.
+  info: "bg-info-solid",
 };
 
 const toastIcons: Record<ToastType, string> = {
@@ -32,7 +34,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 
   return (
     <div
-      className={`${toastStyles[toast.type]} text-white px-4 py-3 rounded-lg max-w-md animate-slide-in`}
+      className={`${toastStyles[toast.type]} text-paper px-4 py-3 rounded-lg max-w-md animate-slide-in`}
       role="alert"
       aria-live="assertive"
       aria-atomic="true"
@@ -44,7 +46,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
         <p className="flex-1 text-sm">{toast.message}</p>
         <button
           onClick={onDismiss}
-          className="text-white/80 hover:text-white transition-colors flex-shrink-0"
+          className="text-paper/80 hover:text-paper transition-colors flex-shrink-0"
           aria-label="Close notification"
         >
           <span aria-hidden="true">&times;</span>

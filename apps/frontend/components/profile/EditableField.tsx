@@ -218,7 +218,7 @@ export function EditableField({
             {description}
           </p>
           {locked && (
-            <p className="text-xs text-amber-700 mt-1 italic">
+            <p className="text-sm text-warning mt-1 italic">
               {t("field.lockedByNoFields")}
             </p>
           )}
@@ -228,7 +228,7 @@ export function EditableField({
             <button
               type="button"
               onClick={enterEdit}
-              className="text-sm text-content hover:text-content font-medium px-2 py-1"
+              className="text-sm text-content hover:underline font-medium px-2 py-1"
             >
               {t("field.edit")}
             </button>
@@ -237,7 +237,7 @@ export function EditableField({
                 type="button"
                 onClick={() => setDialogOpen(true)}
                 aria-label={`${t("field.clear")} — ${label}`}
-                className="text-sm text-content-dim hover:text-red-700 px-2 py-1"
+                className="text-sm text-content-dim hover:text-danger px-2 py-1"
               >
                 {t("field.clear")}
               </button>
@@ -265,7 +265,7 @@ export function EditableField({
             ariaDescribedBy={descriptionId}
           />
           {error && (
-            <p role="alert" className="text-sm text-red-700">
+            <p role="alert" className="text-sm text-danger">
               {t("field.errorPrefix")} {error}
             </p>
           )}
@@ -274,7 +274,7 @@ export function EditableField({
               type="button"
               onClick={cancelEdit}
               disabled={saving}
-              className="px-3 py-1.5 text-sm text-content hover:text-content rounded-lg disabled:opacity-50"
+              className="px-3 py-1.5 text-sm text-content hover:underline rounded-lg disabled:opacity-50"
             >
               {t("field.cancel")}
             </button>
@@ -282,7 +282,7 @@ export function EditableField({
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-1.5 text-sm font-semibold bg-accent text-content rounded-lg hover:bg-accent disabled:opacity-50"
+              className="px-4 py-1.5 text-sm font-semibold bg-accent text-content rounded-lg hover:bg-accent-strong disabled:opacity-50"
             >
               {t("field.save")}
             </button>

@@ -148,7 +148,7 @@ export default function PetitionResultsPage() {
     // Initial-mount kickoff of the OCR pipeline — runPipeline internally
     // calls setState. This is the documented entry point, not a cascading
     // render loop.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+
     runPipeline(base64, location);
   }, [router, runPipeline]);
 
@@ -180,8 +180,8 @@ export default function PetitionResultsPage() {
       {/* Processing Indicator */}
       {(step === "extracting" || step === "analyzing") && !ocrText && (
         <div className="flex flex-col items-center justify-center py-16">
-          <LoadingSpinner size="lg" className="text-blue-500 mb-4" />
-          <p className="text-white text-lg font-medium">
+          <LoadingSpinner size="lg" className="text-info mb-4" />
+          <p className="text-paper text-lg font-medium">
             {step === "extracting"
               ? t("results.extractingText")
               : t("results.analyzingDocument")}
@@ -218,7 +218,7 @@ export default function PetitionResultsPage() {
       {/* Analysis Loading (shown while analyzing, after OCR text is visible) */}
       {step === "analyzing" && ocrText && (
         <div className="flex items-center gap-3 px-4 py-4">
-          <LoadingSpinner size="sm" className="text-blue-500" />
+          <LoadingSpinner size="sm" className="text-info" />
           <p className="text-content-dim text-sm">
             {t("results.analyzingDocument")}
           </p>
@@ -244,7 +244,7 @@ export default function PetitionResultsPage() {
         <div className="px-4 py-6 flex gap-3">
           <button
             onClick={handleShare}
-            className="flex-1 py-3 bg-surface/10 text-white font-medium rounded-lg hover:bg-surface/20 transition-colors"
+            className="flex-1 py-3 bg-paper/10 text-paper font-medium rounded-lg hover:bg-paper/20 transition-colors"
           >
             {t("results.share")}
           </button>
@@ -275,7 +275,7 @@ export default function PetitionResultsPage() {
       {step === "error" && (
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
           <svg
-            className="w-16 h-16 mb-4 text-red-400"
+            className="w-16 h-16 mb-4 text-danger"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -288,20 +288,20 @@ export default function PetitionResultsPage() {
               d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
             />
           </svg>
-          <h2 className="text-xl font-semibold text-white mb-2">
+          <h2 className="text-xl font-semibold text-paper mb-2">
             {t("results.errorTitle")}
           </h2>
           <p className="text-content-dim mb-6">{error}</p>
           <div className="flex gap-3">
             <button
               onClick={() => router.push("/petition")}
-              className="px-6 py-3 bg-gray-700 text-white font-medium rounded-lg hover:bg-gray-600 transition-colors"
+              className="px-6 py-3 bg-paper/15 text-paper font-medium rounded-lg hover:bg-surface-sunk transition-colors"
             >
               {t("results.backToHome")}
             </button>
             <button
               onClick={() => router.push("/petition/capture")}
-              className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-6 py-3 bg-accent text-on-accent font-medium rounded-lg hover:bg-accent-strong transition-colors"
             >
               {t("results.tryAgain")}
             </button>

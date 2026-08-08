@@ -68,7 +68,7 @@ function PropositionCard({
               {description}
             </p>
           ) : (
-            <p className="mt-2 text-sm italic text-slate-400">
+            <p className="mt-2 text-sm italic text-content-dim">
               Plain-language summary pending AI analysis.
             </p>
           )}

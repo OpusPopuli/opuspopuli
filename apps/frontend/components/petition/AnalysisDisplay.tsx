@@ -9,21 +9,21 @@ import type {
 } from "@/lib/graphql/documents";
 
 function getConfidenceBadgeClass(confidence: number): string {
-  if (confidence >= 90) return "bg-green-900 text-green-300";
-  if (confidence >= 70) return "bg-yellow-900 text-yellow-300";
-  return "bg-red-900 text-red-300";
+  if (confidence >= 90) return "bg-positive-surface text-positive";
+  if (confidence >= 70) return "bg-warning-surface text-warning";
+  return "bg-danger-surface text-danger";
 }
 
 function getCompletenessBarColor(score: number): string {
-  if (score > 80) return "bg-green-500";
-  if (score >= 50) return "bg-yellow-500";
-  return "bg-red-500";
+  if (score > 80) return "bg-positive-solid";
+  if (score >= 50) return "bg-warning-solid";
+  return "bg-danger-solid";
 }
 
 function getCompletenessTextColor(score: number): string {
-  if (score > 80) return "text-green-400";
-  if (score >= 50) return "text-yellow-400";
-  return "text-red-400";
+  if (score > 80) return "text-positive";
+  if (score >= 50) return "text-warning";
+  return "text-danger";
 }
 
 interface AnalysisDisplayProps {
@@ -54,7 +54,7 @@ export function AnalysisDisplay({
       {ocrText != null && ocrConfidence != null && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-white">
+            <h2 className="text-lg font-semibold text-paper">
               {t("results.extractedText")}
             </h2>
             <span
@@ -71,7 +71,7 @@ export function AnalysisDisplay({
             <textarea
               value={ocrText}
               onChange={(e) => onOcrTextChange?.(e.target.value)}
-              className="w-full bg-inverse-surface text-on-inverse rounded-lg p-4 text-sm leading-relaxed border border-line focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-y min-h-[120px]"
+              className="w-full bg-inverse-surface text-on-inverse rounded-lg p-4 text-sm leading-relaxed border border-line focus:border-accent focus:ring-1 focus:ring-accent outline-none resize-y min-h-[120px]"
               rows={6}
               aria-label={t("results.extractedTextLabel")}
             />
@@ -81,24 +81,25 @@ export function AnalysisDisplay({
 
       {/* Summary */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-2">
+        <h2 className="text-lg font-semibold text-paper mb-2">
           {t("results.summary")}
         </h2>
-        <p className="text-gray-300 leading-relaxed">{analysis.summary}</p>
+        <p className="text-content-dim leading-relaxed">{analysis.summary}</p>
       </div>
 
       {/* Key Points */}
       {analysis.keyPoints.length > 0 && (
         <div>
-          <h3 className="text-md font-semibold text-white mb-2">
+          <h3 className="text-md font-semibold text-paper mb-2">
             {t("results.keyPoints")}
           </h3>
           <ul className="space-y-2">
             {analysis.keyPoints.map((point) => (
-              <li key={point} className="flex items-start gap-2 text-gray-300">
-                <span className="text-blue-400 mt-1 flex-shrink-0">
-                  &#8226;
-                </span>
+              <li
+                key={point}
+                className="flex items-start gap-2 text-content-dim"
+              >
+                <span className="text-info mt-1 flex-shrink-0">&#8226;</span>
                 <span>{point}</span>
               </li>
             ))}
@@ -109,28 +110,26 @@ export function AnalysisDisplay({
       {/* Actual Effect */}
       {analysis.actualEffect && (
         <div>
-          <h3 className="text-md font-semibold text-white mb-2">
+          <h3 className="text-md font-semibold text-paper mb-2">
             {t("results.actualEffect")}
           </h3>
-          <p className="text-gray-300">{analysis.actualEffect}</p>
+          <p className="text-content-dim">{analysis.actualEffect}</p>
         </div>
       )}
 
       {/* Potential Concerns */}
       {analysis.potentialConcerns && analysis.potentialConcerns.length > 0 && (
         <div>
-          <h3 className="text-md font-semibold text-amber-400 mb-2">
+          <h3 className="text-md font-semibold text-warning mb-2">
             {t("results.concerns")}
           </h3>
           <ul className="space-y-1">
             {analysis.potentialConcerns.map((concern) => (
               <li
                 key={concern}
-                className="flex items-start gap-2 text-gray-300"
+                className="flex items-start gap-2 text-content-dim"
               >
-                <span className="text-amber-400 mt-1 flex-shrink-0">
-                  &#9888;
-                </span>
+                <span className="text-warning mt-1 flex-shrink-0">&#9888;</span>
                 <span>{concern}</span>
               </li>
             ))}
@@ -141,12 +140,12 @@ export function AnalysisDisplay({
       {/* Beneficiaries */}
       {analysis.beneficiaries && analysis.beneficiaries.length > 0 && (
         <div>
-          <h3 className="text-md font-semibold text-green-400 mb-2">
+          <h3 className="text-md font-semibold text-positive mb-2">
             {t("results.beneficiaries")}
           </h3>
           <ul className="space-y-1">
             {analysis.beneficiaries.map((b) => (
-              <li key={b} className="text-gray-300">
+              <li key={b} className="text-content-dim">
                 &#8226; {b}
               </li>
             ))}
@@ -157,12 +156,12 @@ export function AnalysisDisplay({
       {/* Potentially Harmed */}
       {analysis.potentiallyHarmed && analysis.potentiallyHarmed.length > 0 && (
         <div>
-          <h3 className="text-md font-semibold text-red-400 mb-2">
+          <h3 className="text-md font-semibold text-danger mb-2">
             {t("results.potentiallyHarmed")}
           </h3>
           <ul className="space-y-1">
             {analysis.potentiallyHarmed.map((h) => (
-              <li key={h} className="text-gray-300">
+              <li key={h} className="text-content-dim">
                 &#8226; {h}
               </li>
             ))}
@@ -185,19 +184,19 @@ export function AnalysisDisplay({
                 <Link
                   key={prop.id}
                   href={`/region/propositions/${prop.propositionId}`}
-                  className="block bg-inverse-surface hover:bg-gray-700 rounded-lg p-3 transition-colors"
+                  className="block bg-inverse-surface hover:bg-surface-alt rounded-lg p-3 transition-colors"
                 >
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-white font-medium truncate">
+                    <p className="text-sm text-paper font-medium truncate">
                       {prop.title}
                     </p>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900 text-blue-300 ml-2 flex-shrink-0">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-info-surface text-info ml-2 flex-shrink-0">
                       {prop.linkSource === "auto_analysis"
                         ? t("results.linkedAutomatically")
                         : t("results.linkedManually")}
                     </span>
                   </div>
-                  <p className="text-xs text-content-dim mt-1">
+                  <p className="text-sm text-content-dim mt-1">
                     {prop.status}
                     {prop.electionDate &&
                       ` · ${new Date(prop.electionDate).toLocaleDateString()}`}
@@ -218,7 +217,7 @@ export function AnalysisDisplay({
                     ),
                 )
                 .map((m) => (
-                  <li key={m} className="text-gray-300">
+                  <li key={m} className="text-content-dim">
                     &#8226; {m}
                   </li>
                 ))}
@@ -268,7 +267,7 @@ export function AnalysisDisplay({
             </span>
           </div>
           {analysis.completenessDetails && (
-            <p className="text-xs text-content-dim mb-2">
+            <p className="text-sm text-content-dim mb-2">
               {t("results.completenessExplanation", {
                 available: analysis.completenessDetails.availableCount,
                 ideal: analysis.completenessDetails.idealCount,
@@ -278,7 +277,7 @@ export function AnalysisDisplay({
           {analysis.completenessDetails &&
             analysis.completenessDetails.missingItems.length > 0 && (
               <details className="mt-2">
-                <summary className="text-xs text-amber-400 cursor-pointer hover:text-amber-300">
+                <summary className="text-xs text-warning cursor-pointer hover:text-warning-strong">
                   {t("results.whatWouldImprove")}
                 </summary>
                 <ul className="mt-1 space-y-1 pl-4">
@@ -299,7 +298,7 @@ export function AnalysisDisplay({
       {/* Data Sources (#423) */}
       {analysis.sources && analysis.sources.length > 0 && (
         <details>
-          <summary className="text-md font-semibold text-content-dim cursor-pointer hover:text-gray-300">
+          <summary className="text-md font-semibold text-content-dim cursor-pointer hover:text-content">
             {t("results.dataSources")}
           </summary>
           <div className="mt-2 space-y-2">
@@ -308,9 +307,9 @@ export function AnalysisDisplay({
               const ageMs = now - accessedDate.getTime();
               const ageDays = ageMs / (1000 * 60 * 60 * 24);
               const getFreshnessStyle = (days: number) => {
-                if (days < 1) return "bg-green-900 text-green-300";
-                if (days < 7) return "bg-yellow-900 text-yellow-300";
-                return "bg-red-900 text-red-300";
+                if (days < 1) return "bg-positive-surface text-positive";
+                if (days < 7) return "bg-warning-surface text-warning";
+                return "bg-danger-surface text-danger";
               };
               const getFreshnessLabel = (days: number) => {
                 if (days < 1) return t("results.sourceFresh");
@@ -326,10 +325,10 @@ export function AnalysisDisplay({
                   className="flex items-center justify-between bg-inverse-surface rounded-lg px-3 py-2"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-300 truncate">
+                    <p className="text-sm text-content-dim truncate">
                       {source.name}
                     </p>
-                    <p className="text-xs text-content-dim">
+                    <p className="text-sm text-content-dim">
                       {t("results.sourceAccessedAt", {
                         date: accessedDate.toLocaleDateString(),
                       })}
@@ -370,7 +369,7 @@ export function AnalysisDisplay({
             })}{" "}
             <a
               href="/transparency/prompt-charter"
-              className="text-blue-400 hover:text-blue-300 underline"
+              className="text-info hover:text-info-strong underline"
             >
               {t("results.promptCharter")}
             </a>

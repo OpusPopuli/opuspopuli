@@ -23,9 +23,9 @@ export function LocationPrompt({
   // Loading state
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-white">
+      <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-paper">
         <svg
-          className="w-8 h-8 mb-4 text-white animate-spin"
+          className="w-8 h-8 mb-4 text-paper animate-spin"
           fill="none"
           viewBox="0 0 24 24"
           aria-hidden="true"
@@ -44,7 +44,7 @@ export function LocationPrompt({
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
           />
         </svg>
-        <p className="text-gray-300">Getting your location...</p>
+        <p className="text-content-dim">Getting your location...</p>
       </div>
     );
   }
@@ -52,9 +52,9 @@ export function LocationPrompt({
   // Error state
   if (error && error.type !== "permission") {
     return (
-      <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-white">
+      <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-paper">
         <svg
-          className="w-16 h-16 mb-6 text-yellow-400"
+          className="w-16 h-16 mb-6 text-warning"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -71,7 +71,7 @@ export function LocationPrompt({
         <p className="text-content-dim mb-8 max-w-sm">{error.message}</p>
         <button
           onClick={onSkip}
-          className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+          className="px-6 py-3 bg-paper/15 hover:bg-paper/25 text-paper font-medium rounded-lg transition-colors"
         >
           Continue Without Location
         </button>
@@ -82,9 +82,9 @@ export function LocationPrompt({
   // Denied state
   if (permissionState === "denied" || (error && error.type === "permission")) {
     return (
-      <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-white">
+      <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-paper">
         <svg
-          className="w-16 h-16 mb-6 text-red-400"
+          className="w-16 h-16 mb-6 text-danger"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -104,7 +104,7 @@ export function LocationPrompt({
         </p>
         <button
           onClick={onSkip}
-          className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+          className="px-6 py-3 bg-paper/15 hover:bg-paper/25 text-paper font-medium rounded-lg transition-colors"
         >
           Continue Without Location
         </button>
@@ -114,7 +114,7 @@ export function LocationPrompt({
 
   // Prompt state (default)
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-white">
+    <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-paper">
       <svg
         className="w-16 h-16 mb-6 text-content-dim"
         fill="none"
@@ -144,13 +144,13 @@ export function LocationPrompt({
       <div className="flex flex-col gap-3 w-full max-w-xs">
         <button
           onClick={onAllow}
-          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+          className="px-6 py-3 bg-accent hover:bg-accent-strong text-on-accent font-medium rounded-lg transition-colors"
         >
           Share Location
         </button>
         <button
           onClick={onSkip}
-          className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+          className="px-6 py-3 bg-paper/15 hover:bg-paper/25 text-paper font-medium rounded-lg transition-colors"
         >
           Skip
         </button>

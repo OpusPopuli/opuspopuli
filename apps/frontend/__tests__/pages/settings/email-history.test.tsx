@@ -373,9 +373,12 @@ describe("EmailHistoryPage", () => {
       const deliveredBadge = screen.getByText("DELIVERED");
       const failedBadge = screen.getByText("FAILED");
 
-      expect(sentBadge).toHaveClass("bg-blue-100", "text-blue-800");
-      expect(deliveredBadge).toHaveClass("bg-green-100", "text-green-800");
-      expect(failedBadge).toHaveClass("bg-red-100", "text-red-800");
+      expect(sentBadge).toHaveClass("bg-info-surface", "text-info");
+      expect(deliveredBadge).toHaveClass(
+        "bg-positive-surface",
+        "text-positive",
+      );
+      expect(failedBadge).toHaveClass("bg-danger-surface", "text-danger");
     });
   });
 

@@ -59,9 +59,9 @@ function LifecycleOption({
       aria-checked={selected}
       data-value={value}
       onClick={onSelect}
-      className={`px-3 py-1.5 rounded-md font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-sage-dark)] ${
+      className={`px-3 py-1.5 rounded-md font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
         selected
-          ? "bg-[var(--color-sage-dark)] text-white"
+          ? "bg-accent text-on-accent"
           : "text-content-dim hover:bg-surface-alt"
       }`}
     >
@@ -79,13 +79,13 @@ function LifecycleChip({ bill }: { readonly bill: Bill }) {
   if (bill.isActive) return null;
   if (bill.isDead) {
     return (
-      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800">
+      <span className="inline-flex items-center rounded-full bg-warning-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-warning">
         Historical
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-green-800">
+    <span className="inline-flex items-center rounded-full bg-positive-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-positive">
       Passed
     </span>
   );
@@ -104,20 +104,20 @@ function BillCard({ bill }: Readonly<{ bill: Bill }>) {
             <span className="font-mono text-sm font-semibold text-content-dim">
               {bill.billNumber}
             </span>
-            <span className="text-xs text-slate-400">{bill.sessionYear}</span>
+            <span className="text-xs text-content-dim">{bill.sessionYear}</span>
             <LifecycleChip bill={bill} />
           </div>
           <h3 className="text-base font-semibold text-content line-clamp-2">
             {bill.title}
           </h3>
           {bill.authorName && (
-            <p className="mt-1 text-xs text-content-dim">
+            <p className="mt-1 text-sm text-content-dim">
               Author: {bill.authorName}
             </p>
           )}
         </div>
         {bill.status && (
-          <p className="text-xs text-slate-500 whitespace-nowrap shrink-0 max-w-[10rem] text-right line-clamp-2">
+          <p className="text-sm text-content-dim whitespace-nowrap shrink-0 max-w-[10rem] text-right line-clamp-2">
             {bill.status}
           </p>
         )}
@@ -125,7 +125,7 @@ function BillCard({ bill }: Readonly<{ bill: Bill }>) {
 
       {bill.lastAction && (
         <div className="mt-3 flex items-baseline gap-2 text-xs text-content-dim">
-          <span className="text-slate-400 whitespace-nowrap">
+          <span className="text-content-dim whitespace-nowrap">
             {bill.lastActionDate ? formatDate(bill.lastActionDate) : ""}
           </span>
           <span className="line-clamp-1">{bill.lastAction}</span>
@@ -194,7 +194,7 @@ export default function BillsPage() {
       <select
         value={filters.measureTypeCode}
         onChange={(e) => setFilter("measureTypeCode", e.target.value)}
-        className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim focus:outline-none focus:ring-2 focus:ring-accent"
         aria-label="Filter by measure type"
       >
         <option value="">All types</option>
@@ -208,7 +208,7 @@ export default function BillsPage() {
       <select
         value={filters.sessionYear}
         onChange={(e) => setFilter("sessionYear", e.target.value)}
-        className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim focus:outline-none focus:ring-2 focus:ring-accent"
         aria-label="Filter by session year"
       >
         <option value="">All sessions</option>
@@ -226,7 +226,7 @@ export default function BillsPage() {
             setFilters({ measureTypeCode: "", sessionYear: "" });
             setPage(0);
           }}
-          className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-slate-500 hover:bg-surface-alt"
+          className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim hover:bg-surface-alt"
         >
           Clear filters
         </button>

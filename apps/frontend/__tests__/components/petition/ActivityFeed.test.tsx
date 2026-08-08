@@ -260,7 +260,7 @@ describe("ActivityFeed", () => {
     // Verify singular forms: "scan" not "scans", "petition" not "petitions"
     const statsEl = screen
       .getByTestId("activity-feed")
-      .querySelector("p.text-sm.text-gray-300");
+      .querySelector("p.text-sm.text-content-dim");
     expect(statsEl?.textContent).toMatch(/\bscan\b/);
     expect(statsEl?.textContent).not.toMatch(/\bscans\b/);
     expect(statsEl?.textContent).toMatch(/\bpetition\b/);

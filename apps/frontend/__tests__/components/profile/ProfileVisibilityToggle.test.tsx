@@ -63,7 +63,7 @@ describe("ProfileVisibilityToggle", () => {
       );
 
       const statusLabel = screen.getByText("Public");
-      expect(statusLabel).toHaveClass("text-green-600");
+      expect(statusLabel).toHaveClass("text-positive");
     });
 
     it("should apply correct styling when private", () => {

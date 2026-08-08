@@ -48,7 +48,7 @@ export function ActivityStats({
         {Array.from({ length: 4 }, (_, i) => (
           <div
             key={`stat-skeleton-${i.toString()}`}
-            className="h-24 rounded-lg bg-slate-100"
+            className="h-24 rounded-lg bg-surface-alt"
           />
         ))}
       </div>
@@ -131,10 +131,10 @@ function StatTile({
   readonly tone?: "neutral" | "good" | "warn";
 }) {
   let valueClass = "text-content";
-  if (tone === "good") valueClass = "text-emerald-700";
-  else if (tone === "warn") valueClass = "text-amber-700";
+  if (tone === "good") valueClass = "text-positive";
+  else if (tone === "warn") valueClass = "text-warning";
   return (
-    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+    <div className="bg-surface-alt rounded-lg p-4 border border-line">
       <p className="text-[11px] font-bold uppercase tracking-wider text-content-dim mb-1">
         {label}
       </p>

@@ -20,9 +20,9 @@ const PAGE_SIZE = 10;
 
 function DonorTypeBadge({ type }: { readonly type: string }) {
   const styles: Record<string, { bg: string; text: string }> = {
-    individual: { bg: "bg-blue-100", text: "text-blue-800" },
-    committee: { bg: "bg-purple-100", text: "text-purple-800" },
-    party: { bg: "bg-orange-100", text: "text-orange-800" },
+    individual: { bg: "bg-info-surface", text: "text-info" },
+    committee: { bg: "bg-cat-purple-surface", text: "text-cat-purple" },
+    party: { bg: "bg-warning-surface", text: "text-warning" },
     other: { bg: "bg-surface-alt", text: "text-content" },
   };
   const style = styles[type] || styles.other;

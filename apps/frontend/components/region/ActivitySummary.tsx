@@ -34,10 +34,10 @@ export function ActivitySummary({ summary, generatedAt, windowDays }: Props) {
   return (
     <section
       aria-label="Recent activity summary"
-      className="mb-6 bg-amber-50/40 border border-amber-200 rounded-lg p-5"
+      className="mb-6 bg-warning-surface/40 border border-warning-line rounded-lg p-5"
     >
       <div className="flex items-center gap-2 mb-2">
-        <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-warning-surface text-warning border border-warning-line">
           <svg
             className="w-3 h-3"
             fill="none"

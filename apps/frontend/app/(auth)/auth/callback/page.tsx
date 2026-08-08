@@ -143,7 +143,7 @@ function AuthCallbackContent() {
     // No valid params found
     // Initial-mount sync — rule mis-flags this; we intentionally surface
     // the error state synchronously when no callback params are present.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+
     setStatus("error");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -165,9 +165,9 @@ function AuthCallbackContent() {
   if (status === "error" || error) {
     return (
       <div className="bg-surface rounded-lg p-8 text-center">
-        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className="w-16 h-16 bg-danger-surface rounded-full flex items-center justify-center mx-auto mb-4">
           <svg
-            className="w-8 h-8 text-red-600"
+            className="w-8 h-8 text-danger"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -190,7 +190,7 @@ function AuthCallbackContent() {
         <div className="space-y-3">
           <Link
             href="/login"
-            className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
+            className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:opacity-90 transition-colors"
           >
             Back to Sign in
           </Link>
@@ -212,11 +212,11 @@ function AuthCallbackContent() {
         </p>
 
         {/* Passkey benefits */}
-        <div className="mb-6 p-4 bg-[#f0f9ff] rounded-lg text-left">
+        <div className="mb-6 p-4 bg-info-surface rounded-lg text-left">
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 bg-[#0ea5e9] rounded-full flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 bg-info-solid rounded-full flex items-center justify-center flex-shrink-0">
               <svg
-                className="w-4 h-4 text-white"
+                className="w-4 h-4 text-paper"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -230,10 +230,10 @@ function AuthCallbackContent() {
               </svg>
             </div>
             <div>
-              <p className="text-sm font-medium text-[#0c4a6e]">
+              <p className="text-sm font-medium text-content">
                 Sign in with your fingerprint or face
               </p>
-              <p className="text-xs text-[#0369a1] mt-1">
+              <p className="text-sm text-info mt-1">
                 Passkeys are more secure than passwords and work across all your
                 devices.
               </p>
@@ -244,14 +244,14 @@ function AuthCallbackContent() {
         <div className="space-y-3">
           <Link
             href="/register/add-passkey"
-            className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
+            className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:opacity-90 transition-colors"
           >
             Add a Passkey
           </Link>
           <button
             type="button"
             onClick={() => router.push(skipTarget)}
-            className="inline-block w-full py-3 px-6 bg-surface text-content-dim font-semibold rounded-lg border border-line hover:bg-surface transition-colors"
+            className="inline-block w-full py-3 px-6 bg-surface text-content-dim font-semibold rounded-lg border border-line hover:bg-surface-alt transition-colors"
           >
             Skip for now
           </button>
@@ -279,7 +279,7 @@ function AuthCallbackContent() {
       <button
         type="button"
         onClick={() => router.push(successTarget)}
-        className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
+        className="inline-block w-full py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:opacity-90 transition-colors"
       >
         Continue to App
       </button>

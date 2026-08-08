@@ -196,7 +196,7 @@ export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
             placeholder={t("address.fields.line1")}
             value={form.addressLine1}
             onChange={update("addressLine1")}
-            className="w-full px-4 py-3 rounded-lg bg-surface border border-line text-content placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full px-4 py-3 rounded-lg bg-surface border border-line text-content placeholder-content-dim focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -210,7 +210,7 @@ export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
             placeholder={t("address.fields.city")}
             value={form.city}
             onChange={update("city")}
-            className="w-full px-4 py-3 rounded-lg bg-surface border border-line text-content placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full px-4 py-3 rounded-lg bg-surface border border-line text-content placeholder-content-dim focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -246,16 +246,13 @@ export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
               placeholder={t("address.fields.postalCode")}
               value={form.postalCode}
               onChange={update("postalCode")}
-              className="w-full px-4 py-3 rounded-lg bg-surface border border-line text-content placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-4 py-3 rounded-lg bg-surface border border-line text-content placeholder-content-dim focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
         </div>
 
         {error && (
-          <p
-            role="alert"
-            className="text-red-600 dark:text-red-400 text-sm pt-1"
-          >
+          <p role="alert" className="text-danger text-sm pt-1">
             {error}
           </p>
         )}

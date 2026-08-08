@@ -146,12 +146,12 @@ export function SegmentedFullText({
               <button
                 type="button"
                 onClick={() => toggle(idx)}
-                className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-slate-50 transition-colors"
+                className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-surface-alt transition-colors"
               >
                 <span className="text-sm font-semibold text-content">
                   {section.heading}
                 </span>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-content-dim">
                   {expanded.has(idx) ? "Hide" : "Show"}
                 </span>
               </button>
@@ -193,7 +193,7 @@ function TableOfContents({
             <button
               type="button"
               onClick={() => onJump(idx)}
-              className="text-left text-blue-600 hover:underline text-sm leading-snug"
+              className="text-left text-info hover:underline text-sm leading-snug"
             >
               {idx + 1}. {section.heading}
             </button>
@@ -240,7 +240,7 @@ function SectionBody({
           <mark
             key={i}
             id={claimAnchorId(seg.claim)}
-            className="bg-yellow-100 rounded px-0.5 -mx-0.5"
+            className="bg-warning-surface rounded px-0.5 -mx-0.5"
           >
             {seg.text}
           </mark>

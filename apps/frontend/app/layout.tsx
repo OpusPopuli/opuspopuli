@@ -109,7 +109,9 @@ const organizationJsonLd = {
   "@type": "Organization",
   name: "Opus Populi",
   url: siteUrl,
-  logo: `${siteUrl}/logos/png/op-mark-light.png`,
+  // Ink artwork — search engines composite this onto white, where the paper
+  // ("light") variant would be invisible. Matches opuspopuli.org's choice.
+  logo: `${siteUrl}/logos/png/op-horizontal-dark.png`,
   description: "Empowering citizens with transparent access to civic data.",
 };
 
@@ -134,16 +136,22 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // The next/font variables MUST live on <html>: globals.css resolves
+  // --font-inter in the `html` rule, and an out-of-scope var() there is
+  // invalid-at-computed-value-time, which silently drops the whole app to the
+  // browser's default serif.
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${inter.variable} ${playfairDisplay.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: noFlashScript }} />
         <JsonLd data={organizationJsonLd} />
         <JsonLd data={webApplicationJsonLd} />
       </head>
-      <body
-        className={`${inter.variable} ${playfairDisplay.variable} antialiased`}
-      >
+      <body className="antialiased">
         <ThemeProvider>
           <ApolloProvider>
             <ToastProvider>

@@ -56,14 +56,14 @@ export function ClearFieldDialog({
             ref={cancelRef}
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-sm text-content hover:text-content rounded-lg"
+            className="px-4 py-2 text-sm text-content hover:underline rounded-lg"
           >
             {t("field.cancel")}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="px-4 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700"
+            className="px-4 py-2 text-sm font-semibold bg-danger-solid text-on-danger rounded-lg hover:bg-danger-strong"
           >
             {t("field.clearConfirmAction")}
           </button>

@@ -86,7 +86,7 @@ function QuickView({
           {summary}
         </p>
       ) : (
-        <p className="text-base italic text-slate-400 mb-6">
+        <p className="text-base italic text-content-dim mb-6">
           AI analysis pending — a plain-language summary will appear here once
           the measure text is processed.
         </p>
@@ -100,7 +100,7 @@ function QuickView({
           <ul className="space-y-2 text-content-dim">
             {topProvisions.map((provision) => (
               <li key={provision} className="flex gap-2 leading-relaxed">
-                <span aria-hidden className="text-slate-400 mt-0.5">
+                <span aria-hidden className="text-content-dim mt-0.5">
                   →
                 </span>
                 <span>{provision}</span>
@@ -108,7 +108,7 @@ function QuickView({
             ))}
           </ul>
           {(proposition.keyProvisions?.length ?? 0) > topProvisions.length && (
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-sm text-content-dim">
               + {proposition.keyProvisions!.length - topProvisions.length} more
               in Details.
             </p>
@@ -117,7 +117,7 @@ function QuickView({
       )}
 
       {proposition.fiscalImpact && (
-        <div className="inline-flex items-start gap-3 px-4 py-3 bg-slate-100 rounded-lg text-sm text-content-dim mb-6 max-w-2xl">
+        <div className="inline-flex items-start gap-3 px-4 py-3 bg-surface-alt rounded-lg text-sm text-content-dim mb-6 max-w-2xl">
           <span className="text-xs font-bold uppercase tracking-wider text-content-dim whitespace-nowrap pt-0.5">
             Fiscal impact
           </span>
@@ -154,14 +154,14 @@ function LinkedPetitionScans({
     <div className="mb-8">
       <SectionTitle>Community Petition Scans</SectionTitle>
       {loading && (
-        <div className="bg-slate-50 rounded-lg p-4 text-center text-sm text-slate-500">
+        <div className="bg-surface-alt rounded-lg p-4 text-center text-sm text-content-dim">
           Loading petition scans...
         </div>
       )}
 
       {!loading && docs.length === 0 && (
-        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-6 text-center">
-          <p className="text-sm text-slate-700">
+        <div className="bg-surface-alt border border-dashed border-line rounded-lg p-6 text-center">
+          <p className="text-sm text-content">
             Petition scans related to this measure will appear here as they are
             scanned.
           </p>
@@ -179,15 +179,15 @@ function LinkedPetitionScans({
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full ${
                     doc.linkSource === "auto_analysis"
-                      ? "bg-blue-100 text-blue-700"
-                      : "bg-purple-100 text-purple-700"
+                      ? "bg-info-surface text-info"
+                      : "bg-cat-purple-surface text-cat-purple"
                   }`}
                 >
                   {doc.linkSource === "auto_analysis"
                     ? "AI-matched"
                     : "User-linked"}
                 </span>
-                <span className="text-xs text-slate-600">
+                <span className="text-xs text-content-dim">
                   {formatDate(doc.linkedAt)}
                 </span>
               </div>
@@ -332,19 +332,19 @@ function BothSides({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div className="border-2 border-line rounded-lg p-5">
             <h4 className="flex items-center gap-2 text-xs uppercase tracking-[1.5px] font-extrabold mb-4">
-              <span className="w-5 h-5 rounded-full bg-blue-100 border-2 border-blue-500" />{" "}
+              <span className="w-5 h-5 rounded-full bg-info-surface border-2 border-accent" />{" "}
               Arguments For
             </h4>
-            <div className="text-sm text-slate-700 italic">
+            <div className="text-sm text-content italic">
               AI-generated arguments coming soon
             </div>
           </div>
           <div className="border-2 border-line rounded-lg p-5">
             <h4 className="flex items-center gap-2 text-xs uppercase tracking-[1.5px] font-extrabold mb-4">
-              <span className="w-5 h-5 rounded-full bg-red-100 border-2 border-red-500" />{" "}
+              <span className="w-5 h-5 rounded-full bg-danger-surface border-2 border-danger" />{" "}
               Arguments Against
             </h4>
-            <div className="text-sm text-slate-700 italic">
+            <div className="text-sm text-content italic">
               AI-generated arguments coming soon
             </div>
           </div>
@@ -391,19 +391,19 @@ function DeepDive({
                 href={proposition.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 font-semibold text-sm hover:underline"
+                className="text-info font-semibold text-sm hover:underline"
               >
                 &rarr; Official Source (PDF)
               </a>
             </li>
           )}
-          <li className="text-sm text-slate-600">
+          <li className="text-sm text-content-dim">
             &rarr; Legislative Analyst&apos;s Office Analysis (coming soon)
           </li>
-          <li className="text-sm text-slate-600">
+          <li className="text-sm text-content-dim">
             &rarr; News Coverage (coming soon)
           </li>
-          <li className="text-sm text-slate-600">
+          <li className="text-sm text-content-dim">
             &rarr; Campaign Finance Details (coming soon)
           </li>
         </ul>
@@ -486,7 +486,7 @@ export default function PropositionDetailPage() {
           <p className="text-content-dim mb-4">Proposition not found.</p>
           <Link
             href="/region/propositions"
-            className="text-blue-600 hover:text-blue-700 hover:underline text-sm font-medium"
+            className="text-info hover:text-info-strong hover:underline text-sm font-medium"
           >
             Back to Propositions
           </Link>

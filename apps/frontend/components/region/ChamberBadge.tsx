@@ -11,9 +11,10 @@ interface ChamberBadgeProps {
  */
 export function ChamberBadge({ chamber }: ChamberBadgeProps) {
   const isAssembly = chamber === "Assembly";
+  // Chamber is a category, not a status — categorical ramp, not info/danger.
   const cls = isAssembly
-    ? "bg-blue-100 text-blue-800"
-    : "bg-purple-100 text-purple-800";
+    ? "bg-cat-blue-surface text-cat-blue"
+    : "bg-cat-purple-surface text-cat-purple";
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cls}`}

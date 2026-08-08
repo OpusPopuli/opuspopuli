@@ -58,20 +58,20 @@ const BLUE_ACTIONS: AuditAction[] = [
 ]; // NOSONAR - These are enum values, not secrets
 
 function getActionColor(action: AuditAction, success: boolean): string {
-  if (!success) return "text-red-600 bg-red-50";
+  if (!success) return "text-danger bg-danger-surface";
 
   switch (action) {
     case "LOGIN":
     case "CREATE":
-      return "text-green-600 bg-green-50";
+      return "text-positive bg-positive-surface";
     case "LOGOUT":
     case "DELETE":
-      return "text-orange-600 bg-orange-50";
+      return "text-warning bg-warning-surface";
     case "LOGIN_FAILED":
-      return "text-red-600 bg-red-50";
+      return "text-danger bg-danger-surface";
     default:
       if (BLUE_ACTIONS.includes(action)) {
-        return "text-blue-600 bg-blue-50";
+        return "text-info bg-info-surface";
       }
       return "text-content-dim bg-surface-alt";
   }
@@ -186,7 +186,7 @@ function ActivityLogItem({ entry }: { entry: ActivityLogEntry }) {
           {entry.ipAddress && <span>{entry.ipAddress}</span>}
         </div>
         {!entry.success && entry.errorMessage && (
-          <p className="mt-1 text-sm text-red-600">{entry.errorMessage}</p>
+          <p className="mt-1 text-sm text-danger">{entry.errorMessage}</p>
         )}
       </div>
     </div>
@@ -220,12 +220,12 @@ function SessionCard({
 
   return (
     <div
-      className={`p-4 rounded-lg border ${session.isCurrent ? "border-blue-200 bg-blue-50" : "border-line bg-surface"}`}
+      className={`p-4 rounded-lg border ${session.isCurrent ? "border-info-line bg-info-surface" : "border-line bg-surface"}`}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <div
-            className={`flex-shrink-0 p-2 rounded-lg ${session.isCurrent ? "bg-blue-100 text-blue-600" : "bg-surface-alt text-content-dim"}`}
+            className={`flex-shrink-0 p-2 rounded-lg ${session.isCurrent ? "bg-info-surface text-info" : "bg-surface-alt text-content-dim"}`}
           >
             <DeviceIcon deviceType={session.deviceType} />
           </div>
@@ -235,7 +235,7 @@ function SessionCard({
                 {session.deviceName || t("activity.sessions.unknownDevice")}
               </p>
               {session.isCurrent && (
-                <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                <span className="px-2 py-0.5 text-xs font-medium bg-info-surface text-info rounded-full">
                   {t("activity.sessions.current")}
                 </span>
               )}
@@ -268,7 +268,7 @@ function SessionCard({
                 </button>
                 <button
                   onClick={handleRevoke}
-                  className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  className="px-3 py-1.5 text-sm font-medium text-on-danger bg-danger-solid rounded-lg hover:bg-danger-strong disabled:opacity-50"
                   disabled={isRevoking}
                 >
                   {isRevoking
@@ -279,7 +279,7 @@ function SessionCard({
             ) : (
               <button
                 onClick={handleRevoke}
-                className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                className="px-3 py-1.5 text-sm font-medium text-danger hover:text-danger-strong hover:bg-danger-surface rounded-lg"
               >
                 {t("activity.sessions.revoke")}
               </button>
@@ -317,10 +317,10 @@ function useTabPlaceholder(
   if (error) {
     return (
       <div className="text-center py-8">
-        <p className="text-red-600">{errorText}</p>
+        <p className="text-danger">{errorText}</p>
         <button
           onClick={onRetry}
-          className="mt-2 text-sm text-blue-600 hover:text-blue-700"
+          className="mt-2 text-sm text-info hover:text-info-strong"
         >
           {t("common:buttons.retry")}
         </button>
@@ -370,7 +370,7 @@ function ActivityTab({
 
   return (
     <>
-      <div className="divide-y divide-gray-100">
+      <div className="divide-y divide-line">
         {activityLog?.items.map((entry) => (
           <ActivityLogItem key={entry.id} entry={entry} />
         ))}
@@ -449,7 +449,7 @@ function SessionsTab({
           <button
             onClick={onRevokeAll}
             disabled={revokeAllLoading}
-            className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium text-danger hover:text-danger-strong hover:bg-danger-surface rounded-lg disabled:opacity-50"
           >
             {revokeAllLoading
               ? t("common:buttons.loading")
@@ -574,7 +574,7 @@ export default function ActivityPage() {
   const tabButtonClass = (tab: "activity" | "sessions") =>
     `px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
       activeTab === tab
-        ? "border-blue-500 text-blue-600"
+        ? "border-accent text-info"
         : "border-transparent text-content-dim hover:text-content hover:border-line"
     }`;
 
@@ -604,7 +604,7 @@ export default function ActivityPage() {
           <p className="text-sm font-medium text-content-dim">
             {t("activity.summary.successRate")}
           </p>
-          <p className="mt-1 text-2xl font-semibold text-green-600">
+          <p className="mt-1 text-2xl font-semibold text-positive">
             {formatSuccessRate(
               summaryLoading,
               summary?.totalActions,
@@ -616,7 +616,7 @@ export default function ActivityPage() {
           <p className="text-sm font-medium text-content-dim">
             {t("activity.summary.activeSessions")}
           </p>
-          <p className="mt-1 text-2xl font-semibold text-blue-600">
+          <p className="mt-1 text-2xl font-semibold text-info">
             {summaryLoading ? "..." : (summary?.activeSessions ?? 0)}
           </p>
         </div>

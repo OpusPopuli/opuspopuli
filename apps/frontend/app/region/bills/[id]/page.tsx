@@ -33,19 +33,22 @@ const LAYERS = [
 ] as const;
 
 const POSITION_STYLES: Record<string, { cls: string; label: string }> = {
-  yes: { cls: "bg-green-100 text-green-800", label: "Yes" },
-  no: { cls: "bg-red-100 text-red-800", label: "No" },
-  abstain: { cls: "bg-yellow-100 text-yellow-800", label: "Abstain" },
+  yes: { cls: "bg-positive-surface text-positive", label: "Yes" },
+  no: { cls: "bg-danger-surface text-danger", label: "No" },
+  abstain: { cls: "bg-warning-surface text-warning", label: "Abstain" },
   absent: { cls: "bg-surface-alt text-content-dim", label: "Absent" },
-  excused: { cls: "bg-blue-100 text-blue-700", label: "Excused" },
+  excused: { cls: "bg-info-surface text-info", label: "Excused" },
   no_vote: { cls: "bg-surface-alt text-content-dim", label: "—" },
 };
 
 const FISCAL_LEVEL_STYLES: Record<string, { cls: string; label: string }> = {
   none: { cls: "bg-surface-alt text-content-dim", label: "No fiscal impact" },
-  low: { cls: "bg-green-100 text-green-800", label: "Low fiscal impact" },
-  medium: { cls: "bg-amber-100 text-amber-800", label: "Medium fiscal impact" },
-  high: { cls: "bg-red-100 text-red-800", label: "High fiscal impact" },
+  low: { cls: "bg-positive-surface text-positive", label: "Low fiscal impact" },
+  medium: {
+    cls: "bg-warning-surface text-warning",
+    label: "Medium fiscal impact",
+  },
+  high: { cls: "bg-danger-surface text-danger", label: "High fiscal impact" },
 };
 
 function humanizeTag(slug: string): string {
@@ -92,8 +95,8 @@ function InactiveBillBanner({
     .join(" · ");
 
   const tone = isDead
-    ? "border-amber-400 bg-amber-50 text-amber-900"
-    : "border-green-500 bg-green-50 text-green-900";
+    ? "border-warning bg-warning-surface text-warning"
+    : "border-positive bg-positive-surface text-positive";
   const headline = isDead
     ? "This bill is no longer active."
     : "This bill has been signed into law.";
@@ -155,7 +158,7 @@ function VoteSummaryBar({ votes }: { readonly votes: BillVote[] }) {
 
 function TagChip({ label }: { readonly label: string }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-content-dim">
+    <span className="inline-flex items-center rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-medium text-content-dim">
       {label}
     </span>
   );
@@ -201,7 +204,7 @@ function AiSummaryBlock({ summary }: { readonly summary: BillAiSummary }) {
   return (
     <section
       aria-label="Plain-English summary"
-      className="mb-6 rounded-lg border-l-4 border-[var(--color-sage)] bg-slate-50 p-5"
+      className="mb-6 rounded-lg border-l-4 border-accent bg-surface-alt p-5"
     >
       <p className="text-base leading-relaxed text-content">
         {summary.plainEnglishSummary}
@@ -225,7 +228,7 @@ function AiSummaryPending() {
   return (
     <section
       aria-label="Plain-English summary"
-      className="mb-6 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500"
+      className="mb-6 rounded-lg border border-dashed border-line bg-surface-alt p-5 text-sm text-content-dim"
     >
       Plain-English summary pending. This bill hasn’t been processed by the
       summarizer yet — check back shortly.
@@ -255,7 +258,7 @@ function Snapshot({
 
       {/* Status + last action */}
       {bill.status && (
-        <div className="mb-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-content-dim">
+        <div className="mb-4 rounded-lg bg-surface-alt px-4 py-3 text-sm text-content-dim">
           <span className="font-semibold">Status:</span> {bill.status}
         </div>
       )}
@@ -277,7 +280,7 @@ function Snapshot({
           <SectionTitle>Latest action</SectionTitle>
           <p className="text-sm text-content-dim">
             {bill.lastActionDate && (
-              <span className="text-slate-400 mr-2">
+              <span className="text-content-dim mr-2">
                 {formatDate(bill.lastActionDate)}
               </span>
             )}
@@ -292,11 +295,11 @@ function Snapshot({
         {bill.authorName ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-slate-500 w-24 shrink-0">Author</span>
+              <span className="text-content-dim w-24 shrink-0">Author</span>
               {bill.authorId ? (
                 <Link
                   href={`/region/representatives/${bill.authorId}`}
-                  className="text-blue-600 hover:underline font-medium"
+                  className="text-info hover:underline font-medium"
                 >
                   {bill.authorName}
                 </Link>
@@ -308,7 +311,7 @@ function Snapshot({
             </div>
             {bill.coAuthors.length > 0 && (
               <div className="flex items-start gap-2 text-sm">
-                <span className="text-slate-500 w-24 shrink-0 pt-0.5">
+                <span className="text-content-dim w-24 shrink-0 pt-0.5">
                   Co-authors
                 </span>
                 <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -317,7 +320,7 @@ function Snapshot({
                       <Link
                         key={ca.representativeId}
                         href={`/region/representatives/${ca.representativeId}`}
-                        className="text-blue-600 hover:underline"
+                        className="text-info hover:underline"
                       >
                         {ca.name}
                       </Link>
@@ -332,7 +335,7 @@ function Snapshot({
             )}
           </div>
         ) : (
-          <p className="text-sm italic text-slate-400">
+          <p className="text-sm italic text-content-dim">
             Author data not yet available.
           </p>
         )}
@@ -355,7 +358,7 @@ function History({
   return (
     <div className="animate-layer-enter">
       <SectionTitle>What has happened to this bill</SectionTitle>
-      <p className="text-sm text-slate-500 mb-4">
+      <p className="text-sm text-content-dim mb-4">
         Committee reports, amendments, and chamber movements extracted from
         official legislative journals and weekly histories.
       </p>
@@ -406,23 +409,23 @@ function Votes({
           <div key={chamber} className="mb-8">
             <SectionTitle>{chamber}</SectionTitle>
             <VoteSummaryBar votes={chamberVotes} />
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <div className="overflow-x-auto rounded-lg border border-line">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <tr className="bg-surface-alt text-left text-xs font-semibold uppercase tracking-wider text-content-dim">
                     <th className="px-4 py-2.5">Member</th>
                     <th className="px-4 py-2.5">Motion</th>
                     <th className="px-4 py-2.5 text-right">Vote</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-line">
                   {chamberVotes.map((v) => (
-                    <tr key={v.id} className="hover:bg-slate-50">
+                    <tr key={v.id} className="hover:bg-surface-alt">
                       <td className="px-4 py-2.5 font-medium text-content">
                         {v.representativeId ? (
                           <Link
                             href={`/region/representatives/${v.representativeId}`}
-                            className="text-blue-600 hover:underline"
+                            className="text-info hover:underline"
                           >
                             {v.representativeName}
                           </Link>
@@ -430,7 +433,7 @@ function Votes({
                           v.representativeName
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-slate-500">
+                      <td className="px-4 py-2.5 text-content-dim">
                         {v.motionText ?? "—"}
                       </td>
                       <td className="px-4 py-2.5 text-right">
@@ -479,7 +482,7 @@ function Sources({
       )}
 
       <SectionTitle>Record details</SectionTitle>
-      <dl className="bg-slate-50 rounded-lg p-4 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+      <dl className="bg-surface-alt rounded-lg p-4 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
         {bill.subject && (
           <div>
             <dt className="font-bold uppercase tracking-wider text-xs text-content-dim mb-0.5">
@@ -515,7 +518,7 @@ function Sources({
               href={bill.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 hover:underline break-all"
+              className="text-info hover:underline break-all"
             >
               {bill.sourceUrl} ↗
             </a>
@@ -531,7 +534,7 @@ function Sources({
                 href={bill.fullTextUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
+                className="text-info hover:underline"
               >
                 View full bill text ↗
               </a>
@@ -604,7 +607,7 @@ export default function BillDetailPage() {
           <p className="text-content-dim mb-4">Bill not found.</p>
           <Link
             href="/region/bills"
-            className="text-blue-600 hover:underline text-sm font-medium"
+            className="text-info hover:underline text-sm font-medium"
           >
             Back to bills
           </Link>
@@ -629,7 +632,7 @@ export default function BillDetailPage() {
           <span className="font-mono text-sm font-semibold text-content-dim">
             {bill.billNumber}
           </span>
-          <span className="text-sm text-slate-400">{bill.sessionYear}</span>
+          <span className="text-sm text-content-dim">{bill.sessionYear}</span>
         </div>
         <h1 className="text-2xl font-extrabold text-content leading-tight">
           {bill.title}

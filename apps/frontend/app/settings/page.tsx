@@ -197,15 +197,15 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
     <>
       {/* Success Message */}
       {saveSuccess && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-          <p className="text-sm text-green-600">{t("profile.saveSuccess")}</p>
+        <div className="mb-6 p-4 bg-positive-surface border border-positive-line rounded-lg">
+          <p className="text-sm text-positive">{t("profile.saveSuccess")}</p>
         </div>
       )}
 
       {/* Error Message */}
       {saveError && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-600">{saveError}</p>
+        <div className="mb-6 p-4 bg-danger-surface border border-danger-line rounded-lg">
+          <p className="text-sm text-danger">{saveError}</p>
         </div>
       )}
 
@@ -402,7 +402,7 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           <button
             type="submit"
             disabled={updating}
-            className="px-6 py-3 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:bg-inverse-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-3 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {updating ? t("common:buttons.saving") : t("common:buttons.save")}
           </button>
@@ -469,7 +469,7 @@ export default function ProfileSettingsPage() {
   if (profileError) {
     return (
       <div className="bg-surface rounded-lg p-8">
-        <div className="text-center text-red-600">
+        <div className="text-center text-danger">
           <p>{t("profile.loadError")}</p>
         </div>
       </div>
@@ -592,7 +592,7 @@ function JurisdictionsSection({
 
       {/* Resolved jurisdictions grouped by level */}
       {hasJurisdictions && (
-        <div className="divide-y divide-gray-100 -mx-6 border-t border-line">
+        <div className="divide-y divide-line -mx-6 border-t border-line">
           {LEVEL_ORDER.filter((l) => byLevel.has(l)).map((level) => (
             <div key={level} className="px-6 py-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-content-dim mb-2">

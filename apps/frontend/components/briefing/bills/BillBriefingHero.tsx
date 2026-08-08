@@ -31,7 +31,7 @@ export function BillBriefingHero({ item }: BillBriefingHeroProps) {
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/bills/${bill.id}`}
-            className="block text-xl sm:text-2xl font-bold text-content hover:text-content transition-colors"
+            className="block text-xl sm:text-2xl font-bold text-content hover:underline transition-colors"
           >
             {bill.title}
           </Link>
@@ -43,7 +43,7 @@ export function BillBriefingHero({ item }: BillBriefingHeroProps) {
       </div>
       {summary && <p className="mt-3 text-sm text-content-dim">{summary}</p>}
       {bill.status && (
-        <p className="mt-3 text-xs text-content-dim">
+        <p className="mt-3 text-sm text-content-dim">
           <span className="font-semibold">{t("bills.statusLabel")}</span>{" "}
           {bill.status}
         </p>
@@ -58,16 +58,16 @@ export function BillBriefingHero({ item }: BillBriefingHeroProps) {
         />
         <Link
           href={`/region/bills/${bill.id}`}
-          className="text-xs font-medium text-content hover:text-content"
+          className="text-xs font-medium text-content hover:underline"
         >
           {t("bills.readBillLink")}
         </Link>
       </div>
       <div className="mt-4 rounded-lg border border-dashed border-line p-3 space-y-1">
-        <p className="text-xs text-content-dim italic">
+        <p className="text-sm text-content-dim italic">
           {t("stubs.counterFrame")}
         </p>
-        <p className="text-xs text-content-dim italic">
+        <p className="text-sm text-content-dim italic">
           {t("stubs.actionAffordances")}
         </p>
       </div>

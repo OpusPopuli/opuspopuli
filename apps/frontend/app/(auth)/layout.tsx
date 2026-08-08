@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Footer } from "@/components/Footer";
+import { Logo } from "@/components/Logo";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -16,11 +17,7 @@ export default function AuthLayout({
       {/* Header */}
       <header className="p-6">
         <Link href="/" className="hover:opacity-80 transition-opacity">
-          <img
-            src="/logos/svg/op-horizontal-light.svg"
-            alt="Opus Populi"
-            className="h-8"
-          />
+          <Logo className="h-20 sm:h-28" />
         </Link>
       </header>
 

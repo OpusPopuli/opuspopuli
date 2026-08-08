@@ -98,7 +98,7 @@ export function OnboardingSteps() {
           <div
             key={i}
             className={`w-2 h-2 rounded-full transition-colors ${
-              i === currentStep ? "bg-surface-alt" : "bg-gray-300 "
+              i === currentStep ? "bg-surface-alt" : "bg-surface-sunk "
             }`}
             aria-hidden="true"
           />

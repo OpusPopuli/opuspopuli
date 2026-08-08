@@ -16,11 +16,11 @@ import { SEVERITY_STYLES } from "./claim-severity";
  */
 
 const KIND_STYLES: Record<MinutesClaimKind, { bg: string; text: string }> = {
-  DECISION: { bg: "bg-blue-100", text: "text-blue-800" },
-  CONCERN: { bg: "bg-amber-100", text: "text-amber-800" },
-  CONTROVERSY: { bg: "bg-red-100", text: "text-red-800" },
-  PUBLIC_COMMENT: { bg: "bg-slate-100", text: "text-slate-700" },
-  DISCLOSURE: { bg: "bg-violet-100", text: "text-violet-800" },
+  DECISION: { bg: "bg-info-surface", text: "text-info" },
+  CONCERN: { bg: "bg-warning-surface", text: "text-warning" },
+  CONTROVERSY: { bg: "bg-danger-surface", text: "text-danger" },
+  PUBLIC_COMMENT: { bg: "bg-surface-alt", text: "text-content" },
+  DISCLOSURE: { bg: "bg-cat-purple-surface", text: "text-cat-purple" },
 };
 
 /** Wire enum value → civics i18n leaf key. */

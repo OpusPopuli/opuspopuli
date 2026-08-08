@@ -54,7 +54,7 @@ describe("CitizenActionCallout", () => {
     render(<CitizenActionCallout action={makeAction({ urgency: "active" })} />);
     // Orange class is present somewhere in the rendered output
     expect(
-      document.querySelector(".text-orange-800, .bg-orange-50"),
+      document.querySelector(".text-warning, .bg-warning-surface"),
     ).toBeInTheDocument();
   });
 
