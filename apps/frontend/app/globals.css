@@ -15,6 +15,94 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Raw ramps — NOT semantic, and deliberately outside @theme so they generate
+   no utilities. Nothing in the app should reference --ramp-* directly.
+
+   These exist so that every scope which flips a status or categorical colour
+   flips the ENTIRE tuple (text + surface + line + solid) by re-pointing at one
+   of the two sets, instead of hand-listing members. Overriding a text colour
+   without its matching surface is exactly what shipped `text-positive`
+   (#6fc98c, the dark value) on top of `bg-positive-surface` (#e9f4ec, the
+   light value) inside .on-fixed-dark — a 1.78:1 badge that failed CI.
+
+   Rule: if you re-point one member of a tuple in a scope, re-point all of
+   them. Prefer adding a scope block below over editing these values.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Status — light surfaces */
+  --ramp-danger-fg-light: #a3231b;
+  --ramp-danger-bg-light: #fbedeb;
+  --ramp-danger-line-light: #efc9c4;
+  --ramp-danger-solid-light: #a3231b;
+  --ramp-danger-strong-light: #7f1a14;
+  --ramp-warning-fg-light: #8a5a00;
+  --ramp-warning-bg-light: #fbf2e0;
+  --ramp-warning-line-light: #e8d3a6;
+  --ramp-warning-solid-light: #8a5a00;
+  --ramp-warning-strong-light: #6d4700;
+  --ramp-positive-fg-light: #216b41;
+  --ramp-positive-bg-light: #e9f4ec;
+  --ramp-positive-line-light: #c3dfcb;
+  --ramp-positive-solid-light: #216b41;
+  --ramp-positive-strong-light: #19542f;
+  --ramp-info-fg-light: #1f5aa8;
+  --ramp-info-bg-light: #e9f0fa;
+  --ramp-info-line-light: #c4d6ee;
+  --ramp-info-solid-light: #1f5aa8;
+  --ramp-info-strong-light: #16447f;
+
+  /* Status — dark surfaces. Text lightens; tints become deep wells. */
+  --ramp-danger-fg-dark: #f08a7e;
+  --ramp-danger-bg-dark: #2a1614;
+  --ramp-danger-line-dark: #4a2622;
+  --ramp-danger-solid-dark: #c4382e;
+  --ramp-danger-strong-dark: #d9564a;
+  --ramp-warning-fg-dark: #e8b54d;
+  --ramp-warning-bg-dark: #2a2113;
+  --ramp-warning-line-dark: #463620;
+  --ramp-warning-solid-dark: #8a5a00;
+  --ramp-warning-strong-dark: #a06a00;
+  --ramp-positive-fg-dark: #6fc98c;
+  --ramp-positive-bg-dark: #14251a;
+  --ramp-positive-line-dark: #22402c;
+  --ramp-positive-solid-dark: #2b7d4e;
+  --ramp-positive-strong-dark: #35935c;
+  --ramp-info-fg-dark: #7fb0ee;
+  --ramp-info-bg-dark: #141f2e;
+  --ramp-info-line-dark: #22334a;
+  --ramp-info-solid-dark: #2a68bd;
+  --ramp-info-strong-dark: #3a7ccf;
+
+  /* Categorical — light surfaces */
+  --ramp-cat-blue-fg-light: #1f4e96;
+  --ramp-cat-blue-bg-light: #e4edf9;
+  --ramp-cat-red-fg-light: #a32b22;
+  --ramp-cat-red-bg-light: #fbe7e5;
+  --ramp-cat-purple-fg-light: #5b3c9b;
+  --ramp-cat-purple-bg-light: #ede7f7;
+  --ramp-cat-green-fg-light: #216b41;
+  --ramp-cat-green-bg-light: #e4f1e8;
+  --ramp-cat-amber-fg-light: #7a5a00;
+  --ramp-cat-amber-bg-light: #f7edd4;
+  --ramp-cat-teal-fg-light: #14625f;
+  --ramp-cat-teal-bg-light: #dff0ef;
+
+  /* Categorical — dark surfaces */
+  --ramp-cat-blue-fg-dark: #93baf0;
+  --ramp-cat-blue-bg-dark: #16213a;
+  --ramp-cat-red-fg-dark: #f0968a;
+  --ramp-cat-red-bg-dark: #2e1714;
+  --ramp-cat-purple-fg-dark: #b9a2e8;
+  --ramp-cat-purple-bg-dark: #221b36;
+  --ramp-cat-green-fg-dark: #7ccf95;
+  --ramp-cat-green-bg-dark: #14251a;
+  --ramp-cat-amber-fg-dark: #e0bc5e;
+  --ramp-cat-amber-bg-dark: #2a2213;
+  --ramp-cat-teal-fg-dark: #6cc7c2;
+  --ramp-cat-teal-bg-dark: #102a29;
+}
+
 @theme {
   /* Font families — Inter + Playfair loaded via next/font in app/layout.tsx,
      whose CSS variables are attached to <html> so :root can resolve them.
@@ -72,38 +160,41 @@
 
   /* ── Status ramp — LIGHT ──
      Gold is "earned" and carries no status meaning, so state still needs its
-     own hues. Each status has four roles:
+     own hues. Each status has five roles:
        --color-X          text/icon on a normal surface (≥4.5:1 on paper)
        --color-X-surface  tint background for banners/badges
        --color-X-line     hairline border for those banners/badges
        --color-X-solid    filled button/bar, paired with --color-on-X
-     Hues are warm-shifted to sit with paper rather than fight it. */
-  --color-danger: #a3231b;
-  --color-danger-surface: #fbedeb;
-  --color-danger-line: #efc9c4;
-  --color-danger-solid: #a3231b;
-  --color-danger-strong: #7f1a14; /* hover on danger fills */
+       --color-X-strong   hover partner for the filled variant
+     Values live in the --ramp-* block above so inverted scopes can re-point
+     the whole tuple at once. --color-on-X is a fixed constant in both themes:
+     paper always rides a status fill. */
+  --color-danger: var(--ramp-danger-fg-light);
+  --color-danger-surface: var(--ramp-danger-bg-light);
+  --color-danger-line: var(--ramp-danger-line-light);
+  --color-danger-solid: var(--ramp-danger-solid-light);
+  --color-danger-strong: var(--ramp-danger-strong-light);
   --color-on-danger: #fafaf8;
 
-  --color-warning: #8a5a00;
-  --color-warning-surface: #fbf2e0;
-  --color-warning-line: #e8d3a6;
-  --color-warning-solid: #8a5a00;
-  --color-warning-strong: #6d4700;
+  --color-warning: var(--ramp-warning-fg-light);
+  --color-warning-surface: var(--ramp-warning-bg-light);
+  --color-warning-line: var(--ramp-warning-line-light);
+  --color-warning-solid: var(--ramp-warning-solid-light);
+  --color-warning-strong: var(--ramp-warning-strong-light);
   --color-on-warning: #fafaf8;
 
-  --color-positive: #216b41;
-  --color-positive-surface: #e9f4ec;
-  --color-positive-line: #c3dfcb;
-  --color-positive-solid: #216b41;
-  --color-positive-strong: #19542f;
+  --color-positive: var(--ramp-positive-fg-light);
+  --color-positive-surface: var(--ramp-positive-bg-light);
+  --color-positive-line: var(--ramp-positive-line-light);
+  --color-positive-solid: var(--ramp-positive-solid-light);
+  --color-positive-strong: var(--ramp-positive-strong-light);
   --color-on-positive: #fafaf8;
 
-  --color-info: #1f5aa8;
-  --color-info-surface: #e9f0fa;
-  --color-info-line: #c4d6ee;
-  --color-info-solid: #1f5aa8;
-  --color-info-strong: #16447f;
+  --color-info: var(--ramp-info-fg-light);
+  --color-info-surface: var(--ramp-info-bg-light);
+  --color-info-line: var(--ramp-info-line-light);
+  --color-info-solid: var(--ramp-info-solid-light);
+  --color-info-strong: var(--ramp-info-strong-light);
   --color-on-info: #fafaf8;
 
   /* ── Categorical ramp — LIGHT ──
@@ -113,18 +204,97 @@
      by sentiment (that is what the status ramp is for) and never for
      decoration. Every text value clears 4.5:1 on its own surface and on the
      page surface. */
-  --color-cat-blue: #1f4e96;
-  --color-cat-blue-surface: #e4edf9;
-  --color-cat-red: #a32b22;
-  --color-cat-red-surface: #fbe7e5;
-  --color-cat-purple: #5b3c9b;
-  --color-cat-purple-surface: #ede7f7;
-  --color-cat-green: #216b41;
-  --color-cat-green-surface: #e4f1e8;
-  --color-cat-amber: #7a5a00;
-  --color-cat-amber-surface: #f7edd4;
-  --color-cat-teal: #14625f;
-  --color-cat-teal-surface: #dff0ef;
+  --color-cat-blue: var(--ramp-cat-blue-fg-light);
+  --color-cat-blue-surface: var(--ramp-cat-blue-bg-light);
+  --color-cat-red: var(--ramp-cat-red-fg-light);
+  --color-cat-red-surface: var(--ramp-cat-red-bg-light);
+  --color-cat-purple: var(--ramp-cat-purple-fg-light);
+  --color-cat-purple-surface: var(--ramp-cat-purple-bg-light);
+  --color-cat-green: var(--ramp-cat-green-fg-light);
+  --color-cat-green-surface: var(--ramp-cat-green-bg-light);
+  --color-cat-amber: var(--ramp-cat-amber-fg-light);
+  --color-cat-amber-surface: var(--ramp-cat-amber-bg-light);
+  --color-cat-teal: var(--ramp-cat-teal-fg-light);
+  --color-cat-teal-surface: var(--ramp-cat-teal-bg-light);
+}
+
+/* ── Full-tuple flips ──
+   Every scope below re-points ALL status + categorical members at one ramp
+   set. Keeping these as two named blocks (rather than inline lists per scope)
+   is what makes a partial override impossible to write by accident. */
+.op-status-dark,
+.dark,
+.on-ink,
+.dark .on-fixed-dark,
+.on-fixed-dark {
+  --color-danger: var(--ramp-danger-fg-dark);
+  --color-danger-surface: var(--ramp-danger-bg-dark);
+  --color-danger-line: var(--ramp-danger-line-dark);
+  --color-danger-solid: var(--ramp-danger-solid-dark);
+  --color-danger-strong: var(--ramp-danger-strong-dark);
+  --color-warning: var(--ramp-warning-fg-dark);
+  --color-warning-surface: var(--ramp-warning-bg-dark);
+  --color-warning-line: var(--ramp-warning-line-dark);
+  --color-warning-solid: var(--ramp-warning-solid-dark);
+  --color-warning-strong: var(--ramp-warning-strong-dark);
+  --color-positive: var(--ramp-positive-fg-dark);
+  --color-positive-surface: var(--ramp-positive-bg-dark);
+  --color-positive-line: var(--ramp-positive-line-dark);
+  --color-positive-solid: var(--ramp-positive-solid-dark);
+  --color-positive-strong: var(--ramp-positive-strong-dark);
+  --color-info: var(--ramp-info-fg-dark);
+  --color-info-surface: var(--ramp-info-bg-dark);
+  --color-info-line: var(--ramp-info-line-dark);
+  --color-info-solid: var(--ramp-info-solid-dark);
+  --color-info-strong: var(--ramp-info-strong-dark);
+  --color-cat-blue: var(--ramp-cat-blue-fg-dark);
+  --color-cat-blue-surface: var(--ramp-cat-blue-bg-dark);
+  --color-cat-red: var(--ramp-cat-red-fg-dark);
+  --color-cat-red-surface: var(--ramp-cat-red-bg-dark);
+  --color-cat-purple: var(--ramp-cat-purple-fg-dark);
+  --color-cat-purple-surface: var(--ramp-cat-purple-bg-dark);
+  --color-cat-green: var(--ramp-cat-green-fg-dark);
+  --color-cat-green-surface: var(--ramp-cat-green-bg-dark);
+  --color-cat-amber: var(--ramp-cat-amber-fg-dark);
+  --color-cat-amber-surface: var(--ramp-cat-amber-bg-dark);
+  --color-cat-teal: var(--ramp-cat-teal-fg-dark);
+  --color-cat-teal-surface: var(--ramp-cat-teal-bg-dark);
+}
+
+.op-status-light,
+.dark .on-ink {
+  --color-danger: var(--ramp-danger-fg-light);
+  --color-danger-surface: var(--ramp-danger-bg-light);
+  --color-danger-line: var(--ramp-danger-line-light);
+  --color-danger-solid: var(--ramp-danger-solid-light);
+  --color-danger-strong: var(--ramp-danger-strong-light);
+  --color-warning: var(--ramp-warning-fg-light);
+  --color-warning-surface: var(--ramp-warning-bg-light);
+  --color-warning-line: var(--ramp-warning-line-light);
+  --color-warning-solid: var(--ramp-warning-solid-light);
+  --color-warning-strong: var(--ramp-warning-strong-light);
+  --color-positive: var(--ramp-positive-fg-light);
+  --color-positive-surface: var(--ramp-positive-bg-light);
+  --color-positive-line: var(--ramp-positive-line-light);
+  --color-positive-solid: var(--ramp-positive-solid-light);
+  --color-positive-strong: var(--ramp-positive-strong-light);
+  --color-info: var(--ramp-info-fg-light);
+  --color-info-surface: var(--ramp-info-bg-light);
+  --color-info-line: var(--ramp-info-line-light);
+  --color-info-solid: var(--ramp-info-solid-light);
+  --color-info-strong: var(--ramp-info-strong-light);
+  --color-cat-blue: var(--ramp-cat-blue-fg-light);
+  --color-cat-blue-surface: var(--ramp-cat-blue-bg-light);
+  --color-cat-red: var(--ramp-cat-red-fg-light);
+  --color-cat-red-surface: var(--ramp-cat-red-bg-light);
+  --color-cat-purple: var(--ramp-cat-purple-fg-light);
+  --color-cat-purple-surface: var(--ramp-cat-purple-bg-light);
+  --color-cat-green: var(--ramp-cat-green-fg-light);
+  --color-cat-green-surface: var(--ramp-cat-green-bg-light);
+  --color-cat-amber: var(--ramp-cat-amber-fg-light);
+  --color-cat-amber-surface: var(--ramp-cat-amber-bg-light);
+  --color-cat-teal: var(--ramp-cat-teal-fg-light);
+  --color-cat-teal-surface: var(--ramp-cat-teal-bg-light);
 }
 
 /* ── DARK theme — override the semantic vars only. Warm, ink-grounded. ── */
@@ -141,51 +311,9 @@
   --color-inverse-surface: #fafaf8; /* inverse panels invert to light in dark theme */
   --color-on-inverse: #1a1714;
 
-  /* ── Status ramp — DARK ──
-     Text roles lighten (they must clear 4.5:1 on #14110f); surfaces become
-     deep tinted wells rather than pale boxes; solids keep enough chroma to
-     read as a filled control. */
-  --color-danger: #f08a7e;
-  --color-danger-surface: #2a1614;
-  --color-danger-line: #4a2622;
-  --color-danger-solid: #c4382e;
-  --color-danger-strong: #d9564a;
-  --color-on-danger: #fafaf8;
-
-  --color-warning: #e8b54d;
-  --color-warning-surface: #2a2113;
-  --color-warning-line: #463620;
-  --color-warning-solid: #8a5a00;
-  --color-warning-strong: #a06a00; /* hover LIGHTENS on dark, unlike light theme */
-  --color-on-warning: #fafaf8;
-
-  --color-positive: #6fc98c;
-  --color-positive-surface: #14251a;
-  --color-positive-line: #22402c;
-  --color-positive-solid: #2b7d4e;
-  --color-positive-strong: #35935c;
-  --color-on-positive: #fafaf8;
-
-  --color-info: #7fb0ee;
-  --color-info-surface: #141f2e;
-  --color-info-line: #22334a;
-  --color-info-solid: #2a68bd;
-  --color-info-strong: #3a7ccf;
-  --color-on-info: #fafaf8;
-
-  /* ── Categorical ramp — DARK ── */
-  --color-cat-blue: #93baf0;
-  --color-cat-blue-surface: #16213a;
-  --color-cat-red: #f0968a;
-  --color-cat-red-surface: #2e1714;
-  --color-cat-purple: #b9a2e8;
-  --color-cat-purple-surface: #221b36;
-  --color-cat-green: #7ccf95;
-  --color-cat-green-surface: #14251a;
-  --color-cat-amber: #e0bc5e;
-  --color-cat-amber-surface: #2a2213;
-  --color-cat-teal: #6cc7c2;
-  --color-cat-teal-surface: #102a29;
+  /* Status + categorical: the whole dark tuple, via the shared block below.
+     `@apply` would be circular here (the block is a plain class, not a
+     utility), so .dark is added to the selector list on .op-status-dark. */
 }
 
 /* ── Base ── */
@@ -316,30 +444,15 @@ h6 {
   --color-line: color-mix(in oklab, var(--color-paper) 20%, transparent);
   --color-inverse-surface: var(--color-paper);
   --color-on-inverse: var(--color-ink);
-  --color-danger: #f08a7e;
-  --color-warning: #e8b54d;
-  --color-positive: #6fc98c;
-  --color-info: #7fb0ee;
   color: var(--color-paper);
+  /* Status + categorical come from the dark tuple — .on-fixed-dark is in that
+     block's selector list above. Do NOT re-list individual members here: a
+     partial override is what caused the 1.78:1 badge regression. */
 }
 
-/* Status text inside an ink panel must lighten, or it sinks into the panel
-   (#a3231b on #1a1714 is ~1.6:1). Surfaces/lines are left alone: status
-   banners are not nested inside .on-ink panels anywhere today, and a tint
-   would fight the panel. Light theme only — in dark theme .on-ink inverts to
-   a PAPER panel, where the light-theme status values are already correct. */
-.on-ink {
-  --color-danger: #f08a7e;
-  --color-warning: #e8b54d;
-  --color-positive: #6fc98c;
-  --color-info: #7fb0ee;
-}
-.dark .on-ink {
-  --color-danger: #a3231b;
-  --color-warning: #8a5a00;
-  --color-positive: #216b41;
-  --color-info: #1f5aa8;
-}
+/* Status/categorical inside an ink panel flip as a COMPLETE tuple via the
+   shared blocks above (.on-ink → dark set; .dark .on-ink → light set, because
+   an ink panel inverts to paper in dark theme). Nothing to declare here. */
 .on-ink .eyebrow::before {
   background: var(--color-accent);
 }

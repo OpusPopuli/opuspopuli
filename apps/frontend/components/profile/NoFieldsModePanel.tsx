@@ -27,11 +27,11 @@ export function NoFieldsModePanel({
           >
             {t("noFieldsMode.title")}
           </h2>
-          <p className="text-sm text-warning/80 mt-1">
+          <p className="text-sm text-warning mt-1">
             {t("noFieldsMode.description")}
           </p>
           {noFieldsMode && (
-            <p className="text-sm text-warning/80 mt-2 font-medium">
+            <p className="text-sm text-warning mt-2 font-medium">
               {t("noFieldsMode.lockedDescription")}
             </p>
           )}

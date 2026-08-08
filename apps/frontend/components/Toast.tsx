@@ -44,9 +44,13 @@ export function Toast({ toast, onDismiss }: ToastProps) {
           {toastIcons[toast.type]}
         </span>
         <p className="flex-1 text-sm">{toast.message}</p>
+        {/* Full paper, not paper/80: at 80% the glyph composites to 4.27:1 on
+            warning-solid, under AA. Opacity modifiers on TEXT tokens are the
+            one place the token contrast guarantees don't hold — dim the whole
+            button on hover instead. */}
         <button
           onClick={onDismiss}
-          className="text-paper/80 hover:text-paper transition-colors flex-shrink-0"
+          className="text-paper hover:opacity-80 transition-opacity flex-shrink-0"
           aria-label="Close notification"
         >
           <span aria-hidden="true">&times;</span>
