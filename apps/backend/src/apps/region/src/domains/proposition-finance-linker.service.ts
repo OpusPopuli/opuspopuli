@@ -158,14 +158,22 @@ export class PropositionFinanceLinkerService {
    * rows. The bulk-download handler stores externalIds shaped like
    * `<FILING_ID>:<row index>` (or similar); we extract the FILING_ID prefix
    * and pair it with the row's `committeeId`.
+   *
+   * Unattributed rows are excluded in SQL: since #980 the committee is stamped
+   * post-sync by the cover-page linker, so a row with a null `committeeId` has
+   * nothing to contribute to this index yet. Filtering in the query (rather
+   * than after hydration) matters because these reads are unpaginated — once
+   * the re-ingest lands, the unfiltered set is ~1.2M rows.
    */
   private async buildFilingToCommitteeIndex(): Promise<Map<string, string>> {
     const map = new Map<string, string>();
+    const attributed = { committeeId: { not: null } };
 
     const addRows = async (
-      rows: Array<{ externalId: string; committeeId: string }>,
+      rows: Array<{ externalId: string; committeeId: string | null }>,
     ) => {
       for (const r of rows) {
+        if (!r.committeeId) continue;
         const filingId = this.extractFilingId(r.externalId);
         if (filingId && !map.has(filingId)) {
           map.set(filingId, r.committeeId);
@@ -175,11 +183,13 @@ export class PropositionFinanceLinkerService {
 
     await addRows(
       await this.db!.contribution.findMany({
+        where: attributed,
         select: { externalId: true, committeeId: true },
       }),
     );
     await addRows(
       await this.db!.expenditure.findMany({
+        where: attributed,
         select: { externalId: true, committeeId: true },
       }),
     );
@@ -326,8 +336,10 @@ export class PropositionFinanceLinkerService {
     const seen = new Set<string>();
     for (const r of [...expRows, ...ieRows]) {
       if (!r.propositionId) continue;
-      // IE.committeeId is nullable since #955 (unresolved S496 rows) — skip any
-      // not yet attributed to a committee; they can't seed a measure position.
+      // committeeId is nullable on IEs since #955 (unresolved S496 rows) and on
+      // expenditures since #980 (unattributed EXPN rows) — skip any not yet
+      // attributed to a committee; they can't seed a measure position, and
+      // upsertPosition would hit the committee FK.
       if (!r.committeeId) continue;
       const position = this.mapPosition(r.supportOrOppose ?? null);
       if (!position) continue;

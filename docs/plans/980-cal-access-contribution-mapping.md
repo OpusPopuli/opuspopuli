@@ -11,7 +11,7 @@
 | **Data classification** | **PII — no PHI.** Individual donor name, employer, occupation, city, state, ZIP+4. Public record under CA law. Volume increases ~6x if this lands. |
 | **Branch** | `fix/980-cal-access-contribution-mapping` (+ `opuspopuli-regions`, + migration) |
 | **Effort** | 4–6 focused sessions |
-| **Status** | Plan rewritten. Subtask 1 (spike) complete — findings below. |
+| **Status** | Subtasks 0, 1, 3 complete. Next: 2 and 5, then 4. |
 
 ## Problem
 
@@ -87,11 +87,54 @@ broadened cover-page source no longer risks colliding with a sibling over the sa
 - Add optional `compositeKey: string[]` joining source columns with a stable separator.
 - **Tests:** key construction, collision behavior, back-compat when absent.
 
-### 3. `filing_id` on contributions and expenditures
+### 3. `filing_id` on contributions and expenditures ✅ done (2026-08-09)
 
-- **Where:** `supabase/migrations/` (use `/op-migration`), `packages/relationaldb-provider/prisma/schema.prisma`
-- Additive only: nullable `filing_id` + index. No drops, no renames.
-- **Tests:** integration test against the real test DB (never mock the DB layer).
+- **Migration:** `packages/relationaldb-provider/prisma/migrations/20260809000000_contribution_expenditure_cover_page_join/`
+  — not `supabase/migrations/`, which holds only `99_vault_functions.sql`; schema migrations are
+  Prisma-managed here, as #955's was.
+- Additive + widening: nullable `filing_id` VARCHAR(50) + index on both tables. No drops, no renames.
+  Both `ALTER`s are catalog-only in Postgres, so neither rewrites the ~204k-row table.
+
+**Scope correction.** The plan said "nullable `filing_id` + index" only, but dropping the
+`CMTE_ID → committeeId` mapping (subtask 5) makes a `NOT NULL committee_id` unsatisfiable — so
+`ALTER COLUMN committee_id DROP NOT NULL` had to ride along on both tables, exactly as #955 did for
+`independent_expenditures`. Consequences handled here:
+
+- **The FK footgun.** Prisma defaults an *optional* relation to `onDelete: SetNull`. Left implicit,
+  relaxing NOT NULL would have silently converted both FKs, so deleting a committee would orphan its
+  finance rows to `committee_id = NULL` — indistinguishable from "unresolved, please stamp". The
+  schema pins `onDelete: Restrict`; verified in the DB as `confdeltype = 'r'` and covered by two
+  integration tests.
+- **GraphQL stays non-null.** `getContributions`/`getExpenditures` (and the by-id fetches, now
+  `findFirst`) filter `committeeId: { not: null }`, so unattributed staging rows never surface —
+  the same treatment #955 gave S496 rows. No federation schema change, so the nullability question
+  in subtask 4 stays open rather than being pre-decided.
+- `PropositionFinanceLinkerService.buildFilingToCommitteeIndex` now skips null-committee rows. It
+  keeps the *first* hit per filing, so an unattributed row would otherwise shadow a resolved one.
+
+**Tests:** `apps/backend/__tests__/integration/region/contribution-cover-page-columns.integration.spec.ts`
+— 10 cases against real `postgres_test` (column shape, nullability, indexes, pre-link inserts, FK
+RESTRICT on both tables), plus unit coverage for the new query filters and the linker skip.
+Full backend suite green (2301 tests); `tsc --noEmit` adds no new errors over baseline.
+
+> Note for whoever runs this locally: `pnpm test:integration` gates on all five HTTP services being
+> up, though `bootstrapTestDatabase()` (which applies the migration) runs first, before that gate.
+
+**Rollback** (no down-file convention here — Prisma-managed, and #955 shipped none):
+
+```sql
+DROP INDEX IF EXISTS "expenditures_filing_id_idx";
+DROP INDEX IF EXISTS "contributions_filing_id_idx";
+ALTER TABLE "expenditures"  DROP COLUMN IF EXISTS "filing_id";
+ALTER TABLE "contributions" DROP COLUMN IF EXISTS "filing_id";
+
+-- NOT reversible unattended: SET NOT NULL scans the table and FAILS if the linker
+-- left any row unresolved. Resolve or remove those first, e.g.
+--   DELETE FROM "expenditures"  WHERE "committee_id" IS NULL;
+--   DELETE FROM "contributions" WHERE "committee_id" IS NULL;
+ALTER TABLE "expenditures"  ALTER COLUMN "committee_id" SET NOT NULL;
+ALTER TABLE "contributions" ALTER COLUMN "committee_id" SET NOT NULL;
+```
 
 ### 4. Cover-page-join resolution
 
@@ -99,6 +142,30 @@ broadened cover-page source no longer risks colliding with a sibling over the sa
 - Resolve `contributions.filing_id → cvr_filings.filer_id → committees.external_id`.
 - Follow `IndependentExpenditureLinkerService` (#955) — same shape, already reviewed.
 - **Tests:** unit tests for resolution + reconcile; integration test for the full join.
+
+### 4b. Write path for `filing_id` — **hard prerequisite for 5** (found in review, 2026-08-09)
+
+Subtask 3 added the column; nothing can populate it yet. Three edits are needed, and #955 did all
+three for `independent_expenditures` — copy that shape:
+
+1. `packages/scraping-pipeline/src/mapping/domain-mapper.service.ts:898,935` — `ContributionSchema`
+   / `ExpenditureSchema` need `filingId` added and `committeeId` relaxed to `.optional()`.
+   `z.object()` **strips unknown keys**, so without this the mapper deletes `filingId` before the
+   sync ever sees it, no matter what the region config maps.
+2. `packages/common/src/providers/region/types.ts` — same shape change on the `Contribution` /
+   `Expenditure` interfaces.
+3. `apps/backend/src/apps/region/src/domains/campaign-finance-sync.service.ts:441,460` — add
+   `'filingId'` to both `fields` projections. `upsertRecordsByFields` picks *only* the listed
+   fields, so the column stays NULL otherwise.
+
+**Sequencing trap:** relaxing `committeeId` in the zod schema *before* the region config drops the
+`CMTE_ID → committeeId` mapping would admit ~1M currently-dropped rows carrying the **wrong**
+committee. Relax it and change the config in the same deploy. Conversely, if the config changes
+first without the schema relax, every RCPT/EXPN row fails `safeParse` and is dropped with only a
+`logger.debug` — a sync that reports success having ingested zero contributions.
+
+**Also:** the new cover-page linker must run *before* `propositionFinanceLinker.linkAll()` in
+`campaign-finance-sync.service.ts:181-199`, the way the IE linker already is.
 
 ### 5. Column mappings
 
@@ -129,6 +196,49 @@ broadened cover-page source no longer risks colliding with a sibling over the sa
   `pnpm test:a11y`.
 
 **Ordering:** #984 first. Then 2, 3, 5 in parallel; 4 after 3; 6 after all; 7–8 after 6.
+
+**Deploy ordering (added 2026-08-09).** The migration is inert on its own — nothing writes a NULL
+committee until subtask 5 ships. But between 5 landing and the linker (4) running, freshly-ingested
+rows sit unattributed and are excluded from GraphQL, so `totalRaised` reads *low* rather than wrong.
+That's the intended failure mode, and it argues for 4 shipping before 5, not merely before 6.
+
+## Found in review of subtask 3 (2026-08-09) — not yet filed
+
+**`committee_measure_positions` is never purged, and it is downstream of the bad attribution.**
+`PropositionFinanceLinkerService` only ever `upsert`s (`:380`); nothing deletes. Two consequences:
+
+- `buildFilingToCommitteeIndex` maps `filingId → contribution.committeeId`, which per this issue's
+  own premise is the **counterparty**, and writes it as a position with `isPrimaryFormation = true`.
+  `PropositionFundingService.computeSide` then sums those committees' money into public
+  `totalRaised` / `totalSpent`. So proposition support/oppose totals are wrong today by the same
+  mechanism as representative totals — this issue's scope is wider than the `contributions` table.
+- Once subtask 4 stamps correct committees, the correct positions are **added alongside** the stale
+  wrong ones and both get summed. Subtask 6 therefore needs to purge and re-link
+  `committee_measure_positions`, not just delete and re-ingest the finance rows.
+
+**`extractFilingId` breaks silently when subtask 2 lands.** It recovers FILING_ID by splitting
+`externalId` on the first `:`/`-` (`:462`). Once `compositeKey` changes that layout, it returns
+garbage, every CVR2 row hits the `skipped` branch, and proposition funding quietly reads $0 — no
+exception, and the specs hardcode `12345:1` so nothing fails. Subtask 4 should re-point the linker
+at the new `filing_id` column, which also removes the unpaginated full-table load and the
+nondeterministic "first hit per filing wins" (those `findMany`s have no `orderBy`, so a filing with
+several contributors resolves to a different committee run to run).
+
+**Re-sync alone will not clear the existing bad `committee_id`s.** `upsertRecordsByFields`'s `pick`
+(`campaign-finance-sync.service.ts:556`) emits `committeeId: undefined` for absent fields, and
+Prisma treats `undefined` in `update` as *leave unchanged*. This is the mechanism behind subtask 6's
+"upsert will not converge" note — the scoped delete is mandatory, not merely tidier.
+
+**PII masking gap (confirms an open question above).** `PARTIAL_MASK_FIELDS` in
+`apps/backend/src/common/utils/pii-masker.ts:23` is only `email`/`phone`/`phonenumber` — no donor
+fields. Harmless today (the audit interceptor logs args, never results), but any future
+`logger.debug({ contribution })` writes unmasked donor PII to Loki.
+
+**Bulk-scrape exposure at 6x volume.** `contributions`, `contribution(id)` and `expenditures` are
+`@Public()` (pre-existing, unchanged here), and `PaginationArgs` caps `take` at 100 but leaves
+`skip` unbounded. Today that's a ~20-minute anonymous scrape of 204k donor records; after subtask 6
+it is ~1.2M. Public record under CA law, but name + employer + occupation + ZIP+4 in bulk is a
+different risk profile than record-by-record lookup. Worth an explicit decision before 6 lands.
 
 ## Adjacent defects — split out
 

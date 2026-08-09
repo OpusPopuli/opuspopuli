@@ -14,7 +14,8 @@ interface PropRow {
 
 interface ContribRow {
   externalId: string;
-  committeeId: string;
+  /// Nullable since #980 — unattributed until the cover-page linker runs.
+  committeeId: string | null;
 }
 
 interface ExpRow {
@@ -304,6 +305,41 @@ describe('PropositionFinanceLinkerService', () => {
       expect(primary?.propositionId).toBe('prop-1');
       expect(primary?.position).toBe('support');
       expect(primary?.sourceFiling).toBe('12345');
+    });
+
+    it('ignores unattributed contributions when indexing filings (#980)', async () => {
+      const built = await buildService({
+        propositions: [
+          {
+            id: 'prop-1',
+            externalId: 'ACA 13',
+            title: 'Voting thresholds',
+            electionDate: new Date(),
+          },
+        ],
+        contributions: [
+          // Same FILING_ID, but this row has not been attributed yet. Indexing
+          // it would map filing 12345 -> null and, because the index keeps the
+          // FIRST hit per filing, shadow the resolved row that follows.
+          { externalId: '12345:1', committeeId: null },
+          { externalId: '12345:2', committeeId: 'committee-A' },
+        ],
+        cvr2Filings: [
+          {
+            filingId: '12345',
+            ballotName: 'Voting thresholds',
+            ballotNumber: 'ACA 13',
+            supportOrOppose: 'S',
+          },
+        ],
+      });
+
+      await built.service.linkAll();
+
+      const primary = built.positionsTable.find(
+        (p) => p.isPrimaryFormation === true,
+      );
+      expect(primary?.committeeId).toBe('committee-A');
     });
 
     it('skips CVR2 rows whose filing or ballot cannot be resolved', async () => {

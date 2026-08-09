@@ -1754,7 +1754,13 @@ model CvrFiling {
 model Contribution {
   id               String   @id @default(uuid())
   externalId       String   @unique @map("external_id")
-  committeeId      String   @map("committee_id")
+  /// Nullable + resolved post-sync by the cover-page linker: RCPT_CD line items
+  /// carry no filer, so committeeId is stamped by joining filingId -> the
+  /// campaign-disclosure cover page (cvr_filings) -> committee (#980). The
+  /// CMTE_ID on RCPT_CD is the *contributor*, not the recipient.
+  committeeId      String?  @map("committee_id")
+  /// CalAccess FILING_ID from RCPT_CD — the join key to the cover page.
+  filingId         String?  @map("filing_id") @db.VarChar(50)
   donorName        String   @map("donor_name")
   donorType        String   @map("donor_type") @db.VarChar(20) /// individual, committee, party, self, other
   donorEmployer    String?  @map("donor_employer")
@@ -1770,9 +1776,10 @@ model Contribution {
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  committee Committee @relation(fields: [committeeId], references: [id])
+  committee Committee? @relation(fields: [committeeId], references: [id], onDelete: Restrict)
 
   @@index([committeeId])
+  @@index([filingId])
   @@index([donorName])
   @@index([date])
   @@index([amount])
@@ -1784,7 +1791,13 @@ model Contribution {
 model Expenditure {
   id                 String   @id @default(uuid())
   externalId         String   @unique @map("external_id")
-  committeeId        String   @map("committee_id")
+  /// Nullable + resolved post-sync by the cover-page linker: EXPN_CD line items
+  /// carry no filer, so committeeId is stamped by joining filingId -> the
+  /// campaign-disclosure cover page (cvr_filings) -> committee (#980). The
+  /// CMTE_ID on EXPN_CD is the *payee*, not the spender.
+  committeeId        String?  @map("committee_id")
+  /// CalAccess FILING_ID from EXPN_CD — the join key to the cover page.
+  filingId           String?  @map("filing_id") @db.VarChar(50)
   payeeName          String   @map("payee_name")
   amount             Decimal  @db.Decimal(12, 2)
   date               DateTime @db.Date
@@ -1800,10 +1813,11 @@ model Expenditure {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  committee   Committee    @relation(fields: [committeeId], references: [id])
+  committee   Committee?   @relation(fields: [committeeId], references: [id], onDelete: Restrict)
   proposition Proposition? @relation(fields: [propositionId], references: [id], onDelete: SetNull)
 
   @@index([committeeId])
+  @@index([filingId])
   @@index([payeeName])
   @@index([date])
   @@index([sourceSystem])
