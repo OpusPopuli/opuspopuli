@@ -139,7 +139,7 @@ How it works:
 
 ## SDLC tooling (Claude Code plugin)
 
-The `op-*` workflow commands — `/op-review`, `/op-issue-plan`, `/op-release`, `/op-verify`, `/op-phi-scan`, `/op-trace`, `/op-change-record`, `/op-validate`, and the rest — ship as the shared **[opuspopuli-sdlc](https://github.com/OpusPopuli/opuspopuli-sdlc)** Claude Code plugin. It's auto-enabled in every session (local or remote) via the committed `.claude/settings.json`; the only per-developer step is trusting the repo folder once. Repo-specific commands (`/op-migration`) live in `.claude/skills/`. The plugin's `docs/compliance-model.md` maps the lifecycle to HIPAA / SOC 2 / 21 CFR Part 11 controls.
+The `op-*` workflow commands — `/op-review`, `/op-issue-plan`, `/op-release`, `/op-verify`, `/op-data-scan`, `/op-trace`, `/op-change-record`, `/op-validate`, and the rest — ship as the shared **[opuspopuli-sdlc](https://github.com/OpusPopuli/opuspopuli-sdlc)** Claude Code plugin. It's auto-enabled in every session (local or remote) via the committed `.claude/settings.json`; the only per-developer step is trusting the repo folder once. Repo-specific commands (`/op-migration`) live in `.claude/skills/`. The plugin's `docs/compliance-model.md` maps the lifecycle to HIPAA / SOC 2 / 21 CFR Part 11 controls.
 
 ## Pre-push workflow (mandatory)
 
