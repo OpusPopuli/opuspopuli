@@ -10,7 +10,7 @@
 | **Data classification** | **PII — no PHI.** Individual donor name, employer, occupation, city, state, ZIP+4. Public record under CA law. Volume increases ~6x when this lands. |
 | **Branch** | `fix/980-cal-access-contribution-mapping` (+ `opuspopuli-regions`) |
 | **Effort** | 3–4 focused sessions + one supervised cutover |
-| **Status** | Subtasks 0, 1, 3 complete. Next: the cutover work (C1–C5). |
+| **Status** | Subtasks 0, 1, 3 and cutover steps C1–C2 complete. Next: C3 (linker + region config). |
 
 ## Problem
 
@@ -168,28 +168,38 @@ reads). Mutation-checked: removing the filter fails exactly the two list cases.
 
 All of C1–C3 land together, in one deploy, followed by the supervised C4/C5 rebuild.
 
-### C1. Composite `externalId`
+### C1. Composite `externalId` ✅ done (2026-08-09)
 
-- **Where:** `packages/scraping-pipeline/src/handlers/bulk-download.handler.ts`, `BulkDownloadConfig`;
-  `opuspopuli-regions/schema/region-plugin.schema.json`
-- Add optional `compositeKey: string[]` joining source columns with a stable separator. Real key is
-  `FILING_ID + AMEND_ID + LINE_ITEM + TRAN_ID`; `TRAN_ID` alone is not unique across filings.
-- **Tests:** key construction, collision behavior, back-compat when absent.
+- `BulkDownloadConfig.compositeKey?: string[]` (`packages/common`), consumed in
+  `bulk-download.handler.ts`; mirrored in `opuspopuli-regions/schema/region-plugin.schema.json`.
+- Segments join with `":"`. Chosen deliberately: it matches the shape single-column ids already have
+  (`<FILING_ID>:<LINE_ITEM>`), so with `FILING_ID` leading the key, existing prefix parsing keeps
+  working. C3 still re-points the linker at the `filing_id` column — this only removes the cliff.
+- **Two loud failures rather than silent collapse**, which is the whole point of the feature:
+  a key column absent from the file's headers **throws** (unlike `buildColumnIndices`, which warns
+  and continues — a missing key component shortens the key for *every* row); and a row whose
+  segments are all empty is dropped rather than upserted onto every other all-empty row.
+- Empty cells are preserved as empty segments so positions never shift (`a::7:b`, not `a:7:b`).
+- Takes precedence over any `externalId` in `columnMappings`.
+- **Tests:** 7 cases in `packages/scraping-pipeline/__tests__/bulk-download.handler.spec.ts`,
+  including the actual bug — two rows sharing a `TRAN_ID` across different filings staying distinct.
 
-### C2. Write path for `filing_id`
+### C2. Write path for `filing_id` ✅ done (2026-08-09)
 
-Subtask 3 added the column; nothing can populate it yet. #955 did all three of these for
-`independent_expenditures` — copy that shape:
-
-1. `packages/scraping-pipeline/src/mapping/domain-mapper.service.ts:898,935` — `ContributionSchema`
-   / `ExpenditureSchema` need `filingId` added and `committeeId` relaxed to `.optional()`.
-   `z.object()` **strips unknown keys**, so without this the mapper deletes `filingId` before the
-   sync ever sees it, no matter what the region config maps.
-2. `packages/common/src/providers/region/types.ts` — same shape change on the `Contribution` /
+1. `domain-mapper.service.ts` — `ContributionSchema` / `ExpenditureSchema` gained `filingId` and
+   relaxed `committeeId` to `.optional()`. `z.object()` **strips unknown keys**, so without this the
+   mapper deleted `filingId` before the sync ever saw it, whatever the region config mapped.
+2. `packages/common/src/providers/region/types.ts` — same shape on the `Contribution` /
    `Expenditure` interfaces.
-3. `apps/backend/src/apps/region/src/domains/campaign-finance-sync.service.ts:441,460` — add
-   `'filingId'` to both `fields` projections. `upsertRecordsByFields` picks *only* the listed
-   fields, so the column stays NULL otherwise.
+3. `campaign-finance-sync.service.ts` — `'filingId'` added to both `fields` projections
+   (`upsertRecordsByFields` picks *only* the listed fields).
+4. **Fallout the review predicted:** `ensureCommitteeStubs` rewrote `committeeId` externalId→UUID
+   unconditionally for contributions/expenditures while guarding IEs, which became a compile error
+   the moment the type went optional. Now one shared `resolveCommittee` helper for all three.
+
+**These are inert until C3.** No region config maps `FILING_ID` yet and none has a `compositeKey`,
+so behavior is unchanged — the only live effect is that a blank `CMTE_ID` no longer fails
+validation, and nothing produces such rows today.
 
 ### C3. Cover-page-join linker + region config
 

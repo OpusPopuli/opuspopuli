@@ -47,6 +47,13 @@ const DOWNLOAD_TIMEOUT_MS = 1_800_000;
 /** Default batch size for record processing (trades memory for fewer DB round-trips) */
 const DEFAULT_BATCH_SIZE = 10_000;
 
+/**
+ * Joins `compositeKey` column values into an `externalId`. Matches the shape
+ * single-column ids already have in this codebase (`<FILING_ID>:<LINE_ITEM>`),
+ * so downstream prefix parsing keeps working when FILING_ID leads the key.
+ */
+const COMPOSITE_KEY_SEPARATOR = ":";
+
 /** Callback invoked with each batch of mapped domain objects */
 export type OnBatchCallback<T> = (items: T[]) => Promise<void>;
 
@@ -414,22 +421,26 @@ export class BulkDownloadHandler {
     const delimiter = this.getDelimiter(bulk);
     const mappings = bulk.columnMappings;
     const filters = bulk.filters ?? {};
+    const compositeKey = bulk.compositeKey ?? [];
     const sourceSystem = inferSourceSystem(source);
     const headerSkip = bulk.headerLines ?? 0;
 
     let lineNum = 0;
     let colIndices: Record<string, number> = {};
     let filterIndices: Record<string, number> = {};
+    let compositeIndices: number[] = [];
 
     const hasExplicitHeaders = bulk.headers && bulk.headers.length > 0;
     if (hasExplicitHeaders) {
       const headers = bulk.headers!;
       colIndices = this.buildColumnIndices(headers, mappings);
       filterIndices = this.buildColumnIndices(headers, filters);
+      compositeIndices = this.buildCompositeIndices(headers, compositeKey);
     }
 
     const headerLineNum = headerSkip;
     const buildIndices = this.buildColumnIndices.bind(this);
+    const buildComposite = this.buildCompositeIndices.bind(this);
     const processData = this.processDataLine.bind(this);
 
     return {
@@ -445,6 +456,7 @@ export class BulkDownloadHandler {
             .map((h) => BulkDownloadHandler.stripQuotes(h));
           colIndices = buildIndices(headers, mappings);
           filterIndices = buildIndices(headers, filters);
+          compositeIndices = buildComposite(headers, compositeKey);
           lineNum++;
           return null;
         }
@@ -458,6 +470,7 @@ export class BulkDownloadHandler {
           colIndices,
           filterIndices,
           sourceSystem,
+          compositeIndices,
         );
       },
     };
@@ -475,6 +488,7 @@ export class BulkDownloadHandler {
     colIndices: Record<string, number>,
     filterIndices: Record<string, number>,
     sourceSystem: string | undefined,
+    compositeIndices: number[] = [],
   ): Record<string, unknown> | null {
     if (!line.trim()) return null;
 
@@ -483,6 +497,18 @@ export class BulkDownloadHandler {
     if (!this.passesFilters(values, filters, filterIndices)) return null;
 
     const record = this.mapRow(values, mappings, colIndices);
+
+    if (compositeIndices.length > 0) {
+      const segments = compositeIndices.map((idx) =>
+        BulkDownloadHandler.stripQuotes(values[idx] ?? ""),
+      );
+      // An all-empty key identifies nothing and would collide with every other
+      // all-empty row, so drop the line rather than upserting them onto each other.
+      if (segments.every((s) => !s)) return null;
+      // Overwrites any externalId from columnMappings — a feed that needs a
+      // composite key by definition has no single column that identifies a row.
+      record["externalId"] = segments.join(COMPOSITE_KEY_SEPARATOR);
+    }
 
     if (sourceSystem && !record["sourceSystem"]) {
       record["sourceSystem"] = sourceSystem;
@@ -540,6 +566,30 @@ export class BulkDownloadHandler {
       }
     }
     return indices;
+  }
+
+  /**
+   * Resolve `compositeKey` column names to their positions, in the order given.
+   *
+   * Throws on an unresolvable column instead of warning-and-continuing the way
+   * {@link buildColumnIndices} does. A missing mapped column costs one field;
+   * a missing key component silently shortens the key for *every* row, so
+   * distinct rows collapse onto one `externalId` and the upsert discards all
+   * but the last. That is the failure this feature exists to prevent
+   * (opuspopuli#980), so it must be loud.
+   */
+  private buildCompositeIndices(
+    headers: string[],
+    compositeKey: string[],
+  ): number[] {
+    const missing = compositeKey.filter((col) => !headers.includes(col));
+    if (missing.length > 0) {
+      throw new Error(
+        `compositeKey column(s) not found in file headers: ${missing.join(", ")}. ` +
+          `Available: ${headers.slice(0, 10).join(", ")}`,
+      );
+    }
+    return compositeKey.map((col) => headers.indexOf(col));
   }
 
   /**
