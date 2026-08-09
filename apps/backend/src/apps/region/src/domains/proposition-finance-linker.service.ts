@@ -14,8 +14,8 @@ import { readPositiveInt } from './config-helpers';
  *
  * 1) **CVR2 (FPPC Form 410, authoritative)**: every `cvr2_filings` row gives
  *    `(filingId, ballotName, supportOrOppose)`. We resolve `filingId →
- *    committeeId` by reading `Contribution`/`Expenditure.externalId` (which
- *    encodes FILING_ID per the bulk-download convention), and resolve
+ *    committeeId` by reading the `filing_id` column on
+ *    `Contribution`/`Expenditure` (stamped by `CoverPageLinkerService`), and resolve
  *    `ballotName → propositionId` via the title lookup. Each row that
  *    resolves writes a `CommitteeMeasurePosition` with
  *    `isPrimaryFormation = true` and `sourceFiling = filingId`.
@@ -155,11 +155,7 @@ export class PropositionFinanceLinkerService {
 
   /**
    * Build `filingId → committeeId` from existing Contribution / Expenditure
-   * rows. The bulk-download handler stores externalIds shaped like
-   * `<FILING_ID>:<row index>` (or similar); we extract the FILING_ID prefix
-   * and pair it with the row's `committeeId`.
-   *
-   * Reads the `filing_id` column directly (#980). It previously recovered the
+   * rows, reading the `filing_id` column directly (#980). It previously recovered the
    * filing id by splitting `externalId` on its first `:`/`-`, which the
    * composite `externalId` would have quietly broken — every CVR2 row would
    * have fallen into the `skipped` branch and proposition funding would read
