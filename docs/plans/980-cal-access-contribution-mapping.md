@@ -1,196 +1,177 @@
-# Plan: CAL-ACCESS contribution column mapping (#980)
+# Plan: RCPT contributions cover-page join (#980)
 
 | | |
 |---|---|
 | **Issue** | [#980](https://github.com/OpusPopuli/opuspopuli/issues/980) |
-| **Related** | [#979](https://github.com/OpusPopuli/opuspopuli/issues/979) (linker attribution), [#962](https://github.com/OpusPopuli/opuspopuli/issues/962) (P0 false-attribution liability), [#954](https://github.com/OpusPopuli/opuspopuli/issues/954) (donor-name fragmentation, closed) |
-| **Date** | 2026-08-08 |
+| **Blocked by** | [#984](https://github.com/OpusPopuli/opuspopuli/issues/984) — cover-page source silently skipped |
+| **Precedent** | [#955](https://github.com/OpusPopuli/opuspopuli/issues/955) — the same join, already solved for S496 |
+| **Related** | [#979](https://github.com/OpusPopuli/opuspopuli/issues/979), [#962](https://github.com/OpusPopuli/opuspopuli/issues/962), [#982](https://github.com/OpusPopuli/opuspopuli/issues/982), [#983](https://github.com/OpusPopuli/opuspopuli/issues/983), [#954](https://github.com/OpusPopuli/opuspopuli/issues/954) |
+| **Date** | 2026-08-08 (rewritten after raw-file verification) |
 | **Author** | Rodney Gagnon |
-| **Data classification** | **PII — no PHI.** Individual donor name, employer, occupation, city, state, ZIP+4. Public record under CA law. Volume increases materially if this lands. |
-| **Branch** | `fix/980-cal-access-contribution-mapping` (+ matching branch in `opuspopuli-regions`) |
-| **Effort** | 3–5 focused sessions |
-| **Status** | Approved. Defect A confirmed empirically 2026-08-08; subtask 1 narrowed to fix-design details |
+| **Data classification** | **PII — no PHI.** Individual donor name, employer, occupation, city, state, ZIP+4. Public record under CA law. Volume increases ~6x if this lands. |
+| **Branch** | `fix/980-cal-access-contribution-mapping` (+ `opuspopuli-regions`, + migration) |
+| **Effort** | 4–6 focused sessions |
+| **Status** | Plan rewritten. Subtask 1 (spike) complete — findings below. |
 
-## Problem restatement
+## Problem
 
-The issue was filed as "itemization is shallow." Investigation indicates that is a *symptom* of two
-defects in the `RCPT_CD.TSV` column mapping in
-`opuspopuli-regions/regions/california/california.json` (`config.dataSources[7]`).
+`RCPT_CD.TSV` maps `CMTE_ID → committeeId`. `CMTE_ID` is the **contributing** committee. `RCPT_CD`
+contains no recipient column, so the recipient is only reachable by joining `FILING_ID` to the
+`CVR_CAMPAIGN_DISCLOSURE_CD` cover page.
 
-### Defect A — `CMTE_ID` is the wrong source column for `committeeId` ✅ confirmed
+Because `ContributionSchema` requires `committeeId: z.string().min(1)`, every row with a blank
+`CMTE_ID` — every individual donor — is dropped by the mapper. What survives is committee-to-committee
+transfers, attributed backwards: `totalRaised` sums money each committee **paid out**.
 
-In CAL-ACCESS, `FILER_ID` identifies the committee that filed the report — the one **receiving** the
-contribution. `CMTE_ID` is populated on the **contributor** side when a committee gives to another
-committee.
+This is [#955](https://github.com/OpusPopuli/opuspopuli/issues/955)'s defect in the contributions
+table. That issue's title was almost verbatim the same problem for S496.
 
-`ContributionSchema` in `packages/scraping-pipeline/src/mapping/domain-mapper.service.ts` requires
-`committeeId: z.string().min(1)`, so every row with a blank `CMTE_ID` is dropped silently by the
-mapper. Live data matches that prediction:
+## Subtask 1 — spike ✅ complete (2026-08-08)
+
+Verified against the 2026-08-08 bulk export (1.58 GB zip; `RCPT_CD.TSV` is 3.8 GB uncompressed,
+under the handler's 10 GB `MAX_UNCOMPRESSED_SIZE`). Archive paths are `CalAccess/DATA/…`, not
+`CAL-ACCESS/DATA/…`.
+
+**`RCPT_CD` has 63 columns and no `FILER_ID`.** The originally-planned "map `FILER_ID` instead of
+`CMTE_ID`" fix is impossible. Relevant columns:
+
+| # | Column | Role |
+|---|---|---|
+| 1 | `FILING_ID` | joins to the cover page → recipient |
+| 2 | `AMEND_ID` | composite key component |
+| 3 | `LINE_ITEM` | composite key component |
+| 6 | `TRAN_ID` | composite key component (not unique alone) |
+| 25 | `CMTE_ID` | **contributor's** committee — sits inside the `CTRIB_*` block |
+
+**`CVR_CAMPAIGN_DISCLOSURE_CD` supplies the recipient:** `FILING_ID` (1), `FILER_ID` (5),
+`FILER_NAML` (7).
+
+**The data arrives; we lose it.** `pipeline_executions`, us-ca node:
 
 ```
-committee  151,986   ← CMTE_ID populated, survives
-individual  29,809   ← CMTE_ID mostly blank, dropped
-party       12,492
-other        9,658
+RCPT_CD.TSV   2026-08-05   items_extracted: 1,210,475   items_failed: 0
+contributions (source_system='cal_access'):                203,945
 ```
 
-Individual donors outnumbering committees ~5:1 is the real-world shape; the stored data is the
-inverse. This also explains the Mia Bonta page anomaly, where "Top donors" mirrored the committee
-list with near-identical amounts — `donorName` and `committeeId` were describing the *same*
-contributing committee.
+~1M rows dropped after the extraction counter — schema rejects and `TRAN_ID` upsert collapse both
+happen downstream of it, which is why nothing surfaced as a failure.
 
-Contribution attribution is therefore **semantically inverted**: money the committee paid *out* is
-being counted as money it *raised*.
+**Defect A confirmed empirically.** Of 151,986 committee-donor rows, 40,003 have a `donor_name`
+exactly equal to the name of the committee their `committee_id` points at; the remainder are the
+same entities under different spellings (#954). A recipient does not donate to itself 40,003 times.
 
-#### Confirmation (2026-08-08)
+**Secondary — `TRAN_ID` is not unique** across filings, but the sync upserts on `externalId`. Real
+key is `FILING_ID + AMEND_ID + LINE_ITEM + TRAN_ID`. `EXPN_CD` shares the pattern.
 
-Tested directly against the us-ca node. If `committee_id` were the *recipient*, a committee-type
-donor's name would essentially never equal the name of the committee the row points at. Result:
+## What already exists
 
-```
-committee-donor rows           151,986
-exact name match                40,003   (26.3%)
-normalized (alnum-only) match            (28.8%)
-```
+- `committees.external_id` **is** `FILER_ID` (via `dataSources[12]`)
+- `cvr_filings` already stores `filing_id → filer_id` (via `dataSources[10]`, built for #955)
+- `IndependentExpenditureLinkerService` is a working reference implementation of this join
 
-40,003 exact self-matches refutes the recipient reading outright. The remaining ~71% are the *same
-entities under different spellings* — #954 donor-name fragmentation defeating the string comparison,
-not a different relationship:
-
-| `committees.name` (via `committee_id`) | `contributions.donor_name` |
-|---|---|
-| RAYTHEON CALIFORNIA POLITICAL ACTION COMMITTEE | Raytheon California PAC |
-| Orange County Employees Association Political Action Committee | Orange County Employees Assoc. |
-| Turkish Coalition California PAC (TC-CAL PAC) | Turkish Coalition California PAC |
-| Howard F. Ahmanson/Fieldstead & Company | Fieldstead & Company |
-
-Defect A is confirmed. No bulk download was required to establish it.
-
-### Defect B — `TRAN_ID` is not a globally unique key
-
-`TRAN_ID` is unique within a filing, not across filings. `CampaignFinanceSyncService` upserts on
-`externalId`, so rows sharing a `TRAN_ID` overwrite each other. The real key is
-`FILING_ID + AMEND_ID + LINE_ITEM + TRAN_ID`.
-
-`EXPN_CD.TSV` (`dataSources[8]`) carries the identical `CMTE_ID`/`TRAN_ID` pattern, which is the
-likely reason `totalSpent` exceeds `totalRaised` for some representatives — the two joins have
-different coverage of the same defect.
-
-### Adjacent defects — split out, not in scope here
-
-Two further problems surfaced while sampling committee-donor rows. Both are independent of the
-column mapping and are tracked separately so #980 can close cleanly:
-
-- **[#982](https://github.com/OpusPopuli/opuspopuli/issues/982)** — committee rows whose `name` is a
-  bare numeric filer ID (`1318941`, `1363306`), rendering as a bare number on the public money-trail
-  lists.
-- **[#983](https://github.com/OpusPopuli/opuspopuli/issues/983)** — refunds filed as negative
-  receipts net against `totalRaised` with no sign handling, while still incrementing
-  `contributionCount` and donor buckets.
-
-#983 has no ingestion dependency and can land well before this work.
+Two gaps: `contributions` has no `filing_id` column and `RCPT` never extracts `FILING_ID`; and
+`cvr_filings` covers only F496 IE cover pages (31,418 rows) — contributions need F460 too, which is
+blocked by #984.
 
 ## Subtasks
 
-### 1. Spike — raw source details ⚠️ gates the mapping change
+### 0. Unblock — #984 ⚠️ blocks everything
 
-Defect A no longer depends on this (confirmed above), but the *fix* does. Pull `RCPT_CD.TSV` from
-`dbwebexport.zip` and confirm:
+Two sources over `CVR_CAMPAIGN_DISCLOSURE_CD.TSV` collide on one resume session, so one silently
+ingests nothing. The F460 cover-page map cannot be populated until this is fixed. Not part of this
+branch — see #984.
 
-- The actual column list, so the replacement column is one we have seen rather than one inferred
-  from CAL-ACCESS convention. `FILER_ID` is the expected recipient column — verify before mapping to it.
-- `TRAN_ID` collision rate across filings — sizes Defect B.
-- Whether `EXPN_CD.TSV` and `S496_CD.TSV` need the mirror-image fix.
+### 2. Composite `externalId`
 
-Header and a few sample rows are sufficient; the ~1GB TSV need not be extracted:
+- **Where:** `packages/scraping-pipeline/src/handlers/bulk-download.handler.ts`, `BulkDownloadConfig`;
+  `opuspopuli-regions/schema/region-plugin.schema.json`
+- Add optional `compositeKey: string[]` joining source columns with a stable separator.
+- **Tests:** key construction, collision behavior, back-compat when absent.
 
-```bash
-curl -o /tmp/dbwebexport.zip https://campaignfinance.cdn.sos.ca.gov/dbwebexport.zip
-unzip -l /tmp/dbwebexport.zip | grep -iE 'RCPT_CD|EXPN_CD|S496_CD'
-unzip -p /tmp/dbwebexport.zip 'CAL-ACCESS/DATA/RCPT_CD.TSV' | head -3
-```
+### 3. `filing_id` on contributions and expenditures
 
-### 2. Composite `externalId` support
+- **Where:** `supabase/migrations/` (use `/op-migration`), `packages/relationaldb-provider/prisma/schema.prisma`
+- Additive only: nullable `filing_id` + index. No drops, no renames.
+- **Tests:** integration test against the real test DB (never mock the DB layer).
 
-- **Where:** `packages/scraping-pipeline` — `handlers/bulk-download.handler.ts`, `BulkDownloadConfig`
-- **Also:** `opuspopuli-regions/schema/region-plugin.schema.json`
-- Config can currently map only one column to `externalId`. Add a `compositeKey: string[]` that joins
-  source columns with a stable separator.
-- **Tests:** composite key construction, collision behavior, back-compat when `compositeKey` is absent.
-- No migration. No GraphQL change.
+### 4. Cover-page-join resolution
 
-### 3. Correct the column mappings
+- **Where:** `apps/backend/src/apps/region/src/domains/` — new linker or extension of `CampaignFinanceSyncService`
+- Resolve `contributions.filing_id → cvr_filings.filer_id → committees.external_id`.
+- Follow `IndependentExpenditureLinkerService` (#955) — same shape, already reviewed.
+- **Tests:** unit tests for resolution + reconcile; integration test for the full join.
 
-- **Where:** `opuspopuli-regions` (separate repo — merges direct to `main`, publishes `@opuspopuli/regions`)
-- `RCPT_CD.TSV` and `EXPN_CD.TSV`: `committeeId` ← correct filer column; `externalId` ← composite key.
+### 5. Column mappings
+
+- **Where:** `opuspopuli-regions` (merges to `main`, publishes `@opuspopuli/regions`)
+- `RCPT_CD` / `EXPN_CD`: add `FILING_ID → filingId`; `externalId` ← composite key; drop or repurpose
+  the `CMTE_ID → committeeId` mapping.
+- Broaden cover-page ingestion to F460 (depends on #984).
 - Version bump, publish, consume in the monorepo.
-- **Tests:** schema validation in the regions repo.
 
-### 4. Re-ingest
+### 6. Re-ingest
 
-- **Where:** `apps/backend` region-worker
-- Existing rows carry both a wrong `committee_id` and an unstable `externalId`, so upsert **will not
-  converge** — a scoped delete of `source_system='cal_access'` contributions and expenditures is
-  required before re-ingest.
-- Snapshot the production DB first. Scope the delete by `source_system`; never run against the dev
-  `postgres` database (#796 discipline).
-- **Acceptance gate:** `/op-data-scan` pass on the resulting data.
+- **Where:** region-worker
+- Existing rows carry a wrong `committee_id` and an unstable `externalId`, so upsert **will not
+  converge** — scoped delete of `source_system='cal_access'` contributions and expenditures first.
+- DB snapshot beforehand. Scope by `source_system`. Never target the dev `postgres` DB (#796).
+- **Acceptance gate:** `/op-data-scan`.
 
-### 5. Verify and re-check aggregation semantics
+### 7. Verify aggregation semantics
 
-- **Where:** `apps/backend/src/apps/region/src/domains/representative-funding.service.ts`
-- Confirm `totalRaised` now means raised rather than contributed-out, and that
-  `totalSpent <= totalRaised` holds for a sample.
-- Cross-check 5–10 representatives against official CAL-ACCESS filings before it reaches production.
+- **Where:** `representative-funding.service.ts`
+- Confirm `totalRaised` means raised, and `totalSpent <= totalRaised` for a sample.
+- Cross-check 5–10 representatives against official CAL-ACCESS filings before production.
 
-### 6. Revisit #980 labeling
+### 8. Revisit labeling
 
-- **Where:** `apps/frontend/components/region/RepresentativeFundingPanel.tsx`, `locales/{en,es}/civics.json`
-- The interim "Identified donors" wording (shipped in the #979 PR) may revert to plain "Donors" once
-  counts are real. Re-run `pnpm test:a11y`.
+- **Where:** `RepresentativeFundingPanel.tsx`, `locales/{en,es}/civics.json`
+- The interim "Identified donors" wording may revert to "Donors" once counts are real. Re-run
+  `pnpm test:a11y`.
 
-**Ordering:** 2 and 3 may run in parallel after 1. 4 blocks on both. 5 and 6 follow 4.
-[#982](https://github.com/OpusPopuli/opuspopuli/issues/982) and
-[#983](https://github.com/OpusPopuli/opuspopuli/issues/983) are independent and can be scheduled
-separately.
+**Ordering:** #984 first. Then 2, 3, 5 in parallel; 4 after 3; 6 after all; 7–8 after 6.
+
+## Adjacent defects — split out
+
+- [#982](https://github.com/OpusPopuli/opuspopuli/issues/982) — committee rows whose `name` is a bare
+  numeric filer ID
+- [#983](https://github.com/OpusPopuli/opuspopuli/issues/983) — refunds netting against totals with no
+  sign handling (no ingestion dependency; can land any time)
 
 ## Data classification
 
-**PII, no PHI.** Individual contributor rows carry name, employer, occupation, city, state, and ZIP+4.
-All of it is published public record under California law, so ingestion is lawful — but volume changes
-the risk profile. Today ~29,809 individual rows survive; correcting the mapping could bring in
-millions.
+**PII, no PHI.** Individual contributor rows carry name, employer, occupation, city, state, ZIP+4 —
+published public record under CA law, so ingestion is lawful, but volume changes the risk profile.
+Today ~29,809 individual rows survive; the fix brings the stored total from 203,945 toward the
+1.21M extracted.
 
-Required considerations before subtask 4 lands:
+Required before subtask 6 lands:
 
 - **ZIP+4 minimization.** Name + employer + ZIP+4 approaches individually identifying. Decide whether
   ZIP+4 is needed or ZIP5 suffices.
 - **No model exposure.** Confirm contributor rows never reach prompts, embeddings, or the RAG index.
-  The knowledge service must not be indexing donor PII.
 - **Log masking.** Verify donor fields are in the audit-log masked set.
-- **Retention.** Campaign finance has no equivalent of the 90-day audit-log expiry. Needs an explicit
-  decision.
+- **Retention.** No equivalent of the 90-day audit-log expiry exists here. Needs an explicit decision.
 
 ## Risk register
 
 | Risk | Severity | Likelihood | Mitigation |
 |---|---|---|---|
-| Re-ingest requires deleting existing cal_access rows | high | likely | Scope delete by `source_system`; verify counts before/after; DB snapshot first; never target dev `postgres` (#796) |
-| Public-facing dollar figures change substantially | high | likely | Expected and correct, but re-verify a sample against official filings before production — same false-attribution exposure as #979 / #962 |
-| `FILER_ID` is not the correct replacement column | medium | possible | Defect A itself is confirmed; subtask 1 verifies the column name against the raw file before any mapping is written |
-| Refund handling (#983) changes published totals again | medium | possible | Land #983 deliberately with a matching UI label rather than as a silent numeric shift |
-| PII volume increase (29k → millions of individual rows) | medium | likely | See data classification; `/op-data-scan` as acceptance gate on subtask 4 |
-| Row-count growth degrades query performance | medium | likely | Verify index coverage on `contributions(committee_id)`; funding aggregation already caps its donor scan at 1000 |
-| Region config lives in a separate repo/package | low | likely | Coordinate `@opuspopuli/regions` publish before the monorepo consumes it |
-| Breaking change to `BulkDownloadConfig` | low | possible | `compositeKey` is additive and optional; existing configs unaffected |
+| Blocked by #984; F460 cover pages cannot populate | high | certain | Fix #984 first; do not start subtask 5 before it lands |
+| Re-ingest requires deleting existing cal_access rows | high | likely | Scope by `source_system`; verify counts before/after; snapshot first; never target dev `postgres` (#796) |
+| Public dollar figures change substantially | high | likely | Expected and correct, but re-verify a sample against official filings before production — same exposure as #979 / #962 |
+| Row count grows 203,945 → ~1.2M | medium | likely | Verify index coverage on `contributions(committee_id, filing_id)`; donor scan already capped at 1000 |
+| PII volume increase (~6x) | medium | likely | See data classification; `/op-data-scan` gate on subtask 6 |
+| Migration on a large existing table | medium | possible | Additive nullable column + concurrent index; no backfill in the migration itself |
+| Region config in a separate repo | low | likely | Publish `@opuspopuli/regions` before the monorepo consumes it |
 | AGPL-3.0 dependency constraint | low | rare | No new dependencies anticipated |
 
 ## Open questions
 
-1. Should this block launch? It is arguably a sibling of #979 rather than a follow-up — if the spike
-   confirms Defect A, every representative's dollar figures are currently measuring the wrong thing.
-2. Does the same `CMTE_ID` assumption affect `S496_CD.TSV` (independent expenditures), recently
-   reworked in #955?
-3. ~~Are Defects C and D in scope for #980?~~ Resolved — split into
-   [#982](https://github.com/OpusPopuli/opuspopuli/issues/982) and
-   [#983](https://github.com/OpusPopuli/opuspopuli/issues/983).
+1. Should this block launch? Every representative's dollar figures currently measure money paid out
+   rather than raised, over a ~17% sample. That is arguably a sibling of #979, not a follow-up.
+2. ~~Does `EXPN_CD` need the same cover-page join?~~ **Yes — verified.** `EXPN_CD` also has no
+   `FILER_ID`, carries the same `FILING_ID`/`AMEND_ID`/`LINE_ITEM`/`TRAN_ID` key columns, and its
+   `CMTE_ID` (col 26) sits in the payee block — so it identifies the *payee's* committee, not the
+   spender. `totalSpent` is inverted the same way `totalRaised` is.
+3. Should `cvr_filings` broaden to all form types, or gain a sibling table for F460?
