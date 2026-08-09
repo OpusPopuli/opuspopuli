@@ -5,12 +5,70 @@
  * inferSourceSystem logic. Centralising it here eliminates the clone.
  */
 
+import { createHash } from "node:crypto";
 import type {
   DataSourceConfig,
   ExtractionResult,
   RawExtractionResult,
 } from "@opuspopuli/common";
 import type { DomainMapperService } from "../mapping/domain-mapper.service.js";
+
+/** Characters of the digest kept when a readable discriminator isn't usable. */
+const DIGEST_LEN = 8;
+
+/**
+ * Longest category inlined verbatim. `pipeline_executions.source_url` is
+ * VarChar(1000); anything longer is digested instead of truncated, so the
+ * identity stays bounded without two long categories sharing a prefix.
+ */
+const MAX_DISCRIMINATOR_LEN = 80;
+
+function digest(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, DIGEST_LEN);
+}
+
+/**
+ * A token that differs between any two sources over the same file. Prefers the
+ * category because it stays greppable in the database — that readability is
+ * what lets an operator diagnose an empty source.
+ */
+function discriminatorFor(source: DataSourceConfig): string {
+  const category = source.category?.trim();
+  if (category && category.length <= MAX_DISCRIMINATOR_LEN) return category;
+  // No category, or one too long to inline. `contentGoal` is required by
+  // DataSourceConfig and necessarily differs between two sources over one
+  // file, so it backstops a category-less config.
+  return digest(category || source.contentGoal || "");
+}
+
+/**
+ * Build the resume-session identity for a source.
+ *
+ * `pipeline_executions` is keyed on `(pipeline_job_id, source_url)`, so this
+ * string must be unique per **source**, not per file. #950 appended the
+ * extracted `filePattern` because several CAL-ACCESS tables come out of one
+ * `dbwebexport.zip`. That is still not enough: two sources can read the *same
+ * file* from the *same URL* for different purposes — `california.json` reads
+ * `CVR_CAMPAIGN_DISCLOSURE_CD.TSV` twice, once for Form 496 IE cover pages
+ * (#955) and once for the committee roster (#936). Those share one execution
+ * row, so whichever runs second can inherit the first's applied-batch set and
+ * skip its stream — silently, since `items_failed` stays 0. That makes
+ * ingestion depend on source ordering (#984).
+ *
+ * See `discriminatorFor` for what separates two sources over one file.
+ *
+ * Changing this format is safe: sessions are scoped to `pipelineJobId`, which
+ * is new on every run, so no cross-run resume state depends on it.
+ */
+export function sessionSourceKey(
+  source: DataSourceConfig,
+  filePattern?: string,
+): string {
+  const parts = [source.url];
+  if (filePattern) parts.push(filePattern);
+  parts.push(discriminatorFor(source));
+  return parts.join("#");
+}
 
 /**
  * Build a RawExtractionResult, run it through the domain mapper, stamp
