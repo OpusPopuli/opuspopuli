@@ -178,59 +178,45 @@ export class CampaignFinanceSyncService {
       emptyExtractTracker.complete();
     }
 
-    // Attribute independent expenditures to their committee + target (#955) —
-    // runs BEFORE the proposition linker so the propositionTitle it stamps onto
-    // S496 IEs gets resolved to a propositionId in the same pass.
-    if (this.independentExpenditureLinker) {
-      try {
-        await this.independentExpenditureLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Independent-expenditure linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    // Attribute contributions/expenditures to their FILING committee (#980) —
-    // also before the proposition linker, which derives measure positions from
-    // the committees stamped here.
-    if (this.coverPageLinker) {
-      try {
-        await this.coverPageLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Cover-page linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    if (this.propositionFinanceLinker) {
-      try {
-        await this.propositionFinanceLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Proposition finance linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    // Attribute candidate committees to representatives (#941) — runs after
-    // enrichment so it sees committees with their real candidateName/office.
-    if (this.candidateCommitteeLinker) {
-      try {
-        await this.candidateCommitteeLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Candidate-committee linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
+    await this.runPostSyncLinkers();
 
     return {
       processed: totalProcessed,
       created: totalCreated,
       updated: totalUpdated,
     };
+  }
+
+  /**
+   * Run the attribution linkers, in order. Each is optional (they are
+   * `@Optional()` injections) and each is isolated: one failing must not cost
+   * the sync its upserted data or stop the others running.
+   *
+   * **The order is load-bearing.** Both the IE linker (#955) and the
+   * cover-page linker (#980) stamp `committeeId` onto rows the proposition
+   * linker then reads to derive measure positions — run it first and it sees
+   * nothing, silently writing no positions. The candidate-committee linker
+   * (#941) runs last so it sees committees carrying their enriched
+   * candidateName/office. Covered by campaign-finance-sync.service.spec.ts.
+   */
+  private async runPostSyncLinkers(): Promise<void> {
+    const linkers: Array<
+      [string, { linkAll(): Promise<unknown> } | undefined]
+    > = [
+      ['Independent-expenditure', this.independentExpenditureLinker],
+      ['Cover-page', this.coverPageLinker],
+      ['Proposition finance', this.propositionFinanceLinker],
+      ['Candidate-committee', this.candidateCommitteeLinker],
+    ];
+
+    for (const [name, linker] of linkers) {
+      if (!linker) continue;
+      try {
+        await linker.linkAll();
+      } catch (error) {
+        this.logger.warn(`${name} linker failed: ${(error as Error).message}`);
+      }
+    }
   }
 
   /**
