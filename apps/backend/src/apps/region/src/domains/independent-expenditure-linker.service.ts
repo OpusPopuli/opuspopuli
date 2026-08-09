@@ -75,7 +75,18 @@ export class IndependentExpenditureLinkerService {
 
     // Cover-page map: FILING_ID -> filer + target. One cover page per filing;
     // guard against duplicates (first wins — the upsert dedups by filingId too).
+    //
+    // Scoped to the pending filings rather than loading the table: #955 built
+    // this against an F496-only cvr_filings of ~31k rows, but #980 broadens the
+    // source to every campaign-disclosure form type (~662k), and the cost of an
+    // unfiltered read would keep scaling with the table.
+    const pendingFilingIds = [
+      ...new Set(
+        pending.map((ie) => ie.filingId).filter((id): id is string => !!id),
+      ),
+    ];
     const covers = await this.db.cvrFiling.findMany({
+      where: { filingId: { in: pendingFilingIds } },
       select: {
         filingId: true,
         filerId: true,

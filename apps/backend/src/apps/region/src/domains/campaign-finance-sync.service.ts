@@ -7,6 +7,7 @@ import {
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
 import { IndependentExpenditureLinkerService } from './independent-expenditure-linker.service';
+import { CoverPageLinkerService } from './cover-page-linker.service';
 import {
   campaignFinanceSyncTracker,
   type SyncPhaseTracker,
@@ -66,6 +67,8 @@ export class CampaignFinanceSyncService {
     private readonly candidateCommitteeLinker?: CandidateCommitteeLinkerService,
     @Optional()
     private readonly independentExpenditureLinker?: IndependentExpenditureLinkerService,
+    @Optional()
+    private readonly coverPageLinker?: CoverPageLinkerService,
   ) {}
 
   async sync(
@@ -184,6 +187,19 @@ export class CampaignFinanceSyncService {
       } catch (error) {
         this.logger.warn(
           `Independent-expenditure linker failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    // Attribute contributions/expenditures to their FILING committee (#980) —
+    // also before the proposition linker, which derives measure positions from
+    // the committees stamped here.
+    if (this.coverPageLinker) {
+      try {
+        await this.coverPageLinker.linkAll();
+      } catch (error) {
+        this.logger.warn(
+          `Cover-page linker failed: ${(error as Error).message}`,
         );
       }
     }

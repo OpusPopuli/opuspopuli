@@ -10,7 +10,7 @@
 | **Data classification** | **PII — no PHI.** Individual donor name, employer, occupation, city, state, ZIP+4. Public record under CA law. Volume increases ~6x when this lands. |
 | **Branch** | `fix/980-cal-access-contribution-mapping` (+ `opuspopuli-regions`) |
 | **Effort** | 3–4 focused sessions + one supervised cutover |
-| **Status** | Subtasks 0, 1, 3 and cutover steps C1–C2 complete. Next: C3 (linker + region config). |
+| **Status** | Code complete through C3. Next: C4 — the supervised truncate + rebuild. |
 
 ## Problem
 
@@ -201,7 +201,33 @@ All of C1–C3 land together, in one deploy, followed by the supervised C4/C5 re
 so behavior is unchanged — the only live effect is that a blank `CMTE_ID` no longer fails
 validation, and nothing produces such rows today.
 
-### C3. Cover-page-join linker + region config
+### C3. Cover-page-join linker + region config ✅ done (2026-08-09)
+
+**Monorepo:** new `CoverPageLinkerService` (`cover-page-linker.service.ts`), registered in
+`region.module.ts` and run from the sync *before* the proposition linker.
+
+- **Set-based, not row-by-row.** One `UPDATE … FROM cvr_filings JOIN committees` per table. #955's
+  shape — one `update()` per pending row through `batchTransaction` — is fine for tens of thousands
+  of IEs but would mean ~1.2M promises across ~2,400 transactions here.
+- The table name is interpolated (SQL identifiers cannot be bound), so it comes from a `const`
+  tuple: the only values that can reach the statement are two compile-time literals.
+- The leftover breakdown query runs **only** when the UPDATE left something behind, so the
+  steady-state re-sync costs one `count` per table and nothing else.
+- `PropositionFinanceLinkerService` now reads `filing_id` directly; `extractFilingId` is deleted.
+  Its "first hit per filing wins" rule is *now well-defined* rather than arbitrary — every row of a
+  filing shares that filing's filer, so the map has one possible value per key.
+- `IndependentExpenditureLinkerService`'s cover-page read is scoped to the pending filing IDs
+  (it was unfiltered, sized for an F496-only 31k-row table).
+
+**Region config** (`opuspopuli-regions`, `feat/composite-key-schema-980`, config v1.10.0):
+`CMTE_ID → committeeId` dropped from both tables, `FILING_ID → filingId` added, `compositeKey` set,
+and the cover-page source's `FORM_TYPE=F496` filter removed.
+
+**Tests:** 6 unit (orchestration) + 9 integration against real `postgres_test` — including the one
+that matters, that a contribution is attributed to the **filer** even when a counterparty committee
+row exists, plus idempotency, the soft-deleted-committee guard, and both skip reasons.
+
+<details><summary>Original scope notes</summary>
 
 **Linker** (`apps/backend/src/apps/region/src/domains/`):
 
@@ -224,6 +250,8 @@ validation, and nothing produces such rows today.
   `CMTE_ID → committeeId` mapping.
 - Broaden cover-page ingestion to all form types (see Decisions).
 - Version bump, publish, then consume in the monorepo. **Publish before the monorepo consumes it.**
+</details>
+
 
 ### C4. Truncate + rebuild
 

@@ -159,38 +159,46 @@ export class PropositionFinanceLinkerService {
    * `<FILING_ID>:<row index>` (or similar); we extract the FILING_ID prefix
    * and pair it with the row's `committeeId`.
    *
-   * Unattributed rows are excluded in SQL: since #980 the committee is stamped
-   * post-sync by the cover-page linker, so a row with a null `committeeId` has
-   * nothing to contribute to this index yet. Filtering in the query (rather
-   * than after hydration) matters because these reads are unpaginated — once
-   * the re-ingest lands, the unfiltered set is ~1.2M rows.
+   * Reads the `filing_id` column directly (#980). It previously recovered the
+   * filing id by splitting `externalId` on its first `:`/`-`, which the
+   * composite `externalId` would have quietly broken — every CVR2 row would
+   * have fallen into the `skipped` branch and proposition funding would read
+   * $0 with no error raised.
+   *
+   * The "first hit per filing wins" rule is now well-defined rather than
+   * arbitrary: since the cover-page linker stamps every row of a filing with
+   * that filing's *filer*, all rows sharing a `filingId` also share a
+   * `committeeId`. Rows still awaiting attribution are excluded in SQL — both
+   * because they have nothing to contribute, and because these reads are
+   * unpaginated and the table reaches ~1.2M rows.
    */
   private async buildFilingToCommitteeIndex(): Promise<Map<string, string>> {
     const map = new Map<string, string>();
-    const attributed = { committeeId: { not: null } };
+    const attributed = {
+      committeeId: { not: null },
+      filingId: { not: null },
+    };
+    const columns = { filingId: true, committeeId: true };
 
-    const addRows = async (
-      rows: Array<{ externalId: string; committeeId: string | null }>,
+    const addRows = (
+      rows: Array<{ filingId: string | null; committeeId: string | null }>,
     ) => {
       for (const r of rows) {
-        if (!r.committeeId) continue;
-        const filingId = this.extractFilingId(r.externalId);
-        if (filingId && !map.has(filingId)) {
-          map.set(filingId, r.committeeId);
-        }
+        if (!r.filingId || !r.committeeId) continue;
+        if (!map.has(r.filingId)) map.set(r.filingId, r.committeeId);
       }
     };
 
-    await addRows(
+    addRows(
       await this.db!.contribution.findMany({
         where: attributed,
-        select: { externalId: true, committeeId: true },
+        select: columns,
       }),
     );
-    await addRows(
+    addRows(
       await this.db!.expenditure.findMany({
         where: attributed,
-        select: { externalId: true, committeeId: true },
+        select: columns,
       }),
     );
 
@@ -458,17 +466,5 @@ export class PropositionFinanceLinkerService {
       .replaceAll(/[^a-z0-9\s]/g, ' ')
       .replaceAll(/\s+/g, ' ')
       .trim();
-  }
-
-  /**
-   * Pull the FILING_ID prefix out of an externalId. The bulk-download
-   * handler concatenates FILING_ID + a row discriminator with either ':'
-   * or '-' as the separator; we conservatively split on either. If no
-   * separator exists, the entire externalId is treated as the filing id.
-   */
-  private extractFilingId(externalId: string): string | null {
-    if (!externalId) return null;
-    const idx = externalId.search(/[:-]/);
-    return idx >= 0 ? externalId.slice(0, idx) : externalId;
   }
 }

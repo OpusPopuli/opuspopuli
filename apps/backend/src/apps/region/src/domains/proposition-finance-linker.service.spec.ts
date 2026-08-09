@@ -14,6 +14,8 @@ interface PropRow {
 
 interface ContribRow {
   externalId: string;
+  /// Read directly since #980 — no longer parsed out of externalId.
+  filingId: string | null;
   /// Nullable since #980 — unattributed until the cover-page linker runs.
   committeeId: string | null;
 }
@@ -21,6 +23,7 @@ interface ContribRow {
 interface ExpRow {
   id: string;
   externalId: string;
+  filingId?: string | null;
   committeeId: string;
   propositionTitle: string | null;
   propositionId: string | null;
@@ -67,7 +70,7 @@ function expenditureFindMany(args: any, rows: ExpRow[]): unknown[] {
       .map((e) => ({ id: e.id, propositionTitle: e.propositionTitle }));
   }
   return rows.map((e) => ({
-    externalId: e.externalId,
+    filingId: e.filingId ?? null,
     committeeId: e.committeeId,
   }));
 }
@@ -189,7 +192,7 @@ describe('PropositionFinanceLinkerService', () => {
       contribution: {
         findMany: jest.fn(async () =>
           contributions.map((c) => ({
-            externalId: c.externalId,
+            filingId: c.filingId,
             committeeId: c.committeeId,
           })),
         ),
@@ -283,7 +286,11 @@ describe('PropositionFinanceLinkerService', () => {
         ],
         contributions: [
           // FILING_ID 12345 → committeeId C-A
-          { externalId: '12345:1', committeeId: 'committee-A' },
+          {
+            externalId: '12345:1',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
         ],
         cvr2Filings: [
           {
@@ -321,8 +328,12 @@ describe('PropositionFinanceLinkerService', () => {
           // Same FILING_ID, but this row has not been attributed yet. Indexing
           // it would map filing 12345 -> null and, because the index keeps the
           // FIRST hit per filing, shadow the resolved row that follows.
-          { externalId: '12345:1', committeeId: null },
-          { externalId: '12345:2', committeeId: 'committee-A' },
+          { externalId: '12345:1', filingId: '12345', committeeId: null },
+          {
+            externalId: '12345:2',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
         ],
         cvr2Filings: [
           {
@@ -454,7 +465,13 @@ describe('PropositionFinanceLinkerService', () => {
             electionDate: new Date(),
           },
         ],
-        contributions: [{ externalId: '12345:1', committeeId: 'committee-A' }],
+        contributions: [
+          {
+            externalId: '12345:1',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
+        ],
         cvr2Filings: [
           {
             filingId: '12345',
@@ -497,7 +514,13 @@ describe('PropositionFinanceLinkerService', () => {
             electionDate: new Date(),
           },
         ],
-        contributions: [{ externalId: '12345:1', committeeId: 'committee-A' }],
+        contributions: [
+          {
+            externalId: '12345:1',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
+        ],
         cvr2Filings: [
           {
             filingId: '12345',
@@ -531,7 +554,13 @@ describe('PropositionFinanceLinkerService', () => {
             electionDate: new Date(),
           },
         ],
-        contributions: [{ externalId: '12345:1', committeeId: 'committee-A' }],
+        contributions: [
+          {
+            externalId: '12345:1',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
+        ],
         cvr2Filings: [
           {
             filingId: '12345',
@@ -560,7 +589,13 @@ describe('PropositionFinanceLinkerService', () => {
             electionDate: ancient,
           },
         ],
-        contributions: [{ externalId: '12345:1', committeeId: 'committee-A' }],
+        contributions: [
+          {
+            externalId: '12345:1',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
+        ],
         cvr2Filings: [
           {
             filingId: '12345',
