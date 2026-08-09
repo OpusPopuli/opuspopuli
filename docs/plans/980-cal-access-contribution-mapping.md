@@ -75,11 +75,10 @@ blocked by #984.
 
 ## Subtasks
 
-### 0. Unblock — #984 ⚠️ blocks everything
+### 0. Unblock — #984 ✅ done
 
-Two sources over `CVR_CAMPAIGN_DISCLOSURE_CD.TSV` collide on one resume session, so one silently
-ingests nothing. The F460 cover-page map cannot be populated until this is fixed. Not part of this
-branch — see #984.
+Resolved by #985 (`b5cde99` on develop): resume-session identity is now unique per source, so the
+broadened cover-page source no longer risks colliding with a sibling over the same file.
 
 ### 2. Composite `externalId`
 
@@ -157,7 +156,9 @@ Required before subtask 6 lands:
 
 | Risk | Severity | Likelihood | Mitigation |
 |---|---|---|---|
-| Blocked by #984; F460 cover pages cannot populate | high | certain | Fix #984 first; do not start subtask 5 before it lands |
+| ~~Blocked by #984~~ | — | — | Resolved — #985 merged to develop as `b5cde99` |
+| Broadening `cvr_filings` regresses the #955 IE linker | low | possible | Checked: the linker starts from S496 line items (`committeeId: null, filingId != null`) and looks each up by `FILING_ID`, which is unique per filing — so extra non-F496 rows sit unused rather than mis-matching. Still add a test with non-F496 rows present, and re-verify `independentExpenditures` counts after re-ingest |
+| `cvr_filings` grows 31,418 → ~662,076 | low | certain | `IndependentExpenditureLinkerService` does an **unfiltered** `cvrFiling.findMany()` (line 78), so the whole table lands in memory. region-worker is capped at 6G, so ~662k rows is comfortable — but scoping that query to the pending filing IDs is cheap hardening and stops the cost scaling with table size |
 | Re-ingest requires deleting existing cal_access rows | high | likely | Scope by `source_system`; verify counts before/after; snapshot first; never target dev `postgres` (#796) |
 | Public dollar figures change substantially | high | likely | Expected and correct, but re-verify a sample against official filings before production — same exposure as #979 / #962 |
 | Row count grows 203,945 → ~1.2M | medium | likely | Verify index coverage on `contributions(committee_id, filing_id)`; donor scan already capped at 1000 |
@@ -166,12 +167,29 @@ Required before subtask 6 lands:
 | Region config in a separate repo | low | likely | Publish `@opuspopuli/regions` before the monorepo consumes it |
 | AGPL-3.0 dependency constraint | low | rare | No new dependencies anticipated |
 
+## Decisions
+
+**Launch gate — this blocks launch** (decided 2026-08-08). Every representative page currently sums
+money paid *out* as money *raised*, over ~17% of the available rows. Same false-attribution class as
+#979, which was treated as launch-blocking.
+
+**Cover pages — broaden the existing source** (decided 2026-08-08). Drop
+`filters: {FORM_TYPE: 'F496'}` from `dataSources[10]` so `cvr_filings` covers all campaign-disclosure
+cover pages, rather than adding a second F460-filtered source or a sibling table. One source, one
+table, one ingest pass.
+
+Consequence to verify: `cvr_filings` grows from 31,418 toward the 662,076 rows extracted, and
+`IndependentExpenditureLinkerService` (#955) must keep working against the larger set. It joins on
+`FILING_ID`, which is unaffected by admitting more form types — but the IE linker's behavior on
+non-F496 filings needs an explicit test before this ships, because #955 built it against an
+F496-only table and may assume every row is an IE cover page.
+
 ## Open questions
 
-1. Should this block launch? Every representative's dollar figures currently measure money paid out
-   rather than raised, over a ~17% sample. That is arguably a sibling of #979, not a follow-up.
+1. ~~Should this block launch?~~ Resolved above — yes.
 2. ~~Does `EXPN_CD` need the same cover-page join?~~ **Yes — verified.** `EXPN_CD` also has no
    `FILER_ID`, carries the same `FILING_ID`/`AMEND_ID`/`LINE_ITEM`/`TRAN_ID` key columns, and its
    `CMTE_ID` (col 26) sits in the payee block — so it identifies the *payee's* committee, not the
    spender. `totalSpent` is inverted the same way `totalRaised` is.
-3. Should `cvr_filings` broaden to all form types, or gain a sibling table for F460?
+3. ~~Should `cvr_filings` broaden to all form types, or gain a sibling table?~~ Resolved above —
+   broaden the existing source.
