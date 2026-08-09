@@ -1735,7 +1735,9 @@ model Cvr2Filing {
 model CvrFiling {
   id               String   @id @default(uuid())
   externalId       String   @unique @map("external_id") /// FILING_ID (one cover page per filing)
-  filingId         String   @map("filing_id") @db.VarChar(50)
+  /// Unique: CoverPageLinkerService joins on this column and requires exactly one
+  /// cover page per filing, or donor money is attributed to an arbitrary filer (#980).
+  filingId         String   @unique @map("filing_id") @db.VarChar(50)
   filerId          String   @map("filer_id") @db.VarChar(50) /// CalAccess FILER_ID — same id space as committees.external_id
   candidateName    String?  @map("candidate_name")
   candidateOffice  String?  @map("candidate_office") @db.VarChar(50)
@@ -1745,7 +1747,6 @@ model CvrFiling {
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  @@index([filingId])
   @@index([filerId])
   @@map("cvr_filings")
 }

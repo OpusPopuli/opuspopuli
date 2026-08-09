@@ -240,6 +240,24 @@ describe('CoverPageLinkerService (#980)', () => {
     expect(row.committeeId).toBeNull();
   });
 
+  it('rejects a second cover page for the same filing', async () => {
+    // Load-bearing constraint, not hygiene: the linker joins on filing_id and
+    // assumes one cover page per filing. Two rows would let the UPDATE stamp an
+    // arbitrary filer onto donor money, and drive skippedNoCoverPage negative.
+    await seedFiler('FILER-1', '900001');
+
+    await expect(
+      db.cvrFiling.create({
+        data: {
+          externalId: '900001-duplicate',
+          filingId: '900001',
+          filerId: 'FILER-OTHER',
+          sourceSystem: 'cal_access',
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
   it('links many rows across filings in one pass', async () => {
     const filerA = await seedFiler('FILER-A', '900010');
     const filerB = await seedFiler('FILER-B', '900011');

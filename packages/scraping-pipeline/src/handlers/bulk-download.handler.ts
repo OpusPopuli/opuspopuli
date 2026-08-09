@@ -49,13 +49,33 @@ const DEFAULT_BATCH_SIZE = 10_000;
 
 /**
  * Joins `compositeKey` column values into an `externalId`. Matches the shape
- * single-column ids already have in this codebase (`<FILING_ID>:<LINE_ITEM>`),
- * so downstream prefix parsing keeps working when FILING_ID leads the key.
+ * single-column ids already have in this codebase (`<FILING_ID>:<LINE_ITEM>`).
+ *
+ * Note this is a display/identity convention only — nothing parses an id back
+ * apart. The one consumer that did (`extractFilingId`) was replaced by a real
+ * `filing_id` column in #980, precisely so that changing a key's layout can
+ * never silently break a downstream reader again.
  */
 const COMPOSITE_KEY_SEPARATOR = ":";
 
 /** Callback invoked with each batch of mapped domain objects */
 export type OnBatchCallback<T> = (items: T[]) => Promise<void>;
+
+/**
+ * Everything a single data line needs to become a record. Bundled rather than
+ * passed positionally — the parameter list had reached the point where adding
+ * one more (SonarCloud S107 caps it at 7) traded a readable signature for a
+ * lint waiver.
+ */
+interface ParseContext {
+  delimiter: string;
+  mappings: Record<string, string>;
+  filters: Record<string, string>;
+  colIndices: Record<string, number>;
+  filterIndices: Record<string, number>;
+  compositeIndices: number[];
+  sourceSystem: string | undefined;
+}
 
 @Injectable()
 export class BulkDownloadHandler {
@@ -443,6 +463,16 @@ export class BulkDownloadHandler {
     const buildComposite = this.buildCompositeIndices.bind(this);
     const processData = this.processDataLine.bind(this);
 
+    const context = (): ParseContext => ({
+      delimiter,
+      mappings,
+      filters,
+      colIndices,
+      filterIndices,
+      compositeIndices,
+      sourceSystem,
+    });
+
     return {
       processLine(line: string): Record<string, unknown> | null {
         if (lineNum < headerSkip) {
@@ -462,16 +492,7 @@ export class BulkDownloadHandler {
         }
 
         lineNum++;
-        return processData(
-          line,
-          delimiter,
-          mappings,
-          filters,
-          colIndices,
-          filterIndices,
-          sourceSystem,
-          compositeIndices,
-        );
+        return processData(line, context());
       },
     };
   }
@@ -482,21 +503,17 @@ export class BulkDownloadHandler {
    */
   private processDataLine(
     line: string,
-    delimiter: string,
-    mappings: Record<string, string>,
-    filters: Record<string, string>,
-    colIndices: Record<string, number>,
-    filterIndices: Record<string, number>,
-    sourceSystem: string | undefined,
-    compositeIndices: number[] = [],
+    ctx: ParseContext,
   ): Record<string, unknown> | null {
     if (!line.trim()) return null;
 
-    const values = line.split(delimiter);
+    const { compositeIndices, sourceSystem } = ctx;
+    const values = line.split(ctx.delimiter);
 
-    if (!this.passesFilters(values, filters, filterIndices)) return null;
+    if (!this.passesFilters(values, ctx.filters, ctx.filterIndices))
+      return null;
 
-    const record = this.mapRow(values, mappings, colIndices);
+    const record = this.mapRow(values, ctx.mappings, ctx.colIndices);
 
     if (compositeIndices.length > 0) {
       const segments = compositeIndices.map((idx) =>
@@ -558,8 +575,11 @@ export class BulkDownloadHandler {
     for (const col of Object.keys(columns)) {
       const idx = headers.indexOf(col);
       if (idx === -1) {
+        // Same reasoning as buildCompositeIndices: when the first line isn't
+        // actually a header row it holds donor data, so log its shape, not its
+        // cells (#980 review).
         this.logger.warn(
-          `Column '${col}' not found in file headers. Available: ${headers.slice(0, 10).join(", ")}`,
+          `Column '${col}' not found in file headers (${headers.length} column(s) present).`,
         );
       } else {
         indices[col] = idx;
@@ -584,9 +604,15 @@ export class BulkDownloadHandler {
   ): number[] {
     const missing = compositeKey.filter((col) => !headers.includes(col));
     if (missing.length > 0) {
+      // Report the shape of the header row, never its contents. `headers` is
+      // just the file's first non-skipped line — and this error fires precisely
+      // when that line ISN'T a header row, i.e. when it is a data row. Echoing
+      // its cells would put donor name/employer/city/ZIP into an error-level log
+      // that propagates to the persisted pipeline errors[] and on to Loki.
       throw new Error(
         `compositeKey column(s) not found in file headers: ${missing.join(", ")}. ` +
-          `Available: ${headers.slice(0, 10).join(", ")}`,
+          `Header row has ${headers.length} column(s); ` +
+          `expected columns are configured in the region plugin.`,
       );
     }
     return compositeKey.map((col) => headers.indexOf(col));

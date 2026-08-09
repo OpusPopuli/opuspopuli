@@ -13,6 +13,12 @@ export interface IndependentExpenditureLinkResult {
   considered: number;
 }
 
+/**
+ * Ids per `in` clause. Well under Postgres's 32,767-bind-parameter ceiling,
+ * which Prisma does not chunk for you.
+ */
+const FILING_ID_CHUNK = 10_000;
+
 /** A Form 496 cover-page row, reduced to the join + target fields the linker uses. */
 type CoverRow = {
   filingId: string;
@@ -80,21 +86,34 @@ export class IndependentExpenditureLinkerService {
     // this against an F496-only cvr_filings of ~31k rows, but #980 broadens the
     // source to every campaign-disclosure form type (~662k), and the cost of an
     // unfiltered read would keep scaling with the table.
+    //
+    // Chunked because Prisma binds one parameter per `in` element and Postgres
+    // caps a prepared statement at 32,767 of them. `pending` is unbounded — the
+    // first run after a rebuild has every S496 row awaiting a committee — and
+    // the sync swallows this linker's failures as a warning, so blowing the
+    // limit would look like "IEs quietly stopped linking".
     const pendingFilingIds = [
       ...new Set(
         pending.map((ie) => ie.filingId).filter((id): id is string => !!id),
       ),
     ];
-    const covers = await this.db.cvrFiling.findMany({
-      where: { filingId: { in: pendingFilingIds } },
-      select: {
-        filingId: true,
-        filerId: true,
-        candidateName: true,
-        propositionTitle: true,
-        supportOrOppose: true,
-      },
-    });
+    const covers: CoverRow[] = [];
+    for (let i = 0; i < pendingFilingIds.length; i += FILING_ID_CHUNK) {
+      covers.push(
+        ...(await this.db.cvrFiling.findMany({
+          where: {
+            filingId: { in: pendingFilingIds.slice(i, i + FILING_ID_CHUNK) },
+          },
+          select: {
+            filingId: true,
+            filerId: true,
+            candidateName: true,
+            propositionTitle: true,
+            supportOrOppose: true,
+          },
+        })),
+      );
+    }
     const coverByFiling = this.indexCoversByFiling(covers);
     if (coverByFiling.size === 0) {
       return {

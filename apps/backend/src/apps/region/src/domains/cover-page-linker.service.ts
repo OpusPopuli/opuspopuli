@@ -26,6 +26,13 @@ export interface CoverPageLinkResult {
 const LINKED_TABLES = ['contributions', 'expenditures'] as const;
 type LinkedTable = (typeof LINKED_TABLES)[number];
 
+/**
+ * Rows attributed per transaction. Bounds WAL, lock duration and dead-tuple
+ * churn on the first post-rebuild run without making the ~1.2M-row backfill
+ * take a meaningfully different amount of total work.
+ */
+const LINK_BATCH_SIZE = 50_000;
+
 const EMPTY_TABLE_RESULT: CoverPageLinkTableResult = {
   considered: 0,
   linked: 0,
@@ -78,10 +85,19 @@ export class CoverPageLinkerService {
   }
 
   /**
-   * Resolve one table in a single statement.
+   * Resolve one table, in bounded batches.
    *
-   * `cvr_filings.external_id` IS the FILING_ID and carries a unique constraint,
-   * so there is exactly one cover page per filing and the join cannot fan out.
+   * `cvr_filings.filing_id` is `@unique`, so exactly one cover page exists per
+   * filing and the join cannot fan out. (That constraint is load-bearing, not
+   * decorative — without it the UPDATE would pick an arbitrary filer.)
+   *
+   * Batched rather than one statement: the first post-rebuild run faces ~1.2M
+   * unattributed rows, and a single transaction there means multi-GB of WAL,
+   * ~1.2M dead tuples across seven indexes, and a lock held for the whole build.
+   * Worse, any statement timeout rolls the entire thing back and the next sync
+   * restarts from zero. Batching costs the same total work but is resumable,
+   * bounds each transaction, and reports progress. Steady-state runs resolve a
+   * handful of rows and exit after one iteration.
    */
   private async linkTable(
     table: LinkedTable,
@@ -89,24 +105,30 @@ export class CoverPageLinkerService {
     const considered = await this.countUnattributed(table);
     if (considered === 0) return { ...EMPTY_TABLE_RESULT };
 
-    const linked = await this.db!.$executeRawUnsafe(
-      `UPDATE "${table}" AS t
-          SET "committee_id" = c."id",
-              "updated_at"   = NOW()
-         FROM "cvr_filings" AS f
-         JOIN "committees"  AS c
-           ON c."external_id" = f."filer_id"
-          AND c."deleted_at" IS NULL
-        WHERE t."committee_id" IS NULL
-          AND t."filing_id" IS NOT NULL
-          AND f."filing_id" = t."filing_id"`,
-    );
+    // Bounded rather than `while (true)`: the loop's exit depends on a value
+    // the database returns, so a driver that ever answered with something
+    // non-numeric would spin forever inside a sync. `+2` covers the final
+    // zero-row probe and any rows inserted while we run.
+    const maxBatches = Math.ceil(considered / LINK_BATCH_SIZE) + 2;
+    let linked = 0;
+    for (let i = 0; i < maxBatches; i++) {
+      const batch = await this.linkBatch(table);
+      if (!batch) break;
+      linked += batch;
+      if (linked < considered) {
+        this.logger.debug(
+          `Cover-page linker (${table}): ${linked}/${considered}`,
+        );
+      }
+    }
 
     const result = {
       ...EMPTY_TABLE_RESULT,
       considered,
       linked,
-      ...(await this.explainRemaining(table, considered - linked)),
+      // max(0): `considered` is counted before the UPDATE, so a concurrent
+      // insert could otherwise drive this negative.
+      ...(await this.explainRemaining(table, Math.max(0, considered - linked))),
     };
 
     this.logger.log(
@@ -116,6 +138,42 @@ export class CoverPageLinkerService {
     );
 
     return result;
+  }
+
+  /**
+   * Attribute up to {@link LINK_BATCH_SIZE} rows; returns how many were stamped.
+   *
+   * The subquery re-applies the full join rather than just filtering on
+   * `committee_id IS NULL`. That matters: rows whose filing has no cover page,
+   * or whose filer matches no committee, are legitimately unresolvable. If the
+   * batch could select those, a batch made up entirely of them would update 0
+   * rows and end the loop while resolvable rows remained further along — a
+   * silent partial link. Selecting only rows that *will* resolve means a
+   * short batch can only mean "nothing left to do".
+   */
+  private async linkBatch(table: LinkedTable): Promise<number> {
+    return this.db!.$executeRawUnsafe(
+      `UPDATE "${table}" AS t
+          SET "committee_id" = c."id",
+              "updated_at"   = NOW()
+         FROM "cvr_filings" AS f
+         JOIN "committees"  AS c
+           ON c."external_id" = f."filer_id"
+          AND c."deleted_at" IS NULL
+        WHERE t."ctid" IN (
+                SELECT s."ctid"
+                  FROM "${table}" AS s
+                  JOIN "cvr_filings" AS sf ON sf."filing_id" = s."filing_id"
+                  JOIN "committees"  AS sc
+                    ON sc."external_id" = sf."filer_id"
+                   AND sc."deleted_at" IS NULL
+                 WHERE s."committee_id" IS NULL
+                   AND s."filing_id" IS NOT NULL
+                 LIMIT ${LINK_BATCH_SIZE}
+              )
+          AND t."committee_id" IS NULL
+          AND f."filing_id" = t."filing_id"`,
+    );
   }
 
   private async countUnattributed(table: LinkedTable): Promise<number> {
@@ -142,12 +200,19 @@ export class CoverPageLinkerService {
       return { skippedNoCoverPage: 0, skippedNoCommittee: 0 };
     }
 
+    // EXISTS, not JOIN: a join would count (row, cover page) pairs rather than
+    // rows, so any fan-out would make hadCoverPage exceed `remaining` and drive
+    // skippedNoCoverPage negative. The unique constraint on cvr_filings.filing_id
+    // should prevent that; this is the belt to its braces.
     const rows = await this.db!.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT COUNT(*)::bigint AS count
          FROM "${table}" AS t
-         JOIN "cvr_filings" AS f ON f."filing_id" = t."filing_id"
         WHERE t."committee_id" IS NULL
-          AND t."filing_id" IS NOT NULL`,
+          AND t."filing_id" IS NOT NULL
+          AND EXISTS (
+                SELECT 1 FROM "cvr_filings" AS f
+                 WHERE f."filing_id" = t."filing_id"
+              )`,
     );
     const hadCoverPage = Number(rows[0]?.count ?? 0);
 

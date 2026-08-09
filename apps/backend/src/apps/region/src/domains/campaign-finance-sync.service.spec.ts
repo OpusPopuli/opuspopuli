@@ -150,3 +150,70 @@ describe('CampaignFinanceSyncService.enrichCommittees (#939)', () => {
     expect($transaction).not.toHaveBeenCalled();
   });
 });
+
+describe('CampaignFinanceSyncService — post-sync linker ordering (#980)', () => {
+  function buildWithLinkers() {
+    const db = {
+      committee: {
+        upsert: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      $transaction: jest.fn().mockResolvedValue([]),
+    } as unknown as DbService;
+
+    const linker = (name: string) => ({
+      linkAll: jest.fn().mockResolvedValue({ name }),
+    });
+    const propositionFinanceLinker = linker('proposition');
+    const candidateCommitteeLinker = linker('candidate');
+    const independentExpenditureLinker = linker('ie');
+    const coverPageLinker = linker('coverPage');
+
+    const svc = new CampaignFinanceSyncService(
+      db,
+      propositionFinanceLinker as never,
+      candidateCommitteeLinker as never,
+      independentExpenditureLinker as never,
+      coverPageLinker as never,
+    );
+
+    const provider = {
+      fetchCampaignFinance: jest.fn().mockResolvedValue(result([])),
+    };
+
+    return {
+      svc,
+      provider,
+      coverPageLinker,
+      propositionFinanceLinker,
+      independentExpenditureLinker,
+    };
+  }
+
+  it('runs the cover-page linker BEFORE the proposition linker', async () => {
+    // Load-bearing ordering, not a preference. The proposition linker derives
+    // measure positions from `filing_id -> committee_id`, which only exists
+    // once the cover-page linker has stamped it. Reverse these and proposition
+    // funding silently reads $0 — no exception, nothing fails.
+    const { svc, provider, coverPageLinker, propositionFinanceLinker } =
+      buildWithLinkers();
+
+    await svc.sync(provider as never);
+
+    expect(coverPageLinker.linkAll).toHaveBeenCalled();
+    expect(propositionFinanceLinker.linkAll).toHaveBeenCalled();
+    expect(coverPageLinker.linkAll.mock.invocationCallOrder[0]).toBeLessThan(
+      propositionFinanceLinker.linkAll.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('still runs the proposition linker when the cover-page linker throws', async () => {
+    const { svc, provider, coverPageLinker, propositionFinanceLinker } =
+      buildWithLinkers();
+    coverPageLinker.linkAll.mockRejectedValue(new Error('boom'));
+
+    await expect(svc.sync(provider as never)).resolves.toBeDefined();
+
+    expect(propositionFinanceLinker.linkAll).toHaveBeenCalled();
+  });
+});

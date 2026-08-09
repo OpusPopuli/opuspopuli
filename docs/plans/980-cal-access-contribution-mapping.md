@@ -253,6 +253,63 @@ row exists, plus idempotency, the soft-deleted-committee guard, and both skip re
 </details>
 
 
+### C3b. Review hardening ✅ done (2026-08-09)
+
+Applied after a three-lens review of C1–C3:
+
+- **`cvr_filings.filing_id` is now `@unique`** (migration `20260809120000`). The linker joins on it
+  and requires one cover page per filing; that held only via three facts across two repos
+  (`external_id` unique + mapper defaulting `externalId = filingId` + the region config declining to
+  map one). Give the cover-page source a `compositeKey` — the feature C1 just added — and the join
+  fans out, attributing donor money to an arbitrary filer. Now a database guarantee.
+- **Partial `pending_link` indexes** on both tables. The plain `filing_id` index does not serve
+  `WHERE committee_id IS NULL`; the partial one stays tiny and empties as rows resolve.
+- **The 1.2M-row UPDATE is batched** (50k/transaction). One statement meant multi-GB WAL, ~1.2M dead
+  tuples across seven indexes, and a timeout rolling the whole thing back to restart from zero.
+  The batch subquery re-applies the full join, so a short batch can only mean "nothing left" —
+  filtering only on `committee_id IS NULL` would let a batch of unresolvable rows end the loop early
+  and silently half-link. Loop is bounded, not `while (true)`.
+- **`explainRemaining` uses `EXISTS`, not `JOIN`** — a join counts row/cover-page pairs, so any
+  fan-out would make `skippedNoCoverPage` negative. Plus a `max(0, …)` guard against concurrent
+  inserts landing between the count and the update.
+- **Donor PII no longer reaches error logs.** The `compositeKey` throw echoed the first ten cells of
+  the header row — and it fires *precisely* when that row isn't a header, i.e. when it holds donor
+  data. It propagates to the persisted pipeline `errors[]` and on to Loki. Now reports column count
+  only; the pre-existing `buildColumnIndices` warn was fixed the same way.
+- **IE linker `in` clause chunked** at 10k. Prisma binds one parameter per element against
+  Postgres's 32,767 ceiling, `pending` is unbounded, and the sync swallows the failure as a warning
+  — so overflowing would read as "IEs quietly stopped linking".
+- **`buildFilingToCommitteeIndex` de-duplicates in SQL** (`DISTINCT ON`). It built a ~662k-entry map
+  by hydrating ~1.2M row objects; the `committeeId IS NOT NULL` filter does not help, because after
+  the linker succeeds nearly every row passes it.
+- `processDataLine` takes a `ParseContext` (SonarCloud S107 caps parameters at 7; it had reached 8).
+- **Tests added:** the cover-page linker runs *before* the proposition linker, and still yields to it
+  when it throws — the ordering the whole design rests on, previously unasserted; plus the
+  one-cover-page-per-filing constraint.
+
+### ⚠️ C4 gate — verify amendment handling before rebuilding
+
+**Unresolved, and it can invert the fix.** CAL-ACCESS retains every amendment of a filing in
+`RCPT_CD`/`EXPN_CD` — same `FILING_ID`, incremented `AMEND_ID` — and an amendment restates the whole
+schedule. `cvr_filings` is deduped by `FILING_ID` (`domain-mapper.service.ts:395`), but line items
+now are not: `AMEND_ID` sits in the composite key, so an amended $500 receipt lands twice and the
+linker stamps both with the same filer. `totalRaised` reads $1,000.
+
+The old `TRAN_ID`-only key accidentally deduped this. So C1 fixes cross-filing collisions and may
+introduce amendment inflation **on the exact metric this issue exists to correct**. Note the extract
+counts (1,210,475 → 203,945) were attributed to blank-`CMTE_ID` rejections plus `TRAN_ID` collisions;
+if a meaningful share was actually amendment restatements, the new key inflates.
+
+Check against the bulk file before any rebuild:
+
+```
+awk -F'\t' 'NR>1{print $1"\t"$2}' RCPT_CD.TSV | sort -u | cut -f1 | uniq -d | wc -l
+```
+
+Non-zero ⇒ either drop `AMEND_ID` from the `compositeKey` (last amendment upserts over earlier ones)
+or add a latest-amendment filter. Either way it is a `@opuspopuli/regions` change, so settle it
+before publishing the version the rebuild consumes.
+
 ### C4. Truncate + rebuild
 
 - **Snapshot prod first** — for rollback *and* because C5 needs the old figures to diff against.

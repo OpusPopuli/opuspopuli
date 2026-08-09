@@ -69,10 +69,7 @@ function expenditureFindMany(args: any, rows: ExpRow[]): unknown[] {
       .filter((e) => e.propositionId === null && e.propositionTitle)
       .map((e) => ({ id: e.id, propositionTitle: e.propositionTitle }));
   }
-  return rows.map((e) => ({
-    filingId: e.filingId ?? null,
-    committeeId: e.committeeId,
-  }));
+  return [];
 }
 
 /** Same shape as expenditureFindMany but for IndependentExpenditure rows. */
@@ -190,12 +187,7 @@ describe('PropositionFinanceLinkerService', () => {
         }),
       },
       contribution: {
-        findMany: jest.fn(async () =>
-          contributions.map((c) => ({
-            filingId: c.filingId,
-            committeeId: c.committeeId,
-          })),
-        ),
+        findMany: jest.fn(async () => []),
       },
       expenditure: {
         findMany: jest.fn(async (args?: any) =>
@@ -222,6 +214,26 @@ describe('PropositionFinanceLinkerService', () => {
       cvr2Filing: {
         findMany: jest.fn(async () => cvr2Filings),
       },
+      // buildFilingToCommitteeIndex now de-duplicates in SQL (#980), so serve
+      // snake_case rows the way Postgres would, one per filing.
+      $queryRawUnsafe: jest.fn(async (sql: string) => {
+        const rows = sql.includes('"contributions"')
+          ? contributions.map((c) => ({
+              filing_id: c.filingId,
+              committee_id: c.committeeId,
+            }))
+          : expRows.map((e) => ({
+              filing_id: e.filingId ?? null,
+              committee_id: e.committeeId,
+            }));
+        const seen = new Set<string>();
+        return rows.filter((r) => {
+          if (!r.filing_id || !r.committee_id) return false;
+          if (seen.has(r.filing_id)) return false;
+          seen.add(r.filing_id);
+          return true;
+        });
+      }),
       committeeMeasurePosition: {
         upsert: upsertPosition,
       },

@@ -13,10 +13,23 @@ function build(opts: {
   updated?: number[];
   hadCoverPage?: number;
 }) {
-  const executeRawUnsafe = jest.fn();
-  for (const n of opts.updated ?? [0, 0]) {
-    executeRawUnsafe.mockResolvedValueOnce(n);
-  }
+  // The service links in batches until an UPDATE returns 0, and runs both
+  // tables concurrently. Dispatch on the SQL text rather than call order — a
+  // mockResolvedValueOnce queue would depend on how the two concurrent chains
+  // interleave, which is not a guarantee the service makes.
+  const [contribUpdated, expendUpdated] = opts.updated ?? [0, 0];
+  const remaining = new Map<string, number>([
+    ['contributions', contribUpdated],
+    ['expenditures', expendUpdated],
+  ]);
+  const executeRawUnsafe = jest.fn(async (sql: string) => {
+    const table = sql.includes('UPDATE "contributions"')
+      ? 'contributions'
+      : 'expenditures';
+    const left = remaining.get(table) ?? 0;
+    remaining.set(table, 0);
+    return left;
+  });
   const queryRawUnsafe = jest
     .fn()
     .mockResolvedValue([{ count: BigInt(opts.hadCoverPage ?? 0) }]);
@@ -79,9 +92,9 @@ describe('CoverPageLinkerService (#980)', () => {
 
     const res = await svc.linkAll();
 
-    // One UPDATE per table — not one per row. At 1.2M rows the row-by-row
-    // shape #955 uses would mean 1.2M promises across ~2,400 transactions.
-    expect(executeRawUnsafe).toHaveBeenCalledTimes(2);
+    // Batched, not one statement per row: the row-by-row shape #955 uses would
+    // mean 1.2M promises across ~2,400 transactions at this scale.
+    expect(executeRawUnsafe.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(res.contributions.linked).toBe(1200000);
     expect(res.expenditures.linked).toBe(400000);
 

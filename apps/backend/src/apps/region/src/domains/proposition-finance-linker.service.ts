@@ -164,39 +164,39 @@ export class PropositionFinanceLinkerService {
    * The "first hit per filing wins" rule is now well-defined rather than
    * arbitrary: since the cover-page linker stamps every row of a filing with
    * that filing's *filer*, all rows sharing a `filingId` also share a
-   * `committeeId`. Rows still awaiting attribution are excluded in SQL — both
-   * because they have nothing to contribute, and because these reads are
-   * unpaginated and the table reaches ~1.2M rows.
+   * `committeeId`.
+   *
+   * De-duplicated in SQL via `DISTINCT ON`, not in JS. The map only ever holds
+   * one entry per filing (~662k), but a `findMany` would hydrate one object per
+   * *line item* (~1.2M contributions plus expenditures) to build it — hundreds
+   * of MB of throwaway objects in region-worker at the tail of every sync.
+   * Filtering on `committeeId IS NOT NULL` does not help there: once the
+   * cover-page linker succeeds, nearly every row passes it.
    */
   private async buildFilingToCommitteeIndex(): Promise<Map<string, string>> {
     const map = new Map<string, string>();
-    const attributed = {
-      committeeId: { not: null },
-      filingId: { not: null },
-    };
-    const columns = { filingId: true, committeeId: true };
 
     const addRows = (
-      rows: Array<{ filingId: string | null; committeeId: string | null }>,
+      rows: Array<{ filing_id: string; committee_id: string }>,
     ) => {
       for (const r of rows) {
-        if (!r.filingId || !r.committeeId) continue;
-        if (!map.has(r.filingId)) map.set(r.filingId, r.committeeId);
+        if (!map.has(r.filing_id)) map.set(r.filing_id, r.committee_id);
       }
     };
 
-    addRows(
-      await this.db!.contribution.findMany({
-        where: attributed,
-        select: columns,
-      }),
-    );
-    addRows(
-      await this.db!.expenditure.findMany({
-        where: attributed,
-        select: columns,
-      }),
-    );
+    for (const table of ['contributions', 'expenditures'] as const) {
+      addRows(
+        await this.db!.$queryRawUnsafe<
+          Array<{ filing_id: string; committee_id: string }>
+        >(
+          `SELECT DISTINCT ON ("filing_id") "filing_id", "committee_id"
+             FROM "${table}"
+            WHERE "committee_id" IS NOT NULL
+              AND "filing_id" IS NOT NULL
+            ORDER BY "filing_id"`,
+        ),
+      );
+    }
 
     return map;
   }
