@@ -7,10 +7,10 @@
 | **Related** | [#979](https://github.com/OpusPopuli/opuspopuli/issues/979), [#962](https://github.com/OpusPopuli/opuspopuli/issues/962), [#982](https://github.com/OpusPopuli/opuspopuli/issues/982), [#983](https://github.com/OpusPopuli/opuspopuli/issues/983), [#954](https://github.com/OpusPopuli/opuspopuli/issues/954) |
 | **Date** | 2026-08-09 (rewritten around the clean cutover) |
 | **Author** | Rodney Gagnon |
-| **Data classification** | **PII — no PHI.** Individual donor name, employer, occupation, city, state, ZIP+4. Public record under CA law. Volume increases ~83x when this lands (see the C4 blocker — the file holds 20.2M rows, not the 1.21M previously assumed). |
+| **Data classification** | **PII — no PHI.** Individual donor name, employer, occupation, city, state, ZIP+4. Public record under CA law. Volume increases ~83x when this lands — the file holds 20,177,193 rows, and `items_extracted` (1.21M) is a post-validation count, not a measure of the source. |
 | **Branch** | `fix/980-cal-access-contribution-mapping` (+ `opuspopuli-regions`) |
 | **Effort** | 3–4 focused sessions + one supervised cutover |
-| **Status** | Code complete through C3. **C4 blocked**: pipeline reads ~6% of RCPT_CD (20.2M rows in file vs 1.21M extracted). |
+| **Status** | Code complete through C3 and merged to `develop`. C4 (truncate + rebuild) is next; gated on the PII decisions, not on any pipeline defect. |
 
 ## Problem
 
@@ -57,8 +57,8 @@ RCPT_CD.TSV   2026-08-05   items_extracted: 1,210,475   items_failed: 0
 contributions (source_system='cal_access'):                203,945
 ```
 
-~1M rows dropped after the extraction counter — schema rejects and `TRAN_ID` upsert collapse both
-happen downstream of it, which is why nothing surfaced as a failure.
+~1M rows dropped, and nothing surfaced as a failure. (Corrected later: they are dropped *before*
+the counter, not after — `items_extracted` is a post-zod count. See "The 16× extraction gap" below.)
 
 **Defect A confirmed empirically.** Of 151,986 committee-donor rows, 40,003 have a `donor_name`
 exactly equal to the name of the committee their `committee_id` points at; the remainder are the
@@ -315,23 +315,40 @@ Proper fix (follow-up): store `amend_id` and supersede non-latest versions post-
 preserves the audit trail, arguably the right shape for a transparency platform. Same follow-up
 removes the last-write-wins nondeterminism from the 454 rows where `AMEND_ID` decreases in file order.
 
-### ⚠️ C4 blocker — the pipeline reads ~6% of the source
+### The "16× extraction gap" ✅ resolved — not a bug, it *is* the defect
 
-**`RCPT_CD.TSV` has 20,177,193 data rows. The production run recorded `items_extracted: 1,210,475`.**
-A 16× gap, found while settling the amendment question.
+**Briefly recorded here as a C4 blocker. It was neither a blocker nor a bug — corrected 2026-08-09.**
 
-This resets the scale assumptions this plan was written against:
+`RCPT_CD.TSV` has 20,177,193 data rows against `items_extracted: 1,210,475`, which looked like the
+pipeline reading 6% of its source. It is not. Measured on the same export:
 
-- post-fix `contributions` is **~17M rows, not ~1.2M**
-- PII volume grows **~83×** from today's 203,945, not the ~6× recorded below
-- rebuild duration, batch sizing, index strategy, and the `@Public()` bulk-scrape question all get
-  materially worse
+```
+total data rows     20,177,193
+CMTE_ID blank       18,966,484  (94.0%)
+CMTE_ID present      1,210,709  ( 6.0%)   <- items_extracted was 1,210,475
+```
 
-`MAX_RECORDS = 100_000` in `bulk-download.handler.ts` sits on the non-streaming path, so it does not
-explain 1.21M. Not diagnosed further: dev holds no finance rows and the Studio was unreachable.
+**A 234-row difference, 0.02%.** `items_extracted` counts `totalItems`, which increments *after*
+`mapBatchItems` (`bulk-download.handler.ts:175,195`) — i.e. after zod. `ContributionSchema` required
+`committeeId`, and 94% of RCPT rows have a blank `CMTE_ID` (every individual donor), so they were
+rejected before ever reaching the counter.
 
-**This blocks C4.** Rebuilding against a pipeline that reads 6% of the source yields confidently
-wrong figures — a worse failure than today's, because they look plausible.
+So the pipeline reads the whole file correctly. The 94% loss **is** this issue's defect, and C2
+already fixes it by making `committeeId` optional. Nothing to diagnose; C4 is not blocked by this.
+
+Two corrections this forces on earlier notes in this plan:
+
+- The spike's "~1M rows dropped *after* the extraction counter" is backwards — they are dropped
+  *before* it. The counter never saw them.
+- `items_extracted` is a **post-validation** count. It is not a measure of how much of a source was
+  read, and should not be used as one when sizing future work.
+
+Residual: 234 rows with a present `CMTE_ID` that still did not extract (~0.02%) — presumably other
+zod failures (unparseable date, missing name). Small enough to leave unexplained; worth a look if
+post-rebuild counts land oddly.
+
+**Scale figures stand**, since they came from the file rather than the counter: post-fix
+`contributions` is ~17M rows and PII volume grows ~83×, not the ~6× this plan originally assumed.
 
 ### C4. Truncate + rebuild
 
