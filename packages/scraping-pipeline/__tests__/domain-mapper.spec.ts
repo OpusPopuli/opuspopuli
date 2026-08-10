@@ -1195,6 +1195,78 @@ describe("DomainMapperService", () => {
         (result.items[0] as { committeeId?: string }).committeeId,
       ).toBeUndefined();
     });
+
+    it("maps an RCPT line item that has no committeeId (#980)", () => {
+      // RCPT_CD's CMTE_ID is the *contributor*, so the region config stops
+      // mapping it — the recipient comes from the cover page via filingId.
+      // While committeeId was required, every individual-donor row (blank
+      // CMTE_ID) was dropped here, which is why ~1M of 1.2M rows never landed.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "2801843:0:7:ABC123",
+              filingId: "2801843",
+              donorName: "Jane Q. Public",
+              donorType: "individual",
+              amount: "250",
+              date: "2026-03-01",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Contributions",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        externalId: "2801843:0:7:ABC123",
+        filingId: "2801843",
+        donorName: "Jane Q. Public",
+        amount: 250,
+      });
+      expect(
+        (result.items[0] as { committeeId?: string }).committeeId,
+      ).toBeUndefined();
+    });
+
+    it("maps an EXPN line item that has no committeeId (#980)", () => {
+      // EXPN_CD's CMTE_ID is the *payee*; the spender comes from the cover page.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "2801999:0:3:XYZ789",
+              filingId: "2801999",
+              payeeName: "Some Print Shop",
+              amount: "1000",
+              date: "2026-03-01",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Expenditures",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        externalId: "2801999:0:3:XYZ789",
+        filingId: "2801999",
+        payeeName: "Some Print Shop",
+        amount: 1000,
+      });
+      expect(
+        (result.items[0] as { committeeId?: string }).committeeId,
+      ).toBeUndefined();
+    });
   });
 
   describe("campaign finance — category routing", () => {

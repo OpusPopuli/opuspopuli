@@ -933,23 +933,40 @@ describe('RegionQueryService — query methods', () => {
         }),
       );
     });
+
+    it('excludes unattributed rows when no committee filter is given (#980)', async () => {
+      mockDb.contribution.findMany.mockResolvedValue([]);
+      mockDb.contribution.count.mockResolvedValue(0);
+
+      await service.getContributions();
+
+      // RCPT line items sit unattributed until the cover-page linker resolves
+      // filingId -> recipient; they are staging, not public money-trail data.
+      const expected = { where: { committeeId: { not: null } } };
+      expect(mockDb.contribution.findMany).toHaveBeenCalledWith(
+        expect.objectContaining(expected),
+      );
+      expect(mockDb.contribution.count).toHaveBeenCalledWith(expected);
+    });
   });
 
   describe('getContribution', () => {
     it('should return a single contribution by ID', async () => {
       const mockContrib = { id: '1', donorName: 'Jane Smith' };
-      mockDb.contribution.findUnique.mockResolvedValue(mockContrib as never);
+      mockDb.contribution.findFirst.mockResolvedValue(mockContrib as never);
 
       const result = await service.getContribution('1');
 
       expect(result).toEqual(mockContrib);
-      expect(mockDb.contribution.findUnique).toHaveBeenCalledWith({
-        where: { id: '1' },
+      // findFirst (not findUnique) so it can also require a resolved committee —
+      // unattributed RCPT staging rows are treated as not-found for GraphQL (#980).
+      expect(mockDb.contribution.findFirst).toHaveBeenCalledWith({
+        where: { id: '1', committeeId: { not: null } },
       });
     });
 
     it('should return null if contribution not found', async () => {
-      mockDb.contribution.findUnique.mockResolvedValue(null);
+      mockDb.contribution.findFirst.mockResolvedValue(null);
 
       const result = await service.getContribution('nonexistent');
 
@@ -1002,23 +1019,37 @@ describe('RegionQueryService — query methods', () => {
         }),
       );
     });
+
+    it('excludes unattributed rows when no committee filter is given (#980)', async () => {
+      mockDb.expenditure.findMany.mockResolvedValue([]);
+      mockDb.expenditure.count.mockResolvedValue(0);
+
+      await service.getExpenditures();
+
+      const expected = { where: { committeeId: { not: null } } };
+      expect(mockDb.expenditure.findMany).toHaveBeenCalledWith(
+        expect.objectContaining(expected),
+      );
+      expect(mockDb.expenditure.count).toHaveBeenCalledWith(expected);
+    });
   });
 
   describe('getExpenditure', () => {
     it('should return a single expenditure by ID', async () => {
       const mockExp = { id: '1', payeeName: 'Ad Agency Inc' };
-      mockDb.expenditure.findUnique.mockResolvedValue(mockExp as never);
+      mockDb.expenditure.findFirst.mockResolvedValue(mockExp as never);
 
       const result = await service.getExpenditure('1');
 
       expect(result).toEqual(mockExp);
-      expect(mockDb.expenditure.findUnique).toHaveBeenCalledWith({
-        where: { id: '1' },
+      // Same as getContribution: unattributed EXPN staging rows read as not-found (#980).
+      expect(mockDb.expenditure.findFirst).toHaveBeenCalledWith({
+        where: { id: '1', committeeId: { not: null } },
       });
     });
 
     it('should return null if expenditure not found', async () => {
-      mockDb.expenditure.findUnique.mockResolvedValue(null);
+      mockDb.expenditure.findFirst.mockResolvedValue(null);
 
       const result = await service.getExpenditure('nonexistent');
 

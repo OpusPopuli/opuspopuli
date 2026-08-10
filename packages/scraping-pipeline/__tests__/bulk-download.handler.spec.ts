@@ -928,4 +928,126 @@ describe("BulkDownloadHandler", () => {
       expect(sourceUrl).toContain("RCPT_CD.TSV");
     });
   });
+
+  describe("compositeKey externalId (#980)", () => {
+    /** Mirrors CAL-ACCESS RCPT_CD, where TRAN_ID alone repeats across filings. */
+    function createCompositeSource(
+      compositeKey: string[] | undefined,
+      columnMappings: Record<string, string> = {
+        TRAN_ID: "externalId",
+        AMOUNT: "amount",
+      },
+    ): DataSourceConfig {
+      return createSource({
+        bulk: {
+          format: "csv",
+          columnMappings,
+          compositeKey,
+        } as BulkDownloadConfig,
+      });
+    }
+
+    async function rawItemsFor(content: string, source: DataSourceConfig) {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
+      await handler.execute(source, "california");
+      return mapper.map.mock.calls[0][0].items as Array<
+        Record<string, unknown>
+      >;
+    }
+
+    it("joins the configured columns in order", async () => {
+      const items = await rawItemsFor(
+        "FILING_ID,AMEND_ID,LINE_ITEM,TRAN_ID,AMOUNT\n2801843,0,7,ABC123,500",
+        createCompositeSource([
+          "FILING_ID",
+          "AMEND_ID",
+          "LINE_ITEM",
+          "TRAN_ID",
+        ]),
+      );
+
+      expect(items[0].externalId).toBe("2801843:0:7:ABC123");
+    });
+
+    it("keeps rows distinct when TRAN_ID repeats across filings", async () => {
+      // The bug this exists to prevent: both rows upsert onto one externalId,
+      // so the second silently overwrites the first.
+      const items = await rawItemsFor(
+        "FILING_ID,AMEND_ID,LINE_ITEM,TRAN_ID,AMOUNT\n" +
+          "2801843,0,7,ABC123,500\n" +
+          "2801999,0,7,ABC123,750",
+        createCompositeSource([
+          "FILING_ID",
+          "AMEND_ID",
+          "LINE_ITEM",
+          "TRAN_ID",
+        ]),
+      );
+
+      expect(items).toHaveLength(2);
+      expect(items[0].externalId).not.toBe(items[1].externalId);
+    });
+
+    it("preserves empty cells as empty segments so positions never shift", async () => {
+      const items = await rawItemsFor(
+        "FILING_ID,AMEND_ID,LINE_ITEM,TRAN_ID,AMOUNT\n2801843,,7,ABC123,500",
+        createCompositeSource([
+          "FILING_ID",
+          "AMEND_ID",
+          "LINE_ITEM",
+          "TRAN_ID",
+        ]),
+      );
+
+      // Not "2801843:7:ABC123" — that would collide with a row whose AMEND_ID
+      // is 7 and LINE_ITEM is ABC123.
+      expect(items[0].externalId).toBe("2801843::7:ABC123");
+    });
+
+    it("takes precedence over an externalId in columnMappings", async () => {
+      const items = await rawItemsFor(
+        "FILING_ID,LINE_ITEM,TRAN_ID,AMOUNT\n2801843,7,ABC123,500",
+        createCompositeSource(["FILING_ID", "LINE_ITEM"]),
+      );
+
+      expect(items[0].externalId).toBe("2801843:7");
+    });
+
+    it("leaves externalId to columnMappings when not configured", async () => {
+      const items = await rawItemsFor(
+        "FILING_ID,LINE_ITEM,TRAN_ID,AMOUNT\n2801843,7,ABC123,500",
+        createCompositeSource(undefined),
+      );
+
+      expect(items[0].externalId).toBe("ABC123");
+    });
+
+    it("throws when a key column is missing from the headers", async () => {
+      // Warning-and-continuing would shorten the key for every row and collapse
+      // distinct records onto one externalId — silent, total data loss.
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse("FILING_ID,AMOUNT\n2801843,500"),
+      );
+
+      const result = await handler.execute(
+        createCompositeSource(["FILING_ID", "TRAN_ID"]),
+        "california",
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errors.join(" ")).toContain("TRAN_ID");
+    });
+
+    it("drops a row whose key segments are all empty", async () => {
+      const items = await rawItemsFor(
+        "FILING_ID,TRAN_ID,AMOUNT\n2801843,ABC123,500\n,,750",
+        createCompositeSource(["FILING_ID", "TRAN_ID"]),
+      );
+
+      expect(items).toHaveLength(1);
+      expect(items[0].externalId).toBe("2801843:ABC123");
+    });
+  });
 });

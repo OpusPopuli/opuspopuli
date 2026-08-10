@@ -178,7 +178,9 @@ type CommitteeRecord = {
 type ContributionRecord = {
   id: string;
   externalId: string;
-  committeeId: string;
+  /// Null until the cover-page linker attributes the filing (#980).
+  committeeId: string | null;
+  filingId: string | null;
   donorName: string;
   donorType: string;
   donorEmployer: string | null;
@@ -198,7 +200,9 @@ type ContributionRecord = {
 type ExpenditureRecord = {
   id: string;
   externalId: string;
-  committeeId: string;
+  /// Null until the cover-page linker attributes the filing (#980).
+  committeeId: string | null;
+  filingId: string | null;
   payeeName: string;
   amount: Prisma.Decimal;
   date: Date;
@@ -1073,10 +1077,17 @@ export class RegionQueryService {
     committeeId?: string,
     sourceSystem?: string,
   ): Promise<PaginatedContributions> {
-    const where: Record<string, unknown> = {};
+    // Only surface attributed contributions: RCPT_CD line items sit with a null
+    // committeeId until the cover-page linker resolves filingId -> recipient
+    // (#980). Unresolved rows are staging, not public money-trail data, and the
+    // GraphQL committeeId is non-null — exclude them, as IEs do (#955).
+    const where: Record<string, unknown> = { committeeId: { not: null } };
+    // Overwriting the guard is safe *only* because an explicit id is non-null,
+    // which is strictly narrower. A future filter on a nullable column (e.g.
+    // filingId) must merge rather than replace.
     if (committeeId) where.committeeId = committeeId;
     if (sourceSystem) where.sourceSystem = sourceSystem;
-    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+    const whereClause = where;
 
     const [items, total] = await Promise.all([
       this.db.contribution.findMany({
@@ -1094,6 +1105,8 @@ export class RegionQueryService {
     return {
       items: paginatedItems.map((item: ContributionRecord) => ({
         ...item,
+        // Non-null by the committeeId filter above; Prisma's type stays nullable.
+        committeeId: item.committeeId as string,
         amount: Number(item.amount),
         donorEmployer: item.donorEmployer ?? undefined,
         donorOccupation: item.donorOccupation ?? undefined,
@@ -1109,7 +1122,12 @@ export class RegionQueryService {
   }
 
   async getContribution(id: string) {
-    return this.db.contribution.findUnique({ where: { id } });
+    // findFirst (not findUnique) so we can also require a resolved committee —
+    // an unattributed RCPT staging row is treated as not-found for GraphQL,
+    // mirroring getIndependentExpenditure (#980).
+    return this.db.contribution.findFirst({
+      where: { id, committeeId: { not: null } },
+    });
   }
 
   async getExpenditures(
@@ -1118,10 +1136,15 @@ export class RegionQueryService {
     committeeId?: string,
     sourceSystem?: string,
   ): Promise<PaginatedExpenditures> {
-    const where: Record<string, unknown> = {};
+    // Same as contributions above: EXPN_CD line items are unattributed until the
+    // cover-page linker resolves filingId -> spender (#980).
+    const where: Record<string, unknown> = { committeeId: { not: null } };
+    // Overwriting the guard is safe *only* because an explicit id is non-null,
+    // which is strictly narrower. A future filter on a nullable column (e.g.
+    // filingId) must merge rather than replace.
     if (committeeId) where.committeeId = committeeId;
     if (sourceSystem) where.sourceSystem = sourceSystem;
-    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+    const whereClause = where;
 
     const [items, total] = await Promise.all([
       this.db.expenditure.findMany({
@@ -1139,6 +1162,8 @@ export class RegionQueryService {
     return {
       items: paginatedItems.map((item: ExpenditureRecord) => ({
         ...item,
+        // Non-null by the committeeId filter above; Prisma's type stays nullable.
+        committeeId: item.committeeId as string,
         amount: Number(item.amount),
         purposeDescription: item.purposeDescription ?? undefined,
         expenditureCode: item.expenditureCode ?? undefined,
@@ -1152,7 +1177,10 @@ export class RegionQueryService {
   }
 
   async getExpenditure(id: string) {
-    return this.db.expenditure.findUnique({ where: { id } });
+    // Same as getContribution: unattributed EXPN staging rows read as not-found.
+    return this.db.expenditure.findFirst({
+      where: { id, committeeId: { not: null } },
+    });
   }
 
   async getIndependentExpenditures(

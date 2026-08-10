@@ -14,12 +14,16 @@ interface PropRow {
 
 interface ContribRow {
   externalId: string;
-  committeeId: string;
+  /// Read directly since #980 — no longer parsed out of externalId.
+  filingId: string | null;
+  /// Nullable since #980 — unattributed until the cover-page linker runs.
+  committeeId: string | null;
 }
 
 interface ExpRow {
   id: string;
   externalId: string;
+  filingId?: string | null;
   committeeId: string;
   propositionTitle: string | null;
   propositionId: string | null;
@@ -65,10 +69,7 @@ function expenditureFindMany(args: any, rows: ExpRow[]): unknown[] {
       .filter((e) => e.propositionId === null && e.propositionTitle)
       .map((e) => ({ id: e.id, propositionTitle: e.propositionTitle }));
   }
-  return rows.map((e) => ({
-    externalId: e.externalId,
-    committeeId: e.committeeId,
-  }));
+  return [];
 }
 
 /** Same shape as expenditureFindMany but for IndependentExpenditure rows. */
@@ -186,12 +187,7 @@ describe('PropositionFinanceLinkerService', () => {
         }),
       },
       contribution: {
-        findMany: jest.fn(async () =>
-          contributions.map((c) => ({
-            externalId: c.externalId,
-            committeeId: c.committeeId,
-          })),
-        ),
+        findMany: jest.fn(async () => []),
       },
       expenditure: {
         findMany: jest.fn(async (args?: any) =>
@@ -218,6 +214,26 @@ describe('PropositionFinanceLinkerService', () => {
       cvr2Filing: {
         findMany: jest.fn(async () => cvr2Filings),
       },
+      // buildFilingToCommitteeIndex now de-duplicates in SQL (#980), so serve
+      // snake_case rows the way Postgres would, one per filing.
+      $queryRawUnsafe: jest.fn(async (sql: string) => {
+        const rows = sql.includes('"contributions"')
+          ? contributions.map((c) => ({
+              filing_id: c.filingId,
+              committee_id: c.committeeId,
+            }))
+          : expRows.map((e) => ({
+              filing_id: e.filingId ?? null,
+              committee_id: e.committeeId,
+            }));
+        const seen = new Set<string>();
+        return rows.filter((r) => {
+          if (!r.filing_id || !r.committee_id) return false;
+          if (seen.has(r.filing_id)) return false;
+          seen.add(r.filing_id);
+          return true;
+        });
+      }),
       committeeMeasurePosition: {
         upsert: upsertPosition,
       },
@@ -282,7 +298,11 @@ describe('PropositionFinanceLinkerService', () => {
         ],
         contributions: [
           // FILING_ID 12345 → committeeId C-A
-          { externalId: '12345:1', committeeId: 'committee-A' },
+          {
+            externalId: '12345:1',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
         ],
         cvr2Filings: [
           {
@@ -304,6 +324,45 @@ describe('PropositionFinanceLinkerService', () => {
       expect(primary?.propositionId).toBe('prop-1');
       expect(primary?.position).toBe('support');
       expect(primary?.sourceFiling).toBe('12345');
+    });
+
+    it('ignores unattributed contributions when indexing filings (#980)', async () => {
+      const built = await buildService({
+        propositions: [
+          {
+            id: 'prop-1',
+            externalId: 'ACA 13',
+            title: 'Voting thresholds',
+            electionDate: new Date(),
+          },
+        ],
+        contributions: [
+          // Same FILING_ID, but this row has not been attributed yet. Indexing
+          // it would map filing 12345 -> null and, because the index keeps the
+          // FIRST hit per filing, shadow the resolved row that follows.
+          { externalId: '12345:1', filingId: '12345', committeeId: null },
+          {
+            externalId: '12345:2',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
+        ],
+        cvr2Filings: [
+          {
+            filingId: '12345',
+            ballotName: 'Voting thresholds',
+            ballotNumber: 'ACA 13',
+            supportOrOppose: 'S',
+          },
+        ],
+      });
+
+      await built.service.linkAll();
+
+      const primary = built.positionsTable.find(
+        (p) => p.isPrimaryFormation === true,
+      );
+      expect(primary?.committeeId).toBe('committee-A');
     });
 
     it('skips CVR2 rows whose filing or ballot cannot be resolved', async () => {
@@ -418,7 +477,13 @@ describe('PropositionFinanceLinkerService', () => {
             electionDate: new Date(),
           },
         ],
-        contributions: [{ externalId: '12345:1', committeeId: 'committee-A' }],
+        contributions: [
+          {
+            externalId: '12345:1',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
+        ],
         cvr2Filings: [
           {
             filingId: '12345',
@@ -461,7 +526,13 @@ describe('PropositionFinanceLinkerService', () => {
             electionDate: new Date(),
           },
         ],
-        contributions: [{ externalId: '12345:1', committeeId: 'committee-A' }],
+        contributions: [
+          {
+            externalId: '12345:1',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
+        ],
         cvr2Filings: [
           {
             filingId: '12345',
@@ -495,7 +566,13 @@ describe('PropositionFinanceLinkerService', () => {
             electionDate: new Date(),
           },
         ],
-        contributions: [{ externalId: '12345:1', committeeId: 'committee-A' }],
+        contributions: [
+          {
+            externalId: '12345:1',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
+        ],
         cvr2Filings: [
           {
             filingId: '12345',
@@ -524,7 +601,13 @@ describe('PropositionFinanceLinkerService', () => {
             electionDate: ancient,
           },
         ],
-        contributions: [{ externalId: '12345:1', committeeId: 'committee-A' }],
+        contributions: [
+          {
+            externalId: '12345:1',
+            filingId: '12345',
+            committeeId: 'committee-A',
+          },
+        ],
         cvr2Filings: [
           {
             filingId: '12345',

@@ -744,6 +744,8 @@ export class RegionResolver {
     if (!result) return null;
     return {
       ...result,
+      // Non-null: getContribution filters committeeId != null (#980).
+      committeeId: result.committeeId as string,
       amount: Number(result.amount),
       donorEmployer: result.donorEmployer ?? undefined,
       donorOccupation: result.donorOccupation ?? undefined,
@@ -786,6 +788,8 @@ export class RegionResolver {
     if (!result) return null;
     return {
       ...result,
+      // Non-null: getExpenditure filters committeeId != null (#980).
+      committeeId: result.committeeId as string,
       amount: Number(result.amount),
       purposeDescription: result.purposeDescription ?? undefined,
       expenditureCode: result.expenditureCode ?? undefined,

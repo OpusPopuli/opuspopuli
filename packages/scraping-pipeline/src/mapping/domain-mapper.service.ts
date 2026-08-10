@@ -897,7 +897,12 @@ const CommitteeSchema = z.object({
  */
 const ContributionSchema = z.object({
   externalId: z.string().min(1),
-  committeeId: z.string().min(1),
+  // Optional: RCPT_CD line items carry no filer — its CMTE_ID is the
+  // *contributor*. The recipient is resolved post-sync by joining
+  // filingId -> the campaign-disclosure cover page (#980), the same shape
+  // IndependentExpenditureSchema has used since #955.
+  committeeId: z.string().min(1).optional(),
+  filingId: z.string().min(1).optional(),
   donorName: z.string().min(1),
   donorType: z.string().transform(donorTypeTransform).default("other"),
   donorEmployer: z
@@ -935,7 +940,10 @@ const ContributionSchema = z.object({
 const ExpenditureSchema = z
   .object({
     externalId: z.string().min(1),
-    committeeId: z.string().min(1),
+    // Optional for the same reason as ContributionSchema: EXPN_CD's CMTE_ID is
+    // the *payee*, so the spender comes from the cover page via filingId (#980).
+    committeeId: z.string().min(1).optional(),
+    filingId: z.string().min(1).optional(),
     payeeName: z.string().min(1),
     amount: z.coerce.number(),
     date: coerceFlexibleDate,

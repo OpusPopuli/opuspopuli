@@ -517,6 +517,21 @@ export interface BulkDownloadConfig {
   headers?: string[];
   /** Column name mappings: source column name → domain field name */
   columnMappings: Record<string, string>;
+  /**
+   * Source columns whose values are joined (with ":") to form `externalId`,
+   * for feeds where no single column is unique. Order is significant and must
+   * stay stable — it defines the upsert identity, so changing it re-keys every
+   * row. Takes precedence over any `externalId` in `columnMappings`.
+   *
+   * Empty cells are preserved as empty segments so positions never shift. If a
+   * listed column is absent from the file's headers the parse throws rather
+   * than emitting short keys, which would collapse distinct rows onto one
+   * `externalId` and silently discard data (opuspopuli#980).
+   *
+   * e.g. CAL-ACCESS RCPT_CD, where TRAN_ID repeats across filings:
+   * `["FILING_ID", "AMEND_ID", "LINE_ITEM", "TRAN_ID"]`
+   */
+  compositeKey?: string[];
   /** Filter expressions applied during parse (e.g., { "STATE": "CA" }) */
   filters?: Record<string, string>;
   /** Batch size for streaming processing (default: 10,000). Records are
