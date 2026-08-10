@@ -25,6 +25,7 @@ import {
   buildFailureResult,
   mapAndReturn,
   mapBatchItems,
+  sessionSourceKey,
 } from "./handler-utils.js";
 
 /** Maximum pages to fetch in a single pipeline run (safety limit) */
@@ -68,7 +69,10 @@ export class ApiIngestHandler {
             pipelineJobId,
             {
               regionId,
-              sourceUrl: source.url,
+              // Unique per source, not per URL — two API sources pointed at
+              // one endpoint would otherwise share an execution row and the
+              // second would skip its stream (#984).
+              sourceUrl: sessionSourceKey(source),
               dataType: source.dataType,
             },
           );

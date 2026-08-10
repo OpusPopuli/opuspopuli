@@ -17,7 +17,7 @@ export default function SystemCardPage() {
         <div className="mb-6">
           <Link
             href="/transparency"
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            className="text-sm text-info hover:underline"
           >
             &larr; Back to Transparency
           </Link>
@@ -84,7 +84,7 @@ export default function SystemCardPage() {
               fine-tune AI models. See our{" "}
               <Link
                 href="/transparency/ai-commitments"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-info hover:underline"
               >
                 AI Commitments
               </Link>{" "}
@@ -148,7 +148,7 @@ export default function SystemCardPage() {
               For more detail on our prompt methodology, see the{" "}
               <Link
                 href="/transparency/prompt-charter"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-info hover:underline"
               >
                 Prompt Service Charter
               </Link>
@@ -238,7 +238,7 @@ export default function SystemCardPage() {
                 You can also contact us at{" "}
                 <a
                   href="mailto:transparency@opuspopuli.org"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-info hover:underline"
                 >
                   transparency@opuspopuli.org
                 </a>
@@ -282,14 +282,14 @@ export default function SystemCardPage() {
               See also:{" "}
               <Link
                 href="/transparency/ai-commitments"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-info hover:underline"
               >
                 AI Commitments
               </Link>
               {" \u00B7 "}
               <Link
                 href="/transparency/prompt-charter"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-info hover:underline"
               >
                 Prompt Service Charter
               </Link>

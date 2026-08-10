@@ -74,7 +74,7 @@ export default function AICommitmentsPage() {
         <div className="mb-6">
           <Link
             href="/transparency"
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            className="text-sm text-info hover:underline"
           >
             &larr; Back to Transparency
           </Link>
@@ -112,14 +112,14 @@ export default function AICommitmentsPage() {
             See also:{" "}
             <Link
               href="/transparency/system-card"
-              className="text-blue-600 dark:text-blue-400 hover:underline"
+              className="text-info hover:underline"
             >
               AI System Overview
             </Link>
             {" \u00B7 "}
             <Link
               href="/transparency/prompt-charter"
-              className="text-blue-600 dark:text-blue-400 hover:underline"
+              className="text-info hover:underline"
             >
               Prompt Service Charter
             </Link>

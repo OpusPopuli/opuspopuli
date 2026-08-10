@@ -58,7 +58,7 @@ function MemberRow({
   return (
     <Link
       href={`/region/representatives/${member.representativeId}`}
-      className="flex items-center gap-4 p-4 bg-surface rounded-lg border border-slate-200 hover:border-slate-300 transition-all"
+      className="flex items-center gap-4 p-4 bg-surface rounded-lg border border-line hover:border-accent transition-all"
     >
       {member.photoUrl ? (
         <Image
@@ -66,16 +66,16 @@ function MemberRow({
           alt=""
           width={48}
           height={48}
-          className="w-12 h-12 rounded-full object-cover bg-slate-100"
+          className="w-12 h-12 rounded-full object-cover bg-surface-alt"
           unoptimized
         />
       ) : (
-        <div className="w-12 h-12 rounded-full bg-slate-100" aria-hidden />
+        <div className="w-12 h-12 rounded-full bg-surface-alt" aria-hidden />
       )}
       <div className="flex-1 min-w-0">
         <p className="font-medium text-content truncate">{member.name}</p>
         {member.role && member.role !== "Member" && (
-          <p className="text-xs text-content-dim">{member.role}</p>
+          <p className="text-sm text-content-dim">{member.role}</p>
         )}
       </div>
       <PartyBadge party={member.party} />
@@ -95,7 +95,7 @@ function Snapshot({
   return (
     <div className="animate-layer-enter">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="bg-slate-50 rounded-lg p-4">
+        <div className="bg-surface-alt rounded-lg p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-1">
             Members
           </p>
@@ -103,7 +103,7 @@ function Snapshot({
             {committee.memberCount}
           </p>
         </div>
-        <div className="bg-slate-50 rounded-lg p-4">
+        <div className="bg-surface-alt rounded-lg p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-1">
             Chamber
           </p>
@@ -111,7 +111,7 @@ function Snapshot({
             {committee.chamber}
           </p>
         </div>
-        <div className="bg-slate-50 rounded-lg p-4">
+        <div className="bg-surface-alt rounded-lg p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-content-dim mb-1">
             Chair
           </p>
@@ -119,7 +119,7 @@ function Snapshot({
             {chair ? (
               chair.name
             ) : (
-              <span className="italic text-slate-400">Vacant</span>
+              <span className="italic text-content-dim">Vacant</span>
             )}
           </p>
         </div>
@@ -159,7 +159,7 @@ function Members({
   return (
     <div className="animate-layer-enter">
       {groups.length === 0 && (
-        <p className="italic text-slate-400 mb-6">
+        <p className="italic text-content-dim mb-6">
           No member assignments are linked to this committee yet.
         </p>
       )}
@@ -189,7 +189,7 @@ function HearingRow({
   readonly hearing: LegislativeCommitteeHearing;
 }) {
   return (
-    <li className="bg-surface rounded-lg border border-slate-200 p-4">
+    <li className="bg-surface rounded-lg border border-line p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <p className="font-medium text-content">{hearing.title}</p>
@@ -202,7 +202,7 @@ function HearingRow({
             href={hearing.agendaUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline whitespace-nowrap"
+            className="text-sm font-medium text-info hover:text-info-strong hover:underline whitespace-nowrap"
           >
             Agenda →
           </a>
@@ -233,7 +233,7 @@ function CommitteeBillsList({ committeeId }: { readonly committeeId: string }) {
     return (
       <div className="space-y-2 animate-pulse">
         {[1, 2, 3].map((n) => (
-          <div key={n} className="h-10 bg-slate-100 rounded-lg" />
+          <div key={n} className="h-10 bg-surface-alt rounded-lg" />
         ))}
       </div>
     );
@@ -243,7 +243,7 @@ function CommitteeBillsList({ committeeId }: { readonly committeeId: string }) {
 
   if (bills.length === 0) {
     return (
-      <p className="text-sm italic text-slate-400">
+      <p className="text-sm italic text-content-dim">
         No bills linked to this committee yet.
       </p>
     );
@@ -327,7 +327,7 @@ function DeepDive({
   return (
     <div className="animate-layer-enter">
       <SectionTitle>Sources</SectionTitle>
-      <dl className="bg-slate-50 rounded-lg p-4 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+      <dl className="bg-surface-alt rounded-lg p-4 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
         <div>
           <dt className="font-bold uppercase tracking-wider text-xs text-content-dim">
             External ID
@@ -354,7 +354,7 @@ function DeepDive({
                 href={committee.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-700 hover:underline break-all"
+                className="text-info hover:text-info-strong hover:underline break-all"
               >
                 {committee.url}
               </a>
@@ -400,7 +400,7 @@ export default function LegislativeCommitteeDetailPage() {
           <p className="text-content-dim mb-4">Committee not found.</p>
           <Link
             href="/region/legislative-committees"
-            className="text-blue-600 hover:text-blue-700 hover:underline text-sm font-medium"
+            className="text-info hover:text-info-strong hover:underline text-sm font-medium"
           >
             Back to legislative committees
           </Link>

@@ -6,7 +6,7 @@ import type { ClaimSeverity } from "@/lib/graphql/region";
  * Single source of truth for both `ClaimSeverityTag` and `ConcernsBadge`.
  */
 export const SEVERITY_STYLES: Record<ClaimSeverity, string> = {
-  LOW: "bg-green-100 text-green-800",
-  MEDIUM: "bg-amber-100 text-amber-800",
-  HIGH: "bg-red-100 text-red-800",
+  LOW: "bg-positive-surface text-positive",
+  MEDIUM: "bg-warning-surface text-warning",
+  HIGH: "bg-danger-surface text-danger",
 };

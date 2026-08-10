@@ -1,10 +1,13 @@
+// Party colour is data encoding, so it uses the categorical ramp — never the
+// status ramp. "Republican" must not render in the same red the app uses for
+// errors, and "Green" must not render in the success green.
 const PARTY_COLORS: Record<string, { bg: string; text: string }> = {
-  Democrat: { bg: "bg-blue-100", text: "text-blue-800" },
-  Democratic: { bg: "bg-blue-100", text: "text-blue-800" },
-  Republican: { bg: "bg-red-100", text: "text-red-800" },
-  Independent: { bg: "bg-purple-100", text: "text-purple-800" },
-  Green: { bg: "bg-green-100", text: "text-green-800" },
-  Libertarian: { bg: "bg-yellow-100", text: "text-yellow-800" },
+  Democrat: { bg: "bg-cat-blue-surface", text: "text-cat-blue" },
+  Democratic: { bg: "bg-cat-blue-surface", text: "text-cat-blue" },
+  Republican: { bg: "bg-cat-red-surface", text: "text-cat-red" },
+  Independent: { bg: "bg-cat-purple-surface", text: "text-cat-purple" },
+  Green: { bg: "bg-cat-green-surface", text: "text-cat-green" },
+  Libertarian: { bg: "bg-cat-amber-surface", text: "text-cat-amber" },
 };
 
 export function PartyBadge({

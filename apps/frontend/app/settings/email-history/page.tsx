@@ -14,11 +14,11 @@ import {
 const PAGE_SIZE = 10;
 
 const STATUS_STYLES: Record<EmailStatus, { bg: string; text: string }> = {
-  PENDING: { bg: "bg-yellow-100", text: "text-yellow-800" },
-  SENT: { bg: "bg-blue-100", text: "text-blue-800" },
-  DELIVERED: { bg: "bg-green-100", text: "text-green-800" },
-  FAILED: { bg: "bg-red-100", text: "text-red-800" },
-  BOUNCED: { bg: "bg-orange-100", text: "text-orange-800" },
+  PENDING: { bg: "bg-warning-surface", text: "text-warning" },
+  SENT: { bg: "bg-info-surface", text: "text-info" },
+  DELIVERED: { bg: "bg-positive-surface", text: "text-positive" },
+  FAILED: { bg: "bg-danger-surface", text: "text-danger" },
+  BOUNCED: { bg: "bg-warning-surface", text: "text-warning" },
 };
 
 const EMAIL_TYPE_LABELS: Record<EmailType, string> = {
@@ -65,7 +65,7 @@ function EmailCard({ email }: { readonly email: EmailCorrespondence }) {
             </p>
           )}
           {email.errorMessage && (
-            <p className="text-sm text-red-600 mt-2">
+            <p className="text-sm text-danger mt-2">
               Error: {email.errorMessage}
             </p>
           )}
@@ -73,7 +73,7 @@ function EmailCard({ email }: { readonly email: EmailCorrespondence }) {
         {email.representativeId && (
           <Link
             href={`/region/representatives`}
-            className="text-sm text-blue-600 hover:underline flex-shrink-0"
+            className="text-sm text-info hover:underline flex-shrink-0"
           >
             View Rep
           </Link>
@@ -117,8 +117,8 @@ export default function EmailHistoryPage() {
 
     if (error) {
       return (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <p className="text-red-600">Failed to load email history.</p>
+        <div className="bg-danger-surface border border-danger-line rounded-lg p-6">
+          <p className="text-danger">Failed to load email history.</p>
         </div>
       );
     }
@@ -127,7 +127,7 @@ export default function EmailHistoryPage() {
       return (
         <div className="bg-surface-alt border border-line rounded-lg p-8 text-center">
           <svg
-            className="w-12 h-12 text-gray-300 mx-auto mb-4"
+            className="w-12 h-12 text-content-dim mx-auto mb-4"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -188,7 +188,7 @@ export default function EmailHistoryPage() {
       <nav className="mb-6">
         <Link
           href="/settings"
-          className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+          className="text-sm text-info hover:text-info-strong hover:underline"
         >
           Settings
         </Link>

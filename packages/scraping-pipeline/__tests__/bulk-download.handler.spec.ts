@@ -660,7 +660,8 @@ describe("BulkDownloadHandler", () => {
       expect(tracker.startExecution).toHaveBeenCalledWith({
         pipelineJobId: "job-1",
         regionId: "california",
-        sourceUrl: "https://example.com/data.csv",
+        // Identity carries a per-source discriminator beyond the URL (#984).
+        sourceUrl: expect.stringContaining("https://example.com/data.csv"),
         dataType: "campaign_finance",
       });
       expect(tracker.recordBatch).toHaveBeenCalledTimes(3);
@@ -762,9 +763,10 @@ describe("BulkDownloadHandler", () => {
     // tables come from dbwebexport.zip). The execution identity must include
     // the extracted filePattern, else same-URL sources collide on one
     // checkpoint and every source after the first skips its whole stream.
-    function createArchiveSource(filePattern: string) {
+    function createArchiveSource(filePattern: string, category = "Receipts") {
       return createSource({
         url: "https://example.com/dbwebexport.zip",
+        category,
         bulk: {
           format: "csv", // filePattern drives the tracked identity regardless of format
           filePattern,
@@ -788,7 +790,7 @@ describe("BulkDownloadHandler", () => {
       expect(tracker.startExecution).toHaveBeenCalledWith({
         pipelineJobId: "job-1",
         regionId: "california",
-        sourceUrl: "https://example.com/dbwebexport.zip#RCPT_CD.TSV",
+        sourceUrl: "https://example.com/dbwebexport.zip#RCPT_CD.TSV#Receipts",
         dataType: "campaign_finance",
       });
     });
@@ -822,11 +824,230 @@ describe("BulkDownloadHandler", () => {
         (c) => (c[0] as { sourceUrl: string }).sourceUrl,
       );
       expect(trackedUrls).toEqual([
-        "https://example.com/dbwebexport.zip#RCPT_CD.TSV",
-        "https://example.com/dbwebexport.zip#CVR_CAMPAIGN_DISCLOSURE_CD.TSV",
+        "https://example.com/dbwebexport.zip#RCPT_CD.TSV#Receipts",
+        "https://example.com/dbwebexport.zip#CVR_CAMPAIGN_DISCLOSURE_CD.TSV#Receipts",
       ]);
       // Both sources fully ingested (3 batches each) — no cross-source skip.
       expect(onBatch).toHaveBeenCalledTimes(6);
+    });
+
+    // #984: #950's filePattern discriminator is not enough. Two sources can
+    // read the SAME file from the SAME archive for different purposes —
+    // california.json reads CVR_CAMPAIGN_DISCLOSURE_CD.TSV once for Form 496
+    // IE cover pages and once for the committee roster. Those collided on one
+    // execution row and the second skipped its whole stream, silently.
+    it("gives same-file sources distinct identities when only their purpose differs (#984)", async () => {
+      const tracker = createTracker(new Set());
+      handler = new BulkDownloadHandler(mapper, tracker);
+      (globalThis.fetch as jest.Mock).mockImplementation(() =>
+        Promise.resolve(mockStreamResponse(csvContent)),
+      );
+
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+      const file = "CVR_CAMPAIGN_DISCLOSURE_CD.TSV";
+      await handler.execute(
+        createArchiveSource(file, "CAL-ACCESS IE Cover Pages"),
+        "california",
+        onBatch,
+        "job-1",
+      );
+      await handler.execute(
+        createArchiveSource(file, "CAL-ACCESS Committees"),
+        "california",
+        onBatch,
+        "job-1",
+      );
+
+      const trackedUrls = tracker.startExecution.mock.calls.map(
+        (c) => (c[0] as { sourceUrl: string }).sourceUrl,
+      );
+      expect(new Set(trackedUrls).size).toBe(2);
+      expect(trackedUrls).toEqual([
+        `https://example.com/dbwebexport.zip#${file}#CAL-ACCESS IE Cover Pages`,
+        `https://example.com/dbwebexport.zip#${file}#CAL-ACCESS Committees`,
+      ]);
+      // Neither source skipped the other's batches.
+      expect(onBatch).toHaveBeenCalledTimes(6);
+    });
+
+    it("falls back to a contentGoal digest when a source has no category (#984)", async () => {
+      const tracker = createTracker(new Set());
+      handler = new BulkDownloadHandler(mapper, tracker);
+      (globalThis.fetch as jest.Mock).mockImplementation(() =>
+        Promise.resolve(mockStreamResponse(csvContent)),
+      );
+
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+      const base = {
+        url: "https://example.com/dbwebexport.zip",
+        bulk: {
+          format: "csv" as const,
+          filePattern: "CVR.TSV",
+          columnMappings: { CMTE_ID: "committeeId", NAME: "donorName" },
+          batchSize: 2,
+        },
+      };
+      // contentGoal is required by DataSourceConfig and necessarily differs
+      // between two sources over one file, so it backstops category.
+      await handler.execute(
+        createSource({ ...base, contentGoal: "Extract IE cover pages" }),
+        "california",
+        onBatch,
+        "job-1",
+      );
+      await handler.execute(
+        createSource({ ...base, contentGoal: "Extract the committee roster" }),
+        "california",
+        onBatch,
+        "job-1",
+      );
+
+      const trackedUrls = tracker.startExecution.mock.calls.map(
+        (c) => (c[0] as { sourceUrl: string }).sourceUrl,
+      );
+      expect(new Set(trackedUrls).size).toBe(2);
+      expect(onBatch).toHaveBeenCalledTimes(6);
+    });
+
+    it("keeps the identity bounded when a category is very long (#984)", async () => {
+      const tracker = createTracker(new Set());
+      handler = new BulkDownloadHandler(mapper, tracker);
+
+      // source_url is VarChar(1000) — an unbounded category would throw on
+      // insert and take the whole sync down.
+      await handler.execute(
+        createArchiveSource("RCPT_CD.TSV", "X".repeat(5000)),
+        "california",
+        jest.fn().mockResolvedValue(undefined),
+        "job-1",
+      );
+
+      const { sourceUrl } = tracker.startExecution.mock
+        .calls[0][0] as unknown as { sourceUrl: string };
+      expect(sourceUrl.length).toBeLessThan(1000);
+      expect(sourceUrl).toContain("RCPT_CD.TSV");
+    });
+  });
+
+  describe("compositeKey externalId (#980)", () => {
+    /** Mirrors CAL-ACCESS RCPT_CD, where TRAN_ID alone repeats across filings. */
+    function createCompositeSource(
+      compositeKey: string[] | undefined,
+      columnMappings: Record<string, string> = {
+        TRAN_ID: "externalId",
+        AMOUNT: "amount",
+      },
+    ): DataSourceConfig {
+      return createSource({
+        bulk: {
+          format: "csv",
+          columnMappings,
+          compositeKey,
+        } as BulkDownloadConfig,
+      });
+    }
+
+    async function rawItemsFor(content: string, source: DataSourceConfig) {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(content),
+      );
+      await handler.execute(source, "california");
+      return mapper.map.mock.calls[0][0].items as Array<
+        Record<string, unknown>
+      >;
+    }
+
+    it("joins the configured columns in order", async () => {
+      const items = await rawItemsFor(
+        "FILING_ID,AMEND_ID,LINE_ITEM,TRAN_ID,AMOUNT\n2801843,0,7,ABC123,500",
+        createCompositeSource([
+          "FILING_ID",
+          "AMEND_ID",
+          "LINE_ITEM",
+          "TRAN_ID",
+        ]),
+      );
+
+      expect(items[0].externalId).toBe("2801843:0:7:ABC123");
+    });
+
+    it("keeps rows distinct when TRAN_ID repeats across filings", async () => {
+      // The bug this exists to prevent: both rows upsert onto one externalId,
+      // so the second silently overwrites the first.
+      const items = await rawItemsFor(
+        "FILING_ID,AMEND_ID,LINE_ITEM,TRAN_ID,AMOUNT\n" +
+          "2801843,0,7,ABC123,500\n" +
+          "2801999,0,7,ABC123,750",
+        createCompositeSource([
+          "FILING_ID",
+          "AMEND_ID",
+          "LINE_ITEM",
+          "TRAN_ID",
+        ]),
+      );
+
+      expect(items).toHaveLength(2);
+      expect(items[0].externalId).not.toBe(items[1].externalId);
+    });
+
+    it("preserves empty cells as empty segments so positions never shift", async () => {
+      const items = await rawItemsFor(
+        "FILING_ID,AMEND_ID,LINE_ITEM,TRAN_ID,AMOUNT\n2801843,,7,ABC123,500",
+        createCompositeSource([
+          "FILING_ID",
+          "AMEND_ID",
+          "LINE_ITEM",
+          "TRAN_ID",
+        ]),
+      );
+
+      // Not "2801843:7:ABC123" — that would collide with a row whose AMEND_ID
+      // is 7 and LINE_ITEM is ABC123.
+      expect(items[0].externalId).toBe("2801843::7:ABC123");
+    });
+
+    it("takes precedence over an externalId in columnMappings", async () => {
+      const items = await rawItemsFor(
+        "FILING_ID,LINE_ITEM,TRAN_ID,AMOUNT\n2801843,7,ABC123,500",
+        createCompositeSource(["FILING_ID", "LINE_ITEM"]),
+      );
+
+      expect(items[0].externalId).toBe("2801843:7");
+    });
+
+    it("leaves externalId to columnMappings when not configured", async () => {
+      const items = await rawItemsFor(
+        "FILING_ID,LINE_ITEM,TRAN_ID,AMOUNT\n2801843,7,ABC123,500",
+        createCompositeSource(undefined),
+      );
+
+      expect(items[0].externalId).toBe("ABC123");
+    });
+
+    it("throws when a key column is missing from the headers", async () => {
+      // Warning-and-continuing would shorten the key for every row and collapse
+      // distinct records onto one externalId — silent, total data loss.
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse("FILING_ID,AMOUNT\n2801843,500"),
+      );
+
+      const result = await handler.execute(
+        createCompositeSource(["FILING_ID", "TRAN_ID"]),
+        "california",
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errors.join(" ")).toContain("TRAN_ID");
+    });
+
+    it("drops a row whose key segments are all empty", async () => {
+      const items = await rawItemsFor(
+        "FILING_ID,TRAN_ID,AMOUNT\n2801843,ABC123,500\n,,750",
+        createCompositeSource(["FILING_ID", "TRAN_ID"]),
+      );
+
+      expect(items).toHaveLength(1);
+      expect(items[0].externalId).toBe("2801843:ABC123");
     });
   });
 });

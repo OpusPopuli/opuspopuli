@@ -18,12 +18,12 @@ import {
 const PAGE_SIZE = 10;
 
 const TYPE_STYLES: Record<string, { bg: string; text: string }> = {
-  pac: { bg: "bg-blue-100", text: "text-blue-800" },
-  candidate: { bg: "bg-purple-100", text: "text-purple-800" },
-  ballot_measure: { bg: "bg-green-100", text: "text-green-800" },
-  super_pac: { bg: "bg-indigo-100", text: "text-indigo-800" },
-  party: { bg: "bg-orange-100", text: "text-orange-800" },
-  small_contributor: { bg: "bg-teal-100", text: "text-teal-800" },
+  pac: { bg: "bg-info-surface", text: "text-info" },
+  candidate: { bg: "bg-cat-purple-surface", text: "text-cat-purple" },
+  ballot_measure: { bg: "bg-positive-surface", text: "text-positive" },
+  super_pac: { bg: "bg-cat-blue-surface", text: "text-cat-blue" },
+  party: { bg: "bg-warning-surface", text: "text-warning" },
+  small_contributor: { bg: "bg-cat-teal-surface", text: "text-cat-teal" },
   other: { bg: "bg-surface-alt", text: "text-content" },
 };
 
@@ -44,7 +44,9 @@ function StatusBadge({ status }: { readonly status: string }) {
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-        isActive ? "bg-green-100 text-green-800" : "bg-surface-alt text-content"
+        isActive
+          ? "bg-positive-surface text-positive"
+          : "bg-surface-alt text-content"
       }`}
     >
       {status}
@@ -78,7 +80,7 @@ function CommitteeCard({ committee }: Readonly<{ committee: Committee }>) {
             href={committee.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-700 hover:underline"
+            className="text-info hover:text-info-strong hover:underline"
           >
             Source
           </a>

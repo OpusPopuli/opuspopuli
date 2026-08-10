@@ -74,6 +74,7 @@ const SURNAME_MIN_GATE_LEN = 3;
 export function isCandidateOwnCommittee(
   committeeName: string,
   surname: string,
+  repGivenName?: string,
 ): boolean {
   const softened = soften(committeeName);
   if (NON_CONTROLLED_MARKERS.some((marker) => softened.includes(marker))) {
@@ -81,7 +82,176 @@ export function isCandidateOwnCommittee(
   }
   const surnameKey = alnumKey(surname);
   if (surnameKey.length < SURNAME_MIN_GATE_LEN) return true;
-  return alnumKey(committeeName).includes(surnameKey);
+  if (!alnumKey(committeeName).includes(surnameKey)) return false;
+  return givenNameAgrees(committeeName, surname, repGivenName);
+}
+
+/**
+ * Tokens that can sit immediately before a surname without being a given name
+ * ("Friends of Rivas", "Committee to Elect Lee"). When one of these precedes
+ * the surname the title carries no candidate given name to compare against.
+ */
+const NON_GIVEN_TOKENS = new Set([
+  'for',
+  'of',
+  'the',
+  'to',
+  'and',
+  'a',
+  'an',
+  'friends',
+  'committee',
+  'elect',
+  'reelect',
+  're',
+  'citizens',
+  'californians',
+  'people',
+  'voters',
+  'taxpayers',
+  'neighbors',
+  // Office/honorific titles — "Speaker Rivas Legal Defense Fund" is Robert
+  // Rivas's own committee; without these the title reads as a given name and
+  // the committee is wrongly unlinked.
+  'speaker',
+  'senator',
+  'assemblymember',
+  'assemblyman',
+  'assemblywoman',
+  'councilmember',
+  'supervisor',
+  'mayor',
+  'dr',
+  'hon',
+]);
+
+/**
+ * Diminutive ↔ formal given-name groups, first entry canonical. Deliberately
+ * small: an over-broad table re-admits the cross-attribution this gate exists
+ * to stop. Short forms that are a prefix of the formal name (Dan/Daniel,
+ * Chris/Christopher) need no entry — the prefix rule below covers them.
+ */
+const NICKNAME_GROUPS = [
+  ['thomas', 'tom', 'tommy'],
+  ['stephen', 'steven', 'steve'],
+  ['michael', 'mike'],
+  ['robert', 'rob', 'bob', 'bobby'],
+  ['william', 'will', 'bill', 'billy'],
+  ['james', 'jim', 'jimmy'],
+  ['joseph', 'joe', 'joey'],
+  ['richard', 'rick', 'dick'],
+  ['charles', 'charlie', 'chuck'],
+  ['john', 'jack', 'johnny'],
+  ['edward', 'ed', 'eddie'],
+  ['margaret', 'maggie', 'peggy'],
+  ['elizabeth', 'liz', 'beth'],
+  ['katherine', 'kathryn', 'kate', 'kathy'],
+  ['patricia', 'patty', 'trish'],
+  ['susan', 'sue'],
+  ['lawrence', 'larry'],
+  ['anthony', 'tony'],
+  ['francisco', 'paco'],
+  ['manuel', 'manny'],
+];
+
+const NICKNAME_CANON = new Map<string, string>(
+  NICKNAME_GROUPS.flatMap((group) =>
+    group.map((name) => [name, group[0]] as [string, string]),
+  ),
+);
+
+/** Shortest prefix that may stand in for a formal given name (Dan → Daniel). */
+const GIVEN_PREFIX_MIN = 3;
+
+/** Honorifics dropped before taking a representative's given name. */
+const NAME_TITLES = new Set([
+  'dr',
+  'mr',
+  'mrs',
+  'ms',
+  'rev',
+  'hon',
+  'sen',
+  'asm',
+  'prof',
+]);
+
+/**
+ * True when two given names plausibly denote the same person: identical, a
+ * known diminutive pair, or one a prefix of the other. Keeps legitimate links
+ * intact — "Tom Umberg for Senate" really is Thomas Umberg's committee, and
+ * "Stephen Bennett for Assembly 2024" really is Steve Bennett's.
+ */
+export function givenNamesMatch(a: string, b: string): boolean {
+  const x = alnumKey(a);
+  const y = alnumKey(b);
+  if (!x || !y) return true;
+  if (x === y) return true;
+  const canonX = NICKNAME_CANON.get(x);
+  const canonY = NICKNAME_CANON.get(y);
+  if (canonX && canonY && canonX === canonY) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return short.length >= GIVEN_PREFIX_MIN && long.startsWith(short);
+}
+
+/**
+ * The personal-name tokens a committee title carries before the surname —
+ * "Rob Bonta for Assembly 2014" → ["rob"]. ALL preceding tokens are returned,
+ * not just the adjacent one: legislators have middle names ("Maria Elena
+ * Durazo") and compound surnames ("Rick Chavez Zbur") where the adjacent token
+ * is not the given name, and matching on it alone unlinked their own
+ * committees. Empty when the title names nobody before the surname ("BONTA FOR
+ * ASSEMBLY 2021", "Friends of Rivas") — no signal, so the caller keeps it.
+ */
+export function committeeGivenNames(
+  committeeName: string,
+  surname: string,
+): string[] {
+  const surnameTokens = soften(surname).split(' ').filter(Boolean);
+  const anchor = surnameTokens.at(-1);
+  if (!anchor) return [];
+  const surnameSet = new Set(surnameTokens);
+  const keep = (t: string) =>
+    !NON_GIVEN_TOKENS.has(t) && !surnameSet.has(t) && !/^\d+$/.test(t);
+
+  // CAL-ACCESS also files the inverted form "SURNAME FOR OFFICE YEAR; FIRST"
+  // ("GARCIA FOR ASSEMBLY 2024; VICTORIA"). Nothing precedes the surname
+  // there, so read the trailing segment as given-name candidates too —
+  // otherwise Victoria Garcia's committee lands on Robert Garcia.
+  const [head, ...rest] = committeeName.split(';');
+  const headTokens = soften(head).split(' ').filter(Boolean);
+  const at = headTokens.indexOf(anchor);
+  const leading = at >= 1 ? headTokens.slice(0, at).filter(keep) : [];
+  const trailing = soften(rest.join(' '))
+    .split(' ')
+    .filter(Boolean)
+    .filter(keep);
+  return [...leading, ...trailing];
+}
+
+/** A tracked rep's given name — "Dr. Corey A. Jackson" → "corey". */
+export function representativeGivenName(fullName: string): string {
+  const tokens = soften(fullName).split(' ').filter(Boolean);
+  return tokens.find((t) => !NAME_TITLES.has(t)) ?? '';
+}
+
+/**
+ * Reject a committee whose title names a DIFFERENT person sharing the surname.
+ * Former officeholders and relatives share surname + chamber with a sitting
+ * member, so the ambiguity guard — which only sees *current* reps — lets them
+ * through: "Rob Bonta for Assembly 2014" was attributed to Mia Bonta, and
+ * "Ian Calderon for Assembly" to Lisa Calderon. Absent a given name on either
+ * side there is nothing to discriminate on, so the committee is kept.
+ */
+function givenNameAgrees(
+  committeeName: string,
+  surname: string,
+  repGivenName?: string,
+): boolean {
+  if (!repGivenName) return true;
+  const given = committeeGivenNames(committeeName, surname);
+  if (given.length === 0) return true;
+  return given.some((g) => givenNamesMatch(g, repGivenName));
 }
 
 /**
@@ -167,6 +337,11 @@ export class CandidateCommitteeLinkerService {
 
     const reps = await this.loadReps();
     const repIndex = this.buildRepIndex(reps);
+    // repId → given name, so the controlled-committee gate can reject a
+    // same-surname relative or predecessor's committee (#979).
+    const givenNameById = new Map(
+      reps.map((r) => [r.id, representativeGivenName(r.name)]),
+    );
     // Guard: an empty rep index means reps aren't loaded (transient/degenerate)
     // — do NOT reconcile then, or a bad load would nuke every existing link.
     if (repIndex.size === 0) return empty;
@@ -212,7 +387,13 @@ export class CandidateCommitteeLinkerService {
         skippedAmbiguous++;
       } else if (res.kind === 'unmatched') {
         unmatched++;
-      } else if (!isCandidateOwnCommittee(c.name, res.surname)) {
+      } else if (
+        !isCandidateOwnCommittee(
+          c.name,
+          res.surname,
+          givenNameById.get(res.repId),
+        )
+      ) {
         // Matched a rep, but the committee only references the candidate
         // (IE/ballot-measure/sponsored/PAC) — not their controlled committee.
         // Never attribute it, or the money trail shows money that isn't the
@@ -269,15 +450,17 @@ export class CandidateCommitteeLinkerService {
         sourceSystem: 'cal_access',
         deletedAt: null,
       },
-      select: { id: true, name: true, candidateName: true },
+      select: {
+        id: true,
+        name: true,
+        candidateName: true,
+        // The linked rep's name drives the given-name gate, so pre-#979 links
+        // that absorbed a relative's or predecessor's committee are unlinked
+        // on the next run without manual SQL.
+        representative: { select: { name: true, lastName: true } },
+      },
     });
-    const stale = linked.filter(
-      (c) =>
-        !isCandidateOwnCommittee(
-          c.name,
-          candidateSurname(c.candidateName ?? ''),
-        ),
-    );
+    const stale = linked.filter((c) => !this.stillControlledBy(c));
     if (stale.length > 0) {
       await batchTransaction(
         this.db!,
@@ -290,6 +473,30 @@ export class CandidateCommitteeLinkerService {
       );
     }
     return stale.length;
+  }
+
+  /**
+   * Re-apply the controlled-committee gate to one already-linked committee.
+   * CAND_NAML is often blank on older filings ("Rob Bonta for Assembly 2018"),
+   * which would yield an empty surname and pass the gate on the length check
+   * before the given-name comparison ever ran — so fall back to the linked
+   * representative's own surname, which is what the title must agree with.
+   */
+  private stillControlledBy(c: {
+    name: string;
+    candidateName: string | null;
+    representative: { name: string; lastName: string } | null;
+  }): boolean {
+    const rep = c.representative;
+    const surname =
+      candidateSurname(c.candidateName ?? '') ||
+      rep?.lastName ||
+      (rep ? this.lastNameOf(rep.name) : '');
+    return isCandidateOwnCommittee(
+      c.name,
+      surname,
+      rep ? representativeGivenName(rep.name) : undefined,
+    );
   }
 
   /** Load tracked (non-federal) reps once; both index builders read the result. */

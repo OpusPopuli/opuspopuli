@@ -85,11 +85,11 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/representatives/${rep.id}`}
-            className="block text-base font-semibold text-content hover:text-content transition-colors line-clamp-1"
+            className="block text-base font-semibold text-content hover:underline transition-colors line-clamp-1"
           >
             {rep.name}
           </Link>
-          <p className="mt-0.5 text-xs text-content-dim">
+          <p className="mt-0.5 text-sm text-content-dim">
             {t("reps.chamberDistrict", {
               chamber: rep.chamber,
               district: rep.district,
@@ -127,7 +127,7 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
               <li key={bill.id}>
                 <Link
                   href={`/region/bills/${bill.id}`}
-                  className="inline-block rounded-md bg-surface-alt border border-line px-2 py-0.5 text-xs font-medium text-content hover:bg-surface-alt transition-colors"
+                  className="inline-block rounded-md bg-surface-alt border border-line px-2 py-0.5 text-xs font-medium text-content hover:bg-surface-sunk transition-colors"
                   title={bill.title}
                 >
                   {bill.billNumber}

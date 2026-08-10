@@ -169,7 +169,7 @@ export default function LegislativeCommitteesPage() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search committees by name (e.g. 'Health', 'Veterans')…"
-            className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-surface text-content placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2.5 rounded-lg border border-line bg-surface text-content placeholder:text-content-dim focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
             aria-label="Search committees by name"
           />
         </label>
@@ -183,8 +183,8 @@ export default function LegislativeCommitteesPage() {
                 onClick={() => onChamberChange(f.value)}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                   active
-                    ? "bg-inverse-surface text-white"
-                    : "bg-surface text-content-dim hover:bg-slate-100"
+                    ? "bg-inverse-surface text-on-inverse"
+                    : "bg-surface text-content-dim hover:bg-surface-alt"
                 }`}
               >
                 {f.label}
@@ -195,7 +195,7 @@ export default function LegislativeCommitteesPage() {
       </div>
 
       {isSearching && !loading && items.length > 0 && (
-        <p className="mb-3 text-xs text-content-dim">
+        <p className="mb-3 text-sm text-content-dim">
           {total} match{total === 1 ? "" : "es"} for &ldquo;{searchQuery}
           &rdquo;
         </p>

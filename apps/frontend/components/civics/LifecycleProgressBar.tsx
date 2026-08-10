@@ -13,8 +13,7 @@ interface LifecycleProgressBarProps {
 }
 
 const urgencyColors: Record<CitizenAction["urgency"], string> = {
-  active:
-    "bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-800 dark:text-orange-300",
+  active: "bg-warning-surface border-warning-line text-warning",
   passive: "bg-surface-alt border-line text-content-dim ",
   none: "hidden",
 };
@@ -25,11 +24,11 @@ function getStepDotClass(
   isCompleted: boolean,
   isCurrent: boolean,
 ): string {
-  if (isSelected) return "scale-110 border-blue-700 bg-blue-700 ";
-  if (isAbstract) return "border-gray-400 bg-surface hover:border-blue-400 ";
-  if (isCompleted) return "border-blue-500 bg-blue-500";
-  if (isCurrent) return "border-blue-600 bg-blue-600 ring-2 ring-blue-300";
-  return "border-line bg-surface hover:border-blue-400 ";
+  if (isSelected) return "scale-110 border-info-line bg-accent ";
+  if (isAbstract) return "border-line bg-surface hover:border-accent ";
+  if (isCompleted) return "border-accent bg-accent";
+  if (isCurrent) return "border-accent bg-accent ring-2 ring-accent";
+  return "border-line bg-surface hover:border-accent ";
 }
 
 function getStageLabelClass(
@@ -37,8 +36,7 @@ function getStageLabelClass(
   isCompleted: boolean,
   isCurrent: boolean,
 ): string {
-  if (isSelected || isCurrent)
-    return "font-semibold text-blue-700 dark:text-blue-400";
+  if (isSelected || isCurrent) return "font-semibold text-info";
   if (isCompleted) return "text-content-dim ";
   return "text-content-dim ";
 }
@@ -90,7 +88,7 @@ export function LifecycleProgressBar({
                     aria-hidden="true"
                     className={[
                       "absolute left-1/2 top-3 h-0.5 w-full",
-                      isCompleted ? "bg-blue-500" : "bg-surface-sunk ",
+                      isCompleted ? "bg-accent" : "bg-surface-sunk ",
                     ].join(" ")}
                   />
                 )}
@@ -107,7 +105,7 @@ export function LifecycleProgressBar({
                   aria-pressed={isSelected}
                   aria-label={`${stage.name.plainLanguage}: ${stage.shortDescription.plainLanguage}`}
                   className={[
-                    "relative z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1",
+                    "relative z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1",
                     getStepDotClass(
                       isSelected,
                       isAbstract,
@@ -119,7 +117,7 @@ export function LifecycleProgressBar({
                   {isCompleted && !isSelected && (
                     <svg
                       aria-hidden="true"
-                      className="h-3 w-3 text-white"
+                      className="h-3 w-3 text-paper"
                       fill="currentColor"
                       viewBox="0 0 20 20"
                     >
@@ -156,22 +154,22 @@ export function LifecycleProgressBar({
 
       {/* Expanded detail panel for selected stage */}
       {selectedStage && (
-        <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-900/10">
+        <div className="rounded-lg border border-info-line bg-info-surface p-4/50/10">
           <div className="flex items-start justify-between gap-2">
-            <h4 className="font-semibold text-blue-900 dark:text-blue-200">
+            <h4 className="font-semibold text-info">
               {selectedStage.name.plainLanguage}
             </h4>
             <button
               type="button"
               onClick={() => setSelectedId(null)}
               aria-label="Close stage detail"
-              className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-300"
+              className="text-info hover:text-info-strong dark:hover:text-info-strong"
             >
               ✕
             </button>
           </div>
 
-          <p className="mt-1 text-sm text-blue-800 dark:text-blue-300">
+          <p className="mt-1 text-sm text-info">
             {selectedStage.shortDescription.plainLanguage}
           </p>
 

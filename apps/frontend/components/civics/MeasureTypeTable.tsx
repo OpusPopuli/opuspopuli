@@ -30,7 +30,7 @@ export function MeasureTypeTable({
 
   return (
     <div className="overflow-x-auto rounded-lg border border-line">
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
+      <table className="min-w-full divide-y divide-line text-sm">
         <caption className="sr-only">{t("measureTypes.title")}</caption>
         <thead className="bg-surface-alt">
           <tr>
@@ -72,7 +72,7 @@ export function MeasureTypeTable({
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100 bg-surface">
+        <tbody className="divide-y divide-line bg-surface">
           {measureTypes.map((mt) => (
             <MeasureTypeRow
               key={mt.code}
@@ -134,7 +134,7 @@ function MeasureTypeRow({
 
   return (
     <tr className="hover:bg-surface-alt">
-      <td className="sticky left-0 bg-surface px-4 py-3 font-mono font-semibold text-blue-700 dark:text-blue-400">
+      <td className="sticky left-0 bg-surface px-4 py-3 font-mono font-semibold text-info">
         {mt.code}
       </td>
       <td className="px-4 py-3 text-content">
@@ -146,10 +146,7 @@ function MeasureTypeRow({
       <td className="px-4 py-3 text-content-dim">{threshold}</td>
       <td className="px-4 py-3 text-center">
         {mt.reachesGovernor ? (
-          <span
-            aria-label={t("measureTypes.yes")}
-            className="text-green-600 dark:text-green-400"
-          >
+          <span aria-label={t("measureTypes.yes")} className="text-positive">
             ✓
           </span>
         ) : (
@@ -169,7 +166,7 @@ function MeasureTypeRow({
               onClick={() =>
                 popoverOpen ? setPopoverOpen(false) : openPopover()
               }
-              className="rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-blue-900/30 dark:text-blue-300"
+              className="rounded bg-info-surface px-2 py-0.5 text-xs font-medium text-info hover:bg-info-line focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
             >
               {t("measureTypes.stagesPopover", { count: stages.length })}
             </button>
@@ -186,7 +183,7 @@ function MeasureTypeRow({
                   }}
                   className="w-64 rounded-lg border border-line bg-surface py-2"
                 >
-                  <p className="px-3 pb-1 text-xs font-semibold text-content-dim">
+                  <p className="px-3 pb-1 text-sm font-semibold text-content-dim">
                     {mt.name} — stages
                   </p>
                   {stages.map((s, i) => (

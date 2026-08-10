@@ -36,7 +36,7 @@ export function BillsTopicFilter({ topics }: BillsTopicFilterProps) {
       ))}
       <Link
         href="/me/profile"
-        className="text-xs font-medium text-content hover:text-content ml-auto"
+        className="text-xs font-medium text-content hover:underline ml-auto"
       >
         {t("bills.broadenLink")}
       </Link>

@@ -140,7 +140,7 @@ export function DocumentFrameOverlay({
 
         {/* Guide text */}
         <div className="absolute -bottom-8 left-0 right-0 text-center">
-          <span className="text-white text-sm font-medium drop-shadow-lg">
+          <span className="text-paper text-sm font-medium drop-shadow-lg">
             Align petition within the frame
           </span>
         </div>

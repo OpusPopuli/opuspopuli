@@ -38,6 +38,7 @@ import {
   buildFailureResult,
   mapAndReturn,
   mapBatchItems,
+  sessionSourceKey,
 } from "./handler-utils.js";
 
 /** Download timeout: 30 minutes for very large files (FEC indiv26.zip is ~1.4GB) */
@@ -46,8 +47,35 @@ const DOWNLOAD_TIMEOUT_MS = 1_800_000;
 /** Default batch size for record processing (trades memory for fewer DB round-trips) */
 const DEFAULT_BATCH_SIZE = 10_000;
 
+/**
+ * Joins `compositeKey` column values into an `externalId`. Matches the shape
+ * single-column ids already have in this codebase (`<FILING_ID>:<LINE_ITEM>`).
+ *
+ * Note this is a display/identity convention only — nothing parses an id back
+ * apart. The one consumer that did (`extractFilingId`) was replaced by a real
+ * `filing_id` column in #980, precisely so that changing a key's layout can
+ * never silently break a downstream reader again.
+ */
+const COMPOSITE_KEY_SEPARATOR = ":";
+
 /** Callback invoked with each batch of mapped domain objects */
 export type OnBatchCallback<T> = (items: T[]) => Promise<void>;
+
+/**
+ * Everything a single data line needs to become a record. Bundled rather than
+ * passed positionally — the parameter list had reached the point where adding
+ * one more (SonarCloud S107 caps it at 7) traded a readable signature for a
+ * lint waiver.
+ */
+interface ParseContext {
+  delimiter: string;
+  mappings: Record<string, string>;
+  filters: Record<string, string>;
+  colIndices: Record<string, number>;
+  filterIndices: Record<string, number>;
+  compositeIndices: number[];
+  sourceSystem: string | undefined;
+}
 
 @Injectable()
 export class BulkDownloadHandler {
@@ -118,19 +146,11 @@ export class BulkDownloadHandler {
         // On retry, the session exposes already-applied batch indexes so we
         // skip re-sending them to onBatch. Disabled sessions are silent.
         //
-        // The resume session is keyed by (job, sourceUrl, dataType) and
-        // `batchIndex` restarts at 0 for each source. Multiple bulk sources
-        // routinely share ONE archive URL — every CAL-ACCESS table
-        // (RCPT/EXPN/S496/CVR/CVR2) is extracted from the same
-        // dbwebexport.zip. Without a per-file discriminator the second and
-        // later same-URL sources resume the first source's execution row,
-        // inherit its applied-batch set, and (having fewer batches) skip
-        // their entire stream — silently ingesting nothing (#950). Encode the
-        // extracted filePattern into the tracked identity so each file in a
-        // shared archive gets its own execution row + batch checkpoint.
-        const trackingUrl = bulk.filePattern
-          ? `${source.url}#${bulk.filePattern}`
-          : source.url;
+        // The resume session is keyed by (job, sourceUrl) and `batchIndex`
+        // restarts at 0 for each source, so the tracked identity must be
+        // unique per source. See sessionSourceKey for why url + filePattern
+        // alone is insufficient (#950, #984).
+        const trackingUrl = sessionSourceKey(source, bulk.filePattern);
         const session: ExecutionSession =
           await ExecutionTrackerService.beginSession(
             this.executionTracker,
@@ -421,23 +441,37 @@ export class BulkDownloadHandler {
     const delimiter = this.getDelimiter(bulk);
     const mappings = bulk.columnMappings;
     const filters = bulk.filters ?? {};
+    const compositeKey = bulk.compositeKey ?? [];
     const sourceSystem = inferSourceSystem(source);
     const headerSkip = bulk.headerLines ?? 0;
 
     let lineNum = 0;
     let colIndices: Record<string, number> = {};
     let filterIndices: Record<string, number> = {};
+    let compositeIndices: number[] = [];
 
     const hasExplicitHeaders = bulk.headers && bulk.headers.length > 0;
     if (hasExplicitHeaders) {
       const headers = bulk.headers!;
       colIndices = this.buildColumnIndices(headers, mappings);
       filterIndices = this.buildColumnIndices(headers, filters);
+      compositeIndices = this.buildCompositeIndices(headers, compositeKey);
     }
 
     const headerLineNum = headerSkip;
     const buildIndices = this.buildColumnIndices.bind(this);
+    const buildComposite = this.buildCompositeIndices.bind(this);
     const processData = this.processDataLine.bind(this);
+
+    const context = (): ParseContext => ({
+      delimiter,
+      mappings,
+      filters,
+      colIndices,
+      filterIndices,
+      compositeIndices,
+      sourceSystem,
+    });
 
     return {
       processLine(line: string): Record<string, unknown> | null {
@@ -452,20 +486,13 @@ export class BulkDownloadHandler {
             .map((h) => BulkDownloadHandler.stripQuotes(h));
           colIndices = buildIndices(headers, mappings);
           filterIndices = buildIndices(headers, filters);
+          compositeIndices = buildComposite(headers, compositeKey);
           lineNum++;
           return null;
         }
 
         lineNum++;
-        return processData(
-          line,
-          delimiter,
-          mappings,
-          filters,
-          colIndices,
-          filterIndices,
-          sourceSystem,
-        );
+        return processData(line, context());
       },
     };
   }
@@ -476,20 +503,29 @@ export class BulkDownloadHandler {
    */
   private processDataLine(
     line: string,
-    delimiter: string,
-    mappings: Record<string, string>,
-    filters: Record<string, string>,
-    colIndices: Record<string, number>,
-    filterIndices: Record<string, number>,
-    sourceSystem: string | undefined,
+    ctx: ParseContext,
   ): Record<string, unknown> | null {
     if (!line.trim()) return null;
 
-    const values = line.split(delimiter);
+    const { compositeIndices, sourceSystem } = ctx;
+    const values = line.split(ctx.delimiter);
 
-    if (!this.passesFilters(values, filters, filterIndices)) return null;
+    if (!this.passesFilters(values, ctx.filters, ctx.filterIndices))
+      return null;
 
-    const record = this.mapRow(values, mappings, colIndices);
+    const record = this.mapRow(values, ctx.mappings, ctx.colIndices);
+
+    if (compositeIndices.length > 0) {
+      const segments = compositeIndices.map((idx) =>
+        BulkDownloadHandler.stripQuotes(values[idx] ?? ""),
+      );
+      // An all-empty key identifies nothing and would collide with every other
+      // all-empty row, so drop the line rather than upserting them onto each other.
+      if (segments.every((s) => !s)) return null;
+      // Overwrites any externalId from columnMappings — a feed that needs a
+      // composite key by definition has no single column that identifies a row.
+      record["externalId"] = segments.join(COMPOSITE_KEY_SEPARATOR);
+    }
 
     if (sourceSystem && !record["sourceSystem"]) {
       record["sourceSystem"] = sourceSystem;
@@ -539,14 +575,47 @@ export class BulkDownloadHandler {
     for (const col of Object.keys(columns)) {
       const idx = headers.indexOf(col);
       if (idx === -1) {
+        // Same reasoning as buildCompositeIndices: when the first line isn't
+        // actually a header row it holds donor data, so log its shape, not its
+        // cells (#980 review).
         this.logger.warn(
-          `Column '${col}' not found in file headers. Available: ${headers.slice(0, 10).join(", ")}`,
+          `Column '${col}' not found in file headers (${headers.length} column(s) present).`,
         );
       } else {
         indices[col] = idx;
       }
     }
     return indices;
+  }
+
+  /**
+   * Resolve `compositeKey` column names to their positions, in the order given.
+   *
+   * Throws on an unresolvable column instead of warning-and-continuing the way
+   * {@link buildColumnIndices} does. A missing mapped column costs one field;
+   * a missing key component silently shortens the key for *every* row, so
+   * distinct rows collapse onto one `externalId` and the upsert discards all
+   * but the last. That is the failure this feature exists to prevent
+   * (opuspopuli#980), so it must be loud.
+   */
+  private buildCompositeIndices(
+    headers: string[],
+    compositeKey: string[],
+  ): number[] {
+    const missing = compositeKey.filter((col) => !headers.includes(col));
+    if (missing.length > 0) {
+      // Report the shape of the header row, never its contents. `headers` is
+      // just the file's first non-skipped line — and this error fires precisely
+      // when that line ISN'T a header row, i.e. when it is a data row. Echoing
+      // its cells would put donor name/employer/city/ZIP into an error-level log
+      // that propagates to the persisted pipeline errors[] and on to Loki.
+      throw new Error(
+        `compositeKey column(s) not found in file headers: ${missing.join(", ")}. ` +
+          `Header row has ${headers.length} column(s); ` +
+          `expected columns are configured in the region plugin.`,
+      );
+    }
+    return compositeKey.map((col) => headers.indexOf(col));
   }
 
   /**

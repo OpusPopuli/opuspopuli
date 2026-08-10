@@ -14,8 +14,8 @@ import { readPositiveInt } from './config-helpers';
  *
  * 1) **CVR2 (FPPC Form 410, authoritative)**: every `cvr2_filings` row gives
  *    `(filingId, ballotName, supportOrOppose)`. We resolve `filingId →
- *    committeeId` by reading `Contribution`/`Expenditure.externalId` (which
- *    encodes FILING_ID per the bulk-download convention), and resolve
+ *    committeeId` by reading the `filing_id` column on
+ *    `Contribution`/`Expenditure` (stamped by `CoverPageLinkerService`), and resolve
  *    `ballotName → propositionId` via the title lookup. Each row that
  *    resolves writes a `CommitteeMeasurePosition` with
  *    `isPrimaryFormation = true` and `sourceFiling = filingId`.
@@ -155,34 +155,48 @@ export class PropositionFinanceLinkerService {
 
   /**
    * Build `filingId → committeeId` from existing Contribution / Expenditure
-   * rows. The bulk-download handler stores externalIds shaped like
-   * `<FILING_ID>:<row index>` (or similar); we extract the FILING_ID prefix
-   * and pair it with the row's `committeeId`.
+   * rows, reading the `filing_id` column directly (#980). It previously recovered the
+   * filing id by splitting `externalId` on its first `:`/`-`, which the
+   * composite `externalId` would have quietly broken — every CVR2 row would
+   * have fallen into the `skipped` branch and proposition funding would read
+   * $0 with no error raised.
+   *
+   * The "first hit per filing wins" rule is now well-defined rather than
+   * arbitrary: since the cover-page linker stamps every row of a filing with
+   * that filing's *filer*, all rows sharing a `filingId` also share a
+   * `committeeId`.
+   *
+   * De-duplicated in SQL via `DISTINCT ON`, not in JS. The map only ever holds
+   * one entry per filing (~662k), but a `findMany` would hydrate one object per
+   * *line item* (~1.2M contributions plus expenditures) to build it — hundreds
+   * of MB of throwaway objects in region-worker at the tail of every sync.
+   * Filtering on `committeeId IS NOT NULL` does not help there: once the
+   * cover-page linker succeeds, nearly every row passes it.
    */
   private async buildFilingToCommitteeIndex(): Promise<Map<string, string>> {
     const map = new Map<string, string>();
 
-    const addRows = async (
-      rows: Array<{ externalId: string; committeeId: string }>,
+    const addRows = (
+      rows: Array<{ filing_id: string; committee_id: string }>,
     ) => {
       for (const r of rows) {
-        const filingId = this.extractFilingId(r.externalId);
-        if (filingId && !map.has(filingId)) {
-          map.set(filingId, r.committeeId);
-        }
+        if (!map.has(r.filing_id)) map.set(r.filing_id, r.committee_id);
       }
     };
 
-    await addRows(
-      await this.db!.contribution.findMany({
-        select: { externalId: true, committeeId: true },
-      }),
-    );
-    await addRows(
-      await this.db!.expenditure.findMany({
-        select: { externalId: true, committeeId: true },
-      }),
-    );
+    for (const table of ['contributions', 'expenditures'] as const) {
+      addRows(
+        await this.db!.$queryRawUnsafe<
+          Array<{ filing_id: string; committee_id: string }>
+        >(
+          `SELECT DISTINCT ON ("filing_id") "filing_id", "committee_id"
+             FROM "${table}"
+            WHERE "committee_id" IS NOT NULL
+              AND "filing_id" IS NOT NULL
+            ORDER BY "filing_id"`,
+        ),
+      );
+    }
 
     return map;
   }
@@ -326,8 +340,10 @@ export class PropositionFinanceLinkerService {
     const seen = new Set<string>();
     for (const r of [...expRows, ...ieRows]) {
       if (!r.propositionId) continue;
-      // IE.committeeId is nullable since #955 (unresolved S496 rows) — skip any
-      // not yet attributed to a committee; they can't seed a measure position.
+      // committeeId is nullable on IEs since #955 (unresolved S496 rows) and on
+      // expenditures since #980 (unattributed EXPN rows) — skip any not yet
+      // attributed to a committee; they can't seed a measure position, and
+      // upsertPosition would hit the committee FK.
       if (!r.committeeId) continue;
       const position = this.mapPosition(r.supportOrOppose ?? null);
       if (!position) continue;
@@ -446,17 +462,5 @@ export class PropositionFinanceLinkerService {
       .replaceAll(/[^a-z0-9\s]/g, ' ')
       .replaceAll(/\s+/g, ' ')
       .trim();
-  }
-
-  /**
-   * Pull the FILING_ID prefix out of an externalId. The bulk-download
-   * handler concatenates FILING_ID + a row discriminator with either ':'
-   * or '-' as the separator; we conservatively split on either. If no
-   * separator exists, the entire externalId is treated as the filing id.
-   */
-  private extractFilingId(externalId: string): string | null {
-    if (!externalId) return null;
-    const idx = externalId.search(/[:-]/);
-    return idx >= 0 ? externalId.slice(0, idx) : externalId;
   }
 }

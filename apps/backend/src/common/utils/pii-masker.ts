@@ -18,6 +18,17 @@ const SENSITIVE_FIELDS = new Set([
   'cardnumber',
   'cvv',
   'cvc',
+  // CAL-ACCESS donor fields (#980). Fully redacted rather than partially
+  // masked: partialMask keeps the last four characters, and for a ZIP+4 those
+  // four ARE the +4 — the household-identifying part — while for a name they
+  // are most of a short surname. There is no diagnostic value in a half-masked
+  // donor identity, so redact outright. Nothing logs a contribution row today;
+  // this exists so the first `logger.debug({ contribution })` someone writes
+  // does not quietly put donor PII into Loki.
+  'donorname',
+  'donoremployer',
+  'donoroccupation',
+  'donorzip',
 ]);
 
 const PARTIAL_MASK_FIELDS = new Set(['email', 'phone', 'phonenumber']);

@@ -58,7 +58,7 @@ export function CivicTerm({ term, children }: CivicTermProps) {
       <span
         tabIndex={0}
         aria-describedby={hasMatch ? descId : undefined}
-        className="cursor-help border-b border-dashed border-current underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 rounded-sm"
+        className="cursor-help border-b border-dashed border-current underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 rounded-sm"
       >
         {children}
       </span>
@@ -83,7 +83,7 @@ export function CivicTerm({ term, children }: CivicTermProps) {
           {learnMoreSlug && (
             <Link
               href={`/region/how-it-works#term-${learnMoreSlug}`}
-              className="mt-2 block text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+              className="mt-2 block text-xs font-medium text-info hover:underline"
               tabIndex={0}
             >
               {t("tooltip.learnMore")} →

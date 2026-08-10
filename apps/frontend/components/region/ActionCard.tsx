@@ -42,7 +42,7 @@ export function ActionCard({
     typeof action.passageEnd === "number";
 
   return (
-    <article className="bg-surface rounded-lg border border-slate-200 p-4 transition-shadow">
+    <article className="bg-surface rounded-lg border border-line p-4 transition-shadow">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           {!compact && (
@@ -68,7 +68,7 @@ export function ActionCard({
           <button
             type="button"
             onClick={() => onSeePassage(action.id)}
-            className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline whitespace-nowrap"
+            className="text-sm font-medium text-info hover:text-info-strong hover:underline whitespace-nowrap"
           >
             See passage →
           </button>

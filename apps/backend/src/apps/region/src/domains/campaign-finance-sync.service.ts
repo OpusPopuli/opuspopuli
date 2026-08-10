@@ -7,6 +7,7 @@ import {
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
 import { IndependentExpenditureLinkerService } from './independent-expenditure-linker.service';
+import { CoverPageLinkerService } from './cover-page-linker.service';
 import {
   campaignFinanceSyncTracker,
   type SyncPhaseTracker,
@@ -66,6 +67,8 @@ export class CampaignFinanceSyncService {
     private readonly candidateCommitteeLinker?: CandidateCommitteeLinkerService,
     @Optional()
     private readonly independentExpenditureLinker?: IndependentExpenditureLinkerService,
+    @Optional()
+    private readonly coverPageLinker?: CoverPageLinkerService,
   ) {}
 
   async sync(
@@ -175,46 +178,45 @@ export class CampaignFinanceSyncService {
       emptyExtractTracker.complete();
     }
 
-    // Attribute independent expenditures to their committee + target (#955) —
-    // runs BEFORE the proposition linker so the propositionTitle it stamps onto
-    // S496 IEs gets resolved to a propositionId in the same pass.
-    if (this.independentExpenditureLinker) {
-      try {
-        await this.independentExpenditureLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Independent-expenditure linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    if (this.propositionFinanceLinker) {
-      try {
-        await this.propositionFinanceLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Proposition finance linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    // Attribute candidate committees to representatives (#941) — runs after
-    // enrichment so it sees committees with their real candidateName/office.
-    if (this.candidateCommitteeLinker) {
-      try {
-        await this.candidateCommitteeLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Candidate-committee linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
+    await this.runPostSyncLinkers();
 
     return {
       processed: totalProcessed,
       created: totalCreated,
       updated: totalUpdated,
     };
+  }
+
+  /**
+   * Run the attribution linkers, in order. Each is optional (they are
+   * `@Optional()` injections) and each is isolated: one failing must not cost
+   * the sync its upserted data or stop the others running.
+   *
+   * **The order is load-bearing.** Both the IE linker (#955) and the
+   * cover-page linker (#980) stamp `committeeId` onto rows the proposition
+   * linker then reads to derive measure positions — run it first and it sees
+   * nothing, silently writing no positions. The candidate-committee linker
+   * (#941) runs last so it sees committees carrying their enriched
+   * candidateName/office. Covered by campaign-finance-sync.service.spec.ts.
+   */
+  private async runPostSyncLinkers(): Promise<void> {
+    const linkers: Array<
+      [string, { linkAll(): Promise<unknown> } | undefined]
+    > = [
+      ['Independent-expenditure', this.independentExpenditureLinker],
+      ['Cover-page', this.coverPageLinker],
+      ['Proposition finance', this.propositionFinanceLinker],
+      ['Candidate-committee', this.candidateCommitteeLinker],
+    ];
+
+    for (const [name, linker] of linkers) {
+      if (!linker) continue;
+      try {
+        await linker.linkAll();
+      } catch (error) {
+        this.logger.warn(`${name} linker failed: ${(error as Error).message}`);
+      }
+    }
   }
 
   /**
@@ -291,19 +293,19 @@ export class CampaignFinanceSyncService {
       allCommittees.map((c: CommitteeRecord) => [c.externalId, c.id]),
     );
 
-    for (const c of data.contributions) {
-      c.committeeId = idMap.get(c.committeeId) ?? c.committeeId;
-    }
-    for (const e of data.expenditures) {
-      e.committeeId = idMap.get(e.committeeId) ?? e.committeeId;
-    }
-    for (const ie of data.independentExpenditures) {
-      // S496 IEs arrive with no committeeId (resolved later by the IE linker) —
-      // only rewrite the externalId -> UUID for IEs that reference one (#955).
-      if (ie.committeeId) {
-        ie.committeeId = idMap.get(ie.committeeId) ?? ie.committeeId;
+    // RCPT/EXPN line items arrive with no committeeId once the region config
+    // stops mapping CMTE_ID — the filer is resolved later from the cover page
+    // (#980), exactly as S496 IEs have been since #955. Only rewrite the
+    // externalId -> UUID for rows that actually reference a committee.
+    const resolveCommittee = (row: { committeeId?: string }) => {
+      if (row.committeeId) {
+        row.committeeId = idMap.get(row.committeeId) ?? row.committeeId;
       }
-    }
+    };
+
+    data.contributions.forEach(resolveCommittee);
+    data.expenditures.forEach(resolveCommittee);
+    data.independentExpenditures.forEach(resolveCommittee);
   }
 
   /**
@@ -440,6 +442,7 @@ export class CampaignFinanceSyncService {
         model: this.db.contribution,
         fields: [
           'committeeId',
+          'filingId',
           'donorName',
           'donorType',
           'donorEmployer',
@@ -459,6 +462,7 @@ export class CampaignFinanceSyncService {
         model: this.db.expenditure,
         fields: [
           'committeeId',
+          'filingId',
           'payeeName',
           'amount',
           'date',

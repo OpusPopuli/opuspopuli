@@ -116,9 +116,9 @@ export default function ResetPasswordPage() {
   if (success) {
     return (
       <AuthCard className="text-center">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className="w-16 h-16 bg-positive-surface rounded-full flex items-center justify-center mx-auto mb-4">
           <svg
-            className="w-8 h-8 text-green-600"
+            className="w-8 h-8 text-positive"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -140,7 +140,7 @@ export default function ResetPasswordPage() {
         </p>
         <Link
           href="/login"
-          className="inline-block py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:bg-inverse-surface transition-colors"
+          className="inline-block py-3 px-6 bg-inverse-surface text-on-inverse font-semibold rounded-lg hover:opacity-90 transition-colors"
         >
           Sign in
         </Link>
@@ -222,7 +222,7 @@ export default function ResetPasswordPage() {
                   <li
                     key={req.text}
                     className={`text-xs flex items-center gap-2 ${
-                      req.met ? "text-green-600" : "text-content-dim"
+                      req.met ? "text-positive" : "text-content-dim"
                     }`}
                   >
                     {req.met ? (
@@ -273,7 +273,7 @@ export default function ResetPasswordPage() {
                      transition-all duration-200
                      ${
                        confirmPassword.length > 0 && !passwordsMatch
-                         ? "border-red-300"
+                         ? "border-danger-line"
                          : "border-line"
                      }`}
             placeholder="Confirm your new password"
@@ -281,9 +281,7 @@ export default function ResetPasswordPage() {
             autoComplete="new-password"
           />
           {confirmPassword.length > 0 && !passwordsMatch && (
-            <p className="mt-1.5 text-xs text-red-600">
-              Passwords do not match
-            </p>
+            <p className="mt-1.5 text-sm text-danger">Passwords do not match</p>
           )}
         </div>
 

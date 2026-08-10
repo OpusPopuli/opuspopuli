@@ -51,12 +51,12 @@ describe("ConcernsBadge (#932)", () => {
       claim({ kind: "CONTROVERSY", severity: "HIGH" }),
     ]);
     const badge = screen.getByText("2 concerns");
-    expect(badge).toHaveClass("bg-red-100", "text-red-800");
+    expect(badge).toHaveClass("bg-danger-surface", "text-danger");
   });
 
   it("defaults a missing severity to LOW when picking the colour", () => {
     renderBadge([claim({ kind: "CONCERN" })]);
     const badge = screen.getByText("1 concern");
-    expect(badge).toHaveClass("bg-green-100", "text-green-800");
+    expect(badge).toHaveClass("bg-positive-surface", "text-positive");
   });
 });

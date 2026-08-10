@@ -9,10 +9,12 @@ interface ToastProps {
 }
 
 const toastStyles: Record<ToastType, string> = {
-  success: "bg-green-600 dark:bg-green-700",
-  error: "bg-red-600 dark:bg-red-700",
-  warning: "bg-amber-500 dark:bg-amber-600",
-  info: "bg-blue-600 dark:bg-blue-700",
+  success: "bg-positive-solid",
+  error: "bg-danger-solid",
+  warning: "bg-warning-solid",
+  // Not bg-accent: the toast body is paper-on-fill, and paper on gold is
+  // ~1.9:1. Gold fills require ink text, which the other three tones don't use.
+  info: "bg-info-solid",
 };
 
 const toastIcons: Record<ToastType, string> = {
@@ -32,7 +34,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 
   return (
     <div
-      className={`${toastStyles[toast.type]} text-white px-4 py-3 rounded-lg max-w-md animate-slide-in`}
+      className={`${toastStyles[toast.type]} text-paper px-4 py-3 rounded-lg max-w-md animate-slide-in`}
       role="alert"
       aria-live="assertive"
       aria-atomic="true"
@@ -42,9 +44,13 @@ export function Toast({ toast, onDismiss }: ToastProps) {
           {toastIcons[toast.type]}
         </span>
         <p className="flex-1 text-sm">{toast.message}</p>
+        {/* Full paper, not paper/80: at 80% the glyph composites to 4.27:1 on
+            warning-solid, under AA. Opacity modifiers on TEXT tokens are the
+            one place the token contrast guarantees don't hold — dim the whole
+            button on hover instead. */}
         <button
           onClick={onDismiss}
-          className="text-white/80 hover:text-white transition-colors flex-shrink-0"
+          className="text-paper hover:opacity-80 transition-opacity flex-shrink-0"
           aria-label="Close notification"
         >
           <span aria-hidden="true">&times;</span>

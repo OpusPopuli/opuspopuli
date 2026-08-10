@@ -30,7 +30,7 @@ function MinutesPanelBody({ minutes }: { readonly minutes: Minutes }) {
     Boolean(minutes.summary) || (minutes.claims?.length ?? 0) > 0;
   if (!hasContent) {
     return (
-      <p className="text-sm text-slate-600 italic">
+      <p className="text-sm text-content-dim italic">
         {t("minutes.disclosure.empty")}
       </p>
     );
@@ -69,13 +69,13 @@ export function MinutesDisclosure({
 
   const minutes = data?.minutes;
   return (
-    <div className="mt-3 border-t border-slate-100 pt-3">
+    <div className="mt-3 border-t border-line pt-3">
       <button
         type="button"
         onClick={toggle}
         aria-expanded={open}
         aria-controls={panelId}
-        className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline"
+        className="inline-flex items-center gap-1 text-sm font-medium text-info hover:text-info-strong hover:underline"
       >
         <span aria-hidden="true">{open ? "▾" : "▸"}</span>
         {open ? t("minutes.disclosure.hide") : t("minutes.disclosure.show")}
@@ -89,9 +89,7 @@ export function MinutesDisclosure({
           </p>
         )}
         {open && error && (
-          <p className="text-sm text-red-700">
-            {t("minutes.disclosure.error")}
-          </p>
+          <p className="text-sm text-danger">{t("minutes.disclosure.error")}</p>
         )}
         {open && !loading && !error && minutes && (
           <MinutesPanelBody minutes={minutes} />

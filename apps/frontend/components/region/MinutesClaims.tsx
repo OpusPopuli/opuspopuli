@@ -33,10 +33,10 @@ function ClaimRow({
         <p className="mt-1 text-content-dim leading-relaxed">{claim.detail}</p>
       )}
       {claim.citation?.quote && (
-        <blockquote className="mt-1.5 border-l-2 border-amber-200 pl-2 text-[13px] italic text-slate-600">
+        <blockquote className="mt-1.5 border-l-2 border-warning-line pl-2 text-[13px] italic text-content-dim">
           &ldquo;{claim.citation.quote}&rdquo;
           {claim.citation.pageHint && (
-            <span className="not-italic text-slate-500">
+            <span className="not-italic text-content-dim">
               {" "}
               — {claim.citation.pageHint}
             </span>
@@ -45,13 +45,13 @@ function ClaimRow({
       )}
       {claim.billRefs.length > 0 && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] uppercase tracking-wide text-slate-600">
+          <span className="text-[11px] uppercase tracking-wide text-content-dim">
             {billsLabel}
           </span>
           {claim.billRefs.map((ref) => (
             <span
               key={ref}
-              className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700"
+              className="inline-flex items-center rounded bg-surface-alt px-1.5 py-0.5 font-mono text-[11px] text-content"
             >
               {ref}
             </span>
@@ -70,7 +70,7 @@ export function MinutesClaims({
   const { t } = useTranslation("civics");
   if (!claims || claims.length === 0) {
     return (
-      <p className="text-sm text-slate-600 italic">
+      <p className="text-sm text-content-dim italic">
         {t("minutes.claims.empty")}
       </p>
     );

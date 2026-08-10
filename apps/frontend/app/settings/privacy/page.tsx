@@ -83,7 +83,7 @@ function ConsentItem({
           {t(`privacy.consents.${consentType}.description`)}
         </p>
         {statusDate && (
-          <p className="text-xs text-content-dim mt-1">
+          <p className="text-sm text-content-dim mt-1">
             {consent?.status === "granted"
               ? t("privacy.status.grantedOn")
               : t("privacy.status.updatedOn")}{" "}
@@ -99,7 +99,7 @@ function ConsentItem({
             className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
               required
                 ? "bg-surface-alt text-content-dim cursor-not-allowed"
-                : "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-200 hover:bg-red-100 dark:hover:bg-red-900/50"
+                : "bg-danger-surface text-danger hover:bg-danger-surface dark:hover:bg-danger-surface/50"
             }`}
           >
             {loading ? "..." : t("common:buttons.withdraw")}
@@ -108,7 +108,7 @@ function ConsentItem({
           <button
             onClick={() => onUpdate(consentType, true)}
             disabled={loading}
-            className="px-3 py-1.5 text-sm font-medium bg-inverse-surface text-on-inverse rounded-lg hover:bg-inverse-surface transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-sm font-medium bg-inverse-surface text-on-inverse rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
           >
             {loading ? "..." : t("common:buttons.grant")}
           </button>
@@ -220,7 +220,7 @@ export default function PrivacyPage() {
   if (error) {
     return (
       <div className="bg-surface rounded-lg dark:border p-8">
-        <div className="text-center text-red-600 dark:text-red-300">
+        <div className="text-center text-danger">
           <p>{t("privacy.loadError")}</p>
         </div>
       </div>
@@ -327,7 +327,7 @@ export default function PrivacyPage() {
                 {t("privacy.dataManagement.deleteDesc")}
               </p>
             </div>
-            <button className="px-4 py-2 text-sm font-medium bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-200 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">
+            <button className="px-4 py-2 text-sm font-medium bg-danger-surface/30 text-danger rounded-lg hover:bg-danger-surface dark:hover:bg-danger-surface/50 transition-colors">
               {t("privacy.dataManagement.deleteButton")}
             </button>
           </div>

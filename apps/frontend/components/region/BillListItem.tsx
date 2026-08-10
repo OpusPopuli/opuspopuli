@@ -3,11 +3,13 @@
 import Link from "next/link";
 import type { Bill } from "@/lib/graphql/region";
 
+// Measure type is a category, not a status. Each of the four gets its own
+// categorical hue so they stay distinguishable at badge size.
 const MEASURE_TYPE_STYLES: Record<string, string> = {
-  AB: "bg-blue-100 text-blue-800",
-  SB: "bg-purple-100 text-purple-800",
-  ACA: "bg-indigo-100 text-indigo-800",
-  SCA: "bg-violet-100 text-violet-800",
+  AB: "bg-cat-blue-surface text-cat-blue",
+  SB: "bg-cat-purple-surface text-cat-purple",
+  ACA: "bg-cat-teal-surface text-cat-teal",
+  SCA: "bg-cat-amber-surface text-cat-amber",
 };
 
 interface BillListItemProps {
@@ -33,7 +35,7 @@ export function BillsList({ bills, totalCount, viewAllHref }: BillsListProps) {
       {totalCount > 10 && (
         <Link
           href={viewAllHref}
-          className="block text-center text-sm text-blue-600 hover:underline pt-1"
+          className="block text-center text-sm text-info hover:underline pt-1"
         >
           View all {totalCount} bills →
         </Link>
@@ -53,7 +55,7 @@ export function BillListItem({ bill }: BillListItemProps) {
   return (
     <Link
       href={`/region/bills/${bill.id}`}
-      className="flex items-start gap-3 rounded-lg border border-slate-100 bg-surface p-3 hover:border-slate-200 transition-all"
+      className="flex items-start gap-3 rounded-lg border border-line bg-surface p-3 hover:border-accent transition-all"
     >
       <span
         className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${typeCls}`}
@@ -65,7 +67,7 @@ export function BillListItem({ bill }: BillListItemProps) {
           {bill.title}
         </p>
         {bill.status && (
-          <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">
+          <p className="text-sm text-content-dim mt-0.5 line-clamp-1">
             {bill.status}
           </p>
         )}

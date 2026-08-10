@@ -39,7 +39,7 @@ export function CitizenActionCallout({ action }: CitizenActionCalloutProps) {
   const baseClass = [
     "flex items-center gap-2 rounded-lg px-4 py-3 text-sm transition-colors",
     isActive
-      ? "bg-orange-50 text-orange-800 border border-orange-200 hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800"
+      ? "bg-warning-surface text-warning border border-warning-line hover:bg-warning-surface"
       : "bg-surface-alt text-content-dim border border-line ",
   ].join(" ");
 

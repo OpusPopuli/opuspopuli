@@ -100,7 +100,7 @@ export function ChipPicker(props: Props) {
                 "flex items-center justify-center text-center",
                 "px-3 py-2.5 rounded-lg border",
                 "text-sm font-medium transition-colors",
-                "focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2 focus-within:ring-offset-gray-50 dark:focus-within:ring-offset-gray-900",
+                "focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2 focus-within:ring-offset-surface",
                 chipStateClass,
               ].join(" ")}
             >

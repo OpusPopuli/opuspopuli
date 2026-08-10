@@ -131,7 +131,7 @@ export default function PrivacyPolicyPage() {
                 about you. Use the{" "}
                 <Link
                   href="/settings/privacy"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-info hover:underline"
                 >
                   data export
                 </Link>{" "}
@@ -150,7 +150,7 @@ export default function PrivacyPolicyPage() {
                 processing (marketing, analytics, personalization) through your{" "}
                 <Link
                   href="/settings/privacy"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-info hover:underline"
                 >
                   privacy settings
                 </Link>
@@ -208,7 +208,7 @@ export default function PrivacyPolicyPage() {
                   href="https://www.cloudflare.com/privacypolicy/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-info hover:underline"
                 >
                   Cloudflare&apos;s Privacy Policy
                 </a>
@@ -221,7 +221,7 @@ export default function PrivacyPolicyPage() {
                   href="https://supabase.com/privacy"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-info hover:underline"
                 >
                   Supabase&apos;s Privacy Policy
                 </a>
@@ -274,7 +274,7 @@ export default function PrivacyPolicyPage() {
               exercise your data rights, please contact us at{" "}
               <a
                 href="mailto:privacy@opuspopuli.org"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-info hover:underline"
               >
                 privacy@opuspopuli.org
               </a>

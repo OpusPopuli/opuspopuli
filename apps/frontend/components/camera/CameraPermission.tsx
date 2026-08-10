@@ -14,7 +14,7 @@ export function CameraPermission({
   if (state === "granted") return null;
 
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-white">
+    <div className="flex flex-col items-center justify-center h-full px-6 text-center bg-black text-paper">
       {state === "prompt" && (
         <>
           <svg
@@ -44,7 +44,7 @@ export function CameraPermission({
           </p>
           <button
             onClick={onRequestPermission}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+            className="px-6 py-3 bg-accent hover:bg-accent-strong text-on-accent font-medium rounded-lg transition-colors"
           >
             Enable Camera
           </button>
@@ -54,7 +54,7 @@ export function CameraPermission({
       {state === "denied" && (
         <>
           <svg
-            className="w-16 h-16 mb-6 text-red-400"
+            className="w-16 h-16 mb-6 text-danger"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -79,7 +79,7 @@ export function CameraPermission({
           </ol>
           <button
             onClick={() => window.location.reload()}
-            className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+            className="px-6 py-3 bg-paper/15 hover:bg-paper/25 text-paper font-medium rounded-lg transition-colors"
           >
             Refresh Page
           </button>
@@ -89,7 +89,7 @@ export function CameraPermission({
       {state === "unsupported" && (
         <>
           <svg
-            className="w-16 h-16 mb-6 text-yellow-400"
+            className="w-16 h-16 mb-6 text-warning"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"

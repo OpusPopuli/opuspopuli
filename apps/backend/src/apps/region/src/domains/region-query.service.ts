@@ -178,7 +178,9 @@ type CommitteeRecord = {
 type ContributionRecord = {
   id: string;
   externalId: string;
-  committeeId: string;
+  /// Null until the cover-page linker attributes the filing (#980).
+  committeeId: string | null;
+  filingId: string | null;
   donorName: string;
   donorType: string;
   donorEmployer: string | null;
@@ -195,10 +197,43 @@ type ContributionRecord = {
   updatedAt: Date;
 };
 
+/**
+ * Project a contribution row onto the fields that may leave the service.
+ *
+ * An allowlist, deliberately, rather than spreading the row and deleting the
+ * sensitive keys: donor employer, occupation and ZIP+4 are withheld (#980), and
+ * with a denylist the next PII column added to the Prisma model would flow
+ * straight out until someone remembered to exclude it. Here it stays in until
+ * someone adds it on purpose.
+ */
+export function toPublicContribution(item: ContributionRecord) {
+  return {
+    id: item.id,
+    externalId: item.externalId,
+    // Non-null by the committeeId filter on every read path; Prisma's type
+    // stays nullable because unattributed staging rows exist (#980).
+    committeeId: item.committeeId as string,
+    filingId: item.filingId ?? undefined,
+    donorName: item.donorName,
+    donorType: item.donorType,
+    donorCity: item.donorCity ?? undefined,
+    donorState: item.donorState ?? undefined,
+    amount: Number(item.amount),
+    date: item.date,
+    electionType: item.electionType ?? undefined,
+    contributionType: item.contributionType ?? undefined,
+    sourceSystem: item.sourceSystem,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
 type ExpenditureRecord = {
   id: string;
   externalId: string;
-  committeeId: string;
+  /// Null until the cover-page linker attributes the filing (#980).
+  committeeId: string | null;
+  filingId: string | null;
   payeeName: string;
   amount: Prisma.Decimal;
   date: Date;
@@ -1073,10 +1108,17 @@ export class RegionQueryService {
     committeeId?: string,
     sourceSystem?: string,
   ): Promise<PaginatedContributions> {
-    const where: Record<string, unknown> = {};
+    // Only surface attributed contributions: RCPT_CD line items sit with a null
+    // committeeId until the cover-page linker resolves filingId -> recipient
+    // (#980). Unresolved rows are staging, not public money-trail data, and the
+    // GraphQL committeeId is non-null — exclude them, as IEs do (#955).
+    const where: Record<string, unknown> = { committeeId: { not: null } };
+    // Overwriting the guard is safe *only* because an explicit id is non-null,
+    // which is strictly narrower. A future filter on a nullable column (e.g.
+    // filingId) must merge rather than replace.
     if (committeeId) where.committeeId = committeeId;
     if (sourceSystem) where.sourceSystem = sourceSystem;
-    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+    const whereClause = where;
 
     const [items, total] = await Promise.all([
       this.db.contribution.findMany({
@@ -1092,24 +1134,19 @@ export class RegionQueryService {
     const paginatedItems = items.slice(0, take);
 
     return {
-      items: paginatedItems.map((item: ContributionRecord) => ({
-        ...item,
-        amount: Number(item.amount),
-        donorEmployer: item.donorEmployer ?? undefined,
-        donorOccupation: item.donorOccupation ?? undefined,
-        donorCity: item.donorCity ?? undefined,
-        donorState: item.donorState ?? undefined,
-        donorZip: item.donorZip ?? undefined,
-        electionType: item.electionType ?? undefined,
-        contributionType: item.contributionType ?? undefined,
-      })),
+      items: paginatedItems.map(toPublicContribution),
       total,
       hasMore,
     };
   }
 
   async getContribution(id: string) {
-    return this.db.contribution.findUnique({ where: { id } });
+    // findFirst (not findUnique) so we can also require a resolved committee —
+    // an unattributed RCPT staging row is treated as not-found for GraphQL,
+    // mirroring getIndependentExpenditure (#980).
+    return this.db.contribution.findFirst({
+      where: { id, committeeId: { not: null } },
+    });
   }
 
   async getExpenditures(
@@ -1118,10 +1155,15 @@ export class RegionQueryService {
     committeeId?: string,
     sourceSystem?: string,
   ): Promise<PaginatedExpenditures> {
-    const where: Record<string, unknown> = {};
+    // Same as contributions above: EXPN_CD line items are unattributed until the
+    // cover-page linker resolves filingId -> spender (#980).
+    const where: Record<string, unknown> = { committeeId: { not: null } };
+    // Overwriting the guard is safe *only* because an explicit id is non-null,
+    // which is strictly narrower. A future filter on a nullable column (e.g.
+    // filingId) must merge rather than replace.
     if (committeeId) where.committeeId = committeeId;
     if (sourceSystem) where.sourceSystem = sourceSystem;
-    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+    const whereClause = where;
 
     const [items, total] = await Promise.all([
       this.db.expenditure.findMany({
@@ -1139,6 +1181,8 @@ export class RegionQueryService {
     return {
       items: paginatedItems.map((item: ExpenditureRecord) => ({
         ...item,
+        // Non-null by the committeeId filter above; Prisma's type stays nullable.
+        committeeId: item.committeeId as string,
         amount: Number(item.amount),
         purposeDescription: item.purposeDescription ?? undefined,
         expenditureCode: item.expenditureCode ?? undefined,
@@ -1152,7 +1196,10 @@ export class RegionQueryService {
   }
 
   async getExpenditure(id: string) {
-    return this.db.expenditure.findUnique({ where: { id } });
+    // Same as getContribution: unattributed EXPN staging rows read as not-found.
+    return this.db.expenditure.findFirst({
+      where: { id, committeeId: { not: null } },
+    });
   }
 
   async getIndependentExpenditures(

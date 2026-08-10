@@ -42,7 +42,7 @@ export function GroupedBillBatch({
       : "Recorded";
 
   return (
-    <article className="bg-surface rounded-lg border border-slate-200 p-4 transition-shadow">
+    <article className="bg-surface rounded-lg border border-line p-4 transition-shadow">
       <div className="flex items-center gap-2 mb-2">
         <span
           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${accent}`}
@@ -72,7 +72,7 @@ export function GroupedBillBatch({
                 <button
                   type="button"
                   onClick={() => onSeePassage(a.id)}
-                  className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-medium text-content-dim hover:bg-slate-100 hover:border-slate-300 transition-colors"
+                  className="inline-flex items-center px-2 py-0.5 rounded-md border border-line bg-surface-alt text-xs font-medium text-content-dim hover:bg-surface-sunk hover:border-accent transition-colors"
                   title="See source passage"
                 >
                   {label}
@@ -82,7 +82,7 @@ export function GroupedBillBatch({
           }
           return (
             <li key={a.id}>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-medium text-content-dim">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md border border-line bg-surface-alt text-xs font-medium text-content-dim">
                 {label}
               </span>
             </li>

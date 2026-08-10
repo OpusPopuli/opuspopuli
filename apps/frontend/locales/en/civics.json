@@ -82,13 +82,14 @@
     "empty": "No campaign-finance filings are linked to this representative yet.",
     "totalRaised": "Total raised",
     "totalSpent": "Total spent",
-    "donors": "Donors",
+    "donors": "Identified donors",
     "committees": "Committees",
-    "topDonors": "Top donors",
+    "topDonors": "Top identified donors",
     "topEmployers": "Top employers behind the money",
     "throughCommittees": "Money flows through these committees",
     "contributions_one": "{{count}} gift",
-    "contributions_other": "{{count}} gifts"
+    "contributions_other": "{{count}} gifts",
+    "itemizationNote": "Donor figures cover only contributions itemized in the filings we have on file, so they understate the true number of donors."
   },
   "finance": {
     "disclaimerLabel": "Campaign-finance data disclaimer",

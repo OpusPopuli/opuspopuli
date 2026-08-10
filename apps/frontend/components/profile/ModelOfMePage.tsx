@@ -175,7 +175,7 @@ export function ModelOfMePage() {
   if (queryError) {
     return (
       <main className="max-w-3xl mx-auto py-12 text-center">
-        <p role="alert" className="text-base text-red-700">
+        <p role="alert" className="text-base text-danger">
           {t("field.errorPrefix")} {queryError.message}
         </p>
       </main>

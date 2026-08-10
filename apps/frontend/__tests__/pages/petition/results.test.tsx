@@ -461,10 +461,10 @@ describe("PetitionResultsPage", () => {
       });
 
       // Check for green class on progress bar
-      const progressBar = container.querySelector(".bg-green-500");
+      const progressBar = container.querySelector(".bg-positive-solid");
       expect(progressBar).toBeInTheDocument();
       // Check for green text
-      const scoreText = container.querySelector(".text-green-400");
+      const scoreText = container.querySelector(".text-positive");
       expect(scoreText).toBeInTheDocument();
     });
 
@@ -480,9 +480,9 @@ describe("PetitionResultsPage", () => {
         ).toBeInTheDocument();
       });
 
-      const progressBar = container.querySelector(".bg-yellow-500");
+      const progressBar = container.querySelector(".bg-warning-solid");
       expect(progressBar).toBeInTheDocument();
-      const scoreText = container.querySelector(".text-yellow-400");
+      const scoreText = container.querySelector(".text-warning");
       expect(scoreText).toBeInTheDocument();
     });
 
@@ -498,9 +498,9 @@ describe("PetitionResultsPage", () => {
         ).toBeInTheDocument();
       });
 
-      const progressBar = container.querySelector(".bg-red-500");
+      const progressBar = container.querySelector(".bg-danger-solid");
       expect(progressBar).toBeInTheDocument();
-      const scoreText = container.querySelector(".text-red-400");
+      const scoreText = container.querySelector(".text-danger");
       expect(scoreText).toBeInTheDocument();
     });
 

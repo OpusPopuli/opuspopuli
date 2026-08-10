@@ -260,9 +260,12 @@ describe("RepresentativesPage", () => {
       const republicanBadge = screen.getByText("Republican");
       const independentBadge = screen.getByText("Independent");
 
-      expect(democratBadge).toHaveClass("bg-blue-100", "text-blue-800");
-      expect(republicanBadge).toHaveClass("bg-red-100", "text-red-800");
-      expect(independentBadge).toHaveClass("bg-purple-100", "text-purple-800");
+      expect(democratBadge).toHaveClass("bg-cat-blue-surface", "text-cat-blue");
+      expect(republicanBadge).toHaveClass("bg-cat-red-surface", "text-cat-red");
+      expect(independentBadge).toHaveClass(
+        "bg-cat-purple-surface",
+        "text-cat-purple",
+      );
     });
   });
 

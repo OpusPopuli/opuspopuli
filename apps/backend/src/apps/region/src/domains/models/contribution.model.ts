@@ -43,20 +43,20 @@ export class ContributionModel {
   @Field()
   donorType!: string;
 
-  @Field({ nullable: true })
-  donorEmployer?: string;
-
-  @Field({ nullable: true })
-  donorOccupation?: string;
+  // donorEmployer, donorOccupation and donorZip are deliberately NOT exposed
+  // over GraphQL (#980). They are still ingested and stored — CAL-ACCESS
+  // publishes them and they support internal analysis — but name + employer +
+  // occupation + ZIP+4 together approach an individually identifying record,
+  // and the re-ingest takes this table to ~17M rows. No UI ever rendered them:
+  // the contributions page selects donorName/donorType/amount/date, and the
+  // single-contribution query that did select them had no consumer at all.
+  // Read them through a privileged path if a real use case appears.
 
   @Field({ nullable: true })
   donorCity?: string;
 
   @Field({ nullable: true })
   donorState?: string;
-
-  @Field({ nullable: true })
-  donorZip?: string;
 
   @Field(() => Float)
   amount!: number;

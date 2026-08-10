@@ -35,8 +35,8 @@ export function AuthErrorAlert({
 }: Readonly<{ error: string | null | undefined }>) {
   if (!error) return null;
   return (
-    <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-      <p className="text-sm text-red-600">{error}</p>
+    <div className="mb-6 p-4 bg-danger-surface border border-danger-line rounded-lg">
+      <p className="text-sm text-danger">{error}</p>
     </div>
   );
 }
@@ -120,7 +120,7 @@ export function AuthSubmitButton({
       type={type}
       disabled={disabled || loading}
       onClick={onClick}
-      className={`w-full py-3 px-4 bg-inverse-surface text-white font-semibold rounded-lg
+      className={`w-full py-3 px-4 bg-inverse-surface text-on-inverse font-semibold rounded-lg
                hover:bg-inverse-surface focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-content
                disabled:opacity-50 disabled:cursor-not-allowed
                transition-all duration-200 flex items-center justify-center gap-2 ${className}`}
@@ -242,9 +242,9 @@ export function PasswordInput({
 
 export function AuthCheckIcon() {
   return (
-    <div className="w-16 h-16 bg-[#f0fdf4] rounded-full flex items-center justify-center mx-auto mb-4">
+    <div className="w-16 h-16 bg-positive-surface rounded-full flex items-center justify-center mx-auto mb-4">
       <svg
-        className="w-8 h-8 text-[#22c55e]"
+        className="w-8 h-8 text-positive"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"

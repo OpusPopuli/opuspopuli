@@ -148,23 +148,23 @@ function NotificationForm({
         <button
           onClick={onUnsubscribeAll}
           disabled={unsubscribing}
-          className="text-sm text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
+          className="text-sm text-danger hover:text-danger-strong transition-colors disabled:opacity-50"
         >
           {t("notifications.unsubscribeAll")}
         </button>
       </div>
 
       {saveSuccess && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-          <p className="text-sm text-green-600">
+        <div className="mb-6 p-4 bg-positive-surface border border-positive-line rounded-lg">
+          <p className="text-sm text-positive">
             {t("notifications.saveSuccess")}
           </p>
         </div>
       )}
 
       {saveError && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-600">{saveError}</p>
+        <div className="mb-6 p-4 bg-danger-surface border border-danger-line rounded-lg">
+          <p className="text-sm text-danger">{saveError}</p>
         </div>
       )}
 
@@ -436,7 +436,7 @@ function NotificationForm({
         <button
           onClick={handleSave}
           disabled={!hasChanges || updating}
-          className="px-6 py-3 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:bg-inverse-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-6 py-3 bg-inverse-surface text-on-inverse rounded-lg font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {updating ? t("common:buttons.saving") : t("common:buttons.save")}
         </button>
@@ -470,7 +470,7 @@ export default function NotificationsPage() {
   if (error) {
     return (
       <div className="bg-surface rounded-lg p-8">
-        <div className="text-center text-red-600">
+        <div className="text-center text-danger">
           <p>{t("notifications.loadError")}</p>
         </div>
       </div>

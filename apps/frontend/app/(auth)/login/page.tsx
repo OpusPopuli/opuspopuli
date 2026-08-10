@@ -174,9 +174,9 @@ function LoginPageContent() {
       {AUTH_FULL_OPTIONS && authMode === "passkey" && (
         <div className="space-y-5">
           <div className="text-center py-4">
-            <div className="w-16 h-16 mx-auto mb-4 bg-[#f0f9ff] rounded-full flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-info-surface rounded-full flex items-center justify-center">
               <svg
-                className="w-8 h-8 text-[#0ea5e9]"
+                className="w-8 h-8 text-info"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -235,9 +235,9 @@ function LoginPageContent() {
         <div className="space-y-5">
           {magicLinkSent ? (
             <div className="text-center py-8">
-              <div className="w-16 h-16 mx-auto mb-4 bg-[#f0fdf4] rounded-full flex items-center justify-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-positive-surface rounded-full flex items-center justify-center">
                 <svg
-                  className="w-8 h-8 text-[#22c55e]"
+                  className="w-8 h-8 text-positive"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -257,7 +257,7 @@ function LoginPageContent() {
               <p className="text-content-dim text-sm">
                 We sent a sign-in link to <strong>{email}</strong>
               </p>
-              <p className="text-content-dim text-xs mt-2">
+              <p className="text-content-dim text-sm mt-2">
                 The link expires in 2 hours
               </p>
             </div>

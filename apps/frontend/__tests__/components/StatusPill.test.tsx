@@ -24,23 +24,14 @@ describe("StatusPill", () => {
       expectedClasses: ["border", "border-accent", "text-content"],
     },
     {
-      // warning/danger keep semantic traffic-light colours (legit dark: survivors).
+      // warning/danger use the status ramp, which flips with the theme on its
+      // own — no dark: variants needed.
       tone: "warning",
-      expectedClasses: [
-        "bg-yellow-100",
-        "text-yellow-800",
-        "dark:bg-yellow-900/40",
-        "dark:text-yellow-200",
-      ],
+      expectedClasses: ["bg-warning-surface", "text-warning"],
     },
     {
       tone: "danger",
-      expectedClasses: [
-        "bg-red-100",
-        "text-red-800",
-        "dark:bg-red-900/40",
-        "dark:text-red-200",
-      ],
+      expectedClasses: ["bg-danger-surface", "text-danger"],
     },
     {
       tone: "neutral",

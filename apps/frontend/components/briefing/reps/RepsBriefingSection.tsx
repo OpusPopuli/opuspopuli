@@ -65,7 +65,7 @@ export function RepsBriefingSection() {
           </p>
           <Link
             href="/onboarding"
-            className="inline-block mt-2 text-sm font-medium text-content hover:text-content"
+            className="inline-block mt-2 text-sm font-medium text-content hover:underline"
           >
             {t("page.noProfileCta")}
           </Link>
@@ -82,7 +82,7 @@ export function RepsBriefingSection() {
           </p>
           <Link
             href="/me/addresses"
-            className="inline-block mt-2 text-sm font-medium text-content hover:text-content"
+            className="inline-block mt-2 text-sm font-medium text-content hover:underline"
           >
             {t("reps.noDistrictsCta")}
           </Link>
@@ -90,7 +90,7 @@ export function RepsBriefingSection() {
       )}
 
       {error && !noProfile && !noDistricts && (
-        <p role="alert" className="text-sm text-red-700 dark:text-red-300">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}

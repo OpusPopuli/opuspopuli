@@ -88,7 +88,7 @@ export function TrackOnBallotButton({
     return (
       <button
         onClick={() => setOpen(true)}
-        className="flex-1 py-3 bg-green-700 text-white font-medium rounded-lg hover:bg-green-800 transition-colors flex items-center justify-center gap-2"
+        className="flex-1 py-3 bg-positive-solid text-on-positive font-medium rounded-lg hover:bg-positive-surface transition-colors flex items-center justify-center gap-2"
       >
         <svg
           className="w-4 h-4"
@@ -113,7 +113,7 @@ export function TrackOnBallotButton({
     <div ref={dropdownRef} className="relative flex-1">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+        className="w-full py-3 bg-accent text-on-accent font-medium rounded-lg hover:bg-accent-strong transition-colors"
       >
         {t("results.trackOnBallot")}
       </button>
@@ -126,7 +126,7 @@ export function TrackOnBallotButton({
               value={query}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={t("results.searchPropositions")}
-              className="w-full bg-inverse-surface text-on-inverse rounded-md px-3 py-2 text-sm border border-line focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+              className="w-full bg-inverse-surface text-on-inverse rounded-md px-3 py-2 text-sm border border-line focus:border-accent focus:ring-1 focus:ring-accent outline-none"
               autoFocus
             />
           </div>
@@ -151,8 +151,8 @@ export function TrackOnBallotButton({
                 disabled={linking}
                 className="w-full text-left px-3 py-2 hover:bg-inverse-surface transition-colors border-t border-line"
               >
-                <p className="text-sm text-white truncate">{prop.title}</p>
-                <p className="text-xs text-content-dim">
+                <p className="text-sm text-paper truncate">{prop.title}</p>
+                <p className="text-sm text-content-dim">
                   {prop.externalId} &middot; {prop.status}
                 </p>
               </button>

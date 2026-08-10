@@ -169,12 +169,12 @@ export function VeteranStep({ onComplete, isLastStep }: VeteranStepProps) {
           className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
             veteranChipChecked && !noFieldsMode
               ? "border-white"
-              : "border-gray-400 "
+              : "border-line "
           }`}
         >
           {veteranChipChecked && !noFieldsMode && (
             <svg
-              className="w-3 h-3 text-white"
+              className="w-3 h-3 text-paper"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -190,7 +190,7 @@ export function VeteranStep({ onComplete, isLastStep }: VeteranStepProps) {
         </span>
       </label>
       {veteranLocked && (
-        <p className="text-content-dim text-xs mt-1 px-1">
+        <p className="text-content-dim text-sm mt-1 px-1">
           {t("veteran.lockedNote")}
         </p>
       )}
@@ -210,7 +210,7 @@ export function VeteranStep({ onComplete, isLastStep }: VeteranStepProps) {
       </label>
 
       {error && (
-        <p role="alert" className="text-red-600 dark:text-red-400 text-sm pt-3">
+        <p role="alert" className="text-danger text-sm pt-3">
           {error}
         </p>
       )}

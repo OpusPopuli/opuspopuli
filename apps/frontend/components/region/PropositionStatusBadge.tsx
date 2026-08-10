@@ -6,9 +6,9 @@ const STATUS_STYLES: Record<
   PropositionStatus,
   { bg: string; text: string; label: string }
 > = {
-  PENDING: { bg: "bg-yellow-100", text: "text-yellow-800", label: "Pending" },
-  PASSED: { bg: "bg-green-100", text: "text-green-800", label: "Passed" },
-  FAILED: { bg: "bg-red-100", text: "text-red-800", label: "Failed" },
+  PENDING: { bg: "bg-warning-surface", text: "text-warning", label: "Pending" },
+  PASSED: { bg: "bg-positive-surface", text: "text-positive", label: "Passed" },
+  FAILED: { bg: "bg-danger-surface", text: "text-danger", label: "Failed" },
   WITHDRAWN: { bg: "bg-surface-alt", text: "text-content", label: "Withdrawn" },
 };
 
