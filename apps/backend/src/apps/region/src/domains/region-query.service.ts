@@ -197,6 +197,37 @@ type ContributionRecord = {
   updatedAt: Date;
 };
 
+/**
+ * Project a contribution row onto the fields that may leave the service.
+ *
+ * An allowlist, deliberately, rather than spreading the row and deleting the
+ * sensitive keys: donor employer, occupation and ZIP+4 are withheld (#980), and
+ * with a denylist the next PII column added to the Prisma model would flow
+ * straight out until someone remembered to exclude it. Here it stays in until
+ * someone adds it on purpose.
+ */
+export function toPublicContribution(item: ContributionRecord) {
+  return {
+    id: item.id,
+    externalId: item.externalId,
+    // Non-null by the committeeId filter on every read path; Prisma's type
+    // stays nullable because unattributed staging rows exist (#980).
+    committeeId: item.committeeId as string,
+    filingId: item.filingId ?? undefined,
+    donorName: item.donorName,
+    donorType: item.donorType,
+    donorCity: item.donorCity ?? undefined,
+    donorState: item.donorState ?? undefined,
+    amount: Number(item.amount),
+    date: item.date,
+    electionType: item.electionType ?? undefined,
+    contributionType: item.contributionType ?? undefined,
+    sourceSystem: item.sourceSystem,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
 type ExpenditureRecord = {
   id: string;
   externalId: string;
@@ -1103,19 +1134,7 @@ export class RegionQueryService {
     const paginatedItems = items.slice(0, take);
 
     return {
-      items: paginatedItems.map((item: ContributionRecord) => ({
-        ...item,
-        // Non-null by the committeeId filter above; Prisma's type stays nullable.
-        committeeId: item.committeeId as string,
-        amount: Number(item.amount),
-        donorEmployer: item.donorEmployer ?? undefined,
-        donorOccupation: item.donorOccupation ?? undefined,
-        donorCity: item.donorCity ?? undefined,
-        donorState: item.donorState ?? undefined,
-        donorZip: item.donorZip ?? undefined,
-        electionType: item.electionType ?? undefined,
-        contributionType: item.contributionType ?? undefined,
-      })),
+      items: paginatedItems.map(toPublicContribution),
       total,
       hasMore,
     };

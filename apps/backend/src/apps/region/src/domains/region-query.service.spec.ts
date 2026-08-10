@@ -894,11 +894,11 @@ describe('RegionQueryService — query methods', () => {
           committeeId: 'comm-1',
           donorName: 'Jane Smith',
           donorType: 'individual',
-          donorEmployer: null,
-          donorOccupation: null,
+          donorEmployer: 'Acme Corp',
+          donorOccupation: 'Engineer',
           donorCity: null,
           donorState: null,
-          donorZip: null,
+          donorZip: '95814-1234',
           amount: { toNumber: () => 500 } as unknown as Prisma.Decimal,
           date: new Date(),
           electionType: null,
@@ -917,8 +917,15 @@ describe('RegionQueryService — query methods', () => {
       expect(result.total).toBe(1);
       expect(result.hasMore).toBe(false);
       expect(typeof result.items[0].amount).toBe('number');
-      expect(result.items[0].donorEmployer).toBeUndefined();
       expect(result.items[0].electionType).toBeUndefined();
+
+      // Withheld from GraphQL (#980) — and stripped from the object, not just
+      // left off the model, so nothing downstream can serialize them by
+      // accident. The fixture carries real values so this cannot pass vacuously.
+      const item = result.items[0] as unknown as Record<string, unknown>;
+      expect('donorEmployer' in item).toBe(false);
+      expect('donorOccupation' in item).toBe(false);
+      expect('donorZip' in item).toBe(false);
     });
 
     it('should filter by committeeId and sourceSystem', async () => {
