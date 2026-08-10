@@ -7,10 +7,10 @@
 | **Related** | [#979](https://github.com/OpusPopuli/opuspopuli/issues/979), [#962](https://github.com/OpusPopuli/opuspopuli/issues/962), [#982](https://github.com/OpusPopuli/opuspopuli/issues/982), [#983](https://github.com/OpusPopuli/opuspopuli/issues/983), [#954](https://github.com/OpusPopuli/opuspopuli/issues/954) |
 | **Date** | 2026-08-09 (rewritten around the clean cutover) |
 | **Author** | Rodney Gagnon |
-| **Data classification** | **PII — no PHI.** Individual donor name, employer, occupation, city, state, ZIP+4. Public record under CA law. Volume increases ~6x when this lands. |
+| **Data classification** | **PII — no PHI.** Individual donor name, employer, occupation, city, state, ZIP+4. Public record under CA law. Volume increases ~83x when this lands (see the C4 blocker — the file holds 20.2M rows, not the 1.21M previously assumed). |
 | **Branch** | `fix/980-cal-access-contribution-mapping` (+ `opuspopuli-regions`) |
 | **Effort** | 3–4 focused sessions + one supervised cutover |
-| **Status** | Code complete through C3. Next: C4 — the supervised truncate + rebuild. |
+| **Status** | Code complete through C3. **C4 blocked**: pipeline reads ~6% of RCPT_CD (20.2M rows in file vs 1.21M extracted). |
 
 ## Problem
 
@@ -64,8 +64,10 @@ happen downstream of it, which is why nothing surfaced as a failure.
 exactly equal to the name of the committee their `committee_id` points at; the remainder are the
 same entities under different spellings (#954). A recipient does not donate to itself 40,003 times.
 
-**Secondary — `TRAN_ID` is not unique** across filings, but the sync upserts on `externalId`. Real
-key is `FILING_ID + AMEND_ID + LINE_ITEM + TRAN_ID`. `EXPN_CD` shares the pattern.
+**Secondary — `TRAN_ID` is not unique** across filings, but the sync upserts on `externalId`.
+Key is `FILING_ID + LINE_ITEM + TRAN_ID`. `EXPN_CD` shares the pattern. (This spike originally
+concluded `AMEND_ID` belonged in the key; measuring the file later showed that double-counts
+restated amendments — see "Amendment double-count" below.)
 
 ## What already exists
 
@@ -287,28 +289,49 @@ Applied after a three-lens review of C1–C3:
   when it throws — the ordering the whole design rests on, previously unasserted; plus the
   one-cover-page-per-filing constraint.
 
-### ⚠️ C4 gate — verify amendment handling before rebuilding
+### Amendment double-count ✅ settled (2026-08-09) — `AMEND_ID` dropped
 
-**Unresolved, and it can invert the fix.** CAL-ACCESS retains every amendment of a filing in
-`RCPT_CD`/`EXPN_CD` — same `FILING_ID`, incremented `AMEND_ID` — and an amendment restates the whole
-schedule. `cvr_filings` is deduped by `FILING_ID` (`domain-mapper.service.ts:395`), but line items
-now are not: `AMEND_ID` sits in the composite key, so an amended $500 receipt lands twice and the
-linker stamps both with the same filer. `totalRaised` reads $1,000.
+**Confirmed against the real file**, not inferred. Downloaded the 2026-08-09 `dbwebexport.zip`
+(1,575,315,615 bytes, byte-verified) and counted in one streaming pass:
 
-The old `TRAN_ID`-only key accidentally deduped this. So C1 fixes cross-filing collisions and may
-introduce amendment inflation **on the exact metric this issue exists to correct**. Note the extract
-counts (1,210,475 → 203,945) were attributed to blank-`CMTE_ID` rejections plus `TRAN_ID` collisions;
-if a meaningful share was actually amendment restatements, the new key inflates.
+| | `RCPT_CD` | `EXPN_CD` |
+|---|---:|---:|
+| Data rows | 20,177,193 | 15,742,863 |
+| Distinct **with** `AMEND_ID` (shipped 1.0.77) | 20,177,187 | 15,742,863 |
+| Distinct **without** `AMEND_ID` | 17,000,354 | 13,834,048 |
+| **Restatements** | **3,176,833** (~16%) | **1,908,815** (~12%) |
 
-Check against the bulk file before any rebuild:
+31.7% of `RCPT_CD` rows carry a non-zero `AMEND_ID`; 178,040 distinct `(FILING_ID, AMEND_ID)` pairs
+against 142,264 filings. So CAL-ACCESS restates the whole schedule on amendment, and **~5.09M rows
+would have been double-counted** — inflating the exact metric this issue exists to correct.
 
-```
-awk -F'\t' 'NR>1{print $1"\t"$2}' RCPT_CD.TSV | sort -u | cut -f1 | uniq -d | wc -l
-```
+Fixed in `opuspopuli-regions` PR #66 (config v1.11.0), which **supersedes 1.0.77**. A later
+amendment now upserts over the earlier version.
 
-Non-zero ⇒ either drop `AMEND_ID` from the `compositeKey` (last amendment upserts over earlier ones)
-or add a latest-amendment filter. Either way it is a `@opuspopuli/regions` change, so settle it
-before publishing the version the rebuild consumes.
+**Known residual, accepted deliberately.** Of 29,420 filings with more than one version: 18,655 keep
+their row count, 9,052 grow, and **1,713 shrink** — the amendment *removed* transactions, which have
+nothing to overwrite them and will persist. That is ~0.2% of rows against ~16% for the shipped key.
+Proper fix (follow-up): store `amend_id` and supersede non-latest versions post-sync — which also
+preserves the audit trail, arguably the right shape for a transparency platform. Same follow-up
+removes the last-write-wins nondeterminism from the 454 rows where `AMEND_ID` decreases in file order.
+
+### ⚠️ C4 blocker — the pipeline reads ~6% of the source
+
+**`RCPT_CD.TSV` has 20,177,193 data rows. The production run recorded `items_extracted: 1,210,475`.**
+A 16× gap, found while settling the amendment question.
+
+This resets the scale assumptions this plan was written against:
+
+- post-fix `contributions` is **~17M rows, not ~1.2M**
+- PII volume grows **~83×** from today's 203,945, not the ~6× recorded below
+- rebuild duration, batch sizing, index strategy, and the `@Public()` bulk-scrape question all get
+  materially worse
+
+`MAX_RECORDS = 100_000` in `bulk-download.handler.ts` sits on the non-streaming path, so it does not
+explain 1.21M. Not diagnosed further: dev holds no finance rows and the Studio was unreachable.
+
+**This blocks C4.** Rebuilding against a pipeline that reads 6% of the source yields confidently
+wrong figures — a worse failure than today's, because they look plausible.
 
 ### C4. Truncate + rebuild
 
