@@ -455,11 +455,8 @@ export interface Contribution {
   committeeId: string;
   donorName: string;
   donorType: string;
-  donorEmployer?: string;
-  donorOccupation?: string;
   donorCity?: string;
   donorState?: string;
-  donorZip?: string;
   amount: number;
   date: string;
   electionType?: string;
@@ -1299,11 +1296,8 @@ export const GET_CONTRIBUTION = gql`
       committeeId
       donorName
       donorType
-      donorEmployer
-      donorOccupation
       donorCity
       donorState
-      donorZip
       amount
       date
       electionType

@@ -94,6 +94,7 @@ import {
   BoundarySkipReason,
 } from './models/boundary-load-result.model';
 import { BoundaryLoaderService } from './boundary-loader.service';
+import { toPublicContribution } from './region-query.service';
 
 /**
  * Region Resolver
@@ -742,19 +743,9 @@ export class RegionResolver {
   ): Promise<ContributionModel | null> {
     const result = await this.regionService.getContribution(id);
     if (!result) return null;
-    return {
-      ...result,
-      // Non-null: getContribution filters committeeId != null (#980).
-      committeeId: result.committeeId as string,
-      amount: Number(result.amount),
-      donorEmployer: result.donorEmployer ?? undefined,
-      donorOccupation: result.donorOccupation ?? undefined,
-      donorCity: result.donorCity ?? undefined,
-      donorState: result.donorState ?? undefined,
-      donorZip: result.donorZip ?? undefined,
-      electionType: result.electionType ?? undefined,
-      contributionType: result.contributionType ?? undefined,
-    };
+    // Same allowlist the list query uses — donor employer/occupation/ZIP never
+    // leave the service (#980).
+    return toPublicContribution(result);
   }
 
   /**

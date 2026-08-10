@@ -9,6 +9,30 @@ import {
 
 describe('PII Masker', () => {
   describe('maskSensitiveData', () => {
+    it('redacts CAL-ACCESS donor fields outright (#980)', () => {
+      const masked = maskSensitiveData({
+        donorName: 'Jane Q. Public',
+        donorEmployer: 'Acme Corporation',
+        donorOccupation: 'Software Engineer',
+        donorZip: '95814-1234',
+        donorCity: 'Sacramento',
+        amount: 250,
+      }) as Record<string, unknown>;
+
+      expect(masked.donorName).toBe('[REDACTED]');
+      expect(masked.donorEmployer).toBe('[REDACTED]');
+      expect(masked.donorOccupation).toBe('[REDACTED]');
+      // Full redaction, not partialMask: that keeps the last four characters,
+      // which for a ZIP+4 is the +4 itself — the household-identifying part.
+      expect(masked.donorZip).toBe('[REDACTED]');
+      expect(masked.donorZip).not.toContain('1234');
+
+      // City and amount stay legible — they are not identifying on their own
+      // and are what makes a log line useful.
+      expect(masked.donorCity).toBe('Sacramento');
+      expect(masked.amount).toBe(250);
+    });
+
     it('should return null for null input', () => {
       expect(maskSensitiveData(null)).toBeNull();
     });
