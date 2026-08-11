@@ -26,6 +26,8 @@ import type {
   ExtractionResult,
   BoundarySourcesConfig,
 } from "@opuspopuli/common";
+// Value import, so it cannot join the `import type` block above.
+import { sortCampaignFinanceItems } from "@opuspopuli/common";
 
 /**
  * Interface for the pipeline service dependency.
@@ -219,62 +221,12 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       pipelineJobId,
     );
 
-    // The domain mapper already routes by category, but items come back
-    // as a mixed bag. Separate them by checking known fields.
-    const committees: CampaignFinanceResult["committees"] = [];
-    const contributions: CampaignFinanceResult["contributions"] = [];
-    const expenditures: CampaignFinanceResult["expenditures"] = [];
-    const independentExpenditures: CampaignFinanceResult["independentExpenditures"] =
-      [];
-    const committeeMeasureFilings: CampaignFinanceResult["committeeMeasureFilings"] =
-      [];
-    const cvrFilings: CampaignFinanceResult["cvrFilings"] = [];
-
-    for (const item of allItems) {
-      const rec = item;
-      if ("donorName" in rec && "amount" in rec) {
-        contributions.push(
-          rec as unknown as CampaignFinanceResult["contributions"][0],
-        );
-      } else if ("payeeName" in rec && "amount" in rec) {
-        expenditures.push(
-          rec as unknown as CampaignFinanceResult["expenditures"][0],
-        );
-      } else if ("supportOrOppose" in rec && "committeeName" in rec) {
-        independentExpenditures.push(
-          rec as unknown as CampaignFinanceResult["independentExpenditures"][0],
-        );
-      } else if ("filerId" in rec && "filingId" in rec) {
-        // Form 496 cover page — has filerId + filingId (no committeeName, no
-        // ballot fields). Feeds the IE linker's FILING_ID -> committee join (#955).
-        cvrFilings.push(
-          rec as unknown as CampaignFinanceResult["cvrFilings"][0],
-        );
-      } else if (
-        "filingId" in rec &&
-        ("ballotName" in rec || "ballotNumber" in rec)
-      ) {
-        // CVR2 record — Form 410 ballot-measure declaration. Has filingId +
-        // a ballot identifier. Discriminate before "sourceSystem + type"
-        // because a CVR2 row also carries a sourceSystem.
-        committeeMeasureFilings.push(
-          rec as unknown as CampaignFinanceResult["committeeMeasureFilings"][0],
-        );
-      } else if ("sourceSystem" in rec && "type" in rec) {
-        committees.push(
-          rec as unknown as CampaignFinanceResult["committees"][0],
-        );
-      }
-    }
-
-    return {
-      committees,
-      contributions,
-      expenditures,
-      independentExpenditures,
-      committeeMeasureFilings,
-      cvrFilings,
-    };
+    // The domain mapper already routes by category, but items come back as a
+    // mixed bag. The field-presence rules that separate them live in
+    // @opuspopuli/common — the backend sync service sorts the same stream and
+    // needs the identical rules, and two copies had to be edited in lockstep
+    // (#992).
+    return sortCampaignFinanceItems(allItems);
   }
 
   override async healthCheck() {

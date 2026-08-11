@@ -1356,6 +1356,93 @@ describe("DomainMapperService", () => {
       });
     });
 
+    it("routes 'Filing Summaries' (SMRY_CD) to filing summaries (#992)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "2505994:1:F460:1",
+              filingId: "2505994",
+              amendId: "1",
+              formType: "F460",
+              lineItem: "1",
+              amountA: "170988.25",
+              amountB: "412500.00",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Filing Summaries",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        externalId: "2505994:1:F460:1",
+        filingId: "2505994",
+        // Numeric, not "1" — the same reason contributions coerce it: max()
+        // over text would rank '10' below '9' (#992).
+        amendId: 1,
+        formType: "F460",
+        // String, deliberately: F460 LINE_ITEM values are not all numeric.
+        lineItem: "1",
+        amountA: 170988.25,
+        amountB: 412500,
+      });
+    });
+
+    it("keeps negative summary amounts, which are real corrections (#992)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "F1:0:F460:20",
+              filingId: "F1",
+              formType: "F460",
+              lineItem: "20",
+              amountA: "-4500.00",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Filing Summaries",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({ amountA: -4500 });
+    });
+
+    it("leaves an absent summary column absent rather than zero (#992)", () => {
+      // The bulk handler drops empty cells, and a blank column on the form is
+      // genuinely absent — recording it as 0 would make it look reported.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "F1:0:F460:1",
+              filingId: "F1",
+              formType: "F460",
+              lineItem: "1",
+              amountA: "100.00",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Filing Summaries",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({ amountA: 100 });
+      expect(result.items[0]).not.toHaveProperty("amountB");
+      expect(result.items[0]).not.toHaveProperty("amountC");
+    });
+
     it("routes 'Committee Positions' (CVR2/Form 410) to measure filings, not committees (#936)", () => {
       const result = mapper.map(
         createRawResult({

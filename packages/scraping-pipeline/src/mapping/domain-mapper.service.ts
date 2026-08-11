@@ -21,6 +21,7 @@ import {
   type IndependentExpenditure,
   type CommitteeMeasureFiling,
   type CvrFiling,
+  type FilingSummary,
   type RawExtractionResult,
   type ExtractionResult,
   type DataSourceConfig,
@@ -166,6 +167,7 @@ export class DomainMapperService {
     | IndependentExpenditure
     | CommitteeMeasureFiling
     | CvrFiling
+    | FilingSummary
     | null {
     switch (source.dataType) {
       case DataType.PROPOSITIONS:
@@ -195,6 +197,7 @@ export class DomainMapperService {
     | IndependentExpenditure
     | CommitteeMeasureFiling
     | CvrFiling
+    | FilingSummary
     | null {
     const cat = (category ?? "").toLowerCase();
 
@@ -204,7 +207,12 @@ export class DomainMapperService {
     // otherwise misroute to mapCommittee and be rejected for having no `name`
     // — the reason cvr2_filings sat at 0 and no committee→measure link ever
     // formed (#936).
-    if (cat.includes("committee position") || cat.includes("cvr2")) {
+    if (cat.includes("summar")) {
+      // SMRY_CD Form 460 summary lines — the committee's own reported totals,
+      // which reconciliation compares the itemized detail against (#992). No
+      // other category contains "summar", so this branch steals from none.
+      return this.mapFilingSummary(record, diag);
+    } else if (cat.includes("committee position") || cat.includes("cvr2")) {
       return this.mapCommitteeMeasureFiling(record, diag);
     } else if (cat.includes("cover page")) {
       // Form 496 cover pages (CVR_CAMPAIGN_DISCLOSURE_CD, FORM_TYPE=F496).
@@ -395,6 +403,18 @@ export class DomainMapperService {
       externalId: record.externalId ?? record.filingId,
     };
     return this.parseOrCollect(CvrFilingSchema, enriched, "CvrFiling", diag);
+  }
+
+  private mapFilingSummary(
+    record: Record<string, unknown>,
+    diag: MappingDiagnostics,
+  ): FilingSummary | null {
+    return this.parseOrCollect(
+      FilingSummarySchema,
+      record,
+      "FilingSummary",
+      diag,
+    );
   }
 }
 
@@ -1066,6 +1086,29 @@ const CvrFilingSchema = z.object({
     .nullable()
     .optional()
     .transform((val) => (val ? supportOpposeTransform(val) : undefined)),
+  sourceSystem: z.enum(["cal_access", "fec"]),
+});
+
+// SMRY_CD Form 460 summary line (#992) — one numbered line of the totals a
+// committee reports for itself. externalId comes from the config's composite
+// key (FILING_ID:AMEND_ID:FORM_TYPE:LINE_ITEM), which keeps AMEND_ID *in* the
+// identity: unlike RCPT_CD/EXPN_CD detail, each amendment's summary is a
+// distinct fact, and reconciliation compares against the latest one.
+//
+// The amounts are optional because the bulk handler omits empty cells, and a
+// blank column on the form is genuinely absent rather than zero. They are not
+// clamped: negatives are real corrections and refunds.
+const FilingSummarySchema = z.object({
+  externalId: z.string().min(1),
+  filingId: z.string().min(1),
+  amendId: z.coerce.number().int().optional(),
+  formType: z.string().min(1),
+  // String, not a number: F460 alone uses 47 distinct LINE_ITEM values and not
+  // all of them are numeric.
+  lineItem: z.string().min(1),
+  amountA: z.coerce.number().optional(),
+  amountB: z.coerce.number().optional(),
+  amountC: z.coerce.number().optional(),
   sourceSystem: z.enum(["cal_access", "fec"]),
 });
 

@@ -1,5 +1,8 @@
 import { DbService } from '@opuspopuli/relationaldb-provider';
-import type { CampaignFinanceResult } from '@opuspopuli/common';
+import {
+  emptyCampaignFinanceResult,
+  type CampaignFinanceResult,
+} from '@opuspopuli/common';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
 
 type RosterCommittee = CampaignFinanceResult['committees'][number];
@@ -28,15 +31,10 @@ function committee(
   } as RosterCommittee;
 }
 
+// Spread the shared empty shape rather than listing buckets: a new table then
+// needs no edit here, and cannot be silently forgotten.
 function result(committees: RosterCommittee[]): CampaignFinanceResult {
-  return {
-    committees,
-    contributions: [],
-    expenditures: [],
-    independentExpenditures: [],
-    committeeMeasureFilings: [],
-    cvrFilings: [],
-  };
+  return { ...emptyCampaignFinanceResult(), committees };
 }
 
 const enrich = (svc: CampaignFinanceSyncService, data: CampaignFinanceResult) =>
@@ -245,5 +243,179 @@ describe('CampaignFinanceSyncService — post-sync linker ordering (#980)', () =
     await expect(svc.sync(provider as never)).resolves.toBeDefined();
 
     expect(propositionFinanceLinker.linkAll).toHaveBeenCalled();
+  });
+});
+
+describe('CampaignFinanceSyncService — newest amendment wins (#992)', () => {
+  type Row = Record<string, unknown>;
+
+  function buildUpsert(
+    stored: Array<{ externalId: string; amendId?: number }>,
+  ) {
+    const upsert = jest.fn((args: unknown) => ({ __op: args }));
+    const findMany = jest.fn().mockResolvedValue(stored);
+    const $transaction = jest.fn().mockResolvedValue([]);
+    const db = { $transaction } as unknown as DbService;
+    const svc = new CampaignFinanceSyncService(db);
+
+    const run = (records: Row[], amendable = true) =>
+      (
+        svc as unknown as {
+          upsertRecordsByFields: (c: unknown) => Promise<{
+            processed: number;
+            created: number;
+            updated: number;
+          }>;
+        }
+      ).upsertRecordsByFields({
+        records,
+        model: { findMany, upsert },
+        fields: ['filingId', 'amendId', 'amount'],
+        amendable,
+      });
+
+    // The rows that actually reached the database, in write order.
+    const written = () =>
+      upsert.mock.calls.map(
+        (c) => (c[0] as { update: Row }).update as { amendId?: number },
+      );
+
+    return { run, written, upsert, findMany };
+  }
+
+  const row = (over: Partial<Row> = {}): Row => ({
+    externalId: 'F1:1:T1',
+    filingId: 'F1',
+    amendId: 0,
+    amount: 100,
+    ...over,
+  });
+
+  it('keeps the newest version when a batch restates the same row out of order', async () => {
+    // The whole point: 454 RCPT_CD rows on the 2026-08-09 export list a
+    // DECREASING AMEND_ID, so plain last-write-wins stores the superseded
+    // version. Supersession then deletes it for sitting below the filing's
+    // max(amend_id), and real contributions vanish from the total.
+    const { run, written } = buildUpsert([]);
+
+    await run([
+      row({ amendId: 1, amount: 250 }),
+      row({ amendId: 0, amount: 100 }), // older, but arrives last
+    ]);
+
+    expect(written()).toHaveLength(1);
+    expect(written()[0].amendId).toBe(1);
+    expect(written()[0]).toMatchObject({ amount: 250 });
+  });
+
+  it('does not let an older amendment overwrite a newer one already stored', async () => {
+    // Cross-batch: the newer version landed in an earlier batch, so the guard
+    // has to consult the database, not just the batch.
+    const { run, upsert } = buildUpsert([
+      { externalId: 'F1:1:T1', amendId: 2 },
+    ]);
+
+    const res = await run([row({ amendId: 1, amount: 100 })]);
+
+    expect(upsert).not.toHaveBeenCalled();
+    expect(res).toEqual({ processed: 0, created: 0, updated: 0 });
+  });
+
+  it('re-writes the same amendment, so a re-sync stays idempotent', async () => {
+    const { run, upsert } = buildUpsert([
+      { externalId: 'F1:1:T1', amendId: 2 },
+    ]);
+
+    await run([row({ amendId: 2, amount: 100 })]);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes a newer amendment over a stored older one', async () => {
+    const { run, written } = buildUpsert([
+      { externalId: 'F1:1:T1', amendId: 1 },
+    ]);
+
+    await run([row({ amendId: 3, amount: 400 })]);
+
+    expect(written()[0].amendId).toBe(3);
+  });
+
+  it('leaves rows carrying no amendId on arrival order', async () => {
+    // Sources with no AMEND_ID (FEC, and CAL-ACCESS rows predating the
+    // mapping) have nothing to order by — last write still wins there.
+    const { run, written } = buildUpsert([]);
+
+    await run([
+      row({ amendId: undefined, amount: 100 }),
+      row({ amendId: undefined, amount: 900 }),
+    ]);
+
+    expect(written()).toHaveLength(1);
+    expect(written()[0]).toMatchObject({ amount: 900 });
+  });
+
+  it('does not consult amendId on tables that are not amendable', async () => {
+    // Committees, cover pages and CVR2 rows are keyed one-per-filing and carry
+    // no amendment axis; the guard must not silently drop their rows.
+    const { run, upsert, findMany } = buildUpsert([]);
+
+    await run([row({ amendId: 1 }), row({ amendId: 0 })], false);
+
+    expect(upsert).toHaveBeenCalledTimes(2);
+    expect(findMany.mock.calls[0][0]).toMatchObject({
+      select: { externalId: true },
+    });
+  });
+
+  it('treats a stored row with a null amendId as overwritable', async () => {
+    // Rows ingested before the amend_id column existed. They must not be
+    // pinned in place by the guard, or a re-sync could never correct them.
+    const { run, upsert } = buildUpsert([
+      { externalId: 'F1:1:T1', amendId: undefined },
+    ]);
+
+    await run([row({ amendId: 0 })]);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CampaignFinanceSyncService — final flush covers every table (#992)', () => {
+  it('flushes a fetch carrying only filing summaries', async () => {
+    // The flush is gated on "did anything arrive?", and that gate has to name
+    // every table it writes. Miss one and its rows are dropped whenever no
+    // other table happens to carry data in the same fetch — silently, and only
+    // for that shape of config.
+    const upsert = jest.fn((args: unknown) => ({ __op: args }));
+    const findMany = jest.fn().mockResolvedValue([]);
+    const db = {
+      committee: { upsert, findMany },
+      filingSummary: { upsert, findMany },
+      $transaction: jest.fn().mockResolvedValue([]),
+    } as unknown as DbService;
+    const svc = new CampaignFinanceSyncService(db);
+
+    const provider = {
+      fetchCampaignFinance: jest.fn().mockResolvedValue({
+        ...result([]),
+        filingSummaries: [
+          {
+            externalId: '2505994:1:F460:1',
+            filingId: '2505994',
+            amendId: 1,
+            formType: 'F460',
+            lineItem: '1',
+            amountA: 170988.25,
+            sourceSystem: 'cal_access',
+          },
+        ],
+      }),
+    };
+
+    const res = await svc.sync(provider as never);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(res.processed).toBe(1);
   });
 });

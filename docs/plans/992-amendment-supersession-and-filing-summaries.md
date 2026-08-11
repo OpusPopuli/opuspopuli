@@ -9,7 +9,7 @@
 | **Author** | Rodney Gagnon |
 | **Data classification** | **PII — no PHI.** No new donor fields. `SMRY_CD` is aggregate-only (amounts per filing), so it adds no PII of its own. |
 | **Branch** | `feat/992-amendment-supersession-and-summaries` (+ `opuspopuli-regions`, + migration) |
-| **Status** | Plan written. Implementation starting. |
+| **Status** | Subtasks 1–3 complete. 4 (reconciliation) next, then 5 (re-verify on a rebuild). |
 
 ## Problem
 
@@ -79,6 +79,21 @@ delete.
 expenditure and cash-position totals, which give #991 the same reconciliation lever — and #991 is
 currently a 60% shortfall with no independent check.
 
+**The newest amendment wins the upsert, by comparison rather than by arrival**
+(added 2026-08-11, during subtask 1). Storing `amend_id` turned a cosmetic defect into a
+destructive one, and the fix belongs here rather than in a follow-up.
+
+Because the composite key omits `AMEND_ID`, a restatement that *reuses* `TRAN_ID`/`LINE_ITEM` merges
+onto one row whose stored values are simply whichever version was written last. #980 measured **454
+`RCPT_CD` rows where `AMEND_ID` decreases in file order** — for those, the superseded version lands
+last and wins, and it was harmless while nothing read `amend_id`.
+
+It is not harmless now. Supersession deletes every row below `max(amend_id)` for a filing, so a
+current row left holding a stale `amend_id` is deleted outright and its money leaves the committee's
+total. The failure is silent and it under-counts — the same class of defect as #980, pointed the
+other way. `upsertRecordsByFields` now orders amendable writes by `amendId`, both within a batch and
+against what is already stored, so file order stops mattering.
+
 ## Subtasks
 
 ### 1. `amend_id` on contributions and expenditures
@@ -131,7 +146,7 @@ variance explained by unitemized amounts.
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Supersession deletes rows it should keep | high | A filing with a single amendment must be untouched. Integration test asserts that explicitly before any bulk run |
+| Supersession deletes rows it should keep | high | A filing with a single amendment must be untouched. Integration test asserts that explicitly before any bulk run. Second path found and closed during subtask 1: a merged row holding a stale `amend_id` from out-of-order arrival — see the monotonic-write decision above |
 | Another rebuild needed to apply `amend_id` | medium | Existing rows have no `amend_id`, so supersession cannot act on them. Either backfill from the source or re-sync. A re-sync is ~4h and already proven |
 | `SMRY_CD` is 469 MB | low | Comparable to sources already ingested; filtered to F460 |
 | Reconciliation false positives | medium | Detail *below* official is expected (unitemized) and must not be flagged. Only detail **exceeding** official indicates a fault |
@@ -139,7 +154,11 @@ variance explained by unitemized amounts.
 
 ## Open questions
 
-1. Backfill `amend_id` on existing rows, or re-sync? Re-sync is simpler and proven; backfill avoids
-   ~4 hours of downtime. Decide before subtask 2 ships.
+1. ~~Backfill `amend_id` on existing rows, or re-sync?~~ **Resolved 2026-08-11: re-sync.** Not on
+   simplicity — backfill is unsound. Stored rows were merged under last-write-wins, so a row that
+   collapsed across amendments holds the *content* of whichever version was written last. A backfill
+   can stamp an `amend_id` on that row but cannot restore the right values behind it, and
+   supersession would then delete rows on the strength of those stamps. Only re-ingesting under the
+   monotonic guard produces rows whose `amend_id` and contents agree. Cost stands at ~4h.
 2. Should the unitemized delta appear on representative/proposition pages, or stay internal until a
    design exists? Storing it does not commit us either way.
