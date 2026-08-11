@@ -8,6 +8,7 @@ import { PropositionFinanceLinkerService } from './proposition-finance-linker.se
 import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
 import { IndependentExpenditureLinkerService } from './independent-expenditure-linker.service';
 import { CoverPageLinkerService } from './cover-page-linker.service';
+import { AmendmentSupersessionService } from './amendment-supersession.service';
 import {
   campaignFinanceSyncTracker,
   type SyncPhaseTracker,
@@ -69,6 +70,8 @@ export class CampaignFinanceSyncService {
     private readonly independentExpenditureLinker?: IndependentExpenditureLinkerService,
     @Optional()
     private readonly coverPageLinker?: CoverPageLinkerService,
+    @Optional()
+    private readonly amendmentSupersession?: AmendmentSupersessionService,
   ) {}
 
   async sync(
@@ -200,21 +203,45 @@ export class CampaignFinanceSyncService {
    * candidateName/office. Covered by campaign-finance-sync.service.spec.ts.
    */
   private async runPostSyncLinkers(): Promise<void> {
-    const linkers: Array<
-      [string, { linkAll(): Promise<unknown> } | undefined]
-    > = [
-      ['Independent-expenditure', this.independentExpenditureLinker],
-      ['Cover-page', this.coverPageLinker],
-      ['Proposition finance', this.propositionFinanceLinker],
-      ['Candidate-committee', this.candidateCommitteeLinker],
+    // Uniform thunks rather than a shared interface, so each step can name its
+    // method for what it does (supersede vs link) instead of pretending to be
+    // a linker.
+    const steps: Array<[string, (() => Promise<unknown>) | undefined]> = [
+      // FIRST: a superseded amendment's rows are stale duplicates. Attributing
+      // them, or deriving measure positions from them, is wasted work — and
+      // every later step's counts would describe rows about to vanish (#992).
+      [
+        'Amendment-supersession',
+        this.amendmentSupersession &&
+          (() => this.amendmentSupersession!.supersedeAll()),
+      ],
+      [
+        'Independent-expenditure',
+        this.independentExpenditureLinker &&
+          (() => this.independentExpenditureLinker!.linkAll()),
+      ],
+      [
+        'Cover-page',
+        this.coverPageLinker && (() => this.coverPageLinker!.linkAll()),
+      ],
+      [
+        'Proposition finance',
+        this.propositionFinanceLinker &&
+          (() => this.propositionFinanceLinker!.linkAll()),
+      ],
+      [
+        'Candidate-committee',
+        this.candidateCommitteeLinker &&
+          (() => this.candidateCommitteeLinker!.linkAll()),
+      ],
     ];
 
-    for (const [name, linker] of linkers) {
-      if (!linker) continue;
+    for (const [name, run] of steps) {
+      if (!run) continue;
       try {
-        await linker.linkAll();
+        await run();
       } catch (error) {
-        this.logger.warn(`${name} linker failed: ${(error as Error).message}`);
+        this.logger.warn(`${name} step failed: ${(error as Error).message}`);
       }
     }
   }
@@ -443,6 +470,7 @@ export class CampaignFinanceSyncService {
         fields: [
           'committeeId',
           'filingId',
+          'amendId',
           'donorName',
           'donorType',
           'donorEmployer',
@@ -463,6 +491,7 @@ export class CampaignFinanceSyncService {
         fields: [
           'committeeId',
           'filingId',
+          'amendId',
           'payeeName',
           'amount',
           'date',

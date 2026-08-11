@@ -164,6 +164,9 @@ describe('CampaignFinanceSyncService — post-sync linker ordering (#980)', () =
     const linker = (name: string) => ({
       linkAll: jest.fn().mockResolvedValue({ name }),
     });
+    const amendmentSupersession = {
+      supersedeAll: jest.fn().mockResolvedValue({ name: 'supersession' }),
+    };
     const propositionFinanceLinker = linker('proposition');
     const candidateCommitteeLinker = linker('candidate');
     const independentExpenditureLinker = linker('ie');
@@ -175,6 +178,7 @@ describe('CampaignFinanceSyncService — post-sync linker ordering (#980)', () =
       candidateCommitteeLinker as never,
       independentExpenditureLinker as never,
       coverPageLinker as never,
+      amendmentSupersession as never,
     );
 
     const provider = {
@@ -187,6 +191,7 @@ describe('CampaignFinanceSyncService — post-sync linker ordering (#980)', () =
       coverPageLinker,
       propositionFinanceLinker,
       independentExpenditureLinker,
+      amendmentSupersession,
     };
   }
 
@@ -205,6 +210,31 @@ describe('CampaignFinanceSyncService — post-sync linker ordering (#980)', () =
     expect(coverPageLinker.linkAll.mock.invocationCallOrder[0]).toBeLessThan(
       propositionFinanceLinker.linkAll.mock.invocationCallOrder[0],
     );
+  });
+
+  it('supersedes amendments BEFORE attributing anything (#992)', async () => {
+    // Load-bearing. A superseded amendment's rows are stale duplicates; if the
+    // cover-page linker runs first it attributes rows that are about to be
+    // deleted, and reports a linked count describing them.
+    const { svc, provider, amendmentSupersession, coverPageLinker } =
+      buildWithLinkers();
+
+    await svc.sync(provider as never);
+
+    expect(amendmentSupersession.supersedeAll).toHaveBeenCalled();
+    expect(
+      amendmentSupersession.supersedeAll.mock.invocationCallOrder[0],
+    ).toBeLessThan(coverPageLinker.linkAll.mock.invocationCallOrder[0]);
+  });
+
+  it('still attributes when supersession throws', async () => {
+    const { svc, provider, amendmentSupersession, coverPageLinker } =
+      buildWithLinkers();
+    amendmentSupersession.supersedeAll.mockRejectedValue(new Error('boom'));
+
+    await expect(svc.sync(provider as never)).resolves.toBeDefined();
+
+    expect(coverPageLinker.linkAll).toHaveBeenCalled();
   });
 
   it('still runs the proposition linker when the cover-page linker throws', async () => {

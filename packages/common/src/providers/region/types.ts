@@ -552,6 +552,7 @@ export interface Contribution {
   externalId: string;
   committeeId?: string; // resolved post-sync by the cover-page linker via filingId (#980) — RCPT_CD's CMTE_ID is the contributor
   filingId?: string; // CalAccess FILING_ID from RCPT_CD — join key to the campaign-disclosure cover page (#980)
+  amendId?: number; // CalAccess AMEND_ID — numeric so max() picks the latest version, not '9' over '10' (#992)
   donorName: string;
   donorType: "individual" | "committee" | "party" | "self" | "other";
   donorEmployer?: string;
@@ -573,6 +574,7 @@ export interface Expenditure {
   externalId: string;
   committeeId?: string; // resolved post-sync by the cover-page linker via filingId (#980) — EXPN_CD's CMTE_ID is the payee
   filingId?: string; // CalAccess FILING_ID from EXPN_CD — join key to the campaign-disclosure cover page (#980)
+  amendId?: number; // CalAccess AMEND_ID (#992)
   payeeName: string;
   amount: number;
   date: Date;

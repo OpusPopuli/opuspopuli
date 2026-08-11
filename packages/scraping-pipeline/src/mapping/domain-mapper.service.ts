@@ -903,6 +903,9 @@ const ContributionSchema = z.object({
   // IndependentExpenditureSchema has used since #955.
   committeeId: z.string().min(1).optional(),
   filingId: z.string().min(1).optional(),
+  // Coerced to a number so max() orders correctly downstream: AMEND_ID reaches
+  // 10, and '10' < '9' as text would make the wrong version look latest (#992).
+  amendId: z.coerce.number().int().optional(),
   donorName: z.string().min(1),
   donorType: z.string().transform(donorTypeTransform).default("other"),
   donorEmployer: z
@@ -944,6 +947,8 @@ const ExpenditureSchema = z
     // the *payee*, so the spender comes from the cover page via filingId (#980).
     committeeId: z.string().min(1).optional(),
     filingId: z.string().min(1).optional(),
+    /// See ContributionSchema.amendId (#992).
+    amendId: z.coerce.number().int().optional(),
     payeeName: z.string().min(1),
     amount: z.coerce.number(),
     date: coerceFlexibleDate,
