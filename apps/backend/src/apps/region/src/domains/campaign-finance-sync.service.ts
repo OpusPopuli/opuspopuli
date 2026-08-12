@@ -2,12 +2,15 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   batchTransaction,
+  sortCampaignFinanceItems,
   type CampaignFinanceResult,
 } from '@opuspopuli/common';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
 import { IndependentExpenditureLinkerService } from './independent-expenditure-linker.service';
 import { CoverPageLinkerService } from './cover-page-linker.service';
+import { AmendmentSupersessionService } from './amendment-supersession.service';
+import { FilingReconciliationService } from './filing-reconciliation.service';
 import {
   campaignFinanceSyncTracker,
   type SyncPhaseTracker,
@@ -27,7 +30,9 @@ export interface CampaignFinanceProvider {
 }
 
 type PrismaModelDelegate = {
-  findMany(args: unknown): Promise<{ externalId: string }[]>;
+  findMany(
+    args: unknown,
+  ): Promise<{ externalId: string; amendId?: number | null }[]>;
   upsert(args: unknown): Prisma.PrismaPromise<unknown>;
 };
 
@@ -35,6 +40,12 @@ type UpsertConfig = {
   records: readonly unknown[];
   model: PrismaModelDelegate;
   fields: string[];
+  /**
+   * Rows on this table are amendable: the same `externalId` can arrive more
+   * than once, once per version of the filing, and only the newest version may
+   * win. Enables the `amendId` guard in {@link upsertRecordsByFields} (#992).
+   */
+  amendable?: boolean;
 };
 
 type CommitteeRecord = {
@@ -69,6 +80,10 @@ export class CampaignFinanceSyncService {
     private readonly independentExpenditureLinker?: IndependentExpenditureLinkerService,
     @Optional()
     private readonly coverPageLinker?: CoverPageLinkerService,
+    @Optional()
+    private readonly amendmentSupersession?: AmendmentSupersessionService,
+    @Optional()
+    private readonly filingReconciliation?: FilingReconciliationService,
   ) {}
 
   async sync(
@@ -147,7 +162,11 @@ export class CampaignFinanceSyncService {
       data.expenditures.length > 0 ||
       data.independentExpenditures.length > 0 ||
       data.committeeMeasureFilings.length > 0 ||
-      data.cvrFilings.length > 0
+      data.cvrFilings.length > 0 ||
+      // Every table the flush can write must be listed here. Omitting one
+      // means its rows are dropped whenever no *other* table happens to carry
+      // data in the same fetch — silently, and only for that shape of config.
+      (data.filingSummaries?.length ?? 0) > 0
     ) {
       const tracker = ensureExtractTracker();
       await this.enrichCommittees(data);
@@ -200,21 +219,54 @@ export class CampaignFinanceSyncService {
    * candidateName/office. Covered by campaign-finance-sync.service.spec.ts.
    */
   private async runPostSyncLinkers(): Promise<void> {
-    const linkers: Array<
-      [string, { linkAll(): Promise<unknown> } | undefined]
-    > = [
-      ['Independent-expenditure', this.independentExpenditureLinker],
-      ['Cover-page', this.coverPageLinker],
-      ['Proposition finance', this.propositionFinanceLinker],
-      ['Candidate-committee', this.candidateCommitteeLinker],
+    // Uniform thunks rather than a shared interface, so each step can name its
+    // method for what it does (supersede vs link) instead of pretending to be
+    // a linker.
+    const steps: Array<[string, (() => Promise<unknown>) | undefined]> = [
+      // FIRST: a superseded amendment's rows are stale duplicates. Attributing
+      // them, or deriving measure positions from them, is wasted work — and
+      // every later step's counts would describe rows about to vanish (#992).
+      [
+        'Amendment-supersession',
+        this.amendmentSupersession &&
+          (() => this.amendmentSupersession!.supersedeAll()),
+      ],
+      [
+        'Independent-expenditure',
+        this.independentExpenditureLinker &&
+          (() => this.independentExpenditureLinker!.linkAll()),
+      ],
+      [
+        'Cover-page',
+        this.coverPageLinker && (() => this.coverPageLinker!.linkAll()),
+      ],
+      [
+        'Proposition finance',
+        this.propositionFinanceLinker &&
+          (() => this.propositionFinanceLinker!.linkAll()),
+      ],
+      [
+        'Candidate-committee',
+        this.candidateCommitteeLinker &&
+          (() => this.candidateCommitteeLinker!.linkAll()),
+      ],
+      // LAST: it judges the result of everything above. Supersession must have
+      // dropped stale amendments and the cover-page linker must have stamped
+      // committeeId, or this reconciles rows that are about to vanish and
+      // attributes its verdict to nobody (#992).
+      [
+        'Filing-reconciliation',
+        this.filingReconciliation &&
+          (() => this.filingReconciliation!.reconcileAll()),
+      ],
     ];
 
-    for (const [name, linker] of linkers) {
-      if (!linker) continue;
+    for (const [name, run] of steps) {
+      if (!run) continue;
       try {
-        await linker.linkAll();
+        await run();
       } catch (error) {
-        this.logger.warn(`${name} linker failed: ${(error as Error).message}`);
+        this.logger.warn(`${name} step failed: ${(error as Error).message}`);
       }
     }
   }
@@ -370,62 +422,14 @@ export class CampaignFinanceSyncService {
   }
 
   /**
-   * Route a heterogeneous batch of records (everything CAL-ACCESS streams
-   * out) into the typed shape `CampaignFinanceResult` expects. Discrimination
-   * is by field presence rather than a wire-format type tag — the upstream
-   * bulk downloads don't carry one.
+   * Route a heterogeneous batch of records (everything CAL-ACCESS streams out)
+   * into the typed shape `CampaignFinanceResult` expects.
+   *
+   * The rules live in `@opuspopuli/common` because the region plugin sorts the
+   * same stream the same way, and two copies had to be edited in lockstep.
    */
   private sortItems(items: Record<string, unknown>[]): CampaignFinanceResult {
-    const committees: CampaignFinanceResult['committees'] = [];
-    const contributions: CampaignFinanceResult['contributions'] = [];
-    const expenditures: CampaignFinanceResult['expenditures'] = [];
-    const independentExpenditures: CampaignFinanceResult['independentExpenditures'] =
-      [];
-    const committeeMeasureFilings: CampaignFinanceResult['committeeMeasureFilings'] =
-      [];
-    const cvrFilings: CampaignFinanceResult['cvrFilings'] = [];
-
-    for (const rec of items) {
-      if ('donorName' in rec && 'amount' in rec) {
-        contributions.push(
-          rec as unknown as CampaignFinanceResult['contributions'][0],
-        );
-      } else if ('payeeName' in rec && 'amount' in rec) {
-        expenditures.push(
-          rec as unknown as CampaignFinanceResult['expenditures'][0],
-        );
-      } else if ('supportOrOppose' in rec && 'committeeName' in rec) {
-        independentExpenditures.push(
-          rec as unknown as CampaignFinanceResult['independentExpenditures'][0],
-        );
-      } else if ('filerId' in rec && 'filingId' in rec) {
-        // Form 496 cover page — filerId + filingId, no committeeName/ballot
-        // fields. Feeds the IE linker's FILING_ID -> committee join (#955).
-        cvrFilings.push(
-          rec as unknown as CampaignFinanceResult['cvrFilings'][0],
-        );
-      } else if (
-        'filingId' in rec &&
-        ('ballotName' in rec || 'ballotNumber' in rec)
-      ) {
-        committeeMeasureFilings.push(
-          rec as unknown as CampaignFinanceResult['committeeMeasureFilings'][0],
-        );
-      } else if ('sourceSystem' in rec && 'type' in rec) {
-        committees.push(
-          rec as unknown as CampaignFinanceResult['committees'][0],
-        );
-      }
-    }
-
-    return {
-      committees,
-      contributions,
-      expenditures,
-      independentExpenditures,
-      committeeMeasureFilings,
-      cvrFilings,
-    };
+    return sortCampaignFinanceItems(items);
   }
 
   /**
@@ -440,9 +444,12 @@ export class CampaignFinanceSyncService {
       {
         records: data.contributions,
         model: this.db.contribution,
+        amendable: true,
         fields: [
           'committeeId',
           'filingId',
+          'amendId',
+          'scheduleCode',
           'donorName',
           'donorType',
           'donorEmployer',
@@ -460,9 +467,12 @@ export class CampaignFinanceSyncService {
       {
         records: data.expenditures,
         model: this.db.expenditure,
+        amendable: true,
         fields: [
           'committeeId',
           'filingId',
+          'amendId',
+          'scheduleCode',
           'payeeName',
           'amount',
           'date',
@@ -516,6 +526,23 @@ export class CampaignFinanceSyncService {
           'sourceSystem',
         ],
       },
+      {
+        records: data.filingSummaries,
+        model: this.db.filingSummary,
+        // Deliberately NOT `amendable`: AMEND_ID is part of this table's
+        // identity, so each amendment's summary is its own row and nothing
+        // supersedes anything. Reconciliation reads the latest one (#992).
+        fields: [
+          'filingId',
+          'amendId',
+          'formType',
+          'lineItem',
+          'amountA',
+          'amountB',
+          'amountC',
+          'sourceSystem',
+        ],
+      },
     ];
 
     let totalProcessed = 0;
@@ -523,7 +550,10 @@ export class CampaignFinanceSyncService {
     let totalUpdated = 0;
 
     for (const config of upsertConfigs) {
-      if (config.records.length === 0) continue;
+      // Optional chain, not `.length`: a provider built against an older
+      // CampaignFinanceResult omits newer arrays entirely, and dropping its
+      // rows beats throwing mid-sync.
+      if (!config.records?.length) continue;
       const result = await this.upsertRecordsByFields(config);
       totalProcessed += result.processed;
       totalCreated += result.created;
@@ -541,24 +571,36 @@ export class CampaignFinanceSyncService {
    * Low-level field-projection upsert used only by `upsertBatch`. Pulls
    * the configured `fields` off each record and upserts by `externalId`
    * inside a single batch transaction.
+   *
+   * On amendable tables the write is ordered by `amendId` rather than by
+   * arrival, so the newest version of a restated row always wins — see
+   * {@link keepNewestAmendment}.
    */
   private async upsertRecordsByFields(
     config: UpsertConfig,
   ): Promise<{ processed: number; created: number; updated: number }> {
     const { model, fields } = config;
-    const rows = config.records as Record<string, unknown>[];
-    const externalIds = rows.map((r) => r.externalId as string);
+    const incoming = config.records as Record<string, unknown>[];
+    const externalIds = incoming.map((r) => r.externalId as string);
 
     const existing = await model.findMany({
       where: { externalId: { in: externalIds } },
-      select: { externalId: true },
+      select: config.amendable
+        ? { externalId: true, amendId: true }
+        : { externalId: true },
     });
     const existingSet = new Set(
       existing.map((r: { externalId: string }) => r.externalId),
     );
 
+    const rows = config.amendable
+      ? this.keepNewestAmendment(incoming, existing)
+      : incoming;
+
     const pick = (r: Record<string, unknown>) =>
       Object.fromEntries(fields.map((f: string) => [f, r[f]]));
+
+    if (rows.length === 0) return { processed: 0, created: 0, updated: 0 };
 
     await batchTransaction(
       this.db,
@@ -580,4 +622,71 @@ export class CampaignFinanceSyncService {
       updated: rows.length - created,
     };
   }
+
+  /**
+   * Reduce restated rows to the newest version of each `externalId`, whether
+   * the older version arrives in the same batch or is already stored.
+   *
+   * CAL-ACCESS restates a filing's whole schedule on amendment, and the
+   * composite `externalId` deliberately omits `AMEND_ID` so a later version
+   * upserts over the earlier one (#980). That merge is last-write-wins, which
+   * assumes the export lists a filing's amendments in ascending order. It does
+   * not always: 454 `RCPT_CD` rows on the 2026-08-09 export carry a
+   * *decreasing* `AMEND_ID`, so the superseded version lands last and wins.
+   *
+   * That was harmless while nothing read `amend_id`. It is not harmless now —
+   * `AmendmentSupersessionService` deletes every row below `max(amend_id)` for
+   * a filing, so a current row left holding a stale `amend_id` is deleted
+   * outright and its money disappears from the committee's total. Ordering the
+   * write by `amendId` rather than by arrival removes the dependency on file
+   * order entirely (#992).
+   *
+   * Rows carrying no `amendId` keep the previous last-write-wins behaviour:
+   * with nothing to compare, arrival order is the only signal there is.
+   */
+  private keepNewestAmendment(
+    incoming: Record<string, unknown>[],
+    existing: { externalId: string; amendId?: number | null }[],
+  ): Record<string, unknown>[] {
+    const newest = new Map<string, Record<string, unknown>>();
+    for (const row of incoming) {
+      const id = row.externalId as string;
+      const held = newest.get(id);
+      if (!held || !isOlderAmendment(row, held)) newest.set(id, row);
+    }
+
+    const storedAmend = new Map(
+      existing.map((r) => [r.externalId, r.amendId ?? undefined]),
+    );
+    const kept = [...newest.values()].filter(
+      (row) =>
+        !isOlderAmendment(row, {
+          amendId: storedAmend.get(row.externalId as string),
+        }),
+    );
+
+    const dropped = incoming.length - kept.length;
+    if (dropped > 0) {
+      this.logger.debug(
+        `Collapsed ${dropped} row(s) in batch onto a same-or-newer version of ` +
+          `the same externalId`,
+      );
+    }
+    return kept;
+  }
+}
+
+/**
+ * True when `candidate` is an *older* version of the same row than `other`, and
+ * so must not overwrite it. Equal amendments may overwrite: re-syncing the same
+ * version has to stay idempotent. An absent `amendId` on either side yields
+ * `false` — unordered, so arrival order decides, as it did before #992.
+ */
+function isOlderAmendment(
+  candidate: { amendId?: unknown },
+  other: { amendId?: unknown },
+): boolean {
+  const a = candidate.amendId;
+  const b = other.amendId;
+  return typeof a === 'number' && typeof b === 'number' && a < b;
 }

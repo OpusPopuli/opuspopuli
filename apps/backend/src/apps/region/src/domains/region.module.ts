@@ -53,6 +53,8 @@ import { PropositionFinanceLinkerService } from './proposition-finance-linker.se
 import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
 import { IndependentExpenditureLinkerService } from './independent-expenditure-linker.service';
 import { CoverPageLinkerService } from './cover-page-linker.service';
+import { AmendmentSupersessionService } from './amendment-supersession.service';
+import { FilingReconciliationService } from './filing-reconciliation.service';
 import { PropositionFundingService } from './proposition-funding.service';
 import { RepresentativeFundingService } from './representative-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
@@ -222,6 +224,8 @@ const promptClientAsyncConfig = {
     CandidateCommitteeLinkerService,
     IndependentExpenditureLinkerService,
     CoverPageLinkerService,
+    AmendmentSupersessionService,
+    FilingReconciliationService,
     PropositionFundingService,
     RepresentativeFundingService,
     LegislativeCommitteeLinkerService,
