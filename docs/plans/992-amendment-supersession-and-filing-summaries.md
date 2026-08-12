@@ -9,7 +9,7 @@
 | **Author** | Rodney Gagnon |
 | **Data classification** | **PII — no PHI.** No new donor fields. `SMRY_CD` is aggregate-only (amounts per filing), so it adds no PII of its own. |
 | **Branch** | `feat/992-amendment-supersession-and-summaries` (+ `opuspopuli-regions`, + migration) |
-| **Status** | Subtasks 1–3 complete. 4 (reconciliation) next, then 5 (re-verify on a rebuild). |
+| **Status** | Subtasks 1–4 complete (4 split into 4a/4b after the finding below). 5 (re-verify on a rebuild) is all that remains. |
 
 ## Problem
 
@@ -126,7 +126,50 @@ keys, so the schema change is what makes the mapping effective.
 Note this table keeps `amend_id` — it is the summary *of* an amendment, and reconciliation needs the
 latest one, not a merged view.
 
-### 4. Reconciliation
+### 4a. Schedule discriminator on detail rows
+
+**Added 2026-08-12, measured before writing any reconciliation code.** `RCPT_CD` is not Schedule A —
+it is every receipt schedule in one file, and the schedule letter (`FORM_TYPE`) was never mapped. So
+`contributions` today is an undifferentiated mix with no way to tell the schedules apart:
+
+| `FORM_TYPE` | Rows | Amount | On Form 460 |
+|---|---:|---:|---|
+| `A` | 18,205,803 | $28.70B | line 1 — monetary contributions |
+| `C` | 313,633 | $1.74B | line 4 — nonmonetary |
+| `I` | 197,921 | $1.54B | line 14 — miscellaneous increases to cash |
+| `F496P3` | 237,731 | $1.87B | not an F460 at all |
+| `F401A` | 146,291 | $0.37B | not an F460 at all |
+| `A-1`, `E530`, `F900`, junk | 1,992 | $0.10B | — |
+
+Reconciliation compares against **line 1**, which is Schedule A alone. Summing the table as it stands
+compares a mixture against one of its parts. Measured across all 122,033 F460 filings, counting only
+the surviving amendment (i.e. modelling the post-supersession state):
+
+| Detail summed as | Match | Ours lower | **Ours higher** |
+|---|---:|---:|---:|
+| Schedule A only | 49,575 | 72,084 | **374 (0.31%)** |
+| Every `RCPT_CD` row | 32,753 | 53,568 | **35,712 (29.3%)** |
+
+**35,339 filings (29.0%) would be falsely flagged as over-counting.** The genuine signal is 374
+filings; without the discriminator the noise outnumbers it 95:1 and the check is worthless — it would
+be a fault detector that cries fault on nearly a third of all filings.
+
+This is the "reconciliation false positives" risk in the register, larger than it was scoped at.
+
+`EXPN_CD` is the same shape, and matters to [#991](https://github.com/OpusPopuli/opuspopuli/issues/991):
+`E` 7,824,338 rows (line 6, payments made) mixed with `D` 4,826,727 (a **memo** schedule restating
+Schedule E entries — additive summation double-counts it), `G` 1,342,727, plus `F461P5` / `F465P3` /
+`F450P5` belonging to other forms entirely.
+
+- Region config: map `RCPT_CD.FORM_TYPE` and `EXPN_CD.FORM_TYPE` → `scheduleCode`
+- Migration: nullable `schedule_code` on `contributions` and `expenditures`, index `(filing_id, schedule_code)`
+- `schema.prisma`, zod schemas, `packages/common` interfaces, `fields` projections — the same
+  four-place write path as `amend_id`, with the same `z.object()` strip trap
+
+Named `scheduleCode`, not `formType`: the finance router keys `filingSummaries` off `formType` +
+`lineItem`, and a detail row carrying `formType` sits one field away from being misrouted.
+
+### 4b. Reconciliation
 
 - Compare itemized detail per filing against the official summary line
 - **Flag where detail exceeds official** — that comparison is what found this defect; automated, it
@@ -135,12 +178,16 @@ latest one, not a merged view.
 
 Surfacing it in the UI is out of scope here; storing and flagging it is not.
 
+Note the Schedule-A row above also stands as evidence for subtask 2 at full scale: the sampled
+baseline was 8 of 123 filings (7%) over-counting, and modelling supersession across all 122,033 drops
+that to 374 (0.31%). The residual is small enough to investigate case by case rather than in bulk.
+
 ### 5. Re-verify
 
 Re-run the subtask-7 method on the rebuilt data. Target: "ours higher" ≈ 0, with the remaining
 variance explained by unitemized amounts.
 
-**Ordering:** 1 → 2 (fixes the defect) → 3 → 4 (proves it, and guards it). 5 last.
+**Ordering:** 1 → 2 (fixes the defect) → 3 → 4a → 4b (proves it, and guards it). 5 last.
 
 ## Risks
 
@@ -149,7 +196,7 @@ variance explained by unitemized amounts.
 | Supersession deletes rows it should keep | high | A filing with a single amendment must be untouched. Integration test asserts that explicitly before any bulk run. Second path found and closed during subtask 1: a merged row holding a stale `amend_id` from out-of-order arrival — see the monotonic-write decision above |
 | Another rebuild needed to apply `amend_id` | medium | Existing rows have no `amend_id`, so supersession cannot act on them. Either backfill from the source or re-sync. A re-sync is ~4h and already proven |
 | `SMRY_CD` is 469 MB | low | Comparable to sources already ingested; filtered to F460 |
-| Reconciliation false positives | medium | Detail *below* official is expected (unitemized) and must not be flagged. Only detail **exceeding** official indicates a fault |
+| Reconciliation false positives | ~~medium~~ **realised** | Detail *below* official is expected (unitemized) and must not be flagged. Only detail **exceeding** official indicates a fault. Measured 2026-08-12: without a schedule discriminator this fires on 29% of filings against a true rate of 0.31%, which is what subtask 4a exists to fix |
 | Region config in a separate repo | low | Publish `@opuspopuli/regions` before the monorepo consumes it |
 
 ## Open questions

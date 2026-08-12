@@ -926,6 +926,12 @@ const ContributionSchema = z.object({
   // Coerced to a number so max() orders correctly downstream: AMEND_ID reaches
   // 10, and '10' < '9' as text would make the wrong version look latest (#992).
   amendId: z.coerce.number().int().optional(),
+  // RCPT_CD's FORM_TYPE is the SCHEDULE letter, not the filing's form. 'A' is
+  // monetary contributions (F460 line 1), which is the only schedule
+  // reconciliation may sum against that line — 'C', 'I', 'F496P3' and 'F401A'
+  // rows also live in this file and summing them all falsely flags 29% of
+  // filings as over-counting (#992).
+  scheduleCode: z.string().min(1).optional(),
   donorName: z.string().min(1),
   donorType: z.string().transform(donorTypeTransform).default("other"),
   donorEmployer: z
@@ -969,6 +975,9 @@ const ExpenditureSchema = z
     filingId: z.string().min(1).optional(),
     /// See ContributionSchema.amendId (#992).
     amendId: z.coerce.number().int().optional(),
+    /// See ContributionSchema.scheduleCode. 'E' is payments made (F460 line 6);
+    /// 'D' is a MEMO schedule restating E entries, so the two must not be summed.
+    scheduleCode: z.string().min(1).optional(),
     payeeName: z.string().min(1),
     amount: z.coerce.number(),
     date: coerceFlexibleDate,

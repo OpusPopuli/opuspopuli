@@ -10,6 +10,7 @@ import { CandidateCommitteeLinkerService } from './candidate-committee-linker.se
 import { IndependentExpenditureLinkerService } from './independent-expenditure-linker.service';
 import { CoverPageLinkerService } from './cover-page-linker.service';
 import { AmendmentSupersessionService } from './amendment-supersession.service';
+import { FilingReconciliationService } from './filing-reconciliation.service';
 import {
   campaignFinanceSyncTracker,
   type SyncPhaseTracker,
@@ -81,6 +82,8 @@ export class CampaignFinanceSyncService {
     private readonly coverPageLinker?: CoverPageLinkerService,
     @Optional()
     private readonly amendmentSupersession?: AmendmentSupersessionService,
+    @Optional()
+    private readonly filingReconciliation?: FilingReconciliationService,
   ) {}
 
   async sync(
@@ -246,6 +249,15 @@ export class CampaignFinanceSyncService {
         'Candidate-committee',
         this.candidateCommitteeLinker &&
           (() => this.candidateCommitteeLinker!.linkAll()),
+      ],
+      // LAST: it judges the result of everything above. Supersession must have
+      // dropped stale amendments and the cover-page linker must have stamped
+      // committeeId, or this reconciles rows that are about to vanish and
+      // attributes its verdict to nobody (#992).
+      [
+        'Filing-reconciliation',
+        this.filingReconciliation &&
+          (() => this.filingReconciliation!.reconcileAll()),
       ],
     ];
 
@@ -437,6 +449,7 @@ export class CampaignFinanceSyncService {
           'committeeId',
           'filingId',
           'amendId',
+          'scheduleCode',
           'donorName',
           'donorType',
           'donorEmployer',
@@ -459,6 +472,7 @@ export class CampaignFinanceSyncService {
           'committeeId',
           'filingId',
           'amendId',
+          'scheduleCode',
           'payeeName',
           'amount',
           'date',

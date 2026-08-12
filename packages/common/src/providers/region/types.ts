@@ -553,6 +553,7 @@ export interface Contribution {
   committeeId?: string; // resolved post-sync by the cover-page linker via filingId (#980) — RCPT_CD's CMTE_ID is the contributor
   filingId?: string; // CalAccess FILING_ID from RCPT_CD — join key to the campaign-disclosure cover page (#980)
   amendId?: number; // CalAccess AMEND_ID — numeric so max() picks the latest version, not '9' over '10' (#992)
+  scheduleCode?: string; // RCPT_CD FORM_TYPE — the SCHEDULE: 'A' monetary (F460 line 1), 'C' nonmonetary, 'I' misc; reconciliation must filter to 'A' (#992)
   donorName: string;
   donorType: "individual" | "committee" | "party" | "self" | "other";
   donorEmployer?: string;
@@ -575,6 +576,7 @@ export interface Expenditure {
   committeeId?: string; // resolved post-sync by the cover-page linker via filingId (#980) — EXPN_CD's CMTE_ID is the payee
   filingId?: string; // CalAccess FILING_ID from EXPN_CD — join key to the campaign-disclosure cover page (#980)
   amendId?: number; // CalAccess AMEND_ID (#992)
+  scheduleCode?: string; // EXPN_CD FORM_TYPE — the SCHEDULE: 'E' payments (F460 line 6); 'D' is a MEMO restating E, so summing both double-counts (#992)
   payeeName: string;
   amount: number;
   date: Date;

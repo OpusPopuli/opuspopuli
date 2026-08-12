@@ -1393,6 +1393,72 @@ describe("DomainMapperService", () => {
       });
     });
 
+    it("carries scheduleCode through onto contributions (#992)", () => {
+      // The strip trap. `z.object()` drops unknown keys, so mapping FORM_TYPE
+      // in the region config does nothing until the schema names the field —
+      // and a silently-absent scheduleCode makes every filing unreconcilable.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "2505994:7:BBB",
+              filingId: "2505994",
+              amendId: "1",
+              scheduleCode: "A",
+              donorName: "Jane Q. Public",
+              donorType: "IND",
+              amount: "1500.00",
+              date: "03/01/2026",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Contributions",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        externalId: "2505994:7:BBB",
+        // Schedule A — monetary contributions, Form 460 line 1. Reconciliation
+        // sums this schedule ALONE against that line.
+        scheduleCode: "A",
+      });
+    });
+
+    it("carries scheduleCode through onto expenditures (#992)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "2505994:3:CCC",
+              filingId: "2505994",
+              amendId: "1",
+              // 'D' is a MEMO schedule restating Schedule E entries. It must
+              // survive mapping precisely so reconciliation can exclude it.
+              scheduleCode: "D",
+              payeeName: "Acme Printing",
+              amount: "2500.00",
+              date: "03/01/2026",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Expenditures",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        externalId: "2505994:3:CCC",
+        scheduleCode: "D",
+      });
+    });
+
     it("keeps negative summary amounts, which are real corrections (#992)", () => {
       const result = mapper.map(
         createRawResult({

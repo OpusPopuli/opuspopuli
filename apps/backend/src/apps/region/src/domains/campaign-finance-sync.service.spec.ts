@@ -165,6 +165,9 @@ describe('CampaignFinanceSyncService — post-sync linker ordering (#980)', () =
     const amendmentSupersession = {
       supersedeAll: jest.fn().mockResolvedValue({ name: 'supersession' }),
     };
+    const filingReconciliation = {
+      reconcileAll: jest.fn().mockResolvedValue({ name: 'reconciliation' }),
+    };
     const propositionFinanceLinker = linker('proposition');
     const candidateCommitteeLinker = linker('candidate');
     const independentExpenditureLinker = linker('ie');
@@ -177,6 +180,7 @@ describe('CampaignFinanceSyncService — post-sync linker ordering (#980)', () =
       independentExpenditureLinker as never,
       coverPageLinker as never,
       amendmentSupersession as never,
+      filingReconciliation as never,
     );
 
     const provider = {
@@ -190,6 +194,7 @@ describe('CampaignFinanceSyncService — post-sync linker ordering (#980)', () =
       propositionFinanceLinker,
       independentExpenditureLinker,
       amendmentSupersession,
+      filingReconciliation,
     };
   }
 
@@ -223,6 +228,30 @@ describe('CampaignFinanceSyncService — post-sync linker ordering (#980)', () =
     expect(
       amendmentSupersession.supersedeAll.mock.invocationCallOrder[0],
     ).toBeLessThan(coverPageLinker.linkAll.mock.invocationCallOrder[0]);
+  });
+
+  it('reconciles AFTER every linker has run (#992)', async () => {
+    // Also load-bearing, pointing the other way. Reconciliation judges the
+    // final state: it needs supersession to have dropped stale amendments and
+    // the cover-page linker to have stamped committeeId. Run it earlier and it
+    // reconciles rows about to vanish, and attributes its verdict to nobody.
+    const { svc, provider, filingReconciliation, coverPageLinker } =
+      buildWithLinkers();
+
+    await svc.sync(provider as never);
+
+    expect(filingReconciliation.reconcileAll).toHaveBeenCalled();
+    expect(
+      filingReconciliation.reconcileAll.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(coverPageLinker.linkAll.mock.invocationCallOrder[0]);
+  });
+
+  it('still completes the sync when reconciliation throws', async () => {
+    // Reconciliation only reports; it must never cost the sync its data.
+    const { svc, provider, filingReconciliation } = buildWithLinkers();
+    filingReconciliation.reconcileAll.mockRejectedValue(new Error('boom'));
+
+    await expect(svc.sync(provider as never)).resolves.toBeDefined();
   });
 
   it('still attributes when supersession throws', async () => {

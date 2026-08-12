@@ -1789,6 +1789,50 @@ model FilingSummary {
   @@map("filing_summaries")
 }
 
+/// Verdict from comparing a filing's itemized detail against the totals the
+/// committee reported on its own Form 460 summary page (#992).
+///
+/// The comparison cuts two ways, and the distinction is the whole point:
+///   - detail ABOVE reported is a FAULT — money counted that was never
+///     reported. This is the check that found the amendment double-count.
+///   - detail BELOW reported is EXPECTED — Schedule A itemizes only $100 and
+///     above, so the gap is unitemized small-donor money that appears nowhere
+///     in the detail. 59% of filings sit here. Surfacing it is what stops a
+///     candidate funded by many small donors from reading as underfunded.
+///
+/// One row per filing at its surviving amendment; a re-run upserts, because the
+/// previous verdict describes data that no longer exists.
+model FilingReconciliation {
+  id          String  @id @default(uuid())
+  filingId    String  @unique @map("filing_id") @db.VarChar(50)
+  /// The amendment compared. A verdict only means something against a version.
+  amendId     Int?    @map("amend_id")
+  /// Stamped from the detail rows, already attributed by the cover-page linker.
+  committeeId String? @map("committee_id")
+
+  /// Form 460 line 1 column A, as reported.
+  reportedContributions   Decimal? @map("reported_contributions") @db.Decimal(14, 2)
+  /// Sum of stored Schedule A rows — that schedule ALONE (see scheduleCode).
+  itemizedContributions   Decimal? @map("itemized_contributions") @db.Decimal(14, 2)
+  /// reported − itemized where positive: the unitemized (<$100) money.
+  unitemizedContributions Decimal? @map("unitemized_contributions") @db.Decimal(14, 2)
+  contributionStatus      String   @map("contribution_status") @db.VarChar(20)
+
+  /// Form 460 line 6 column A, and the Schedule E sum — the lever #991 needs.
+  reportedExpenditures Decimal? @map("reported_expenditures") @db.Decimal(14, 2)
+  itemizedExpenditures Decimal? @map("itemized_expenditures") @db.Decimal(14, 2)
+  expenditureStatus    String   @map("expenditure_status") @db.VarChar(20)
+
+  reconciledAt DateTime @default(now()) @map("reconciled_at") @db.Timestamptz
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([contributionStatus])
+  @@index([expenditureStatus])
+  @@index([committeeId])
+  @@map("filing_reconciliations")
+}
+
 /// Campaign contribution — money received by a committee from a donor.
 model Contribution {
   id               String   @id @default(uuid())
@@ -1803,6 +1847,14 @@ model Contribution {
   /// CalAccess AMEND_ID. Integer, not text: it reaches 10, and '10' < '9'
   /// under text ordering would make max() select the wrong version (#992).
   amendId          Int?     @map("amend_id")
+  /// CalAccess RCPT_CD.FORM_TYPE — the SCHEDULE this row was itemized on, not
+  /// the form type of the filing. `A` is monetary contributions (Form 460
+  /// line 1), `C` nonmonetary (line 4), `I` misc increases (line 14); `F496P3`
+  /// and `F401A` rows are not Form 460 at all. Reconciliation compares against
+  /// line 1, so it must filter to `A` — summing every schedule falsely flags
+  /// 29% of filings as over-counting against a true rate of 0.31% (#992).
+  /// Null on rows ingested before the mapping existed; those are not reconciled.
+  scheduleCode     String?  @map("schedule_code") @db.VarChar(20)
   donorName        String   @map("donor_name")
   donorType        String   @map("donor_type") @db.VarChar(20) /// individual, committee, party, self, other
   donorEmployer    String?  @map("donor_employer")
@@ -1823,6 +1875,7 @@ model Contribution {
   @@index([committeeId])
   @@index([filingId])
   @@index([filingId, amendId])
+  @@index([filingId, scheduleCode])
   @@index([donorName])
   @@index([date])
   @@index([amount])
@@ -1843,6 +1896,11 @@ model Expenditure {
   filingId           String?  @map("filing_id") @db.VarChar(50)
   /// CalAccess AMEND_ID — see Contribution.amendId (#992).
   amendId            Int?     @map("amend_id")
+  /// CalAccess EXPN_CD.FORM_TYPE — the SCHEDULE, see Contribution.scheduleCode.
+  /// `E` is payments made (Form 460 line 6). `D` is a MEMO schedule restating
+  /// payments already counted in `E`, so summing the two double-counts 4.8M
+  /// rows — reconciling line 6 must filter to `E` alone (#992, #991).
+  scheduleCode       String?  @map("schedule_code") @db.VarChar(20)
   payeeName          String   @map("payee_name")
   amount             Decimal  @db.Decimal(12, 2)
   date               DateTime @db.Date
@@ -1864,6 +1922,7 @@ model Expenditure {
   @@index([committeeId])
   @@index([filingId])
   @@index([filingId, amendId])
+  @@index([filingId, scheduleCode])
   @@index([payeeName])
   @@index([date])
   @@index([sourceSystem])
