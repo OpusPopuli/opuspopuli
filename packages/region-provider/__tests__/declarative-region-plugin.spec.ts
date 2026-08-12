@@ -539,6 +539,37 @@ describe("DeclarativeRegionPlugin", () => {
       });
     });
 
+    it("separates SMRY_CD summary lines out of the contribution bucket (#992)", async () => {
+      // Contributions is the fall-through bucket here, so a summary row landing
+      // there would inflate the very total it exists to reconcile against.
+      // Two campaign_finance sources are configured; only the first carries
+      // summary rows.
+      cfPipeline.execute
+        .mockResolvedValueOnce(
+          createExtractionResult([
+            {
+              externalId: "2505994:1:F460:1",
+              filingId: "2505994",
+              amendId: 1,
+              formType: "F460",
+              lineItem: "1",
+              amountA: 170988.25,
+              sourceSystem: "cal_access",
+            },
+          ]),
+        )
+        .mockResolvedValueOnce(createExtractionResult([]));
+
+      const result = await cfPlugin.fetchCampaignFinance();
+
+      expect(result.filingSummaries).toHaveLength(1);
+      expect(result.filingSummaries[0]).toMatchObject({
+        filingId: "2505994",
+        lineItem: "1",
+      });
+      expect(result.contributions).toEqual([]);
+    });
+
     it("should return empty arrays when pipeline returns no items", async () => {
       cfPipeline.execute.mockResolvedValue(createExtractionResult([]));
 

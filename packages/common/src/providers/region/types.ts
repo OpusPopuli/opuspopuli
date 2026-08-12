@@ -552,6 +552,8 @@ export interface Contribution {
   externalId: string;
   committeeId?: string; // resolved post-sync by the cover-page linker via filingId (#980) — RCPT_CD's CMTE_ID is the contributor
   filingId?: string; // CalAccess FILING_ID from RCPT_CD — join key to the campaign-disclosure cover page (#980)
+  amendId?: number; // CalAccess AMEND_ID — numeric so max() picks the latest version, not '9' over '10' (#992)
+  scheduleCode?: string; // RCPT_CD FORM_TYPE — the SCHEDULE: 'A' monetary (F460 line 1), 'C' nonmonetary, 'I' misc; reconciliation must filter to 'A' (#992)
   donorName: string;
   donorType: "individual" | "committee" | "party" | "self" | "other";
   donorEmployer?: string;
@@ -573,6 +575,8 @@ export interface Expenditure {
   externalId: string;
   committeeId?: string; // resolved post-sync by the cover-page linker via filingId (#980) — EXPN_CD's CMTE_ID is the payee
   filingId?: string; // CalAccess FILING_ID from EXPN_CD — join key to the campaign-disclosure cover page (#980)
+  amendId?: number; // CalAccess AMEND_ID (#992)
+  scheduleCode?: string; // EXPN_CD FORM_TYPE — the SCHEDULE: 'E' payments (F460 line 6); 'D' is a MEMO restating E, so summing both double-counts (#992)
   payeeName: string;
   amount: number;
   date: Date;
@@ -639,6 +643,31 @@ export interface CvrFiling {
 }
 
 /**
+ * One numbered line from a filing's own summary page (CalAccess `SMRY_CD`,
+ * filtered to Form 460) — the totals the committee reported itself, as opposed
+ * to the itemized detail in `Contribution` / `Expenditure` (#992).
+ *
+ * Two uses. Reconciliation: itemized detail exceeding the committee's own
+ * reported total means something is counted twice — the check that found the
+ * amendment double-count. And unitemized contributions: Schedule A itemizes
+ * only $100 and above, so smaller donations exist nowhere else.
+ *
+ * `amendId` is part of the identity here rather than superseded — this is the
+ * summary *of* an amendment, and reconciliation compares against the latest.
+ */
+export interface FilingSummary {
+  externalId: string; // FILING_ID:AMEND_ID:FORM_TYPE:LINE_ITEM
+  filingId: string; // FILING_ID — join key to the itemized detail
+  amendId?: number; // AMEND_ID
+  formType: string; // FORM_TYPE — F460 today
+  lineItem: string; // LINE_ITEM — string: 47 distinct values on F460, not all numeric
+  amountA?: number; // AMOUNT_A — this reporting period
+  amountB?: number; // AMOUNT_B — calendar-year cumulative
+  amountC?: number; // AMOUNT_C — election-cycle cumulative, where the form carries one
+  sourceSystem: "cal_access" | "fec";
+}
+
+/**
  * Aggregated result from campaign finance data fetch
  */
 export interface CampaignFinanceResult {
@@ -648,6 +677,7 @@ export interface CampaignFinanceResult {
   independentExpenditures: IndependentExpenditure[];
   committeeMeasureFilings: CommitteeMeasureFiling[];
   cvrFilings: CvrFiling[];
+  filingSummaries: FilingSummary[];
 }
 
 /**

@@ -1356,6 +1356,159 @@ describe("DomainMapperService", () => {
       });
     });
 
+    it("routes 'Filing Summaries' (SMRY_CD) to filing summaries (#992)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "2505994:1:F460:1",
+              filingId: "2505994",
+              amendId: "1",
+              formType: "F460",
+              lineItem: "1",
+              amountA: "170988.25",
+              amountB: "412500.00",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Filing Summaries",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        externalId: "2505994:1:F460:1",
+        filingId: "2505994",
+        // Numeric, not "1" — the same reason contributions coerce it: max()
+        // over text would rank '10' below '9' (#992).
+        amendId: 1,
+        formType: "F460",
+        // String, deliberately: F460 LINE_ITEM values are not all numeric.
+        lineItem: "1",
+        amountA: 170988.25,
+        amountB: 412500,
+      });
+    });
+
+    it("carries scheduleCode through onto contributions (#992)", () => {
+      // The strip trap. `z.object()` drops unknown keys, so mapping FORM_TYPE
+      // in the region config does nothing until the schema names the field —
+      // and a silently-absent scheduleCode makes every filing unreconcilable.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "2505994:7:BBB",
+              filingId: "2505994",
+              amendId: "1",
+              scheduleCode: "A",
+              donorName: "Jane Q. Public",
+              donorType: "IND",
+              amount: "1500.00",
+              date: "03/01/2026",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Contributions",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        externalId: "2505994:7:BBB",
+        // Schedule A — monetary contributions, Form 460 line 1. Reconciliation
+        // sums this schedule ALONE against that line.
+        scheduleCode: "A",
+      });
+    });
+
+    it("carries scheduleCode through onto expenditures (#992)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "2505994:3:CCC",
+              filingId: "2505994",
+              amendId: "1",
+              // 'D' is a MEMO schedule restating Schedule E entries. It must
+              // survive mapping precisely so reconciliation can exclude it.
+              scheduleCode: "D",
+              payeeName: "Acme Printing",
+              amount: "2500.00",
+              date: "03/01/2026",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Expenditures",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items[0]).toMatchObject({
+        externalId: "2505994:3:CCC",
+        scheduleCode: "D",
+      });
+    });
+
+    it("keeps negative summary amounts, which are real corrections (#992)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "F1:0:F460:20",
+              filingId: "F1",
+              formType: "F460",
+              lineItem: "20",
+              amountA: "-4500.00",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Filing Summaries",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({ amountA: -4500 });
+    });
+
+    it("leaves an absent summary column absent rather than zero (#992)", () => {
+      // The bulk handler drops empty cells, and a blank column on the form is
+      // genuinely absent — recording it as 0 would make it look reported.
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "F1:0:F460:1",
+              filingId: "F1",
+              formType: "F460",
+              lineItem: "1",
+              amountA: "100.00",
+              sourceSystem: "cal_access",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.CAMPAIGN_FINANCE,
+          category: "CAL-ACCESS Filing Summaries",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({ amountA: 100 });
+      expect(result.items[0]).not.toHaveProperty("amountB");
+      expect(result.items[0]).not.toHaveProperty("amountC");
+    });
+
     it("routes 'Committee Positions' (CVR2/Form 410) to measure filings, not committees (#936)", () => {
       const result = mapper.map(
         createRawResult({

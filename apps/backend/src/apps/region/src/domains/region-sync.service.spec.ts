@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { emptyCampaignFinanceResult } from '@opuspopuli/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import {
@@ -2466,6 +2467,7 @@ describe('RegionSyncService — campaign finance sync', () => {
     ],
     committeeMeasureFilings: [],
     cvrFilings: [],
+    filingSummaries: [],
   };
 
   beforeEach(async () => {
@@ -2607,12 +2609,7 @@ describe('RegionSyncService — campaign finance sync', () => {
 
   it('should handle empty campaign finance result via syncAll', async () => {
     mockPlugin.fetchCampaignFinance.mockResolvedValue({
-      committees: [],
-      contributions: [],
-      expenditures: [],
-      independentExpenditures: [],
-      committeeMeasureFilings: [],
-      cvrFilings: [],
+      ...emptyCampaignFinanceResult(),
     });
 
     const results = await service.syncAll();
@@ -2653,6 +2650,7 @@ describe('RegionSyncService — campaign finance sync', () => {
       ],
       committeeMeasureFilings: [],
       cvrFilings: [],
+      filingSummaries: [],
     });
 
     await service.syncAll();
@@ -3083,12 +3081,7 @@ describe('RegionSyncService — proposition finance wiring', () => {
     );
 
     const fetchCampaignFinance = jest.fn().mockResolvedValue({
-      committees: [],
-      contributions: [],
-      expenditures: [],
-      independentExpenditures: [],
-      committeeMeasureFilings: [],
-      cvrFilings: [],
+      ...emptyCampaignFinanceResult(),
     });
 
     const mockPlugin = {
