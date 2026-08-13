@@ -35,6 +35,7 @@ overrides:
   handlebars: '>=4.7.9'
   picomatch: '>=4.0.4'
   path-to-regexp: '>=8.4.0'
+  '@opennextjs/aws>path-to-regexp': ^6.3.0
   defu: '>=6.1.5'
   axios: '>=1.18.0'
   basic-ftp: '>=5.2.1'
@@ -10130,6 +10131,9 @@ packages:
     resolution: {integrity: sha512-3O/iVVsJAPsOnpwWIeD+d6z/7PmqApyQePUtCndjatj/9I5LylHvt5qluFaBT3I5h3r1ejfR056c+FCv+NnNXg==}
     engines: {node: 18 || 20 || >=22}
 
+  path-to-regexp@6.3.0:
+    resolution: {integrity: sha512-Yhpw4T9C6hPpgPeA28us07OJeqZ5EzQTkbfwuhsUg0c237RomFoETJgmp2sa3F/41gfLE6G5cqcYwznmeEeOlQ==}
+
   path-to-regexp@8.4.0:
     resolution: {integrity: sha512-PuseHIvAnz3bjrM2rGJtSgo1zjgxapTLZ7x2pjhzWwlp4SJQgK3f3iZIQwkpEnBaKz6seKBADpM4B4ySkuYypg==}
 
@@ -15818,7 +15822,7 @@ snapshots:
       esbuild: 0.25.4
       express: 5.2.1
       next: 16.2.11(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      path-to-regexp: 8.4.0
+      path-to-regexp: 6.3.0
       urlpattern-polyfill: 10.1.0
       yaml: 2.8.2
     transitivePeerDependencies:
@@ -20908,7 +20912,7 @@ snapshots:
       jsonwebtoken: 9.0.3
       load-esm: 1.0.3
       mime-types: 2.1.35
-      retry-axios: 2.6.0(axios@1.18.1(debug@4.4.3))
+      retry-axios: 2.6.0(axios@1.18.1)
       tough-cookie: 4.1.4
     transitivePeerDependencies:
       - supports-color
@@ -22994,6 +22998,8 @@ snapshots:
       lru-cache: 11.2.6
       minipass: 7.1.3
 
+  path-to-regexp@6.3.0: {}
+
   path-to-regexp@8.4.0: {}
 
   path-type@4.0.0: {}
@@ -23617,7 +23623,7 @@ snapshots:
       onetime: 7.0.0
       signal-exit: 4.1.0
 
-  retry-axios@2.6.0(axios@1.18.1(debug@4.4.3)):
+  retry-axios@2.6.0(axios@1.18.1):
     dependencies:
       axios: 1.18.1(debug@4.4.3)
 

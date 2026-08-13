@@ -75,6 +75,7 @@
       "handlebars": ">=4.7.9",
       "picomatch": ">=4.0.4",
       "path-to-regexp": ">=8.4.0",
+      "@opennextjs/aws>path-to-regexp": "^6.3.0",
       "defu": ">=6.1.5",
       "axios": ">=1.18.0",
       "basic-ftp": ">=5.2.1",
