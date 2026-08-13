@@ -20,6 +20,17 @@ export default tseslint.config(
   {
     ignores: [
       ".next/**",
+      // `.open-next/**` belongs here for exactly the reason the comment above
+      // gives — it is compiled output. Cloudflare's generated shims
+      // (cloudflare-templates/shims/empty.d.ts, throw.d.ts) use `{}` and `any`
+      // deliberately, and SonarJS flagged all three as errors, failing the
+      // pre-push gate on code we neither wrote nor ship as source.
+      //
+      // Fourth config today needing this: the main ESLint config, Jest's
+      // modulePathIgnorePatterns, and this file all excluded `.next` and not
+      // `.open-next`. None of them fail in CI, which lints a fresh checkout
+      // where the directory does not exist.
+      ".open-next/**",
       "node_modules/**",
       "dist/**",
       "coverage/**",
