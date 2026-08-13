@@ -29,10 +29,21 @@ Each `start:*` script builds before starting watch mode — don't run `nest star
 
 ## Git workflow
 
-- **Base branch**: `develop`. All feature/fix branches cut from `develop`, PR back to `develop`.
-- **main** is production-only. Promote via a release PR (`develop → main`) using `/op-release`.
-- Never push directly to `develop` or `main`.
+**Trunk-based.** `main` is the only long-lived branch; there is no `develop`.
+
+- **Base branch**: `main`. Cut short-lived branches from `main`, PR back to `main`.
+- Never push directly to `main` — a repository ruleset rejects it, with no bypass for admins.
 - Branch naming: `feat/<short-description>-<issue#>`, `fix/<short-description>-<issue#>`, `chore/<short-description>`
+- **Merging does not ship.** `release.yml` triggers on a `v*` tag, not on merge:
+  ```bash
+  git tag v1.6.0 && git push origin v1.6.0
+  ```
+  Use `/op-release` to prepare the changelog, notes and evidence pack before tagging.
+
+`develop` was removed on 2026-08-12 (see `docs/plans/`). It was buying no
+coordination — it existed to insulate a stable line from in-flight work, which
+needs more than one committer to mean anything — while costing a second merge on
+every change and a permanent lag between the two branches.
 
 ## Architecture overview
 
@@ -157,9 +168,9 @@ Use `git push --no-verify` only for explicit WIP/draft pushes to your own branch
 ## CI
 
 GitHub Actions (`.github/workflows/`):
-- `ci.yml` — lint, test, build, integration tests (runs on every PR to `develop`)
-- `validate-main-pr.yml` — pre-merge gate for `main`
-- `release.yml` / `publish.yml` — triggered on merge to `main`
+- `ci.yml` — lint, test, build, integration tests (runs on every PR to `main`)
+- `release.yml` — builds, signs and publishes images. Triggered by a **`v*` tag**, not by merging
+- `publish.yml` — npm package publish
 
 PRs must pass lint and build. Do not merge with failing checks.
 

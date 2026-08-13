@@ -109,10 +109,10 @@ See the [Region Provider Guide](docs/guides/region-provider.md) for detailed ins
 ### For Platform Contributions
 
 1. **Fork** the repository (if you haven't already)
-2. **Create a branch** from `develop`:
+2. **Create a branch** from `main`:
    ```bash
-   git checkout develop
-   git pull upstream develop
+   git checkout main
+   git pull upstream main
    git checkout -b feature/your-feature-name
    ```
 3. **Make your changes** following our code standards
@@ -126,7 +126,7 @@ See the [Region Provider Guide](docs/guides/region-provider.md) for detailed ins
    ```bash
    git commit -m "feat: add new authentication provider"
    ```
-6. **Push** and create a Pull Request to `develop`
+6. **Push** and create a Pull Request to `main`
 
 ### For Region Configuration
 

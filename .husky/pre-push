@@ -1,3 +1,18 @@
+# ── 0. Block direct push to main ─────────────────────────────────────────────
+# The ruleset already rejects this server-side, so this guard is not what makes
+# the rule true — it is what makes finding out cheap. Every gate below runs
+# BEFORE the push is attempted: full suite with coverage, jscpd, SonarJS, npm
+# audit, Trivy, gitleaks, and two AI review passes. Without this check, pushing
+# from main means ~10 minutes of work followed by a server rejection.
+#
+# Matters more under trunk-based than it did with develop: main is now the only
+# long-lived branch, so it is the one you are most likely to be sitting on.
+if [ "$(git branch --show-current)" = "main" ]; then
+  printf '\nPush blocked: direct pushes to main are not allowed.\n'
+  printf 'Cut a branch and open a pull request instead.\n'
+  exit 1
+fi
+
 # ── 1. Coverage gate ─────────────────────────────────────────────────────────
 # Thresholds are enforced in each jest.config — this fails if any package drops
 # below its configured branches/functions/lines/statements floor.
@@ -78,9 +93,7 @@ export NVM_DIR="$HOME/.nvm"
 
 CLAUDE=$(command -v claude 2>/dev/null)
 
-BASE=$(git merge-base HEAD origin/develop 2>/dev/null \
-     || git merge-base HEAD origin/main 2>/dev/null \
-     || echo "HEAD~1")
+BASE=$(git merge-base HEAD origin/main 2>/dev/null || echo "HEAD~1")
 DIFF=$(git diff "$BASE"..HEAD 2>/dev/null | head -c 30000)
 
 # ── 8. AI code review gate ────────────────────────────────────────────────────
