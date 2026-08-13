@@ -26,6 +26,7 @@ import { EmailDomainModule } from './domains/email/email.module';
 import configuration from 'src/config';
 import relationaldbConfig from 'src/config/relationaldb.config';
 import authThrottleConfig from 'src/config/auth-throttle.config';
+import webauthnConfig from 'src/config/webauthn.config';
 import { authConfig } from '@opuspopuli/config-provider';
 import { usersValidationSchema } from 'src/config/env.validation';
 
@@ -47,7 +48,18 @@ import { MetricsModule } from 'src/common/metrics';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      load: [configuration, relationaldbConfig, authThrottleConfig, authConfig],
+      // webauthnConfig is load-bearing, not incidental: PasskeyService reads
+      // `webauthn.*` and THROWS in production when rpId/origin are absent.
+      // Without it registered here those lookups return undefined however the
+      // environment is set, so the users service cannot start in production at
+      // all — which is exactly what happened on 2026-08-13.
+      load: [
+        configuration,
+        relationaldbConfig,
+        authThrottleConfig,
+        authConfig,
+        webauthnConfig,
+      ],
       validationSchema: usersValidationSchema,
       validationOptions: { abortEarly: false },
       isGlobal: true,
