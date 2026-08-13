@@ -2,9 +2,23 @@
 # Release — Build, Push, Sign & SBOM
 # =============================================================================
 #
-# Triggered on push to main (after CI passes). Builds Docker images for each
-# microservice, pushes to GHCR, signs with Sigstore keyless cosign, and
-# generates + attaches SPDX SBOMs.
+# Triggered by pushing a `v*` tag. Builds Docker images for each microservice,
+# pushes to GHCR, signs with Sigstore keyless cosign, and generates + attaches
+# SPDX SBOMs.
+#
+#   git tag v1.6.0 && git push origin v1.6.0
+#
+# Tag-triggered rather than push-to-main, for two reasons.
+#
+# Merging must not mean shipping. Under trunk-based development every feature
+# lands on main, so a branches:[main] trigger would publish `:latest` on every
+# merge — and the Studio pulls `:latest`. A routine merge would become a
+# production image with no deliberate step in between.
+#
+# And it makes tagging load-bearing. v1.4.0 and v1.5.0 both shipped images and
+# were never tagged, because nothing depended on the tag existing; the release
+# record simply stopped at v1.3.0 while three more releases went out. Now the
+# tag IS the release, so that class of drift cannot recur.
 #
 # See docs/container-verification.md for how to verify images.
 # =============================================================================
@@ -13,10 +27,10 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    tags: ['v*']
   # Manual trigger for ad-hoc multi-arch publishes — e.g. a Studio operator
-  # needs an arm64 build off a fix branch before it merges to main. Triggered
-  # from the Actions tab.
+  # needs an arm64 build off a fix branch before it ships. Triggered from the
+  # Actions tab.
   workflow_dispatch:
 
 permissions:
@@ -93,6 +107,11 @@ jobs:
         with:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
           tags: |
+            # v1.6.0 -> 1.6.0. Gives every image a version that matches the git
+            # tag and the GitHub Release, so "what is running in prod" is
+            # answerable from the image alone. Empty on workflow_dispatch,
+            # which is correct — an ad-hoc build is not a version.
+            type=semver,pattern={{version}}
             type=sha,prefix=sha-
             type=raw,value=latest
 
