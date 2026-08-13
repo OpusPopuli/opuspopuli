@@ -85,7 +85,16 @@ const config = {
   },
   verbose: true,
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
-  modulePathIgnorePatterns: ["<rootDir>/.next"],
+  // `.open-next` alongside `.next` — the Cloudflare build copies the whole app
+  // into .open-next/server-functions/default/, package.json included, so Jest
+  // finds two modules named "frontend" and warns on a haste collision:
+  //
+  //   jest-haste-map: Haste module naming collision: frontend
+  //
+  // Harmless today but it means Jest is walking a duplicate copy of the app,
+  // and it only appears once someone has run a Cloudflare build — so CI never
+  // sees it. Same omission as the ESLint ignore list had.
+  modulePathIgnorePatterns: ["<rootDir>/.next", "<rootDir>/.open-next"],
   testPathIgnorePatterns: [
     "<rootDir>/node_modules/",
     "<rootDir>/e2e/",
