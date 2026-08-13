@@ -7,11 +7,26 @@
 #
 # Matters more under trunk-based than it did with develop: main is now the only
 # long-lived branch, so it is the one you are most likely to be sitting on.
-if [ "$(git branch --show-current)" = "main" ]; then
-  printf '\nPush blocked: direct pushes to main are not allowed.\n'
-  printf 'Cut a branch and open a pull request instead.\n'
-  exit 1
-fi
+#
+# Reads the refs actually being pushed from stdin rather than checking which
+# branch you are standing on. `git push origin v1.6.0` pushes a TAG while you
+# happen to be on main, and the branch-name check rejected it — blocking the
+# v1.6.0 release, which under tag-triggered releases is the deploy itself.
+#
+# git feeds pre-push one line per ref: <local-ref> <local-sha> <remote-ref>
+# <remote-sha>. Only refs/heads/main is a direct push to main; refs/tags/* is
+# not, and neither is any other branch. Nothing below reads stdin, so consuming
+# it here is safe.
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      printf '\nPush blocked: direct pushes to main are not allowed.\n'
+      printf 'Cut a branch and open a pull request instead.\n'
+      printf '(Tags are fine: `git push origin v1.2.3` is how a release ships.)\n'
+      exit 1
+      ;;
+  esac
+done
 
 # ── 1. Coverage gate ─────────────────────────────────────────────────────────
 # Thresholds are enforced in each jest.config — this fails if any package drops
