@@ -193,4 +193,61 @@ describe('AmendmentSupersessionService (#992)', () => {
     const res = await new AmendmentSupersessionService().supersedeAll();
     expect(res.contributions.superseded).toBe(0);
   });
+
+  /**
+   * Regression for #997: the delete loop must run until the work is done, not
+   * until an estimate says it should be.
+   *
+   * The old bound was `ceil((filingsAffected * 50) / 25_000) + 10`, guessing at
+   * most 50 superseded rows per filing. On the 2026-08-13 rebuild the real
+   * figure was ~256, so the loop ran out of iterations with 2,014,849 rows left
+   * and returned reporting success — every abandoned filing then over-counted
+   * on the public totals.
+   *
+   * Reproducing that arithmetic exactly would need >275,000 rows for a single
+   * filing, which is not a reasonable thing to insert on every CI run. So this
+   * asserts the PROPERTY the fix guarantees — a completed run leaves nothing
+   * superseded behind — over a dataset large enough to span several batches.
+   * The old code passed this too; what protects the invariant now is that the
+   * service re-checks the database and throws rather than logging success.
+   */
+  it('deletes every superseded row across multiple batches', async () => {
+    const CURRENT = 'AMEND-1-SURVIVES';
+    const superseded = Array.from({ length: 26_000 }, (_, i) => ({
+      externalId: `910001:${i}:OLD`,
+      filingId: '910001',
+      amendId: 0,
+      donorName: 'Jane Q. Public',
+      donorType: 'individual',
+      amount: '10.00',
+      date: new Date('2026-03-01'),
+      sourceSystem: 'cal_access',
+    }));
+
+    await db.contribution.createMany({ data: superseded });
+    await db.contribution.create({
+      data: {
+        externalId: '910001:0:NEW',
+        filingId: '910001',
+        amendId: 1,
+        donorName: CURRENT,
+        donorType: 'individual',
+        amount: '99.00',
+        date: new Date('2026-03-01'),
+        sourceSystem: 'cal_access',
+      },
+    });
+
+    const res = await svc.supersedeAll();
+
+    expect(res.contributions.superseded).toBe(26_000);
+
+    // The invariant, checked against the database rather than the counter —
+    // the counter is precisely what read as success while 2M rows remained.
+    const left = await db.contribution.findMany({
+      where: { filingId: '910001' },
+      select: { amendId: true, donorName: true },
+    });
+    expect(left).toEqual([{ amendId: 1, donorName: CURRENT }]);
+  }, 120_000);
 });

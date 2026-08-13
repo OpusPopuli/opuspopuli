@@ -80,14 +80,45 @@ export class AmendmentSupersessionService {
     if (filingsAffected === 0) return { ...EMPTY };
 
     let superseded = 0;
-    // Bounded rather than `while (true)`: the exit depends on a value the
-    // database returns, and a driver answering oddly should not spin forever.
-    const maxBatches =
-      Math.ceil((filingsAffected * 50) / DELETE_BATCH_SIZE) + 10;
+    // The loop is still bounded — an exit condition that depends on what the
+    // database returns should not be able to spin forever if a driver answers
+    // oddly. But the bound is a SAFETY VALVE, not a work estimate.
+    //
+    // It used to be `ceil((filingsAffected * 50) / DELETE_BATCH_SIZE) + 10`,
+    // which guessed at most 50 superseded rows per filing. On the 2026-08-13
+    // rebuild the real figure was ~256, so the loop ran out of iterations with
+    // 2,014,849 rows still to delete, and returned — reporting success (#997).
+    // Every filing it abandoned then over-counted on the public totals.
+    //
+    // Derived from rows now, not filings: at most one batch per batch-sized
+    // slice of the table, doubled. No dataset can legitimately need more, and
+    // nothing about the data's shape can make it too small.
+    const tableRows = await this.countRows(table);
+    const maxBatches = Math.ceil(tableRows / DELETE_BATCH_SIZE) * 2 + 10;
+
+    let exhausted = true;
     for (let i = 0; i < maxBatches; i++) {
       const removed = await this.deleteBatch(table);
-      if (!removed) break;
+      if (!removed) {
+        exhausted = false;
+        break;
+      }
       superseded += removed;
+    }
+
+    // Hitting the cap means the loop stopped early. Verify against the database
+    // rather than trusting the counter: silence here is what made #997 invisible
+    // for a whole rebuild — the log said "removed 800000" and read like success.
+    if (exhausted) {
+      const remaining = await this.countSupersededRows(table);
+      if (remaining > 0) {
+        throw new Error(
+          `Amendment supersession (${table}) stopped after ${maxBatches} batches ` +
+            `with ${remaining} superseded row(s) still present. Totals for the ` +
+            `affected filings are inflated until this completes. Re-run it — the ` +
+            `step is idempotent and needs no re-sync.`,
+        );
+      }
     }
 
     this.logger.log(
@@ -97,9 +128,37 @@ export class AmendmentSupersessionService {
     return { superseded, filingsAffected };
   }
 
+  /** Total rows, used only to size the loop's safety valve. */
+  private async countRows(table: AmendableTable): Promise<number> {
+    const rows = await this.db!.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT COUNT(*)::bigint AS count FROM "${table}"`,
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  /**
+   * Rows a later amendment supersedes — i.e. what a completed run must leave at
+   * zero. Deliberately re-derived from the database instead of inferred from
+   * the delete counter, because the counter is exactly what lied in #997.
+   */
+  private async countSupersededRows(table: AmendableTable): Promise<number> {
+    const rows = await this.db!.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT COUNT(*)::bigint AS count
+         FROM "${table}" r
+         JOIN (
+           SELECT "filing_id", MAX("amend_id") AS latest
+             FROM "${table}"
+            WHERE "filing_id" IS NOT NULL AND "amend_id" IS NOT NULL
+            GROUP BY "filing_id"
+         ) m ON m."filing_id" = r."filing_id"
+        WHERE r."amend_id" IS NOT NULL AND r."amend_id" < m."latest"`,
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
   /**
    * Filings carrying more than one amendment version. Used both to skip the
-   * work entirely when there is none, and to bound the batch loop.
+   * work entirely when there is none, and for the reported count.
    */
   private async countAffectedFilings(table: AmendableTable): Promise<number> {
     const rows = await this.db!.$queryRawUnsafe<Array<{ count: bigint }>>(
