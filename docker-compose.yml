@@ -43,6 +43,25 @@ networks:
     name: opuspopuli-network
     external: false
 
+# Docker's json-file driver defaults to NO rotation and NO size cap, so container
+# logs grow without bound. On the us-ca production node on 2026-08-13 that was
+# one of two independent paths to a full disk — region-worker's log alone had
+# reached 3,488 MB from a single campaign-finance sync, and nothing ever
+# reclaimed it. Postgres then crash-looped on "No space left on device".
+#
+# Lower stakes here (these files build locally and run on dev machines and CI
+# runners rather than in production) but the identical mechanism: a `pnpm dev`
+# stack runs 24 services indefinitely, and integration/e2e runs are log-heavy
+# and repeat constantly.
+#
+# 50m x 5 caps each container at 250 MB. Fixed on the node repos in
+# opuspopuli-node-us-ca#29 and opuspopuli-node#49 (#1001).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '50m'
+    max-file: '5'
+
 services:
   # ===========================================
   # Supabase Services (Auth, Storage, Vault)
@@ -52,6 +71,7 @@ services:
   opuspopuli-db:
     image: supabase/postgres:17.6.1.091
     container_name: opuspopuli-db
+    logging: *logging
     ports:
       - "5432:5432"
     environment:
@@ -103,6 +123,7 @@ services:
   inbucket:
     image: inbucket/inbucket:3.0.2
     container_name: opuspopuli-inbucket
+    logging: *logging
     ports:
       - "54324:9000"  # Web UI
       - "2500:2500"   # SMTP
@@ -128,6 +149,7 @@ services:
   supabase-auth:
     image: supabase/gotrue:v2.164.0
     container_name: opuspopuli-supabase-auth
+    logging: *logging
     depends_on:
       opuspopuli-db:
         condition: service_healthy
@@ -192,6 +214,7 @@ services:
   supabase-rest:
     image: postgrest/postgrest:v12.2.3
     container_name: opuspopuli-supabase-rest
+    logging: *logging
     depends_on:
       opuspopuli-db:
         condition: service_healthy
@@ -225,6 +248,7 @@ services:
   supabase-storage:
     image: supabase/storage-api:v1.11.8
     container_name: opuspopuli-supabase-storage
+    logging: *logging
     depends_on:
       opuspopuli-db:
         condition: service_healthy
@@ -268,6 +292,7 @@ services:
   supabase-imgproxy:
     image: darthsim/imgproxy:v3.8.0
     container_name: opuspopuli-supabase-imgproxy
+    logging: *logging
     environment:
       IMGPROXY_BIND: ":8080"
       IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
@@ -297,6 +322,7 @@ services:
   supabase-kong:
     image: kong:2.8.1
     container_name: opuspopuli-supabase-kong
+    logging: *logging
     depends_on:
       - supabase-auth
       - supabase-rest
@@ -339,6 +365,7 @@ services:
   supabase-studio:
     image: supabase/studio:20241202-71e5240
     container_name: opuspopuli-supabase-studio
+    logging: *logging
     depends_on:
       - supabase-kong
     ports:
@@ -378,6 +405,7 @@ services:
   supabase-meta:
     image: supabase/postgres-meta:v0.83.2
     container_name: opuspopuli-supabase-meta
+    logging: *logging
     depends_on:
       opuspopuli-db:
         condition: service_healthy
@@ -414,6 +442,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: opuspopuli-redis
+    logging: *logging
     ports:
       - "6379:6379"
     # noeviction required by BullMQ — allkeys-lru would evict job data under
@@ -450,6 +479,7 @@ services:
   redis-cache:
     image: redis:7-alpine
     container_name: opuspopuli-redis-cache
+    logging: *logging
     ports:
       - "6380:6379"
     command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
@@ -480,6 +510,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.51.0
     container_name: opuspopuli-prometheus
+    logging: *logging
     ports:
       - "9090:9090"
     command:
@@ -515,6 +546,7 @@ services:
   loki:
     image: grafana/loki:3.4.2
     container_name: opuspopuli-loki
+    logging: *logging
     ports:
       - "3102:3100"
     command: -config.file=/etc/loki/local-config.yaml
@@ -543,6 +575,7 @@ services:
   promtail:
     image: grafana/promtail:3.4.2
     container_name: opuspopuli-promtail
+    logging: *logging
     depends_on:
       - loki
     volumes:
@@ -566,6 +599,7 @@ services:
   tempo:
     image: grafana/tempo:2.7.2
     container_name: opuspopuli-tempo
+    logging: *logging
     command: ["-config.file=/etc/tempo.yml"]
     volumes:
       - ./observability/tempo.yml:/etc/tempo.yml:ro
@@ -589,6 +623,7 @@ services:
   grafana:
     image: grafana/grafana:10.4.1
     container_name: opuspopuli-grafana
+    logging: *logging
     depends_on:
       - prometheus
       - loki

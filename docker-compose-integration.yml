@@ -45,6 +45,25 @@ x-backend-env: &backend-env
   SMTP_ADMIN_EMAIL: noreply@opuspopuli.local
   FRONTEND_URL: http://localhost:3300
 
+# Docker's json-file driver defaults to NO rotation and NO size cap, so container
+# logs grow without bound. On the us-ca production node on 2026-08-13 that was
+# one of two independent paths to a full disk — region-worker's log alone had
+# reached 3,488 MB from a single campaign-finance sync, and nothing ever
+# reclaimed it. Postgres then crash-looped on "No space left on device".
+#
+# Lower stakes here (these files build locally and run on dev machines and CI
+# runners rather than in production) but the identical mechanism: a `pnpm dev`
+# stack runs 24 services indefinitely, and integration/e2e runs are log-heavy
+# and repeat constantly.
+#
+# 50m x 5 caps each container at 250 MB. Fixed on the node repos in
+# opuspopuli-node-us-ca#29 and opuspopuli-node#49 (#1001).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '50m'
+    max-file: '5'
+
 services:
   db-migrate:
     build:
@@ -53,6 +72,7 @@ services:
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-db-migrate
+    logging: *logging
     environment:
       <<: *backend-env
     depends_on:
@@ -69,6 +89,7 @@ services:
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-integration-users
+    logging: *logging
     environment:
       <<: *backend-env
       APPLICATION: users
@@ -96,6 +117,7 @@ services:
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-integration-documents
+    logging: *logging
     environment:
       <<: *backend-env
       APPLICATION: documents
@@ -123,6 +145,7 @@ services:
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-integration-knowledge
+    logging: *logging
     environment:
       <<: *backend-env
       APPLICATION: knowledge
@@ -150,6 +173,7 @@ services:
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-integration-region
+    logging: *logging
     environment:
       <<: *backend-env
       APPLICATION: region
@@ -177,6 +201,7 @@ services:
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-integration-api
+    logging: *logging
     environment:
       <<: *backend-env
       APPLICATION: api
@@ -213,6 +238,7 @@ services:
       args:
         NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:-}
     container_name: opuspopuli-test-runner
+    logging: *logging
     command: ["/bin/sh", "/usr/local/bin/test-runner.sh"]
     environment:
       <<: *backend-env

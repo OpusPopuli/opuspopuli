@@ -11,6 +11,25 @@
 #   # Stop frontend:
 #   docker compose -f docker-compose-frontend.yml down
 
+# Docker's json-file driver defaults to NO rotation and NO size cap, so container
+# logs grow without bound. On the us-ca production node on 2026-08-13 that was
+# one of two independent paths to a full disk — region-worker's log alone had
+# reached 3,488 MB from a single campaign-finance sync, and nothing ever
+# reclaimed it. Postgres then crash-looped on "No space left on device".
+#
+# Lower stakes here (these files build locally and run on dev machines and CI
+# runners rather than in production) but the identical mechanism: a `pnpm dev`
+# stack runs 24 services indefinitely, and integration/e2e runs are log-heavy
+# and repeat constantly.
+#
+# 50m x 5 caps each container at 250 MB. Fixed on the node repos in
+# opuspopuli-node-us-ca#29 and opuspopuli-node#49 (#1001).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '50m'
+    max-file: '5'
+
 services:
   frontend:
     build:
@@ -23,6 +42,7 @@ services:
         NEXT_PUBLIC_HMAC_CLIENT_ID: frontend
         NEXT_PUBLIC_HMAC_SECRET: dev-frontend-secret-key-change-in-production
     container_name: opuspopuli-frontend
+    logging: *logging
     ports:
       - "3300:3000"
     healthcheck:
