@@ -20,7 +20,7 @@
 # record simply stopped at v1.3.0 while three more releases went out. Now the
 # tag IS the release, so that class of drift cannot recur.
 #
-# See docs/container-verification.md for how to verify images.
+# See docs/guides/container-verification.md for how to verify images.
 # =============================================================================
 
 name: Release
@@ -28,9 +28,10 @@ name: Release
 on:
   push:
     tags: ['v*']
-  # Manual trigger for ad-hoc multi-arch publishes — e.g. a Studio operator
-  # needs an arm64 build off a fix branch before it ships. Triggered from the
-  # Actions tab.
+  # Manual trigger, from the Actions tab. Publishes `sha-<sha>` tags only —
+  # never `latest` — so it is safe to exercise the release path without
+  # changing what the Studio pulls. A Studio operator needing a build off a fix
+  # branch pulls it by its sha- tag.
   workflow_dispatch:
 
 permissions:
@@ -50,7 +51,16 @@ env:
 jobs:
   build-sign-publish:
     name: Build, Sign & Publish — ${{ matrix.service }}
-    runs-on: ubuntu-latest
+    # arm64 runner, building arm64 natively. Every consumer of these images is
+    # Apple Silicon — the production Mac Studio and local dev machines — and the
+    # frontend is not containerised at all, so there is no amd64 consumer to
+    # serve. Building on an amd64 runner meant the only architecture actually
+    # deployed was the one going through QEMU emulation: 1,039s for
+    # region-worker alone on v1.7.0, ~45 min for the full matrix. See #1003.
+    #
+    # Free for public repositories, which this is. If a private fork needs this
+    # workflow, `ubuntu-24.04-arm` is billable there.
+    runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
@@ -83,14 +93,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      # QEMU is required to cross-compile arm64 layers on amd64 GHA runners.
-      # Without it, build-push-action's `platforms: linux/arm64` step
-      # fails at "exec format error" trying to run the arm64 base image.
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf # v3
-        with:
-          platforms: arm64
-
+      # No QEMU step. It existed only to cross-compile arm64 layers on an amd64
+      # runner; the runner is now arm64, so the build is native and emulation
+      # would only slow it down. Re-add it if linux/amd64 ever comes back.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3
 
@@ -113,7 +118,17 @@ jobs:
             # which is correct — an ad-hoc build is not a version.
             type=semver,pattern={{version}}
             type=sha,prefix=sha-
-            type=raw,value=latest
+            # `latest` ONLY on a tag push. The Studio's compose pulls
+            # ghcr.io/opuspopuli/<svc>:${TAG:-latest}, so an unconditional
+            # `latest` meant any ad-hoc workflow_dispatch silently replaced the
+            # image production pulls next -- including a dispatch off an
+            # unmerged branch. A dispatch now publishes sha- tags only, which
+            # makes it a genuine dry run: safe to exercise the release path
+            # without touching what is deployed.
+            #
+            # Dispatching from a tag ref still publishes `latest`, which is the
+            # deliberate case and is meant to.
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
 
       - name: Build and push
         id: build
@@ -122,18 +137,22 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           push: true
-          # Multi-arch: amd64 native, arm64 cross-compiled via QEMU. Apple
-          # Silicon Mac Studio operators need the arm64 manifest; cloud
-          # deployments use amd64. Without both, `docker pull` from an
-          # Apple Silicon host fails with "no matching manifest for
-          # linux/arm64/v8 in the manifest list entries: not found."
-          platforms: linux/amd64,linux/arm64
+          # arm64 only, built natively on an arm64 runner. Apple Silicon Mac
+          # Studio operators need this manifest; nothing deployed needs amd64.
+          # Adding it back is a one-line change here plus restoring the QEMU
+          # step above — or, better, a second native amd64 job whose manifests
+          # are merged with `docker buildx imagetools create`, so neither
+          # architecture pays an emulation penalty.
+          platforms: linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             NODE_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
-          # Cache scoped per service + platform so cross-arch builds don't
-          # invalidate each other on every run.
+          # Cache scoped per service so the nine builds don't evict each other.
+          # The scope name is unchanged, so the first run after the switch to
+          # arm64 reads entries written by the old multi-arch build; layers for
+          # a different architecture simply miss, and the run rewrites the
+          # scope. Expect one cold-ish release, then normal hit rates.
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
