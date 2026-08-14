@@ -1,0 +1,180 @@
+# =============================================================================
+# Deploy Frontend — Cloudflare Worker
+# =============================================================================
+#
+# Triggered by pushing a `frontend-v*` tag. Builds the Next.js app through
+# OpenNext and deploys the Worker to Cloudflare.
+#
+#   git tag frontend-v1.0.0 && git push origin frontend-v1.0.0
+#
+# A SEPARATE tag from the backend's `v*`, deliberately. The frontend and the
+# services ship on different clocks: a UI fix should not require cutting a
+# backend release, and a backend patch should not silently redeploy the Worker.
+# Reusing `v*` would couple them in both directions.
+#
+# Before this existed the Worker was deployed by hand with `pnpm cf:deploy`
+# from one developer's Mac. That shipped whatever was in the working tree, with
+# build-time values from a gitignored .env.production.local that existed on
+# exactly one machine, and nothing tied a deployed Worker to a commit. It is
+# also how a real credential reached a deployed bundle on 2026-08-13: OpenNext
+# inlines .env files from the REPOSITORY ROOT, and that machine had one. A
+# runner has no .env files at all, so building here removes that class of
+# failure rather than guarding against it.
+#
+# `pnpm cf:deploy` still works and is kept as break-glass for when Actions is
+# unavailable. It is not the normal path.
+#
+# THE FAILURE MODE THIS WORKFLOW IS BUILT AROUND: NEXT_PUBLIC_GRAPHQL_URL and
+# NEXT_PUBLIC_SITE_URL are inlined at BUILD time and both have localhost
+# fallbacks in source. A build with neither set exits 0 and deploys a Worker
+# whose Apollo client points at localhost:3000 and whose CSP omits the real API
+# origin. Nothing errors. Hence the two assertions below -- one before the
+# build, one after -- which are the reason this can be trusted more than the
+# Mac it replaces.
+#
+# Note that scripts/check-worker-env.mjs (chained inside cf:build) is NOT that
+# safeguard. It fails when a non-public key reaches the bundle, and it reads
+# .env FILES -- which do not exist on a runner. Here it is trivially green. It
+# stays because it costs nothing and still guards local builds.
+# =============================================================================
+
+name: Deploy Frontend
+
+on:
+  push:
+    tags: ['frontend-v*']
+  # Dry runs, and redeploying the current ref without minting a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-frontend
+  # Never cancel a deploy mid-upload -- a half-uploaded Worker is worse than a
+  # queued one. Same reasoning as release.yml.
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    # Gates the job on manual approval and scopes the Cloudflare credentials to
+    # this environment, so no other workflow in the repo can read them.
+    environment:
+      name: production
+      url: https://app-us-ca.opuspopuli.org
+
+    env:
+      # Region config lives in repo Variables, not Secrets: every NEXT_PUBLIC_*
+      # is inlined into the browser bundle and served to every visitor, so
+      # treating them as secret would be theatre. Prefixed by region so a second
+      # node is a new pair of variables plus a matrix entry, not a rewrite.
+      NEXT_PUBLIC_GRAPHQL_URL: ${{ vars.US_CA_GRAPHQL_URL }}
+      NEXT_PUBLIC_SITE_URL: ${{ vars.US_CA_SITE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@opuspopuli'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # No `pnpm -r --filter './packages/*' build` and no Prisma generate here,
+      # deliberately. ci.yml's build job needs both because it builds the
+      # BACKEND alongside the frontend; this job does not. The frontend declares
+      # no @opuspopuli/* or workspace: dependency, imports none in app/, lib/,
+      # components/ or config/, has no path alias beyond `@/*` -> ./, and never
+      # touches Prisma -- it talks to the API over GraphQL. Adding those steps
+      # back would cost several minutes on every deploy to build artifacts
+      # nothing here consumes.
+
+      # Fail before spending ~10 minutes on a build that would ship localhost.
+      # An unset GitHub Variable expands to an empty string rather than being
+      # absent, so test for emptiness, not for definedness.
+      - name: Require production environment
+        run: |
+          : "${NEXT_PUBLIC_GRAPHQL_URL:?is empty — set the US_CA_GRAPHQL_URL repository variable. Refusing to build a localhost bundle.}"
+          : "${NEXT_PUBLIC_SITE_URL:?is empty — set the US_CA_SITE_URL repository variable. Refusing to build a localhost bundle.}"
+          echo "GraphQL : $NEXT_PUBLIC_GRAPHQL_URL"
+          echo "Site    : $NEXT_PUBLIC_SITE_URL"
+
+      # cf:build, not `opennextjs-cloudflare build`, so check-worker-env.mjs
+      # runs. NEXT_OUTPUT must stay unset: next.config.mjs switches to
+      # output:'standalone' when it is set, which breaks the Cloudflare adapter.
+      # (ci.yml's e2e job does set it -- this job must not inherit that.)
+      - name: Build Worker bundle
+        run: pnpm --filter frontend cf:build
+
+      # The assertion that makes this trustworthy. Next.js substitutes
+      # NEXT_PUBLIC_* textually at build time, so if the values reached the
+      # build they are literally present in the output -- and if they did not,
+      # the localhost fallbacks are there instead. Checked against the built
+      # artifact rather than the inputs, because the inputs being correct is
+      # not evidence the build consumed them.
+      - name: Verify production values were inlined
+        run: |
+          set -euo pipefail
+          cd apps/frontend
+
+          if ! grep -rqF "$NEXT_PUBLIC_GRAPHQL_URL" .open-next/; then
+            echo "::error::Production API origin is absent from the built bundle."
+            echo "The build did not consume NEXT_PUBLIC_GRAPHQL_URL."
+            exit 1
+          fi
+
+          if grep -rqF "localhost:3000/api" .open-next/server-functions/; then
+            echo "::error::The localhost Apollo fallback was inlined into the bundle."
+            echo "This deploys a site that talks to nothing. Refusing to continue."
+            exit 1
+          fi
+
+          echo "Production origin present; no localhost fallback. OK."
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/frontend
+          command: deploy
+
+      # Proves the deploy took, not merely that wrangler exited 0. Retried
+      # because a freshly-attached custom domain can take a moment to answer at
+      # the edge, and a cold first request is slower than steady state.
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          url="$NEXT_PUBLIC_SITE_URL"
+          for attempt in 1 2 3 4 5; do
+            code=$(curl -s -o /tmp/body.html -w '%{http_code}' --max-time 30 "$url" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "$url -> 200"
+              if grep -qF "$NEXT_PUBLIC_GRAPHQL_URL" /tmp/body.html; then
+                echo "Served page references the production API origin. OK."
+              else
+                # Not fatal: the origin may only appear in a lazily-loaded
+                # chunk rather than the initial HTML. The inlining assertion
+                # above already covers the real risk.
+                echo "::warning::Production API origin not found in the initial HTML."
+              fi
+              exit 0
+            fi
+            echo "attempt $attempt: HTTP $code, retrying..."
+            sleep 10
+          done
+          echo "::error::$url did not return 200 after 5 attempts (last: $code)."
+          exit 1

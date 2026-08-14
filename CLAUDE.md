@@ -22,7 +22,8 @@ pnpm test:integration         # Requires docker compose up
 pnpm dev                      # Dev server    :3200
 pnpm test
 pnpm e2e                      # Playwright
-pnpm cf:deploy                # Build + deploy to Cloudflare Pages
+pnpm cf:build                 # Build the Cloudflare Worker bundle locally
+pnpm cf:deploy                # Break-glass deploy — NOT the normal path (see below)
 ```
 
 Each `start:*` script builds before starting watch mode — don't run `nest start` directly.
@@ -146,7 +147,32 @@ How it works:
 - Next.js App Router, React 19, TailwindCSS 4, Apollo Client 4
 - i18next (English/Spanish) — all user-facing strings via `react-i18next`
 - WCAG 2.2 AA required for all UI — run `pnpm test:a11y` before marking UI work done
-- Deployed to Cloudflare Pages via `@opennextjs/cloudflare`
+- Deployed to a Cloudflare **Worker** (not Pages) via `@opennextjs/cloudflare`
+
+### Shipping the frontend
+
+**Tag `frontend-v*`.** `deploy-frontend.yml` builds and deploys the Worker, gated on approval in
+the `production` environment:
+
+```bash
+git tag frontend-v1.1.0 && git push origin frontend-v1.1.0
+```
+
+Separate from the backend's `v*` tag on purpose — a UI fix should not need a backend release, and
+a backend patch should not redeploy the Worker.
+
+`pnpm cf:deploy` still works and is **break-glass only**, for when Actions is unavailable. It
+ships whatever is in your working tree, from a local `.env.production.local` that exists on one
+machine, and nothing records what was deployed.
+
+Two things about the build worth knowing before changing it:
+
+- `NEXT_PUBLIC_*` are inlined at **build** time, so the bundle is region-specific and a rebuild is
+  required to change any of them. CI supplies them from the `US_CA_*` repository variables.
+- `NEXT_PUBLIC_GRAPHQL_URL` and `NEXT_PUBLIC_SITE_URL` have **localhost fallbacks in source**, so a
+  build with them unset succeeds and deploys a site that talks to nothing. `check-worker-env.mjs`
+  does not catch this — it only guards against non-public keys, and reads `.env` files that do not
+  exist on a runner. The workflow asserts the real origin is present in the built bundle instead.
 
 ## SDLC tooling (Claude Code plugin)
 
