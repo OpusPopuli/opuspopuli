@@ -744,6 +744,90 @@ export class SupabaseAuthProvider implements IAuthProvider {
   }
 
   /**
+   * Redeem a refresh token for a new session.
+   *
+   * GoTrue ROTATES on redemption: the token that comes back is not the one
+   * passed in, and the old one stops working once its reuse interval lapses.
+   * Callers must persist the returned refreshToken. GoTrue's reuse interval is
+   * also what lets two browser tabs redeem the same token near-simultaneously
+   * without one of them being logged out, so this deliberately does not add
+   * reuse detection of its own on top of it.
+   *
+   * SECURITY: never log the token, in whole or in part. The only identifier
+   * that reaches the log here is the user id GoTrue returns.
+   */
+  async refreshSession(refreshToken: string): Promise<IAuthResult> {
+    // Reject locally rather than spending a network call — and, more to the
+    // point, rather than tripping the circuit breaker on input we already know
+    // is unusable.
+    if (!refreshToken?.trim()) {
+      throw new AuthError("Refresh token is missing", "REFRESH_TOKEN_INVALID");
+    }
+
+    return this.circuitBreaker.execute(async () => {
+      let session: {
+        access_token: string;
+        refresh_token?: string;
+        expires_in?: number;
+      } | null = null;
+      let userId: string | undefined;
+      try {
+        const { data, error } = await this.supabase.auth.refreshSession({
+          refresh_token: refreshToken,
+        });
+        if (error) {
+          throw error;
+        }
+        session = data?.session ?? null;
+        userId = data?.user?.id;
+      } catch (error) {
+        // A 4xx means GoTrue considered the grant itself bad — expired,
+        // revoked, or already redeemed. That is terminal for this session and
+        // the caller should revoke rather than retry. Anything else (5xx,
+        // socket failure) is an availability problem: a different code, so the
+        // caller can tell "sign in again" from "try again".
+        //
+        // 408 and 429 are the exceptions. They are 4xx by number but say
+        // nothing about the token — treating a rate-limit as terminal would
+        // revoke a valid session and sign the user out under load, which is
+        // the very failure this whole change exists to remove.
+        const status = (error as { status?: number }).status;
+        const RETRYABLE_4XX = new Set([408, 429]);
+        const isRejected =
+          typeof status === "number" &&
+          status >= 400 &&
+          status < 500 &&
+          !RETRYABLE_4XX.has(status);
+
+        this.logger.error(
+          `Error refreshing session: ${(error as Error).message}`,
+        );
+        throw new AuthError(
+          isRejected
+            ? "Refresh token is invalid, expired, or already used"
+            : "Failed to refresh session",
+          isRejected ? "REFRESH_TOKEN_INVALID" : "REFRESH_ERROR",
+          error as Error,
+        );
+      }
+
+      // A 200 with no session is not success. Treated as a rejected grant
+      // because that is what it means in practice, and because falling through
+      // would hand the caller an IAuthResult full of empty strings.
+      if (!session) {
+        this.logger.error("Refresh returned no session");
+        throw new AuthError(
+          "Refresh token is invalid, expired, or already used",
+          "REFRESH_TOKEN_INVALID",
+        );
+      }
+
+      this.logger.log(`Session refreshed for user: ${userId ?? "unknown"}`);
+      return this.sessionToAuthResult(session);
+    });
+  }
+
+  /**
    * Send a magic link email via SMTP.
    */
   private async sendMagicLinkEmail(

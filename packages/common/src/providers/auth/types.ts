@@ -135,6 +135,23 @@ export interface IAuthProvider {
    * @returns The authenticated user's email
    */
   validateAccessToken?(accessToken: string): Promise<string>;
+
+  /**
+   * Redeem a refresh token for a new session.
+   *
+   * Implementations are expected to ROTATE: the returned `refreshToken` may
+   * differ from the one passed in, and the old one may stop working. Callers
+   * must persist what comes back rather than assuming the token is unchanged.
+   *
+   * Throws `AuthError` with code `REFRESH_TOKEN_INVALID` when the provider
+   * rejects the grant — expired, revoked, or already redeemed. That is a
+   * terminal condition for the session and is distinct from a transport or
+   * availability failure (`REFRESH_ERROR`), which may be worth retrying.
+   *
+   * @param refreshToken The refresh token to redeem
+   * @returns A fresh set of tokens
+   */
+  refreshSession?(refreshToken: string): Promise<IAuthResult>;
 }
 
 /**

@@ -19,6 +19,7 @@ const mockAuth = {
   verifyOtp: jest.fn(),
   signInWithOtp: jest.fn(),
   getUser: jest.fn(),
+  refreshSession: jest.fn(),
   admin: {
     createUser: jest.fn(),
     deleteUser: jest.fn(),
@@ -1223,6 +1224,159 @@ describe("SupabaseAuthProvider", () => {
       await expect(
         provider.validateAccessToken("valid-but-no-email"),
       ).rejects.toThrow(AuthError);
+    });
+  });
+
+  describe("refreshSession", () => {
+    const session = {
+      access_token: "new-access-token",
+      refresh_token: "rotated-refresh-token",
+      expires_in: 3600,
+    };
+
+    it("should redeem a refresh token and return the rotated tokens", async () => {
+      mockAuth.refreshSession.mockResolvedValue({
+        data: { session, user: { id: "user-123" } },
+        error: null,
+      });
+
+      const result = await provider.refreshSession("old-refresh-token");
+
+      expect(mockAuth.refreshSession).toHaveBeenCalledWith({
+        refresh_token: "old-refresh-token",
+      });
+      expect(result.accessToken).toBe("new-access-token");
+      expect(result.expiresIn).toBe(3600);
+    });
+
+    // The rotation contract: callers persist what comes back, so returning the
+    // token that went in would silently break them one refresh later.
+    it("should return the NEW refresh token, not the one passed in", async () => {
+      mockAuth.refreshSession.mockResolvedValue({
+        data: { session, user: { id: "user-123" } },
+        error: null,
+      });
+
+      const result = await provider.refreshSession("old-refresh-token");
+
+      expect(result.refreshToken).toBe("rotated-refresh-token");
+      expect(result.refreshToken).not.toBe("old-refresh-token");
+    });
+
+    it.each([
+      ["expired", 400, "refresh_token_not_found"],
+      ["revoked", 401, "Invalid Refresh Token"],
+      ["already redeemed", 400, "Already Used"],
+    ])(
+      "should classify a %s token as REFRESH_TOKEN_INVALID",
+      async (_label, status, message) => {
+        mockAuth.refreshSession.mockResolvedValue({
+          data: null,
+          error: Object.assign(new Error(message), { status }),
+        });
+
+        await expect(
+          provider.refreshSession("dead-refresh-token"),
+        ).rejects.toMatchObject({ code: "REFRESH_TOKEN_INVALID" });
+      },
+    );
+
+    // The distinction the caller depends on: "sign in again" vs "try again".
+    // Collapsing these would log people out every time GoTrue hiccups.
+    it("should classify a 5xx as REFRESH_ERROR, not an invalid token", async () => {
+      mockAuth.refreshSession.mockResolvedValue({
+        data: null,
+        error: Object.assign(new Error("upstream unavailable"), {
+          status: 503,
+        }),
+      });
+
+      await expect(
+        provider.refreshSession("good-refresh-token"),
+      ).rejects.toMatchObject({ code: "REFRESH_ERROR" });
+    });
+
+    // 4xx by number, but says nothing about the token. Classifying these as
+    // terminal would revoke a valid session under load — reintroducing #977's
+    // forced logout through a different door.
+    it.each([
+      ["rate limited", 429],
+      ["request timeout", 408],
+    ])(
+      "should NOT treat a %s response as an invalid token",
+      async (_label, status) => {
+        mockAuth.refreshSession.mockResolvedValue({
+          data: null,
+          error: Object.assign(new Error("too many requests"), { status }),
+        });
+
+        await expect(
+          provider.refreshSession("perfectly-good-token"),
+        ).rejects.toMatchObject({ code: "REFRESH_ERROR" });
+      },
+    );
+
+    it("should classify a transport failure with no status as REFRESH_ERROR", async () => {
+      mockAuth.refreshSession.mockRejectedValue(new Error("socket hang up"));
+
+      await expect(
+        provider.refreshSession("good-refresh-token"),
+      ).rejects.toMatchObject({ code: "REFRESH_ERROR" });
+    });
+
+    // A 200 carrying no session is not success — falling through would hand
+    // the caller an IAuthResult of empty strings.
+    it("should reject a success response that carries no session", async () => {
+      mockAuth.refreshSession.mockResolvedValue({
+        data: { session: null, user: null },
+        error: null,
+      });
+
+      await expect(
+        provider.refreshSession("good-refresh-token"),
+      ).rejects.toMatchObject({ code: "REFRESH_TOKEN_INVALID" });
+    });
+
+    it.each([
+      ["empty", ""],
+      ["whitespace", "   "],
+    ])(
+      "should reject a %s token without calling the provider",
+      async (_l, token) => {
+        await expect(provider.refreshSession(token)).rejects.toMatchObject({
+          code: "REFRESH_TOKEN_INVALID",
+        });
+        expect(mockAuth.refreshSession).not.toHaveBeenCalled();
+      },
+    );
+
+    it("should never put the refresh token in a log message", async () => {
+      const secret = "super-secret-refresh-token";
+      const errorSpy = jest
+        .spyOn((provider as any).logger, "error")
+        .mockImplementation(() => undefined);
+      const logSpy = jest
+        .spyOn((provider as any).logger, "log")
+        .mockImplementation(() => undefined);
+
+      mockAuth.refreshSession.mockResolvedValue({
+        data: null,
+        error: Object.assign(new Error("Invalid Refresh Token"), {
+          status: 401,
+        }),
+      });
+      await expect(provider.refreshSession(secret)).rejects.toThrow(AuthError);
+
+      mockAuth.refreshSession.mockResolvedValue({
+        data: { session, user: { id: "user-123" } },
+        error: null,
+      });
+      await provider.refreshSession(secret);
+
+      const everythingLogged = [...errorSpy.mock.calls, ...logSpy.mock.calls]
+        .flat()
+        .join(" ");
+      expect(everythingLogged).not.toContain(secret);
     });
   });
 });
