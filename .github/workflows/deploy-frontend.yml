@@ -208,18 +208,35 @@ jobs:
             || { echo "::error::worker.js missing after unpack"; exit 1; }
           echo "Unpacked $(find apps/frontend/.open-next -type f | wc -l) files."
 
+      # Installed GLOBALLY and invoked directly, rather than via
+      # cloudflare/wrangler-action.
+      #
+      # The action installs wrangler into its `workingDirectory`, so it ran
+      # `npm i wrangler@4.78.0` inside apps/frontend -- and npm then resolved
+      # against that package.json and refused:
+      #
+      #   ERESOLVE  apollo3-cache-persist@0.15.0 wants peer @apollo/client@^3.7.17
+      #             but the project is on @apollo/client@4.2.12
+      #
+      # That peer mismatch is real and pre-existing; pnpm tolerates it (no
+      # override is recorded for it) and npm does not, so this repo cannot be
+      # npm-installed at all. Nothing about the deploy needs npm to succeed
+      # there, so the fix is to keep npm away from the project tree entirely.
+      # `npm i -g` resolves in isolation and never reads apps/frontend.
+      #
+      # Pinned rather than floating so an approved bundle always ships via a
+      # known wrangler. Keep roughly in step with apps/frontend/package.json.
+      - name: Install wrangler
+        run: npm i -g wrangler@4.78.0
+
+      # wrangler reads CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID from the
+      # environment natively, so the action wrapper bought nothing here.
       - name: Deploy to Cloudflare
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/frontend
-          command: deploy
-          # Pinned rather than floating, so an approved bundle is always shipped
-          # by a known wrangler. This job does not run `pnpm install`, so
-          # node_modules is absent and the action would otherwise fetch latest.
-          # Keep roughly in step with apps/frontend/package.json's `wrangler`.
-          wranglerVersion: '4.78.0'
+        working-directory: apps/frontend
+        run: wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       # Proves the deploy took, not merely that wrangler exited 0. Retried
       # because a freshly-attached custom domain can take a moment to answer at
