@@ -1,4 +1,4 @@
-import { Args, Mutation, Resolver, Context } from '@nestjs/graphql';
+import { Args, Mutation, Resolver, Context, Directive } from '@nestjs/graphql';
 import { ConfigService } from '@nestjs/config';
 import { ForbiddenException, Optional } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -92,6 +92,60 @@ export class AuthResolver {
       );
     }
     this.createSession(userId, auth.accessToken, auth.refreshToken, context);
+  }
+
+  /**
+   * Rotate the session record in place after a successful renewal.
+   *
+   * An UPDATE, not a create: a renewed session is the same session, and
+   * creating a row per renewal would turn "your active sessions" into a list
+   * of every 15-minute window since the user signed in.
+   *
+   * Matched on the last-32 fragment of the OLD refresh token, which is what
+   * `createSession` stored. Best-effort, like `createSession` — a bookkeeping
+   * failure must not fail the renewal, because the tokens are already minted
+   * and the user is already signed in by the time we get here.
+   */
+  private rotateSession(oldRefreshToken: string, auth: Auth): void {
+    this.db.userSession
+      .updateMany({
+        where: { refreshToken: oldRefreshToken.slice(-32), isActive: true },
+        data: {
+          sessionToken: auth.accessToken.slice(-32),
+          refreshToken: auth.refreshToken?.slice(-32),
+          lastActivityAt: new Date(),
+        },
+      })
+      .catch((err: Error) => {
+        this.logger.warn(`Failed to rotate session: ${err.message}`);
+      });
+  }
+
+  /**
+   * Mark the session behind a rejected refresh token as revoked.
+   *
+   * Called ONLY when the provider rejected the grant itself — never when the
+   * provider was merely unreachable, which would sign users out during an
+   * outage.
+   *
+   * Best-effort by nature: GoTrue rotates on redemption, so a replayed old
+   * token usually no longer matches any stored fragment and this updates
+   * nothing. GoTrue's own reuse detection is the real defence; this keeps our
+   * session list honest when it does match.
+   */
+  private revokeSessionByRefreshToken(refreshToken: string): void {
+    this.db.userSession
+      .updateMany({
+        where: { refreshToken: refreshToken.slice(-32), isActive: true },
+        data: {
+          isActive: false,
+          revokedAt: new Date(),
+          revokedReason: 'refresh_rejected',
+        },
+      })
+      .catch((err: Error) => {
+        this.logger.warn(`Failed to revoke session: ${err.message}`);
+      });
   }
 
   private createSession(
@@ -712,6 +766,86 @@ export class AuthResolver {
         errorMessage: error.message,
       });
       throw new UserInputError(error.message);
+    }
+  }
+
+  /**
+   * Redeem a refresh token for a new session.
+   *
+   * `@inaccessible` keeps this OUT of the composed public schema. It is
+   * reachable only by a direct HMAC-signed call from the gateway's refresh
+   * route, never by a client through `/api`. That is deliberate: exposing it
+   * federated would mean clients passing a 7-day credential as a GraphQL
+   * variable, where it lands in query logs, traces and audit payloads — the
+   * one place this change is required to keep tokens out of.
+   *
+   * `@Public()` because the access token is expired by definition here. That
+   * is the whole point; requiring a valid one would make renewal impossible.
+   * The refresh token itself is the credential, and GoTrue validates it.
+   */
+  @Public()
+  @Directive('@inaccessible')
+  @Throttle({ default: AUTH_THROTTLE.refresh })
+  @Mutation(() => Auth)
+  async refreshSession(
+    @Args('refreshToken') refreshToken: string,
+    @Context() context: GqlContext,
+  ): Promise<Auth> {
+    const auditContext = createAuditContext(context, this.serviceName);
+
+    try {
+      const auth = await this.authService.refreshSession(refreshToken);
+
+      // Cookies are set here as well as by the gateway route, because
+      // didReceiveResponse forwards subgraph Set-Cookie headers and login
+      // already relies on that path. Setting them twice is harmless; setting
+      // them nowhere would leave the browser on the old, dead token.
+      if (context.res) {
+        setAuthCookies(
+          context.res,
+          this.configService,
+          auth.accessToken,
+          auth.refreshToken,
+        );
+      }
+
+      this.rotateSession(refreshToken, auth);
+
+      this.auditLogService?.log({
+        ...auditContext,
+        action: AuditAction.TOKEN_REFRESH,
+        success: true,
+        resolverName: 'refreshSession',
+        operationType: 'mutation',
+      });
+
+      return auth;
+    } catch (error) {
+      // Only a rejected GRANT kills the session. A provider outage
+      // (REFRESH_ERROR) must not, or every GoTrue hiccup signs out every
+      // active user — the exact failure #977 exists to remove.
+      const code = (error as { code?: string }).code;
+      if (code === 'REFRESH_TOKEN_INVALID') {
+        this.revokeSessionByRefreshToken(refreshToken);
+      }
+
+      this.auditLogService?.logSync({
+        ...auditContext,
+        action: AuditAction.SESSION_EXPIRED,
+        success: false,
+        resolverName: 'refreshSession',
+        operationType: 'mutation',
+        errorMessage: error.message,
+      });
+
+      // Carry the provider's code into the GraphQL error extensions. Without
+      // it the gateway route cannot tell a rejected grant ("sign in again",
+      // clear the cookies, 401) from an upstream outage ("try again", keep
+      // them) — every wrapped error would look identical and the safe-looking
+      // default is to sign the user out.
+      throw new UserInputError(error.message, {
+        extensions: { code: code ?? 'REFRESH_ERROR' },
+      });
     }
   }
 }
