@@ -30,12 +30,39 @@ Full step-by-step is in the deployment template's [README.md](https://github.com
 | Backup pipeline (`pg_dump → R2`) | [Template repo](https://github.com/OpusPopuli/opuspopuli-node) |
 | Observability configs (Prometheus / Grafana / Loki / Tempo) | [Template repo](https://github.com/OpusPopuli/opuspopuli-node) |
 | Per-region operator secrets | Operator's region repo's GitHub Secrets (never here) |
+| **First-party `us-ca` frontend deploy** | **This repo** — `.github/workflows/deploy-frontend.yml` (documented exception, below) |
+
+### The frontend deploy is an exception to the rule above
+
+`deploy-frontend.yml` deploys the `us-ca` Cloudflare Worker from this repo, using a
+`CLOUDFLARE_API_TOKEN` held in this repo's `production` environment. That is a real departure from
+"never centralized," so it is written down rather than left to be discovered.
+
+Why it is here and not in the region repo:
+
+- Every `NEXT_PUBLIC_*` is inlined at **build** time, so a Worker bundle is specific to one
+  region's API and site URLs. There is no build-once-deploy-anywhere artifact to hand an operator,
+  the way `ghcr.io/opuspopuli/*` images are.
+- The frontend source and the `frontend-v*` tag both live here.
+- `apps/frontend/wrangler.toml` already hard-codes `app-us-ca.opuspopuli.org`, so this repo was
+  region-coupled on the frontend before the workflow existed.
+
+**What this does not change.** Backend images stay region-agnostic and operator-pulled. No Mac
+Studio config, Terraform state, or backend credential moves here. The token is scoped to Workers
+plus the `opuspopuli.org` zone, and lives in an environment secret readable only by that one job.
+
+**What is still unsolved.** A third-party operator running their own region cannot use this
+workflow — it would mean handing them our Cloudflare token, or us holding theirs. Until that is
+designed, an independent operator builds and deploys their own frontend from their node repo.
+That gap is tracked, and it blocks the "Adding a region" story below for anyone outside
+OpusPopuli.
 
 ## Adding a region
 
 1. The new region operator forks the template into their preferred org (e.g. `OpusPopuli/opuspopuli-node-<region>` for an OpusPopuli-operated region, or `<their-org>/opuspopuli-node-<region>` for an independently-operated region).
 2. They follow the template's `README.md` end to end. ~5–8 focused hours from zero to public API serving.
-3. Their region's traffic flows through their own Cloudflare account + their own Mac Studio. The central `OpusPopuli/opuspopuli` repo only publishes images and packages — no operator credentials, no operator state.
+3. Their region's traffic flows through their own Cloudflare account + their own Mac Studio. For an independent operator the central `OpusPopuli/opuspopuli` repo publishes only images and packages — none of their credentials, none of their state.
+4. **The frontend is the open edge.** Steps 1–3 get an operator to a public API; they do not get them a deployed frontend. `deploy-frontend.yml` builds for `us-ca` specifically, because `NEXT_PUBLIC_*` values are baked in at build time, and it uses OpusPopuli's own Cloudflare token. An independent operator must build and deploy their own Worker from their node repo today. Designing a supported path for that is open work — see the exception note above.
 
 ## Image verification
 
