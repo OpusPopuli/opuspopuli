@@ -10,32 +10,46 @@
 # A SEPARATE tag from the backend's `v*`, deliberately. The frontend and the
 # services ship on different clocks: a UI fix should not require cutting a
 # backend release, and a backend patch should not silently redeploy the Worker.
-# Reusing `v*` would couple them in both directions.
 #
 # Before this existed the Worker was deployed by hand with `pnpm cf:deploy`
-# from one developer's Mac. That shipped whatever was in the working tree, with
-# build-time values from a gitignored .env.production.local that existed on
-# exactly one machine, and nothing tied a deployed Worker to a commit. It is
-# also how a real credential reached a deployed bundle on 2026-08-13: OpenNext
-# inlines .env files from the REPOSITORY ROOT, and that machine had one. A
-# runner has no .env files at all, so building here removes that class of
-# failure rather than guarding against it.
+# from one developer's Mac -- shipping whatever was in the working tree, with
+# build-time values from a gitignored .env.production.local that existed on one
+# machine. It is also how a real credential reached a deployed bundle on
+# 2026-08-13: OpenNext inlines .env files from the REPOSITORY ROOT, and that
+# machine had one. A runner has no .env files, so building here removes that
+# class of failure rather than guarding against it.
 #
-# `pnpm cf:deploy` still works and is kept as break-glass for when Actions is
-# unavailable. It is not the normal path.
+# `pnpm cf:deploy` still works and is break-glass only.
 #
-# THE FAILURE MODE THIS WORKFLOW IS BUILT AROUND: NEXT_PUBLIC_GRAPHQL_URL and
+# TWO JOBS, and the split is the point. A GitHub environment gates an entire
+# JOB, not a step -- so with build and deploy in one job the approval prompt
+# arrives BEFORE anything has run, and you are asked to approve a deploy with
+# no idea whether it even compiles. Splitting them means `build` runs
+# ungated, the assertions below either pass or fail in the open, and the
+# approval you are asked for is on a bundle you can already see is good.
+#
+# THE FAILURE MODE THIS IS BUILT AROUND: NEXT_PUBLIC_GRAPHQL_URL and
 # NEXT_PUBLIC_SITE_URL are inlined at BUILD time and both have localhost
 # fallbacks in source. A build with neither set exits 0 and deploys a Worker
 # whose Apollo client points at localhost:3000 and whose CSP omits the real API
-# origin. Nothing errors. Hence the two assertions below -- one before the
-# build, one after -- which are the reason this can be trusted more than the
-# Mac it replaces.
+# origin. Nothing errors. Verified: rebuilding with the env files hidden gives
+# exit 0 and "check-worker-env: ok" on exactly that broken bundle.
 #
-# Note that scripts/check-worker-env.mjs (chained inside cf:build) is NOT that
-# safeguard. It fails when a non-public key reaches the bundle, and it reads
-# .env FILES -- which do not exist on a runner. Here it is trivially green. It
-# stays because it costs nothing and still guards local builds.
+# So scripts/check-worker-env.mjs is NOT the safeguard here. It fails on
+# non-public keys reaching the bundle and it reads .env FILES, which do not
+# exist on a runner -- in CI it is unconditionally green. The two assertions in
+# the build job are what make this trustworthy.
+#
+# WHY THE CREDENTIALS AND THE URLS LIVE IN DIFFERENT PLACES:
+#   vars.US_CA_*          repository variables -- readable by the UNGATED build
+#                         job, which needs them at build time. They are
+#                         NEXT_PUBLIC_*, i.e. compiled into the browser bundle
+#                         and served to every visitor, so they are not secret
+#                         and marking them so would only mask them in logs.
+#   secrets.CLOUDFLARE_*  `production` environment secrets -- readable ONLY by
+#                         the gated deploy job. The build never needs them.
+# Putting the variables in the environment too would break the split: an
+# ungated job cannot read environment-scoped variables.
 # =============================================================================
 
 name: Deploy Frontend
@@ -48,6 +62,9 @@ on:
 
 permissions:
   contents: read
+  # Required. `pnpm install` pulls @opuspopuli/* from npm.pkg.github.com using
+  # GITHUB_TOKEN, and without this the install dies with ERR_PNPM_FETCH_403.
+  packages: read
 
 concurrency:
   group: deploy-frontend
@@ -56,21 +73,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
-    name: Build & Deploy
+  build:
+    name: Build & verify
     runs-on: ubuntu-latest
 
-    # Gates the job on manual approval and scopes the Cloudflare credentials to
-    # this environment, so no other workflow in the repo can read them.
-    environment:
-      name: production
-      url: https://app-us-ca.opuspopuli.org
-
+    # No `environment:` here on purpose -- this job must run BEFORE the
+    # approval gate so its result is what informs the approval.
     env:
-      # Region config lives in repo Variables, not Secrets: every NEXT_PUBLIC_*
-      # is inlined into the browser bundle and served to every visitor, so
-      # treating them as secret would be theatre. Prefixed by region so a second
-      # node is a new pair of variables plus a matrix entry, not a rewrite.
       NEXT_PUBLIC_GRAPHQL_URL: ${{ vars.US_CA_GRAPHQL_URL }}
       NEXT_PUBLIC_SITE_URL: ${{ vars.US_CA_SITE_URL }}
 
@@ -98,13 +107,11 @@ jobs:
       # BACKEND alongside the frontend; this job does not. The frontend declares
       # no @opuspopuli/* or workspace: dependency, imports none in app/, lib/,
       # components/ or config/, has no path alias beyond `@/*` -> ./, and never
-      # touches Prisma -- it talks to the API over GraphQL. Adding those steps
-      # back would cost several minutes on every deploy to build artifacts
-      # nothing here consumes.
+      # touches Prisma -- it talks to the API over GraphQL.
 
       # Fail before spending ~10 minutes on a build that would ship localhost.
-      # An unset GitHub Variable expands to an empty string rather than being
-      # absent, so test for emptiness, not for definedness.
+      # An unset repository variable expands to an empty string rather than
+      # being absent, so test for emptiness, not for definedness.
       - name: Require production environment
         run: |
           : "${NEXT_PUBLIC_GRAPHQL_URL:?is empty — set the US_CA_GRAPHQL_URL repository variable. Refusing to build a localhost bundle.}"
@@ -144,6 +151,63 @@ jobs:
 
           echo "Production origin present; no localhost fallback. OK."
 
+      # Tarred rather than handed straight to upload-artifact, for two concrete
+      # reasons. The bundle contains ~117 symlinks (.open-next/assets/favicons,
+      # server-functions/.../node_modules/next and friends) and artifacts do not
+      # preserve symlinks -- they would be dereferenced or dropped, silently
+      # changing what gets deployed. And `.open-next` is a dotted directory,
+      # which upload-artifact@v4 excludes by default unless told otherwise.
+      # Tar also turns 2,730 files / 69 MB into a single 15 MB blob, which
+      # uploads and downloads far faster.
+      - name: Package bundle
+        run: tar -czf open-next.tar.gz -C apps/frontend .open-next
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4
+        with:
+          name: worker-bundle
+          path: open-next.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+
+    # The gate. Because `build` has already run and passed, approving this is a
+    # decision about a bundle whose assertions you can read, not a blind
+    # go-ahead. Also scopes the Cloudflare credentials to this job alone.
+    environment:
+      name: production
+      url: https://app-us-ca.opuspopuli.org
+
+    env:
+      NEXT_PUBLIC_GRAPHQL_URL: ${{ vars.US_CA_GRAPHQL_URL }}
+      NEXT_PUBLIC_SITE_URL: ${{ vars.US_CA_SITE_URL }}
+
+    steps:
+      # wrangler.toml is not in the artifact -- it is repo config, and the
+      # deploy needs it for the Worker name, the assets binding and the
+      # custom-domain route.
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Download bundle
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          name: worker-bundle
+
+      # Deploys exactly the bytes the build job verified. Nothing is rebuilt
+      # here: a rebuild after approval could differ from what was approved.
+      - name: Unpack bundle
+        run: |
+          set -euo pipefail
+          tar -xzf open-next.tar.gz -C apps/frontend
+          test -f apps/frontend/.open-next/worker.js \
+            || { echo "::error::worker.js missing after unpack"; exit 1; }
+          echo "Unpacked $(find apps/frontend/.open-next -type f | wc -l) files."
+
       - name: Deploy to Cloudflare
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
         with:
@@ -151,6 +215,11 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/frontend
           command: deploy
+          # Pinned rather than floating, so an approved bundle is always shipped
+          # by a known wrangler. This job does not run `pnpm install`, so
+          # node_modules is absent and the action would otherwise fetch latest.
+          # Keep roughly in step with apps/frontend/package.json's `wrangler`.
+          wranglerVersion: '4.78.0'
 
       # Proves the deploy took, not merely that wrangler exited 0. Retried
       # because a freshly-attached custom domain can take a moment to answer at
@@ -167,8 +236,8 @@ jobs:
                 echo "Served page references the production API origin. OK."
               else
                 # Not fatal: the origin may only appear in a lazily-loaded
-                # chunk rather than the initial HTML. The inlining assertion
-                # above already covers the real risk.
+                # chunk rather than the initial HTML. The inlining assertion in
+                # the build job already covers the real risk.
                 echo "::warning::Production API origin not found in the initial HTML."
               fi
               exit 0
