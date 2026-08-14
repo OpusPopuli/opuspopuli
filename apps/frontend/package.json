@@ -11,9 +11,9 @@
     "format": "prettier --write \"app/**/*.tsx\"",
     "build": "next build --webpack",
     "start": "next start",
-    "cf:build": "opennextjs-cloudflare build",
-    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf:build": "opennextjs-cloudflare build && node scripts/check-worker-env.mjs",
+    "cf:preview": "opennextjs-cloudflare build && node scripts/check-worker-env.mjs && opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare build && node scripts/check-worker-env.mjs && opennextjs-cloudflare deploy",
     "lint": "eslint",
     "test": "jest",
     "test:watch": "jest --watchAll",
@@ -24,7 +24,8 @@
     "e2e:report": "playwright show-report",
     "e2e:a11y": "playwright test e2e/accessibility.spec.ts",
     "lint:sonar": "eslint -c eslint.config.sonar.mjs .",
-    "pdf:commitments": "node scripts/generate-commitments-pdf.mjs"
+    "pdf:commitments": "node scripts/generate-commitments-pdf.mjs",
+    "check:worker-env": "node scripts/check-worker-env.mjs"
   },
   "lint-staged": {
     "**/*.{js,jsx,ts,tsx,css,json,md,html,yml,yaml,svg}": "prettier --write --ignore-unknown"
