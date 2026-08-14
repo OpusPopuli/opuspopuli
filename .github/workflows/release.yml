@@ -28,8 +28,10 @@ name: Release
 on:
   push:
     tags: ['v*']
-  # Manual trigger for ad-hoc publishes — e.g. a Studio operator needs a build
-  # off a fix branch before it ships. Triggered from the Actions tab.
+  # Manual trigger, from the Actions tab. Publishes `sha-<sha>` tags only —
+  # never `latest` — so it is safe to exercise the release path without
+  # changing what the Studio pulls. A Studio operator needing a build off a fix
+  # branch pulls it by its sha- tag.
   workflow_dispatch:
 
 permissions:
@@ -116,7 +118,17 @@ jobs:
             # which is correct — an ad-hoc build is not a version.
             type=semver,pattern={{version}}
             type=sha,prefix=sha-
-            type=raw,value=latest
+            # `latest` ONLY on a tag push. The Studio's compose pulls
+            # ghcr.io/opuspopuli/<svc>:${TAG:-latest}, so an unconditional
+            # `latest` meant any ad-hoc workflow_dispatch silently replaced the
+            # image production pulls next -- including a dispatch off an
+            # unmerged branch. A dispatch now publishes sha- tags only, which
+            # makes it a genuine dry run: safe to exercise the release path
+            # without touching what is deployed.
+            #
+            # Dispatching from a tag ref still publishes `latest`, which is the
+            # deliberate case and is meant to.
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
 
       - name: Build and push
         id: build
