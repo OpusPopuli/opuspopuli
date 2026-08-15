@@ -85,6 +85,15 @@ jest.mock("@apollo/client/react", () => ({
   }),
 }));
 
+// Mock the identity-scoped cache purge so the tests can assert WHEN it runs.
+// Whether this fires on a given sign-in is the difference between a user
+// seeing their own data and seeing the previous user's.
+const mockClearIdentityScopedCache = jest.fn();
+jest.mock("@/lib/apollo-cache-keys", () => ({
+  clearIdentityScopedCache: () => mockClearIdentityScopedCache(),
+  purgePersistedCache: jest.fn(),
+}));
+
 // Mock localStorage
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
@@ -335,6 +344,75 @@ describe("AuthProvider", () => {
 
       expect(success).toBe(true);
       expect(result.current.magicLinkSent).toBe(true);
+    });
+
+    /**
+     * The persisted Apollo cache holds the previous user's profile, addresses
+     * and personalization signals, and Apollo is cache-first. If it is not
+     * purged when a DIFFERENT person signs in on this browser, they are shown
+     * that data from disk before any network request happens.
+     */
+    describe("cache purging on identity change", () => {
+      const exchangeAs = async (idToken: string) => {
+        mockExchangeSupabaseSessionMutation.mockResolvedValue({
+          data: {
+            exchangeSupabaseSession: {
+              accessToken: idToken,
+              refreshToken: "refresh-token",
+              idToken,
+            },
+          },
+        });
+        const { result } = renderHook(() => useAuth(), { wrapper });
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        await act(async () => {
+          await result.current.exchangeSupabaseSession(idToken, "refresh-token");
+        });
+        return result;
+      };
+
+      it("purges when nobody was signed in before", async () => {
+        localStorageMock.getItem.mockReturnValue(null);
+
+        await exchangeAs("valid-id-token");
+
+        expect(mockClearIdentityScopedCache).toHaveBeenCalled();
+      });
+
+      it("purges when a DIFFERENT user signs in", async () => {
+        localStorageMock.getItem.mockReturnValue(
+          JSON.stringify({ id: "someone-else", email: "other@example.com" }),
+        );
+
+        await exchangeAs("valid-id-token");
+
+        expect(mockClearIdentityScopedCache).toHaveBeenCalled();
+      });
+
+      // The reason the cache is persisted at all — a returning user should
+      // keep their offline data rather than refetch everything.
+      it("does NOT purge when the same user returns", async () => {
+        localStorageMock.getItem.mockReturnValue(
+          JSON.stringify({ id: "user-123", email: "test@example.com" }),
+        );
+
+        await exchangeAs("valid-id-token");
+
+        expect(mockClearIdentityScopedCache).not.toHaveBeenCalled();
+      });
+
+      // Corrupt or truncated storage must not be read as "same user" — that
+      // would silently skip the purge in exactly the situation where the
+      // stored identity cannot be trusted.
+      it("purges when the stored identity is unreadable", async () => {
+        localStorageMock.getItem.mockReturnValue("{not-valid-json");
+
+        await exchangeAs("valid-id-token");
+
+        expect(mockClearIdentityScopedCache).toHaveBeenCalled();
+      });
     });
 
     it("should exchange Supabase session successfully", async () => {
