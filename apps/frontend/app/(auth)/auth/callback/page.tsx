@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { AuthCheckIcon } from "@/components/auth/AuthUI";
@@ -61,10 +61,9 @@ function resolveRedirect(raw: string | null, fallback: string): string {
   return raw;
 }
 
-// Main callback content component that uses useSearchParams
+// Main callback content component
 function AuthCallbackContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const {
     verifyMagicLink,
     exchangeSupabaseSession,
@@ -72,7 +71,27 @@ function AuthCallbackContent() {
     error,
     supportsPasskeys,
   } = useAuth();
-  const rawRedirect = searchParams.get("redirect");
+
+  /**
+   * The query string, read once from `location` on mount.
+   *
+   * Deliberately NOT `useSearchParams()`. This route is prerendered as static,
+   * and on a static page that hook is empty for the first client render,
+   * filling in only after hydration. Anything that reads it before then — most
+   * damagingly the mount effect below — silently sees nothing.
+   *
+   * A `useState` initializer runs during render, so on the server (where there
+   * is no `location`) it yields empty params, and on the client it has the real
+   * values from the very first render. See the note in the effect for what
+   * this cost us.
+   */
+  const [query] = useState(() =>
+    globalThis.location === undefined
+      ? new URLSearchParams()
+      : new URLSearchParams(globalThis.location.search),
+  );
+
+  const rawRedirect = query.get("redirect");
   const skipTarget = resolveRedirect(rawRedirect, "/onboarding");
   const continueTarget = resolveRedirect(rawRedirect, "/me/briefing");
 
@@ -91,10 +110,16 @@ function AuthCallbackContent() {
     }
     hasProcessedRef.current = true;
 
-    // Get params from URL (Supabase magic link format)
-    const token = searchParams.get("token");
-    const email = searchParams.get("email");
-    const type = searchParams.get("type");
+    // `query` is read from location on mount (see above), NOT from
+    // useSearchParams. When it was the hook, this effect ran before hydration
+    // populated it, so `type` was null and `type === "register"` was false —
+    // every newly registered user went to /me/briefing and never saw
+    // onboarding. Sign-in still worked, because the tokens come from the hash
+    // and that was always read straight off `location`. That asymmetry is why
+    // it hid: the visible half of the flow was fine.
+    const token = query.get("token");
+    const email = query.get("email");
+    const type = query.get("type");
 
     // Check for Supabase hash params format (#access_token=...)
     const hash = globalThis.location.hash;

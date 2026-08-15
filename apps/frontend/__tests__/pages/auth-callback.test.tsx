@@ -13,10 +13,41 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({
     push: mockPush,
   }),
-  useSearchParams: () => ({
-    get: (key: string) => mockSearchParamsGet(key),
-  }),
 }));
+
+/**
+ * Render with the params actually in the URL.
+ *
+ * The page reads `location.search` directly rather than `useSearchParams()`,
+ * because this route is prerendered as static and that hook is empty until
+ * hydration — which silently skipped onboarding for every new registration.
+ * Mocking the hook would therefore test a code path the app no longer has, so
+ * these tests put the values where the component genuinely looks for them.
+ *
+ * Each test still declares its params via `mockSearchParamsGet`; this just
+ * translates that into a real URL before mounting.
+ */
+const PARAM_KEYS = ["token", "email", "type", "redirect"] as const;
+
+function renderCallback() {
+  const params = new URLSearchParams();
+  for (const key of PARAM_KEYS) {
+    const value = mockSearchParamsGet?.(key);
+    if (value) params.set(key, value as string);
+  }
+  // history.replaceState, not `location.search = ...`: jsdom implements hash
+  // changes but not navigation, so assigning search would throw. replaceState
+  // updates location without navigating, and preserves any hash the test set
+  // before rendering (the hash-exchange cases rely on that).
+  const qs = params.toString();
+  const hash = globalThis.location.hash || "";
+  globalThis.history.replaceState(
+    {},
+    "",
+    `/auth/callback${qs ? `?${qs}` : ""}${hash}`,
+  );
+  return render(<AuthCallbackPage />);
+}
 
 // Mock Next.js Link
 jest.mock("next/link", () => {
@@ -73,7 +104,7 @@ describe("AuthCallbackPage", () => {
     it("should show error when no valid params are found", async () => {
       mockSearchParamsGet = jest.fn().mockReturnValue(null);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(screen.getByText("Link expired or invalid")).toBeInTheDocument();
@@ -83,7 +114,7 @@ describe("AuthCallbackPage", () => {
     it("should show error description", async () => {
       mockSearchParamsGet = jest.fn().mockReturnValue(null);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -95,7 +126,7 @@ describe("AuthCallbackPage", () => {
     it("should show back to sign in link", async () => {
       mockSearchParamsGet = jest.fn().mockReturnValue(null);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -112,7 +143,7 @@ describe("AuthCallbackPage", () => {
       });
       mockVerifyMagicLink.mockRejectedValue(new Error("Invalid token"));
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(screen.getByText("Link expired or invalid")).toBeInTheDocument();
@@ -126,7 +157,7 @@ describe("AuthCallbackPage", () => {
         error: "Custom error message",
       };
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(screen.getByText("Custom error message")).toBeInTheDocument();
@@ -146,7 +177,7 @@ describe("AuthCallbackPage", () => {
         () => new Promise((resolve) => setTimeout(resolve, 100)),
       );
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       // Should show verifying state initially
       expect(screen.getByText("Verifying your link...")).toBeInTheDocument();
@@ -165,7 +196,7 @@ describe("AuthCallbackPage", () => {
       });
       mockVerifyMagicLink.mockResolvedValue(undefined);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(screen.getByText("You're signed in!")).toBeInTheDocument();
@@ -180,7 +211,7 @@ describe("AuthCallbackPage", () => {
       });
       mockVerifyMagicLink.mockResolvedValue(undefined);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -200,7 +231,7 @@ describe("AuthCallbackPage", () => {
       });
       mockVerifyMagicLink.mockResolvedValue(undefined);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(mockPush).toHaveBeenCalledWith("/me/briefing");
@@ -216,7 +247,7 @@ describe("AuthCallbackPage", () => {
       });
       mockVerifyMagicLink.mockResolvedValue(undefined);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(mockPush).toHaveBeenCalledWith("/me/saved");
@@ -232,7 +263,7 @@ describe("AuthCallbackPage", () => {
       // Never resolves — the page must sit on the spinner, not redirect.
       mockVerifyMagicLink.mockReturnValue(new Promise(() => {}));
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(screen.getByText("Verifying your link...")).toBeInTheDocument();
@@ -248,7 +279,7 @@ describe("AuthCallbackPage", () => {
       });
       mockVerifyMagicLink.mockResolvedValue(undefined);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -265,7 +296,7 @@ describe("AuthCallbackPage", () => {
       });
       mockVerifyMagicLink.mockResolvedValue(undefined);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -294,7 +325,7 @@ describe("AuthCallbackPage", () => {
       mockVerifyMagicLink.mockResolvedValue(undefined);
       mockAuthContextValue = { ...defaultAuthContext, supportsPasskeys: false };
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       const continueButton = await screen.findByRole("button", {
         name: "Continue to App",
@@ -320,7 +351,7 @@ describe("AuthCallbackPage", () => {
       mockVerifyMagicLink.mockResolvedValue(undefined);
       mockAuthContextValue = { ...defaultAuthContext, supportsPasskeys: true };
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -340,7 +371,7 @@ describe("AuthCallbackPage", () => {
       mockVerifyMagicLink.mockResolvedValue(undefined);
       mockAuthContextValue = { ...defaultAuthContext, supportsPasskeys: true };
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -359,7 +390,7 @@ describe("AuthCallbackPage", () => {
       mockVerifyMagicLink.mockResolvedValue(undefined);
       mockAuthContextValue = { ...defaultAuthContext, supportsPasskeys: true };
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -380,7 +411,7 @@ describe("AuthCallbackPage", () => {
       mockVerifyMagicLink.mockResolvedValue(undefined);
       mockAuthContextValue = { ...defaultAuthContext, supportsPasskeys: true };
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -399,7 +430,7 @@ describe("AuthCallbackPage", () => {
       mockVerifyMagicLink.mockResolvedValue(undefined);
       mockAuthContextValue = { ...defaultAuthContext, supportsPasskeys: true };
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -418,7 +449,7 @@ describe("AuthCallbackPage", () => {
       mockVerifyMagicLink.mockResolvedValue(undefined);
       mockAuthContextValue = { ...defaultAuthContext, supportsPasskeys: true };
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(
@@ -442,7 +473,7 @@ describe("AuthCallbackPage", () => {
       });
       mockVerifyMagicLink.mockResolvedValue(undefined);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(mockVerifyMagicLink).toHaveBeenCalledWith(
@@ -463,7 +494,7 @@ describe("AuthCallbackPage", () => {
         "#access_token=supabase-jwt&refresh_token=refresh-jwt&token_type=bearer";
       mockExchangeSupabaseSession.mockResolvedValue(undefined);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(mockExchangeSupabaseSession).toHaveBeenCalledWith(
@@ -478,7 +509,7 @@ describe("AuthCallbackPage", () => {
         "#access_token=supabase-jwt&refresh_token=refresh-jwt";
       mockExchangeSupabaseSession.mockResolvedValue(undefined);
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(screen.getByText("You're signed in!")).toBeInTheDocument();
@@ -489,7 +520,7 @@ describe("AuthCallbackPage", () => {
       window.location.hash = "#access_token=bad-token";
       mockExchangeSupabaseSession.mockRejectedValue(new Error("Invalid token"));
 
-      render(<AuthCallbackPage />);
+      renderCallback();
 
       await waitFor(() => {
         expect(screen.getByText("Link expired or invalid")).toBeInTheDocument();
