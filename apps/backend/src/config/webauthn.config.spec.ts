@@ -29,12 +29,12 @@ describe('webauthn.config', () => {
 
   it('maps WEBAUTHN_RP_ID and WEBAUTHN_ORIGIN from the environment', () => {
     process.env.WEBAUTHN_RP_ID = 'opuspopuli.org';
-    process.env.WEBAUTHN_ORIGIN = 'https://app-us-ca.opuspopuli.org';
+    process.env.WEBAUTHN_ORIGIN = 'https://california.opuspopuli.org';
 
     const config = webauthnConfig();
 
     expect(config.rpId).toBe('opuspopuli.org');
-    expect(config.origin).toBe('https://app-us-ca.opuspopuli.org');
+    expect(config.origin).toBe('https://california.opuspopuli.org');
   });
 
   it('leaves rpId and origin undefined when unset, rather than defaulting', () => {

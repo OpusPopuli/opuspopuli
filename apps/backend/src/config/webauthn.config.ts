@@ -27,8 +27,12 @@ export default registerAs('webauthn', () => ({
    *
    * Use the registrable domain rather than the host actually serving the app:
    * a credential registered against `opuspopuli.org` is usable from every
-   * subdomain, whereas one bound to `app-us-ca.opuspopuli.org` is not — and
+   * subdomain, whereas one bound to `california.opuspopuli.org` is not — and
    * narrowing it later invalidates every passkey already registered.
+   *
+   * That property is why renaming the node's host from `app-us-ca` to
+   * `california` cost nothing: every existing passkey was bound to the
+   * registrable domain and survived the move untouched.
    *
    * Undefined by default rather than falling back to `localhost` here.
    * `PasskeyService` owns that fallback, and it needs to distinguish "not

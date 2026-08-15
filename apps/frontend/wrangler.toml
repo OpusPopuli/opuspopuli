@@ -17,12 +17,12 @@ compatibility_flags = ["nodejs_compat"]
 directory = ".open-next/assets"
 binding = "ASSETS"
 
-# Custom domain.
+# Custom domains.
 #
-# Without this the Worker answers only on
-# opuspopuli-frontend.<subdomain>.workers.dev, and app-us-ca.opuspopuli.org has
-# no DNS record whatsoever -- not a misconfigured one, simply absent. That is
-# what "does not resolve" was.
+# Without these the Worker answers only on
+# opuspopuli-frontend.<subdomain>.workers.dev, and the hostname has no DNS
+# record whatsoever -- not a misconfigured one, simply absent. That is what
+# "does not resolve" was.
 #
 # `custom_domain = true` makes Cloudflare create and own the DNS record on
 # deploy, so this is the whole fix; no manual dashboard DNS entry is needed (and
@@ -32,6 +32,28 @@ binding = "ASSETS"
 #
 # Declared here rather than clicked into the dashboard so the mapping lives in
 # git and survives a Worker being recreated.
+
+# The canonical name for the California node. `app-us-ca` encoded an internal
+# region identifier in the one URL citizens are asked to type, share and trust;
+# this reads as a place instead.
+#
+# Note this is a HOSTNAME rename only. The region id (`us-ca`), the plugin
+# identifiers and every stored row keep their existing values.
+[[routes]]
+pattern = "california.opuspopuli.org"
+custom_domain = true
+
+# The previous hostname, deliberately kept.
+#
+# Deleting it here would make the very next deploy a hard cutover: the Worker
+# would stop answering on app-us-ca the instant california went live, breaking
+# every existing link, bookmark and shared URL with no overlap and no way back
+# short of another deploy. Serving both makes the migration reversible at every
+# step.
+#
+# Remove this once a Cloudflare Redirect Rule 301s app-us-ca -> california, so
+# old links keep working rather than dying. A zone-level Redirect Rule runs
+# ahead of the Worker, so the rule can go in before this block comes out.
 [[routes]]
 pattern = "app-us-ca.opuspopuli.org"
 custom_domain = true
