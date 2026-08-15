@@ -80,8 +80,16 @@ export function RepsBriefingSection() {
           <p className="text-sm text-content-dim mt-1">
             {t("reps.noDistrictsBody")}
           </p>
+          {/*
+            /settings/addresses, not /me/addresses. There is no /me/addresses
+            route — app/me/ contains only briefing and profile — so this CTA
+            404'd, on the one screen shown to someone who has no address yet
+            and is being asked to add one. The other two call sites
+            (settings/page.tsx, region/representatives/page.tsx) already point
+            here.
+          */}
           <Link
-            href="/me/addresses"
+            href="/settings/addresses"
             className="inline-block mt-2 text-sm font-medium text-content hover:underline"
           >
             {t("reps.noDistrictsCta")}
