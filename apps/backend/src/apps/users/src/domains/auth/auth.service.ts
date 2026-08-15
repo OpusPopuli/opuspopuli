@@ -258,13 +258,20 @@ export class AuthService {
     }
 
     // Create user in our database first (passwordless - no password required)
-    const newUser = await this.usersService.createPasswordlessUser(email);
+    await this.usersService.createPasswordlessUser(email);
 
-    // Send welcome email (fire-and-forget)
-    if (this.emailService && newUser) {
-      this.sendWelcomeEmailSafely(newUser.id, email);
-    }
-
+    // Deliberately NO welcome email here.
+    //
+    // registerWithMagicLink already sends one — the verify email — and that is
+    // the one carrying the link the user has to click. Sending a welcome
+    // alongside it meant every new account got two mails seconds apart with
+    // near-identical subjects, and the friendlier of the two led to
+    // FRONTEND_URL (the marketing site) rather than into the product.
+    //
+    // The welcome copy now lives in the verify email itself, in
+    // SupabaseAuthProvider.sendMagicLinkEmail. Password registration still
+    // sends a standalone welcome, because there is no verify email on that
+    // path for the content to ride along with.
     return this.authProvider.registerWithMagicLink(email, redirectTo);
   }
 
