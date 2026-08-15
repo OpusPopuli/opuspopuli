@@ -184,9 +184,60 @@ describe("AuthCallbackPage", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("Redirecting you to the app..."),
+          screen.getByText("Taking you to the app..."),
         ).toBeInTheDocument();
       });
+    });
+
+    // The click this removes. The page used to claim "Redirecting you to the
+    // app..." while doing nothing but render a button — a promise the code did
+    // not keep.
+    it("navigates into the app without waiting for a click", async () => {
+      mockSearchParamsGet = jest.fn().mockImplementation((key: string) => {
+        if (key === "email") return "test@example.com";
+        if (key === "token") return "valid-token";
+        return null;
+      });
+      mockVerifyMagicLink.mockResolvedValue(undefined);
+
+      render(<AuthCallbackPage />);
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith("/me/briefing");
+      });
+    });
+
+    it("honours an explicit ?redirect= when auto-navigating", async () => {
+      mockSearchParamsGet = jest.fn().mockImplementation((key: string) => {
+        if (key === "email") return "test@example.com";
+        if (key === "token") return "valid-token";
+        if (key === "redirect") return "/me/saved";
+        return null;
+      });
+      mockVerifyMagicLink.mockResolvedValue(undefined);
+
+      render(<AuthCallbackPage />);
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith("/me/saved");
+      });
+    });
+
+    it("does not navigate while verification is still in flight", async () => {
+      mockSearchParamsGet = jest.fn().mockImplementation((key: string) => {
+        if (key === "email") return "test@example.com";
+        if (key === "token") return "valid-token";
+        return null;
+      });
+      // Never resolves — the page must sit on the spinner, not redirect.
+      mockVerifyMagicLink.mockReturnValue(new Promise(() => {}));
+
+      render(<AuthCallbackPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Verifying your link...")).toBeInTheDocument();
+      });
+      expect(mockPush).not.toHaveBeenCalled();
     });
 
     it("should show continue to app button", async () => {
@@ -256,6 +307,29 @@ describe("AuthCallbackPage", () => {
   });
 
   describe("success state - new user with passkey support", () => {
+    // The one screen that must still wait for a click. It offers a real choice
+    // — "Add a Passkey" or "Skip for now" — so auto-navigating past it would
+    // silently kill passkey enrolment for every new user.
+    it("does NOT auto-navigate past the passkey choice", async () => {
+      mockSearchParamsGet = jest.fn().mockImplementation((key: string) => {
+        if (key === "email") return "test@example.com";
+        if (key === "token") return "valid-token";
+        if (key === "type") return "register";
+        return null;
+      });
+      mockVerifyMagicLink.mockResolvedValue(undefined);
+      mockAuthContextValue = { ...defaultAuthContext, supportsPasskeys: true };
+
+      render(<AuthCallbackPage />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Welcome! Your account is ready"),
+        ).toBeInTheDocument();
+      });
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
     it("should show passkey prompt for new users", async () => {
       mockSearchParamsGet = jest.fn().mockImplementation((key: string) => {
         if (key === "email") return "test@example.com";
