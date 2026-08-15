@@ -9,6 +9,7 @@ import {
   useMemo,
   ReactNode,
 } from "react";
+import { clearIdentityScopedCache } from "./apollo-cache-keys";
 import { useMutation } from "@apollo/client/react";
 import { jwtDecode } from "jwt-decode";
 import {
@@ -169,6 +170,22 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const storeAuth = useCallback((authTokens: AuthTokens) => {
     const decodedUser = decodeToken(authTokens.idToken);
     if (decodedUser) {
+      // Whoever was here before is not necessarily whoever is arriving now.
+      // A tab closed without logging out, or a session that simply lapsed,
+      // leaves the previous user's cache on disk — so compare identities and
+      // purge when they differ. Same user returning keeps their cache, which
+      // is the point of persisting it.
+      let previousId: string | undefined;
+      try {
+        const stored = localStorage.getItem(USER_KEY);
+        previousId = stored ? JSON.parse(stored)?.id : undefined;
+      } catch {
+        previousId = undefined; // Unparseable: treat as a different identity.
+      }
+      if (previousId !== decodedUser.id) {
+        void clearIdentityScopedCache();
+      }
+
       setTokens(authTokens); // Keep in memory for backward compatibility
       setUser(decodedUser);
       localStorage.setItem(USER_KEY, JSON.stringify(decodedUser));
@@ -203,7 +220,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         // on the next API request. If cookies are invalid, user will be redirected to login.
         // Initial hydration from localStorage — synchronous setState here is
         // the established pattern for syncing persisted auth into React state.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+
         setUser(parsedUser);
       } catch {
         localStorage.removeItem(USER_KEY);
@@ -529,6 +546,12 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     setTokens(null);
     setMagicLinkSent(false);
     localStorage.removeItem(USER_KEY);
+
+    // Drop the cache, in memory and on disk. Without this the next person to
+    // sign in on this browser is served the previous user's profile, addresses
+    // and personalization signals from the persisted cache, cache-first,
+    // before any network request happens.
+    void clearIdentityScopedCache();
   }, [logoutMutation]);
 
   const clearError = useCallback(() => {

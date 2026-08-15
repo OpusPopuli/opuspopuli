@@ -19,6 +19,7 @@ import {
   CombinedProtocolErrors,
 } from "@apollo/client/errors";
 import { USER_KEY } from "./auth-context";
+import { purgePersistedCache } from "./apollo-cache-keys";
 
 const GRAPHQL_URL =
   process.env.NEXT_PUBLIC_GRAPHQL_URL || "http://localhost:3000/api";
@@ -106,11 +107,20 @@ export function triggerAuthExpiredRedirect(pathname: string): void {
   // state (they may be mid-expiry) but don't navigate.
   if (isAuthRoute(pathname)) {
     localStorage.removeItem(USER_KEY);
+    purgePersistedCache();
     return;
   }
   logoutInProgress = true;
 
   localStorage.removeItem(USER_KEY);
+
+  // Drop the persisted cache before navigating away. An expired session is one
+  // of the ways a DIFFERENT person ends up signing in on this browser, and the
+  // cache holds the previous user's profile, addresses and personalization
+  // signals. Only the on-disk copy is touched here: this module deliberately
+  // does not import apollo-client (that would be circular), and the full-page
+  // navigation below tears the in-memory cache down anyway.
+  purgePersistedCache();
 
   // Best-effort backend logout to clear httpOnly cookies. Fire via raw
   // fetch (not Apollo) so we don't re-enter the link chain during an

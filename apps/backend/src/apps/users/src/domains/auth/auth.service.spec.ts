@@ -557,32 +557,31 @@ describe('AuthService', () => {
         'new@example.com',
         'http://redirect.com',
       );
-      expect(emailService.sendWelcomeEmail).toHaveBeenCalledWith(
-        'new-id',
-        'new@example.com',
-        undefined,
-      );
+      // Exactly ONE email on registration, and it is the verify email the
+      // provider sends. A standalone welcome used to go out alongside it, so
+      // every new account received two mails seconds apart with near-identical
+      // subjects -- and the friendlier one's button pointed at FRONTEND_URL,
+      // the marketing site, rather than into the product. The welcome copy now
+      // rides along on the verify email.
+      expect(emailService.sendWelcomeEmail).not.toHaveBeenCalled();
     });
 
-    it('should handle welcome email failure gracefully in magic link registration', async () => {
+    it('sends no welcome email even when one could be sent', async () => {
       usersService.findByEmail = jest.fn().mockResolvedValue(null);
       usersService.createPasswordlessUser = jest.fn().mockResolvedValue({
         id: 'new-id',
         email: 'new@example.com',
       });
       authProvider.registerWithMagicLink = jest.fn().mockResolvedValue(true);
-      emailService.sendWelcomeEmail = jest
-        .fn()
-        .mockRejectedValue(new Error('Email failed'));
+      emailService.sendWelcomeEmail = jest.fn().mockResolvedValue(undefined);
 
-      // Should not throw, just log warning
       const result = await authService.registerWithMagicLink(
         'new@example.com',
         'http://redirect.com',
       );
 
       expect(result).toBe(true);
-      expect(emailService.sendWelcomeEmail).toHaveBeenCalled();
+      expect(emailService.sendWelcomeEmail).not.toHaveBeenCalled();
     });
 
     it('should throw error if auth provider does not support magic link registration', async () => {

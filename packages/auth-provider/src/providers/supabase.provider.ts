@@ -835,6 +835,18 @@ export class SupabaseAuthProvider implements IAuthProvider {
     actionLink: string,
     isRegistration = false,
   ): Promise<void> {
+    // Registration sends ONE email, not two.
+    //
+    // A separate "Welcome to Opus Populi!" used to go out alongside this from
+    // AuthService.registerWithMagicLink, so every new user received two mails
+    // seconds apart with near-identical subjects. Worse, only this one carried
+    // a working link — the other's button pointed at FRONTEND_URL, which is
+    // the marketing site, so the more inviting of the two emails led away from
+    // the product.
+    //
+    // The welcome content now lives here, on the email that has the one thing
+    // the reader has to act on. Anything that cannot be acted on from an
+    // unverified account stays out of it.
     const subject = isRegistration
       ? "Welcome to Opus Populi - Verify your email"
       : "Sign in to Opus Populi";
@@ -844,8 +856,21 @@ export class SupabaseAuthProvider implements IAuthProvider {
       : "Sign in to Opus Populi";
 
     const message = isRegistration
-      ? "Click the link below to verify your email and complete your registration:"
+      ? "You're one click from joining a community of engaged citizens. Verify your email to finish setting up your account:"
       : "Click the link below to sign in to your account:";
+
+    // Shown to new users only. Sets expectations for what the account is for,
+    // which is what the old welcome email did well and is worth keeping.
+    const benefits = isRegistration
+      ? `
+        <p style="color: #4d4d4d; font-size: 16px; margin-top: 24px;">Once you're in, you can:</p>
+        <ul style="color: #4d4d4d; font-size: 16px; line-height: 1.8; padding-left: 20px;">
+          <li>Track your local representatives</li>
+          <li>Stay informed on propositions and bills</li>
+          <li>Engage directly with your elected officials</li>
+          <li>Get updates on the issues that matter to you</li>
+        </ul>`
+      : "";
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -853,19 +878,23 @@ export class SupabaseAuthProvider implements IAuthProvider {
         <p style="color: #4d4d4d; font-size: 16px;">${message}</p>
         <a href="${actionLink}" style="display: inline-block; background-color: #222222; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 16px 0;">
           ${isRegistration ? "Verify Email" : "Sign In"}
-        </a>
+        </a>${benefits}
         <p style="color: #999999; font-size: 14px; margin-top: 24px;">
           This link expires in 1 hour. If you didn't request this, you can safely ignore this email.
         </p>
       </div>
     `;
 
+    const benefitsText = isRegistration
+      ? `\n\nOnce you're in, you can:\n- Track your local representatives\n- Stay informed on propositions and bills\n- Engage directly with your elected officials\n- Get updates on the issues that matter to you`
+      : "";
+
     await this.smtpTransporter.sendMail({
       from: this.smtpConfig.fromEmail,
       to: email,
       subject,
       html,
-      text: `${heading}\n\n${message}\n\n${actionLink}\n\nThis link expires in 1 hour.`,
+      text: `${heading}\n\n${message}\n\n${actionLink}${benefitsText}\n\nThis link expires in 1 hour. If you didn't request this, you can safely ignore this email.`,
     });
   }
 
