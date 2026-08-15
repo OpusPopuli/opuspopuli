@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation } from "@apollo/client/react";
 import { useLocale } from "@/lib/i18n/context";
 import { useToast } from "@/lib/toast";
+import { Sunflower } from "@/components/brand/Sunflower";
 import {
   UPDATE_MY_PROFILE,
   type SupportedLanguage,
@@ -44,8 +45,23 @@ export function WelcomeStep() {
 
   return (
     <div className="text-center max-w-md">
-      <div className="w-24 h-24 bg-inverse-surface text-on-inverse rounded-lg mx-auto mb-8 flex items-center justify-center">
-        <span className="text-4xl font-bold">O</span>
+      {/*
+        The brand mark, not a placeholder. This was a dark rounded square with
+        a letter "O" — the first thing a new account ever saw, and the only
+        screen in the product still showing it.
+
+        `state="idle"` gives the sway animation the header already uses, and
+        the component respects prefers-reduced-motion.
+
+        Deliberately UNtitled, unlike the header's mark. Without a `title` the
+        component renders aria-hidden, which is what we want here: the h1 below
+        already names the screen, so labelling this would make a screen reader
+        announce the brand twice before reaching the actual content. The
+        onboarding a11y suite enforces exactly that — every SVG on a step must
+        be decorative.
+      */}
+      <div className="mx-auto mb-8 flex w-24 items-center justify-center">
+        <Sunflower state="idle" size={96} />
       </div>
 
       <h1 className="text-3xl font-bold mb-4 text-content">
