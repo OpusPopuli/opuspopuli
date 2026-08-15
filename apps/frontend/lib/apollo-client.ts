@@ -12,6 +12,11 @@ import { persistCache, LocalStorageWrapper } from "apollo3-cache-persist";
 import { isAuthExpiredError, triggerAuthExpiredRedirect } from "./auth-logout";
 import { sessionRefreshLink, SKIP_EXPIRED_REDIRECT } from "./auth-refresh-link";
 import { getCsrfToken } from "./csrf";
+import {
+  APOLLO_CACHE_KEY,
+  LEGACY_APOLLO_CACHE_KEYS,
+  registerCacheReset,
+} from "./apollo-cache-keys";
 
 const GRAPHQL_URL =
   process.env.NEXT_PUBLIC_GRAPHQL_URL || "http://localhost:3000/api";
@@ -173,15 +178,6 @@ function createLink(): ApolloLink {
  */
 const cache = new InMemoryCache();
 
-/**
- * LocalStorage namespace for the persisted Apollo cache. Bump the version
- * suffix whenever a non-backward-compatible schema change ships so existing
- * clients drop stale entries on next load rather than serving them while
- * the network result arrives. See #747 (includeDead → BillLifecycle rename).
- */
-const APOLLO_CACHE_KEY = "apollo-cache-persist-v2";
-const LEGACY_APOLLO_CACHE_KEYS = ["apollo-cache-persist"];
-
 // Initialize cache persistence for PWA offline support
 if (globalThis.window !== undefined) {
   for (const legacyKey of LEGACY_APOLLO_CACHE_KEYS) {
@@ -209,6 +205,13 @@ export const apolloClient = new ApolloClient({
   cache,
   // Enable SSR mode when running on server
   ssrMode: globalThis.window === undefined,
+});
+
+// clearStore, not resetStore: reset refetches every active query, which at
+// logout means firing authenticated requests against a session being torn
+// down. clearStore just empties.
+registerCacheReset(async () => {
+  await apolloClient.clearStore();
 });
 
 export interface DemoUser {
