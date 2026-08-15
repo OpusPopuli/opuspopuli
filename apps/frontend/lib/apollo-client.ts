@@ -10,30 +10,13 @@ import { getMainDefinition } from "@apollo/client/utilities";
 import { createClient } from "graphql-ws";
 import { persistCache, LocalStorageWrapper } from "apollo3-cache-persist";
 import { isAuthExpiredError, triggerAuthExpiredRedirect } from "./auth-logout";
+import { sessionRefreshLink, SKIP_EXPIRED_REDIRECT } from "./auth-refresh-link";
+import { getCsrfToken } from "./csrf";
 
 const GRAPHQL_URL =
   process.env.NEXT_PUBLIC_GRAPHQL_URL || "http://localhost:3000/api";
 const GRAPHQL_WS_URL =
   process.env.NEXT_PUBLIC_GRAPHQL_WS_URL || GRAPHQL_URL.replace(/^http/, "ws");
-
-/**
- * Extract CSRF token from cookie
- *
- * The CSRF token is set by the backend on every response as a non-httpOnly cookie,
- * allowing JavaScript to read it and send it back in the X-CSRF-Token header.
- */
-function getCsrfToken(): string | undefined {
-  if (typeof document === "undefined") return undefined;
-
-  const cookies = document.cookie.split("; ");
-  const csrfCookie = cookies.find((cookie) => cookie.startsWith("csrf-token="));
-
-  if (csrfCookie) {
-    return decodeURIComponent(csrfCookie.split("=")[1]);
-  }
-
-  return undefined;
-}
 
 /**
  * Custom fetch that adds CSRF token for request protection
@@ -140,6 +123,10 @@ function createWsLink(): ApolloLink | null {
 const authExpiryLink = new ErrorLink(({ error, operation }) => {
   if (operation.operationName === "Logout") return;
   if (!isAuthExpiredError(error)) return;
+  // Renewal was attempted below and could not reach the server — offline, or
+  // the gateway answering 503. That is not evidence the session is dead, so
+  // the query is allowed to fail without signing the user out. See #977.
+  if (operation.getContext()[SKIP_EXPIRED_REDIRECT]) return;
   if (globalThis.window === undefined) return;
   triggerAuthExpiredRedirect(
     globalThis.location.pathname + globalThis.location.search,
@@ -155,7 +142,7 @@ function createLink(): ApolloLink {
 
   // If no WebSocket link (SSR), use HTTP only
   if (!wsLink) {
-    return ApolloLink.from([authExpiryLink, httpLink]);
+    return ApolloLink.from([authExpiryLink, sessionRefreshLink, httpLink]);
   }
 
   // Split traffic: subscriptions go to WebSocket, rest to HTTP
@@ -171,7 +158,10 @@ function createLink(): ApolloLink {
     httpLink,
   );
 
-  return ApolloLink.from([authExpiryLink, transportLink]);
+  // Order matters. sessionRefreshLink sits BELOW authExpiryLink so it gets
+  // first refusal on an auth failure: if renewal succeeds the operation is
+  // retried and the error never reaches the redirect at all.
+  return ApolloLink.from([authExpiryLink, sessionRefreshLink, transportLink]);
 }
 
 /**

@@ -57,6 +57,21 @@ export default registerAs('authThrottle', () => ({
   },
 
   /**
+   * Session refresh rate limits
+   *
+   * Deliberately the most lenient bucket here. Renewal is not an attack
+   * surface the way login is — it requires a valid refresh token, and GoTrue
+   * rejects a bad one regardless of how often it is presented. Meanwhile a
+   * legitimate user with several tabs open can burst several renewals at once
+   * when a token lapses. Throttling that too tightly would sign them out,
+   * which is the failure this whole change exists to remove.
+   */
+  refresh: {
+    ttl: 60000, // 1 minute window
+    limit: 20, // 20 attempts per minute
+  },
+
+  /**
    * Account lockout configuration
    */
   lockout: {
@@ -75,4 +90,5 @@ export const AUTH_THROTTLE = {
   passwordReset: { name: 'auth-password-reset', ttl: 3600000, limit: 3 },
   magicLink: { name: 'auth-magic-link', ttl: 60000, limit: 3 },
   passkey: { name: 'auth-passkey', ttl: 60000, limit: 10 },
+  refresh: { name: 'auth-refresh', ttl: 60000, limit: 20 },
 } as const;

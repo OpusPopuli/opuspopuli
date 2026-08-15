@@ -668,4 +668,121 @@ describe('AuthResolver', () => {
       ).rejects.toThrow('Invalid or expired access token');
     });
   });
+
+  describe('refreshSession', () => {
+    const renewed = {
+      accessToken: 'a'.repeat(20) + 'NEW-ACCESS-TAIL-32CHARS-PADDING',
+      idToken: 'id-token',
+      refreshToken: 'r'.repeat(20) + 'NEW-REFRESH-TAIL-32CHARS-PADDIN',
+    };
+
+    it('should rotate the existing session row rather than create one', async () => {
+      authService.refreshSession = jest.fn().mockResolvedValue(renewed);
+
+      await resolver.refreshSession('old-refresh-token', createMockContext());
+
+      expect(mockDbService.userSession.create).not.toHaveBeenCalled();
+      expect(mockDbService.userSession.updateMany).toHaveBeenCalledWith({
+        where: {
+          refreshToken: 'old-refresh-token'.slice(-32),
+          isActive: true,
+        },
+        data: expect.objectContaining({
+          sessionToken: renewed.accessToken.slice(-32),
+          refreshToken: renewed.refreshToken.slice(-32),
+        }),
+      });
+    });
+
+    it('should set fresh auth cookies on success', async () => {
+      authService.refreshSession = jest.fn().mockResolvedValue(renewed);
+      const context = createMockContext();
+
+      await resolver.refreshSession('old-refresh-token', context);
+
+      expect(context.res?.cookie).toHaveBeenCalled();
+    });
+
+    it('should revoke the session when the grant itself was rejected', async () => {
+      authService.refreshSession = jest.fn().mockRejectedValue(
+        Object.assign(new Error('bad token'), {
+          code: 'REFRESH_TOKEN_INVALID',
+        }),
+      );
+
+      await expect(
+        resolver.refreshSession('dead-token', createMockContext()),
+      ).rejects.toThrow('bad token');
+
+      expect(mockDbService.userSession.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            isActive: false,
+            revokedReason: 'refresh_rejected',
+          }),
+        }),
+      );
+    });
+
+    // The distinction the whole change rests on. If a provider outage revoked
+    // sessions, every GoTrue hiccup would sign out every active user — which
+    // is the failure #977 exists to remove, not one to reintroduce.
+    it('should NOT revoke the session when the provider was merely unreachable', async () => {
+      authService.refreshSession = jest
+        .fn()
+        .mockRejectedValue(
+          Object.assign(new Error('upstream down'), { code: 'REFRESH_ERROR' }),
+        );
+
+      await expect(
+        resolver.refreshSession('good-token', createMockContext()),
+      ).rejects.toThrow('upstream down');
+
+      expect(mockDbService.userSession.updateMany).not.toHaveBeenCalled();
+    });
+
+    // The gateway route reads this to decide 401-and-clear-cookies vs
+    // try-again. If the code were dropped, both would look identical and the
+    // safe-looking default is to sign the user out.
+    it.each([
+      ['REFRESH_TOKEN_INVALID', 'REFRESH_TOKEN_INVALID'],
+      ['REFRESH_ERROR', 'REFRESH_ERROR'],
+    ])(
+      'should surface a %s code in the GraphQL error extensions',
+      async (code, expected) => {
+        authService.refreshSession = jest
+          .fn()
+          .mockRejectedValue(Object.assign(new Error('failed'), { code }));
+
+        await expect(
+          resolver.refreshSession('a-token', createMockContext()),
+        ).rejects.toMatchObject({ extensions: { code: expected } });
+      },
+    );
+
+    it('should default to REFRESH_ERROR when the failure carries no code', async () => {
+      authService.refreshSession = jest
+        .fn()
+        .mockRejectedValue(new Error('something odd'));
+
+      await expect(
+        resolver.refreshSession('a-token', createMockContext()),
+      ).rejects.toMatchObject({ extensions: { code: 'REFRESH_ERROR' } });
+      // An unknown failure must not revoke — same reasoning as REFRESH_ERROR.
+      expect(mockDbService.userSession.updateMany).not.toHaveBeenCalled();
+    });
+
+    // Bookkeeping is best-effort: the tokens are already minted and the user
+    // is already signed in by the time rotation runs.
+    it('should still return tokens when session bookkeeping fails', async () => {
+      authService.refreshSession = jest.fn().mockResolvedValue(renewed);
+      mockDbService.userSession.updateMany.mockRejectedValueOnce(
+        new Error('db down'),
+      );
+
+      await expect(
+        resolver.refreshSession('old-refresh-token', createMockContext()),
+      ).resolves.toEqual(renewed);
+    });
+  });
 });

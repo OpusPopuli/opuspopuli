@@ -343,6 +343,35 @@ export class AuthService {
     };
   }
 
+  /**
+   * Redeem a refresh token for a new session.
+   *
+   * The provider ROTATES: the refreshToken coming back is not the one going
+   * in, and the old one stops working. Callers must persist what is returned
+   * — see `AuthResolver.rotateSession`.
+   *
+   * Errors are passed through unwrapped on purpose. The provider distinguishes
+   * `REFRESH_TOKEN_INVALID` (the grant was rejected — terminal, revoke the
+   * session) from `REFRESH_ERROR` (the provider was unreachable — not
+   * terminal, do not revoke), and wrapping them in a generic error here would
+   * destroy the only signal the caller has for telling those apart.
+   */
+  async refreshSession(refreshToken: string): Promise<Auth> {
+    if (!this.authProvider.refreshSession) {
+      throw new Error('Session refresh requires refreshSession support');
+    }
+
+    const result = await this.authProvider.refreshSession(refreshToken);
+
+    this.logger.log('Session refreshed');
+
+    return {
+      accessToken: result.accessToken,
+      idToken: result.idToken,
+      refreshToken: result.refreshToken,
+    };
+  }
+
   private async sendWelcomeEmailSafely(
     userId: string,
     email: string,

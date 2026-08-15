@@ -148,6 +148,24 @@ function AuthCallbackContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Where a successful sign-in lands. Computed before the effect below so the
+  // effect and the fallback button can never disagree about the destination.
+  const successTarget = isNewUser ? skipTarget : continueTarget;
+
+  // Whether the passkey offer is showing. That screen is a deliberate choice —
+  // "Add a Passkey" or "Skip for now" — so it must NOT be auto-dismissed.
+  // Everything else was an interstitial that only ever said "click here to
+  // continue", which is the click this removes.
+  const isAwaitingPasskeyChoice = isNewUser && supportsPasskeys;
+
+  useEffect(() => {
+    if (status !== "success" || isAwaitingPasskeyChoice) return;
+    // `supportsPasskeys` is set synchronously in an auth-context mount effect,
+    // while reaching "success" requires an awaited network round-trip — so it
+    // has always settled by now, and this cannot race past the passkey prompt.
+    router.push(successTarget);
+  }, [status, isAwaitingPasskeyChoice, successTarget, router]);
+
   // Verifying state
   if (status === "verifying" || isLoading) {
     return (
@@ -268,14 +286,18 @@ function AuthCallbackContent() {
   // /me/briefing and skip the questionnaire entirely (#758). Returning
   // users continue to their briefing. An explicit ?redirect= wins in
   // both cases via resolveRedirect().
-  const successTarget = isNewUser ? skipTarget : continueTarget;
   return (
     <div className="bg-surface rounded-lg p-8 text-center">
       <AuthCheckIcon />
       <h1 className="text-xl font-bold text-content mb-2">
         You&apos;re signed in!
       </h1>
-      <p className="text-content-dim mb-6">Redirecting you to the app...</p>
+      <p className="text-content-dim mb-6">Taking you to the app...</p>
+      {/*
+        Fallback only. The effect above navigates on its own; this is here for
+        the case where that hasn't happened yet — a slow route transition, or
+        navigation blocked — so the user is never stranded on a dead end.
+      */}
       <button
         type="button"
         onClick={() => router.push(successTarget)}

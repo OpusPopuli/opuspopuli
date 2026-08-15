@@ -44,8 +44,29 @@ Why it is here and not in the region repo:
   region's API and site URLs. There is no build-once-deploy-anywhere artifact to hand an operator,
   the way `ghcr.io/opuspopuli/*` images are.
 - The frontend source and the `frontend-v*` tag both live here.
-- `apps/frontend/wrangler.toml` already hard-codes `app-us-ca.opuspopuli.org`, so this repo was
+- `apps/frontend/wrangler.toml` already hard-codes the node's hostname, so this repo was
   region-coupled on the frontend before the workflow existed.
+
+### Hostnames
+
+| | |
+|---|---|
+| App (canonical) | `california.opuspopuli.org` |
+| App (legacy, still served) | `app-us-ca.opuspopuli.org` |
+| API | `api-us-ca.opuspopuli.org` |
+
+`app-us-ca` encoded an internal region identifier in the one URL citizens are asked to type and
+share. `california` is the canonical name; the old host stays routed so existing links keep
+working, and comes out of `wrangler.toml` once a Cloudflare Redirect Rule 301s it across.
+
+This is a **hostname** rename only — the region id (`us-ca`), the plugin identifiers and every
+stored row are unchanged. The API keeps its `api-us-ca` name for now: it is not user-facing, and
+moving it means a Terraform `api_subdomain` change in the node repo plus a backend CORS flip.
+
+Renaming the app host was cheap for one reason worth knowing before anyone changes it: `WEBAUTHN_RP_ID`
+is `opuspopuli.org`, the **registrable domain**, so passkeys are bound to the parent and survived
+the move. Had it been the full host, the rename would have silently invalidated every registered
+credential. See `apps/backend/src/config/webauthn.config.ts`.
 
 **What this does not change.** Backend images stay region-agnostic and operator-pulled. No Mac
 Studio config, Terraform state, or backend credential moves here. The token is scoped to Workers

@@ -724,4 +724,43 @@ describe('AuthService', () => {
       expect(usersService.updateUserId).not.toHaveBeenCalled();
     });
   });
+
+  describe('refreshSession', () => {
+    it('should redeem the token and return the rotated pair', async () => {
+      authProvider.refreshSession = jest.fn().mockResolvedValue({
+        accessToken: 'new-access',
+        idToken: 'new-access',
+        refreshToken: 'rotated-refresh',
+      });
+
+      const auth = await authService.refreshSession('old-refresh');
+
+      expect(authProvider.refreshSession).toHaveBeenCalledWith('old-refresh');
+      expect(auth.accessToken).toBe('new-access');
+      expect(auth.refreshToken).toBe('rotated-refresh');
+    });
+
+    it('should throw when the provider cannot refresh', async () => {
+      authProvider.refreshSession = undefined;
+
+      await expect(authService.refreshSession('any-token')).rejects.toThrow(
+        'Session refresh requires refreshSession support',
+      );
+    });
+
+    // The resolver decides revoke-vs-retry from `code`. Wrapping the provider
+    // error would erase that and turn every outage into a forced logout.
+    it.each([['REFRESH_TOKEN_INVALID'], ['REFRESH_ERROR']])(
+      'should propagate a %s error with its code intact',
+      async (code) => {
+        authProvider.refreshSession = jest
+          .fn()
+          .mockRejectedValue(Object.assign(new Error('nope'), { code }));
+
+        await expect(
+          authService.refreshSession('some-token'),
+        ).rejects.toMatchObject({ code });
+      },
+    );
+  });
 });

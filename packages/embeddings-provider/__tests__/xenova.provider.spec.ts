@@ -56,6 +56,15 @@ describe("XenovaEmbeddingProvider", () => {
       );
       expect(bgeProvider.getDimensions()).toBe(768);
     });
+
+    // The fallback arm of getDimensionsForModel. An unrecognised model must
+    // still yield a usable dimension rather than undefined — a vector of the
+    // wrong width fails at insert time, far from the cause.
+    it("falls back to 384 dimensions for an unrecognised model", () => {
+      const unknown = new XenovaEmbeddingProvider("Xenova/some-future-model");
+      expect(unknown.getDimensions()).toBe(384);
+      expect(unknown.getModelName()).toBe("Xenova/some-future-model");
+    });
   });
 
   describe("embedQuery", () => {
@@ -102,6 +111,26 @@ describe("XenovaEmbeddingProvider", () => {
 
       expect(result).toHaveLength(2);
       expect(mockPipelineFn).toHaveBeenCalledTimes(2);
+    });
+
+    // Batching only becomes observable above the batch size of 32; every
+    // other test here passes two documents, so the second iteration of the
+    // loop and its progress branch were never executed.
+    it("embeds across multiple batches when given more than one batch", async () => {
+      const texts = Array.from({ length: 40 }, (_, i) => `doc${i}`);
+      mockPipelineFn.mockResolvedValue({ data: new Float32Array([0.1, 0.2]) });
+
+      const result = await provider.embedDocuments(texts);
+
+      expect(result).toHaveLength(40);
+      expect(mockPipelineFn).toHaveBeenCalledTimes(40);
+    });
+
+    it("returns an empty array for no documents without calling the model", async () => {
+      const result = await provider.embedDocuments([]);
+
+      expect(result).toEqual([]);
+      expect(mockPipelineFn).not.toHaveBeenCalled();
     });
 
     it("should throw EmbeddingError when embedding fails", async () => {

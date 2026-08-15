@@ -180,7 +180,7 @@ jobs:
     # go-ahead. Also scopes the Cloudflare credentials to this job alone.
     environment:
       name: production
-      url: https://app-us-ca.opuspopuli.org
+      url: https://california.opuspopuli.org
 
     env:
       NEXT_PUBLIC_GRAPHQL_URL: ${{ vars.US_CA_GRAPHQL_URL }}
