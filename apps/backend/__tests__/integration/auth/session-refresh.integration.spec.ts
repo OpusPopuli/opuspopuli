@@ -21,7 +21,6 @@ import {
   getDbService,
   getMagicLinkFromInbucket,
   graphqlRequest,
-  INBUCKET_URL,
   waitFor,
 } from '../utils';
 
@@ -51,9 +50,41 @@ const clearsCookie = (setCookie: string, name: string) =>
 
 describe('Session refresh (#977)', () => {
   let csrf: string;
+  /**
+   * Whether a real auth provider (GoTrue) is reachable behind the users
+   * service. NOT the same as "Inbucket is up" — the CI E2E stack runs
+   * inbucket but no supabase-auth, so probing the mailbox says nothing about
+   * whether a session can actually be minted or a grant actually rejected.
+   * Probing the wrong thing is what made these tests fail in CI while passing
+   * locally.
+   */
+  let authProviderUp = false;
 
   beforeAll(async () => {
     csrf = await getCsrfToken();
+
+    // Send a magic link and see whether the stack accepts it. This exercises
+    // the same path the gated tests depend on, so it cannot pass while they
+    // would fail.
+    authProviderUp = await graphqlRequest<{ registerWithMagicLink: boolean }>(`
+      mutation {
+        registerWithMagicLink(input: {
+          email: "${generateTestEmail()}",
+          redirectTo: "http://localhost:3000/auth/callback"
+        })
+      }
+    `)
+      .then((r) => r.data?.registerWithMagicLink === true)
+      .catch(() => false);
+
+    if (!authProviderUp) {
+      console.warn(
+        'No auth provider reachable (GoTrue absent) — tests that need a real ' +
+          'grant will SKIP. Expected in the CI E2E stack, which starts no ' +
+          'supabase-auth service. Run `pnpm integration:up` with the full ' +
+          'local stack to execute them.',
+      );
+    }
   });
 
   afterAll(async () => {
@@ -102,6 +133,13 @@ describe('Session refresh (#977)', () => {
     });
 
     it('401s on a refresh token the provider rejects', async () => {
+      // Needs a provider that can REJECT. With none reachable the controller
+      // correctly answers 503 (unreachable, keep the session) rather than 401
+      // (dead, sign out) — that distinction is the point of the change, so
+      // asserting 401 here without a provider would be asserting the wrong
+      // behaviour.
+      if (!authProviderUp) return;
+
       const response = await fetch(REFRESH_URL, {
         method: 'POST',
         headers: {
@@ -250,23 +288,9 @@ describe('Session refresh (#977)', () => {
    */
   describe('renewal against a real GoTrue session', () => {
     let db: Awaited<ReturnType<typeof getDbService>>;
-    let inbucketUp = false;
 
     beforeAll(async () => {
       db = await getDbService();
-      // Checked ONCE, loudly. Previously every failure inside the login helper
-      // looked like missing infrastructure, so these tests reported green
-      // while proving nothing — the exact failure mode this whole issue is
-      // about. Now: infrastructure absent => skip; anything else => fail.
-      inbucketUp = await fetch(`${INBUCKET_URL}/api/v1/mailbox/probe`)
-        .then((r) => r.ok)
-        .catch(() => false);
-      if (!inbucketUp) {
-        console.warn(
-          'Inbucket unreachable — real-session renewal tests will SKIP. ' +
-            'Run `pnpm integration:up` to execute them.',
-        );
-      }
     });
 
     /**
@@ -347,7 +371,7 @@ describe('Session refresh (#977)', () => {
       });
 
     it('renews a real session: 204, no body, rotated tokens', async () => {
-      if (!inbucketUp) return;
+      if (!authProviderUp) return;
       const session = await loginViaMagicLink();
 
       const response = await renew(session.refreshToken);
@@ -383,7 +407,7 @@ describe('Session refresh (#977)', () => {
     }, 45000);
 
     it('rotates the UserSession row rather than adding one', async () => {
-      if (!inbucketUp) return;
+      if (!authProviderUp) return;
       const session = await loginViaMagicLink();
 
       const user = await db.user.findFirst({ where: { email: session.email } });
@@ -409,7 +433,7 @@ describe('Session refresh (#977)', () => {
     }, 45000);
 
     it('keeps renewing — a renewed token can itself be renewed', async () => {
-      if (!inbucketUp) return;
+      if (!authProviderUp) return;
       const session = await loginViaMagicLink();
 
       const first = await renew(session.refreshToken);
