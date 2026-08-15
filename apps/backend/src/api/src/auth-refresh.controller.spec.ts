@@ -5,8 +5,10 @@ import {
   UnauthorizedException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { PATH_METADATA } from '@nestjs/common/constants';
 import { AuthRefreshController } from './auth-refresh.controller';
 import { HmacSignerService } from 'src/common/services/hmac-signer.service';
+import { REFRESH_COOKIE_PATH } from 'src/common/utils/cookie.utils';
 
 const MICROSERVICES = JSON.stringify([
   { name: 'users', url: 'http://users:3001/graphql' },
@@ -38,6 +40,26 @@ const renewed = {
 };
 
 describe('AuthRefreshController', () => {
+  // The failure this guards against is silent. If the served route and the
+  // cookie's path ever diverge, the browser simply never sends the refresh
+  // cookie: no error, no log — renewal 401s and the user is bounced to
+  // /login, which is the bug #977 fixed. Nothing else ties these together,
+  // because they are set by decorators in one file and a constant in another.
+  it('serves exactly the path the refresh cookie is scoped to', () => {
+    const controllerPath = Reflect.getMetadata(
+      PATH_METADATA,
+      AuthRefreshController,
+    );
+    const methodPath = Reflect.getMetadata(
+      PATH_METADATA,
+      AuthRefreshController.prototype.refresh,
+    );
+
+    const served = `/${controllerPath}/${methodPath}`.replace(/\/+/g, '/');
+
+    expect(served).toBe(REFRESH_COOKIE_PATH);
+  });
+
   let controller: AuthRefreshController;
   let hmacSigner: { isEnabled: jest.Mock; signGraphQLRequest: jest.Mock };
   const fetchMock = jest.fn();

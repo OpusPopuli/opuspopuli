@@ -4,6 +4,22 @@ import { ConfigService } from '@nestjs/config';
 type SameSitePolicy = 'strict' | 'lax' | 'none';
 
 /**
+ * Path the refresh-token cookie is scoped to.
+ *
+ * The browser sends that cookie to this path and NOWHERE else, which is the
+ * point — it keeps a 7-day credential off every other request rather than
+ * riding along with all of them.
+ *
+ * Three things must agree on this value, and they are in different files:
+ * where the cookie is set, where it is cleared, and the route that actually
+ * serves renewal (`AuthRefreshController`). If they drift, nothing errors —
+ * the cookie is simply never sent, renewal fails, and the user is bounced to
+ * `/login`, which is exactly the bug #977 fixed. Hence one constant and a test
+ * that ties the served route back to it.
+ */
+export const REFRESH_COOKIE_PATH = '/api/auth/refresh';
+
+/**
  * Cookie options interface
  */
 export interface CookieOptions {
@@ -67,7 +83,7 @@ export function setAuthCookies(
         maxAge:
           configService.get<number>('cookie.refreshTokenMaxAge') ||
           7 * 24 * 60 * 60 * 1000,
-        path: '/api/auth/refresh', // Only sent to refresh endpoint
+        path: REFRESH_COOKIE_PATH, // Only sent to the renewal endpoint
       }),
     );
   }
@@ -103,6 +119,6 @@ export function clearAuthCookies(
   res.clearCookie(accessTokenName, clearOptions);
   res.clearCookie(refreshTokenName, {
     ...clearOptions,
-    path: '/api/auth/refresh',
+    path: REFRESH_COOKIE_PATH,
   });
 }
