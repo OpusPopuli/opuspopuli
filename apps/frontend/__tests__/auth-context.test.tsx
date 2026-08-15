@@ -368,7 +368,10 @@ describe("AuthProvider", () => {
           await new Promise((resolve) => setTimeout(resolve, 0));
         });
         await act(async () => {
-          await result.current.exchangeSupabaseSession(idToken, "refresh-token");
+          await result.current.exchangeSupabaseSession(
+            idToken,
+            "refresh-token",
+          );
         });
         return result;
       };
