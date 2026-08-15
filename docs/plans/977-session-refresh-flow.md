@@ -195,9 +195,11 @@ the subtle concurrency bugs. Tests (6) ~1.
 | 2 — users service | `ba9a522` | `@inaccessible` mutation + in-place rotation |
 | 3 — gateway route | `e0ddb54` | `POST /api/auth/refresh`, the gateway's first controller |
 | 4 — frontend link | `89a74ce` | single-flight + retry-once; first user-visible change |
-| 5 — path coherence | (this series) | `REFRESH_COOKIE_PATH` + route-metadata assertion |
-| 6 — tests | (this series) | 8 integration tests, real stack + real DB |
-| 7 — docs | (this series) | `auth-security.md` § Session Renewal |
+| 5 — path coherence | `6eac89e` | `REFRESH_COOKIE_PATH` + route-metadata assertion |
+| 6 — tests | `b94e1f0` | 8 integration tests, real stack + real DB |
+| 7 — docs | `eb1d741` | `auth-security.md` § Session Renewal |
+| follow-up | `320166e` | real GoTrue session test — closes the happy-path gap |
+| unrelated | `ab24ff5` | magic-link callback auto-redirect (bundled at maintainer request) |
 
 ### What the risk register got right, and what it missed
 
@@ -216,14 +218,25 @@ Two things were **not** in the register and were found during implementation:
 Both are the same species of bug as the one being fixed: a transient failure being treated as a
 terminal one.
 
-### Still unproven
+### The happy path, and how it was nearly missed
 
-No test exercises a **genuine GoTrue refresh token** end to end. The provider unit tests mock the
-Supabase client, and the integration tests use a deliberately invalid grant. So the happy path —
-`supabase.auth.refreshSession()` against a real GoTrue, with the client constructed from a
-service-role key and `persistSession: false` — is verified by reading, not by running. A full
-magic-link login in the integration suite would close this; it is the one gap worth knowing about
-before trusting renewal in production.
+This section previously recorded that no test exercised a **genuine GoTrue refresh token** — the
+happy path was verified by reading only. That gap is now closed: a magic-link login through
+Inbucket obtains a real session, and renewal returns 204 with a rotated refresh token.
+`supabase.auth.refreshSession()` does work with a service-role client and `persistSession: false`.
+
+Worth recording how close that came to being worthless. The first version of the test **passed
+while proving nothing** — every failure inside the login helper returned `null`, which the tests
+read as "Inbucket isn't running" and skipped. Inbucket was up the whole time. Probing the
+infrastructure once, loudly, and letting everything else fail turned up two further errors:
+
+- the session must be **exchanged with the backend**, not merely minted by GoTrue, or no
+  `UserSession` row exists for rotation to update
+- the renewed **access** token is legitimately byte-identical when minted in the same second, so
+  asserting it differs was wrong; the rotated refresh token is the meaningful assertion
+
+A test that skips silently is worse than no test, because it reports coverage it does not have —
+the same failure mode as the bug this plan set out to fix.
 
 ## Explicitly out of scope
 
