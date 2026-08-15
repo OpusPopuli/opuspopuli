@@ -51,13 +51,15 @@ Why it is here and not in the region repo:
 
 | | |
 |---|---|
-| App (canonical) | `california.opuspopuli.org` |
-| App (legacy, still served) | `app-us-ca.opuspopuli.org` |
+| App | `california.opuspopuli.org` |
 | API | `api-us-ca.opuspopuli.org` |
 
-`app-us-ca` encoded an internal region identifier in the one URL citizens are asked to type and
-share. `california` is the canonical name; the old host stays routed so existing links keep
-working, and comes out of `wrangler.toml` once a Cloudflare Redirect Rule 301s it across.
+`app-us-ca.opuspopuli.org` was the previous app hostname. It encoded an internal region identifier
+in the one URL citizens are asked to type and share, and has been **removed** — the Worker route is
+gone, so Cloudflare deleted the DNS record with it and the name no longer resolves. Removed
+outright rather than 301'd: it was retired before public launch, so there were no established links
+to preserve, and keeping a redirect alive would have meant maintaining a DNS record and a rule for
+a name nobody holds.
 
 This is a **hostname** rename only — the region id (`us-ca`), the plugin identifiers and every
 stored row are unchanged. The API keeps its `api-us-ca` name for now: it is not user-facing, and
