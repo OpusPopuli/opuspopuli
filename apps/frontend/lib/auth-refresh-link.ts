@@ -29,6 +29,34 @@ export const SKIP_EXPIRED_REDIRECT = "skipAuthExpiredRedirect";
  * refusal on an auth failure and the redirect only happens if renewal has
  * genuinely failed.
  */
+/**
+ * Routes where a session is being established or torn down, and where renewal
+ * must NOT run.
+ *
+ * This caused a silent identity swap in production. During sign-in an in-flight
+ * query 401s using the OUTGOING user's expired access token. Renewal fired,
+ * and the request still carried the outgoing user's refresh cookie — so the
+ * provider minted a valid token for THEM, and the gateway wrote it back,
+ * clobbering the refresh cookie the new login had just set.
+ *
+ * The browser was then holding the new user's access token alongside the old
+ * user's refresh token. Fifteen minutes later the access token expired,
+ * renewal redeemed the old one, and the session became the previous user's
+ * with no interaction at all. GoTrue's refresh_tokens table showed the tell:
+ * a token minted for the arriving user, then another for the departing user
+ * one second later, on every sign-in.
+ *
+ * On these routes a 401 means "not signed in yet" or "signing out", never
+ * "session lapsed" — so there is nothing legitimate to renew. `auth-logout.ts`
+ * guards the same paths for the same underlying reason.
+ */
+const AUTH_ROUTE_PREFIXES = ["/login", "/register", "/auth/"] as const;
+
+function isOnAuthRoute(): boolean {
+  const path = globalThis.location?.pathname ?? "";
+  return AUTH_ROUTE_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
 export const sessionRefreshLink: ApolloLink = new ErrorLink(
   ({ error, operation, forward }) => {
     // Logout failing with a 403 is expected — never try to renew for it.
@@ -37,6 +65,8 @@ export const sessionRefreshLink: ApolloLink = new ErrorLink(
     // Already retried once: let it through to the terminal handler.
     if (operation.getContext()[AUTH_RETRIED]) return;
     if (globalThis.window === undefined) return;
+    // Mid sign-in or sign-out: renewing here renews the WRONG identity.
+    if (isOnAuthRoute()) return;
 
     return new Observable((subscriber) => {
       let inner: { unsubscribe: () => void } | undefined;

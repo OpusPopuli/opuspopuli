@@ -152,6 +152,33 @@ export class AuthRefreshController {
       throw new ServiceUnavailableException('Session renewal unavailable');
     }
 
+    // Refuse to renew into a DIFFERENT identity than the caller currently
+    // holds.
+    //
+    // This is the server-side half of a production identity swap. During
+    // sign-in an in-flight query 401s on the outgoing user's expired access
+    // token; the browser still carries that user's refresh cookie, so renewal
+    // mints a valid session for THEM and overwrites the cookies the new login
+    // just set. Minutes later the victim is silently signed in as someone else.
+    //
+    // On a legitimate renewal the access cookie has expired and been dropped
+    // by the browser (its Max-Age matches the token's), so there is nothing to
+    // compare and the check is skipped. It fires precisely in the race case,
+    // where a FRESH access cookie for one user arrives alongside a refresh
+    // cookie for another.
+    const presentedSubject = subjectOf(refreshToken ? req.cookies?.[
+      this.configService.get<string>('cookie.accessTokenName') || 'access-token'
+    ] : undefined);
+    const renewedSubject = subjectOf(auth.accessToken);
+
+    if (presentedSubject && renewedSubject && presentedSubject !== renewedSubject) {
+      this.logger.error(
+        'Refresh would have swapped identity; rejecting and clearing cookies',
+      );
+      clearAuthCookies(res, this.configService);
+      throw new UnauthorizedException('Session mismatch');
+    }
+
     setAuthCookies(
       res,
       this.configService,
@@ -160,6 +187,28 @@ export class AuthRefreshController {
     );
 
     // 204, no body. The tokens are in the cookies and nowhere else.
+  }
+}
+
+/**
+ * Read the `sub` claim without verifying the signature or expiry.
+ *
+ * Verification is not the job here — the gateway and the subgraph already do
+ * that. This only answers "whose token is this", and it must work on an
+ * EXPIRED token, which a verifying decode would reject. Returns undefined for
+ * anything unparseable, so a malformed cookie cannot be mistaken for a match.
+ */
+function subjectOf(token?: string): string | undefined {
+  if (!token) return undefined;
+  const parts = token.split('.');
+  if (parts.length !== 3) return undefined;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1], 'base64').toString('utf8'),
+    );
+    return typeof payload?.sub === 'string' ? payload.sub : undefined;
+  } catch {
+    return undefined;
   }
 }
 
