@@ -7,7 +7,7 @@
 | **Author** | Rodney Gagnon |
 | **Data classification** | **PII — no PHI.** Authentication credentials (access + refresh tokens) and session metadata (IP, user agent, device). Strict PHI/PII lens applies by default — the repo has no `.claude/compliance-profile.yaml`. |
 | **Branch** | `fix/session-refresh-flow-977` |
-| **Status** | Approved 2026-08-14. Not started. |
+| **Status** | Approved 2026-08-14. **All 7 subtasks complete** — see the log below. |
 
 ## Problem
 
@@ -186,6 +186,44 @@ Constraints:
 
 **3–4 focused sessions.** Backend chain (1–3) is the bulk, ~2. Frontend link (4) is ~0.5 but holds
 the subtle concurrency bugs. Tests (6) ~1.
+
+## Delivery log
+
+| Subtask | Commit | Notes |
+|---|---|---|
+| 1 — provider | `dbb53fd` | `IAuthProvider.refreshSession()` — the gap the issue did not name |
+| 2 — users service | `ba9a522` | `@inaccessible` mutation + in-place rotation |
+| 3 — gateway route | `e0ddb54` | `POST /api/auth/refresh`, the gateway's first controller |
+| 4 — frontend link | `89a74ce` | single-flight + retry-once; first user-visible change |
+| 5 — path coherence | (this series) | `REFRESH_COOKIE_PATH` + route-metadata assertion |
+| 6 — tests | (this series) | 8 integration tests, real stack + real DB |
+| 7 — docs | (this series) | `auth-security.md` § Session Renewal |
+
+### What the risk register got right, and what it missed
+
+The multi-tab race and the refresh loop were both rated correctly and are both covered by tests.
+
+Two things were **not** in the register and were found during implementation:
+
+1. **A 4xx from the provider is not automatically terminal.** The first cut classified `429` as an
+   invalid token, which would have revoked valid sessions under load — reintroducing this issue's
+   forced logout at exactly the moment it hurts most. Found by review; `408`/`429` are now
+   explicitly retryable.
+2. **`UserInputError` erased the provider's error code**, which would have left the gateway route
+   unable to distinguish a dead session from an outage. The safe-*looking* default there is to sign
+   the user out. The code now travels in the GraphQL error extensions.
+
+Both are the same species of bug as the one being fixed: a transient failure being treated as a
+terminal one.
+
+### Still unproven
+
+No test exercises a **genuine GoTrue refresh token** end to end. The provider unit tests mock the
+Supabase client, and the integration tests use a deliberately invalid grant. So the happy path —
+`supabase.auth.refreshSession()` against a real GoTrue, with the client constructed from a
+service-role key and `persistSession: false` — is verified by reading, not by running. A full
+magic-link login in the integration suite would close this; it is the one gap worth knowing about
+before trusting renewal in production.
 
 ## Explicitly out of scope
 

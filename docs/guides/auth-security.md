@@ -55,10 +55,92 @@ res.cookie('refresh-token', refreshToken, {
   httpOnly: true,
   secure: true,
   sameSite: 'strict',
-  path: '/api/auth/refresh', // Only sent to refresh endpoint
+  path: REFRESH_COOKIE_PATH,       // '/api/auth/refresh' — sent there and nowhere else
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 });
 ```
+
+The access token is short-lived on purpose; it is renewed silently rather than extended. See
+[Session Renewal](#session-renewal) below for how, and for why that path is load-bearing.
+
+## Session Renewal
+
+The access token lasts 15 minutes. Renewal keeps an actively-used session alive for the life of the
+refresh token (7 days) without the user noticing, and without lengthening the access token — a
+longer-lived bearer credential would trade the interruption for a bigger blast radius.
+
+Before this existed, the refresh cookie was issued to a path nothing served. The session simply died
+mid-use and the user was bounced to `/login` (see [#977](https://github.com/OpusPopuli/opuspopuli/issues/977)).
+
+### Flow
+
+```
+Query fails 401/403
+  └─ sessionRefreshLink (frontend, below the terminal redirect link)
+      └─ POST /api/auth/refresh          cookies only, no body, X-CSRF-Token required
+          └─ AuthRefreshController (gateway)
+              └─ refreshSession mutation (users subgraph, HMAC-signed, @inaccessible)
+                  └─ IAuthProvider.refreshSession → GoTrue token?grant_type=refresh_token
+          ← 204, new httpOnly cookies, NO body
+  └─ original operation retried once → succeeds, user sees nothing
+```
+
+### Why renewal is a REST route and not a GraphQL mutation
+
+The refresh cookie is scoped to `path: '/api/auth/refresh'`, so the browser sends it there and
+nowhere else. GraphQL is served at `/api`, and a browser will not send a `/api/auth/refresh` cookie
+to `/api`. Serving renewal as a normal mutation would therefore mean widening the cookie's path —
+shipping a 7-day credential with every GraphQL request. The endpoint was moved to meet the cookie
+instead.
+
+The mutation still exists on the users subgraph, but is marked `@inaccessible`: it is composed into
+the subgraph and excluded from the public API schema, reachable only by the gateway's direct
+HMAC-signed call. Exposing it federated would mean clients passing a refresh token as a GraphQL
+variable, where it would land in query logs and traces.
+
+**`REFRESH_COOKIE_PATH`** (`common/utils/cookie.utils.ts`) is the single source for that path. If the
+cookie scope and the served route ever diverge, nothing errors — the cookie is just never sent, and
+renewal fails into the logout it exists to prevent. `auth-refresh.controller.spec.ts` asserts the
+route metadata resolves to that constant.
+
+### Rotation
+
+GoTrue **rotates** on redemption: the refresh token returned is not the one presented, and the old
+one stops working after its reuse interval. Callers must persist what comes back.
+
+`UserSession` is updated in place — a renewed session is the same session, and a row per renewal
+would turn "your active sessions" into a list of every 15-minute window since sign-in. Rows are
+matched on the last 32 characters of the refresh token, never the whole value.
+
+GoTrue's reuse interval is also what makes multi-tab safe across tabs; the frontend collapses
+concurrent renewals within a tab into a single request. Without both, two tabs racing to redeem the
+same token would log each other out.
+
+### "Sign in again" vs "try again"
+
+This distinction is carried deliberately through every layer, and collapsing it at any one of them
+reintroduces the original bug by a different route — a provider blip would sign out every active
+user at once.
+
+| Condition | Code | Route | Session | Frontend |
+|---|---|---|---|---|
+| Grant rejected — expired, revoked, already used | `REFRESH_TOKEN_INVALID` | 401 | revoked, cookies cleared | redirect to `/login?reason=expired` |
+| Provider unreachable, 5xx, 408, 429 | `REFRESH_ERROR` | 503 | **untouched** | query fails, **session survives** |
+
+A `429` is deliberately **not** terminal despite being a 4xx: a rate-limit says nothing about the
+token, and treating it as expiry would revoke valid sessions under load.
+
+### Security properties
+
+- Renewal returns **204 with no body**. Tokens are only ever httpOnly cookies; JavaScript never
+  reads them.
+- The route inherits `CsrfMiddleware` from `forRoutes({path:'*'})` — a POST without `X-CSRF-Token`
+  is rejected before the handler runs, asserted in `session-refresh.integration.spec.ts`.
+- The renewal route is `@Public()` by necessity: the access token is expired by definition, and the
+  refresh cookie is the credential. The global `AuthGuard` defers on non-GraphQL contexts.
+- Token values never reach a log. The provider logs only GoTrue's user id, and the audit
+  interceptor's `inputVariables` are masked by `pii-masker`, whose `SENSITIVE_FIELDS` includes
+  `refreshtoken`.
 
 ## CSRF Protection
 
