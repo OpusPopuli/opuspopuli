@@ -1,5 +1,21 @@
 import Link from "next/link";
 
+/**
+ * The release this bundle was built from.
+ *
+ * Supplied by the deploy workflow as the `frontend-v*` tag, so what a user
+ * reads here matches what was tagged, deployed and can be rolled back to —
+ * which is the point of showing it. Deliberately NOT the version in
+ * package.json: that is 0.1.0, has never been bumped, and would tell a support
+ * conversation nothing.
+ *
+ * Inlined at build time like every NEXT_PUBLIC_* value, so it is fixed for the
+ * life of a bundle rather than read at runtime. Undefined in local dev and in
+ * any build that did not come from the workflow — in which case nothing is
+ * rendered, rather than a misleading placeholder.
+ */
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION;
+
 export function Footer() {
   return (
     <footer className="border-t border-line bg-surface">
@@ -24,6 +40,14 @@ export function Footer() {
       <div className="max-w-6xl mx-auto px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
         <p className="text-sm text-content-dim">
           &copy; {new Date().getFullYear()} Opus Populi. All rights reserved.
+          {APP_VERSION && (
+            <>
+              {" "}
+              <span className="text-content-dim/70">
+                &middot; <span translate="no">{APP_VERSION}</span>
+              </span>
+            </>
+          )}
         </p>
         <nav className="flex items-center gap-6">
           <Link

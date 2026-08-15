@@ -82,6 +82,12 @@ jobs:
     env:
       NEXT_PUBLIC_GRAPHQL_URL: ${{ vars.US_CA_GRAPHQL_URL }}
       NEXT_PUBLIC_SITE_URL: ${{ vars.US_CA_SITE_URL }}
+      # Shown in the site footer. `ref_name` is the tag on a frontend-v* push
+      # and the branch name on a workflow_dispatch, so what the footer reads is
+      # exactly what was deployed and what a rollback would target. Only the
+      # build job needs it -- NEXT_PUBLIC_* is inlined into the bundle here,
+      # and setting it on the deploy job would change nothing.
+      NEXT_PUBLIC_APP_VERSION: ${{ github.ref_name }}
 
     steps:
       - name: Checkout
@@ -118,6 +124,7 @@ jobs:
           : "${NEXT_PUBLIC_SITE_URL:?is empty — set the US_CA_SITE_URL repository variable. Refusing to build a localhost bundle.}"
           echo "GraphQL : $NEXT_PUBLIC_GRAPHQL_URL"
           echo "Site    : $NEXT_PUBLIC_SITE_URL"
+          echo "Version : ${NEXT_PUBLIC_APP_VERSION:-<unset>}"
 
       # cf:build, not `opennextjs-cloudflare build`, so check-worker-env.mjs
       # runs. NEXT_OUTPUT must stay unset: next.config.mjs switches to
