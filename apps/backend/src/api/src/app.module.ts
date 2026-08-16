@@ -112,21 +112,47 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
       }),
       inject: [ConfigService],
     }),
+    // Rate limits sized against what ONE briefing page load actually costs.
+    //
+    // These were 10/s, 50/10s, 100/min, and the app tripped them by simply
+    // being used. A first briefing load fans out to ~21 queries in about two
+    // seconds, with 11 landing inside a single second (GetBill x5,
+    // GetBillBrief x5, committees). Measured from the production audit log:
+    //
+    //   15:20:13.008    4 queries
+    //   15:20:13.063    6 queries
+    //   15:20:15.467   11 queries   <- 11 against a limit of 10
+    //
+    // The user-visible symptom was "Too many requests. Please try again later."
+    // in the Representatives section on first sign-in, clearing once Apollo
+    // retried into a fresh window. The old `medium` was worse than the burst
+    // limit in practice: two briefing loads in ten seconds exceeded it, and
+    // `long` capped a session at roughly four loads per minute.
+    //
+    // Limits are per IP, so anyone behind shared NAT -- an office, a library, a
+    // household -- consumed the same budget collectively.
+    //
+    // Raised to leave headroom for normal navigation while still bounding
+    // abuse: the sustained windows, not the burst window, are what protect
+    // against a scripted client. Reducing the fan-out itself (batching the
+    // per-bill queries, and the duplicate BriefingPrefetch/MyProfile calls) is
+    // the better fix and is tracked separately -- this stops legitimate use
+    // from being throttled today.
     ThrottlerModule.forRoot([
       {
         name: 'short',
         ttl: 1000, // 1 second
-        limit: 10, // 10 requests per second
+        limit: 50, // ~2 briefing loads' worth of burst
       },
       {
         name: 'medium',
         ttl: 10000, // 10 seconds
-        limit: 50, // 50 requests per 10 seconds
+        limit: 200, // ~9 page loads in 10s
       },
       {
         name: 'long',
         ttl: 60000, // 1 minute
-        limit: 100, // 100 requests per minute
+        limit: 600, // ~28 page loads/min — brisk human use, not a script
       },
     ]),
     GraphQLModule.forRootAsync<ApolloGatewayDriverConfig>({
