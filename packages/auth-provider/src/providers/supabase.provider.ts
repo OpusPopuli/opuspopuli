@@ -828,6 +828,44 @@ export class SupabaseAuthProvider implements IAuthProvider {
   }
 
   /**
+   * Revoke a session at GoTrue, so its refresh token stops working.
+   *
+   * Logout previously only deactivated our own `user_sessions` rows and
+   * cleared cookies. GoTrue was never told, so the refresh token it issued
+   * stayed valid for its full 7 days — a logged-out session that anyone
+   * holding that token could still redeem. Verified in production: a refresh
+   * token minted at 15:12 was still `revoked=f` after a successful logout 21
+   * seconds later.
+   *
+   * Scoped to THIS session, not the user's other devices. Logging out of one
+   * browser must not sign you out of your phone.
+   *
+   * Never throws. The caller's next action is to clear cookies and it must
+   * happen regardless — a GoTrue outage that blocked sign-out would leave the
+   * user authenticated on the device in front of them, trading a credential
+   * they cannot see for one they can.
+   */
+  async signOut(accessToken: string): Promise<void> {
+    if (!accessToken?.trim()) return;
+
+    try {
+      // admin.signOut revokes by access token without disturbing the
+      // client-level session this provider instance holds, which is shared
+      // across requests and must not be mutated by one user's logout.
+      const { error } = await this.supabase.auth.admin.signOut(
+        accessToken,
+        "local",
+      );
+      if (error) throw error;
+    } catch (error) {
+      this.logger.error(
+        `Failed to revoke session at provider: ${(error as Error).message}`,
+      );
+      // Deliberately swallowed — see the contract on IAuthProvider.signOut.
+    }
+  }
+
+  /**
    * Send a magic link email via SMTP.
    */
   private async sendMagicLinkEmail(

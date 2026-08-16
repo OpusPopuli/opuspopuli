@@ -848,4 +848,43 @@ export class AuthResolver {
       });
     }
   }
+
+  /**
+   * Revoke a session at the auth provider — the server half of logout.
+   *
+   * Same shape as `refreshSession` above and for the same reasons:
+   * `@inaccessible` keeps it out of the composed public schema so it is
+   * reachable only by an HMAC-signed call from the gateway's logout route, and
+   * `@Public()` because the access token being presented may already be
+   * expired. Requiring a valid one is precisely the bug this replaces — the
+   * federated `logout` mutation is auth-guarded, so a user whose 15-minute
+   * token had lapsed got `Forbidden resource` and kept every cookie.
+   *
+   * Returns true unconditionally. The gateway clears cookies regardless of
+   * what happens here, so there is no failure this can report that would
+   * usefully change the caller's behaviour, and an exception would only risk
+   * the gateway treating a revoked session as a failed logout.
+   */
+  @Public()
+  @Directive('@inaccessible')
+  @Throttle({ default: AUTH_THROTTLE.logout })
+  @Mutation(() => Boolean)
+  async revokeSession(
+    @Args('accessToken') accessToken: string,
+    @Context() context: GqlContext,
+  ): Promise<boolean> {
+    const auditContext = createAuditContext(context, this.serviceName);
+
+    await this.authService.revokeSession(accessToken);
+
+    this.auditLogService?.log({
+      ...auditContext,
+      action: AuditAction.LOGOUT,
+      success: true,
+      resolverName: 'revokeSession',
+      operationType: 'mutation',
+    });
+
+    return true;
+  }
 }

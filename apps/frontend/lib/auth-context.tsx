@@ -10,6 +10,7 @@ import {
   ReactNode,
 } from "react";
 import { clearIdentityScopedCache } from "./apollo-cache-keys";
+import { requestServerSignOut } from "./auth-signout";
 import { useMutation } from "@apollo/client/react";
 import { jwtDecode } from "jwt-decode";
 import {
@@ -23,7 +24,6 @@ import {
   VERIFY_PASSKEY_REGISTRATION,
   GENERATE_PASSKEY_AUTHENTICATION_OPTIONS,
   VERIFY_PASSKEY_AUTHENTICATION,
-  LOGOUT,
   LoginUserInput,
   RegisterUserInput,
   LoginUserData,
@@ -32,7 +32,6 @@ import {
   VerifyMagicLinkData,
   RegisterWithMagicLinkData,
   AuthTokens,
-  LogoutData,
 } from "./graphql/auth";
 import {
   startRegistration,
@@ -162,7 +161,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   }>(VERIFY_PASSKEY_AUTHENTICATION);
 
   // Logout mutation to clear httpOnly cookies
-  const [logoutMutation] = useMutation<LogoutData>(LOGOUT);
 
   // Helper to store user info after authentication
   // SECURITY: Tokens are stored in httpOnly cookies by the backend
@@ -533,13 +531,17 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   // ============================================
 
   const logout = useCallback(async () => {
-    // Call backend to clear httpOnly cookies
-    try {
-      await logoutMutation();
-    } catch {
-      // Continue with local cleanup even if backend call fails
-      console.warn("Failed to call logout endpoint");
-    }
+    // Clear the httpOnly cookies server-side, and revoke the session at the
+    // auth provider.
+    //
+    // Was `await logoutMutation()`. That mutation is auth-guarded, so it threw
+    // `Forbidden resource` for anyone whose 15-minute access token had lapsed,
+    // and even on success its cookie clearing happened on the users subgraph's
+    // response and never reached the browser. Users stayed signed in after
+    // logging out; one registered a new account and landed in the old
+    // account's briefing. requestServerSignOut never throws, so the local
+    // cleanup below always runs.
+    await requestServerSignOut();
 
     // Clear local state
     setUser(null);
@@ -552,7 +554,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     // and personalization signals from the persisted cache, cache-first,
     // before any network request happens.
     void clearIdentityScopedCache();
-  }, [logoutMutation]);
+  }, []);
 
   const clearError = useCallback(() => {
     setError(null);

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { AuthCheckIcon } from "@/components/auth/AuthUI";
+import { AUTH_FULL_OPTIONS } from "@/lib/features";
 
 /** Reusable spinning indicator shared between the Suspense fallback and the verifying state. */
 function AuthSpinner() {
@@ -181,7 +182,15 @@ function AuthCallbackContent() {
   // "Add a Passkey" or "Skip for now" — so it must NOT be auto-dismissed.
   // Everything else was an interstitial that only ever said "click here to
   // continue", which is the click this removes.
-  const isAwaitingPasskeyChoice = isNewUser && supportsPasskeys;
+  //
+  // Gated on AUTH_FULL_OPTIONS, which is what hides passkey sign-in on /login
+  // and /register. This screen was missing that check, so it was the ONLY
+  // place in the product offering passkeys — a new user was invited to set one
+  // up and then had nowhere to use it. `supportsPasskeys` answers "can this
+  // browser do WebAuthn", which is a different question from "do we offer it",
+  // and only the second one should decide whether the screen appears.
+  const isAwaitingPasskeyChoice =
+    AUTH_FULL_OPTIONS && isNewUser && supportsPasskeys;
 
   useEffect(() => {
     if (status !== "success" || isAwaitingPasskeyChoice) return;
@@ -242,8 +251,11 @@ function AuthCallbackContent() {
     );
   }
 
-  // Success state - show passkey prompt for new users
-  if (isNewUser && supportsPasskeys) {
+  // Success state - show passkey prompt for new users.
+  // Same condition as the effect above, deliberately: if these two disagree,
+  // either the screen renders and is instantly redirected away, or the
+  // redirect is suppressed and the user is stranded on a blank success page.
+  if (isAwaitingPasskeyChoice) {
     return (
       <div className="bg-surface rounded-lg p-8 text-center">
         <AuthCheckIcon />

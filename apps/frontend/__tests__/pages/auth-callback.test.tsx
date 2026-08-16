@@ -27,6 +27,23 @@ jest.mock("next/navigation", () => ({
  * Each test still declares its params via `mockSearchParamsGet`; this just
  * translates that into a real URL before mounting.
  */
+/*
+ * AUTH_FULL_OPTIONS is a build-time constant, so it is mocked through a getter
+ * rather than set — the page reads it on every render, and a plain value would
+ * freeze at whatever the first test happened to leave behind.
+ *
+ * Default OFF, matching production. The passkey screen is gated on this flag
+ * because it was previously the only surface in the product offering
+ * passkeys — sign-in on /login and /register already hid them — so a new user
+ * was invited to enrol a credential they then had nowhere to use.
+ */
+let mockAuthFullOptions = false;
+jest.mock("@/lib/features", () => ({
+  get AUTH_FULL_OPTIONS() {
+    return mockAuthFullOptions;
+  },
+}));
+
 const PARAM_KEYS = ["token", "email", "type", "redirect"] as const;
 
 function renderCallback() {
@@ -334,7 +351,67 @@ describe("AuthCallbackPage", () => {
     });
   });
 
+  describe("passkeys disabled (production default)", () => {
+    /*
+     * The regression this guards. A user registered, verified their email, was
+     * shown a passkey prompt, skipped it — and that prompt was the only place
+     * in the product where passkeys existed at all, since /login and /register
+     * hide them behind the same flag. The screen asked for a decision about a
+     * feature the user could not subsequently use.
+     *
+     * `supportsPasskeys: true` throughout: the browser CAN do WebAuthn. That
+     * is deliberately not the question. Only whether we offer it should decide
+     * whether the screen appears, and conflating the two is what produced the
+     * bug.
+     */
+    const registerAsNewUser = () => {
+      mockSearchParamsGet = jest.fn().mockImplementation((key: string) => {
+        if (key === "email") return "test@example.com";
+        if (key === "token") return "valid-token";
+        if (key === "type") return "register";
+        return null;
+      });
+      mockVerifyMagicLink.mockResolvedValue(undefined);
+      mockAuthContextValue = { ...defaultAuthContext, supportsPasskeys: true };
+    };
+
+    it("does not show the passkey prompt to a new user", async () => {
+      registerAsNewUser();
+
+      renderCallback();
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalled();
+      });
+      expect(screen.queryByText("Add a Passkey")).not.toBeInTheDocument();
+      expect(screen.queryByText("Skip for now")).not.toBeInTheDocument();
+    });
+
+    it("sends the new user straight on to onboarding", async () => {
+      registerAsNewUser();
+
+      renderCallback();
+
+      // Not stranded on a success page with nothing to click: the effect and
+      // the render guard share one condition precisely so that turning the
+      // screen off also turns the redirect on.
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith("/onboarding");
+      });
+    });
+  });
+
   describe("success state - new user with passkey support", () => {
+    // These describe the screen as it behaves when passkeys are ENABLED. They
+    // are kept rather than deleted so the behaviour is still specified for
+    // whenever AUTH_FULL_OPTIONS is flipped back on (see #671).
+    beforeEach(() => {
+      mockAuthFullOptions = true;
+    });
+    afterEach(() => {
+      mockAuthFullOptions = false;
+    });
+
     // The one screen that must still wait for a click. It offers a real choice
     // — "Add a Passkey" or "Skip for now" — so auto-navigating past it would
     // silently kill passkey enrolment for every new user.

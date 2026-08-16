@@ -379,6 +379,36 @@ export class AuthService {
     };
   }
 
+  /**
+   * End a session at the auth provider so its refresh token stops working.
+   *
+   * Best-effort by design, and the inverse of `refreshSession` above: there,
+   * swallowing the provider's error would destroy the signal the caller needs;
+   * here, surfacing it would let a provider outage block sign-out. A logout
+   * that fails is a user still logged in.
+   *
+   * A provider without `signOut` is not an error — the capability is optional
+   * on `IAuthProvider`, and cookie clearing (which the gateway does regardless)
+   * is what actually ends the session from the browser's point of view.
+   */
+  async revokeSession(accessToken: string): Promise<void> {
+    if (!this.authProvider.signOut) {
+      this.logger.warn(
+        'Auth provider cannot revoke sessions; clearing cookies only',
+      );
+      return;
+    }
+
+    try {
+      await this.authProvider.signOut(accessToken);
+      this.logger.log('Session revoked at provider');
+    } catch (err) {
+      this.logger.warn(
+        `Provider session revocation failed: ${(err as Error).message}`,
+      );
+    }
+  }
+
   private async sendWelcomeEmailSafely(
     userId: string,
     email: string,

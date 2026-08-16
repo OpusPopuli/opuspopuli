@@ -91,4 +91,8 @@ export const AUTH_THROTTLE = {
   magicLink: { name: 'auth-magic-link', ttl: 60000, limit: 3 },
   passkey: { name: 'auth-passkey', ttl: 60000, limit: 10 },
   refresh: { name: 'auth-refresh', ttl: 60000, limit: 20 },
+  // Deliberately loose. Throttling sign-out protects nothing — the caller
+  // already holds the session — and a rejected logout leaves the user
+  // authenticated, which is the outcome this endpoint exists to prevent.
+  logout: { name: 'auth-logout', ttl: 60000, limit: 30 },
 } as const;

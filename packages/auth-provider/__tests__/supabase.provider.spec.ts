@@ -27,6 +27,7 @@ const mockAuth = {
     getUserById: jest.fn(),
     listUsers: jest.fn(),
     generateLink: jest.fn(),
+    signOut: jest.fn(),
   },
 };
 
@@ -1372,6 +1373,72 @@ describe("SupabaseAuthProvider", () => {
         error: null,
       });
       await provider.refreshSession(secret);
+
+      const everythingLogged = [...errorSpy.mock.calls, ...logSpy.mock.calls]
+        .flat()
+        .join(" ");
+      expect(everythingLogged).not.toContain(secret);
+    });
+  });
+  describe("signOut", () => {
+    /*
+     * The contract is "never throws". It is load-bearing rather than
+     * defensive: the gateway awaits this before clearing cookies, so anything
+     * that escapes here would skip the clear and leave the user signed in —
+     * the exact production failure this method was added to fix. Each case
+     * below is a way the provider can fail that must NOT become a failed
+     * logout.
+     */
+    it("revokes the session locally, not across the user's other devices", async () => {
+      mockAuth.admin.signOut.mockResolvedValue({ error: null });
+
+      await provider.signOut("access-token-123");
+
+      // "local" scope: logging out of this browser must not sign the user out
+      // of their phone.
+      expect(mockAuth.admin.signOut).toHaveBeenCalledWith(
+        "access-token-123",
+        "local",
+      );
+    });
+
+    it("does not throw when the provider returns an error", async () => {
+      mockAuth.admin.signOut.mockResolvedValue({
+        error: new Error("token already revoked"),
+      });
+
+      await expect(provider.signOut("tok")).resolves.toBeUndefined();
+    });
+
+    it("does not throw when the provider is unreachable", async () => {
+      mockAuth.admin.signOut.mockRejectedValue(new Error("ECONNREFUSED"));
+
+      await expect(provider.signOut("tok")).resolves.toBeUndefined();
+    });
+
+    it("skips the call entirely for an empty token", async () => {
+      mockAuth.admin.signOut.mockClear();
+
+      await provider.signOut("");
+      await provider.signOut("   ");
+
+      // Nothing to revoke, and a blank token would only earn a 4xx.
+      expect(mockAuth.admin.signOut).not.toHaveBeenCalled();
+    });
+
+    it("never logs the access token", async () => {
+      const secret = "super-secret-access-token";
+      const errorSpy = jest
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .spyOn((provider as any).logger, "error")
+        .mockImplementation(() => undefined);
+      const logSpy = jest
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .spyOn((provider as any).logger, "log")
+        .mockImplementation(() => undefined);
+
+      mockAuth.admin.signOut.mockRejectedValue(new Error("boom"));
+      await provider.signOut(secret);
 
       const everythingLogged = [...errorSpy.mock.calls, ...logSpy.mock.calls]
         .flat()
