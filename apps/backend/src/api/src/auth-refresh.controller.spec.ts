@@ -206,6 +206,88 @@ describe('AuthRefreshController', () => {
     });
   });
 
+  /**
+   * The production identity swap this guard exists for.
+   *
+   * During sign-in an in-flight query 401s on the OUTGOING user's expired
+   * access token. The browser still carries that user's refresh cookie, so
+   * renewal mints a valid session for them and overwrites the cookies the new
+   * login just set -- leaving the arriving user holding someone else's refresh
+   * token. Minutes later they are silently signed in as that person.
+   */
+  describe('identity swap protection', () => {
+    const USER_A = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiAidXNlci1hIiwgImVtYWlsIjogInVzZXItYUBleGFtcGxlLnRlc3QifQ.sig';
+    const USER_B = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiAidXNlci1iIiwgImVtYWlsIjogInVzZXItYkBleGFtcGxlLnRlc3QifQ.sig';
+
+    it('refuses to renew into a different identity than the caller holds', async () => {
+      fetchMock.mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: { refreshSession: { ...renewed, accessToken: USER_B } },
+        }),
+      });
+      const res = createResponse();
+
+      await expect(
+        controller.refresh(
+          createRequest({ 'refresh-token': 'belongs-to-B', 'access-token': USER_A }),
+          res,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+
+      // The mismatched pair must not survive the rejection.
+      expect(res.clearCookie).toHaveBeenCalled();
+      expect(res.cookie).not.toHaveBeenCalled();
+    });
+
+    it('allows renewal when the identity matches', async () => {
+      fetchMock.mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: { refreshSession: { ...renewed, accessToken: USER_A } },
+        }),
+      });
+      const res = createResponse();
+
+      await controller.refresh(
+        createRequest({ 'refresh-token': 'belongs-to-A', 'access-token': USER_A }),
+        res,
+      );
+
+      expect(res.cookie).toHaveBeenCalled();
+    });
+
+    // The ordinary case: the access cookie's Max-Age matches the token's, so
+    // by the time renewal is needed the browser has already dropped it. With
+    // nothing to compare, the check must not block a legitimate renewal.
+    it('renews normally when no access cookie remains to compare', async () => {
+      fetchMock.mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: { refreshSession: { ...renewed, accessToken: USER_B } },
+        }),
+      });
+      const res = createResponse();
+
+      await controller.refresh(createRequest({ 'refresh-token': 'old' }), res);
+
+      expect(res.cookie).toHaveBeenCalled();
+    });
+
+    it('does not block on an unparseable access cookie', async () => {
+      fetchMock.mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: { refreshSession: { ...renewed, accessToken: USER_A } },
+        }),
+      });
+      const res = createResponse();
+
+      await controller.refresh(
+        createRequest({ 'refresh-token': 'x', 'access-token': 'not-a-jwt' }),
+        res,
+      );
+
+      expect(res.cookie).toHaveBeenCalled();
+    });
+  });
+
   it('should fail without clearing cookies when no users subgraph is configured', async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthRefreshController],

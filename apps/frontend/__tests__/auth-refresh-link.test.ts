@@ -149,6 +149,37 @@ describe("sessionRefreshLink", () => {
     expect(observedContext[SKIP_EXPIRED_REDIRECT]).toBeUndefined();
   });
 
+  /**
+   * The production identity swap. On /auth/callback an in-flight query 401s
+   * using the OUTGOING user's expired token; renewing there redeems that
+   * user's refresh cookie and overwrites the cookies the new login just set.
+   */
+  it("does not renew while on an auth route", async () => {
+    mockRefreshSession.mockResolvedValue("renewed");
+    const original = globalThis.location.pathname;
+    globalThis.history.replaceState({}, "", "/auth/callback?type=register");
+
+    const { link: terminating } = createTerminatingLink(99);
+    await run(ApolloLink.from([sessionRefreshLink, terminating]));
+
+    expect(mockRefreshSession).not.toHaveBeenCalled();
+
+    globalThis.history.replaceState({}, "", original);
+  });
+
+  it("does renew on an ordinary app route", async () => {
+    mockRefreshSession.mockResolvedValue("renewed");
+    const original = globalThis.location.pathname;
+    globalThis.history.replaceState({}, "", "/me/briefing");
+
+    const { link: terminating } = createTerminatingLink(1);
+    await run(ApolloLink.from([sessionRefreshLink, terminating]));
+
+    expect(mockRefreshSession).toHaveBeenCalled();
+
+    globalThis.history.replaceState({}, "", original);
+  });
+
   it("ignores non-auth errors entirely", async () => {
     mockRefreshSession.mockResolvedValue("renewed");
     const serverError = Object.assign(new Error("boom"), { statusCode: 500 });

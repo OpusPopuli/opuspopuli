@@ -27,6 +27,24 @@ const DEFAULT_GEOCODER_URL =
   'https://geocoding.geo.census.gov/geocoder/geographies/address';
 
 @Injectable()
+/**
+ * The geocoder could not be consulted -- network failure, timeout, or a non-OK
+ * response. Distinct from "no match", which is a definitive answer that the
+ * address does not exist.
+ *
+ * The difference decides what the user is told and whether retrying helps:
+ * a bad address needs correcting, an unreachable service needs waiting.
+ * Collapsing the two -- which is what returning null for both used to do --
+ * means telling someone their address is wrong when the truth is we never
+ * checked.
+ */
+export class GeocoderUnavailableError extends Error {
+  constructor(cause: string) {
+    super(`Geocoder unavailable: ${cause}`);
+    this.name = "GeocoderUnavailableError";
+  }
+}
+
 export class GeocodingService {
   private readonly logger = new Logger(GeocodingService.name);
   private readonly baseUrl: string;
@@ -38,7 +56,10 @@ export class GeocodingService {
 
   /**
    * Geocode a US address and return coordinates + civic districts.
-   * Returns null if the address cannot be geocoded.
+   *
+   * Returns null when the geocoder answers definitively that no such address
+   * exists. Throws GeocoderUnavailableError when it could not be consulted at
+   * all. Callers must treat those differently -- see the error's doc comment.
    */
   async geocode(
     addressLine1: string,
@@ -67,7 +88,8 @@ export class GeocodingService {
         this.logger.warn(
           `Census Geocoder returned ${response.status} for ${addressLine1}, ${city}, ${state}`,
         );
-        return null;
+        // Not a verdict on the address -- the service failed to give one.
+        throw new GeocoderUnavailableError(`HTTP ${response.status}`);
       }
 
       const data = await response.json();
@@ -116,10 +138,16 @@ export class GeocodingService {
         timezone: this.deriveTimezone(match.coordinates?.x),
       };
     } catch (error) {
+      // Already classified as unavailable above -- do not downgrade it to a
+      // verdict on the address.
+      if (error instanceof GeocoderUnavailableError) throw error;
+
+      // Network failure, DNS, timeout, or malformed JSON. We never got an
+      // answer, so we cannot say the address is wrong.
       this.logger.warn(
         `Geocoding failed for ${addressLine1}, ${city}, ${state}: ${(error as Error).message}`,
       );
-      return null;
+      throw new GeocoderUnavailableError((error as Error).message);
     }
   }
 

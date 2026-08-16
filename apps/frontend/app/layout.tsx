@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Playfair_Display } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme-context";
 import { ApolloProvider } from "@/lib/apollo-provider";
@@ -8,17 +8,49 @@ import { OnboardingProvider } from "@/lib/onboarding-context";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { JsonLd } from "@/components/JsonLd";
 
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+/*
+ * Fonts are served from this repo, NOT fetched from Google at build time.
+ *
+ * `next/font/google` downloads the woff2 files during every build. That makes
+ * fonts.gstatic.com a hard dependency of both CI and production deploys, and
+ * it is not hypothetical: a build failed with "Failed to fetch font file from
+ * https://fonts.gstatic.com/..." and took the whole pipeline with it. Nothing
+ * about our code had changed. A deploy that can be broken by someone else's
+ * CDN is a deploy we do not control.
+ *
+ * Variable fonts, so this is three files rather than the thirteen static
+ * weights the previous configuration implied — ~126 KB total. The `weight`
+ * ranges below must cover every weight used in the design, since a variable
+ * font clamps to its declared range rather than failing loudly.
+ *
+ * Both faces are SIL Open Font License, which permits redistribution and
+ * embedding. OFL is not a GPL-family licence, so this does not touch the
+ * AGPL-3.0 constraint in CLAUDE.md.
+ *
+ * The CSS variable names are load-bearing: globals.css resolves the type
+ * scale through them. Renaming either one silently falls back to system fonts.
+ */
+const inter = localFont({
+  src: "./fonts/inter-variable.woff2",
+  weight: "300 700",
+  style: "normal",
   variable: "--font-inter",
   display: "swap",
 });
 
-const playfairDisplay = Playfair_Display({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  style: ["normal", "italic"],
+const playfairDisplay = localFont({
+  src: [
+    {
+      path: "./fonts/playfair-display-variable.woff2",
+      weight: "400 700",
+      style: "normal",
+    },
+    {
+      path: "./fonts/playfair-display-variable-italic.woff2",
+      weight: "400 700",
+      style: "italic",
+    },
+  ],
   variable: "--font-playfair-display",
   display: "swap",
 });

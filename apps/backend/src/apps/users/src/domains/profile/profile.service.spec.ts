@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 
 import { ProfileService } from './profile.service';
 import {
@@ -20,7 +24,10 @@ import {
 import { ConsentType, ConsentStatus } from 'src/common/enums/consent.enum';
 import { AddressType } from 'src/common/enums/address.enum';
 import { CreateAddressDto } from './dto/address.dto';
-import { GeocodingService } from './geocoding.service';
+import {
+  GeocodingService,
+  GeocoderUnavailableError,
+} from './geocoding.service';
 import { JurisdictionResolutionService } from './jurisdiction-resolution.service';
 
 describe('ProfileService', () => {
@@ -144,8 +151,18 @@ describe('ProfileService', () => {
 
   beforeEach(async () => {
     mockDb = createMockDbClient();
+    // Default to a SUCCESSFUL geocode. Address creation now requires one --
+    // an address that cannot be resolved to districts is rejected rather than
+    // stored -- so defaulting to null would turn every address test into a
+    // rejection test.
     mockGeocodingService = {
-      geocode: jest.fn().mockResolvedValue(null),
+      geocode: jest.fn().mockResolvedValue({
+        latitude: 40.7128,
+        longitude: -74.006,
+        formattedAddress: '123 Main St, New York, NY 10001',
+        congressionalDistrict: 'Congressional District 12',
+        county: 'New York County',
+      }),
     } as unknown as jest.Mocked<GeocodingService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -330,13 +347,22 @@ describe('ProfileService', () => {
       };
 
       mockDb.userAddress.create.mockResolvedValue(mockAddress);
+      // Re-read after geocoding: the caller gets the enriched row (verified,
+      // with districts), not the bare one that was inserted a moment earlier.
+      const geocoded = {
+        ...mockAddress,
+        isVerified: true,
+        congressionalDistrict: 'Congressional District 12',
+      };
+      mockDb.userAddress.findUniqueOrThrow.mockResolvedValue(geocoded);
 
       const result = await service.createAddress(
         mockUserId,
         createDto as CreateAddressDto,
       );
 
-      expect(result).toEqual(mockAddress);
+      expect(result).toEqual(geocoded);
+      expect(result.isVerified).toBe(true);
     });
 
     it('should unset other primary addresses when creating primary', async () => {
@@ -352,6 +378,7 @@ describe('ProfileService', () => {
 
       mockDb.userAddress.updateMany.mockResolvedValue({ count: 1 });
       mockDb.userAddress.create.mockResolvedValue(mockAddress);
+      mockDb.userAddress.findUniqueOrThrow.mockResolvedValue(mockAddress);
 
       await service.createAddress(mockUserId, createDto as CreateAddressDto);
 
@@ -362,6 +389,75 @@ describe('ProfileService', () => {
     });
   });
 
+  describe('createAddress geocoding requirements', () => {
+    const createDto = {
+      addressType: AddressType.RESIDENTIAL,
+      addressLine1: '101 Main Steet',
+      city: 'Los Angeles',
+      state: 'CA',
+      postalCode: '90210',
+      country: 'US',
+      isPrimary: true,
+    };
+
+    /**
+     * Previously the address saved regardless and geocoding ran
+     * fire-and-forget. A typo produced a stored address with isVerified false,
+     * no districts and no representatives -- and no error. The user was left
+     * looking at a prompt asking for the address they had just supplied.
+     */
+    it('rejects an address the geocoder cannot find', async () => {
+      mockGeocodingService.geocode = jest.fn().mockResolvedValue(null);
+      mockDb.userAddress.create.mockResolvedValue(mockAddress);
+
+      await expect(
+        service.createAddress(mockUserId, createDto as CreateAddressDto),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('does not leave the unresolvable address behind', async () => {
+      mockGeocodingService.geocode = jest.fn().mockResolvedValue(null);
+      mockDb.userAddress.create.mockResolvedValue(mockAddress);
+
+      await expect(
+        service.createAddress(mockUserId, createDto as CreateAddressDto),
+      ).rejects.toThrow();
+
+      expect(mockDb.userAddress.delete).toHaveBeenCalledWith({
+        where: { id: mockAddress.id },
+      });
+    });
+
+    /**
+     * "We could not check" is not "your address is wrong". A 400 here would
+     * tell someone to correct an address that may be perfectly correct, and
+     * send them round a loop that cannot succeed while the geocoder is down.
+     */
+    it('reports a geocoder outage as unavailable, not as a bad address', async () => {
+      mockGeocodingService.geocode = jest
+        .fn()
+        .mockRejectedValue(new GeocoderUnavailableError('HTTP 503'));
+      mockDb.userAddress.create.mockResolvedValue(mockAddress);
+
+      await expect(
+        service.createAddress(mockUserId, createDto as CreateAddressDto),
+      ).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it('rolls the address back on a geocoder outage too', async () => {
+      mockGeocodingService.geocode = jest
+        .fn()
+        .mockRejectedValue(new GeocoderUnavailableError('timeout'));
+      mockDb.userAddress.create.mockResolvedValue(mockAddress);
+
+      await expect(
+        service.createAddress(mockUserId, createDto as CreateAddressDto),
+      ).rejects.toThrow();
+
+      expect(mockDb.userAddress.delete).toHaveBeenCalled();
+    });
+  });
+
   describe('updateAddress', () => {
     it('should update address', async () => {
       const updateDto = { id: mockAddress.id, city: 'Boston' };
@@ -369,10 +465,59 @@ describe('ProfileService', () => {
 
       mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
       mockDb.userAddress.update.mockResolvedValue(updatedAddress);
+      // Changing city re-geocodes, and the caller gets the re-read row.
+      mockDb.userAddress.findUniqueOrThrow.mockResolvedValue(updatedAddress);
 
       const result = await service.updateAddress(mockUserId, updateDto);
 
       expect(result).toEqual(updatedAddress);
+    });
+
+    /**
+     * Editing is where a CORRECTION happens -- someone fixing the typo that
+     * stopped their reps appearing. This path used to be fire-and-forget, so
+     * the correction could fail silently at exactly the moment the user was
+     * trying to recover.
+     */
+    it('rejects an edit the geocoder cannot resolve', async () => {
+      mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockDb.userAddress.update.mockResolvedValue({
+        ...mockAddress,
+        city: 'Nowhere',
+      });
+      mockGeocodingService.geocode = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        service.updateAddress(mockUserId, {
+          id: mockAddress.id,
+          city: 'Nowhere',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    // Unlike creation, a working address existed a moment ago. Deleting it
+    // would punish someone for a typo, so the previous values are restored.
+    it('restores the previous values when an edit cannot be resolved', async () => {
+      mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockDb.userAddress.update.mockResolvedValue({
+        ...mockAddress,
+        city: 'Nowhere',
+      });
+      mockGeocodingService.geocode = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        service.updateAddress(mockUserId, {
+          id: mockAddress.id,
+          city: 'Nowhere',
+        }),
+      ).rejects.toThrow();
+
+      expect(mockDb.userAddress.delete).not.toHaveBeenCalled();
+      expect(mockDb.userAddress.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ city: mockAddress.city }),
+        }),
+      );
     });
 
     it('should throw NotFoundException if address not found', async () => {

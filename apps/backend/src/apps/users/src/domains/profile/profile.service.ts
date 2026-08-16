@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IStorageProvider } from '@opuspopuli/storage-provider';
@@ -22,7 +24,10 @@ import { CreateAddressDto, UpdateAddressDto } from './dto/address.dto';
 import { UpdateNotificationPreferencesDto } from './dto/notification-preferences.dto';
 import { UpdateConsentDto } from './dto/consent.dto';
 import { ProfileCompletionResult } from './models/profile-completion.model';
-import { GeocodingService } from './geocoding.service';
+import {
+  GeocodingService,
+  GeocoderUnavailableError,
+} from './geocoding.service';
 import { JurisdictionResolutionService } from './jurisdiction-resolution.service';
 
 @Injectable()
@@ -244,10 +249,39 @@ export class ProfileService {
       },
     });
 
-    // Geocode async — don't block address creation
-    this.geocodeAndUpdate(userId, address.id, createDto).catch(() => {});
+    // Geocode BEFORE returning, and fail the write if it cannot be resolved.
+    //
+    // This used to be fire-and-forget: the address was saved regardless, and a
+    // failed geocode silently left isVerified false with no districts. The user
+    // saw no error, no representatives, and a prompt asking for the address
+    // they had just given. An unresolvable address is not a usable address --
+    // districts are the entire reason we collect it -- so it is rejected at the
+    // door rather than stored as a dead record.
+    //
+    // The trade this accepts: address entry now depends on the Census geocoder
+    // being reachable. GeocoderUnavailableError is surfaced as 503 rather than
+    // 400 so an outage cannot be mistaken for a bad address, by the user or by
+    // whoever reads the logs.
+    try {
+      await this.geocodeAndUpdate(userId, address.id, createDto);
+    } catch (error) {
+      // Roll back the row: a saved-but-unresolvable address is precisely the
+      // dead record this change exists to stop creating.
+      await this.db.userAddress.delete({ where: { id: address.id } });
 
-    return address;
+      // "We could not check" is not "your address is wrong". A 400 tells the
+      // user to correct something that may be perfectly correct, and sends
+      // them round a loop that cannot succeed while the geocoder is down.
+      if (error instanceof GeocoderUnavailableError) {
+        this.logger.warn(`Address rejected, geocoder down: ${error.message}`);
+        throw new ServiceUnavailableException(
+          'We could not verify addresses just now. Please try again shortly.',
+        );
+      }
+      throw error;
+    }
+
+    return this.db.userAddress.findUniqueOrThrow({ where: { id: address.id } });
   }
 
   async updateAddress(
@@ -280,14 +314,48 @@ export class ProfileService {
       data: updateData,
     });
 
-    // Re-geocode if address fields changed
+    // Re-geocode if address fields changed, and hold the caller to the same
+    // bar as creation.
+    //
+    // Editing is where a correction happens -- someone fixing the typo that
+    // stopped their reps appearing. Leaving this fire-and-forget would mean
+    // the correction silently failing at exactly the moment the user is
+    // trying to recover, which is worse than the original defect.
+    //
+    // On failure the PREVIOUS values are restored rather than the row being
+    // deleted: unlike creation, there was a working address here a moment ago
+    // and destroying it would punish someone for a typo.
     if (
       updateDto.addressLine1 ||
       updateDto.city ||
       updateDto.state ||
       updateDto.postalCode
     ) {
-      this.geocodeAndUpdate(userId, updated.id, updated).catch(() => {});
+      try {
+        await this.geocodeAndUpdate(userId, updated.id, updated);
+      } catch (error) {
+        await this.db.userAddress.update({
+          where: { id: address.id },
+          data: {
+            addressLine1: address.addressLine1,
+            addressLine2: address.addressLine2,
+            city: address.city,
+            state: address.state,
+            postalCode: address.postalCode,
+            isPrimary: address.isPrimary,
+          },
+        });
+
+        if (error instanceof GeocoderUnavailableError) {
+          this.logger.warn(`Address edit rejected, geocoder down: ${error.message}`);
+          throw new ServiceUnavailableException(
+            'We could not verify addresses just now. Please try again shortly.',
+          );
+        }
+        throw error;
+      }
+
+      return this.db.userAddress.findUniqueOrThrow({ where: { id: address.id } });
     }
 
     return updated;
@@ -316,7 +384,13 @@ export class ProfileService {
       address.postalCode,
     );
 
-    if (!result) return;
+    // A definitive "no such address". Rejecting is the point: storing it would
+    // reproduce the silent dead-end this replaced.
+    if (!result) {
+      throw new BadRequestException(
+        'We could not find that address. Check the street, city and ZIP code and try again.',
+      );
+    }
 
     await this.db.userAddress.update({
       where: { id: addressId },

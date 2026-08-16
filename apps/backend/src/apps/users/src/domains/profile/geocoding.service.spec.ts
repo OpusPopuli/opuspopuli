@@ -1,4 +1,7 @@
-import { GeocodingService } from './geocoding.service';
+import {
+  GeocodingService,
+  GeocoderUnavailableError,
+} from './geocoding.service';
 
 describe('GeocodingService', () => {
   let service: GeocodingService;
@@ -156,32 +159,46 @@ describe('GeocodingService', () => {
       jest.restoreAllMocks();
     });
 
-    it('should return null when fetch fails', async () => {
+    // Throws rather than returning null, and the distinction is load-bearing:
+    // null means "the geocoder says no such address", which the caller turns
+    // into a 400 telling the user to correct it. A network failure is not that
+    // -- we never got an answer -- so it must not be reported as a verdict on
+    // the address.
+    it('throws GeocoderUnavailableError when fetch fails', async () => {
       jest.spyOn(global, 'fetch').mockRejectedValue(new Error('Network error'));
 
-      const result = await service.geocode(
-        '123 Main St',
-        'Anytown',
-        'CA',
-        '90210',
-      );
+      await expect(
+        service.geocode('123 Main St', 'Anytown', 'CA', '90210'),
+      ).rejects.toThrow(GeocoderUnavailableError);
 
-      expect(result).toBeNull();
       jest.restoreAllMocks();
     });
 
-    it('should return null when API returns non-200', async () => {
+    it('throws GeocoderUnavailableError when the API returns non-200', async () => {
       const mockResponse = { ok: false, status: 500, statusText: 'Error' };
       jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as Response);
 
-      const result = await service.geocode(
-        '123 Main St',
-        'Anytown',
-        'CA',
-        '90210',
-      );
+      await expect(
+        service.geocode('123 Main St', 'Anytown', 'CA', '90210'),
+      ).rejects.toThrow(GeocoderUnavailableError);
 
-      expect(result).toBeNull();
+      jest.restoreAllMocks();
+    });
+
+    // The other half of the contract: a 200 with zero matches IS a verdict --
+    // the address does not exist -- and must stay null so the caller can tell
+    // the user to correct it.
+    it('returns null when the geocoder finds no match', async () => {
+      const mockResponse = {
+        ok: true,
+        json: async () => ({ result: { addressMatches: [] } }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as Response);
+
+      await expect(
+        service.geocode('101 Main Steet', 'Los Angeles', 'CA', '90210'),
+      ).resolves.toBeNull();
+
       jest.restoreAllMocks();
     });
 
