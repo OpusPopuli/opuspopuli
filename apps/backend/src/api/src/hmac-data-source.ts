@@ -8,6 +8,71 @@ import { MetricsService } from 'src/common/metrics';
 import { context as otelContext, propagation } from '@opentelemetry/api';
 
 /**
+ * Wrap the default fetcher so multiple `Set-Cookie` headers survive Apollo.
+ *
+ * THE BUG THIS EXISTS FOR. `setAuthCookies` emits TWO `Set-Cookie` headers on
+ * the subgraph response — `access-token`, then `refresh-token`. Apollo stores
+ * subgraph response headers in `HeaderMap`, which is:
+ *
+ *     export class HeaderMap extends Map { ... }
+ *
+ * a plain Map, so it holds ONE value per key. HTTP permits repeated
+ * `Set-Cookie`; a Map does not. The second cookie was silently discarded
+ * before `didReceiveResponse` below ever saw it.
+ *
+ * The browser therefore received `access-token` and never `refresh-token`, so
+ * the refresh cookie did not exist, so renewal could never run, so every
+ * session died at the access token's 15-minute expiry with a forced re-login.
+ * That is the bug #977 was opened for, and it survived the entire refresh
+ * implementation — route, mutation and provider method — because none of them
+ * could work without the cookie that was being dropped here.
+ *
+ * Collapsing the headers into one comma-joined value BEFORE Apollo reads them
+ * means the Map has only one value to keep. `parseSetCookieHeaders` splits it
+ * back out on the way to the browser, which is what that parser was always
+ * for. Fixing it at this layer works regardless of which of the two headers
+ * Apollo would otherwise have kept.
+ *
+ * `getSetCookie()` is the correct accessor for repeated `Set-Cookie` and is
+ * available on undici's Headers (Node 18.14+). The `Response` reconstruction
+ * streams the original body through untouched.
+ *
+ * @see https://github.com/OpusPopuli/opuspopuli/issues/1020
+ */
+function collapseSetCookieFetcher() {
+  return async (
+    input: string | URL | Request,
+    init?: RequestInit,
+    // `globalThis.Response`, not `Response` — this module imports Express's
+    // `Response` type for the gateway context, and the bare name resolves to
+    // that one.
+  ): Promise<globalThis.Response> => {
+    const response = await fetch(input, init);
+
+    const cookies =
+      typeof response.headers.getSetCookie === 'function'
+        ? response.headers.getSetCookie()
+        : [];
+
+    // 0 or 1 cookie cannot be lost by a Map — leave the response untouched
+    // rather than pay to rebuild it on every subgraph call.
+    if (cookies.length < 2) {
+      return response;
+    }
+
+    const headers = new Headers(response.headers);
+    headers.delete('set-cookie');
+    headers.set('set-cookie', cookies.join(', '));
+
+    return new globalThis.Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  };
+}
+
+/**
  * Gateway context passed to data source
  * Includes Express response for cookie propagation in federated architecture
  */
@@ -47,7 +112,15 @@ export class HmacRemoteGraphQLDataSource extends RemoteGraphQLDataSource<Gateway
     hmacSigner: HmacSignerService,
     metricsService?: MetricsService,
   ) {
-    super(config);
+    // Cast: Apollo's `Fetcher` types a Buffer-capable body that the platform
+    // `fetch` signature does not express. The wrapper only forwards `init`
+    // through untouched, so the difference is not observable here, and
+    // @apollo/utils.fetcher is not a resolvable import in this package.
+    super({
+      ...config,
+      fetcher:
+        collapseSetCookieFetcher() as unknown as RemoteGraphQLDataSource<GatewayContext>['fetcher'],
+    });
     this.hmacSigner = hmacSigner;
     this.metricsService = metricsService;
     // Extract subgraph name from URL (e.g., http://localhost:4001 -> users-service)

@@ -43,5 +43,17 @@ binding = "ASSETS"
 pattern = "california.opuspopuli.org"
 custom_domain = true
 
+# Workers Logs.
+#
+# Off by default, which meant a production "Error 1102 — Worker exceeded
+# resource limits" left nothing behind to look at. 1102 is the Worker hitting
+# its CPU-time or 128 MB memory ceiling on a request, and without logs there is
+# no way to tell WHICH request, so diagnosis is guesswork.
+#
+# Cheap to leave on and only pays off during an incident, which is exactly when
+# turning it on is too late — the failing request is already gone.
+[observability]
+enabled = true
+
 # Environment variables are set via Cloudflare dashboard or wrangler CLI.
 # Example: NEXT_PUBLIC_GRAPHQL_URL = "https://api.opuspopuli.org/graphql"
