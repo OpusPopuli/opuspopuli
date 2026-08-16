@@ -253,4 +253,86 @@ describe('AuthMiddleware', () => {
       expect(mockNext).toHaveBeenCalledWith(error);
     });
   });
+  describe('session-lifecycle routes with an invalid token', () => {
+    /*
+     * The regression these pin. AuthMiddleware answers the request itself when
+     * a presented access token fails to validate, so the route never runs —
+     * which meant the endpoint whose entire job is to clear your cookies could
+     * not clear them exactly when they most needed clearing. A user clicked
+     * "log out", the request died here, the cookies survived, and they stayed
+     * signed in as the previous account while registering a new one.
+     *
+     * Both the #977 plan and the refresh controller's comment asserted this
+     * middleware "never rejects". It does, and the logout route was built on
+     * that false premise.
+     */
+    const rejectOnAuthFailure = () => {
+      (passport.authenticate as jest.Mock).mockImplementation(
+        (_strategy, _opts, callback) => () => callback(null, false),
+      );
+    };
+
+    const runWith = (path: string) => {
+      rejectOnAuthFailure();
+      const req = {
+        headers: {},
+        cookies: { 'access-token': 'expired-or-malformed' },
+        path,
+        url: path,
+      } as unknown as Request;
+      middleware.use(req, mockResponse as Response, mockNext);
+      return req;
+    };
+
+    it.each(['/api/auth/logout', '/api/auth/refresh'])(
+      'lets %s through so it can clear cookies',
+      (path) => {
+        runWith(path);
+
+        expect(mockNext).toHaveBeenCalled();
+        expect(mockResponse.send).not.toHaveBeenCalled();
+      },
+    );
+
+    it('leaves req.user unset on the routes it lets through', () => {
+      const req = runWith('/api/auth/logout');
+
+      // Passing through is not authenticating. Anything downstream needing a
+      // caller must still find none.
+      expect(req.user).toBeUndefined();
+    });
+
+    it('still rejects other routes carrying an invalid token', () => {
+      runWith('/api/some/protected/thing');
+
+      expect(mockNext).not.toHaveBeenCalled();
+      expect(mockResponse.send).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false }),
+      );
+    });
+
+    it('does not exempt a path that merely starts with a lifecycle path', () => {
+      // Guards against a startsWith implementation letting
+      // /api/auth/logout-all-the-things through.
+      runWith('/api/auth/logout-something-else');
+
+      expect(mockNext).not.toHaveBeenCalled();
+      expect(mockResponse.send).toHaveBeenCalled();
+    });
+
+    it('ignores the query string when matching', () => {
+      rejectOnAuthFailure();
+      const req = {
+        headers: {},
+        cookies: { 'access-token': 'expired' },
+        // Express sets `path` without the query, but url carries it; the
+        // fallback must not be fooled.
+        url: '/api/auth/logout?redirect=%2F',
+      } as unknown as Request;
+
+      middleware.use(req, mockResponse as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+    });
+  });
 });

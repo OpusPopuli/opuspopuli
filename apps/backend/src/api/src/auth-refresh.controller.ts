@@ -58,6 +58,15 @@ const REFRESH_MUTATION = `
  * - The global `AuthGuard` defers on non-GraphQL execution contexts, which is
  *   required here: the access token is expired by definition, and the refresh
  *   cookie is the credential.
+ * - `AuthMiddleware` DOES reject. An earlier version of this comment, and the
+ *   #977 plan, both claimed it only copies the cookie into the Authorization
+ *   header and calls next(). It does that only while the token validates; a
+ *   token that fails validation is answered by the middleware itself and the
+ *   route never runs. This path is safe because the browser drops the access
+ *   cookie when it expires (its Max-Age matches the token's), so renewal
+ *   normally arrives with no access cookie at all — but a PRESENT-and-invalid
+ *   one would have killed it. `SESSION_LIFECYCLE_PATHS` in that middleware now
+ *   exempts this route explicitly rather than relying on that coincidence.
  */
 @Controller('api/auth')
 export class AuthRefreshController {
