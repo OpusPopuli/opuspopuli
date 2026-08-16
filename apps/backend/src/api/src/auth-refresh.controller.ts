@@ -20,6 +20,7 @@ import {
   setAuthCookies,
   clearAuthCookies,
 } from 'src/common/utils/cookie.utils';
+import { callUsersSubgraph } from './users-subgraph.client';
 
 /**
  * The renewal mutation lives on the users subgraph and is `@inaccessible`, so
@@ -37,11 +38,6 @@ const REFRESH_MUTATION = `
     }
   }
 `;
-
-interface SubgraphConfig {
-  name: string;
-  url: string;
-}
 
 /**
  * Session renewal endpoint — `POST /api/auth/refresh`.
@@ -72,16 +68,6 @@ export class AuthRefreshController {
     private readonly hmacSigner: HmacSignerService,
   ) {}
 
-  private getUsersSubgraphUrl(): string {
-    const raw = this.configService.get<string>('MICROSERVICES');
-    const subgraphs = JSON.parse(raw || '[]') as SubgraphConfig[];
-    const users = subgraphs.find((s) => s.name === 'users');
-    if (!users?.url) {
-      throw new Error('No users subgraph configured in MICROSERVICES');
-    }
-    return users.url;
-  }
-
   @Post('refresh')
   @HttpCode(204)
   async refresh(
@@ -106,24 +92,12 @@ export class AuthRefreshController {
     };
 
     try {
-      const url = this.getUsersSubgraphUrl();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (this.hmacSigner.isEnabled()) {
-        headers['X-HMAC-Auth'] = this.hmacSigner.signGraphQLRequest(url);
-      }
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          query: REFRESH_MUTATION,
-          variables: { refreshToken },
-        }),
-      });
-
-      payload = await response.json();
+      payload = await callUsersSubgraph<{ refreshSession?: RenewedTokens }>(
+        this.configService,
+        this.hmacSigner,
+        REFRESH_MUTATION,
+        { refreshToken },
+      );
     } catch (error) {
       // The users service was unreachable, or answered with something that is
       // not JSON. Cookies are deliberately LEFT ALONE — this says nothing

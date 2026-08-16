@@ -9,6 +9,7 @@ import type { Request, Response } from 'express';
 import { HmacSignerService } from 'src/common/services/hmac-signer.service';
 import { SecureLogger } from 'src/common/services/secure-logger.service';
 import { clearAuthCookies } from 'src/common/utils/cookie.utils';
+import { callUsersSubgraph } from './users-subgraph.client';
 
 /**
  * `@inaccessible` on the users subgraph, so it is absent from the composed
@@ -21,11 +22,6 @@ const REVOKE_MUTATION = `
     revokeSession(accessToken: $accessToken)
   }
 `;
-
-interface SubgraphConfig {
-  name: string;
-  url: string;
-}
 
 /**
  * Sign-out endpoint — `POST /api/auth/logout`.
@@ -71,16 +67,6 @@ export class AuthLogoutController {
     private readonly hmacSigner: HmacSignerService,
   ) {}
 
-  private getUsersSubgraphUrl(): string {
-    const raw = this.configService.get<string>('MICROSERVICES');
-    const subgraphs = JSON.parse(raw || '[]') as SubgraphConfig[];
-    const users = subgraphs.find((s) => s.name === 'users');
-    if (!users?.url) {
-      throw new Error('No users subgraph configured in MICROSERVICES');
-    }
-    return users.url;
-  }
-
   @Post('logout')
   @HttpCode(204)
   async logout(
@@ -115,26 +101,12 @@ export class AuthLogoutController {
    */
   private async revokeUpstream(accessToken: string): Promise<void> {
     try {
-      const url = this.getUsersSubgraphUrl();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (this.hmacSigner.isEnabled()) {
-        headers['X-HMAC-Auth'] = this.hmacSigner.signGraphQLRequest(url);
-      }
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          query: REVOKE_MUTATION,
-          variables: { accessToken },
-        }),
-      });
-
-      const payload = (await response.json()) as {
-        errors?: { message: string }[];
-      };
+      const payload = await callUsersSubgraph<{ revokeSession?: boolean }>(
+        this.configService,
+        this.hmacSigner,
+        REVOKE_MUTATION,
+        { accessToken },
+      );
 
       const error = payload.errors?.[0];
       if (error) {
