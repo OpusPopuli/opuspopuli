@@ -314,14 +314,48 @@ export class ProfileService {
       data: updateData,
     });
 
-    // Re-geocode if address fields changed
+    // Re-geocode if address fields changed, and hold the caller to the same
+    // bar as creation.
+    //
+    // Editing is where a correction happens -- someone fixing the typo that
+    // stopped their reps appearing. Leaving this fire-and-forget would mean
+    // the correction silently failing at exactly the moment the user is
+    // trying to recover, which is worse than the original defect.
+    //
+    // On failure the PREVIOUS values are restored rather than the row being
+    // deleted: unlike creation, there was a working address here a moment ago
+    // and destroying it would punish someone for a typo.
     if (
       updateDto.addressLine1 ||
       updateDto.city ||
       updateDto.state ||
       updateDto.postalCode
     ) {
-      this.geocodeAndUpdate(userId, updated.id, updated).catch(() => {});
+      try {
+        await this.geocodeAndUpdate(userId, updated.id, updated);
+      } catch (error) {
+        await this.db.userAddress.update({
+          where: { id: address.id },
+          data: {
+            addressLine1: address.addressLine1,
+            addressLine2: address.addressLine2,
+            city: address.city,
+            state: address.state,
+            postalCode: address.postalCode,
+            isPrimary: address.isPrimary,
+          },
+        });
+
+        if (error instanceof GeocoderUnavailableError) {
+          this.logger.warn(`Address edit rejected, geocoder down: ${error.message}`);
+          throw new ServiceUnavailableException(
+            'We could not verify addresses just now. Please try again shortly.',
+          );
+        }
+        throw error;
+      }
+
+      return this.db.userAddress.findUniqueOrThrow({ where: { id: address.id } });
     }
 
     return updated;

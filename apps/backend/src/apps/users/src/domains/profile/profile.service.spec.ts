@@ -465,10 +465,59 @@ describe('ProfileService', () => {
 
       mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
       mockDb.userAddress.update.mockResolvedValue(updatedAddress);
+      // Changing city re-geocodes, and the caller gets the re-read row.
+      mockDb.userAddress.findUniqueOrThrow.mockResolvedValue(updatedAddress);
 
       const result = await service.updateAddress(mockUserId, updateDto);
 
       expect(result).toEqual(updatedAddress);
+    });
+
+    /**
+     * Editing is where a CORRECTION happens -- someone fixing the typo that
+     * stopped their reps appearing. This path used to be fire-and-forget, so
+     * the correction could fail silently at exactly the moment the user was
+     * trying to recover.
+     */
+    it('rejects an edit the geocoder cannot resolve', async () => {
+      mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockDb.userAddress.update.mockResolvedValue({
+        ...mockAddress,
+        city: 'Nowhere',
+      });
+      mockGeocodingService.geocode = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        service.updateAddress(mockUserId, {
+          id: mockAddress.id,
+          city: 'Nowhere',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    // Unlike creation, a working address existed a moment ago. Deleting it
+    // would punish someone for a typo, so the previous values are restored.
+    it('restores the previous values when an edit cannot be resolved', async () => {
+      mockDb.userAddress.findFirst.mockResolvedValue(mockAddress);
+      mockDb.userAddress.update.mockResolvedValue({
+        ...mockAddress,
+        city: 'Nowhere',
+      });
+      mockGeocodingService.geocode = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        service.updateAddress(mockUserId, {
+          id: mockAddress.id,
+          city: 'Nowhere',
+        }),
+      ).rejects.toThrow();
+
+      expect(mockDb.userAddress.delete).not.toHaveBeenCalled();
+      expect(mockDb.userAddress.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ city: mockAddress.city }),
+        }),
+      );
     });
 
     it('should throw NotFoundException if address not found', async () => {
