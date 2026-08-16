@@ -216,8 +216,10 @@ describe('AuthRefreshController', () => {
    * token. Minutes later they are silently signed in as that person.
    */
   describe('identity swap protection', () => {
-    const USER_A = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiAidXNlci1hIiwgImVtYWlsIjogInVzZXItYUBleGFtcGxlLnRlc3QifQ.sig';
-    const USER_B = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiAidXNlci1iIiwgImVtYWlsIjogInVzZXItYkBleGFtcGxlLnRlc3QifQ.sig';
+    const USER_A =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiAidXNlci1hIiwgImVtYWlsIjogInVzZXItYUBleGFtcGxlLnRlc3QifQ.sig';
+    const USER_B =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiAidXNlci1iIiwgImVtYWlsIjogInVzZXItYkBleGFtcGxlLnRlc3QifQ.sig';
 
     it('refuses to renew into a different identity than the caller holds', async () => {
       fetchMock.mockResolvedValue({
@@ -229,7 +231,10 @@ describe('AuthRefreshController', () => {
 
       await expect(
         controller.refresh(
-          createRequest({ 'refresh-token': 'belongs-to-B', 'access-token': USER_A }),
+          createRequest({
+            'refresh-token': 'belongs-to-B',
+            'access-token': USER_A,
+          }),
           res,
         ),
       ).rejects.toThrow(UnauthorizedException);
@@ -248,7 +253,10 @@ describe('AuthRefreshController', () => {
       const res = createResponse();
 
       await controller.refresh(
-        createRequest({ 'refresh-token': 'belongs-to-A', 'access-token': USER_A }),
+        createRequest({
+          'refresh-token': 'belongs-to-A',
+          'access-token': USER_A,
+        }),
         res,
       );
 

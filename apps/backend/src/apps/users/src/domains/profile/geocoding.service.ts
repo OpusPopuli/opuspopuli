@@ -41,7 +41,7 @@ const DEFAULT_GEOCODER_URL =
 export class GeocoderUnavailableError extends Error {
   constructor(cause: string) {
     super(`Geocoder unavailable: ${cause}`);
-    this.name = "GeocoderUnavailableError";
+    this.name = 'GeocoderUnavailableError';
   }
 }
 

@@ -347,7 +347,9 @@ export class ProfileService {
         });
 
         if (error instanceof GeocoderUnavailableError) {
-          this.logger.warn(`Address edit rejected, geocoder down: ${error.message}`);
+          this.logger.warn(
+            `Address edit rejected, geocoder down: ${error.message}`,
+          );
           throw new ServiceUnavailableException(
             'We could not verify addresses just now. Please try again shortly.',
           );
@@ -355,7 +357,9 @@ export class ProfileService {
         throw error;
       }
 
-      return this.db.userAddress.findUniqueOrThrow({ where: { id: address.id } });
+      return this.db.userAddress.findUniqueOrThrow({
+        where: { id: address.id },
+      });
     }
 
     return updated;
