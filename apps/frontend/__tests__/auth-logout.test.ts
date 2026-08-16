@@ -86,17 +86,28 @@ describe("auth-logout", () => {
       globalThis.fetch = originalFetch;
     });
 
-    it("clears localStorage, fires backend Logout, and redirects", () => {
+    it("clears localStorage, calls the logout route, and redirects", () => {
       localStorage.setItem(USER_KEY, JSON.stringify({ id: "u1" }));
 
       triggerAuthExpiredRedirect("/settings/privacy");
 
       expect(localStorage.getItem(USER_KEY)).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [, init] = fetchMock.mock.calls[0];
-      const body = JSON.parse((init as RequestInit).body as string);
-      expect(body.operationName).toBe("Logout");
-      expect(body.query).toContain("mutation Logout");
+
+      // The REST route, not `mutation Logout { logout }`. That mutation is
+      // auth-guarded, so on this path — reached only when the session has
+      // ALREADY expired — it could never have passed the guard, and it was
+      // sent without an X-CSRF-Token header so the gateway rejected it 403
+      // first regardless. Either way the httpOnly cookies were never cleared
+      // and the user stayed signed in. Asserting the URL rather than a request
+      // body is the point: there is no body, because the cookie is the
+      // credential.
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toMatch(/\/auth\/logout$/);
+      expect((init as RequestInit).method).toBe("POST");
+      expect((init as RequestInit).credentials).toBe("include");
+      expect((init as RequestInit).body).toBeUndefined();
+
       expect(assignMock).toHaveBeenCalledWith(
         "/login?redirect=%2Fsettings%2Fprivacy&reason=expired",
       );

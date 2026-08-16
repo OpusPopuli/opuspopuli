@@ -20,9 +20,7 @@ import {
 } from "@apollo/client/errors";
 import { USER_KEY } from "./auth-context";
 import { purgePersistedCache } from "./apollo-cache-keys";
-
-const GRAPHQL_URL =
-  process.env.NEXT_PUBLIC_GRAPHQL_URL || "http://localhost:3000/api";
+import { requestServerSignOut } from "./auth-signout";
 
 /** Error codes that mean "your session is no longer valid, sign in again". */
 const EXPIRED_SESSION_CODES = new Set(["FORBIDDEN", "UNAUTHENTICATED"]);
@@ -122,19 +120,16 @@ export function triggerAuthExpiredRedirect(pathname: string): void {
   // navigation below tears the in-memory cache down anyway.
   purgePersistedCache();
 
-  // Best-effort backend logout to clear httpOnly cookies. Fire via raw
-  // fetch (not Apollo) so we don't re-enter the link chain during an
-  // auth-failure path. Failures are ignored — the navigation below is
-  // the user-visible outcome either way.
-  fetch(GRAPHQL_URL, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      query: "mutation Logout { logout }",
-      operationName: "Logout",
-    }),
-  }).catch(() => {});
+  // Best-effort backend sign-out to clear the httpOnly cookies. Goes through
+  // the gateway's REST route rather than Apollo, so we don't re-enter the link
+  // chain during an auth-failure path.
+  //
+  // This used to POST `mutation Logout { logout }` directly, which cleared
+  // nothing on this path for two reasons: no `X-CSRF-Token` header, so the
+  // gateway rejected it 403 before it ran, and the mutation is auth-guarded,
+  // so an expired session — the only way to reach this function — could not
+  // have passed it anyway. The cookies survived every expiry-driven logout.
+  void requestServerSignOut();
 
   const redirect = encodeURIComponent(pathname || "/");
   performRedirect(`/login?redirect=${redirect}&reason=expired`);

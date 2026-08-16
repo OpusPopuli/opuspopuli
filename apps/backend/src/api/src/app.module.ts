@@ -43,6 +43,7 @@ import { HmacRemoteGraphQLDataSource } from './hmac-data-source';
 import { GatewayServicesModule } from './gateway-services.module';
 import { WebSocketConnectionException } from 'src/common/exceptions/app.exceptions';
 import { AuthRefreshController } from './auth-refresh.controller';
+import { AuthLogoutController } from './auth-logout.controller';
 
 /**
  * Extract authenticated user from request context for GraphQL operations.
@@ -233,10 +234,15 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
     }),
   ],
   controllers: [
-    // Session renewal. The gateway's only REST route, because the refresh
-    // cookie is path-scoped to /api/auth/refresh and the renewal mutation is
+    // Session renewal. REST rather than a mutation because the refresh cookie
+    // is path-scoped to /api/auth/refresh and the renewal mutation is
     // @inaccessible — see the controller for why both of those are deliberate.
     AuthRefreshController,
+    // Sign-out. REST for a different reason: cookies must be cleared on the
+    // response the GATEWAY writes. Clearing them on the users subgraph and
+    // relying on Set-Cookie forwarding did not reach the browser, which left
+    // users signed in after logging out. See the controller.
+    AuthLogoutController,
   ],
   providers: [
     // SECURITY: Exception filters for error sanitization

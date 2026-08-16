@@ -152,6 +152,24 @@ export interface IAuthProvider {
    * @returns A fresh set of tokens
    */
   refreshSession?(refreshToken: string): Promise<IAuthResult>;
+
+  /**
+   * Revoke the session behind an access token at the provider.
+   *
+   * Clearing our own cookies is not enough. The provider's refresh token
+   * outlives the access token by days, so a session that is only forgotten
+   * locally can still be redeemed by anyone who kept a copy of that token.
+   * Logout has to end it at the source.
+   *
+   * MUST be treated as best-effort by callers: a provider that is down, slow,
+   * or rejects the token cannot be allowed to block sign-out. Failing to
+   * revoke leaves a credential alive, but failing to CLEAR leaves the user
+   * signed in on the device in front of them, which is worse and is the
+   * failure they will actually notice.
+   *
+   * @param accessToken Access token identifying the session to revoke
+   */
+  signOut?(accessToken: string): Promise<void>;
 }
 
 /**

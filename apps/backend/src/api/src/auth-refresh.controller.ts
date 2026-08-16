@@ -8,7 +8,12 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Request, Response } from 'express';
+// `import type`, not a value import. NestJS emits decorator metadata for
+// `@Req() req: Request`, which turns the type into a RUNTIME reference that
+// webpack then tries to resolve — and express is not a declared dependency
+// of this package, so the bundle build reports it as unresolvable. Erasing
+// the import at compile time removes the reference and the error with it.
+import type { Request, Response } from 'express';
 import { HmacSignerService } from 'src/common/services/hmac-signer.service';
 import { SecureLogger } from 'src/common/services/secure-logger.service';
 import {
@@ -166,12 +171,21 @@ export class AuthRefreshController {
     // compare and the check is skipped. It fires precisely in the race case,
     // where a FRESH access cookie for one user arrives alongside a refresh
     // cookie for another.
-    const presentedSubject = subjectOf(refreshToken ? req.cookies?.[
-      this.configService.get<string>('cookie.accessTokenName') || 'access-token'
-    ] : undefined);
+    const presentedSubject = subjectOf(
+      refreshToken
+        ? req.cookies?.[
+            this.configService.get<string>('cookie.accessTokenName') ||
+              'access-token'
+          ]
+        : undefined,
+    );
     const renewedSubject = subjectOf(auth.accessToken);
 
-    if (presentedSubject && renewedSubject && presentedSubject !== renewedSubject) {
+    if (
+      presentedSubject &&
+      renewedSubject &&
+      presentedSubject !== renewedSubject
+    ) {
       this.logger.error(
         'Refresh would have swapped identity; rejecting and clearing cookies',
       );
