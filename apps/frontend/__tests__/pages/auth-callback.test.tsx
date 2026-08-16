@@ -40,12 +40,9 @@ function renderCallback() {
   // updates location without navigating, and preserves any hash the test set
   // before rendering (the hash-exchange cases rely on that).
   const qs = params.toString();
+  const search = qs ? `?${qs}` : "";
   const hash = globalThis.location.hash || "";
-  globalThis.history.replaceState(
-    {},
-    "",
-    `/auth/callback${qs ? `?${qs}` : ""}${hash}`,
-  );
+  globalThis.history.replaceState({}, "", `/auth/callback${search}${hash}`);
   return render(<AuthCallbackPage />);
 }
 
