@@ -74,13 +74,14 @@ function buildCspDirectives() {
   const styleSources = [
     "'self'",
     "'unsafe-inline'", // Required for CSS-in-JS and inline styles
-    "https://fonts.googleapis.com",
+    // fonts.googleapis.com removed: fonts are served from this origin now
+    // (see app/layout.tsx). Leaving it would permit an external origin the app
+    // no longer uses.
   ];
 
   // Font sources
   const fontSources = [
-    "'self'",
-    "https://fonts.gstatic.com",
+    "'self'", // Fonts are self-hosted — see app/layout.tsx
     "data:", // For embedded fonts
   ];
 

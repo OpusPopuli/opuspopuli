@@ -126,7 +126,16 @@ describe("Security Headers Configuration", () => {
       expect(cspHeader?.value).toContain("script-src 'self'");
     });
 
-    it("should include style-src with fonts.googleapis.com", async () => {
+    /*
+     * These two previously asserted the OPPOSITE — that the CSP allowed
+     * fonts.googleapis.com and fonts.gstatic.com. Fonts are self-hosted now
+     * (app/fonts/, see app/layout.tsx), so those allowances were dead grants
+     * to an origin we no longer talk to. Inverted rather than deleted: they
+     * are what catches a future `next/font/google` import, which would
+     * reintroduce a build-time dependency on someone else's CDN and fail
+     * closed at runtime against this CSP.
+     */
+    it("should serve fonts from self, not Google's CDN", async () => {
       const configModule =
         await import("../../config/security-headers.config.mjs");
       const headers = configModule.getSecurityHeaders();
@@ -134,11 +143,11 @@ describe("Security Headers Configuration", () => {
         (h: { key: string }) => h.key === "Content-Security-Policy",
       );
 
-      expect(cspHeader?.value).toContain("style-src");
-      expect(cspHeader?.value).toContain("https://fonts.googleapis.com");
+      expect(cspHeader?.value).toContain("font-src 'self'");
+      expect(cspHeader?.value).not.toContain("fonts.gstatic.com");
     });
 
-    it("should include font-src with fonts.gstatic.com", async () => {
+    it("should not grant style-src to Google's font CSS origin", async () => {
       const configModule =
         await import("../../config/security-headers.config.mjs");
       const headers = configModule.getSecurityHeaders();
@@ -146,8 +155,8 @@ describe("Security Headers Configuration", () => {
         (h: { key: string }) => h.key === "Content-Security-Policy",
       );
 
-      expect(cspHeader?.value).toContain("font-src");
-      expect(cspHeader?.value).toContain("https://fonts.gstatic.com");
+      expect(cspHeader?.value).toContain("style-src 'self'");
+      expect(cspHeader?.value).not.toContain("fonts.googleapis.com");
     });
 
     it("should include img-src with data: and https:", async () => {
