@@ -28,6 +28,7 @@ import { CostBudgetService } from 'src/apps/knowledge/src/domains/personalized-f
 
 import { LlmRerankProcessor } from './llm-rerank.processor';
 import { LlmRerankScheduler } from './llm-rerank.scheduler';
+import { RerankCandidatesService } from './rerank-candidates.service';
 
 /**
  * Worker process for the `llm-rerank` BullMQ queue (#745).
@@ -90,6 +91,7 @@ import { LlmRerankScheduler } from './llm-rerank.scheduler';
     ExplanationValidatorService,
     CostBudgetService,
     // Worker-local
+    RerankCandidatesService,
     LlmRerankProcessor,
     LlmRerankScheduler,
   ],

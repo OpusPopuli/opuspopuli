@@ -12,6 +12,7 @@ import {
   createWorker,
   TRIGGER_SOURCE,
 } from '@opuspopuli/queue-provider';
+import { RerankCandidatesService } from './rerank-candidates.service';
 
 jest.mock('@opuspopuli/queue-provider', () => ({
   ...jest.requireActual('@opuspopuli/queue-provider'),
@@ -37,6 +38,28 @@ describe('LlmRerankProcessor', () => {
     totalTokens: 320,
   };
 
+  // Shared so individual tests can set return values; reset in beforeEach.
+  const candidatesMock = {
+    fetchPropositionCandidateIds: jest.fn(),
+    fetchRepresentativeCandidateIds: jest.fn(),
+    fetchCommitteeCandidates: jest.fn(),
+  };
+
+  /** Job data with an entityType, for the non-bill paths. */
+  function jobFor(entityType: string, extra: Record<string, unknown> = {}) {
+    return buildJob({
+      data: {
+        rerankJobId: 'row-1',
+        triggerSource: TRIGGER_SOURCE.MANUAL,
+        userId: 'u-1',
+        rankingFlags: ['isRenter', 'isWorker'],
+        interestTags: ['housing'],
+        entityType,
+        ...extra,
+      },
+    } as unknown as Partial<Job>);
+  }
+
   function buildJob(overrides: Partial<Job> = {}): Job<any> {
     return {
       id: 'bullmq-1',
@@ -54,8 +77,16 @@ describe('LlmRerankProcessor', () => {
   }
 
   beforeEach(async () => {
+    Object.values(candidatesMock).forEach((m) => m.mockReset());
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        {
+          // Candidate resolution is exercised in rerank-candidates.service
+          // and in the "resolves candidates" cases below; here it only has
+          // to satisfy the constructor.
+          provide: RerankCandidatesService,
+          useValue: candidatesMock,
+        },
         LlmRerankProcessor,
         { provide: LlmRerankService, useValue: createMock<LlmRerankService>() },
         {
@@ -230,6 +261,82 @@ describe('LlmRerankProcessor', () => {
 
       await getHandler()(buildJob());
       expect(jobs.markSucceeded).toHaveBeenCalled();
+    });
+  });
+  describe('resolves candidates the enqueuer did not supply', () => {
+    /*
+     * The nightly cron resolves candidates up front and fans them out, so its
+     * jobs carry a payload. The manual trigger cannot -- representative and
+     * legislativeCommittee are region-owned tables the knowledge service must
+     * not read -- so it enqueues without one and the worker fills it in here.
+     *
+     * Before this, a job arriving without candidates reranked against an
+     * EMPTY set, silently doing nothing. That is why triggering a rerank
+     * refreshed bills (the one type that resolves its own candidates) and
+     * left committees, propositions and representatives stale until 03:00.
+     */
+    beforeEach(() => {
+      candidatesMock.fetchPropositionCandidateIds.mockResolvedValue([
+        'p-1',
+        'p-2',
+      ]);
+      candidatesMock.fetchRepresentativeCandidateIds.mockResolvedValue(['r-1']);
+      candidatesMock.fetchCommitteeCandidates.mockResolvedValue([
+        { legislativeCommitteeId: 'c-1', membersOnUserSlate: [] },
+      ]);
+      // The service is auto-mocked, so the non-bill methods return mock
+      // objects unless told otherwise — and the processor reads numbers off
+      // the summary to decide whether the run failed.
+      rerank.rerankPropositionsForUser.mockResolvedValue(sampleSummary);
+      rerank.rerankRepresentativesForUser.mockResolvedValue(sampleSummary);
+      rerank.rerankCommitteesForUser.mockResolvedValue(sampleSummary);
+    });
+
+    it('fetches proposition candidates when none were supplied', async () => {
+      await processor.onApplicationBootstrap();
+      await getHandler()(jobFor('proposition'));
+
+      expect(candidatesMock.fetchPropositionCandidateIds).toHaveBeenCalled();
+      expect(rerank.rerankPropositionsForUser).toHaveBeenCalledWith(
+        'u-1',
+        expect.any(Object),
+        ['p-1', 'p-2'],
+        expect.any(Object),
+      );
+    });
+
+    it('fetches committee candidates when none were supplied', async () => {
+      await processor.onApplicationBootstrap();
+      await getHandler()(jobFor('committee'));
+
+      expect(candidatesMock.fetchCommitteeCandidates).toHaveBeenCalled();
+    });
+
+    it('does NOT override candidates the cron supplied', async () => {
+      await processor.onApplicationBootstrap();
+      await getHandler()(jobFor('proposition', { candidateIds: ['from-cron'] }));
+
+      // A supplied payload wins, including a deliberately empty one -- the
+      // cron skips fan-out when a set is empty, so anything it sends is the
+      // answer, not a gap to fill.
+      expect(candidatesMock.fetchPropositionCandidateIds).not.toHaveBeenCalled();
+      expect(rerank.rerankPropositionsForUser).toHaveBeenCalledWith(
+        'u-1',
+        expect.any(Object),
+        ['from-cron'],
+        expect.any(Object),
+      );
+    });
+
+    it('does not fetch anything for bills, which resolve their own', async () => {
+      await processor.onApplicationBootstrap();
+      await getHandler()(buildJob());
+
+      expect(candidatesMock.fetchPropositionCandidateIds).not.toHaveBeenCalled();
+      expect(
+        candidatesMock.fetchRepresentativeCandidateIds,
+      ).not.toHaveBeenCalled();
+      expect(candidatesMock.fetchCommitteeCandidates).not.toHaveBeenCalled();
     });
   });
 });

@@ -127,7 +127,7 @@ describe('PersonalizedFeedResolver', () => {
   });
 
   describe('triggerMyLlmRerank (#745)', () => {
-    it('creates the lifecycle row with a pre-computed bullmqJobId, then enqueues with that same jobId so the FK is set on both ends in one pass', async () => {
+    it('enqueues one job per entity type, so "rerank my stuff" means all of it', async () => {
       const input = {
         interestTags: ['housing'],
         flags: { ...FLAGS_OFF, isRenter: true },
@@ -135,27 +135,67 @@ describe('PersonalizedFeedResolver', () => {
 
       const out = await resolver.triggerMyLlmRerank(input, 10, ctx('u-1'));
 
-      expect(jobs.create).toHaveBeenCalledWith({
-        bullmqJobId: expect.stringMatching(/^manual-u-1-\d+$/),
-        triggerSource: TRIGGER_SOURCE.MANUAL,
-        userId: 'u-1',
-        candidateLimit: 10,
-      });
+      // Bills, propositions, representatives, committees. This used to
+      // enqueue ONE job with no entityType, which the processor defaulted to
+      // 'bill' -- so a user who triggered a rerank got their bills refreshed
+      // and the rest of their briefing stayed stale until the 03:00 cron,
+      // with nothing to indicate the gap.
+      expect(queueService.enqueue).toHaveBeenCalledTimes(4);
+      expect(out).toHaveLength(4);
+      expect(out.map((r) => r.entityType).sort()).toEqual([
+        'bill',
+        'committee',
+        'proposition',
+        'representative',
+      ]);
+      expect(out.every((r) => r.status === 'queued')).toBe(true);
+    });
 
-      const createCall = jobs.create.mock.calls[0][0];
-      const enqueueCall = queueService.enqueue.mock.calls[0];
-      expect(enqueueCall[0]).toBe(LLM_RERANK_QUEUE);
-      expect(enqueueCall[1]).toEqual({
-        rerankJobId: 'job-row-1',
-        triggerSource: TRIGGER_SOURCE.MANUAL,
-        userId: 'u-1',
-        rankingFlags: ['isRenter'],
-        interestTags: ['housing'],
-        candidateLimit: 10,
-      });
-      expect(enqueueCall[2]).toEqual({ jobId: createCall.bullmqJobId });
+    it('gives each job a distinct bullmqJobId so they cannot dedup away', async () => {
+      await resolver.triggerMyLlmRerank(
+        { interestTags: ['housing'], flags: FLAGS_OFF },
+        10,
+        ctx('u-1'),
+      );
 
-      expect(out).toEqual({ jobId: 'job-row-1', status: 'queued' });
+      // BullMQ dedups on jobId. Without the entityType in the id, four jobs
+      // enqueued in the same millisecond would collapse into one.
+      const ids = jobs.create.mock.calls.map((c) => c[0].bullmqJobId);
+      expect(new Set(ids).size).toBe(4);
+      ids.forEach((id) =>
+        expect(id).toMatch(
+          /^manual-(bill|proposition|representative|committee)-u-1-\d+$/,
+        ),
+      );
+    });
+
+    it('carries the entityType into the job data', async () => {
+      await resolver.triggerMyLlmRerank(
+        { interestTags: ['housing'], flags: { ...FLAGS_OFF, isRenter: true } },
+        10,
+        ctx('u-1'),
+      );
+
+      const types = queueService.enqueue.mock.calls
+        .map((c) => (c[1] as Record<string, unknown>).entityType)
+        .sort();
+      expect(types).toEqual([
+        'bill',
+        'committee',
+        'proposition',
+        'representative',
+      ]);
+
+      // Everything else is identical across the four.
+      queueService.enqueue.mock.calls.forEach((c) => {
+        expect(c[0]).toBe(LLM_RERANK_QUEUE);
+        const data = c[1] as Record<string, unknown>;
+        expect(data.triggerSource).toBe(TRIGGER_SOURCE.MANUAL);
+        expect(data.userId).toBe('u-1');
+        expect(data.rankingFlags).toEqual(['isRenter']);
+        expect(data.interestTags).toEqual(['housing']);
+        expect(data.candidateLimit).toBe(10);
+      });
     });
 
     it('omits candidateLimit from the job data when the caller omits it (worker applies its own default)', async () => {

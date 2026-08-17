@@ -21,6 +21,7 @@ import {
   type RerankSummary,
 } from 'src/apps/knowledge/src/domains/personalized-feed/llm-rerank.service';
 import { LlmRerankJobService } from 'src/apps/knowledge/src/domains/personalized-feed/llm-rerank-job.service';
+import { RerankCandidatesService } from './rerank-candidates.service';
 import type { PersonalizationInputDto } from 'src/apps/knowledge/src/domains/personalized-feed/dto/personalization-input.dto';
 
 /**
@@ -52,6 +53,7 @@ export class LlmRerankProcessor
     private readonly jobs: LlmRerankJobService,
     @Inject(QUEUE_CONNECTION) private readonly connection: IORedis,
     private readonly config: ConfigService,
+    private readonly candidates: RerankCandidatesService,
   ) {}
 
   async onApplicationBootstrap() {
@@ -121,13 +123,27 @@ export class LlmRerankProcessor
       // Default to 'bill' for backward-compat with in-flight jobs
       // enqueued before opuspopuli#836 added the entityType discriminator.
       const resolvedEntityType: LlmRerankEntityType = entityType ?? 'bill';
+      // Resolve candidates when the enqueuer did not supply them.
+      //
+      // The nightly cron resolves them up front and fans them out, so its
+      // jobs arrive with a payload. The manual trigger has no access to
+      // those tables -- they are region-owned -- so it enqueues without one
+      // and the worker fills it in here. Before this, a manual trigger could
+      // only ever rerank bills (the one type that resolves its own
+      // candidates), which is why "rerank my stuff" left the committees
+      // section of the briefing empty.
+      const resolved = await this.resolveCandidates(resolvedEntityType, {
+        candidateIds,
+        committeeCandidates,
+      });
+
       const summary = await this.dispatchRerank(
         resolvedEntityType,
         userId,
         input,
         {
-          candidateIds: candidateIds ?? [],
-          committeeCandidates: committeeCandidates ?? [],
+          candidateIds: resolved.candidateIds,
+          committeeCandidates: resolved.committeeCandidates,
           candidateLimit,
           ttlMs,
         },
@@ -205,6 +221,66 @@ export class LlmRerankProcessor
    * committees, the membersOnUserSlate intersect — see
    * `LlmRerankCommitteeCandidate` privacy contract).
    */
+  /**
+   * Fill in candidates the job did not carry.
+   *
+   * A supplied payload always wins, including a deliberately empty one from
+   * the cron -- the cron skips fan-out entirely when a set is empty, so an
+   * empty array reaching here from it means the array was the answer.
+   * `undefined` is what distinguishes "not supplied" from "supplied as
+   * empty", which is why the check is on presence and not on length.
+   *
+   * Bills need nothing: `rerankForUser` resolves its own.
+   */
+  private async resolveCandidates(
+    entityType: LlmRerankEntityType,
+    supplied: {
+      candidateIds?: string[];
+      committeeCandidates?: ReadonlyArray<{
+        legislativeCommitteeId: string;
+        membersOnUserSlate: string[];
+      }>;
+    },
+  ): Promise<{
+    candidateIds: string[];
+    committeeCandidates: ReadonlyArray<{
+      legislativeCommitteeId: string;
+      membersOnUserSlate: string[];
+    }>;
+  }> {
+    const candidateIds = supplied.candidateIds;
+    const committeeCandidates = supplied.committeeCandidates;
+
+    switch (entityType) {
+      case 'proposition':
+        return {
+          candidateIds:
+            candidateIds ??
+            (await this.candidates.fetchPropositionCandidateIds()),
+          committeeCandidates: committeeCandidates ?? [],
+        };
+      case 'representative':
+        return {
+          candidateIds:
+            candidateIds ??
+            (await this.candidates.fetchRepresentativeCandidateIds()),
+          committeeCandidates: committeeCandidates ?? [],
+        };
+      case 'committee':
+        return {
+          candidateIds: candidateIds ?? [],
+          committeeCandidates:
+            committeeCandidates ??
+            (await this.candidates.fetchCommitteeCandidates()),
+        };
+      default:
+        return {
+          candidateIds: candidateIds ?? [],
+          committeeCandidates: committeeCandidates ?? [],
+        };
+    }
+  }
+
   private async dispatchRerank(
     entityType: LlmRerankEntityType,
     userId: string,

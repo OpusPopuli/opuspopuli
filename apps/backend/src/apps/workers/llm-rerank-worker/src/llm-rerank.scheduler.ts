@@ -10,6 +10,7 @@ import {
   type LlmRerankCommitteeCandidate,
 } from '@opuspopuli/queue-provider';
 import { LlmRerankJobService } from 'src/apps/knowledge/src/domains/personalized-feed/llm-rerank-job.service';
+import { RerankCandidatesService } from './rerank-candidates.service';
 
 /**
  * Nightly LLM re-rank scheduler (#745).
@@ -43,30 +44,8 @@ import { LlmRerankJobService } from 'src/apps/knowledge/src/domains/personalized
  */
 const DEFAULT_CRON = '0 3 * * *';
 
-/**
- * Defensive ceiling on the global proposition candidate fetch for the
- * nightly multi-entity fan-out (opuspopuli#836). CA carries O(10)
- * statewide propositions per cycle; this leaves headroom. Bumped when
- * local/county ballots land. Mirrors the
- * `RANKABLE_PROPS_FETCH_LIMIT` constant in
- * `personalized-propositions.service.ts`.
- */
-const PROPOSITION_CANDIDATE_FETCH_LIMIT = 50;
 
-/**
- * Defensive ceiling on the global representative candidate fetch.
- * CA has ~120 state legislators + ~52 federal reps; 200 is comfortable
- * headroom. Bumped when local reps (county supervisors, city council)
- * land.
- */
-const REPRESENTATIVE_CANDIDATE_FETCH_LIMIT = 200;
 
-/**
- * Defensive ceiling on the global legislative-committee candidate fetch.
- * CA Assembly carries ~80 committees + ~84 subcommittees; 200 leaves
- * headroom for Senate-side ingest landing.
- */
-const COMMITTEE_CANDIDATE_FETCH_LIMIT = 200;
 
 @Injectable()
 export class LlmRerankScheduler implements OnApplicationBootstrap {
@@ -79,6 +58,7 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
     private readonly queueService: QueueService,
     private readonly jobs: LlmRerankJobService,
     private readonly config: ConfigService,
+    private readonly candidates: RerankCandidatesService,
   ) {}
 
   onApplicationBootstrap() {
@@ -229,10 +209,10 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
     // resolution. Follow-up issue: implement committee scheduling once
     // jurisdiction resolution is plumbed through.
 
-    const propositionCandidateIds = await this.fetchPropositionCandidateIds();
+    const propositionCandidateIds = await this.candidates.fetchPropositionCandidateIds();
     const representativeCandidateIds =
-      await this.fetchRepresentativeCandidateIds();
-    const committeeCandidates = await this.fetchCommitteeCandidates();
+      await this.candidates.fetchRepresentativeCandidateIds();
+    const committeeCandidates = await this.candidates.fetchCommitteeCandidates();
 
     let propJobs = 0;
     let repJobs = 0;
@@ -271,89 +251,8 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
     };
   }
 
-  /**
-   * Fetch the global proposition candidate set for tonight's batch.
-   * Filters: not soft-deleted, election in the future, status active or
-   * pending. CA-only today; once local/county ballots land, this query
-   * must be per-user-jurisdiction-scoped.
-   */
-  private async fetchPropositionCandidateIds(): Promise<string[]> {
-    const rows = await this.db.proposition.findMany({
-      where: {
-        deletedAt: null,
-        electionDate: { gte: new Date() },
-        status: { in: ['active', 'pending'] },
-      },
-      select: { id: true },
-      take: PROPOSITION_CANDIDATE_FETCH_LIMIT,
-    });
-    if (rows.length === PROPOSITION_CANDIDATE_FETCH_LIMIT) {
-      this.logger.warn(
-        `Hit PROPOSITION_CANDIDATE_FETCH_LIMIT (${PROPOSITION_CANDIDATE_FETCH_LIMIT}) — raise the cap or scope per user.`,
-      );
-    }
-    return rows.map((r) => r.id);
-  }
 
-  /**
-   * Fetch the global representative candidate set for tonight's batch.
-   * Includes ALL non-deleted reps across every region — Assembly,
-   * Senate, county boards of supervisors, etc. The frontend's rep-slate
-   * resolution unions reps from both the district-based query and the
-   * county-supervisors query, so the scheduler must enrich all of them
-   * for the briefing's cache lookup to find a match.
-   *
-   * Follow-up: per-user slate via the existing UserJurisdiction stack —
-   * same refactor that makes the propositions filter per-user.
-   */
-  private async fetchRepresentativeCandidateIds(): Promise<string[]> {
-    const rows = await this.db.representative.findMany({
-      where: { deletedAt: null },
-      select: { id: true },
-      take: REPRESENTATIVE_CANDIDATE_FETCH_LIMIT,
-    });
-    if (rows.length === REPRESENTATIVE_CANDIDATE_FETCH_LIMIT) {
-      this.logger.warn(
-        `Hit REPRESENTATIVE_CANDIDATE_FETCH_LIMIT (${REPRESENTATIVE_CANDIDATE_FETCH_LIMIT}) — raise the cap or scope per user.`,
-      );
-    }
-    return rows.map((r) => r.id);
-  }
 
-  /**
-   * Defensive ceiling on the global legislative-committee candidate
-   * fetch. CA carries ~80 Assembly committees today (Senate side
-   * pending ingest); 200 leaves headroom.
-   */
-  private async fetchCommitteeCandidates(): Promise<
-    LlmRerankCommitteeCandidate[]
-  > {
-    const rows = await this.db.legislativeCommittee.findMany({
-      where: { deletedAt: null },
-      select: { id: true },
-      take: COMMITTEE_CANDIDATE_FETCH_LIMIT,
-    });
-    if (rows.length === COMMITTEE_CANDIDATE_FETCH_LIMIT) {
-      this.logger.warn(
-        `Hit COMMITTEE_CANDIDATE_FETCH_LIMIT (${COMMITTEE_CANDIDATE_FETCH_LIMIT}) — raise the cap or scope per user.`,
-      );
-    }
-    // Privacy contract (prompt-service#81 / opuspopuli#836): the LLM
-    // template treats `membersOnUserSlate` as the strongest anchor —
-    // "your rep serves on it". The scheduler does NOT yet compute the
-    // per-user rep-slate intersect — that's tracked as opuspopuli#839
-    // (requires plumbing the existing district-reps + county-supervisors
-    // resolvers into the scheduler's per-user fan-out). We pass `[]`
-    // here, which vacuously upholds the contract: an empty list means
-    // no member anchor is asserted, and the LLM falls back to topical
-    // / recent-activity / upcoming-hearing anchors per the template's
-    // priority order. Committees with strong topic overlap still get
-    // useful explanations; committees with weak topic match return skip.
-    return rows.map((r) => ({
-      legislativeCommitteeId: r.id,
-      membersOnUserSlate: [],
-    }));
-  }
 
   /**
    * Generic per-entity fan-out: creates one lifecycle row per user and
