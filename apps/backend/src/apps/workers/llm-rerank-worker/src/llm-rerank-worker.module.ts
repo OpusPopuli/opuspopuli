@@ -10,7 +10,10 @@ import { QueueModule } from '@opuspopuli/queue-provider';
 import { DbModule } from 'src/db/db.module';
 import { HealthModule } from 'src/common/health';
 import { MetricsModule } from 'src/common/metrics';
-import { createLoggingConfig } from 'src/common/config/shared-app.config';
+import {
+  createLoggingConfig,
+  requirePromptServiceUrl,
+} from 'src/common/config/shared-app.config';
 
 import configuration from 'src/config';
 import relationaldbConfig from 'src/config/relationaldb.config';
