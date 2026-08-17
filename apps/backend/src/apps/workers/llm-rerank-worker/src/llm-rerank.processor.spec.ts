@@ -156,4 +156,80 @@ describe('LlmRerankProcessor', () => {
     )?.value;
     expect(workerInstance.close).toHaveBeenCalled();
   });
+  describe('a run where every candidate failed is not a success', () => {
+    /*
+     * markSucceeded used to be unconditional. While prompt-service was
+     * unreachable the 03:00 cron recorded `llmFailures: 85,
+     * candidatesConsidered: 85, cacheWritesWithExplanation: 0` and finished as
+     * `succeeded` — every night for ten days. Nothing alerted, nothing
+     * retried, and the first symptom anyone saw was a briefing section
+     * rendering zero items.
+     */
+    const totalFailure = {
+      ...sampleSummary,
+      candidatesConsidered: 85,
+      cacheWritesWithExplanation: 0,
+      cacheWritesWithoutExplanation: 85,
+      llmFailures: 85,
+      totalTokens: 0,
+    };
+
+    it('fails the job instead of recording success', async () => {
+      rerank.rerankForUser.mockResolvedValue(totalFailure);
+      await processor.onApplicationBootstrap();
+
+      await expect(getHandler()(buildJob())).rejects.toThrow(
+        /produced no explanations/,
+      );
+      expect(jobs.markSucceeded).not.toHaveBeenCalled();
+    });
+
+    it('names prompt-service in the error, since that is the usual cause', async () => {
+      rerank.rerankForUser.mockResolvedValue(totalFailure);
+      await processor.onApplicationBootstrap();
+
+      await expect(getHandler()(buildJob())).rejects.toThrow(
+        /PROMPT_SERVICE_URL/,
+      );
+    });
+
+    it('still succeeds on PARTIAL success', async () => {
+      // One explanation out of many is a working pipeline, not an outage.
+      rerank.rerankForUser.mockResolvedValue({
+        ...totalFailure,
+        cacheWritesWithExplanation: 1,
+        llmFailures: 84,
+      });
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(buildJob());
+      expect(jobs.markSucceeded).toHaveBeenCalled();
+    });
+
+    it('still succeeds when there was nothing to consider', async () => {
+      rerank.rerankForUser.mockResolvedValue({
+        ...sampleSummary,
+        candidatesConsidered: 0,
+        cacheWritesWithExplanation: 0,
+        cacheWritesWithoutExplanation: 0,
+        llmFailures: 0,
+      });
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(buildJob());
+      expect(jobs.markSucceeded).toHaveBeenCalled();
+    });
+
+    it('still succeeds when the budget was deliberately exhausted', async () => {
+      // A deliberate stop must not look like an infrastructure failure.
+      rerank.rerankForUser.mockResolvedValue({
+        ...totalFailure,
+        budgetExhausted: true,
+      });
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(buildJob());
+      expect(jobs.markSucceeded).toHaveBeenCalled();
+    });
+  });
 });

@@ -142,6 +142,36 @@ export class LlmRerankProcessor
         budgetExhausted: summary.budgetExhausted,
         totalTokens: summary.totalTokens,
       };
+      // A run in which EVERY candidate failed is not a success.
+      //
+      // markSucceeded used to be unconditional, so a job could record
+      // `llmFailures: 85, candidatesConsidered: 85,
+      // cacheWritesWithExplanation: 0` and still finish as `succeeded`. That
+      // is exactly what happened while prompt-service was unreachable: the
+      // 03:00 cron reported success every night for ten days while producing
+      // nothing, so nothing alerted, nothing retried, and the first anyone
+      // knew was a briefing section rendering zero items.
+      //
+      // Deliberately narrow, so ordinary runs are unaffected:
+      //  - `candidatesConsidered === 0` — nothing to do, genuinely fine
+      //  - partial success — some explanations written, fine
+      //  - `budgetExhausted` — a deliberate stop, not a failure
+      //  - validator rejections — the model answered and we declined it;
+      //    that is a content judgement, not an infrastructure fault
+      // Only "every single candidate failed at the LLM/prompt layer" throws.
+      if (
+        result.candidatesConsidered > 0 &&
+        result.cacheWritesWithExplanation === 0 &&
+        result.llmFailures === result.candidatesConsidered &&
+        !result.budgetExhausted
+      ) {
+        throw new Error(
+          `LLM rerank produced no explanations: all ${result.llmFailures} ` +
+            `of ${result.candidatesConsidered} candidates failed. Check that ` +
+            'prompt-service is reachable (PROMPT_SERVICE_URL).',
+        );
+      }
+
       await this.jobs.markSucceeded(rerankJobId, result);
       return result;
     } catch (err) {
