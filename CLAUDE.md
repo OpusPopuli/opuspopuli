@@ -82,6 +82,37 @@ Adding a new worker: create `src/apps/workers/<name>/`, register in `nest-cli.js
 - `@backend/*` → `./apps/backend/apps/*`
 - `@frontend/*` → `./apps/frontend/app/*`
 
+## Deploying to a node (the Studio)
+
+**Always layer BOTH compose files.** The prompt-service overlay is not optional:
+
+```bash
+ssh -t opuspopuli@opuspopuli-us-ca
+security unlock-keychain ~/Library/Keychains/login.keychain-db   # SSH sessions do not auto-unlock it
+cd /Volumes/OpusPopuli/Development/opuspopuli-node-us-ca
+./bin/op-compose -f docker-compose-prod.yml -f docker-compose-prompt-service.yml pull
+./bin/op-compose -f docker-compose-prod.yml -f docker-compose-prompt-service.yml up -d
+```
+
+`docker-compose-prompt-service.yml` does two things, and omitting it silently
+loses both:
+
+1. Defines the `opuspopuli-prompts` / `opuspopuli-prompts-db` containers
+2. Injects `PROMPT_SERVICE_URL` into `knowledge`, `region`, `region-worker`,
+   `structural-analysis-worker`, `llm-rerank-worker` and `documents`
+
+Deploying with `-f docker-compose-prod.yml` alone starts everything, reports
+healthy, and leaves those six services unable to reach prompt-service. Prompt
+fetches then fall back, produce nothing, and the empty results get cached — on
+2026-08-17 that blanked every relevance explanation on the platform (484 empty
+cache rows against one with content) with no error anywhere. `requirePromptServiceUrl`
+now throws at boot in production so this fails loudly, but layer the overlay
+rather than relying on that.
+
+Note the overlay alone is invalid — it carries partial definitions for the six
+services above, so `-f docker-compose-prompt-service.yml` by itself fails with
+`service "region-worker" has neither an image nor a build context`.
+
 ## Prompt templates — IP boundary
 
 **Prompt template text lives exclusively in the private `prompt-service` repo.** Never write prompt text inline or hard-code it in this repo.

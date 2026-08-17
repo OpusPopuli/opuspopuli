@@ -16,6 +16,7 @@ import { LinkingService } from './services/linking.service';
 import { AbuseReportService } from './services/abuse-report.service';
 import { ActivityFeedService } from './services/activity-feed.service';
 import { ScanHistoryService } from './services/scan-history.service';
+import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
 
 // RelationalDbModule is global, no need to import
 
@@ -39,7 +40,7 @@ import { ScanHistoryService } from './services/scan-history.service';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         config: {
-          promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+          promptServiceUrl: requirePromptServiceUrl(config, 'documents'),
           promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
           hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
         },

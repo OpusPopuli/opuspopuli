@@ -6,6 +6,7 @@ import { PersonalizedFeedService } from './personalized-feed.service';
 import { ExplanationValidatorService } from './explanation-validator.service';
 import { CostBudgetService } from './cost-budget.service';
 import type { PersonalizationInputDto } from './dto/personalization-input.dto';
+import { expiryFor } from './llm-rerank.service';
 
 /**
  * Unit tests for the LLM re-rank orchestrator (#745). Validates the
@@ -719,5 +720,42 @@ describe('LlmRerankService', () => {
     expect(summary.cacheWritesWithExplanation).toBe(0);
     expect(summary.cacheWritesWithoutExplanation).toBe(0);
     expect(summary.candidatesConsidered).toBe(1);
+  });
+  describe('empty results are not cached as success', () => {
+    /*
+     * The incident this pins. prompt-service was dropped from a deploy, every
+     * generation returned empty, and each empty result was written with the
+     * full 7-day TTL — 484 empty rows against one with content. Nothing
+     * errored; the cache read as fresh and valid, and the briefing rendered
+     * zero items. The outage lasted minutes; the blackout was scheduled to
+     * last a week.
+     *
+     * A row with no explanation must expire soon enough to recover on its own
+     * once the cause is fixed.
+     */
+    const HOUR = 60 * 60 * 1000;
+
+    it('gives an empty explanation a short TTL, not the 7-day one', () => {
+      const normalExpiry = new Date(Date.now() + 7 * 24 * HOUR);
+
+      const empty = expiryFor(null, normalExpiry);
+      const filled = expiryFor('because you care about housing', normalExpiry);
+
+      // Recovers within the hour rather than next week.
+      expect(empty.getTime()).toBeLessThan(Date.now() + HOUR);
+      // A real explanation keeps the full TTL — this must not make the cache
+      // useless by expiring everything quickly.
+      expect(filled).toBe(normalExpiry);
+    });
+
+    it('treats an empty string like a failure, not content', () => {
+      const normalExpiry = new Date(Date.now() + 7 * 24 * HOUR);
+
+      // validateAccepted can return '' rather than null; both mean "nothing to
+      // show", and the production rows were empty strings.
+      expect(expiryFor('', normalExpiry).getTime()).toBeLessThan(
+        Date.now() + HOUR,
+      );
+    });
   });
 });

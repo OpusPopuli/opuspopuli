@@ -59,7 +59,7 @@ import { LlmRerankScheduler } from './llm-rerank.scheduler';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         config: {
-          promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+          promptServiceUrl: requirePromptServiceUrl(config, 'llm-rerank-worker'),
           promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
           hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
         },

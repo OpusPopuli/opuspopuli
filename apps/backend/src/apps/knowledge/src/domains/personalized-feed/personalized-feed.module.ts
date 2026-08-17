@@ -11,6 +11,7 @@ import { LlmRerankService } from './llm-rerank.service';
 import { LlmRerankJobService } from './llm-rerank-job.service';
 import { ExplanationValidatorService } from './explanation-validator.service';
 import { CostBudgetService } from './cost-budget.service';
+import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
 
 /**
  * Personalized bill feed (#743 + #745).
@@ -32,7 +33,7 @@ import { CostBudgetService } from './cost-budget.service';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         config: {
-          promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+          promptServiceUrl: requirePromptServiceUrl(config, 'knowledge:personalized-feed'),
           promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
           hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
         },
