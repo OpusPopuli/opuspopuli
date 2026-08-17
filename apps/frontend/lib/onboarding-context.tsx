@@ -9,11 +9,16 @@ import {
   useMemo,
   ReactNode,
 } from "react";
-import { useMutation } from "@apollo/client/react";
+import { useApolloClient, useMutation } from "@apollo/client/react";
 import {
   COMPLETE_ONBOARDING,
   CompleteOnboardingData,
 } from "@/lib/graphql/onboarding";
+import {
+  GET_BRIEFING_PREFETCH,
+  TRIGGER_MY_LLM_RERANK,
+  type BriefingPrefetchData,
+} from "@/lib/graphql/personalized-feed";
 
 interface OnboardingContextType {
   hasCompletedOnboarding: boolean;
@@ -67,6 +72,55 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [persistOnboardingComplete] =
     useMutation<CompleteOnboardingData>(COMPLETE_ONBOARDING);
 
+  const client = useApolloClient();
+
+  /**
+   * Generate this user's relevance explanations now, rather than at 03:00.
+   *
+   * Nothing used to trigger generation on sign-up — only the nightly cron and
+   * a manual mutation. So a brand-new user finished onboarding, landed on
+   * their briefing, and found the committees section empty and no
+   * "why this matters to you" anywhere, until the next morning. The whole
+   * point of the product, absent on the one visit that forms an impression.
+   *
+   * Fire-and-forget, matching `persistOnboardingComplete` above: the jobs run
+   * in the background and the UI never waits on them. A failure just means
+   * the cron fills the cache tonight, which is exactly the old behaviour.
+   */
+  const primePersonalization = useCallback(async () => {
+    try {
+      const { data } = await client.query<BriefingPrefetchData>({
+        query: GET_BRIEFING_PREFETCH,
+        // The signal profile was written moments ago by onboarding; a cached
+        // read here would send the pre-onboarding flags and personalise to
+        // the wrong person.
+        fetchPolicy: "network-only",
+      });
+
+      const flags = data?.myRankingFlags;
+      if (!flags) return;
+
+      // Strip Apollo's __typename — GraphQL input objects reject unknown
+      // fields, so leaving it in fails the whole mutation with a validation
+      // error rather than anything descriptive.
+      const { __typename, ...rankingFlags } = flags as typeof flags & {
+        __typename?: string;
+      };
+
+      await client.mutate({
+        mutation: TRIGGER_MY_LLM_RERANK,
+        variables: {
+          input: {
+            interestTags: data?.mySignalProfile?.interestTags ?? [],
+            flags: rankingFlags,
+          },
+        },
+      });
+    } catch {
+      // Non-fatal by design — see above.
+    }
+  }, [client]);
+
   const completeOnboarding = useCallback(() => {
     localStorage.setItem(STORAGE_KEY, "true");
     globalThis.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
@@ -74,7 +128,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       // Non-fatal: localStorage already reflects completion on this
       // device; the server flag will catch up on a later completion.
     });
-  }, [persistOnboardingComplete]);
+    void primePersonalization();
+  }, [persistOnboardingComplete, primePersonalization]);
 
   const skipOnboarding = useCallback(() => {
     completeOnboarding();

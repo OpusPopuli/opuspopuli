@@ -123,5 +123,10 @@
   "stubs": {
     "counterFrame": "La posición opuesta aparecerá aquí cuando se active el pipeline de contracuadro.",
     "actionAffordances": "Fechas de votación, ventanas de comentarios y botones de contacto aparecerán aquí cuando esos datos estén disponibles."
+  },
+  "personalizing": {
+    "title": "Estamos personalizando tu resumen",
+    "body": "Estamos revisando proyectos de ley, comités, propuestas y tus representantes para determinar cuáles te afectan realmente. Esto suele tardar unos cinco minutos: puedes seguir navegando o volver en un momento.",
+    "progress": "{{done}} de {{total}} completados"
   }
 }

@@ -59,6 +59,64 @@ export interface BriefingPrefetchData {
   myProfile: { firstName: string | null } | null;
 }
 
+/**
+ * Receipts from `triggerMyLlmRerank` — one per entity type (bill,
+ * proposition, representative, committee).
+ */
+export interface LlmRerankReceipt {
+  jobId: string;
+  status: string;
+  entityType: string;
+}
+
+export interface TriggerMyLlmRerankData {
+  triggerMyLlmRerank: LlmRerankReceipt[];
+}
+
+/**
+ * Kick off relevance generation for the signed-in user.
+ *
+ * Enqueues background jobs; the receipts come back immediately and the
+ * explanations land in the caches a minute or two later. Nothing in the UI
+ * waits on it.
+ */
+export const TRIGGER_MY_LLM_RERANK = gql`
+  mutation TriggerMyLlmRerank($input: PersonalizationInputDto!) {
+    triggerMyLlmRerank(input: $input) {
+      jobId
+      status
+      entityType
+    }
+  }
+`;
+
+/** A rerank job lifecycle row, as returned by `myRecentLlmRerankJobs`. */
+export interface LlmRerankJobStatus {
+  jobId: string;
+  status: string;
+  enqueuedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface MyRecentLlmRerankJobsData {
+  myRecentLlmRerankJobs: LlmRerankJobStatus[];
+}
+
+/**
+ * Recent rerank jobs for the signed-in user. Backs the "we're personalizing
+ * your briefing" notice, which reports real job state rather than a timer.
+ */
+export const GET_MY_RECENT_LLM_RERANK_JOBS = gql`
+  query MyRecentLlmRerankJobs($limit: Int) {
+    myRecentLlmRerankJobs(limit: $limit) {
+      jobId
+      status
+      enqueuedAt
+      finishedAt
+    }
+  }
+`;
+
 export const GET_BRIEFING_PREFETCH = gql`
   query BriefingPrefetch {
     myRankingFlags {
