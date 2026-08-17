@@ -35,6 +35,33 @@ export interface CommitteeRerankCandidate {
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
+ * How long an EMPTY relevance result stays cached before we try again.
+ *
+ * A generation that produced nothing must not be cached as though it
+ * succeeded. When prompt-service went missing from a deploy, every generation
+ * came back empty and was written with the full 7-day TTL — 484 empty rows
+ * against one with content. Nothing errored, the cache looked fresh and valid,
+ * and the briefing simply rendered zero items for what would have been a week.
+ * The service outage lasted minutes; the damage was scheduled to last until
+ * the rows expired.
+ *
+ * Short enough that recovery is automatic once the cause is fixed, long enough
+ * that a persistent outage is not retried on every request.
+ */
+const FAILED_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Pick the cache expiry for a result: the normal TTL when there is an
+ * explanation, a short retry window when there is not.
+ */
+export function expiryFor(
+  explanation: string | null,
+  expiresAt: Date,
+): Date {
+  return explanation ? expiresAt : new Date(Date.now() + FAILED_TTL_MS);
+}
+
+/**
  * Hard cap on bills re-ranked per user per call — keeps LLM spend
  * bounded even before the per-user token-budget service in Subtask 4.
  */
@@ -271,7 +298,7 @@ export class LlmRerankService {
         templateHash: llmResult.templateHash,
         tokensIn: llmResult.tokensIn,
         tokensOut: llmResult.tokensOut,
-        expiresAt,
+        expiresAt: expiryFor(acceptedExplanation, expiresAt),
       },
       update: {
         relevanceScore: candidate.relevanceScore,
@@ -280,7 +307,7 @@ export class LlmRerankService {
         tokensIn: llmResult.tokensIn,
         tokensOut: llmResult.tokensOut,
         computedAt: new Date(),
-        expiresAt,
+        expiresAt: expiryFor(acceptedExplanation, expiresAt),
       },
     });
 
@@ -713,7 +740,7 @@ export class LlmRerankService {
         templateHash: result.templateHash,
         tokensIn: result.tokensIn,
         tokensOut: result.tokensOut,
-        expiresAt,
+        expiresAt: expiryFor(accepted, expiresAt),
       },
       update: {
         relevanceExplanation: accepted,
@@ -721,7 +748,7 @@ export class LlmRerankService {
         tokensIn: result.tokensIn,
         tokensOut: result.tokensOut,
         computedAt: new Date(),
-        expiresAt,
+        expiresAt: expiryFor(accepted, expiresAt),
       },
     });
 
@@ -826,7 +853,7 @@ export class LlmRerankService {
         templateHash: result.templateHash,
         tokensIn: result.tokensIn,
         tokensOut: result.tokensOut,
-        expiresAt,
+        expiresAt: expiryFor(accepted, expiresAt),
       },
       update: {
         relevanceExplanation: accepted,
@@ -834,7 +861,7 @@ export class LlmRerankService {
         tokensIn: result.tokensIn,
         tokensOut: result.tokensOut,
         computedAt: new Date(),
-        expiresAt,
+        expiresAt: expiryFor(accepted, expiresAt),
       },
     });
 
@@ -934,7 +961,7 @@ export class LlmRerankService {
         templateHash: result.templateHash,
         tokensIn: result.tokensIn,
         tokensOut: result.tokensOut,
-        expiresAt,
+        expiresAt: expiryFor(accepted, expiresAt),
       },
       update: {
         relevanceExplanation: accepted,
@@ -942,7 +969,7 @@ export class LlmRerankService {
         tokensIn: result.tokensIn,
         tokensOut: result.tokensOut,
         computedAt: new Date(),
-        expiresAt,
+        expiresAt: expiryFor(accepted, expiresAt),
       },
     });
 

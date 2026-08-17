@@ -71,6 +71,7 @@ import { REGION_CACHE } from './region.tokens';
 import { PipelineJobService } from './pipeline-job.service';
 import { StructuralAnalysisJobService } from './structural-analysis-job.service';
 import { randomUUID } from 'crypto';
+import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
 
 // RelationalDbModule is global, no need to import
 
@@ -86,7 +87,7 @@ const promptClientAsyncConfig = {
   inject: [ConfigService],
   useFactory: (config: ConfigService) => ({
     config: {
-      promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+      promptServiceUrl: requirePromptServiceUrl(config, 'region'),
       promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
       hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
     },

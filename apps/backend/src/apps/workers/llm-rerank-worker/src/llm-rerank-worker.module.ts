@@ -10,7 +10,10 @@ import { QueueModule } from '@opuspopuli/queue-provider';
 import { DbModule } from 'src/db/db.module';
 import { HealthModule } from 'src/common/health';
 import { MetricsModule } from 'src/common/metrics';
-import { createLoggingConfig } from 'src/common/config/shared-app.config';
+import {
+  createLoggingConfig,
+  requirePromptServiceUrl,
+} from 'src/common/config/shared-app.config';
 
 import configuration from 'src/config';
 import relationaldbConfig from 'src/config/relationaldb.config';
@@ -59,7 +62,7 @@ import { LlmRerankScheduler } from './llm-rerank.scheduler';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         config: {
-          promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+          promptServiceUrl: requirePromptServiceUrl(config, 'llm-rerank-worker'),
           promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
           hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
         },

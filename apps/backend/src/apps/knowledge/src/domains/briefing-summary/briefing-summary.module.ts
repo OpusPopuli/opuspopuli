@@ -5,12 +5,13 @@ import { PromptClientModule } from '@opuspopuli/prompt-client';
 import { BriefingSummaryService } from './briefing-summary.service';
 import { BriefingSummaryResolver } from './briefing-summary.resolver';
 import { BriefingSummaryValidatorService } from './briefing-summary-validator.service';
+import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
 
 const promptClientAsyncConfig = {
   inject: [ConfigService],
   useFactory: (config: ConfigService) => ({
     config: {
-      promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+      promptServiceUrl: requirePromptServiceUrl(config, 'knowledge:briefing-summary'),
       promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
       hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
     },

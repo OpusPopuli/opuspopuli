@@ -6,6 +6,7 @@ import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
 import { VectorDBModule } from '@opuspopuli/vectordb-provider';
 import { LLMModule } from '@opuspopuli/llm-provider';
 import { PromptClientModule } from '@opuspopuli/prompt-client';
+import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
 
 /**
  * Knowledge Module
@@ -25,7 +26,7 @@ import { PromptClientModule } from '@opuspopuli/prompt-client';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         config: {
-          promptServiceUrl: config.get('PROMPT_SERVICE_URL'),
+          promptServiceUrl: requirePromptServiceUrl(config, 'knowledge'),
           promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
           hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
         },
