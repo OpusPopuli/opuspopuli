@@ -1105,7 +1105,7 @@
         },
         {
           "name": "Trigger My LLM Rerank",
-          "description": "Enqueue a re-rank job for the authenticated user. Pass the user's interestTags + all 20 ranking flags (the resolver derives the TRUE-only list internally). Saves llm_rerank_job_id from the response.\n\ncandidateLimit is optional (defaults to 20 in the worker). Lower it to ~3-5 during local LLM testing so Ollama doesn't run for several minutes per call.\n\n*** THE VARIABLES BELOW ARE A CANNED EXAMPLE, NOT YOUR PROFILE. *** They describe a renter / non-parent / transit-rider interested in housing and healthcare. Sending them reranks YOUR feed as if you were that person. Run 'My Ranking Flags' first and paste its result in. All 20 flags are required -- omitting any fails validation.",
+          "description": "Enqueue a re-rank job for the authenticated user. Pass the user's interestTags + all 20 ranking flags (the resolver derives the TRUE-only list internally). Saves llm_rerank_job_id from the response.\n\ncandidateLimit is optional (defaults to 20 in the worker). Lower it to ~3-5 during local LLM testing so Ollama doesn't run for several minutes per call.\n\n*** THE VARIABLES BELOW ARE A CANNED EXAMPLE, NOT YOUR PROFILE. *** They describe a renter / non-parent / transit-rider interested in housing and healthcare. Sending them reranks YOUR feed as if you were that person. Run 'My Ranking Flags' first and paste its result in. All 20 flags are required -- omitting any fails validation.\n\nReturns FOUR receipts, one per entity type (bill, proposition, representative, committee) -- reranking 'my stuff' means all of it. Each carries its own jobId; poll any of them with 'Poll Rerank Job Status'. Committees and representatives only appear here from the release that added the fan-out; before it, this mutation reranked bills alone.",
           "event": [
             {
               "listen": "test",
@@ -1130,7 +1130,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation TriggerMyLlmRerank($input: PersonalizationInputDto!, $candidateLimit: Int) {\n  triggerMyLlmRerank(input: $input, candidateLimit: $candidateLimit) {\n    jobId\n    status\n  }\n}",
+                "query": "mutation TriggerMyLlmRerank($input: PersonalizationInputDto!, $candidateLimit: Int) {\n  triggerMyLlmRerank(input: $input, candidateLimit: $candidateLimit) {\n    jobId\n    status\n    entityType\n  }\n}",
                 "variables": "{\n  \"input\": {\n    \"interestTags\": [\"housing\", \"healthcare\"],\n    \"flags\": {\n      \"isRenter\": true,\n      \"isHomeowner\": false,\n      \"isParent\": false,\n      \"isCaregiver\": false,\n      \"isStudent\": false,\n      \"isEducator\": false,\n      \"isWorker\": true,\n      \"isBusinessOwner\": false,\n      \"isUnionMember\": false,\n      \"isGigWorker\": false,\n      \"isTransitRider\": true,\n      \"isDriver\": false,\n      \"hasSpecialLicense\": false,\n      \"hasImmigrationConcern\": false,\n      \"hasHealthCondition\": false,\n      \"hasPublicHealthInsurance\": false,\n      \"isVeteran\": false,\n      \"hasJusticeInvolvement\": false,\n      \"isLowIncome\": false,\n      \"receivesPublicBenefits\": false\n    }\n  },\n  \"candidateLimit\": 5\n}"
               }
             },
