@@ -6,8 +6,15 @@ import "@testing-library/jest-dom";
 // Mock the Apollo hook so the context can be exercised without an
 // ApolloProvider, and so we can assert the mutation fires on complete.
 const mockPersistOnboarding = jest.fn().mockResolvedValue({ data: {} });
+// `completeOnboarding` also kicks off relevance generation so a new user is
+// not left with an empty briefing until the 03:00 cron. The client is mocked
+// here rather than asserted on; the priming behaviour has its own tests below.
+const mockQuery = jest.fn().mockResolvedValue({ data: null });
+const mockMutate = jest.fn().mockResolvedValue({ data: null });
+
 jest.mock("@apollo/client/react", () => ({
   useMutation: () => [mockPersistOnboarding, { loading: false }],
+  useApolloClient: () => ({ query: mockQuery, mutate: mockMutate }),
 }));
 
 // Mock localStorage
@@ -200,6 +207,88 @@ describe("OnboardingProvider", () => {
       );
       expect(result.current.currentStep).toBe(0);
       expect(result.current.hasCompletedOnboarding).toBe(false);
+    });
+  });
+  describe("priming personalization on completion", () => {
+    /*
+     * Nothing used to trigger relevance generation on sign-up -- only the
+     * nightly 03:00 cron and a manual mutation. A brand-new user finished
+     * onboarding, landed on their briefing, and found the committees section
+     * empty with no explanations anywhere until the next morning: the whole
+     * point of the product missing on the one visit that forms an impression.
+     */
+    const FLAGS = {
+      __typename: "RankingFlags",
+      isRenter: false,
+      isHomeowner: true,
+      isParent: true,
+      isDriver: true,
+    };
+
+    beforeEach(() => {
+      mockQuery.mockResolvedValue({
+        data: {
+          myRankingFlags: FLAGS,
+          mySignalProfile: { interestTags: ["education", "healthcare"] },
+        },
+      });
+      mockMutate.mockResolvedValue({ data: null });
+    });
+
+    const completeVia = async (fn: "completeOnboarding" | "skipOnboarding") => {
+      const { result } = renderHook(() => useOnboarding(), { wrapper });
+      await act(async () => {
+        result.current[fn]();
+      });
+    };
+
+    it("enqueues a rerank when onboarding completes", async () => {
+      await completeVia("completeOnboarding");
+
+      expect(mockMutate).toHaveBeenCalled();
+      const vars = mockMutate.mock.calls[0][0].variables;
+      expect(vars.input.interestTags).toEqual(["education", "healthcare"]);
+      expect(vars.input.flags.isHomeowner).toBe(true);
+      expect(vars.input.flags.isParent).toBe(true);
+    });
+
+    it("strips __typename from the flags", async () => {
+      await completeVia("completeOnboarding");
+
+      // GraphQL input objects reject unknown fields, so leaving Apollo's
+      // __typename in fails the whole mutation with a validation error rather
+      // than anything that points at the cause.
+      const vars = mockMutate.mock.calls[0][0].variables;
+      expect(vars.input.flags).not.toHaveProperty("__typename");
+    });
+
+    it("reads the flags from the network, not the cache", async () => {
+      await completeVia("completeOnboarding");
+
+      // Onboarding wrote the signal profile moments ago; a cached read would
+      // personalise using the pre-onboarding flags.
+      expect(mockQuery.mock.calls[0][0].fetchPolicy).toBe("network-only");
+    });
+
+    it("still records completion when priming fails", async () => {
+      mockQuery.mockRejectedValue(new Error("offline"));
+
+      await completeVia("completeOnboarding");
+
+      // Fire-and-forget: a failed prime just means the cron fills the cache
+      // tonight, which is the old behaviour. It must never block completion.
+      expect(mockPersistOnboarding).toHaveBeenCalled();
+      expect(localStorage.getItem("opuspopuli_onboarding_completed")).toBe(
+        "true",
+      );
+    });
+
+    it("primes on skip too", async () => {
+      // Skipping still leaves a usable account; the briefing should fill in
+      // for them as well.
+      await completeVia("skipOnboarding");
+
+      expect(mockMutate).toHaveBeenCalled();
     });
   });
 });

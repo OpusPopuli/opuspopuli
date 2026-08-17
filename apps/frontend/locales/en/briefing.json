@@ -123,5 +123,10 @@
   "stubs": {
     "counterFrame": "The opposing position will show here once the counter-frame pipeline ships.",
     "actionAffordances": "Vote dates, comment windows, and contact buttons will surface here once that data lands."
+  },
+  "personalizing": {
+    "title": "We're personalizing your briefing",
+    "body": "We're reading through bills, committees, propositions and your representatives to work out which ones actually affect you. This usually takes about five minutes — you can keep browsing, or come back shortly.",
+    "progress": "{{done}} of {{total}} finished"
   }
 }

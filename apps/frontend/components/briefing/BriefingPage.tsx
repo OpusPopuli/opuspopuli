@@ -2,6 +2,7 @@
 
 import { BillsBriefingSection } from "./bills/BillsBriefingSection";
 import { BriefingGreeting } from "./BriefingGreeting";
+import { PersonalizationProgress } from "./PersonalizationProgress";
 import { CommitteesBriefingSection } from "./committees/CommitteesBriefingSection";
 import { PropositionsBriefingSection } from "./propositions/PropositionsBriefingSection";
 import { RepsBriefingSection } from "./reps/RepsBriefingSection";
@@ -35,6 +36,7 @@ export function BriefingPage() {
         urgentBillCount={greeting.urgentBillCount}
         llmSummary={greeting.llmSummary}
       />
+      <PersonalizationProgress />
       <div className="space-y-5">
         <BillsBriefingSection />
         <RepsBriefingSection />
