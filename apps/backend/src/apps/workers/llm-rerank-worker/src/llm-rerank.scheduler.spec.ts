@@ -11,6 +11,7 @@ import {
 
 import { LlmRerankScheduler } from './llm-rerank.scheduler';
 import { LlmRerankJobService } from 'src/apps/knowledge/src/domains/personalized-feed/llm-rerank-job.service';
+import { RerankCandidatesService } from './rerank-candidates.service';
 
 /** Typed shape of a single entry in the `enqueueBulk` call args. */
 type BulkEntry = { data: LlmRerankJobData; opts?: { jobId?: string } };
@@ -78,6 +79,14 @@ describe('LlmRerankScheduler', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        {
+          provide: RerankCandidatesService,
+          useValue: {
+            fetchPropositionCandidateIds: jest.fn().mockResolvedValue([]),
+            fetchRepresentativeCandidateIds: jest.fn().mockResolvedValue([]),
+            fetchCommitteeCandidates: jest.fn().mockResolvedValue([]),
+          },
+        },
         LlmRerankScheduler,
         { provide: DbService, useValue: db },
         { provide: QueueService, useValue: createMock<QueueService>() },
