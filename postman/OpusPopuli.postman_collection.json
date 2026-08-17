@@ -1079,8 +1079,33 @@
       "description": "Personalized bill-feed re-rank job management (opuspopuli#745).\n\ntriggerMyLlmRerank enqueues a BullMQ job onto the llm-rerank queue and returns immediately with the lifecycle row jobId (UUID of the llm_rerank_jobs row). The llm-rerank-worker (:3007) consumes the queue, runs LlmRerankService.rerankForUser, and writes per-user, per-bill rows to personalized_feed_cache.\n\nIn UAT the nightly cron is disabled (LLM_RERANK_CRON_ENABLED=false) — use this mutation to trigger an ad-hoc rerank for the authenticated user. Production runs the cron at 3 AM UTC by default.\n\nPoll job status via myLlmRerankJob(jobId) using the llm_rerank_job_id env var the trigger request saves. Status values: QUEUED → RUNNING → SUCCEEDED | FAILED. The result payload (candidatesConsidered, cacheWrites, validatorRejections, totalTokens, budgetExhausted) is populated on success. Polling is scoped to the authenticated user — you only see your own jobs.",
       "item": [
         {
+          "name": "My Ranking Flags (run BEFORE Trigger Rerank)",
+          "description": "Returns the ranking flags the app derives for the authenticated user, plus their interestTags.\n\nRun this FIRST and paste the result into 'Trigger My LLM Rerank'. That request ships with a canned renter/transit-rider persona which is NOT your profile -- triggering a rerank with it produces explanations personalised to someone who does not exist.\n\nFlags are derived in users/domains/personalization/ranking-flags.service.ts. The T3 (sensitive) flags return false under no-fields-mode, so this query is the only reliable source -- they cannot be inferred from the signal profile.\n\nNote: GraphQL introspection is disabled in production (#378), so Postman's schema explorer shows nothing for any query. That is expected.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query MyRankingFlags {\n  myRankingFlags {\n    isRenter\n    isHomeowner\n    isParent\n    isCaregiver\n    isStudent\n    isEducator\n    isWorker\n    isBusinessOwner\n    isUnionMember\n    isGigWorker\n    isTransitRider\n    isDriver\n    hasSpecialLicense\n    hasImmigrationConcern\n    hasHealthCondition\n    hasPublicHealthInsurance\n    isVeteran\n    hasJusticeInvolvement\n    isLowIncome\n    receivesPublicBenefits\n  }\n  mySignalProfile {\n    interestTags\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
           "name": "Trigger My LLM Rerank",
-          "description": "Enqueue a re-rank job for the authenticated user. Pass the user's interestTags + all 20 ranking flags (the resolver derives the TRUE-only list internally). Saves llm_rerank_job_id from the response.\n\ncandidateLimit is optional (defaults to 20 in the worker). Lower it to ~3-5 during local LLM testing so Ollama doesn't run for several minutes per call.",
+          "description": "Enqueue a re-rank job for the authenticated user. Pass the user's interestTags + all 20 ranking flags (the resolver derives the TRUE-only list internally). Saves llm_rerank_job_id from the response.\n\ncandidateLimit is optional (defaults to 20 in the worker). Lower it to ~3-5 during local LLM testing so Ollama doesn't run for several minutes per call.\n\n*** THE VARIABLES BELOW ARE A CANNED EXAMPLE, NOT YOUR PROFILE. *** They describe a renter / non-parent / transit-rider interested in housing and healthcare. Sending them reranks YOUR feed as if you were that person. Run 'My Ranking Flags' first and paste its result in. All 20 flags are required -- omitting any fails validation.",
           "event": [
             {
               "listen": "test",
