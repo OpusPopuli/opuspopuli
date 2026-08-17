@@ -38,23 +38,76 @@ export function createSubgraphPlugins(serviceName: string) {
 }
 
 /**
- * Shared throttler configuration for all microservices
+ * Rate limits for the API GATEWAY — the public edge.
+ *
+ * This is the throttler that matters: it keys on the real client IP, so it is
+ * the only one that can distinguish one abusive caller from everyone else.
+ *
+ * Sized against what a page load actually costs. One briefing load fans out to
+ * ~21 queries in about two seconds, with 11 inside a single second. At the
+ * previous 10/s that tripped on first sign-in every time, surfacing as "Too
+ * many requests" in the Representatives section and a phantom "0 committees"
+ * where the query was rejected before it ran.
+ *
+ * Note these are still per IP, so users behind shared NAT — an office, a
+ * library, a household — spend one budget collectively. Reducing the fan-out
+ * (see #1024) is what actually fixes that; these numbers only buy room.
+ */
+export const GATEWAY_THROTTLER_CONFIG = [
+  {
+    name: 'short',
+    ttl: 1000, // 1 second
+    limit: 50, // ~2 briefing loads' worth of burst
+  },
+  {
+    name: 'medium',
+    ttl: 10000, // 10 seconds
+    limit: 200, // ~9 page loads in 10s
+  },
+  {
+    name: 'long',
+    ttl: 60000, // 1 minute
+    limit: 600, // ~28 page loads/min — brisk human use, not a script
+  },
+];
+
+/**
+ * Rate limits for the SUBGRAPHS — internal services behind the gateway.
+ *
+ * These are deliberately far higher than the gateway's, because the throttler
+ * keys on IP and **every subgraph request arrives from the gateway's single
+ * IP**. There is no per-user dimension here at all: the limit is a global cap
+ * on total system throughput, shared by every user at once.
+ *
+ * At the previous 10/s that meant the whole platform could serve ten subgraph
+ * requests per second across all users combined — while ONE briefing load
+ * needs about 21. It held together only because there was effectively one
+ * person using it; a second concurrent user would have throttled both.
+ *
+ * These limits also provide no security. Subgraphs are not publicly reachable
+ * and require a valid `X-HMAC-Auth` signature, so an attacker who could reach
+ * them at volume has already defeated something more important than a rate
+ * limit. The real per-caller control is GATEWAY_THROTTLER_CONFIG above.
+ *
+ * Kept non-infinite purely as a runaway backstop — a bug that loops subgraph
+ * calls should eventually be stopped rather than allowed to saturate the
+ * database.
  */
 export const THROTTLER_CONFIG = [
   {
     name: 'short',
     ttl: 1000, // 1 second
-    limit: 10, // 10 requests per second
+    limit: 2000, // global across all users, not per user
   },
   {
     name: 'medium',
     ttl: 10000, // 10 seconds
-    limit: 50, // 50 requests per 10 seconds
+    limit: 10000,
   },
   {
     name: 'long',
     ttl: 60000, // 1 minute
-    limit: 100, // 100 requests per minute
+    limit: 50000,
   },
 ];
 
