@@ -14,6 +14,7 @@ import { IncomingMessage } from 'node:http';
 import { Request, Response } from 'express';
 import { LoggingModule, LogLevel } from '@opuspopuli/logging-provider';
 
+import { GATEWAY_THROTTLER_CONFIG } from 'src/common/config/shared-app.config';
 import configuration from 'src/config';
 import relationaldbConfig from 'src/config/relationaldb.config';
 import { authConfig, supabaseConfig } from '@opuspopuli/config-provider';
@@ -112,49 +113,13 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
       }),
       inject: [ConfigService],
     }),
-    // Rate limits sized against what ONE briefing page load actually costs.
+    // Limits live in shared-app.config.ts alongside the subgraph ones.
     //
-    // These were 10/s, 50/10s, 100/min, and the app tripped them by simply
-    // being used. A first briefing load fans out to ~21 queries in about two
-    // seconds, with 11 landing inside a single second (GetBill x5,
-    // GetBillBrief x5, committees). Measured from the production audit log:
-    //
-    //   15:20:13.008    4 queries
-    //   15:20:13.063    6 queries
-    //   15:20:15.467   11 queries   <- 11 against a limit of 10
-    //
-    // The user-visible symptom was "Too many requests. Please try again later."
-    // in the Representatives section on first sign-in, clearing once Apollo
-    // retried into a fresh window. The old `medium` was worse than the burst
-    // limit in practice: two briefing loads in ten seconds exceeded it, and
-    // `long` capped a session at roughly four loads per minute.
-    //
-    // Limits are per IP, so anyone behind shared NAT -- an office, a library, a
-    // household -- consumed the same budget collectively.
-    //
-    // Raised to leave headroom for normal navigation while still bounding
-    // abuse: the sustained windows, not the burst window, are what protect
-    // against a scripted client. Reducing the fan-out itself (batching the
-    // per-bill queries, and the duplicate BriefingPrefetch/MyProfile calls) is
-    // the better fix and is tracked separately -- this stops legitimate use
-    // from being throttled today.
-    ThrottlerModule.forRoot([
-      {
-        name: 'short',
-        ttl: 1000, // 1 second
-        limit: 50, // ~2 briefing loads' worth of burst
-      },
-      {
-        name: 'medium',
-        ttl: 10000, // 10 seconds
-        limit: 200, // ~9 page loads in 10s
-      },
-      {
-        name: 'long',
-        ttl: 60000, // 1 minute
-        limit: 600, // ~28 page loads/min — brisk human use, not a script
-      },
-    ]),
+    // They were inline here, and that is exactly how the first fix missed:
+    // raising the gateway's limits left the subgraphs at 10/s, so the briefing
+    // kept failing from the region service while the gateway looked healthy.
+    // Same file now, so the next person changing one sees the other.
+    ThrottlerModule.forRoot(GATEWAY_THROTTLER_CONFIG),
     GraphQLModule.forRootAsync<ApolloGatewayDriverConfig>({
       driver: ApolloGatewayDriver,
       imports: [
