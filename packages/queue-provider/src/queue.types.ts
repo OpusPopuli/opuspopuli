@@ -143,6 +143,8 @@ export interface LlmRerankJobData {
 export interface LlmRerankJobResult {
   userId: string;
   candidatesConsidered: number;
+  /** Candidates skipped because a fresh explanation was already cached. */
+  skippedFresh?: number;
   cacheWritesWithExplanation: number;
   cacheWritesWithoutExplanation: number;
   llmFailures: number;

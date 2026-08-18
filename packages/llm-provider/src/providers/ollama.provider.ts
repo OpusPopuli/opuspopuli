@@ -12,6 +12,50 @@ import {
 } from "@opuspopuli/common";
 
 /**
+ * Total tokens for a call, from Ollama's separate prompt/completion counts.
+ *
+ * Returns undefined when Ollama reported neither, so "no telemetry" stays
+ * distinguishable from "a call that genuinely used zero tokens" — recording a
+ * spurious 0 would quietly understate spend in exactly the aggregate queries
+ * this instrumentation exists to answer.
+ */
+/**
+ * Map Ollama's usage fields onto the GenerateResult telemetry shape.
+ *
+ * One place on purpose: the generate and chat paths return identical
+ * telemetry, and two hand-maintained copies is how the input count went
+ * unread in one of them for months.
+ */
+function tokenTelemetry(data: {
+  eval_count?: number;
+  prompt_eval_count?: number;
+  done?: boolean;
+}): {
+  tokensUsed?: number;
+  tokensIn?: number;
+  tokensOut?: number;
+  finishReason: "stop" | "length";
+} {
+  return {
+    tokensUsed: sumTokens(data.prompt_eval_count, data.eval_count),
+    tokensIn: data.prompt_eval_count || undefined,
+    tokensOut: data.eval_count || undefined,
+    finishReason: data.done ? "stop" : "length",
+  };
+}
+
+function sumTokens(
+  promptTokens?: number,
+  completionTokens?: number,
+): number | undefined {
+  if (promptTokens === undefined && completionTokens === undefined) {
+    return undefined;
+  }
+  return (promptTokens ?? 0) + (completionTokens ?? 0);
+}
+
+
+/**
  * Custom fetch function type for HTTP connection pooling support
  */
 export type FetchFunction = (
@@ -218,6 +262,9 @@ export class OllamaLLMProvider implements ILLMProvider {
         const data = (await response.json()) as {
           response?: string;
           eval_count?: number;
+          // Ollama reports prompt tokens separately and always has — this
+          // was simply never read, so every stored `tokens_in` is NULL.
+          prompt_eval_count?: number;
           eval_duration?: number; // nanoseconds spent generating tokens
           done?: boolean;
         };
@@ -236,11 +283,7 @@ export class OllamaLLMProvider implements ILLMProvider {
             `(${tokens} tokens, ${tokPerSec} tok/s) with Ollama`,
         );
 
-        return {
-          text: data.response || "",
-          tokensUsed: data.eval_count || undefined,
-          finishReason: data.done ? "stop" : "length",
-        };
+        return { text: data.response || "", ...tokenTelemetry(data) };
       } catch (error) {
         if (error instanceof LLMError) throw error;
         this.logger.error("Ollama generation failed:", error);
@@ -431,14 +474,11 @@ export class OllamaLLMProvider implements ILLMProvider {
         const data = (await response.json()) as {
           message?: { content?: string };
           eval_count?: number;
+          prompt_eval_count?: number;
           done?: boolean;
         };
 
-        return {
-          text: data.message?.content || "",
-          tokensUsed: data.eval_count || undefined,
-          finishReason: data.done ? "stop" : "length",
-        };
+        return { text: data.message?.content || "", ...tokenTelemetry(data) };
       } catch (error) {
         if (error instanceof LLMError) throw error;
         this.logger.error("Ollama chat failed:", error);

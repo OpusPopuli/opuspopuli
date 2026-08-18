@@ -86,7 +86,7 @@ function makeMocks() {
     // bill.findMany({ where: { id: { in: billIds } } }) once per rerank
     // instead of bill.findUnique per candidate.
     bill: { findMany: jest.fn().mockResolvedValue([]) },
-    billRelevanceCache: { upsert: jest.fn() },
+    billRelevanceCache: { upsert: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as jest.Mocked<DbService>;
   const feed = {
     getFeedForUser: jest.fn().mockResolvedValue(FEED_RESULT),
@@ -363,9 +363,9 @@ describe('LlmRerankService', () => {
       ).proposition = { findMany: jest.fn().mockResolvedValue([]) };
       (
         m.db as unknown as {
-          propositionRelevanceCache: { upsert: jest.Mock };
+          propositionRelevanceCache: { upsert: jest.Mock; findMany: jest.Mock };
         }
-      ).propositionRelevanceCache = { upsert: jest.fn() };
+      ).propositionRelevanceCache = { upsert: jest.fn(), findMany: jest.fn().mockResolvedValue([]) };
       (
         m.promptClient as unknown as {
           getPropositionRelevanceExplanationPrompt: jest.Mock;
@@ -420,7 +420,7 @@ describe('LlmRerankService', () => {
       expect(summary.cacheWritesWithoutExplanation).toBe(0);
       const upsertCall = (
         deps.db as unknown as {
-          propositionRelevanceCache: { upsert: jest.Mock };
+          propositionRelevanceCache: { upsert: jest.Mock; findMany: jest.Mock };
         }
       ).propositionRelevanceCache.upsert.mock.calls[0][0];
       expect(upsertCall.where).toEqual({
@@ -449,7 +449,7 @@ describe('LlmRerankService', () => {
       expect(
         (
           deps.db as unknown as {
-            propositionRelevanceCache: { upsert: jest.Mock };
+            propositionRelevanceCache: { upsert: jest.Mock; findMany: jest.Mock };
           }
         ).propositionRelevanceCache.upsert,
       ).not.toHaveBeenCalled();
@@ -464,9 +464,9 @@ describe('LlmRerankService', () => {
       ).representative = { findMany: jest.fn().mockResolvedValue([]) };
       (
         m.db as unknown as {
-          representativeRelevanceCache: { upsert: jest.Mock };
+          representativeRelevanceCache: { upsert: jest.Mock; findMany: jest.Mock };
         }
-      ).representativeRelevanceCache = { upsert: jest.fn() };
+      ).representativeRelevanceCache = { upsert: jest.fn(), findMany: jest.fn().mockResolvedValue([]) };
       (
         m.promptClient as unknown as {
           getRepresentativeRelevanceExplanationPrompt: jest.Mock;
@@ -568,9 +568,9 @@ describe('LlmRerankService', () => {
       ).legislativeCommittee = { findMany: jest.fn().mockResolvedValue([]) };
       (
         m.db as unknown as {
-          committeeRelevanceCache: { upsert: jest.Mock };
+          committeeRelevanceCache: { upsert: jest.Mock; findMany: jest.Mock };
         }
-      ).committeeRelevanceCache = { upsert: jest.fn() };
+      ).committeeRelevanceCache = { upsert: jest.fn(), findMany: jest.fn().mockResolvedValue([]) };
       (
         m.promptClient as unknown as {
           getCommitteeRelevanceExplanationPrompt: jest.Mock;
@@ -694,7 +694,7 @@ describe('LlmRerankService', () => {
 
       const upsertCall = (
         deps.db as unknown as {
-          committeeRelevanceCache: { upsert: jest.Mock };
+          committeeRelevanceCache: { upsert: jest.Mock; findMany: jest.Mock };
         }
       ).committeeRelevanceCache.upsert.mock.calls[0][0];
       expect(upsertCall.where).toEqual({
@@ -756,6 +756,109 @@ describe('LlmRerankService', () => {
       expect(expiryFor('', normalExpiry).getTime()).toBeLessThan(
         Date.now() + HOUR,
       );
+    });
+  });
+  describe('freshness skip and token accounting', () => {
+    /*
+     * Nothing checked the cache before generating, so the nightly cron
+     * regenerated every explanation for every user every night while writing
+     * a 7-day TTL. The cache was read on the request path and ignored on the
+     * write path — roughly a 7x overspend, and the single largest lever on
+     * how many users one node can serve.
+     */
+    const withBill = () => {
+      const deps = makeMocks();
+      (deps.db.bill.findMany as jest.Mock).mockResolvedValue([BILL_ROW]);
+      deps.promptClient.getBillRelevanceExplanationPrompt.mockResolvedValue({
+        promptText: 'p',
+        promptHash: 'h'.repeat(64),
+        promptVersion: 'v1',
+      });
+      deps.llm.generate.mockResolvedValue({
+        text: JSON.stringify({ explanation: 'Caps rent costs in 94110.' }),
+        tokensUsed: 42,
+        finishReason: 'stop',
+      });
+      return deps;
+    };
+
+    it('skips a candidate that already has a fresh explanation', async () => {
+      const deps = withBill();
+      (deps.db.billRelevanceCache.findMany as jest.Mock).mockResolvedValue([
+        { billId: 'b-1', relevanceExplanation: 'still good' },
+      ]);
+
+      const service = await makeService(deps);
+      const summary = await service.rerankForUser('u-1', BASE_INPUT);
+
+      expect(deps.llm.generate).not.toHaveBeenCalled();
+      expect(deps.db.billRelevanceCache.upsert).not.toHaveBeenCalled();
+      // `candidatesConsidered` stays the candidate count — how many existed,
+      // not how many cost anything. `skippedFresh` is what says the cache did
+      // its job, and a run reporting 1 considered / 1 skipped did no
+      // inference at all.
+      expect(summary.candidatesConsidered).toBe(1);
+      expect(summary.skippedFresh).toBe(1);
+    });
+
+    it('regenerates when the cached explanation is EMPTY, even if unexpired', async () => {
+      // A row cached from a failed generation gets a short retry TTL by
+      // design. Treating it as fresh would make a prompt-service outage
+      // self-perpetuating: nothing generated, nothing retried.
+      const deps = withBill();
+      (deps.db.billRelevanceCache.findMany as jest.Mock).mockResolvedValue([
+        { billId: 'b-1', relevanceExplanation: '' },
+      ]);
+
+      const service = await makeService(deps);
+      await service.rerankForUser('u-1', BASE_INPUT);
+
+      expect(deps.llm.generate).toHaveBeenCalled();
+    });
+
+    it('only considers unexpired rows fresh', async () => {
+      const deps = withBill();
+      const service = await makeService(deps);
+      await service.rerankForUser('u-1', BASE_INPUT);
+
+      const where = (deps.db.billRelevanceCache.findMany as jest.Mock).mock
+        .calls[0][0].where;
+      // Stale entries must regenerate — that is what the TTL is for.
+      expect(where.expiresAt).toHaveProperty('gt');
+      expect(where.userId).toBe('u-1');
+    });
+
+    it('records input AND output tokens separately', async () => {
+      const deps = withBill();
+      deps.llm.generate.mockResolvedValue({
+        text: JSON.stringify({ explanation: 'Caps rent costs in 94110.' }),
+        tokensUsed: 940,
+        tokensIn: 880,
+        tokensOut: 60,
+        finishReason: 'stop',
+      });
+
+      const service = await makeService(deps);
+      await service.rerankForUser('u-1', BASE_INPUT);
+
+      const call = (deps.db.billRelevanceCache.upsert as jest.Mock).mock
+        .calls[0][0];
+      // Input was previously discarded, leaving every stored tokens_in NULL
+      // and making spend impossible to account for.
+      expect(call.create.tokensIn).toBe(880);
+      expect(call.create.tokensOut).toBe(60);
+    });
+
+    it('falls back to the total when a provider reports no split', async () => {
+      const deps = withBill();
+
+      const service = await makeService(deps);
+      await service.rerankForUser('u-1', BASE_INPUT);
+
+      const call = (deps.db.billRelevanceCache.upsert as jest.Mock).mock
+        .calls[0][0];
+      expect(call.create.tokensOut).toBe(42);
+      expect(call.create.tokensIn).toBeNull();
     });
   });
 });

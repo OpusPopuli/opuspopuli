@@ -30,6 +30,7 @@ describe('LlmRerankProcessor', () => {
   const sampleSummary = {
     userId: 'u-1',
     candidatesConsidered: 5,
+    skippedFresh: 0,
     cacheWritesWithExplanation: 4,
     cacheWritesWithoutExplanation: 1,
     llmFailures: 0,
@@ -199,6 +200,7 @@ describe('LlmRerankProcessor', () => {
     const totalFailure = {
       ...sampleSummary,
       candidatesConsidered: 85,
+      skippedFresh: 0,
       cacheWritesWithExplanation: 0,
       cacheWritesWithoutExplanation: 85,
       llmFailures: 85,
@@ -251,6 +253,24 @@ describe('LlmRerankProcessor', () => {
       expect(jobs.markSucceeded).toHaveBeenCalled();
     });
 
+    it('does NOT fail a run where everything was skipped as fresh', async () => {
+      // The freshness skip produces exactly this shape: candidates existed,
+      // nothing was written, and nothing failed. The total-failure guard
+      // keys on llmFailures === candidatesConsidered, so a fully-cached run
+      // (llmFailures: 0) must pass — this is the intended steady state
+      // between TTL expiries, not an outage.
+      rerank.rerankForUser.mockResolvedValue({
+        ...totalFailure,
+        skippedFresh: 85,
+        llmFailures: 0,
+        cacheWritesWithoutExplanation: 0,
+      });
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(buildJob());
+      expect(jobs.markSucceeded).toHaveBeenCalled();
+    });
+
     it('still succeeds when the budget was deliberately exhausted', async () => {
       // A deliberate stop must not look like an infrastructure failure.
       rerank.rerankForUser.mockResolvedValue({
@@ -263,6 +283,48 @@ describe('LlmRerankProcessor', () => {
       expect(jobs.markSucceeded).toHaveBeenCalled();
     });
   });
+  describe('manual triggers force regeneration; cron takes the freshness skip', () => {
+    /*
+     * The freshness skip must not apply to a MANUAL trigger. "Re-rank me" is
+     * an explicit request — the user may have just changed their profile, and
+     * the cache key carries no flags hash, so a still-fresh entry can be
+     * semantically stale. Serving it would make the button a silent no-op.
+     * The nightly cron carries no such intent and skips fresh entries, which
+     * is where the ~7x saving lives.
+     */
+    it('passes forceRegenerate for a MANUAL job', async () => {
+      await processor.onApplicationBootstrap();
+      await getHandler()(buildJob()); // buildJob defaults to MANUAL
+
+      expect(rerank.rerankForUser).toHaveBeenCalledWith(
+        'u-1',
+        expect.any(Object),
+        expect.objectContaining({ forceRegenerate: true }),
+      );
+    });
+
+    it('does NOT force regeneration for a CRON job', async () => {
+      await processor.onApplicationBootstrap();
+      await getHandler()(
+        buildJob({
+          data: {
+            rerankJobId: 'row-1',
+            triggerSource: TRIGGER_SOURCE.CRON,
+            userId: 'u-1',
+            rankingFlags: [],
+            interestTags: [],
+          },
+        } as unknown as Partial<Job>),
+      );
+
+      expect(rerank.rerankForUser).toHaveBeenCalledWith(
+        'u-1',
+        expect.any(Object),
+        expect.objectContaining({ forceRegenerate: false }),
+      );
+    });
+  });
+
   describe('resolves candidates the enqueuer did not supply', () => {
     /*
      * The nightly cron resolves candidates up front and fans them out, so its
