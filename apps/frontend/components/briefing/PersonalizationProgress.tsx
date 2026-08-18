@@ -19,8 +19,19 @@ const RUN_WINDOW_MS = 20 * 60 * 1000;
 /** Poll cadence while work is outstanding. Off entirely once nothing is. */
 const POLL_MS = 15_000;
 
-/** Jobs still to finish. */
+/**
+ * Jobs still to finish.
+ *
+ * Compared case-INSENSITIVELY. The GraphQL enum serialises uppercase
+ * (`QUEUED`, `RUNNING`, `SUCCEEDED`) while the database column stores
+ * lowercase, and matching the database spelling meant `pending` was always
+ * zero — so this notice rendered nothing at all on its first outing, while
+ * the jobs it was reporting on ran perfectly.
+ */
 const PENDING = new Set(["queued", "running"]);
+
+const isPending = (status: string | null | undefined): boolean =>
+  PENDING.has((status ?? "").toLowerCase());
 
 /**
  * "We're building your briefing" notice.
@@ -45,12 +56,16 @@ export function PersonalizationProgress() {
   const [mountedAt] = useState(() => Date.now());
   const client = useApolloClient();
 
-  const { data } = useQuery<MyRecentLlmRerankJobsData>(
+  const { data, stopPolling } = useQuery<MyRecentLlmRerankJobsData>(
     GET_MY_RECENT_LLM_RERANK_JOBS,
     {
       variables: { limit: 8 },
       fetchPolicy: "network-only",
-      // Stops polling once nothing is pending — `pollInterval: 0` disables it.
+      // Polling is STOPPED explicitly once nothing is pending (see the effect
+      // below). Without that this issues a network request every 15s for as
+      // long as the tab is open, for every user including returning ones with
+      // no active run -- a permanent background load on a platform that
+      // already fires ~21 requests per briefing load and rate-limits per IP.
       pollInterval: POLL_MS,
       // A failure here must not surface: this is a progress hint, and an
       // error toast about background jobs is worse than silence.
@@ -69,7 +84,7 @@ export function PersonalizationProgress() {
     return Number.isFinite(at) && at >= cutoff;
   });
 
-  const pending = recent.filter((j) => PENDING.has(j.status)).length;
+  const pending = recent.filter((j) => isPending(j.status)).length;
 
   // Pull the freshly-generated content in when the run finishes.
   //
@@ -84,13 +99,17 @@ export function PersonalizationProgress() {
   useEffect(() => {
     const was = previousPending.current;
     previousPending.current = pending;
+
+    // Nothing outstanding: stop asking. One request on mount settles whether
+    // there is a run to watch; after that a returning user costs nothing.
+    if (pending === 0) stopPolling();
     if (was !== null && was > 0 && pending === 0) {
       // Errors are swallowed rather than voided: a failed refetch just leaves
       // the already-correct cache-and-network sections to update on the next
       // navigation or reload.
       client.refetchQueries({ include: "active" }).catch(() => {});
     }
-  }, [pending, client]);
+  }, [pending, client, stopPolling]);
 
   if (recent.length === 0 || pending === 0) return null;
 
