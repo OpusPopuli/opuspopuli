@@ -8,10 +8,13 @@
  *
  * Controlled-vocab values match what the onboarding flow (#758) writes
  * to the database. Planning doc §4 has a richer set in places —
- * "unemployed", "retired", "rideshare", "remote_work" etc. — and the
- * options here are a deliberate subset to avoid orphan values until
- * the shared `@opuspopuli/personalization-vocab` package (#762) lands
- * and the onboarding chips can broaden.
+ * "unemployed", "rideshare", "remote_work" etc. — and the options here
+ * are a deliberate subset to avoid orphan values until the shared
+ * `@opuspopuli/personalization-vocab` package (#762) lands and the
+ * onboarding chips can broaden. "retired" graduated out of that subset
+ * when a real user asked for it, added to BOTH this list and the
+ * onboarding chips in the same change — the manual discipline #762
+ * exists to make unnecessary.
  *
  * Cross-service contract: the values here must match the knowledge
  * ranker's WHO_TO_FLAG table in `scoring.service.ts`. Drift will
@@ -181,7 +184,14 @@ const SIGNAL_FIELDS: readonly FieldDescriptor[] = [
     category: "work",
     tier: "T2",
     inputType: "string-select",
-    options: ["employed", "gig", "business_owner"],
+    // "retired" was requested by an actual retired user. It is deliberately
+    // NOT in the ranker's workerStatuses set — isWorker: false is correct for
+    // retirees. A dedicated isRetired ranking flag would strengthen matches
+    // like the Aging and Long-Term Care committee, but the 20-flag
+    // RankingFlags contract spans frontend, users service and prompt-service,
+    // so that is tracked with the vocabulary alignment work (#1027) rather
+    // than smuggled in here.
+    options: ["employed", "gig", "business_owner", "retired"],
     maxLength: 50,
     i18nKey: "employmentStatus",
   },

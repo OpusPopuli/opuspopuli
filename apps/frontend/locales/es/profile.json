@@ -186,7 +186,8 @@
       "options": {
         "employed": "Empleado",
         "gig": "Autónomo o por encargo",
-        "business_owner": "Dueño de pequeño negocio"
+        "business_owner": "Dueño de pequeño negocio",
+        "retired": "Jubilado"
       }
     },
     "industry": {

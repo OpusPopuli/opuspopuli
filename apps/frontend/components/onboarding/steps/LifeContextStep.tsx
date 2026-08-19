@@ -225,6 +225,7 @@ export function LifeContextStep({
           options={[
             { value: "employed", label: t("lifeContext.chips.work.employed") },
             { value: "gig", label: t("lifeContext.chips.work.gig") },
+            { value: "retired", label: t("lifeContext.chips.work.retired") },
             {
               value: "business_owner",
               label: t("lifeContext.chips.work.businessOwner"),
