@@ -235,9 +235,19 @@ function AuthCallbackContent() {
         <h1 className="text-xl font-bold text-content mb-2">
           Link expired or invalid
         </h1>
-        <p className="text-content-dim mb-6">
+        {/* The most common way to land here is not expiry: requesting a
+            second link invalidates the first, and slow email delivery means
+            people often click the FIRST one after it finally arrives. A real
+            user hit exactly this on launch night — two requests two minutes
+            apart, clicked the earlier link, gave up on the address entirely.
+            Say so, and point at the fix, instead of a dead end. */}
+        <p className="text-content-dim mb-3">
           {error ||
-            "This magic link has expired or is invalid. Please request a new one."}
+            "This link has expired or was replaced by a newer one — requesting a new link cancels any earlier ones."}
+        </p>
+        <p className="text-content-dim text-sm mb-6">
+          If you asked for a link more than once, only the most recent email
+          works. Otherwise, just request a fresh one below.
         </p>
         <div className="space-y-3">
           <Link

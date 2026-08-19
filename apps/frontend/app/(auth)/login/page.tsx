@@ -260,6 +260,10 @@ function LoginPageContent() {
               <p className="text-content-dim text-sm mt-2">
                 The link expires in 2 hours
               </p>
+              <p className="text-content-dim text-sm mt-2">
+                It can take a minute or two to arrive — check spam too.
+                Requesting another link will cancel this one.
+              </p>
             </div>
           ) : (
             <form onSubmit={handleMagicLinkLogin} className="space-y-5">
