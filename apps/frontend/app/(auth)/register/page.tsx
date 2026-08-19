@@ -56,10 +56,17 @@ export default function RegisterPage() {
           We&apos;ve sent a verification link to
         </p>
         <p className="font-medium text-content mb-4">{email}</p>
-        <p className="text-content-dim text-sm mb-6">
+        <p className="text-content-dim text-sm mb-2">
           Click the link in your email to complete your registration.
           <br />
           The link expires in 2 hours.
+        </p>
+        {/* Expectation-setting that defuses the stale-link trap: delivery can
+            lag (Gmail especially), and an impatient re-request invalidates
+            the email already in flight — turning one problem into two. */}
+        <p className="text-content-dim text-sm mb-6">
+          It can take a minute or two to arrive — check your spam folder too.
+          Requesting another link will cancel this one.
         </p>
         <div className="space-y-3">
           <Link

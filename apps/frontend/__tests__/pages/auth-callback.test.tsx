@@ -131,9 +131,7 @@ describe("AuthCallbackPage", () => {
       renderCallback();
 
       await waitFor(() => {
-        expect(
-          screen.getByText(/This magic link has expired or is invalid/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/replaced by a newer one/)).toBeInTheDocument();
       });
     });
 
