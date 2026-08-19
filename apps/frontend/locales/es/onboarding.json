@@ -104,7 +104,8 @@
       "work": {
         "employed": "Empleado",
         "gig": "Autónomo / trabajo por encargo",
-        "businessOwner": "Dueño de pequeño negocio"
+        "businessOwner": "Dueño de pequeño negocio",
+        "retired": "Jubilado"
       },
       "workExtras": {
         "union": "Miembro de un sindicato"

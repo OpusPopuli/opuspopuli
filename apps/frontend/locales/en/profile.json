@@ -186,7 +186,8 @@
       "options": {
         "employed": "Employed",
         "gig": "Self-employed or gig",
-        "business_owner": "Small business owner"
+        "business_owner": "Small business owner",
+        "retired": "Retired"
       }
     },
     "industry": {

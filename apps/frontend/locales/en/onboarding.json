@@ -104,7 +104,8 @@
       "work": {
         "employed": "Employed",
         "gig": "Self-employed / gig",
-        "businessOwner": "Small business owner"
+        "businessOwner": "Small business owner",
+        "retired": "Retired"
       },
       "workExtras": {
         "union": "Union member"
