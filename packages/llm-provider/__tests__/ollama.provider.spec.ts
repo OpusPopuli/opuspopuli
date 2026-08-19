@@ -57,6 +57,46 @@ describe("OllamaLLMProvider", () => {
   });
 
   describe("generate", () => {
+    it("reports input and output tokens separately", async () => {
+      // Ollama has always returned prompt_eval_count; it went unread, so
+      // every stored tokens_in was NULL and inference spend could not be
+      // attributed. tokensUsed becomes the SUM -- for extraction-shaped
+      // prompts input dominates output, so eval_count alone understated
+      // real usage several-fold.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            response: "short answer",
+            prompt_eval_count: 900,
+            eval_count: 60,
+            done: true,
+          }),
+      });
+
+      const result = await provider.generate("long extraction prompt");
+
+      expect(result.tokensIn).toBe(900);
+      expect(result.tokensOut).toBe(60);
+      expect(result.tokensUsed).toBe(960);
+    });
+
+    it("keeps telemetry undefined when Ollama reports nothing", async () => {
+      // "No telemetry" must stay distinguishable from "zero tokens" -- a
+      // spurious 0 would quietly understate spend in the aggregates this
+      // instrumentation exists to feed.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ response: "hi", done: true }),
+      });
+
+      const result = await provider.generate("Test prompt");
+
+      expect(result.tokensUsed).toBeUndefined();
+      expect(result.tokensIn).toBeUndefined();
+      expect(result.tokensOut).toBeUndefined();
+    });
+
     it("should generate text successfully", async () => {
       const mockResponse = {
         response: "Generated text response",

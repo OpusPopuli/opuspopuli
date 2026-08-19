@@ -41,7 +41,26 @@ export interface GenerateOptions {
  */
 export interface GenerateResult {
   text: string;
+  /**
+   * Total tokens billed for this call — input plus output.
+   *
+   * Kept as the headline number because cost gates work on the sum. Prefer
+   * `tokensIn` / `tokensOut` when attributing spend: for extraction-shaped
+   * workloads input dominates output by an order of magnitude or more, so a
+   * total alone tells you almost nothing about where the cost went.
+   */
   tokensUsed?: number;
+  /**
+   * Prompt (input) tokens.
+   *
+   * Previously discarded entirely. Every relevance cache row in production
+   * has a NULL `tokens_in`, which made it impossible to answer what
+   * inference actually costs — the recorded figures covered only the small
+   * half of each call.
+   */
+  tokensIn?: number;
+  /** Completion (output) tokens. */
+  tokensOut?: number;
   finishReason?: "stop" | "length" | "error";
 }
 

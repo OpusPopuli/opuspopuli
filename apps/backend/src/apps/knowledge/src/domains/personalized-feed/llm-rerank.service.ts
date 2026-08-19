@@ -89,6 +89,8 @@ interface RerankCounters {
   writesWith: number;
   writesWithout: number;
   writesSkipped: number;
+  /** Candidates skipped because a fresh explanation was already cached. */
+  skippedFresh: number;
   llmFailures: number;
   validatorRejections: number;
   totalTokens: number;
@@ -98,6 +100,14 @@ interface RerankCounters {
 export interface RerankSummary {
   readonly userId: string;
   readonly candidatesConsidered: number;
+  /**
+   * Candidates that already had a fresh explanation and cost nothing.
+   *
+   * Surfaced because it is the measure of whether caching is working: a run
+   * reporting 85 considered / 85 skipped did no inference at all, which is
+   * the intended steady state between TTL expiries.
+   */
+  readonly skippedFresh: number;
   readonly cacheWritesWithExplanation: number;
   readonly cacheWritesWithoutExplanation: number;
   readonly llmFailures: number;
@@ -150,7 +160,7 @@ export class LlmRerankService {
   async rerankBillsForUser(
     userId: string,
     input: PersonalizationInputDto,
-    options: { candidateLimit?: number; ttlMs?: number } = {},
+    options: { candidateLimit?: number; ttlMs?: number; forceRegenerate?: boolean } = {},
   ): Promise<RerankSummary> {
     return this.rerankForUser(userId, input, options);
   }
@@ -158,7 +168,7 @@ export class LlmRerankService {
   async rerankForUser(
     userId: string,
     input: PersonalizationInputDto,
-    options: { candidateLimit?: number; ttlMs?: number } = {},
+    options: { candidateLimit?: number; ttlMs?: number; forceRegenerate?: boolean } = {},
   ): Promise<RerankSummary> {
     const limit = options.candidateLimit ?? DEFAULT_CANDIDATE_LIMIT;
     const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
@@ -189,6 +199,7 @@ export class LlmRerankService {
       writesWith: 0,
       writesWithout: 0,
       writesSkipped: 0,
+      skippedFresh: 0,
       llmFailures: 0,
       validatorRejections: 0,
       totalTokens: 0,
@@ -196,7 +207,25 @@ export class LlmRerankService {
     };
     const trueFlags = toTrueFlagNames(input.flags);
 
+    // A MANUAL trigger means "re-rank me now" — the user may have just
+    // changed their profile, and serving week-old cache to an explicit
+    // request would make the button a no-op. Only unforced (cron) runs skip.
+    const freshBillIds = options.forceRegenerate
+      ? new Set<string>()
+      : await this.freshlyCached(
+          this.db.billRelevanceCache,
+          userId,
+          'billId',
+          candidates.map((c) => c.billId),
+        );
+
     for (const candidate of candidates) {
+      // Already explained and still fresh: nothing to regenerate. This is the
+      // difference between paying once a week and paying every night.
+      if (freshBillIds.has(candidate.billId)) {
+        counters.skippedFresh++;
+        continue;
+      }
       await this.processSingleCandidate({
         userId,
         candidate,
@@ -211,6 +240,7 @@ export class LlmRerankService {
     const summary: RerankSummary = {
       userId,
       candidatesConsidered: candidates.length,
+      skippedFresh: counters.skippedFresh,
       cacheWritesWithExplanation: counters.writesWith,
       cacheWritesWithoutExplanation: counters.writesWithout,
       llmFailures: counters.llmFailures,
@@ -348,16 +378,24 @@ export class LlmRerankService {
       const llmResponse = await this.llm.generate(promptText);
 
       const parsed = this.parseLlmOutput(llmResponse.text);
-      const tokensUsed = llmResponse.tokensUsed ?? 0;
+      // Token telemetry. The provider now reports prompt and completion
+      // counts separately (Ollama always did; it was simply not read), so
+      // both are recorded. Input matters more than output for cost: these
+      // prompts carry a bill summary and the user's signal profile, and run
+      // an order of magnitude larger than the sentence that comes back.
+      //
+      // Falls back to the old shape when a provider reports only a total, so
+      // a provider without the split degrades to what we had rather than
+      // recording zeros.
+      const tokensOut = llmResponse.tokensOut ?? llmResponse.tokensUsed ?? 0;
+      const tokensIn = llmResponse.tokensIn ?? null;
+      const tokensUsed = llmResponse.tokensUsed ?? tokensOut;
 
       return {
         explanation: parsed.explanation,
         templateHash: promptHash,
-        // Token telemetry: Ollama returns `tokensUsed` (total only) —
-        // we record on `tokensOut` and leave `tokensIn` null until the
-        // provider exposes a split. Cost gates work on the sum either way.
-        tokensIn: null,
-        tokensOut: tokensUsed,
+        tokensIn,
+        tokensOut,
         tokensUsed,
         failed: false,
       };
@@ -449,6 +487,54 @@ export class LlmRerankService {
     }
   }
 
+  /**
+   * Ids that already have a usable, unexpired explanation cached.
+   *
+   * Nothing checked this before, so the nightly cron regenerated every
+   * explanation for every user every night — while writing a 7-day TTL. The
+   * cache was read on the request path and ignored on the write path, so it
+   * saved reads and nothing else, and we paid roughly seven times over.
+   *
+   * Two conditions, both necessary:
+   *  - `expiresAt > now()` — stale entries must regenerate, that is the point
+   *    of a TTL.
+   *  - a non-empty explanation — a row cached from a FAILED generation gets a
+   *    short retry TTL by design (see the empty-result handling), and must not
+   *    be mistaken for a good answer. Skipping those would make a
+   *    prompt-service outage self-perpetuating: nothing generated, nothing
+   *    retried.
+   *
+   * Loosely typed on the delegate because the four caches are distinct Prisma
+   * models differing only in the id column; four typed copies of this would
+   * be the same code four times.
+   */
+  private async freshlyCached(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delegate: { findMany: (args: any) => Promise<any[]> },
+    userId: string,
+    idField: string,
+    ids: readonly string[],
+  ): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+
+    const rows = await delegate.findMany({
+      where: {
+        userId,
+        [idField]: { in: [...ids] },
+        expiresAt: { gt: new Date() },
+      },
+      select: { [idField]: true, relevanceExplanation: true },
+    });
+
+    return new Set(
+      rows
+        .filter(
+          (r) => String(r.relevanceExplanation ?? '').trim().length > 0,
+        )
+        .map((r) => String(r[idField])),
+    );
+  }
+
   private emptyResult() {
     return {
       explanation: null,
@@ -479,7 +565,7 @@ export class LlmRerankService {
     userId: string,
     input: PersonalizationInputDto,
     propositionIds: ReadonlyArray<string>,
-    options: { ttlMs?: number } = {},
+    options: { ttlMs?: number; forceRegenerate?: boolean } = {},
   ): Promise<RerankSummary> {
     const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
     const expiresAt = new Date(Date.now() + ttlMs);
@@ -503,6 +589,7 @@ export class LlmRerankService {
       writesWith: 0,
       writesWithout: 0,
       writesSkipped: 0,
+      skippedFresh: 0,
       llmFailures: 0,
       validatorRejections: 0,
       totalTokens: 0,
@@ -510,7 +597,25 @@ export class LlmRerankService {
     };
     const trueFlags = toTrueFlagNames(input.flags);
 
+    // A MANUAL trigger means "re-rank me now" — the user may have just
+    // changed their profile, and serving week-old cache to an explicit
+    // request would make the button a no-op. Only unforced (cron) runs skip.
+    const freshPropositionIds = options.forceRegenerate
+      ? new Set<string>()
+      : await this.freshlyCached(
+          this.db.propositionRelevanceCache,
+          userId,
+          'propositionId',
+          [...propositionIds],
+        );
+
     for (const propositionId of propositionIds) {
+      // Already explained and still fresh: nothing to regenerate. This is the
+      // difference between paying once a week and paying every night.
+      if (freshPropositionIds.has(propositionId)) {
+        counters.skippedFresh++;
+        continue;
+      }
       await this.processProposition({
         userId,
         propositionId,
@@ -534,7 +639,7 @@ export class LlmRerankService {
     userId: string,
     input: PersonalizationInputDto,
     representativeIds: ReadonlyArray<string>,
-    options: { ttlMs?: number } = {},
+    options: { ttlMs?: number; forceRegenerate?: boolean } = {},
   ): Promise<RerankSummary> {
     const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
     const expiresAt = new Date(Date.now() + ttlMs);
@@ -560,6 +665,7 @@ export class LlmRerankService {
       writesWith: 0,
       writesWithout: 0,
       writesSkipped: 0,
+      skippedFresh: 0,
       llmFailures: 0,
       validatorRejections: 0,
       totalTokens: 0,
@@ -567,7 +673,25 @@ export class LlmRerankService {
     };
     const trueFlags = toTrueFlagNames(input.flags);
 
+    // A MANUAL trigger means "re-rank me now" — the user may have just
+    // changed their profile, and serving week-old cache to an explicit
+    // request would make the button a no-op. Only unforced (cron) runs skip.
+    const freshRepresentativeIds = options.forceRegenerate
+      ? new Set<string>()
+      : await this.freshlyCached(
+          this.db.representativeRelevanceCache,
+          userId,
+          'representativeId',
+          [...representativeIds],
+        );
+
     for (const representativeId of representativeIds) {
+      // Already explained and still fresh: nothing to regenerate. This is the
+      // difference between paying once a week and paying every night.
+      if (freshRepresentativeIds.has(representativeId)) {
+        counters.skippedFresh++;
+        continue;
+      }
       await this.processRepresentative({
         userId,
         representativeId,
@@ -600,7 +724,7 @@ export class LlmRerankService {
     userId: string,
     input: PersonalizationInputDto,
     candidates: ReadonlyArray<CommitteeRerankCandidate>,
-    options: { ttlMs?: number } = {},
+    options: { ttlMs?: number; forceRegenerate?: boolean } = {},
   ): Promise<RerankSummary> {
     const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
     const expiresAt = new Date(Date.now() + ttlMs);
@@ -622,6 +746,7 @@ export class LlmRerankService {
       writesWith: 0,
       writesWithout: 0,
       writesSkipped: 0,
+      skippedFresh: 0,
       llmFailures: 0,
       validatorRejections: 0,
       totalTokens: 0,
@@ -629,7 +754,25 @@ export class LlmRerankService {
     };
     const trueFlags = toTrueFlagNames(input.flags);
 
+    // A MANUAL trigger means "re-rank me now" — the user may have just
+    // changed their profile, and serving week-old cache to an explicit
+    // request would make the button a no-op. Only unforced (cron) runs skip.
+    const freshCommitteeIds = options.forceRegenerate
+      ? new Set<string>()
+      : await this.freshlyCached(
+          this.db.committeeRelevanceCache,
+          userId,
+          'legislativeCommitteeId',
+          committeeIds,
+        );
+
     for (const candidate of candidates) {
+      // Already explained and still fresh: nothing to regenerate. This is the
+      // difference between paying once a week and paying every night.
+      if (freshCommitteeIds.has(candidate.legislativeCommitteeId)) {
+        counters.skippedFresh++;
+        continue;
+      }
       await this.processCommittee({
         userId,
         candidate,
@@ -1001,12 +1144,18 @@ export class LlmRerankService {
       const { promptText, promptHash } = await getPrompt();
       const llmResponse = await this.llm.generate(promptText);
       const parsed = this.parseLlmOutput(llmResponse.text);
-      const tokensUsed = llmResponse.tokensUsed ?? 0;
+      // Shared by proposition / representative / committee — the bulk of the
+      // volume. Same split as the bill path: record input and output
+      // separately, falling back to the old total-only shape for a provider
+      // that does not report the breakdown.
+      const tokensOut = llmResponse.tokensOut ?? llmResponse.tokensUsed ?? 0;
+      const tokensIn = llmResponse.tokensIn ?? null;
+      const tokensUsed = llmResponse.tokensUsed ?? tokensOut;
       return {
         explanation: parsed.explanation,
         templateHash: promptHash,
-        tokensIn: null,
-        tokensOut: tokensUsed,
+        tokensIn,
+        tokensOut,
         tokensUsed,
         failed: false,
       };
@@ -1052,6 +1201,7 @@ export class LlmRerankService {
     const summary: RerankSummary = {
       userId,
       candidatesConsidered,
+      skippedFresh: counters.skippedFresh,
       cacheWritesWithExplanation: counters.writesWith,
       cacheWritesWithoutExplanation: counters.writesWithout,
       llmFailures: counters.llmFailures,

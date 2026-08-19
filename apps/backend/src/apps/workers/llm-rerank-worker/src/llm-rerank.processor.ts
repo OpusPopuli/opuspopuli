@@ -11,6 +11,7 @@ import IORedis from 'ioredis';
 import {
   QUEUE_CONNECTION,
   LLM_RERANK_QUEUE,
+  TRIGGER_SOURCE,
   createWorker,
   type LlmRerankJobData,
   type LlmRerankJobResult,
@@ -111,6 +112,7 @@ export class LlmRerankProcessor
       committeeCandidates,
       candidateLimit,
       ttlMs,
+      triggerSource,
     } = job.data;
 
     await this.jobs.markRunning(rerankJobId, job.id ?? '');
@@ -146,11 +148,17 @@ export class LlmRerankProcessor
           committeeCandidates: resolved.committeeCandidates,
           candidateLimit,
           ttlMs,
+          // A user pressing "re-rank" is asking for regeneration — they may
+          // have just changed their profile, and serving still-fresh cache
+          // to an explicit request would make the trigger a silent no-op.
+          // The cron carries no such intent and takes the freshness skip.
+          forceRegenerate: triggerSource === TRIGGER_SOURCE.MANUAL,
         },
       );
       const result: LlmRerankJobResult = {
         userId: summary.userId,
         candidatesConsidered: summary.candidatesConsidered,
+        skippedFresh: summary.skippedFresh,
         cacheWritesWithExplanation: summary.cacheWritesWithExplanation,
         cacheWritesWithoutExplanation: summary.cacheWritesWithoutExplanation,
         llmFailures: summary.llmFailures,
@@ -293,6 +301,7 @@ export class LlmRerankProcessor
       }>;
       candidateLimit?: number;
       ttlMs?: number;
+      forceRegenerate?: boolean;
     },
   ): Promise<RerankSummary> {
     switch (entityType) {
@@ -303,27 +312,28 @@ export class LlmRerankProcessor
         return this.rerank.rerankForUser(userId, input, {
           candidateLimit: opts.candidateLimit,
           ttlMs: opts.ttlMs,
+          forceRegenerate: opts.forceRegenerate,
         });
       case 'proposition':
         return this.rerank.rerankPropositionsForUser(
           userId,
           input,
           opts.candidateIds,
-          { ttlMs: opts.ttlMs },
+          { ttlMs: opts.ttlMs, forceRegenerate: opts.forceRegenerate },
         );
       case 'representative':
         return this.rerank.rerankRepresentativesForUser(
           userId,
           input,
           opts.candidateIds,
-          { ttlMs: opts.ttlMs },
+          { ttlMs: opts.ttlMs, forceRegenerate: opts.forceRegenerate },
         );
       case 'committee':
         return this.rerank.rerankCommitteesForUser(
           userId,
           input,
           opts.committeeCandidates,
-          { ttlMs: opts.ttlMs },
+          { ttlMs: opts.ttlMs, forceRegenerate: opts.forceRegenerate },
         );
     }
   }
