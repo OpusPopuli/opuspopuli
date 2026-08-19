@@ -861,4 +861,57 @@ describe('LlmRerankService', () => {
       expect(call.create.tokensIn).toBeNull();
     });
   });
+  describe('empty results must not clobber existing explanations', () => {
+    /*
+     * The production incident this pins: a manual rerank ran with the daily
+     * token budget already exhausted. Every candidate yielded an empty
+     * result, and the unconditional upsert UPDATE overwrote the user's 205
+     * good committee and representative explanations with empty rows —
+     * emptying their briefing on launch day. A run that produced nothing
+     * must leave prior work alone.
+     */
+    it('budget-exhausted run leaves the existing explanation untouched', async () => {
+      const deps = makeMocks();
+      (deps.db.bill.findMany as jest.Mock).mockResolvedValue([BILL_ROW]);
+      // Budget says no — every candidate becomes an empty result.
+      (deps.budget.withinBudget as jest.Mock).mockResolvedValue(false);
+
+      const service = await makeService(deps);
+      await service.rerankForUser('u-1', BASE_INPUT);
+
+      const call = (deps.db.billRelevanceCache.upsert as jest.Mock).mock
+        .calls[0][0];
+      // CREATE still writes the empty retry row for users with no cache…
+      expect(call.create.relevanceExplanation).toBeNull();
+      // …but UPDATE must not carry the wrecking ball. The embedding score may
+      // refresh; the explanation, telemetry and expiry must be absent.
+      expect(call.update).not.toHaveProperty('relevanceExplanation');
+      expect(call.update).not.toHaveProperty('expiresAt');
+    });
+
+    it('a successful result still updates in full', async () => {
+      const deps = makeMocks();
+      (deps.db.bill.findMany as jest.Mock).mockResolvedValue([BILL_ROW]);
+      deps.promptClient.getBillRelevanceExplanationPrompt.mockResolvedValue({
+        promptText: 'p',
+        promptHash: 'h'.repeat(64),
+        promptVersion: 'v1',
+      });
+      deps.llm.generate.mockResolvedValue({
+        text: JSON.stringify({ explanation: 'Caps rent costs in 94110.' }),
+        tokensUsed: 42,
+        finishReason: 'stop',
+      });
+
+      const service = await makeService(deps);
+      await service.rerankForUser('u-1', BASE_INPUT);
+
+      const call = (deps.db.billRelevanceCache.upsert as jest.Mock).mock
+        .calls[0][0];
+      expect(call.update.relevanceExplanation).toBe(
+        'Caps rent costs in 94110.',
+      );
+      expect(call.update).toHaveProperty('expiresAt');
+    });
+  });
 });

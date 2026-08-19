@@ -330,15 +330,25 @@ export class LlmRerankService {
         tokensOut: llmResult.tokensOut,
         expiresAt: expiryFor(acceptedExplanation, expiresAt),
       },
-      update: {
-        relevanceScore: candidate.relevanceScore,
-        relevanceExplanation: acceptedExplanation,
-        templateHash: llmResult.templateHash,
-        tokensIn: llmResult.tokensIn,
-        tokensOut: llmResult.tokensOut,
-        computedAt: new Date(),
-        expiresAt: expiryFor(acceptedExplanation, expiresAt),
-      },
+      // A run that produced NOTHING must not destroy what a previous run
+      // produced. Budget exhaustion, an LLM failure, or a model skip all
+      // yield an empty result for every candidate — and the unconditional
+      // update here overwrote good explanations with empty rows. One
+      // budget-exhausted manual rerank wiped all 205 of a user's committee
+      // and representative explanations in production. On an empty result the
+      // update refreshes only the embedding score; the explanation, its
+      // telemetry and its expiry stay exactly as they were.
+      update: acceptedExplanation
+        ? {
+            relevanceScore: candidate.relevanceScore,
+            relevanceExplanation: acceptedExplanation,
+            templateHash: llmResult.templateHash,
+            tokensIn: llmResult.tokensIn,
+            tokensOut: llmResult.tokensOut,
+            computedAt: new Date(),
+            expiresAt: expiryFor(acceptedExplanation, expiresAt),
+          }
+        : { relevanceScore: candidate.relevanceScore },
     });
 
     if (acceptedExplanation) counters.writesWith++;
@@ -885,14 +895,19 @@ export class LlmRerankService {
         tokensOut: result.tokensOut,
         expiresAt: expiryFor(accepted, expiresAt),
       },
-      update: {
-        relevanceExplanation: accepted,
-        templateHash: result.templateHash,
-        tokensIn: result.tokensIn,
-        tokensOut: result.tokensOut,
-        computedAt: new Date(),
-        expiresAt: expiryFor(accepted, expiresAt),
-      },
+      // Same rule as the bill path: an empty result must not clobber an
+      // existing explanation. No score to refresh here, so the update becomes
+      // a no-op and the row is left untouched.
+      update: accepted
+        ? {
+            relevanceExplanation: accepted,
+            templateHash: result.templateHash,
+            tokensIn: result.tokensIn,
+            tokensOut: result.tokensOut,
+            computedAt: new Date(),
+            expiresAt: expiryFor(accepted, expiresAt),
+          }
+        : {},
     });
 
     if (accepted) counters.writesWith++;
@@ -998,14 +1013,19 @@ export class LlmRerankService {
         tokensOut: result.tokensOut,
         expiresAt: expiryFor(accepted, expiresAt),
       },
-      update: {
-        relevanceExplanation: accepted,
-        templateHash: result.templateHash,
-        tokensIn: result.tokensIn,
-        tokensOut: result.tokensOut,
-        computedAt: new Date(),
-        expiresAt: expiryFor(accepted, expiresAt),
-      },
+      // Same rule as the bill path: an empty result must not clobber an
+      // existing explanation. No score to refresh here, so the update becomes
+      // a no-op and the row is left untouched.
+      update: accepted
+        ? {
+            relevanceExplanation: accepted,
+            templateHash: result.templateHash,
+            tokensIn: result.tokensIn,
+            tokensOut: result.tokensOut,
+            computedAt: new Date(),
+            expiresAt: expiryFor(accepted, expiresAt),
+          }
+        : {},
     });
 
     if (accepted) counters.writesWith++;
@@ -1106,14 +1126,19 @@ export class LlmRerankService {
         tokensOut: result.tokensOut,
         expiresAt: expiryFor(accepted, expiresAt),
       },
-      update: {
-        relevanceExplanation: accepted,
-        templateHash: result.templateHash,
-        tokensIn: result.tokensIn,
-        tokensOut: result.tokensOut,
-        computedAt: new Date(),
-        expiresAt: expiryFor(accepted, expiresAt),
-      },
+      // Same rule as the bill path: an empty result must not clobber an
+      // existing explanation. No score to refresh here, so the update becomes
+      // a no-op and the row is left untouched.
+      update: accepted
+        ? {
+            relevanceExplanation: accepted,
+            templateHash: result.templateHash,
+            tokensIn: result.tokensIn,
+            tokensOut: result.tokensOut,
+            computedAt: new Date(),
+            expiresAt: expiryFor(accepted, expiresAt),
+          }
+        : {},
     });
 
     if (accepted) counters.writesWith++;
