@@ -33,7 +33,10 @@ import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         config: {
-          promptServiceUrl: requirePromptServiceUrl(config, 'knowledge:personalized-feed'),
+          promptServiceUrl: requirePromptServiceUrl(
+            config,
+            'knowledge:personalized-feed',
+          ),
           promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
           hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
         },

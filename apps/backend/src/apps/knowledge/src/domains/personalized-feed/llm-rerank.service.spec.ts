@@ -86,7 +86,10 @@ function makeMocks() {
     // bill.findMany({ where: { id: { in: billIds } } }) once per rerank
     // instead of bill.findUnique per candidate.
     bill: { findMany: jest.fn().mockResolvedValue([]) },
-    billRelevanceCache: { upsert: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    billRelevanceCache: {
+      upsert: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   } as unknown as jest.Mocked<DbService>;
   const feed = {
     getFeedForUser: jest.fn().mockResolvedValue(FEED_RESULT),
@@ -365,7 +368,10 @@ describe('LlmRerankService', () => {
         m.db as unknown as {
           propositionRelevanceCache: { upsert: jest.Mock; findMany: jest.Mock };
         }
-      ).propositionRelevanceCache = { upsert: jest.fn(), findMany: jest.fn().mockResolvedValue([]) };
+      ).propositionRelevanceCache = {
+        upsert: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      };
       (
         m.promptClient as unknown as {
           getPropositionRelevanceExplanationPrompt: jest.Mock;
@@ -449,7 +455,10 @@ describe('LlmRerankService', () => {
       expect(
         (
           deps.db as unknown as {
-            propositionRelevanceCache: { upsert: jest.Mock; findMany: jest.Mock };
+            propositionRelevanceCache: {
+              upsert: jest.Mock;
+              findMany: jest.Mock;
+            };
           }
         ).propositionRelevanceCache.upsert,
       ).not.toHaveBeenCalled();
@@ -464,9 +473,15 @@ describe('LlmRerankService', () => {
       ).representative = { findMany: jest.fn().mockResolvedValue([]) };
       (
         m.db as unknown as {
-          representativeRelevanceCache: { upsert: jest.Mock; findMany: jest.Mock };
+          representativeRelevanceCache: {
+            upsert: jest.Mock;
+            findMany: jest.Mock;
+          };
         }
-      ).representativeRelevanceCache = { upsert: jest.fn(), findMany: jest.fn().mockResolvedValue([]) };
+      ).representativeRelevanceCache = {
+        upsert: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      };
       (
         m.promptClient as unknown as {
           getRepresentativeRelevanceExplanationPrompt: jest.Mock;
@@ -570,7 +585,10 @@ describe('LlmRerankService', () => {
         m.db as unknown as {
           committeeRelevanceCache: { upsert: jest.Mock; findMany: jest.Mock };
         }
-      ).committeeRelevanceCache = { upsert: jest.fn(), findMany: jest.fn().mockResolvedValue([]) };
+      ).committeeRelevanceCache = {
+        upsert: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      };
       (
         m.promptClient as unknown as {
           getCommitteeRelevanceExplanationPrompt: jest.Mock;

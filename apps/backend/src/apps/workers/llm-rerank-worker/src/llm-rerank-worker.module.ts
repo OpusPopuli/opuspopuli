@@ -63,7 +63,10 @@ import { RerankCandidatesService } from './rerank-candidates.service';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         config: {
-          promptServiceUrl: requirePromptServiceUrl(config, 'llm-rerank-worker'),
+          promptServiceUrl: requirePromptServiceUrl(
+            config,
+            'llm-rerank-worker',
+          ),
           promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
           hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
         },

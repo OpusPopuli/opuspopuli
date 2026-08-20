@@ -44,9 +44,6 @@ import { RerankCandidatesService } from './rerank-candidates.service';
  */
 const DEFAULT_CRON = '0 3 * * *';
 
-
-
-
 @Injectable()
 export class LlmRerankScheduler implements OnApplicationBootstrap {
   private readonly logger = new Logger(LlmRerankScheduler.name, {
@@ -209,10 +206,12 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
     // resolution. Follow-up issue: implement committee scheduling once
     // jurisdiction resolution is plumbed through.
 
-    const propositionCandidateIds = await this.candidates.fetchPropositionCandidateIds();
+    const propositionCandidateIds =
+      await this.candidates.fetchPropositionCandidateIds();
     const representativeCandidateIds =
       await this.candidates.fetchRepresentativeCandidateIds();
-    const committeeCandidates = await this.candidates.fetchCommitteeCandidates();
+    const committeeCandidates =
+      await this.candidates.fetchCommitteeCandidates();
 
     let propJobs = 0;
     let repJobs = 0;
@@ -250,9 +249,6 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
       },
     };
   }
-
-
-
 
   /**
    * Generic per-entity fan-out: creates one lifecycle row per user and

@@ -11,7 +11,10 @@ const promptClientAsyncConfig = {
   inject: [ConfigService],
   useFactory: (config: ConfigService) => ({
     config: {
-      promptServiceUrl: requirePromptServiceUrl(config, 'knowledge:briefing-summary'),
+      promptServiceUrl: requirePromptServiceUrl(
+        config,
+        'knowledge:briefing-summary',
+      ),
       promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
       hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
     },
