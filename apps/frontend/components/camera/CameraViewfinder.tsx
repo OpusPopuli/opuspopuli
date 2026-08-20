@@ -40,6 +40,21 @@ export function CameraViewfinder({
   onCapture,
   onToggleTorch,
 }: CameraViewfinderProps) {
+  // Attach the stream to the <video> once BOTH exist. useCamera.startCamera()
+  // runs during the permission step, before this viewfinder's <video> mounts,
+  // so its one-shot `video.srcObject = stream` assignment is skipped (the ref
+  // is still null) — leaving a live track (torch works) but no feed and no
+  // frames to capture (dead shutter). Attaching here, after mount, is race-free.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && stream && video.srcObject !== stream) {
+      video.srcObject = stream;
+      // iOS Safari won't always autoplay a freshly-attached stream; nudge it.
+      // play() returns a Promise in browsers but undefined under jsdom.
+      video.play()?.catch(() => {});
+    }
+  }, [stream, videoRef]);
+
   // Start continuous lighting analysis when stream is active
   useEffect(() => {
     if (stream) {
