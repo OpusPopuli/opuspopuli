@@ -54,10 +54,7 @@ const FAILED_TTL_MS = 30 * 60 * 1000;
  * Pick the cache expiry for a result: the normal TTL when there is an
  * explanation, a short retry window when there is not.
  */
-export function expiryFor(
-  explanation: string | null,
-  expiresAt: Date,
-): Date {
+export function expiryFor(explanation: string | null, expiresAt: Date): Date {
   return explanation ? expiresAt : new Date(Date.now() + FAILED_TTL_MS);
 }
 
@@ -160,7 +157,11 @@ export class LlmRerankService {
   async rerankBillsForUser(
     userId: string,
     input: PersonalizationInputDto,
-    options: { candidateLimit?: number; ttlMs?: number; forceRegenerate?: boolean } = {},
+    options: {
+      candidateLimit?: number;
+      ttlMs?: number;
+      forceRegenerate?: boolean;
+    } = {},
   ): Promise<RerankSummary> {
     return this.rerankForUser(userId, input, options);
   }
@@ -168,7 +169,11 @@ export class LlmRerankService {
   async rerankForUser(
     userId: string,
     input: PersonalizationInputDto,
-    options: { candidateLimit?: number; ttlMs?: number; forceRegenerate?: boolean } = {},
+    options: {
+      candidateLimit?: number;
+      ttlMs?: number;
+      forceRegenerate?: boolean;
+    } = {},
   ): Promise<RerankSummary> {
     const limit = options.candidateLimit ?? DEFAULT_CANDIDATE_LIMIT;
     const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
@@ -538,9 +543,7 @@ export class LlmRerankService {
 
     return new Set(
       rows
-        .filter(
-          (r) => String(r.relevanceExplanation ?? '').trim().length > 0,
-        )
+        .filter((r) => String(r.relevanceExplanation ?? '').trim().length > 0)
         .map((r) => String(r[idField])),
     );
   }

@@ -376,12 +376,16 @@ describe('LlmRerankProcessor', () => {
 
     it('does NOT override candidates the cron supplied', async () => {
       await processor.onApplicationBootstrap();
-      await getHandler()(jobFor('proposition', { candidateIds: ['from-cron'] }));
+      await getHandler()(
+        jobFor('proposition', { candidateIds: ['from-cron'] }),
+      );
 
       // A supplied payload wins, including a deliberately empty one -- the
       // cron skips fan-out when a set is empty, so anything it sends is the
       // answer, not a gap to fill.
-      expect(candidatesMock.fetchPropositionCandidateIds).not.toHaveBeenCalled();
+      expect(
+        candidatesMock.fetchPropositionCandidateIds,
+      ).not.toHaveBeenCalled();
       expect(rerank.rerankPropositionsForUser).toHaveBeenCalledWith(
         'u-1',
         expect.any(Object),
@@ -394,7 +398,9 @@ describe('LlmRerankProcessor', () => {
       await processor.onApplicationBootstrap();
       await getHandler()(buildJob());
 
-      expect(candidatesMock.fetchPropositionCandidateIds).not.toHaveBeenCalled();
+      expect(
+        candidatesMock.fetchPropositionCandidateIds,
+      ).not.toHaveBeenCalled();
       expect(
         candidatesMock.fetchRepresentativeCandidateIds,
       ).not.toHaveBeenCalled();
