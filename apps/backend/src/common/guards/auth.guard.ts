@@ -1,3 +1,4 @@
+import { resolveRequestUser } from '../utils/request-user';
 import {
   Injectable,
   ExecutionContext,
@@ -94,20 +95,11 @@ export class AuthGuard implements CanActivate {
       }
     }
 
-    // SECURITY: Trust request.user from AuthMiddleware (JWT via Passport.js),
-    // OR from the gateway's forwarded user header when HMAC-authenticated.
-    // The HMAC signature proves the request came from our gateway, which
-    // already validated the user's JWT before forwarding.
-    let user = request?.user;
-    if (!user && hasHmacAuth && request?.headers?.['user']) {
-      try {
-        user = JSON.parse(request.headers['user'] as string);
-        // Attach to request so downstream guards/resolvers can access it
-        if (request) request.user = user;
-      } catch {
-        // Invalid user header — fall through to denial
-      }
-    }
+    // SECURITY: request.user (AuthMiddleware/Passport) or the gateway's
+    // HMAC-authenticated forwarded user. Shared helper — three guards carried
+    // private copies of this block until the one that DIDN'T broke the whole
+    // documents surface.
+    const user = resolveRequestUser(request);
 
     // No authenticated user - deny access
     if (!user || !isLoggedIn(user)) {

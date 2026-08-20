@@ -1,3 +1,4 @@
+import { resolveRequestUser } from '../utils/request-user';
 import {
   Injectable,
   CanActivate,
@@ -61,23 +62,9 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    // SECURITY: Trust request.user from AuthMiddleware (JWT via Passport.js),
-    // OR from the gateway's forwarded user header when HMAC-authenticated.
-    // The HMAC signature proves the request came from our gateway, which
-    // already validated the user's JWT before forwarding.
-    let user: ILogin | undefined = request?.user;
-    if (
-      !user &&
-      request?.headers?.['x-hmac-auth'] &&
-      request?.headers?.['user']
-    ) {
-      try {
-        user = JSON.parse(request.headers['user'] as string);
-        if (request) request.user = user;
-      } catch {
-        // Invalid user header — fall through to denial
-      }
-    }
+    // SECURITY: request.user (AuthMiddleware/Passport) or the gateway's
+    // HMAC-authenticated forwarded user — via the shared helper.
+    const user: ILogin | undefined = resolveRequestUser(request);
 
     if (user && isLoggedIn(user)) {
       const hasRole = requiredRoles.some((role) => user.roles?.includes(role));

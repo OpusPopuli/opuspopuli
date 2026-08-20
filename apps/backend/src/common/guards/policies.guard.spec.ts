@@ -309,4 +309,64 @@ describe('PoliciesGuard', () => {
       expect(result).toBe(false);
     });
   });
+  describe('gateway-forwarded HMAC user (the petition kick-out regression)', () => {
+    /*
+     * PoliciesGuard is a GLOBAL guard and runs before the route-level
+     * AuthGuard that populates request.user on subgraph requests. Reading
+     * only request.user therefore denied every @Permissions resolver for
+     * every caller -- the entire petition surface returned Forbidden to
+     * signed-in users, which the frontend treated as an expired session and
+     * answered by logging them out.
+     */
+    const createHmacContext = (
+      user: ILogin,
+      args: Record<string, unknown> = {},
+    ) => {
+      const mockRequest = {
+        user: undefined,
+        headers: { 'x-hmac-auth': 'sig', user: JSON.stringify(user) },
+      };
+      const mockGqlContext = {
+        getContext: () => ({ req: mockRequest }),
+        getHandler: () => jest.fn(),
+        getClass: () => jest.fn(),
+        getArgs: () => args,
+        getInfo: () => ({
+          fieldName: 'petitionActivityFeed',
+          parentType: { name: 'Query' },
+        }),
+      };
+      (GqlExecutionContext.create as jest.Mock).mockReturnValue(
+        mockGqlContext,
+      );
+      return {} as ExecutionContext;
+    };
+
+    it('allows an HMAC-forwarded user through a @Permissions check', async () => {
+      (reflector.getAllAndOverride as jest.Mock).mockReturnValue([
+        { action: Action.Read, subject: 'File' },
+      ]);
+      (caslAbilityFactory.defineAbility as jest.Mock).mockResolvedValue({
+        can: jest.fn().mockReturnValue(true),
+      });
+
+      const context = createHmacContext(mockValidUser);
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      // The ability must be built for the FORWARDED identity, not nobody.
+      expect(caslAbilityFactory.defineAbility).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ id: mockValidUser.id }),
+      );
+    });
+
+    it('still denies when there is neither request.user nor an HMAC-forwarded user', async () => {
+      (reflector.getAllAndOverride as jest.Mock).mockReturnValue([
+        { action: Action.Read, subject: 'File' },
+      ]);
+      const context = createMockContext(null);
+
+      await expect(guard.canActivate(context)).resolves.toBe(false);
+    });
+  });
 });

@@ -1,3 +1,4 @@
+import { resolveRequestUser } from '../utils/request-user';
 import {
   AnyMongoAbility,
   subject as an,
@@ -105,10 +106,14 @@ export class PoliciesGuard<
 
     const args = ctx.getArgs();
 
-    // SECURITY: Use request.user set by AuthMiddleware after JWT validation
-    // Never trust request.headers.user as it can be spoofed
+    // SECURITY: request.user (AuthMiddleware/Passport) or the gateway's
+    // HMAC-authenticated forwarded user — the same two sources AuthGuard and
+    // RolesGuard accept. This guard previously read ONLY request.user, and as
+    // a GLOBAL guard it runs before the route-level AuthGuard that populates
+    // it on subgraph requests — so every @Permissions resolver denied every
+    // caller. See resolveRequestUser for the full account.
     // @see https://github.com/OpusPopuli/opuspopuli/issues/183
-    const user: ILogin | undefined = request.user;
+    const user: ILogin | undefined = resolveRequestUser(request);
 
     if (user && isLoggedIn(user)) {
       // Define the abilities based on the user's policies
