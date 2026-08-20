@@ -1,4 +1,4 @@
-import { ExecutionContext } from '@nestjs/common';
+import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { RolesGuard } from './roles.guard';
@@ -65,9 +65,9 @@ describe('RolesGuard', () => {
       // With no valid user, access is denied
       const context = createMockContext(null, []);
 
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should allow access with valid user when roles array is empty', async () => {
@@ -158,17 +158,17 @@ describe('RolesGuard', () => {
     it('should reject when user is null', async () => {
       const context = createMockContext(null, [Role.Admin]);
 
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should reject when user is undefined', async () => {
       const context = createMockContext(undefined, [Role.Admin]);
 
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should reject when user has no roles', async () => {
@@ -195,9 +195,9 @@ describe('RolesGuard', () => {
 
       const context = createMockContext(incompleteUser, [Role.Admin]);
 
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -293,16 +293,18 @@ describe('RolesGuard', () => {
       const { context } = createHmacRolesContext('HMAC ...', 'not-json', [
         Role.Admin,
       ]);
-      const result = await guard.canActivate(context);
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should NOT parse user header without HMAC (spoofing prevention)', async () => {
       const { context } = createHmacRolesContext(undefined, adminUserJson, [
         Role.Admin,
       ]);
-      const result = await guard.canActivate(context);
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -339,10 +341,11 @@ describe('RolesGuard', () => {
 
       const context = {} as ExecutionContext;
 
-      const result = await guard.canActivate(context);
-
-      // Should deny because request.user is null, ignoring spoofed headers.user
-      expect(result).toBe(false);
+      // request.user is null and the spoofed headers.user has no HMAC signature:
+      // UNAUTHENTICATED (not signed in), not FORBIDDEN.
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -391,8 +394,9 @@ describe('RolesGuard', () => {
 
     it('should deny _service federation query without HMAC authentication', async () => {
       const context = createFederationContext('_service', false);
-      const result = await guard.canActivate(context);
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 });

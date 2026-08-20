@@ -15,11 +15,16 @@ describe("auth-logout", () => {
       expect(isAuthExpiredError(null)).toBe(false);
     });
 
-    it("returns true for GraphQL FORBIDDEN error", () => {
+    it("returns false for GraphQL FORBIDDEN error", () => {
+      // FORBIDDEN is a genuine authorization denial (the user is signed in but
+      // lacks permission for this operation), NOT an expired session. Treating
+      // it as expiry logged users out of the whole app for one denied query —
+      // the conflation the backend guard split fixes. Only UNAUTHENTICATED and
+      // network 401/403 end the session now.
       const err = new CombinedGraphQLErrors({ data: null }, [
         { message: "Forbidden resource", extensions: { code: "FORBIDDEN" } },
       ]);
-      expect(isAuthExpiredError(err)).toBe(true);
+      expect(isAuthExpiredError(err)).toBe(false);
     });
 
     it("returns true for GraphQL UNAUTHENTICATED error", () => {
