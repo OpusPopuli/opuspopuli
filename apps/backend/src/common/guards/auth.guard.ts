@@ -3,6 +3,7 @@ import {
   Injectable,
   ExecutionContext,
   CanActivate,
+  UnauthorizedException,
   Optional,
   Logger,
 } from '@nestjs/common';
@@ -127,7 +128,13 @@ export class AuthGuard implements CanActivate {
       this.logger.warn(
         `Unauthenticated access attempt to ${info?.fieldName || 'unknown'} from IP: ${request?.ip || 'unknown'}`,
       );
-      return false;
+      // No valid user: this is UNAUTHENTICATED (not signed in), NOT FORBIDDEN.
+      // The two were conflated — a `return false` becomes a ForbiddenException,
+      // so a genuinely-expired session and a real authorization denial both
+      // reached the client as FORBIDDEN, and the frontend logged the user out
+      // on either. Authorization denials below keep returning false (=>
+      // FORBIDDEN); only 'not signed in' throws here.
+      throw new UnauthorizedException('Authentication required');
     }
 
     return true;

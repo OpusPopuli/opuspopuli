@@ -14,6 +14,7 @@ import {
 } from '../../permissions/casl-ability.factory';
 import {
   CanActivate,
+  UnauthorizedException,
   ExecutionContext,
   Inject,
   Injectable,
@@ -160,10 +161,18 @@ export class PoliciesGuard<
         });
       }
 
+      // Authorization denial: user is known but the policy check failed.
+      // Stays FORBIDDEN via the false return.
       return allowed;
     }
 
-    return false;
+    // No valid user: this is UNAUTHENTICATED (not signed in), NOT FORBIDDEN.
+    // The two were conflated — a `return false` becomes a ForbiddenException,
+    // so a genuinely-expired session and a real authorization denial both
+    // reached the client as FORBIDDEN, and the frontend logged the user out
+    // on either. Authorization denials above keep returning false (=>
+    // FORBIDDEN); only 'not signed in' throws here.
+    throw new UnauthorizedException('Authentication required');
   }
 
   /**

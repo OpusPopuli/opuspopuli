@@ -1,4 +1,4 @@
-import { ExecutionContext } from '@nestjs/common';
+import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { PoliciesGuard } from './policies.guard';
@@ -87,38 +87,38 @@ describe('PoliciesGuard', () => {
       expect(result).toBe(true);
     });
 
-    it('should return false when user is null', async () => {
+    it('should throw UnauthorizedException when user is null', async () => {
       (reflector.getAllAndOverride as jest.Mock).mockReturnValue([
         { action: Action.Read, subject: 'User' },
       ]);
       const context = createMockContext(null);
 
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
-    it('should return false when user is undefined', async () => {
+    it('should throw UnauthorizedException when user is undefined', async () => {
       (reflector.getAllAndOverride as jest.Mock).mockReturnValue([
         { action: Action.Read, subject: 'User' },
       ]);
       const context = createMockContext(undefined);
 
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
-    it('should return false when user is not logged in (missing required fields)', async () => {
+    it('should throw UnauthorizedException when user is not logged in (missing required fields)', async () => {
       const invalidUser = { email: 'test@example.com' } as ILogin; // missing id, roles, etc.
       (reflector.getAllAndOverride as jest.Mock).mockReturnValue([
         { action: Action.Read, subject: 'User' },
       ]);
       const context = createMockContext(invalidUser);
 
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should check policies for valid logged in user', async () => {
@@ -250,10 +250,11 @@ describe('PoliciesGuard', () => {
 
       const context = {} as ExecutionContext;
 
-      const result = await guard.canActivate(context);
-
-      // Should deny because request.user is null, ignoring spoofed headers.user
-      expect(result).toBe(false);
+      // Denied because request.user is null and the spoofed headers.user has
+      // no HMAC signature — now UNAUTHENTICATED (not signed in), not FORBIDDEN.
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -305,8 +306,9 @@ describe('PoliciesGuard', () => {
 
     it('should deny _service federation query without HMAC authentication', async () => {
       const context = createFederationContext('_service', false);
-      const result = await guard.canActivate(context);
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
   describe('gateway-forwarded HMAC user (the petition kick-out regression)', () => {
@@ -336,9 +338,7 @@ describe('PoliciesGuard', () => {
           parentType: { name: 'Query' },
         }),
       };
-      (GqlExecutionContext.create as jest.Mock).mockReturnValue(
-        mockGqlContext,
-      );
+      (GqlExecutionContext.create as jest.Mock).mockReturnValue(mockGqlContext);
       return {} as ExecutionContext;
     };
 
@@ -366,7 +366,9 @@ describe('PoliciesGuard', () => {
       ]);
       const context = createMockContext(null);
 
-      await expect(guard.canActivate(context)).resolves.toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 });
