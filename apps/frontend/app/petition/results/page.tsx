@@ -180,7 +180,7 @@ export default function PetitionResultsPage() {
       {/* Processing Indicator */}
       {(step === "extracting" || step === "analyzing") && !ocrText && (
         <div className="flex flex-col items-center justify-center py-16">
-          <LoadingSpinner size="lg" className="text-info mb-4" />
+          <LoadingSpinner size="lg" className="text-accent mb-4" />
           <p className="text-paper text-lg font-medium">
             {step === "extracting"
               ? t("results.extractingText")
@@ -218,7 +218,7 @@ export default function PetitionResultsPage() {
       {/* Analysis Loading (shown while analyzing, after OCR text is visible) */}
       {step === "analyzing" && ocrText && (
         <div className="flex items-center gap-3 px-4 py-4">
-          <LoadingSpinner size="sm" className="text-info" />
+          <LoadingSpinner size="sm" className="text-accent" />
           <p className="text-content-dim text-sm">
             {t("results.analyzingDocument")}
           </p>

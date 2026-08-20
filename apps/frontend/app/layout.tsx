@@ -6,6 +6,7 @@ import { ApolloProvider } from "@/lib/apollo-provider";
 import { ToastProvider } from "@/lib/toast";
 import { OnboardingProvider } from "@/lib/onboarding-context";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { ScanFab } from "@/components/ScanFab";
 import { JsonLd } from "@/components/JsonLd";
 
 /*
@@ -188,6 +189,7 @@ export default function RootLayout({
           <ApolloProvider>
             <ToastProvider>
               <OnboardingProvider>{children}</OnboardingProvider>
+              <ScanFab />
               <OfflineIndicator />
             </ToastProvider>
           </ApolloProvider>
