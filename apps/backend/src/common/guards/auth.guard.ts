@@ -1,7 +1,9 @@
+import { resolveRequestUser } from '../utils/request-user';
 import {
   Injectable,
   ExecutionContext,
   CanActivate,
+  UnauthorizedException,
   Optional,
   Logger,
 } from '@nestjs/common';
@@ -94,20 +96,11 @@ export class AuthGuard implements CanActivate {
       }
     }
 
-    // SECURITY: Trust request.user from AuthMiddleware (JWT via Passport.js),
-    // OR from the gateway's forwarded user header when HMAC-authenticated.
-    // The HMAC signature proves the request came from our gateway, which
-    // already validated the user's JWT before forwarding.
-    let user = request?.user;
-    if (!user && hasHmacAuth && request?.headers?.['user']) {
-      try {
-        user = JSON.parse(request.headers['user'] as string);
-        // Attach to request so downstream guards/resolvers can access it
-        if (request) request.user = user;
-      } catch {
-        // Invalid user header — fall through to denial
-      }
-    }
+    // SECURITY: request.user (AuthMiddleware/Passport) or the gateway's
+    // HMAC-authenticated forwarded user. Shared helper — three guards carried
+    // private copies of this block until the one that DIDN'T broke the whole
+    // documents surface.
+    const user = resolveRequestUser(request);
 
     // No authenticated user - deny access
     if (!user || !isLoggedIn(user)) {
@@ -135,7 +128,13 @@ export class AuthGuard implements CanActivate {
       this.logger.warn(
         `Unauthenticated access attempt to ${info?.fieldName || 'unknown'} from IP: ${request?.ip || 'unknown'}`,
       );
-      return false;
+      // No valid user: this is UNAUTHENTICATED (not signed in), NOT FORBIDDEN.
+      // The two were conflated — a `return false` becomes a ForbiddenException,
+      // so a genuinely-expired session and a real authorization denial both
+      // reached the client as FORBIDDEN, and the frontend logged the user out
+      // on either. Authorization denials below keep returning false (=>
+      // FORBIDDEN); only 'not signed in' throws here.
+      throw new UnauthorizedException('Authentication required');
     }
 
     return true;

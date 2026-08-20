@@ -1,4 +1,4 @@
-import { ExecutionContext } from '@nestjs/common';
+import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { AuthGuard } from './auth.guard';
@@ -67,20 +67,20 @@ describe('AuthGuard', () => {
     });
 
     describe('protected routes', () => {
-      it('should return false when user is null', async () => {
+      it('should throw UnauthorizedException when user is null', async () => {
         const context = createMockContext(null);
 
-        const result = await guard.canActivate(context);
-
-        expect(result).toBe(false);
+        await expect(guard.canActivate(context)).rejects.toThrow(
+          UnauthorizedException,
+        );
       });
 
-      it('should return false when user is undefined', async () => {
+      it('should throw UnauthorizedException when user is undefined', async () => {
         const context = createMockContext(undefined);
 
-        const result = await guard.canActivate(context);
-
-        expect(result).toBe(false);
+        await expect(guard.canActivate(context)).rejects.toThrow(
+          UnauthorizedException,
+        );
       });
 
       it('should return true for valid logged in user', async () => {
@@ -99,7 +99,7 @@ describe('AuthGuard', () => {
         expect(result).toBe(true);
       });
 
-      it('should return false for user missing required fields', async () => {
+      it('should throw UnauthorizedException for user missing required fields', async () => {
         const invalidUser = {
           id: 'user-123',
           email: 'test@example.com',
@@ -108,29 +108,29 @@ describe('AuthGuard', () => {
 
         const context = createMockContext(invalidUser);
 
-        const result = await guard.canActivate(context);
-
-        expect(result).toBe(false);
+        await expect(guard.canActivate(context)).rejects.toThrow(
+          UnauthorizedException,
+        );
       });
 
-      it('should return false for user with only email', async () => {
+      it('should throw UnauthorizedException for user with only email', async () => {
         const partialUser = {
           email: 'test@example.com',
         };
 
         const context = createMockContext(partialUser);
 
-        const result = await guard.canActivate(context);
-
-        expect(result).toBe(false);
+        await expect(guard.canActivate(context)).rejects.toThrow(
+          UnauthorizedException,
+        );
       });
 
-      it('should return false for non-object user value', async () => {
+      it('should throw UnauthorizedException for non-object user value', async () => {
         const context = createMockContext('not-an-object');
 
-        const result = await guard.canActivate(context);
-
-        expect(result).toBe(false);
+        await expect(guard.canActivate(context)).rejects.toThrow(
+          UnauthorizedException,
+        );
       });
     });
   });
@@ -187,14 +187,16 @@ describe('AuthGuard', () => {
 
     it('should deny __schema introspection without HMAC authentication', async () => {
       const context = createFederationContext('__schema', false);
-      const result = await guard.canActivate(context);
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should deny _service federation query without HMAC authentication', async () => {
       const context = createFederationContext('_service', false);
-      const result = await guard.canActivate(context);
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -248,20 +250,23 @@ describe('AuthGuard', () => {
 
     it('should deny when HMAC is present but user header is missing', async () => {
       const { context } = createHmacContext('HMAC ...', undefined);
-      const result = await guard.canActivate(context);
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should deny when HMAC is present but user header is invalid JSON', async () => {
       const { context } = createHmacContext('HMAC ...', 'not-json');
-      const result = await guard.canActivate(context);
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should NOT parse user header when HMAC is absent (spoofing prevention)', async () => {
       const { context } = createHmacContext(undefined, validUserJson);
-      const result = await guard.canActivate(context);
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should not overwrite existing request.user', async () => {
@@ -316,9 +321,11 @@ describe('AuthGuard', () => {
         getClass: jest.fn(),
       } as unknown as ExecutionContext;
 
-      const result = await guardWithAudit.canActivate(context);
+      await expect(guardWithAudit.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
 
-      expect(result).toBe(false);
+      // Audit still fires — it runs before the throw.
       expect(mockAuditLogService.logSync).toHaveBeenCalledWith(
         expect.objectContaining({
           ipAddress: '192.168.1.100',
@@ -332,9 +339,9 @@ describe('AuthGuard', () => {
     it('should deny access when no user is present on request', async () => {
       const context = createMockContext(null);
 
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should use request.user not request.headers.user', async () => {
@@ -370,10 +377,11 @@ describe('AuthGuard', () => {
         getClass: jest.fn(),
       } as unknown as ExecutionContext;
 
-      const result = await guard.canActivate(context);
-
-      // Should deny because request.user is null, ignoring spoofed headers.user
-      expect(result).toBe(false);
+      // request.user is null and the spoofed headers.user has no HMAC signature:
+      // UNAUTHENTICATED (not signed in), not FORBIDDEN.
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 

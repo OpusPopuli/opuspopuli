@@ -83,9 +83,24 @@ describe("apollo-client", () => {
       );
     });
 
-    it("redirects on GraphQL FORBIDDEN error", () => {
+    it("does NOT redirect on GraphQL FORBIDDEN error", () => {
+      // FORBIDDEN now means a real authorization denial, not an expired
+      // session — the user stays signed in. Only UNAUTHENTICATED and network
+      // 401/403 redirect. (Backend guard split: not-signed-in throws
+      // UnauthorizedException => UNAUTHENTICATED; authz denial stays FORBIDDEN.)
       const err = new CombinedGraphQLErrors({ data: null }, [
         { message: "Forbidden", extensions: { code: "FORBIDDEN" } },
+      ]);
+      expect(handle(err, "Me")).toBe(false);
+      expect(assignMock).not.toHaveBeenCalled();
+    });
+
+    it("redirects on GraphQL UNAUTHENTICATED error", () => {
+      const err = new CombinedGraphQLErrors({ data: null }, [
+        {
+          message: "Not authenticated",
+          extensions: { code: "UNAUTHENTICATED" },
+        },
       ]);
       expect(handle(err, "Me")).toBe(true);
       expect(assignMock).toHaveBeenCalledTimes(1);

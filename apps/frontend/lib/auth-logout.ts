@@ -2,7 +2,7 @@
  * Terminal auth-expired side-effect module.
  *
  * When a GraphQL response indicates the user's session is no longer valid
- * (HTTP 403, or `extensions.code` === `FORBIDDEN` / `UNAUTHENTICATED`), the
+ * (`extensions.code` === `UNAUTHENTICATED`, or a network-level 401/403), the
  * Apollo `authExpiryLink` calls `triggerAuthExpiredRedirect` here. We
  * intentionally do NOT bridge back into the React AuthContext — the
  * `AuthProvider` lives inside the `ApolloProvider`, so a React-aware bridge
@@ -22,14 +22,25 @@ import { USER_KEY } from "./auth-context";
 import { purgePersistedCache } from "./apollo-cache-keys";
 import { requestServerSignOut } from "./auth-signout";
 
-/** Error codes that mean "your session is no longer valid, sign in again". */
-const EXPIRED_SESSION_CODES = new Set(["FORBIDDEN", "UNAUTHENTICATED"]);
+/**
+ * Error codes that mean "your session is no longer valid, sign in again".
+ *
+ * ONLY `UNAUTHENTICATED`. `FORBIDDEN` used to be here too, but the backend
+ * guards conflated the two: a not-signed-in request and a genuine
+ * authorization denial both returned `FORBIDDEN`, so a user who simply
+ * lacked permission for one operation was logged out of the whole app. The
+ * guards now throw `UnauthorizedException` (=> `UNAUTHENTICATED`) only for
+ * "not signed in"; a real `@Permissions`/`@Roles` denial stays `FORBIDDEN`
+ * and must NOT end the session. This set is the frontend half of that split
+ * and depends on the backend change being deployed first.
+ */
+const EXPIRED_SESSION_CODES = new Set(["UNAUTHENTICATED"]);
 
 /**
  * Returns true when the Apollo error indicates an expired/invalid session.
- * Matches HTTP 403 on network errors and `FORBIDDEN`/`UNAUTHENTICATED` on
- * GraphQL errors. Returns false for business-logic errors, 5xx, missing
- * data, etc.
+ * Matches `UNAUTHENTICATED` on GraphQL errors and HTTP 401/403 on network
+ * errors. Returns false for business-logic errors, `FORBIDDEN` authorization
+ * denials, 5xx, missing data, etc.
  */
 export function isAuthExpiredError(error: ErrorLike | undefined): boolean {
   if (!error) return false;

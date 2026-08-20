@@ -1,6 +1,8 @@
+import { resolveRequestUser } from '../utils/request-user';
 import {
   Injectable,
   CanActivate,
+  UnauthorizedException,
   ExecutionContext,
   Optional,
   Logger,
@@ -61,23 +63,9 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    // SECURITY: Trust request.user from AuthMiddleware (JWT via Passport.js),
-    // OR from the gateway's forwarded user header when HMAC-authenticated.
-    // The HMAC signature proves the request came from our gateway, which
-    // already validated the user's JWT before forwarding.
-    let user: ILogin | undefined = request?.user;
-    if (
-      !user &&
-      request?.headers?.['x-hmac-auth'] &&
-      request?.headers?.['user']
-    ) {
-      try {
-        user = JSON.parse(request.headers['user'] as string);
-        if (request) request.user = user;
-      } catch {
-        // Invalid user header — fall through to denial
-      }
-    }
+    // SECURITY: request.user (AuthMiddleware/Passport) or the gateway's
+    // HMAC-authenticated forwarded user — via the shared helper.
+    const user: ILogin | undefined = resolveRequestUser(request);
 
     if (user && isLoggedIn(user)) {
       const hasRole = requiredRoles.some((role) => user.roles?.includes(role));
@@ -96,9 +84,17 @@ export class RolesGuard implements CanActivate {
         });
       }
 
+      // Authorization denial: user is known but lacks the role. Stays
+      // FORBIDDEN via the false return.
       return hasRole;
     }
 
-    return false;
+    // No valid user: this is UNAUTHENTICATED (not signed in), NOT FORBIDDEN.
+    // The two were conflated — a `return false` becomes a ForbiddenException,
+    // so a genuinely-expired session and a real authorization denial both
+    // reached the client as FORBIDDEN, and the frontend logged the user out
+    // on either. Authorization denials above keep returning false (=>
+    // FORBIDDEN); only 'not signed in' throws here.
+    throw new UnauthorizedException('Authentication required');
   }
 }
