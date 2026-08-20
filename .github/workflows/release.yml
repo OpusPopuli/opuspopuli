@@ -171,6 +171,17 @@ jobs:
           image: ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           output-file: sbom-${{ matrix.service }}.spdx.json
+          # Do NOT attach the SBOM as a GitHub Release asset. When a tag has a
+          # GitHub Release, the action tries to upload the SBOM to it, which
+          # needs `contents: write` — but this workflow is (correctly) scoped to
+          # `contents: read`, so the upload fails the whole job with "Resource
+          # not accessible by integration". It only surfaced once we started
+          # creating GitHub Releases (v1.9.0); earlier tags had no release, so
+          # the action had nothing to attach to. The SBOM is still preserved
+          # two ways below: the cosign attestation (Attest SBOM) and the
+          # workflow artifact (Upload SBOM artifact). The release asset was
+          # redundant.
+          upload-release-assets: false
 
       - name: Attest SBOM
         env:
