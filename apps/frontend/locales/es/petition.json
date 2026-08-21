@@ -25,6 +25,12 @@
     "overlay": {
       "alignGuide": "Alinea la petición dentro del marco"
     },
+    "guide": {
+      "searching": "Apunte a una petición",
+      "moveCloser": "Acérquese",
+      "holdSteady": "Mantenga firme",
+      "ready": "Listo — toque para capturar"
+    },
     "lighting": {
       "dark": "Muévete a un área más iluminada",
       "good": "Buena iluminación",

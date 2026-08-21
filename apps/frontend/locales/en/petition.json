@@ -25,6 +25,12 @@
     "overlay": {
       "alignGuide": "Align petition within the frame"
     },
+    "guide": {
+      "searching": "Point at a petition",
+      "moveCloser": "Move closer",
+      "holdSteady": "Hold steady",
+      "ready": "Ready — tap to capture"
+    },
     "lighting": {
       "dark": "Move to a brighter area",
       "good": "Good lighting",

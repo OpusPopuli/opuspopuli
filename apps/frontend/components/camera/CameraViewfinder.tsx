@@ -7,6 +7,11 @@ import { DocumentFrameOverlay } from "./DocumentFrameOverlay";
 import { LightingFeedback } from "./LightingFeedback";
 import { CaptureControls } from "./CaptureControls";
 import type { LightingLevel } from "@/lib/hooks/useLightingAnalysis";
+import {
+  useDocumentDetection,
+  type ReadinessHint,
+} from "@/lib/hooks/useDocumentDetection";
+import { deskewImageData } from "@/lib/vision/perspective";
 
 interface CameraViewfinderProps {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -44,6 +49,16 @@ export function CameraViewfinder({
   onCancel,
 }: CameraViewfinderProps) {
   const { t } = useTranslation("petition");
+  const detection = useDocumentDetection();
+
+  const guideTextForHint = (hint: ReadinessHint): string =>
+    ({
+      searching: t("camera.guide.searching"),
+      move_closer: t("camera.guide.moveCloser"),
+      hold_steady: t("camera.guide.holdSteady"),
+      ready: t("camera.guide.ready"),
+    })[hint];
+
   // Attach the stream to the <video> once BOTH exist. useCamera.startCamera()
   // runs during the permission step, before this viewfinder's <video> mounts,
   // so its one-shot `video.srcObject = stream` assignment is skipped (the ref
@@ -59,23 +74,43 @@ export function CameraViewfinder({
     }
   }, [stream, videoRef]);
 
-  // Start continuous lighting analysis when stream is active
+  // Start continuous lighting + document analysis when the stream is active.
+  const {
+    startContinuousAnalysis: startDocAnalysis,
+    stopContinuousAnalysis: stopDocAnalysis,
+  } = detection;
   useEffect(() => {
     if (stream) {
       startContinuousAnalysis(captureFrame);
-      return () => stopContinuousAnalysis();
+      startDocAnalysis(captureFrame);
+      return () => {
+        stopContinuousAnalysis();
+        stopDocAnalysis();
+      };
     }
-  }, [stream, captureFrame, startContinuousAnalysis, stopContinuousAnalysis]);
+  }, [
+    stream,
+    captureFrame,
+    startContinuousAnalysis,
+    stopContinuousAnalysis,
+    startDocAnalysis,
+    stopDocAnalysis,
+  ]);
 
   const handleCapture = useCallback(() => {
     const frame = captureFrame();
-    if (frame) {
-      if (navigator.vibrate) {
-        navigator.vibrate(50);
-      }
-      onCapture(frame);
+    if (!frame) return;
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
     }
-  }, [captureFrame, onCapture]);
+    // Deskew-crop to the detected document when we have a confident quad;
+    // otherwise send the full frame. Cropping to the document removes the
+    // background/skew, which is the biggest lever on OCR quality — and the
+    // fallback guarantees we never do worse than the whole frame.
+    const { quad } = detection.latest();
+    const processed = quad ? (deskewImageData(frame, quad) ?? frame) : frame;
+    onCapture(processed);
+  }, [captureFrame, onCapture, detection]);
 
   return (
     <div className="relative w-full h-full bg-black">
@@ -115,7 +150,13 @@ export function CameraViewfinder({
         </button>
       )}
 
-      <DocumentFrameOverlay />
+      <DocumentFrameOverlay
+        ready={detection.readiness.ready}
+        quad={detection.readiness.quad}
+        frameWidth={detection.readiness.frameWidth}
+        frameHeight={detection.readiness.frameHeight}
+        guideText={guideTextForHint(detection.readiness.hint)}
+      />
 
       <LightingFeedback level={lightingLevel} />
 
