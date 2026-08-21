@@ -12,9 +12,22 @@ const mockPersistOnboarding = jest.fn().mockResolvedValue({ data: {} });
 const mockQuery = jest.fn().mockResolvedValue({ data: null });
 const mockMutate = jest.fn().mockResolvedValue({ data: null });
 
+// The provider reads the durable onboarding flag back via useQuery (#758) to
+// hydrate the localStorage cache on a fresh device. Tests drive this by
+// setting mockUseQueryData before rendering.
+let mockUseQueryData: unknown = undefined;
+
 jest.mock("@apollo/client/react", () => ({
   useMutation: () => [mockPersistOnboarding, { loading: false }],
   useApolloClient: () => ({ query: mockQuery, mutate: mockMutate }),
+  useQuery: () => ({ data: mockUseQueryData }),
+}));
+
+// The provider gates its server read on auth; no ApolloProvider/AuthProvider
+// is mounted in these hook tests, so stub the auth context.
+let mockIsAuthenticated = false;
+jest.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({ isAuthenticated: mockIsAuthenticated }),
 }));
 
 // Mock localStorage
@@ -47,6 +60,44 @@ describe("OnboardingProvider", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    mockUseQueryData = undefined;
+    mockIsAuthenticated = false;
+  });
+
+  describe("server flag hydration (#758)", () => {
+    it("hydrates localStorage from the server onboardingCompletedAt", () => {
+      // A user who onboarded on another device: localStorage empty here, but
+      // the server says they are done.
+      mockIsAuthenticated = true;
+      mockUseQueryData = {
+        myProfile: {
+          id: "p1",
+          onboardingCompletedAt: "2026-08-20T00:00:00.000Z",
+        },
+      };
+
+      const { result } = renderHook(() => useOnboarding(), { wrapper });
+
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(
+        "opuspopuli_onboarding_completed",
+        "true",
+      );
+      expect(result.current.hasCompletedOnboarding).toBe(true);
+    });
+
+    it("does not hydrate when the server flag is null", () => {
+      mockIsAuthenticated = true;
+      mockUseQueryData = {
+        myProfile: { id: "p1", onboardingCompletedAt: null },
+      };
+
+      renderHook(() => useOnboarding(), { wrapper });
+
+      expect(localStorageMock.setItem).not.toHaveBeenCalledWith(
+        "opuspopuli_onboarding_completed",
+        "true",
+      );
+    });
   });
 
   describe("initial state", () => {

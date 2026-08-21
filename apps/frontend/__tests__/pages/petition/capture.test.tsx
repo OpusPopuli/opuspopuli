@@ -13,7 +13,7 @@ jest.mock("next/navigation", () => ({
 const mockPutImageData = jest.fn();
 const mockToDataURL = jest
   .fn()
-  .mockReturnValue("data:image/png;base64,dGVzdA==");
+  .mockReturnValue("data:image/jpeg;base64,dGVzdA==");
 const mockGetContext = jest.fn().mockReturnValue({
   putImageData: mockPutImageData,
 });
@@ -98,7 +98,7 @@ describe("PetitionCapturePage", () => {
     mockGetContext.mockReturnValue({
       putImageData: mockPutImageData,
     });
-    mockToDataURL.mockReturnValue("data:image/png;base64,dGVzdA==");
+    mockToDataURL.mockReturnValue("data:image/jpeg;base64,dGVzdA==");
   });
 
   it("should render CameraCapture component", () => {

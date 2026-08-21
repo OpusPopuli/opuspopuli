@@ -3,17 +3,21 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useState,
   useSyncExternalStore,
   useCallback,
   useMemo,
   ReactNode,
 } from "react";
-import { useApolloClient, useMutation } from "@apollo/client/react";
+import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
 import {
   COMPLETE_ONBOARDING,
   CompleteOnboardingData,
+  GET_ONBOARDING_STATUS,
+  OnboardingStatusData,
 } from "@/lib/graphql/onboarding";
+import { useAuth } from "@/lib/auth-context";
 import {
   GET_BRIEFING_PREFETCH,
   TRIGGER_MY_LLM_RERANK,
@@ -56,6 +60,31 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     getSnapshot,
     getServerSnapshot,
   );
+
+  // Hydrate the per-device localStorage cache from the durable server flag
+  // (#758). localStorage is only a fast-path cache; the server's
+  // `onboardingCompletedAt` is the cross-device source of truth. Without this
+  // read-back, a user who onboarded on another device (e.g. desktop, then
+  // opens the app on their phone) has an empty cache here, so
+  // `hasCompletedOnboarding` is false and anything gated on it — the scan FAB
+  // — never renders on that device.
+  const { isAuthenticated } = useAuth();
+  const { data: onboardingStatus } = useQuery<OnboardingStatusData>(
+    GET_ONBOARDING_STATUS,
+    { skip: !isAuthenticated },
+  );
+  useEffect(() => {
+    if (
+      onboardingStatus?.myProfile?.onboardingCompletedAt &&
+      localStorage.getItem(STORAGE_KEY) !== "true"
+    ) {
+      localStorage.setItem(STORAGE_KEY, "true");
+      globalThis.dispatchEvent(
+        new StorageEvent("storage", { key: STORAGE_KEY }),
+      );
+    }
+  }, [onboardingStatus]);
+
   const [currentStep, setCurrentStep] = useState(0);
   // 5 marketing steps + 4 data-collection steps (address, topics,
   // life context, veteran) + 1 mandatory commitments acknowledgement

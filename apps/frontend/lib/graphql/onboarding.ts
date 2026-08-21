@@ -25,3 +25,27 @@ export interface CompleteOnboardingData {
     onboardingCompletedAt: string;
   };
 }
+
+/**
+ * Read-back of the durable onboarding flag (#758). The mutation above is the
+ * cross-device source of truth; localStorage is only a per-device cache. On a
+ * device where the user never personally finished onboarding (e.g. they
+ * onboarded on desktop, then opened the app on their phone), that cache is
+ * empty — so anything gated on `hasCompletedOnboarding` (the scan FAB) stays
+ * hidden until this query hydrates the cache from the server.
+ */
+export const GET_ONBOARDING_STATUS = gql`
+  query OnboardingStatus {
+    myProfile {
+      id
+      onboardingCompletedAt
+    }
+  }
+`;
+
+export interface OnboardingStatusData {
+  myProfile: {
+    id: string;
+    onboardingCompletedAt: string | null;
+  } | null;
+}

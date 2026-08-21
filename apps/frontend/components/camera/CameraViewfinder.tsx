@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 import { useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { DocumentFrameOverlay } from "./DocumentFrameOverlay";
 import { LightingFeedback } from "./LightingFeedback";
 import { CaptureControls } from "./CaptureControls";
@@ -22,6 +23,7 @@ interface CameraViewfinderProps {
   stopContinuousAnalysis: () => void;
   onCapture: (imageData: ImageData) => void;
   onToggleTorch: () => void;
+  onCancel?: () => void;
 }
 
 export function CameraViewfinder({
@@ -39,7 +41,9 @@ export function CameraViewfinder({
   stopContinuousAnalysis,
   onCapture,
   onToggleTorch,
+  onCancel,
 }: CameraViewfinderProps) {
+  const { t } = useTranslation("petition");
   // Attach the stream to the <video> once BOTH exist. useCamera.startCamera()
   // runs during the permission step, before this viewfinder's <video> mounts,
   // so its one-shot `video.srcObject = stream` assignment is skipped (the ref
@@ -84,6 +88,32 @@ export function CameraViewfinder({
       />
 
       <canvas ref={canvasRef} className="hidden" />
+
+      {/* Close / cancel — the viewfinder's only way out of the camera */}
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label={t("camera.controls.close")}
+          className="absolute top-4 left-4 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-paper backdrop-blur-sm transition-colors hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-paper"
+          style={{ top: "calc(1rem + env(safe-area-inset-top))" }}
+        >
+          <svg
+            className="h-6 w-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      )}
 
       <DocumentFrameOverlay />
 
