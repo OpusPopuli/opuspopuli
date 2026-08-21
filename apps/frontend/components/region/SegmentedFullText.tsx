@@ -306,7 +306,10 @@ function initialExpandedSections(
 ): Set<number> {
   const open = new Set<number>();
   let budget = SSR_AUTO_EXPAND_CHAR_BUDGET;
-  for (const [i, s] of sections.entries()) {
+  // Plain indexed loop, not sections.entries(): the frontend tsconfig target
+  // rejects iterating an ArrayIterator without --downlevelIteration.
+  for (let i = 0; i < sections.length; i++) {
+    const s = sections[i];
     const len = Math.max(0, s.endOffset - s.startOffset);
     if (len > budget) break;
     open.add(i);
