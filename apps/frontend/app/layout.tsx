@@ -188,8 +188,13 @@ export default function RootLayout({
         <ThemeProvider>
           <ApolloProvider>
             <ToastProvider>
-              <OnboardingProvider>{children}</OnboardingProvider>
-              <ScanFab />
+              <OnboardingProvider>
+                {children}
+                {/* Inside OnboardingProvider so the FAB can hide itself during
+                    the onboarding flow — its fixed bottom-right position
+                    otherwise intercepts clicks on onboarding controls. */}
+                <ScanFab />
+              </OnboardingProvider>
               <OfflineIndicator />
             </ToastProvider>
           </ApolloProvider>

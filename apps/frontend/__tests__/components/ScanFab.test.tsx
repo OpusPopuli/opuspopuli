@@ -3,9 +3,14 @@ import { ScanFab } from "@/components/ScanFab";
 
 let mockAuthenticated = true;
 let mockPathname = "/region";
+let mockCompletedOnboarding = true;
 
 jest.mock("@/lib/auth-context", () => ({
   useAuth: () => ({ isAuthenticated: mockAuthenticated }),
+}));
+
+jest.mock("@/lib/onboarding-context", () => ({
+  useOnboarding: () => ({ hasCompletedOnboarding: mockCompletedOnboarding }),
 }));
 
 jest.mock("next/navigation", () => ({
@@ -20,6 +25,7 @@ describe("ScanFab", () => {
   beforeEach(() => {
     mockAuthenticated = true;
     mockPathname = "/region";
+    mockCompletedOnboarding = true;
   });
 
   it("renders a scan link to the camera on a normal authenticated route", () => {
@@ -32,6 +38,12 @@ describe("ScanFab", () => {
 
   it("is hidden when the user is not authenticated", () => {
     mockAuthenticated = false;
+    const { container } = render(<ScanFab />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("is hidden while onboarding is not complete (would cover onboarding controls)", () => {
+    mockCompletedOnboarding = false;
     const { container } = render(<ScanFab />);
     expect(container).toBeEmptyDOMElement();
   });

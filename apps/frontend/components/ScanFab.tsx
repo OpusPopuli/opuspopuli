@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth-context";
+import { useOnboarding } from "@/lib/onboarding-context";
 
 /**
  * Global floating scan button.
@@ -23,10 +24,14 @@ const HIDDEN_PREFIXES = ["/petition", "/login", "/register", "/auth"] as const;
 
 export function ScanFab() {
   const { isAuthenticated } = useAuth();
+  const { hasCompletedOnboarding } = useOnboarding();
   const pathname = usePathname();
   const { t } = useTranslation("common");
 
   if (!isAuthenticated) return null;
+  // Not while the onboarding flow is running: the FAB's fixed position sits
+  // over onboarding controls and would intercept their clicks.
+  if (!hasCompletedOnboarding) return null;
   if (HIDDEN_PREFIXES.some((p) => pathname?.startsWith(p))) return null;
 
   const label = t("navigation.scanPetition");
