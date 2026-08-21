@@ -48,8 +48,62 @@ export function AnalysisDisplay({
   const { t } = useTranslation("petition");
   const [now] = useState(() => Date.now());
 
+  const primaryMatch = linkedPropositions[0];
+  const additionalMatches = linkedPropositions.slice(1);
+
   return (
     <div className="space-y-6">
+      {/* Match hero — the payoff. When a scan links to a real measure, lead
+          with it: this is what the citizen is being asked to sign. */}
+      {primaryMatch && (
+        <Link
+          href={`/region/propositions/${primaryMatch.propositionId}`}
+          // bg-ink + text-paper/accent are FIXED tokens (never theme-flip), so
+          // the gold-on-ink / paper-on-ink contrast is WCAG-valid on any
+          // surface. Theme-relative tokens (inverse-surface, content-dim) can
+          // invert to light here and fail contrast — hence the explicit ink.
+          className="block relative overflow-hidden rounded-2xl bg-ink ring-1 ring-accent/40 p-5 transition-shadow hover:ring-accent/70"
+        >
+          <span
+            className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-accent/10"
+            aria-hidden="true"
+          />
+          <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-accent">
+            <span aria-hidden="true">&#10022;</span>
+            {t("results.matched")}
+          </p>
+          <h2 className="font-display text-xl font-bold text-paper mt-2 leading-snug">
+            {primaryMatch.title}
+          </h2>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-paper/15 text-paper">
+              {primaryMatch.status}
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-paper/10 text-paper/70">
+              {primaryMatch.linkSource === "auto_analysis"
+                ? t("results.linkedAutomatically")
+                : t("results.linkedManually")}
+            </span>
+            {primaryMatch.electionDate && (
+              <span className="text-xs text-paper/70">
+                {new Date(primaryMatch.electionDate).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+          {primaryMatch.summary && (
+            <p className="text-sm text-paper/80 mt-3 leading-relaxed">
+              {primaryMatch.summary}
+            </p>
+          )}
+          <p className="text-xs italic text-paper/70 mt-3">
+            {t("results.signingExplainer")}
+          </p>
+          <span className="inline-block text-sm font-medium text-accent mt-3">
+            {t("results.viewMeasure")} &rarr;
+          </span>
+        </Link>
+      )}
+
       {/* OCR Text Section */}
       {ocrText != null && ocrConfidence != null && (
         <div>
@@ -99,7 +153,7 @@ export function AnalysisDisplay({
                 key={point}
                 className="flex items-start gap-2 text-content-dim"
               >
-                <span className="text-info mt-1 flex-shrink-0">&#8226;</span>
+                <span className="text-accent mt-1 flex-shrink-0">&#8226;</span>
                 <span>{point}</span>
               </li>
             ))}
@@ -169,34 +223,35 @@ export function AnalysisDisplay({
         </div>
       )}
 
-      {/* Related Measures / Linked Propositions */}
-      {(linkedPropositions.length > 0 ||
+      {/* Related Measures — the PRIMARY match is shown in the hero above; here
+          we list any ADDITIONAL matches plus unlinked measure mentions. */}
+      {(additionalMatches.length > 0 ||
         (analysis.relatedMeasures && analysis.relatedMeasures.length > 0)) && (
         <div>
           <h3 className="text-md font-semibold text-content-dim mb-2">
             {t("results.relatedMeasures")}
           </h3>
 
-          {/* Linked propositions as clickable cards */}
-          {linkedPropositions.length > 0 && (
+          {/* Additional linked propositions as clickable cards */}
+          {additionalMatches.length > 0 && (
             <div className="space-y-2 mb-3">
-              {linkedPropositions.map((prop) => (
+              {additionalMatches.map((prop) => (
                 <Link
                   key={prop.id}
                   href={`/region/propositions/${prop.propositionId}`}
-                  className="block bg-inverse-surface hover:bg-surface-alt rounded-lg p-3 transition-colors"
+                  className="block bg-ink hover:opacity-90 rounded-lg p-3 transition-opacity"
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-paper font-medium truncate">
                       {prop.title}
                     </p>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-info-surface text-info ml-2 flex-shrink-0">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-paper/15 text-paper ml-2 flex-shrink-0">
                       {prop.linkSource === "auto_analysis"
                         ? t("results.linkedAutomatically")
                         : t("results.linkedManually")}
                     </span>
                   </div>
-                  <p className="text-sm text-content-dim mt-1">
+                  <p className="text-sm text-paper/70 mt-1">
                     {prop.status}
                     {prop.electionDate &&
                       ` · ${new Date(prop.electionDate).toLocaleDateString()}`}
