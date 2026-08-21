@@ -55,15 +55,16 @@ export function SegmentedFullText({
     return normalizeSectionsForRender(sections, fullText);
   }, [sections, fullText]);
 
-  // Sections the user has explicitly toggled. Initial set: everything if
-  // small enough to comfortably show open, else just the first.
-  const [userExpanded, setUserExpanded] = useState<Set<number>>(
-    () =>
-      new Set(
-        effectiveSections.length <= 3
-          ? effectiveSections.map((_, i) => i)
-          : [0],
-      ),
+  // Sections open on first render. The initial render runs server-side in a
+  // Cloudflare Worker with a hard CPU limit, and a proposition's full text can
+  // be 100KB+ of legal prose — a *pending* (un-analyzed) ballot initiative is a
+  // single section spanning all of it. Auto-opening that overran the Worker CPU
+  // budget and 500'd `/region/propositions/[id]`. Open sections from the top
+  // only while their combined length stays under a budget; larger text starts
+  // collapsed and renders on the client when the reader opens it. Regular bills
+  // (~40KB) still open as before.
+  const [userExpanded, setUserExpanded] = useState<Set<number>>(() =>
+    initialExpandedSections(effectiveSections),
   );
 
   // Section index implied by the focused claim (if any). Derived during
@@ -284,6 +285,37 @@ function buildHighlightedSegments(
     segments.push({ text: fullText.slice(cursor, section.endOffset) });
   }
   return segments;
+}
+
+/**
+ * Combined character budget for sections opened on first (server-side) render.
+ * The SSR runs in a Cloudflare Worker with a hard CPU limit; auto-opening a
+ * 100KB+ ballot-initiative full text overran it and 500'd the page. ~40KB keeps
+ * regular bills open as before while leaving oversized initiative text collapsed
+ * until the reader opens it on the client.
+ */
+const SSR_AUTO_EXPAND_CHAR_BUDGET = 40_000;
+
+/**
+ * Pick which sections start open: from the top, while their combined length
+ * stays under SSR_AUTO_EXPAND_CHAR_BUDGET. A single section larger than the
+ * budget (the common un-analyzed full-text case) starts collapsed.
+ */
+function initialExpandedSections(
+  sections: PropositionAnalysisSection[],
+): Set<number> {
+  const open = new Set<number>();
+  let budget = SSR_AUTO_EXPAND_CHAR_BUDGET;
+  // Plain indexed loop, not sections.entries(): the frontend tsconfig target
+  // rejects iterating an ArrayIterator without --downlevelIteration.
+  for (let i = 0; i < sections.length; i++) {
+    const s = sections[i];
+    const len = Math.max(0, s.endOffset - s.startOffset);
+    if (len > budget) break;
+    open.add(i);
+    budget -= len;
+  }
+  return open;
 }
 
 /**

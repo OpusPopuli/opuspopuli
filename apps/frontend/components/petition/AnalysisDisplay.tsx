@@ -380,10 +380,14 @@ export function AnalysisDisplay({
                   className="flex items-center justify-between bg-inverse-surface rounded-lg px-3 py-2"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-content-dim truncate">
+                    {/* bg-inverse-surface flips to light paper on the petition
+                        pinned-dark surface, so text must be on-inverse (dark),
+                        matching the extracted-text box and entity chips above.
+                        text-content-dim renders light here → invisible. */}
+                    <p className="text-sm text-on-inverse truncate">
                       {source.name}
                     </p>
-                    <p className="text-sm text-content-dim">
+                    <p className="text-sm text-on-inverse/70">
                       {t("results.sourceAccessedAt", {
                         date: accessedDate.toLocaleDateString(),
                       })}
