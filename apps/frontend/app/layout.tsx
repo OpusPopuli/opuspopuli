@@ -6,6 +6,7 @@ import { ApolloProvider } from "@/lib/apollo-provider";
 import { ToastProvider } from "@/lib/toast";
 import { OnboardingProvider } from "@/lib/onboarding-context";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { ScanFab } from "@/components/ScanFab";
 import { JsonLd } from "@/components/JsonLd";
 
 /*
@@ -187,7 +188,13 @@ export default function RootLayout({
         <ThemeProvider>
           <ApolloProvider>
             <ToastProvider>
-              <OnboardingProvider>{children}</OnboardingProvider>
+              <OnboardingProvider>
+                {children}
+                {/* Inside OnboardingProvider so the FAB can hide itself during
+                    the onboarding flow — its fixed bottom-right position
+                    otherwise intercepts clicks on onboarding controls. */}
+                <ScanFab />
+              </OnboardingProvider>
               <OfflineIndicator />
             </ToastProvider>
           </ApolloProvider>

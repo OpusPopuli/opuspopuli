@@ -40,7 +40,8 @@
     "loading": "Loading..."
   },
   "navigation": {
-    "backToApp": "Back to App"
+    "backToApp": "Back to App",
+    "scanPetition": "Scan a petition"
   },
   "accessibility": {
     "languageChanged": "Language changed to English",

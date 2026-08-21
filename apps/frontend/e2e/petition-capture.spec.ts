@@ -13,8 +13,8 @@ test.describe("Petition Capture", () => {
       await setupAuthSession(page);
       await page.goto("/petition");
 
-      await expect(page.getByText("Scan a Petition")).toBeVisible();
-      await expect(page.getByText("Start Scanning")).toBeVisible();
+      await expect(page.getByText("Know what you're signing")).toBeVisible();
+      await expect(page.getByText("Scan a petition")).toBeVisible();
     });
 
     test("should navigate to capture page from start scanning", async ({
@@ -23,7 +23,7 @@ test.describe("Petition Capture", () => {
       await setupAuthSession(page);
       await page.goto("/petition");
 
-      await page.getByText("Start Scanning").click();
+      await page.getByText("Scan a petition").click();
 
       await expect(page).toHaveURL(/\/petition\/capture/);
     });
@@ -32,7 +32,7 @@ test.describe("Petition Capture", () => {
       await setupAuthSession(page);
       await page.goto("/petition");
 
-      await expect(page.getByText("Back to Home")).toBeVisible();
+      await expect(page.getByText("Back to app")).toBeVisible();
     });
   });
 
@@ -102,8 +102,8 @@ test.describe("Petition Capture", () => {
       await page.setViewportSize(viewports.mobile);
       await page.goto("/petition");
 
-      await expect(page.getByText("Scan a Petition")).toBeVisible();
-      await expect(page.getByText("Start Scanning")).toBeVisible();
+      await expect(page.getByText("Know what you're signing")).toBeVisible();
+      await expect(page.getByText("Scan a petition")).toBeVisible();
     });
 
     test("should render correctly on tablet viewport", async ({ page }) => {
@@ -111,8 +111,8 @@ test.describe("Petition Capture", () => {
       await page.setViewportSize(viewports.tablet);
       await page.goto("/petition");
 
-      await expect(page.getByText("Scan a Petition")).toBeVisible();
-      await expect(page.getByText("Start Scanning")).toBeVisible();
+      await expect(page.getByText("Know what you're signing")).toBeVisible();
+      await expect(page.getByText("Scan a petition")).toBeVisible();
     });
   });
 
@@ -364,7 +364,7 @@ test.describe("Petition Capture", () => {
       await page.goto("/petition");
 
       // Page should still work — feed just hides
-      await expect(page.getByText("Scan a Petition")).toBeVisible();
+      await expect(page.getByText("Know what you're signing")).toBeVisible();
       await expect(page.getByTestId("activity-feed")).not.toBeVisible();
     });
 

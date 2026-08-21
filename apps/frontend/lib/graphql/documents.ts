@@ -489,8 +489,8 @@ export interface DeleteAllScansResult {
 
 export const GET_MY_SCAN_HISTORY = gql`
   query MyScanHistory(
-    $skip: Float!
-    $take: Float!
+    $skip: Int!
+    $take: Int!
     $filters: ScanHistoryFiltersInput
   ) {
     myScanHistory(skip: $skip, take: $take, filters: $filters) {

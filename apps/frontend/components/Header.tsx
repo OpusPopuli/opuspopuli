@@ -42,9 +42,6 @@ export function Header() {
           <Link href="/region" className={navLinkClass}>
             Region
           </Link>
-          <Link href="/petition" className={navLinkClass}>
-            Petitions
-          </Link>
           <Link
             href="/settings"
             className="text-content-dim hover:text-content transition-colors"
@@ -100,9 +97,6 @@ export function Header() {
           </Link>
           <Link href="/region" className={navLinkClass} onClick={closeMenu}>
             Region
-          </Link>
-          <Link href="/petition" className={navLinkClass} onClick={closeMenu}>
-            Petitions
           </Link>
           <Link
             href="/settings"

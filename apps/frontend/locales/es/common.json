@@ -40,7 +40,8 @@
     "loading": "Cargando..."
   },
   "navigation": {
-    "backToApp": "Volver a la App"
+    "backToApp": "Volver a la App",
+    "scanPetition": "Escanear una petición"
   },
   "accessibility": {
     "languageChanged": "Idioma cambiado a Espanol",

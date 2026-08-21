@@ -198,12 +198,29 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
     }
   }, [currentFacingMode, stopCamera]);
 
-  // Restart camera when facing mode changes (after initial start)
+  // (Re)start the camera whenever permission is granted but no stream is
+  // running: after switchCamera() stops the old stream to swap facingMode, and
+  // for a returning user who already granted permission (so the permission
+  // step is skipped and startCamera() is never triggered by a button). The
+  // `!isLoading` / `!error` guards prevent this from re-firing during the
+  // in-flight getUserMedia call or looping on a failure.
   useEffect(() => {
-    if (stream === null && permissionState === "granted" && !isLoading) {
-      // Stream was stopped by switchCamera, restart
+    if (
+      stream === null &&
+      permissionState === "granted" &&
+      !isLoading &&
+      !error
+    ) {
+      void startCamera();
     }
-  }, [currentFacingMode, stream, permissionState, isLoading]);
+  }, [
+    currentFacingMode,
+    stream,
+    permissionState,
+    isLoading,
+    error,
+    startCamera,
+  ]);
 
   const captureFrame = useCallback((): ImageData | null => {
     const video = videoRef.current;
