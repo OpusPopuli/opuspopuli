@@ -108,12 +108,12 @@ export function ActivityFeed() {
       </div>
 
       <p className="text-sm text-content-dim mb-3">
-        <span className="text-content font-semibold">
+        <span className="text-paper font-semibold">
           {feed.totalScansLast24h}
         </span>{" "}
         {feed.totalScansLast24h === 1 ? "scan" : "scans"} in the last 24 hours
         across{" "}
-        <span className="text-content font-semibold">
+        <span className="text-paper font-semibold">
           {feed.activePetitionsLast24h}
         </span>{" "}
         {feed.activePetitionsLast24h === 1 ? "petition" : "petitions"}
