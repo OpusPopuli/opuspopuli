@@ -48,58 +48,8 @@ export function AnalysisDisplay({
   const { t } = useTranslation("petition");
   const [now] = useState(() => Date.now());
 
-  const primaryMatch = linkedPropositions[0];
-  const additionalMatches = linkedPropositions.slice(1);
-
   return (
     <div className="space-y-6">
-      {/* Match hero — the payoff. When a scan links to a real measure, lead
-          with it: this is what the citizen is being asked to sign. */}
-      {primaryMatch && (
-        <Link
-          href={`/region/propositions/${primaryMatch.propositionId}`}
-          className="block relative overflow-hidden rounded-2xl bg-inverse-surface ring-1 ring-accent/40 p-5 transition-shadow hover:ring-accent/70"
-        >
-          <span
-            className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-accent/10"
-            aria-hidden="true"
-          />
-          <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-accent">
-            <span aria-hidden="true">&#10022;</span>
-            {t("results.matched")}
-          </p>
-          <h2 className="font-display text-xl font-bold text-paper mt-2 leading-snug">
-            {primaryMatch.title}
-          </h2>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-accent/15 text-accent">
-              {primaryMatch.status}
-            </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-paper/10 text-content-dim">
-              {primaryMatch.linkSource === "auto_analysis"
-                ? t("results.linkedAutomatically")
-                : t("results.linkedManually")}
-            </span>
-            {primaryMatch.electionDate && (
-              <span className="text-xs text-content-dim">
-                {new Date(primaryMatch.electionDate).toLocaleDateString()}
-              </span>
-            )}
-          </div>
-          {primaryMatch.summary && (
-            <p className="text-sm text-content-dim mt-3 leading-relaxed">
-              {primaryMatch.summary}
-            </p>
-          )}
-          <p className="text-xs italic text-content-dim/80 mt-3">
-            {t("results.signingExplainer")}
-          </p>
-          <span className="inline-block text-sm font-medium text-accent mt-3">
-            {t("results.viewMeasure")} &rarr;
-          </span>
-        </Link>
-      )}
-
       {/* OCR Text Section */}
       {ocrText != null && ocrConfidence != null && (
         <div>
@@ -149,7 +99,7 @@ export function AnalysisDisplay({
                 key={point}
                 className="flex items-start gap-2 text-content-dim"
               >
-                <span className="text-accent mt-1 flex-shrink-0">&#8226;</span>
+                <span className="text-info mt-1 flex-shrink-0">&#8226;</span>
                 <span>{point}</span>
               </li>
             ))}
@@ -219,19 +169,18 @@ export function AnalysisDisplay({
         </div>
       )}
 
-      {/* Related Measures — the PRIMARY match is shown in the hero above; here
-          we list any ADDITIONAL matches plus unlinked measure mentions. */}
-      {(additionalMatches.length > 0 ||
+      {/* Related Measures / Linked Propositions */}
+      {(linkedPropositions.length > 0 ||
         (analysis.relatedMeasures && analysis.relatedMeasures.length > 0)) && (
         <div>
           <h3 className="text-md font-semibold text-content-dim mb-2">
             {t("results.relatedMeasures")}
           </h3>
 
-          {/* Additional linked propositions as clickable cards */}
-          {additionalMatches.length > 0 && (
+          {/* Linked propositions as clickable cards */}
+          {linkedPropositions.length > 0 && (
             <div className="space-y-2 mb-3">
-              {additionalMatches.map((prop) => (
+              {linkedPropositions.map((prop) => (
                 <Link
                   key={prop.id}
                   href={`/region/propositions/${prop.propositionId}`}
@@ -241,7 +190,7 @@ export function AnalysisDisplay({
                     <p className="text-sm text-paper font-medium truncate">
                       {prop.title}
                     </p>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-accent/15 text-accent ml-2 flex-shrink-0">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-info-surface text-info ml-2 flex-shrink-0">
                       {prop.linkSource === "auto_analysis"
                         ? t("results.linkedAutomatically")
                         : t("results.linkedManually")}

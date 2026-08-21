@@ -1,11 +1,9 @@
 {
   "home": {
-    "title": "Know what you're signing",
-    "description": "Point your camera at any petition. We'll tell you what it is, what it does, and whether it's real, in plain language.",
-    "startScanning": "Scan a petition",
-    "myScans": "My scans",
-    "viewMap": "Petition map",
-    "backToHome": "Back to app"
+    "title": "Scan a Petition",
+    "description": "Use your camera to capture petition pages. Images are processed securely and never stored on your device.",
+    "startScanning": "Start Scanning",
+    "backToHome": "Back to Home"
   },
   "camera": {
     "permission": {
@@ -68,9 +66,6 @@
   "results": {
     "title": "Scan Results",
     "back": "Go back",
-    "matched": "Matched",
-    "signingExplainer": "This is the official measure you'd be signing to put on the ballot.",
-    "viewMeasure": "View full measure",
     "extractingText": "Reading your petition...",
     "extractingDescription": "Using AI to extract text from your image",
     "analyzingDocument": "Analyzing petition...",

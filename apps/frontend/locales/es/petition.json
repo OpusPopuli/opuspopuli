@@ -1,11 +1,9 @@
 {
   "home": {
-    "title": "Sepa lo que está firmando",
-    "description": "Apunte su cámara a cualquier petición. Le diremos qué es, qué hace y si es real, en lenguaje sencillo.",
-    "startScanning": "Escanear una petición",
-    "myScans": "Mis escaneos",
-    "viewMap": "Mapa de peticiones",
-    "backToHome": "Volver a la app"
+    "title": "Escanear una Petición",
+    "description": "Usa tu cámara para capturar páginas de peticiones. Las imágenes se procesan de forma segura y nunca se almacenan en tu dispositivo.",
+    "startScanning": "Comenzar Escaneo",
+    "backToHome": "Volver al Inicio"
   },
   "camera": {
     "permission": {
@@ -68,9 +66,6 @@
   "results": {
     "title": "Resultados del Escaneo",
     "back": "Volver",
-    "matched": "Coincidencia",
-    "signingExplainer": "Esta es la medida oficial que estarías firmando para incluir en la boleta.",
-    "viewMeasure": "Ver medida completa",
     "extractingText": "Leyendo tu petición...",
     "extractingDescription": "Usando IA para extraer texto de tu imagen",
     "analyzingDocument": "Analizando petición...",
