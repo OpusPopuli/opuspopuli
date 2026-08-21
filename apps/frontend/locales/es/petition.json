@@ -34,7 +34,8 @@
       "capture": "Capturar foto",
       "flashOn": "Encender flash",
       "flashOff": "Apagar flash",
-      "switchCamera": "Cambiar cámara"
+      "switchCamera": "Cambiar cámara",
+      "close": "Cerrar cámara"
     },
     "preview": {
       "retake": "Repetir",

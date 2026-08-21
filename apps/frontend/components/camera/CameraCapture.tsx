@@ -201,6 +201,7 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
       stopContinuousAnalysis={lighting.stopContinuousAnalysis}
       onCapture={handleCapture}
       onToggleTorch={handleToggleTorch}
+      onCancel={onCancel}
     />
   );
 }
