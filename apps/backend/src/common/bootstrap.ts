@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import compression from 'compression';
+import { json, urlencoded } from 'express';
 
 import { env } from 'process';
 
@@ -40,8 +41,18 @@ export default async function bootstrap(
 ): Promise<void> {
   const startTime = Date.now();
 
-  const app = await NestFactory.create(AppModule);
+  // Disable Nest's default body parser so we can register our own with a
+  // larger limit — the default ~100KB rejects petition-scan image uploads with
+  // a 500 (PayloadTooLargeError) at the gateway before they reach a resolver.
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
   const configService = app.get<ConfigService>(ConfigService);
+
+  // A base64-encoded camera photo (petition scan) is the largest request body
+  // we accept. JPEG at 0.85 keeps this well under the limit; the ceiling is
+  // headroom, not a target. Overridable via BODY_LIMIT for tuning.
+  const bodyLimit = configService.get('BODY_LIMIT') || '15mb';
+  app.use(json({ limit: bodyLimit }));
+  app.use(urlencoded({ extended: true, limit: bodyLimit }));
 
   // Use service-specific port env var if provided, otherwise fall back to 'port' from config
   const port = options.portEnvVar

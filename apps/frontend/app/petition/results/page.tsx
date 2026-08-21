@@ -62,7 +62,7 @@ export default function PetitionResultsPage() {
           variables: {
             input: {
               data: base64,
-              mimeType: "image/png",
+              mimeType: "image/jpeg",
               documentType: "petition",
             },
           },

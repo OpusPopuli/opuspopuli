@@ -58,7 +58,9 @@ export function CaptureControls({
         className="w-[72px] h-[72px] rounded-full border-4 border-white flex items-center justify-center disabled:opacity-50 transition-transform active:scale-95"
         aria-label="Capture photo"
       >
-        <div className="w-[60px] h-[60px] rounded-full bg-surface" />
+        {/* Fixed white, not bg-surface: the viewfinder is always a dark scene,
+            and a theme-relative token turns the disc black in dark mode. */}
+        <div className="w-[60px] h-[60px] rounded-full bg-white" />
       </button>
 
       {/* Camera switch */}

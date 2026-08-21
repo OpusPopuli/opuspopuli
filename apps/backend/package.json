@@ -104,6 +104,7 @@
     "crypto-js": "^4.2.0",
     "date-fns": "^4.0.0",
     "dotenv": "^17.3.1",
+    "express": "^5.2.1",
     "graphql": "^16.13.1",
     "graphql-depth-limit": "^1.1.0",
     "graphql-query-complexity": "^1.1.0",
