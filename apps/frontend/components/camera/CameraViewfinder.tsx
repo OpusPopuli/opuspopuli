@@ -67,10 +67,19 @@ export function CameraViewfinder({
   useEffect(() => {
     const video = videoRef.current;
     if (video && stream && video.srcObject !== stream) {
-      video.srcObject = stream;
-      // iOS Safari won't always autoplay a freshly-attached stream; nudge it.
-      // play() returns a Promise in browsers but undefined under jsdom.
-      video.play()?.catch(() => {});
+      // Guard the attach: assigning a value the browser rejects as a
+      // MediaStream (e.g. a mocked stream in E2E) throws synchronously here,
+      // and an uncaught throw in an effect can unmount the whole subtree — the
+      // page then renders blank. A failed attach should degrade to "no feed",
+      // never crash the viewfinder.
+      try {
+        video.srcObject = stream;
+        // iOS Safari won't always autoplay a freshly-attached stream; nudge it.
+        // play() returns a Promise in browsers but undefined under jsdom.
+        video.play()?.catch(() => {});
+      } catch {
+        // No feed; capture falls back to whatever the video can provide.
+      }
     }
   }, [stream, videoRef]);
 
