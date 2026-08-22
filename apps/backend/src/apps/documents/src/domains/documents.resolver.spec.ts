@@ -9,6 +9,7 @@ import { SubmitAbuseReportInput } from './dto/abuse-report.dto';
 import { FileService } from './services/file.service';
 import { ScanService } from './services/scan.service';
 import { AnalysisService } from './services/analysis.service';
+import { PersonalizedImpactService } from './services/personalized-impact.service';
 import { LocationService } from './services/location.service';
 import { LinkingService } from './services/linking.service';
 import { AbuseReportService } from './services/abuse-report.service';
@@ -69,6 +70,10 @@ describe('DocumentsResolver', () => {
         { provide: FileService, useValue: createMock<FileService>() },
         { provide: ScanService, useValue: createMock<ScanService>() },
         { provide: AnalysisService, useValue: createMock<AnalysisService>() },
+        {
+          provide: PersonalizedImpactService,
+          useValue: createMock<PersonalizedImpactService>(),
+        },
         { provide: LocationService, useValue: createMock<LocationService>() },
         { provide: LinkingService, useValue: createMock<LinkingService>() },
         {
