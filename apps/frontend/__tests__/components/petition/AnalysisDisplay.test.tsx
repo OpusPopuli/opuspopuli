@@ -96,31 +96,12 @@ describe("AnalysisDisplay", () => {
     expect(screen.getByText("results.linkedAutomatically")).toBeInTheDocument();
   });
 
-  it("should render OCR text as read-only when readOnly is true", () => {
-    render(
-      <AnalysisDisplay
-        analysis={baseAnalysis}
-        ocrText="Some OCR text"
-        ocrConfidence={95}
-        readOnly
-      />,
-    );
+  it("does not surface the raw OCR text (jumbled/low-confidence, misleading)", () => {
+    render(<AnalysisDisplay analysis={baseAnalysis} />);
 
-    expect(screen.getByText("Some OCR text")).toBeInTheDocument();
+    // No editable OCR field, and the extracted-text heading is gone.
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-  });
-
-  it("should render OCR text as editable textarea when readOnly is false", () => {
-    render(
-      <AnalysisDisplay
-        analysis={baseAnalysis}
-        ocrText="Some OCR text"
-        ocrConfidence={95}
-      />,
-    );
-
-    expect(screen.getByRole("textbox")).toBeInTheDocument();
-    expect(screen.getByRole("textbox")).toHaveValue("Some OCR text");
+    expect(screen.queryByText("results.extractedText")).not.toBeInTheDocument();
   });
 
   it("should show provider info footer", () => {

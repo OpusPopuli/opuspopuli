@@ -31,7 +31,6 @@ export default function PetitionResultsPage() {
 
   const [step, setStep] = useState<ProcessingStep>("extracting");
   const [ocrText, setOcrText] = useState("");
-  const [ocrConfidence, setOcrConfidence] = useState(0);
   const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null);
   const [fromCache, setFromCache] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +71,6 @@ export default function PetitionResultsPage() {
         if (!scan) throw new Error("Scan processing failed");
 
         setOcrText(scan.text);
-        setOcrConfidence(scan.confidence);
         setDocumentId(scan.documentId);
 
         // Step 2: Set location (fire-and-forget)
@@ -195,27 +193,7 @@ export default function PetitionResultsPage() {
       )}
 
       {/* OCR Text (shown before analysis completes) */}
-      {ocrText && !analysis && (
-        <section className="px-4 py-6">
-          <AnalysisDisplay
-            analysis={{
-              documentType: "petition",
-              summary: "",
-              keyPoints: [],
-              entities: [],
-              analyzedAt: "",
-              provider: "",
-              model: "",
-              processingTimeMs: 0,
-            }}
-            ocrText={ocrText}
-            ocrConfidence={ocrConfidence}
-            onOcrTextChange={setOcrText}
-          />
-        </section>
-      )}
-
-      {/* Analysis Loading (shown while analyzing, after OCR text is visible) */}
+      {/* Analysis Loading (shown while analyzing) */}
       {step === "analyzing" && ocrText && (
         <div className="flex items-center gap-3 px-4 py-4">
           <LoadingSpinner size="sm" className="text-accent" />
@@ -231,10 +209,7 @@ export default function PetitionResultsPage() {
           <AnalysisDisplay
             analysis={analysis}
             linkedPropositions={linkedPropositions}
-            ocrText={ocrText}
-            ocrConfidence={ocrConfidence}
             fromCache={fromCache}
-            onOcrTextChange={setOcrText}
           />
         </section>
       )}
