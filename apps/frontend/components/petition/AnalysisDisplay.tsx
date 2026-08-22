@@ -8,12 +8,6 @@ import type {
   LinkedProposition,
 } from "@/lib/graphql/documents";
 
-function getConfidenceBadgeClass(confidence: number): string {
-  if (confidence >= 90) return "bg-positive-surface text-positive";
-  if (confidence >= 70) return "bg-warning-surface text-warning";
-  return "bg-danger-surface text-danger";
-}
-
 function getCompletenessBarColor(score: number): string {
   if (score > 80) return "bg-positive-solid";
   if (score >= 50) return "bg-warning-solid";
@@ -29,21 +23,13 @@ function getCompletenessTextColor(score: number): string {
 interface AnalysisDisplayProps {
   analysis: DocumentAnalysis;
   linkedPropositions?: LinkedProposition[];
-  ocrText?: string;
-  ocrConfidence?: number;
   fromCache?: boolean;
-  readOnly?: boolean;
-  onOcrTextChange?: (text: string) => void;
 }
 
 export function AnalysisDisplay({
   analysis,
   linkedPropositions = [],
-  ocrText,
-  ocrConfidence,
   fromCache = false,
-  readOnly = false,
-  onOcrTextChange,
 }: AnalysisDisplayProps) {
   const { t } = useTranslation("petition");
   const [now] = useState(() => Date.now());
@@ -104,34 +90,10 @@ export function AnalysisDisplay({
         </Link>
       )}
 
-      {/* OCR Text Section */}
-      {ocrText != null && ocrConfidence != null && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-paper">
-              {t("results.extractedText")}
-            </h2>
-            <span
-              className={`text-xs px-2 py-1 rounded-full ${getConfidenceBadgeClass(ocrConfidence)}`}
-            >
-              {ocrConfidence.toFixed(0)}% {t("results.confidence")}
-            </span>
-          </div>
-          {readOnly ? (
-            <div className="w-full bg-inverse-surface text-on-inverse rounded-lg p-4 text-sm leading-relaxed border border-line whitespace-pre-wrap">
-              {ocrText}
-            </div>
-          ) : (
-            <textarea
-              value={ocrText}
-              onChange={(e) => onOcrTextChange?.(e.target.value)}
-              className="w-full bg-inverse-surface text-on-inverse rounded-lg p-4 text-sm leading-relaxed border border-line focus:border-accent focus:ring-1 focus:ring-accent outline-none resize-y min-h-[120px]"
-              rows={6}
-              aria-label={t("results.extractedTextLabel")}
-            />
-          )}
-        </div>
-      )}
+      {/* Raw OCR text is intentionally not shown: for a photographed petition
+          it is often jumbled/low-confidence and reads as broken to a citizen,
+          even when the AI summary below is sound. The extracted text still
+          drives the analysis and the share text — it just isn't displayed. */}
 
       {/* Summary */}
       <div>
