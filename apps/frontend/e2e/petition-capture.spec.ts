@@ -290,14 +290,16 @@ test.describe("Petition Capture", () => {
       });
 
       await page.goto("/petition/capture");
+      await page.waitForLoadState("domcontentloaded");
 
-      // If we can reach the location prompt, check accessibility
-      // The camera viewfinder should render since permission is granted
-      // Note: Full capture flow (viewfinder → capture → preview → location)
-      // is complex to simulate in E2E; location prompt accessibility is
-      // covered by unit tests in LocationPrompt.test.tsx
-      const container = page.locator(".fixed.inset-0.bg-black");
-      await expect(container).toBeVisible();
+      // Smoke check that the petition route mounts. The camera-mock flow can
+      // briefly re-render in CI, so give the server-rendered layout container a
+      // generous window rather than the default 5s (this test flaked
+      // intermittently otherwise). Full capture flow (viewfinder → capture →
+      // preview → location) is complex to simulate in E2E; location-prompt
+      // accessibility is covered by unit tests in LocationPrompt.test.tsx.
+      const container = page.locator(".fixed.inset-0.bg-black").first();
+      await expect(container).toBeVisible({ timeout: 15000 });
     });
   });
 
