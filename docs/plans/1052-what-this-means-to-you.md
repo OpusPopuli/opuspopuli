@@ -43,6 +43,30 @@ This is the **join** of the personal model and the measure analysis on a new sur
 5. **Prompt text stays in `prompt-service`.** Add a personalized-impact prompt type;
    never inline it here.
 
+## Reconnaissance corrections (2026-08-22)
+
+The integration map corrected two assumptions above — these govern the build:
+
+- **Profile access = frontend-passes-input, not federation.** The live
+  personalization pattern (knowledge personalized-feed,
+  `PersonalizationInputDto`) has the frontend pre-fetch `mySignalProfile`
+  (interestTags) + `myRankingFlags` (derived booleans) and pass them as a
+  mutation input. `OnboardingProvider` already fetches both. The
+  subgraph→subgraph call ("Slice 2") does not exist yet — do **not** build it
+  here. Mirror `PersonalizationInputDto`.
+- **PII shape is booleans, not raw T3.** Only pass: declared `interestTags`,
+  the `RankingFlags` **booleans** (`isRenter`, `isVeteran`, `isParent`, …), and
+  a **coarse region label derived by the caller** from `UserAddress.postalCode`
+  / `county` (e.g. `"94xxx"`). Raw sensitive values (veteranStatus, health,
+  income, justice) never leave the users service — this is already enforced by
+  the RankingFlags derivation. "Life context" in decision #1 therefore means
+  the boolean flags + declared T2 signals, not raw fields.
+- **Personalized cache needs its own store.** The generic analysis lives in a
+  global `documents.analysis` Json keyed by `(contentHash + type)` — shared
+  across all users. The per-user read cannot live there; add a small
+  personalized-impact cache keyed by `(contentHash + promptVersion +
+  profileHash)`.
+
 ## Subtasks
 
 ### 1. Personalized-impact prompt (private `prompt-service`)
@@ -95,8 +119,14 @@ Run `/op-data-scan`; document the profile→prompt data flow in `docs/guides/aut
 - Fine-grained location or any new profile capture (reuse what onboarding already collects).
 - Auto-personalizing other surfaces (briefings already do; this is the scanner).
 
-## Open decisions
+## Decisions (resolved 2026-08-22)
 
-1. Which profile fields feed the prompt (interest tags + life context + coarse location recommended; confirm the minimum set).
-2. Show the personalized section to a signed-out/anonymous scanner at all, or only when authenticated? (Recommend authenticated-only; anonymous sees generic.)
-3. Cache the personalized read server-side (per profileHash) vs recompute each scan? (Recommend cache.)
+1. **Profile fields into the prompt:** interest tags + life context (housing,
+   household, veteran, occupation, …) + **coarse** (city-block-rounded)
+   location. This is the declared minimum-necessary set for this feature.
+2. **Anonymous scanners:** show the generic analysis plus a "Sign in to see
+   what this means for you" nudge where the personalized section would sit.
+   Personalization only runs for authenticated users with a profile.
+3. **Caching:** cache the personalized read keyed by
+   `(contentHash + promptVersion + profileHash)`. The `profileHash` is a
+   privacy control, not just perf — one citizen's read can never reach another.
