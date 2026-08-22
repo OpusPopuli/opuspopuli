@@ -169,28 +169,6 @@ describe("PetitionResultsPage", () => {
     expect(screen.getByText("results.extractingText")).toBeInTheDocument();
   });
 
-  it("should show OCR text after extraction completes", async () => {
-    sessionStorage.setItem("petition-scan-data", "dGVzdA==");
-
-    render(<PetitionResultsPage />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByDisplayValue("We the undersigned petition for change"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("should show confidence badge", async () => {
-    sessionStorage.setItem("petition-scan-data", "dGVzdA==");
-
-    render(<PetitionResultsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/96%/)).toBeInTheDocument();
-    });
-  });
-
   it("should show analysis after completion", async () => {
     sessionStorage.setItem("petition-scan-data", "dGVzdA==");
 
@@ -278,23 +256,6 @@ describe("PetitionResultsPage", () => {
     });
   });
 
-  it("should allow editing OCR text", async () => {
-    sessionStorage.setItem("petition-scan-data", "dGVzdA==");
-
-    render(<PetitionResultsPage />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByDisplayValue("We the undersigned petition for change"),
-      ).toBeInTheDocument();
-    });
-
-    const textarea = screen.getByRole("textbox");
-    fireEvent.change(textarea, { target: { value: "Edited text" } });
-
-    expect(screen.getByDisplayValue("Edited text")).toBeInTheDocument();
-  });
-
   it("should call setDocumentLocation when location is provided", async () => {
     sessionStorage.setItem("petition-scan-data", "dGVzdA==");
     sessionStorage.setItem(
@@ -321,9 +282,10 @@ describe("PetitionResultsPage", () => {
 
     render(<PetitionResultsPage />);
 
+    // Wait for the pipeline to finish (analysis rendered) before asserting.
     await waitFor(() => {
       expect(
-        screen.getByDisplayValue("We the undersigned petition for change"),
+        screen.getByText("A petition calling for policy change"),
       ).toBeInTheDocument();
     });
 

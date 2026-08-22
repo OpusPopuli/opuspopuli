@@ -124,13 +124,14 @@ describe("ScanDetailPage", () => {
     expect(screen.getByText("Increases park funding")).toBeInTheDocument();
   });
 
-  it("should render OCR text as read-only", () => {
+  it("does not surface the raw OCR text (jumbled/misleading)", () => {
     render(<ScanDetailPage />);
 
+    // The raw extracted text is no longer displayed, and there is no editable
+    // OCR field — only the AI analysis is shown.
     expect(
-      screen.getByText("We the undersigned petition for parks"),
-    ).toBeInTheDocument();
-    // Should NOT have an editable textarea
+      screen.queryByText("We the undersigned petition for parks"),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
@@ -179,7 +180,7 @@ describe("ScanDetailPage", () => {
     expect(screen.getByText("OCR: tesseract")).toBeInTheDocument();
   });
 
-  it("should render OCR-only view when no analysis exists", () => {
+  it("shows no analysis and no raw OCR when analysis is absent", () => {
     mockScanDetailResult = {
       data: {
         scanDetail: {
@@ -194,7 +195,8 @@ describe("ScanDetailPage", () => {
 
     render(<ScanDetailPage />);
 
-    expect(screen.getByText("Some raw OCR text")).toBeInTheDocument();
+    // Raw OCR is never surfaced, even without an analysis to fall back on.
+    expect(screen.queryByText("Some raw OCR text")).not.toBeInTheDocument();
     // Share button should not appear without analysis
     expect(screen.queryByText("history.share")).not.toBeInTheDocument();
   });

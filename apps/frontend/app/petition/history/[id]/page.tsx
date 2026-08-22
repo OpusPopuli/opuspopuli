@@ -133,38 +133,14 @@ export default function ScanDetailPage() {
       {/* Scan Detail */}
       {scan && (
         <>
-          {/* Analysis */}
-          {scan.analysis ? (
+          {/* Analysis (raw OCR text is no longer surfaced — see AnalysisDisplay) */}
+          {scan.analysis && (
             <section className="px-4 py-6">
               <AnalysisDisplay
                 analysis={scan.analysis}
                 linkedPropositions={linkedPropositions}
-                ocrText={scan.extractedText}
-                ocrConfidence={scan.ocrConfidence}
-                readOnly
               />
             </section>
-          ) : (
-            /* OCR text only (no analysis) */
-            scan.extractedText && (
-              <section className="px-4 py-6">
-                <AnalysisDisplay
-                  analysis={{
-                    documentType: scan.type,
-                    summary: "",
-                    keyPoints: [],
-                    entities: [],
-                    analyzedAt: "",
-                    provider: "",
-                    model: "",
-                    processingTimeMs: 0,
-                  }}
-                  ocrText={scan.extractedText}
-                  ocrConfidence={scan.ocrConfidence}
-                  readOnly
-                />
-              </section>
-            )
           )}
 
           {/* Action Buttons */}
