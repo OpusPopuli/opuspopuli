@@ -6,9 +6,14 @@ import type { InstallPrompt } from "@/lib/hooks/useInstallPrompt";
 const install = jest.fn().mockResolvedValue("accepted");
 const dismiss = jest.fn();
 let state: InstallPrompt;
+let pathname = "/";
 
 jest.mock("@/lib/hooks/useInstallPrompt", () => ({
   useInstallPrompt: () => state,
+}));
+
+jest.mock("next/navigation", () => ({
+  usePathname: () => pathname,
 }));
 
 function givenState(overrides: Partial<InstallPrompt> = {}) {
@@ -26,7 +31,20 @@ describe("InstallAppPrompt", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     givenState();
+    pathname = "/";
   });
+
+  it.each(["/petition/capture", "/petition", "/login", "/register", "/auth"])(
+    "renders nothing on %s even when installable",
+    (route) => {
+      // Same surfaces the scan FAB hides on — the petition camera is a
+      // fullscreen overlay, and a banner over the viewfinder covers the
+      // capture controls.
+      pathname = route;
+      const { container } = render(<InstallAppPrompt />);
+      expect(container).toBeEmptyDOMElement();
+    },
+  );
 
   it("offers an install button when the browser can install the app", async () => {
     render(<InstallAppPrompt />);

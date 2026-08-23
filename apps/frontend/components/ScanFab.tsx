@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth-context";
 import { useOnboarding } from "@/lib/onboarding-context";
+import { isOverlayHiddenRoute } from "@/lib/overlay-routes";
 
 /**
  * Global floating scan button.
@@ -19,8 +20,10 @@ import { useOnboarding } from "@/lib/onboarding-context";
  *  - the petition area itself, which carries its own scan affordances (the
  *    camera is a full-screen black overlay; a floating button over the live
  *    viewfinder would be noise).
+ *
+ * The route list lives in lib/overlay-routes so every global overlay hides
+ * on the same surfaces.
  */
-const HIDDEN_PREFIXES = ["/petition", "/login", "/register", "/auth"] as const;
 
 export function ScanFab() {
   const { isAuthenticated } = useAuth();
@@ -32,7 +35,7 @@ export function ScanFab() {
   // Not while the onboarding flow is running: the FAB's fixed position sits
   // over onboarding controls and would intercept their clicks.
   if (!hasCompletedOnboarding) return null;
-  if (HIDDEN_PREFIXES.some((p) => pathname?.startsWith(p))) return null;
+  if (isOverlayHiddenRoute(pathname)) return null;
 
   const label = t("navigation.scanPetition");
 

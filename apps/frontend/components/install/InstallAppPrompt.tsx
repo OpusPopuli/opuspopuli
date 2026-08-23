@@ -1,8 +1,10 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/Button";
 import { useInstallPrompt } from "@/lib/hooks/useInstallPrompt";
+import { isOverlayHiddenRoute } from "@/lib/overlay-routes";
 import { IosInstallSteps } from "./IosInstallSteps";
 
 /**
@@ -17,9 +19,13 @@ import { IosInstallSteps } from "./IosInstallSteps";
  */
 export function InstallAppPrompt() {
   const { t } = useTranslation("common");
+  const pathname = usePathname();
   const { isInstallable, isDismissed, method, install, dismiss } =
     useInstallPrompt();
 
+  // Same surfaces the scan FAB hides on: the fullscreen camera and the
+  // auth flows. A banner floating over the live viewfinder is a bug.
+  if (isOverlayHiddenRoute(pathname)) return null;
   if (!isInstallable || isDismissed) return null;
 
   return (
