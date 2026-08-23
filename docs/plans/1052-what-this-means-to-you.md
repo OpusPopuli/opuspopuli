@@ -130,3 +130,32 @@ Run `/op-data-scan`; document the profile→prompt data flow in `docs/guides/aut
 3. **Caching:** cache the personalized read keyed by
    `(contentHash + promptVersion + profileHash)`. The `profileHash` is a
    privacy control, not just perf — one citizen's read can never reach another.
+
+## Decision amendments (review, 2026-08-22)
+
+The pre-commit review (correctness + security lenses) amended decision 3;
+Rodney approved per-user scoping:
+
+1. **Cache key is `(userId + contentHash + documentType + promptVersion +
+   profileHash)`** — two additions to the resolved decision:
+   - `userId`: a cross-user shared cache is a **membership-inference
+     oracle** — anyone holding the same physical petition can scan it and
+     probe candidate profiles; a first-call `fromCache: true` for profile P
+     proves another citizen with exactly those declared attributes scanned
+     it within the TTL. Rows are user-scoped with FK cascade (also resolves
+     account-deletion retention). Cost: identical profiles no longer share
+     a generation.
+   - `documentType`: mirrors the generic analysis cache key `(contentHash +
+     type)` — the same bytes analyzed as petition vs. contract produce
+     different analyses, so a type-blind key served the wrong read.
+2. **Declared-signal fields are audit-log-redacted.** The GraphQL audit
+   interceptor captures mutation input variables; `interestTags`,
+   `rankingFlags`, `regionLabel` are now in the PII masker's fully-redacted
+   set so sensitive-class flag names (e.g. `hasHealthCondition`) never sit
+   identity-linked in 90-day audit logs.
+3. **Input hardening:** interest tags / ranking flags / region label are
+   size-capped and pattern-constrained slugs at the GraphQL boundary —
+   free-form strings meant attacker-directed prompt content, per-call LLM
+   cost, and unbounded cache-row minting.
+4. **Storage:** TTL bounds staleness; storage is bounded by a sweep of
+   long-expired rows piggybacked on cache writes (no dedicated cron).
