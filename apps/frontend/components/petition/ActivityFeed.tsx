@@ -44,11 +44,13 @@ function Sparkline({
 
 function ActivityItem({ item }: { item: PetitionActivityItem }) {
   return (
+    // bg-inverse-surface is paper on the petition pinned-dark surface, so
+    // text inside must be on-inverse — content-dim renders white here.
     <div className="px-4 py-3 bg-inverse-surface rounded-lg">
-      <p className="text-sm text-content-dim mb-1">
+      <p className="text-sm text-on-inverse mb-1">
         {truncate(item.summary || "Petition document", 120)}
       </p>
-      <div className="flex items-center gap-3 text-xs text-content-dim">
+      <div className="flex items-center gap-3 text-xs text-on-inverse/70">
         <span>
           Scanned {item.scanCount} {item.scanCount === 1 ? "time" : "times"} in{" "}
           {item.locationCount}{" "}

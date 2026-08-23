@@ -101,6 +101,37 @@ describe("PetitionHistoryPage", () => {
     expect(screen.getByText("history.title")).toBeInTheDocument();
   });
 
+  it("never uses paper/content-dim tokens inside inverse-surface panels", () => {
+    // Regression guard for the #1047 bug class, hit again on this page:
+    // petition pages are pinned-dark (on-fixed-dark), where inverse-surface
+    // resolves to paper (white) — so fixed text-paper, content-dim (paper
+    // @65% there), or placeholder-content-dim inside such a panel is
+    // white-on-white in BOTH themes. Panels must use on-inverse tokens.
+    const OFFENDING = /text-paper|text-content-dim|placeholder-content-dim/;
+    const sweep = (root: HTMLElement) => {
+      for (const panel of Array.from(
+        root.querySelectorAll('[class*="bg-inverse-surface"]'),
+      )) {
+        // The panel's own class list (inputs carry their placeholder
+        // token on themselves) plus every descendant.
+        const suspects = [panel, ...Array.from(panel.querySelectorAll("*"))];
+        const offenders = suspects
+          .map((el) => el.getAttribute("class") ?? "")
+          .filter((cls) => OFFENDING.test(cls));
+        expect(offenders).toEqual([]);
+      }
+    };
+
+    const { container } = render(<PetitionHistoryPage />);
+    sweep(container);
+
+    // The delete dialogs only render after a click — half the panel
+    // surface on this page lives there.
+    fireEvent.click(screen.getAllByLabelText("history.deleteScan")[0]);
+    sweep(container);
+    expect(screen.getByText("history.deleteConfirm")).toBeInTheDocument();
+  });
+
   it("should show status badges", () => {
     render(<PetitionHistoryPage />);
 

@@ -133,13 +133,13 @@ export function TrackOnBallotButton({
 
           <div className="max-h-48 overflow-y-auto">
             {searching && (
-              <p className="px-3 py-2 text-content-dim text-sm">
+              <p className="px-3 py-2 text-on-inverse/70 text-sm">
                 {t("activityFeed.loading")}
               </p>
             )}
 
             {!searching && query.length >= 3 && results.length === 0 && (
-              <p className="px-3 py-2 text-content-dim text-sm">
+              <p className="px-3 py-2 text-on-inverse/70 text-sm">
                 {t("results.noMatchesFound")}
               </p>
             )}
@@ -149,10 +149,10 @@ export function TrackOnBallotButton({
                 key={prop.id}
                 onClick={() => handleLink(prop.id)}
                 disabled={linking}
-                className="w-full text-left px-3 py-2 hover:bg-inverse-surface transition-colors border-t border-line"
+                className="w-full text-left px-3 py-2 hover:bg-ink/10 transition-colors border-t border-line"
               >
-                <p className="text-sm text-paper truncate">{prop.title}</p>
-                <p className="text-sm text-content-dim">
+                <p className="text-sm text-on-inverse truncate">{prop.title}</p>
+                <p className="text-sm text-on-inverse/70">
                   {prop.externalId} &middot; {prop.status}
                 </p>
               </button>
