@@ -7,6 +7,7 @@ import { ToastProvider } from "@/lib/toast";
 import { OnboardingProvider } from "@/lib/onboarding-context";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ScanFab } from "@/components/ScanFab";
+import { InstallAppPrompt } from "@/components/install/InstallAppPrompt";
 import { JsonLd } from "@/components/JsonLd";
 
 /*
@@ -196,6 +197,7 @@ export default function RootLayout({
                 <ScanFab />
               </OnboardingProvider>
               <OfflineIndicator />
+              <InstallAppPrompt />
             </ToastProvider>
           </ApolloProvider>
         </ThemeProvider>

@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Sunflower } from "@/components/brand";
+import { InstallAppButton } from "@/components/install/InstallAppButton";
 import { buttonVariants } from "@/components/ui/Button";
 
 export function Header() {
@@ -219,6 +220,9 @@ export function Header() {
               <LanguageToggle />
             </div>
             {renderMobileNav()}
+            {/* Renders nothing unless the browser can actually install the
+                app — a permanent path to it once the banner is dismissed. */}
+            <InstallAppButton />
           </div>
         </nav>
       )}
