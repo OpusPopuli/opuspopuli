@@ -59,6 +59,15 @@ export interface CompletenessDetails {
 
 export interface DocumentAnalysis {
   documentType: string;
+  /**
+   * Non-petition classification gate (#1057). false = the scan was
+   * classified as not-a-petition (or unreadable) and the analysis fields
+   * are empty — render the rejection state, never the analysis. Absent =
+   * pre-gate analysis; treat as a petition.
+   */
+  isPetition?: boolean;
+  /** Closed enum when isPetition=false: "not_a_petition" | "unreadable". */
+  skipReason?: string;
   summary: string;
   keyPoints: string[];
   entities: string[];
@@ -169,6 +178,8 @@ export const ANALYZE_DOCUMENT = gql`
     analyzeDocument(input: $input) {
       analysis {
         documentType
+        isPetition
+        skipReason
         summary
         keyPoints
         entities

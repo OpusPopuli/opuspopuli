@@ -176,6 +176,46 @@ describe("PetitionResultsPage", () => {
     expect(screen.getByText("results.extractingText")).toBeInTheDocument();
   });
 
+  it("shows the rejection state instead of analysis for a non-petition verdict (#1057)", async () => {
+    sessionStorage.setItem("petition-scan-data", "dGVzdA==");
+    mockAnalyzeDocument.mockResolvedValue({
+      data: {
+        analyzeDocument: {
+          analysis: {
+            documentType: "petition",
+            isPetition: false,
+            skipReason: "not_a_petition",
+            summary: "",
+            keyPoints: [],
+            entities: [],
+            analyzedAt: "2026-08-23T00:00:00.000Z",
+            provider: "TestLLM",
+            model: "test-model",
+            processingTimeMs: 100,
+          },
+          fromCache: false,
+        },
+      },
+    });
+
+    render(<PetitionResultsPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "results.notAPetitionTitle" }),
+      ).toBeInTheDocument();
+    });
+
+    // The analysis surface and its actions must NOT render — nothing to
+    // share or track. Report-issue stays as the false-negative escape.
+    expect(screen.queryByText("results.summary")).not.toBeInTheDocument();
+    expect(screen.queryByText("results.share")).not.toBeInTheDocument();
+    expect(screen.queryByText("results.trackOnBallot")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "report.buttonLabel" }),
+    ).toBeInTheDocument();
+  });
+
   it("should show analysis after completion", async () => {
     sessionStorage.setItem("petition-scan-data", "dGVzdA==");
 
