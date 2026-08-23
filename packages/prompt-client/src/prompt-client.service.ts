@@ -1621,15 +1621,24 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
   // Private: Utilities
   // ---------------------------------------------------------------------------
 
+  /**
+   * Single-pass interpolation: one regex sweep over the TEMPLATE only.
+   * Interpolated values are never re-scanned, so a (possibly
+   * document-derived) value containing "{{OTHER_VAR}}" cannot hoist
+   * another variable's content into its own position, and replacement is
+   * literal — no $-pattern expansion ("$&", "$`") the way sequential
+   * String.replaceAll(string) allowed. Unknown placeholders stay
+   * verbatim. Mirrors prompt-service's interpolate — keep in lockstep.
+   */
   private interpolate(
     template: string,
     variables: Record<string, string>,
   ): string {
-    let result = template;
-    for (const [key, value] of Object.entries(variables)) {
-      result = result.replaceAll(`{{${key}}}`, value);
-    }
-    return result;
+    // `in` is safe here: placeholder names are UPPER_SNAKE by regex, so
+    // they can never collide with (lowercase) Object.prototype keys.
+    return template.replace(/\{\{([A-Z0-9_]+)\}\}/g, (match, name: string) =>
+      name in variables ? variables[name] : match,
+    );
   }
 
   private hash(text: string): string {

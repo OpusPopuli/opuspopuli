@@ -308,9 +308,9 @@ export interface PersonalizedImpactParams {
   summary: string;
   /** What the measure actually does (from the scan analysis). */
   actualEffect?: string;
-  /** Controlled-vocab / plain groups the measure benefits (0-4 values). */
+  /** Controlled-vocab / plain groups the measure benefits (0-8 values, DTO cap). */
   beneficiaries: string[];
-  /** Controlled-vocab / plain groups the measure may burden (0-4 values). */
+  /** Controlled-vocab / plain groups the measure may burden (0-8 values, DTO cap). */
   potentiallyHarmed: string[];
   /** Optional matched ballot-measure title, when the scan linked to one. */
   matchedMeasureTitle?: string;
