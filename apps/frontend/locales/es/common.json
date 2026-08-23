@@ -52,8 +52,8 @@
     "closeNotification": "Cerrar notificacion"
   },
   "footer": {
-    "privacyPolicy": "Pol\u00edtica de Privacidad",
-    "termsOfService": "T\u00e9rminos de Servicio",
+    "privacyPolicy": "Política de Privacidad",
+    "termsOfService": "Términos de Servicio",
     "transparency": "Transparencia",
     "ourCommitments": "Nuestros Compromisos"
   },
@@ -109,5 +109,17 @@
     "WI": "Wisconsin",
     "WY": "Wyoming",
     "DC": "Distrito de Columbia"
+  },
+  "install": {
+    "title": "Agrega OPUS a tu pantalla de inicio",
+    "description": "Instala la aplicación para acceder con un toque, leer sin conexión y cargar más rápido.",
+    "action": "Instalar aplicación",
+    "notNow": "Ahora no",
+    "dismissLabel": "Descartar el aviso de instalación",
+    "iosSteps": {
+      "share": "Toca el botón Compartir en la barra del navegador.",
+      "add": "Elige “Agregar a pantalla de inicio”.",
+      "confirm": "Toca “Agregar” para confirmar."
+    }
   }
 }

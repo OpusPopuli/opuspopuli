@@ -7,6 +7,7 @@ import { ToastProvider } from "@/lib/toast";
 import { OnboardingProvider } from "@/lib/onboarding-context";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ScanFab } from "@/components/ScanFab";
+import { InstallAppPrompt } from "@/components/install/InstallAppPrompt";
 import { JsonLd } from "@/components/JsonLd";
 
 /*
@@ -124,7 +125,14 @@ export const metadata: Metadata = {
       { url: "/favicons/favicon-32.png", sizes: "32x32", type: "image/png" },
       { url: "/favicons/favicon-16.png", sizes: "16x16", type: "image/png" },
     ],
-    apple: [{ url: "/icons/opus-192.svg" }],
+    // Must be a PNG: iOS ignores SVG apple-touch-icons entirely and tiles a
+    // page screenshot instead — which is exactly what "Add to Home Screen"
+    // would produce. 180x180 is the canonical size (rendered from
+    // icons/opus-512.svg, which carries its own solid background, so no
+    // alpha for iOS to composite onto black).
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
   },
 };
 
@@ -196,6 +204,7 @@ export default function RootLayout({
                 <ScanFab />
               </OnboardingProvider>
               <OfflineIndicator />
+              <InstallAppPrompt />
             </ToastProvider>
           </ApolloProvider>
         </ThemeProvider>

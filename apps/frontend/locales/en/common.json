@@ -109,5 +109,17 @@
     "WI": "Wisconsin",
     "WY": "Wyoming",
     "DC": "District of Columbia"
+  },
+  "install": {
+    "title": "Add OPUS to your home screen",
+    "description": "Install the app for one-tap access, offline reading and faster loads.",
+    "action": "Install app",
+    "notNow": "Not now",
+    "dismissLabel": "Dismiss the install prompt",
+    "iosSteps": {
+      "share": "Tap the Share button in the browser toolbar.",
+      "add": "Choose “Add to Home Screen”.",
+      "confirm": "Tap “Add” to confirm."
+    }
   }
 }
