@@ -120,7 +120,10 @@ export class PersonalizedImpactService {
       temperature: 0.3,
     });
     const text = result.text.trim();
-    if (!text) return null;
+    // The template's contract: the exact sentinel SKIP means the LLM found
+    // no defensible personal connection. Treat like empty — fall back to
+    // the generic analysis, and never cache a sentinel as a read.
+    if (!text || /^skip\.?$/i.test(text)) return null;
 
     await this.persist(key, {
       impactText: text,

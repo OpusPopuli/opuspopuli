@@ -34,7 +34,9 @@ export class PersonalizedImpactInput {
   @ArrayMaxSize(20)
   @IsString({ each: true })
   @MaxLength(50, { each: true })
-  @Matches(/^[a-z0-9][a-z0-9-]*$/, {
+  // Underscores are part of the canonical vocabulary (public_safety,
+  // voting_rights — see onboarding TopicsStep); hyphens cover future slugs.
+  @Matches(/^[a-z0-9][a-z0-9_-]*$/, {
     each: true,
     message: 'interestTags must be lowercase controlled-vocab slugs',
   })

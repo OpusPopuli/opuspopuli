@@ -158,6 +158,19 @@ describe('PersonalizedImpactService', () => {
     expect(db.personalizedImpactCache.upsert).not.toHaveBeenCalled();
   });
 
+  it('maps the SKIP sentinel to null and never caches it', async () => {
+    for (const sentinel of ['SKIP', 'skip', ' Skip. ']) {
+      db.document.findFirst.mockResolvedValueOnce(docWithAnalysis);
+      promptClient.getPersonalizedImpactPrompt.mockResolvedValue(
+        promptResponse,
+      );
+      llm.generate.mockResolvedValue({ text: sentinel });
+
+      expect(await service.generate('user-1', baseInput)).toBeNull();
+    }
+    expect(db.personalizedImpactCache.upsert).not.toHaveBeenCalled();
+  });
+
   it('persists keyed by (userId, contentHash, documentType, promptVersion, profileHash)', async () => {
     db.document.findFirst.mockResolvedValueOnce(docWithAnalysis);
     promptClient.getPersonalizedImpactPrompt.mockResolvedValue(promptResponse);
