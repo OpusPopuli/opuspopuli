@@ -415,6 +415,42 @@ Because Opus Populi runs on GraphQL Federation with bounded-context microservice
 4. `knowledge` queries `region` for active bills in the user's jurisdictions.
 5. `knowledge` ranks, scores, and generates narratives; results are cached in a per-user table with TTL bound to the underlying data.
 
+### 6.6 Personalized petition impact — profile→prompt flow (#1052)
+
+The petition scanner's "What this means to you" read joins the citizen's
+declared signals with a scanned measure's own analysis. Its data flow is
+deliberately the *frontend-passes-input* variant of the live personalization
+pattern, not a subgraph→subgraph fetch:
+
+1. The frontend (authenticated users only) pre-fetches `myRankingFlags` +
+   `mySignalProfile.interestTags` — the same prefetch the briefings use —
+   and the user's addresses.
+2. The client derives the mutation input: interest-tag slugs, the **names of
+   the TRUE ranking flags** (booleans only; raw T3 values never leave
+   `users`), and a **coarse region label** computed client-side from the
+   primary address postal code (`94110` → `94xxx`; only two digits survive).
+3. `documents.personalizedImpact` validates the input against strict slug
+   patterns and size caps (free-form strings would be attacker-directed
+   prompt content), composes the prompt via `prompt-client`
+   (`personalized-impact` template, prompt-service#103), and runs the
+   self-hosted LLM.
+4. The read is cached in `personalized_impact_cache` keyed by
+   `(userId, contentHash, documentType, promptVersion, profileHash)`.
+   Per-user on purpose: a cross-user cache keyed only by content+profile is
+   a membership-inference oracle (probe a profile against a petition you
+   hold; a first-call cache hit proves someone with those declared
+   attributes scanned it). `profileHash` additionally invalidates the row
+   whenever declared signals change. Rows restate declared attributes in
+   prose, so the table is handled as profile data — FK cascade deletes it
+   with the account; a write-piggybacked sweep bounds storage.
+5. Audit logging: the GraphQL audit interceptor captures mutation input
+   variables, so `interestTags`, `rankingFlags`, and `regionLabel` are in
+   the PII masker's fully-redacted set — sensitive-class flag names (e.g.
+   `hasHealthCondition`) never sit identity-linked in retained logs.
+
+Failure anywhere in this path degrades to the generic analysis — the
+feature only ever adds.
+
 ---
 
 ## 7. Collection strategy

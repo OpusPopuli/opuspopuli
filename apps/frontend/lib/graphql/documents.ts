@@ -204,6 +204,18 @@ export const ANALYZE_DOCUMENT = gql`
   }
 `;
 
+export const PERSONALIZED_IMPACT = gql`
+  mutation PersonalizedImpact($input: PersonalizedImpactInput!) {
+    personalizedImpact(input: $input) {
+      text
+      provider
+      model
+      promptVersion
+      fromCache
+    }
+  }
+`;
+
 export const SUBMIT_ABUSE_REPORT = gql`
   mutation SubmitAbuseReport($input: SubmitAbuseReportInput!) {
     submitAbuseReport(input: $input) {
@@ -305,6 +317,32 @@ export interface ProcessScanData {
 
 export interface AnalyzeDocumentData {
   analyzeDocument: AnalyzeDocumentResult;
+}
+
+/**
+ * Input for the "What this means to you" read (#1052). Declared signals
+ * only — interest-tag slugs, the names of the TRUE ranking flags, and a
+ * coarse caller-anonymized region label (e.g. "94xxx"). Never raw
+ * addresses or sensitive raw profile values.
+ */
+export interface PersonalizedImpactInput {
+  documentId: string;
+  interestTags: string[];
+  rankingFlags: string[];
+  regionLabel?: string;
+}
+
+export interface PersonalizedImpactResult {
+  text: string;
+  provider?: string | null;
+  model?: string | null;
+  promptVersion?: string | null;
+  fromCache: boolean;
+}
+
+/** Null when there is nothing to personalize — UI falls back to the generic analysis. */
+export interface PersonalizedImpactData {
+  personalizedImpact: PersonalizedImpactResult | null;
 }
 
 export interface PetitionMapLocationsData {
