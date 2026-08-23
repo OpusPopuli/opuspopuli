@@ -132,14 +132,23 @@ test.describe("PWA - HTML Meta Tags", () => {
     expect(href).toBe("/api/manifest");
   });
 
-  test("should have apple-touch-icon", async ({ page }) => {
+  test("should have a PNG apple-touch-icon that actually serves", async ({
+    page,
+  }) => {
     await page.goto("/");
 
     const touchIcon = await page.$('link[rel="apple-touch-icon"]');
     expect(touchIcon).not.toBeNull();
 
+    // Must be a PNG: iOS ignores SVG apple-touch-icons entirely and tiles a
+    // page screenshot instead. The previous assertion pinned the old SVG
+    // path — i.e. it pinned the broken-on-iOS behavior.
     const href = await touchIcon?.getAttribute("href");
-    expect(href).toContain("/icons/opus");
+    expect(href).toBe("/apple-touch-icon.png");
+
+    const response = await page.request.get(href!);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toContain("image/png");
   });
 
   test("should have mobile-web-app-capable meta tag", async ({ page }) => {
