@@ -21,6 +21,8 @@ import { ReportIssueButton } from "@/components/ReportIssueButton";
 import { PetitionPageHeader } from "../components/PetitionPageHeader";
 import { TrackOnBallotButton } from "@/components/petition/TrackOnBallotButton";
 import { AnalysisDisplay } from "@/components/petition/AnalysisDisplay";
+import { PersonalizedImpact } from "@/components/petition/PersonalizedImpact";
+import { usePersonalizedImpact } from "@/components/petition/usePersonalizedImpact";
 
 type ProcessingStep = "extracting" | "analyzing" | "complete" | "error";
 
@@ -47,6 +49,11 @@ export default function PetitionResultsPage() {
   );
   const [fetchLinkedPropositions] = useLazyQuery<LinkedPropositionsData>(
     GET_LINKED_PROPOSITIONS,
+  );
+
+  const personalizedImpact = usePersonalizedImpact(
+    documentId,
+    step === "complete",
   );
 
   const runPipeline = useCallback(
@@ -203,9 +210,11 @@ export default function PetitionResultsPage() {
         </div>
       )}
 
-      {/* Analysis Display */}
+      {/* Analysis Display — the personalized read LEADS (#1052); the
+          generic analysis below is always the fallback. */}
       {analysis && (
-        <section className="px-4 py-6">
+        <section className="px-4 py-6 space-y-6">
+          <PersonalizedImpact {...personalizedImpact} />
           <AnalysisDisplay
             analysis={analysis}
             linkedPropositions={linkedPropositions}

@@ -287,6 +287,44 @@ export interface PropositionRelevanceExplanationParams {
 }
 
 /**
+ * Params for the `personalized-impact` prompt — the "What this means to you"
+ * section that leads the petition-scan results (opuspopuli#1052). Takes the
+ * scan's own AI analysis (not a bill/prop record) and the citizen's anonymized
+ * profile, and returns a short plain-language read of how THIS measure affects
+ * THEM. Cross-repo contract mirrors `PersonalizedImpactDto` in prompt-service;
+ * when the template gains variables, update both the service-side seed and the
+ * `composePersonalizedImpact` variable map in lockstep.
+ *
+ * Privacy boundary: same as BillRelevanceExplanationParams — only declared
+ * signals (interest tags + TRUE RankingFlags booleans) and a coarse region
+ * label reach the prompt-service. NEVER raw addresses, sensitive T3 fields, or
+ * behavioral data. Anonymization happens in the caller.
+ */
+export interface PersonalizedImpactParams {
+  // ---------- Scanned measure's analysis (from document-analysis output) ----------
+  /** Document type, e.g. "petition". */
+  documentType: string;
+  /** Plain-language summary of the measure (from the scan analysis). */
+  summary: string;
+  /** What the measure actually does (from the scan analysis). */
+  actualEffect?: string;
+  /** Controlled-vocab / plain groups the measure benefits (0-8 values, DTO cap). */
+  beneficiaries: string[];
+  /** Controlled-vocab / plain groups the measure may burden (0-8 values, DTO cap). */
+  potentiallyHarmed: string[];
+  /** Optional matched ballot-measure title, when the scan linked to one. */
+  matchedMeasureTitle?: string;
+
+  // ---------- User anonymized profile ----------
+  /** User's declared interest tags (controlled-vocab slugs). */
+  userInterestTags: string[];
+  /** Names of the boolean RankingFlags that are TRUE for this user. Only declared signals — never inferred T3. */
+  userRankingFlags: string[];
+  /** Coarse anonymized region label (e.g. "94xxx"). Caller anonymizes; never raw addresses. */
+  userRegionLabel?: string;
+}
+
+/**
  * Params for the `representative-relevance-explanation` prompt — extends the
  * `relevanceReason` contract to elected representatives (opuspopuli#836).
  * Cross-repo contract mirrors `RepresentativeRelevanceExplanationDto`

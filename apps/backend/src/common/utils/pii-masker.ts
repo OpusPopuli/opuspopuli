@@ -29,6 +29,15 @@ const SENSITIVE_FIELDS = new Set([
   'donoremployer',
   'donoroccupation',
   'donorzip',
+  // Declared-signal profile fields (#1052). These reach GraphQL mutations as
+  // input variables (personalizedImpact, knowledge personalization), and the
+  // audit interceptor captures inputVariables verbatim — without this entry,
+  // "hasHealthCondition" / "hasJusticeInvolvement"-class flags would sit
+  // identity-linked in 90-day audit logs. Fully redacted: a half-masked
+  // signal list has no diagnostic value.
+  'interesttags',
+  'rankingflags',
+  'regionlabel',
 ]);
 
 const PARTIAL_MASK_FIELDS = new Set(['email', 'phone', 'phonenumber']);

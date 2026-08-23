@@ -47,6 +47,7 @@ export type {
   LifecycleStageInput,
   PromptServiceResponse,
   PropositionRelevanceExplanationParams,
+  PersonalizedImpactParams,
   RepresentativeRelevanceExplanationParams,
   CommitteeRelevanceExplanationParams,
   CommitteeUpcomingHearing,

@@ -75,6 +75,12 @@
   "results": {
     "title": "Resultados del Escaneo",
     "back": "Volver",
+    "personalizedTitle": "Qué significa esto para ti",
+    "personalizedLoading": "Leyendo esta medida según tus intereses...",
+    "personalizedAiLabel": "Generado por IA a partir de tus intereses y contexto de vida declarados",
+    "personalizedSignInTitle": "Descubre qué significa esto para ti",
+    "personalizedSignInBody": "Inicia sesión y Opus Populi leerá esta medida según los intereses y el contexto de vida que hayas declarado.",
+    "personalizedSignInCta": "Iniciar sesión",
     "matched": "Coincidencia",
     "signingExplainer": "Esta es la medida oficial que estarías firmando para incluir en la boleta.",
     "viewMeasure": "Ver medida completa",

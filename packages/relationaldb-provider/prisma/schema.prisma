@@ -204,6 +204,7 @@ model User {
   representativeRelevanceCache RepresentativeRelevanceCache[]
   committeeRelevanceCache      CommitteeRelevanceCache[]
   briefingSummaryCache         BriefingSummaryCache[]
+  personalizedImpactCache      PersonalizedImpactCache[]
 
   @@map("users")
 }
@@ -1314,6 +1315,50 @@ model DocumentProposition {
   @@index([documentId])
   @@index([propositionId])
   @@map("document_propositions")
+}
+
+/// Per-user, per-profile cache for the "What this means to you" read that
+/// leads the scan results (opuspopuli#1052). Keyed by (userId, contentHash,
+/// documentType, promptVersion, profileHash):
+/// - userId scopes the cache to its owner. Deliberately NOT shared across
+///   users even for identical content+profile — a shared cache is a
+///   membership-inference oracle (probe a profile against a petition you
+///   hold and learn whether someone with those declared attributes scanned
+///   it). Found in review 2026-08-22; amends plan decision #3.
+/// - documentType mirrors the generic analysis cache key (contentHash +
+///   type): the same bytes analyzed as petition vs. contract produce
+///   different analyses and different reads.
+/// - profileHash invalidates on any declared-signal change. SHA-256 of the
+///   canonicalized signals (deduped+sorted interest tags, deduped+sorted
+///   TRUE ranking-flag names, normalized coarse region label) — see
+///   PersonalizedImpactService.
+/// impactText restates declared attributes in prose ("as a veteran…") —
+/// treat rows as profile data. FK cascade removes them with the account.
+model PersonalizedImpactCache {
+  id            String       @id @default(uuid())
+  userId        String       @map("user_id")
+  contentHash   String       @map("content_hash") @db.VarChar(64)
+  documentType  DocumentType @map("document_type")
+  promptVersion String       @map("prompt_version")
+  profileHash   String       @map("profile_hash") @db.VarChar(64)
+
+  /// The plain-language personalized read shown to the citizen.
+  impactText String @map("impact_text") @db.Text
+
+  // ---------- LLM telemetry ----------
+  promptHash  String? @map("prompt_hash")
+  llmProvider String? @map("llm_provider") @db.VarChar(50)
+  llmModel    String? @map("llm_model") @db.VarChar(100)
+  tokensUsed  Int?    @map("tokens_used")
+
+  computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentHash, documentType, promptVersion, profileHash], map: "personalized_impact_cache_user_content_type_prompt_profile_key")
+  @@index([expiresAt])
+  @@map("personalized_impact_cache")
 }
 
 model Meeting {

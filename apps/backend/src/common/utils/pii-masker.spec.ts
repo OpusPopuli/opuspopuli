@@ -33,6 +33,25 @@ describe('PII Masker', () => {
       expect(masked.amount).toBe(250);
     });
 
+    it('redacts declared-signal profile fields outright (#1052)', () => {
+      // These arrive as GraphQL input variables (personalizedImpact mutation,
+      // knowledge personalization) and the audit interceptor captures
+      // inputVariables — without redaction, sensitive-class flag names like
+      // hasHealthCondition would sit identity-linked in 90-day audit logs.
+      const masked = maskSensitiveData({
+        documentId: 'doc-1',
+        interestTags: ['housing', 'healthcare'],
+        rankingFlags: ['isRenter', 'hasHealthCondition'],
+        regionLabel: '94xxx',
+      }) as Record<string, unknown>;
+
+      expect(masked.interestTags).toBe('[REDACTED]');
+      expect(masked.rankingFlags).toBe('[REDACTED]');
+      expect(masked.regionLabel).toBe('[REDACTED]');
+      // The document id stays legible — it is what makes the audit row useful.
+      expect(masked.documentId).toBe('doc-1');
+    });
+
     it('should return null for null input', () => {
       expect(maskSensitiveData(null)).toBeNull();
     });

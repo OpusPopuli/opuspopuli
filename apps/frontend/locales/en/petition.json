@@ -75,6 +75,12 @@
   "results": {
     "title": "Scan Results",
     "back": "Go back",
+    "personalizedTitle": "What this means to you",
+    "personalizedLoading": "Reading this measure against your interests...",
+    "personalizedAiLabel": "AI-generated from your declared interests and life context",
+    "personalizedSignInTitle": "See what this means for you",
+    "personalizedSignInBody": "Sign in and Opus Populi will read this measure against the interests and life context you've declared.",
+    "personalizedSignInCta": "Sign in",
     "matched": "Matched",
     "signingExplainer": "This is the official measure you'd be signing to put on the ballot.",
     "viewMeasure": "View full measure",

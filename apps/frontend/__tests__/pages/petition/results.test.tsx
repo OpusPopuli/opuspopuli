@@ -55,6 +55,13 @@ jest.mock("@apollo/client/react", () => ({
   useLazyQuery: jest.fn(() => [mockFetchLinkedPropositions]),
 }));
 
+// Mock usePersonalizedImpact to isolate page tests — the hook has its own
+// suite (usePersonalizedImpact.test.tsx); "absent" renders nothing, which
+// keeps every pre-#1052 assertion in this file untouched.
+jest.mock("@/components/petition/usePersonalizedImpact", () => ({
+  usePersonalizedImpact: () => ({ status: "absent", impact: null }),
+}));
+
 // Mock TrackOnBallotButton to isolate page tests
 jest.mock("@/components/petition/TrackOnBallotButton", () => ({
   TrackOnBallotButton: ({

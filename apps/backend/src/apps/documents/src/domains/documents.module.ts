@@ -11,6 +11,7 @@ import { DocumentCrudService } from './services/document-crud.service';
 import { FileService } from './services/file.service';
 import { ScanService } from './services/scan.service';
 import { AnalysisService } from './services/analysis.service';
+import { PersonalizedImpactService } from './services/personalized-impact.service';
 import { LocationService } from './services/location.service';
 import { LinkingService } from './services/linking.service';
 import { AbuseReportService } from './services/abuse-report.service';
@@ -53,6 +54,7 @@ import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
     FileService,
     ScanService,
     AnalysisService,
+    PersonalizedImpactService,
     LocationService,
     LinkingService,
     AbuseReportService,

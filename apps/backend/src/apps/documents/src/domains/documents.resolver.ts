@@ -31,6 +31,10 @@ import {
   DocumentAnalysis,
 } from './dto/analysis.dto';
 import {
+  PersonalizedImpact,
+  PersonalizedImpactInput,
+} from './dto/personalized-impact.dto';
+import {
   GeoLocation,
   SetDocumentLocationInput,
   SetDocumentLocationResult,
@@ -63,6 +67,7 @@ import { PaginationArgs } from 'src/common/dto/pagination.args';
 import { FileService } from './services/file.service';
 import { ScanService } from './services/scan.service';
 import { AnalysisService } from './services/analysis.service';
+import { PersonalizedImpactService } from './services/personalized-impact.service';
 import { LocationService } from './services/location.service';
 import { LinkingService } from './services/linking.service';
 import { AbuseReportService } from './services/abuse-report.service';
@@ -84,6 +89,7 @@ export class DocumentsResolver {
     private readonly fileService: FileService,
     private readonly scanService: ScanService,
     private readonly analysisService: AnalysisService,
+    private readonly personalizedImpactService: PersonalizedImpactService,
     private readonly locationService: LocationService,
     private readonly linkingService: LinkingService,
     private readonly abuseReportService: AbuseReportService,
@@ -211,6 +217,25 @@ export class DocumentsResolver {
       input.documentId,
       input.forceReanalyze ?? false,
     );
+  }
+
+  /**
+   * "What this means to you" — the personalized read that leads the scan
+   * results (#1052). Takes the citizen's declared signals (the client already
+   * fetches these) and returns a plain-language impact statement, or null when
+   * there's nothing to personalize (no analysis / no declared signals) so the
+   * UI falls back to the generic analysis.
+   */
+  @Mutation(() => PersonalizedImpact, { nullable: true })
+  @UseGuards(AuthGuard)
+  @Permissions({ action: Action.Read, subject: 'File' })
+  @Extensions({ complexity: 100 }) // LLM inference is expensive
+  async personalizedImpact(
+    @Args('input') input: PersonalizedImpactInput,
+    @Context() context: GqlContext,
+  ): Promise<PersonalizedImpact | null> {
+    const user = getUserFromContext(context);
+    return this.personalizedImpactService.generate(user.id, input);
   }
 
   /**
