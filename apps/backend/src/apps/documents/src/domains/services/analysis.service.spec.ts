@@ -7,6 +7,7 @@ import { PromptClientService } from '@opuspopuli/prompt-client';
 import { MetricsService } from 'src/common/metrics';
 import { AnalysisService } from './analysis.service';
 import { LinkingService } from './linking.service';
+import { parseAnalysisResponse } from '../prompts/document-analysis.prompt';
 
 // Mock the parseAnalysisResponse function
 jest.mock('../prompts/document-analysis.prompt', () => ({
@@ -76,7 +77,10 @@ describe('AnalysisService', () => {
     const mockDocument = {
       id: 'doc-1',
       userId: 'user-1',
-      extractedText: 'Some petition text',
+      // Long enough to clear the #1057 minimum-text pre-gate.
+      extractedText:
+        'We the undersigned registered voters respectfully petition the county ' +
+        'board of supervisors to fund the restoration of Riverside Park.',
       contentHash: 'hash-123',
       type: 'petition',
     };
@@ -133,6 +137,150 @@ describe('AnalysisService', () => {
         'success',
         expect.any(Number),
       );
+    });
+
+    it('marks fresh petition analyses with an explicit isPetition: true', async () => {
+      db.document.findFirst
+        .mockResolvedValueOnce(mockDocument)
+        .mockResolvedValueOnce(null);
+      db.document.update.mockResolvedValue({});
+      promptClient.getDocumentAnalysisPrompt.mockResolvedValue({
+        promptText: 'Analyze...',
+        promptHash: 'h1',
+        promptVersion: 'v2',
+      });
+      llm.generate.mockResolvedValue({
+        text: '{"summary":"A real petition"}',
+        tokensUsed: 100,
+      });
+
+      const result = await service.analyzeDocument('user-1', 'doc-1');
+      expect(result.analysis.isPetition).toBe(true);
+    });
+
+    it('maps the skip sentinel to a non-petition verdict — nothing fabricated, no linking (#1057)', async () => {
+      db.document.findFirst
+        .mockResolvedValueOnce(mockDocument)
+        .mockResolvedValueOnce(null);
+      db.document.update.mockResolvedValue({});
+      promptClient.getDocumentAnalysisPrompt.mockResolvedValue({
+        promptText: 'Analyze...',
+        promptHash: 'h1',
+        promptVersion: 'v2',
+      });
+      llm.generate.mockResolvedValue({
+        text: '{"skip": true, "reason": "not_a_petition"}',
+        tokensUsed: 40,
+      });
+      // parseAnalysisResponse is module-mocked to a full analysis; the
+      // sentinel arrives through the parsed object, so override it here.
+      (parseAnalysisResponse as jest.Mock).mockReturnValueOnce({
+        skip: true,
+        reason: 'not_a_petition',
+      });
+
+      const result = await service.analyzeDocument('user-1', 'doc-1');
+
+      expect(result.fromCache).toBe(false);
+      expect(result.analysis).toEqual(
+        expect.objectContaining({
+          isPetition: false,
+          skipReason: 'not_a_petition',
+          summary: '',
+          keyPoints: [],
+          entities: [],
+          promptVersion: 'v2',
+        }),
+      );
+      // The verdict is persisted (and thereby cached by contentHash+type).
+      expect(db.document.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'ai_analysis_complete',
+            analysis: expect.objectContaining({ isPetition: false }),
+          }),
+        }),
+      );
+      expect(
+        linkingService.matchAndLinkPropositionsSafely,
+      ).not.toHaveBeenCalled();
+      expect(metricsService.recordAnalysis).toHaveBeenCalledWith(
+        'documents-service',
+        'petition',
+        'skipped_not_a_petition',
+        expect.any(Number),
+      );
+    });
+
+    it('coerces an out-of-vocabulary skip reason to not_a_petition', async () => {
+      db.document.findFirst
+        .mockResolvedValueOnce(mockDocument)
+        .mockResolvedValueOnce(null);
+      db.document.update.mockResolvedValue({});
+      promptClient.getDocumentAnalysisPrompt.mockResolvedValue({
+        promptText: 'Analyze...',
+        promptHash: 'h1',
+        promptVersion: 'v2',
+      });
+      // The reason enum is a privacy control — a model echoing document
+      // text here must never reach the stored verdict.
+      llm.generate.mockResolvedValue({
+        text: '{"skip": true, "reason": "Chef specials: soup of the day"}',
+      });
+      (parseAnalysisResponse as jest.Mock).mockReturnValueOnce({
+        skip: true,
+        reason: 'Chef specials: soup of the day',
+      });
+
+      const result = await service.analyzeDocument('user-1', 'doc-1');
+      expect(result.analysis.skipReason).toBe('not_a_petition');
+    });
+
+    it('pre-gates near-empty petition text without paying for an LLM call (#1057)', async () => {
+      db.document.findFirst
+        .mockResolvedValueOnce({ ...mockDocument, extractedText: 'menu $5' })
+        .mockResolvedValueOnce(null);
+      db.document.update.mockResolvedValue({});
+
+      const result = await service.analyzeDocument('user-1', 'doc-1');
+
+      expect(result.analysis).toEqual(
+        expect.objectContaining({
+          isPetition: false,
+          skipReason: 'unreadable',
+          provider: 'documents-service',
+          model: 'min-text-gate',
+        }),
+      );
+      expect(promptClient.getDocumentAnalysisPrompt).not.toHaveBeenCalled();
+      expect(llm.generate).not.toHaveBeenCalled();
+      expect(metricsService.recordAnalysis).toHaveBeenCalledWith(
+        'documents-service',
+        'petition',
+        'skipped_unreadable',
+        expect.any(Number),
+      );
+    });
+
+    it('does not pre-gate short text for non-petition document types', async () => {
+      db.document.findFirst
+        .mockResolvedValueOnce({
+          ...mockDocument,
+          type: 'contract',
+          extractedText: 'Short contract.',
+        })
+        .mockResolvedValueOnce(null);
+      db.document.update.mockResolvedValue({});
+      promptClient.getDocumentAnalysisPrompt.mockResolvedValue({
+        promptText: 'Analyze...',
+        promptHash: 'h1',
+        promptVersion: 'v1',
+      });
+      llm.generate.mockResolvedValue({ text: '{"summary":"A contract"}' });
+
+      const result = await service.analyzeDocument('user-1', 'doc-1');
+      expect(llm.generate).toHaveBeenCalled();
+      expect(result.analysis.isPetition).toBeUndefined();
     });
 
     it('should auto-link propositions for petition documents', async () => {
