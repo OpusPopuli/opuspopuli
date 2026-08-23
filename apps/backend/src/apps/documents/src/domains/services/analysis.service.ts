@@ -223,18 +223,7 @@ export class AnalysisService {
         processingTimeMs / 1000,
       );
 
-      // Auto-match relatedMeasures to propositions for petition documents
-      if (
-        document.type === 'petition' &&
-        parsed.relatedMeasures &&
-        Array.isArray(parsed.relatedMeasures) &&
-        (parsed.relatedMeasures as string[]).length > 0
-      ) {
-        this.linkingService.matchAndLinkPropositionsSafely(
-          documentId,
-          parsed.relatedMeasures as string[],
-        );
-      }
+      this.autoLinkRelatedMeasures(documentId, document.type, parsed);
 
       return {
         analysis: analysis as unknown as DocumentAnalysis,
@@ -255,6 +244,24 @@ export class AnalysisService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Auto-match a petition analysis's relatedMeasures to propositions.
+   * Fire-and-forget: linking failures never fail the analysis.
+   */
+  private autoLinkRelatedMeasures(
+    documentId: string,
+    documentType: string,
+    parsed: Record<string, unknown>,
+  ): void {
+    if (documentType !== 'petition') return;
+    const measures = parsed.relatedMeasures;
+    if (!Array.isArray(measures) || measures.length === 0) return;
+    this.linkingService.matchAndLinkPropositionsSafely(
+      documentId,
+      measures as string[],
+    );
   }
 
   /**
