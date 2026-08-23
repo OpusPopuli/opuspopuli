@@ -171,7 +171,9 @@
     "scanNotFound": "Scan not found",
     "scanNotFoundDescription": "This scan may have been deleted or does not exist.",
     "share": "Share",
-    "delete": "Delete"
+    "delete": "Delete",
+    "notAPetition": "not a petition",
+    "notAPetitionItem": "Not a petition"
   },
   "report": {
     "button": "Report Issue",

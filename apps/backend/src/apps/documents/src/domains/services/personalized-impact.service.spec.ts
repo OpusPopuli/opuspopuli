@@ -107,6 +107,26 @@ describe('PersonalizedImpactService', () => {
     expect(db.document.findFirst).not.toHaveBeenCalled();
   });
 
+  it('returns null for a non-petition verdict analysis (#1057 contract)', async () => {
+    // A verdict is analysis-shaped but summary is '' — personalization
+    // must never run against a rejected scan. #1057 depends on this
+    // short-circuit; pin it.
+    db.document.findFirst.mockResolvedValueOnce({
+      ...docWithAnalysis,
+      analysis: {
+        isPetition: false,
+        skipReason: 'not_a_petition',
+        summary: '',
+        keyPoints: [],
+        entities: [],
+      },
+    });
+
+    expect(await service.generate('user-1', baseInput)).toBeNull();
+    expect(promptClient.getPersonalizedImpactPrompt).not.toHaveBeenCalled();
+    expect(llm.generate).not.toHaveBeenCalled();
+  });
+
   it('returns null when the document is missing or unanalyzed', async () => {
     db.document.findFirst.mockResolvedValueOnce(null);
     expect(await service.generate('user-1', baseInput)).toBeNull();

@@ -65,8 +65,8 @@ export class DocumentAnalysis {
    * Non-petition classification gate (#1057). For petition scans:
    * true = analyzed as a genuine petition; false = the classifier (or the
    * minimum-text pre-gate) determined this is not analyzable as a petition
-   * and the analysis fields below are empty. Absent = pre-gate analysis
-   * (before this field existed) — treat as a petition for compatibility.
+   * and the analysis fields below are empty. Absent = an analysis created
+   * before this gate existed — treat as a petition for compatibility.
    */
   @Field({ nullable: true })
   isPetition?: boolean;

@@ -25,6 +25,14 @@ function getStatusStyle(item: ScanHistoryItem): {
   if (item.status.includes("failed")) {
     return { label: "failed", className: "bg-danger-surface text-danger" };
   }
+  // Non-petition verdict (#1057): the row must not read "analyzed" — the
+  // scan was classified as not being a petition at all.
+  if (item.isPetition === false) {
+    return {
+      label: "notAPetition",
+      className: "bg-warning-surface text-warning",
+    };
+  }
   if (item.hasAnalysis) {
     return {
       label: "analyzed",
@@ -225,7 +233,9 @@ export default function PetitionHistoryPage() {
                           on-inverse (dark) — text-paper/content-dim render
                           white-on-white here. Same as the #1047 fix. */}
                       <p className="text-sm text-on-inverse font-medium truncate">
-                        {item.summary || item.type}
+                        {item.isPetition === false
+                          ? t("history.notAPetitionItem")
+                          : item.summary || item.type}
                       </p>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <span

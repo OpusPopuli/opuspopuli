@@ -171,7 +171,9 @@
     "scanNotFound": "Escaneo no encontrado",
     "scanNotFoundDescription": "Este escaneo puede haber sido eliminado o no existe.",
     "share": "Compartir",
-    "delete": "Eliminar"
+    "delete": "Eliminar",
+    "notAPetition": "no es una petición",
+    "notAPetitionItem": "No es una petición"
   },
   "report": {
     "button": "Reportar Problema",

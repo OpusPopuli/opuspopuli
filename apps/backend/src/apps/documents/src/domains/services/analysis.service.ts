@@ -105,20 +105,6 @@ export class AnalysisService {
       }
     }
 
-    // Minimum-text pre-gate (#1057, petition scans only): don't pay for an
-    // LLM call that cannot defensibly say anything. Runs after the cache
-    // check so a cached verdict for the same content still short-circuits.
-    if (
-      document.type === 'petition' &&
-      document.extractedText.trim().length < MIN_ANALYZABLE_TEXT_CHARS
-    ) {
-      return this.persistSkipVerdict(documentId, document.type, 'unreadable', {
-        provider: 'documents-service',
-        model: 'min-text-gate',
-        processingTimeMs: Date.now() - startTime,
-      });
-    }
-
     // Update status to in-progress
     await this.db.document.update({
       where: { id: documentId },
@@ -126,6 +112,27 @@ export class AnalysisService {
     });
 
     try {
+      // Minimum-text pre-gate (#1057, petition scans only): don't pay for
+      // an LLM call that cannot defensibly say anything. Inside the try so
+      // a persistence failure flows through the same ai_analysis_failed
+      // path as every other failure; after the cache check so a cached
+      // verdict for the same content still short-circuits.
+      if (
+        document.type === 'petition' &&
+        document.extractedText.trim().length < MIN_ANALYZABLE_TEXT_CHARS
+      ) {
+        return await this.persistSkipVerdict(
+          documentId,
+          document.type,
+          'unreadable',
+          {
+            provider: 'documents-service',
+            model: 'min-text-gate',
+            processingTimeMs: Date.now() - startTime,
+          },
+        );
+      }
+
       const { promptText, promptHash, promptVersion } =
         await this.promptClient.getDocumentAnalysisPrompt({
           documentType: document.type,
@@ -144,7 +151,12 @@ export class AnalysisService {
       // is deciding whether this IS a petition. The verdict is persisted
       // like any analysis — cached by (contentHash, type), recoverable via
       // forceReanalyze — but carries no fabricated analysis fields.
-      if (document.type === 'petition' && parsed.skip === true) {
+      // Truthy check on purpose: a model emitting "true"/1 instead of true
+      // must not fall through to the full-analysis path, where a
+      // summary-less object would be persisted AND cached, hard-erroring
+      // the non-nullable GraphQL summary field for everyone with the same
+      // contentHash.
+      if (document.type === 'petition' && Boolean(parsed.skip)) {
         return this.persistSkipVerdict(
           documentId,
           document.type,
@@ -166,6 +178,11 @@ export class AnalysisService {
       // Calculate data completeness (#425)
       const { completenessScore, completenessDetails } =
         this.calculateCompleteness(document.type, parsed);
+
+      // Never let model-supplied skip/reason keys leak into a persisted
+      // full analysis — `reason` is free text from the model on this path.
+      delete parsed.skip;
+      delete parsed.reason;
 
       const analysis = {
         ...parsed,

@@ -507,6 +507,8 @@ export interface ScanHistoryItem {
   summary?: string;
   ocrConfidence?: number;
   hasAnalysis: boolean;
+  /** false = classified as not-a-petition (#1057); absent = pre-gate scan. */
+  isPetition?: boolean;
   createdAt: string;
 }
 
@@ -550,6 +552,7 @@ export const GET_MY_SCAN_HISTORY = gql`
         summary
         ocrConfidence
         hasAnalysis
+        isPetition
         createdAt
       }
       total
@@ -569,6 +572,8 @@ export const GET_SCAN_DETAIL = gql`
       ocrProvider
       analysis {
         documentType
+        isPetition
+        skipReason
         summary
         keyPoints
         entities
