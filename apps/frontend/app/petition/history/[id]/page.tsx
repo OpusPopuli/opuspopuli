@@ -123,7 +123,7 @@ export default function ScanDetailPage() {
           </p>
           <button
             onClick={() => router.push("/petition/history")}
-            className="px-6 py-3 bg-paper/15 text-paper font-medium rounded-lg hover:bg-surface-sunk transition-colors"
+            className="px-6 py-3 bg-paper/15 text-paper font-medium rounded-lg hover:bg-paper/25 transition-colors"
           >
             {t("history.backToHistory")}
           </button>
