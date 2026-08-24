@@ -94,17 +94,21 @@ export class AuthMiddleware implements NestMiddleware {
               return next();
             }
 
-            // NOTE: this answers 200 with `success: false`, which is wrong —
-            // an auth failure is indistinguishable from a successful call to
-            // any client that checks the status code first. Deliberately NOT
-            // changed here: it alters every auth-failure response on the
-            // gateway, which is too wide a blast radius to attach to an urgent
-            // logout fix that cannot be end-to-end tested first. Tracked
-            // separately.
-            return res.send({
-              success: false,
-              message: 'Authorization Token is Invalid!',
-            });
+            // 401, not the historical 200-with-success:false (#1022): every
+            // status-checking client read that as success, so the frontend's
+            // sessionRefreshLink never attempted renewal for requests killed
+            // here, and these failures counted as 2xx in monitoring. The
+            // frontend classifies a network 401 as auth-expired
+            // (isAuthExpiredError) and renews with a once-only retry guard
+            // (AUTH_RETRIED) — no loop on a persistent 401. Body shape kept
+            // for compatibility.
+            return res
+              .status(401)
+              .set('WWW-Authenticate', 'Bearer error="invalid_token"')
+              .send({
+                success: false,
+                message: 'Authorization Token is Invalid!',
+              });
           }
 
           // Store user in req.user (Express standard) instead of headers

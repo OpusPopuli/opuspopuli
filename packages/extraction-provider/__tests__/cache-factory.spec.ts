@@ -16,6 +16,57 @@ describe("CacheFactory env resolution (#725)", () => {
     process.env = { ...original };
   });
 
+  it("explicit-undefined overrides do not clobber env-resolved values (#862)", () => {
+    process.env.REDIS_URL = "redis://queue:6379";
+    process.env.REDIS_CACHE_URL = "redis://cache:6379";
+
+    // Exactly how ExtractionProvider calls it when the caller passed no
+    // config: the keys are PRESENT but undefined. The old trailing spread
+    // re-clobbered provider/redisUrl to undefined, silently downgrading
+    // prod to per-process memory cache + rate limiting.
+    const config = CacheFactory.createConfigFromEnv({
+      provider: undefined,
+      redisUrl: undefined,
+      keyPrefix: "extraction:cache:",
+    });
+
+    expect(config.provider).toBe("redis");
+    expect(config.redisUrl).toBe("redis://cache:6379");
+    expect(config.keyPrefix).toBe("extraction:cache:");
+  });
+
+  it("explicit overrides still win over env", () => {
+    process.env.REDIS_URL = "redis://queue:6379";
+
+    const config = CacheFactory.createConfigFromEnv({
+      provider: "memory",
+      redisUrl: "redis://custom:6379",
+    });
+
+    expect(config.provider).toBe("memory");
+    expect(config.redisUrl).toBe("redis://custom:6379");
+  });
+
+  it("rate limiter URL prefers the noeviction queue instance (#862/#725)", () => {
+    process.env.REDIS_URL = "redis://queue:6379";
+    process.env.REDIS_CACHE_URL = "redis://cache:6379";
+
+    const config = CacheFactory.createConfigFromEnv();
+    // Cache on the lru instance; token bucket on the noeviction instance —
+    // an evicted bucket silently resets the rate limit.
+    expect(config.redisUrl).toBe("redis://cache:6379");
+    expect(config.rateLimiterRedisUrl).toBe("redis://queue:6379");
+  });
+
+  it("rate limiter falls back to the cache URL when the queue URL is unset", () => {
+    delete process.env.REDIS_URL;
+    process.env.REDIS_CACHE_URL = "redis://cache:6379";
+
+    expect(CacheFactory.getRateLimiterRedisUrlFromEnv()).toBe(
+      "redis://cache:6379",
+    );
+  });
+
   it("prefers REDIS_CACHE_URL over REDIS_URL for the cache", () => {
     process.env.REDIS_URL = "redis://queue:6379";
     process.env.REDIS_CACHE_URL = "redis://cache:6379";
