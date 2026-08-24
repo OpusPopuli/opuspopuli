@@ -4,8 +4,10 @@ import PetitionHistoryPage from "@/app/petition/history/page";
 
 // Mock next/navigation
 const mockPush = jest.fn();
+let mockSearch = "";
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
+  useSearchParams: () => new URLSearchParams(mockSearch),
 }));
 
 // Mock react-i18next
@@ -130,6 +132,27 @@ describe("PetitionHistoryPage", () => {
     fireEvent.click(screen.getAllByLabelText("history.deleteScan")[0]);
     sweep(container);
     expect(screen.getByText("history.deleteConfirm")).toBeInTheDocument();
+  });
+
+  it("back arrow returns to settings when arrived via the settings nav", () => {
+    mockSearch = "from=settings";
+    render(<PetitionHistoryPage />);
+
+    fireEvent.click(screen.getByLabelText("results.back"));
+    expect(mockPush).toHaveBeenCalledWith("/settings");
+
+    // The origin rides along to detail links so the chain unwinds home.
+    const detailLink = screen
+      .getAllByLabelText("history.viewDetail")[0]
+      .getAttribute("href");
+    expect(detailLink).toContain("?from=settings");
+    mockSearch = "";
+  });
+
+  it("back arrow returns to the scanner home by default", () => {
+    render(<PetitionHistoryPage />);
+    fireEvent.click(screen.getByLabelText("results.back"));
+    expect(mockPush).toHaveBeenCalledWith("/petition");
   });
 
   it("should show status badges", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
@@ -23,6 +23,9 @@ import { TrackOnBallotButton } from "@/components/petition/TrackOnBallotButton";
 export default function ScanDetailPage() {
   const params = useParams();
   const router = useRouter();
+  // Preserve the settings origin through the back chain (see history list).
+  const fromParam =
+    useSearchParams().get("from") === "settings" ? "?from=settings" : "";
   const { t } = useTranslation("petition");
   const documentId = params.id as string;
 
@@ -74,7 +77,7 @@ export default function ScanDetailPage() {
   const handleDelete = async () => {
     if (!confirm(t("history.deleteConfirm"))) return;
     await softDeleteScan({ variables: { documentId } });
-    router.push("/petition/history");
+    router.push(`/petition/history${fromParam}`);
   };
 
   return (
@@ -82,7 +85,7 @@ export default function ScanDetailPage() {
       {/* Header */}
       <div className="sticky top-0 z-10 bg-black/90 backdrop-blur-sm px-4 py-4 flex items-center gap-3 border-b border-line">
         <button
-          onClick={() => router.push("/petition/history")}
+          onClick={() => router.push(`/petition/history${fromParam}`)}
           className="text-content-dim hover:text-content transition-colors"
           aria-label={t("history.backToHistory")}
         >
@@ -137,7 +140,7 @@ export default function ScanDetailPage() {
             {t("history.scanNotFoundDescription")}
           </p>
           <button
-            onClick={() => router.push("/petition/history")}
+            onClick={() => router.push(`/petition/history${fromParam}`)}
             className="px-6 py-3 bg-paper/15 text-paper font-medium rounded-lg hover:bg-paper/25 transition-colors"
           >
             {t("history.backToHistory")}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
@@ -44,6 +45,11 @@ function getStatusStyle(item: ScanHistoryItem): {
 
 export default function PetitionHistoryPage() {
   const { t } = useTranslation("petition");
+  // Arrived via the settings nav? Then the back arrow returns to settings,
+  // not the camera home — and detail links carry the origin along so the
+  // whole back chain unwinds to where the user actually came from.
+  const fromSettings = useSearchParams().get("from") === "settings";
+  const fromParam = fromSettings ? "?from=settings" : "";
 
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
@@ -123,6 +129,7 @@ export default function PetitionHistoryPage() {
       <PetitionPageHeader
         title={t("history.title")}
         backLabel={t("results.back")}
+        backHref={fromSettings ? "/settings" : "/petition"}
       />
 
       {/* Search & Filters */}
@@ -222,7 +229,7 @@ export default function PetitionHistoryPage() {
             return (
               <div key={item.id} className="relative">
                 <Link
-                  href={`/petition/history/${item.id}`}
+                  href={`/petition/history/${item.id}${fromParam}`}
                   className="block rounded-lg p-4 transition-colors border border-paper/25 hover:border-paper/50 hover:bg-paper/5"
                   aria-label={t("history.viewDetail")}
                 >

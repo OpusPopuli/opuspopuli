@@ -1,12 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import ScanDetailPage from "@/app/petition/history/[id]/page";
 
 // Mock next/navigation
 const mockPush = jest.fn();
+let mockSearch = "";
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
   useParams: () => ({ id: "doc-123" }),
+  useSearchParams: () => new URLSearchParams(mockSearch),
 }));
 
 // Mock react-i18next
@@ -163,6 +165,15 @@ describe("ScanDetailPage", () => {
     // The hook is armed for this analyzed petition (documentId, enabled).
     expect(mockImpactArgs[1]).toBe(true);
     mockImpactState = { status: "absent", impact: null };
+  });
+
+  it("back-to-history preserves the settings origin", () => {
+    mockSearch = "from=settings";
+    render(<ScanDetailPage />);
+
+    fireEvent.click(screen.getByLabelText("history.backToHistory"));
+    expect(mockPush).toHaveBeenCalledWith("/petition/history?from=settings");
+    mockSearch = "";
   });
 
   it("should render action buttons", () => {
