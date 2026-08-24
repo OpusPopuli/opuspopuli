@@ -17,7 +17,7 @@
  * test run with retries / projects / matrices. Chromium-only — the PDF
  * API is not supported on Firefox / WebKit.
  *
- * The version is read from `lib/commitments-version.json` — the same
+ * The version is read from `packages/common/src/commitments-version.json` — the same
  * file `lib/commitments.ts` imports — so the script doesn't need a
  * TypeScript runner and can't drift from what the page displays.
  */
@@ -29,11 +29,12 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Same bytes the app and the backend read (#844): apps/frontend/scripts
+// -> repo root -> packages/common/src.
 const VERSION_FILE = resolve(
   __dirname,
-  "..",
-  "lib",
-  "commitments-version.json",
+  "../../..",
+  "packages/common/src/commitments-version.json",
 );
 const { version: VERSION } = JSON.parse(readFileSync(VERSION_FILE, "utf8"));
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3200";
