@@ -1,12 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import ScanDetailPage from "@/app/petition/history/[id]/page";
 
 // Mock next/navigation
 const mockPush = jest.fn();
+let mockSearch = "";
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
   useParams: () => ({ id: "doc-123" }),
+  useSearchParams: () => new URLSearchParams(mockSearch),
 }));
 
 // Mock react-i18next
@@ -40,6 +42,21 @@ jest.mock("@/components/ReportIssueButton", () => ({
 }));
 
 // Mock TrackOnBallotButton
+// The hook has its own suite; "absent" renders nothing so pre-existing
+// assertions are untouched. Individual tests override this to assert the
+// personalized section appears on this surface (#1052 revisit gap).
+let mockImpactState: { status: string; impact: unknown } = {
+  status: "absent",
+  impact: null,
+};
+jest.mock("@/components/petition/usePersonalizedImpact", () => ({
+  usePersonalizedImpact: (...args: unknown[]) => {
+    mockImpactArgs = args;
+    return mockImpactState;
+  },
+}));
+let mockImpactArgs: unknown[] = [];
+
 jest.mock("@/components/petition/TrackOnBallotButton", () => ({
   TrackOnBallotButton: ({
     documentId,
@@ -133,6 +150,30 @@ describe("ScanDetailPage", () => {
       screen.queryByText("We the undersigned petition for parks"),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("renders the personalized read above the analysis (#1052 revisit surface)", () => {
+    mockImpactState = {
+      status: "ready",
+      impact: { text: "As a renter, this caps your rent.", fromCache: true },
+    };
+    render(<ScanDetailPage />);
+
+    expect(
+      screen.getByText("As a renter, this caps your rent."),
+    ).toBeInTheDocument();
+    // The hook is armed for this analyzed petition (documentId, enabled).
+    expect(mockImpactArgs[1]).toBe(true);
+    mockImpactState = { status: "absent", impact: null };
+  });
+
+  it("back-to-history preserves the settings origin", () => {
+    mockSearch = "from=settings";
+    render(<ScanDetailPage />);
+
+    fireEvent.click(screen.getByLabelText("history.backToHistory"));
+    expect(mockPush).toHaveBeenCalledWith("/petition/history?from=settings");
+    mockSearch = "";
   });
 
   it("should render action buttons", () => {

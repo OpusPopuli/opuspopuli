@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
@@ -44,6 +45,11 @@ function getStatusStyle(item: ScanHistoryItem): {
 
 export default function PetitionHistoryPage() {
   const { t } = useTranslation("petition");
+  // Arrived via the settings nav? Then the back arrow returns to settings,
+  // not the camera home — and detail links carry the origin along so the
+  // whole back chain unwinds to where the user actually came from.
+  const fromSettings = useSearchParams().get("from") === "settings";
+  const fromParam = fromSettings ? "?from=settings" : "";
 
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
@@ -123,6 +129,7 @@ export default function PetitionHistoryPage() {
       <PetitionPageHeader
         title={t("history.title")}
         backLabel={t("results.back")}
+        backHref={fromSettings ? "/settings" : "/petition"}
       />
 
       {/* Search & Filters */}
@@ -132,7 +139,7 @@ export default function PetitionHistoryPage() {
           value={search}
           onChange={(e) => handleSearchChange(e.target.value)}
           placeholder={t("history.search")}
-          className="w-full bg-inverse-surface text-on-inverse rounded-lg px-4 py-3 text-sm border border-line focus:border-accent focus:ring-1 focus:ring-accent outline-none placeholder-on-inverse/60"
+          className="w-full bg-paper/10 text-paper rounded-lg px-4 py-3 text-sm border border-paper/25 focus:border-accent focus:ring-1 focus:ring-accent outline-none placeholder-content-dim"
         />
         <div className="flex gap-2">
           <input
@@ -143,7 +150,7 @@ export default function PetitionHistoryPage() {
               setPage(0);
             }}
             aria-label={t("history.startDate")}
-            className="flex-1 bg-inverse-surface text-on-inverse rounded-lg px-3 py-2 text-sm border border-line focus:border-accent outline-none"
+            className="flex-1 bg-paper/10 text-paper rounded-lg px-3 py-2 text-sm border border-paper/25 focus:border-accent outline-none"
           />
           <input
             type="date"
@@ -153,7 +160,7 @@ export default function PetitionHistoryPage() {
               setPage(0);
             }}
             aria-label={t("history.endDate")}
-            className="flex-1 bg-inverse-surface text-on-inverse rounded-lg px-3 py-2 text-sm border border-line focus:border-accent outline-none"
+            className="flex-1 bg-paper/10 text-paper rounded-lg px-3 py-2 text-sm border border-paper/25 focus:border-accent outline-none"
           />
         </div>
         {hasFilters && (
@@ -222,17 +229,13 @@ export default function PetitionHistoryPage() {
             return (
               <div key={item.id} className="relative">
                 <Link
-                  href={`/petition/history/${item.id}`}
-                  className="block bg-inverse-surface hover:opacity-90 rounded-lg p-4 transition-colors border border-line"
+                  href={`/petition/history/${item.id}${fromParam}`}
+                  className="block rounded-lg p-4 transition-colors border border-paper/25 hover:border-paper/50 hover:bg-paper/5"
                   aria-label={t("history.viewDetail")}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      {/* bg-inverse-surface flips to light paper on the
-                          petition pinned-dark surface, so text inside must be
-                          on-inverse (dark) — text-paper/content-dim render
-                          white-on-white here. Same as the #1047 fix. */}
-                      <p className="text-sm text-on-inverse font-medium truncate">
+                      <p className="text-sm text-paper font-medium truncate">
                         {item.isPetition === false
                           ? t("history.notAPetitionItem")
                           : item.summary || item.type}
@@ -244,18 +247,18 @@ export default function PetitionHistoryPage() {
                           {t(`history.${status.label}`)}
                         </span>
                         {item.ocrConfidence != null && (
-                          <span className="text-xs text-on-inverse/70">
+                          <span className="text-xs text-content-dim">
                             {item.ocrConfidence.toFixed(0)}%{" "}
                             {t("results.confidence")}
                           </span>
                         )}
-                        <span className="text-xs text-on-inverse/70">
+                        <span className="text-xs text-content-dim">
                           {new Date(item.createdAt).toLocaleDateString()}
                         </span>
                       </div>
                     </div>
                     <svg
-                      className="w-5 h-5 text-on-inverse/60 flex-shrink-0 mt-1"
+                      className="w-5 h-5 text-content-dim flex-shrink-0 mt-1"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -276,7 +279,7 @@ export default function PetitionHistoryPage() {
                     e.preventDefault();
                     setDeleteConfirmId(item.id);
                   }}
-                  className="absolute top-3 right-10 text-on-inverse/60 hover:text-danger transition-colors p-1"
+                  className="absolute top-3 right-10 text-content-dim hover:text-danger transition-colors p-1"
                   aria-label={t("history.deleteScan")}
                 >
                   <svg
@@ -314,14 +317,14 @@ export default function PetitionHistoryPage() {
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-3 py-1.5 text-sm text-on-inverse bg-inverse-surface rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+              className="px-3 py-1.5 text-sm text-paper bg-paper/10 border border-paper/25 rounded-lg hover:bg-paper/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {t("history.previous")}
             </button>
             <button
               onClick={() => setPage((p) => p + 1)}
               disabled={!hasMore}
-              className="px-3 py-1.5 text-sm text-on-inverse bg-inverse-surface rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+              className="px-3 py-1.5 text-sm text-paper bg-paper/10 border border-paper/25 rounded-lg hover:bg-paper/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {t("history.next")}
             </button>
@@ -344,14 +347,13 @@ export default function PetitionHistoryPage() {
       {/* Delete Confirm Dialog */}
       {deleteConfirmId && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          {/* Paper panel on the pinned-dark surface — text must be
-              on-inverse (dark), and the cancel chip ink-based (#1047). */}
-          <div className="bg-inverse-surface rounded-lg p-6 max-w-sm w-full border border-line">
-            <p className="text-on-inverse mb-6">{t("history.deleteConfirm")}</p>
+          {/* True overlay: opaque ink panel with a boundary border. */}
+          <div className="bg-ink rounded-lg p-6 max-w-sm w-full border border-paper/25">
+            <p className="text-paper mb-6">{t("history.deleteConfirm")}</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setDeleteConfirmId(null)}
-                className="flex-1 py-2.5 bg-ink/10 text-on-inverse rounded-lg hover:bg-ink/20 transition-colors"
+                className="flex-1 py-2.5 bg-paper/15 text-paper rounded-lg hover:bg-paper/25 transition-colors"
               >
                 {t("results.back")}
               </button>
@@ -369,14 +371,12 @@ export default function PetitionHistoryPage() {
       {/* Delete All Confirm Dialog */}
       {deleteAllConfirm && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-inverse-surface rounded-lg p-6 max-w-sm w-full border border-line">
-            <p className="text-on-inverse mb-6">
-              {t("history.deleteAllConfirm")}
-            </p>
+          <div className="bg-ink rounded-lg p-6 max-w-sm w-full border border-paper/25">
+            <p className="text-paper mb-6">{t("history.deleteAllConfirm")}</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setDeleteAllConfirm(false)}
-                className="flex-1 py-2.5 bg-ink/10 text-on-inverse rounded-lg hover:bg-ink/20 transition-colors"
+                className="flex-1 py-2.5 bg-paper/15 text-paper rounded-lg hover:bg-paper/25 transition-colors"
               >
                 {t("results.back")}
               </button>

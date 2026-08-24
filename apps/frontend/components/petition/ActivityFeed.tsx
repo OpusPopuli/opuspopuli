@@ -44,13 +44,13 @@ function Sparkline({
 
 function ActivityItem({ item }: { item: PetitionActivityItem }) {
   return (
-    // bg-inverse-surface is paper on the petition pinned-dark surface, so
-    // text inside must be on-inverse — content-dim renders white here.
-    <div className="px-4 py-3 bg-inverse-surface rounded-lg">
-      <p className="text-sm text-on-inverse mb-1">
+    // Bordered card on the pinned-dark surface — no light panel; text is
+    // the fixed light tokens.
+    <div className="px-4 py-3 rounded-lg border border-paper/25">
+      <p className="text-sm text-paper mb-1">
         {truncate(item.summary || "Petition document", 120)}
       </p>
-      <div className="flex items-center gap-3 text-xs text-on-inverse/70">
+      <div className="flex items-center gap-3 text-xs text-content-dim">
         <span>
           Scanned {item.scanCount} {item.scanCount === 1 ? "time" : "times"} in{" "}
           {item.locationCount}{" "}
@@ -69,9 +69,9 @@ function LoadingSkeleton() {
       data-testid="activity-feed-loading"
     >
       <div className="h-4 bg-surface-alt rounded w-3/4" />
-      <div className="h-10 bg-inverse-surface rounded" />
-      <div className="h-16 bg-inverse-surface rounded" />
-      <div className="h-16 bg-inverse-surface rounded" />
+      <div className="h-10 bg-paper/10 rounded" />
+      <div className="h-16 bg-paper/10 rounded" />
+      <div className="h-16 bg-paper/10 rounded" />
     </div>
   );
 }

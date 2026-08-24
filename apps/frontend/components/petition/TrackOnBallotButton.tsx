@@ -119,27 +119,27 @@ export function TrackOnBallotButton({
       </button>
 
       {open && (
-        <div className="absolute bottom-full mb-2 left-0 right-0 bg-inverse-surface border border-line rounded-lg z-20 overflow-hidden">
+        <div className="absolute bottom-full mb-2 left-0 right-0 bg-ink border border-paper/25 rounded-lg z-20 overflow-hidden">
           <div className="p-3">
             <input
               type="text"
               value={query}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={t("results.searchPropositions")}
-              className="w-full bg-inverse-surface text-on-inverse rounded-md px-3 py-2 text-sm border border-line focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+              className="w-full bg-paper/10 text-paper rounded-md px-3 py-2 text-sm border border-paper/25 focus:border-accent focus:ring-1 focus:ring-accent outline-none"
               autoFocus
             />
           </div>
 
           <div className="max-h-48 overflow-y-auto">
             {searching && (
-              <p className="px-3 py-2 text-on-inverse/70 text-sm">
+              <p className="px-3 py-2 text-content-dim text-sm">
                 {t("activityFeed.loading")}
               </p>
             )}
 
             {!searching && query.length >= 3 && results.length === 0 && (
-              <p className="px-3 py-2 text-on-inverse/70 text-sm">
+              <p className="px-3 py-2 text-content-dim text-sm">
                 {t("results.noMatchesFound")}
               </p>
             )}
@@ -149,10 +149,10 @@ export function TrackOnBallotButton({
                 key={prop.id}
                 onClick={() => handleLink(prop.id)}
                 disabled={linking}
-                className="w-full text-left px-3 py-2 hover:bg-ink/10 transition-colors border-t border-line"
+                className="w-full text-left px-3 py-2 hover:bg-paper/10 transition-colors border-t border-paper/15"
               >
-                <p className="text-sm text-on-inverse truncate">{prop.title}</p>
-                <p className="text-sm text-on-inverse/70">
+                <p className="text-sm text-paper truncate">{prop.title}</p>
+                <p className="text-sm text-content-dim">
                   {prop.externalId} &middot; {prop.status}
                 </p>
               </button>
