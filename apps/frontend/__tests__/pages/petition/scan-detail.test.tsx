@@ -40,6 +40,21 @@ jest.mock("@/components/ReportIssueButton", () => ({
 }));
 
 // Mock TrackOnBallotButton
+// The hook has its own suite; "absent" renders nothing so pre-existing
+// assertions are untouched. Individual tests override this to assert the
+// personalized section appears on this surface (#1052 revisit gap).
+let mockImpactState: { status: string; impact: unknown } = {
+  status: "absent",
+  impact: null,
+};
+jest.mock("@/components/petition/usePersonalizedImpact", () => ({
+  usePersonalizedImpact: (...args: unknown[]) => {
+    mockImpactArgs = args;
+    return mockImpactState;
+  },
+}));
+let mockImpactArgs: unknown[] = [];
+
 jest.mock("@/components/petition/TrackOnBallotButton", () => ({
   TrackOnBallotButton: ({
     documentId,
@@ -133,6 +148,21 @@ describe("ScanDetailPage", () => {
       screen.queryByText("We the undersigned petition for parks"),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("renders the personalized read above the analysis (#1052 revisit surface)", () => {
+    mockImpactState = {
+      status: "ready",
+      impact: { text: "As a renter, this caps your rent.", fromCache: true },
+    };
+    render(<ScanDetailPage />);
+
+    expect(
+      screen.getByText("As a renter, this caps your rent."),
+    ).toBeInTheDocument();
+    // The hook is armed for this analyzed petition (documentId, enabled).
+    expect(mockImpactArgs[1]).toBe(true);
+    mockImpactState = { status: "absent", impact: null };
   });
 
   it("should render action buttons", () => {
