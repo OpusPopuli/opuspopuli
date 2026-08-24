@@ -14,14 +14,18 @@
  *
  * Version bumping rule (per commitment 7 of the doc — "we will not
  * silently change the rules"): a material change to any commitment
- * requires bumping `COMMITMENTS_VERSION` (in `commitments-version.json`),
+ * requires bumping `COMMITMENTS_VERSION` (in
+ * `packages/common/src/commitments-version.json`),
  * appending an entry to `COMMITMENTS_HISTORY`, and re-prompting all
  * signed-in users to re-acknowledge — the User row tracks
  * `commitmentsVersionAcknowledged` so the onboarding step can
  * re-trigger on version drift.
  */
 
-import commitmentsVersionFile from "./commitments-version.json";
+// Single source of truth (#844). Imported as a FILE rather than via a
+// package dependency: the Worker bundle should not pull in
+// @opuspopuli/common (providers, supabase client, …) for one string.
+import commitmentsVersionFile from "../../../packages/common/src/commitments-version.json";
 
 /** Stable slugs for the ten commitments. Order matches §10 of the planning doc. */
 export const COMMITMENT_SLUGS = [
@@ -40,7 +44,8 @@ export const COMMITMENT_SLUGS = [
 export type CommitmentSlug = (typeof COMMITMENT_SLUGS)[number];
 
 /**
- * Current published version. Bump in `commitments-version.json` when
+ * Current published version. Bump in
+ * `packages/common/src/commitments-version.json` when
  * any commitment's wording changes materially (typos and translation
  * fixes don't count). Format: semver-ish `MAJOR.MINOR.PATCH` — MAJOR
  * is incremented when a commitment is added/removed/inverted, MINOR

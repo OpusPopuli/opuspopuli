@@ -11,3 +11,6 @@ export * from "./providers/index.js";
 
 // Utilities
 export * from "./utils/index.js";
+
+// Shared constants (single source of truth — see commitments.ts)
+export * from "./commitments.js";
