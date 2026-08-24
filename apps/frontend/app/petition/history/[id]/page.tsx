@@ -15,6 +15,8 @@ import {
 } from "@/lib/graphql/documents";
 import { AnalysisDisplay } from "@/components/petition/AnalysisDisplay";
 import { NotAPetition } from "@/components/petition/NotAPetition";
+import { PersonalizedImpact } from "@/components/petition/PersonalizedImpact";
+import { usePersonalizedImpact } from "@/components/petition/usePersonalizedImpact";
 import { ReportIssueButton } from "@/components/ReportIssueButton";
 import { TrackOnBallotButton } from "@/components/petition/TrackOnBallotButton";
 
@@ -40,6 +42,15 @@ export default function ScanDetailPage() {
   // Non-petition verdict (#1057): the rejection state replaces the
   // analysis on this surface too — no share, no track.
   const notAPetition = scan?.analysis?.isPetition === false;
+
+  // "What this means to you" (#1052) on the revisit surface too — the
+  // live results page already leads with it, and the per-user cache row
+  // from that first scan makes this render instantly. Never for a
+  // rejected scan.
+  const personalizedImpact = usePersonalizedImpact(
+    documentId,
+    Boolean(scan?.analysis) && !notAPetition,
+  );
 
   const handleShare = useCallback(async () => {
     if (!scan?.analysis) return;
@@ -144,7 +155,8 @@ export default function ScanDetailPage() {
 
           {/* Analysis (raw OCR text is no longer surfaced — see AnalysisDisplay) */}
           {scan.analysis && !notAPetition && (
-            <section className="px-4 py-6">
+            <section className="px-4 py-6 space-y-6">
+              <PersonalizedImpact {...personalizedImpact} />
               <AnalysisDisplay
                 analysis={scan.analysis}
                 linkedPropositions={linkedPropositions}
