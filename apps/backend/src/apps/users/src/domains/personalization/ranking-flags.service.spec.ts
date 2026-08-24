@@ -121,6 +121,43 @@ describe('RankingFlagsService', () => {
       expect(flags.isCaregiver).toBe(true);
     });
 
+    it('every employment status the onboarding UI offers derives the right flags (#1027 lockstep)', async () => {
+      // Mirror of apps/frontend/lib/personalization/vocab.ts
+      // `employmentStatus` options — if the UI vocabulary changes, this
+      // test MUST change with it. The pre-#1027 set shared only
+      // business_owner with the UI, so every employed user had
+      // isWorker: false in production.
+      const UI_OPTIONS: [string, boolean, boolean, boolean][] = [
+        // [status, isWorker, isBusinessOwner, isGigWorker]
+        ['employed', true, false, false],
+        ['gig', true, false, true],
+        ['business_owner', true, true, false],
+        ['retired', false, false, false],
+      ];
+      for (const [status, worker, owner, gig] of UI_OPTIONS) {
+        signalProfile.getByUserId.mockResolvedValue(
+          mkSignal({ employmentStatus: status }),
+        );
+        const flags = await service.getFlagsForUser('u-1');
+        expect({
+          status,
+          ...{
+            w: flags.isWorker,
+            o: flags.isBusinessOwner,
+            g: flags.isGigWorker,
+          },
+        }).toEqual({ status, w: worker, o: owner, g: gig });
+      }
+    });
+
+    it('isGigWorker still derives from the standalone gigWorker boolean', async () => {
+      signalProfile.getByUserId.mockResolvedValue(
+        mkSignal({ employmentStatus: 'employed', gigWorker: true }),
+      );
+      const flags = await service.getFlagsForUser('u-1');
+      expect(flags.isGigWorker).toBe(true);
+    });
+
     it('isWorker is true for any employed status', async () => {
       for (const status of ['w2', '1099', 'self_employed', 'business_owner']) {
         signalProfile.getByUserId.mockResolvedValue(
