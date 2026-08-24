@@ -1,5 +1,11 @@
 import { Field, InputType, ObjectType } from '@nestjs/graphql';
-import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  MaxLength,
+  IsObject,
+} from 'class-validator';
 import GraphQLJSON from 'graphql-type-json';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
@@ -26,6 +32,11 @@ export class VerifyPasskeyRegistrationDto {
   email!: string;
 
   @Field(() => GraphQLJSON)
+  // @IsObject is load-bearing: the global ValidationPipe's whitelist:true
+  // strips properties with no class-validator metadata — without it the
+  // WebAuthn payload never reaches the resolver. Structural verification
+  // stays with @simplewebauthn/server.
+  @IsObject()
   response!: RegistrationResponseJSON;
 
   @Field({ nullable: true })
@@ -52,6 +63,8 @@ export class VerifyPasskeyAuthenticationDto {
   identifier!: string;
 
   @Field(() => GraphQLJSON)
+  // See the registration DTO — whitelist:true strips undecorated fields.
+  @IsObject()
   response!: AuthenticationResponseJSON;
 }
 
