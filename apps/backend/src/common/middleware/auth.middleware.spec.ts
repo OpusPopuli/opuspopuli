@@ -46,6 +46,9 @@ describe('AuthMiddleware', () => {
     };
     mockResponse = {
       send: jest.fn(),
+      // Chainable like the real Express response: res.status(...).set(...).send(...)
+      status: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
     };
     mockNext = jest.fn();
   });
@@ -223,6 +226,15 @@ describe('AuthMiddleware', () => {
         success: false,
         message: 'Authorization Token is Invalid!',
       });
+      // The status is the contract (#1022): a 200 here made auth failures
+      // indistinguishable from success for every status-checking client,
+      // which is exactly how the old behavior survived — the tests
+      // asserted only the body.
+      expect(mockResponse.status).toHaveBeenCalledWith(401);
+      expect(mockResponse.set).toHaveBeenCalledWith(
+        'WWW-Authenticate',
+        'Bearer error="invalid_token"',
+      );
       expect(mockNext).not.toHaveBeenCalled();
     });
 
