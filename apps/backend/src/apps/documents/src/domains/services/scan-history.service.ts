@@ -78,6 +78,7 @@ export class ScanHistoryService {
         summary: (analysis?.summary as string) ?? undefined,
         ocrConfidence: doc.ocrConfidence ?? undefined,
         hasAnalysis: analysis !== null,
+        isPetition: (analysis?.isPetition as boolean) ?? undefined,
         createdAt: doc.createdAt,
       };
     });

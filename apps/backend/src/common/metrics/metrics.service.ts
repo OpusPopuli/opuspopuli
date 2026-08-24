@@ -276,11 +276,19 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
   /**
    * Record document analysis outcome
    * Duration is only observed on success.
+   *
+   * The skipped_* statuses are the non-petition classification gate
+   * (#1057): a rising skip rate against real-user traffic is the early
+   * signal that the classifier is rejecting genuine petitions.
    */
   recordAnalysis(
     service: string,
     documentType: string,
-    status: 'success' | 'failure',
+    status:
+      | 'success'
+      | 'failure'
+      | 'skipped_not_a_petition'
+      | 'skipped_unreadable',
     durationSeconds: number,
   ): void {
     this.documentAnalysesTotal.inc({

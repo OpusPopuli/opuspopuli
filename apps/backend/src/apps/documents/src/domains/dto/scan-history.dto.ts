@@ -22,6 +22,14 @@ export class ScanHistoryItem {
   @Field()
   hasAnalysis!: boolean;
 
+  /**
+   * Non-petition classification gate (#1057): false when the scan was
+   * classified as not-a-petition/unreadable — the history list must not
+   * present it as an analyzed petition. Absent = pre-gate analysis.
+   */
+  @Field({ nullable: true })
+  isPetition?: boolean;
+
   @Field()
   createdAt!: Date;
 }

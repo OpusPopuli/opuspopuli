@@ -14,6 +14,7 @@ import {
   type SoftDeleteScanData,
 } from "@/lib/graphql/documents";
 import { AnalysisDisplay } from "@/components/petition/AnalysisDisplay";
+import { NotAPetition } from "@/components/petition/NotAPetition";
 import { ReportIssueButton } from "@/components/ReportIssueButton";
 import { TrackOnBallotButton } from "@/components/petition/TrackOnBallotButton";
 
@@ -36,6 +37,9 @@ export default function ScanDetailPage() {
 
   const scan = data?.scanDetail;
   const linkedPropositions = linkedData?.linkedPropositions ?? [];
+  // Non-petition verdict (#1057): the rejection state replaces the
+  // analysis on this surface too — no share, no track.
+  const notAPetition = scan?.analysis?.isPetition === false;
 
   const handleShare = useCallback(async () => {
     if (!scan?.analysis) return;
@@ -133,8 +137,13 @@ export default function ScanDetailPage() {
       {/* Scan Detail */}
       {scan && (
         <>
+          {/* Non-petition verdict — honest rejection instead of analysis. */}
+          {notAPetition && (
+            <NotAPetition skipReason={scan.analysis?.skipReason} />
+          )}
+
           {/* Analysis (raw OCR text is no longer surfaced — see AnalysisDisplay) */}
-          {scan.analysis && (
+          {scan.analysis && !notAPetition && (
             <section className="px-4 py-6">
               <AnalysisDisplay
                 analysis={scan.analysis}
@@ -143,22 +152,25 @@ export default function ScanDetailPage() {
             </section>
           )}
 
-          {/* Action Buttons */}
-          <div className="px-4 py-6 flex gap-3">
-            {scan.analysis && (
-              <button
-                onClick={handleShare}
-                className="flex-1 py-3 bg-paper/10 text-paper font-medium rounded-lg hover:bg-paper/20 transition-colors"
-              >
-                {t("history.share")}
-              </button>
-            )}
-            <TrackOnBallotButton
-              documentId={documentId}
-              linkedCount={linkedPropositions.length}
-              onLinked={() => refetchLinked()}
-            />
-          </div>
+          {/* Action Buttons — never for a rejected scan; report/delete below
+              stay (report is the false-negative escape hatch). */}
+          {!notAPetition && (
+            <div className="px-4 py-6 flex gap-3">
+              {scan.analysis && (
+                <button
+                  onClick={handleShare}
+                  className="flex-1 py-3 bg-paper/10 text-paper font-medium rounded-lg hover:bg-paper/20 transition-colors"
+                >
+                  {t("history.share")}
+                </button>
+              )}
+              <TrackOnBallotButton
+                documentId={documentId}
+                linkedCount={linkedPropositions.length}
+                onLinked={() => refetchLinked()}
+              />
+            </div>
+          )}
 
           {/* Report & Delete */}
           <div className="px-4 pb-6 flex items-center justify-between">

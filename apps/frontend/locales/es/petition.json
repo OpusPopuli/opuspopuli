@@ -125,7 +125,11 @@
     "errorTitle": "Procesamiento Fallido",
     "backToHome": "Volver al Inicio",
     "tryAgain": "Escanear de Nuevo",
-    "copiedToClipboard": "Análisis copiado al portapapeles"
+    "copiedToClipboard": "Análisis copiado al portapapeles",
+    "notAPetitionTitle": "Esto no parece ser una petición",
+    "notAPetitionBody": "Leímos el documento y no parece una petición ni una medida electoral. Si crees que es un error, repórtalo abajo — de lo contrario, intenta escanear la petición misma.",
+    "unreadableTitle": "No pudimos leer suficiente de este documento",
+    "unreadableBody": "La foto no produjo suficiente texto legible para analizar. Intenta de nuevo con más luz, menos reflejos y la página completa en el encuadre."
   },
   "activityFeed": {
     "live": "En Vivo",
@@ -167,7 +171,9 @@
     "scanNotFound": "Escaneo no encontrado",
     "scanNotFoundDescription": "Este escaneo puede haber sido eliminado o no existe.",
     "share": "Compartir",
-    "delete": "Eliminar"
+    "delete": "Eliminar",
+    "notAPetition": "no es una petición",
+    "notAPetitionItem": "No es una petición"
   },
   "report": {
     "button": "Reportar Problema",

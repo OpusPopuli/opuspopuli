@@ -125,7 +125,11 @@
     "errorTitle": "Processing Failed",
     "backToHome": "Back to Home",
     "tryAgain": "Scan Again",
-    "copiedToClipboard": "Analysis copied to clipboard"
+    "copiedToClipboard": "Analysis copied to clipboard",
+    "notAPetitionTitle": "This doesn't appear to be a petition",
+    "notAPetitionBody": "We read the document, and it doesn't look like a petition or ballot measure. If you believe this is wrong, please report it below — otherwise try scanning the petition itself.",
+    "unreadableTitle": "We couldn't read enough of this document",
+    "unreadableBody": "The photo didn't yield enough legible text to analyze. Try again with more light, less glare, and the full page in frame."
   },
   "activityFeed": {
     "live": "Live",
@@ -167,7 +171,9 @@
     "scanNotFound": "Scan not found",
     "scanNotFoundDescription": "This scan may have been deleted or does not exist.",
     "share": "Share",
-    "delete": "Delete"
+    "delete": "Delete",
+    "notAPetition": "not a petition",
+    "notAPetitionItem": "Not a petition"
   },
   "report": {
     "button": "Report Issue",

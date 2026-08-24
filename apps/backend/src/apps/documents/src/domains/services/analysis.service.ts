@@ -15,6 +15,25 @@ import { parseAnalysisResponse } from '../prompts/document-analysis.prompt';
 import { LinkingService } from './linking.service';
 
 /**
+ * Closed skip-reason vocabulary of the non-petition gate (#1057). Never a
+ * free-text field: a bogus scan can be someone's personal letter, and a
+ * reason that echoed document text would leak it into logs and the shared
+ * analysis cache. Cross-repo contract with prompt-service's
+ * document-analysis-petition v2 template (prompt-service#107).
+ */
+type SkipReason = 'not_a_petition' | 'unreadable';
+
+/**
+ * Below this much extracted text there is nothing any analysis could
+ * defensibly say — skip the LLM call entirely and return the "unreadable"
+ * verdict (which invites a rescan). Deliberately tiny: a real petition
+ * sheet OCRs to hundreds of characters even from a bad photo, and a false
+ * "unreadable" on a genuine petition is the failure mode we must avoid
+ * (launch 2026-08-27). Petition scans only.
+ */
+const MIN_ANALYZABLE_TEXT_CHARS = 80;
+
+/**
  * Analysis Service
  *
  * Handles LLM-based document analysis with type-specific prompts.
@@ -93,6 +112,27 @@ export class AnalysisService {
     });
 
     try {
+      // Minimum-text pre-gate (#1057, petition scans only): don't pay for
+      // an LLM call that cannot defensibly say anything. Inside the try so
+      // a persistence failure flows through the same ai_analysis_failed
+      // path as every other failure; after the cache check so a cached
+      // verdict for the same content still short-circuits.
+      if (
+        document.type === 'petition' &&
+        document.extractedText.trim().length < MIN_ANALYZABLE_TEXT_CHARS
+      ) {
+        return await this.persistSkipVerdict(
+          documentId,
+          document.type,
+          'unreadable',
+          {
+            provider: 'documents-service',
+            model: 'min-text-gate',
+            processingTimeMs: Date.now() - startTime,
+          },
+        );
+      }
+
       const { promptText, promptHash, promptVersion } =
         await this.promptClient.getDocumentAnalysisPrompt({
           documentType: document.type,
@@ -107,6 +147,31 @@ export class AnalysisService {
       const processingTimeMs = Date.now() - startTime;
       const now = new Date().toISOString();
 
+      // Classification sentinel (#1057): the petition template's first job
+      // is deciding whether this IS a petition. The verdict is persisted
+      // like any analysis — cached by (contentHash, type), recoverable via
+      // forceReanalyze — but carries no fabricated analysis fields.
+      // Truthy check on purpose: a model emitting "true"/1 instead of true
+      // must not fall through to the full-analysis path, where a
+      // summary-less object would be persisted AND cached, hard-erroring
+      // the non-nullable GraphQL summary field for everyone with the same
+      // contentHash.
+      if (document.type === 'petition' && Boolean(parsed.skip)) {
+        return this.persistSkipVerdict(
+          documentId,
+          document.type,
+          parsed.reason === 'unreadable' ? 'unreadable' : 'not_a_petition',
+          {
+            provider: this.llm.getName(),
+            model: this.llm.getModelName(),
+            promptVersion,
+            promptHash,
+            tokensUsed: result.tokensUsed,
+            processingTimeMs,
+          },
+        );
+      }
+
       // Build source provenance (#423)
       const sources = this.buildAnalysisSources(document.type, now, parsed);
 
@@ -114,8 +179,17 @@ export class AnalysisService {
       const { completenessScore, completenessDetails } =
         this.calculateCompleteness(document.type, parsed);
 
+      // Never let model-supplied skip/reason keys leak into a persisted
+      // full analysis — `reason` is free text from the model on this path.
+      delete parsed.skip;
+      delete parsed.reason;
+
       const analysis = {
         ...parsed,
+        // Explicit positive verdict for petition scans; absent on other
+        // document types and on pre-#1057 cached analyses (both treated
+        // as petition-equivalent by consumers for compatibility).
+        ...(document.type === 'petition' && { isPetition: true }),
         documentType: document.type,
         analyzedAt: now,
         provider: this.llm.getName(),
@@ -149,18 +223,7 @@ export class AnalysisService {
         processingTimeMs / 1000,
       );
 
-      // Auto-match relatedMeasures to propositions for petition documents
-      if (
-        document.type === 'petition' &&
-        parsed.relatedMeasures &&
-        Array.isArray(parsed.relatedMeasures) &&
-        (parsed.relatedMeasures as string[]).length > 0
-      ) {
-        this.linkingService.matchAndLinkPropositionsSafely(
-          documentId,
-          parsed.relatedMeasures as string[],
-        );
-      }
+      this.autoLinkRelatedMeasures(documentId, document.type, parsed);
 
       return {
         analysis: analysis as unknown as DocumentAnalysis,
@@ -181,6 +244,83 @@ export class AnalysisService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Auto-match a petition analysis's relatedMeasures to propositions.
+   * Fire-and-forget: linking failures never fail the analysis.
+   */
+  private autoLinkRelatedMeasures(
+    documentId: string,
+    documentType: string,
+    parsed: Record<string, unknown>,
+  ): void {
+    if (documentType !== 'petition') return;
+    const measures = parsed.relatedMeasures;
+    if (!Array.isArray(measures) || measures.length === 0) return;
+    this.linkingService.matchAndLinkPropositionsSafely(
+      documentId,
+      measures as string[],
+    );
+  }
+
+  /**
+   * Persist a non-petition verdict (#1057) in place of an analysis.
+   *
+   * Shaped like an analysis on purpose: it lives in the same Json column,
+   * rides the same (contentHash, type) cache — the same menu scanned by
+   * anyone resolves instantly without an LLM call — and is replaced by a
+   * normal re-run via forceReanalyze if the classifier got it wrong. The
+   * required analysis fields are empty, never fabricated; skipReason is
+   * the closed enum only, so nothing from the document text can leak.
+   */
+  private async persistSkipVerdict(
+    documentId: string,
+    documentType: string,
+    skipReason: SkipReason,
+    provenance: {
+      provider: string;
+      model: string;
+      promptVersion?: string;
+      promptHash?: string;
+      tokensUsed?: number;
+      processingTimeMs: number;
+    },
+  ): Promise<AnalyzeDocumentResult> {
+    const verdict = {
+      isPetition: false,
+      skipReason,
+      documentType,
+      summary: '',
+      keyPoints: [],
+      entities: [],
+      analyzedAt: new Date().toISOString(),
+      ...provenance,
+    };
+
+    await this.db.document.update({
+      where: { id: documentId },
+      data: {
+        analysis: verdict as Prisma.InputJsonValue,
+        status: 'ai_analysis_complete',
+      },
+    });
+
+    this.logger.log(
+      `Non-petition verdict for document ${documentId}: ${skipReason} (${provenance.model})`,
+    );
+    this.metricsService.recordAnalysisCacheMiss('documents-service');
+    this.metricsService.recordAnalysis(
+      'documents-service',
+      documentType,
+      `skipped_${skipReason}`,
+      provenance.processingTimeMs / 1000,
+    );
+
+    return {
+      analysis: verdict as unknown as DocumentAnalysis,
+      fromCache: false,
+    };
   }
 
   /**

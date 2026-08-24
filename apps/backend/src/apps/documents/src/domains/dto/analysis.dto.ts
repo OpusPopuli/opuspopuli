@@ -61,6 +61,20 @@ export class DocumentAnalysis {
   @Field(() => DocumentType)
   documentType!: DocumentType;
 
+  /**
+   * Non-petition classification gate (#1057). For petition scans:
+   * true = analyzed as a genuine petition; false = the classifier (or the
+   * minimum-text pre-gate) determined this is not analyzable as a petition
+   * and the analysis fields below are empty. Absent = an analysis created
+   * before this gate existed — treat as a petition for compatibility.
+   */
+  @Field({ nullable: true })
+  isPetition?: boolean;
+
+  /** Closed enum when isPetition=false: "not_a_petition" | "unreadable". */
+  @Field({ nullable: true })
+  skipReason?: string;
+
   @Field()
   summary!: string;
 

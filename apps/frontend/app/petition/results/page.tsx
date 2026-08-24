@@ -23,6 +23,7 @@ import { TrackOnBallotButton } from "@/components/petition/TrackOnBallotButton";
 import { AnalysisDisplay } from "@/components/petition/AnalysisDisplay";
 import { PersonalizedImpact } from "@/components/petition/PersonalizedImpact";
 import { usePersonalizedImpact } from "@/components/petition/usePersonalizedImpact";
+import { NotAPetition } from "@/components/petition/NotAPetition";
 
 type ProcessingStep = "extracting" | "analyzing" | "complete" | "error";
 
@@ -51,9 +52,14 @@ export default function PetitionResultsPage() {
     GET_LINKED_PROPOSITIONS,
   );
 
+  // Non-petition verdict (#1057): the classifier decided this scan is not
+  // analyzable as a petition — the rejection state replaces the analysis,
+  // and nothing downstream (personalization, share, track) should run.
+  const notAPetition = analysis?.isPetition === false;
+
   const personalizedImpact = usePersonalizedImpact(
     documentId,
-    step === "complete",
+    step === "complete" && !notAPetition,
   );
 
   const runPipeline = useCallback(
@@ -210,9 +216,14 @@ export default function PetitionResultsPage() {
         </div>
       )}
 
+      {/* Non-petition verdict — honest rejection instead of analysis. */}
+      {analysis && notAPetition && (
+        <NotAPetition skipReason={analysis.skipReason} />
+      )}
+
       {/* Analysis Display — the personalized read LEADS (#1052); the
           generic analysis below is always the fallback. */}
-      {analysis && (
+      {analysis && !notAPetition && (
         <section className="px-4 py-6 space-y-6">
           <PersonalizedImpact {...personalizedImpact} />
           <AnalysisDisplay
@@ -223,8 +234,10 @@ export default function PetitionResultsPage() {
         </section>
       )}
 
-      {/* Action Buttons */}
-      {step === "complete" && (
+      {/* Action Buttons — never for a rejected scan; there is nothing to
+          share or track. Report-issue below stays: it is the escape hatch
+          when the classifier wrongly rejects a real petition. */}
+      {step === "complete" && !notAPetition && (
         <div className="px-4 py-6 flex gap-3">
           <button
             onClick={handleShare}
