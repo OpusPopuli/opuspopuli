@@ -76,16 +76,29 @@ export class RankingFlagsService {
       flags.isStudent = signal.studentLevel != null;
       flags.isEducator = signal.educator === true;
 
+      // Every employment status the onboarding UI offers except "retired"
+      // means the user works (#1027 — the old set shared only
+      // business_owner with the UI vocabulary, so 100% of employed users
+      // had isWorker: false). Keep in lockstep with
+      // apps/frontend/lib/personalization/vocab.ts `employmentStatus`
+      // options — the spec pins every UI value. The precise legacy values
+      // (w2/1099/self_employed) are kept for any historical rows.
       const workerStatuses = new Set([
+        'employed',
+        'gig',
+        'business_owner',
         'w2',
         '1099',
         'self_employed',
-        'business_owner',
       ]);
       flags.isWorker = workerStatuses.has(signal.employmentStatus ?? '');
       flags.isBusinessOwner = signal.employmentStatus === 'business_owner';
       flags.isUnionMember = signal.unionMember === true;
-      flags.isGigWorker = signal.gigWorker === true;
+      // "gig" as an employment status implies gig work even when the
+      // separate boolean was never set — selecting it in onboarding
+      // previously set no flag at all (#1027).
+      flags.isGigWorker =
+        signal.gigWorker === true || signal.employmentStatus === 'gig';
       flags.isTransitRider = signal.primaryTransitMode === 'transit';
       flags.isDriver =
         signal.vehicleTypes.length > 0 &&
