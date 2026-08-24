@@ -253,7 +253,7 @@ export function AnalysisDisplay({
             {analysis.entities.map((entity) => (
               <span
                 key={entity}
-                className="bg-inverse-surface text-on-inverse px-3 py-1 rounded-full text-sm"
+                className="text-paper border border-paper/25 px-3 py-1 rounded-full text-sm"
               >
                 {entity}
               </span>
@@ -269,7 +269,7 @@ export function AnalysisDisplay({
             {t("results.dataCompleteness")}
           </h3>
           <div className="flex items-center gap-3 mb-2">
-            <div className="flex-1 bg-inverse-surface rounded-full h-2.5">
+            <div className="flex-1 bg-paper/15 rounded-full h-2.5">
               <div
                 className={`h-2.5 rounded-full ${getCompletenessBarColor(analysis.completenessScore)}`}
                 style={{ width: `${analysis.completenessScore}%` }}
@@ -339,17 +339,11 @@ export function AnalysisDisplay({
               return (
                 <div
                   key={source.name}
-                  className="flex items-center justify-between bg-inverse-surface rounded-lg px-3 py-2"
+                  className="flex items-center justify-between rounded-lg px-3 py-2 border border-paper/20"
                 >
                   <div className="flex-1 min-w-0">
-                    {/* bg-inverse-surface flips to light paper on the petition
-                        pinned-dark surface, so text must be on-inverse (dark),
-                        matching the extracted-text box and entity chips above.
-                        text-content-dim renders light here → invisible. */}
-                    <p className="text-sm text-on-inverse truncate">
-                      {source.name}
-                    </p>
-                    <p className="text-sm text-on-inverse/70">
+                    <p className="text-sm text-paper truncate">{source.name}</p>
+                    <p className="text-sm text-content-dim">
                       {t("results.sourceAccessedAt", {
                         date: accessedDate.toLocaleDateString(),
                       })}
