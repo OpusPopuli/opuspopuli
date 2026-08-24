@@ -1,5 +1,14 @@
 import { Field, Float, InputType, Int, ObjectType } from '@nestjs/graphql';
-import { IsUUID, IsNumber, IsOptional, Min, Max } from 'class-validator';
+import {
+  IsUUID,
+  IsNumber,
+  IsOptional,
+  Min,
+  Max,
+  IsDefined,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 /**
  * Geographic coordinate types for location tracking
@@ -40,6 +49,14 @@ export class SetDocumentLocationInput {
   documentId!: string;
 
   @Field(() => GeoLocationInput)
+  // The three decorators below are load-bearing, not boilerplate: the
+  // global ValidationPipe runs whitelist:true, which strips any property
+  // carrying no class-validator metadata — @Field alone contributes none.
+  // Without them, `location` arrived undefined in the resolver (TypeError
+  // reading 'latitude') and every scan-location save failed silently.
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => GeoLocationInput)
   location!: GeoLocationInput;
 }
 
