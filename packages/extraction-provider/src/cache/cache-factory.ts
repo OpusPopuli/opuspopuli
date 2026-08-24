@@ -32,8 +32,15 @@ export type CacheProvider = "memory" | "redis";
 export interface CacheFactoryConfig {
   /** Cache provider to use */
   provider: CacheProvider;
-  /** Redis URL (required for redis provider) */
+  /** Redis URL for the CACHE (required for redis provider) */
   redisUrl?: string;
+  /**
+   * Redis URL for the RATE LIMITER. The #725 split matters here: the cache
+   * instance runs allkeys-lru, where an evicted token bucket silently
+   * resets the limit — the limiter must live on the noeviction queue
+   * instance. Falls back to `redisUrl` when unset.
+   */
+  rateLimiterRedisUrl?: string;
   /** Cache options */
   cacheOptions?: CacheOptions;
   /** Rate limit options */
@@ -80,10 +87,11 @@ export class CacheFactory {
    * Create a rate limiter instance based on configuration
    */
   static createRateLimiter(config: CacheFactoryConfig): IRateLimiter {
-    if (config.provider === "redis" && config.redisUrl) {
+    const limiterUrl = config.rateLimiterRedisUrl ?? config.redisUrl;
+    if (config.provider === "redis" && limiterUrl) {
       try {
         const redisOptions: RedisRateLimiterOptions = {
-          url: config.redisUrl,
+          url: limiterUrl,
           key: config.rateLimiterKey ?? "ratelimit:extraction",
           ...config.rateLimitOptions,
         };
@@ -126,15 +134,37 @@ export class CacheFactory {
   }
 
   /**
-   * Create default configuration from environment
+   * Get Redis URL for the RATE LIMITER from environment.
+   *
+   * Deliberately the reverse preference of getRedisUrlFromEnv: the token
+   * bucket must live on the noeviction queue instance (REDIS_URL) — on the
+   * allkeys-lru cache instance an evicted bucket silently resets the
+   * limit. Falls back to the cache instance only when the queue URL is
+   * absent (better shared-with-eviction-risk than per-process memory).
+   */
+  static getRateLimiterRedisUrlFromEnv(): string | undefined {
+    return process.env.REDIS_URL ?? process.env.REDIS_CACHE_URL;
+  }
+
+  /**
+   * Create default configuration from environment.
+   *
+   * The spread comes FIRST on purpose (#862): overrides objects routinely
+   * carry explicit-undefined keys (e.g. `{ provider: config?.cacheProvider }`
+   * where the caller passed no config), and a trailing spread re-clobbered
+   * the env-resolved values with undefined — which silently downgraded the
+   * ExtractionProvider's cache and rate limiter to per-process memory in
+   * production even with REDIS_URL set.
    */
   static createConfigFromEnv(
     overrides?: Partial<CacheFactoryConfig>,
   ): CacheFactoryConfig {
     return {
+      ...overrides,
       provider: overrides?.provider ?? this.getProviderFromEnv(),
       redisUrl: overrides?.redisUrl ?? this.getRedisUrlFromEnv(),
-      ...overrides,
+      rateLimiterRedisUrl:
+        overrides?.rateLimiterRedisUrl ?? this.getRateLimiterRedisUrlFromEnv(),
     };
   }
 }
