@@ -39,7 +39,10 @@ playwright/.cache/
 .DS_Store
 
 # Claude Code per-project state (worktrees, tool results, local settings)
-# settings.json (team config) can be force-added if needed: git add -f .claude/settings.json
+# Team config here is force-added deliberately: settings.json (marketplace + enabled plugins) and
+# compliance-profile.yaml (which control families apply to this repo — an auditable declaration,
+# so it must be in the repo, not a local-only file):
+#   git add -f .claude/settings.json .claude/compliance-profile.yaml
 .claude/
 tmp/
 

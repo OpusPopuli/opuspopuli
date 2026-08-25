@@ -1,0 +1,24 @@
+# Compliance profile for the Opus Populi monorepo.
+#
+# Declares which framework families from the opuspopuli-sdlc control registry apply to this repo.
+# Controls whose family is not listed here are INERT: no gate, no scan category, no evidence
+# obligation. See controls/README.md in OpusPopuli/opuspopuli-sdlc.
+#
+# Why these two:
+#   us-state-privacy — Opus Populi is civic tech. It processes California personal information
+#                      (accounts, petition signatures, civic engagement records), so the CCPA/CPRA
+#                      controls and the ca-personal-information scan categories are active.
+#   soc2             — change management applies to any repo shipping to production.
+#
+# Deliberately NOT declared:
+#   hipaa, part11, gxp-csa, iso-medical — Opus Populi handles no PHI and is not a regulated medical
+#   or GxP system. The plugin carries those controls; this repo does not activate them. Claiming
+#   them would be an overclaim, and leaving this file absent was worse: with no profile declared the
+#   SDLC defaults to the strict PHI/PII scan lens, which mis-describes what this repo actually holds.
+version: 1
+repo: opuspopuli
+families:
+  - us-state-privacy
+  - soc2
+applicability:
+  - ca-personal-information
