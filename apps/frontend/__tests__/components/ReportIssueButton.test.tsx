@@ -62,6 +62,35 @@ describe("ReportIssueButton", () => {
     expect(screen.getByText("report.reasons.other")).toBeInTheDocument();
   });
 
+  /**
+   * Regression pin for #1069.
+   *
+   * The panel was `bg-inverse-surface` with a `text-paper` heading. `text-paper`
+   * is a FIXED brand constant, but `.on-fixed-dark` (the petition/scan surface)
+   * re-points `--color-inverse-surface` to paper — so the heading rendered
+   * paper-on-paper at 1:1 and the title was invisible wherever this button is
+   * used on a scan.
+   *
+   * The fix is `.on-ink`, which remaps the semantic tokens inside the panel so
+   * nested utilities invert with it. The token-level invariant lives in
+   * e2e/design-tokens.spec.ts; this pins the usage, which no token assertion
+   * can see. Do not reintroduce a fixed `text-paper`/`text-ink` here.
+   */
+  it("should render the panel as an on-ink surface, not a fixed paper pair", async () => {
+    const user = userEvent.setup();
+    render(<ReportIssueButton documentId="doc-123" />);
+
+    await user.click(screen.getByText("report.button"));
+
+    const heading = screen.getByText("report.title");
+    const panel = heading.closest("div");
+
+    expect(panel).toHaveClass("on-ink");
+    expect(heading).toHaveClass("text-content");
+    expect(heading.className).not.toMatch(/\btext-paper\b/);
+    expect(panel?.className).not.toMatch(/\bbg-inverse-surface\b/);
+  });
+
   it("should have submit button disabled until a reason is selected", async () => {
     const user = userEvent.setup();
     render(<ReportIssueButton documentId="doc-123" />);

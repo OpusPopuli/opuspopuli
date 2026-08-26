@@ -152,7 +152,11 @@ export function TrackOnBallotButton({
                 className="w-full text-left px-3 py-2 hover:bg-paper/10 transition-colors border-t border-paper/15"
               >
                 <p className="text-sm text-paper truncate">{prop.title}</p>
-                <p className="text-sm text-content-dim">
+                {/* paper/70, not content-dim: this dropdown is a literal
+                    `bg-ink` overlay in every theme and on every surface, so
+                    its text must use the FIXED paper ramp. A theme-relative
+                    token resolves to dark grey on a light page surface. */}
+                <p className="text-sm text-paper/70">
                   {prop.externalId} &middot; {prop.status}
                 </p>
               </button>

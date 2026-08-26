@@ -136,4 +136,67 @@ test.describe("Design tokens — contrast invariants", () => {
       ).toEqual([]);
     });
   }
+
+  /**
+   * Second escape class, found in #1069.
+   *
+   * `--color-paper` / `--color-ink` are FIXED brand constants: they never flip.
+   * `--color-inverse-surface` is theme-relative and, under `.on-fixed-dark`, is
+   * re-pointed to paper. So `text-paper` on `bg-inverse-surface` — which reads
+   * as an obviously safe "light text on a dark panel" pair — rendered paper on
+   * paper at 1:1 on the scan surface, making the report-issue panel's heading
+   * invisible.
+   *
+   * The tuple check above cannot catch this: neither token is a status ramp.
+   * What this pins is the invariant the correct code relies on — a panel
+   * token contrasts with its OWN partner (`--color-on-inverse`) in every
+   * scope, which is what makes `.on-ink` a safe fix.
+   *
+   * Note the limit: reaching for a fixed constant instead is a USAGE bug, and
+   * no token-level assertion can see it. That half is pinned where it happens,
+   * in the ReportIssueButton spec.
+   */
+  for (const scope of SCOPES) {
+    test(`${scope.name}: inverse-surface pairs with on-inverse, not the fixed ramp`, async ({
+      page,
+    }) => {
+      await page.goto("/login");
+
+      const resolved = await page.evaluate(
+        ({ dark, className }) => {
+          const root = document.documentElement;
+          const hadDark = root.classList.contains("dark");
+          root.classList.toggle("dark", dark);
+
+          const el = document.createElement("div");
+          if (className) el.className = className;
+          document.body.appendChild(el);
+
+          const cs = getComputedStyle(el);
+          const read = (name: string) => cs.getPropertyValue(name).trim();
+
+          const out = {
+            inverseSurface: read("--color-inverse-surface"),
+            onInverse: read("--color-on-inverse"),
+          };
+
+          el.remove();
+          root.classList.toggle("dark", hadDark);
+          return out;
+        },
+        { dark: scope.dark, className: scope.className },
+      );
+
+      for (const [name, value] of Object.entries(resolved)) {
+        expect(value, `--color-${name} unset in ${scope.name}`).not.toBe("");
+      }
+
+      // The sanctioned pair must always be legible.
+      expect(
+        contrastRatio(resolved.onInverse, resolved.inverseSurface),
+        `on-inverse ${resolved.onInverse} on inverse-surface ` +
+          `${resolved.inverseSurface} in "${scope.name}"`,
+      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+    });
+  }
 });

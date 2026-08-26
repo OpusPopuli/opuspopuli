@@ -97,7 +97,7 @@ export function AnalysisDisplay({
 
       {/* Summary */}
       <div>
-        <h2 className="text-lg font-semibold text-paper mb-2">
+        <h2 className="text-lg font-semibold text-content mb-2">
           {t("results.summary")}
         </h2>
         <p className="text-content-dim leading-relaxed">{analysis.summary}</p>
@@ -106,7 +106,7 @@ export function AnalysisDisplay({
       {/* Key Points */}
       {analysis.keyPoints.length > 0 && (
         <div>
-          <h3 className="text-md font-semibold text-paper mb-2">
+          <h3 className="text-md font-semibold text-content mb-2">
             {t("results.keyPoints")}
           </h3>
           <ul className="space-y-2">
@@ -126,7 +126,7 @@ export function AnalysisDisplay({
       {/* Actual Effect */}
       {analysis.actualEffect && (
         <div>
-          <h3 className="text-md font-semibold text-paper mb-2">
+          <h3 className="text-md font-semibold text-content mb-2">
             {t("results.actualEffect")}
           </h3>
           <p className="text-content-dim">{analysis.actualEffect}</p>
@@ -253,7 +253,7 @@ export function AnalysisDisplay({
             {analysis.entities.map((entity) => (
               <span
                 key={entity}
-                className="text-paper border border-paper/25 px-3 py-1 rounded-full text-sm"
+                className="text-content border border-line px-3 py-1 rounded-full text-sm"
               >
                 {entity}
               </span>
@@ -269,7 +269,7 @@ export function AnalysisDisplay({
             {t("results.dataCompleteness")}
           </h3>
           <div className="flex items-center gap-3 mb-2">
-            <div className="flex-1 bg-paper/15 rounded-full h-2.5">
+            <div className="flex-1 bg-surface-alt rounded-full h-2.5">
               <div
                 className={`h-2.5 rounded-full ${getCompletenessBarColor(analysis.completenessScore)}`}
                 style={{ width: `${analysis.completenessScore}%` }}
@@ -339,10 +339,12 @@ export function AnalysisDisplay({
               return (
                 <div
                   key={source.name}
-                  className="flex items-center justify-between rounded-lg px-3 py-2 border border-paper/20"
+                  className="flex items-center justify-between rounded-lg px-3 py-2 border border-line"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-paper truncate">{source.name}</p>
+                    <p className="text-sm text-content truncate">
+                      {source.name}
+                    </p>
                     <p className="text-sm text-content-dim">
                       {t("results.sourceAccessedAt", {
                         date: accessedDate.toLocaleDateString(),
