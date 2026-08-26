@@ -522,5 +522,38 @@
       "revokeAllSuccess": "{{count}} sesiones revocadas",
       "revokeAllConfirm": "Estas seguro de que quieres revocar todas las otras sesiones? Tendras que iniciar sesion de nuevo en esos dispositivos."
     }
+  },
+  "scans": {
+    "title": "Mis Escaneos",
+    "subtitle": "Consulta y administra tus escaneos de peticiones",
+    "subtitleCount_one": "{{count}} escaneo",
+    "subtitleCount_other": "{{count}} escaneos",
+    "search": "Buscar escaneos",
+    "startDate": "Fecha de inicio",
+    "endDate": "Fecha de fin",
+    "clearFilters": "Borrar filtros",
+    "loadError": "Error al cargar tus escaneos. Por favor, inténtalo de nuevo.",
+    "noScans": "Aún no hay escaneos",
+    "noScansDescription": "Escanea una petición y aparecerá aquí.",
+    "noSearchResults": "Ningún escaneo coincide con tu búsqueda",
+    "scanAgain": "Escanear una Petición",
+    "analyzed": "Analizado",
+    "pending": "Pendiente",
+    "failed": "Fallido",
+    "notAPetition": "No es una petición",
+    "notAPetitionItem": "No es una petición",
+    "confidence": "{{value}}% de confianza",
+    "viewDetail": "Ver detalles del escaneo",
+    "deleteScan": "Eliminar escaneo",
+    "deleteConfirm": "¿Eliminar este escaneo? Esta acción no se puede deshacer.",
+    "delete": "Eliminar",
+    "cancel": "Cancelar",
+    "deleteAllTitle": "Eliminar todos los escaneos",
+    "deleteAllDescription": "Elimina todos los escaneos de tu historial. Esta acción no se puede deshacer.",
+    "deleteAllScans": "Eliminar Todos los Escaneos",
+    "deleteAllConfirm": "¿Eliminar todos tus escaneos? Esta acción no se puede deshacer.",
+    "showing": "Mostrando {{from}}-{{to}} de {{total}}",
+    "previous": "Anterior",
+    "next": "Siguiente"
   }
 }
