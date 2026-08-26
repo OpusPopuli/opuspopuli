@@ -59,7 +59,7 @@ function StatusIcon({ status }: { readonly status: StatusKey }) {
     pending: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
     notAPetition:
       "M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z",
-    failed: "M10 14L21 3M6 6l12 12M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5",
+    failed: "M9 9l6 6m0-6l-6 6m10-3a9 9 0 11-18 0 9 9 0 0118 0z",
   };
   return (
     <svg
@@ -210,9 +210,18 @@ export default function SettingsScansPage() {
   const hasMore = data?.myScanHistory?.hasMore ?? false;
 
   const handleDelete = async (documentId: string) => {
+    // Deleting the only row on a trailing page would otherwise leave the user
+    // on an empty page: `total` drops to a single page's worth, the pagination
+    // block hides, and the empty state claims there are no scans at all. Step
+    // back a page instead — the state change refetches on its own.
+    const wasLastOnTrailingPage = items.length === 1 && page > 0;
     await softDeleteScan({ variables: { documentId } });
     setDeleteConfirmId(null);
-    refetch();
+    if (wasLastOnTrailingPage) {
+      setPage((p) => p - 1);
+    } else {
+      refetch();
+    }
   };
 
   const handleDeleteAll = async () => {
@@ -341,7 +350,9 @@ export default function SettingsScansPage() {
                 ))}
               </div>
 
-              {total > PAGE_SIZE && (
+              {/* `page > 0` keeps Previous reachable even if the total shrinks
+                  below one page while the user is on a trailing page. */}
+              {(total > PAGE_SIZE || page > 0) && (
                 <div className="flex items-center justify-between mt-6 pt-4 border-t border-line">
                   <p className="text-sm text-content-dim">
                     {t("scans.showing", {

@@ -190,6 +190,21 @@ describe("SettingsScansPage", () => {
     expect(screen.getByText("scans.showing")).toBeInTheDocument();
   });
 
+  /**
+   * Guards the `page > 0` half of the pagination condition. Without it, a user
+   * who deletes the last row on a trailing page loses the controls entirely:
+   * total drops below one page, the block hides, and the empty state claims
+   * there are no scans at all.
+   */
+  it("keeps Previous reachable once past the first page", () => {
+    setQuery(mockItems, { total: 24, hasMore: true });
+    render(<SettingsScansPage />);
+
+    fireEvent.click(screen.getByText("scans.next"));
+
+    expect(screen.getByText("scans.previous")).toBeEnabled();
+  });
+
   it("confirms before deleting a single scan", async () => {
     render(<SettingsScansPage />);
 
