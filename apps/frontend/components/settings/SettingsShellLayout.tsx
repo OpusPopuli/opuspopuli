@@ -88,25 +88,30 @@ export function SettingsShellLayout({
         </svg>
       ),
     },
-    {
-      href: "/settings/notifications",
-      label: t("nav.notifications"),
-      icon: (
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-          />
-        </svg>
-      ),
-    },
+    // Notifications is hidden from the nav on purpose — the page renders
+    // empty for users today, so linking to it promises a surface that isn't
+    // there yet. Nothing else is removed: `/settings/notifications`, its 493-line
+    // page, the `nav.notifications` strings and the preference mutations are all
+    // still in place, so restoring this is just un-commenting the entry below.
+    // {
+    //   href: "/settings/notifications",
+    //   label: t("nav.notifications"),
+    //   icon: (
+    //     <svg
+    //       className="w-5 h-5"
+    //       fill="none"
+    //       stroke="currentColor"
+    //       viewBox="0 0 24 24"
+    //     >
+    //       <path
+    //         strokeLinecap="round"
+    //         strokeLinejoin="round"
+    //         strokeWidth={2}
+    //         d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+    //       />
+    //     </svg>
+    //   ),
+    // },
     {
       href: "/settings/privacy",
       label: t("nav.privacy"),
