@@ -153,10 +153,10 @@ async function setupAuthAndMocks(page: import("@playwright/test").Page) {
   });
 }
 
-test.describe("Petition History", () => {
+test.describe("My Scans (settings)", () => {
   test("should display scan history list", async ({ page }) => {
     await setupAuthAndMocks(page);
-    await page.goto("/petition/history");
+    await page.goto("/settings/scans");
 
     await expect(
       page.getByText("Reform criminal sentencing guidelines"),
@@ -206,14 +206,14 @@ test.describe("Petition History", () => {
       });
     });
 
-    await page.goto("/petition/history");
+    await page.goto("/settings/scans");
 
     await expect(page.getByText(/no scans/i)).toBeVisible({ timeout: 15000 });
   });
 
   test("should navigate from history to scan detail", async ({ page }) => {
     await setupAuthAndMocks(page);
-    await page.goto("/petition/history");
+    await page.goto("/settings/scans");
 
     await expect(
       page.getByText("Reform criminal sentencing guidelines"),
@@ -231,7 +231,7 @@ test.describe("Petition History", () => {
 
   test("should show delete confirmation dialog", async ({ page }) => {
     await setupAuthAndMocks(page);
-    await page.goto("/petition/history");
+    await page.goto("/settings/scans");
 
     await expect(
       page.getByText("Reform criminal sentencing guidelines"),
@@ -242,22 +242,24 @@ test.describe("Petition History", () => {
       .first()
       .click();
 
-    await expect(page.getByText(/are you sure/i)).toBeVisible();
+    await expect(page.getByRole("dialog")).toBeVisible();
   });
 
-  test("should navigate from petition home to history", async ({ page }) => {
+  test("should navigate from petition home to the settings scans list", async ({
+    page,
+  }) => {
     await setupAuthAndMocks(page);
     await page.goto("/petition");
 
     await expect(page.getByText("My Scans")).toBeVisible({ timeout: 15000 });
     await page.getByText("My Scans").click();
 
-    await expect(page).toHaveURL(/\/petition\/history/);
+    await expect(page).toHaveURL(/\/settings\/scans/);
   });
 
   test("accessibility: history list page meets WCAG AA", async ({ page }) => {
     await setupAuthAndMocks(page);
-    await page.goto("/petition/history");
+    await page.goto("/settings/scans");
 
     await expect(
       page.getByText("Reform criminal sentencing guidelines"),
@@ -273,7 +275,7 @@ test.describe("Petition History", () => {
 
   test("should execute delete after confirmation", async ({ page }) => {
     await setupAuthAndMocks(page);
-    await page.goto("/petition/history");
+    await page.goto("/settings/scans");
 
     await expect(
       page.getByText("Reform criminal sentencing guidelines"),
@@ -284,7 +286,7 @@ test.describe("Petition History", () => {
       .first()
       .click();
 
-    await expect(page.getByText(/are you sure/i)).toBeVisible();
+    await expect(page.getByRole("dialog")).toBeVisible();
 
     // Click delete confirmation button
     await page
@@ -293,12 +295,12 @@ test.describe("Petition History", () => {
       .click();
 
     // Dialog should close
-    await expect(page.getByText(/are you sure/i)).not.toBeVisible();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
   });
 
   test("should filter history with search input", async ({ page }) => {
     await setupAuthAndMocks(page);
-    await page.goto("/petition/history");
+    await page.goto("/settings/scans");
 
     await expect(
       page.getByText("Reform criminal sentencing guidelines"),
@@ -316,7 +318,7 @@ test.describe("Petition History", () => {
 
   test("accessibility: scan detail page meets WCAG AA", async ({ page }) => {
     await setupAuthAndMocks(page);
-    await page.goto("/petition/history/doc-1");
+    await page.goto("/settings/scans/doc-1");
 
     await expect(
       page.getByText("This petition seeks to reform criminal sentencing."),
@@ -328,5 +330,30 @@ test.describe("Petition History", () => {
       .analyze();
 
     expect(results.violations).toEqual([]);
+  });
+
+  /**
+   * The old /petition/history routes are kept as redirects (#1069): scan links
+   * have been shared, and installed PWAs have the old shell cached, so a 404
+   * would strand users who are entitled to the page.
+   */
+  test("redirects the old history list to the settings list", async ({
+    page,
+  }) => {
+    await setupAuthAndMocks(page);
+    await page.goto("/petition/history");
+
+    await expect(page).toHaveURL(/\/settings\/scans$/, { timeout: 15000 });
+  });
+
+  test("redirects an old scan link to the same scan, not just the list", async ({
+    page,
+  }) => {
+    await setupAuthAndMocks(page);
+    await page.goto("/petition/history/doc-1");
+
+    await expect(page).toHaveURL(/\/settings\/scans\/doc-1$/, {
+      timeout: 15000,
+    });
   });
 });

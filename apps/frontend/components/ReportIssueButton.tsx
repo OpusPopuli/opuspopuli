@@ -138,8 +138,13 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full right-0 mb-2 w-72 bg-inverse-surface border border-line rounded-lg p-4 z-20">
-          <h3 className="text-sm font-semibold text-paper mb-3">
+        // `on-ink` remaps the semantic tokens inside, so every nested utility
+        // (content, content-dim, line) inverts with the panel. Without it the
+        // heading was `text-paper` — a FIXED constant — on
+        // `bg-inverse-surface`, which `.on-fixed-dark` remaps to paper: paper
+        // text on a paper panel, invisible on the scan surface.
+        <div className="absolute bottom-full right-0 mb-2 w-72 bg-surface on-ink border border-line rounded-lg p-4 z-20">
+          <h3 className="text-sm font-semibold text-content mb-3">
             {t("report.title")}
           </h3>
 
@@ -168,7 +173,7 @@ export function ReportIssueButton({ documentId }: ReportIssueButtonProps) {
             placeholder={t("report.descriptionPlaceholder")}
             maxLength={1000}
             rows={2}
-            className="w-full bg-inverse-surface text-on-inverse rounded p-2 text-sm border border-line focus:border-accent focus:ring-1 focus:ring-accent outline-none resize-none mb-3"
+            className="w-full bg-surface-alt text-content rounded p-2 text-sm border border-line focus:border-accent focus:ring-1 focus:ring-accent outline-none resize-none mb-3"
           />
 
           <button

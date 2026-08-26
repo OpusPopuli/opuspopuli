@@ -45,7 +45,7 @@ export function NotAPetition({
       </svg>
       <h2
         id="not-a-petition-title"
-        className="mb-2 text-xl font-semibold text-paper"
+        className="mb-2 text-xl font-semibold text-content"
       >
         {t(`results.${variant}Title`)}
       </h2>
