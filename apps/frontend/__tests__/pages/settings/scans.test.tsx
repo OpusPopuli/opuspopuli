@@ -92,9 +92,21 @@ const mockItems = [
   },
 ];
 
+interface QueryOverrides {
+  total?: number;
+  hasMore?: boolean;
+  loading?: boolean;
+  error?: unknown;
+}
+
 function setQuery(
   items: unknown[],
-  { total = items.length, hasMore = false, loading = false, error = null } = {},
+  {
+    total = items.length,
+    hasMore = false,
+    loading = false,
+    error = null,
+  }: QueryOverrides = {},
 ) {
   mockQueryResult = {
     data: { myScanHistory: { items, total, hasMore } },

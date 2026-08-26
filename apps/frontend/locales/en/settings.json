@@ -554,6 +554,13 @@
     "deleteAllConfirm": "Delete all of your scans? This cannot be undone.",
     "showing": "Showing {{from}}-{{to}} of {{total}}",
     "previous": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "backToList": "Back to My Scans",
+    "detailTitle": "Scan Details",
+    "scannedAt": "Scanned {{date}}",
+    "share": "Share",
+    "scanNotFound": "Scan not found",
+    "scanNotFoundDescription": "This scan may have been deleted, or it never existed.",
+    "ocrProvider": "Text recognition: {{provider}}"
   }
 }

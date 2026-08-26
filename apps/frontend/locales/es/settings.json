@@ -554,6 +554,13 @@
     "deleteAllConfirm": "¿Eliminar todos tus escaneos? Esta acción no se puede deshacer.",
     "showing": "Mostrando {{from}}-{{to}} de {{total}}",
     "previous": "Anterior",
-    "next": "Siguiente"
+    "next": "Siguiente",
+    "backToList": "Volver a Mis Escaneos",
+    "detailTitle": "Detalles del Escaneo",
+    "scannedAt": "Escaneado el {{date}}",
+    "share": "Compartir",
+    "scanNotFound": "Escaneo no encontrado",
+    "scanNotFoundDescription": "Es posible que este escaneo se haya eliminado o que nunca haya existido.",
+    "ocrProvider": "Reconocimiento de texto: {{provider}}"
   }
 }
