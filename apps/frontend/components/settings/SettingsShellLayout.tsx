@@ -170,11 +170,7 @@ export function SettingsShellLayout({
       ),
     },
     {
-      // Lives under /petition (the scanner surface), not /settings — this
-      // entry exists so scan history is reachable without going through
-      // the ScanFab flow. ?from=settings makes the petition header's back
-      // arrow return HERE rather than to the camera home.
-      href: "/petition/history?from=settings",
+      href: "/settings/scans",
       label: t("nav.myScans"),
       icon: (
         <svg

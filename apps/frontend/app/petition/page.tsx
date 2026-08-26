@@ -54,7 +54,7 @@ export default function PetitionPage() {
 
           <div className="mt-4 flex items-center gap-2">
             <Link
-              href="/petition/history"
+              href="/settings/scans"
               className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-content-dim transition-colors hover:border-accent hover:text-content"
             >
               {t("home.myScans")}

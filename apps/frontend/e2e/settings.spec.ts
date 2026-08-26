@@ -258,6 +258,42 @@ async function mockSettingsGraphQL(page: import("@playwright/test").Page) {
   });
 }
 
+test.describe("Settings navigation", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockSettingsGraphQL(page);
+  });
+
+  /**
+   * Regression guard for #1069.
+   *
+   * My Scans used to link to `/petition/history?from=settings`. `isActive`
+   * compares against `pathname`, which never carries a query string, so this
+   * was the one nav item that could never render as active. Now that it points
+   * at a real /settings route, it highlights like every other item.
+   */
+  test("marks My Scans as the active nav item on its own page", async ({
+    page,
+  }) => {
+    await page.goto("/settings/scans");
+
+    const myScans = page.getByRole("link", { name: /my scans/i });
+    await expect(myScans).toBeVisible({ timeout: 15000 });
+    await expect(myScans).toHaveAttribute("href", "/settings/scans");
+    // Active items take the inverse fill; inactive ones are dim text only.
+    await expect(myScans).toHaveClass(/bg-inverse-surface/);
+  });
+
+  test("does not offer Notifications while its page is empty", async ({
+    page,
+  }) => {
+    await page.goto("/settings");
+
+    await expect(
+      page.getByRole("link", { name: /^notifications$/i }),
+    ).toHaveCount(0);
+  });
+});
+
 test.describe("Profile Settings Page", () => {
   test.beforeEach(async ({ page }) => {
     await mockSettingsGraphQL(page);
@@ -555,9 +591,16 @@ test.describe("Notifications Settings Page", () => {
   test("should display notifications page", async ({ page }) => {
     await page.goto("/settings/notifications");
 
-    // Page should load - check sidebar navigation
+    // The route and page are still live; only the nav entry is hidden (#1069),
+    // so this can no longer wait on a "Notifications" sidebar link. It also
+    // cannot wait on the page's own heading: mockSettingsGraphQL does not stub
+    // the preferences query, so the page renders its loading/error branch —
+    // which is exactly the emptiness that motivated hiding the nav entry.
+    // Assert the shell rendered, which is what this test always meant.
     await expect(
-      page.getByRole("link", { name: "Notifications" }),
+      page
+        .getByRole("navigation")
+        .getByRole("heading", { name: /^settings$/i }),
     ).toBeVisible();
   });
 
@@ -592,9 +635,11 @@ test.describe("Notifications Settings Page", () => {
 
   test("should have no WCAG 2.2 AA violations", async ({ page }) => {
     await page.goto("/settings/notifications");
-    // Wait for page to load (sidebar is always visible)
+    // See above: the sidebar entry is hidden, so wait on the shell instead.
     await expect(
-      page.getByRole("link", { name: "Notifications" }),
+      page
+        .getByRole("navigation")
+        .getByRole("heading", { name: /^settings$/i }),
     ).toBeVisible();
 
     const violations = await checkAccessibility(page);
@@ -746,7 +791,10 @@ test.describe("Settings - Error Handling", () => {
 
     await page.goto("/settings");
 
-    await expect(page.getByText(/Failed|Error|load/i)).toBeVisible();
+    // Was /Failed|Error|load/i, which is loose enough to also catch a lingering
+    // "Loading..." skeleton and then trip Playwright's strict mode with two
+    // matches. Assert the actual error copy the page renders instead.
+    await expect(page.getByText(/failed to load profile/i)).toBeVisible();
   });
 });
 
