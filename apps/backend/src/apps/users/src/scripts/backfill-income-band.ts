@@ -32,9 +32,25 @@
  * Run the dry pass first and read the counters before the real one:
  *   BACKFILL_INCOME_DRY_RUN=1 node dist/src/apps/users/apps/users/src/scripts/backfill-income-band.js
  *
+ * The dry pass is safe to run against production directly: it returns before
+ * `updatePayload` is ever called, so it writes nothing and simply reports the
+ * counters over real data.
+ *
+ * Failures are per-row, not fatal. A row that cannot be decrypted is counted,
+ * its user id recorded, and the run continues — the known cause is a row whose
+ * `keyVersion` is not the current one, which EncryptionService refuses. The run
+ * is idempotent, so once the cause is fixed, re-running retries exactly the
+ * rows that were missed. If failures reach `maxFailures` the run abandons and
+ * exits non-zero, because that many means something systemic rather than a few
+ * bad rows.
+ *
+ * Worth checking before the real pass:
+ *   SELECT key_version, count(*) FROM sensitive_profiles GROUP BY 1;
+ *
  * Flags (via env):
- *   BACKFILL_INCOME_DRY_RUN=1   — report decisions, write nothing. RUN THIS FIRST.
- *   BACKFILL_INCOME_BATCH=200   — rows per page (default 200).
+ *   BACKFILL_INCOME_DRY_RUN=1      — report decisions, write nothing. RUN THIS FIRST.
+ *   BACKFILL_INCOME_BATCH=200      — rows per page (default 200).
+ *   BACKFILL_INCOME_MAX_FAILURES=25 — abandon after this many row failures.
  */
 
 import { NestFactory } from '@nestjs/core';
@@ -104,15 +120,26 @@ export async function decideAndApply(
   return 'written';
 }
 
-interface Counters {
+export interface Counters {
   scanned: number;
   written: number;
   skippedAlreadySet: number;
   skippedNoFieldsMode: number;
   skippedUnmappable: number;
+  failed: number;
 }
 
-interface LegacyRow {
+/**
+ * How many rows may fail before the run gives up.
+ *
+ * A handful of undecryptable rows should not stop the other thousands from
+ * being migrated. But a systemic fault — the wrong key, a schema change —
+ * fails every row, and grinding through the whole table logging errors is
+ * worse than stopping early and telling someone.
+ */
+const DEFAULT_MAX_FAILURES = 25;
+
+export interface LegacyRow {
   userId: string;
   incomeRange: string | null;
 }
@@ -144,26 +171,43 @@ const COUNTER_BY_OUTCOME: Record<RowOutcome, keyof Counters> = {
   unmappable: 'skippedUnmappable',
 };
 
-async function processRow(
+export async function processRow(
   row: LegacyRow,
   sensitive: SensitiveProfileService,
   dryRun: boolean,
   counters: Counters,
+  failedUserIds: string[],
   logger: Logger,
 ): Promise<void> {
-  const outcome = await decideAndApply(
-    row.userId,
-    row.incomeRange,
-    sensitive,
-    dryRun,
-  );
+  try {
+    const outcome = await decideAndApply(
+      row.userId,
+      row.incomeRange,
+      sensitive,
+      dryRun,
+    );
 
-  if (dryRun && outcome === 'written') {
-    // Deliberately logs the user id and NOT the band.
-    logger.log(`[dry-run] would set incomeBand for user ${row.userId}`);
+    if (dryRun && outcome === 'written') {
+      // Deliberately logs the user id and NOT the band.
+      logger.log(`[dry-run] would set incomeBand for user ${row.userId}`);
+    }
+
+    counters[COUNTER_BY_OUTCOME[outcome]]++;
+  } catch (err) {
+    // One bad row must not abandon the rest of the table half-migrated.
+    // The known way this happens: EncryptionService.decrypt throws when a
+    // row's keyVersion is not the current one ("Key-rotation read path is a
+    // planned follow-up"). The run is resumable — it is idempotent, so
+    // re-running after the cause is fixed picks up exactly what was missed.
+    //
+    // The message is logged, the payload is NOT: this is CCPA/CPRA personal
+    // information and an error string is not a place for it.
+    counters.failed++;
+    failedUserIds.push(row.userId);
+    logger.error(
+      `Row failed for user ${row.userId}: ${(err as Error).message}`,
+    );
   }
-
-  counters[COUNTER_BY_OUTCOME[outcome]]++;
 }
 
 async function main(): Promise<void> {
@@ -180,6 +224,9 @@ async function main(): Promise<void> {
     const batchSize = Number(
       process.env.BACKFILL_INCOME_BATCH ?? DEFAULT_BATCH,
     );
+    const maxFailures = Number(
+      process.env.BACKFILL_INCOME_MAX_FAILURES ?? DEFAULT_MAX_FAILURES,
+    );
 
     const counters: Counters = {
       scanned: 0,
@@ -187,33 +234,66 @@ async function main(): Promise<void> {
       skippedAlreadySet: 0,
       skippedNoFieldsMode: 0,
       skippedUnmappable: 0,
+      failed: 0,
     };
+    const failedUserIds: string[] = [];
+    const summary = () =>
+      `scanned=${counters.scanned} written=${counters.written} ` +
+      `alreadySet=${counters.skippedAlreadySet} noFieldsMode=${counters.skippedNoFieldsMode} ` +
+      `unmappable=${counters.skippedUnmappable} failed=${counters.failed}`;
 
-    logger.log(`Income backfill starting: batch=${batchSize} dryRun=${dryRun}`);
+    logger.log(
+      `Income backfill starting: batch=${batchSize} dryRun=${dryRun} maxFailures=${maxFailures}`,
+    );
 
     let cursor: string | undefined;
+    let abandoned = false;
+
     for (;;) {
       const rows = await fetchBatch(db, batchSize, cursor);
       if (rows.length === 0) break;
 
       for (const row of rows) {
-        await processRow(row, sensitive, dryRun, counters, logger);
+        await processRow(
+          row,
+          sensitive,
+          dryRun,
+          counters,
+          failedUserIds,
+          logger,
+        );
+        counters.scanned++;
+
+        if (counters.failed >= maxFailures) {
+          logger.error(
+            `Aborting: ${counters.failed} rows failed, at or above maxFailures=${maxFailures}. ` +
+              `This looks systemic rather than a few bad rows — check the ` +
+              `SENSITIVE_PROFILE_ENCRYPTION_KEY and key_version before re-running.`,
+          );
+          abandoned = true;
+          break;
+        }
       }
 
-      counters.scanned += rows.length;
+      if (abandoned) break;
+
       cursor = rows[rows.length - 1].userId;
-      logger.log(
-        `Progress: scanned=${counters.scanned} written=${counters.written} ` +
-          `alreadySet=${counters.skippedAlreadySet} noFieldsMode=${counters.skippedNoFieldsMode} ` +
-          `unmappable=${counters.skippedUnmappable}`,
-      );
+      logger.log(`Progress: ${summary()}`);
     }
 
     logger.log(
-      `Income backfill complete: scanned=${counters.scanned} written=${counters.written} ` +
-        `alreadySet=${counters.skippedAlreadySet} noFieldsMode=${counters.skippedNoFieldsMode} ` +
-        `unmappable=${counters.skippedUnmappable} dryRun=${dryRun}`,
+      `Income backfill ${abandoned ? 'ABANDONED' : 'complete'}: ${summary()} dryRun=${dryRun}`,
     );
+
+    if (failedUserIds.length > 0) {
+      // Ids only — never the values. The run is idempotent, so re-running
+      // after the cause is fixed retries exactly these and nothing else.
+      logger.error(`Failed user ids: ${failedUserIds.join(', ')}`);
+    }
+
+    if (abandoned) {
+      process.exitCode = 1;
+    }
   } finally {
     await app.close();
   }
