@@ -1065,12 +1065,127 @@ describe('ProfileService', () => {
 
       const result = await service.getProfileCompletion(mockUserId);
 
+      // Both categories are answered in Your Model as of #1071 — the Settings
+      // demographic/civic block is retired, so the prompts point there.
       expect(result.suggestedNextSteps).toContain(
-        'Share your civic information for personalized insights',
+        'Tell us what you care about in Your Model',
       );
       expect(result.suggestedNextSteps).toContain(
-        'Add demographic details to complete your profile',
+        'Add your life context in Your Model',
       );
+    });
+
+    // ── #1071: completion is the union of legacy and SignalProfile ──
+
+    /**
+     * Onboarding writes only SignalProfile (LifeContextStep, TopicsStep), so
+     * before this change a user who completed onboarding was never credited
+     * for answers they had already given.
+     */
+    it('credits civic and demographic from SignalProfile alone', async () => {
+      mockDb.userProfile.findUnique.mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        avatarUrl: 'https://example.com/avatar.jpg',
+        politicalAffiliation: null,
+        votingFrequency: null,
+        policyPriorities: [],
+        occupation: null,
+        educationLevel: null,
+        incomeRange: null,
+        householdSize: null,
+        homeownerStatus: null,
+      } as unknown as UserProfile);
+      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.signalProfile.findUnique.mockResolvedValue({
+        interestTags: ['housing'],
+        politicalSelfId: null,
+        housingTenure: 'renter',
+        employmentStatus: null,
+        occupationCategory: null,
+        industry: null,
+        studentLevel: null,
+        childrenAgeBands: [],
+        partnerStatus: null,
+      } as never);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.coreFieldsComplete.hasCivic).toBe(true);
+      expect(result.coreFieldsComplete.hasDemographic).toBe(true);
+      expect(result.percentage).toBe(100);
+    });
+
+    /**
+     * The legacy half must keep counting until the columns are dropped
+     * (plan subtask 6), so no existing user's percentage falls when this
+     * ships. It can only rise.
+     */
+    it('still credits a user who has only the legacy fields', async () => {
+      mockDb.userProfile.findUnique.mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        avatarUrl: 'https://example.com/avatar.jpg',
+        politicalAffiliation: 'independent',
+        homeownerStatus: 'rent',
+      } as unknown as UserProfile);
+      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.signalProfile.findUnique.mockResolvedValue(null);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.coreFieldsComplete.hasCivic).toBe(true);
+      expect(result.coreFieldsComplete.hasDemographic).toBe(true);
+      expect(result.percentage).toBe(100);
+    });
+
+    it('counts neither category when both sides are empty', async () => {
+      mockDb.userProfile.findUnique.mockResolvedValue({
+        ...mockProfile,
+        firstName: 'John',
+        avatarUrl: 'https://example.com/avatar.jpg',
+        politicalAffiliation: null,
+        votingFrequency: null,
+        policyPriorities: [],
+        occupation: null,
+        educationLevel: null,
+        incomeRange: null,
+        householdSize: null,
+        homeownerStatus: null,
+      } as unknown as UserProfile);
+      mockDb.userAddress.findMany.mockResolvedValue([mockAddress]);
+      mockDb.signalProfile.findUnique.mockResolvedValue({
+        interestTags: [],
+        politicalSelfId: null,
+        housingTenure: null,
+        employmentStatus: null,
+        occupationCategory: null,
+        industry: null,
+        studentLevel: null,
+        childrenAgeBands: [],
+        partnerStatus: null,
+      } as never);
+
+      const result = await service.getProfileCompletion(mockUserId);
+
+      expect(result.coreFieldsComplete.hasCivic).toBe(false);
+      expect(result.coreFieldsComplete.hasDemographic).toBe(false);
+      expect(result.percentage).toBe(60);
+    });
+
+    /**
+     * incomeBand is T3. Counting it would mean decrypting on every completion
+     * call, and a no-fields-mode user would read as null and be scored
+     * incomplete — penalising them for a privacy choice.
+     */
+    it('does not read the sensitive profile', async () => {
+      mockDb.userProfile.findUnique.mockResolvedValue(mockProfile);
+      mockDb.userAddress.findMany.mockResolvedValue([]);
+      mockDb.signalProfile.findUnique.mockResolvedValue(null);
+
+      await service.getProfileCompletion(mockUserId);
+
+      expect(mockDb.sensitiveProfile.findUnique).not.toHaveBeenCalled();
     });
 
     it('should use displayName if firstName is not set', async () => {

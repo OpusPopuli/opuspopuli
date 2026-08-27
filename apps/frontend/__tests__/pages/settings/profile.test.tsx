@@ -305,4 +305,61 @@ describe("ProfileSettingsPage", () => {
       });
     });
   });
+
+  /**
+   * #1071: the civic and demographic sections asked the same questions as Your
+   * Model, into fields whose only consumer was the completion percentage.
+   * Answering them changed nothing about what the user was shown, so they are
+   * retired and this page points at the one place the questions now live.
+   */
+  describe("retired civic and demographic sections", () => {
+    it("no longer renders the civic or demographic fields", () => {
+      renderWithI18n(<ProfileSettingsPage />);
+
+      for (const label of [
+        /political affiliation/i,
+        /voting frequency/i,
+        /policy priorities/i,
+        /housing status/i,
+        /education level/i,
+        /income range/i,
+        /household size/i,
+      ]) {
+        expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+      }
+    });
+
+    it("links to Your Model instead", () => {
+      renderWithI18n(<ProfileSettingsPage />);
+
+      const link = screen.getByRole("link", { name: /open your model/i });
+      expect(link).toHaveAttribute("href", "/me/profile");
+    });
+
+    it("does not submit the retired fields", async () => {
+      const user = userEvent.setup();
+      mockUpdateProfile.mockResolvedValueOnce({
+        data: { updateMyProfile: mockProfile },
+      });
+
+      renderWithI18n(<ProfileSettingsPage />);
+      await user.click(screen.getByRole("button", { name: "Save Changes" }));
+
+      await waitFor(() => expect(mockUpdateProfile).toHaveBeenCalled());
+
+      const input = mockUpdateProfile.mock.calls[0][0].variables.input;
+      for (const field of [
+        "politicalAffiliation",
+        "votingFrequency",
+        "policyPriorities",
+        "occupation",
+        "educationLevel",
+        "incomeRange",
+        "householdSize",
+        "homeownerStatus",
+      ]) {
+        expect(input).not.toHaveProperty(field);
+      }
+    });
+  });
 });

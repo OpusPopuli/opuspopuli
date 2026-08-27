@@ -62,102 +62,6 @@
       "errorSave": "Error al guardar el avatar",
       "errorGeneric": "Ocurrio un error"
     },
-    "civic": {
-      "title": "Informacion Civica",
-      "optional": "(Opcional)",
-      "description": "Esta informacion nos ayuda a proporcionar recomendaciones de participacion civica mas relevantes e informacion de papeletas adaptada a tus intereses.",
-      "politicalAffiliation": "Afiliacion Politica",
-      "votingFrequency": "Frecuencia de Votacion",
-      "policyPriorities": "Prioridades de Politicas",
-      "selectOption": "Selecciona una opcion",
-      "selectMultiple": "(Selecciona todas las que apliquen)",
-      "affiliations": {
-        "democrat": "Democrata",
-        "republican": "Republicano",
-        "independent": "Independiente",
-        "libertarian": "Libertario",
-        "green": "Partido Verde",
-        "other": "Otro",
-        "prefer_not_to_say": "Prefiero no decir"
-      },
-      "frequencies": {
-        "every_election": "Cada eleccion",
-        "most_elections": "La mayoria de las elecciones",
-        "some_elections": "Algunas elecciones",
-        "rarely": "Raramente",
-        "never": "Nunca",
-        "prefer_not_to_say": "Prefiero no decir"
-      },
-      "priorities": {
-        "healthcare": "Salud",
-        "economy": "Economia",
-        "education": "Educacion",
-        "environment": "Medio Ambiente",
-        "immigration": "Inmigracion",
-        "gun_rights": "Derechos de Armas",
-        "gun_control": "Control de Armas",
-        "social_security": "Seguridad Social",
-        "taxes": "Impuestos",
-        "criminal_justice": "Justicia Penal",
-        "housing": "Vivienda",
-        "infrastructure": "Infraestructura",
-        "national_security": "Seguridad Nacional",
-        "civil_rights": "Derechos Civiles",
-        "womens_rights": "Derechos de las Mujeres",
-        "lgbtq_rights": "Derechos LGBTQ+",
-        "veterans_affairs": "Asuntos de Veteranos",
-        "labor_unions": "Sindicatos",
-        "small_business": "Pequenos Negocios",
-        "agriculture": "Agricultura"
-      }
-    },
-    "demographic": {
-      "title": "Informacion Demografica",
-      "optional": "(Opcional)",
-      "description": "Esta informacion nos ayuda a entender mejor como las politicas y medidas electorales pueden afectarte personalmente. Toda la informacion se mantiene privada y segura.",
-      "occupation": "Ocupacion",
-      "occupationPlaceholder": "ej., Ingeniero de Software, Maestro, Enfermero",
-      "educationLevel": "Nivel de Educacion",
-      "incomeRange": "Ingreso Familiar Anual",
-      "householdSize": "Tamano del Hogar",
-      "homeownerStatus": "Estado de Vivienda",
-      "selectOption": "Selecciona una opcion",
-      "education": {
-        "high_school": "Preparatoria",
-        "some_college": "Algo de Universidad",
-        "associate": "Titulo Asociado",
-        "bachelor": "Licenciatura",
-        "master": "Maestria",
-        "doctorate": "Doctorado",
-        "trade_school": "Escuela Tecnica",
-        "prefer_not_to_say": "Prefiero no decir"
-      },
-      "income": {
-        "under_25k": "Menos de $25,000",
-        "25k_50k": "$25,000 - $50,000",
-        "50k_75k": "$50,000 - $75,000",
-        "75k_100k": "$75,000 - $100,000",
-        "100k_150k": "$100,000 - $150,000",
-        "150k_200k": "$150,000 - $200,000",
-        "over_200k": "Mas de $200,000",
-        "prefer_not_to_say": "Prefiero no decir"
-      },
-      "householdSizes": {
-        "1": "1 persona",
-        "2": "2 personas",
-        "3": "3 personas",
-        "4": "4 personas",
-        "5": "5 personas",
-        "6plus": "6 o mas"
-      },
-      "homeowner": {
-        "own": "Propietario",
-        "rent": "Arrendatario",
-        "living_with_family": "Viviendo con familia",
-        "other": "Otro",
-        "prefer_not_to_say": "Prefiero no decir"
-      }
-    },
     "jurisdictions": {
       "title": "Tus Jurisdicciones Civicas",
       "subtitle": "Todos los organos de gobierno que representan tu direccion principal",
@@ -178,6 +82,11 @@
       "title": "Junta de Supervisores del Condado",
       "subtitle": "Sus supervisores del condado elegidos según su dirección principal.",
       "district": "Distrito {{district}}"
+    },
+    "modelLink": {
+      "title": "Tu Modelo",
+      "description": "Tus intereses cívicos, vivienda, trabajo y contexto de vida están en Tu Modelo, donde determinan lo que ves. Antes también se preguntaban aquí, pero responderlas aquí no cambiaba nada.",
+      "cta": "Abrir Tu Modelo"
     }
   },
   "timezones": {

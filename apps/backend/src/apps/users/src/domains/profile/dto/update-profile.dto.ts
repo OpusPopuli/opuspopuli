@@ -10,16 +10,7 @@ import {
   IsTimeZone,
   IsLocale,
   IsBoolean,
-  IsEnum,
-  IsArray,
 } from 'class-validator';
-import {
-  PoliticalAffiliation,
-  VotingFrequency,
-  EducationLevel,
-  IncomeRange,
-  HomeownerStatus,
-} from 'src/common/enums/profile.enum';
 
 /**
  * Coerces a stray empty string to `undefined` BEFORE validation runs so
@@ -125,48 +116,9 @@ export class UpdateProfileDto {
   @Field({ nullable: true })
   public avatarStorageKey?: string;
 
-  // Civic Fields
-  @IsOptional()
-  @IsEnum(PoliticalAffiliation)
-  @Field(() => PoliticalAffiliation, { nullable: true })
-  public politicalAffiliation?: PoliticalAffiliation;
-
-  @IsOptional()
-  @IsEnum(VotingFrequency)
-  @Field(() => VotingFrequency, { nullable: true })
-  public votingFrequency?: VotingFrequency;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @Field(() => [String], { nullable: true })
-  public policyPriorities?: string[];
-
-  // Demographic Fields
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  @Field({ nullable: true })
-  public occupation?: string;
-
-  @IsOptional()
-  @IsEnum(EducationLevel)
-  @Field(() => EducationLevel, { nullable: true })
-  public educationLevel?: EducationLevel;
-
-  @IsOptional()
-  @IsEnum(IncomeRange)
-  @Field(() => IncomeRange, { nullable: true })
-  public incomeRange?: IncomeRange;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  @Field({ nullable: true })
-  public householdSize?: string;
-
-  @IsOptional()
-  @IsEnum(HomeownerStatus)
-  @Field(() => HomeownerStatus, { nullable: true })
-  public homeownerStatus?: HomeownerStatus;
+  // The civic and demographic fields were removed here in #1071. They
+  // duplicated Your Model (SignalProfile / SensitiveProfile), which is what
+  // actually drives relevance; their only consumer was the profile-completion
+  // percentage, which now reads the SignalProfile counterparts instead.
+  // The database columns are dropped in a follow-up, after this deploys.
 }

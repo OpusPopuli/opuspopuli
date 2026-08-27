@@ -13,11 +13,6 @@ import {
   UpdateProfileInput,
   UserProfile,
   SupportedLanguage,
-  PoliticalAffiliation,
-  VotingFrequency,
-  EducationLevel,
-  IncomeRange,
-  HomeownerStatus,
 } from "@/lib/graphql/profile";
 import { useLocale } from "@/lib/i18n/context";
 import Link from "next/link";
@@ -29,8 +24,6 @@ import {
 } from "@/lib/graphql/region";
 import { AvatarUpload } from "@/components/profile/AvatarUpload";
 import { ProfileVisibilityToggle } from "@/components/profile/ProfileVisibilityToggle";
-import { CivicFieldsSection } from "@/components/profile/CivicFieldsSection";
-import { DemographicFieldsSection } from "@/components/profile/DemographicFieldsSection";
 
 const TIMEZONES = [
   { value: "America/Los_Angeles", labelKey: "timezones.pacific" },
@@ -95,14 +88,6 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
     preferredLanguage: locale,
     bio: profile.bio || "",
     isPublic: profile.isPublic ?? false,
-    politicalAffiliation: profile.politicalAffiliation,
-    votingFrequency: profile.votingFrequency,
-    policyPriorities: profile.policyPriorities,
-    occupation: profile.occupation,
-    educationLevel: profile.educationLevel,
-    incomeRange: profile.incomeRange,
-    householdSize: profile.householdSize,
-    homeownerStatus: profile.homeownerStatus,
   });
   const [currentAvatarUrl, setCurrentAvatarUrl] = useState(profile.avatarUrl);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -132,40 +117,6 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
     setSaveSuccess(false);
     setSaveError(null);
   }, []);
-
-  const handleCivicChange = useCallback(
-    (
-      field: "politicalAffiliation" | "votingFrequency" | "policyPriorities",
-      value: PoliticalAffiliation | VotingFrequency | string[] | undefined,
-    ) => {
-      setFormData((prev) => ({ ...prev, [field]: value }));
-      setSaveSuccess(false);
-      setSaveError(null);
-    },
-    [],
-  );
-
-  const handleDemographicChange = useCallback(
-    (
-      field:
-        | "occupation"
-        | "educationLevel"
-        | "incomeRange"
-        | "householdSize"
-        | "homeownerStatus",
-      value:
-        | string
-        | EducationLevel
-        | IncomeRange
-        | HomeownerStatus
-        | undefined,
-    ) => {
-      setFormData((prev) => ({ ...prev, [field]: value }));
-      setSaveSuccess(false);
-      setSaveError(null);
-    },
-    [],
-  );
 
   const handleAvatarUpdated = useCallback(
     (newUrl: string) => {
@@ -377,25 +328,25 @@ function ProfileForm({ profile, onSave }: Readonly<ProfileFormProps>) {
           </p>
         </div>
 
-        {/* Civic Fields Section */}
-        <CivicFieldsSection
-          politicalAffiliation={formData.politicalAffiliation}
-          votingFrequency={formData.votingFrequency}
-          policyPriorities={formData.policyPriorities}
-          onChange={handleCivicChange}
-          disabled={updating}
-        />
-
-        {/* Demographic Fields Section */}
-        <DemographicFieldsSection
-          occupation={formData.occupation}
-          educationLevel={formData.educationLevel}
-          incomeRange={formData.incomeRange}
-          householdSize={formData.householdSize}
-          homeownerStatus={formData.homeownerStatus}
-          onChange={handleDemographicChange}
-          disabled={updating}
-        />
+        {/* The civic and demographic sections used to sit here (#1071). They
+            asked the same questions as Your Model, into fields whose only
+            consumer was the completion percentage — answering them changed
+            nothing about what you were shown. The questions now live in one
+            place, and this points at it rather than duplicating it. */}
+        <div className="border-t border-line pt-6">
+          <h2 className="text-lg font-semibold text-content">
+            {t("profile.modelLink.title")}
+          </h2>
+          <p className="mt-1 text-sm text-content-dim">
+            {t("profile.modelLink.description")}
+          </p>
+          <Link
+            href="/me/profile"
+            className="inline-block mt-3 text-sm font-medium text-content underline underline-offset-2 hover:no-underline"
+          >
+            {t("profile.modelLink.cta")}
+          </Link>
+        </div>
 
         {/* Submit Button */}
         <div className="pt-4">

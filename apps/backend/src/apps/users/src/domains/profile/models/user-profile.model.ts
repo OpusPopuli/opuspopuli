@@ -1,11 +1,4 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
-import {
-  PoliticalAffiliation,
-  VotingFrequency,
-  EducationLevel,
-  IncomeRange,
-  HomeownerStatus,
-} from 'src/common/enums/profile.enum';
 
 @ObjectType()
 export class UserProfileModel {
@@ -60,29 +53,9 @@ export class UserProfileModel {
   @Field()
   isPublic!: boolean;
 
-  @Field(() => PoliticalAffiliation, { nullable: true })
-  politicalAffiliation?: PoliticalAffiliation;
-
-  @Field(() => VotingFrequency, { nullable: true })
-  votingFrequency?: VotingFrequency;
-
-  @Field(() => [String], { nullable: true })
-  policyPriorities?: string[];
-
-  @Field({ nullable: true })
-  occupation?: string;
-
-  @Field(() => EducationLevel, { nullable: true })
-  educationLevel?: EducationLevel;
-
-  @Field(() => IncomeRange, { nullable: true })
-  incomeRange?: IncomeRange;
-
-  @Field({ nullable: true })
-  householdSize?: string;
-
-  @Field(() => HomeownerStatus, { nullable: true })
-  homeownerStatus?: HomeownerStatus;
+  // The civic and demographic fields were removed here in #1071 — they
+  // duplicated Your Model, and nothing but the completion percentage read
+  // them. Columns are dropped in a follow-up, after this deploys.
 
   /**
    * First-run onboarding completion (#758). NULL until the user finishes
