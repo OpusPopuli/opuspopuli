@@ -81,10 +81,18 @@ Lossless mappings only. Anything without an exact target is dropped.
 
 ### `income_range` → `incomeBand` (T3, encrypted)
 
-Exact, all 7 bands: `UNDER_25K`→`under_25k`, `RANGE_25K_50K`→`25k_50k`,
-`RANGE_50K_75K`→`50k_75k`, `RANGE_75K_100K`→`75k_100k`,
-`RANGE_100K_150K`→`100k_150k`, `RANGE_150K_200K`→`150k_200k`,
-`OVER_200K`→`over_200k`. `PREFER_NOT_TO_SAY` dropped.
+**An identity map.** The GraphQL layer exposes enum KEYS (`UNDER_25K`,
+`RANGE_25K_50K`, …) but PostgreSQL stores the VALUES, and those values are
+byte-identical to the `incomeBand` vocabulary: `under_25k`, `25k_50k`,
+`50k_75k`, `75k_100k`, `100k_150k`, `150k_200k`, `over_200k`.
+
+Verified against `pg_enum`, not inferred from the TypeScript type — the same
+key/value confusion made the first draft of the companion SQL migration a
+silent no-op. The script still writes the map out explicitly rather than
+passing values through, so a band added later cannot flow into the T3 payload
+without a deliberate decision.
+
+`prefer_not_to_say` is dropped — it is a refusal to answer, not an answer.
 
 ### `policy_priorities` → `interest_tags`
 
