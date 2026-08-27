@@ -36,23 +36,35 @@ UPDATE "signal_profiles" sp
    AND w."field"   = 'interest_tags';
 
 -- 3. Remove signal_profiles rows that exist ONLY because of this backfill.
---    A row qualifies only if both backfilled fields are now unset AND every
---    other signal column is still at its default — otherwise the user has
---    real Your Model data (from onboarding or the page) and the row must stay.
+--
+--    Two guards, and both are needed.
+--
+--    First, the row must be one this backfill CREATED — recorded explicitly as
+--    '__row_created__' rather than inferred. An earlier draft inferred it by
+--    checking that a handful of other columns were empty. signal_profiles has
+--    36 data columns; that guard checked 9. A user who answered interest_tags
+--    in Settings and separately set, say, has_pets in Your Model would have had
+--    their whole row deleted — real data the backfill never touched. Any
+--    column-enumerating guard also rots the moment a signal field is added.
+--
+--    Second, the row must still be empty. If the user has put anything into
+--    Your Model since the backfill ran, the row is theirs now and must stay.
+--    That emptiness test is generic — it walks the row as JSON rather than
+--    naming columns, so it cannot fall out of date.
 DELETE FROM "signal_profiles" sp
  WHERE EXISTS (
          SELECT 1 FROM "_backfill_1071_signal_writes" w
           WHERE w."user_id" = sp."user_id"
+            AND w."field"   = '__row_created__'
        )
-   AND sp."housing_tenure" IS NULL
-   AND cardinality(sp."interest_tags") = 0
-   AND sp."building_type" IS NULL
-   AND cardinality(sp."tax_exposure") = 0
-   AND cardinality(sp."housing_flags") = 0
-   AND sp."employment_status" IS NULL
-   AND sp."student_level" IS NULL
-   AND sp."primary_transit_mode" IS NULL
-   AND sp."political_self_id" IS NULL;
+   AND NOT EXISTS (
+         SELECT 1
+           FROM jsonb_each(
+                  to_jsonb(sp) - 'id' - 'user_id' - 'created_at' - 'updated_at'
+                ) AS kv(key, value)
+          WHERE value <> 'null'::jsonb
+            AND value <> '[]'::jsonb
+       );
 
 DROP TABLE IF EXISTS "_backfill_1071_signal_writes";
 

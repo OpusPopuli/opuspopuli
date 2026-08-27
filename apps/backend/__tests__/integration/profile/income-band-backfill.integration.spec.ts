@@ -20,6 +20,7 @@ import {
 } from '../utils';
 import { EncryptionService } from '../../../src/apps/users/src/domains/personalization/encryption.service';
 import { SensitiveProfileService } from '../../../src/apps/users/src/domains/personalization/sensitive-profile.service';
+import { decideAndApply } from '../../../src/apps/users/src/scripts/backfill-income-band';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
 /**
@@ -40,21 +41,14 @@ const INCOME_BAND_BY_RANGE: Record<string, string> = {
 
 let sensitive: SensitiveProfileService;
 
-/** The script's per-row decision, lifted verbatim so the rules are the ones tested. */
-async function backfillOne(userId: string, incomeRange: string | null) {
-  const target = incomeRange ? INCOME_BAND_BY_RANGE[incomeRange] : undefined;
-  if (!target) return 'unmappable';
-
-  const state = await sensitive.getState(userId);
-  if (state.noFieldsMode) return 'noFieldsMode';
-  if (state.payload?.incomeBand) return 'alreadySet';
-
-  await sensitive.updatePayload(userId, {
-    ...(state.payload ?? {}),
-    incomeBand: target,
-  });
-  return 'written';
-}
+/**
+ * Delegates to the SHIPPED decision function. An earlier version of this spec
+ * re-implemented the rules inline, which meant the tests would keep passing if
+ * the script drifted — the same mistake the SQL spec avoids by executing the
+ * real migration file.
+ */
+const backfillOne = (userId: string, incomeRange: string | null) =>
+  decideAndApply(userId, incomeRange, sensitive);
 
 async function seedIncomeRange(email: string, incomeRange: string | null) {
   const db = await getDbService();

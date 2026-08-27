@@ -73,6 +73,30 @@ WHERE (
         SELECT 1 FROM "signal_profiles" sp WHERE sp."user_id" = up."user_id"
       );
 
+-- Record WHICH ROWS THIS BACKFILL CREATED, distinct from which fields it wrote.
+-- The rollback needs this: without it, the only way to tell an
+-- existed-anyway row from a backfill-created one is to sniff the other
+-- columns, and signal_profiles has 36 of them. Any such guard silently rots
+-- the moment a signal field is added, and getting it wrong deletes real Your
+-- Model data the backfill never touched.
+INSERT INTO "_backfill_1071_signal_writes" ("user_id", "field")
+SELECT sp."user_id", '__row_created__'
+FROM "signal_profiles" sp
+WHERE sp."created_at" = sp."updated_at"
+  AND EXISTS (
+        SELECT 1 FROM "user_profiles" up
+         WHERE up."user_id" = sp."user_id"
+           AND (
+                 up."homeowner_status" IN ('rent', 'own')
+              OR up."policy_priorities" && ARRAY['healthcare','education',
+                   'environment','immigration','taxes','housing',
+                   'criminal_justice']::TEXT[]
+               )
+      )
+  AND sp."housing_tenure" IS NULL
+  AND cardinality(sp."interest_tags") = 0
+ON CONFLICT DO NOTHING;
+
 -- ============================================================
 -- 2. housing_tenure
 -- ============================================================

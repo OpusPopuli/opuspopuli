@@ -69,6 +69,41 @@ const INCOME_BAND_BY_RANGE: Readonly<Record<string, string>> = {
   over_200k: 'over_200k',
 };
 
+export type RowOutcome =
+  | 'written'
+  | 'alreadySet'
+  | 'noFieldsMode'
+  | 'unmappable';
+
+/**
+ * The per-row decision, exported so the integration spec exercises THIS code
+ * rather than a copy of it. The first version of that spec re-implemented these
+ * rules inline, which meant the tests would keep passing if the script drifted.
+ */
+export async function decideAndApply(
+  userId: string,
+  incomeRange: string | null,
+  sensitive: Pick<SensitiveProfileService, 'getState' | 'updatePayload'>,
+  dryRun = false,
+): Promise<RowOutcome> {
+  const target = incomeRange ? INCOME_BAND_BY_RANGE[incomeRange] : undefined;
+  // prefer_not_to_say, or a band added after this script was written.
+  if (!target) return 'unmappable';
+
+  // getState returns noFieldsMode alongside the decrypted payload, so one read
+  // answers both "may I write?" and "is it already set?".
+  const state = await sensitive.getState(userId);
+  if (state.noFieldsMode) return 'noFieldsMode';
+  if (state.payload?.incomeBand) return 'alreadySet';
+  if (dryRun) return 'written';
+
+  await sensitive.updatePayload(userId, {
+    ...(state.payload ?? {}),
+    incomeBand: target,
+  });
+  return 'written';
+}
+
 interface Counters {
   scanned: number;
   written: number;
@@ -102,6 +137,13 @@ async function fetchBatch(
   }));
 }
 
+const COUNTER_BY_OUTCOME: Record<RowOutcome, keyof Counters> = {
+  written: 'written',
+  alreadySet: 'skippedAlreadySet',
+  noFieldsMode: 'skippedNoFieldsMode',
+  unmappable: 'skippedUnmappable',
+};
+
 async function processRow(
   row: LegacyRow,
   sensitive: SensitiveProfileService,
@@ -109,42 +151,19 @@ async function processRow(
   counters: Counters,
   logger: Logger,
 ): Promise<void> {
-  const target = row.incomeRange
-    ? INCOME_BAND_BY_RANGE[row.incomeRange]
-    : undefined;
+  const outcome = await decideAndApply(
+    row.userId,
+    row.incomeRange,
+    sensitive,
+    dryRun,
+  );
 
-  if (!target) {
-    // prefer_not_to_say, or a value added after this script was written.
-    counters.skippedUnmappable++;
-    return;
-  }
-
-  // getState returns noFieldsMode alongside the decrypted payload, so one read
-  // answers both "may I write?" and "is it already set?".
-  const state = await sensitive.getState(row.userId);
-
-  if (state.noFieldsMode) {
-    counters.skippedNoFieldsMode++;
-    return;
-  }
-
-  if (state.payload?.incomeBand) {
-    counters.skippedAlreadySet++;
-    return;
-  }
-
-  if (dryRun) {
+  if (dryRun && outcome === 'written') {
     // Deliberately logs the user id and NOT the band.
     logger.log(`[dry-run] would set incomeBand for user ${row.userId}`);
-    counters.written++;
-    return;
   }
 
-  await sensitive.updatePayload(row.userId, {
-    ...(state.payload ?? {}),
-    incomeBand: target,
-  });
-  counters.written++;
+  counters[COUNTER_BY_OUTCOME[outcome]]++;
 }
 
 async function main(): Promise<void> {
@@ -200,7 +219,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('Income backfill failed:', err);
-  process.exit(1);
-});
+// Only run when executed directly. Without this guard, importing
+// `decideAndApply` from the integration spec would boot a Nest application
+// context as a side effect of the import.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('Income backfill failed:', err);
+    process.exit(1);
+  });
+}

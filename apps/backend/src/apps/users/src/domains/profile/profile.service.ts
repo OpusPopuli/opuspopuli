@@ -102,22 +102,27 @@ export class ProfileService {
   // ============================================
 
   async getProfileCompletion(userId: string): Promise<ProfileCompletionResult> {
-    const profile = await this.getProfile(userId);
-    const addresses = await this.getAddresses(userId);
-    const signal = await this.db.signalProfile.findUnique({
-      where: { userId },
-      select: {
-        interestTags: true,
-        politicalSelfId: true,
-        housingTenure: true,
-        employmentStatus: true,
-        occupationCategory: true,
-        industry: true,
-        studentLevel: true,
-        childrenAgeBands: true,
-        partnerStatus: true,
-      },
-    });
+    // The three reads are independent, so they go in parallel — this is called
+    // on every Settings page load, and adding the signal lookup would otherwise
+    // have made it three sequential round trips instead of two.
+    const [profile, addresses, signal] = await Promise.all([
+      this.getProfile(userId),
+      this.getAddresses(userId),
+      this.db.signalProfile.findUnique({
+        where: { userId },
+        select: {
+          interestTags: true,
+          politicalSelfId: true,
+          housingTenure: true,
+          employmentStatus: true,
+          occupationCategory: true,
+          industry: true,
+          studentLevel: true,
+          childrenAgeBands: true,
+          partnerStatus: true,
+        },
+      }),
+    ]);
 
     // 5 categories: Name, Photo, Address, Civic, Demographic = 20% each
     //

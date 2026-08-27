@@ -305,10 +305,39 @@ describe('Signal profile backfill (#1071)', () => {
 
       const db = await getDbService();
       const rows = await db.$queryRawUnsafe<{ field: string }[]>(
-        `SELECT "field" FROM "_backfill_1071_signal_writes" WHERE "user_id" = $1`,
+        `SELECT "field" FROM "_backfill_1071_signal_writes"
+          WHERE "user_id" = $1 AND "field" <> '__row_created__'`,
         user.id,
       );
+      // Only housing was mappable — interest_tags must not be recorded.
       expect(rows.map((r) => r.field)).toEqual(['housing_tenure']);
+    });
+
+    /**
+     * Row creation is recorded separately from field writes, because the
+     * rollback has to distinguish "this row existed anyway" from "this row
+     * exists only because of the backfill" without sniffing 36 columns.
+     */
+    it('records row creation separately from field writes', async () => {
+      const created = await seedProfile('backfill-created@example.com', {
+        homeownerStatus: 'rent',
+      });
+      const preExisting = await seedProfile('backfill-existing@example.com', {
+        homeownerStatus: 'own',
+      });
+      await createSignalRow(preExisting.id, { interestTags: ['transit'] });
+
+      await runBackfill();
+
+      const db = await getDbService();
+      const marked = await db.$queryRawUnsafe<{ user_id: string }[]>(
+        `SELECT "user_id" FROM "_backfill_1071_signal_writes"
+          WHERE "field" = '__row_created__'`,
+      );
+      const ids = marked.map((r) => r.user_id);
+
+      expect(ids).toContain(created.id);
+      expect(ids).not.toContain(preExisting.id);
     });
 
     /**
@@ -343,6 +372,45 @@ describe('Signal profile backfill (#1071)', () => {
 
       // The row existed only because of the backfill, so it is removed.
       expect(await signalFor(user.id)).toBeUndefined();
+    });
+
+    /**
+     * Regression guard for a data-loss bug found in self-review.
+     *
+     * The first rollback decided "did the backfill create this row?" by
+     * checking that a handful of other columns were empty. signal_profiles has
+     * 36 data columns; the guard checked 9. A user whose only other Your Model
+     * answer was in one of the 27 unchecked columns had their entire row
+     * deleted — data the backfill never touched.
+     *
+     * hasPets is deliberately chosen: it is not one of the columns the old
+     * guard looked at.
+     */
+    it('does not delete a row holding Your Model data in an unguarded column', async () => {
+      const db = await getDbService();
+      const user = await seedProfile('backfill-rollback-pets@example.com', {
+        policyPriorities: ['housing'],
+      });
+
+      await runBackfill();
+      // The user then answers something in Your Model that this backfill has
+      // no knowledge of.
+      await db.$executeRawUnsafe(
+        `UPDATE "signal_profiles" SET "has_pets" = TRUE WHERE "user_id" = $1`,
+        user.id,
+      );
+
+      await runRollback();
+
+      const signal = await signalFor(user.id);
+      expect(signal).toBeDefined();
+      expect(signal?.interest_tags).toEqual([]);
+
+      const rows = await db.$queryRawUnsafe<{ has_pets: boolean | null }[]>(
+        `SELECT "has_pets" FROM "signal_profiles" WHERE "user_id" = $1`,
+        user.id,
+      );
+      expect(rows[0]?.has_pets).toBe(true);
     });
 
     it('preserves a signal row that held real Your Model data', async () => {
