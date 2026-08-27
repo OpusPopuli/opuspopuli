@@ -104,14 +104,52 @@ export class ProfileService {
   async getProfileCompletion(userId: string): Promise<ProfileCompletionResult> {
     const profile = await this.getProfile(userId);
     const addresses = await this.getAddresses(userId);
+    const signal = await this.db.signalProfile.findUnique({
+      where: { userId },
+      select: {
+        interestTags: true,
+        politicalSelfId: true,
+        housingTenure: true,
+        employmentStatus: true,
+        occupationCategory: true,
+        industry: true,
+        studentLevel: true,
+        childrenAgeBands: true,
+        partnerStatus: true,
+      },
+    });
 
     // 5 categories: Name, Photo, Address, Civic, Demographic = 20% each
+    //
+    // Each category is the UNION of the legacy UserProfile fields and their
+    // SignalProfile counterparts (#1071). The union matters in both
+    // directions: onboarding writes only SignalProfile, so those users were
+    // never credited for answers they had already given; and reading the
+    // legacy fields until the columns are dropped (plan subtask 6) means no
+    // existing user's percentage can fall when this ships. It can only rise.
+    //
+    // Deliberately NOT read: SensitiveProfile.incomeBand. It is T3, so
+    // counting it would mean decrypting the payload on every completion call,
+    // and a user with no-fields-mode on would read as null and be scored as
+    // incomplete — penalising them for a privacy choice. Income is covered by
+    // the other demographic signals instead.
     const hasCivic =
+      (signal?.interestTags?.length ?? 0) > 0 ||
+      !!signal?.politicalSelfId ||
+      // Legacy half — removed with the columns in plan subtask 6.
       !!profile?.politicalAffiliation ||
       !!profile?.votingFrequency ||
       (!!profile?.policyPriorities && profile.policyPriorities.length > 0);
 
     const hasDemographic =
+      !!signal?.housingTenure ||
+      !!signal?.employmentStatus ||
+      !!signal?.occupationCategory ||
+      !!signal?.industry ||
+      !!signal?.studentLevel ||
+      (signal?.childrenAgeBands?.length ?? 0) > 0 ||
+      !!signal?.partnerStatus ||
+      // Legacy half — removed with the columns in plan subtask 6.
       !!profile?.occupation ||
       !!profile?.educationLevel ||
       !!profile?.incomeRange ||
@@ -157,11 +195,13 @@ export class ProfileService {
     if (!coreFieldsComplete.hasAddress) {
       steps.push('Add an address to see relevant ballot information');
     }
+    // These now point at Your Model, which is where both categories are
+    // answered as of #1071 — the Settings demographic/civic block is retired.
     if (!coreFieldsComplete.hasCivic) {
-      steps.push('Share your civic information for personalized insights');
+      steps.push('Tell us what you care about in Your Model');
     }
     if (!coreFieldsComplete.hasDemographic) {
-      steps.push('Add demographic details to complete your profile');
+      steps.push('Add your life context in Your Model');
     }
 
     return steps.slice(0, 3); // Return max 3 suggestions
