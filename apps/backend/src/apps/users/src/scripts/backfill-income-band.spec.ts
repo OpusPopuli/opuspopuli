@@ -3,7 +3,7 @@ import {
   decideAndApply,
   processRow,
   type Counters,
-} from './backfill-income-band';
+} from './backfill-income-band.logic';
 import type { SensitiveProfileService } from '../domains/personalization/sensitive-profile.service';
 
 /**

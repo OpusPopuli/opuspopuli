@@ -20,7 +20,7 @@ import {
 } from '../utils';
 import { EncryptionService } from '../../../src/apps/users/src/domains/personalization/encryption.service';
 import { SensitiveProfileService } from '../../../src/apps/users/src/domains/personalization/sensitive-profile.service';
-import { decideAndApply } from '../../../src/apps/users/src/scripts/backfill-income-band';
+import { decideAndApply } from '../../../src/apps/users/src/scripts/backfill-income-band.logic';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
 /**

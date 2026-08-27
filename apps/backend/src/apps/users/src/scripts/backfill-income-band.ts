@@ -58,76 +58,17 @@ import { Logger } from '@nestjs/common';
 import { AppModule } from '../app.module';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { SensitiveProfileService } from '../domains/personalization/sensitive-profile.service';
+import {
+  processRow,
+  type Counters,
+  type LegacyRow,
+} from './backfill-income-band.logic';
+
+// The decision rules live in ./backfill-income-band.logic so tests can import
+// them without evaluating AppModule — see the note at the top of that file.
+export * from './backfill-income-band.logic';
 
 const DEFAULT_BATCH = 200;
-
-/**
- * `IncomeRange` (GraphQL keys UNDER_25K…) is stored lowercase in Postgres, the
- * same trap that made the first draft of the companion SQL migration a silent
- * no-op — the GraphQL layer exposes enum KEYS while the database holds VALUES.
- * Keys here are the stored values.
- *
- * The stored values are byte-identical to the `incomeBand` vocabulary, so this
- * is an identity map. It is written out explicitly rather than passed through,
- * so that a band added to `IncomeRange` later cannot silently flow into the T3
- * payload without someone deciding it should.
- *
- * `prefer_not_to_say` has no target and is deliberately absent: it is a refusal
- * to answer, not an answer.
- */
-const INCOME_BAND_BY_RANGE: Readonly<Record<string, string>> = {
-  under_25k: 'under_25k',
-  '25k_50k': '25k_50k',
-  '50k_75k': '50k_75k',
-  '75k_100k': '75k_100k',
-  '100k_150k': '100k_150k',
-  '150k_200k': '150k_200k',
-  over_200k: 'over_200k',
-};
-
-export type RowOutcome =
-  | 'written'
-  | 'alreadySet'
-  | 'noFieldsMode'
-  | 'unmappable';
-
-/**
- * The per-row decision, exported so the integration spec exercises THIS code
- * rather than a copy of it. The first version of that spec re-implemented these
- * rules inline, which meant the tests would keep passing if the script drifted.
- */
-export async function decideAndApply(
-  userId: string,
-  incomeRange: string | null,
-  sensitive: Pick<SensitiveProfileService, 'getState' | 'updatePayload'>,
-  dryRun = false,
-): Promise<RowOutcome> {
-  const target = incomeRange ? INCOME_BAND_BY_RANGE[incomeRange] : undefined;
-  // prefer_not_to_say, or a band added after this script was written.
-  if (!target) return 'unmappable';
-
-  // getState returns noFieldsMode alongside the decrypted payload, so one read
-  // answers both "may I write?" and "is it already set?".
-  const state = await sensitive.getState(userId);
-  if (state.noFieldsMode) return 'noFieldsMode';
-  if (state.payload?.incomeBand) return 'alreadySet';
-  if (dryRun) return 'written';
-
-  await sensitive.updatePayload(userId, {
-    ...(state.payload ?? {}),
-    incomeBand: target,
-  });
-  return 'written';
-}
-
-export interface Counters {
-  scanned: number;
-  written: number;
-  skippedAlreadySet: number;
-  skippedNoFieldsMode: number;
-  skippedUnmappable: number;
-  failed: number;
-}
 
 /**
  * How many rows may fail before the run gives up.
@@ -138,11 +79,6 @@ export interface Counters {
  * worse than stopping early and telling someone.
  */
 const DEFAULT_MAX_FAILURES = 25;
-
-export interface LegacyRow {
-  userId: string;
-  incomeRange: string | null;
-}
 
 async function fetchBatch(
   db: DbService,
@@ -162,52 +98,6 @@ async function fetchBatch(
     userId: r.userId,
     incomeRange: r.incomeRange as string | null,
   }));
-}
-
-const COUNTER_BY_OUTCOME: Record<RowOutcome, keyof Counters> = {
-  written: 'written',
-  alreadySet: 'skippedAlreadySet',
-  noFieldsMode: 'skippedNoFieldsMode',
-  unmappable: 'skippedUnmappable',
-};
-
-export async function processRow(
-  row: LegacyRow,
-  sensitive: SensitiveProfileService,
-  dryRun: boolean,
-  counters: Counters,
-  failedUserIds: string[],
-  logger: Logger,
-): Promise<void> {
-  try {
-    const outcome = await decideAndApply(
-      row.userId,
-      row.incomeRange,
-      sensitive,
-      dryRun,
-    );
-
-    if (dryRun && outcome === 'written') {
-      // Deliberately logs the user id and NOT the band.
-      logger.log(`[dry-run] would set incomeBand for user ${row.userId}`);
-    }
-
-    counters[COUNTER_BY_OUTCOME[outcome]]++;
-  } catch (err) {
-    // One bad row must not abandon the rest of the table half-migrated.
-    // The known way this happens: EncryptionService.decrypt throws when a
-    // row's keyVersion is not the current one ("Key-rotation read path is a
-    // planned follow-up"). The run is resumable — it is idempotent, so
-    // re-running after the cause is fixed picks up exactly what was missed.
-    //
-    // The message is logged, the payload is NOT: this is CCPA/CPRA personal
-    // information and an error string is not a place for it.
-    counters.failed++;
-    failedUserIds.push(row.userId);
-    logger.error(
-      `Row failed for user ${row.userId}: ${(err as Error).message}`,
-    );
-  }
 }
 
 async function main(): Promise<void> {
