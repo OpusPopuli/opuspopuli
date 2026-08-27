@@ -6,51 +6,6 @@ import { gql } from "@apollo/client";
 
 export type SupportedLanguage = "en" | "es";
 
-// Profile Enhancement Enums
-export type PoliticalAffiliation =
-  | "DEMOCRAT"
-  | "REPUBLICAN"
-  | "INDEPENDENT"
-  | "LIBERTARIAN"
-  | "GREEN"
-  | "OTHER"
-  | "PREFER_NOT_TO_SAY";
-
-export type VotingFrequency =
-  | "EVERY_ELECTION"
-  | "MOST_ELECTIONS"
-  | "SOME_ELECTIONS"
-  | "RARELY"
-  | "NEVER"
-  | "PREFER_NOT_TO_SAY";
-
-export type EducationLevel =
-  | "HIGH_SCHOOL"
-  | "SOME_COLLEGE"
-  | "ASSOCIATE"
-  | "BACHELOR"
-  | "MASTER"
-  | "DOCTORATE"
-  | "TRADE_SCHOOL"
-  | "PREFER_NOT_TO_SAY";
-
-export type IncomeRange =
-  | "UNDER_25K"
-  | "RANGE_25K_50K"
-  | "RANGE_50K_75K"
-  | "RANGE_75K_100K"
-  | "RANGE_100K_150K"
-  | "RANGE_150K_200K"
-  | "OVER_200K"
-  | "PREFER_NOT_TO_SAY";
-
-export type HomeownerStatus =
-  | "OWN"
-  | "RENT"
-  | "LIVING_WITH_FAMILY"
-  | "OTHER"
-  | "PREFER_NOT_TO_SAY";
-
 // Profile Completion Types
 export interface CoreFieldsStatus {
   hasName: boolean;
@@ -86,16 +41,8 @@ export interface UserProfile {
   bio?: string;
   // Profile Visibility
   isPublic: boolean;
-  // Civic Fields
-  politicalAffiliation?: PoliticalAffiliation;
-  votingFrequency?: VotingFrequency;
-  policyPriorities?: string[];
-  // Demographic Fields
-  occupation?: string;
-  educationLevel?: EducationLevel;
-  incomeRange?: IncomeRange;
-  householdSize?: string;
-  homeownerStatus?: HomeownerStatus;
+  // The civic and demographic fields were removed in #1071 — they
+  // duplicated Your Model, which is what actually drives relevance.
   // First-run onboarding completion (#758). Undefined/null = not yet
   // completed. Server-side source of truth for cross-device state.
   onboardingCompletedAt?: string;
@@ -119,16 +66,8 @@ export interface UpdateProfileInput {
   bio?: string;
   // Profile Visibility
   isPublic?: boolean;
-  // Civic Fields
-  politicalAffiliation?: PoliticalAffiliation;
-  votingFrequency?: VotingFrequency;
-  policyPriorities?: string[];
-  // Demographic Fields
-  occupation?: string;
-  educationLevel?: EducationLevel;
-  incomeRange?: IncomeRange;
-  householdSize?: string;
-  homeownerStatus?: HomeownerStatus;
+  // The civic and demographic fields were removed in #1071 — they
+  // duplicated Your Model, which is what actually drives relevance.
 }
 
 /**
@@ -325,14 +264,6 @@ export const GET_MY_PROFILE = gql`
       avatarStorageKey
       bio
       isPublic
-      politicalAffiliation
-      votingFrequency
-      policyPriorities
-      occupation
-      educationLevel
-      incomeRange
-      householdSize
-      homeownerStatus
       onboardingCompletedAt
       createdAt
       updatedAt
@@ -359,14 +290,6 @@ export const UPDATE_MY_PROFILE = gql`
       avatarStorageKey
       bio
       isPublic
-      politicalAffiliation
-      votingFrequency
-      policyPriorities
-      occupation
-      educationLevel
-      incomeRange
-      householdSize
-      homeownerStatus
       updatedAt
     }
   }
