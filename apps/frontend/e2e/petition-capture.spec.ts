@@ -28,11 +28,31 @@ test.describe("Petition Capture", () => {
       await expect(page).toHaveURL(/\/petition\/capture/);
     });
 
-    test("should have back to home link", async ({ page }) => {
+    /**
+     * #1073. This used to assert a lone "Back to app" text link at the foot of
+     * the page — which existed only because `fixed inset-0` took the page out
+     * of document flow and left it outside the app's chrome entirely. That link
+     * was the single escape hatch, and asserting it enshrined the bug.
+     *
+     * The page now renders inside the global header and footer, so the check is
+     * that real navigation is present.
+     */
+    test("renders inside the app chrome, with a way back", async ({ page }) => {
       await setupAuthSession(page);
       await page.goto("/petition");
 
-      await expect(page.getByText("Back to app")).toBeVisible();
+      await expect(page.locator("header")).toBeVisible();
+      await expect(page.locator("footer")).toBeVisible();
+      await expect(page.getByText("Back to app")).toHaveCount(0);
+    });
+
+    /** The camera is the one route that must NOT get the chrome. */
+    test("capture has no header or footer", async ({ page }) => {
+      await setupAuthSession(page);
+      await page.goto("/petition/capture");
+
+      await expect(page.locator("header")).toHaveCount(0);
+      await expect(page.locator("footer")).toHaveCount(0);
     });
   });
 

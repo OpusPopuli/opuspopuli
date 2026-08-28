@@ -3,8 +3,7 @@
     "title": "Sepa lo que está firmando",
     "description": "Apunte su cámara a cualquier petición. Le diremos qué es, qué hace y si es real, en lenguaje sencillo.",
     "startScanning": "Escanear una petición",
-    "myScans": "Mis escaneos",
-    "backToHome": "Volver a la app"
+    "myScans": "Mis escaneos"
   },
   "camera": {
     "permission": {

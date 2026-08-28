@@ -18,7 +18,7 @@ import {
   type LinkedProposition,
 } from "@/lib/graphql/documents";
 import { ReportIssueButton } from "@/components/ReportIssueButton";
-import { PetitionPageHeader } from "../components/PetitionPageHeader";
+import { PetitionPageHeader } from "@/app/petition/components/PetitionPageHeader";
 import { TrackOnBallotButton } from "@/components/petition/TrackOnBallotButton";
 import { AnalysisDisplay } from "@/components/petition/AnalysisDisplay";
 import { PersonalizedImpact } from "@/components/petition/PersonalizedImpact";
@@ -184,8 +184,8 @@ export default function PetitionResultsPage() {
   return (
     // Was a scroll container inside the layout's `fixed inset-0` black box.
     // That shell is now scoped to /petition/capture (#1075), so this scrolls
-    // with the document like any other page.
-    <div className="min-h-screen">
+    // with the document like any other page, between the header and footer.
+    <div>
       <PetitionPageHeader
         title={t("results.title")}
         backLabel={t("results.back")}

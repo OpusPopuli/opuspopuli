@@ -10,12 +10,13 @@ export default function PetitionPage() {
 
   return (
     // Normal document flow on the app surface. This used to be a scroll
-    // container inside the layout's `fixed inset-0` black box; with that shell
-    // now scoped to /petition/capture (#1075), `h-full` would resolve against
-    // an auto-height body and collapse. `min-h-screen` on the inner column is
-    // what keeps the content vertically centred on a tall viewport.
+    // container inside the layout's `fixed inset-0` black box (#1075/#1073).
+    // The column no longer stretches to the viewport: with a header above and
+    // a footer below (the `(shell)` route group), `min-h-screen` here would
+    // guarantee a scrollbar on every screen. 60vh keeps it composed without
+    // pushing the footer off-screen.
     <div className="text-content">
-      <div className="flex min-h-screen flex-col items-center px-6 py-12 text-center">
+      <div className="flex min-h-[60vh] flex-col items-center px-6 py-12 text-center">
         <div className="flex flex-1 flex-col items-center justify-center">
           <Sunflower state="idle" size={56} title="Opus Populi" />
 
@@ -66,13 +67,6 @@ export default function PetitionPage() {
         <div className="mt-10 w-full max-w-sm">
           <ActivityFeed />
         </div>
-
-        <Link
-          href="/"
-          className="mt-8 text-sm text-content-dim transition-colors hover:text-content"
-        >
-          {t("home.backToHome")}
-        </Link>
       </div>
     </div>
   );
