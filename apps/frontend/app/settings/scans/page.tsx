@@ -105,7 +105,9 @@ function ScanRow({ item, onRequestDelete }: ScanRowProps) {
         aria-label={t("scans.viewDetail")}
       >
         <div className="flex items-baseline justify-between gap-3">
-          <p className="font-medium text-content truncate">
+          {/* min-w-0 so the title can shrink instead of forcing overflow —
+              belt and braces alongside the shell's responsive fix. */}
+          <p className="font-medium text-content truncate min-w-0">
             {item.isPetition === false
               ? t("scans.notAPetitionItem")
               : item.summary || item.type}

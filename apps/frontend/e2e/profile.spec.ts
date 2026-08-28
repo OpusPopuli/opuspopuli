@@ -251,7 +251,14 @@ test.describe("Model-of-me page", () => {
     await setupAuthed(page);
     await page.goto("/settings");
 
-    await expect(page.getByRole("link", { name: /your model/i })).toBeVisible();
+    // Scoped to the nav on purpose. Since #1071 the profile page ALSO carries
+    // an "Open Your Model" call to action where the retired civic and
+    // demographic sections used to be, so an unscoped /your model/i matches
+    // two links and trips strict mode. Both are correct; this test is about
+    // the nav entry specifically.
+    await expect(
+      page.getByRole("navigation").getByRole("link", { name: /your model/i }),
+    ).toBeVisible();
   });
 
   test("unauthenticated user is redirected to login", async ({ page }) => {

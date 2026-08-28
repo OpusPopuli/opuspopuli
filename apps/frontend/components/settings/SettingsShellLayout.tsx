@@ -219,8 +219,14 @@ export function SettingsShellLayout({
         </header>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex gap-8">
-            <nav className="w-64 flex-shrink-0">
+          {/* Stacks below lg. The sidebar is a hard 256px, so on a phone
+              (390px) a side-by-side row left `main` 70px wide and any
+              `truncate` child rendered at zero width — invisible, not merely
+              cramped. Caught by mobile-safari e2e after #1069 moved My Scans
+              into this shell; the shell has never been responsive, so every
+              /settings/* page was affected. */}
+          <div className="flex flex-col lg:flex-row gap-8">
+            <nav className="w-full lg:w-64 lg:flex-shrink-0">
               <div className="bg-surface rounded-lg dark:border p-2">
                 <h2 className="px-4 py-2 text-xs font-semibold text-content-dim uppercase tracking-wider">
                   {t("nav.settings")}
