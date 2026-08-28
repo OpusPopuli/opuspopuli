@@ -44,10 +44,11 @@ function Sparkline({
 
 function ActivityItem({ item }: { item: PetitionActivityItem }) {
   return (
-    // Bordered card on the pinned-dark surface — no light panel; text is
-    // the fixed light tokens.
-    <div className="px-4 py-3 rounded-lg border border-paper/25">
-      <p className="text-sm text-paper mb-1">
+    // A hairline card. Semantic tokens throughout so it reads correctly both
+    // inside the camera shell (where `.on-fixed-dark` remaps them to paper) and
+    // on the normal app surface once subtask 7 lifts that shell off (#1075).
+    <div className="px-4 py-3 rounded-lg border border-line">
+      <p className="text-sm text-content mb-1">
         {truncate(item.summary || "Petition document", 120)}
       </p>
       <div className="flex items-center gap-3 text-xs text-content-dim">
@@ -69,9 +70,9 @@ function LoadingSkeleton() {
       data-testid="activity-feed-loading"
     >
       <div className="h-4 bg-surface-alt rounded w-3/4" />
-      <div className="h-10 bg-paper/10 rounded" />
-      <div className="h-16 bg-paper/10 rounded" />
-      <div className="h-16 bg-paper/10 rounded" />
+      <div className="h-10 bg-surface-alt rounded" />
+      <div className="h-16 bg-surface-alt rounded" />
+      <div className="h-16 bg-surface-alt rounded" />
     </div>
   );
 }
@@ -110,12 +111,12 @@ export function ActivityFeed() {
       </div>
 
       <p className="text-sm text-content-dim mb-3">
-        <span className="text-paper font-semibold">
+        <span className="text-content font-semibold">
           {feed.totalScansLast24h}
         </span>{" "}
         {feed.totalScansLast24h === 1 ? "scan" : "scans"} in the last 24 hours
         across{" "}
-        <span className="text-paper font-semibold">
+        <span className="text-content font-semibold">
           {feed.activePetitionsLast24h}
         </span>{" "}
         {feed.activePetitionsLast24h === 1 ? "petition" : "petitions"}

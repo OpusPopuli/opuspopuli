@@ -9,16 +9,17 @@ export default function PetitionPage() {
   const { t } = useTranslation("petition");
 
   return (
-    // Scroll WITHIN the layout's fixed black box (like the results page). With
-    // min-h-full alone, tall content overflowed the fixed inset-0 box onto the
-    // light <body>, dropping the footer link onto a light surface and failing
-    // WCAG contrast (the a11y E2E caught it).
-    <div className="h-full overflow-y-auto text-paper">
-      <div className="flex min-h-full flex-col items-center px-6 py-12 text-center">
+    // Normal document flow on the app surface. This used to be a scroll
+    // container inside the layout's `fixed inset-0` black box; with that shell
+    // now scoped to /petition/capture (#1075), `h-full` would resolve against
+    // an auto-height body and collapse. `min-h-screen` on the inner column is
+    // what keeps the content vertically centred on a tall viewport.
+    <div className="text-content">
+      <div className="flex min-h-screen flex-col items-center px-6 py-12 text-center">
         <div className="flex flex-1 flex-col items-center justify-center">
           <Sunflower state="idle" size={56} title="Opus Populi" />
 
-          <h1 className="font-display mt-6 text-3xl font-bold leading-tight text-paper text-balance">
+          <h1 className="font-display mt-6 text-3xl font-bold leading-tight text-content text-balance">
             {t("home.title")}
           </h1>
           <p className="mt-3 max-w-sm text-content-dim leading-relaxed">
@@ -27,7 +28,7 @@ export default function PetitionPage() {
 
           <Link
             href="/petition/capture"
-            className="mt-8 inline-flex w-full max-w-xs items-center justify-center gap-2.5 rounded-xl bg-accent px-8 py-3.5 font-semibold text-on-accent transition-colors hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            className="mt-8 inline-flex w-full max-w-xs items-center justify-center gap-2.5 rounded-xl bg-accent px-8 py-3.5 font-semibold text-on-accent transition-colors hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
           >
             <svg
               className="h-5 w-5"
@@ -58,12 +59,6 @@ export default function PetitionPage() {
               className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-content-dim transition-colors hover:border-accent hover:text-content"
             >
               {t("home.myScans")}
-            </Link>
-            <Link
-              href="/petition/map"
-              className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-content-dim transition-colors hover:border-accent hover:text-content"
-            >
-              {t("home.viewMap")}
             </Link>
           </div>
         </div>

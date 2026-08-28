@@ -2,17 +2,16 @@
 
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
+/**
+ * Auth only. The camera shell moved to `capture/layout.tsx` (#1075) — it was
+ * wrapping the entire subtree, so the landing page, the results page and the
+ * map all inherited a full-bleed black box with no header and no theme
+ * response. Only the viewfinder should look like a viewfinder.
+ */
 export default function PetitionLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <ProtectedRoute>
-      {/* on-fixed-dark, not on-ink: the camera feed is black in both themes.
-          on-ink INVERTS in dark theme (to a paper panel), which would put ink
-          text on the black video. on-fixed-dark pins the tokens instead. */}
-      <div className="fixed inset-0 bg-black on-fixed-dark">{children}</div>
-    </ProtectedRoute>
-  );
+  return <ProtectedRoute>{children}</ProtectedRoute>;
 }

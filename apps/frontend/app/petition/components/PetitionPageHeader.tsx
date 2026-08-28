@@ -20,7 +20,7 @@ export function PetitionPageHeader({
   const router = useRouter();
 
   return (
-    <div className="sticky top-0 z-10 bg-black/90 backdrop-blur-sm px-4 py-4 flex items-center gap-3 border-b border-line">
+    <div className="sticky top-0 z-10 bg-surface/90 backdrop-blur-sm px-4 py-4 flex items-center gap-3 border-b border-line">
       <button
         onClick={() => router.push(backHref)}
         className="text-content-dim hover:text-content transition-colors"
@@ -41,7 +41,7 @@ export function PetitionPageHeader({
           />
         </svg>
       </button>
-      <h1 className="text-lg font-semibold text-paper">{title}</h1>
+      <h1 className="text-lg font-semibold text-content">{title}</h1>
     </div>
   );
 }

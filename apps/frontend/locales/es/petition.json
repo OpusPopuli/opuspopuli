@@ -4,7 +4,6 @@
     "description": "Apunte su cámara a cualquier petición. Le diremos qué es, qué hace y si es real, en lenguaje sencillo.",
     "startScanning": "Escanear una petición",
     "myScans": "Mis escaneos",
-    "viewMap": "Mapa de peticiones",
     "backToHome": "Volver a la app"
   },
   "camera": {
