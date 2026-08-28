@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 interface CaptureControlsProps {
   onCapture: () => void;
   onSwitchCamera?: () => void;
@@ -8,6 +10,15 @@ interface CaptureControlsProps {
   hasMultipleCameras: boolean;
   torchEnabled: boolean;
   disabled?: boolean;
+  /**
+   * True when edge detection says the page is framed well enough to capture.
+   *
+   * This changes the shutter's APPEARANCE ONLY. It must never gate the button:
+   * detection fails on shadowed sheets, unusual paper and low light, and a
+   * shutter that refuses to fire leaves someone unable to scan a petition that
+   * is right in front of them, with no way to tell why.
+   */
+  ready?: boolean;
 }
 
 export function CaptureControls({
@@ -18,7 +29,10 @@ export function CaptureControls({
   hasMultipleCameras,
   torchEnabled,
   disabled = false,
+  ready = false,
 }: CaptureControlsProps) {
+  const { t } = useTranslation("petition");
+
   return (
     <div className="absolute bottom-0 left-0 right-0 pb-8 pt-4 flex items-center justify-center gap-8 bg-gradient-to-t from-black/60 to-transparent">
       {/* Torch toggle */}
@@ -31,7 +45,11 @@ export function CaptureControls({
                 ? "bg-warning-solid text-black"
                 : "bg-paper/20 text-paper"
             }`}
-            aria-label={torchEnabled ? "Turn off flash" : "Turn on flash"}
+            aria-label={
+              torchEnabled
+                ? t("camera.controls.flashOff")
+                : t("camera.controls.flashOn")
+            }
           >
             <svg
               className="w-5 h-5"
@@ -52,15 +70,31 @@ export function CaptureControls({
       </div>
 
       {/* Capture button */}
+      {/*
+        Paper ring, gold disc when framed. Gold is earned here in the sense the
+        design system means it: a filled shape marking a real state change, not
+        decoration — the page is squared up and this shot will read.
+
+        `disabled` is the loading flag only. Readiness deliberately does NOT
+        disable it (see the prop doc): detection fails on shadowed sheets and
+        poor light, and a shutter that will not fire strands someone holding a
+        petition they are entitled to scan.
+
+        Fixed paper/gold rather than theme-relative tokens — the viewfinder is a
+        dark scene in both themes, and `bg-surface` would turn the disc black in
+        dark mode.
+      */}
       <button
         onClick={onCapture}
         disabled={disabled}
-        className="w-[72px] h-[72px] rounded-full border-4 border-white flex items-center justify-center disabled:opacity-50 transition-transform active:scale-95"
-        aria-label="Capture photo"
+        className="w-[72px] h-[72px] rounded-full border-4 border-paper flex items-center justify-center disabled:opacity-50 transition-transform active:scale-95"
+        aria-label={t("camera.controls.capture")}
       >
-        {/* Fixed white, not bg-surface: the viewfinder is always a dark scene,
-            and a theme-relative token turns the disc black in dark mode. */}
-        <div className="w-[60px] h-[60px] rounded-full bg-white" />
+        <div
+          className={`w-[60px] h-[60px] rounded-full transition-colors duration-200 ${
+            ready ? "bg-accent" : "bg-paper"
+          }`}
+        />
       </button>
 
       {/* Camera switch */}
@@ -69,7 +103,7 @@ export function CaptureControls({
           <button
             onClick={onSwitchCamera}
             className="w-11 h-11 rounded-full bg-paper/20 text-paper flex items-center justify-center transition-colors"
-            aria-label="Switch camera"
+            aria-label={t("camera.controls.switchCamera")}
           >
             <svg
               className="w-5 h-5"

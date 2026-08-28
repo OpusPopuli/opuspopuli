@@ -9,7 +9,7 @@
   "camera": {
     "permission": {
       "title": "Se Necesita Acceso a la Cámara",
-      "description": "Para escanear peticiones, necesitamos acceso a tu cámara. Tus imágenes se procesan de forma segura y nunca se guardan en tu dispositivo.",
+      "description": "Para escanear peticiones, necesitamos acceso a tu cámara. La foto nunca se guarda: leemos el texto de la petición y descartamos la imagen.",
       "enable": "Habilitar Cámara",
       "deniedTitle": "Acceso a Cámara Denegado",
       "deniedDescription": "El acceso a la cámara fue denegado. Para escanear peticiones:",
@@ -20,6 +20,9 @@
       "refresh": "Recargar Página",
       "unsupportedTitle": "Cámara No Soportada",
       "unsupportedDescription": "Tu navegador no soporta acceso a la cámara. Intenta usar Chrome, Safari o Firefox en un dispositivo móvil."
+    },
+    "privacy": {
+      "notice": "Leemos el texto de la petición. La foto nunca se guarda y las firmas nunca se capturan."
     },
     "overlay": {
       "alignGuide": "Alinea la petición dentro del marco"

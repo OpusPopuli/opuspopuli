@@ -9,7 +9,7 @@
   "camera": {
     "permission": {
       "title": "Camera Access Needed",
-      "description": "To scan petitions, we need access to your camera. Your images are processed securely and never saved to your device.",
+      "description": "To scan petitions, we need access to your camera. The photo is never saved — we read the petition's text and discard the image.",
       "enable": "Enable Camera",
       "deniedTitle": "Camera Access Denied",
       "deniedDescription": "Camera access was denied. To scan petitions:",
@@ -20,6 +20,9 @@
       "refresh": "Refresh Page",
       "unsupportedTitle": "Camera Not Supported",
       "unsupportedDescription": "Your browser doesn't support camera access. Try using Chrome, Safari, or Firefox on a mobile device."
+    },
+    "privacy": {
+      "notice": "We read the petition's text. The photo is never saved, and signatures are never captured."
     },
     "overlay": {
       "alignGuide": "Align petition within the frame"

@@ -180,4 +180,31 @@ describe("CameraViewfinder", () => {
       expect(navigator.vibrate).toHaveBeenCalledWith(50);
     });
   });
+  /**
+   * #1075. This is the accessible statement of what the scanner does — the
+   * exclusion band that shows the same thing visually is aria-hidden, so a
+   * screen-reader user would otherwise get no privacy information at all.
+   *
+   * It also has to be true. Every clause maps to shipped behaviour: the crop in
+   * handleCapture, the removed storage upload in ScanService, and the
+   * server-side scrub of the OCR text.
+   */
+  describe("privacy notice", () => {
+    it("states the behaviour before the shutter is pressed", () => {
+      render(<CameraViewfinder {...defaultProps} />);
+
+      expect(
+        screen.getByText(
+          "We read the petition's text. The photo is never saved, and signatures are never captured.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("is exposed to assistive technology", () => {
+      render(<CameraViewfinder {...defaultProps} />);
+
+      const notice = screen.getByText(/never saved/);
+      expect(notice.closest("[aria-hidden='true']")).toBeNull();
+    });
+  });
 });

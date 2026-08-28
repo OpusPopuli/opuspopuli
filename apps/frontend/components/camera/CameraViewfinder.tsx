@@ -178,6 +178,25 @@ export function CameraViewfinder({
         </button>
       )}
 
+      {/*
+        The privacy notice, on the camera screen, before the shutter (#1075).
+        It lands last of the ten subtasks by construction: every claim it makes
+        is already true in the code above it — the signature block is cropped
+        off on this device, the photo is never persisted, and the OCR text is
+        scrubbed server-side. A notice that ran ahead of the behaviour would be
+        worse than none.
+
+        Deliberately NOT inside DocumentFrameOverlay, which is aria-hidden.
+        The band is a visual aid; this is the accessible statement of what the
+        scanner does, and a screen-reader user needs it.
+      */}
+      <p
+        className="absolute left-1/2 z-10 w-[min(22rem,calc(100%-6rem))] -translate-x-1/2 rounded-lg bg-black/55 px-3 py-2 text-center text-xs leading-snug text-paper/90 backdrop-blur-sm"
+        style={{ top: "calc(4.25rem + env(safe-area-inset-top))" }}
+      >
+        {t("camera.privacy.notice")}
+      </p>
+
       <DocumentFrameOverlay
         ready={detection.readiness.ready}
         quad={detection.readiness.quad}
@@ -191,6 +210,7 @@ export function CameraViewfinder({
 
       <CaptureControls
         onCapture={handleCapture}
+        ready={detection.readiness.ready}
         onSwitchCamera={switchCamera}
         onToggleTorch={onToggleTorch}
         hasTorch={hasTorch}
