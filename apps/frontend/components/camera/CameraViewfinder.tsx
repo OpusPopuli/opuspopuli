@@ -12,6 +12,7 @@ import {
   type ReadinessHint,
 } from "@/lib/hooks/useDocumentDetection";
 import { deskewImageData } from "@/lib/vision/perspective";
+import { getKeepRegion, cropImageData } from "@/lib/vision/signature-region";
 
 interface CameraViewfinderProps {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -117,8 +118,26 @@ export function CameraViewfinder({
     // background/skew, which is the biggest lever on OCR quality — and the
     // fallback guarantees we never do worse than the whole frame.
     const { quad } = detection.latest();
-    const processed = quad ? (deskewImageData(frame, quad) ?? frame) : frame;
-    onCapture(processed);
+    const deskewed = quad ? (deskewImageData(frame, quad) ?? frame) : frame;
+    const pageFillsImage = deskewed !== frame;
+
+    // Then drop the signature block (#1075). This happens HERE, next to the
+    // deskew, because this is the only place that knows whether the deskew
+    // succeeded — and the answer changes the crop. After a successful deskew
+    // the image IS the page, so we keep the top of the image; without one the
+    // quad still refers to frame coordinates and we fall back conservatively.
+    //
+    // Doing it here also means the discarded pixels never reach sessionStorage,
+    // the network, object storage or OCR. Those five strangers' names and
+    // addresses simply never leave the phone.
+    const keep = getKeepRegion({
+      quad: pageFillsImage ? null : quad,
+      frameWidth: deskewed.width,
+      frameHeight: deskewed.height,
+      pageFillsImage,
+    });
+
+    onCapture(cropImageData(deskewed, keep));
   }, [captureFrame, onCapture, detection]);
 
   return (

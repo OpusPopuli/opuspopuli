@@ -131,7 +131,30 @@ describe("CameraViewfinder", () => {
       await user.click(screen.getByRole("button", { name: "Capture" }));
 
       expect(defaultProps.captureFrame).toHaveBeenCalled();
-      expect(defaultProps.onCapture).toHaveBeenCalledWith(mockImageData);
+      expect(defaultProps.onCapture).toHaveBeenCalled();
+    });
+
+    /**
+     * #1075: capture crops away the signature block before handing the image
+     * on, so `onCapture` deliberately no longer receives the raw frame. This
+     * is the guarantee the pre-capture notice makes — the discarded pixels
+     * never reach sessionStorage, the network, storage or OCR.
+     */
+    it("hands on a cropped image, never the full frame", async () => {
+      const user = userEvent.setup();
+      const tallFrame = new ImageData(40, 100);
+      const captureFrame = jest.fn(() => tallFrame);
+
+      render(
+        <CameraViewfinder {...defaultProps} captureFrame={captureFrame} />,
+      );
+      await user.click(screen.getByRole("button", { name: "Capture" }));
+
+      const handed = (defaultProps.onCapture as jest.Mock).mock
+        .calls[0][0] as ImageData;
+
+      expect(handed).not.toBe(tallFrame);
+      expect(handed.height).toBeLessThan(tallFrame.height);
     });
 
     it("should not call onCapture when captureFrame returns null", async () => {
