@@ -168,30 +168,3 @@ export function cropImageData(
   }
   return out;
 }
-
-/**
- * The same region expressed as percentages of the frame, for SVG overlays that
- * work in a `0 0 100 100` viewBox.
- *
- * Derived from `getKeepRegion` rather than recomputed, so the band the user
- * sees cannot drift from the crop that is applied.
- */
-export function getKeepRegionPercent(input: KeepRegionInput): {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-  readonly fromDetectedQuad: boolean;
-} {
-  const region = getKeepRegion(input);
-  const w = Math.max(1, input.frameWidth);
-  const h = Math.max(1, input.frameHeight);
-
-  return {
-    x: (region.x / w) * 100,
-    y: (region.y / h) * 100,
-    width: (region.width / w) * 100,
-    height: (region.height / h) * 100,
-    fromDetectedQuad: region.fromDetectedQuad,
-  };
-}

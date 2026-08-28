@@ -117,6 +117,12 @@ export function CameraViewfinder({
     // otherwise send the full frame. Cropping to the document removes the
     // background/skew, which is the biggest lever on OCR quality — and the
     // fallback guarantees we never do worse than the whole frame.
+    // `latest()`, NOT `detection.readiness`. Both are written from the same
+    // detection result, but `readiness` is React state and therefore lags by a
+    // render — the overlay has to use it because refs do not trigger renders,
+    // while the crop must use the freshest reading available. Swapping capture
+    // onto `readiness` would crop by a stale page position, which is precisely
+    // how a signature row ends up back in shot.
     const { quad } = detection.latest();
     const deskewed = quad ? (deskewImageData(frame, quad) ?? frame) : frame;
     const pageFillsImage = deskewed !== frame;

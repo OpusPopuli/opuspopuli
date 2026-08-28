@@ -1,6 +1,5 @@
 import {
   getKeepRegion,
-  getKeepRegionPercent,
   cropImageData,
   KEEP_TOP_FRACTION,
   UNDETECTED_KEEP_TOP_FRACTION,
@@ -127,33 +126,6 @@ describe("getKeepRegion", () => {
       height: 0,
       fromDetectedQuad: false,
     });
-  });
-});
-
-describe("getKeepRegionPercent", () => {
-  /**
-   * The overlay draws percentages; the crop slices pixels. They must describe
-   * the same rectangle, or the band the user watches is not the boundary that
-   * is applied — which would make the pre-capture notice untrue.
-   */
-  it("describes the same rectangle as getKeepRegion", () => {
-    const px = getKeepRegion({ ...FRAME, quad: page });
-    const pct = getKeepRegionPercent({ ...FRAME, quad: page });
-
-    expect(pct.x).toBeCloseTo((px.x / FRAME.frameWidth) * 100, 6);
-    expect(pct.y).toBeCloseTo((px.y / FRAME.frameHeight) * 100, 6);
-    expect(pct.width).toBeCloseTo((px.width / FRAME.frameWidth) * 100, 6);
-    expect(pct.height).toBeCloseTo((px.height / FRAME.frameHeight) * 100, 6);
-    expect(pct.fromDetectedQuad).toBe(px.fromDetectedQuad);
-  });
-
-  it("stays within the viewBox for the undetected fallback", () => {
-    const pct = getKeepRegionPercent({ ...FRAME, quad: null });
-
-    expect(pct.x).toBeGreaterThanOrEqual(0);
-    expect(pct.y).toBeGreaterThanOrEqual(0);
-    expect(pct.x + pct.width).toBeLessThanOrEqual(100);
-    expect(pct.y + pct.height).toBeLessThanOrEqual(100);
   });
 });
 
