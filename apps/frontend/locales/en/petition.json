@@ -3,8 +3,7 @@
     "title": "Know what you're signing",
     "description": "Point your camera at any petition. We'll tell you what it is, what it does, and whether it's real, in plain language.",
     "startScanning": "Scan a petition",
-    "myScans": "My scans",
-    "backToHome": "Back to app"
+    "myScans": "My scans"
   },
   "camera": {
     "permission": {

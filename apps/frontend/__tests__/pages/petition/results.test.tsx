@@ -1,7 +1,7 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
-import PetitionResultsPage from "@/app/petition/results/page";
+import PetitionResultsPage from "@/app/petition/(shell)/results/page";
 
 // Mock next/navigation
 const mockPush = jest.fn();
