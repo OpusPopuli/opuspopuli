@@ -19,6 +19,7 @@ import { MetricsService } from 'src/common/metrics';
 import { ExtractTextResult } from '../dto/ocr.dto';
 import { ProcessScanResult } from '../dto/scan.dto';
 import { FileService } from './file.service';
+import { scrubSignatureBlock } from './signature-scrub';
 
 /**
  * Scan Service
@@ -101,13 +102,15 @@ export class ScanService {
       // out of scope when this method returns.
       const extractedText = await this.extractTextFromBuffer(buffer, mimeType);
 
-      // Calculate content hash and persist extracted text
-      await this.persistExtractedText(document.id, extractedText, {
-        status: DocumentStatus.text_extraction_complete,
-      });
+      // Scrub, persist, and keep the scrubbed text for the response.
+      const safeText = await this.persistExtractedText(
+        document.id,
+        extractedText,
+        { status: DocumentStatus.text_extraction_complete },
+      );
 
       this.logger.log(
-        `Scan processed: document ${document.id}, ${extractedText.text.length} chars, ${extractedText.confidence.toFixed(1)}% confidence`,
+        `Scan processed: document ${document.id}, ${safeText.length} chars, ${extractedText.confidence.toFixed(1)}% confidence`,
       );
 
       this.metricsService.recordScanProcessed(
@@ -125,7 +128,7 @@ export class ScanService {
 
       return {
         documentId: document.id,
-        text: extractedText.text,
+        text: safeText,
         confidence: extractedText.confidence,
         provider: extractedText.provider,
         processingTimeMs: Date.now() - startTime,
@@ -183,15 +186,17 @@ export class ScanService {
     // Extract text using appropriate method
     const extractedText = await this.extractTextFromBuffer(buffer, mimeType);
 
-    // Calculate content hash and persist extracted text
-    await this.persistExtractedText(document.id, extractedText);
+    const safeText = await this.persistExtractedText(
+      document.id,
+      extractedText,
+    );
 
     this.logger.log(
-      `Extracted ${extractedText.text.length} chars from ${filename} (${extractedText.confidence.toFixed(1)}% confidence)`,
+      `Extracted ${safeText.length} chars from ${filename} (${extractedText.confidence.toFixed(1)}% confidence)`,
     );
 
     return {
-      text: extractedText.text,
+      text: safeText,
       confidence: extractedText.confidence,
       provider: extractedText.provider,
       processingTimeMs: Date.now() - startTime,
@@ -234,18 +239,42 @@ export class ScanService {
     documentId: string,
     extractedText: { text: string; confidence: number; provider: string },
     extra?: { status?: DocumentStatus },
-  ): Promise<void> {
-    const contentHash = this.hashText(extractedText.text);
+  ): Promise<string> {
+    // Second privacy layer (#1075). The client crops the signature block off
+    // before upload, so this normally finds nothing — it covers the cases the
+    // crop cannot: an unusually tall block, an odd angle, a page that is not
+    // laid out the way the SoS template expects.
+    //
+    // Applied HERE because this is the single choke point where OCR text is
+    // written, so both processScan and extractTextFromFile are covered by one
+    // call. Note the contentHash is computed from the scrubbed text, so the
+    // analysis cache keys on what we actually kept.
+    const { text, scrubbed } = scrubSignatureBlock(extractedText.text);
+
+    if (scrubbed) {
+      // Count only. Never log what was removed — it is exactly the personal
+      // information this whole change exists to not retain.
+      this.logger.log(
+        `Signature block scrubbed from document ${documentId} (${extractedText.text.length - text.length} chars dropped)`,
+      );
+    }
+
+    const contentHash = this.hashText(text);
     await this.db.document.update({
       where: { id: documentId },
       data: {
-        extractedText: extractedText.text,
+        extractedText: text,
         contentHash,
         ocrConfidence: extractedText.confidence,
         ocrProvider: extractedText.provider,
         ...(extra?.status ? { status: extra.status } : {}),
       },
     });
+
+    // Returned so callers echo the SCRUBBED text back to the client. Returning
+    // `extractedText.text` here would persist the safe version but hand the
+    // raw one — signature rows included — straight back over GraphQL.
+    return text;
   }
 
   /**
