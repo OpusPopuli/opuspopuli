@@ -261,3 +261,61 @@ contents.
 - Restoring the petition map. This only removes the entry point.
 - Any change to edge detection, lighting analysis or the framing brackets —
   they work.
+
+---
+
+## As-built (2026-08-28)
+
+Recorded here because this file is what `/op-trace` and `/op-change-record`
+link back to, and three things differ from the plan above.
+
+**Subtask order changed: 8, 9, 7 instead of 7, 8, 9.** The plan narrows the
+camera shell first and repapers afterwards, which leaves a commit where
+`/petition` renders paper-coloured text on a paper ground. `.on-fixed-dark`
+already remaps `content → paper` and `line → paper/20`, so swapping the pinned
+classes for semantic tokens is visually a no-op while the shell is still in
+place; the structural flip then lands on components that are already correct in
+both palettes. Committed together as `8ddfee5f`.
+
+**Subtask 4's matching rule was wrong in the plan and is corrected in the code.**
+The plan says "truncate at the LAST label occurrence in the lower portion". The
+signature block repeats its labels once per row, so the last occurrence sits
+near the block's END and truncating there would keep almost all of it. Matching
+the FIRST occurrence of a weak label is wrong in the other direction, because
+"residence address", "city" and "zip" appear in real measure text. The shipped
+rule matches only markers that cannot occur in legislative prose — "Print Your
+Name", "Sign As Registered To Vote", "DECLARATION OF CIRCULATOR" — and cuts at
+the first of those.
+
+**Subtask 2a (OCR coverage measurement) not done.** Optional, and it feeds
+#1074, which this plan puts out of scope.
+
+### Two bugs found by rendering it, not by reasoning about it
+
+Both were caught only after screenshotting the overlay at phone size:
+
+1. The band and the pre-existing detected-page outline were projected onto a
+   square `0 0 100 100` viewBox with `preserveAspectRatio="slice"`, which cannot
+   reproduce the `object-cover` `<video>` beneath for any non-square frame. The
+   outline had been rendering well off the real page edges on every device.
+2. The band was bounded by the quad's axis-aligned bounding box, which on a
+   tilted page is strictly larger than the page — it hung outside the sheet and
+   overstated what the crop drops. Now clipped to the page polygon.
+
+### Risk register item closed
+
+*"Existing stored images retained — 7 scans, all Rodney's; delete alongside
+subtask 3."* Done 2026-08-28, after the code changes rather than alongside them.
+Eight document rows existed, not seven, and seven had stored objects (the
+earliest upload never completed).
+
+Deleted through the Storage API rather than the database: Supabase keeps each
+object as a directory holding a version blob, so removing the `storage.objects`
+row alone would have left all 1,221,293 bytes of JPEG on disk. Verified after:
+0 blobs, 0 bytes, 0 `storage.objects` rows.
+
+All 8 document rows were kept — no surface renders the image, and the scan
+history is the user's. Integrity after deletion: 6 `AI Analysis Complete` with
+text, 1 `AI Analysis Failed` with text, 1 `Text Extraction Failed` that never
+had any. Their `location` column was updated from the now-dangling object path
+to `not-stored`, which is what `ScanService` writes for every new scan.
