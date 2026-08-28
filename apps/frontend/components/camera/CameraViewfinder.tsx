@@ -184,6 +184,7 @@ export function CameraViewfinder({
         frameWidth={detection.readiness.frameWidth}
         frameHeight={detection.readiness.frameHeight}
         guideText={guideTextForHint(detection.readiness.hint)}
+        excludedNotice={t("camera.exclusion.notice")}
       />
 
       <LightingFeedback level={lightingLevel} />

@@ -25,6 +25,9 @@
     "overlay": {
       "alignGuide": "Alinea la petición dentro del marco"
     },
+    "exclusion": {
+      "notice": "Esta área no se captura para proteger la privacidad de los firmantes"
+    },
     "guide": {
       "searching": "Apunte a una petición",
       "moveCloser": "Acérquese",

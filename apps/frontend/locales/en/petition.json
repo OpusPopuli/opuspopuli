@@ -25,6 +25,9 @@
     "overlay": {
       "alignGuide": "Align petition within the frame"
     },
+    "exclusion": {
+      "notice": "This area is not captured to protect the privacy of signers"
+    },
     "guide": {
       "searching": "Point at a petition",
       "moveCloser": "Move closer",
