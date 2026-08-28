@@ -182,7 +182,10 @@ export default function PetitionResultsPage() {
   }, [analysis, ocrText]);
 
   return (
-    <div className="h-full overflow-y-auto">
+    // Was a scroll container inside the layout's `fixed inset-0` black box.
+    // That shell is now scoped to /petition/capture (#1075), so this scrolls
+    // with the document like any other page.
+    <div className="min-h-screen">
       <PetitionPageHeader
         title={t("results.title")}
         backLabel={t("results.back")}
@@ -192,7 +195,7 @@ export default function PetitionResultsPage() {
       {(step === "extracting" || step === "analyzing") && !ocrText && (
         <div className="flex flex-col items-center justify-center py-16">
           <LoadingSpinner size="lg" className="text-accent mb-4" />
-          <p className="text-paper text-lg font-medium">
+          <p className="text-content text-lg font-medium">
             {step === "extracting"
               ? t("results.extractingText")
               : t("results.analyzingDocument")}
@@ -241,7 +244,7 @@ export default function PetitionResultsPage() {
         <div className="px-4 py-6 flex gap-3">
           <button
             onClick={handleShare}
-            className="flex-1 py-3 bg-paper/10 text-paper font-medium rounded-lg hover:bg-paper/20 transition-colors"
+            className="flex-1 py-3 bg-surface-alt text-content font-medium rounded-lg hover:bg-surface-sunk transition-colors"
           >
             {t("results.share")}
           </button>
@@ -285,14 +288,14 @@ export default function PetitionResultsPage() {
               d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
             />
           </svg>
-          <h2 className="text-xl font-semibold text-paper mb-2">
+          <h2 className="text-xl font-semibold text-content mb-2">
             {t("results.errorTitle")}
           </h2>
           <p className="text-content-dim mb-6">{error}</p>
           <div className="flex gap-3">
             <button
               onClick={() => router.push("/petition")}
-              className="px-6 py-3 bg-paper/15 text-paper font-medium rounded-lg hover:bg-surface-sunk transition-colors"
+              className="px-6 py-3 bg-surface-alt text-content font-medium rounded-lg hover:bg-surface-sunk transition-colors"
             >
               {t("results.backToHome")}
             </button>

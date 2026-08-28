@@ -107,14 +107,71 @@ describe('ScanService', () => {
       );
     });
 
+    /**
+     * #1075: the scrubbed text is what gets persisted AND what gets returned.
+     * Returning the raw OCR would hand signature rows straight back over
+     * GraphQL while the database held the safe version — the leak would be
+     * invisible to any test that only inspected the row.
+     */
+    it('returns scrubbed text, not the raw OCR', async () => {
+      db.document.create.mockResolvedValue({ id: 'doc-1' });
+      db.document.update.mockResolvedValue({});
+      ocrService.extractFromBuffer.mockResolvedValue({
+        text: 'SECTION 1. FINDINGS.\nPrint Your Name: Jane Q Public\n42 Elm St',
+        confidence: 95.0,
+        provider: 'tesseract',
+        blocks: [],
+        processingTimeMs: 100,
+      });
+
+      const result = await service.processScan(
+        'user-1',
+        base64Data,
+        'image/png',
+      );
+
+      expect(result.text).toContain('SECTION 1. FINDINGS.');
+      expect(result.text).not.toContain('Jane Q Public');
+      expect(result.text).not.toContain('42 Elm St');
+
+      const persisted = db.document.update.mock.calls.at(-1)?.[0] as {
+        data: { extractedText: string };
+      };
+      expect(persisted.data.extractedText).not.toContain('Jane Q Public');
+    });
+
+    /**
+     * #1075: a scan photograph can carry five strangers' handwritten names and
+     * residence addresses. It is never persisted — not to object storage, not
+     * anywhere. This is the assertion that keeps it that way.
+     */
+    it('never uploads the image anywhere', async () => {
+      db.document.create.mockResolvedValue({ id: 'doc-1' });
+      db.document.update.mockResolvedValue({});
+      ocrService.extractFromBuffer.mockResolvedValue({
+        text: 'Extracted text',
+        confidence: 95.0,
+        provider: 'tesseract',
+        blocks: [],
+        processingTimeMs: 100,
+      });
+
+      await service.processScan('user-1', base64Data, 'image/png');
+
+      expect(storage.getSignedUrl).not.toHaveBeenCalled();
+    });
+
     it('should update status to failed on error', async () => {
       const mockDoc = { id: 'doc-1' };
       db.document.create.mockResolvedValue(mockDoc);
-      storage.getSignedUrl.mockRejectedValue(new Error('Upload failed'));
+      // Failure is injected at OCR now. It used to be injected at the storage
+      // upload, but scans are no longer uploaded anywhere (#1075), so that
+      // path cannot fail because it does not exist.
+      ocrService.extractFromBuffer.mockRejectedValue(new Error('OCR failed'));
 
       await expect(
         service.processScan('user-1', base64Data, 'image/png'),
-      ).rejects.toThrow('Upload failed');
+      ).rejects.toThrow('OCR failed');
 
       expect(db.document.update).toHaveBeenCalledWith({
         where: { id: 'doc-1' },

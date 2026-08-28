@@ -12,6 +12,7 @@ import {
   type ReadinessHint,
 } from "@/lib/hooks/useDocumentDetection";
 import { deskewImageData } from "@/lib/vision/perspective";
+import { getKeepRegion, cropImageData } from "@/lib/vision/signature-region";
 
 interface CameraViewfinderProps {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -116,9 +117,33 @@ export function CameraViewfinder({
     // otherwise send the full frame. Cropping to the document removes the
     // background/skew, which is the biggest lever on OCR quality — and the
     // fallback guarantees we never do worse than the whole frame.
+    // `latest()`, NOT `detection.readiness`. Both are written from the same
+    // detection result, but `readiness` is React state and therefore lags by a
+    // render — the overlay has to use it because refs do not trigger renders,
+    // while the crop must use the freshest reading available. Swapping capture
+    // onto `readiness` would crop by a stale page position, which is precisely
+    // how a signature row ends up back in shot.
     const { quad } = detection.latest();
-    const processed = quad ? (deskewImageData(frame, quad) ?? frame) : frame;
-    onCapture(processed);
+    const deskewed = quad ? (deskewImageData(frame, quad) ?? frame) : frame;
+    const pageFillsImage = deskewed !== frame;
+
+    // Then drop the signature block (#1075). This happens HERE, next to the
+    // deskew, because this is the only place that knows whether the deskew
+    // succeeded — and the answer changes the crop. After a successful deskew
+    // the image IS the page, so we keep the top of the image; without one the
+    // quad still refers to frame coordinates and we fall back conservatively.
+    //
+    // Doing it here also means the discarded pixels never reach sessionStorage,
+    // the network, object storage or OCR. Those five strangers' names and
+    // addresses simply never leave the phone.
+    const keep = getKeepRegion({
+      quad: pageFillsImage ? null : quad,
+      frameWidth: deskewed.width,
+      frameHeight: deskewed.height,
+      pageFillsImage,
+    });
+
+    onCapture(cropImageData(deskewed, keep));
   }, [captureFrame, onCapture, detection]);
 
   return (
@@ -159,18 +184,39 @@ export function CameraViewfinder({
         </button>
       )}
 
+      {/*
+        The privacy notice, on the camera screen, before the shutter (#1075).
+        It lands last of the ten subtasks by construction: every claim it makes
+        is already true in the code above it — the signature block is cropped
+        off on this device, the photo is never persisted, and the OCR text is
+        scrubbed server-side. A notice that ran ahead of the behaviour would be
+        worse than none.
+
+        Deliberately NOT inside DocumentFrameOverlay, which is aria-hidden.
+        The band is a visual aid; this is the accessible statement of what the
+        scanner does, and a screen-reader user needs it.
+      */}
+      <p
+        className="absolute left-1/2 z-10 w-[min(22rem,calc(100%-6rem))] -translate-x-1/2 rounded-lg bg-black/55 px-3 py-2 text-center text-xs leading-snug text-paper/90 backdrop-blur-sm"
+        style={{ top: "calc(4.25rem + env(safe-area-inset-top))" }}
+      >
+        {t("camera.privacy.notice")}
+      </p>
+
       <DocumentFrameOverlay
         ready={detection.readiness.ready}
         quad={detection.readiness.quad}
         frameWidth={detection.readiness.frameWidth}
         frameHeight={detection.readiness.frameHeight}
         guideText={guideTextForHint(detection.readiness.hint)}
+        excludedNotice={t("camera.exclusion.notice")}
       />
 
       <LightingFeedback level={lightingLevel} />
 
       <CaptureControls
         onCapture={handleCapture}
+        ready={detection.readiness.ready}
         onSwitchCamera={switchCamera}
         onToggleTorch={onToggleTorch}
         hasTorch={hasTorch}

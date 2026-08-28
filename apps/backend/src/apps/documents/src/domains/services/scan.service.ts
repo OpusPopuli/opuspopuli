@@ -1,12 +1,10 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { IStorageProvider } from '@opuspopuli/storage-provider';
 import {
   DbService,
   DocumentStatus,
@@ -21,6 +19,7 @@ import { MetricsService } from 'src/common/metrics';
 import { ExtractTextResult } from '../dto/ocr.dto';
 import { ProcessScanResult } from '../dto/scan.dto';
 import { FileService } from './file.service';
+import { scrubSignatureBlock } from './signature-scrub';
 
 /**
  * Scan Service
@@ -30,31 +29,43 @@ import { FileService } from './file.service';
  */
 @Injectable()
 export class ScanService {
+  // No STORAGE_PROVIDER injection, deliberately (#1075). This service must
+  // never persist a scan image, and the cleanest way to guarantee that is
+  // to remove the capability rather than the call site.
+
   private readonly logger = new Logger(ScanService.name, { timestamp: true });
-  private readonly fileConfig: IFileConfig;
 
   constructor(
     private readonly db: DbService,
-    @Inject('STORAGE_PROVIDER') private readonly storage: IStorageProvider,
     private readonly configService: ConfigService,
     private readonly ocrService: OcrService,
     private readonly extractionProvider: ExtractionProvider,
     private readonly metricsService: MetricsService,
     private readonly fileService: FileService,
   ) {
-    const fileConfig: IFileConfig | undefined =
-      configService.get<IFileConfig>('file');
-
-    if (!fileConfig) {
+    // Kept as a boot-time assertion only. This service no longer reads the
+    // config — camera scans are never stored (#1075) — but `extractTextFromFile`
+    // still routes through FileService for uploaded documents, so a missing
+    // file config is still a misconfiguration worth failing loudly on.
+    if (!configService.get<IFileConfig>('file')) {
       throw new Error('File storage config is missing');
     }
-
-    this.fileConfig = fileConfig;
   }
 
   /**
-   * Process a camera scan: create document, store file, extract text via OCR
-   * Bridges the gap between camera capture and the analyzeDocument pipeline
+   * Process a camera scan: create the document record, extract text via OCR,
+   * and discard the image.
+   *
+   * THE IMAGE IS NEVER PERSISTED (#1075). It used to be uploaded to object
+   * storage, where it sat indefinitely and was never read back by anything —
+   * no resolver returns it, ScanDetailResult exposes no image field, and no
+   * frontend surface renders it. A petition photograph can carry five
+   * strangers' handwritten names and residence addresses plus a circulator's
+   * own address, so that upload was pure liability with no product purpose.
+   *
+   * Not storing it is the only redaction that cannot partially fail. The
+   * client already crops the signature block before upload; this is the second
+   * layer, and the two are independent.
    */
   async processScan(
     userId: string,
@@ -70,17 +81,15 @@ export class ScanService {
     const buffer = Buffer.from(data, 'base64');
     const checksum = createHash('sha256').update(buffer).digest('hex');
 
-    // Generate filename from timestamp + checksum prefix
-    const extension = mimeType.split('/')[1] || 'png';
-    const filename = `scan-${Date.now()}-${checksum.substring(0, 8)}.${extension}`;
-    const storageKey = `${userId}/${filename}`;
-
-    // Create document record in DB
+    // `location` and `key` are retained on the row but no longer address any
+    // stored object — nothing is uploaded. They stay because dropping columns
+    // is a separate, additive-safe follow-up; the value is a marker, not a
+    // path, so nothing can mistake it for something fetchable.
     const document = await this.db.document.create({
       data: {
-        location: `${this.fileConfig.bucket}/${storageKey}`,
+        location: 'not-stored',
         userId,
-        key: filename,
+        key: `scan-${Date.now()}-${checksum.substring(0, 8)}`,
         size: buffer.length,
         checksum,
         status: 'text_extraction_started',
@@ -89,28 +98,19 @@ export class ScanService {
     });
 
     try {
-      // Upload to object storage via signed URL
-      const uploadUrl = await this.storage.getSignedUrl(
-        this.fileConfig.bucket,
-        storageKey,
-        true,
-      );
-      await fetch(uploadUrl, {
-        method: 'PUT',
-        body: buffer,
-        headers: { 'Content-Type': mimeType },
-      });
-
-      // Extract text via OCR
+      // OCR reads the buffer in memory. It is never written anywhere, and goes
+      // out of scope when this method returns.
       const extractedText = await this.extractTextFromBuffer(buffer, mimeType);
 
-      // Calculate content hash and persist extracted text
-      await this.persistExtractedText(document.id, extractedText, {
-        status: DocumentStatus.text_extraction_complete,
-      });
+      // Scrub, persist, and keep the scrubbed text for the response.
+      const safeText = await this.persistExtractedText(
+        document.id,
+        extractedText,
+        { status: DocumentStatus.text_extraction_complete },
+      );
 
       this.logger.log(
-        `Scan processed: document ${document.id}, ${extractedText.text.length} chars, ${extractedText.confidence.toFixed(1)}% confidence`,
+        `Scan processed: document ${document.id}, ${safeText.length} chars, ${extractedText.confidence.toFixed(1)}% confidence`,
       );
 
       this.metricsService.recordScanProcessed(
@@ -128,7 +128,7 @@ export class ScanService {
 
       return {
         documentId: document.id,
-        text: extractedText.text,
+        text: safeText,
         confidence: extractedText.confidence,
         provider: extractedText.provider,
         processingTimeMs: Date.now() - startTime,
@@ -186,15 +186,17 @@ export class ScanService {
     // Extract text using appropriate method
     const extractedText = await this.extractTextFromBuffer(buffer, mimeType);
 
-    // Calculate content hash and persist extracted text
-    await this.persistExtractedText(document.id, extractedText);
+    const safeText = await this.persistExtractedText(
+      document.id,
+      extractedText,
+    );
 
     this.logger.log(
-      `Extracted ${extractedText.text.length} chars from ${filename} (${extractedText.confidence.toFixed(1)}% confidence)`,
+      `Extracted ${safeText.length} chars from ${filename} (${extractedText.confidence.toFixed(1)}% confidence)`,
     );
 
     return {
-      text: extractedText.text,
+      text: safeText,
       confidence: extractedText.confidence,
       provider: extractedText.provider,
       processingTimeMs: Date.now() - startTime,
@@ -237,18 +239,42 @@ export class ScanService {
     documentId: string,
     extractedText: { text: string; confidence: number; provider: string },
     extra?: { status?: DocumentStatus },
-  ): Promise<void> {
-    const contentHash = this.hashText(extractedText.text);
+  ): Promise<string> {
+    // Second privacy layer (#1075). The client crops the signature block off
+    // before upload, so this normally finds nothing — it covers the cases the
+    // crop cannot: an unusually tall block, an odd angle, a page that is not
+    // laid out the way the SoS template expects.
+    //
+    // Applied HERE because this is the single choke point where OCR text is
+    // written, so both processScan and extractTextFromFile are covered by one
+    // call. Note the contentHash is computed from the scrubbed text, so the
+    // analysis cache keys on what we actually kept.
+    const { text, scrubbed } = scrubSignatureBlock(extractedText.text);
+
+    if (scrubbed) {
+      // Count only. Never log what was removed — it is exactly the personal
+      // information this whole change exists to not retain.
+      this.logger.log(
+        `Signature block scrubbed from document ${documentId} (${extractedText.text.length - text.length} chars dropped)`,
+      );
+    }
+
+    const contentHash = this.hashText(text);
     await this.db.document.update({
       where: { id: documentId },
       data: {
-        extractedText: extractedText.text,
+        extractedText: text,
         contentHash,
         ocrConfidence: extractedText.confidence,
         ocrProvider: extractedText.provider,
         ...(extra?.status ? { status: extra.status } : {}),
       },
     });
+
+    // Returned so callers echo the SCRUBBED text back to the client. Returning
+    // `extractedText.text` here would persist the safe version but hand the
+    // raw one — signature rows included — straight back over GraphQL.
+    return text;
   }
 
   /**

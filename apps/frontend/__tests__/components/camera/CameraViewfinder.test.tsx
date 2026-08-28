@@ -131,7 +131,30 @@ describe("CameraViewfinder", () => {
       await user.click(screen.getByRole("button", { name: "Capture" }));
 
       expect(defaultProps.captureFrame).toHaveBeenCalled();
-      expect(defaultProps.onCapture).toHaveBeenCalledWith(mockImageData);
+      expect(defaultProps.onCapture).toHaveBeenCalled();
+    });
+
+    /**
+     * #1075: capture crops away the signature block before handing the image
+     * on, so `onCapture` deliberately no longer receives the raw frame. This
+     * is the guarantee the pre-capture notice makes — the discarded pixels
+     * never reach sessionStorage, the network, storage or OCR.
+     */
+    it("hands on a cropped image, never the full frame", async () => {
+      const user = userEvent.setup();
+      const tallFrame = new ImageData(40, 100);
+      const captureFrame = jest.fn(() => tallFrame);
+
+      render(
+        <CameraViewfinder {...defaultProps} captureFrame={captureFrame} />,
+      );
+      await user.click(screen.getByRole("button", { name: "Capture" }));
+
+      const handed = (defaultProps.onCapture as jest.Mock).mock
+        .calls[0][0] as ImageData;
+
+      expect(handed).not.toBe(tallFrame);
+      expect(handed.height).toBeLessThan(tallFrame.height);
     });
 
     it("should not call onCapture when captureFrame returns null", async () => {
@@ -155,6 +178,33 @@ describe("CameraViewfinder", () => {
       await user.click(screen.getByRole("button", { name: "Capture" }));
 
       expect(navigator.vibrate).toHaveBeenCalledWith(50);
+    });
+  });
+  /**
+   * #1075. This is the accessible statement of what the scanner does — the
+   * exclusion band that shows the same thing visually is aria-hidden, so a
+   * screen-reader user would otherwise get no privacy information at all.
+   *
+   * It also has to be true. Every clause maps to shipped behaviour: the crop in
+   * handleCapture, the removed storage upload in ScanService, and the
+   * server-side scrub of the OCR text.
+   */
+  describe("privacy notice", () => {
+    it("states the behaviour before the shutter is pressed", () => {
+      render(<CameraViewfinder {...defaultProps} />);
+
+      expect(
+        screen.getByText(
+          "We read the petition's text. The photo is never saved, and signatures are never captured.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("is exposed to assistive technology", () => {
+      render(<CameraViewfinder {...defaultProps} />);
+
+      const notice = screen.getByText(/never saved/);
+      expect(notice.closest("[aria-hidden='true']")).toBeNull();
     });
   });
 });

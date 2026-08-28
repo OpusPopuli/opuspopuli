@@ -4,13 +4,12 @@
     "description": "Point your camera at any petition. We'll tell you what it is, what it does, and whether it's real, in plain language.",
     "startScanning": "Scan a petition",
     "myScans": "My scans",
-    "viewMap": "Petition map",
     "backToHome": "Back to app"
   },
   "camera": {
     "permission": {
       "title": "Camera Access Needed",
-      "description": "To scan petitions, we need access to your camera. Your images are processed securely and never saved to your device.",
+      "description": "To scan petitions, we need access to your camera. The photo is never saved — we read the petition's text and discard the image.",
       "enable": "Enable Camera",
       "deniedTitle": "Camera Access Denied",
       "deniedDescription": "Camera access was denied. To scan petitions:",
@@ -22,8 +21,14 @@
       "unsupportedTitle": "Camera Not Supported",
       "unsupportedDescription": "Your browser doesn't support camera access. Try using Chrome, Safari, or Firefox on a mobile device."
     },
+    "privacy": {
+      "notice": "We read the petition's text. The photo is never saved, and signatures are never captured."
+    },
     "overlay": {
       "alignGuide": "Align petition within the frame"
+    },
+    "exclusion": {
+      "notice": "This area is not captured to protect the privacy of signers"
     },
     "guide": {
       "searching": "Point at a petition",

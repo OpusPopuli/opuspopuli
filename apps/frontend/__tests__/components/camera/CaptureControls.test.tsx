@@ -143,4 +143,65 @@ describe("CaptureControls", () => {
       expect(onSwitchCamera).toHaveBeenCalledTimes(1);
     });
   });
+  /**
+   * The shutter's appearance tracks framing; its behaviour must not (#1075).
+   *
+   * Edge detection fails on shadowed sheets, unusual paper stock and low light.
+   * A shutter that refuses to fire until detection is happy strands someone
+   * holding a petition they are entitled to scan, with no way to tell why — so
+   * `ready` is a paint flag and nothing else.
+   */
+  describe("alignment confirmation", () => {
+    function disc(container: HTMLElement) {
+      return container.querySelector("button > div");
+    }
+
+    it("fills the disc with gold once the page is framed", () => {
+      const { container } = render(<CaptureControls {...defaultProps} ready />);
+
+      expect(disc(container)).toHaveClass("bg-accent");
+    });
+
+    it("leaves the disc paper while the page is not framed", () => {
+      const { container } = render(
+        <CaptureControls {...defaultProps} ready={false} />,
+      );
+
+      expect(disc(container)).toHaveClass("bg-paper");
+    });
+
+    it.each([true, false])(
+      "stays pressable whether or not the page is framed (ready=%s)",
+      async (ready) => {
+        const onCapture = jest.fn();
+        const user = userEvent.setup();
+
+        render(
+          <CaptureControls
+            {...defaultProps}
+            ready={ready}
+            onCapture={onCapture}
+          />,
+        );
+        await user.click(screen.getByRole("button", { name: "Capture photo" }));
+
+        expect(onCapture).toHaveBeenCalled();
+      },
+    );
+
+    /** `disabled` is the loading flag, and remains the only thing that gates. */
+    it("is gated by loading, not by framing", () => {
+      const { rerender } = render(
+        <CaptureControls {...defaultProps} ready={false} />,
+      );
+      expect(
+        screen.getByRole("button", { name: "Capture photo" }),
+      ).toBeEnabled();
+
+      rerender(<CaptureControls {...defaultProps} ready disabled />);
+      expect(
+        screen.getByRole("button", { name: "Capture photo" }),
+      ).toBeDisabled();
+    });
+  });
 });
