@@ -68,6 +68,17 @@ export interface DocumentAnalysis {
   isPetition?: boolean;
   /** Closed enum when isPetition=false: "not_a_petition" | "unreadable". */
   skipReason?: string;
+  /**
+   * Retrieval provenance (#1074). "verified" = the analysis is backed by a
+   * confident match to a filed measure. "unverified" = no filing matched and
+   * this is a reading of the photograph alone. Absent on analyses produced
+   * before retrieval existed, and on non-petition types.
+   */
+  verificationState?: string;
+  /** The matched filing's AG number, when one was found. */
+  matchedExternalId?: string;
+  /** Cosine similarity 0..1 of that match. */
+  matchSimilarity?: number;
   summary: string;
   keyPoints: string[];
   entities: string[];
@@ -180,6 +191,9 @@ export const ANALYZE_DOCUMENT = gql`
         documentType
         isPetition
         skipReason
+        verificationState
+        matchedExternalId
+        matchSimilarity
         summary
         keyPoints
         entities
@@ -574,6 +588,9 @@ export const GET_SCAN_DETAIL = gql`
         documentType
         isPetition
         skipReason
+        verificationState
+        matchedExternalId
+        matchSimilarity
         summary
         keyPoints
         entities

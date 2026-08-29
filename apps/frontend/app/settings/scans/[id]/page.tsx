@@ -15,6 +15,7 @@ import {
 } from "@/lib/graphql/documents";
 import { AnalysisDisplay } from "@/components/petition/AnalysisDisplay";
 import { NotAPetition } from "@/components/petition/NotAPetition";
+import { VerificationBanner } from "@/components/petition/VerificationBanner";
 import { PersonalizedImpact } from "@/components/petition/PersonalizedImpact";
 import { usePersonalizedImpact } from "@/components/petition/usePersonalizedImpact";
 import { ReportIssueButton } from "@/components/ReportIssueButton";
@@ -164,6 +165,11 @@ export default function SettingsScanDetailPage() {
       {/* Raw OCR text is intentionally not surfaced — see AnalysisDisplay. */}
       {scan.analysis && !notAPetition && (
         <div className="bg-surface rounded-lg border border-line p-6 space-y-6">
+          {/* Provenance first (#1074) — see the results page. */}
+          <VerificationBanner
+            verificationState={scan.analysis.verificationState}
+            matchedExternalId={scan.analysis.matchedExternalId}
+          />
           <PersonalizedImpact {...personalizedImpact} />
           <AnalysisDisplay
             analysis={scan.analysis}

@@ -163,5 +163,11 @@
     "error": "Error al enviar el reporte. Por favor intenta de nuevo.",
     "alreadyReported": "Ya has reportado este documento.",
     "submitted": "Reportado"
+  },
+  "verification": {
+    "verifiedTitle": "Verificado con el registro oficial",
+    "verifiedBody": "Este análisis se basa en {{measure}}, según consta ante el Secretario de Estado, y no solo en la página que fotografiaste.",
+    "unverifiedTitle": "No coincide con ninguna medida estatal registrada",
+    "unverifiedBody": "No pudimos relacionar esto con una medida estatal registrada. Puede ser una petición local o del condado, o puede no estar registrada: estamos leyendo la página que tienes delante, no un registro oficial."
   }
 }
