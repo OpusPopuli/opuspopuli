@@ -5,6 +5,7 @@ import { StorageModule } from '@opuspopuli/storage-provider';
 import { OcrModule } from '@opuspopuli/ocr-provider';
 import { ExtractionModule } from '@opuspopuli/extraction-provider';
 import { LLMModule } from '@opuspopuli/llm-provider';
+import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
 import { PromptClientModule } from '@opuspopuli/prompt-client';
 
 import { DocumentCrudService } from './services/document-crud.service';
@@ -17,6 +18,7 @@ import { LinkingService } from './services/linking.service';
 import { AbuseReportService } from './services/abuse-report.service';
 import { ActivityFeedService } from './services/activity-feed.service';
 import { ScanHistoryService } from './services/scan-history.service';
+import { RetrievalService } from './services/retrieval.service';
 import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
 
 // RelationalDbModule is global, no need to import
@@ -33,6 +35,8 @@ import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
  */
 @Module({
   imports: [
+    // #1074: matches a scanned petition to the filed measure it actually is.
+    EmbeddingsModule,
     StorageModule,
     OcrModule,
     ExtractionModule,
@@ -60,6 +64,7 @@ import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
     AbuseReportService,
     ActivityFeedService,
     ScanHistoryService,
+    RetrievalService,
   ],
   exports: [
     DocumentCrudService,

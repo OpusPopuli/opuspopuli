@@ -7,6 +7,7 @@ import { PromptClientService } from '@opuspopuli/prompt-client';
 import { MetricsService } from 'src/common/metrics';
 import { AnalysisService } from './analysis.service';
 import { LinkingService } from './linking.service';
+import { RetrievalService } from './retrieval.service';
 import { parseAnalysisResponse } from '../prompts/document-analysis.prompt';
 
 // Mock the parseAnalysisResponse function
@@ -35,6 +36,7 @@ describe('AnalysisService', () => {
   };
   let promptClient: jest.Mocked<PromptClientService>;
   let metricsService: jest.Mocked<MetricsService>;
+  let retrievalService: jest.Mocked<RetrievalService>;
   let linkingService: jest.Mocked<LinkingService>;
 
   beforeEach(async () => {
@@ -54,6 +56,14 @@ describe('AnalysisService', () => {
     promptClient = createMock<PromptClientService>();
     metricsService = createMock<MetricsService>();
     linkingService = createMock<LinkingService>();
+    // Default: retrieval finds nothing, so every pre-existing assertion keeps
+    // describing the unverified path — which is the behaviour those tests were
+    // written against, before retrieval existed.
+    retrievalService = createMock<RetrievalService>();
+    retrievalService.findBestMatch.mockResolvedValue({
+      attempted: true,
+      match: null,
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -63,6 +73,7 @@ describe('AnalysisService', () => {
         { provide: PromptClientService, useValue: promptClient },
         { provide: MetricsService, useValue: metricsService },
         { provide: LinkingService, useValue: linkingService },
+        { provide: RetrievalService, useValue: retrievalService },
       ],
     }).compile();
 
@@ -249,7 +260,7 @@ describe('AnalysisService', () => {
           isPetition: false,
           skipReason: 'unreadable',
           provider: 'documents-service',
-          model: 'min-text-gate',
+          model: 'pre-analysis-gate',
         }),
       );
       expect(promptClient.getDocumentAnalysisPrompt).not.toHaveBeenCalled();
@@ -380,6 +391,76 @@ describe('AnalysisService', () => {
       await expect(
         service.getDocumentAnalysis('user-1', 'nonexistent'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+  /**
+   * #1074. The length gate measures how MUCH text came back and cannot tell
+   * text from noise — and OCR noise is verbose. A photograph in the subtask-1
+   * measurement produced 3,142 characters at 4% real words: 39x the length
+   * threshold, sailing through to the LLM as though readable.
+   */
+  describe('OCR-quality pre-gate (#1074)', () => {
+    const petition = (over: Record<string, unknown>) => ({
+      id: 'doc-ocr',
+      userId: 'user-1',
+      type: 'petition',
+      contentHash: 'hash-ocr',
+      extractedText: 'x'.repeat(3000),
+      analysis: null,
+      ...over,
+    });
+
+    it('refuses verbose noise that the length gate lets through', async () => {
+      db.document.findFirst.mockResolvedValue(
+        petition({ ocrConfidence: 31 }) as never,
+      );
+      db.document.update.mockResolvedValue({} as never);
+
+      const { analysis } = await service.analyzeDocument('user-1', 'doc-ocr');
+
+      expect(analysis).toEqual(
+        expect.objectContaining({
+          isPetition: false,
+          skipReason: 'unreadable',
+        }),
+      );
+      expect(llm.generate).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The failure mode to avoid is a false `unreadable` on a genuine petition,
+     * which is why the floor sits at 40 rather than at the 70 that retrieval
+     * needs. A partially-readable scan still gets analysed.
+     */
+    it('analyses a partially-readable scan rather than refusing it', async () => {
+      llm.generate.mockResolvedValue({
+        text: '{"summary":"Analysed anyway"}',
+        tokensUsed: 100,
+      });
+      db.document.findFirst.mockResolvedValue(
+        petition({ ocrConfidence: 47 }) as never,
+      );
+      db.document.update.mockResolvedValue({} as never);
+
+      await service.analyzeDocument('user-1', 'doc-ocr');
+
+      expect(llm.generate).toHaveBeenCalled();
+    });
+
+    /** PDF and plain-text extraction is deterministic and records no score. */
+    it('does not gate an extraction that recorded no confidence', async () => {
+      llm.generate.mockResolvedValue({
+        text: '{"summary":"Analysed anyway"}',
+        tokensUsed: 100,
+      });
+      db.document.findFirst.mockResolvedValue(
+        petition({ ocrConfidence: null }) as never,
+      );
+      db.document.update.mockResolvedValue({} as never);
+
+      await service.analyzeDocument('user-1', 'doc-ocr');
+
+      expect(llm.generate).toHaveBeenCalled();
     });
   });
 });

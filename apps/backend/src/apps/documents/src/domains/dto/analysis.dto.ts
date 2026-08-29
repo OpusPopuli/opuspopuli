@@ -75,6 +75,30 @@ export class DocumentAnalysis {
   @Field({ nullable: true })
   skipReason?: string;
 
+  /**
+   * Provenance of the analysis (#1074): "verified" when it is backed by a
+   * confident retrieval match to a filed measure, "unverified" when no filing
+   * matched and the analysis is a reading of the photograph alone.
+   *
+   * Absent on analyses produced before retrieval existed, and on non-petition
+   * document types. Additive and nullable — federation-safe.
+   *
+   * `unverified` is disclosure, not detection. Retrieval cannot separate a real
+   * local or county measure from a fabricated sheet; both are simply absent
+   * from the corpus. The field says what we checked, never what we concluded
+   * about legitimacy.
+   */
+  @Field({ nullable: true })
+  verificationState?: string;
+
+  /** The matched filing, when one was found. Ids only — never its text. */
+  @Field({ nullable: true })
+  matchedExternalId?: string;
+
+  /** Cosine similarity 0..1 of the match. Present only alongside a match. */
+  @Field({ nullable: true })
+  matchSimilarity?: number;
+
   @Field()
   summary!: string;
 
