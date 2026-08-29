@@ -120,8 +120,8 @@ not just translate the words.
 
 ### Phase A prerequisite
 
-#### 1. Measure OCR coverage on the cropped image
-**Ships no code.** Output is a comment on #1074.
+#### 1. Measure OCR coverage on the cropped image — **DONE 2026-08-29**
+**Shipped no code.** Findings recorded on #1074.
 
 Photograph the two known petitions — the SoS sample and 25-0007A1 — under
 realistic conditions (angle, glare, clipboard, indoor light, partial page). Run
@@ -138,6 +138,38 @@ Produces the numbers everything downstream depends on:
 design changes from whole-text similarity to header-anchored matching, and
 building 4 first would be building the wrong thing. Testing against a PDF text
 layer measures nothing — the artifact must be a photograph of a printed sheet.
+
+##### Results
+
+Nine photographs of the printed Voter-ID petition (25-0007A1), varied
+deliberately — table, clipboard, square-on, steep angle, good light, dim — each
+run through `analyzeFrame` → `deskewImageData` → the #1075 crop → Tesseract.
+Ground truth is page 2 of the filing, 11,721 chars. Detection was never the
+problem: 9/9 detected at confidence 1.0, coverage 0.88–0.96.
+
+**The crop is validated as a privacy control.** Signature-block markers appeared
+in 4/9 full frames and **0/9 crops**. Not what the measurement was for, and the
+most reassuring thing in it.
+
+**Recovery is bimodal, and OCR confidence predicts it.** Confidence 80–81 gave
+100% title overlap and the AG number; confidence 72 gave 18%; the six below 70
+gave 0–9%. It is not that the header is hard to read — when the photograph is
+good the header comes through completely, and when it is not, nothing does.
+There is no middle case and no case where body text survived but the header did
+not. Best crop recovered 5,420 chars, 46% of the page.
+
+**This vindicates subtask 2's `title + summary` decision** rather than
+overturning it. Every crop that recovered anything usable recovered the title
+in full. No re-embed needed.
+
+**Exact-identifier matching is dead.** `25-0007A1` came through as `(25000781)`
+— hyphen dropped, `A1` read as `81` — on the best photograph in the set. Fuzzy
+matching over the title is required, which is what subtask 2 built.
+
+**Caveat on evidence weight.** Nine photographs of one petition by one person.
+Enough to settle the gate and to kill exact-identifier matching; not enough to
+fix a production threshold with confidence. The constants below are named and
+telemetered so they can be tuned on real traffic.
 
 **Redistribution:** the SoS sample is a government document; the Voter-ID
 petition is Reform California campaign material — the measure text is public
@@ -203,8 +235,29 @@ on it.
 **Tests:** unit on scoring and ordering; integration against a real database
 with seeded propositions (never mock the DB layer).
 
-#### 5. Verdict provenance
+#### 5. Verdict provenance — and an OCR-quality gate folded in
 **Service:** `documents`
+
+**Folded in from subtask 1's findings:** the existing `unreadable` gate measures
+quantity, not quality. It is `extractedText.length < 80`. One photograph in the
+measurement produced 3,142 characters of pure OCR noise — 39× the threshold — so
+it passes the gate and reaches the LLM as though it were readable text. All nine
+crops pass; only two are matchable. `documents.ocrConfidence` is already
+captured on every scan and stored, and is used for nothing.
+
+Two named constants, two different decisions:
+
+- `MIN_ANALYZABLE_OCR_CONFIDENCE` — below this the scan is genuinely unreadable
+  and gets the existing `unreadable` verdict rather than an LLM analysis of
+  noise. Measured basis: confidence 31–47 produced 0–9% title overlap.
+- `MIN_RETRIEVAL_OCR_CONFIDENCE` — below this, retrieval is not attempted at
+  all, because matching noise against the corpus yields arbitrary near-matches
+  and a similarity threshold alone cannot tell a weak genuine match from a
+  confident match on garbage. Measured basis: ≥80 gave 100% title overlap, <70
+  gave 0–9%.
+
+Set conservatively and telemetered. Nine photographs of one petition is not
+enough evidence to be aggressive with a gate that refuses real scans.
 
 Above threshold → `verified`, with the matched proposition and its real score.
 Below → `unverified`, and analysis proceeds from `extractedText` exactly as it
