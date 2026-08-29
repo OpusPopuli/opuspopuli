@@ -146,20 +146,41 @@ AGPL-3.0 repo as a fixture.
 
 ### Phase A — verify and label
 
-#### 2. Corpus embedding column + backfill
-**Package:** `packages/relationaldb-provider`
+#### 2. Corpus embedding column + backfill — **DONE**
+**Package:** `packages/relationaldb-provider`, service in `region`
 
-Migration (additive): `propositions.embedding vector(1536)` nullable, plus an
-`ivfflat` index. At 52 rows an exact scan is fine today; the index goes in
-because there is no ANN index precedent anywhere in the repo to inherit later,
-and adding it under load is worse than adding it now.
+Two corrections were made while implementing, both from measuring first:
 
-Backfill script embeds `full_text` for all 52 rows (100% have it). Idempotent
-and re-runnable — write only where `embedding IS NULL` or the source hash
-changed.
+**HNSW, not IVFFlat.** IVFFlat trains centroids from the data present when the
+index is built. Built against the empty column this migration leaves behind, it
+is degenerate and must be dropped and rebuilt after the backfill — a cleanup
+step someone will forget. HNSW builds incrementally and is correct from empty.
+Production runs pgvector 0.8.2, so it is available. `vector_cosine_ops`.
 
-**Tests:** migration applies cleanly to `postgres_test`; backfill is idempotent
-across two consecutive runs.
+**Embed `title + summary`, not `fullText`.** Measured: 13 of the 52 filed
+measures exceed a typical 8k-token embedding window, so a single embedding call
+would silently truncate a quarter of the corpus. And a 14,000-character filing
+averaged into one vector is not comparable to the ~1,213 characters a photograph
+actually yields. Title plus summary is present for all 52, runs 47–609 chars
+(median 385), and is the same artefact the scan captures — the AG circulating
+title and summary sit at the top of the sheet, which is what #1075's crop keeps.
+If subtask 1 shows the header does not survive photography this changes, and
+`embeddingSourceHash` makes it cheap: changing the source function changes every
+hash, so the next run re-embeds the corpus with no manual cleanup.
+
+`embedding_source_hash` landed in the same migration rather than a second one
+for subtask 3 — sync runs often and `fullText` rarely changes, so without it
+every sync re-embeds all 52 rows to produce identical vectors.
+
+**Delivered:** migration `20260828000000_proposition_embeddings`,
+`PropositionEmbeddingService`, `backfill-proposition-embeddings.ts`, 11 unit
+tests, 5 integration tests.
+
+**One bug the integration test caught that nothing else could.** `propositions.id`
+is Prisma's `String @id @default(uuid())` with no `@db.Uuid`, so the column is
+TEXT. The raw-SQL write cast the parameter to `::uuid`, producing `text = uuid`,
+which Postgres refuses (42883). It compiled cleanly and the mocked unit tests
+passed — only a real pgvector column surfaced it.
 
 #### 3. Keep the corpus fresh
 **Service:** `region`

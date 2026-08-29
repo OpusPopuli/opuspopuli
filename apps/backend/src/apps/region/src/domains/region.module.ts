@@ -48,6 +48,8 @@ import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { EntityActivitySummaryGeneratorService } from './entity-activity-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
+import { PropositionEmbeddingService } from './proposition-embedding.service';
+import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
 import { MinutesSummaryService } from './minutes-summary.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { CandidateCommitteeLinkerService } from './candidate-committee-linker.service';
@@ -110,6 +112,9 @@ const promptClientAsyncConfig = {
   imports: [
     RegionModule.forPlugins(),
     LLMModule,
+    // #1074: embeds the filed-measure corpus so a scanned petition can be
+    // matched by retrieval instead of substring search.
+    EmbeddingsModule,
     QueueModule.forRootAsync(queueModuleAsyncConfig),
     PromptClientModule.forRootAsync(promptClientAsyncConfig),
     ScrapingPipelineModule.forRoot({
@@ -220,6 +225,7 @@ const promptClientAsyncConfig = {
     CommitteeSummaryGeneratorService,
     EntityActivitySummaryGeneratorService,
     PropositionAnalysisService,
+    PropositionEmbeddingService,
     MinutesSummaryService,
     PropositionFinanceLinkerService,
     CandidateCommitteeLinkerService,

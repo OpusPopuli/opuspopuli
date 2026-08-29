@@ -1089,11 +1089,23 @@ model RepresentativeCommitteeAssignment {
 }
 
 model Proposition {
-  id           String    @id @default(uuid())
-  externalId   String    @unique @map("external_id")
-  title        String
-  summary      String    @db.Text
-  fullText     String?   @map("full_text") @db.Text
+  id         String  @id @default(uuid())
+  externalId String  @unique @map("external_id")
+  title      String
+  summary    String  @db.Text
+  fullText   String? @map("full_text") @db.Text
+
+  /// Retrieval vector over fullText (#1074). Lets a scanned petition be matched
+  /// to the measure it actually is, instead of the substring match in
+  /// linking.service.ts. HNSW + vector_cosine_ops index; see the
+  /// 20260828000000_proposition_embeddings migration for why not IVFFlat.
+  embedding Unsupported("vector(1536)")?
+
+  /// SHA-256 of the fullText that produced `embedding`. Proposition sync runs
+  /// often and fullText rarely changes; without this every sync would re-embed
+  /// all 52 rows to produce identical vectors.
+  embeddingSourceHash String? @map("embedding_source_hash")
+
   status       String    @default("pending") @db.VarChar(50)
   electionDate DateTime? @map("election_date") @db.Timestamp
   sourceUrl    String?   @map("source_url")
