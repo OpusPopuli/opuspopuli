@@ -96,7 +96,7 @@ export class DocumentAnalysis {
   matchedExternalId?: string;
 
   /** Cosine similarity 0..1 of the match. Present only alongside a match. */
-  @Field({ nullable: true })
+  @Field(() => Float, { nullable: true })
   matchSimilarity?: number;
 
   @Field()
