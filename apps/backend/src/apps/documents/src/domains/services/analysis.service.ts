@@ -13,7 +13,7 @@ import { MetricsService } from 'src/common/metrics';
 import { DocumentAnalysis, AnalyzeDocumentResult } from '../dto/analysis.dto';
 import { parseAnalysisResponse } from '../prompts/document-analysis.prompt';
 import { LinkingService } from './linking.service';
-import { RetrievalService } from './retrieval.service';
+import { RetrievalService, type RetrievalOutcome } from './retrieval.service';
 
 /**
  * Closed skip-reason vocabulary of the non-petition gate (#1057). Never a
@@ -148,16 +148,7 @@ export class AnalysisService {
       // a persistence failure flows through the same ai_analysis_failed
       // path as every other failure; after the cache check so a cached
       // verdict for the same content still short-circuits.
-      const unreadable =
-        document.type === 'petition' &&
-        (document.extractedText.trim().length < MIN_ANALYZABLE_TEXT_CHARS ||
-          // Verbose noise passes the length check; low OCR confidence is what
-          // catches it. Null confidence means the extraction was deterministic
-          // (PDF, plain text), so only an explicitly low number gates.
-          (typeof document.ocrConfidence === 'number' &&
-            document.ocrConfidence < MIN_ANALYZABLE_OCR_CONFIDENCE));
-
-      if (unreadable) {
+      if (isUnreadablePetition(document)) {
         return await this.persistSkipVerdict(
           documentId,
           document.type,
@@ -253,29 +244,7 @@ export class AnalysisService {
         sources,
         completenessScore,
         completenessDetails,
-        // Provenance (#1074). `verified` means the analysis is backed by a
-        // confident match to a filed measure; `unverified` means we could not
-        // match one and are reading the photograph alone. The distinction is
-        // the deliverable — retrieval cannot separate a real unfiled local
-        // measure from a fabricated sheet, so the honest thing is to disclose
-        // that we did not verify, not to claim we detected anything.
-        ...(retrieval
-          ? {
-              verificationState: retrieval.match?.verified
-                ? 'verified'
-                : 'unverified',
-              ...(retrieval.match
-                ? {
-                    matchedPropositionId: retrieval.match.propositionId,
-                    matchedExternalId: retrieval.match.externalId,
-                    matchSimilarity: retrieval.match.similarity,
-                  }
-                : {}),
-              ...(retrieval.skippedReason
-                ? { retrievalSkipped: retrieval.skippedReason }
-                : {}),
-            }
-          : {}),
+        ...provenanceFields(retrieval),
       };
 
       await this.db.document.update({
@@ -565,4 +534,65 @@ export class AnalysisService {
       },
     };
   }
+}
+
+/**
+ * Whether a petition scan is unreadable — both halves of the pre-gate (#1074).
+ *
+ * Extracted because inlining it pushed `analyzeDocument` past the cognitive
+ * complexity budget, and because the two conditions answer different
+ * questions: how MUCH text came back, and whether any of it is text at all.
+ *
+ * Null `ocrConfidence` means the extraction was deterministic (PDF, plain
+ * text) and recorded no score, so only an explicitly low number gates.
+ */
+function isUnreadablePetition(document: {
+  type: string;
+  extractedText: string | null;
+  ocrConfidence: number | null;
+}): boolean {
+  if (document.type !== 'petition') return false;
+
+  // `extractedText` is non-null by the time this is reached — the caller
+  // throws otherwise — but the Prisma type is nullable and narrowing does not
+  // survive the call. Treating null as unreadable is the correct answer for it
+  // anyway, so this needs no cast.
+  const tooShort =
+    (document.extractedText?.trim().length ?? 0) < MIN_ANALYZABLE_TEXT_CHARS;
+  const tooNoisy =
+    typeof document.ocrConfidence === 'number' &&
+    document.ocrConfidence < MIN_ANALYZABLE_OCR_CONFIDENCE;
+
+  return tooShort || tooNoisy;
+}
+
+/**
+ * The provenance fields written onto a completed analysis (#1074).
+ *
+ * `verified` means the analysis is backed by a confident match to a filed
+ * measure; `unverified` means we could not match one and are reading the
+ * photograph alone. That distinction is the deliverable of the whole issue —
+ * retrieval cannot separate a real unfiled local measure from a fabricated
+ * sheet, so the honest thing is to disclose that we did not verify, never to
+ * claim we detected anything.
+ *
+ * Returns nothing at all for a non-petition type, so those analyses carry no
+ * provenance claim rather than a misleading default.
+ */
+function provenanceFields(
+  retrieval: RetrievalOutcome | null,
+): Record<string, unknown> {
+  if (!retrieval) return {};
+
+  return {
+    verificationState: retrieval.match?.verified ? 'verified' : 'unverified',
+    ...(retrieval.match && {
+      matchedPropositionId: retrieval.match.propositionId,
+      matchedExternalId: retrieval.match.externalId,
+      matchSimilarity: retrieval.match.similarity,
+    }),
+    ...(retrieval.skippedReason && {
+      retrievalSkipped: retrieval.skippedReason,
+    }),
+  };
 }
