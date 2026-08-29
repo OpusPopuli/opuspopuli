@@ -19,6 +19,8 @@ describe('MetricsService', () => {
   let mockDocumentScanDuration: jest.Mocked<Histogram<string>>;
   let mockOcrExtractionsTotal: jest.Mocked<Counter<string>>;
   let mockOcrConfidence: jest.Mocked<Histogram<string>>;
+  let mockRetrievalSimilarity: jest.Mocked<Histogram<string>>;
+  let mockRetrievalTotal: jest.Mocked<Counter<string>>;
   let mockDocumentAnalysesTotal: jest.Mocked<Counter<string>>;
   let mockDocumentAnalysisDuration: jest.Mocked<Histogram<string>>;
   let mockAnalysisCacheHits: jest.Mocked<Counter<string>>;
@@ -84,6 +86,12 @@ describe('MetricsService', () => {
     mockOcrConfidence = { observe: jest.fn() } as unknown as jest.Mocked<
       Histogram<string>
     >;
+    mockRetrievalSimilarity = { observe: jest.fn() } as unknown as jest.Mocked<
+      Histogram<string>
+    >;
+    mockRetrievalTotal = { inc: jest.fn() } as unknown as jest.Mocked<
+      Counter<string>
+    >;
     mockDocumentAnalysesTotal = { inc: jest.fn() } as unknown as jest.Mocked<
       Counter<string>
     >;
@@ -115,6 +123,8 @@ describe('MetricsService', () => {
       mockDocumentScanDuration,
       mockOcrExtractionsTotal,
       mockOcrConfidence,
+      mockRetrievalSimilarity,
+      mockRetrievalTotal,
       mockDocumentAnalysesTotal,
       mockDocumentAnalysisDuration,
       mockAnalysisCacheHits,
@@ -362,6 +372,8 @@ describe('MetricsService', () => {
         mockDocumentScanDuration,
         mockOcrExtractionsTotal,
         mockOcrConfidence,
+        mockRetrievalSimilarity,
+        mockRetrievalTotal,
         mockDocumentAnalysesTotal,
         mockDocumentAnalysisDuration,
         mockAnalysisCacheHits,
@@ -419,6 +431,8 @@ describe('MetricsService', () => {
         mockDocumentScanDuration,
         mockOcrExtractionsTotal,
         mockOcrConfidence,
+        mockRetrievalSimilarity,
+        mockRetrievalTotal,
         mockDocumentAnalysesTotal,
         mockDocumentAnalysisDuration,
         mockAnalysisCacheHits,
@@ -466,6 +480,8 @@ describe('MetricsService', () => {
         mockDocumentScanDuration,
         mockOcrExtractionsTotal,
         mockOcrConfidence,
+        mockRetrievalSimilarity,
+        mockRetrievalTotal,
         mockDocumentAnalysesTotal,
         mockDocumentAnalysisDuration,
         mockAnalysisCacheHits,

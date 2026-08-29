@@ -23,10 +23,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
-import {
-  PropositionEmbeddingService,
-  EMBEDDING_DIMENSIONS,
-} from '../../../src/apps/region/src/domains/proposition-embedding.service';
+import { EMBEDDING_DIMENSIONS } from '@opuspopuli/common';
+import { PropositionEmbeddingService } from '../../../src/apps/region/src/domains/proposition-embedding.service';
 import { assertTestDatabase } from '../utils/db-cleanup';
 
 /** A deterministic unit-ish vector, distinct per seed so cosine ordering is meaningful. */
@@ -40,7 +38,10 @@ describe('Proposition embeddings (#1074)', () => {
   let moduleRef: TestingModule;
   let db: DbService;
   let service: PropositionEmbeddingService;
-  const embeddings = { getEmbeddingsForQuery: jest.fn() };
+  const embeddings = {
+    getEmbeddingsForQuery: jest.fn(),
+    getProviderInfo: jest.fn(() => ({ dimensions: EMBEDDING_DIMENSIONS })),
+  };
 
   const EXTERNAL_IDS = ['TEST-1074-A', 'TEST-1074-B'];
 

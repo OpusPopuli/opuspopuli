@@ -286,13 +286,71 @@ preserve the balance rather than translate literally.
 **Tests:** unit per state; a11y; `--project=mobile-safari` before commit — this
 surface is phone-first.
 
-#### 7. Threshold and telemetry
+#### 7. Threshold and telemetry — **DONE 2026-08-29**
 
-The threshold becomes a named, documented constant with its tuning basis
-recorded in this file. Telemetry captures the score distribution so the constant
-can be revisited on evidence.
+Measured against real retrieval: the nine photographs' OCR text embedded by the
+real provider and matched against all 52 filed measures in pgvector.
 
-**Log ids and scores only. Never candidate text, never scan text.**
+| photo | OCR conf | top match | similarity | correct |
+|---|---|---|---|---|
+| IMG_0633 | 80 | **25-0007A1** | **0.586** | yes |
+| IMG_0629 | 81 | **25-0007A1** | **0.545** | yes |
+| IMG_0637 | 72 | 24-0001A2 | 0.414 | no |
+| IMG_0634 | 47 | 25-0019A1 | 0.317 | no |
+| six others | 31–38 | ACA 21 / ACA 13 | 0.08–0.24 | no |
+| negative: pangram | — | 26-0005 | 0.152 | no |
+| negative: recipe | — | 26-0005 | 0.064 | no |
+
+**`MIN_VERIFIED_SIMILARITY` corrected from 0.82 to 0.50.** The 0.82 was
+judgement, and it was wrong by a wide margin: correct matches top out at 0.586,
+so nothing would ever have been verified and the feature would have shipped
+permanently dark with nothing reporting it. 0.50 sits in the gap between the
+worst correct match (0.545) and the best incorrect one (0.414).
+
+**The two gates compose.** IMG_0637 passed the OCR-confidence gate at 72 and
+still matched the *wrong* measure; the similarity threshold catches it.
+Confidence filters noise, similarity filters wrong answers, and neither alone
+is sufficient.
+
+**A runner-up margin rule was considered and rejected.** Correct matches beat
+their runners-up by only 0.026 and 0.050 — the corpus is 52 California ballot
+measures in near-identical legalese — so any margin rule tight enough to mean
+something rejects correct answers.
+
+Telemetry: `petition_retrieval_similarity` (histogram, buckets dense around the
+decision boundary) and `petition_retrieval_total` (counter by outcome). Ids and
+scores only; never candidate text, never scan text.
+
+Evidence weight: two positive examples, one petition, one photographer. Enough
+to correct an order-of-magnitude error and place a defensible boundary; not
+enough to call settled. Below the threshold a scan falls back to `unverified`,
+so erring high costs a label and erring low costs a confident analysis of the
+wrong filing. It errs high on purpose.
+
+#### 7a. The width mismatch that made all of this inert — **FOUND AND FIXED**
+
+Running the real embeddings provider for the first time surfaced that both
+`documents.embedding` and `propositions.embedding` were declared `vector(1536)`
+— OpenAI ada-002's width — while the configured provider, Xenova
+`all-MiniLM-L6-v2`, produces **384**.
+
+`documents.embedding` had never been written by anything, so the mismatch was
+inert and invisible from the baseline migration onward. #1074 is the first code
+to write either column, and with 1536 in place every write throws: the corpus
+backfill reports `failed=52`, and every scan degrades to `unverified`. It fails
+safe, and it never works.
+
+**No test could have caught it.** Both the unit and integration suites mock the
+embeddings provider, and a mock returns whatever width its author assumed —
+which is exactly the assumption under test. Only running the real provider
+surfaced it.
+
+Fixed by migration `20260829000000_embedding_dimensions_384`, a single shared
+`EMBEDDING_DIMENSIONS` in `@opuspopuli/common`, and a startup assertion
+comparing the running provider against it. The coupling is now documented where
+it bites: **pgvector needs a fixed dimension for its HNSW index, so switching
+`EMBEDDINGS_PROVIDER` to a different-width model requires a migration** — the
+one place the provider pattern does not hold.
 
 ### Phase B — analyze the filed text
 *Separate PR. Gated on subtask 1's numbers.*

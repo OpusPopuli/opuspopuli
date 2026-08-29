@@ -1,10 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
-import {
-  PropositionEmbeddingService,
-  EMBEDDING_DIMENSIONS,
-} from './proposition-embedding.service';
+import { EMBEDDING_DIMENSIONS } from '@opuspopuli/common';
+import { PropositionEmbeddingService } from './proposition-embedding.service';
 
 /**
  * The corpus side of petition retrieval verification (#1074).
@@ -22,7 +20,10 @@ describe('PropositionEmbeddingService', () => {
     $queryRaw: jest.Mock;
     $executeRaw: jest.Mock;
   };
-  let embeddings: { getEmbeddingsForQuery: jest.Mock };
+  let embeddings: {
+    getEmbeddingsForQuery: jest.Mock;
+    getProviderInfo: jest.Mock;
+  };
 
   beforeEach(async () => {
     db = {
@@ -32,6 +33,9 @@ describe('PropositionEmbeddingService', () => {
     };
     embeddings = {
       getEmbeddingsForQuery: jest.fn().mockResolvedValue(vector()),
+      getProviderInfo: jest
+        .fn()
+        .mockReturnValue({ dimensions: EMBEDDING_DIMENSIONS }),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -207,6 +211,26 @@ describe('PropositionEmbeddingService', () => {
 
       expect(db.$executeRaw).not.toHaveBeenCalled();
       expect(result).toMatchObject({ embedded: 0, failed: 1 });
+    });
+  });
+  /**
+   * The width mismatch that made this whole feature inert (#1074 subtask 7).
+   *
+   * Both embedding columns were declared vector(1536) — OpenAI's width — while
+   * the configured provider produces 384. Every write threw, the backfill
+   * reported failed=52, and every scan degraded to `unverified`. It failed
+   * safe and never worked. Mocks did not catch it: a mock returns whatever
+   * width the test author assumed, which is exactly what happened here.
+   */
+  describe('provider/column width assertion', () => {
+    it('refuses to start when the provider width does not match the columns', () => {
+      embeddings.getProviderInfo.mockReturnValue({ dimensions: 1536 });
+
+      expect(() => service.onModuleInit()).toThrow(/requires a migration/);
+    });
+
+    it('starts when they agree', () => {
+      expect(() => service.onModuleInit()).not.toThrow();
     });
   });
 });

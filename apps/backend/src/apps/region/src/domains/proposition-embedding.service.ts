@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
+import { EMBEDDING_DIMENSIONS } from '@opuspopuli/common';
 import { createHash } from 'node:crypto';
 
 /**
@@ -13,7 +14,28 @@ import { createHash } from 'node:crypto';
  * why a constant could sit there unnoticed. Retrieval replaces both.
  */
 @Injectable()
-export class PropositionEmbeddingService {
+export class PropositionEmbeddingService implements OnModuleInit {
+  /**
+   * Fail loudly and immediately on a provider/column width mismatch.
+   *
+   * Without this the failure is a per-row throw during the backfill —
+   * `failed=52, embedded=0` buried in a log — or, worse, every scan silently
+   * degrading to `unverified` with no indication why. Switching
+   * EMBEDDINGS_PROVIDER to a different-width model needs a migration, and this
+   * is what says so at the moment it matters.
+   */
+  onModuleInit(): void {
+    const actual = this.embeddings.getProviderInfo().dimensions;
+    if (actual !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `Embeddings provider produces ${actual}-dimension vectors but the ` +
+          `embedding columns are vector(${EMBEDDING_DIMENSIONS}). Switching ` +
+          `provider or model requires a migration — see EMBEDDING_DIMENSIONS ` +
+          `in @opuspopuli/common.`,
+      );
+    }
+  }
+
   private readonly logger = new Logger(PropositionEmbeddingService.name, {
     timestamp: true,
   });
@@ -141,7 +163,7 @@ export class PropositionEmbeddingService {
   }
 
   /**
-   * Prisma cannot write an `Unsupported("vector(1536)")` column through the
+   * Prisma cannot write an `Unsupported("vector")` column through the
    * typed client, so this goes through raw SQL.
    *
    * The vector is validated and rebuilt from numbers rather than interpolated
@@ -179,10 +201,3 @@ export class PropositionEmbeddingService {
     `;
   }
 }
-
-/**
- * Must match `documents.embedding` and the migration. The same provider serves
- * both sides of the comparison; a mismatch makes the two corpora incomparable
- * and pgvector would reject the cast at write time.
- */
-export const EMBEDDING_DIMENSIONS = 1536;

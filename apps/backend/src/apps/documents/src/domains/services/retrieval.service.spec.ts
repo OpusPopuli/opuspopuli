@@ -1,6 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { DbService } from '@opuspopuli/relationaldb-provider';
+import { MetricsService } from 'src/common/metrics';
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
+import { EMBEDDING_DIMENSIONS } from '@opuspopuli/common';
 import {
   RetrievalService,
   MIN_RETRIEVAL_OCR_CONFIDENCE,
@@ -16,12 +18,13 @@ import {
  * failure mode here has to degrade to `unverified`.
  */
 
-const vector = (fill = 0.1) => Array<number>(1536).fill(fill);
+const vector = (fill = 0.1) => Array<number>(EMBEDDING_DIMENSIONS).fill(fill);
 
 describe('RetrievalService', () => {
   let service: RetrievalService;
   let db: { $executeRaw: jest.Mock; $queryRaw: jest.Mock };
   let embeddings: { getEmbeddingsForQuery: jest.Mock };
+  let metrics: { recordPetitionRetrieval: jest.Mock };
 
   const row = (distance: number) => [
     {
@@ -40,12 +43,14 @@ describe('RetrievalService', () => {
     embeddings = {
       getEmbeddingsForQuery: jest.fn().mockResolvedValue(vector()),
     };
+    metrics = { recordPetitionRetrieval: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         RetrievalService,
         { provide: DbService, useValue: db },
         { provide: EmbeddingsService, useValue: embeddings },
+        { provide: MetricsService, useValue: metrics },
       ],
     }).compile();
 
@@ -156,5 +161,44 @@ describe('RetrievalService', () => {
     const sql = db.$executeRaw.mock.calls[0][0].join('?');
     expect(sql).toContain('UPDATE documents');
     expect(sql).toContain('embedding');
+  });
+  /**
+   * The threshold was 0.82 by judgement until it was measured; correct matches
+   * scored 0.545 and 0.586, so nothing would EVER have been verified and
+   * nothing would have said so. This telemetry is how that gets noticed.
+   */
+  describe('telemetry (#1074 subtask 7)', () => {
+    it('records the similarity of every completed match', async () => {
+      await service.findBestMatch('doc-1', 'petition text', 85);
+
+      expect(metrics.recordPetitionRetrieval).toHaveBeenCalledWith(
+        'documents-service',
+        'verified',
+        expect.closeTo(0.9, 6),
+      );
+    });
+
+    it.each([
+      ['skipped_low_ocr_confidence', 'text', 10],
+      ['skipped_no_text', '   ', 90],
+    ])('records %s without a score', async (outcome, text, conf) => {
+      await service.findBestMatch('doc-1', text as string, conf as number);
+
+      expect(metrics.recordPetitionRetrieval).toHaveBeenCalledWith(
+        'documents-service',
+        outcome,
+      );
+    });
+
+    it('records a failure rather than staying silent', async () => {
+      embeddings.getEmbeddingsForQuery.mockRejectedValue(new Error('down'));
+
+      await service.findBestMatch('doc-1', 'petition text', 85);
+
+      expect(metrics.recordPetitionRetrieval).toHaveBeenCalledWith(
+        'documents-service',
+        'failed',
+      );
+    });
   });
 });

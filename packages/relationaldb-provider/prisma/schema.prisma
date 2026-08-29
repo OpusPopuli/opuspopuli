@@ -920,7 +920,7 @@ model Document {
   analysis Json?
 
   // Embeddings for similarity search (pgvector)
-  embedding Unsupported("vector(1536)")?
+  embedding Unsupported("vector(384)")?
 
   // Privacy-preserving scan location (PostGIS)
   // Coordinates are fuzzed to ~100m accuracy before storage
@@ -1099,7 +1099,7 @@ model Proposition {
   /// to the measure it actually is, instead of the substring match in
   /// linking.service.ts. HNSW + vector_cosine_ops index; see the
   /// 20260828000000_proposition_embeddings migration for why not IVFFlat.
-  embedding Unsupported("vector(1536)")?
+  embedding Unsupported("vector(384)")?
 
   /// SHA-256 of the fullText that produced `embedding`. Proposition sync runs
   /// often and fullText rarely changes; without this every sync would re-embed

@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
+import { EMBEDDING_DIMENSIONS } from '@opuspopuli/common';
+import { MetricsService } from 'src/common/metrics';
 
 /**
  * Matches a scanned petition to the filed measure it actually is (#1074).
@@ -37,14 +39,49 @@ export const MIN_RETRIEVAL_OCR_CONFIDENCE = 70;
 /**
  * Cosine similarity at or above which a match is called `verified`.
  *
- * PROVISIONAL. Subtask 7 tunes this against a real score distribution; it is
- * named and telemetered so that can happen on evidence rather than by feel.
- * Set high deliberately: a confident analysis of the WRONG filing is worse than
- * analyzing the photograph, because it is both wrong and authoritative. Below
- * it the scan falls back to `unverified`, which is a safe landing place rather
- * than a refusal.
+ * ── Measured, 2026-08-29 (#1074 subtask 7) ───────────────────────────────
+ *
+ * Nine photographs of a known petition (25-0007A1), their OCR text embedded by
+ * the real provider and matched against all 52 filed measures in pgvector:
+ *
+ *   IMG_0633  conf 80  ->  25-0007A1  0.586   CORRECT
+ *   IMG_0629  conf 81  ->  25-0007A1  0.545   CORRECT
+ *   IMG_0637  conf 72  ->  24-0001A2  0.414   wrong
+ *   IMG_0634  conf 47  ->  25-0019A1  0.317   wrong
+ *   others    conf<40  ->  ACA 21/13  0.08-0.24
+ *   negative control: a recipe 0.064, a pangram 0.152
+ *
+ * 0.50 sits in the gap between the worst correct match (0.545) and the best
+ * incorrect one (0.414). On this sample it verifies both recoverable
+ * photographs and rejects every wrong match, including IMG_0637 — which passed
+ * the OCR-confidence gate at 72 and still matched the wrong measure. The two
+ * gates compose: confidence filters noise, similarity filters wrong answers.
+ *
+ * This value was 0.82 before it was measured, chosen by judgement. Nothing
+ * would EVER have been verified, and nothing would have reported that — the
+ * feature would have shipped permanently dark. That is what the histogram in
+ * `recordPetitionRetrieval` is for.
+ *
+ * ── What was rejected ────────────────────────────────────────────────────
+ *
+ * Requiring a margin over the runner-up was considered and does not work here:
+ * the correct matches beat their runners-up by only 0.026 and 0.050, because
+ * the corpus is 52 California ballot measures written in near-identical
+ * legalese. A margin rule tight enough to mean anything rejects correct
+ * answers.
+ *
+ * ── Evidence weight ──────────────────────────────────────────────────────
+ *
+ * Two positive examples, one petition, one photographer. Enough to correct an
+ * order-of-magnitude error and place a defensible boundary; not enough to
+ * consider settled. Below the threshold a scan falls back to `unverified`,
+ * which is a safe landing place rather than a refusal — so the cost of setting
+ * this slightly high is a missed label, and of setting it low is a confident
+ * analysis of the wrong filing, which is worse. It errs high on purpose.
  */
-export const MIN_VERIFIED_SIMILARITY = 0.82;
+export const MIN_VERIFIED_SIMILARITY = 0.5;
+
+const SERVICE = 'documents-service';
 
 export interface RetrievalMatch {
   readonly propositionId: string;
@@ -62,8 +99,6 @@ export interface RetrievalOutcome {
   readonly skippedReason?: 'low_ocr_confidence' | 'no_text' | 'empty_corpus';
 }
 
-const EMBEDDING_DIMENSIONS = 1536;
-
 @Injectable()
 export class RetrievalService {
   private readonly logger = new Logger(RetrievalService.name, {
@@ -73,6 +108,7 @@ export class RetrievalService {
   constructor(
     private readonly db: DbService,
     private readonly embeddings: EmbeddingsService,
+    private readonly metrics: MetricsService,
   ) {}
 
   /**
@@ -87,6 +123,7 @@ export class RetrievalService {
     ocrConfidence: number | null,
   ): Promise<RetrievalOutcome> {
     if (!text?.trim()) {
+      this.metrics.recordPetitionRetrieval(SERVICE, 'skipped_no_text');
       return { attempted: false, match: null, skippedReason: 'no_text' };
     }
 
@@ -99,6 +136,10 @@ export class RetrievalService {
     ) {
       this.logger.log(
         `Retrieval skipped for document ${documentId}: ocrConfidence ${ocrConfidence.toFixed(1)} below ${MIN_RETRIEVAL_OCR_CONFIDENCE}`,
+      );
+      this.metrics.recordPetitionRetrieval(
+        SERVICE,
+        'skipped_low_ocr_confidence',
       );
       return {
         attempted: false,
@@ -140,6 +181,7 @@ export class RetrievalService {
       `;
 
       if (rows.length === 0) {
+        this.metrics.recordPetitionRetrieval(SERVICE, 'skipped_empty_corpus');
         return { attempted: true, match: null, skippedReason: 'empty_corpus' };
       }
 
@@ -151,6 +193,12 @@ export class RetrievalService {
       // Ids and scores only — never the candidate's text or the scan's.
       this.logger.log(
         `Retrieval for document ${documentId}: best=${top.external_id} similarity=${similarity.toFixed(4)} verified=${verified}`,
+      );
+
+      this.metrics.recordPetitionRetrieval(
+        SERVICE,
+        verified ? 'verified' : 'unverified',
+        similarity,
       );
 
       return {
@@ -169,6 +217,7 @@ export class RetrievalService {
       this.logger.warn(
         `Retrieval failed for document ${documentId} (continuing unverified): ${error}`,
       );
+      this.metrics.recordPetitionRetrieval(SERVICE, 'failed');
       return { attempted: true, match: null };
     }
   }
