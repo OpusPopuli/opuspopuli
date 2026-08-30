@@ -163,5 +163,11 @@
     "error": "Failed to submit report. Please try again.",
     "alreadyReported": "You have already reported this document.",
     "submitted": "Reported"
+  },
+  "verification": {
+    "verifiedTitle": "Verified against the filed record",
+    "verifiedBody": "This analysis is based on {{measure}} as filed with the Secretary of State, not only on the page you photographed.",
+    "unverifiedTitle": "Not matched to a filed state measure",
+    "unverifiedBody": "We couldn't match this to a filed state measure. It may be a local or county petition, or it may not be on file — we're reading the page in front of you, not an official record."
   }
 }

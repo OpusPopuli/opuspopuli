@@ -18,6 +18,7 @@ import {
 } from '../utils';
 import { AnalysisService } from '../../../src/apps/documents/src/domains/services/analysis.service';
 import { LinkingService } from '../../../src/apps/documents/src/domains/services/linking.service';
+import { RetrievalService } from '../../../src/apps/documents/src/domains/services/retrieval.service';
 
 const CONTENT_HASH = 'feedface'.padEnd(64, '0');
 
@@ -69,6 +70,17 @@ const metricsStub = {
   recordAnalysis: () => undefined,
 } as unknown as MetricsService;
 
+/**
+ * #1074 added retrieval ahead of analysis. This suite is about the #1057
+ * non-petition verdict, where retrieval is beside the point — a scan that is
+ * not a petition is refused before any matching would matter — so it is stubbed
+ * to find nothing rather than wired to a real embeddings provider, which would
+ * load a model per run for no assertion.
+ */
+const retrievalStub = {
+  findBestMatch: async () => ({ attempted: true, match: null }),
+} as unknown as RetrievalService;
+
 describe('Non-petition verdict persistence (real DB)', () => {
   let service: AnalysisService;
   let llm: LlmStub;
@@ -83,6 +95,7 @@ describe('Non-petition verdict persistence (real DB)', () => {
       promptClientStub,
       metricsStub,
       new LinkingService(db),
+      retrievalStub,
     );
   });
 
@@ -168,7 +181,7 @@ describe('Non-petition verdict persistence (real DB)', () => {
     expect(result.analysis).toMatchObject({
       isPetition: false,
       skipReason: 'unreadable',
-      model: 'min-text-gate',
+      model: 'pre-analysis-gate',
     });
     expect(llm.calls).toHaveLength(0);
   });

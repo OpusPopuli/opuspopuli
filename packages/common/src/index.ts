@@ -14,3 +14,6 @@ export * from "./utils/index.js";
 
 // Shared constants (single source of truth — see commitments.ts)
 export * from "./commitments.js";
+
+// Shared embedding width — see the file for why this cannot live per-service.
+export * from "./embeddings-dimensions.js";

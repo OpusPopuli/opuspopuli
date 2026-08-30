@@ -169,6 +169,24 @@ export class MetricsModule {
         labelNames: ['service', 'provider'],
         buckets: [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100],
       }),
+      makeHistogramProvider({
+        // #1074: the distribution MIN_VERIFIED_SIMILARITY is tuned against.
+        // The threshold was first set by guess at 0.82, which would have
+        // verified nothing ever — correct matches measured 0.545 and 0.586.
+        // Buckets are dense around the observed decision boundary because that
+        // is the only region where the value of the threshold is decided.
+        name: 'petition_retrieval_similarity',
+        help: 'Cosine similarity of the best filed-measure match for a scan',
+        labelNames: ['service', 'verified'],
+        buckets: [
+          0.1, 0.2, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8, 0.9,
+        ],
+      }),
+      makeCounterProvider({
+        name: 'petition_retrieval_total',
+        help: 'Petition retrieval outcomes',
+        labelNames: ['service', 'outcome'],
+      }),
       makeCounterProvider({
         name: 'document_analyses_total',
         help: 'Total document analysis attempts',

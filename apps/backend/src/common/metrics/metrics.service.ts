@@ -97,6 +97,12 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     @InjectMetric('ocr_confidence')
     private readonly ocrConfidenceHistogram: Histogram<string>,
 
+    @InjectMetric('petition_retrieval_similarity')
+    private readonly retrievalSimilarity: Histogram<string>,
+
+    @InjectMetric('petition_retrieval_total')
+    private readonly retrievalTotal: Counter<string>,
+
     @InjectMetric('document_analyses_total')
     private readonly documentAnalysesTotal: Counter<string>,
 
@@ -270,6 +276,37 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     this.ocrExtractionsTotal.inc({ service, provider, status });
     if (status === 'success' && confidence !== undefined) {
       this.ocrConfidenceHistogram.observe({ service, provider }, confidence);
+    }
+  }
+
+  /**
+   * Record a petition retrieval outcome (#1074).
+   *
+   * Records ids-free aggregates only — a score and an outcome label, never the
+   * matched measure and never any document text.
+   *
+   * This exists because MIN_VERIFIED_SIMILARITY was first set by judgement at
+   * 0.82 and measurement put the correct matches at 0.545 and 0.586: the
+   * threshold would have verified nothing, ever, and nothing would have said
+   * so. The histogram is how that gets noticed next time.
+   */
+  recordPetitionRetrieval(
+    service: string,
+    outcome:
+      | 'verified'
+      | 'unverified'
+      | 'skipped_low_ocr_confidence'
+      | 'skipped_no_text'
+      | 'skipped_empty_corpus'
+      | 'failed',
+    similarity?: number,
+  ): void {
+    this.retrievalTotal.inc({ service, outcome });
+    if (similarity !== undefined) {
+      this.retrievalSimilarity.observe(
+        { service, verified: String(outcome === 'verified') },
+        similarity,
+      );
     }
   }
 

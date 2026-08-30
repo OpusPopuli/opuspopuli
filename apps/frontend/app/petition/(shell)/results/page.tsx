@@ -24,6 +24,7 @@ import { AnalysisDisplay } from "@/components/petition/AnalysisDisplay";
 import { PersonalizedImpact } from "@/components/petition/PersonalizedImpact";
 import { usePersonalizedImpact } from "@/components/petition/usePersonalizedImpact";
 import { NotAPetition } from "@/components/petition/NotAPetition";
+import { VerificationBanner } from "@/components/petition/VerificationBanner";
 
 type ProcessingStep = "extracting" | "analyzing" | "complete" | "error";
 
@@ -228,6 +229,12 @@ export default function PetitionResultsPage() {
           generic analysis below is always the fallback. */}
       {analysis && !notAPetition && (
         <section className="px-4 py-6 space-y-6">
+          {/* Provenance first (#1074): what backs this analysis is the frame
+              the rest of it should be read through, so it leads. */}
+          <VerificationBanner
+            verificationState={analysis.verificationState}
+            matchedExternalId={analysis.matchedExternalId}
+          />
           <PersonalizedImpact {...personalizedImpact} />
           <AnalysisDisplay
             analysis={analysis}

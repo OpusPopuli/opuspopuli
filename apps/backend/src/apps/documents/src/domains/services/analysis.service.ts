@@ -13,6 +13,7 @@ import { MetricsService } from 'src/common/metrics';
 import { DocumentAnalysis, AnalyzeDocumentResult } from '../dto/analysis.dto';
 import { parseAnalysisResponse } from '../prompts/document-analysis.prompt';
 import { LinkingService } from './linking.service';
+import { RetrievalService, type RetrievalOutcome } from './retrieval.service';
 
 /**
  * Closed skip-reason vocabulary of the non-petition gate (#1057). Never a
@@ -34,6 +35,35 @@ type SkipReason = 'not_a_petition' | 'unreadable';
 const MIN_ANALYZABLE_TEXT_CHARS = 80;
 
 /**
+ * The quality half of the same gate (#1074).
+ *
+ * MIN_ANALYZABLE_TEXT_CHARS measures how MUCH text came back. It cannot tell
+ * text from noise, and OCR noise is verbose: measuring nine photographs of a
+ * printed petition through the shipped path (#1074 subtask 1) produced 3,142
+ * characters of pure garbage at 4% real words — 39x this threshold, sailing
+ * through the gate and reaching the LLM as though it were readable.
+ *
+ * `ocrConfidence` was already captured on every scan, stored, and used for
+ * nothing. That measurement separated cleanly on it, with a wide empty gap:
+ *
+ *   confidence 80, 81 -> 91%, 94% real words   (readable)
+ *   confidence 72     -> 63% real words        (readable)
+ *   confidence 47     -> 44% real words        (partial)
+ *   ---- nothing observed between 38 and 47 ----
+ *   confidence 38     ->  0% real words        (noise)
+ *   confidence 31, 33 ->  4-7% real words      (noise)
+ *
+ * 40 sits in that gap, deliberately on the noise side. The failure mode to
+ * avoid is a false `unreadable` on a genuine petition — the same reason
+ * MIN_ANALYZABLE_TEXT_CHARS is set so low — so this refuses only extractions
+ * with no recoverable content at all, and leaves the partial case analyzable.
+ *
+ * Evidence weight: nine photographs of one petition by one person. Enough to
+ * place a conservative floor, not enough to be aggressive with it.
+ */
+const MIN_ANALYZABLE_OCR_CONFIDENCE = 40;
+
+/**
  * Analysis Service
  *
  * Handles LLM-based document analysis with type-specific prompts.
@@ -52,6 +82,7 @@ export class AnalysisService {
     private readonly promptClient: PromptClientService,
     private readonly metricsService: MetricsService,
     private readonly linkingService: LinkingService,
+    private readonly retrieval: RetrievalService,
   ) {}
 
   /**
@@ -117,21 +148,33 @@ export class AnalysisService {
       // a persistence failure flows through the same ai_analysis_failed
       // path as every other failure; after the cache check so a cached
       // verdict for the same content still short-circuits.
-      if (
-        document.type === 'petition' &&
-        document.extractedText.trim().length < MIN_ANALYZABLE_TEXT_CHARS
-      ) {
+      if (isUnreadablePetition(document)) {
         return await this.persistSkipVerdict(
           documentId,
           document.type,
           'unreadable',
           {
             provider: 'documents-service',
-            model: 'min-text-gate',
+            model: 'pre-analysis-gate',
             processingTimeMs: Date.now() - startTime,
           },
         );
       }
+
+      // Identify the filing BEFORE analysing (#1074). Retrieval is enrichment,
+      // never a gate: `findBestMatch` does not throw, and a null match means
+      // the scan is labelled `unverified` and analysed from its own text,
+      // exactly as it was before this existed. A hard refusal here would be a
+      // dead end for every local, county and municipal petition, which have no
+      // Secretary of State filing and never will.
+      const retrieval =
+        document.type === 'petition'
+          ? await this.retrieval.findBestMatch(
+              documentId,
+              document.extractedText,
+              document.ocrConfidence,
+            )
+          : null;
 
       const { promptText, promptHash, promptVersion } =
         await this.promptClient.getDocumentAnalysisPrompt({
@@ -201,6 +244,7 @@ export class AnalysisService {
         sources,
         completenessScore,
         completenessDetails,
+        ...provenanceFields(retrieval),
       };
 
       await this.db.document.update({
@@ -490,4 +534,65 @@ export class AnalysisService {
       },
     };
   }
+}
+
+/**
+ * Whether a petition scan is unreadable — both halves of the pre-gate (#1074).
+ *
+ * Extracted because inlining it pushed `analyzeDocument` past the cognitive
+ * complexity budget, and because the two conditions answer different
+ * questions: how MUCH text came back, and whether any of it is text at all.
+ *
+ * Null `ocrConfidence` means the extraction was deterministic (PDF, plain
+ * text) and recorded no score, so only an explicitly low number gates.
+ */
+function isUnreadablePetition(document: {
+  type: string;
+  extractedText: string | null;
+  ocrConfidence: number | null;
+}): boolean {
+  if (document.type !== 'petition') return false;
+
+  // `extractedText` is non-null by the time this is reached — the caller
+  // throws otherwise — but the Prisma type is nullable and narrowing does not
+  // survive the call. Treating null as unreadable is the correct answer for it
+  // anyway, so this needs no cast.
+  const tooShort =
+    (document.extractedText?.trim().length ?? 0) < MIN_ANALYZABLE_TEXT_CHARS;
+  const tooNoisy =
+    typeof document.ocrConfidence === 'number' &&
+    document.ocrConfidence < MIN_ANALYZABLE_OCR_CONFIDENCE;
+
+  return tooShort || tooNoisy;
+}
+
+/**
+ * The provenance fields written onto a completed analysis (#1074).
+ *
+ * `verified` means the analysis is backed by a confident match to a filed
+ * measure; `unverified` means we could not match one and are reading the
+ * photograph alone. That distinction is the deliverable of the whole issue —
+ * retrieval cannot separate a real unfiled local measure from a fabricated
+ * sheet, so the honest thing is to disclose that we did not verify, never to
+ * claim we detected anything.
+ *
+ * Returns nothing at all for a non-petition type, so those analyses carry no
+ * provenance claim rather than a misleading default.
+ */
+function provenanceFields(
+  retrieval: RetrievalOutcome | null,
+): Record<string, unknown> {
+  if (!retrieval) return {};
+
+  return {
+    verificationState: retrieval.match?.verified ? 'verified' : 'unverified',
+    ...(retrieval.match && {
+      matchedPropositionId: retrieval.match.propositionId,
+      matchedExternalId: retrieval.match.externalId,
+      matchSimilarity: retrieval.match.similarity,
+    }),
+    ...(retrieval.skippedReason && {
+      retrievalSkipped: retrieval.skippedReason,
+    }),
+  };
 }

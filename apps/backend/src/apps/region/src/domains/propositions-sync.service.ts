@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import type { Proposition } from '@opuspopuli/common';
 import { PropositionAnalysisService } from './proposition-analysis.service';
+import { PropositionEmbeddingService } from './proposition-embedding.service';
 import { RegionCacheService } from './region-cache.service';
 import { propositionSyncTracker } from './sync-phase-logger';
 
@@ -76,6 +77,8 @@ export class PropositionsSyncService {
     private readonly propositionAnalysis?: PropositionAnalysisService,
     @Optional()
     private readonly cacheService?: RegionCacheService,
+    @Optional()
+    private readonly propositionEmbedding?: PropositionEmbeddingService,
   ) {}
 
   async sync(
@@ -177,6 +180,28 @@ export class PropositionsSyncService {
 
     if (stagePatterns.length > 0) {
       await this.backfillStageIds(stagePatterns);
+    }
+
+    // Keep the retrieval corpus in step with what was just written (#1074).
+    //
+    // No change-tracking needed here: `embedMissing` compares a hash of the
+    // text it embeds, so a sync that rewrote 52 rows with identical title and
+    // summary re-embeds none of them. That is the whole reason the hash column
+    // exists — sync runs often and this text rarely moves.
+    //
+    // Deliberately does not fail the sync. A stale vector degrades retrieval
+    // for one measure; an aborted sync loses the civic data for all of them.
+    if (this.propositionEmbedding) {
+      try {
+        const embedResult = await this.propositionEmbedding.embedMissing();
+        this.logger.log(
+          `Retrieval corpus: embedded=${embedResult.embedded} unchanged=${embedResult.unchanged} failed=${embedResult.failed}`,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Retrieval corpus refresh failed (sync continues): ${(error as Error).message}`,
+        );
+      }
     }
 
     // ─── Phase 3/3 — analysis ──────────────────────────────────────
