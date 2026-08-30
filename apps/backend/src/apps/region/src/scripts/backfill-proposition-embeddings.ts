@@ -4,7 +4,7 @@
  *
  * Usage:
  *   pnpm --filter backend build:region
- *   node dist/apps/region/src/scripts/backfill-proposition-embeddings.js
+ *   node dist/src/apps/region/apps/region/src/scripts/backfill-proposition-embeddings.js
  *
  * Idempotent — a second run with unchanged text embeds nothing and reports
  * `unchanged`. Safe to run repeatedly, and safe to re-run after an interrupted
