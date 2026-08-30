@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import { DbService, LinkSource } from '@opuspopuli/relationaldb-provider';
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
 import { EMBEDDING_DIMENSIONS } from '@opuspopuli/common';
 import { MetricsService } from 'src/common/metrics';
@@ -201,6 +201,20 @@ export class RetrievalService {
         similarity,
       );
 
+      // Record the match as a link so the rest of the product can see it
+      // (#1074 Phase B). DocumentProposition already models "this scan is
+      // about that measure", and `getLinkedPropositions` is what carries the
+      // filing's own analysis onto the scan surface — without this the match
+      // exists only inside the analysis JSON and nothing can act on it.
+      //
+      // Only for a verified match. Linking a below-threshold guess would put a
+      // measure's authoritative analysis next to a scan we are not confident
+      // is that measure, which is the "confident analysis of the wrong filing"
+      // failure this whole issue exists to avoid.
+      if (verified) {
+        await this.linkMatch(documentId, top.id, similarity);
+      }
+
       return {
         attempted: true,
         match: {
@@ -219,6 +233,43 @@ export class RetrievalService {
       );
       this.metrics.recordPetitionRetrieval(SERVICE, 'failed');
       return { attempted: true, match: null };
+    }
+  }
+
+  /**
+   * Upsert the retrieval link, carrying the measured similarity as confidence.
+   *
+   * `auto_retrieval`, never `auto_analysis`: the latter's links all carry a
+   * hardcoded 0.8 that nothing computed, and merging the two would make a real
+   * score indistinguishable from that constant.
+   *
+   * Failure here is logged and swallowed. The link is an enrichment on top of
+   * an analysis that already succeeded; losing it costs a cross-reference,
+   * while throwing would cost the scan.
+   */
+  private async linkMatch(
+    documentId: string,
+    propositionId: string,
+    similarity: number,
+  ): Promise<void> {
+    try {
+      await this.db.documentProposition.upsert({
+        where: { documentId_propositionId: { documentId, propositionId } },
+        update: {
+          confidence: similarity,
+          linkSource: LinkSource.auto_retrieval,
+        },
+        create: {
+          documentId,
+          propositionId,
+          linkSource: LinkSource.auto_retrieval,
+          confidence: similarity,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to link document ${documentId} to proposition ${propositionId}: ${error}`,
+      );
     }
   }
 }

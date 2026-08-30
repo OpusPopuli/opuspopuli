@@ -170,6 +170,24 @@ export class LinkingService {
       summary: link.proposition.summary,
       status: link.proposition.status,
       electionDate: link.proposition.electionDate ?? undefined,
+      // The filing's own analysis, produced from its authoritative full text
+      // (#1074 Phase B). The whole row was already loaded by `include`; these
+      // fields simply were not mapped through, so a verified scan could not
+      // reach the analysis we had already generated for the measure.
+      analysisSummary: link.proposition.analysisSummary ?? undefined,
+      // keyProvisions is a Json column, not a text array — the region model
+      // exposes it as [String] and does the same narrowing. Anything that is
+      // not an array of strings is dropped rather than coerced: a malformed
+      // payload should show nothing, not a row of "[object Object]".
+      keyProvisions: Array.isArray(link.proposition.keyProvisions)
+        ? (link.proposition.keyProvisions as unknown[]).filter(
+            (v): v is string => typeof v === 'string',
+          )
+        : undefined,
+      fiscalImpact: link.proposition.fiscalImpact ?? undefined,
+      yesOutcome: link.proposition.yesOutcome ?? undefined,
+      noOutcome: link.proposition.noOutcome ?? undefined,
+      analysisGeneratedAt: link.proposition.analysisGeneratedAt ?? undefined,
       linkSource: link.linkSource,
       confidence: link.confidence ?? undefined,
       matchedText: link.matchedText ?? undefined,

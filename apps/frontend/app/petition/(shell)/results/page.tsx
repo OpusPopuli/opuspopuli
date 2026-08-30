@@ -25,6 +25,7 @@ import { PersonalizedImpact } from "@/components/petition/PersonalizedImpact";
 import { usePersonalizedImpact } from "@/components/petition/usePersonalizedImpact";
 import { NotAPetition } from "@/components/petition/NotAPetition";
 import { VerificationBanner } from "@/components/petition/VerificationBanner";
+import { FiledAnalysis } from "@/components/petition/FiledAnalysis";
 
 type ProcessingStep = "extracting" | "analyzing" | "complete" | "error";
 
@@ -235,6 +236,10 @@ export default function PetitionResultsPage() {
             verificationState={analysis.verificationState}
             matchedExternalId={analysis.matchedExternalId}
           />
+          {/* What the FILED measure says (#1074 Phase B) — the payoff of a
+              verified match, and not a re-reading of the photograph. Renders
+              nothing when the matched measure has no analysis (#1085). */}
+          <FiledAnalysis proposition={linkedPropositions[0]} />
           <PersonalizedImpact {...personalizedImpact} />
           <AnalysisDisplay
             analysis={analysis}

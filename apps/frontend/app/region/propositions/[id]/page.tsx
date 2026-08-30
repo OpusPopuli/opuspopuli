@@ -176,16 +176,21 @@ function LinkedPetitionScans({
                 {doc.summary}
               </p>
               <div className="flex items-center gap-3 mt-2">
+                {/* Three link sources since #1074. Without the middle case a
+                    retrieval match — made by measured similarity, with no
+                    human involved — renders as "User-linked", which is false.
+                    Mirrors linkSourceLabel in AnalysisDisplay; the strings are
+                    literals here only because this page has no i18n at all
+                    (tracked with #1081), and adding it for two strings would
+                    be inconsistent with the other ~40 on the page. */}
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full ${
-                    doc.linkSource === "auto_analysis"
-                      ? "bg-info-surface text-info"
-                      : "bg-cat-purple-surface text-cat-purple"
+                    doc.linkSource === "user_manual"
+                      ? "bg-cat-purple-surface text-cat-purple"
+                      : "bg-info-surface text-info"
                   }`}
                 >
-                  {doc.linkSource === "auto_analysis"
-                    ? "AI-matched"
-                    : "User-linked"}
+                  {linkSourceLabel(doc.linkSource)}
                 </span>
                 <span className="text-xs text-content-dim">
                   {formatDate(doc.linkedAt)}
@@ -577,4 +582,22 @@ export default function PropositionDetailPage() {
       )}
     </RegionDetailShell>
   );
+}
+
+/**
+ * How a scan came to be linked to this measure.
+ *
+ * Three sources since #1074, and the middle one is the reason this exists: an
+ * `auto_retrieval` link is made by measured similarity with no human involved,
+ * so the previous auto_analysis-or-else branch labelled it "User-linked".
+ *
+ * Mirrors `linkSourceLabel` in AnalysisDisplay. The strings are literals here
+ * only because this page has no i18n at all — roughly forty hardcoded strings —
+ * and translating two of them would be inconsistent rather than progress. That
+ * gap belongs with #1081.
+ */
+function linkSourceLabel(source: string): string {
+  if (source === "auto_retrieval") return "Record-matched";
+  if (source === "auto_analysis") return "AI-matched";
+  return "User-linked";
 }

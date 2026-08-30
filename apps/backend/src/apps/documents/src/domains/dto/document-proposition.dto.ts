@@ -21,6 +21,39 @@ export class LinkedProposition {
   @Field({ nullable: true })
   electionDate?: Date;
 
+  /**
+   * The filing's OWN analysis, generated from its authoritative full text
+   * (#1074 Phase B) — not a re-analysis of the photograph.
+   *
+   * This is the point of verifying a scan: it shows the reader what the filed
+   * measure actually says, which is not necessarily what the sheet in front of
+   * them says. It also keeps the scan surface consistent with
+   * /region/propositions, which renders the same analysis — without this the
+   * same measure would carry two different AI readings depending on where you
+   * met it.
+   *
+   * All nullable: 8 of 52 propositions currently have no analysis at all, and a
+   * verified match to one of those must fall back to the photo-derived
+   * analysis rather than render an empty panel.
+   */
+  @Field({ nullable: true })
+  analysisSummary?: string;
+
+  @Field(() => [String], { nullable: true })
+  keyProvisions?: string[];
+
+  @Field({ nullable: true })
+  fiscalImpact?: string;
+
+  @Field({ nullable: true })
+  yesOutcome?: string;
+
+  @Field({ nullable: true })
+  noOutcome?: string;
+
+  @Field({ nullable: true })
+  analysisGeneratedAt?: Date;
+
   @Field()
   linkSource!: string;
 

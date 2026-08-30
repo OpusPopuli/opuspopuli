@@ -401,6 +401,18 @@ export interface LinkedProposition {
   confidence?: number;
   matchedText?: string;
   linkedAt: string;
+  /**
+   * The filing's OWN analysis, generated from its authoritative full text
+   * (#1074 Phase B) — not a re-analysis of the photograph. All optional: four
+   * propositions currently have none (#1085), and a verified match to one of
+   * those must fall back to the photo-derived analysis.
+   */
+  analysisSummary?: string;
+  keyProvisions?: string[];
+  fiscalImpact?: string;
+  yesOutcome?: string;
+  noOutcome?: string;
+  analysisGeneratedAt?: string;
 }
 
 export interface LinkedPetitionDocument {
@@ -441,6 +453,12 @@ export const GET_LINKED_PROPOSITIONS = gql`
       confidence
       matchedText
       linkedAt
+      analysisSummary
+      keyProvisions
+      fiscalImpact
+      yesOutcome
+      noOutcome
+      analysisGeneratedAt
     }
   }
 `;

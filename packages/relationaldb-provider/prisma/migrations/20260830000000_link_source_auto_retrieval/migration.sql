@@ -1,0 +1,21 @@
+-- A distinct link source for retrieval matches (opuspopuli#1074, Phase B).
+--
+-- `DocumentProposition.linkSource` had two values: `auto_analysis` and
+-- `user_manual`. Retrieval matches need their own, and reusing `auto_analysis`
+-- would be actively harmful.
+--
+-- `auto_analysis` links come from the LLM's `relatedMeasures` output run
+-- through a case-insensitive substring search, and every one of them carries
+-- `confidence: 0.8` — a hardcoded constant that nothing computed and nothing
+-- checked. Retrieval links carry a measured cosine similarity. Writing both
+-- under one label would make the two indistinguishable in the data, which
+-- destroys the ability to tell a real score from that constant. Telling them
+-- apart is the entire point of #1074.
+--
+-- Additive: adding an enum value cannot invalidate existing rows, and no
+-- existing row's value changes. Postgres allows ADD VALUE outside a
+-- transaction block, which is why this migration contains nothing else — a
+-- second statement here would force the whole file into an implicit
+-- transaction and fail.
+
+ALTER TYPE "LinkSource" ADD VALUE IF NOT EXISTS 'auto_retrieval';

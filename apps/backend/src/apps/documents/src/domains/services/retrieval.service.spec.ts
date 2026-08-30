@@ -22,7 +22,11 @@ const vector = (fill = 0.1) => Array<number>(EMBEDDING_DIMENSIONS).fill(fill);
 
 describe('RetrievalService', () => {
   let service: RetrievalService;
-  let db: { $executeRaw: jest.Mock; $queryRaw: jest.Mock };
+  let db: {
+    $executeRaw: jest.Mock;
+    $queryRaw: jest.Mock;
+    documentProposition: { upsert: jest.Mock };
+  };
   let embeddings: { getEmbeddingsForQuery: jest.Mock };
   let metrics: { recordPetitionRetrieval: jest.Mock };
 
@@ -39,6 +43,7 @@ describe('RetrievalService', () => {
     db = {
       $executeRaw: jest.fn().mockResolvedValue(1),
       $queryRaw: jest.fn().mockResolvedValue(row(0.1)),
+      documentProposition: { upsert: jest.fn().mockResolvedValue({}) },
     };
     embeddings = {
       getEmbeddingsForQuery: jest.fn().mockResolvedValue(vector()),
@@ -199,6 +204,66 @@ describe('RetrievalService', () => {
         'documents-service',
         'failed',
       );
+    });
+  });
+  /**
+   * Phase B (#1074): the match has to become a link, or it exists only inside
+   * the analysis JSON and nothing downstream can act on it — including the
+   * query that carries the filing's own analysis onto the scan surface.
+   */
+  describe('linking a verified match', () => {
+    it('links with the measured similarity, not a constant', async () => {
+      await service.findBestMatch('doc-1', 'petition text', 85);
+
+      expect(db.documentProposition.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            documentId: 'doc-1',
+            propositionId: 'prop-1',
+            linkSource: 'auto_retrieval',
+            confidence: expect.closeTo(0.9, 6),
+          }),
+        }),
+      );
+    });
+
+    /**
+     * Linking a below-threshold guess would place a measure's authoritative
+     * analysis beside a scan we are not confident is that measure — the
+     * "confident analysis of the wrong filing" failure this issue exists to
+     * avoid.
+     */
+    it('does not link a match below the threshold', async () => {
+      db.$queryRaw.mockResolvedValue(row(1 - (MIN_VERIFIED_SIMILARITY - 0.05)));
+
+      const out = await service.findBestMatch('doc-1', 'petition text', 85);
+
+      expect(out.match!.verified).toBe(false);
+      expect(db.documentProposition.upsert).not.toHaveBeenCalled();
+    });
+
+    /**
+     * auto_retrieval, never auto_analysis: those links all carry a hardcoded
+     * 0.8, and merging the two would make a measured score indistinguishable
+     * from that constant.
+     */
+    it('never writes the legacy auto_analysis source', async () => {
+      await service.findBestMatch('doc-1', 'petition text', 85);
+
+      const arg = db.documentProposition.upsert.mock.calls[0][0];
+      expect(arg.create.linkSource).not.toBe('auto_analysis');
+    });
+
+    /** A link failure costs a cross-reference; throwing would cost the scan. */
+    it('still returns the match when linking fails', async () => {
+      db.documentProposition.upsert.mockRejectedValue(
+        new Error('fk violation'),
+      );
+
+      const out = await service.findBestMatch('doc-1', 'petition text', 85);
+
+      expect(out.match).not.toBeNull();
+      expect(out.match!.verified).toBe(true);
     });
   });
 });
