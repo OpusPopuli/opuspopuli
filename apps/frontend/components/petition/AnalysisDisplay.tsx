@@ -66,9 +66,12 @@ export function AnalysisDisplay({
               {primaryMatch.status}
             </span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-paper/10 text-paper/70">
-              {primaryMatch.linkSource === "auto_analysis"
-                ? t("results.linkedAutomatically")
-                : t("results.linkedManually")}
+              {/* #1074: three sources now, not two. A retrieval link ties
+                  the scan to a filing by measured similarity, which is a
+                  stronger claim than the substring match `auto_analysis`
+                  represents — and labelling either of them "linked manually"
+                  would be simply false. */}
+              {linkSourceLabel(primaryMatch.linkSource, t)}
             </span>
             {primaryMatch.electionDate && (
               <span className="text-xs text-paper/70">
@@ -208,9 +211,7 @@ export function AnalysisDisplay({
                       {prop.title}
                     </p>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-paper/15 text-paper ml-2 flex-shrink-0">
-                      {prop.linkSource === "auto_analysis"
-                        ? t("results.linkedAutomatically")
-                        : t("results.linkedManually")}
+                      {linkSourceLabel(prop.linkSource, t)}
                     </span>
                   </div>
                   <p className="text-sm text-paper/70 mt-1">
@@ -395,4 +396,23 @@ export function AnalysisDisplay({
       </div>
     </div>
   );
+}
+
+/**
+ * How a scan came to be linked to a measure.
+ *
+ * Three sources since #1074, and the distinction is not cosmetic:
+ *  - `auto_retrieval` — embedding similarity above a measured threshold. The
+ *    link carries a real cosine score.
+ *  - `auto_analysis`  — the legacy substring match over the LLM's
+ *    `relatedMeasures`, every one of which carries a hardcoded confidence.
+ *  - `user_manual`    — a person said so.
+ *
+ * Before this, anything that was not `auto_analysis` rendered as "linked
+ * manually", so a retrieval match would have claimed a human made it.
+ */
+function linkSourceLabel(source: string, t: (key: string) => string): string {
+  if (source === "auto_retrieval") return t("results.linkedByMatch");
+  if (source === "auto_analysis") return t("results.linkedAutomatically");
+  return t("results.linkedManually");
 }

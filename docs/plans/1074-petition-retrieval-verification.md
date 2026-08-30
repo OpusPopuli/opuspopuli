@@ -352,21 +352,70 @@ it bites: **pgvector needs a fixed dimension for its HNSW index, so switching
 `EMBEDDINGS_PROVIDER` to a different-width model requires a migration** — the
 one place the provider pattern does not hold.
 
-### Phase B — analyze the filed text
-*Separate PR. Gated on subtask 1's numbers.*
+### Phase B — surface the filed analysis
+*Separate PR. Rewritten 2026-08-30 after checking what already exists.*
 
-#### 8. Retrieval-grounded analysis
-When `verified`, feed the matched filing's `full_text` to the analysis prompt
-instead of `extractedText`.
+#### 8. Surface the matched filing's existing analysis
 
-The new template lives in the **private `prompt-service` repo** and is consumed
-via `@opuspopuli/prompt-client`. No prompt text lands in this repo, even
-temporarily.
+**The original plan was to generate a second analysis** — feed the matched
+filing's `full_text` to a new retrieval-grounded template in the private
+`prompt-service` repo. Checking production first showed that is redundant work:
 
-Justified by the 8% coverage figure, but separable: Phase A ships the
-verification and the honesty on its own, and if subtask 1 shows OCR recovers
-most of a typical measure, Phase B's value drops sharply and it should be
-re-argued rather than assumed.
+**44 of the 52 propositions already carry a full analysis generated from their
+filed text** — `analysis_summary`, `key_provisions`, `fiscal_impact`,
+`yes_outcome`, `no_outcome`, `existing_vs_proposed`, plus AI-segmented
+`analysis_sections` and per-claim `analysis_claims` with character offsets into
+`full_text`. `PropositionAnalysisService` generates it on sync, and it is
+already rendered at `/region/propositions/[id]` and in the briefing cards.
+
+So Phase B becomes: when a scan is `verified`, **surface the analysis we already
+produced from the filed text**, rather than producing a second one.
+
+Better on every axis that matters:
+
+- **No prompt-service work.** No cross-repo change, no second release to
+  coordinate, no new prompt to version.
+- **No new LLM call.** No cost and no latency on the scan path.
+- **No context-length wall.** Filed measures run to 115,077 characters; a fresh
+  prompt would have to solve that from scratch, and the evidence below suggests
+  it is not solved even for the existing path.
+- **Consistency.** Today a user scanning a petition and browsing the same
+  measure under `/region/propositions` would get two different AI analyses of
+  the same document. The original plan would have shipped that incoherence.
+- **Better provenance.** The existing analysis carries claim-level citations
+  into the filed text. A fresh prompt over OCR text cannot.
+
+**Mechanism: retrieval creates a link.** `DocumentProposition` already models
+"this scan is about that measure", and `getLinkedPropositions` already loads the
+whole proposition row — it simply does not map the analysis fields through.
+Retrieval currently produces a match and creates no link at all, so the match is
+invisible to that query.
+
+- `LinkSource` gains `auto_retrieval`, kept distinct from `auto_analysis`
+  deliberately: the latter comes from the LLM's `relatedMeasures` substring
+  match carrying the legacy hardcoded `confidence: 0.8`. Conflating them would
+  destroy the ability to tell a measured score from that constant, which is the
+  whole point of Phase A.
+- The link's `confidence` carries the real cosine similarity.
+
+**Fallback:** `verified` but the matched proposition has no analysis → fall back
+to the photo-derived analysis, exactly as `unverified` does. Eight of 52
+currently have none.
+
+#### 8a. Why 8 propositions have no analysis — OPEN
+
+All eight have `full_text` (12,182–88,671 chars), so it is not missing source.
+They skew long: median 31,897 against 8,033 for the analysed ones.
+
+**Length correlates but does not explain it.** One *analysed* measure is 115,077
+characters — longer than any of the eight. So a simple context-window cutoff is
+not the story. Historical logs were lost when the container was recreated during
+the v1.15.0 deploy, so the failure reason has to be reproduced rather than read.
+
+This affects the propositions surface today, not only #1074: those measures show
+no analysis to anyone. Being investigated by re-running
+`backfill-proposition-analysis` against production and capturing the per-
+proposition warning.
 
 ## Data classification detail
 

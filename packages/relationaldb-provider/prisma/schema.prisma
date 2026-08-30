@@ -1307,8 +1307,12 @@ model LegislativeAction {
 // ============================================
 
 enum LinkSource {
-  auto_analysis @map("auto_analysis")
-  user_manual   @map("user_manual")
+  auto_analysis  @map("auto_analysis")
+  /// Retrieval match (#1074). Kept distinct from auto_analysis because those
+  /// links carry a hardcoded confidence of 0.8 while these carry a measured
+  /// cosine similarity — conflating them would make the two indistinguishable.
+  auto_retrieval @map("auto_retrieval")
+  user_manual    @map("user_manual")
 }
 
 model DocumentProposition {

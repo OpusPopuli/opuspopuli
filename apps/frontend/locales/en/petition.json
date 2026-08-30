@@ -123,6 +123,7 @@
     "searchPropositions": "Search ballot measures...",
     "noMatchesFound": "No matching measures found",
     "linkedAutomatically": "AI-matched",
+    "linkedByMatch": "Record-matched",
     "linkedManually": "User-linked",
     "linkSuccess": "Linked to ballot measure",
     "viewOnBallot": "View on Ballot",
@@ -169,5 +170,13 @@
     "verifiedBody": "This analysis is based on {{measure}} as filed with the Secretary of State, not only on the page you photographed.",
     "unverifiedTitle": "Not matched to a filed state measure",
     "unverifiedBody": "We couldn't match this to a filed state measure. It may be a local or county petition, or it may not be on file — we're reading the page in front of you, not an official record."
+  },
+  "filedAnalysis": {
+    "title": "What the filed measure says",
+    "provenance": "From the text filed with the Secretary of State — not from the page you photographed.",
+    "keyProvisions": "Key provisions",
+    "ifYes": "If it passes",
+    "ifNo": "If it fails",
+    "fiscalImpact": "Fiscal impact"
   }
 }

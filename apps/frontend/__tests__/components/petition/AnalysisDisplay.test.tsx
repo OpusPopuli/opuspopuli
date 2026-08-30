@@ -170,4 +170,61 @@ describe("AnalysisDisplay", () => {
       screen.queryByText("results.relatedBallotMeasures"),
     ).not.toBeInTheDocument();
   });
+  /**
+   * #1074 added a third link source. Before this, anything that was not
+   * `auto_analysis` fell through to "linked manually" — so a retrieval match,
+   * made by measured similarity with no human involved, would have claimed a
+   * person made it.
+   */
+  describe("link source labelling (#1074)", () => {
+    const linked = (linkSource: string) => [
+      {
+        id: "l1",
+        propositionId: "p1",
+        title: "A MEASURE",
+        summary: "Summary.",
+        status: "circulating",
+        linkSource,
+        linkedAt: "2026-08-30T00:00:00Z",
+      },
+    ];
+
+    it("labels a retrieval match as matched, not manual", () => {
+      render(
+        <AnalysisDisplay
+          analysis={baseAnalysis}
+          linkedPropositions={linked("auto_retrieval") as never}
+        />,
+      );
+
+      expect(
+        screen.queryByText("results.linkedManually"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("results.linkedByMatch")).toBeInTheDocument();
+    });
+
+    it("still labels the legacy substring match as automatic", () => {
+      render(
+        <AnalysisDisplay
+          analysis={baseAnalysis}
+          linkedPropositions={linked("auto_analysis") as never}
+        />,
+      );
+
+      expect(
+        screen.getByText("results.linkedAutomatically"),
+      ).toBeInTheDocument();
+    });
+
+    it("still labels a human link as manual", () => {
+      render(
+        <AnalysisDisplay
+          analysis={baseAnalysis}
+          linkedPropositions={linked("user_manual") as never}
+        />,
+      );
+
+      expect(screen.getByText("results.linkedManually")).toBeInTheDocument();
+    });
+  });
 });

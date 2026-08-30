@@ -41,8 +41,14 @@ test.describe("Petition Capture", () => {
       await setupAuthSession(page);
       await page.goto("/petition");
 
-      await expect(page.locator("header")).toBeVisible();
-      await expect(page.locator("footer")).toBeVisible();
+      // `.first()` because Playwright's strict mode fails a bare locator that
+      // transiently matches more than one node, and the dev server double-
+      // renders during hydration. The assertion's intent is "this page has
+      // chrome", not "exactly one footer element exists at every instant" —
+      // the count is pinned on /petition/capture below, where zero-vs-nonzero
+      // is the thing that actually matters.
+      await expect(page.locator("header").first()).toBeVisible();
+      await expect(page.locator("footer").first()).toBeVisible();
       await expect(page.getByText("Back to app")).toHaveCount(0);
     });
 
