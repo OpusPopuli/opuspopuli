@@ -10,7 +10,7 @@
  *
  * Usage:
  *   pnpm --filter backend build:region
- *   node dist/apps/region/src/scripts/backfill-bill-is-dead.js
+ *   node dist/src/apps/region/apps/region/src/scripts/backfill-bill-is-dead.js
  *
  * Optional flags (via env):
  *   BACKFILL_IS_DEAD_REGION_ID=california  — limit to a single region.

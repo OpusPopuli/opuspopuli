@@ -7,7 +7,7 @@
  *
  * Usage:
  *   pnpm --filter backend build:region
- *   node dist/apps/region/src/scripts/backfill-proposition-analysis.js
+ *   node dist/src/apps/region/apps/region/src/scripts/backfill-proposition-analysis.js
  *
  * Optional flags (via env):
  *   PROPOSITION_ANALYSIS_MAX_PROPS=N — cap the batch size for a partial run.
