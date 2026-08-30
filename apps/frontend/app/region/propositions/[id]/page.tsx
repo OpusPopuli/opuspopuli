@@ -176,16 +176,25 @@ function LinkedPetitionScans({
                 {doc.summary}
               </p>
               <div className="flex items-center gap-3 mt-2">
+                {/* Three link sources since #1074. Without the middle case a
+                    retrieval match — made by measured similarity, with no
+                    human involved — renders as "User-linked", which is false.
+                    Mirrors linkSourceLabel in AnalysisDisplay; the strings are
+                    literals here only because this page has no i18n at all
+                    (tracked with #1081), and adding it for two strings would
+                    be inconsistent with the other ~40 on the page. */}
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full ${
-                    doc.linkSource === "auto_analysis"
-                      ? "bg-info-surface text-info"
-                      : "bg-cat-purple-surface text-cat-purple"
+                    doc.linkSource === "user_manual"
+                      ? "bg-cat-purple-surface text-cat-purple"
+                      : "bg-info-surface text-info"
                   }`}
                 >
-                  {doc.linkSource === "auto_analysis"
-                    ? "AI-matched"
-                    : "User-linked"}
+                  {doc.linkSource === "auto_retrieval"
+                    ? "Record-matched"
+                    : doc.linkSource === "auto_analysis"
+                      ? "AI-matched"
+                      : "User-linked"}
                 </span>
                 <span className="text-xs text-content-dim">
                   {formatDate(doc.linkedAt)}
