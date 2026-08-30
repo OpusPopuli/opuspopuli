@@ -190,11 +190,7 @@ function LinkedPetitionScans({
                       : "bg-info-surface text-info"
                   }`}
                 >
-                  {doc.linkSource === "auto_retrieval"
-                    ? "Record-matched"
-                    : doc.linkSource === "auto_analysis"
-                      ? "AI-matched"
-                      : "User-linked"}
+                  {linkSourceLabel(doc.linkSource)}
                 </span>
                 <span className="text-xs text-content-dim">
                   {formatDate(doc.linkedAt)}
@@ -586,4 +582,22 @@ export default function PropositionDetailPage() {
       )}
     </RegionDetailShell>
   );
+}
+
+/**
+ * How a scan came to be linked to this measure.
+ *
+ * Three sources since #1074, and the middle one is the reason this exists: an
+ * `auto_retrieval` link is made by measured similarity with no human involved,
+ * so the previous auto_analysis-or-else branch labelled it "User-linked".
+ *
+ * Mirrors `linkSourceLabel` in AnalysisDisplay. The strings are literals here
+ * only because this page has no i18n at all — roughly forty hardcoded strings —
+ * and translating two of them would be inconsistent rather than progress. That
+ * gap belongs with #1081.
+ */
+function linkSourceLabel(source: string): string {
+  if (source === "auto_retrieval") return "Record-matched";
+  if (source === "auto_analysis") return "AI-matched";
+  return "User-linked";
 }
