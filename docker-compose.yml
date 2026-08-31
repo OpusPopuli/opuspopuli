@@ -125,7 +125,16 @@ services:
     container_name: opuspopuli-inbucket
     logging: *logging
     ports:
-      - "54324:9000"  # Web UI
+      # 54324 sits inside Linux's default ephemeral port range
+      # (net.ipv4.ip_local_port_range = 32768-60999), so on a CI runner any
+      # outbound connection opened by an image pull or `pnpm install` can be
+      # holding it when Docker binds — and the whole stack then fails to come
+      # up with "failed to bind host port ... address already in use". That
+      # took out an E2E run on 2026-08-31 before a single test started. CI
+      # sets INBUCKET_UI_PORT to move the publish below that range; local dev
+      # keeps 54324, which is what apps/backend/__tests__/integration
+      # defaults to.
+      - "${INBUCKET_UI_PORT:-54324}:9000"  # Web UI
       - "2500:2500"   # SMTP
     networks:
       - opuspopuli-network

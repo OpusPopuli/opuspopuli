@@ -73,27 +73,6 @@ x-logging: &logging
     max-file: '5'
 
 services:
-  # Inbucket's host ports come from the base compose file, and its web UI
-  # publish there — 54324 — sits inside Linux's default ephemeral range
-  # (net.ipv4.ip_local_port_range = 32768-60999). On a CI runner any outbound
-  # connection opened by an image pull or `pnpm install` can be holding that
-  # port when Docker binds it, and the whole stack then fails to come up:
-  #
-  #   failed to bind host port for 0.0.0.0:54324:172.18.0.4:9000/tcp:
-  #   address already in use
-  #
-  # That took out an E2E run on 2026-08-31 before a single test started. The
-  # publish still has to exist, because the backend integration suite reads
-  # captured mail over the host (`getMagicLinkFromInbucket`) — so re-publish
-  # the UI below the ephemeral range instead. `!override` replaces the list;
-  # a plain `ports:` would append to the base file's, keeping 54324.
-  # CI passes the matching INBUCKET_URL; local dev keeps 54324 via
-  # docker-compose.yml. SMTP is reached in-network (SMTP_HOST: inbucket), so
-  # it needs no host publish here.
-  inbucket:
-    ports: !override
-      - "18324:9000" # Web UI — read by the integration suite from the host
-
   db-migrate:
     build:
       context: .
