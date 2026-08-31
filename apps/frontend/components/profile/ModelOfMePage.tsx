@@ -36,10 +36,14 @@ const FIELD_BY_NAME: Record<string, FieldDescriptor> = ALL_FIELDS.reduce(
   {} as Record<string, FieldDescriptor>,
 );
 
+const ARRAY_INPUT_TYPES = new Set<FieldDescriptor["inputType"]>([
+  "multi-select-chips",
+  "multi-select-dropdown",
+  "multi-tag-input",
+]);
+
 function isArrayType(d: FieldDescriptor): boolean {
-  return (
-    d.inputType === "multi-select-chips" || d.inputType === "multi-tag-input"
-  );
+  return ARRAY_INPUT_TYPES.has(d.inputType);
 }
 
 function clearedValueFor(d: FieldDescriptor): unknown {

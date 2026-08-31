@@ -429,7 +429,12 @@
       "revokeAll": "Revocar Todas las Otras Sesiones",
       "revokeSuccess": "Sesion revocada exitosamente",
       "revokeAllSuccess": "{{count}} sesiones revocadas",
-      "revokeAllConfirm": "Estas seguro de que quieres revocar todas las otras sesiones? Tendras que iniciar sesion de nuevo en esos dispositivos."
+      "revokeAllConfirm": "Estas seguro de que quieres revocar todas las otras sesiones? Tendras que iniciar sesion de nuevo en esos dispositivos.",
+      "deviceTypes": {
+        "mobile": "Móvil",
+        "tablet": "Tableta",
+        "desktop": "Computadora"
+      }
     }
   },
   "scans": {

@@ -429,7 +429,12 @@
       "revokeAll": "Revoke All Other Sessions",
       "revokeSuccess": "Session revoked successfully",
       "revokeAllSuccess": "Revoked {{count}} sessions",
-      "revokeAllConfirm": "Are you sure you want to revoke all other sessions? You will need to sign in again on those devices."
+      "revokeAllConfirm": "Are you sure you want to revoke all other sessions? You will need to sign in again on those devices.",
+      "deviceTypes": {
+        "mobile": "Mobile",
+        "tablet": "Tablet",
+        "desktop": "Desktop"
+      }
     }
   },
   "scans": {

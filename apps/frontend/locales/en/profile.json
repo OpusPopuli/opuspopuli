@@ -85,7 +85,15 @@
     "no": "No",
     "off": "Off",
     "on": "On",
-    "lockedByNoFields": "Paused while sensitive fields are off."
+    "lockedByNoFields": "Paused while sensitive fields are off.",
+    "multiSelect": {
+      "add": "Add…",
+      "primaryBadge": "Primary",
+      "makePrimary": "Make {{value}} primary",
+      "remove": "Remove {{value}}",
+      "primaryHint": "The first one is your primary — use “Make primary” to change it.",
+      "makePrimaryShort": "Make primary"
+    }
   },
   "placeholder": {
     "behavioral": {
@@ -479,7 +487,35 @@
     },
     "primaryLanguages": {
       "label": "Primary languages",
-      "description": "Languages you speak at home. Drives relevance for language-access and bilingual-services bills."
+      "description": "Languages spoken at home, primary first. Drives relevance for language-access and bilingual-services bills.",
+      "options": {
+        "english": "English",
+        "spanish": "Spanish",
+        "chinese_mandarin": "Chinese (Mandarin)",
+        "chinese_cantonese": "Chinese (Cantonese)",
+        "tagalog": "Tagalog",
+        "vietnamese": "Vietnamese",
+        "korean": "Korean",
+        "armenian": "Armenian",
+        "punjabi": "Punjabi",
+        "russian": "Russian",
+        "farsi": "Farsi / Persian",
+        "arabic": "Arabic",
+        "japanese": "Japanese",
+        "hindi": "Hindi",
+        "khmer": "Khmer",
+        "hmong": "Hmong",
+        "portuguese": "Portuguese",
+        "french": "French",
+        "german": "German",
+        "urdu": "Urdu",
+        "thai": "Thai",
+        "lao": "Lao",
+        "mien": "Mien",
+        "ukrainian": "Ukrainian",
+        "asl": "American Sign Language",
+        "other": "Another language"
+      }
     },
     "religiousCommunity": {
       "label": "Religious community",

@@ -38,12 +38,16 @@ jest.mock("@apollo/client/react", () => ({
   },
 }));
 
+// The API answers in GraphQL enum *names* — SCREAMING_SNAKE, not the
+// lower_snake enum values. Fixtures mirror that: the page has to
+// convert at the boundary, and fixtures in the app-side form hid a bug
+// where nothing matched and every consent read as unset (#776 follow-up).
 const mockConsents = [
   {
     id: "consent-1",
     userId: "user-1",
-    consentType: "terms_of_service",
-    status: "granted",
+    consentType: "TERMS_OF_SERVICE",
+    status: "GRANTED",
     grantedAt: "2024-01-01T00:00:00Z",
     deniedAt: null,
     withdrawnAt: null,
@@ -53,8 +57,8 @@ const mockConsents = [
   {
     id: "consent-2",
     userId: "user-1",
-    consentType: "privacy_policy",
-    status: "granted",
+    consentType: "PRIVACY_POLICY",
+    status: "GRANTED",
     grantedAt: "2024-01-01T00:00:00Z",
     deniedAt: null,
     withdrawnAt: null,
@@ -64,8 +68,8 @@ const mockConsents = [
   {
     id: "consent-3",
     userId: "user-1",
-    consentType: "marketing_email",
-    status: "denied",
+    consentType: "MARKETING_EMAIL",
+    status: "DENIED",
     grantedAt: null,
     deniedAt: "2024-01-01T00:00:00Z",
     withdrawnAt: null,
@@ -75,8 +79,8 @@ const mockConsents = [
   {
     id: "consent-4",
     userId: "user-1",
-    consentType: "analytics",
-    status: "granted",
+    consentType: "ANALYTICS",
+    status: "GRANTED",
     grantedAt: "2024-01-01T00:00:00Z",
     deniedAt: null,
     withdrawnAt: null,
@@ -269,6 +273,29 @@ describe("PrivacyPage", () => {
             input: expect.objectContaining({
               granted: true,
             }),
+          },
+        });
+      });
+    });
+
+    it("sends the consent type as the GraphQL enum name, not the value", async () => {
+      const user = userEvent.setup();
+      mockUpdateConsent.mockResolvedValueOnce({
+        data: { updateConsent: mockConsents[2] },
+      });
+
+      render(<PrivacyPage />);
+
+      // Email Marketing is the first non-granted consent in the list.
+      const grantButtons = screen.getAllByRole("button", { name: "Grant" });
+      await user.click(grantButtons[0]);
+
+      // Sending "marketing_email" is rejected by the server with
+      // `Value "marketing_email" does not exist in "ConsentType" enum`.
+      await waitFor(() => {
+        expect(mockUpdateConsent).toHaveBeenCalledWith({
+          variables: {
+            input: { consentType: "MARKETING_EMAIL", granted: true },
           },
         });
       });

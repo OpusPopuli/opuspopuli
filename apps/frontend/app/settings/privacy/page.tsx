@@ -14,6 +14,8 @@ import {
   UserConsent,
   ConsentType,
   ConsentStatus,
+  fromWireConsent,
+  toWireConsentType,
 } from "@/lib/graphql/profile";
 import { SettingsLoadingSkeleton } from "@/components/settings/SettingsLoadingSkeleton";
 import { StatusPill, type StatusPillTone } from "@/components/StatusPill";
@@ -170,7 +172,10 @@ export default function PrivacyPage() {
   const [exportMyData, { loading: exporting }] =
     useMutation<ExportMyDataData>(EXPORT_MY_DATA);
 
-  const consents = data?.myConsents || [];
+  // The API answers in GraphQL enum names (TERMS_OF_SERVICE / GRANTED);
+  // everything below — i18n keys, status tones, the granted check —
+  // keys off the lower_snake form.
+  const consents = (data?.myConsents ?? []).map(fromWireConsent);
   const getConsent = (type: ConsentType) =>
     consents.find((c) => c.consentType === type);
 
@@ -179,13 +184,14 @@ export default function PrivacyPage() {
     granted: boolean,
   ) => {
     try {
+      const wireConsentType = toWireConsentType(consentType);
       if (granted) {
         await updateConsent({
-          variables: { input: { consentType, granted: true } },
+          variables: { input: { consentType: wireConsentType, granted: true } },
         });
       } else {
         await withdrawConsent({
-          variables: { input: { consentType } },
+          variables: { input: { consentType: wireConsentType } },
         });
       }
       refetch();

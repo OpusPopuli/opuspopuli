@@ -654,6 +654,38 @@ describe('AuthResolver', () => {
       });
     });
 
+    it('names the device on the session record', async () => {
+      const payload = Buffer.from(
+        JSON.stringify({ sub: 'user-abc', email: 'test@test.com' }),
+      ).toString('base64');
+      const fakeJwt = `header.${payload}.signature`;
+      authService.exchangeSupabaseSession = jest.fn().mockResolvedValue({
+        accessToken: fakeJwt,
+        refreshToken: 'refresh-token',
+      });
+
+      const mockContext = createMockContext();
+      mockContext.req.headers = {
+        'user-agent':
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1',
+      };
+
+      await resolver.exchangeSupabaseSession(
+        { accessToken: fakeJwt, refreshToken: 'refresh' },
+        mockContext,
+      );
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Without a name the settings UI titles every session
+      // "Unknown Device", however much the agent told us.
+      expect(mockDbService.userSession.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          deviceName: 'iPhone',
+          deviceType: 'mobile',
+        }),
+      });
+    });
+
     it('should throw error on invalid token', async () => {
       authService.exchangeSupabaseSession = jest
         .fn()

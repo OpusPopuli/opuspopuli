@@ -32,6 +32,16 @@ const educator: FieldDescriptor = {
   i18nKey: "educator",
 };
 
+const primaryLanguages: FieldDescriptor = {
+  name: "primaryLanguages",
+  profile: "sensitive",
+  category: "cultural",
+  tier: "T3",
+  inputType: "multi-select-dropdown",
+  options: ["english", "spanish", "vietnamese"],
+  i18nKey: "primaryLanguages",
+};
+
 const interestTags: FieldDescriptor = {
   name: "interestTags",
   profile: "signal",
@@ -253,5 +263,97 @@ describe("EditableField — locked", () => {
     expect(
       screen.getByText(/paused while sensitive fields are off/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe("EditableField — multi-select dropdown (primaryLanguages)", () => {
+  it("read mode labels the first entry as the primary", () => {
+    render(
+      <EditableField
+        descriptor={primaryLanguages}
+        currentValue={["spanish", "english"]}
+        onSave={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Spanish (Primary), English")).toBeInTheDocument();
+  });
+
+  it("read mode leaves a lone language untagged and falls back to raw free text", () => {
+    render(
+      <EditableField
+        descriptor={primaryLanguages}
+        currentValue={["Ilocano"]}
+        onSave={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Ilocano")).toBeInTheDocument();
+  });
+
+  it("picking from the dropdown appends a language and drops it from the options", async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    render(
+      <EditableField
+        descriptor={primaryLanguages}
+        currentValue={["spanish"]}
+        onSave={onSave}
+        onClear={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+
+    // Already-selected values aren't offered again.
+    expect(
+      screen.queryByRole("option", { name: "Spanish" }),
+    ).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByRole("combobox"), "english");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(["spanish", "english"]),
+    );
+  });
+
+  it("Make primary promotes a language and the reorder is persisted", async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    render(
+      <EditableField
+        descriptor={primaryLanguages}
+        currentValue={["spanish", "english"]}
+        onSave={onSave}
+        onClear={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    await user.click(
+      screen.getByRole("button", { name: /make english primary/i }),
+    );
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    // Order is the value here, so the skip-write-if-unchanged guard
+    // must NOT treat a promotion as a no-op.
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(["english", "spanish"]),
+    );
+  });
+
+  it("removing every language saves an empty array", async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    render(
+      <EditableField
+        descriptor={primaryLanguages}
+        currentValue={["spanish"]}
+        onSave={onSave}
+        onClear={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    await user.click(screen.getByRole("button", { name: /remove spanish/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith([]));
   });
 });

@@ -172,6 +172,13 @@ export class ActivityService {
     return revokedCount;
   }
 
+  /** Audit actions that each represent a successful sign-in. */
+  private static readonly LOGIN_ACTIONS = [
+    AuditAction.LOGIN,
+    AuditAction.PASSKEY_AUTHENTICATION,
+    AuditAction.MAGIC_LINK_VERIFIED,
+  ];
+
   /**
    * Get activity summary for a user
    */
@@ -185,9 +192,17 @@ export class ActivityService {
         this.db.userSession.count({ where: { userId, isActive: true } }),
       ]);
 
-    // Get last login
+    // Get last login. Every way in counts, not just the password
+    // resolver: passkeys and magic links are how people actually sign
+    // in here, and they log their own actions — keying off
+    // `AuditAction.LOGIN` alone reported "Never" to everyone who has
+    // never typed a password.
     const lastLogin = await this.db.auditLog.findFirst({
-      where: { userId, action: AuditAction.LOGIN },
+      where: {
+        userId,
+        action: { in: ActivityService.LOGIN_ACTIONS },
+        success: true,
+      },
       orderBy: { timestamp: 'desc' },
     });
 

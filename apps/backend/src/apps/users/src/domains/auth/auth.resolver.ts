@@ -19,6 +19,7 @@ import {
   createAuditContext,
 } from 'src/common/utils/graphql-context';
 import { setAuthCookies } from 'src/common/utils/cookie.utils';
+import { deviceNameFromUserAgent } from 'src/common/utils/user-agent.utils';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { AUTH_THROTTLE } from 'src/config/auth-throttle.config';
 import { AccountLockoutService } from './services/account-lockout.service';
@@ -197,6 +198,10 @@ export class AuthResolver {
           sessionToken: tokenHash,
           refreshToken: refreshToken?.slice(-32),
           deviceType: isMobile ? 'mobile' : 'desktop',
+          // The settings UI titles each session with its name, so a
+          // session stored without one reads "Unknown Device" however
+          // much the agent told us.
+          deviceName: deviceNameFromUserAgent(userAgent),
           browser: browserMatch?.[0] || undefined,
           operatingSystem: osMatch?.[0] || undefined,
           ipAddress: ipAddress || undefined,
