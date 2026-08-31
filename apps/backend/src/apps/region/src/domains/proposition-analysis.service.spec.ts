@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { createMock } from '@golevelup/ts-jest';
@@ -82,6 +83,23 @@ const baseProp = (overrides: Partial<PropRow> = {}): PropRow => ({
   ...overrides,
 });
 
+/**
+ * A refusal must leave two marks: the row says why, and no analysis field is
+ * written. Asserting both together is the point — #1085 was a failure that
+ * left neither.
+ */
+function expectFailureRecorded(
+  built: { db: { proposition: { update: jest.Mock } } },
+  reason: string,
+): void {
+  expect(built.db.proposition.update).toHaveBeenCalledTimes(1);
+  const data = built.db.proposition.update.mock.calls[0][0].data;
+  expect(data.analysisFailureReason).toBe(reason);
+  expect(data.analysisFailedAt).toBeInstanceOf(Date);
+  expect(data.analysisSummary).toBeUndefined();
+  expect(data.analysisGeneratedAt).toBeUndefined();
+}
+
 describe('PropositionAnalysisService', () => {
   async function buildService(
     opts: {
@@ -93,6 +111,7 @@ describe('PropositionAnalysisService', () => {
       promptHash?: string;
       llmText?: string;
       llmThrows?: Error;
+      llmFinishReason?: 'stop' | 'length' | 'error';
     } = {},
   ) {
     const {
@@ -104,6 +123,7 @@ describe('PropositionAnalysisService', () => {
       promptHash = PROMPT_HASH,
       llmText = validPayload,
       llmThrows,
+      llmFinishReason,
     } = opts;
 
     const mockPromptClient = createMock<PromptClientService>();
@@ -117,7 +137,7 @@ describe('PropositionAnalysisService', () => {
     const mockLlm = {
       generate: jest.fn(async () => {
         if (llmThrows) throw llmThrows;
-        return { text: llmText } as Awaited<
+        return { text: llmText, finishReason: llmFinishReason } as Awaited<
           ReturnType<ILLMProvider['generate']>
         >;
       }),
@@ -328,21 +348,31 @@ describe('PropositionAnalysisService', () => {
       expect(claims).toHaveLength(1);
     });
 
-    it('returns false and swallows errors when the LLM throws', async () => {
+    it('returns false and records the reason when the LLM throws', async () => {
       const built = await buildService({
         llmThrows: new Error('LLM boom'),
       });
       await expect(built.service.generate('prop-1')).resolves.toBe(false);
-      expect(built.db.proposition.update).not.toHaveBeenCalled();
+      expectFailureRecorded(built, 'llm_error');
     });
 
-    it('returns false when the LLM emits unparseable JSON', async () => {
+    it('returns false and records the reason when no JSON comes back', async () => {
       const built = await buildService({ llmText: 'not even close to json' });
       await expect(built.service.generate('prop-1')).resolves.toBe(false);
-      expect(built.db.proposition.update).not.toHaveBeenCalled();
+      expectFailureRecorded(built, 'no_json');
     });
 
-    it('returns false when the parsed payload has no summary', async () => {
+    it('records parse_error separately from a response with no JSON at all', async () => {
+      // Balanced braces, invalid JSON inside — the model finished and wrote
+      // something malformed, which is a different failure from stopping early.
+      const built = await buildService({
+        llmText: '{"analysisSummary": "x",}',
+      });
+      await expect(built.service.generate('prop-1')).resolves.toBe(false);
+      expectFailureRecorded(built, 'parse_error');
+    });
+
+    it('returns false and records the reason when the payload has no summary', async () => {
       const built = await buildService({
         llmText: JSON.stringify({
           analysisSummary: '   ',
@@ -350,7 +380,8 @@ describe('PropositionAnalysisService', () => {
         }),
       });
       await expect(built.service.generate('prop-1')).resolves.toBe(false);
-      expect(built.db.proposition.update).not.toHaveBeenCalled();
+      // The path that wrote nothing at any log level before #1085.
+      expectFailureRecorded(built, 'no_summary');
     });
 
     it('defaults missing fields rather than writing undefined', async () => {
@@ -488,6 +519,85 @@ describe('PropositionAnalysisService', () => {
       expect(built.db.proposition.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ take: undefined }),
       );
+    });
+  });
+
+  describe('reporting a failure (#1085)', () => {
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    it('carries finishReason so truncation is distinguishable from rambling', async () => {
+      // The whole reason #1085 could not be diagnosed: an output truncated at
+      // maxTokens and a model that ignored the format look identical once the
+      // reason is discarded, and they want opposite fixes.
+      const built = await buildService({
+        llmText: '{"analysisSummary": "cut off mid-',
+        llmFinishReason: 'length',
+      });
+
+      await built.service.generate('prop-1');
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const line = warn.mock.calls[0][0] as string;
+      expect(line).toContain('SCA 1');
+      expect(line).toContain('finish=length');
+      // Named outright rather than left for the reader to infer from the pair.
+      expect(line).toContain('reason=truncated');
+    });
+
+    it('logs sizes but never the response body', async () => {
+      const built = await buildService({
+        llmText: 'ELEPHANT'.repeat(50),
+      });
+
+      await built.service.generate('prop-1');
+
+      const line = warn.mock.calls[0][0] as string;
+      expect(line).toContain('responseChars=400');
+      expect(line).toContain('inputChars=');
+      // A 400-character ramble in the log costs the reader the signal they
+      // came for, and the position in a JSON.parse message drags the body in
+      // by the back door.
+      expect(line).not.toContain('ELEPHANT');
+    });
+
+    it('clears a recorded failure once the measure analyses', async () => {
+      const built = await buildService();
+
+      await built.service.generate('prop-1');
+
+      const data = built.db.proposition.update.mock.calls[0][0].data;
+      expect(data.analysisFailureReason).toBeNull();
+      expect(data.analysisFailedAt).toBeNull();
+      expect(data.analysisSummary).toBeDefined();
+    });
+
+    it('names the failed measures instead of emitting a bare ratio', async () => {
+      const built = await buildService({
+        findMany: [
+          baseProp({ id: 'p1', externalId: '25-0036A1' }),
+          baseProp({ id: 'p2', externalId: '26-0003' }),
+        ],
+        llmText: 'no json here',
+      });
+
+      await built.service.generateMissing();
+
+      // `Generated 4/8` was the only production signal this ever emitted, and
+      // it names no measure and gives no reason.
+      const summary = warn.mock.calls
+        .map((call) => call[0] as string)
+        .find((line) => line.includes('proposition analyses'));
+      expect(summary).toContain('0/2');
+      expect(summary).toContain('25-0036A1 (no_json)');
+      expect(summary).toContain('26-0003 (no_json)');
     });
   });
 });

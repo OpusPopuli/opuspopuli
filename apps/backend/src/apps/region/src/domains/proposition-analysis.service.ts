@@ -7,7 +7,11 @@ import {
 } from '@opuspopuli/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
-import { LlmGeneratorBase } from './llm-generator.base';
+import {
+  LlmGeneratorBase,
+  type GenerationFailure,
+  type GenerationFailureReason,
+} from './llm-generator.base';
 
 /**
  * Shape we ask the LLM to return. Matches the DB columns added by the
@@ -57,6 +61,27 @@ interface PropForAnalysis {
  * - PROPOSITION_ANALYSIS_CONCURRENCY (default 1)
  * - PROPOSITION_ANALYSIS_MAX_PROPS (default unlimited) — dev cap.
  */
+type GenerateOutcome =
+  | { ok: true; payload: AnalysisPayload; promptHash: string }
+  | { ok: false; failure: GenerationFailure };
+
+type PersistOutcome =
+  | { ok: true }
+  | { ok: false; reason: GenerationFailureReason };
+
+/**
+ * A `JSON.parse` message, minus the response text V8 quotes back inside it.
+ *
+ * The position is the diagnostic half — it says whether the JSON died two
+ * characters in or eight thousand, which is the difference between a model
+ * that never started and one that was cut off mid-object. The quoted snippet
+ * is just the response body arriving in the log by another route.
+ */
+function describeParseError(error: Error): string {
+  const position = /position (\d+)/.exec(error.message);
+  return position ? `${error.name} at position ${position[1]}` : error.name;
+}
+
 @Injectable()
 export class PropositionAnalysisService extends LlmGeneratorBase {
   private readonly logger = new Logger(PropositionAnalysisService.name);
@@ -115,7 +140,7 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
       return false;
     }
 
-    return this.tryGenerateAndPersist(prop);
+    return (await this.tryGenerateAndPersist(prop)).ok;
   }
 
   /**
@@ -157,12 +182,28 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
     );
 
     let succeeded = 0;
+    const failed: string[] = [];
     for (let i = 0; i < pending.length; i += this.concurrency) {
       const batch = pending.slice(i, i + this.concurrency);
       const results = await Promise.all(
         batch.map((p) => this.tryGenerateAndPersist(p)),
       );
-      succeeded += results.filter(Boolean).length;
+      results.forEach((result, index) => {
+        if (result.ok) {
+          succeeded += 1;
+        } else {
+          failed.push(`${batch[index].externalId} (${result.reason})`);
+        }
+      });
+    }
+
+    // A bare ratio was the only production signal this ever emitted, and a
+    // ratio cannot be acted on: it names no measure and gives no reason.
+    if (failed.length > 0) {
+      this.logger.warn(
+        `Generated ${succeeded}/${pending.length} proposition analyses; ${failed.length} failed: ${failed.join(', ')}`,
+      );
+      return;
     }
 
     this.logger.log(
@@ -194,43 +235,78 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
     }
   }
 
-  private async tryGenerateAndPersist(prop: PropForAnalysis): Promise<boolean> {
+  private async tryGenerateAndPersist(
+    prop: PropForAnalysis,
+  ): Promise<PersistOutcome> {
     try {
-      const result = await this.generateOne(prop);
-      if (!result) return false;
+      const outcome = await this.generateOne(prop);
+      if (!outcome.ok) {
+        return this.reportFailure(prop, outcome.failure);
+      }
 
       await this.db!.proposition.update({
         where: { id: prop.id },
         data: {
-          analysisSummary: result.payload.analysisSummary,
-          keyProvisions: result.payload
+          analysisSummary: outcome.payload.analysisSummary,
+          keyProvisions: outcome.payload
             .keyProvisions as unknown as Prisma.InputJsonValue,
-          fiscalImpact: result.payload.fiscalImpact,
-          yesOutcome: result.payload.yesOutcome,
-          noOutcome: result.payload.noOutcome,
-          existingVsProposed: result.payload
+          fiscalImpact: outcome.payload.fiscalImpact,
+          yesOutcome: outcome.payload.yesOutcome,
+          noOutcome: outcome.payload.noOutcome,
+          existingVsProposed: outcome.payload
             .existingVsProposed as unknown as Prisma.InputJsonValue,
-          analysisSections: result.payload
+          analysisSections: outcome.payload
             .analysisSections as unknown as Prisma.InputJsonValue,
-          analysisClaims: result.payload
+          analysisClaims: outcome.payload
             .analysisClaims as unknown as Prisma.InputJsonValue,
           analysisSource: 'ai-generated',
-          analysisPromptHash: result.promptHash,
+          analysisPromptHash: outcome.promptHash,
           analysisGeneratedAt: new Date(),
+          // A measure that analyses now is no longer unanalysable. Clearing in
+          // the same update is what keeps the column from accumulating stale
+          // verdicts that outlive the problem they describe.
+          analysisFailureReason: null,
+          analysisFailedAt: null,
         },
       });
-      return true;
+      return { ok: true };
     } catch (error) {
-      this.logger.warn(
-        `Proposition analysis failed for ${prop.externalId}: ${(error as Error).message}`,
-      );
-      return false;
+      return this.reportFailure(prop, {
+        reason: 'llm_error',
+        detail: (error as Error).message,
+      });
     }
   }
 
-  private async generateOne(
+  /**
+   * Say so, in both places a reader might look: the log, and the row.
+   *
+   * Before #1085 the only signal that any of this happened was a ratio —
+   * `Generated 4/8` — with no measure names and no reasons.
+   */
+  private async reportFailure(
     prop: PropForAnalysis,
-  ): Promise<{ payload: AnalysisPayload; promptHash: string } | undefined> {
+    failure: GenerationFailure,
+  ): Promise<PersistOutcome> {
+    this.logger.warn(this.formatGenerationFailure(prop.externalId, failure));
+    try {
+      await this.db!.proposition.update({
+        where: { id: prop.id },
+        data: {
+          analysisFailureReason: failure.reason,
+          analysisFailedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      // Recording the failure must never become a second, louder failure.
+      this.logger.warn(
+        `Could not record the analysis failure for ${prop.externalId}: ${(error as Error).message}`,
+      );
+    }
+    return { ok: false, reason: failure.reason };
+  }
+
+  private async generateOne(prop: PropForAnalysis): Promise<GenerateOutcome> {
     const { promptText, promptHash } =
       await this.promptClient!.getDocumentAnalysisPrompt({
         documentType: 'proposition-analysis',
@@ -242,9 +318,56 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
       temperature: 0.2,
     });
 
-    const payload = this.parsePayload(result.text, prop);
-    if (!payload) return undefined;
-    return { payload, promptHash };
+    // Carried on every refusal below. `finishReason` is the field that
+    // distinguishes "the output was cut off at maxTokens mid-JSON" from "the
+    // model finished and what it wrote was not JSON" — the first is an output
+    // budget problem, the second is a prompt problem, and before #1085 this
+    // was discarded so neither could be told apart.
+    const context = {
+      finishReason: result.finishReason,
+      responseChars: result.text?.length ?? 0,
+      inputChars: prop.fullText?.length ?? 0,
+    };
+
+    // `extractJsonObjectSlice` needs balanced braces, so an output cut off
+    // mid-object comes back empty and is indistinguishable from a model that
+    // wrote no JSON at all — which is exactly the ambiguity #1085 turns on.
+    // `finishReason` resolves it, so name the case rather than making every
+    // future reader recombine two fields to see it.
+    const truncated = result.finishReason === 'length';
+
+    const candidate = extractJsonObjectSlice(result.text);
+    if (!candidate) {
+      return {
+        ok: false,
+        failure: { reason: truncated ? 'truncated' : 'no_json', ...context },
+      };
+    }
+
+    let parsed: Partial<AnalysisPayload>;
+    try {
+      parsed = JSON.parse(candidate) as Partial<AnalysisPayload>;
+    } catch (error) {
+      return {
+        ok: false,
+        failure: {
+          reason: truncated ? 'truncated' : 'parse_error',
+          ...context,
+          detail: describeParseError(error as Error),
+        },
+      };
+    }
+
+    // Propositions are verbose and the payload spans ~8 fields, so partial
+    // salvage is not useful — a half-populated analysis leaves UI sections
+    // empty in unpredictable ways. Refusing is still right; being quiet
+    // about it was not.
+    const payload = this.normalizePayload(parsed, prop);
+    if (!payload) {
+      return { ok: false, failure: { reason: 'no_summary', ...context } };
+    }
+
+    return { ok: true, payload, promptHash };
   }
 
   /**
@@ -261,35 +384,6 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
       'FullText:',
       prop.fullText ?? '',
     ].join('\n');
-  }
-
-  /**
-   * Parse the LLM response. Propositions are verbose and the payload is
-   * structured across ~8 fields, so tier-2 partial salvage isn't useful
-   * here — if the JSON doesn't parse cleanly we refuse the result rather
-   * than persisting a half-populated analysis that would leave UI sections
-   * empty in unpredictable ways.
-   */
-  private parsePayload(
-    text: string,
-    prop: PropForAnalysis,
-  ): AnalysisPayload | undefined {
-    const candidate = extractJsonObjectSlice(text);
-    if (!candidate) {
-      this.logger.debug(
-        `Analysis parse failed for ${prop.externalId}: no JSON object in ${text.length}-char response`,
-      );
-      return undefined;
-    }
-    try {
-      const parsed = JSON.parse(candidate) as Partial<AnalysisPayload>;
-      return this.normalizePayload(parsed, prop);
-    } catch (error) {
-      this.logger.debug(
-        `Analysis JSON.parse failed for ${prop.externalId}: ${(error as Error).message}`,
-      );
-      return undefined;
-    }
   }
 
   /**
