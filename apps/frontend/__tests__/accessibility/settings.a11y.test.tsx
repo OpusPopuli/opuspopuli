@@ -76,8 +76,8 @@ const mockConsents = [
   {
     id: "1",
     userId: "user-1",
-    consentType: "terms_of_service",
-    status: "granted",
+    consentType: "TERMS_OF_SERVICE",
+    status: "GRANTED",
     version: "1.0",
     grantedAt: "2024-01-01T00:00:00Z",
     withdrawnAt: null,

@@ -219,6 +219,46 @@ export type ConsentType =
 
 export type ConsentStatus = "granted" | "denied" | "withdrawn" | "pending";
 
+/**
+ * Consent enums cross the wire as GraphQL enum *names*. NestJS's
+ * `registerEnumType` publishes the TS enum keys — SCREAMING_SNAKE_CASE
+ * — while the enum's values (and our i18n keys, and the database) are
+ * lower_snake. Sending the value is rejected outright: `Value
+ * "terms_of_service" does not exist in "ConsentType" enum. Did you mean
+ * the enum value "TERMS_OF_SERVICE"?`, and reading a response back
+ * without converting leaves every consent looking unset.
+ *
+ * So: lower_snake is the app-side form, SCREAMING_SNAKE is the wire
+ * form, and the conversion happens here at the boundary.
+ */
+export type WireConsentType = Uppercase<ConsentType>;
+export type WireConsentStatus = Uppercase<ConsentStatus>;
+
+export function toWireConsentType(value: ConsentType): WireConsentType {
+  return value.toUpperCase() as WireConsentType;
+}
+
+export function fromWireConsentType(value: string): ConsentType {
+  return value.toLowerCase() as ConsentType;
+}
+
+export function fromWireConsentStatus(value: string): ConsentStatus {
+  return value.toLowerCase() as ConsentStatus;
+}
+
+/**
+ * Response-shaped consent → app-shaped consent. Tolerates values that
+ * are already lower_snake, so mocked fixtures and cached values that
+ * went through this function once both survive a second pass.
+ */
+export function fromWireConsent(consent: UserConsent): UserConsent {
+  return {
+    ...consent,
+    consentType: fromWireConsentType(consent.consentType),
+    status: fromWireConsentStatus(consent.status),
+  };
+}
+
 export interface UserConsent {
   id: string;
   userId: string;

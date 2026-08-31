@@ -200,6 +200,160 @@ export function MultiSelectChipsField({
 }
 
 // ============================================================
+// MultiSelectDropdownField — controlled vocab picked from a dropdown,
+// kept as an ordered chip list where the first entry is the primary
+// ============================================================
+
+/**
+ * One selected value. The first chip in the list is the primary — it
+ * says so instead of offering a "make primary" action, and the others
+ * offer one that promotes them to the front.
+ */
+function SelectedValueChip({
+  label,
+  isPrimary,
+  primaryBadge,
+  makePrimaryLabel,
+  makePrimaryAriaLabel,
+  removeLabel,
+  disabled,
+  onMakePrimary,
+  onRemove,
+}: {
+  readonly label: string;
+  readonly isPrimary: boolean;
+  readonly primaryBadge: string;
+  readonly makePrimaryLabel: string;
+  readonly makePrimaryAriaLabel: string;
+  readonly removeLabel: string;
+  readonly disabled?: boolean;
+  readonly onMakePrimary: () => void;
+  readonly onRemove: () => void;
+}) {
+  return (
+    <span
+      className={[
+        "inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm border",
+        isPrimary
+          ? "bg-accent text-content border-accent font-medium"
+          : "bg-surface text-content border-line",
+      ].join(" ")}
+    >
+      {label}
+      {isPrimary && (
+        <span className="text-xs uppercase tracking-wide">{primaryBadge}</span>
+      )}
+      {!isPrimary && !disabled && (
+        <button
+          type="button"
+          onClick={onMakePrimary}
+          aria-label={makePrimaryAriaLabel}
+          // min-h-6 keeps the hit area at the WCAG 2.2 AA 24px floor.
+          className="text-xs underline hover:no-underline min-h-6 px-1"
+        >
+          {makePrimaryLabel}
+        </button>
+      )}
+      {!disabled && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={removeLabel}
+          className="rounded-full w-6 h-6 flex items-center justify-center text-sm hover:bg-surface-alt"
+        >
+          ×
+        </button>
+      )}
+    </span>
+  );
+}
+
+export function MultiSelectDropdownField({
+  descriptor,
+  value,
+  onChange,
+  disabled,
+  inputId,
+  ariaDescribedBy,
+}: BaseProps & {
+  readonly value: readonly string[];
+  readonly onChange: (next: readonly string[]) => void;
+}) {
+  const { t } = useTranslation("profile");
+  const hintId = `${inputId}-primary-hint`;
+
+  const labelFor = (opt: string) =>
+    t(`fields.${descriptor.i18nKey}.options.${opt}`, { defaultValue: opt });
+
+  // Values already chosen drop out of the dropdown, so the same one
+  // can't be added twice.
+  const remaining = (descriptor.options ?? []).filter(
+    (opt) => !value.includes(opt),
+  );
+
+  const add = (opt: string) => {
+    if (!opt || value.includes(opt)) return;
+    onChange([...value, opt]);
+  };
+
+  const makePrimary = (opt: string) => {
+    onChange([opt, ...value.filter((v) => v !== opt)]);
+  };
+
+  const remove = (opt: string) => {
+    onChange(value.filter((v) => v !== opt));
+  };
+
+  return (
+    <div className="space-y-2">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {value.map((opt, index) => {
+            const label = labelFor(opt);
+            return (
+              <SelectedValueChip
+                key={opt}
+                label={label}
+                isPrimary={index === 0}
+                primaryBadge={t("field.multiSelect.primaryBadge")}
+                makePrimaryLabel={t("field.multiSelect.makePrimaryShort")}
+                makePrimaryAriaLabel={t("field.multiSelect.makePrimary", {
+                  value: label,
+                })}
+                removeLabel={t("field.multiSelect.remove", { value: label })}
+                disabled={disabled}
+                onMakePrimary={() => makePrimary(opt)}
+                onRemove={() => remove(opt)}
+              />
+            );
+          })}
+        </div>
+      )}
+      <select
+        id={inputId}
+        // A picker, not a value holder — it resets after every pick so
+        // the chip list stays the single source of truth.
+        value=""
+        onChange={(e) => add(e.target.value)}
+        disabled={disabled || remaining.length === 0}
+        aria-describedby={[ariaDescribedBy, hintId].filter(Boolean).join(" ")}
+        className={baseInputClass}
+      >
+        <option value="">{t("field.multiSelect.add")}</option>
+        {remaining.map((opt) => (
+          <option key={opt} value={opt}>
+            {labelFor(opt)}
+          </option>
+        ))}
+      </select>
+      <p id={hintId} className="text-xs text-content-dim">
+        {t("field.multiSelect.primaryHint")}
+      </p>
+    </div>
+  );
+}
+
+// ============================================================
 // MultiTagInputField — free-form tag list (Enter to add, x to remove)
 // ============================================================
 

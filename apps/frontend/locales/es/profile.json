@@ -85,7 +85,15 @@
     "no": "No",
     "off": "Desactivado",
     "on": "Activado",
-    "lockedByNoFields": "En pausa mientras los campos sensibles estén desactivados."
+    "lockedByNoFields": "En pausa mientras los campos sensibles estén desactivados.",
+    "multiSelect": {
+      "add": "Agregar…",
+      "primaryBadge": "Principal",
+      "makePrimary": "Hacer que {{value}} sea el principal",
+      "remove": "Quitar {{value}}",
+      "primaryHint": "El primero es el principal — usa «Hacer principal» para cambiarlo.",
+      "makePrimaryShort": "Hacer principal"
+    }
   },
   "placeholder": {
     "behavioral": {
@@ -479,7 +487,35 @@
     },
     "primaryLanguages": {
       "label": "Idiomas principales",
-      "description": "Idiomas que hablas en casa. Activa relevancia para proyectos de acceso lingüístico y servicios bilingües."
+      "description": "Idiomas que se hablan en casa, el principal primero. Activa relevancia para proyectos de acceso lingüístico y servicios bilingües.",
+      "options": {
+        "english": "Inglés",
+        "spanish": "Español",
+        "chinese_mandarin": "Chino (mandarín)",
+        "chinese_cantonese": "Chino (cantonés)",
+        "tagalog": "Tagalo",
+        "vietnamese": "Vietnamita",
+        "korean": "Coreano",
+        "armenian": "Armenio",
+        "punjabi": "Panyabí",
+        "russian": "Ruso",
+        "farsi": "Farsi / Persa",
+        "arabic": "Árabe",
+        "japanese": "Japonés",
+        "hindi": "Hindi",
+        "khmer": "Jemer",
+        "hmong": "Hmong",
+        "portuguese": "Portugués",
+        "french": "Francés",
+        "german": "Alemán",
+        "urdu": "Urdu",
+        "thai": "Tailandés",
+        "lao": "Lao",
+        "mien": "Mien",
+        "ukrainian": "Ucraniano",
+        "asl": "Lengua de señas americana",
+        "other": "Otro idioma"
+      }
     },
     "religiousCommunity": {
       "label": "Comunidad religiosa",

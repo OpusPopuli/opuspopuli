@@ -404,6 +404,44 @@ describe("ActivityPage", () => {
     });
   });
 
+  describe("session naming", () => {
+    const clickSessionsTab = async (
+      user: ReturnType<typeof userEvent.setup>,
+    ) => {
+      const tabs = screen.getAllByText("Active Sessions");
+      await user.click(tabs[1]);
+    };
+
+    it("falls back to the device type when a session has no name", async () => {
+      const user = userEvent.setup();
+      // Sessions written before the backend stored a device name have
+      // none — every one of them used to read "Unknown Device".
+      mockSessionsQuery = {
+        ...mockSessionsQuery,
+        data: {
+          mySessions: {
+            items: [
+              {
+                ...mockSessions.items[1],
+                deviceName: undefined,
+                isCurrent: true,
+              },
+            ],
+            total: 1,
+          },
+        },
+      };
+
+      renderWithI18n(<ActivityPage />);
+      await clickSessionsTab(user);
+
+      await waitFor(() => {
+        expect(screen.getByText("Mobile")).toBeInTheDocument();
+      });
+      expect(screen.queryByText("Unknown Device")).not.toBeInTheDocument();
+    });
+  });
+
   describe("revoke all sessions", () => {
     // Helper to click the sessions tab (not the summary card)
     const clickSessionsTab = async (

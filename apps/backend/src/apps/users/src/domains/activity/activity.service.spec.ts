@@ -457,6 +457,33 @@ describe('ActivityService', () => {
       expect(result.lastActivityAt).toBeDefined();
     });
 
+    it('counts passkey and magic-link sign-ins as logins', async () => {
+      mockDb.auditLog.count.mockResolvedValue(0);
+      mockDb.userSession.count.mockResolvedValue(0);
+      mockDb.auditLog.findFirst.mockResolvedValue(null);
+
+      await service.getActivitySummary(mockUserId);
+
+      // Passkeys and magic links are how people actually sign in here;
+      // querying AuditAction.LOGIN alone reported "Never" to everyone
+      // who has never typed a password.
+      expect(mockDb.auditLog.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userId: mockUserId,
+            action: {
+              in: [
+                AuditAction.LOGIN,
+                AuditAction.PASSKEY_AUTHENTICATION,
+                AuditAction.MAGIC_LINK_VERIFIED,
+              ],
+            },
+            success: true,
+          },
+        }),
+      );
+    });
+
     it('should handle no login history', async () => {
       mockDb.auditLog.count.mockResolvedValue(0);
       mockDb.userSession.count.mockResolvedValue(0);

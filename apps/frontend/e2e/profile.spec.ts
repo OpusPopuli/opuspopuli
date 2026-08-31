@@ -247,6 +247,44 @@ test.describe("Model-of-me page", () => {
     await expect(toggle).not.toBeChecked();
   });
 
+  test("no-fields-mode panel stacks on mobile instead of squeezing its copy", async ({
+    page,
+  }) => {
+    await setupAuthed(page);
+    await page.setViewportSize(viewports.mobile);
+    await page.goto("/me/profile");
+
+    const toggle = page.getByRole("checkbox", {
+      name: /never store sensitive fields/i,
+    });
+    await expect(toggle).toBeVisible();
+
+    // The regression this guards: the toggle label sat beside the copy as a
+    // shrink-0 flex item, so on a 375px viewport it ate almost the whole row
+    // and the description rendered one or two words per line.
+    const description = page.getByText(
+      /when on, we store and read no sensitive fields/i,
+    );
+    const descriptionBox = await description.boundingBox();
+    expect(descriptionBox?.width ?? 0).toBeGreaterThan(240);
+
+    // Stacked, so the label sits below the copy rather than alongside it.
+    const labelBox = await page
+      .getByText(/never store sensitive fields about me/i)
+      .boundingBox();
+    expect(labelBox?.y ?? 0).toBeGreaterThan(
+      (descriptionBox?.y ?? 0) + (descriptionBox?.height ?? 0),
+    );
+
+    // And nothing pushes the page into horizontal scroll.
+    const overflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+
   test("settings nav exposes a link to /me/profile", async ({ page }) => {
     await setupAuthed(page);
     await page.goto("/settings");

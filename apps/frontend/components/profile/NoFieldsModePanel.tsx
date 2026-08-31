@@ -16,10 +16,10 @@ export function NoFieldsModePanel({
   const { t } = useTranslation("profile");
   return (
     <section
-      className="rounded-lg border border-warning-line bg-warning-surface p-5"
+      className="rounded-lg border border-warning-line bg-warning-surface p-4 sm:p-5"
       aria-labelledby="no-fields-title"
     >
-      <div className="flex items-start gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
         <div className="flex-1 min-w-0">
           <h2
             id="no-fields-title"
@@ -41,7 +41,7 @@ export function NoFieldsModePanel({
             </p>
           )}
         </div>
-        <label className="inline-flex items-center gap-3 cursor-pointer shrink-0">
+        <label className="flex w-full items-center justify-between gap-3 cursor-pointer sm:w-auto sm:shrink-0 sm:justify-start">
           <span className="text-sm font-medium text-warning">
             {t("noFieldsMode.toggleLabel")}
           </span>
@@ -52,7 +52,7 @@ export function NoFieldsModePanel({
             onChange={(e) => {
               void onToggle(e.target.checked);
             }}
-            className="w-5 h-5 accent-warning cursor-pointer disabled:opacity-50"
+            className="w-5 h-5 shrink-0 accent-warning cursor-pointer disabled:opacity-50"
           />
         </label>
       </div>

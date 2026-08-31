@@ -39,6 +39,7 @@ export class SensitiveProfileModel {
 
   // §4.9 Cultural & community identity
   @Field(() => [String], { nullable: true }) raceEthnicity?: string[];
+  /** Ordered — index 0 is the primary language. See the update DTO. */
   @Field(() => [String], { nullable: true }) primaryLanguages?: string[];
   @Field({ nullable: true }) religiousCommunity?: string;
   @Field({ nullable: true }) lgbtqIdentity?: string;

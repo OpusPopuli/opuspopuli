@@ -224,6 +224,11 @@ jobs:
     name: E2E Tests (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     needs: [packages-build, test, e2e-shards]
+    env:
+      # Keep Inbucket's web UI publish out of the ephemeral port range —
+      # see the comment on the port in docker-compose.yml. Job-scoped so
+      # every `docker compose` invocation in the job agrees on the mapping.
+      INBUCKET_UI_PORT: '18324'
     permissions:
       contents: read
       packages: read
@@ -361,6 +366,9 @@ jobs:
           # with this key for admin-gated mutation tests (#796 hot-swap).
           # Mirror of docker-compose-e2e.yml's AUTH_JWT_SECRET.
           AUTH_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
+          # Matches INBUCKET_UI_PORT above; test-utils.ts otherwise
+          # defaults to :54324, the local docker-compose.yml mapping.
+          INBUCKET_URL: http://localhost:18324
 
       - name: Build frontend
         run: pnpm --filter frontend build

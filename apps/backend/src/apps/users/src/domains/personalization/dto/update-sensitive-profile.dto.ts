@@ -90,6 +90,12 @@ export class UpdateSensitiveProfileDto {
   @IsString({ each: true })
   raceEthnicity?: string[];
 
+  /**
+   * Ordered: index 0 is the household's primary language, the rest are
+   * the other languages spoken in it. Relevance keys off the primary;
+   * the tail is what identifies a multilingual household. Preserve the
+   * order on write — do not sort or de-duplicate into a set.
+   */
   @Field(() => [String], { nullable: true })
   @IsOptional()
   @IsArray()

@@ -9,6 +9,7 @@ import {
   BooleanField,
   IntegerField,
   MultiSelectChipsField,
+  MultiSelectDropdownField,
   MultiTagInputField,
   SelectField,
   StateField,
@@ -29,6 +30,7 @@ interface EditableFieldProps {
 function clearedValueFor(descriptor: FieldDescriptor): unknown {
   switch (descriptor.inputType) {
     case "multi-select-chips":
+    case "multi-select-dropdown":
     case "multi-tag-input":
       return [];
     case "boolean":
@@ -49,6 +51,7 @@ function initialDraftFor(
 ): unknown {
   switch (descriptor.inputType) {
     case "multi-select-chips":
+    case "multi-select-dropdown":
     case "multi-tag-input":
       return Array.isArray(currentValue) ? currentValue : [];
     case "boolean":
@@ -66,6 +69,7 @@ function initialDraftFor(
 function hasValue(descriptor: FieldDescriptor, value: unknown): boolean {
   switch (descriptor.inputType) {
     case "multi-select-chips":
+    case "multi-select-dropdown":
     case "multi-tag-input":
       return Array.isArray(value) && value.length > 0;
     case "boolean":
@@ -94,12 +98,34 @@ function valueToPersist(descriptor: FieldDescriptor, draft: unknown): unknown {
   return draft;
 }
 
+// `multi-select-dropdown` is the one input type whose order carries
+// meaning — index 0 is the primary — so promoting an entry is a real
+// change, not a re-order of an unordered set.
+function isOrderedArrayType(descriptor: FieldDescriptor): boolean {
+  return descriptor.inputType === "multi-select-dropdown";
+}
+
+function arraysMatch(
+  descriptor: FieldDescriptor,
+  persisted: readonly string[],
+  next: readonly string[],
+): boolean {
+  if (persisted.length !== next.length) return false;
+  if (isOrderedArrayType(descriptor)) {
+    return persisted.every((v, i) => v === next[i]);
+  }
+  const a = [...persisted].sort();
+  const b = [...next].sort();
+  return a.every((v, i) => v === b[i]);
+}
+
 // Shallow equality used by the skip-write-if-unchanged guard in
 // `handleSave`. Strings/numbers/booleans compare by reference;
-// arrays compare element-wise (order-insensitive for multi-select,
-// since the user could re-order without semantic change). Missing
-// values normalize to "cleared" so a null vs empty-string vs empty-
-// array delta doesn't look like a change.
+// arrays compare element-wise — order-insensitive for the unordered
+// multi-selects, since the user could re-order without semantic
+// change, order-sensitive where order is the value (see above).
+// Missing values normalize to "cleared" so a null vs empty-string vs
+// empty-array delta doesn't look like a change.
 function draftMatches(
   descriptor: FieldDescriptor,
   draft: unknown,
@@ -111,10 +137,7 @@ function draftMatches(
   );
   const next = valueToPersist(descriptor, draft);
   if (Array.isArray(persisted) && Array.isArray(next)) {
-    if (persisted.length !== next.length) return false;
-    const a = [...(persisted as string[])].sort();
-    const b = [...(next as string[])].sort();
-    return a.every((v, i) => v === b[i]);
+    return arraysMatch(descriptor, persisted as string[], next as string[]);
   }
   return persisted === next;
 }
@@ -362,6 +385,19 @@ function formatValue(descriptor: FieldDescriptor, value: unknown): string {
         .map((v) => t(`fields.${descriptor.i18nKey}.options.${v}`, v))
         .join(", ");
     }
+    case "multi-select-dropdown": {
+      // Ordered: the first entry is the primary, so read mode says so
+      // rather than leaving the order to be inferred. With a single
+      // value there is nothing to disambiguate, so the tag is dropped.
+      const arr = (value as string[]) ?? [];
+      const badge = t("field.multiSelect.primaryBadge");
+      return arr
+        .map((v, i) => {
+          const label = t(`fields.${descriptor.i18nKey}.options.${v}`, v);
+          return i === 0 && arr.length > 1 ? `${label} (${badge})` : label;
+        })
+        .join(", ");
+    }
     case "multi-tag-input":
       return ((value as string[]) ?? []).join(", ");
     case "string-input":
@@ -427,6 +463,17 @@ function InputDispatch({
     case "multi-select-chips":
       return (
         <MultiSelectChipsField
+          descriptor={descriptor}
+          value={(value as string[]) ?? []}
+          onChange={onChange}
+          disabled={disabled}
+          inputId={inputId}
+          ariaDescribedBy={ariaDescribedBy}
+        />
+      );
+    case "multi-select-dropdown":
+      return (
+        <MultiSelectDropdownField
           descriptor={descriptor}
           value={(value as string[]) ?? []}
           onChange={onChange}

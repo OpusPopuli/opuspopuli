@@ -21,11 +21,14 @@
  * silently miscategorize bills. #762 is the long-term fix.
  */
 
+import { LANGUAGE_OPTIONS } from "@/lib/languages";
+
 export type InputType =
   | "string-select"
   | "string-input"
   | "boolean"
   | "multi-select-chips"
+  | "multi-select-dropdown"
   | "multi-tag-input"
   | "integer"
   | "state";
@@ -55,7 +58,10 @@ export interface FieldDescriptor {
   readonly category: Category;
   readonly tier: Tier;
   readonly inputType: InputType;
-  /** Controlled vocab for `string-select` and `multi-select-chips`. */
+  /**
+   * Controlled vocab for `string-select`, `multi-select-chips` and
+   * `multi-select-dropdown`.
+   */
   readonly options?: readonly string[];
   /** Bounds for `integer` inputs. */
   readonly min?: number;
@@ -621,11 +627,17 @@ const SENSITIVE_FIELDS: readonly FieldDescriptor[] = [
     i18nKey: "raceEthnicity",
   },
   {
+    // Order is meaningful here: index 0 is the household's primary
+    // language, the rest are the other languages spoken in it.
+    // Relevance keys off the primary; the tail is what tells us a
+    // household is multilingual at all. `multi-select-dropdown` is the
+    // only ordered input type — everything else compares set-wise.
     name: "primaryLanguages",
     profile: "sensitive",
     category: "cultural",
     tier: "T3",
-    inputType: "multi-tag-input",
+    inputType: "multi-select-dropdown",
+    options: LANGUAGE_OPTIONS,
     i18nKey: "primaryLanguages",
   },
   {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, ReactNode } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation } from "@apollo/client/react";
 import {
@@ -193,6 +194,22 @@ function ActivityLogItem({ entry }: { entry: ActivityLogEntry }) {
   );
 }
 
+/**
+ * Sessions created before the backend started storing a device name
+ * (and any agent we can't name) have none — fall back to the device
+ * type so the card is titled "Mobile" rather than "Unknown Device"
+ * while the line below it happily reports the browser and OS.
+ */
+function sessionTitle(session: SessionInfo, t: TFunction): string {
+  if (session.deviceName) return session.deviceName;
+  if (session.deviceType) {
+    return t(`activity.sessions.deviceTypes.${session.deviceType}`, {
+      defaultValue: session.deviceType,
+    });
+  }
+  return t("activity.sessions.unknownDevice");
+}
+
 function SessionCard({
   session,
   onRevoke,
@@ -232,7 +249,7 @@ function SessionCard({
           <div>
             <div className="flex items-center gap-2">
               <p className="font-medium text-content">
-                {session.deviceName || t("activity.sessions.unknownDevice")}
+                {sessionTitle(session, t)}
               </p>
               {session.isCurrent && (
                 <span className="px-2 py-0.5 text-xs font-medium bg-info-surface text-info rounded-full">
@@ -240,9 +257,13 @@ function SessionCard({
                 </span>
               )}
             </div>
-            <p className="text-sm text-content-dim">
-              {session.browser} • {session.operatingSystem}
-            </p>
+            {(session.browser || session.operatingSystem) && (
+              <p className="text-sm text-content-dim">
+                {[session.browser, session.operatingSystem]
+                  .filter(Boolean)
+                  .join(" • ")}
+              </p>
+            )}
             {location && <p className="text-sm text-content-dim">{location}</p>}
             <p className="text-sm text-content-dim mt-1">
               {session.lastActivityAt

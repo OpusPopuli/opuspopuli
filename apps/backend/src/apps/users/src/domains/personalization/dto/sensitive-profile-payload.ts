@@ -30,6 +30,7 @@ export interface SensitiveProfilePayload {
 
   // §4.9 Cultural & community identity
   raceEthnicity?: string[];
+  /** Ordered — index 0 is the primary language. */
   primaryLanguages?: string[];
   religiousCommunity?: string;
   lgbtqIdentity?: string;
