@@ -21,6 +21,36 @@ cd opuspopuli
 pnpm install
 ```
 
+#### GitHub Packages authentication
+
+The `@opuspopuli/*` workspace packages come from GitHub Packages, and the repo
+`.npmrc` authenticates with `${NODE_AUTH_TOKEN}`. There are two separate paths,
+and they fail differently:
+
+| Path | Reads | Fails as |
+|---|---|---|
+| Host `pnpm install` | your `~/.npmrc`, or `NODE_AUTH_TOKEN` | 401 from the registry |
+| Docker image builds | **only** `NODE_AUTH_TOKEN` — the build copies the *repo* `.npmrc`, never your `~/.npmrc` | `pnpm install --frozen-lockfile` exits 1 mid-build |
+
+Because of the second row, a token that works perfectly for everyday `pnpm`
+commands can leave every Docker build broken, and you will not notice until the
+next time you rebuild — which may be weeks later.
+
+`pnpm integration:up`, `pnpm uat:up` and `scripts/test-integration-docker.sh`
+therefore derive the token from the GitHub CLI when it is not already set:
+
+```bash
+NODE_AUTH_TOKEN=${NODE_AUTH_TOKEN:-$(gh auth token)}
+```
+
+So `gh auth login` (with `read:packages`) is all the setup a new machine needs.
+An explicitly exported `NODE_AUTH_TOKEN` still wins, which is how CI supplies
+`secrets.GITHUB_TOKEN`.
+
+**Do not copy a PAT into `.env` for this.** A copied token goes stale the moment
+you refresh it on GitHub and then fails as a confusing auth error much later,
+far from the change that caused it. `gh` manages its own token lifecycle.
+
 ### 2. Start Infrastructure Services
 
 ```bash
