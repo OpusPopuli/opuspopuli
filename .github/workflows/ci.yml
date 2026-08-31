@@ -361,6 +361,10 @@ jobs:
           # with this key for admin-gated mutation tests (#796 hot-swap).
           # Mirror of docker-compose-e2e.yml's AUTH_JWT_SECRET.
           AUTH_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters
+          # The E2E stack re-publishes Inbucket's web UI off the ephemeral
+          # port range; test-utils.ts otherwise defaults to :54324, which is
+          # the local (docker-compose.yml) mapping.
+          INBUCKET_URL: http://localhost:18324
 
       - name: Build frontend
         run: pnpm --filter frontend build
