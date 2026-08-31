@@ -634,6 +634,15 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # Read-only Postgres for the Users dashboard. Local defaults only —
+      # the role still has to exist (docs/guides/user-dashboard.md), and
+      # pointing this at anything but a local database means supplying all
+      # four from the environment.
+      GRAFANA_DB_HOST: ${GRAFANA_DB_HOST:-opuspopuli-db:5432}
+      GRAFANA_DB_NAME: ${GRAFANA_DB_NAME:-postgres}
+      GRAFANA_DB_USER: ${GRAFANA_DB_USER:-grafana_ro}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-}
+      GRAFANA_DB_SSLMODE: ${GRAFANA_DB_SSLMODE:-disable}
     volumes:
       - grafana-data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro

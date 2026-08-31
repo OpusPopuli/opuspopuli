@@ -48,3 +48,33 @@ datasources:
         enabled: true
       lokiSearch:
         datasourceUid: loki
+
+  # Postgres - user analytics (#1085 branch, user dashboard)
+  #
+  # Prometheus carries no auth or user metrics, so the Users dashboard reads
+  # the database directly. Two rules come with that:
+  #
+  #   1. This must be a READ-ONLY role. Grafana panels are SQL, panels are
+  #      editable, and anyone with dashboard access is one typo away from a
+  #      write against live user data. See docs/guides/user-dashboard.md for
+  #      the role definition.
+  #   2. No credentials in this file. The values come from the environment,
+  #      defaulted in docker-compose.yml for local use only.
+  #
+  # Grafana expands ${VAR} from its own environment here; the `:-default`
+  # form is docker-compose syntax and does NOT work in provisioning files,
+  # which is why the defaults live in the compose service instead.
+  - name: OpusPopuli DB
+    uid: opuspopuli-postgres
+    type: postgres
+    access: proxy
+    url: ${GRAFANA_DB_HOST}
+    database: ${GRAFANA_DB_NAME}
+    user: ${GRAFANA_DB_USER}
+    editable: false
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}
+    jsonData:
+      sslmode: ${GRAFANA_DB_SSLMODE}
+      postgresVersion: 1500
+      timescaledb: false
