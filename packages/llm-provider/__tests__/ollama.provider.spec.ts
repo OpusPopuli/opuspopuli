@@ -56,6 +56,73 @@ describe("OllamaLLMProvider", () => {
     });
   });
 
+  describe("finishReason (#1085)", () => {
+    /**
+     * `done` says THAT generation stopped; `done_reason` says WHY. The old
+     * mapping was `done ? "stop" : "length"`, which can never report "length"
+     * on a non-streaming call — so a response cut off at `num_predict` claimed
+     * the model had finished on its own.
+     *
+     * That cost months: two proposition analyses failed against a 2000-token
+     * budget and the failure looked like a model ignoring its output format,
+     * because the one field that would have said "truncated" said "stop".
+     */
+    it('reports "length" when Ollama says it ran out of budget', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            response: "half an obje",
+            done: true,
+            done_reason: "length",
+            eval_count: 2000,
+            prompt_eval_count: 20000,
+          }),
+      });
+
+      const result = await provider.generate("Test prompt");
+
+      // `done` is true here — the old mapping would have said "stop".
+      expect(result.finishReason).toBe("length");
+      expect(result.tokensOut).toBe(2000);
+    });
+
+    it('reports "stop" when Ollama says it finished on its own', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            response: "a complete answer",
+            done: true,
+            done_reason: "stop",
+            eval_count: 42,
+            prompt_eval_count: 100,
+          }),
+      });
+
+      const result = await provider.generate("Test prompt");
+      expect(result.finishReason).toBe("stop");
+    });
+
+    it("falls back to the old behaviour when done_reason is absent", async () => {
+      // Older Ollama builds omit it. Guessing "length" there would send the
+      // next reader hunting a budget that was never the problem.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            response: "text",
+            done: true,
+            eval_count: 10,
+            prompt_eval_count: 10,
+          }),
+      });
+
+      const result = await provider.generate("Test prompt");
+      expect(result.finishReason).toBe("stop");
+    });
+  });
+
   describe("generate", () => {
     it("reports input and output tokens separately", async () => {
       // Ollama has always returned prompt_eval_count; it went unread, so

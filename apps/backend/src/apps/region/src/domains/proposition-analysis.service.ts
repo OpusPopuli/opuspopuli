@@ -56,8 +56,8 @@ interface PropForAnalysis {
  *   hasn't been touched since the last generation — cheap idempotency.
  *
  * Tunable via env vars:
- * - PROPOSITION_ANALYSIS_MAX_TOKENS (default 2000) — ballot text + structured
- *   output needs more headroom than a rep bio.
+ * - PROPOSITION_ANALYSIS_MAX_TOKENS (default 6000) — see the constant below;
+ *   the default was measured, not guessed.
  * - PROPOSITION_ANALYSIS_CONCURRENCY (default 1)
  * - PROPOSITION_ANALYSIS_MAX_PROPS (default unlimited) — dev cap.
  */
@@ -86,10 +86,38 @@ function describeParseError(error: Error): string {
 export class PropositionAnalysisService extends LlmGeneratorBase {
   private readonly logger = new Logger(PropositionAnalysisService.name);
   // Field initializers run after super(), so this.config is already set.
+  /**
+   * Output budget, in tokens.
+   *
+   * ── Measured against production, 2026-08-31 (#1085) ──────────────────
+   *
+   * Was 2000. Two measures had never produced an analysis:
+   *
+   *   25-0020A2  61,123 chars in  ->  no_json at 2000, ANALYSED at 6000
+   *   25-0032A1  88,671 chars in  ->  no_json at 2000, ANALYSED at 6000
+   *
+   * The payload scales with the measure: `analysisSections` and
+   * `analysisClaims` grow with length, so past roughly 50k characters of
+   * input the JSON no longer fits in 2000 tokens. It is cut before its
+   * closing brace, `extractJsonObjectSlice` requires balanced braces, and the
+   * failure presents as "the model returned no JSON at all" — which reads as
+   * a model ignoring the format rather than a budget being too small.
+   *
+   * #1085's own technical note said not to raise this, on the reasoning that
+   * it governs output while the problem was input length. That was wrong:
+   * output length is a FUNCTION of input length here, which is exactly why
+   * only the longest measures failed.
+   *
+   * 6000 is a value that worked, not a measured ceiling — the true floor for
+   * an 88k measure is somewhere between 2000 and 6000 and was not bisected.
+   * Chosen with headroom because the corpus is 52 rows and stable, so the
+   * cost of over-provisioning is small and the cost of another silent
+   * shortfall is months of nobody knowing.
+   */
   private readonly maxTokens = readPositiveInt(
     this.config,
     'PROPOSITION_ANALYSIS_MAX_TOKENS',
-    2000,
+    6000,
   );
   private readonly concurrency = readPositiveInt(
     this.config,
@@ -334,7 +362,16 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
     // wrote no JSON at all — which is exactly the ambiguity #1085 turns on.
     // `finishReason` resolves it, so name the case rather than making every
     // future reader recombine two fields to see it.
-    const truncated = result.finishReason === 'length';
+    // `finishReason` alone is not trustworthy: until #1085 the Ollama
+    // provider mapped it from `done`, which is true whenever generation
+    // finished FOR ANY REASON — so a budget-exhausted response reported
+    // "stop" and this branch never fired. The provider is fixed, but older
+    // Ollama builds omit `done_reason`, so also infer truncation from the
+    // budget actually spent. Either signal is enough.
+    const spentOutputTokens = result.tokensOut ?? 0;
+    const budgetExhausted =
+      spentOutputTokens > 0 && spentOutputTokens >= this.maxTokens * 0.98;
+    const truncated = result.finishReason === 'length' || budgetExhausted;
 
     const candidate = extractJsonObjectSlice(result.text);
     if (!candidate) {

@@ -112,6 +112,7 @@ describe('PropositionAnalysisService', () => {
       llmText?: string;
       llmThrows?: Error;
       llmFinishReason?: 'stop' | 'length' | 'error';
+      llmTokensOut?: number;
     } = {},
   ) {
     const {
@@ -124,6 +125,7 @@ describe('PropositionAnalysisService', () => {
       llmText = validPayload,
       llmThrows,
       llmFinishReason,
+      llmTokensOut,
     } = opts;
 
     const mockPromptClient = createMock<PromptClientService>();
@@ -137,9 +139,11 @@ describe('PropositionAnalysisService', () => {
     const mockLlm = {
       generate: jest.fn(async () => {
         if (llmThrows) throw llmThrows;
-        return { text: llmText, finishReason: llmFinishReason } as Awaited<
-          ReturnType<ILLMProvider['generate']>
-        >;
+        return {
+          text: llmText,
+          finishReason: llmFinishReason,
+          tokensOut: llmTokensOut,
+        } as Awaited<ReturnType<ILLMProvider['generate']>>;
       }),
     } as unknown as jest.Mocked<ILLMProvider>;
 
@@ -550,6 +554,42 @@ describe('PropositionAnalysisService', () => {
       expect(line).toContain('finish=length');
       // Named outright rather than left for the reader to infer from the pair.
       expect(line).toContain('reason=truncated');
+    });
+
+    it('calls it truncated when the budget was spent, even if the provider says "stop"', async () => {
+      // The case that cost #1085 months. Ollama mapped finishReason from
+      // `done`, so a response cut off at the token budget reported "stop" and
+      // the failure read as a model ignoring its output format. Two measures
+      // sat unanalysable in production on that misreading; raising the budget
+      // fixed both immediately.
+      //
+      // The provider is fixed, but older builds omit `done_reason`, so the
+      // budget spent is the second, independent signal.
+      const built = await buildService({
+        configValues: { PROPOSITION_ANALYSIS_MAX_TOKENS: '1000' },
+        llmText: 'prose that never opens a JSON object',
+        llmFinishReason: 'stop',
+        llmTokensOut: 1000,
+      });
+
+      await built.service.generate('prop-1');
+
+      const line = warn.mock.calls[0][0] as string;
+      expect(line).toContain('reason=truncated');
+    });
+
+    it('does not cry truncation when the budget was barely touched', async () => {
+      const built = await buildService({
+        configValues: { PROPOSITION_ANALYSIS_MAX_TOKENS: '1000' },
+        llmText: 'prose that never opens a JSON object',
+        llmFinishReason: 'stop',
+        llmTokensOut: 12,
+      });
+
+      await built.service.generate('prop-1');
+
+      const line = warn.mock.calls[0][0] as string;
+      expect(line).toContain('reason=no_json');
     });
 
     it('logs sizes but never the response body', async () => {
