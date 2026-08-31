@@ -36,6 +36,22 @@ cleanup() {
 # Set trap to cleanup on exit (including errors)
 trap cleanup EXIT
 
+# The image build installs @opuspopuli/* from GitHub Packages, and the repo
+# .npmrc authenticates with ${NODE_AUTH_TOKEN}. The build copies THAT .npmrc,
+# never your ~/.npmrc, so a token that works for host-side `pnpm install` does
+# nothing here — the build only ever sees this variable.
+#
+# Derived from `gh` rather than read from a file on purpose. A PAT copied into
+# .env goes stale the moment the token is refreshed, and fails as a confusing
+# auth error much later; `gh` manages its own token lifecycle. An explicitly
+# set NODE_AUTH_TOKEN still wins, which is what CI relies on.
+export NODE_AUTH_TOKEN="${NODE_AUTH_TOKEN:-$(gh auth token 2>/dev/null || true)}"
+if [ -z "$NODE_AUTH_TOKEN" ]; then
+  echo -e "${YELLOW}Warning: NODE_AUTH_TOKEN is empty and 'gh auth token' produced nothing.${NC}"
+  echo -e "${YELLOW}The build will fail on 'pnpm install --frozen-lockfile'. Run 'gh auth login'"
+  echo -e "with the read:packages scope, or export NODE_AUTH_TOKEN yourself.${NC}"
+fi
+
 # Build and start all services
 echo -e "${YELLOW}Building and starting all services...${NC}"
 echo -e "${YELLOW}This may take a few minutes on first run...${NC}"
