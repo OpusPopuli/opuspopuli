@@ -18,10 +18,11 @@ async function setupAuthed(page: Page) {
   await setupAuthSession(page);
 }
 
-// The settings shell's mobile sidebar overlap (#766) doesn't apply to
-// the briefing page (it uses the Header/Footer pattern, not the
-// settings shell), but we keep the mobile-skip pattern available in
-// case other mobile-only chrome issues surface.
+// The briefing page uses the Header/Footer pattern, not the settings
+// shell, so its mobile skips below are about the Header's desktop nav
+// being hidden under `md` — each one says so, and each is covered by
+// Header unit tests. (This block used to cite #766; that was the
+// settings-shell sidebar overlap, which is fixed and closed.)
 const MOBILE_PROJECTS = ["mobile-chrome", "mobile-safari"];
 
 test.describe("Civic briefing page", () => {

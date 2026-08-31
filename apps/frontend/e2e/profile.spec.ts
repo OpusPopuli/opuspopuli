@@ -293,26 +293,10 @@ test.describe("Model-of-me page", () => {
   });
 });
 
-// The settings-shell sidebar is desktop-first (#766) — at the
-// 375px mobile viewport the modal dialog overlay + the no-fields
-// toggle target end up overlapped by the layout's outer scroll
-// region and Playwright's click can't reach them. The behaviors
-// themselves are identical on desktop + tablet, so we skip these
-// interaction-heavy tests on both mobile projects until #766
-// lands. Render-only mobile assertions in the Responsive Design
-// section above stay enabled.
-const MOBILE_PROJECTS = ["mobile-chrome", "mobile-safari"];
-const skipOnMobile = (testInfo: { project: { name: string } }) =>
-  test.skip(
-    MOBILE_PROJECTS.includes(testInfo.project.name),
-    "#766 — settings shell sidebar overlaps interactive surfaces at mobile widths",
-  );
-
 test.describe("Model-of-me — AC happy paths", () => {
   test("edit a field → save → see new value persisted (round trip)", async ({
     page,
-  }, testInfo) => {
-    skipOnMobile(testInfo);
+  }) => {
     await setupAuthed(page);
     const log = await seedProfile(page, {
       signal: { housingTenure: "renter" },
@@ -345,8 +329,7 @@ test.describe("Model-of-me — AC happy paths", () => {
 
   test("clear a field → confirm → see Not set persisted (round trip)", async ({
     page,
-  }, testInfo) => {
-    skipOnMobile(testInfo);
+  }) => {
     await setupAuthed(page);
     const log = await seedProfile(page, {
       signal: { housingTenure: "renter" },
@@ -382,8 +365,7 @@ test.describe("Model-of-me — AC happy paths", () => {
 
   test("edit a multi-select-chips field → save → see persisted chips (round trip)", async ({
     page,
-  }, testInfo) => {
-    skipOnMobile(testInfo);
+  }) => {
     await setupAuthed(page);
     const log = await seedProfile(page, {
       signal: { interestTags: ["housing"] },
@@ -396,9 +378,14 @@ test.describe("Model-of-me — AC happy paths", () => {
     await interestsRow.getByRole("button", { name: /^edit$/i }).click();
 
     // Add Healthcare; "Housing & rent" stays selected.
-    await interestsRow
-      .getByRole("checkbox", { name: /healthcare/i })
-      .check({ force: true });
+    //
+    // Click the chip, not the input. The checkbox is `sr-only` inside its
+    // wrapping <label>, so a thumb hits the label and the association does the
+    // rest. Force-clicking the hidden input instead passed on Chromium and
+    // silently did nothing on WebKit ("Clicking the checkbox did not change
+    // its state") — which is what kept this test skipped on mobile under
+    // #766, long after the layout it blamed had been fixed.
+    await interestsRow.locator("label", { hasText: /healthcare/i }).click();
 
     await interestsRow.getByRole("button", { name: /^save$/i }).click();
 
@@ -415,8 +402,7 @@ test.describe("Model-of-me — AC happy paths", () => {
 
   test("toggle no-fields-mode on → T3 field locks → toggle off → editable again", async ({
     page,
-  }, testInfo) => {
-    skipOnMobile(testInfo);
+  }) => {
     await setupAuthed(page);
     const log = await seedProfile(page, {
       sensitive: { veteranStatus: "veteran" },
