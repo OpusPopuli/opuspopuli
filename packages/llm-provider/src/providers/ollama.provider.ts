@@ -30,6 +30,7 @@ function tokenTelemetry(data: {
   eval_count?: number;
   prompt_eval_count?: number;
   done?: boolean;
+  done_reason?: string;
 }): {
   tokensUsed?: number;
   tokensIn?: number;
@@ -40,8 +41,35 @@ function tokenTelemetry(data: {
     tokensUsed: sumTokens(data.prompt_eval_count, data.eval_count),
     tokensIn: data.prompt_eval_count || undefined,
     tokensOut: data.eval_count || undefined,
-    finishReason: data.done ? "stop" : "length",
+    finishReason: mapFinishReason(data.done, data.done_reason),
   };
+}
+
+/**
+ * Ollama reports WHY it stopped in `done_reason`; `done` only says THAT it
+ * stopped (opuspopuli#1085).
+ *
+ * The previous mapping was `data.done ? "stop" : "length"`, which cannot ever
+ * return "length" on a non-streaming call — `done` is true whenever generation
+ * completed, including when it completed because it hit `num_predict`. So
+ * every caller was told "the model finished on its own", always.
+ *
+ * That is not a cosmetic bug. Two proposition analyses failed for months
+ * against a 2000-token output budget; the failure looked like a model
+ * ignoring the JSON format, because the one field that would have said
+ * "truncated" reported "stop". Raising the budget fixed both immediately.
+ *
+ * `done_reason` is absent on older Ollama builds, so fall back to the old
+ * behaviour rather than guessing "length" — a wrong "truncated" verdict sends
+ * the next reader hunting a budget that was never the problem.
+ */
+function mapFinishReason(
+  done?: boolean,
+  doneReason?: string,
+): "stop" | "length" {
+  if (doneReason === "length") return "length";
+  if (doneReason === "stop") return "stop";
+  return done ? "stop" : "length";
 }
 
 function sumTokens(
@@ -53,7 +81,6 @@ function sumTokens(
   }
   return (promptTokens ?? 0) + (completionTokens ?? 0);
 }
-
 
 /**
  * Custom fetch function type for HTTP connection pooling support
@@ -267,6 +294,7 @@ export class OllamaLLMProvider implements ILLMProvider {
           prompt_eval_count?: number;
           eval_duration?: number; // nanoseconds spent generating tokens
           done?: boolean;
+          done_reason?: string; // "stop" | "length" — WHY it stopped (#1085)
         };
 
         // Log generation throughput. Output volume (tokens), not context
@@ -476,6 +504,7 @@ export class OllamaLLMProvider implements ILLMProvider {
           eval_count?: number;
           prompt_eval_count?: number;
           done?: boolean;
+          done_reason?: string; // "stop" | "length" — WHY it stopped (#1085)
         };
 
         return { text: data.message?.content || "", ...tokenTelemetry(data) };
