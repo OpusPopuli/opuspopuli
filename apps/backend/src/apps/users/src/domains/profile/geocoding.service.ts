@@ -85,8 +85,12 @@ export class GeocodingService {
       });
 
       if (!response.ok) {
+        // City and state only — never addressLine1. A street address is
+        // directly identifying CCPA personal information, and this line runs
+        // at `warn`, which production emits. Locality is enough to tell a
+        // systemic geocoder outage from one bad address (#1094 audit).
         this.logger.warn(
-          `Census Geocoder returned ${response.status} for ${addressLine1}, ${city}, ${state}`,
+          `Census Geocoder returned ${response.status} for an address in ${city}, ${state}`,
         );
         // Not a verdict on the address -- the service failed to give one.
         throw new GeocoderUnavailableError(`HTTP ${response.status}`);
@@ -96,8 +100,12 @@ export class GeocodingService {
       const matches = data?.result?.addressMatches;
 
       if (!matches || matches.length === 0) {
+        // Same rule as the warn above. This one is `debug`, which production
+        // could not emit until LOG_LEVEL became configurable (#1094) — so
+        // making the level configurable is exactly what would have started
+        // writing street addresses to the log pipeline.
         this.logger.debug(
-          `No geocoding match for ${addressLine1}, ${city}, ${state}`,
+          `No geocoding match for an address in ${city}, ${state}`,
         );
         return null;
       }

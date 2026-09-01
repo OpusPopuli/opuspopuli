@@ -161,6 +161,33 @@ How it works:
 
 `updateRegionPlugin` (and the recovery mutation `refreshActiveRegion`) re-load only the **local** plugin slot. The federal plugin keeps the `stateCode` resolution it picked up at boot. So if you flip from `california` (stateCode=CA) to a different state plugin live, the federal plugin's CA-shaped config placeholders remain in memory until a service restart. In practice the federal plugin almost never needs to change after boot, so this is a documented limitation, not a bug. If you do need federal to re-resolve, restart `region` + `region-worker`.
 
+## Logging levels
+
+`LOG_LEVEL` sets verbosity for every service and worker. Unset, it defaults to
+`info` in production and `debug` everywhere else — the behaviour before #1094.
+
+```bash
+# raise one service to debug, on the node
+LOG_LEVEL=debug ./bin/op-compose -f docker-compose-prod.yml \
+  -f docker-compose-prompt-service.yml up -d --force-recreate region
+```
+
+Set it on **one service at a time**. Turning debug on across all eight at once,
+on a node that also runs the LLM workers, is a log-volume problem of its own.
+
+**Lower it again when you are done.** Debug statements are the lines least
+likely to have been reviewed for what they print, precisely because their
+authors expect them to be invisible in production — the audit for #1094 found a
+resident street address being logged from the geocoder, at `warn`, which
+production was emitting already.
+
+Log **format** stays keyed to `NODE_ENV`: production keeps structured JSON at
+any level. Raising verbosity during an incident must not also change the shape
+of every line the log pipeline is parsing.
+
+An unrecognised value falls back to the default and warns at startup rather
+than silently selecting nothing.
+
 ## SonarCloud quality gates
 
 - **Cognitive complexity ≤ 15** per function. Extract named helpers rather than nesting.
