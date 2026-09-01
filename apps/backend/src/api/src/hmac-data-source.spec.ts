@@ -145,6 +145,62 @@ describe('HmacRemoteGraphQLDataSource', () => {
     const fetcherOf = (ds: HmacRemoteGraphQLDataSource) =>
       (ds as unknown as { fetcher: typeof fetch }).fetcher;
 
+    /*
+     * The CLEAR shape, which no existing test covered — and #1019 was a
+     * production security bug precisely here: users stayed authenticated
+     * after logout, and one landed in a previous account's data.
+     *
+     * `res.clearCookie` emits an EMPTY value and an epoch `Expires`, so the
+     * bytes differ from the set shape in two ways at once. The existing
+     * coverage passed throughout the bug.
+     */
+    const CLEAR_ACCESS =
+      'access-token=; Domain=.opuspopuli.org; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Strict';
+    const CLEAR_REFRESH =
+      'refresh-token=; Domain=.opuspopuli.org; Path=/api/auth/refresh; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Strict';
+
+    it('forwards BOTH cleared cookies to the browser (#1019 regression)', async () => {
+      // Exercises didReceiveResponse itself, not the parser in isolation.
+      // Apollo hands it a HeaderMap (extends Map), so `get` returns the single
+      // collapsed value the fetcher produced.
+      const appended: [string, string][] = [];
+      const requestContext = {
+        request: undefined,
+        context: {
+          res: {
+            append: (name: string, value: string) =>
+              appended.push([name, value]),
+          },
+        },
+        response: {
+          http: {
+            headers: new Map([
+              ['set-cookie', `${CLEAR_ACCESS}, ${CLEAR_REFRESH}`],
+            ]),
+          },
+        },
+      };
+
+      dataSource.didReceiveResponse(requestContext);
+
+      expect(appended).toHaveLength(2);
+      expect(appended[0][0]).toBe('Set-Cookie');
+      expect(appended[0][1]).toContain('access-token=;');
+      expect(appended[1][1]).toContain('refresh-token=;');
+
+      // The epoch expiry is what makes a clear a clear. If comma-splitting
+      // truncated it, the browser would receive a session cookie with an
+      // empty value instead of a deletion — which reads as "still logged in"
+      // to nothing and as "logged out" to no one.
+      for (const [, value] of appended) {
+        expect(value).toContain('Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+      }
+
+      // Paths must survive: a clear aimed at the wrong path deletes nothing.
+      expect(appended[0][1]).toContain('Path=/;');
+      expect(appended[1][1]).toContain('Path=/api/auth/refresh;');
+    });
+
     it('keeps BOTH cookies when a subgraph sets two', async () => {
       globalThis.fetch = jest
         .fn()
