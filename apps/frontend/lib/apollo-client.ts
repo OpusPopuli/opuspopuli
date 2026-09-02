@@ -11,7 +11,7 @@ import { createClient } from "graphql-ws";
 import { persistCache, LocalStorageWrapper } from "apollo3-cache-persist";
 import { isAuthExpiredError, triggerAuthExpiredRedirect } from "./auth-logout";
 import { sessionRefreshLink, SKIP_EXPIRED_REDIRECT } from "./auth-refresh-link";
-import { getCsrfToken } from "./csrf";
+import { ensureCsrfToken } from "./csrf";
 import {
   APOLLO_CACHE_KEY,
   LEGACY_APOLLO_CACHE_KEYS,
@@ -36,11 +36,18 @@ const GRAPHQL_WS_URL =
 const customFetch: typeof fetch = async (uri, options) => {
   const headers = new Headers(options?.headers as HeadersInit);
 
-  // Add CSRF token from cookie for mutation protection
-  const csrfToken = getCsrfToken();
+  // Every GraphQL request is a POST, so every one needs the token. If the
+  // cookie is missing, re-seed it rather than sending a request that is
+  // certain to earn a 403 — a 403 is read as an expired session, and the
+  // retry that follows has no token either, so the user is signed out of a
+  // session that was never invalid (#1089).
+  const csrfToken = await ensureCsrfToken(GRAPHQL_URL);
   if (csrfToken) {
     headers.set("X-CSRF-Token", csrfToken);
   }
+  // Still missing means the gateway is unreachable. Send anyway: a network
+  // failure is the honest outcome and Apollo's error handling covers it,
+  // whereas throwing here would be indistinguishable from a CSRF rejection.
 
   return fetch(uri, {
     ...options,
