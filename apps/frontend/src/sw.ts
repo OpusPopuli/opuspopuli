@@ -1,5 +1,6 @@
 import { defaultCache } from "@serwist/next/worker";
 import { Serwist } from "serwist";
+import { customRuntimeCaching } from "./sw-runtime-caching";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 
 declare global {
@@ -15,33 +16,11 @@ const serwist = new Serwist({
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
-  runtimeCaching: [
-    ...defaultCache,
-    // GraphQL - network first with cache fallback
-    {
-      urlPattern: /\/graphql/,
-      handler: "NetworkFirst",
-      options: {
-        cacheName: "graphql-cache",
-        expiration: { maxEntries: 100, maxAgeSeconds: 86400 },
-        networkTimeoutSeconds: 10,
-      },
-    },
-    // Auth endpoints - never cache
-    {
-      urlPattern: /\/(auth|login|logout|register)/,
-      handler: "NetworkOnly",
-    },
-    // Images - cache first
-    {
-      urlPattern: /\.(png|jpg|jpeg|svg|gif|webp|ico)$/,
-      handler: "CacheFirst",
-      options: {
-        cacheName: "images",
-        expiration: { maxEntries: 100, maxAgeSeconds: 2592000 },
-      },
-    },
-  ],
+  // Custom rules FIRST: Serwist returns the first matching route, so
+  // `defaultCache` spread ahead of these shadowed them (#1092). See
+  // sw-runtime-caching.ts for what each rule is for and why the GraphQL rule
+  // was deleted rather than repointed.
+  runtimeCaching: [...customRuntimeCaching, ...defaultCache],
 });
 
 serwist.addEventListeners();
