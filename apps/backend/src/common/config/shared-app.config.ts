@@ -176,17 +176,60 @@ export const SHARED_PROVIDERS = [
 ];
 
 /**
+ * Resolve the log level from `LOG_LEVEL`, falling back to the NODE_ENV default.
+ *
+ * Exported for testing, and because the resolution rules are the whole point
+ * of #1085's sibling issue #1094: until this existed, production was pinned to
+ * INFO with no way to raise it. #1085 sat undiagnosed for months because the
+ * one line explaining the failure was written at `debug`, in the only
+ * environment that never emits it. Shipping code to move a log statement is
+ * not a debugging strategy.
+ *
+ * An unrecognised value falls back to the default and says so at startup
+ * rather than silently selecting nothing — a typo in `LOG_LEVEL` during an
+ * incident should not quietly make the logs worse.
+ */
+export function resolveLogLevel(
+  rawLevel: unknown,
+  nodeEnv: unknown,
+  warn: (message: string) => void = (m) => console.warn(m),
+): LogLevel {
+  const fallback = nodeEnv === 'production' ? LogLevel.INFO : LogLevel.DEBUG;
+
+  if (rawLevel === undefined || rawLevel === null || rawLevel === '') {
+    return fallback;
+  }
+
+  const candidate = String(rawLevel).trim().toLowerCase();
+  const match = Object.values(LogLevel).find((level) => level === candidate);
+
+  if (!match) {
+    warn(
+      `LOG_LEVEL="${String(rawLevel)}" is not a recognised level ` +
+        `(${Object.values(LogLevel).join(', ')}). Falling back to "${fallback}".`,
+    );
+    return fallback;
+  }
+
+  return match;
+}
+
+/**
  * Factory function for LoggingModule configuration
+ *
+ * `format` stays keyed to NODE_ENV on purpose: production keeps structured
+ * JSON whatever the verbosity. Raising the level to debug an incident should
+ * not also change the shape of every line the log pipeline is parsing.
  */
 export function createLoggingConfig(serviceName: string) {
   return {
     imports: [],
     useFactory: (configService: ConfigService) => ({
       serviceName,
-      level:
-        configService.get('NODE_ENV') === 'production'
-          ? LogLevel.INFO
-          : LogLevel.DEBUG,
+      level: resolveLogLevel(
+        configService.get('LOG_LEVEL'),
+        configService.get('NODE_ENV'),
+      ),
       format:
         configService.get('NODE_ENV') === 'production'
           ? ('json' as const)
