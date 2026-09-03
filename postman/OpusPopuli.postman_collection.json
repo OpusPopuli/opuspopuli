@@ -1071,6 +1071,46 @@
               "path": ["api"]
             }
           }
+        },
+        {
+          "name": "Refresh Boundaries — dry run (Admin)",
+          "description": "Idempotent boundary load. With force=false the loader SKIPS whenever any jurisdiction already has a boundary, returning skipped=ALREADY_POPULATED plus counts.existing. Run this first to read the current state without refetching ~6k geometries from TIGER.",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation RefreshBoundaries($force: Boolean) {\n  refreshBoundaries(force: $force) {\n    ok\n    skipped\n    counts {\n      existing\n      upserted\n      failed\n      missingKey\n    }\n  }\n}",
+                "variables": "{\n  \"force\": false\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Boundaries — FORCE refetch (Admin)",
+          "description": "Re-fetches every boundary layer from source and upserts them. REQUIRED after any release that changes the region's boundarySources config or the loader's key handling — a plain deploy does NOTHING for boundaries, because the loader skips whenever any already exist.\n\nSlow: ~6k geometries (~85MB) with two DB roundtrips per row. Allow several minutes and raise Postman's request timeout.\n\nReading the result: counts.upserted is rows written; counts.failed is rows that errored — check the region service log for the per-row reason; counts.missingKey is rows the fetcher returned with neither a fipsCode nor an ocdId. A non-zero failed is the signal a layer is not landing. v1.17.0 reported 6148 upserted with 173 failing, which is how every congressional, senate and assembly district went a month with no geometry (opuspopuli#1118).",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation RefreshBoundaries($force: Boolean) {\n  refreshBoundaries(force: $force) {\n    ok\n    skipped\n    counts {\n      existing\n      upserted\n      failed\n      missingKey\n    }\n  }\n}",
+                "variables": "{\n  \"force\": true\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
         }
       ]
     },
