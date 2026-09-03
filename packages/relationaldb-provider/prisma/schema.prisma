@@ -2274,7 +2274,13 @@ enum JurisdictionLevel {
 /// inputs they are computed from.
 model CountyThreshold {
   /// FK to jurisdictions.fips_code (UNIQUE there, which makes it a legal target).
-  fips String @id @db.VarChar(20)
+  ///
+  /// The relation is declared, not just the column. The region entrypoint runs
+  /// `prisma db push --accept-data-loss` on boot, which reconciles the database
+  /// to THIS file — so a foreign key that exists only in the SQL migration is
+  /// silently dropped the first time a service starts.
+  fips         String       @id @db.VarChar(20)
+  jurisdiction Jurisdiction @relation(fields: [fips], references: [fipsCode], onUpdate: Cascade, onDelete: Restrict)
 
   /// ALL gubernatorial candidates at the last gubernatorial general — NOT the
   /// winner's total. This is the §9118 denominator.
@@ -2299,6 +2305,12 @@ model CountyAdjacency {
   fips     String @db.VarChar(20)
   neighbor String @db.VarChar(20)
 
+  /// Both relations are declared with their referential actions, so
+  /// `prisma db push` reproduces the migration rather than replacing it.
+  /// Two relations to the same model must be named.
+  county         Jurisdiction @relation("CountyAdjacencyFrom", fields: [fips], references: [fipsCode], onUpdate: Cascade, onDelete: Cascade)
+  neighborCounty Jurisdiction @relation("CountyAdjacencyTo", fields: [neighbor], references: [fipsCode], onUpdate: Cascade, onDelete: Cascade)
+
   @@id([fips, neighbor])
   @@map("county_adjacency")
 }
@@ -2320,8 +2332,11 @@ model Jurisdiction {
   children          Jurisdiction[]     @relation("JurisdictionHierarchy")
   userJurisdictions UserJurisdiction[]
 
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  countyThreshold CountyThreshold?
+  adjacencyFrom   CountyAdjacency[] @relation("CountyAdjacencyFrom")
+  adjacencyTo     CountyAdjacency[] @relation("CountyAdjacencyTo")
 
   @@index([type])
   @@index([level])
