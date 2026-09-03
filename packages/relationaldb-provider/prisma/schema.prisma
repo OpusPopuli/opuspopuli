@@ -2262,6 +2262,59 @@ enum JurisdictionLevel {
   DISTRICT
 }
 
+/// County initiative thresholds for the California landing page (#1105).
+///
+/// Identity is NOT restated here — `fips` is a foreign key into
+/// `jurisdictions.fips_code`, where all 58 California counties already live
+/// with their names. Geometry is likewise absent: it belongs in
+/// `jurisdictions.boundary`, which #1107 populates.
+///
+/// `signaturesRequired` (ceil(votes * 0.10)) and `shareOfRegistered` are
+/// derived in the query rather than stored, so they cannot drift from the
+/// inputs they are computed from.
+model CountyThreshold {
+  /// FK to jurisdictions.fips_code (UNIQUE there, which makes it a legal target).
+  ///
+  /// The relation is declared, not just the column. The region entrypoint runs
+  /// `prisma db push --accept-data-loss` on boot, which reconciles the database
+  /// to THIS file — so a foreign key that exists only in the SQL migration is
+  /// silently dropped the first time a service starts.
+  fips         String       @id @db.VarChar(20)
+  jurisdiction Jurisdiction @relation(fields: [fips], references: [fipsCode], onUpdate: Cascade, onDelete: Restrict)
+
+  /// ALL gubernatorial candidates at the last gubernatorial general — NOT the
+  /// winner's total. This is the §9118 denominator.
+  gubernatorialVotes Int       @map("gubernatorial_votes")
+  gubernatorialYear  Int       @map("gubernatorial_year") @db.SmallInt
+  registeredVoters   Int?      @map("registered_voters")
+  registrationAsOf   DateTime? @map("registration_as_of") @db.Date
+  population         Int?
+  populationSource   String?   @map("population_source")
+  populationAsOf     DateTime? @map("population_as_of") @db.Date
+
+  /// NOT NULL by design: a row that cannot cite itself cannot be rendered.
+  sourceUrl   String   @map("source_url")
+  retrievedAt DateTime @map("retrieved_at") @db.Timestamptz
+
+  @@map("county_thresholds")
+}
+
+/// Materialized from `jurisdictions.boundary` via ST_Touches (#1107). Both
+/// directions are stored; county borders do not move.
+model CountyAdjacency {
+  fips     String @db.VarChar(20)
+  neighbor String @db.VarChar(20)
+
+  /// Both relations are declared with their referential actions, so
+  /// `prisma db push` reproduces the migration rather than replacing it.
+  /// Two relations to the same model must be named.
+  county         Jurisdiction @relation("CountyAdjacencyFrom", fields: [fips], references: [fipsCode], onUpdate: Cascade, onDelete: Cascade)
+  neighborCounty Jurisdiction @relation("CountyAdjacencyTo", fields: [neighbor], references: [fipsCode], onUpdate: Cascade, onDelete: Cascade)
+
+  @@id([fips, neighbor])
+  @@map("county_adjacency")
+}
+
 model Jurisdiction {
   id        String                                        @id @default(uuid())
   fipsCode  String?                                       @unique @map("fips_code") @db.VarChar(20)
@@ -2279,8 +2332,11 @@ model Jurisdiction {
   children          Jurisdiction[]     @relation("JurisdictionHierarchy")
   userJurisdictions UserJurisdiction[]
 
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  countyThreshold CountyThreshold?
+  adjacencyFrom   CountyAdjacency[] @relation("CountyAdjacencyFrom")
+  adjacencyTo     CountyAdjacency[] @relation("CountyAdjacencyTo")
 
   @@index([type])
   @@index([level])
