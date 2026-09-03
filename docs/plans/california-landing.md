@@ -11,6 +11,7 @@
 | **Migrations** | One, additive: `counties` + `county_adjacency`. |
 | **Federation** | Yes — [#1108](https://github.com/OpusPopuli/opuspopuli/issues/1108) adds a query to the region subgraph. |
 | **Source brief** | `SPEC-california-landing.md` + `opuspopuli-california-landing.html`, both **purged after this plan was written**. Everything load-bearing from them is reproduced here. |
+| **Philosophy source of truth** | `opuspopuli.org` repo — `src/pages/foundation.astro`, `src/pages/why.astro`. Published at https://opuspopuli.org/. Not duplicated into this repo. |
 
 ## One line
 
@@ -184,18 +185,36 @@ on the order of hours.
 1. **ES translation approach for the philosophy sections.** Dense prose where the paraphrases carry the argument; machine translation will flatten them.
 2. **Should `/c/[fips]` surface the nearest local contest margin** from county returns? The most persuasive number available, same ingestion layer, but a considerable scope expansion.
 3. **November 2026 resets every threshold.** Show the current cycle with an "as of" date, or both cycles during the transition? Decide now — it changes the schema's read path.
-4. **`PHILOSOPHY-foundation.md` is not in this repository.** Confirm whether it should be committed here, or whether the appendix below is canonical.
+4. ~~`PHILOSOPHY-foundation.md` is not in this repository.~~ **Answered.** The
+   canonical argument lives in the `opuspopuli.org` repo —
+   `src/pages/foundation.astro` (long form, all eleven thinkers, the objections
+   with their answers, and the four concessions as structured data) and
+   `src/pages/why.astro`. It is published at https://opuspopuli.org/ and its
+   latest commit is *"feat(content): rebuild the argument on the §9118 county
+   threshold (#16)"* — the same statutory argument this page is built on. Do not
+   commit a copy into this repository; reference it.
 
 ---
 
 ## Appendix — philosophy copy, preserved from the mockup
 
-The brief named `PHILOSOPHY-foundation.md` as source of truth for these
-sections. That document is **not in this repository**, and the mockup that
-carried this copy has been purged. This is the verbatim extraction, kept so the
-argument is not lost. It is the working source for
-[#1112](https://github.com/OpusPopuli/opuspopuli/issues/1112) until the
-companion document is committed.
+**This is not the source of truth.** The canonical argument lives in the
+`opuspopuli.org` repo at `src/pages/foundation.astro` and `src/pages/why.astro`,
+published at https://opuspopuli.org/. That version is fuller: it carries all
+eleven thinkers, states each objection *with its answer*, and holds the four
+concessions as structured data rather than prose.
+
+What follows is the **condensed variant written for the landing page**,
+extracted verbatim from the mockup before it was purged. The two differ in
+development, not in argument — compare Downs:
+
+> mockup: *"the cost is real. Staying ignorant is not a failure of character."*
+> canonical: *"the cost is entirely real. Remaining ignorant is not a character failure; it is the correct decision."*
+
+Keep it for the shape and length the landing page needs.
+[#1112](https://github.com/OpusPopuli/opuspopuli/issues/1112) should take its
+wording from `foundation.astro` and condense to this shape, not treat the text
+below as authoritative.
 
 ### The minority is organized. That is the whole of its advantage.
 
