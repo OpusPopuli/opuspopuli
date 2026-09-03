@@ -6,11 +6,12 @@ import {
 } from "../src/handlers/xlsx-sheet.parser";
 
 /**
- * The fixture is a genuine slice of California's Statement of Vote
- * (`sov/2022-general/sov/19-governor.xlsx`) — the two header rows plus the
- * first few counties, untouched. A hand-written spreadsheet would prove the
- * parser handles a shape we invented; this proves it handles the one the
- * Secretary of State actually publishes.
+ * The fixture is California's Statement of Vote in full
+ * (`sov/2022-general/sov/19-governor.xlsx`, ~14KB, byte-for-byte as published).
+ * A hand-written spreadsheet would prove the parser handles a shape we
+ * invented; this proves it handles the one the Secretary of State actually
+ * publishes — including the `State Totals` row that makes the members
+ * reconcilable.
  */
 const FIXTURE = join(__dirname, "fixtures", "statement-of-vote-sample.xlsx");
 
@@ -64,7 +65,14 @@ describe("parseXlsxGrid", () => {
 
   it("preserves every county as its own row", () => {
     const labels = grid.map((r) => r[0]);
-    expect(labels).toEqual(expect.arrayContaining(["Alameda", "Alpine"]));
+    expect(labels).toEqual(
+      expect.arrayContaining(["Alameda", "Alpine", "Nevada", "Yuba"]),
+    );
+    // 58 counties plus the aggregate row the file ends with.
+    const counties = labels.filter(
+      (l) => l && !l.trim().startsWith("Percent") && !l.includes("Newsom"),
+    );
+    expect(counties).toContain("State Totals");
   });
 
   it("throws a listing of available sheets when asked for one that is absent", () => {

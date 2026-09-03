@@ -13,10 +13,10 @@ import {
 } from './county-threshold-sync.service';
 
 /**
- * The fixture is a genuine slice of California's Statement of Vote, so these
- * assertions run against the layout the Secretary of State publishes rather
- * than one we invented: two header rows, a `Percent` row after every county,
- * and one column per candidate.
+ * The fixture is California's Statement of Vote in full, byte-for-byte as
+ * published, so these assertions run against the real layout: two header rows,
+ * a `Percent` row after every county, one column per candidate, and the
+ * `State Totals` row the reconciliation depends on.
  */
 const FIXTURE = join(
   __dirname,
@@ -107,6 +107,17 @@ describe('CountyThresholdSyncService', () => {
   });
 
   describe('reconciliation against the file total', () => {
+    it('throws when a declared aggregate label matches no row', async () => {
+      // California's two spreadsheets disagree: the Statement of Vote says
+      // "State Totals", the Report of Registration says "State Total". A
+      // config carrying the plural for both left registration unverified while
+      // looking healthy, and counted its total row as a 59th county. Warning
+      // was not enough — the check you declared has to run or fail.
+      await expect(
+        service.readSheet(votesSource({ excludeLabels: ['Statewide Total'] })),
+      ).rejects.toThrow(/declares excludeLabels.*never reconciled/s);
+    });
+
     it('throws when the members do not sum to the aggregate row', async () => {
       // This is the check that proves the parse read every candidate column.
       // The fixture is a slice, so its members cannot equal the full state

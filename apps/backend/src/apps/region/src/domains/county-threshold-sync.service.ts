@@ -138,7 +138,7 @@ export class CountyThresholdSyncService {
       facts.push({ label, value });
     }
 
-    this.reconcile(source.url, facts, aggregate);
+    this.reconcile(source.url, facts, aggregate, [...excluded]);
     return facts;
   }
 
@@ -177,8 +177,23 @@ export class CountyThresholdSyncService {
     url: string,
     facts: SheetFact[],
     aggregate: number | null,
+    expectedLabels: string[],
   ): void {
     if (aggregate === null) {
+      // Declaring excludeLabels and matching none of them means the check you
+      // asked for did not run — the label is wrong, or the file changed its
+      // wording. Warning was not enough: California's two spreadsheets say
+      // "State Totals" and "State Total", and a config that carried the plural
+      // for both left the registration file unverified while looking fine, with
+      // its total silently counted as a 59th county.
+      if (expectedLabels.length > 0) {
+        throw new Error(
+          `CountyThresholds: ${url} declares excludeLabels ` +
+            `[${expectedLabels.join(', ')}] but the sheet contains none of them, ` +
+            'so the totals were never reconciled and an aggregate row may be ' +
+            'counted as a member. Fix the label rather than shipping an unverified parse.',
+        );
+      }
       this.logger.warn(
         `CountyThresholds: ${url} has no aggregate row to reconcile against; ` +
           'the parse is unverified',
