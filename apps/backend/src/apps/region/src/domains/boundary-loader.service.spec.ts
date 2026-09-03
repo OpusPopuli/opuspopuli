@@ -333,7 +333,7 @@ describe('BoundaryLoaderService', () => {
       mockGeoportalFetcher.fetch.mockResolvedValueOnce([
         { ...SAMPLE_ROW, fipsCode: 'ca-fire-42', name: 'Berkeley FD' },
       ]);
-      mockDb.jurisdiction.upsert.mockResolvedValue({
+      mockDb.jurisdiction.findUnique.mockResolvedValue({
         id: 'jur-x',
       } as Jurisdiction);
 
@@ -356,11 +356,11 @@ describe('BoundaryLoaderService', () => {
         .mockResolvedValue(rows);
     }
 
-    it('upserts via fipsCode key when fipsCode is present, then writes the boundary via $executeRaw', async () => {
+    it('updates the jurisdiction matched by fipsCode, then writes the boundary via $executeRaw', async () => {
       mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
       patchFetchAll([SAMPLE_ROW]);
-      mockDb.jurisdiction.upsert.mockResolvedValue({
+      mockDb.jurisdiction.findUnique.mockResolvedValueOnce({
         id: 'jur-1',
       } as Jurisdiction);
 
@@ -368,36 +368,159 @@ describe('BoundaryLoaderService', () => {
 
       expect(result.counts.upserted).toBe(1);
       expect(result.counts.failed).toBe(0);
-      expect(mockDb.jurisdiction.upsert).toHaveBeenCalledWith(
+      expect(mockDb.jurisdiction.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { fipsCode: '06001' } }),
+      );
+      expect(mockDb.jurisdiction.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { fipsCode: '06001' },
-          create: expect.objectContaining({
-            fipsCode: '06001',
-            ocdId: SAMPLE_ROW.ocdId,
+          where: { id: 'jur-1' },
+          data: expect.objectContaining({
             name: 'Alameda County',
             type: 'COUNTY',
           }),
         }),
       );
+      expect(mockDb.jurisdiction.create).not.toHaveBeenCalled();
       expect(mockDb.$executeRaw).toHaveBeenCalled();
     });
 
-    it('falls back to ocdId upsert when fipsCode is absent', async () => {
+    // #1118. Districts were seeded with one FIPS convention ('06SD001') and
+    // the fetcher builds another ('sldu-06001'), while both agree on the
+    // OCD-ID. Keying on FIPS alone sent these rows down the create path,
+    // where they died on the ocd_id unique constraint — 173 jurisdictions
+    // silently kept no geometry, so address-to-district resolution had
+    // nothing to match. Matching on the second key is what fixes it.
+    it('updates the jurisdiction matched by ocdId when the fipsCode lookup misses', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
+      patchFetchAll([
+        {
+          ...SAMPLE_ROW,
+          fipsCode: 'sldu-06001',
+          ocdId: 'ocd-division/country:us/state:ca/sldu:1',
+        },
+      ]);
+      mockDb.jurisdiction.findUnique
+        // FIPS lookup misses — the seeded row carries '06SD001'.
+        .mockResolvedValueOnce(null)
+        // OCD-ID lookup finds that same seeded row.
+        .mockResolvedValueOnce({ id: 'jur-seeded' } as Jurisdiction);
+
+      const result = await service.loadAll();
+
+      expect(result.counts.upserted).toBe(1);
+      expect(result.counts.failed).toBe(0);
+      // The row is updated, NOT created — a create is what raised
+      // "Unique constraint failed on the fields: (ocd_id)".
+      expect(mockDb.jurisdiction.create).not.toHaveBeenCalled();
+      expect(mockDb.jurisdiction.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'jur-seeded' } }),
+      );
+      // And the geometry actually lands.
+      expect(mockDb.$executeRaw).toHaveBeenCalled();
+    });
+
+    it("reconciles the source's fipsCode onto the row matched by ocdId", async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
+      patchFetchAll([{ ...SAMPLE_ROW, fipsCode: 'sldu-06001' }]);
+      mockDb.jurisdiction.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'jur-seeded' } as Jurisdiction);
+
+      await service.loadAll();
+
+      // Without this the next load repeats the miss forever.
+      expect(mockDb.jurisdiction.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ fipsCode: 'sldu-06001' }),
+        }),
+      );
+    });
+
+    it('leaves fipsCode alone when the row carries only an ocdId', async () => {
       mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
       patchFetchAll([{ ...SAMPLE_ROW, fipsCode: undefined }]);
-      mockDb.jurisdiction.upsert.mockResolvedValue({
+      mockDb.jurisdiction.findUnique.mockResolvedValueOnce({
         id: 'jur-2',
       } as Jurisdiction);
 
       const result = await service.loadAll();
 
       expect(result.counts.upserted).toBe(1);
-      expect(mockDb.jurisdiction.upsert).toHaveBeenCalledWith(
+      // Only the OCD-ID lookup runs — there is no FIPS to look up.
+      expect(mockDb.jurisdiction.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockDb.jurisdiction.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { ocdId: SAMPLE_ROW.ocdId } }),
+      );
+      expect(mockDb.jurisdiction.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { ocdId: SAMPLE_ROW.ocdId },
+          data: expect.not.objectContaining({ fipsCode: expect.anything() }),
         }),
       );
+    });
+
+    it('creates the jurisdiction when neither key matches anything', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
+      patchFetchAll([SAMPLE_ROW]);
+      mockDb.jurisdiction.findUnique.mockResolvedValue(null);
+      mockDb.jurisdiction.create.mockResolvedValue({
+        id: 'jur-new',
+      } as Jurisdiction);
+
+      const result = await service.loadAll();
+
+      expect(result.counts.upserted).toBe(1);
+      expect(mockDb.jurisdiction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            fipsCode: '06001',
+            ocdId: SAMPLE_ROW.ocdId,
+          }),
+        }),
+      );
+      expect(mockDb.$executeRaw).toHaveBeenCalled();
+    });
+
+    it('adopts the row a concurrent worker created when the create loses the race', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
+      patchFetchAll([SAMPLE_ROW]);
+      mockDb.jurisdiction.findUnique
+        // Both lookups miss...
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        // ...but by the time we insert, a parallel row got there first.
+        .mockResolvedValueOnce({ id: 'jur-raced' } as Jurisdiction);
+      mockDb.jurisdiction.create.mockRejectedValue(
+        new Error('Unique constraint failed on the fields: (`ocd_id`)'),
+      );
+
+      const result = await service.loadAll();
+
+      // Adopted, not counted as a failure, and the geometry still lands.
+      expect(result.counts.upserted).toBe(1);
+      expect(result.counts.failed).toBe(0);
+      expect(mockDb.jurisdiction.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'jur-raced' } }),
+      );
+      expect(mockDb.$executeRaw).toHaveBeenCalled();
+    });
+
+    it('still reports a failure when the create fails and no row exists', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
+      patchFetchAll([SAMPLE_ROW]);
+      mockDb.jurisdiction.findUnique.mockResolvedValue(null);
+      mockDb.jurisdiction.create.mockRejectedValue(new Error('db down'));
+
+      const result = await service.loadAll();
+
+      // The adopt path must not swallow a genuine write failure.
+      expect(result.counts.upserted).toBe(0);
+      expect(result.counts.failed).toBe(1);
     });
 
     it('counts rows missing both fipsCode AND ocdId without throwing', async () => {
@@ -410,17 +533,18 @@ describe('BoundaryLoaderService', () => {
       expect(result.counts.missingKey).toBe(1);
       expect(result.counts.upserted).toBe(0);
       expect(result.counts.failed).toBe(0);
-      expect(mockDb.jurisdiction.upsert).not.toHaveBeenCalled();
+      expect(mockDb.jurisdiction.findUnique).not.toHaveBeenCalled();
+      expect(mockDb.jurisdiction.create).not.toHaveBeenCalled();
     });
 
-    it("catches per-row upsert failures so one bad row doesn't abort the rest", async () => {
+    it("catches per-row failures so one bad row doesn't abort the rest", async () => {
       mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
       patchFetchAll([
         SAMPLE_ROW,
         { ...SAMPLE_ROW, fipsCode: '06013', name: 'Contra Costa County' },
       ]);
-      mockDb.jurisdiction.upsert
+      mockDb.jurisdiction.findUnique
         .mockRejectedValueOnce(new Error('boom: prisma race'))
         .mockResolvedValueOnce({ id: 'jur-3' } as Jurisdiction);
 

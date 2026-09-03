@@ -325,12 +325,133 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
   }
 
   /**
+   * Find-or-create the jurisdiction this row describes, returning its id.
+   *
+   * Matches on EITHER unique key, FIPS first. Keying on FIPS alone is what
+   * broke every district layer in production (#1118): the rows were seeded
+   * with one FIPS convention and the fetcher builds another, while both
+   * agree on the OCD-ID.
+   *
+   *   seeded    fips_code = '06SD001'      ocd_id = '.../sldu:1'
+   *   fetched   fipsCode  = 'sldu-06001'   ocdId  = '.../sldu:1'
+   *
+   * The FIPS lookup missed, so the old code took its `create` branch, and
+   * the create died on `Unique constraint failed on the fields: (ocd_id)`.
+   * 173 jurisdictions — every congressional, senate and assembly district —
+   * kept `updated_at = 2026-07-13` and never received geometry, so
+   * address-to-district resolution had nothing to match against.
+   *
+   * On an OCD-ID match the source's FIPS is written onto the row, so the
+   * next load matches on the first lookup instead of repeating this path.
+   * That write cannot violate the FIPS unique constraint: reaching it means
+   * the lookup above already proved no row holds `row.fipsCode`.
+   */
+  private async resolveJurisdictionId(row: BoundaryRow): Promise<string> {
+    if (!row.fipsCode && !row.ocdId) {
+      // Defensive — executeUpserts() already filtered these out as missingKey.
+      throw new Error(
+        `BoundaryRow ${row.name} has no fipsCode or ocdId — upsert refused`,
+      );
+    }
+
+    const shared = this.identityFields(row);
+    const existing = await this.findByEitherKey(row);
+    if (!existing) return this.createOrAdoptConcurrentRow(row);
+
+    await this.db.jurisdiction.update({
+      where: { id: existing.id },
+      // On an OCD-ID match, adopt the source's FIPS so the next load matches
+      // on the first lookup. This cannot violate the FIPS unique constraint:
+      // findByEitherKey() only reaches the OCD-ID lookup after proving no row
+      // holds row.fipsCode.
+      data:
+        existing.matchedBy === 'ocd' && row.fipsCode
+          ? { ...shared, fipsCode: row.fipsCode }
+          : shared,
+    });
+    return existing.id;
+  }
+
+  /** The non-key columns every match/create path writes identically. */
+  private identityFields(row: BoundaryRow) {
+    return {
+      name: row.name,
+      type: row.type,
+      level: row.level,
+      stateCode: row.stateCode,
+    };
+  }
+
+  /**
+   * Look the jurisdiction up by FIPS, then by OCD-ID, reporting which key hit.
+   *
+   * The caller needs `matchedBy` to decide whether to reconcile the FIPS key,
+   * so this cannot collapse into a single `OR` query.
+   */
+  private async findByEitherKey(
+    row: BoundaryRow,
+  ): Promise<{ id: string; matchedBy: 'fips' | 'ocd' } | null> {
+    if (row.fipsCode) {
+      const byFips = await this.db.jurisdiction.findUnique({
+        where: { fipsCode: row.fipsCode },
+        select: { id: true },
+      });
+      if (byFips) return { id: byFips.id, matchedBy: 'fips' };
+    }
+
+    if (row.ocdId) {
+      const byOcd = await this.db.jurisdiction.findUnique({
+        where: { ocdId: row.ocdId },
+        select: { id: true },
+      });
+      if (byOcd) return { id: byOcd.id, matchedBy: 'ocd' };
+    }
+
+    return null;
+  }
+
+  /**
+   * Create the jurisdiction, adopting the row a concurrent worker created
+   * first if we lose that race.
+   *
+   * `findUnique` + `create` is not atomic the way the single `upsert`
+   * statement it replaced was, and executeUpserts() runs UPSERT_CONCURRENCY
+   * rows in parallel — so two rows sharing a key can both miss the lookups
+   * and both attempt an insert. The loser gets a unique-constraint error
+   * about a row that now exists and is perfectly usable.
+   *
+   * Re-resolving once turns that into the update it should have been.
+   * Without it the row is only logged as failed and left without geometry —
+   * the same silent-gap failure mode as #1118 itself.
+   */
+  private async createOrAdoptConcurrentRow(row: BoundaryRow): Promise<string> {
+    const shared = this.identityFields(row);
+    try {
+      const created = await this.db.jurisdiction.create({
+        data: {
+          ...shared,
+          fipsCode: row.fipsCode ?? null,
+          ocdId: row.ocdId ?? null,
+        },
+        select: { id: true },
+      });
+      return created.id;
+    } catch (err) {
+      const existing = await this.findByEitherKey(row);
+      if (!existing) throw err;
+      await this.db.jurisdiction.update({
+        where: { id: existing.id },
+        data: shared,
+      });
+      return existing.id;
+    }
+  }
+
+  /**
    * Idempotent upsert of a single boundary row.
    *
-   * Keying strategy: prefer fipsCode when present, fall back to ocdId. Each
-   * column has its own unique constraint, so a single ON CONFLICT clause
-   * can't cover both — we pick the right Prisma upsert based on which key
-   * the row carries.
+   * Identity resolution lives in resolveJurisdictionId(); this method owns
+   * the geometry write that Prisma cannot express.
    *
    * PostGIS geometry write is a separate $executeRaw — Prisma can't emit
    * ST_Multi / ST_GeomFromGeoJSON. ST_Multi wraps Polygon → MultiPolygon
@@ -340,40 +461,7 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
    * (islands, gerrymandered shapes), so we always normalize.
    */
   private async upsertBoundary(row: BoundaryRow): Promise<void> {
-    const shared = {
-      name: row.name,
-      type: row.type,
-      level: row.level,
-      stateCode: row.stateCode,
-    };
-
-    let id: string;
-    if (row.fipsCode) {
-      const record = await this.db.jurisdiction.upsert({
-        where: { fipsCode: row.fipsCode },
-        create: {
-          ...shared,
-          fipsCode: row.fipsCode,
-          ocdId: row.ocdId ?? null,
-        },
-        update: shared,
-        select: { id: true },
-      });
-      id = record.id;
-    } else if (row.ocdId) {
-      const record = await this.db.jurisdiction.upsert({
-        where: { ocdId: row.ocdId },
-        create: { ...shared, fipsCode: null, ocdId: row.ocdId },
-        update: shared,
-        select: { id: true },
-      });
-      id = record.id;
-    } else {
-      // Defensive — loadAll() already filtered these out via missingKey.
-      throw new Error(
-        `BoundaryRow ${row.name} has no fipsCode or ocdId — upsert refused`,
-      );
-    }
+    const id = await this.resolveJurisdictionId(row);
 
     // Tagged-template $executeRaw — Prisma escapes the JSON parameter, so
     // there's no injection surface even though we're constructing geometry
