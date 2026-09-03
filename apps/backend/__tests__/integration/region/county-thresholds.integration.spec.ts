@@ -43,7 +43,9 @@ describe('county_thresholds schema (#1106, real DB)', () => {
 
   const validRow = {
     fips: FIPS,
-    gubernatorialVotes: 51370,
+    // 50,737 is what the 2022 Statement of Vote records for Nevada County.
+    // The county's own guide says 51,370; the state record does not support it.
+    gubernatorialVotes: 50737,
     gubernatorialYear: 2022,
     registeredVoters: 70000,
     sourceUrl: 'https://elections.cdn.sos.ca.gov/sov/2022-general/sov/',
@@ -54,10 +56,12 @@ describe('county_thresholds schema (#1106, real DB)', () => {
     const row = await db.countyThreshold.create({ data: validRow });
 
     expect(row.fips).toBe(FIPS);
-    expect(row.gubernatorialVotes).toBe(51370);
-    // Nevada County's own published figure is 5,137 — ceil(51370 * 0.10).
-    // Derived in the query, never stored, so it cannot drift from the input.
-    expect(Math.ceil(row.gubernatorialVotes * 0.1)).toBe(5137);
+    expect(row.gubernatorialVotes).toBe(50737);
+    // 5,074 — ceil(50737 * 0.10) — from the state's Statement of Vote, NOT the
+    // 5,137 in Nevada County's own guide, which the 2022 record does not
+    // support. Derived in the query, never stored, so it cannot drift from the
+    // input it claims to describe.
+    expect(Math.ceil(row.gubernatorialVotes * 0.1)).toBe(5074);
   });
 
   it('refuses a county that does not exist in jurisdictions', async () => {
