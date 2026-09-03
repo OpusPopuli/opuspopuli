@@ -123,7 +123,27 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
    * (main.ts boot-time: detached; admin mutation: awaited).
    */
   async loadAll(opts: { force?: boolean } = {}): Promise<BoundaryLoadResult> {
-    const existing = await this.db.jurisdiction.count();
+    // Count jurisdictions that actually HAVE a boundary, not jurisdictions
+    // that exist (#1107).
+    //
+    // This gate used to be `jurisdiction.count()`, which conflates "rows
+    // exist" with "boundaries are loaded". Region plugin seeding creates
+    // jurisdiction identity — name, fips_code, type — without geometry, so on
+    // any seeded node the count was non-zero from the first boot and this
+    // loader skipped forever. Production ran for months at 231 jurisdictions
+    // and 0 boundaries, logging "already loaded" every time.
+    //
+    // The cost was not cosmetic: jurisdiction-resolution.service.ts runs a
+    // PostGIS containment query against this column, so county representatives
+    // could never resolve, and the warning it emits ("boundary geometries
+    // don't cover this point") described the symptom rather than the cause.
+    //
+    // Raw SQL because `boundary` is Unsupported() in the Prisma schema — the
+    // typed client cannot express a filter on it.
+    const withBoundary = await this.db.$queryRaw<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM jurisdictions WHERE boundary IS NOT NULL
+    `;
+    const existing = withBoundary?.[0]?.count ?? 0;
     const precheck = this.checkPreconditions(existing, opts);
     if ('skip' in precheck) return precheck.skip;
 
@@ -181,7 +201,7 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
 
     if (existing > 0 && !opts.force) {
       this.logger.log(
-        `BoundaryLoader: ${existing} jurisdictions already loaded — skipping. ` +
+        `BoundaryLoader: ${existing} jurisdictions already have boundaries — skipping. ` +
           `Run the refreshBoundaries(force: true) admin mutation to re-fetch.`,
       );
       return {

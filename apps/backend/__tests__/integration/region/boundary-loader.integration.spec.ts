@@ -350,9 +350,35 @@ describe('BoundaryLoaderService — integration (#804)', () => {
   // ---------------------------------------------------------------------
 
   describe('loadAll() skip behavior against real DB', () => {
-    it('skips with already-populated when jurisdictions already exist and force is unset', async () => {
-      // Pre-seed one row so existing > 0.
+    it('does NOT skip when jurisdictions exist without boundaries (#1107)', async () => {
+      // The regression this suite previously encoded as correct. Region plugin
+      // seeding creates identity — name, fips_code, type — with no geometry.
+      // Gating on `jurisdiction.count()` meant any seeded node skipped the load
+      // forever: production sat at 231 jurisdictions and 0 boundaries, logging
+      // "already loaded" on every boot, while jurisdiction-resolution ran
+      // containment queries against an empty column.
       await db.jurisdiction.create({
+        data: {
+          name: 'Identity Only County',
+          type: 'COUNTY',
+          level: 'COUNTY',
+          stateCode: 'CA',
+          fipsCode: '06091',
+        },
+      });
+      mockRegistry.getActive.mockReturnValue(buildPlugin(SAMPLE_SOURCES));
+      mockTigerFetcher.fetch.mockResolvedValueOnce([]);
+
+      const result = await service.loadAll();
+
+      expect(result.skipped).toBeUndefined();
+    });
+
+    it('skips with already-populated when a boundary is already loaded and force is unset', async () => {
+      // Pre-seed one row WITH geometry so the geometry-aware gate trips.
+      // The boundary has to go in by raw SQL — Prisma models the column as
+      // Unsupported(), so the typed client cannot write it.
+      const seeded = await db.jurisdiction.create({
         data: {
           name: 'Seeded County',
           type: 'COUNTY',
@@ -361,6 +387,11 @@ describe('BoundaryLoaderService — integration (#804)', () => {
           fipsCode: '06099',
         },
       });
+      await db.$executeRaw`
+        UPDATE jurisdictions
+        SET boundary = ST_GeogFromText('MULTIPOLYGON(((-120 39, -120 40, -119 40, -119 39, -120 39)))')
+        WHERE id = ${seeded.id}
+      `;
       mockRegistry.getActive.mockReturnValue(buildPlugin(SAMPLE_SOURCES));
       mockTigerFetcher.fetch.mockResolvedValueOnce([
         // Should never be reached — skip fires first.
