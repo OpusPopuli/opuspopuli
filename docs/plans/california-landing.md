@@ -10,7 +10,8 @@
 | **Data classification** | **None — public records only.** Active profile `us-state-privacy` + `soc2`. That no personal data appears on this route is a *tested property*, not an incidental one (epic criterion 9). |
 | **Migrations** | One, additive: `counties` + `county_adjacency`. |
 | **Federation** | Yes — [#1108](https://github.com/OpusPopuli/opuspopuli/issues/1108) adds a query to the region subgraph. |
-| **Source brief** | `SPEC-california-landing.md` + `opuspopuli-california-landing.html`, both **purged after this plan was written**. Everything load-bearing from them is reproduced here. |
+| **Source brief** | `SPEC-california-landing.md`, **purged after this plan was written** — everything load-bearing from it is reproduced here. |
+| **Visual comp** | `docs/design/california-landing-mockup.html` — kept. A standalone mockup with real county geometry and placeholder figures. **Treat it as a comp, not as code to port**: it renders inline SVG, and production uses the real map stack (see Rendering). |
 | **Philosophy source of truth** | `opuspopuli.org` repo — `src/pages/foundation.astro`, `src/pages/why.astro`. Published at https://opuspopuli.org/. Not duplicated into this repo. |
 
 ## One line
@@ -205,8 +206,8 @@ eleven thinkers, states each objection *with its answer*, and holds the four
 concessions as structured data rather than prose.
 
 What follows is the **condensed variant written for the landing page**,
-extracted verbatim from the mockup before it was purged. The two differ in
-development, not in argument — compare Downs:
+extracted verbatim from `docs/design/california-landing-mockup.html`. The two
+differ in development, not in argument — compare Downs:
 
 > mockup: *"the cost is real. Staying ignorant is not a failure of character."*
 > canonical: *"the cost is entirely real. Remaining ignorant is not a character failure; it is the correct decision."*
