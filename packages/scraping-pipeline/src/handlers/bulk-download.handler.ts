@@ -94,6 +94,31 @@ export class BulkDownloadHandler {
   ): Promise<ExtractionResult<T>> {
     const pipelineStart = Date.now();
     const bulk = source.bulk!;
+
+    // xlsx is deliberately not handled here. The official spreadsheets that
+    // use it are pivot-shaped — a header row per attribute and one column per
+    // candidate — so there are no stable column names for `columnMappings` to
+    // target, and the figure that matters is a sum across columns. That is
+    // domain knowledge. `parseXlsxGrid` reads the sheet; the handler that
+    // knows what the columns mean interprets it. Failing loudly here beats
+    // emitting rows mapped by a config field that cannot describe the file.
+    if (bulk.format === "xlsx") {
+      throw new Error(
+        `Bulk source ${source.url} declares format "xlsx", which the generic bulk path does not consume. ` +
+          `xlsx sources are read by their domain handler via parseXlsxGrid.`,
+      );
+    }
+
+    // columnMappings is optional on the type so xlsx sources can omit it, which
+    // means a delimited source can now reach here without one and parse every
+    // row into an object with no domain fields. Checked before the download
+    // rather than at first line: these files run to ~1GB, and a config that
+    // cannot work should not cost that first.
+    if (!bulk.columnMappings) {
+      throw new Error(
+        `Bulk source ${source.url} (format "${bulk.format}") has no columnMappings`,
+      );
+    }
     const warnings: string[] = [];
     const errors: string[] = [];
     const tmpPath = join(tmpdir(), `opus-bulk-${randomUUID()}.tmp`);
@@ -439,7 +464,8 @@ export class BulkDownloadHandler {
    */
   private createLineParser(bulk: BulkDownloadConfig, source: DataSourceConfig) {
     const delimiter = this.getDelimiter(bulk);
-    const mappings = bulk.columnMappings;
+    // Presence is guaranteed by the up-front guard in execute().
+    const mappings = bulk.columnMappings!;
     const filters = bulk.filters ?? {};
     const compositeKey = bulk.compositeKey ?? [];
     const sourceSystem = inferSourceSystem(source);

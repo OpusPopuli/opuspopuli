@@ -1111,6 +1111,25 @@
               "path": ["api"]
             }
           }
+        },
+        {
+          "name": "Sync — COUNTY_THRESHOLDS (Admin)",
+          "description": "Ingest per-county signature thresholds for a county initiative (#1107). Reads the CA SOS Statement of Vote for the Elections Code §9118 denominator — votes cast for ALL gubernatorial candidates at the last gubernatorial general, NOT the winner — and the Report of Registration for registered voters, then materializes county_adjacency from the loaded county boundaries.\n\nEnqueues a BullMQ job and returns a jobId immediately, so unlike refreshBoundaries it cannot hit the Cloudflare 524 (#1122). Poll with 'Poll Job Status (by sync_job_id)'.\n\nThe load refuses to write a partial set: it aborts if any county is missing a matching jurisdiction, and it reconciles the county totals against the spreadsheet's own State Totals row before writing. That reconciliation is what proves the parse summed every candidate column rather than reading the winner's — which would understate every threshold by roughly half.\n\nRequires county boundaries to be loaded first (Refresh Boundaries), since adjacency is derived from jurisdictions.boundary.",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SyncCountyThresholds {\n  syncRegionData(dataTypes: [county_thresholds]) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
         }
       ]
     },

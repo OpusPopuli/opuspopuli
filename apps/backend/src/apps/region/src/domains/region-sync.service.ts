@@ -40,6 +40,7 @@ import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
 import { CivicsSyncService } from './civics-sync.service';
+import { CountyThresholdSyncService } from './county-threshold-sync.service';
 import {
   RegionPluginService,
   type RegionPluginRow,
@@ -399,6 +400,8 @@ export class RegionSyncService implements OnModuleDestroy {
     private readonly legislativeCommittees?: LegislativeCommitteeService,
     @Optional()
     private readonly legislativeCommitteeDescriptions?: LegislativeCommitteeDescriptionGeneratorService,
+    @Optional()
+    private readonly countyThresholds?: CountyThresholdSyncService,
     @Optional()
     private readonly legislativeActionLinker?: LegislativeActionLinkerService,
     @Optional() private readonly promptClient?: PromptClientService,
@@ -819,6 +822,7 @@ export class RegionSyncService implements OnModuleDestroy {
       [DataType.CIVICS]: () => this.syncCivics(provider),
       [DataType.BILLS]: () =>
         this.syncBills(maxBills, provider, forceStatusRecheck),
+      [DataType.COUNTY_THRESHOLDS]: () => this.syncCountyThresholds(provider),
     };
 
     const handler = syncHandlers[dataType];
@@ -997,6 +1001,56 @@ export class RegionSyncService implements OnModuleDestroy {
       htmlToReadableText: this.htmlToReadableText.bind(this),
       crawlCivicsUrls: this.crawlCivicsUrls.bind(this),
     });
+  }
+
+  // ─── County thresholds sync ───────────────────────────────────────────────────
+
+  /**
+   * Per-county signature thresholds for a county initiative (#1107).
+   *
+   * Config-driven like every other data type: the Statement of Vote and Report
+   * of Registration are declared in the region plugin, so a second state
+   * supplies its own and needs no code here.
+   */
+  private async syncCountyThresholds(plugin: DataFetcher): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+    skipped: number;
+  }> {
+    if (!this.countyThresholds) {
+      this.logger.warn(
+        'County thresholds sync requires CountyThresholdSyncService; skipping',
+      );
+      return { processed: 0, created: 0, updated: 0, skipped: 0 };
+    }
+
+    if (!plugin?.getDataSources) {
+      this.logger.warn(
+        'Region plugin does not expose getDataSources(); skipping county thresholds sync',
+      );
+      return { processed: 0, created: 0, updated: 0, skipped: 0 };
+    }
+
+    const sources = plugin.getDataSources(DataType.COUNTY_THRESHOLDS);
+    if (sources.length === 0) {
+      this.logger.log(
+        'No county_thresholds sources configured for this region; skipping',
+      );
+      return { processed: 0, created: 0, updated: 0, skipped: 0 };
+    }
+
+    const stateCode = this.pluginRegistry
+      .getActive()
+      ?.getRegionInfo?.()?.stateCode;
+    if (!stateCode) {
+      throw new Error(
+        'County thresholds sync needs the active region stateCode to match counties to jurisdictions',
+      );
+    }
+
+    const result = await this.countyThresholds.sync(sources, stateCode);
+    return { processed: result.created + result.updated, ...result };
   }
 
   // ─── Bills sync ───────────────────────────────────────────────────────────────

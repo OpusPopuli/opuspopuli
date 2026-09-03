@@ -51,6 +51,11 @@ export { SelfHealingService } from "./healing/self-healing.service.js";
 
 // Source type handlers
 export { BulkDownloadHandler } from "./handlers/bulk-download.handler.js";
+export {
+  parseXlsxGrid,
+  columnIndexFromRef,
+  type SheetGrid,
+} from "./handlers/xlsx-sheet.parser.js";
 export { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
 export { PdfExtractHandler } from "./handlers/pdf-extract.handler.js";
 export { TextExtractorService } from "./extraction/text-extractor.service.js";
