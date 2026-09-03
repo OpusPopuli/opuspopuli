@@ -124,7 +124,7 @@ describe('BoundaryLoaderService', () => {
 
   describe('loadAll() skip paths', () => {
     it('returns no-active-plugin when the registry has no plugin', async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(0);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       mockRegistry.getActive.mockReturnValue(undefined);
 
       const result = await service.loadAll();
@@ -135,7 +135,7 @@ describe('BoundaryLoaderService', () => {
     });
 
     it('returns no-boundary-sources when the plugin returns undefined', async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(0);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       mockRegistry.getActive.mockReturnValue(createMockPlugin(undefined));
 
       const result = await service.loadAll();
@@ -144,8 +144,10 @@ describe('BoundaryLoaderService', () => {
       expect(mockDb.jurisdiction.upsert).not.toHaveBeenCalled();
     });
 
-    it('returns already-populated when jurisdictions already exist and force is not set', async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(7000);
+    it('returns already-populated when boundaries are already loaded and force is not set', async () => {
+      // The gate counts jurisdictions WITH a boundary, not jurisdictions that
+      // exist (#1107). Identity-only rows must not suppress the load.
+      mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
       mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
 
       const result = await service.loadAll();
@@ -155,8 +157,24 @@ describe('BoundaryLoaderService', () => {
       expect(mockDb.jurisdiction.upsert).not.toHaveBeenCalled();
     });
 
+    it('does NOT skip when jurisdictions exist but have no boundaries', async () => {
+      // The bug this gate had: region plugin seeding creates jurisdiction
+      // identity without geometry, so `jurisdiction.count()` was non-zero from
+      // the first boot and the loader skipped forever. Production sat at 231
+      // jurisdictions and 0 boundaries, logging "already loaded" each time,
+      // while jurisdiction-resolution ran containment queries against an empty
+      // column and county representatives could never resolve.
+      mockDb.jurisdiction.count.mockResolvedValue(231);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
+
+      const result = await service.loadAll();
+
+      expect(result.skipped).toBeUndefined();
+    });
+
     it('does NOT return already-populated when force=true', async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(7000);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
       mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
 
       const result = await service.loadAll({ force: true });
@@ -169,7 +187,7 @@ describe('BoundaryLoaderService', () => {
     });
 
     it('returns no-boundary-sources when the plugin declared sources but the regionInfo is missing fipsCode/stateCode', async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(0);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       // Federal-like plugin: boundarySources present but no fipsCode set.
       mockRegistry.getActive.mockReturnValue(
         createMockPlugin(SAMPLE_SOURCES, {
@@ -239,7 +257,7 @@ describe('BoundaryLoaderService', () => {
 
   describe('fetcher dispatch', () => {
     it('calls TigerFetcher.fetch once per tigerLayer, GeoportalFetcher.fetch once per geoportalLayer', async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(0);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       const sources: BoundarySourcesConfig = {
         ocdIdPrefix: 'ocd-division/country:us/state:ca',
         tigerLayers: [
@@ -288,7 +306,7 @@ describe('BoundaryLoaderService', () => {
     });
 
     it('aggregates rows from both fetchers and upserts the union', async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(0);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       const sources: BoundarySourcesConfig = {
         ocdIdPrefix: 'ocd-division/country:us/state:ca',
         tigerLayers: [
@@ -339,7 +357,7 @@ describe('BoundaryLoaderService', () => {
     }
 
     it('upserts via fipsCode key when fipsCode is present, then writes the boundary via $executeRaw', async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(0);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
       patchFetchAll([SAMPLE_ROW]);
       mockDb.jurisdiction.upsert.mockResolvedValue({
@@ -365,7 +383,7 @@ describe('BoundaryLoaderService', () => {
     });
 
     it('falls back to ocdId upsert when fipsCode is absent', async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(0);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
       patchFetchAll([{ ...SAMPLE_ROW, fipsCode: undefined }]);
       mockDb.jurisdiction.upsert.mockResolvedValue({
@@ -383,7 +401,7 @@ describe('BoundaryLoaderService', () => {
     });
 
     it('counts rows missing both fipsCode AND ocdId without throwing', async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(0);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
       patchFetchAll([{ ...SAMPLE_ROW, fipsCode: undefined, ocdId: undefined }]);
 
@@ -396,7 +414,7 @@ describe('BoundaryLoaderService', () => {
     });
 
     it("catches per-row upsert failures so one bad row doesn't abort the rest", async () => {
-      mockDb.jurisdiction.count.mockResolvedValue(0);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
       mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
       patchFetchAll([
         SAMPLE_ROW,
