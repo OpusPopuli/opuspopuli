@@ -1121,7 +1121,8 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation SyncCountyThresholds {\n  syncRegionData(dataTypes: [county_thresholds]) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n  }\n}"
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $regionId: String) {\n  syncRegionData(dataTypes: $dataTypes, regionId: $regionId) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"COUNTY_THRESHOLDS\"],\n  \"regionId\": \"california\"\n}"
               }
             },
             "url": {
