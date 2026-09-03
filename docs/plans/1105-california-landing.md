@@ -29,7 +29,7 @@ of supervisors either to adopt the ordinance without alteration or submit it to
 the voters.
 
 That number is small — on the order of **60 people in Alpine County**, about
-**5,137 in Nevada County**. The page shows it for all 58 counties.
+**5,074 in Nevada County**. The page shows it for all 58 counties.
 
 The argument is **not** "join us and we can reach this." It is **"a group this
 size already governs where you live, and it may not be you."**
@@ -44,6 +44,22 @@ The rhetorical weight rests entirely on a skeptical reader being able to verify
 the numbers against their county elections office. This is why `source_url` and
 `retrieved_at` are `NOT NULL` on the fact table rather than living in a
 metadata table: a row that cannot cite itself cannot be rendered.
+
+## Source policy
+
+**The official statewide record for the cycle is authoritative. Every figure
+ships with a link so a reader can check it themselves.**
+
+County and city guides are cross-checks, not authority. They are published on
+their own schedule and can lag an election — Nevada County's guide states 51,370
+gubernatorial votes, which the 2022 Statement of Vote does not support and which
+most likely still describes 2018. Adopting a local figure because it is
+conveniently pre-computed would import someone else's staleness and present it
+as verified.
+
+Where our number and a local guide's disagree, ours cites the Secretary of
+State and says which cycle. That is a defensible position to be in, and only
+because the citation is on the page rather than in a commit message.
 
 ## Rejected, and why — do not reintroduce
 
@@ -159,9 +175,16 @@ the map.
 
 ## Verification
 
-**Nevada County must show 5,137 signatures**, from 51,370 votes cast in November
-2022, matching the county's own published figure. That is the canonical check
-that the pipeline read the right column.
+**Nevada County must show 5,074 signatures**, from **50,737** votes cast in
+November 2022 — Newsom 26,655 plus Dahle 24,082, read from the Statement of
+Vote itself
+(`elections.cdn.sos.ca.gov/sov/2022-general/sov/19-governor.xlsx`).
+
+The brief specified 5,137 from 51,370, "matching the county's own published
+figure". **That target was wrong**, and finding out is what this check is for.
+Nevada County's guide does publish 51,370, but the 2022 Statement of Vote does
+not support it; the likeliest explanation is that the guide still cites the 2018
+cycle. Matching it would have made the page wrong while appearing verified.
 
 Range smoke tests across all 58: `signatures_required` roughly **60 to
 240,000**; `share_of_registered` between about **3% and 8%**. Anything outside
@@ -241,7 +264,8 @@ on the order of hours.
 | A second county identity source diverges from `jurisdictions` | high × likely | Superseded before implementation: join `jurisdictions` on `fips_code`, never restate name or FIPS |
 | First-ever load into `jurisdictions.boundary` breaks jurisdiction resolution for other features | **high** × possible | Subtask 2's tests cover resolution, not just the map; the column is empty today so the change can only add behaviour, but the query path is shared |
 | Geometry stored at two SRIDs (4269 vs the existing 4326) | medium × possible | Single source: `jurisdictions.boundary geography(…, 4326)`, which the resolution query already assumes |
-| Statement of Vote parse reads the winner's column rather than all candidates | **high** × possible | Nevada County = 5,137 asserted in a test; 3–8% band across all 58 |
+| Statement of Vote parse reads the winner's column rather than all candidates | **high** × possible | Nevada County = 5,074 asserted in a test; 3–8% band across all 58 |
+| A local jurisdiction's published figure is stale and we match it | **high** × likely | Source policy below: the official statewide record for the cycle is authoritative, and every figure ships with its link |
 | A county missing from the parse renders as an unshaded polygon that looks like data | high × possible | Ingestion aborts on any gap rather than writing null |
 | 450KB map bundle lands on the highest-traffic route | medium × likely | Static snapshot drives LCP; map dynamically imported, `ssr: false` |
 | Low-turnout counties read as "cheap targets" | medium × likely | Framing constraint above is a copy requirement, not a preference |
@@ -294,7 +318,7 @@ lat/lng resolves to the right county; `ST_Touches` adjacency is symmetric.
 Idempotent; **aborts** on a county missing from the Statement of Vote parse
 rather than writing a null.
 
-**Tests:** **Nevada County = 5,137** asserted, not eyeballed. All 58 present.
+**Tests:** **Nevada County = 5,074** asserted, not eyeballed. All 58 present.
 `signatures_required` 60–240,000; `share_of_registered` 3–8% for every county.
 A second run writes nothing.
 
@@ -408,6 +432,12 @@ differ in development, not in argument — compare Downs:
 > canonical: *"the cost is entirely real. Remaining ignorant is not a character failure; it is the correct decision."*
 
 Keep it for the shape and length the landing page needs.
+
+**One figure in the copy below is now known to be wrong.** The Downs answer
+cites "the 5,137 that compel Nevada County's board"; the Statement of Vote gives
+50,737 votes and therefore **5,074**. The text is preserved verbatim because it
+is an archive, not a draft — but the number must be corrected wherever this copy
+is used, and the argument it carries is unaffected by the change.
 [#1112](https://github.com/OpusPopuli/opuspopuli/issues/1112) should take its
 wording from `foundation.astro` and condense to this shape, not treat the text
 below as authoritative.
