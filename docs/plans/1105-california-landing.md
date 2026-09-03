@@ -309,18 +309,76 @@ lat/lng resolves to the right county; `ST_Touches` adjacency is symmetric.
 
 ### 3 — Threshold ingestion, verified ([#1107](https://github.com/OpusPopuli/opuspopuli/issues/1107), P0)
 
-**Service:** `region` · Depends on 1, 2
+**Services:** `region` + `scraping-pipeline` + `@opuspopuli/regions` · Depends on 1, 2
 
-- `src/apps/region/src/scripts/ingest-county-thresholds.ts` — mirrors the
-  existing `backfill-*` script shape
-- Adjacency materialized after load, from `jurisdictions.boundary`
+> **Amended 2026-09-03 — this was specified as a hand-run script.** It is now a
+> region sync, for three reasons the original draft got wrong:
+>
+> 1. A script puts California's SOS URLs in TypeScript, so launching a second
+>    state means editing code. That contradicts the standing goal that a region
+>    launch is a JSON edit.
+> 2. It makes threshold refresh a manual admin operation — the same class of
+>    problem as [#1122](https://github.com/OpusPopuli/opuspopuli/issues/1122).
+> 3. The cadence needs it. Gubernatorial votes change every four years, but the
+>    Report of Registration updates several times a year, so `share_of_registered`
+>    silently drifts stale between elections under a one-shot script.
+
+Declared in the region config exactly like the existing bulk campaign-finance
+sources, and dispatched by `region-sync.service.ts` on a new `COUNTY_THRESHOLDS`
+data type.
+
+**Two sources, both CA SOS, both xlsx:**
+
+| source | file | supplies |
+|---|---|---|
+| Statement of Vote, Nov 2022 general | `sov/2022-general/sov/19-governor.xlsx` | `gubernatorial_votes` |
+| Report of Registration | `ror/ror-odd-year-2025/county.xlsx` | `registered_voters` + `registration_as_of` |
+
+**Where the work splits.** The pipeline stays generic and the domain knowledge
+stays in `region`:
+
+- `packages/scraping-pipeline` — add `xlsx` to the bulk format enum
+  (`tsv`/`csv`/`zip_tsv`/`zip_csv` today). It parses a sheet into label + numeric
+  cells and stops there. **It does not know what a county or a candidate is.**
+- `apps/backend/src/apps/region` — the `COUNTY_THRESHOLDS` handler interprets:
+  sums every candidate column, maps county name to `fips_code`, applies the
+  validation gates, writes `county_thresholds`, then materializes
+  `county_adjacency` from `jurisdictions.boundary`.
+
+The Statement of Vote is **pivot-shaped**, not a flat table — two header rows
+(candidate, then party), county rows interleaved with `Percent` rows, one column
+per candidate. `columnMappings` cannot express "sum across all candidate
+columns", which is exactly why the summing belongs in the domain handler rather
+than in a config field invented to hold it.
 
 Idempotent; **aborts** on a county missing from the Statement of Vote parse
 rather than writing a null.
 
+**Operator surface:** a `Sync — COUNTY_THRESHOLDS (Admin)` entry in
+`postman/OpusPopuli.postman_collection.json`, alongside the ten existing
+`Sync — ...` requests. It inherits their shape because it *is* the same
+mutation — `syncRegionData(dataTypes: [COUNTY_THRESHOLDS])` — which also means
+it returns a `jobId` immediately and cannot hit the Cloudflare 524 that makes
+`refreshBoundaries` unusable through the proxy ([#1122](https://github.com/OpusPopuli/opuspopuli/issues/1122)).
+
 **Tests:** **Nevada County = 5,074** asserted, not eyeballed. All 58 present.
 `signatures_required` 60–240,000; `share_of_registered` 3–8% for every county.
 A second run writes nothing.
+
+**Source data verified against the primary files before implementation**
+(2026-09-03), so these are measurements rather than expectations:
+
+| check | result |
+|---|---|
+| counties in both files, names matching | 58 / 58, zero mismatches |
+| Nevada County | 50,737 votes → **5,074** |
+| sum of all 58 vs the file's own `State Totals` row | 10,933,018 = 10,933,018 |
+| `signatures_required` range | 62 … 238,923 |
+| `share_of_registered` range | **3.28% … 6.98%**, zero outside the 3–8% band |
+
+The State Totals reconciliation is the load-bearing one: it proves the parse read
+every candidate column rather than the winner's, which is the failure mode the
+risk register calls out.
 
 ### 4 — GraphQL surface ([#1108](https://github.com/OpusPopuli/opuspopuli/issues/1108), P0)
 

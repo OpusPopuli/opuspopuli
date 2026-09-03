@@ -1050,4 +1050,32 @@ describe("BulkDownloadHandler", () => {
       expect(items[0].externalId).toBe("2801843:ABC123");
     });
   });
+
+  describe("format guards", () => {
+    it("rejects an xlsx source instead of trying to map its columns", async () => {
+      // xlsx belongs to the domain handler that knows what its columns mean.
+      // Accepting it here would map a pivot sheet through columnMappings that
+      // cannot describe it, and emit quietly wrong rows.
+      const source = createSource({
+        bulk: { format: "xlsx" } as BulkDownloadConfig,
+      });
+
+      await expect(handler.execute(source, "california")).rejects.toThrow(
+        /format "xlsx".*generic bulk path does not consume/s,
+      );
+    });
+
+    it("names the source when a delimited format has no columnMappings", async () => {
+      // columnMappings became optional so xlsx sources could omit it. A csv
+      // without it would otherwise parse every row into nothing.
+      const source = createSource({
+        url: "https://example.com/unmapped.csv",
+        bulk: { format: "csv" } as BulkDownloadConfig,
+      });
+
+      await expect(handler.execute(source, "california")).rejects.toThrow(
+        /unmapped\.csv.*no columnMappings/s,
+      );
+    });
+  });
 });

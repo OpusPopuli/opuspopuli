@@ -505,8 +505,19 @@ export interface PdfSourceConfig {
  * Configuration for bulk data download sources (ZIP archives, CSV/TSV files).
  */
 export interface BulkDownloadConfig {
-  /** File format */
-  format: "tsv" | "csv" | "zip_tsv" | "zip_csv";
+  /**
+   * File format.
+   *
+   * `xlsx` is read by `parseXlsxGrid` into a grid of cell strings and
+   * interpreted by the domain handler that requested it — NOT by the generic
+   * bulk path, which maps columns to fields and cannot express the official
+   * spreadsheets this exists for. California's Statement of Vote carries one
+   * header row of candidate names, a second of party codes, one column per
+   * candidate, and a `Percent` row after every county; the figure that matters
+   * is the sum across every candidate column. `BulkDownloadHandler` rejects
+   * `xlsx` rather than pretending to handle it.
+   */
+  format: "tsv" | "csv" | "zip_tsv" | "zip_csv" | "xlsx";
   /** For ZIP archives: path/glob of target file(s) within the ZIP */
   filePattern?: string;
   /** Column delimiter override (default: tab for tsv, comma for csv) */
@@ -515,8 +526,14 @@ export interface BulkDownloadConfig {
   headerLines?: number;
   /** Explicit column headers for files without a header row (e.g., FEC bulk files) */
   headers?: string[];
-  /** Column name mappings: source column name → domain field name */
-  columnMappings: Record<string, string>;
+  /**
+   * Column name mappings: source column name → domain field name.
+   *
+   * Required for the delimited formats. Absent for `xlsx`, whose grid has no
+   * stable column names to map — the delimited path throws if it is missing
+   * rather than silently emitting unmapped rows.
+   */
+  columnMappings?: Record<string, string>;
   /**
    * Source columns whose values are joined (with ":") to form `externalId`,
    * for feeds where no single column is unique. Order is significant and must
@@ -537,6 +554,54 @@ export interface BulkDownloadConfig {
   /** Batch size for streaming processing (default: 10,000). Records are
    *  mapped and persisted in batches of this size to avoid OOM on large files. */
   batchSize?: number;
+
+  /** Layout of an `xlsx` sheet, read by the domain handler that consumes it. */
+  xlsx?: XlsxSheetConfig;
+}
+
+/**
+ * How to read one pivot-shaped official spreadsheet.
+ *
+ * Config rather than code so a second state supplies its own layout in JSON.
+ * The two California sources differ only in these fields: the Statement of
+ * Vote sums every candidate column, the Report of Registration reads a single
+ * named one.
+ */
+export interface XlsxSheetConfig {
+  /** 1-based worksheet number (default 1). */
+  sheet?: number;
+  /** Column holding the row label, e.g. the county name (default 0). */
+  labelColumn?: number;
+  /**
+   * Rows whose label matches this expression are not data.
+   *
+   * These files interleave a `Percent` row after every county. Dropping them
+   * by pattern rather than by position keeps the parse working if a future
+   * vintage adds a row.
+   */
+  skipRowPattern?: string;
+  /**
+   * Labels that are aggregates rather than members, e.g. `State Totals`.
+   *
+   * Kept for reconciliation before being excluded from the data set — the sum
+   * of the members must equal the aggregate, which is what proves the parse
+   * read the right columns.
+   */
+  excludeLabels?: string[];
+  /**
+   * Sum every numeric column on the row.
+   *
+   * Elections Code §9118 counts votes cast for ALL candidates, not the
+   * winner's total. Reading one column is the failure mode this exists to
+   * make impossible to configure by accident.
+   */
+  sumAllValueColumns?: boolean;
+  /** Read a single 0-based column instead of summing. */
+  valueColumn?: number;
+  /** Election year the figures describe, when the file does not say. */
+  electionYear?: number;
+  /** Publication date of the figures, ISO `YYYY-MM-DD`. */
+  asOf?: string;
 }
 
 /**

@@ -155,6 +155,7 @@ export enum DataTypeGQL {
   CAMPAIGN_FINANCE = 'campaign_finance',
   CIVICS = 'civics',
   BILLS = 'bills',
+  COUNTY_THRESHOLDS = 'county_thresholds',
 }
 
 registerEnumType(DataTypeGQL, {

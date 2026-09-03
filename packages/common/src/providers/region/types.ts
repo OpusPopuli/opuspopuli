@@ -37,6 +37,17 @@ export enum DataType {
   /// assignments, committee referrals, and per-member roll-call votes.
   /// See OpusPopuli/opuspopuli#686.
   BILLS = "bills",
+  /// Per-county signature thresholds for a county initiative, from the
+  /// state's own election records — the Statement of Vote supplies the
+  /// Elections Code §9118 denominator (all gubernatorial candidates at the
+  /// last gubernatorial general, NOT the winner), the Report of Registration
+  /// supplies registered voters.
+  ///
+  /// Sourced through the region config rather than a script so a second
+  /// state is a JSON edit, and so the figures refresh on the sync cron:
+  /// gubernatorial votes change every four years, but registration is
+  /// republished several times a year. See OpusPopuli/opuspopuli#1107.
+  COUNTY_THRESHOLDS = "county_thresholds",
 }
 
 /**
