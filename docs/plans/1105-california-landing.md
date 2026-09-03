@@ -81,6 +81,82 @@ II §8(b)** with **Elections Code §9035** for the statewide 5%/8% requirements
 **Locate current URLs at build time rather than hardcoding deep links** — the
 SOS reorganizes paths between cycles.
 
+## Data design — corrected against production
+
+**The brief's schema is superseded.** It proposed a `counties` table carrying
+`fips`, `name`, `geom` and the threshold facts. Checked against production
+before planning:
+
+```
+jurisdictions WHERE state_code='CA'
+  COUNTY                   58 rows   with_fips 58   with_geom 0
+  CONGRESSIONAL_DISTRICT   52 rows   with_fips 52   with_geom 0
+  STATE_ASSEMBLY_DISTRICT  80 rows   with_fips 80   with_geom 0
+```
+
+Two facts follow, and they pull in opposite directions:
+
+**County identity already exists.** All 58 counties are `jurisdictions` rows
+with `fips_code`, `name`, `type = COUNTY`. A `counties` table duplicating that
+gives the platform two answers to "what is FIPS 06057 called", and they will
+diverge the first time one is reloaded and the other is not.
+
+**County geometry does not exist anywhere.** `jurisdictions.boundary
+geography(MultiPolygon, 4326)` is declared, the TIGER fetcher and
+`boundary-loader.service.ts` are built, and **nothing is loaded** — for any
+jurisdiction type in California. This is almost certainly why
+`jurisdiction-resolution.service.ts` logs *"boundary geometries don't cover this
+point"*: the PostGIS query runs against an empty column.
+
+### Revised
+
+| Brief said | Revised | Why |
+|---|---|---|
+| `counties.fips`, `.name` | Join `jurisdictions` on `fips_code` | 58 rows already exist; a second identity source drifts |
+| `counties.geom geometry(…, 4269)` | Populate `jurisdictions.boundary geography(…, 4326)` | Column, fetcher and loader all exist and are unused. Two geometry sources at two SRIDs is a trap, and 4326 is what the resolution query already assumes |
+| threshold columns on `counties` | New narrow `county_thresholds`, keyed by `fips` | These facts genuinely have no home today |
+| `county_adjacency` from `counties.geom` | Same, computed from `jurisdictions.boundary` | Unchanged in spirit |
+
+```sql
+CREATE TABLE county_thresholds (
+  fips                  varchar(20) PRIMARY KEY
+                          REFERENCES jurisdictions(fips_code),
+  gubernatorial_votes   integer  NOT NULL,   -- ALL candidates, last gubernatorial general
+  gubernatorial_year    smallint NOT NULL,
+  registered_voters     integer,
+  registration_as_of    date,
+  population            integer,
+  population_source     text,
+  population_as_of      date,
+  source_url            text        NOT NULL,
+  retrieved_at          timestamptz NOT NULL
+);
+
+CREATE TABLE county_adjacency (
+  fips      varchar(20) REFERENCES jurisdictions(fips_code),
+  neighbor  varchar(20) REFERENCES jurisdictions(fips_code),
+  PRIMARY KEY (fips, neighbor)
+);
+```
+
+Derived in the query, never stored:
+
+- `signatures_required = ceil(gubernatorial_votes * 0.10)` — round **up**; a
+  fractional signature is not a thing, and rounding down understates a legal
+  requirement.
+- `share_of_registered = signatures_required::numeric / registered_voters`
+
+`source_url` and `retrieved_at` are `NOT NULL` on the fact table rather than in
+a metadata table, because a row that cannot cite itself cannot be rendered.
+
+### Consequence worth naming
+
+Loading county boundaries is no longer landing-page-only work. It fills a gap
+that currently breaks county representative resolution, so
+[#1107](https://github.com/OpusPopuli/opuspopuli/issues/1107) touches a path
+other features depend on. Its tests must cover jurisdiction resolution, not only
+the map.
+
 ## Verification
 
 **Nevada County must show 5,137 signatures**, from 51,370 votes cast in November
@@ -162,6 +238,9 @@ on the order of hours.
 
 | Risk | Severity × likelihood | Mitigation |
 |---|---|---|
+| A second county identity source diverges from `jurisdictions` | high × likely | Superseded before implementation: join `jurisdictions` on `fips_code`, never restate name or FIPS |
+| First-ever load into `jurisdictions.boundary` breaks jurisdiction resolution for other features | **high** × possible | Subtask 2's tests cover resolution, not just the map; the column is empty today so the change can only add behaviour, but the query path is shared |
+| Geometry stored at two SRIDs (4269 vs the existing 4326) | medium × possible | Single source: `jurisdictions.boundary geography(…, 4326)`, which the resolution query already assumes |
 | Statement of Vote parse reads the winner's column rather than all candidates | **high** × possible | Nevada County = 5,137 asserted in a test; 3–8% band across all 58 |
 | A county missing from the parse renders as an unshaded polygon that looks like data | high × possible | Ingestion aborts on any gap rather than writing null |
 | 450KB map bundle lands on the highest-traffic route | medium × likely | Static snapshot drives LCP; map dynamically imported, `ssr: false` |
@@ -172,14 +251,130 @@ on the order of hours.
 | `PHILOSOPHY-foundation.md` absent, so the copy has no committed source | medium × certain | Preserved verbatim in the appendix below; confirm whether the companion doc lands here |
 | `<CivicMap>` accretes California logic and stops being reusable | medium × possible | Epic criterion 10; petition map is the second consumer that proves it |
 
-## Phasing
+## Subtasks
 
-| Phase | Stories |
+Each is one focused session. Dependencies are listed; nothing else blocks.
+
+### 1 — Schema ([#1106](https://github.com/OpusPopuli/opuspopuli/issues/1106), P0)
+
+**Package:** `packages/relationaldb-provider` · **Migration: yes, additive**
+
+- `prisma/migrations/<ts>_county_thresholds/migration.sql` + `down.sql`
+- `prisma/schema.prisma` — `CountyThreshold`, `CountyAdjacency`; no changes to `Jurisdiction`
+
+Two tables as in *Data design*. No new geometry column — county geometry lands
+in the existing `jurisdictions.boundary`.
+
+**Tests:** integration against a real database — the FK to `jurisdictions.fips_code`
+rejects an unknown FIPS, and `NOT NULL` rejects a row without provenance.
+
+### 2 — County boundaries into `jurisdictions.boundary` ([#1107](https://github.com/OpusPopuli/opuspopuli/issues/1107), P0)
+
+**Service:** `region` · Depends on 1
+
+- `src/apps/region/src/domains/boundary-loader.service.ts` — extend, do not fork
+- `src/apps/region/src/domains/boundary-fetchers/tiger.fetcher.ts` — reuse
+
+Load CA county boundaries via the existing TIGER path. **This is the first
+geometry in the column**, so verify against `jurisdiction-resolution.service.ts`:
+an address inside a county must now resolve to it. That query has been running
+against an empty column.
+
+**Tests:** integration — 58 counties with non-null `boundary`; a known
+lat/lng resolves to the right county; `ST_Touches` adjacency is symmetric.
+
+### 3 — Threshold ingestion, verified ([#1107](https://github.com/OpusPopuli/opuspopuli/issues/1107), P0)
+
+**Service:** `region` · Depends on 1, 2
+
+- `src/apps/region/src/scripts/ingest-county-thresholds.ts` — mirrors the
+  existing `backfill-*` script shape
+- Adjacency materialized after load, from `jurisdictions.boundary`
+
+Idempotent; **aborts** on a county missing from the Statement of Vote parse
+rather than writing a null.
+
+**Tests:** **Nevada County = 5,137** asserted, not eyeballed. All 58 present.
+`signatures_required` 60–240,000; `share_of_registered` 3–8% for every county.
+A second run writes nothing.
+
+### 4 — GraphQL surface ([#1108](https://github.com/OpusPopuli/opuspopuli/issues/1108), P0)
+
+**Service:** `region` · **Federation: yes — validate composition at the gateway** · Depends on 3
+
+- `src/apps/region/src/domains/region.resolver.ts` — `countyThresholds` query
+- `.../models/county-threshold.model.ts` — derived `signaturesRequired`,
+  `shareOfRegistered`, `rank`, `cheapestNeighbor`, plus `sourceUrl` / `retrievedAt`
+
+Unauthenticated — this is the public landing route. Geometry is **not** served
+here; it ships as a static TopoJSON asset.
+
+**Tests:** unit on the derived fields incl. `ceil` rounding; integration for
+all 58 and cheapest-neighbor; gateway composition check.
+
+### 5 — `<CivicMap>` ([#1109](https://github.com/OpusPopuli/opuspopuli/issues/1109), P1)
+
+**App:** `apps/frontend`
+
+- `components/map/CivicMap.tsx` — MapLibre + deck.gl `MapboxOverlay`, `layers` prop
+- `components/map/CivicMap.test.tsx`
+
+No California concept inside it. Background-only style: **zero external tile
+requests**, asserted in a test.
+
+### 6 — Hero, modes, rail ([#1110](https://github.com/OpusPopuli/opuspopuli/issues/1110), P1)
+
+**App:** `apps/frontend` · Depends on 4, 5
+
+- `app/page.tsx` — replaces the feature-card landing
+- `components/landing/CountyMap.tsx`, `CountyRail.tsx`, `MapModeToggle.tsx`
+- `lib/graphql/counties.ts`
+- `locales/{en,es}/landing.json` — every string, no inline copy
+
+**Tests:** unit per component; a11y — full keyboard traversal, radio-group
+modes, `prefers-reduced-motion`; `pnpm test:a11y`.
+
+### 7 — Static snapshot ([#1111](https://github.com/OpusPopuli/opuspopuli/issues/1111), P1)
+
+**App:** `apps/frontend` · Depends on 5, 6
+
+- `scripts/generate-map-snapshot.ts` — regenerated on the data cadence
+- `app/page.tsx` — `next/dynamic`, `ssr: false`
+
+**Tests:** map bundle absent from the route's initial JS; no layout shift on swap.
+
+### 8 — Philosophy sections ([#1112](https://github.com/OpusPopuli/opuspopuli/issues/1112), P2)
+
+**App:** `apps/frontend` · Depends on 6
+
+- `components/landing/{Minority,Knowledge,Objection}Section.tsx`
+- `locales/{en,es}/landing.json`
+
+Wording condensed from `opuspopuli.org` `src/pages/foundation.astro` — **not**
+from this plan's appendix, which is the older mockup variant.
+
+### 9 — `/c/[fips]` + OG images ([#1113](https://github.com/OpusPopuli/opuspopuli/issues/1113), P3)
+
+**App:** `apps/frontend` · Depends on 4, 6
+
+- `app/c/[fips]/page.tsx` — `generateStaticParams` for all 58
+- `app/c/[fips]/opengraph-image.tsx`
+
+**Tests:** all 58 routes generate; OG image renders name and threshold.
+
+## Effort
+
+| | |
 |---|---|
-| **P0** | [#1106](https://github.com/OpusPopuli/opuspopuli/issues/1106), [#1107](https://github.com/OpusPopuli/opuspopuli/issues/1107), [#1108](https://github.com/OpusPopuli/opuspopuli/issues/1108) — schema, ingestion + verification, GraphQL |
-| **P1** | [#1109](https://github.com/OpusPopuli/opuspopuli/issues/1109), [#1110](https://github.com/OpusPopuli/opuspopuli/issues/1110), [#1111](https://github.com/OpusPopuli/opuspopuli/issues/1111) — CivicMap, hero + modes + rail, snapshot/perf |
-| **P2** | [#1112](https://github.com/OpusPopuli/opuspopuli/issues/1112) — philosophy sections, ES |
-| **P3** | [#1113](https://github.com/OpusPopuli/opuspopuli/issues/1113) — `/c/[fips]` + OG images |
+| P0 (1–4) | ~4 days. Subtask 2 carries the unknown — it is the first geometry ever loaded into that column |
+| P1 (5–7) | ~4 days |
+| P2 (8) | ~2 days, plus whatever the ES decision costs |
+| P3 (9) | ~2 days |
+
+~12 days, assuming the Statement of Vote parses cleanly. It is a published
+spreadsheet, not an API, so that assumption is the soft spot in the estimate.
+
+**Branch:** `feat/california-landing-1105`, one branch per subtask off it.
 
 ## Open questions
 
