@@ -557,6 +557,64 @@ export interface BulkDownloadConfig {
 
   /** Layout of an `xlsx` sheet, read by the domain handler that consumes it. */
   xlsx?: XlsxSheetConfig;
+
+  /**
+   * Layout of a flat delimited file read by a domain handler.
+   *
+   * Separate from `columnMappings`, which describes a feed the generic bulk
+   * path ingests wholesale. This describes a file a domain handler reads to
+   * fill in specific fields on rows it already owns.
+   */
+  csv?: CsvSourceLayout;
+}
+
+/**
+ * How to read one flat delimited file that supplements an existing table.
+ *
+ * Unlike the pivot sheets `XlsxSheetConfig` describes, these files have real
+ * column names and identify their rows by code rather than by display name —
+ * so they are read by column, and matched by FIPS rather than by matching
+ * county names between two publishers.
+ */
+export interface CsvSourceLayout {
+  /**
+   * Which figure this source supplies.
+   *
+   * Explicit rather than inferred from the column names, so adding a second
+   * delimited source later cannot silently be mistaken for this one.
+   */
+  field: "population";
+  /**
+   * Columns concatenated, in order, to form the FIPS code.
+   *
+   * The Census splits it: STATE `06` + COUNTY `057` = `06057`. Concatenating
+   * beats matching on names, which requires two publishers to agree on
+   * spelling forever.
+   */
+  fipsColumns: string[];
+  /** Column holding the display name. Used in errors, never as the key. */
+  nameColumn?: string;
+  /** Column holding the value. */
+  valueColumn: string;
+  /**
+   * A row is data only if every one of these columns equals its value.
+   *
+   * Census county files carry state-level rows too (`SUMLEV` 040 alongside
+   * 050); writing one of those as a county would put a state's population on
+   * a county page and look entirely plausible.
+   */
+  rowFilter?: Record<string, string>;
+  /**
+   * Identifies the aggregate row, so the members can be reconciled against it.
+   *
+   * Same idea as `XlsxSheetConfig.excludeLabels`: the members must add up to
+   * the total the publisher states, which is what proves the row filter kept
+   * exactly the right rows. California's 58 counties sum to 39,431,263, and
+   * so does the state row.
+   */
+  aggregateFilter?: Record<string, string>;
+  /** Publication date of the figures, ISO `YYYY-MM-DD`. */
+  asOf?: string;
 }
 
 /**
