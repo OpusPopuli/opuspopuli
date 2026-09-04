@@ -14,6 +14,15 @@ jest.mock("@/components/landing/LandingCTA", () => ({
   LandingCTA: () => <div data-testid="mock-landing-cta">Mock CTA</div>,
 }));
 
+// Needs Apollo and i18n contexts, and owns the MapLibre dynamic import. Its
+// behaviour is covered by CountyMap/CountyRail/MapModeToggle specs; here we
+// only care that the page renders it.
+jest.mock("@/components/landing/CountyThresholds", () => ({
+  CountyThresholds: () => (
+    <section data-testid="mock-county-thresholds">Mock counties</section>
+  ),
+}));
+
 import Home from "../app/page";
 
 describe("Home Page", () => {
@@ -28,6 +37,10 @@ describe("Home Page", () => {
 
     it("should render the footer", () => {
       expect(screen.getByTestId("mock-footer")).toBeInTheDocument();
+    });
+
+    it("should render the county thresholds section", () => {
+      expect(screen.getByTestId("mock-county-thresholds")).toBeInTheDocument();
     });
 
     it("should render the CTA", () => {
