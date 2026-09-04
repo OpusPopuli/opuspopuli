@@ -7,6 +7,7 @@ import { RegionDomainService } from './region.service';
 import { PipelineJobService } from './pipeline-job.service';
 import { QueueService } from '@opuspopuli/queue-provider';
 import { BoundaryLoaderService } from './boundary-loader.service';
+import { CountyThresholdQueryService } from './county-threshold-query.service';
 import { DataTypeGQL } from './models/region-info.model';
 import { SyncJobStatus, SyncTriggerSource } from './models/pipeline-job.model';
 
@@ -15,6 +16,7 @@ describe('RegionResolver', () => {
   let regionService: jest.Mocked<RegionDomainService>;
   let pipelineJobService: jest.Mocked<PipelineJobService>;
   let queueService: jest.Mocked<QueueService>;
+  let countyThresholdQuery: jest.Mocked<CountyThresholdQueryService>;
   let boundaryLoader: { loadAll: jest.Mock };
 
   const mockRegionInfo = {
@@ -185,10 +187,18 @@ describe('RegionResolver', () => {
             }),
           },
         },
+        // Minimal stub — the derived fields are exercised in
+        // county-threshold-query.service.spec.ts, and the resolver only
+        // forwards to findAll().
+        {
+          provide: CountyThresholdQueryService,
+          useValue: { findAll: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
 
     resolver = module.get<RegionResolver>(RegionResolver);
+    countyThresholdQuery = module.get(CountyThresholdQueryService);
     regionService = module.get(RegionDomainService);
     pipelineJobService = module.get(PipelineJobService);
     queueService = module.get(QueueService);
@@ -197,6 +207,26 @@ describe('RegionResolver', () => {
 
   it('should be defined', () => {
     expect(resolver).toBeDefined();
+  });
+
+  describe('countyThresholds', () => {
+    it('forwards to the query service', async () => {
+      const rows = [{ fips: '06057', name: 'Nevada County' }];
+      countyThresholdQuery.findAll.mockResolvedValue(rows as never);
+
+      await expect(resolver.countyThresholds()).resolves.toBe(rows);
+    });
+
+    it('is @Public — the landing page has no session', async () => {
+      // The page's whole argument is that a citizen can see what their county
+      // requires without an account. Guarding this query defeats the surface
+      // it exists for, so the decorator is pinned rather than assumed.
+      const isPublic = Reflect.getMetadata(
+        'isPublic',
+        RegionResolver.prototype.countyThresholds,
+      );
+      expect(isPublic).toBe(true);
+    });
   });
 
   describe('regionInfo', () => {

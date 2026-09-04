@@ -36,6 +36,7 @@ import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
 import { CivicsSyncService } from './civics-sync.service';
 import { CountyThresholdSyncService } from './county-threshold-sync.service';
+import { CountyThresholdQueryService } from './county-threshold-query.service';
 import { RegionPluginService } from './region-plugin.service';
 import { HttpFetcherService } from './http-fetcher.service';
 import { RegionQueryService } from './region-query.service';
@@ -215,6 +216,7 @@ const promptClientAsyncConfig = {
     CampaignFinanceSyncService,
     CivicsSyncService,
     CountyThresholdSyncService,
+    CountyThresholdQueryService,
     RegionQueryService,
     RegionDomainService,
     RegionResolver,

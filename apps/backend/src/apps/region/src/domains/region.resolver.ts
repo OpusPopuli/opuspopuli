@@ -94,6 +94,8 @@ import {
   BoundarySkipReason,
 } from './models/boundary-load-result.model';
 import { BoundaryLoaderService } from './boundary-loader.service';
+import { CountyThresholdQueryService } from './county-threshold-query.service';
+import { CountyThresholdModel } from './models/county-threshold.model';
 import { toPublicContribution } from './region-query.service';
 
 /**
@@ -108,6 +110,7 @@ export class RegionResolver {
     private readonly pipelineJobService: PipelineJobService,
     private readonly queueService: QueueService,
     private readonly boundaryLoader: BoundaryLoaderService,
+    private readonly countyThresholdQuery: CountyThresholdQueryService,
   ) {}
 
   /**
@@ -119,6 +122,30 @@ export class RegionResolver {
     const info = this.regionService.getRegionInfo();
     const civics = await this.regionService.getCivicsData(info.id);
     return { ...info, civics: civics ?? undefined };
+  }
+
+  /**
+   * Signature thresholds for a county initiative, every county, cheapest first.
+   *
+   * Public on purpose. This backs the landing page, whose entire argument is
+   * that a citizen can see what their county requires without an account —
+   * putting it behind a session would defeat the page it exists for.
+   *
+   * Public records only: votes cast, registration, population, and the source
+   * each figure came from. It must never join to user, signup or activation
+   * data (epic #1105, criterion 9).
+   *
+   * Geometry is not served here. It is ~60-80KB, identical for every visitor
+   * and changes at most once a decade, so it ships as a static TopoJSON asset
+   * instead of riding on every request.
+   */
+  @Public()
+  @Query(() => [CountyThresholdModel], {
+    description:
+      'County initiative signature thresholds under Elections Code §9118, ordered by signatures required (fewest first).',
+  })
+  async countyThresholds(): Promise<CountyThresholdModel[]> {
+    return this.countyThresholdQuery.findAll();
   }
 
   /**
