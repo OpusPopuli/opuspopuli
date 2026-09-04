@@ -55,14 +55,42 @@ echo "Running dependency vulnerability audit..."
 AUDIT_OUT=$(pnpm audit --prod --audit-level=high 2>&1) && AUDIT_EXIT=0 || AUDIT_EXIT=$?
 printf '%s\n' "$AUDIT_OUT"
 if [ $AUDIT_EXIT -ne 0 ]; then
-  # npm retired the quick-audit endpoint (HTTP 410). Until pnpm is upgraded
-  # or this migrates to the bulk advisory endpoint, treat that specific
-  # transport failure as a non-blocking warning instead of blocking every
-  # push — it's an endpoint outage, not a CVE finding. A real HIGH/CRITICAL
-  # result exits non-zero WITHOUT this signature and still blocks below.
-  if printf '%s' "$AUDIT_OUT" | grep -qE 'ERR_PNPM_AUDIT_BAD_RESPONSE|being retired|410'; then
-    printf '\nWarning: dependency audit skipped — npm audit endpoint returned 410 (retired).\n'
-    printf 'Not blocking this push. Track the pnpm bulk-advisory-endpoint migration separately.\n'
+  # Distinguish "the audit could not run" from "the audit found something".
+  #
+  # Both exit non-zero. Conflating them reports a network outage as a critical
+  # security finding, which is the worst kind of false positive: it is the one
+  # that teaches people to reach for --no-verify, and that habit is what waves
+  # a REAL finding through later.
+  #
+  # Two ways the audit fails to produce a verdict, neither of which assessed a
+  # single package:
+  #   - the endpoint is retired      (HTTP 410 — npm retired quick-audit)
+  #   - the endpoint is unreachable  (socket timeout, DNS failure, reset)
+  #
+  # A genuine HIGH/CRITICAL result exits non-zero WITHOUT any of these
+  # signatures and still blocks below.
+  #
+  # Findings are checked FIRST, and win. pnpm prints a retry warning
+  # ("ERR_SOCKET_TIMEOUT ... Will retry") and can then succeed on a later
+  # attempt and report real CVEs — so the same output carries both a transport
+  # signature and a genuine verdict. Matching the transport signature first
+  # would classify that as "could not run" and wave the finding through, which
+  # is a worse bug than the one this whole block exists to fix.
+  if printf '%s' "$AUDIT_OUT" | grep -qEi 'vulnerabilit(y|ies) found|Severity:.*(high|critical)'; then
+    AUDIT_VERDICT=findings
+  elif printf '%s' "$AUDIT_OUT" | grep -qE 'ERR_PNPM_AUDIT_BAD_RESPONSE|being retired|410|ERR_SOCKET_TIMEOUT|Socket timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|FetchError|ERR_PNPM_FETCH'; then
+    AUDIT_VERDICT=unreachable
+  else
+    AUDIT_VERDICT=findings
+  fi
+
+  if [ "$AUDIT_VERDICT" = unreachable ]; then
+    printf '\nWarning: the dependency audit did NOT run — the npm advisory endpoint was\n'
+    printf 'unreachable or retired. This is a transport failure, NOT a clean result:\n'
+    printf 'no packages were assessed.\n'
+    printf '\nNot blocking this push. CI runs the same audit in its Security Scan job and\n'
+    printf 'still gates the PR, so a real finding is caught there.\n'
+    printf 'To check locally once the network recovers: pnpm audit --prod --audit-level=high\n'
   else
     printf '\nPush blocked: HIGH or CRITICAL CVEs found in production dependencies.\n'
     printf 'Fix with: pnpm audit --fix   or add a version override to package.json > pnpm.overrides\n'
