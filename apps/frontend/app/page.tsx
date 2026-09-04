@@ -1,244 +1,35 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { LandingCTA } from "@/components/landing/LandingCTA";
-import { FeatureCard } from "@/components/landing/FeatureCard";
-import { CountyThresholds } from "@/components/landing/CountyThresholds";
+import { CountyHero } from "@/components/landing/CountyHero";
+import { CountyArgument } from "@/components/landing/CountyArgument";
 
 export const metadata: Metadata = {
   title: {
-    absolute: "OPUS - Civic Engagement Platform | Opus Populi",
+    absolute: "Who governs your county? | Opus Populi",
   },
+  description:
+    "Every California county publishes what it takes to put a measure on its own ballot. Look up yours, and see who is already close enough to use it.",
 };
 
-function BallotIcon() {
-  return (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-      />
-    </svg>
-  );
-}
-
-function CameraIcon() {
-  return (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-      />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-      />
-    </svg>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-      />
-    </svg>
-  );
-}
-
-function CurrencyIcon() {
-  return (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-      />
-    </svg>
-  );
-}
-
+/**
+ * The landing page makes one argument, in order: here is your county and what
+ * it costs (hero), why the county is the scale that matters, why a formal
+ * right was never enough on its own, what the four costs actually are, and how
+ * to check every figure on the page.
+ *
+ * The feature grid it replaces described the software. This describes the
+ * problem the software exists for, which is what a reader who has never heard
+ * of us needs first. Product surfaces are still one click away in the header
+ * and the footer.
+ */
 export default function Home() {
   return (
-    <div className="min-h-screen bg-surface-alt flex flex-col">
+    <div className="flex min-h-screen flex-col bg-surface">
       <Header />
       <main className="flex-1">
-        {/* Hero */}
-        <section className="max-w-6xl mx-auto px-8 pt-20 pb-16 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-content mb-6 leading-tight">
-            Know your ballot.
-            <br />
-            Hold power accountable.
-          </h1>
-          <p className="text-lg text-content-dim max-w-2xl mx-auto mb-10">
-            Transparent access to propositions, representatives, campaign
-            finance, and petition tracking — powered by AI, built for citizens.
-          </p>
-          <LandingCTA />
-        </section>
-
-        <CountyThresholds />
-
-        {/* Features */}
-        <section className="max-w-6xl mx-auto px-8 pb-20">
-          <h2 className="text-2xl font-bold text-content text-center mb-12">
-            Everything you need to stay informed
-          </h2>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            <FeatureCard
-              icon={<BallotIcon />}
-              title="Ballot & Propositions"
-              description="Track ballot measures and initiatives in your region. Get AI-powered analysis to understand what you're voting on."
-              href="/region/propositions"
-            />
-            <FeatureCard
-              icon={<CameraIcon />}
-              title="Petition Scanner"
-              description="Scan petitions with your camera for instant AI verification. Track signature progress on an interactive map."
-              href="/petition"
-            />
-            <FeatureCard
-              icon={<UsersIcon />}
-              title="Representatives & Meetings"
-              description="Know who represents you. Follow public meetings, legislative sessions, and committee hearings."
-              href="/region/representatives"
-            />
-            <FeatureCard
-              icon={<CurrencyIcon />}
-              title="Campaign Finance"
-              description="Follow the money. Explore contributions, expenditures, and committee spending with full transparency."
-              href="/region/campaign-finance"
-            />
-          </div>
-        </section>
-
-        {/* Trust Signals */}
-        <section className="border-t border-line bg-surface">
-          <div className="max-w-6xl mx-auto px-8 py-20">
-            <h2 className="text-2xl font-bold text-content text-center mb-12">
-              Built on trust and transparency
-            </h2>
-            <div className="grid gap-8 sm:grid-cols-3">
-              <Link href="/transparency" className="text-center group">
-                <div className="w-12 h-12 bg-surface-alt rounded-lg flex items-center justify-center mx-auto mb-4 text-content">
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                    />
-                  </svg>
-                </div>
-                <h3 className="font-semibold text-content mb-2 group-hover:underline transition-colors">
-                  AI Transparency
-                </h3>
-                <p className="text-sm text-content-dim">
-                  Our AI commitments, system cards, and prompt charter are
-                  public. You always know how AI is used.
-                </p>
-              </Link>
-
-              <Link href="/privacy" className="text-center group">
-                <div className="w-12 h-12 bg-surface-alt rounded-lg flex items-center justify-center mx-auto mb-4 text-content">
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                    />
-                  </svg>
-                </div>
-                <h3 className="font-semibold text-content mb-2 group-hover:underline transition-colors">
-                  Privacy First
-                </h3>
-                <p className="text-sm text-content-dim">
-                  GDPR and CCPA compliant. You control your data with granular
-                  consent management and full data export.
-                </p>
-              </Link>
-
-              <div className="text-center">
-                <div className="w-12 h-12 bg-surface-alt rounded-lg flex items-center justify-center mx-auto mb-4 text-content">
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-                    />
-                  </svg>
-                </div>
-                <h3 className="font-semibold text-content mb-2">Open Source</h3>
-                <p className="text-sm text-content-dim">
-                  Our platform is open source. Inspect the code, contribute, and
-                  help build better civic tools.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
+        <CountyHero />
+        <CountyArgument />
       </main>
       <Footer />
     </div>

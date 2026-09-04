@@ -6,54 +6,46 @@ test.describe("Home Page", () => {
     await page.goto("/");
   });
 
-  test("should display the civic engagement headline", async ({ page }) => {
+  test("should lead with the county question", async ({ page }) => {
     await expect(
-      page.getByRole("heading", { name: /Know your ballot/i, level: 1 }),
+      page.getByRole("heading", {
+        name: /Who governs your county\?/i,
+        level: 1,
+      }),
     ).toBeVisible();
   });
 
-  test("should have sign in link", async ({ page }) => {
-    await expect(
-      page.getByRole("link", { name: /sign in/i }).first(),
-    ).toBeVisible();
+  test("should cite the statute that sets the threshold", async ({ page }) => {
+    await expect(page.getByText(/Elections Code §9118/i).first()).toBeVisible();
   });
 
-  test("should display feature cards", async ({ page }) => {
-    await expect(
-      page.getByRole("heading", { name: /Ballot & Propositions/i }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /Petition Scanner/i }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /Representatives & Meetings/i }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /Campaign Finance/i }),
-    ).toBeVisible();
+  test("should make the argument under the hero", async ({ page }) => {
+    for (const key of [
+      /county is not a convenience/i,
+      /right already exists/i,
+      /changed the cost, not the citizen/i,
+      /Do not take our word/i,
+    ]) {
+      await expect(page.getByRole("heading", { name: key })).toBeVisible();
+    }
   });
 
-  test("should display trust signals section", async ({ page }) => {
-    await expect(
-      page.getByRole("heading", { name: /Built on trust and transparency/i }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /AI Transparency/i }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /Privacy First/i }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /Open Source/i }),
-    ).toBeVisible();
-  });
-
-  test("should display Get Started CTA for unauthenticated users", async ({
+  test("should keep the transparency and privacy links reachable", async ({
     page,
   }) => {
     await expect(
-      page.getByRole("link", { name: /get started/i }).first(),
+      page.locator('main a[href="/transparency"]').first(),
     ).toBeVisible();
+    await expect(page.locator('main a[href="/privacy"]').first()).toBeVisible();
+  });
+
+  test("should offer both ways in for unauthenticated users", async ({
+    page,
+  }) => {
+    await expect(
+      page.locator('main a[href="/register"]').first(),
+    ).toBeVisible();
+    await expect(page.locator('main a[href="/login"]').first()).toBeVisible();
   });
 
   test("should be accessible", async ({ page }) => {
@@ -62,7 +54,10 @@ test.describe("Home Page", () => {
     // duplicate ids during hydration) that resolve once settled — which
     // flaked intermittently and recovered on retry.
     await expect(
-      page.getByRole("heading", { name: /Know your ballot/i, level: 1 }),
+      page.getByRole("heading", {
+        name: /Who governs your county\?/i,
+        level: 1,
+      }),
     ).toBeVisible();
 
     const results = await new AxeBuilder({ page })

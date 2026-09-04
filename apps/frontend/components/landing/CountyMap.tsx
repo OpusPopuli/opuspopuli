@@ -4,12 +4,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { GeoJsonLayer } from "@deck.gl/layers";
 import { useTranslation } from "react-i18next";
 import { CivicMap } from "@/components/map/CivicMap";
+import { cn } from "@/lib/ui/cn";
 import type { CountyThreshold } from "@/lib/graphql/counties";
 import countyGeometry from "@/lib/data/ca-counties.geo.json";
 import type { MapMode } from "./MapModeToggle";
 
-/** California, framed so the whole state fits without panning. */
-const CALIFORNIA_VIEW = { longitude: -119.4, latitude: 37.2, zoom: 4.6 };
+/**
+ * California, framed so the state fills the box without panning. The zoom is
+ * tuned to FRAME below: change one and the other needs re-checking, because
+ * MapLibre scales by zoom, not by container, so a wider frame just adds
+ * whitespace around a same-sized state.
+ */
+const CALIFORNIA_VIEW = { longitude: -119.5, latitude: 37.2, zoom: 4.86 };
 
 type RGBA = [number, number, number, number];
 
@@ -44,10 +50,28 @@ export interface CountyMapProps {
   mode: MapMode;
   selectedFips: string | null;
   onSelect: (fips: string) => void;
+  /** Reports the county under the pointer, or null when the pointer leaves. */
+  onHover?: (fips: string | null) => void;
   /** Skip the fill transition. Threaded in so the caller owns the media query. */
   reducedMotion?: boolean;
+  /** Merged over the defaults, so a caller can re-size or re-shape the frame. */
   className?: string;
 }
+
+/**
+ * California is taller than it is wide, and the map fills its box rather than
+ * letter-boxing inside it. The ratio lives here, not at the call site: the
+ * component renders `h-full` internally, so a caller that passes only a width
+ * collapses it to nothing, with no error to say so. Owning a default height
+ * makes that failure impossible.
+ *
+ * The dynamic-import skeleton in CountyHero uses the same ratio, so the map
+ * arriving does not shift the page.
+ */
+// California's drawn extent is ~0.85 wide for every 1 tall at this zoom, so the
+// frame carries that ratio rather than a round number. A frame wider than the
+// state adds whitespace; a frame narrower than it clips the coast.
+const FRAME = "relative aspect-[85/100] w-full max-w-[440px]";
 
 /** `#rgb` / `#rrggbb` → deck.gl's RGBA tuple. */
 export function hexToRgba(hex: string, alpha = 255): RGBA {
@@ -145,6 +169,7 @@ export function CountyMap({
   mode,
   selectedFips,
   onSelect,
+  onHover,
   reducedMotion = false,
   className,
 }: CountyMapProps) {
@@ -190,8 +215,9 @@ export function CountyMap({
       const fips = info.object?.properties?.fips;
       const county = fips ? byFips.get(fips) : undefined;
       setHover(county ? { county, x: info.x, y: info.y } : null);
+      onHover?.(county ? county.fips : null);
     },
-    [byFips],
+    [byFips, onHover],
   );
 
   const layers = useMemo(() => {
@@ -255,7 +281,7 @@ export function CountyMap({
   ]);
 
   return (
-    <div className={`relative ${className ?? ""}`}>
+    <div className={cn(FRAME, className)}>
       <CivicMap
         layers={layers}
         initialViewState={CALIFORNIA_VIEW}

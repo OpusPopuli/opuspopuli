@@ -224,19 +224,45 @@ loading state where a fact about their county should be.
 
 ## Page structure
 
-1. Header — existing, plus EN/ES and the appearance toggle
-2. Hero — headline, two-paragraph lede stating §9118, map + rail
-3. "The minority is organized" — Mosca, Michels, Schattschneider, Tocqueville
-4. "Why unequal knowledge is a justice problem" — Rawls, Dewey, Habermas, Paine
-5. "The strongest objection" — Downs at full strength, the two-term answer, Lippmann/Brennan, four concessions
-6. Features — existing four links, unchanged targets
-7. Trust — existing two panels
+**Revised 2026-09-04, after the mock review.** The structure below is what
+shipped; the original eight-part list is kept underneath it, because the reasons
+two of those parts were dropped are worth not relearning.
+
+1. Header — existing, plus EN/ES and the appearance toggle. Now **sticky**: the
+   page is long enough that the only way back to sign-up was a scroll to the top
+2. Hero — headline, lede stating §9118, map on the left; sign-up and the rail on
+   the right, their tops aligned with the map's
+3. "The county is not a convenience" — Tocqueville
+4. "The right already exists. That was never the problem." — Rawls, Dewey
+5. "So we changed the cost, not the citizen" — Schattschneider, plus the four
+   costs as a definition list
+6. "Do not take our word for any of it" — Rawls; carries the `/transparency` and
+   `/privacy` links
+7. Footnote — statute, the 20% variant, qualifying ≠ passing, the city basis
 8. Footer — existing disclaimer **verbatim; it is legal copy, do not rewrite**
+
+Dropped from the original list, deliberately:
+
+- **The four feature cards.** They described the software to a reader who had
+  not yet been given a reason to want any of it. The header and footer still
+  reach every one of those surfaces.
+- **The trust panels.** Two of the three were links (`/transparency`,
+  `/privacy`) and now sit under the claim that earns them, in section 6. The
+  third, "Open Source", was a card with nowhere to go.
+
+This folds most of subtask 8 (#1112) into #1110 rather than deferring it: the
+argument *is* the page now, so it could not ship separately.
 
 Rail per county: population, registered voters, gubernatorial votes (with source
 tag), signatures required (the large figure), share of registered voters, rank
-among 58, cheapest adjacent county with a link. Default state: statewide figures
-plus 546,651 / 874,641.
+among 58, cheapest adjacent county with a link. **No statewide default state** —
+the rail always shows a county, opening on Sonoma and touring the rest every 5s
+until the reader picks one (never for a signed-in reader, never under
+`prefers-reduced-motion`). A panel whose first state is "no county selected"
+spends the reader's attention on an instruction instead of the figure.
+
+The statewide comparison (546,651 / 874,641) moved into section 3's copy, which
+is where it does work: it is the contrast that makes the county number land.
 
 Footnote: statute citations, the 20% special-election variant, the explicit
 caveat that **qualifying a measure is not passing one**, and the note that

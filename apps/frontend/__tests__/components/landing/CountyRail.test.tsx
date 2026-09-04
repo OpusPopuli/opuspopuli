@@ -38,26 +38,7 @@ const NEVADA: CountyThreshold = {
   retrievedAt: "2026-09-03T23:22:47.923Z",
 };
 
-describe("CountyRail — statewide default", () => {
-  it("shows the statewide requirements when nothing is selected", () => {
-    // These are what make a county figure legible: 5,074 against 546,651.
-    render(<CountyRail county={null} />);
-
-    expect(
-      screen.getByText(/counties\.statewide\.statuteValue\(count=546,651\)/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/counties\.statewide\.amendmentValue\(count=874,641\)/),
-    ).toBeInTheDocument();
-  });
-
-  it("prompts the reader to choose a county", () => {
-    render(<CountyRail county={null} />);
-    expect(screen.getByText("counties.rail.selectPrompt")).toBeInTheDocument();
-  });
-});
-
-describe("CountyRail — a county", () => {
+describe("CountyRail", () => {
   it("renders every figure the map encodes, as a number", () => {
     // WCAG 1.4.1: a value carried only by hue is unreadable to a colour-blind
     // reader and invisible to a screen reader. The rail is what makes the
@@ -84,9 +65,7 @@ describe("CountyRail — a county", () => {
   it("links the source record so the figure can be checked", () => {
     render(<CountyRail county={NEVADA} />);
 
-    const link = screen.getByRole("link", {
-      name: "counties.rail.sourceLink",
-    });
+    const link = screen.getByRole("link", { name: "counties.rail.sources" });
     expect(link).toHaveAttribute("href", NEVADA.sourceUrl);
     expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
   });

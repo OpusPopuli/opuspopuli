@@ -140,7 +140,10 @@ export function Header() {
   }
 
   return (
-    <header className="border-b border-line bg-surface">
+    // Sticky so account state and the way back are always one glance away.
+    // bg-surface/85 + blur keeps the paper reading through it rather than
+    // stamping an opaque bar across the page.
+    <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-md supports-[backdrop-filter]:bg-surface/75">
       <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
         <Link
           href={isAuthenticated ? "/me/briefing" : "/"}
