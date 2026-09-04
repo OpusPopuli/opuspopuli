@@ -10,6 +10,7 @@ import { DataType, type DataSourceConfig } from '@opuspopuli/common';
 import {
   CountyThresholdSyncService,
   normalizeCountyName,
+  parseDelimited,
 } from './county-threshold-sync.service';
 
 /**
@@ -62,6 +63,35 @@ describe('normalizeCountyName', () => {
     // The jurisdictions table says "Nevada County"; the state's spreadsheet
     // says "Nevada". Both sides normalize or every county misses its FIPS.
     expect(normalizeCountyName(input)).toBe(expected);
+  });
+});
+
+describe('parseDelimited', () => {
+  it('splits plain rows', () => {
+    expect(parseDelimited('a,b,c\n1,2,3\n')).toEqual([
+      ['a', 'b', 'c'],
+      ['1', '2', '3'],
+    ]);
+  });
+
+  it('keeps a quoted comma inside its field', () => {
+    // A naive split puts "Doña Ana" and " NM" in different columns, which
+    // shifts every later value — a population landing on the wrong county.
+    expect(parseDelimited('NAME,POP\n"Baltimore, city",585708\n')).toEqual([
+      ['NAME', 'POP'],
+      ['Baltimore, city', '585708'],
+    ]);
+  });
+
+  it('unescapes a doubled quote', () => {
+    expect(parseDelimited('a\n"say ""hi"""\n')).toEqual([['a'], ['say "hi"']]);
+  });
+
+  it('tolerates CRLF line endings', () => {
+    expect(parseDelimited('a,b\r\n1,2\r\n')).toEqual([
+      ['a', 'b'],
+      ['1', '2'],
+    ]);
   });
 });
 
@@ -153,6 +183,159 @@ describe('CountyThresholdSyncService', () => {
       await expect(
         service.sync([votesSource({ electionYear: undefined })], 'CA'),
       ).rejects.toThrow(/electionYear/);
+    });
+  });
+
+  describe('readDelimited — population (#1131)', () => {
+    // A two-county slice, so the state row carries the slice's total rather
+    // than California's real 39,431,263 — otherwise the reconciliation below
+    // correctly refuses it, which is the point of having the check.
+    const CENSUS_CSV = [
+      'SUMLEV,STATE,COUNTY,STNAME,CTYNAME,POPESTIMATE2024',
+      '040,06,000,California,California,103294',
+      '050,06,057,California,Nevada County,102195',
+      '050,06,003,California,Alpine County,1099',
+      '050,36,061,New York,New York County,1597451',
+    ].join('\n');
+
+    const populationSource = {
+      url: 'https://www2.census.gov/co-est2024-alldata.csv',
+      dataType: DataType.COUNTY_THRESHOLDS,
+      contentGoal: 'County population estimates',
+      sourceType: 'bulk_download',
+      bulk: {
+        format: 'csv',
+        csv: {
+          field: 'population',
+          fipsColumns: ['STATE', 'COUNTY'],
+          nameColumn: 'CTYNAME',
+          valueColumn: 'POPESTIMATE2024',
+          rowFilter: { SUMLEV: '050', STATE: '06' },
+          aggregateFilter: { SUMLEV: '040', STATE: '06' },
+          asOf: '2024-07-01',
+        },
+      },
+    } as unknown as DataSourceConfig;
+
+    beforeEach(() => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => CENSUS_CSV,
+      }) as unknown as typeof fetch;
+    });
+
+    it('builds FIPS by concatenating the columns the source splits', async () => {
+      // 06 + 057 = 06057. Matching on a code beats requiring two publishers to
+      // spell every county name identically forever.
+      const facts = await service.readDelimited(populationSource);
+
+      const nevada = facts.find((f) => f.fips === '06057');
+      expect(nevada?.value).toBe(102195);
+    });
+
+    it('excludes the state-level row', async () => {
+      // SUMLEV 040 is California itself. Written as a county it would put the
+      // state's population on a county page and look entirely plausible.
+      const facts = await service.readDelimited(populationSource);
+
+      expect(facts.map((f) => f.fips)).toEqual(['06057', '06003']);
+      expect(facts.every((f) => f.value !== 103294)).toBe(true);
+    });
+
+    it('excludes other states', async () => {
+      const facts = await service.readDelimited(populationSource);
+
+      expect(facts.every((f) => f.fips?.startsWith('06'))).toBe(true);
+      expect(facts).toHaveLength(2);
+    });
+
+    it('names the missing column when the file changes shape', async () => {
+      // A renamed column has to fail loudly. Yielding zero rows would look
+      // like "the Census has no counties" and write null for all 58.
+      const renamed = {
+        ...populationSource,
+        bulk: {
+          ...populationSource.bulk,
+          csv: {
+            ...populationSource.bulk!.csv!,
+            valueColumn: 'POPESTIMATE2099',
+          },
+        },
+      } as DataSourceConfig;
+
+      await expect(service.readDelimited(renamed)).rejects.toThrow(
+        /no column "POPESTIMATE2099"/,
+      );
+    });
+  });
+
+  describe('reconciliation on the delimited path (#1131)', () => {
+    // The counties must add up to the state row the publisher states. That is
+    // what proves rowFilter kept exactly the right rows — the same check that
+    // caught the Report of Registration counting its own total as a county.
+    const withTotals = [
+      'SUMLEV,STATE,COUNTY,STNAME,CTYNAME,POPESTIMATE2024',
+      '040,06,000,California,California,1200',
+      '050,06,057,California,Nevada County,500',
+      '050,06,003,California,Alpine County,700',
+    ].join('\n');
+
+    const brokenTotals = withTotals.replace(
+      'California,1200',
+      'California,9999',
+    );
+
+    const src = (csv: Record<string, unknown>) =>
+      ({
+        url: 'https://www2.census.gov/co-est.csv',
+        dataType: DataType.COUNTY_THRESHOLDS,
+        contentGoal: 'population',
+        sourceType: 'bulk_download',
+        bulk: { format: 'csv', csv },
+      }) as unknown as DataSourceConfig;
+
+    const layout = {
+      field: 'population',
+      fipsColumns: ['STATE', 'COUNTY'],
+      nameColumn: 'CTYNAME',
+      valueColumn: 'POPESTIMATE2024',
+      rowFilter: { SUMLEV: '050', STATE: '06' },
+      aggregateFilter: { SUMLEV: '040', STATE: '06' },
+    };
+
+    const serve = (body: string) => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => body,
+      }) as unknown as typeof fetch;
+    };
+
+    it('accepts a file whose counties sum to the state row', async () => {
+      serve(withTotals);
+      const facts = await service.readDelimited(src(layout));
+      expect(facts).toHaveLength(2);
+      expect(facts.reduce((a, f) => a + f.value, 0)).toBe(1200);
+    });
+
+    it('refuses a file whose counties do not sum to the state row', async () => {
+      serve(brokenTotals);
+      await expect(service.readDelimited(src(layout))).rejects.toThrow(
+        /does not reconcile/,
+      );
+    });
+
+    it('throws when the declared aggregate row is absent', async () => {
+      // Declaring the check and silently not running it is how the
+      // registration file went unverified for a whole release.
+      serve(withTotals);
+      const absent = { ...layout, aggregateFilter: { SUMLEV: '999' } };
+      await expect(service.readDelimited(src(absent))).rejects.toThrow(
+        /declares excludeLabels|never reconciled/,
+      );
     });
   });
 });
