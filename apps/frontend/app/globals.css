@@ -154,6 +154,13 @@
   --color-line: #e0ddd8; /* hairline borders */
   --color-accent: #e8c000; /* gold — earned; fill / ≥3px / text-on-ink only */
   --color-accent-strong: #cfa900; /* darkened gold, hover on gold fills */
+
+  /* Choropleth ramp — lives here rather than in the map component so the
+     shading follows the theme like everything else. Pale gold to deep gold:
+     the low end must still read as a filled shape on paper, not as absence. */
+  --map-ramp-low: #f2e7b0;
+  --map-ramp-high: #c9a300;
+  --map-ramp-unshaded: #e4e0d6; /* no figure — distinct from "lowest" */
   --color-on-accent: #1a1714; /* ink text on gold fills */
   --color-inverse-surface: #1a1714; /* deliberate dark panels within light theme */
   --color-on-inverse: #fafaf8; /* text on inverse-surface / .on-ink */
@@ -307,6 +314,12 @@
   --color-line: #322d28; /* hairline on dark */
   --color-accent: #e8c000; /* gold stays gold — ~10:1 on dark surface */
   --color-accent-strong: #f2cf1f; /* hover lightens on dark */
+
+  /* Ramp inverts its footing on dark: the low end is a dim ember rather than
+     a pale wash, or every low county disappears into the page. */
+  --map-ramp-low: #4a3f14;
+  --map-ramp-high: #e8c000;
+  --map-ramp-unshaded: #2a2521;
   --color-on-accent: #1a1714; /* ink text still rides the gold fill */
   --color-inverse-surface: #fafaf8; /* inverse panels invert to light in dark theme */
   --color-on-inverse: #1a1714;

@@ -43,6 +43,7 @@
   "counties": {
     "heading": "What it takes to put a measure on your county's ballot",
     "intro": "California Elections Code §9118 sets the bar for a county initiative at 10% of the votes cast for all candidates for Governor at the last gubernatorial election. Not 10% of residents, and not 10% of registered voters — 10% of the people who actually turned out.",
+    "example": "In Sonoma County that is 19,746 signatures. The figure is not a target anyone invented: it is the size of the group that can already put a question on the ballot where you live, whether or not that group is you.",
     "modes": {
       "legend": "Show counties by",
       "share": "Share of registered voters",
@@ -59,9 +60,9 @@
       "registeredVoters": "Registered voters",
       "gubernatorialVotes": "Votes cast for Governor, {{year}}",
       "shareOfRegistered": "Share of registered voters",
-      "rank": "Rank among 58 counties",
-      "rankValue": "{{rank}} of 58, counting up from the fewest signatures",
-      "cheapestNeighbor": "Neighbouring county with the lowest requirement",
+      "rank": "Rank",
+      "rankValue": "{{rank}} of 58, fewest first",
+      "cheapestNeighbor": "Cheapest neighbour",
       "cheapestNeighborValue": "{{name}} — {{count}} signatures",
       "source": "Source",
       "sourceLink": "California Secretary of State, Statement of Vote",

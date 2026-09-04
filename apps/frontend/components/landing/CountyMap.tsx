@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { GeoJsonLayer } from "@deck.gl/layers";
 import { useTranslation } from "react-i18next";
 import { CivicMap } from "@/components/map/CivicMap";
@@ -13,15 +13,30 @@ const CALIFORNIA_VIEW = { longitude: -119.4, latitude: 37.2, zoom: 4.6 };
 
 type RGBA = [number, number, number, number];
 
-const UNSHADED: RGBA = [30, 41, 59, 200]; // slate-800 — "no data", not "zero"
-const RAMP_LOW: RGBA = [8, 47, 73, 235]; // sky-950
-const RAMP_HIGH: RGBA = [56, 189, 248, 235]; // sky-400
-const SELECTED_LINE: RGBA = [248, 250, 252, 255];
-const LINE: RGBA = [15, 23, 42, 255];
+interface RampPalette {
+  low: string;
+  high: string;
+  unshaded: string;
+  line: string;
+}
+
+/** Fallbacks for SSR and for tests, where no stylesheet is applied. */
+const FALLBACK: RampPalette = {
+  low: "#f2e7b0",
+  high: "#c9a300",
+  unshaded: "#e4e0d6",
+  line: "#fafaf8",
+};
 
 interface CountyFeatureProps {
   fips: string;
   name: string;
+}
+
+interface HoverState {
+  county: CountyThreshold;
+  x: number;
+  y: number;
 }
 
 export interface CountyMapProps {
@@ -32,6 +47,22 @@ export interface CountyMapProps {
   /** Skip the fill transition. Threaded in so the caller owns the media query. */
   reducedMotion?: boolean;
   className?: string;
+}
+
+/** `#rgb` / `#rrggbb` → deck.gl's RGBA tuple. */
+export function hexToRgba(hex: string, alpha = 255): RGBA {
+  const clean = hex.trim().replace("#", "");
+  const full =
+    clean.length === 3
+      ? clean
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : clean;
+  const n = Number.parseInt(full, 16);
+  return Number.isFinite(n) && full.length === 6
+    ? [(n >> 16) & 255, (n >> 8) & 255, n & 255, alpha]
+    : [0, 0, 0, alpha];
 }
 
 function lerp(a: RGBA, b: RGBA, t: number): RGBA {
@@ -53,7 +84,7 @@ function lerp(a: RGBA, b: RGBA, t: number): RGBA {
  *
  * `people` is logarithmic because raw counts span four orders of magnitude —
  * 62 signatures in Alpine against 238,923 in Los Angeles. Linear there renders
- * 55 of 58 counties as the same dark blue and says nothing.
+ * 55 of 58 counties as the same shade and says nothing.
  */
 export function rampPosition(
   county: CountyThreshold,
@@ -73,6 +104,42 @@ export function rampPosition(
   return (value - bounds.min) / (bounds.max - bounds.min);
 }
 
+/**
+ * Read the ramp from the stylesheet so the map follows the theme.
+ *
+ * Hardcoding the colours here would leave the map on its light-theme palette
+ * when the rest of the page goes dark — the shading is design-system material,
+ * not map material.
+ */
+function useRampPalette() {
+  const [palette, setPalette] = useState<RampPalette>(FALLBACK);
+
+  useEffect(() => {
+    const read = () => {
+      const style = getComputedStyle(document.documentElement);
+      const value = (name: string, fallback: string) =>
+        style.getPropertyValue(name).trim() || fallback;
+      setPalette({
+        low: value("--map-ramp-low", FALLBACK.low),
+        high: value("--map-ramp-high", FALLBACK.high),
+        unshaded: value("--map-ramp-unshaded", FALLBACK.unshaded),
+        line: value("--color-surface", FALLBACK.line),
+      });
+    };
+    read();
+
+    // The theme is a class on <html>, so re-read when it changes.
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  return palette;
+}
+
 export function CountyMap({
   counties,
   mode,
@@ -82,6 +149,8 @@ export function CountyMap({
   className,
 }: CountyMapProps) {
   const { t, i18n } = useTranslation("landing");
+  const palette = useRampPalette();
+  const [hover, setHover] = useState<HoverState | null>(null);
 
   const byFips = useMemo(
     () => new Map(counties.map((c) => [c.fips, c])),
@@ -103,29 +172,57 @@ export function CountyMap({
     () => new Intl.NumberFormat(i18n.language),
     [i18n.language],
   );
+  const pf = useMemo(
+    () =>
+      new Intl.NumberFormat(i18n.language, {
+        style: "percent",
+        maximumFractionDigits: 2,
+      }),
+    [i18n.language],
+  );
 
-  const layers = useMemo(
-    () => [
+  const handleHover = useCallback(
+    (info: {
+      object?: { properties?: CountyFeatureProps };
+      x: number;
+      y: number;
+    }) => {
+      const fips = info.object?.properties?.fips;
+      const county = fips ? byFips.get(fips) : undefined;
+      setHover(county ? { county, x: info.x, y: info.y } : null);
+    },
+    [byFips],
+  );
+
+  const layers = useMemo(() => {
+    const low = hexToRgba(palette.low);
+    const high = hexToRgba(palette.high);
+    const unshaded = hexToRgba(palette.unshaded);
+    const line = hexToRgba(palette.line);
+    const ink = hexToRgba("#1a1714");
+
+    return [
       new GeoJsonLayer<CountyFeatureProps>({
         id: `counties-${mode}`,
         data: countyGeometry as never,
         filled: true,
         stroked: true,
         pickable: true,
+        autoHighlight: true,
+        highlightColor: hexToRgba(palette.high, 235),
         getFillColor: (f) => {
           const county = byFips.get(f.properties.fips);
-          if (!county) return UNSHADED;
+          if (!county) return unshaded;
           const position = rampPosition(county, mode, bounds);
           // A county with no figure stays unshaded rather than landing at the
-          // bottom of the ramp, which would read as "lowest" instead of
+          // bottom of the ramp, where it would read as "lowest" instead of
           // "unknown".
-          return position === null
-            ? UNSHADED
-            : lerp(RAMP_LOW, RAMP_HIGH, position);
+          return position === null ? unshaded : lerp(low, high, position);
         },
-        getLineColor: (f) =>
-          f.properties.fips === selectedFips ? SELECTED_LINE : LINE,
-        getLineWidth: (f) => (f.properties.fips === selectedFips ? 2200 : 700),
+        // Hairlines in the page colour, so counties separate without a border
+        // being drawn around the state.
+        getLineColor: (f) => (f.properties.fips === selectedFips ? ink : line),
+        getLineWidth: (f) => (f.properties.fips === selectedFips ? 2200 : 600),
         lineWidthUnits: "meters",
         onClick: (info) => {
           const props = info.object?.properties as
@@ -133,22 +230,32 @@ export function CountyMap({
             | undefined;
           if (props) onSelect(props.fips);
         },
+        onHover: handleHover,
         updateTriggers: {
-          getFillColor: [mode, bounds.min, bounds.max, counties],
-          getLineColor: [selectedFips],
+          getFillColor: [mode, bounds.min, bounds.max, counties, palette],
+          getLineColor: [selectedFips, palette],
           getLineWidth: [selectedFips],
         },
         // Honour prefers-reduced-motion: the colour cross-fade is decorative,
-        // and an animated recolour of 58 shapes is exactly what that setting
-        // exists to suppress.
+        // and an animated recolour of 58 shapes is what that setting exists to
+        // suppress.
         transitions: reducedMotion ? {} : { getFillColor: 300 },
       }),
-    ],
-    [byFips, bounds, mode, selectedFips, onSelect, counties, reducedMotion],
-  );
+    ];
+  }, [
+    byFips,
+    bounds,
+    mode,
+    selectedFips,
+    onSelect,
+    counties,
+    reducedMotion,
+    palette,
+    handleHover,
+  ]);
 
   return (
-    <div className={className}>
+    <div className={`relative ${className ?? ""}`}>
       <CivicMap
         layers={layers}
         initialViewState={CALIFORNIA_VIEW}
@@ -156,15 +263,39 @@ export function CountyMap({
         className="h-full w-full"
       />
 
+      {hover && (
+        // Pointer-events off so the tooltip cannot sit between the cursor and
+        // the county it describes, which would flicker it in and out.
+        <div
+          role="presentation"
+          className="pointer-events-none absolute z-10 rounded border border-[var(--color-line)] bg-surface px-3 py-2 text-sm shadow-lg"
+          style={{ left: hover.x + 12, top: hover.y + 12 }}
+        >
+          <div className="font-semibold text-content">{hover.county.name}</div>
+          <div className="tabular-nums text-content">
+            {nf.format(hover.county.signaturesRequired)}{" "}
+            <span className="text-content-dim">
+              {t("counties.rail.signaturesRequired").toLowerCase()}
+            </span>
+          </div>
+          {hover.county.shareOfRegistered !== null && (
+            <div className="text-xs text-content-dim">
+              {pf.format(hover.county.shareOfRegistered)}{" "}
+              {t("counties.rail.shareOfRegistered").toLowerCase()}
+            </div>
+          )}
+        </div>
+      )}
+
       {/*
         The map draws to a canvas, so its shapes are not reachable by keyboard
         and do not exist to assistive technology. This list is the same
         information as real controls: one focusable button per county, each
         labelled with its name and requirement.
 
-        It is visually hidden rather than absent — hiding it with `display:none`
-        or `aria-hidden` would take it out of the accessibility tree too, which
-        is the failure this exists to prevent (WCAG 2.1.1).
+        Visually hidden rather than absent — `display:none` or `aria-hidden`
+        would take it out of the accessibility tree too, which is the failure
+        this exists to prevent (WCAG 2.1.1).
       */}
       <ul className="sr-only">
         {counties.map((county) => (

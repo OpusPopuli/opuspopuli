@@ -1,6 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { CountyMap, rampPosition } from "@/components/landing/CountyMap";
+import {
+  CountyMap,
+  rampPosition,
+  hexToRgba,
+} from "@/components/landing/CountyMap";
 import type { CountyThreshold } from "@/lib/graphql/counties";
 
 jest.mock("react-i18next", () => ({
@@ -195,5 +199,93 @@ describe("CountyMap", () => {
     );
 
     expect(civicMapProps[0].ariaLabel).toBe("counties.heading");
+  });
+});
+
+describe("hexToRgba", () => {
+  it.each([
+    ["#c9a300", [201, 163, 0, 255]],
+    ["#fff", [255, 255, 255, 255]],
+    ["  #1a1714  ", [26, 23, 20, 255]],
+  ])("converts %s", (hex, expected) => {
+    expect(hexToRgba(hex as string)).toEqual(expected);
+  });
+
+  it("falls back to black rather than NaN on a malformed value", () => {
+    // A CSS var that failed to resolve must not produce NaN channels, which
+    // deck.gl renders as an invisible layer.
+    expect(hexToRgba("not-a-colour")).toEqual([0, 0, 0, 255]);
+  });
+});
+
+describe("CountyMap — hover tooltip", () => {
+  beforeEach(() => {
+    civicMapProps.length = 0;
+  });
+
+  const layerOf = () =>
+    (civicMapProps[0].layers as { props: Record<string, unknown> }[])[0];
+
+  it("shows the county's name and requirement on hover", () => {
+    render(
+      <CountyMap
+        counties={COUNTIES}
+        mode="share"
+        selectedFips={null}
+        onSelect={jest.fn()}
+      />,
+    );
+
+    const onHover = layerOf().props.onHover as (i: unknown) => void;
+    act(() => {
+      onHover({ object: { properties: { fips: "06057" } }, x: 100, y: 50 });
+    });
+
+    // Scoped to the tooltip: the sr-only county list carries the same figure,
+    // which is the point of it existing.
+    const tooltip = screen.getByRole("presentation");
+    expect(within(tooltip).getByText("Nevada County")).toBeInTheDocument();
+    expect(within(tooltip).getByText(/5,074/)).toBeInTheDocument();
+  });
+
+  it("clears when the cursor leaves every county", () => {
+    render(
+      <CountyMap
+        counties={COUNTIES}
+        mode="share"
+        selectedFips={null}
+        onSelect={jest.fn()}
+      />,
+    );
+
+    const onHover = layerOf().props.onHover as (i: unknown) => void;
+    act(() => {
+      onHover({ object: { properties: { fips: "06057" } }, x: 10, y: 10 });
+    });
+    act(() => {
+      onHover({ x: 10, y: 10 });
+    });
+
+    expect(screen.queryByRole("presentation")).not.toBeInTheDocument();
+  });
+
+  it("does not intercept the pointer", () => {
+    // A tooltip between the cursor and the county it describes flickers in
+    // and out as the pointer enters it.
+    render(
+      <CountyMap
+        counties={COUNTIES}
+        mode="share"
+        selectedFips={null}
+        onSelect={jest.fn()}
+      />,
+    );
+
+    const onHover = layerOf().props.onHover as (i: unknown) => void;
+    act(() => {
+      onHover({ object: { properties: { fips: "06057" } }, x: 10, y: 10 });
+    });
+
+    expect(screen.getByRole("presentation")).toHaveClass("pointer-events-none");
   });
 });
