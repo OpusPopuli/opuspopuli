@@ -4,6 +4,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { LandingCTA } from "@/components/landing/LandingCTA";
 import { FeatureCard } from "@/components/landing/FeatureCard";
+import { CountyThresholds } from "@/components/landing/CountyThresholds";
 
 export const metadata: Metadata = {
   title: {
@@ -111,6 +112,8 @@ export default function Home() {
           </p>
           <LandingCTA />
         </section>
+
+        <CountyThresholds />
 
         {/* Features */}
         <section className="max-w-6xl mx-auto px-8 pb-20">
