@@ -26,7 +26,7 @@ const CountyMap = dynamic(
     ssr: false,
     loading: () => (
       <div
-        className="h-full w-full animate-pulse rounded-lg bg-slate-800"
+        className="h-full w-full animate-pulse rounded-lg bg-surface-sunk"
         aria-hidden="true"
       />
     ),
@@ -118,7 +118,7 @@ export function CountyThresholds() {
                   href={STATUTE_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="underline underline-offset-2 hover:text-sky-300"
+                  className="underline underline-offset-2 hover:text-accent"
                 />,
               ]}
             />

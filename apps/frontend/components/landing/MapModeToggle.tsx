@@ -53,7 +53,7 @@ export function MapModeToggle({
 
   return (
     <fieldset className={className}>
-      <legend className="text-sm font-medium text-slate-300 mb-2">
+      <legend className="text-sm font-medium text-content-dim mb-2">
         {t("counties.modes.legend")}
       </legend>
       <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
@@ -70,13 +70,13 @@ export function MapModeToggle({
                 checked={value === mode.id}
                 onChange={() => onChange(mode.id)}
                 aria-describedby={hintId}
-                className="mt-1 h-4 w-4 accent-sky-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+                className="mt-1 h-4 w-4 accent-[var(--color-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
               />
-              <label htmlFor={inputId} className="text-sm text-slate-200">
+              <label htmlFor={inputId} className="text-sm text-content">
                 <span className="block font-medium">{mode.label}</span>
                 {/* The hint is associated rather than adjacent, so a screen
                     reader reads why the scale differs, not just its name. */}
-                <span id={hintId} className="block text-xs text-slate-400">
+                <span id={hintId} className="block text-xs text-content-dim">
                   {mode.hint}
                 </span>
               </label>

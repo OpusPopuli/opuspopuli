@@ -57,14 +57,14 @@ export function CountyRail({
   if (!county) {
     return (
       <aside className={className} aria-label={t("counties.statewide.heading")}>
-        <h3 className="text-lg font-semibold text-slate-100">
+        <h3 className="text-lg font-semibold text-content">
           {t("counties.rail.statewideHeading")}
         </h3>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-content-dim">
           {t("counties.rail.selectPrompt")}
         </p>
 
-        <h4 className="mt-6 text-sm font-medium text-slate-300">
+        <h4 className="mt-6 text-sm font-medium text-content-dim">
           {t("counties.statewide.heading")}
         </h4>
         <dl className="mt-2 space-y-4">
@@ -91,18 +91,18 @@ export function CountyRail({
 
   return (
     <aside className={className} aria-label={county.name}>
-      <h3 className="text-lg font-semibold text-slate-100">{county.name}</h3>
+      <h3 className="text-lg font-semibold text-content">{county.name}</h3>
 
       {/* The requirement is the figure the page exists to state, so it is the
           one rendered large — the rest is the context that makes it mean
           something. */}
-      <p className="mt-4 text-4xl font-semibold tabular-nums text-sky-300">
+      <p className="mt-4 text-4xl font-semibold tabular-nums text-accent">
         {nf.format(county.signaturesRequired)}
       </p>
-      <p className="text-sm text-slate-300">
+      <p className="text-sm text-content-dim">
         {t("counties.rail.signaturesRequired")}
       </p>
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-content-dim">
         {t("counties.rail.signaturesRequiredHint", {
           year: county.gubernatorialYear,
         })}
@@ -145,15 +145,15 @@ export function CountyRail({
         />
         {neighbor && (
           <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-400">
+            <dt className="text-xs uppercase tracking-wide text-content-dim">
               {t("counties.rail.cheapestNeighbor")}
             </dt>
-            <dd className="mt-1 text-sm text-slate-200">
+            <dd className="mt-1 text-sm text-content">
               {onSelectFips ? (
                 <button
                   type="button"
                   onClick={() => onSelectFips(neighbor.fips)}
-                  className="underline underline-offset-2 hover:text-sky-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+                  className="underline underline-offset-2 hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
                 >
                   {t("counties.rail.cheapestNeighborValue", {
                     name: neighbor.name,
@@ -173,11 +173,11 @@ export function CountyRail({
 
       {/* Provenance is part of the contract, not a footnote: the page asks the
           reader to trust a number, so it shows them where to check it. */}
-      <p className="mt-6 text-xs text-slate-400">
+      <p className="mt-6 text-xs text-content-dim">
         {t("counties.rail.source")}:{" "}
         <Link
           href={county.sourceUrl}
-          className="underline underline-offset-2 hover:text-sky-300"
+          className="underline underline-offset-2 hover:text-accent"
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -203,11 +203,11 @@ function Figure({
 }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-400">
+      <dt className="text-xs uppercase tracking-wide text-content-dim">
         {label}
       </dt>
-      <dd className="mt-1 text-sm tabular-nums text-slate-200">{value}</dd>
-      {hint && <dd className="text-xs text-slate-400">{hint}</dd>}
+      <dd className="mt-1 text-sm tabular-nums text-content">{value}</dd>
+      {hint && <dd className="text-xs text-content-dim">{hint}</dd>}
     </div>
   );
 }
