@@ -39,5 +39,55 @@
       "title": "Código Abierto",
       "description": "Nuestra plataforma es de código abierto. Inspecciona el código, contribuye y ayuda a construir mejores herramientas cívicas."
     }
+  },
+  "counties": {
+    "heading": "Lo que hace falta para llevar una medida a la boleta de tu condado",
+    "intro": "El Código Electoral de California §9118 fija el requisito de una iniciativa de condado en el 10% de los votos emitidos para todas las candidaturas a Gobernador en la última elección para ese cargo. No es el 10% de los residentes, ni el 10% de las personas inscritas para votar: es el 10% de quienes efectivamente votaron.",
+    "modes": {
+      "legend": "Mostrar condados por",
+      "share": "Proporción del electorado inscrito",
+      "shareHint": "Qué tan grande es el requisito frente al electorado del condado.",
+      "people": "Personas",
+      "peopleHint": "Firmas requeridas, en escala logarítmica: las cifras abarcan cuatro órdenes de magnitud."
+    },
+    "rail": {
+      "statewideHeading": "California",
+      "selectPrompt": "Selecciona un condado para ver su requisito.",
+      "signaturesRequired": "Firmas requeridas",
+      "signaturesRequiredHint": "10% de los votos emitidos para Gobernador, {{year}}",
+      "population": "Población",
+      "registeredVoters": "Personas inscritas para votar",
+      "gubernatorialVotes": "Votos emitidos para Gobernador, {{year}}",
+      "shareOfRegistered": "Proporción del electorado inscrito",
+      "rank": "Posición entre los 58 condados",
+      "rankValue": "{{rank}} de 58, contando desde el menor número de firmas",
+      "cheapestNeighbor": "Condado vecino con el requisito más bajo",
+      "cheapestNeighborValue": "{{name}}: {{count}} firmas",
+      "source": "Fuente",
+      "sourceLink": "Secretaría de Estado de California, Declaración de Votación",
+      "retrieved": "Consultado el {{date}}",
+      "unknown": "No disponible"
+    },
+    "statewide": {
+      "heading": "Para comparar, a nivel estatal",
+      "statute": "Iniciativa de ley",
+      "statuteValue": "{{count}} firmas",
+      "statuteBasis": "5% de los votos emitidos para Gobernador",
+      "amendment": "Enmienda constitucional",
+      "amendmentValue": "{{count}} firmas",
+      "amendmentBasis": "8% de los votos emitidos para Gobernador"
+    },
+    "framing": {
+      "heading": "Lo que una cifra baja significa y lo que no",
+      "body": "Un condado donde se necesitan menos firmas no es un blanco más fácil. Es un condado donde un grupo pequeño y organizado ya decide qué llega a la boleta, sea o no ese grupo el tuyo. La baja participación no abre una oportunidad: describe quién la tiene ahora."
+    },
+    "footnote": {
+      "heading": "Los detalles que importan",
+      "statute": "El requisito del 10% lo establece el <0>Código Electoral de California §9118</0>.",
+      "specialElection": "Una petición firmada por el 20% de esa misma cifra obliga a convocar una elección especial, en lugar de esperar a la siguiente ordinaria.",
+      "notPassing": "Calificar una medida no es aprobarla. Estas cifras llevan la pregunta al electorado; quien decide es el electorado.",
+      "cities": "Las ciudades funcionan de otra manera. Una ciudad de ley general fija su requisito en el 10% de sus personas inscritas para votar, no de los votos emitidos, y una ciudad con estatuto propio fija el suyo.",
+      "verify": "Cada cifra enlaza al registro público del que proviene. Compruébala."
+    }
   }
 }

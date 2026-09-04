@@ -39,5 +39,55 @@
       "title": "Open Source",
       "description": "Our platform is open source. Inspect the code, contribute, and help build better civic tools."
     }
+  },
+  "counties": {
+    "heading": "What it takes to put a measure on your county's ballot",
+    "intro": "California Elections Code §9118 sets the bar for a county initiative at 10% of the votes cast for all candidates for Governor at the last gubernatorial election. Not 10% of residents, and not 10% of registered voters — 10% of the people who actually turned out.",
+    "modes": {
+      "legend": "Show counties by",
+      "share": "Share of registered voters",
+      "shareHint": "How large the requirement is next to the county's electorate.",
+      "people": "People",
+      "peopleHint": "Signatures required, on a logarithmic scale — the raw counts span four orders of magnitude."
+    },
+    "rail": {
+      "statewideHeading": "California",
+      "selectPrompt": "Select a county to see what it requires.",
+      "signaturesRequired": "Signatures required",
+      "signaturesRequiredHint": "10% of votes cast for Governor, {{year}}",
+      "population": "Population",
+      "registeredVoters": "Registered voters",
+      "gubernatorialVotes": "Votes cast for Governor, {{year}}",
+      "shareOfRegistered": "Share of registered voters",
+      "rank": "Rank among 58 counties",
+      "rankValue": "{{rank}} of 58, counting up from the fewest signatures",
+      "cheapestNeighbor": "Neighbouring county with the lowest requirement",
+      "cheapestNeighborValue": "{{name}} — {{count}} signatures",
+      "source": "Source",
+      "sourceLink": "California Secretary of State, Statement of Vote",
+      "retrieved": "Retrieved {{date}}",
+      "unknown": "Not available"
+    },
+    "statewide": {
+      "heading": "For comparison, statewide",
+      "statute": "Initiative statute",
+      "statuteValue": "{{count}} signatures",
+      "statuteBasis": "5% of votes cast for Governor",
+      "amendment": "Constitutional amendment",
+      "amendmentValue": "{{count}} signatures",
+      "amendmentBasis": "8% of votes cast for Governor"
+    },
+    "framing": {
+      "heading": "What a low number does and does not mean",
+      "body": "A county where fewer signatures are needed is not an easier target. It is a county where a small organised group already decides what reaches the ballot — whether or not that group is you. Low turnout does not create an opening so much as describe who is currently holding one."
+    },
+    "footnote": {
+      "heading": "The details that matter",
+      "statute": "The 10% requirement is set by <0>California Elections Code §9118</0>.",
+      "specialElection": "A petition signed by 20% of that same number compels a special election, rather than waiting for the next regular one.",
+      "notPassing": "Qualifying a measure is not passing one. These figures put a question to the voters; they decide it.",
+      "cities": "Cities work differently. A general-law city sets its bar at 10% of its registered voters, not of votes cast, and a charter city sets its own.",
+      "verify": "Every figure here links to the public record it came from. Check it."
+    }
   }
 }
