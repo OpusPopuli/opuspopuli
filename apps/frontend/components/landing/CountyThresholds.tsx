@@ -26,7 +26,7 @@ const CountyMap = dynamic(
     ssr: false,
     loading: () => (
       <div
-        className="h-full w-full animate-pulse rounded-lg bg-surface-sunk"
+        className="h-full w-full animate-pulse bg-surface-alt/40"
         aria-hidden="true"
       />
     ),
@@ -74,11 +74,12 @@ export function CountyThresholds() {
         {t("counties.heading")}
       </h2>
       <p className="mt-3 max-w-3xl text-content-dim">{t("counties.intro")}</p>
+      <p className="mt-3 max-w-3xl text-content-dim">{t("counties.example")}</p>
 
       <MapModeToggle value={mode} onChange={setMode} className="mt-8" />
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[2fr_1fr]">
-        <div className="h-[420px] overflow-hidden rounded-lg bg-slate-900">
+        <div className="h-[420px]">
           {!loading && counties.length > 0 && (
             <CountyMap
               counties={counties}
@@ -91,7 +92,11 @@ export function CountyThresholds() {
           )}
         </div>
 
-        <CountyRail county={selected} onSelectFips={setSelectedFips} />
+        <CountyRail
+          county={selected}
+          onSelectFips={setSelectedFips}
+          className="lg:border-l lg:border-[var(--color-line)] lg:pl-8"
+        />
       </div>
 
       <div className="mt-12 max-w-3xl">

@@ -57,7 +57,7 @@ export function CountyRail({
   if (!county) {
     return (
       <aside className={className} aria-label={t("counties.statewide.heading")}>
-        <h3 className="text-lg font-semibold text-content">
+        <h3 className="font-serif text-3xl text-content">
           {t("counties.rail.statewideHeading")}
         </h3>
         <p className="mt-1 text-sm text-content-dim">
@@ -67,7 +67,7 @@ export function CountyRail({
         <h4 className="mt-6 text-sm font-medium text-content-dim">
           {t("counties.statewide.heading")}
         </h4>
-        <dl className="mt-2 space-y-4">
+        <dl className="mt-2">
           <Figure
             label={t("counties.statewide.statute")}
             value={t("counties.statewide.statuteValue", {
@@ -91,12 +91,12 @@ export function CountyRail({
 
   return (
     <aside className={className} aria-label={county.name}>
-      <h3 className="text-lg font-semibold text-content">{county.name}</h3>
+      <h3 className="font-serif text-3xl text-content">{county.name}</h3>
 
       {/* The requirement is the figure the page exists to state, so it is the
           one rendered large — the rest is the context that makes it mean
           something. */}
-      <p className="mt-4 text-4xl font-semibold tabular-nums text-accent">
+      <p className="mt-4 font-serif text-5xl tabular-nums text-accent-strong">
         {nf.format(county.signaturesRequired)}
       </p>
       <p className="text-sm text-content-dim">
@@ -108,7 +108,7 @@ export function CountyRail({
         })}
       </p>
 
-      <dl className="mt-6 space-y-4">
+      <dl className="mt-6">
         <Figure
           label={t("counties.rail.gubernatorialVotes", {
             year: county.gubernatorialYear,
@@ -144,11 +144,11 @@ export function CountyRail({
           value={t("counties.rail.rankValue", { rank: nf.format(county.rank) })}
         />
         {neighbor && (
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-content-dim">
+          <div className="flex items-baseline justify-between gap-4 border-t border-[var(--color-line)] py-2">
+            <dt className="text-sm text-content-dim">
               {t("counties.rail.cheapestNeighbor")}
             </dt>
-            <dd className="mt-1 text-sm text-content">
+            <dd className="text-right text-sm text-content">
               {onSelectFips ? (
                 <button
                   type="button"
@@ -202,12 +202,12 @@ function Figure({
   hint?: string;
 }) {
   return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-content-dim">
-        {label}
-      </dt>
-      <dd className="mt-1 text-sm tabular-nums text-content">{value}</dd>
-      {hint && <dd className="text-xs text-content-dim">{hint}</dd>}
+    <div className="flex items-baseline justify-between gap-4 border-t border-[var(--color-line)] py-2">
+      <dt className="text-sm text-content-dim">{label}</dt>
+      <dd className="text-right">
+        <span className="text-sm tabular-nums text-content">{value}</span>
+        {hint && <span className="block text-xs text-content-dim">{hint}</span>}
+      </dd>
     </div>
   );
 }

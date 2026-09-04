@@ -46,8 +46,14 @@ export interface CivicMapProps {
   layers: Layer[];
   /** Where the camera starts. Not controlled — see `interactive`. */
   initialViewState: CivicMapViewState;
-  /** Ground colour behind the layers. */
-  backgroundColor?: string;
+  /**
+   * Ground colour behind the layers.
+   *
+   * Omit for a transparent map: the style then carries no layers at all and
+   * the page shows through, so the shapes read as sitting ON the page rather
+   * than inside a window cut into it.
+   */
+  backgroundColor?: string | null;
   /**
    * Whether the user can pan and zoom.
    *
@@ -76,27 +82,31 @@ export interface CivicMapProps {
  * shared object.
  */
 export function backgroundOnlyStyle(
-  backgroundColor: string,
+  backgroundColor?: string | null,
 ): StyleSpecification {
   return {
     version: 8,
     sources: {},
-    layers: [
-      {
-        id: "background",
-        type: "background",
-        paint: { "background-color": backgroundColor },
-      },
-    ],
+    // No colour means no background layer, which leaves the canvas
+    // transparent so the page shows through. A style with zero layers is
+    // valid MapLibre, and it is what makes the shapes read as sitting ON the
+    // page rather than inside a window cut into it.
+    layers: backgroundColor
+      ? [
+          {
+            id: "background",
+            type: "background",
+            paint: { "background-color": backgroundColor },
+          },
+        ]
+      : [],
   };
 }
-
-const DEFAULT_BACKGROUND = "#0a0f1a";
 
 export function CivicMap({
   layers,
   initialViewState,
-  backgroundColor = DEFAULT_BACKGROUND,
+  backgroundColor = null,
   interactive = false,
   onViewStateChange,
   className,

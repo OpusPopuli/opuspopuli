@@ -53,15 +53,20 @@ export function MapModeToggle({
 
   return (
     <fieldset className={className}>
-      <legend className="text-sm font-medium text-content-dim mb-2">
-        {t("counties.modes.legend")}
-      </legend>
-      <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
+      <legend className="sr-only">{t("counties.modes.legend")}</legend>
+
+      {/*
+        A segmented control on the surface, a radio group underneath. The
+        inputs are visually hidden rather than replaced by buttons, so arrow-key
+        traversal, the single tab stop and correct announcement all still come
+        from the native control — the styling rides on :checked and
+        :focus-visible via peer-*.
+      */}
+      <div className="inline-flex rounded-md border border-[var(--color-line)] bg-surface-alt p-0.5">
         {modes.map((mode) => {
           const inputId = `${groupName}-${mode.id}`;
-          const hintId = `${inputId}-hint`;
           return (
-            <div key={mode.id} className="flex items-start gap-2">
+            <div key={mode.id} className="contents">
               <input
                 type="radio"
                 id={inputId}
@@ -69,16 +74,15 @@ export function MapModeToggle({
                 value={mode.id}
                 checked={value === mode.id}
                 onChange={() => onChange(mode.id)}
-                aria-describedby={hintId}
-                className="mt-1 h-4 w-4 accent-[var(--color-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+                title={mode.hint}
+                className="peer sr-only"
               />
-              <label htmlFor={inputId} className="text-sm text-content">
-                <span className="block font-medium">{mode.label}</span>
-                {/* The hint is associated rather than adjacent, so a screen
-                    reader reads why the scale differs, not just its name. */}
-                <span id={hintId} className="block text-xs text-content-dim">
-                  {mode.hint}
-                </span>
+              <label
+                htmlFor={inputId}
+                title={mode.hint}
+                className="cursor-pointer rounded px-3 py-1.5 text-sm text-content-dim transition-colors peer-checked:bg-surface peer-checked:font-medium peer-checked:text-content peer-checked:shadow-sm peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--color-accent)]"
+              >
+                {mode.label}
               </label>
             </div>
           );

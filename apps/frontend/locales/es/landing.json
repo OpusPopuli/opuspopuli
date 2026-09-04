@@ -43,6 +43,7 @@
   "counties": {
     "heading": "Lo que hace falta para llevar una medida a la boleta de tu condado",
     "intro": "El Código Electoral de California §9118 fija el requisito de una iniciativa de condado en el 10% de los votos emitidos para todas las candidaturas a Gobernador en la última elección para ese cargo. No es el 10% de los residentes, ni el 10% de las personas inscritas para votar: es el 10% de quienes efectivamente votaron.",
+    "example": "En el condado de Sonoma son 19,746 firmas. La cifra no es una meta que alguien haya inventado: es el tamaño del grupo que ya puede llevar una pregunta a la boleta donde vives, sea o no ese grupo el tuyo.",
     "modes": {
       "legend": "Mostrar condados por",
       "share": "Proporción del electorado inscrito",
@@ -59,9 +60,9 @@
       "registeredVoters": "Personas inscritas para votar",
       "gubernatorialVotes": "Votos emitidos para Gobernador, {{year}}",
       "shareOfRegistered": "Proporción del electorado inscrito",
-      "rank": "Posición entre los 58 condados",
-      "rankValue": "{{rank}} de 58, contando desde el menor número de firmas",
-      "cheapestNeighbor": "Condado vecino con el requisito más bajo",
+      "rank": "Posición",
+      "rankValue": "{{rank}} de 58, de menor a mayor",
+      "cheapestNeighbor": "Condado vecino más bajo",
       "cheapestNeighborValue": "{{name}}: {{count}} firmas",
       "source": "Fuente",
       "sourceLink": "Secretaría de Estado de California, Declaración de Votación",
