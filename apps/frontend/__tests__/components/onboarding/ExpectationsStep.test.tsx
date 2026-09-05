@@ -12,7 +12,7 @@ describe("ExpectationsStep", () => {
     render(<ExpectationsStep onComplete={() => {}} />);
 
     const items = screen.getAllByRole("listitem");
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(8);
 
     const building = items.filter((li) =>
       within(li).queryByText(en.expectations.readiness.building),
@@ -25,9 +25,37 @@ describe("ExpectationsStep", () => {
 
   it("carries readiness as text, not as colour alone", () => {
     // "Still being built" is the most decision-relevant thing on this screen,
-    // so it cannot be conveyed by hue alone (WCAG 1.4.1).
+    // so it cannot be conveyed by hue alone (WCAG 1.4.1). Counted against the
+    // row total rather than a literal, so adding a capability does not need
+    // this number edited.
     render(<ExpectationsStep onComplete={() => {}} />);
-    expect(screen.getAllByText(en.expectations.readiness.live)).toHaveLength(4);
+
+    const rows = screen.getAllByRole("listitem").length;
+    const live = screen.getAllByText(en.expectations.readiness.live).length;
+    const building = screen.getAllByText(
+      en.expectations.readiness.building,
+    ).length;
+
+    expect(live + building).toBe(rows);
+    expect(building).toBeGreaterThan(0);
+  });
+
+  it("tells the reader what picking three topics actually did", () => {
+    // The topics step is two screens earlier and returns nothing visible at
+    // the time. This is where it pays off, so the row has to name the link
+    // rather than describe bills generically.
+    render(<ExpectationsStep onComplete={() => {}} />);
+    expect(
+      screen.getByText(en.expectations.items.bills.body),
+    ).toBeInTheDocument();
+    expect(en.expectations.items.bills.body).toMatch(/topics you picked/i);
+  });
+
+  it("lists the committees surface that decides where a bill sits", () => {
+    render(<ExpectationsStep onComplete={() => {}} />);
+    expect(
+      screen.getByText(en.expectations.items.committees.title),
+    ).toBeInTheDocument();
   });
 
   it("states when notifications arrive, and when they do not", () => {
