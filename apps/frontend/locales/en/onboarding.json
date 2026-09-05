@@ -144,6 +144,14 @@
         "title": "State propositions",
         "body": "Every measure on the California ballot, in plain language, beside the text it came from."
       },
+      "bills": {
+        "title": "Statewide bills",
+        "body": "Every bill moving through the Legislature, with the three topics you picked deciding what surfaces first."
+      },
+      "committees": {
+        "title": "Legislative committees",
+        "body": "Which committee a bill sits in, who is on it, and what they have voted on."
+      },
       "finance": {
         "title": "Campaign finance",
         "body": "Contributions and expenditures traced to the committee that filed them."
