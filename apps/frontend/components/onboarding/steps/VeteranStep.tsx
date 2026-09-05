@@ -208,6 +208,12 @@ export function VeteranStep({ onComplete, isLastStep }: VeteranStepProps) {
           className="w-4 h-4 accent-sage-dark"
         />
       </label>
+      {/* What the toggle actually does. "Never store sensitive fields" reads
+          as a preference for the future; it is also retroactive, and a reader
+          deciding whether to tick it needs to know that. */}
+      <p className="mt-1 px-1 text-xs text-content-dim">
+        {t("veteran.noFieldsNote")}
+      </p>
 
       {error && (
         <p role="alert" className="text-danger text-sm pt-3">

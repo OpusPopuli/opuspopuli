@@ -1,66 +1,54 @@
 {
-  "skip": "Omitir",
-  "skipStep": "Omitir este paso",
   "back": "Atrás",
-  "next": "Siguiente",
-  "getStarted": "Comenzar",
+  "skip": "Omitir por ahora",
+  "skipStep": "Omitir esto",
+  "continue": "Continuar",
   "saveAndContinue": "Guardar y continuar",
-  "saving": "Guardando…",
+  "saving": "Guardando...",
+  "getStarted": "Comenzar",
+  "language": {
+    "legend": "Elige un idioma",
+    "en": "English",
+    "es": "Español"
+  },
   "progress": {
-    "label": "Progreso de incorporación"
-  },
-  "welcome": {
-    "title": "Bienvenido a Opus Populi",
-    "subtitle": "Tu centro de participación cívica — sigue proposiciones, representantes, finanzas de campaña y peticiones en un solo lugar",
-    "languageLegend": "Elige tu idioma",
-    "languages": {
-      "en": "English",
-      "es": "Español"
+    "label": "Progreso de la configuración",
+    "stepOf": "Paso {{current}} de {{total}}",
+    "stepOfIn": "Paso {{current}} de {{total}} · {{county}}",
+    "steps": {
+      "county": "Tu condado",
+      "threshold": "Lo que hace falta",
+      "topics": "Lo que sigues",
+      "veteran": "Una pregunta",
+      "expectations": "Qué esperar",
+      "commitments": "Compromisos"
     }
   },
-  "explore": {
-    "title": "Explora Tu Región",
-    "description": "Mantente informado con datos cívicos completos de tu área",
-    "features": {
-      "propositions": "Proposiciones",
-      "representatives": "Representantes",
-      "meetings": "Reuniones Públicas",
-      "campaignFinance": "Finanzas de Campaña"
-    }
+  "county": {
+    "title": "¿Cuál es tu condado?",
+    "body": "Acabas de ver lo que hace falta para poner una medida en la boleta de un condado. Para decirte la cifra del tuyo, y quién financia lo que ya está en ella, necesitamos saber dónde votas.",
+    "cite": "Tocqueville: las instituciones locales son donde la ciudadanía aprende de verdad la práctica de la libertad. El condado no es una conveniencia de diseño.",
+    "privacyLead": "Tu dirección nunca se muestra públicamente.",
+    "privacyBody": "Se traduce en un condado y un conjunto de distritos, y para nada más se usa. Puedes borrarla cuando quieras y conservar la cuenta.",
+    "skip": "Omitir y mostrarme California"
   },
-  "scan": {
-    "title": "Escanear Peticiones",
-    "description": "Usa tu cámara para escanear peticiones con verificación y seguimiento instantáneo por IA",
-    "permissionNote": "Te pediremos acceso a la cámara cuando estés listo para escanear. No se guardan imágenes en tu dispositivo."
-  },
-  "analyze": {
-    "title": "Análisis Instantáneo",
-    "description": "La IA analiza peticiones, proposiciones y datos de campaña para ayudarte a tomar decisiones informadas"
-  },
-  "track": {
-    "title": "Seguir Progreso",
-    "description": "Sigue las medidas electorales, la actividad de peticiones y las sesiones legislativas en tu área"
-  },
-  "address": {
-    "title": "¿Dónde vives?",
-    "subtitle": "Usamos tu dirección para encontrar tus elecciones locales, proposiciones y representantes. Puedes omitirlo.",
-    "fields": {
-      "line1": "Dirección",
-      "city": "Ciudad",
-      "state": "Estado",
-      "statePlaceholder": "Elige estado",
-      "postalCode": "Código postal"
-    },
-    "errors": {
-      "allRequired": "Completa los cuatro campos, o omite este paso.",
-      "saveFailed": "No pudimos guardar tu dirección. Inténtalo de nuevo o omítelo por ahora."
-    }
+  "threshold": {
+    "title": "Esto es lo que hace falta en {{county}}.",
+    "body": "La cifra de abajo es el 10% de las boletas emitidas para Gobernador en {{year}}. Esa cantidad de firmas obliga a la Junta de Supervisores a adoptar una ordenanza tal como está escrita, o a someterla al voto. Esas son sus dos únicas opciones.",
+    "wrongCounty": "Ese no es mi condado",
+    "addAddress": "Quiero indicar mi dirección",
+    "waitingTitle": "Averiguando de qué condado se trata.",
+    "waitingBody": "Estamos cruzando tu dirección con los límites de los condados. Tarda un momento, y puedes seguir sin esperar.",
+    "noAddressTitle": "Sin dirección no hay cifra del condado.",
+    "noAddressBody": "Puedes añadirla después desde ajustes; mientras tanto, la portada tiene las cifras de los 58 condados del estado.",
+    "noMatchTitle": "Todavía no tenemos el umbral de ese condado.",
+    "noMatchBody": "Los condados de California están cargados y verificados contra las cifras de la Secretaría de Estado. Si el tuyo está fuera de California, o es nuevo, aún no está."
   },
   "topics": {
-    "title": "¿Qué te importa?",
-    "subtitle": "Elige tus 3 principales. El enfoque vence a la amplitud — son los temas en los que puedes influir de verdad.",
-    "reasonHeading": "¿Por qué solo 3?",
-    "reasonBody": "La atención cívica es finita. Tres temas en los que puedas escribir a tus representantes, presentarte u organizar gente valen más que una lista de doce que solo vas a mirar de pasada. Puedes ampliarla más tarde en configuración.",
+    "title": "¿Qué sigues de verdad?",
+    "subtitle": "Elige tres. La atención cívica es finita, y tres es aproximadamente el número de temas que una persona puede seguir lo bastante de cerca como para actuar: escribir, presentarse, firmar o negarse a hacerlo.",
+    "reasonHeading": "¿Por qué tres?",
+    "reasonBody": "Dewey, 1927: el público no está ausente, está eclipsado, incapaz de reconocerse a sí mismo o de rastrear qué decisiones le afectan. El remedio no es mejor ciudadanía sino mejores condiciones de indagación. Tres temas que puedes seguir valen más que doce que solo puedes ojear. Puedes ampliarlo después en ajustes.",
     "counter": "{{count}} de {{max}} seleccionados",
     "groupLabel": "Temas",
     "options": {
@@ -74,22 +62,23 @@
       "taxes": "Impuestos y presupuesto",
       "immigration": "Inmigración",
       "voting_rights": "Derecho al voto",
-      "justice": "Reforma judicial",
-      "family": "Familia y cuidado"
+      "justice": "Reforma de la justicia",
+      "family": "Familia y cuidados"
     },
     "errors": {
-      "saveFailed": "No pudimos guardar tus temas. Inténtalo de nuevo o omítelo."
+      "saveFailed": "No pudimos guardar tus temas. Puedes intentarlo de nuevo u omitirlo."
     }
   },
   "lifeContext": {
-    "title": "Un poco sobre tu día a día",
-    "subtitle": "Esto nos ayuda a mostrarte propuestas que afectan tu vida. Cada elección es opcional.",
+    "summary": "¿Algo sobre tu situación?",
+    "optional": "Opcional",
+    "subtitle": "Esto solo cambia qué proyectos de ley mostramos primero. Todo es opcional, y nada de ello se muestra a nadie más.",
     "groups": {
       "housing": "Vivienda",
       "family": "Familia",
       "work": "Trabajo",
       "workExtras": "Más sobre el trabajo",
-      "education": "Escuela",
+      "education": "Estudios",
       "transit": "Cómo te mueves"
     },
     "chips": {
@@ -98,44 +87,96 @@
         "owner": "Soy propietario"
       },
       "family": {
-        "parent": "Padre/madre de menores en edad escolar",
+        "parent": "Madre o padre de menores en edad escolar",
         "caregiver": "Cuido a un familiar mayor"
       },
       "work": {
-        "employed": "Empleado",
-        "gig": "Autónomo / trabajo por encargo",
-        "businessOwner": "Dueño de pequeño negocio",
+        "employed": "Con empleo",
+        "gig": "Autónomo o por encargo",
+        "businessOwner": "Dueño de un pequeño negocio",
         "retired": "Jubilado"
       },
       "workExtras": {
-        "union": "Miembro de un sindicato"
+        "union": "Afiliado a un sindicato"
       },
       "education": {
         "student": "Soy estudiante",
-        "educator": "Educador / docente"
+        "educator": "Docente"
       },
       "transit": {
-        "transit": "Principalmente transporte público",
-        "car": "Principalmente conduzco",
-        "active": "Principalmente bici o a pie"
+        "transit": "Sobre todo transporte público",
+        "car": "Sobre todo en coche",
+        "active": "Sobre todo en bici o a pie"
       }
     },
     "errors": {
-      "saveFailed": "No pudimos guardar tus selecciones. Inténtalo de nuevo o omítelo."
+      "saveFailed": "No pudimos guardar tus selecciones. Puedes intentarlo de nuevo u omitirlo."
     }
   },
   "veteran": {
-    "title": "Una pregunta sensible",
-    "subtitle": "Es el único campo sensible que preguntamos en la incorporación. Siempre puedes omitirlo.",
-    "chip": "Soy veterano o militar en activo",
-    "lockedNote": "Ya quedó marcado en una visita anterior. Para quitarlo, gestiónalo desde tu configuración de privacidad.",
-    "noFieldsToggle": "No guardar nunca campos sensibles sobre mí",
+    "title": "Una pregunta sensible.",
+    "subtitle": "Es el único dato sensible que preguntamos, y tiene su propia pantalla para que no pase inadvertido dentro de una lista.",
+    "chip": "Soy veterano o estoy en servicio activo",
+    "lockedNote": "Ya quedó registrado en una visita anterior. Para quitarlo, gestiona tu privacidad en ajustes.",
+    "noFieldsToggle": "Nunca guarden datos sensibles sobre mí",
+    "noFieldsNote": "Activarlo borra lo que ya esté guardado y hace que dejemos de preguntar.",
     "disclosure": {
-      "encryptedBadge": "Cifrado en reposo",
-      "whyWeAsk": "Tu condición de veterano nos ayuda a destacar propuestas sobre salud, beneficios y protección de vivienda que te afectan. Almacenado cifrado; nunca compartido con el motor de recomendaciones en forma cruda — solo como una bandera booleana."
+      "whyWeAsk": "La condición de veterano hace aparecer proyectos de ley sobre salud, prestaciones y protección de vivienda que te afectan directamente. Se guarda cifrada, nunca se muestra públicamente y nunca se usa para dirigirte propaganda política.",
+      "encryptedBadge": "Cifrado en reposo"
     },
     "errors": {
-      "saveFailed": "No pudimos guardar tu respuesta. Inténtalo de nuevo o omítelo."
+      "saveFailed": "No pudimos guardar tu respuesta. Puedes intentarlo de nuevo u omitirlo."
+    }
+  },
+  "expectations": {
+    "title": "Lo que vas a recibir de verdad.",
+    "body": "Parte de esto ya funciona. Parte se está construyendo, y preferimos decirlo a que lo descubras por su ausencia.",
+    "readiness": {
+      "live": "Activo",
+      "building": "En obras"
+    },
+    "items": {
+      "threshold": {
+        "title": "El umbral de tu condado",
+        "body": "El número de firmas, de dónde sale y cómo se compara con los otros 57."
+      },
+      "propositions": {
+        "title": "Propuestas estatales",
+        "body": "Cada medida de la boleta de California, en lenguaje llano, junto al texto del que procede."
+      },
+      "finance": {
+        "title": "Financiación de campañas",
+        "body": "Aportaciones y gastos rastreados hasta el comité que los declaró."
+      },
+      "representatives": {
+        "title": "Tus representantes",
+        "body": "Quién te representa en cada nivel, y cómo votaron."
+      },
+      "countyMeasures": {
+        "title": "Medidas y reuniones del condado",
+        "body": "Las medidas y las órdenes del día de tu propio condado. Vamos condado por condado, y puede que el tuyo aún no esté."
+      },
+      "petitions": {
+        "title": "Verificación de peticiones",
+        "body": "Apunta la cámara a una petición para comprobar si es una medida real y registrada."
+      }
+    },
+    "notifyLead": "Sabrás de nosotros cuando algo cambie:",
+    "notifyBody": "una medida se califica, un comité presenta su declaración, tu junta convoca una votación. Ni por calendario, ni por ningún otro motivo."
+  },
+  "address": {
+    "title": "¿Dónde votas?",
+    "subtitle": "Tu dirección se traduce en un condado y un conjunto de distritos. Nunca se muestra públicamente.",
+    "fields": {
+      "line1": "Dirección",
+      "city": "Ciudad",
+      "state": "Estado",
+      "statePlaceholder": "Estado",
+      "postalCode": "Código postal"
+    },
+    "errors": {
+      "allRequired": "Completa todos los campos, u omite este paso.",
+      "saveFailed": "No pudimos guardar tu dirección. Puedes intentarlo de nuevo u omitirlo."
     }
   }
 }

@@ -1,94 +1,83 @@
 {
-  "hero": {
-    "title": "Conoce tu boleta. Exige rendición de cuentas.",
-    "subtitle": "Opus Populi te da acceso transparente a proposiciones, representantes, finanzas de campaña y seguimiento de peticiones — impulsado por IA, creado para ciudadanos.",
-    "ctaSignedOut": "Comenzar",
-    "ctaSignedIn": "Ir al Panel",
-    "ctaSignIn": "Iniciar sesión"
-  },
-  "features": {
-    "sectionTitle": "Todo lo que necesitas para mantenerte informado",
-    "propositions": {
-      "title": "Boleta y Proposiciones",
-      "description": "Sigue las medidas electorales e iniciativas en tu región. Obtén análisis impulsado por IA para entender lo que estás votando."
-    },
-    "petitions": {
-      "title": "Escáner de Peticiones",
-      "description": "Escanea peticiones con tu cámara para verificación instantánea por IA. Sigue el progreso de firmas en un mapa interactivo."
-    },
-    "representatives": {
-      "title": "Representantes y Reuniones",
-      "description": "Conoce quién te representa. Sigue reuniones públicas, sesiones legislativas y audiencias de comités."
-    },
-    "campaignFinance": {
-      "title": "Finanzas de Campaña",
-      "description": "Sigue el dinero. Explora contribuciones, gastos y fondos de comités con total transparencia."
-    }
-  },
-  "trust": {
-    "sectionTitle": "Construido sobre confianza y transparencia",
-    "transparency": {
-      "title": "Transparencia de IA",
-      "description": "Nuestros compromisos de IA, tarjetas de sistema y carta de prompts son públicos. Siempre sabes cómo se usa la IA."
-    },
-    "privacy": {
-      "title": "Privacidad Primero",
-      "description": "Cumple con GDPR y CCPA. Controlas tus datos con gestión granular de consentimiento y exportación completa de datos."
-    },
-    "openSource": {
-      "title": "Código Abierto",
-      "description": "Nuestra plataforma es de código abierto. Inspecciona el código, contribuye y ayuda a construir mejores herramientas cívicas."
-    }
-  },
   "counties": {
-    "heading": "Lo que hace falta para llevar una medida a la boleta de tu condado",
-    "intro": "El Código Electoral de California §9118 fija el requisito de una iniciativa de condado en el 10% de los votos emitidos para todas las candidaturas a Gobernador en la última elección para ese cargo. No es el 10% de los residentes, ni el 10% de las personas inscritas para votar: es el 10% de quienes efectivamente votaron.",
-    "example": "En el condado de Sonoma son 19,746 firmas. La cifra no es una meta que alguien haya inventado: es el tamaño del grupo que ya puede llevar una pregunta a la boleta donde vives, sea o no ese grupo el tuyo.",
+    "eyebrow": "California · Código Electoral §9118",
+    "heading": "¿Quién gobierna tu condado?",
+    "intro": "Según el Código Electoral de California §9118, una petición firmada por votantes equivalentes al 10% de las boletas emitidas para Gobernador obliga a tu junta de supervisores a adoptar la ordenanza tal como está escrita o llevarla a votación. Esas son sus dos únicas opciones, y la cifra es más pequeña de lo que imaginas.",
+    "prompt": "Señala un condado.",
+    "citeMosca": "Mosca, 1896: una minoría gobierna no por ser más sabia ni de mejor cuna, sino por estar organizada frente a una mayoría que no lo está.",
+    "cta": {
+      "start": "Empieza por tu condado",
+      "haveAccount": "¿Ya tienes una cuenta?",
+      "signIn": "Inicia sesión",
+      "briefing": "Ve a tu resumen"
+    },
     "modes": {
-      "legend": "Mostrar condados por",
-      "share": "Proporción del electorado inscrito",
+      "legend": "Sombrear condados por",
+      "share": "Proporción del electorado",
       "shareHint": "Qué tan grande es el requisito frente al electorado del condado.",
       "people": "Personas",
-      "peopleHint": "Firmas requeridas, en escala logarítmica: las cifras abarcan cuatro órdenes de magnitud."
+      "peopleHint": "Firmas requeridas, en escala logarítmica, porque las cifras abarcan cuatro órdenes de magnitud.",
+      "rampLow": "Menos",
+      "rampHigh": "Más"
     },
     "rail": {
       "statewideHeading": "California",
-      "selectPrompt": "Selecciona un condado para ver su requisito.",
-      "signaturesRequired": "Firmas requeridas",
-      "signaturesRequiredHint": "10% de los votos emitidos para Gobernador, {{year}}",
-      "population": "Población",
+      "selectPrompt": "Señala un condado para ver su requisito.",
+      "signaturesRequired": "firmas obligan a la junta",
+      "rankValue": "{{rank}} de 58 condados",
+      "gubernatorialVotes": "Votos para Gobernador, {{year}}",
       "registeredVoters": "Personas inscritas para votar",
-      "gubernatorialVotes": "Votos emitidos para Gobernador, {{year}}",
-      "shareOfRegistered": "Proporción del electorado inscrito",
-      "rank": "Posición",
-      "rankValue": "{{rank}} de 58, de menor a mayor",
+      "shareOfRegistered": "Proporción del electorado",
+      "population": "Población",
       "cheapestNeighbor": "Condado vecino más bajo",
-      "cheapestNeighborValue": "{{name}}: {{count}} firmas",
-      "source": "Fuente",
-      "sourceLink": "Secretaría de Estado de California, Declaración de Votación",
-      "retrieved": "Consultado el {{date}}",
-      "unknown": "No disponible"
+      "cheapestNeighborValue": "{{name}}, {{count}}",
+      "sources": "Secretaría de Estado, Declaración de Votación · Informe de Inscripción · Censo de EE. UU. Cada cifra enlaza a su registro.",
+      "unknown": "No disponible",
+      "countiesLabel": "Condados",
+      "countyOption": "{{name}}, {{count}} firmas"
     },
-    "statewide": {
-      "heading": "Para comparar, a nivel estatal",
-      "statute": "Iniciativa de ley",
-      "statuteValue": "{{count}} firmas",
-      "statuteBasis": "5% de los votos emitidos para Gobernador",
-      "amendment": "Enmienda constitucional",
-      "amendmentValue": "{{count}} firmas",
-      "amendmentBasis": "8% de los votos emitidos para Gobernador"
+    "scale": {
+      "heading": "El condado no es una conveniencia.",
+      "body1": "Es la escala más pequeña en la que una decisión obliga y una sola persona no es un error de redondeo. A nivel estatal, una iniciativa de ley requiere {{statute}} firmas y una enmienda constitucional {{amendment}}. Tu parte de eso es ruido aritmético.",
+      "body2": "En tu condado ese mismo derecho tiene una cifra lo bastante pequeña como para que pudieras nombrar a quienes están detrás. Nada de ello es secreto: son las boletas emitidas para Gobernador en 2022, divididas entre diez.",
+      "cite": "Tocqueville: las instituciones locales son donde la ciudadanía aprende de verdad la práctica de la libertad. El condado no es una conveniencia de diseño."
     },
-    "framing": {
-      "heading": "Lo que una cifra baja significa y lo que no",
-      "body": "Un condado donde se necesitan menos firmas no es un blanco más fácil. Es un condado donde un grupo pequeño y organizado ya decide qué llega a la boleta, sea o no ese grupo el tuyo. La baja participación no abre una oportunidad: describe quién la tiene ahora."
+    "fair": {
+      "heading": "El derecho ya existe. Ese nunca fue el problema.",
+      "body1": "Toda persona puede peticionar, comentar, presentarse, votar. Ejercer bien esos derechos exige tiempo, investigación y capacidad de interpretación, y eso está repartido con la misma desigualdad que la riqueza. Una libertad que no tienes los recursos para ejercer es una libertad solo de nombre.",
+      "body2": "Así que el público no está ausente: está eclipsado, sin poder ver con facilidad qué decisiones le alcanzan ni rastrear quién las tomó. Eso no es apatía, y no se arregla pidiéndole a nadie que se interese más.",
+      "cite": "Rawls sobre el valor equitativo de las libertades políticas; Dewey sobre el eclipse del público."
+    },
+    "cost": {
+      "heading": "Así que cambiamos el costo, no a la ciudadanía.",
+      "body1": "Entregar la decisión a expertos se ha intentado durante un siglo. Exhortar a la gente a prestar más atención también. El movimiento que queda es bajar lo que cuesta saber, en la única escala donde saber todavía se convierte en algo.",
+      "body2": "Importa más de lo que su tamaño sugiere. Casi toda herramienta cívica te ayuda a responder una pregunta que alguien más decidió hacer. Una iniciativa de condado es uno de los pocos lugares donde la pregunta misma está en disputa.",
+      "cite": "Schattschneider: el poder decisivo no es el voto sino la cuestión previa de qué alternativas llegan siquiera a considerarse. El coro de intereses organizados, observó, canta con acento de clase alta.",
+      "items": {
+        "ballotTitle": "Qué hay en ella",
+        "ballotBody": "Cada medida, en lenguaje claro, junto al texto del que proviene, para que puedas contrastar el resumen con la cosa misma.",
+        "moneyTitle": "Quién paga",
+        "moneyBody": "Contribuciones y gastos rastreados hasta el comité que los declaró, no hasta quien firmó el último cheque.",
+        "decidesTitle": "Quién decide",
+        "decidesBody": "Tus representantes, las reuniones donde ocurre y cómo votó cada uno.",
+        "doTitle": "Qué puedes hacer",
+        "doBody": "El umbral de tu condado, y si la petición que acaban de ponerte delante es real."
+      }
+    },
+    "check": {
+      "heading": "No nos creas nada de esto.",
+      "body1": "Una herramienta que pide confianza ha recreado el problema que dice resolver. Cada cifra aquí lleva un enlace al registro público del que proviene: la Declaración de Votación, el Informe de Inscripción, el Censo. Si nos equivocamos, la fuente lo dirá.",
+      "body2": "El código es abierto. Los prompts son públicos. Todo lo que escribió una IA está señalado como tal, junto al registro del que se tomó.",
+      "cite": "Rawls: una libertad que algunas personas no tienen los recursos para ejercer es una libertad solo de nombre, y su valor debe garantizarse en lugar de afirmarse.",
+      "transparency": "Cómo usamos la IA",
+      "privacy": "Qué hacemos con tus datos"
     },
     "footnote": {
       "heading": "Los detalles que importan",
-      "statute": "El requisito del 10% lo establece el <0>Código Electoral de California §9118</0>.",
-      "specialElection": "Una petición firmada por el 20% de esa misma cifra obliga a convocar una elección especial, en lugar de esperar a la siguiente ordinaria.",
-      "notPassing": "Calificar una medida no es aprobarla. Estas cifras llevan la pregunta al electorado; quien decide es el electorado.",
-      "cities": "Las ciudades funcionan de otra manera. Una ciudad de ley general fija su requisito en el 10% de sus personas inscritas para votar, no de los votos emitidos, y una ciudad con estatuto propio fija el suyo.",
-      "verify": "Cada cifra enlaza al registro público del que proviene. Compruébala."
+      "statute": "El requisito del 10% lo establece el <0>Código Electoral de California §9118</0>. Una petición al 20% obliga a convocar una elección especial en lugar de esperar a la siguiente ordinaria.",
+      "notPassing": "Calificar una medida no es aprobarla. Estas cifras llevan la pregunta al electorado; el electorado decide.",
+      "cities": "Las ciudades funcionan distinto: una ciudad de ley general fija su requisito en el 10% de sus personas inscritas, no de los votos emitidos, y una ciudad con estatuto propio fija el suyo.",
+      "cycle": "Las cifras corresponden a la elección general para Gobernador de noviembre de 2022 y cambiarán después de noviembre de 2026."
     }
   }
 }

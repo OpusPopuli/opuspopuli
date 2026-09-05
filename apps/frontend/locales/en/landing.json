@@ -1,94 +1,83 @@
 {
-  "hero": {
-    "title": "Know your ballot. Hold power accountable.",
-    "subtitle": "Opus Populi gives you transparent access to propositions, representatives, campaign finance, and petition tracking — powered by AI, built for citizens.",
-    "ctaSignedOut": "Get Started",
-    "ctaSignedIn": "Go to Dashboard",
-    "ctaSignIn": "Sign in"
-  },
-  "features": {
-    "sectionTitle": "Everything you need to stay informed",
-    "propositions": {
-      "title": "Ballot & Propositions",
-      "description": "Track ballot measures and initiatives in your region. Get AI-powered analysis to understand what you're voting on."
-    },
-    "petitions": {
-      "title": "Petition Scanner",
-      "description": "Scan petitions with your camera for instant AI verification. Track signature progress on an interactive map."
-    },
-    "representatives": {
-      "title": "Representatives & Meetings",
-      "description": "Know who represents you. Follow public meetings, legislative sessions, and committee hearings."
-    },
-    "campaignFinance": {
-      "title": "Campaign Finance",
-      "description": "Follow the money. Explore contributions, expenditures, and committee spending with full transparency."
-    }
-  },
-  "trust": {
-    "sectionTitle": "Built on trust and transparency",
-    "transparency": {
-      "title": "AI Transparency",
-      "description": "Our AI commitments, system cards, and prompt charter are public. You always know how AI is used."
-    },
-    "privacy": {
-      "title": "Privacy First",
-      "description": "GDPR and CCPA compliant. You control your data with granular consent management and full data export."
-    },
-    "openSource": {
-      "title": "Open Source",
-      "description": "Our platform is open source. Inspect the code, contribute, and help build better civic tools."
-    }
-  },
   "counties": {
-    "heading": "What it takes to put a measure on your county's ballot",
-    "intro": "California Elections Code §9118 sets the bar for a county initiative at 10% of the votes cast for all candidates for Governor at the last gubernatorial election. Not 10% of residents, and not 10% of registered voters — 10% of the people who actually turned out.",
-    "example": "In Sonoma County that is 19,746 signatures. The figure is not a target anyone invented: it is the size of the group that can already put a question on the ballot where you live, whether or not that group is you.",
+    "eyebrow": "California · Elections Code §9118",
+    "heading": "Who governs your county?",
+    "intro": "Under California Elections Code §9118, a petition signed by voters equal to 10% of the ballots cast for Governor forces your board of supervisors to adopt the ordinance as written or put it to the voters. Those are its only two options, and the number is smaller than you would guess.",
+    "prompt": "Point at a county.",
+    "citeMosca": "Mosca, 1896: a minority governs not because it is wiser or better born, but because it is organized against a majority that is not.",
+    "cta": {
+      "start": "Start with your county",
+      "haveAccount": "Already have an account?",
+      "signIn": "Sign in",
+      "briefing": "Go to your briefing"
+    },
     "modes": {
-      "legend": "Show counties by",
-      "share": "Share of registered voters",
+      "legend": "Shade counties by",
+      "share": "Share of voters",
       "shareHint": "How large the requirement is next to the county's electorate.",
       "people": "People",
-      "peopleHint": "Signatures required, on a logarithmic scale — the raw counts span four orders of magnitude."
+      "peopleHint": "Signatures required, on a logarithmic scale, because the raw counts span four orders of magnitude.",
+      "rampLow": "Fewer",
+      "rampHigh": "More"
     },
     "rail": {
       "statewideHeading": "California",
-      "selectPrompt": "Select a county to see what it requires.",
-      "signaturesRequired": "Signatures required",
-      "signaturesRequiredHint": "10% of votes cast for Governor, {{year}}",
-      "population": "Population",
+      "selectPrompt": "Point at a county to see what it requires.",
+      "signaturesRequired": "signatures compel the board",
+      "rankValue": "{{rank}} of 58 counties",
+      "gubernatorialVotes": "Votes for Governor, {{year}}",
       "registeredVoters": "Registered voters",
-      "gubernatorialVotes": "Votes cast for Governor, {{year}}",
-      "shareOfRegistered": "Share of registered voters",
-      "rank": "Rank",
-      "rankValue": "{{rank}} of 58, fewest first",
-      "cheapestNeighbor": "Cheapest neighbour",
-      "cheapestNeighborValue": "{{name}} — {{count}} signatures",
-      "source": "Source",
-      "sourceLink": "California Secretary of State, Statement of Vote",
-      "retrieved": "Retrieved {{date}}",
-      "unknown": "Not available"
+      "shareOfRegistered": "Share of the electorate",
+      "population": "Population",
+      "cheapestNeighbor": "Cheapest neighbor",
+      "cheapestNeighborValue": "{{name}}, {{count}}",
+      "sources": "Secretary of State, Statement of Vote · Report of Registration · US Census. Every figure links to its record.",
+      "unknown": "Not available",
+      "countiesLabel": "Counties",
+      "countyOption": "{{name}}, {{count}} signatures"
     },
-    "statewide": {
-      "heading": "For comparison, statewide",
-      "statute": "Initiative statute",
-      "statuteValue": "{{count}} signatures",
-      "statuteBasis": "5% of votes cast for Governor",
-      "amendment": "Constitutional amendment",
-      "amendmentValue": "{{count}} signatures",
-      "amendmentBasis": "8% of votes cast for Governor"
+    "scale": {
+      "heading": "The county is not a convenience.",
+      "body1": "It is the smallest scale at which a decision binds and one person is not a rounding error. Statewide, an initiative statute needs {{statute}} signatures and a constitutional amendment {{amendment}}. Your share of that is arithmetic noise.",
+      "body2": "In your county the same right has a number small enough that you could name the people behind it. Nothing about it is secret: it is the ballots cast for Governor in 2022, divided by ten.",
+      "cite": "Tocqueville: local institutions are where citizens actually learn the practice of liberty. The county is not a design convenience."
     },
-    "framing": {
-      "heading": "What a low number does and does not mean",
-      "body": "A county where fewer signatures are needed is not an easier target. It is a county where a small organised group already decides what reaches the ballot — whether or not that group is you. Low turnout does not create an opening so much as describe who is currently holding one."
+    "fair": {
+      "heading": "The right already exists. That was never the problem.",
+      "body1": "Every citizen may petition, comment, show up, vote. Exercising those rights well takes time, research, and interpretive skill. Those are distributed about as evenly as wealth is, and a liberty you lack the resources to use is a liberty in name only.",
+      "body2": "So the public is not absent. It is eclipsed, unable to see easily which decisions reach it or trace who made them. That is not apathy, and it will not be fixed by telling anyone to care more.",
+      "cite": "Rawls on the fair value of political liberty; Dewey on the eclipse of the public."
+    },
+    "cost": {
+      "heading": "So we changed the cost, not the citizen.",
+      "body1": "Handing the decision to experts has been tried for a century. So has exhorting people to pay closer attention. The remaining move is to lower what it costs to know, at the one scale where knowing still converts into anything.",
+      "body2": "It matters more than its size suggests. Almost every civic tool helps you answer a question somebody else decided to ask. A county initiative is one of the few places where the question itself is up for grabs.",
+      "cite": "Schattschneider: the decisive power is not the vote but the prior question of which alternatives get considered at all. The chorus of organized interests, he observed, sings with an upper-class accent.",
+      "items": {
+        "ballotTitle": "What is on it",
+        "ballotBody": "Every measure, in plain language, next to the text it was drawn from, so you can check the summary against the thing itself.",
+        "moneyTitle": "Who is paying",
+        "moneyBody": "Contributions and expenditures traced to the committee that filed them, not to whoever cut the cheque last.",
+        "decidesTitle": "Who decides",
+        "decidesBody": "Your representatives, the meetings where it happens, and how each of them voted.",
+        "doTitle": "What you can do",
+        "doBody": "The threshold for your county, and whether the petition someone just handed you is a real one."
+      }
+    },
+    "check": {
+      "heading": "Do not take our word for any of it.",
+      "body1": "A tool that asks for trust has recreated the problem it claims to solve. Every number here carries a link to the public record it came from: the Statement of Vote, the Report of Registration, the Census. If we are wrong, the source says so.",
+      "body2": "The code is open. The prompts are published. Anything an AI wrote is labelled as such, and sits next to the record it was drawn from.",
+      "cite": "Rawls: a liberty some citizens lack the resources to exercise is a liberty in name only, and its worth has to be guaranteed rather than asserted.",
+      "transparency": "How we use AI",
+      "privacy": "What we do with your data"
     },
     "footnote": {
       "heading": "The details that matter",
-      "statute": "The 10% requirement is set by <0>California Elections Code §9118</0>.",
-      "specialElection": "A petition signed by 20% of that same number compels a special election, rather than waiting for the next regular one.",
-      "notPassing": "Qualifying a measure is not passing one. These figures put a question to the voters; they decide it.",
-      "cities": "Cities work differently. A general-law city sets its bar at 10% of its registered voters, not of votes cast, and a charter city sets its own.",
-      "verify": "Every figure here links to the public record it came from. Check it."
+      "statute": "The 10% requirement is set by <0>California Elections Code §9118</0>. A petition at 20% compels a special election rather than waiting for the next regular one.",
+      "notPassing": "Qualifying a measure is not passing one. These figures put a question to the voters; the voters decide it.",
+      "cities": "Cities work differently: a general-law city sets its bar at 10% of registered voters rather than votes cast, and a charter city sets its own.",
+      "cycle": "Figures reflect the November 2022 gubernatorial general and will change after November 2026."
     }
   }
 }

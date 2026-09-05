@@ -1,89 +1,78 @@
 {
-  "skip": "Skip",
-  "skipStep": "Skip this",
   "back": "Back",
-  "next": "Next",
-  "getStarted": "Get Started",
-  "saveAndContinue": "Save & Continue",
-  "saving": "Saving…",
+  "skip": "Skip for now",
+  "skipStep": "Skip this",
+  "continue": "Continue",
+  "saveAndContinue": "Save and continue",
+  "saving": "Saving...",
+  "getStarted": "Get started",
+  "language": {
+    "legend": "Choose a language",
+    "en": "English",
+    "es": "Español"
+  },
   "progress": {
-    "label": "Onboarding progress"
-  },
-  "welcome": {
-    "title": "Welcome to Opus Populi",
-    "subtitle": "Your civic engagement hub — track propositions, representatives, campaign finance, and petitions all in one place",
-    "languageLegend": "Choose your language",
-    "languages": {
-      "en": "English",
-      "es": "Español"
+    "label": "Setup progress",
+    "stepOf": "Step {{current}} of {{total}}",
+    "stepOfIn": "Step {{current}} of {{total}} · {{county}}",
+    "steps": {
+      "county": "Your county",
+      "threshold": "What it takes",
+      "topics": "What you watch",
+      "veteran": "One question",
+      "expectations": "What to expect",
+      "commitments": "Commitments"
     }
   },
-  "explore": {
-    "title": "Explore Your Region",
-    "description": "Stay informed with comprehensive civic data for your area",
-    "features": {
-      "propositions": "Propositions",
-      "representatives": "Representatives",
-      "meetings": "Public Meetings",
-      "campaignFinance": "Campaign Finance"
-    }
+  "county": {
+    "title": "Which county is yours?",
+    "body": "You just saw what it takes to put a measure on a county's ballot. To tell you the number for yours, and who is funding what is already on it, we need to know where you vote.",
+    "cite": "Tocqueville: local institutions are where citizens actually learn the practice of liberty. The county is not a design convenience.",
+    "privacyLead": "Your address is never shown publicly.",
+    "privacyBody": "It resolves to a county and a set of districts, and that is all it is used for. You can delete it at any time and keep the account.",
+    "skip": "Skip and show me California instead"
   },
-  "scan": {
-    "title": "Scan Petitions",
-    "description": "Use your camera to scan petitions for instant AI-powered verification and tracking",
-    "permissionNote": "We'll ask for camera access when you're ready to scan. No images are saved to your device."
-  },
-  "analyze": {
-    "title": "Instant Analysis",
-    "description": "AI analyzes petitions, propositions, and campaign data to help you make informed decisions"
-  },
-  "track": {
-    "title": "Track Progress",
-    "description": "Follow ballot measures, petition activity, and legislative sessions in your area"
-  },
-  "address": {
-    "title": "Where do you live?",
-    "subtitle": "We use your address to find your local elections, propositions, and representatives. Skippable.",
-    "fields": {
-      "line1": "Street address",
-      "city": "City",
-      "state": "State",
-      "statePlaceholder": "Select state",
-      "postalCode": "ZIP code"
-    },
-    "errors": {
-      "allRequired": "Please fill in all four fields, or skip this step.",
-      "saveFailed": "We couldn't save your address. You can try again or skip for now."
-    }
+  "threshold": {
+    "title": "Here is what it takes in {{county}}.",
+    "body": "The figure below is 10% of the ballots cast for Governor in {{year}}. That many signatures compel the Board of Supervisors to adopt an ordinance as written, or put it to the voters. Those are its only two options.",
+    "wrongCounty": "That is the wrong county",
+    "addAddress": "Let me enter my address",
+    "waitingTitle": "Working out which county that is.",
+    "waitingBody": "Your address is being matched against the county boundaries. This takes a moment, and you can carry on without waiting for it.",
+    "noAddressTitle": "No address, no county number.",
+    "noAddressBody": "You can add one later from settings, and the county figures are on the front page for every county in the state in the meantime.",
+    "noMatchTitle": "We do not have a threshold for that county yet.",
+    "noMatchBody": "California counties are loaded and verified against the Secretary of State's own figures. If yours is outside California, or newly added, it is not there yet."
   },
   "topics": {
-    "title": "What matters to you?",
-    "subtitle": "Pick your top 3. Focus beats breadth — these are the issues you can meaningfully influence.",
-    "reasonHeading": "Why just 3?",
-    "reasonBody": "Civic attention is finite. Three issues you can actually write your reps about, show up for, or organize around beats a wishlist of twelve you'll only doom-scroll. You can broaden this later in settings.",
+    "title": "What are you actually watching?",
+    "subtitle": "Pick three. Civic attention is finite, and three is roughly the number of issues a person can follow closely enough to act on: write, show up, sign, or decline to.",
+    "reasonHeading": "Why three?",
+    "reasonBody": "Dewey, 1927: the public is not absent, it is eclipsed, unable to recognize itself or trace which decisions affect it. The remedy is not better citizens but better conditions of inquiry. Three issues you can follow beats twelve you can only scroll past. You can broaden this later in settings.",
     "counter": "{{count}} of {{max}} selected",
     "groupLabel": "Topics",
     "options": {
-      "housing": "Housing & rent",
-      "jobs": "Jobs & workers",
+      "housing": "Housing and rent",
+      "jobs": "Jobs and workers",
       "healthcare": "Healthcare",
       "education": "Education",
-      "transit": "Transit & roads",
+      "transit": "Transit and roads",
       "environment": "Environment",
       "public_safety": "Public safety",
-      "taxes": "Taxes & budget",
+      "taxes": "Taxes and budget",
       "immigration": "Immigration",
       "voting_rights": "Voting rights",
       "justice": "Justice reform",
-      "family": "Family & care"
+      "family": "Family and care"
     },
     "errors": {
-      "saveFailed": "We couldn't save your topics. You can try again or skip."
+      "saveFailed": "We could not save your topics. You can try again or skip."
     }
   },
   "lifeContext": {
-    "title": "A bit about your day",
-    "subtitle": "These help us surface bills that touch your life. Every chip is optional.",
+    "summary": "Anything about your situation?",
+    "optional": "Optional",
+    "subtitle": "These only change which bills we surface first. Every one is optional, and none of them is shown to anyone else.",
     "groups": {
       "housing": "Housing",
       "family": "Family",
@@ -103,7 +92,7 @@
       },
       "work": {
         "employed": "Employed",
-        "gig": "Self-employed / gig",
+        "gig": "Self-employed or gig",
         "businessOwner": "Small business owner",
         "retired": "Retired"
       },
@@ -112,7 +101,7 @@
       },
       "education": {
         "student": "I'm a student",
-        "educator": "Educator / teacher"
+        "educator": "Educator or teacher"
       },
       "transit": {
         "transit": "Mostly transit",
@@ -121,21 +110,73 @@
       }
     },
     "errors": {
-      "saveFailed": "We couldn't save your selections. You can try again or skip."
+      "saveFailed": "We could not save your selections. You can try again or skip."
     }
   },
   "veteran": {
-    "title": "One sensitive question",
-    "subtitle": "This is the only sensitive field we ask about in onboarding. You can always skip.",
+    "title": "One sensitive question.",
+    "subtitle": "This is the only sensitive field we ask about, and it gets its own screen so it cannot slip past inside a list of others.",
     "chip": "I'm a veteran or active-duty",
     "lockedNote": "Already set from a previous visit. To remove it, manage your privacy in settings.",
     "noFieldsToggle": "Never store sensitive fields about me",
+    "noFieldsNote": "Turning this on removes anything already stored and stops us asking again.",
     "disclosure": {
-      "encryptedBadge": "Encrypted at rest",
-      "whyWeAsk": "Veteran status helps us surface bills on healthcare, benefits, and housing protections that affect you. Stored encrypted; never shared with the recommendation engine in raw form — only a boolean flag."
+      "whyWeAsk": "Veteran status surfaces bills on healthcare, benefits and housing protections that affect you directly. It is stored encrypted, never shown publicly, and never used to target you politically.",
+      "encryptedBadge": "Encrypted at rest"
     },
     "errors": {
-      "saveFailed": "We couldn't save your answer. You can try again or skip."
+      "saveFailed": "We could not save your answer. You can try again or skip."
+    }
+  },
+  "expectations": {
+    "title": "What you will actually get.",
+    "body": "Some of this is running now. Some of it is being built, and we would rather say so than let you find out by its absence.",
+    "readiness": {
+      "live": "Live",
+      "building": "Building"
+    },
+    "items": {
+      "threshold": {
+        "title": "Your county's threshold",
+        "body": "The signature count, what it is drawn from, and how it compares to the other 57."
+      },
+      "propositions": {
+        "title": "State propositions",
+        "body": "Every measure on the California ballot, in plain language, beside the text it came from."
+      },
+      "finance": {
+        "title": "Campaign finance",
+        "body": "Contributions and expenditures traced to the committee that filed them."
+      },
+      "representatives": {
+        "title": "Your representatives",
+        "body": "Who represents you at each level, and how they voted."
+      },
+      "countyMeasures": {
+        "title": "County measures and meetings",
+        "body": "Your county's own ballot items and board agendas. We are working county by county, and yours may not be there yet."
+      },
+      "petitions": {
+        "title": "Petition verification",
+        "body": "Point your camera at a petition to check whether it is a real, filed measure."
+      }
+    },
+    "notifyLead": "You will hear from us when something changes:",
+    "notifyBody": "a measure qualifies, a committee files, your board schedules a vote. Not on a schedule, and not otherwise."
+  },
+  "address": {
+    "title": "Where do you vote?",
+    "subtitle": "Your address resolves to a county and a set of districts. It is never shown publicly.",
+    "fields": {
+      "line1": "Street address",
+      "city": "City",
+      "state": "State",
+      "statePlaceholder": "State",
+      "postalCode": "ZIP"
+    },
+    "errors": {
+      "allRequired": "Please fill in every field, or skip this step.",
+      "saveFailed": "We could not save your address. You can try again or skip."
     }
   }
 }

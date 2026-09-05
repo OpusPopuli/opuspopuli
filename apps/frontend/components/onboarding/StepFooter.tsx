@@ -7,6 +7,10 @@ interface StepFooterProps {
   readonly onSubmit: () => void;
   readonly loading: boolean;
   readonly isLastStep: boolean;
+  /** Overrides "Skip this" where the step offers a named alternative instead. */
+  readonly skipLabelKey?: string;
+  /** Overrides the primary label where the step's action has its own name. */
+  readonly submitLabelKey?: string;
 }
 
 /**
@@ -22,10 +26,13 @@ export function StepFooter({
   onSubmit,
   loading,
   isLastStep,
+  skipLabelKey,
+  submitLabelKey,
 }: StepFooterProps) {
   const { t } = useTranslation("onboarding");
   const primaryLabelKey = (() => {
     if (loading) return "saving";
+    if (submitLabelKey) return submitLabelKey;
     if (isLastStep) return "getStarted";
     return "saveAndContinue";
   })();
@@ -38,7 +45,7 @@ export function StepFooter({
         disabled={loading}
         className="text-content-dim hover:text-content text-sm px-3 py-2 disabled:opacity-50"
       >
-        {t("skipStep")}
+        {t(skipLabelKey ?? "skipStep")}
       </button>
       <button
         type="button"

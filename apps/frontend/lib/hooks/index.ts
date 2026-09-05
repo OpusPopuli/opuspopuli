@@ -8,3 +8,4 @@ export { useGeolocation } from "./useGeolocation";
 export { useMapPetitions } from "./useMapPetitions";
 export { useActivityFeed } from "./useActivityFeed";
 export { useInstallPrompt } from "./useInstallPrompt";
+export { usePrefersReducedMotion } from "./usePrefersReducedMotion";

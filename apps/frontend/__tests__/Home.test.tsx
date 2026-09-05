@@ -10,16 +10,16 @@ jest.mock("@/components/Footer", () => ({
   Footer: () => <footer data-testid="mock-footer">Mock Footer</footer>,
 }));
 
-jest.mock("@/components/landing/LandingCTA", () => ({
-  LandingCTA: () => <div data-testid="mock-landing-cta">Mock CTA</div>,
+// Needs Apollo, auth and i18n contexts, and owns the MapLibre dynamic import.
+// Its behaviour is covered by the CountyHero/CountyMap/CountyRail specs; here
+// we only care that the page composes the two halves of the argument.
+jest.mock("@/components/landing/CountyHero", () => ({
+  CountyHero: () => <section data-testid="mock-county-hero">Mock hero</section>,
 }));
 
-// Needs Apollo and i18n contexts, and owns the MapLibre dynamic import. Its
-// behaviour is covered by CountyMap/CountyRail/MapModeToggle specs; here we
-// only care that the page renders it.
-jest.mock("@/components/landing/CountyThresholds", () => ({
-  CountyThresholds: () => (
-    <section data-testid="mock-county-thresholds">Mock counties</section>
+jest.mock("@/components/landing/CountyArgument", () => ({
+  CountyArgument: () => (
+    <section data-testid="mock-county-argument">Mock argument</section>
   ),
 }));
 
@@ -30,74 +30,29 @@ describe("Home Page", () => {
     render(<Home />);
   });
 
-  describe("Layout", () => {
-    it("should render the header", () => {
-      expect(screen.getByTestId("mock-header")).toBeInTheDocument();
-    });
-
-    it("should render the footer", () => {
-      expect(screen.getByTestId("mock-footer")).toBeInTheDocument();
-    });
-
-    it("should render the county thresholds section", () => {
-      expect(screen.getByTestId("mock-county-thresholds")).toBeInTheDocument();
-    });
-
-    it("should render the CTA", () => {
-      expect(screen.getByTestId("mock-landing-cta")).toBeInTheDocument();
-    });
+  it("renders the header", () => {
+    expect(screen.getByTestId("mock-header")).toBeInTheDocument();
   });
 
-  describe("Hero section", () => {
-    it("should display civic engagement headline", () => {
-      expect(screen.getByText(/Know your ballot/i)).toBeInTheDocument();
-      expect(screen.getByText(/Hold power accountable/i)).toBeInTheDocument();
-    });
-
-    it("should display subtitle", () => {
-      expect(
-        screen.getByText(/Transparent access to propositions/i),
-      ).toBeInTheDocument();
-    });
+  it("renders the footer", () => {
+    expect(screen.getByTestId("mock-footer")).toBeInTheDocument();
   });
 
-  describe("Feature cards", () => {
-    it("should display Ballot & Propositions card", () => {
-      expect(screen.getByText("Ballot & Propositions")).toBeInTheDocument();
-    });
-
-    it("should display Petition Scanner card", () => {
-      expect(screen.getByText("Petition Scanner")).toBeInTheDocument();
-    });
-
-    it("should display Representatives & Meetings card", () => {
-      expect(
-        screen.getByText("Representatives & Meetings"),
-      ).toBeInTheDocument();
-    });
-
-    it("should display Campaign Finance card", () => {
-      expect(screen.getByText("Campaign Finance")).toBeInTheDocument();
-    });
+  it("leads with the county hero", () => {
+    expect(screen.getByTestId("mock-county-hero")).toBeInTheDocument();
   });
 
-  describe("Trust signals section", () => {
-    it("should display trust section heading", () => {
-      expect(
-        screen.getByText(/Built on trust and transparency/i),
-      ).toBeInTheDocument();
-    });
+  it("renders the argument below the hero", () => {
+    expect(screen.getByTestId("mock-county-argument")).toBeInTheDocument();
+  });
 
-    it("should display AI Transparency", () => {
-      expect(screen.getByText("AI Transparency")).toBeInTheDocument();
-    });
-
-    it("should display Privacy First", () => {
-      expect(screen.getByText("Privacy First")).toBeInTheDocument();
-    });
-
-    it("should display Open Source", () => {
-      expect(screen.getByText("Open Source")).toBeInTheDocument();
-    });
+  // The hero has to come first: the page's claim is the county figure, and the
+  // sections underneath only make sense once the reader has seen one.
+  it("orders the hero before the argument", () => {
+    const hero = screen.getByTestId("mock-county-hero");
+    const argument = screen.getByTestId("mock-county-argument");
+    expect(hero.compareDocumentPosition(argument)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 });

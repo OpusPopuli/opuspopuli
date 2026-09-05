@@ -3,15 +3,11 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 import { OnboardingSteps } from "@/components/onboarding/OnboardingSteps";
 
-// Mock Next.js router
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: mockPush,
-  }),
+  useRouter: () => ({ push: mockPush }),
 }));
 
-// Mock onboarding context
 const mockNextStep = jest.fn();
 const mockPrevStep = jest.fn();
 const mockSkipOnboarding = jest.fn();
@@ -20,7 +16,7 @@ const mockCompleteOnboarding = jest.fn();
 const defaultOnboardingContext = {
   hasCompletedOnboarding: false,
   currentStep: 0,
-  totalSteps: 10,
+  totalSteps: 6,
   nextStep: mockNextStep,
   prevStep: mockPrevStep,
   skipOnboarding: mockSkipOnboarding,
@@ -34,24 +30,47 @@ jest.mock("@/lib/onboarding-context", () => ({
   useOnboarding: () => mockOnboardingContextValue,
 }));
 
-// WelcomeStep + data steps depend on the i18n locale context and Apollo
-// — the OnboardingSteps test is about routing/footer logic, not those
-// dependencies, so we stub them here. Full coverage of WelcomeStep +
-// data steps lives in the Playwright e2e spec (e2e/onboarding.spec.ts).
-jest.mock("@/lib/i18n/context", () => ({
-  useLocale: () => ({ locale: "en", setLocale: jest.fn() }),
+// The steps themselves depend on Apollo, the locale context and the toast
+// provider. This spec is about the flow's shape — which step renders, which
+// chrome shows, where the actions go — so the steps stand in as markers.
+// Their own behaviour is covered by their specs and by e2e/onboarding.spec.ts.
+jest.mock("@/components/onboarding/steps/CountyStep", () => ({
+  CountyStep: ({ onComplete }: { onComplete: () => void }) => (
+    <button data-testid="step-county" onClick={onComplete}>
+      county
+    </button>
+  ),
+}));
+jest.mock("@/components/onboarding/steps/ThresholdStep", () => ({
+  ThresholdStep: ({ onCorrect }: { onCorrect: () => void }) => (
+    <button data-testid="step-threshold" onClick={onCorrect}>
+      threshold
+    </button>
+  ),
+}));
+jest.mock("@/components/onboarding/steps/TopicsStep", () => ({
+  TopicsStep: () => <div data-testid="step-topics">topics</div>,
+}));
+jest.mock("@/components/onboarding/steps/VeteranStep", () => ({
+  VeteranStep: () => <div data-testid="step-veteran">veteran</div>,
+}));
+jest.mock("@/components/onboarding/steps/ExpectationsStep", () => ({
+  ExpectationsStep: () => <div data-testid="step-expectations">expect</div>,
+}));
+jest.mock("@/components/onboarding/steps/CommitmentsStep", () => ({
+  CommitmentsStep: ({ onComplete }: { onComplete: () => void }) => (
+    <button data-testid="step-commitments" onClick={onComplete}>
+      commitments
+    </button>
+  ),
 }));
 
-jest.mock("@/lib/toast", () => ({
-  useToast: () => ({ showToast: jest.fn() }),
-}));
-
-jest.mock("@apollo/client/react", () => ({
-  useMutation: () => [
-    jest.fn().mockResolvedValue({ data: {} }),
-    { loading: false },
-  ],
-}));
+const at = (step: number) => {
+  mockOnboardingContextValue = {
+    ...defaultOnboardingContext,
+    currentStep: step,
+  };
+};
 
 describe("OnboardingSteps", () => {
   beforeEach(() => {
@@ -59,138 +78,104 @@ describe("OnboardingSteps", () => {
     mockOnboardingContextValue = { ...defaultOnboardingContext };
   });
 
-  describe("rendering", () => {
-    it("should render welcome step initially", () => {
+  describe("the flow's shape", () => {
+    it("opens on the county, not on a welcome screen", () => {
+      // The address is the only thing the product cannot proceed without, and
+      // the four product slides that used to precede it sold a reader who had
+      // already clicked Get started.
       render(<OnboardingSteps />);
-
-      expect(screen.getByText("Welcome to Opus Populi")).toBeInTheDocument();
+      expect(screen.getByTestId("step-county")).toBeInTheDocument();
     });
 
-    it("should render skip button", () => {
+    it.each([
+      [0, "step-county"],
+      [1, "step-threshold"],
+      [2, "step-topics"],
+      [3, "step-veteran"],
+      [4, "step-expectations"],
+      [5, "step-commitments"],
+    ])("renders the right step at index %i", (step, testId) => {
+      at(step);
       render(<OnboardingSteps />);
-
-      expect(screen.getByRole("button", { name: /skip/i })).toBeInTheDocument();
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
     });
 
-    it("should render next button on first step", () => {
+    it("names every step rather than showing anonymous dots", () => {
       render(<OnboardingSteps />);
-
-      expect(screen.getByRole("button", { name: /next/i })).toBeInTheDocument();
+      const rail = screen.getByRole("list", { name: "Setup progress" });
+      expect(rail).toBeInTheDocument();
+      expect(screen.getAllByRole("listitem")).toHaveLength(6);
     });
 
-    it("should render back button (disabled on first step)", () => {
+    it("marks the current step for assistive technology", () => {
+      at(2);
       render(<OnboardingSteps />);
-
-      const backButton = screen.getByRole("button", { name: /back/i });
-      expect(backButton).toBeInTheDocument();
-      expect(backButton).toBeDisabled();
+      const current = screen
+        .getAllByRole("listitem")
+        .filter((li) => li.getAttribute("aria-current") === "step");
+      expect(current).toHaveLength(1);
+      expect(current[0]).toHaveTextContent("What you watch");
     });
 
-    it("should render progress dots", () => {
-      const { container } = render(<OnboardingSteps />);
-
-      const dots = container.querySelectorAll("[aria-hidden='true']");
-      // 10 step dots + decorative SVGs inside marketing steps; assert at
-      // least one dot per step exists.
-      expect(dots.length).toBeGreaterThanOrEqual(10);
+    it("carries no global Next, because every step owns its action", () => {
+      render(<OnboardingSteps />);
+      expect(screen.queryByRole("button", { name: /^next$/i })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: /^get started$/i }),
+      ).toBeNull();
     });
   });
 
-  describe("step navigation", () => {
-    it("should call nextStep when Next is clicked", async () => {
+  describe("navigation", () => {
+    it("advances when a step reports completion", async () => {
+      const user = userEvent.setup();
       render(<OnboardingSteps />);
-
-      await userEvent.click(screen.getByRole("button", { name: /next/i }));
-
+      await user.click(screen.getByTestId("step-county"));
       expect(mockNextStep).toHaveBeenCalled();
     });
 
-    it("should call prevStep when Back is clicked", async () => {
-      mockOnboardingContextValue = {
-        ...defaultOnboardingContext,
-        currentStep: 1,
-      };
+    it("completes and routes to the briefing from the last step", async () => {
+      at(5);
+      const user = userEvent.setup();
       render(<OnboardingSteps />);
+      await user.click(screen.getByTestId("step-commitments"));
+      expect(mockCompleteOnboarding).toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith("/me/briefing");
+    });
 
-      await userEvent.click(screen.getByRole("button", { name: /back/i }));
-
+    it("sends 'wrong county' back to the address form", async () => {
+      // The threshold screen names a county at the reader. If it named the
+      // wrong one, the fix has to be one click away or the number reads as
+      // broken rather than correctable.
+      at(1);
+      const user = userEvent.setup();
+      render(<OnboardingSteps />);
+      await user.click(screen.getByTestId("step-threshold"));
       expect(mockPrevStep).toHaveBeenCalled();
     });
 
-    it("should render explore step on step 1", () => {
-      mockOnboardingContextValue = {
-        ...defaultOnboardingContext,
-        currentStep: 1,
-      };
+    it("disables Back on the first step", () => {
       render(<OnboardingSteps />);
-
-      expect(screen.getByText("Explore Your Region")).toBeInTheDocument();
-    });
-
-    it("should render scan step on step 2", () => {
-      mockOnboardingContextValue = {
-        ...defaultOnboardingContext,
-        currentStep: 2,
-      };
-      render(<OnboardingSteps />);
-
-      expect(screen.getByText("Scan Petitions")).toBeInTheDocument();
-    });
-
-    it("should render analyze step on step 3", () => {
-      mockOnboardingContextValue = {
-        ...defaultOnboardingContext,
-        currentStep: 3,
-      };
-      render(<OnboardingSteps />);
-
-      expect(screen.getByText("Instant Analysis")).toBeInTheDocument();
-    });
-
-    it("should render track step on step 4", () => {
-      mockOnboardingContextValue = {
-        ...defaultOnboardingContext,
-        currentStep: 4,
-      };
-      render(<OnboardingSteps />);
-
-      expect(screen.getByText("Track Progress")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
     });
   });
 
-  describe("skip", () => {
-    it("should call skipOnboarding and redirect on skip", async () => {
+  describe("skipping", () => {
+    it("skips the whole flow and routes to the briefing", async () => {
+      const user = userEvent.setup();
       render(<OnboardingSteps />);
-
-      await userEvent.click(screen.getByRole("button", { name: /skip/i }));
-
+      await user.click(screen.getByRole("button", { name: "Skip for now" }));
       expect(mockSkipOnboarding).toHaveBeenCalled();
       expect(mockPush).toHaveBeenCalledWith("/me/briefing");
     });
-  });
 
-  // Last-step Get Started + completion behavior is covered by the
-  // Playwright e2e spec (e2e/onboarding.spec.ts) — the final step
-  // (CommitmentsStep) uses Apollo `useMutation`, so testing it here
-  // would duplicate the dedicated CommitmentsStep.test.tsx + e2e
-  // coverage.
-
-  describe("commitments step (#754)", () => {
-    const COMMITMENTS_STEP_INDEX = 9;
-
-    it("hides the global Skip and Back chrome on the mandatory commitments step", () => {
-      mockOnboardingContextValue = {
-        ...defaultOnboardingContext,
-        currentStep: COMMITMENTS_STEP_INDEX,
-      };
-      const { queryByRole } = render(<OnboardingSteps />);
-
-      expect(queryByRole("button", { name: /skip/i })).not.toBeInTheDocument();
-      // Back is disabled (rendered but inert) on the commitments step
-      // — its disabled-opacity-0 class effectively hides it but DOM
-      // assertion stays explicit.
-      const backButton = queryByRole("button", { name: /back/i });
-      expect(backButton).toBeDisabled();
+    it("hides Skip and Back on the mandatory commitments step (#754)", () => {
+      // The issue AC says the commitments MUST be acknowledged. Leaving any
+      // escape hatch on that screen would make it optional in practice.
+      at(5);
+      render(<OnboardingSteps />);
+      expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
     });
   });
 });
