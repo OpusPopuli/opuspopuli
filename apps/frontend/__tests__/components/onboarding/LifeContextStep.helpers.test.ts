@@ -11,7 +11,7 @@ import {
   sameLifeContext,
   toSignalInput,
   type LifeContextState,
-} from "@/components/onboarding/steps/LifeContextStep";
+} from "@/components/onboarding/LifeContext";
 import type { SignalProfile } from "@/lib/graphql/personalization";
 
 const emptyState: LifeContextState = {

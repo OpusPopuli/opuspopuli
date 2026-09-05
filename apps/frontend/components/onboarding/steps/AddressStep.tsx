@@ -20,6 +20,10 @@ import { US_STATES } from "@/lib/us-states";
 interface AddressStepProps {
   readonly onComplete: () => void;
   readonly isLastStep: boolean;
+  /** Rendered above the form: the reason the address is being asked for. */
+  readonly header?: React.ReactNode;
+  /** Overrides the footer's skip label where the step offers a real alternative. */
+  readonly skipLabelKey?: string;
 }
 
 interface AddressForm {
@@ -53,7 +57,12 @@ export function pickExistingAddress(
   );
 }
 
-export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
+export function AddressStep({
+  onComplete,
+  isLastStep,
+  header,
+  skipLabelKey,
+}: AddressStepProps) {
   const { t } = useTranslation("onboarding");
   const [form, setForm] = useState<AddressForm>(emptyForm);
   const [error, setError] = useState<string | null>(null);
@@ -173,10 +182,16 @@ export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
 
   return (
     <div className="w-full max-w-md">
-      <h2 className="text-2xl font-bold mb-2 text-content">
-        {t("address.title")}
-      </h2>
-      <p className="text-content-dim text-sm mb-6">{t("address.subtitle")}</p>
+      {header ?? (
+        <>
+          <h2 className="mb-2 text-2xl font-bold text-content">
+            {t("address.title")}
+          </h2>
+          <p className="mb-6 text-sm text-content-dim">
+            {t("address.subtitle")}
+          </p>
+        </>
+      )}
 
       <form
         onSubmit={(e) => {
@@ -272,6 +287,7 @@ export function AddressStep({ onComplete, isLastStep }: AddressStepProps) {
           onSubmit={submit}
           loading={loading}
           isLastStep={isLastStep}
+          skipLabelKey={skipLabelKey}
         />
       </form>
     </div>

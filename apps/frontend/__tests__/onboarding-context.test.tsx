@@ -106,7 +106,7 @@ describe("OnboardingProvider", () => {
 
       expect(result.current.hasCompletedOnboarding).toBe(false);
       expect(result.current.currentStep).toBe(0);
-      expect(result.current.totalSteps).toBe(10);
+      expect(result.current.totalSteps).toBe(6);
     });
 
     it("should return completed when localStorage flag is set", () => {
@@ -177,7 +177,7 @@ describe("OnboardingProvider", () => {
         }
       });
 
-      expect(result.current.currentStep).toBe(9);
+      expect(result.current.currentStep).toBe(5);
     });
   });
 

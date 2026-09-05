@@ -4,7 +4,7 @@
     "heading": "Who governs your county?",
     "intro": "Under California Elections Code §9118, a petition signed by voters equal to 10% of the ballots cast for Governor forces your board of supervisors to adopt the ordinance as written or put it to the voters. Those are its only two options, and the number is smaller than you would guess.",
     "prompt": "Point at a county.",
-    "citeMosca": "Mosca, 1896: a minority governs not because it is wiser or better born, but because it is organised against a majority that is not.",
+    "citeMosca": "Mosca, 1896: a minority governs not because it is wiser or better born, but because it is organized against a majority that is not.",
     "cta": {
       "start": "Start with your county",
       "haveAccount": "Already have an account?",
@@ -29,7 +29,7 @@
       "registeredVoters": "Registered voters",
       "shareOfRegistered": "Share of the electorate",
       "population": "Population",
-      "cheapestNeighbor": "Cheapest neighbour",
+      "cheapestNeighbor": "Cheapest neighbor",
       "cheapestNeighborValue": "{{name}}, {{count}}",
       "sources": "Secretary of State, Statement of Vote · Report of Registration · US Census. Every figure links to its record.",
       "unknown": "Not available",
@@ -52,7 +52,7 @@
       "heading": "So we changed the cost, not the citizen.",
       "body1": "Handing the decision to experts has been tried for a century. So has exhorting people to pay closer attention. The remaining move is to lower what it costs to know, at the one scale where knowing still converts into anything.",
       "body2": "It matters more than its size suggests. Almost every civic tool helps you answer a question somebody else decided to ask. A county initiative is one of the few places where the question itself is up for grabs.",
-      "cite": "Schattschneider: the decisive power is not the vote but the prior question of which alternatives get considered at all. The chorus of organised interests, he observed, sings with an upper-class accent.",
+      "cite": "Schattschneider: the decisive power is not the vote but the prior question of which alternatives get considered at all. The chorus of organized interests, he observed, sings with an upper-class accent.",
       "items": {
         "ballotTitle": "What is on it",
         "ballotBody": "Every measure, in plain language, next to the text it was drawn from, so you can check the summary against the thing itself.",

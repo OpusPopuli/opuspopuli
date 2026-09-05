@@ -26,7 +26,7 @@ describe("employment vocabulary parity", () => {
   )?.options;
 
   const chipSource = readFileSync(
-    join(__dirname, "../../components/onboarding/steps/LifeContextStep.tsx"),
+    join(__dirname, "../../components/onboarding/LifeContext.tsx"),
     "utf8",
   );
 

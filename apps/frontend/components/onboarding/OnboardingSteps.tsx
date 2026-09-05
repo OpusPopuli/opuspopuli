@@ -3,28 +3,39 @@
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { useOnboarding } from "@/lib/onboarding-context";
-import { WelcomeStep } from "./steps/WelcomeStep";
-import { ScanStep } from "./steps/ScanStep";
-import { AnalyzeStep } from "./steps/AnalyzeStep";
-import { ExploreStep } from "./steps/ExploreStep";
-import { TrackStep } from "./steps/TrackStep";
-import { AddressStep } from "./steps/AddressStep";
+import { CountyStep } from "./steps/CountyStep";
+import { ThresholdStep } from "./steps/ThresholdStep";
 import { TopicsStep } from "./steps/TopicsStep";
-import { LifeContextStep } from "./steps/LifeContextStep";
 import { VeteranStep } from "./steps/VeteranStep";
+import { ExpectationsStep } from "./steps/ExpectationsStep";
 import { CommitmentsStep } from "./steps/CommitmentsStep";
 
-// The commitments-acknowledgement step (#754) is mandatory — issue AC
-// says it MUST be acknowledged, not skippable. Both `DATA_STEP_INDICES`
-// and the in-render `isCommitmentsStep` chrome-suppression check derive
-// from this constant so the two never drift.
-const COMMITMENTS_STEP_INDEX = 9;
+/**
+ * Six steps: county, what it takes, what you watch, one sensitive question,
+ * what to expect, commitments.
+ *
+ * It was ten. Four of those were consecutive product slides shown before a
+ * single question — a reader who had just clicked "Get started" had already
+ * been sold, and two of the four advertised work still in progress. They are
+ * replaced by one honest Live/Building screen near the end, where it answers
+ * a question the reader has by then actually formed.
+ *
+ * The address moved from sixth to first, because it is the only thing the
+ * product cannot proceed without, and step 2 spends itself paying for it.
+ */
+const STEP_KEYS = [
+  "county",
+  "threshold",
+  "topics",
+  "veteran",
+  "expectations",
+  "commitments",
+] as const;
 
-// Indices of steps that own their primary action (Save & Continue
-// button) — the global Next/Get Started footer hides for these. The
-// commitments step is included because it owns its own submit button
-// with no Skip affordance.
-const DATA_STEP_INDICES = new Set([5, 6, 7, 8, COMMITMENTS_STEP_INDEX]);
+// The commitments acknowledgement (#754) is mandatory: the issue AC says it
+// MUST be acknowledged, not skipped. The index derives from STEP_KEYS so the
+// chrome-suppression check below cannot drift from the step order.
+const COMMITMENTS_INDEX = STEP_KEYS.indexOf("commitments");
 
 export function OnboardingSteps() {
   const router = useRouter();
@@ -49,84 +60,91 @@ export function OnboardingSteps() {
   };
 
   const isLastStep = currentStep === totalSteps - 1;
-  const advance = () => {
-    if (isLastStep) {
-      handleComplete();
-    } else {
-      nextStep();
-    }
-  };
+  const advance = () => (isLastStep ? handleComplete() : nextStep());
 
+  // Every step owns its own primary action now — there is no step left whose
+  // only content is a slide to click past — so the flow carries no global
+  // Next button.
   const steps = [
-    <WelcomeStep key="welcome" />,
-    <ExploreStep key="explore" />,
-    <ScanStep key="scan" />,
-    <AnalyzeStep key="analyze" />,
-    <TrackStep key="track" />,
-    <AddressStep key="address" onComplete={advance} isLastStep={false} />,
+    <CountyStep key="county" onComplete={advance} />,
+    <ThresholdStep key="threshold" onComplete={advance} onCorrect={prevStep} />,
     <TopicsStep key="topics" onComplete={advance} isLastStep={false} />,
-    <LifeContextStep key="life" onComplete={advance} isLastStep={false} />,
     <VeteranStep key="veteran" onComplete={advance} isLastStep={false} />,
+    <ExpectationsStep key="expectations" onComplete={advance} />,
     <CommitmentsStep key="commitments" onComplete={advance} />,
   ];
 
-  const stepOwnsAction = DATA_STEP_INDICES.has(currentStep);
-  const isCommitmentsStep = currentStep === COMMITMENTS_STEP_INDEX;
+  const isCommitmentsStep = currentStep === COMMITMENTS_INDEX;
 
   return (
-    <div className="min-h-screen bg-surface-alt flex flex-col">
+    <div className="flex min-h-screen flex-col bg-surface-alt">
       {!isCommitmentsStep && (
-        <div className="absolute top-4 right-4 z-10">
+        <div className="absolute right-4 top-4 z-10">
           <button
             onClick={handleSkip}
-            className="text-content-dim hover:text-content text-sm transition-colors px-3 py-1"
+            className="px-3 py-1 text-sm text-content-dim transition-colors hover:text-content"
           >
             {t("skip")}
           </button>
         </div>
       )}
 
-      <div
-        role="progressbar"
-        aria-label={t("progress.label", "Onboarding progress")}
-        aria-valuemin={1}
-        aria-valuemax={totalSteps}
-        aria-valuenow={currentStep + 1}
-        className="flex justify-center gap-2 pt-8 pb-4"
-      >
-        {Array.from({ length: totalSteps }).map((_, i) => (
-          <div
-            key={i}
-            className={`w-2 h-2 rounded-full transition-colors ${
-              i === currentStep ? "bg-surface-alt" : "bg-surface-sunk "
-            }`}
-            aria-hidden="true"
-          />
-        ))}
-      </div>
+      <StepRail current={currentStep} />
 
-      <div className="flex-1 flex items-center justify-center px-6">
+      <div className="flex flex-1 items-start justify-center px-6 pb-10">
         {steps[currentStep]}
       </div>
 
-      <div className="p-6 flex justify-between items-center min-h-[80px]">
+      <div className="flex min-h-[64px] items-center p-6">
         <button
           onClick={prevStep}
           disabled={currentStep === 0 || isCommitmentsStep}
-          className="px-6 py-3 text-content-dim hover:text-content disabled:opacity-0 transition-all"
+          // `transition-colors`, not `transition-all`: animating the disabled
+          // `opacity-0` fades the label through sub-threshold contrast, and
+          // axe sampling mid-fade sees 2.74:1 on a control that is 5:1 at
+          // rest. Nothing needs the opacity animated.
+          className="px-6 py-3 text-content-dim transition-colors hover:text-content disabled:opacity-0"
         >
           {t("back")}
         </button>
-
-        {!stepOwnsAction && (
-          <button
-            onClick={advance}
-            className="px-8 py-3 bg-inverse-surface hover:opacity-90 text-on-inverse rounded-full font-semibold transition-colors"
-          >
-            {isLastStep ? t("getStarted") : t("next")}
-          </button>
-        )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The steps by name, not as dots.
+ *
+ * Six unlabelled dots tell a reader how much is left but not what any of it
+ * is, which is exactly the information that decides whether they finish. The
+ * names also make the flow's shape an argument in itself: it opens on their
+ * county and ends on what we owe them.
+ */
+function StepRail({ current }: { current: number }) {
+  const { t } = useTranslation("onboarding");
+
+  return (
+    // `aria-current="step"` is what marks the position; every step also
+    // renders "Step N of 6" as its own eyebrow. An extra visually-hidden
+    // count here made a screen reader announce it twice.
+    <ol
+      className="mx-auto flex max-w-3xl flex-wrap justify-center gap-x-5 gap-y-1 px-6 pb-4 pt-8 text-xs"
+      aria-label={t("progress.label")}
+    >
+      {STEP_KEYS.map((key, i) => (
+        <li
+          key={key}
+          aria-current={i === current ? "step" : undefined}
+          // No opacity on the inactive names: text-content-dim/70 renders
+          // #96928b on the step background, which is 2.76:1 and fails WCAG
+          // 1.4.3. Weight and colour already separate current from the rest.
+          className={
+            i === current ? "font-semibold text-content" : "text-content-dim"
+          }
+        >
+          {t(`progress.steps.${key}`)}
+        </li>
+      ))}
+    </ol>
   );
 }

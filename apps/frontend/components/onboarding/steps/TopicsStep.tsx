@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
 import { ChipPicker, type ChipOption } from "../ChipPicker";
+import { LifeContextFields, useLifeContext } from "../LifeContext";
 import { StepFooter } from "../StepFooter";
 import {
   GET_MY_SIGNAL_PROFILE,
@@ -60,6 +61,10 @@ export function TopicsStep({ onComplete, isLastStep }: TopicsStepProps) {
   const [selected, setSelected] = useState<readonly string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // The optional life-context chips, folded in below rather than given their
+  // own screen. Same signal profile, so the two save in one write.
+  const life = useLifeContext();
+
   // Pre-fill from existing SignalProfile.interestTags when the user
   // re-enters onboarding. Cap at MAX_TOPICS so a previously-stored
   // larger set still fits the new contract (focus over breadth).
@@ -101,21 +106,29 @@ export function TopicsStep({ onComplete, isLastStep }: TopicsStepProps) {
   }));
 
   const submit = async () => {
-    if (selected.length === 0) {
-      onComplete();
-      return;
-    }
-    // Skip-write-if-unchanged — protect against silent over-3
-    // truncation when a returning user with more tags just clicks
-    // through without editing.
+    // Skip-write-if-unchanged — protect against silent over-3 truncation when
+    // a returning user with more tags just clicks through without editing.
     const initial = initialSelectedRef.current;
-    if (initial && sameStringSet(initial, selected)) {
+    const topicsUnchanged =
+      selected.length === 0 ||
+      Boolean(initial && sameStringSet(initial, selected));
+    const lifeInput = life.changedInput();
+
+    if (topicsUnchanged && !lifeInput) {
       onComplete();
       return;
     }
     try {
+      // One write, not two: both halves of this screen land in the same signal
+      // profile, and a partial failure between two calls would leave the
+      // profile describing a person who never existed.
       await updateSignal({
-        variables: { input: { interestTags: [...selected] } },
+        variables: {
+          input: {
+            ...(lifeInput ?? {}),
+            ...(topicsUnchanged ? {} : { interestTags: [...selected] }),
+          },
+        },
       });
       onComplete();
     } catch (e) {
@@ -154,6 +167,25 @@ export function TopicsStep({ onComplete, isLastStep }: TopicsStepProps) {
         }}
       />
 
+      {/* Collapsed, and optional in the label rather than only in the fine
+          print. It asks for more than the topics above do, and a reader who
+          does not want to answer should be able to see that without opening
+          it. */}
+      <details className="mt-6 border-t border-line pt-4">
+        <summary className="cursor-pointer text-sm font-medium text-content marker:text-content-dim">
+          {t("lifeContext.summary")}{" "}
+          <span className="font-normal text-content-dim">
+            {t("lifeContext.optional")}
+          </span>
+        </summary>
+        <p className="mt-2 text-xs text-content-dim">
+          {t("lifeContext.subtitle")}
+        </p>
+        <div className="mt-4">
+          <LifeContextFields state={life.state} setKey={life.setKey} />
+        </div>
+      </details>
+
       {error && (
         <p role="alert" className="text-danger text-sm pt-3">
           {error}
@@ -163,6 +195,7 @@ export function TopicsStep({ onComplete, isLastStep }: TopicsStepProps) {
       <StepFooter
         onSkip={() => {
           setSelected([]);
+          life.reset();
           setError(null);
           onComplete();
         }}

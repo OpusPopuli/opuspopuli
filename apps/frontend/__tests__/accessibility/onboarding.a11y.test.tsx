@@ -72,15 +72,12 @@ const renderStep = (step: number) => {
 };
 
 const STEPS = [
-  { step: 0, name: "Welcome" },
-  { step: 1, name: "Explore" },
-  { step: 2, name: "Scan" },
-  { step: 3, name: "Analyze" },
-  { step: 4, name: "Track" },
-  { step: 5, name: "Address" },
-  { step: 6, name: "Topics" },
-  { step: 7, name: "LifeContext" },
-  { step: 8, name: "Veteran" },
+  { step: 0, name: "County" },
+  { step: 1, name: "Threshold" },
+  { step: 2, name: "Topics" },
+  { step: 3, name: "Veteran" },
+  { step: 4, name: "Expectations" },
+  { step: 5, name: "Commitments" },
 ] as const;
 
 describe("Onboarding accessibility (WCAG 2.2 AA, structural)", () => {
@@ -105,12 +102,26 @@ describe("Onboarding accessibility (WCAG 2.2 AA, structural)", () => {
   });
 
   describe("global chrome", () => {
-    it("progressbar exposes valuenow/valuemin/valuemax", () => {
-      const { container } = renderStep(3);
-      const bar = container.querySelector("[role='progressbar']");
-      expect(bar).toHaveAttribute("aria-valuemin", "1");
-      expect(bar).toHaveAttribute("aria-valuemax", "10");
-      expect(bar).toHaveAttribute("aria-valuenow", "4");
+    // The progress dots became a named list. Six unlabelled dots told a reader
+    // how much was left but not what any of it was, which is the information
+    // that decides whether they finish.
+    it("names every step in a labelled list", () => {
+      const { getByRole, getAllByRole } = renderStep(2);
+      expect(getByRole("list", { name: "Setup progress" })).toBeInTheDocument();
+      expect(getAllByRole("listitem")).toHaveLength(STEPS.length);
+    });
+
+    it("marks exactly one step current, without repeating the count", () => {
+      // The current step is styled with weight and colour; aria-current is
+      // what carries it to anyone not seeing that. The step's own eyebrow
+      // already says "Step 3 of 6", so the rail must not say it again.
+      const { getAllByRole } = renderStep(2);
+      const current = getAllByRole("listitem").filter(
+        (li) => li.getAttribute("aria-current") === "step",
+      );
+      expect(current).toHaveLength(1);
+      expect(current[0]).toHaveTextContent("What you watch");
+      expect(current[0]).not.toHaveTextContent("Step 3 of 6");
     });
   });
 });

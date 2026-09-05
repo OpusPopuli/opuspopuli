@@ -86,11 +86,11 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   }, [onboardingStatus]);
 
   const [currentStep, setCurrentStep] = useState(0);
-  // 5 marketing steps + 4 data-collection steps (address, topics,
-  // life context, veteran) + 1 mandatory commitments acknowledgement
-  // (#754). Data + commitments steps own their own submit buttons;
-  // OnboardingSteps hides its global Next for those indices.
-  const totalSteps = 10;
+  // County, threshold, topics, veteran, expectations, commitments. Every step
+  // owns its own primary action, and the commitments acknowledgement (#754)
+  // is mandatory rather than skippable. Was 10, four of which were product
+  // slides shown before a single question — see OnboardingSteps.
+  const totalSteps = 6;
 
   // Server-side persistence of onboarding completion (#758). localStorage
   // stays the instant, offline-safe cache; the mutation is the durable,
