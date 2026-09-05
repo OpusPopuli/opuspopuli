@@ -5,6 +5,7 @@ import {
   substituteVerbatim,
   validateJurisdictionLevel,
   validateJurisdictionType,
+  pickLayerIdByName,
 } from './arcgis.utils';
 
 describe('arcgis.utils', () => {
@@ -156,6 +157,59 @@ describe('arcgis.utils', () => {
     it('rejects unknown values', () => {
       expect(validateJurisdictionLevel('GALACTIC')).toBeNull();
       expect(validateJurisdictionLevel('')).toBeNull();
+    });
+  });
+
+  describe('pickLayerIdByName', () => {
+    // The TIGERweb Legislative service as it stood when the 120th-Congress
+    // map shipped: the new vintage PREPENDED at 0-2, everything else pushed
+    // down. Index addressing turned '0' from the 119th into the 120th
+    // Congressional Districts with no signal anywhere.
+    const legislative = {
+      layers: [
+        { id: 0, name: '120th Congressional Districts' },
+        { id: 1, name: '2026 State Legislative Districts - Upper' },
+        { id: 4, name: '119th Congressional Districts' },
+        { id: 8, name: '119th Congressional Districts' },
+      ],
+    };
+
+    it('resolves the layer that carries the named legal identity', () => {
+      expect(
+        pickLayerIdByName(legislative, '119th Congressional Districts'),
+      ).toBe(4);
+    });
+
+    it('picks the lowest index on duplicates — the newest benchmark group', () => {
+      // 4 and 8 are the same districts under different geometry benchmarks;
+      // TIGERweb lists the newest first.
+      expect(
+        pickLayerIdByName(legislative, '119th Congressional Districts'),
+      ).toBe(4);
+      expect(
+        pickLayerIdByName(
+          {
+            layers: [
+              { id: 9, name: 'Counties' },
+              { id: 3, name: 'Counties' },
+            ],
+          },
+          'Counties',
+        ),
+      ).toBe(3);
+    });
+
+    it('returns null on no exact match — never a fallback', () => {
+      // A retired vintage (Census will eventually drop '119th ...') must
+      // surface as a loud failure demanding a config decision, not resolve
+      // to whatever now occupies the old index.
+      expect(
+        pickLayerIdByName(legislative, '121st Congressional Districts'),
+      ).toBeNull();
+      expect(
+        pickLayerIdByName(legislative, '119th congressional districts'),
+      ).toBeNull(); // exact, case-sensitive
+      expect(pickLayerIdByName({}, 'Counties')).toBeNull();
     });
   });
 });

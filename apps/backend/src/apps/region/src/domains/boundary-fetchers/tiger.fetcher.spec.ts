@@ -273,4 +273,69 @@ describe('TigerFetcher', () => {
       );
     });
   });
+
+  describe('layerName resolution (vintage-safe addressing)', () => {
+    // Mirrors the incident: the config said index 0, Census prepended the
+    // 120th-Congress vintage, and production ingested next Congress's map
+    // as the current one. With layerName, identity is pinned to the name.
+    const directory = {
+      layers: [
+        { id: 0, name: '120th Congressional Districts' },
+        { id: 4, name: '119th Congressional Districts' },
+      ],
+    };
+
+    function mockDirectoryResponse(body: object): Response {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => body,
+      } as unknown as Response;
+    }
+
+    const layer: TigerLayerConfig = {
+      layer: 'Legislative/MapServer',
+      layerName: '119th Congressional Districts',
+      outFields: 'GEOID,NAME,CD119',
+      jurisdictionType: 'CONGRESSIONAL_DISTRICT',
+      level: 'FEDERAL',
+      nameField: 'NAME',
+      districtField: 'CD119',
+    };
+
+    it('queries the index the NAME resolves to, not a hardcoded one', async () => {
+      fetchMock.mockResolvedValueOnce(mockDirectoryResponse(directory));
+      fetchMock.mockResolvedValueOnce(mockGeoJSONResponse([]));
+
+      await fetcher.fetch(layer, CA_CTX, OCD_PREFIX);
+
+      const directoryUrl = fetchMock.mock.calls[0][0] as string;
+      expect(directoryUrl).toContain('Legislative/MapServer?f=json');
+      const queryUrl = fetchMock.mock.calls[1][0] as string;
+      expect(queryUrl).toContain('Legislative/MapServer/4/query');
+      expect(queryUrl).not.toContain('MapServer/0/query');
+    });
+
+    it('skips the layer loudly when the name no longer exists — no index fallback', async () => {
+      // What a retired vintage looks like. The only safe answer is absence:
+      // wrong-but-plausible district data poisoned resolution while every
+      // health signal stayed green.
+      fetchMock.mockResolvedValueOnce(
+        mockDirectoryResponse({
+          layers: [{ id: 0, name: '121st Congressional Districts' }],
+        }),
+      );
+
+      const rows = await fetcher.fetch(layer, CA_CTX, OCD_PREFIX);
+
+      expect(rows).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1); // never issued a /query
+    });
+
+    it('skips the layer when the directory itself is unreachable', async () => {
+      fetchMock.mockRejectedValueOnce(new Error('ECONNRESET'));
+      const rows = await fetcher.fetch(layer, CA_CTX, OCD_PREFIX);
+      expect(rows).toEqual([]);
+    });
+  });
 });

@@ -3,7 +3,9 @@ import type { TigerLayerConfig } from '@opuspopuli/region-provider';
 import {
   DEFAULT_FIPS_FIELD,
   fetchPaginatedGeoJSON,
+  fetchServiceDirectory,
   mapFeaturesToRows,
+  pickLayerIdByName,
   substituteVerbatim,
   type BoundaryRow,
   type RegionContext,
@@ -52,8 +54,10 @@ export class TigerFetcher {
     ocdIdPrefix: string,
   ): Promise<BoundaryRow[]> {
     const where = substituteVerbatim(layer.where ?? DEFAULT_WHERE, ctx);
-    const baseUrl = `${TIGER_BASE}/${layer.layer}`;
-    const sourceLabel = `TigerFetcher: ${layer.layer}`;
+    const layerPath = await this.resolveLayerPath(layer);
+    if (layerPath === null) return [];
+    const baseUrl = `${TIGER_BASE}/${layerPath}`;
+    const sourceLabel = `TigerFetcher: ${layerPath}`;
 
     const features = await fetchPaginatedGeoJSON(
       baseUrl,
@@ -89,5 +93,53 @@ export class TigerFetcher {
       },
       this.logger,
     );
+  }
+
+  /**
+   * Resolve the config's layer reference to a concrete `service/index` path.
+   *
+   * With `layerName` set, `layer` is the service root and the index is
+   * resolved by exact name against the live service directory (see
+   * pickLayerIdByName for why). Without it, the literal path passes through
+   * — the legacy index-addressed form, kept for configs not yet migrated.
+   *
+   * Fail-closed: a name that resolves to nothing skips the layer with an
+   * error listing what the service actually offers. Ingesting the wrong
+   * legislature poisoned every district lookup while every health signal
+   * stayed green; an absent layer is loudly detectable, so absence is the
+   * only acceptable failure mode here.
+   */
+  private async resolveLayerPath(
+    layer: TigerLayerConfig,
+  ): Promise<string | null> {
+    if (!layer.layerName) return layer.layer;
+
+    const serviceUrl = `${TIGER_BASE}/${layer.layer}`;
+    const directory = await fetchServiceDirectory(serviceUrl);
+    if (!directory) {
+      this.logger.error(
+        `TigerFetcher: could not read service directory ${layer.layer} — ` +
+          `layer '${layer.layerName}' skipped this load.`,
+      );
+      return null;
+    }
+
+    const id = pickLayerIdByName(directory, layer.layerName);
+    if (id === null) {
+      const available = (directory.layers ?? [])
+        .map((l) => `${l.id}:'${l.name}'`)
+        .join(', ');
+      this.logger.error(
+        `TigerFetcher: no layer named '${layer.layerName}' in ${layer.layer}. ` +
+          `A retired vintage (e.g. a new Congress) needs a deliberate config ` +
+          `update, never an index fallback. Available: ${available}`,
+      );
+      return null;
+    }
+
+    this.logger.log(
+      `TigerFetcher: '${layer.layerName}' resolved to ${layer.layer}/${id}`,
+    );
+    return `${layer.layer}/${id}`;
   }
 }
