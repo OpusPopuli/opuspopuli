@@ -207,8 +207,12 @@ export function SettingsShellLayout({
               </Link>
               <div className="flex items-center gap-4">
                 <LanguageToggle />
+                {/* The briefing, not /region: this is the signed-in home, and
+                    it is where onboarding and login both land. Sending someone
+                    from their profile to the region index drops them somewhere
+                    they did not come from. */}
                 <Link
-                  href="/region"
+                  href="/me/briefing"
                   className="text-sm text-content-dim hover:text-content transition-colors"
                 >
                   {t("common:navigation.backToApp")}

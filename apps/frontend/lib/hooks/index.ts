@@ -9,3 +9,4 @@ export { useMapPetitions } from "./useMapPetitions";
 export { useActivityFeed } from "./useActivityFeed";
 export { useInstallPrompt } from "./useInstallPrompt";
 export { usePrefersReducedMotion } from "./usePrefersReducedMotion";
+export { useHydrated } from "./useHydrated";
