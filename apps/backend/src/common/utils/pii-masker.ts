@@ -38,6 +38,18 @@ const SENSITIVE_FIELDS = new Set([
   'interesttags',
   'rankingflags',
   'regionlabel',
+  // Scan/OCR image payloads (#1144). ProcessScanInput.data and
+  // ExtractTextFromBase64Input.data carry the ENTIRE base64 photograph, and
+  // the audit interceptor captures inputVariables verbatim — so every
+  // petition scan was landing, unredacted and identity-linked, in 90-day
+  // audit logs. That defeats ScanService's deliberate never-persist design
+  // (location: 'not-stored', hash-only) and #1075's on-device crop. These are
+  // the only two `data` fields across every backend DTO (audited 2026-09-06),
+  // and there is no diagnostic value in a partial image: redact outright,
+  // same rationale as the donor fields above. Third instance of this masking
+  // class after #980 and #1052 — when adding an input field that carries a
+  // payload rather than a parameter, add it here in the same commit.
+  'data',
 ]);
 
 const PARTIAL_MASK_FIELDS = new Set(['email', 'phone', 'phonenumber']);

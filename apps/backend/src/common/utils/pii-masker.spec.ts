@@ -374,4 +374,43 @@ describe('PII Masker', () => {
       expect(sanitizeForLogging(true)).toBe(true);
     });
   });
+
+  describe('scan/OCR image payloads (#1144)', () => {
+    it('redacts ProcessScanInput.data at audit-interceptor nesting', () => {
+      // The interceptor stores raw GraphQL args: { input: { data: <base64> } }.
+      // This exact shape sat identity-linked in 90-day audit logs.
+      const args = {
+        input: {
+          data: 'iVBORw0KGgoAAAANSUhEUg'.repeat(1000),
+          mimeType: 'image/jpeg',
+        },
+      };
+      const masked = maskSensitiveData(args) as {
+        input: { data: string; mimeType: string };
+      };
+      expect(masked.input.data).toBe('[REDACTED]');
+      // The parameter fields keep their diagnostic value.
+      expect(masked.input.mimeType).toBe('image/jpeg');
+    });
+
+    it('redacts data at any depth and at the top level', () => {
+      const masked = maskSensitiveData({
+        data: 'AAAA',
+        nested: { deeper: { data: 'BBBB' } },
+      }) as { data: string; nested: { deeper: { data: string } } };
+      expect(masked.data).toBe('[REDACTED]');
+      expect(masked.nested.deeper.data).toBe('[REDACTED]');
+    });
+
+    it('never lets a base64 payload survive masking of a scan-shaped entry', () => {
+      // Belt-and-suspenders: assert on the serialized whole, not a known path,
+      // so a future shape change cannot quietly reintroduce the leak.
+      const payload = 'iVBORw0KGgo_SENTINEL_' + 'x'.repeat(64);
+      const masked = JSON.stringify(
+        maskSensitiveData({ input: { data: payload, scanLocation: 'CA' } }),
+      );
+      expect(masked).not.toContain('SENTINEL');
+      expect(masked).toContain('[REDACTED]');
+    });
+  });
 });
