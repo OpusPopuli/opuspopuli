@@ -20,6 +20,11 @@ type Readiness = "live" | "building";
 const CAPABILITIES: { key: string; readiness: Readiness }[] = [
   { key: "threshold", readiness: "live" },
   { key: "propositions", readiness: "live" },
+  // Bills sits directly after propositions and before finance because it is
+  // where the topics step two screens earlier pays off. A reader who picked
+  // three issues should be told, in one line, what picking them did.
+  { key: "bills", readiness: "live" },
+  { key: "committees", readiness: "live" },
   { key: "finance", readiness: "live" },
   { key: "representatives", readiness: "live" },
   { key: "countyMeasures", readiness: "building" },

@@ -144,6 +144,14 @@
         "title": "Propuestas estatales",
         "body": "Cada medida de la boleta de California, en lenguaje llano, junto al texto del que procede."
       },
+      "bills": {
+        "title": "Proyectos de ley estatales",
+        "body": "Cada proyecto de ley que avanza en la Legislatura, con los tres temas que elegiste decidiendo cuáles aparecen primero."
+      },
+      "committees": {
+        "title": "Comisiones legislativas",
+        "body": "En qué comisión está un proyecto de ley, quién la integra y cómo han votado."
+      },
       "finance": {
         "title": "Financiación de campañas",
         "body": "Aportaciones y gastos rastreados hasta el comité que los declaró."
