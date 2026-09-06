@@ -1415,3 +1415,91 @@ describe('RegionQueryService — query methods', () => {
     });
   });
 });
+
+describe('RegionQueryService — getMyCountySupervisors (#1136)', () => {
+  let service: RegionQueryService;
+  let mockDb: MockDbClient;
+
+  const BOARD = [
+    { id: 'r1', district: '1', name: 'Rebecca Hermosillo' },
+    { id: 'r2', district: '2', name: 'David Rabbitt' },
+    { id: 'r5', district: '5', name: 'Lynda Hopkins' },
+  ];
+
+  beforeEach(async () => {
+    mockDb = createMockDbService();
+    mockDb.representative.findMany.mockResolvedValue(BOARD as never);
+    mockDb.regionPlugin.findUnique.mockResolvedValue({
+      name: 'california-sonoma',
+      enabled: true,
+    } as never);
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        { provide: REGION_CACHE, useValue: createMockCache() },
+        RegionCacheService,
+        { provide: DbService, useValue: mockDb },
+        RegionQueryService,
+      ],
+    }).compile();
+    service = module.get<RegionQueryService>(RegionQueryService);
+  });
+
+  /** First call resolves the COUNTY row, second the supervisorial district. */
+  function resolveJurisdictions(supDistrictName: string | null) {
+    mockDb.userJurisdiction.findFirst
+      .mockResolvedValueOnce({
+        jurisdiction: { fipsCode: '06097' },
+      } as never)
+      .mockResolvedValueOnce(
+        (supDistrictName
+          ? { jurisdiction: { name: supDistrictName } }
+          : null) as never,
+      );
+  }
+
+  it("returns only the user's own supervisor once their district resolves", async () => {
+    resolveJurisdictions('Sonoma County Supervisorial District 5');
+    const result = await service.getMyCountySupervisors('user-1');
+    expect(result.map((r: { id: string }) => r.id)).toEqual(['r5']);
+  });
+
+  it('normalizes zero-padding between boundary and roster districts', async () => {
+    // The jurisdiction name says "District 5"; a roster source could store
+    // '05'. Digit extraction on both sides makes the comparison shape-proof.
+    mockDb.representative.findMany.mockResolvedValue([
+      { id: 'r5', district: '05', name: 'Lynda Hopkins' },
+      { id: 'r1', district: '01', name: 'Rebecca Hermosillo' },
+    ] as never);
+    resolveJurisdictions('Sonoma County Supervisorial District 5');
+    const result = await service.getMyCountySupervisors('user-1');
+    expect(result.map((r: { id: string }) => r.id)).toEqual(['r5']);
+  });
+
+  it('returns the whole board when no supervisorial district has resolved', async () => {
+    // 57 of 58 counties have no boundary data yet. "Your Board of
+    // Supervisors" is honest; one arbitrary supervisor as "yours" is the
+    // bug this feature closes.
+    resolveJurisdictions(null);
+    const result = await service.getMyCountySupervisors('user-1');
+    expect(result).toHaveLength(3);
+  });
+
+  it('returns the whole board when the resolved district matches no roster row', async () => {
+    // Boundary data and scraped roster disagreeing must not blank the
+    // section: the board beats nobody.
+    resolveJurisdictions('Sonoma County Supervisorial District 9');
+    const result = await service.getMyCountySupervisors('user-1');
+    expect(result).toHaveLength(3);
+  });
+
+  it('returns nothing when the county plugin is disabled', async () => {
+    mockDb.regionPlugin.findUnique.mockResolvedValue({
+      name: 'california-sonoma',
+      enabled: false,
+    } as never);
+    resolveJurisdictions(null);
+    const result = await service.getMyCountySupervisors('user-1');
+    expect(result).toEqual([]);
+  });
+});

@@ -197,4 +197,45 @@ describe('GeoportalFetcher', () => {
       );
     });
   });
+
+  describe('districtField passthrough (#1136)', () => {
+    // County supervisorial layers broke the "geoportal layers have no
+    // district numbers" assumption — Sonoma's carries SupNum, and the
+    // fetcher used to hardcode districtField: undefined, so ${district}
+    // substitutions in nameTemplate / ocdIdSegment silently emptied.
+    it('feeds the configured districtField into ${district} substitutions', async () => {
+      fetchMock.mockResolvedValueOnce(
+        mockGeoJSONResponse([
+          {
+            type: 'Feature',
+            properties: { SupDstr: '5th', SupNum: 5 },
+            geometry: { type: 'Polygon', coordinates: [] },
+          },
+        ]),
+      );
+
+      const layer: GeoportalLayerConfig = {
+        url: FIRE_URL,
+        outFields: 'SupNum,SupDstr',
+        jurisdictionType: 'COUNTY_SUPERVISOR_DISTRICT',
+        level: 'COUNTY',
+        nameField: 'SupDstr',
+        districtField: 'SupNum',
+        fipsField: 'SupNum',
+        fipsPrefix: 'sup-06097-',
+        ocdIdSegment: '/supervisorial_district:${district}',
+        nameTemplate: 'Sonoma County Supervisorial District ${district}',
+      };
+
+      const rows = await fetcher.fetch(layer, CA_CTX, OCD_PREFIX);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].name).toBe('Sonoma County Supervisorial District 5');
+      expect(rows[0].fipsCode).toBe('sup-06097-5');
+      expect(rows[0].ocdId).toBe(
+        'ocd-division/country:us/state:ca/supervisorial_district:5',
+      );
+      expect(rows[0].type).toBe('COUNTY_SUPERVISOR_DISTRICT');
+    });
+  });
 });

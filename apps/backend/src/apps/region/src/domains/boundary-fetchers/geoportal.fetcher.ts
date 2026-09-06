@@ -67,9 +67,9 @@ export class GeoportalFetcher {
         // here — Geoportal layers have no GEOID convention.)
         fipsField: layer.fipsField,
         fipsPrefix: layer.fipsPrefix,
-        // Geoportal layers have no districtField — special districts
-        // don't use district numbers.
-        districtField: undefined,
+        // Most geoportal layers (fire/water) have no district numbers;
+        // county supervisorial layers do (#1136). Pass through verbatim.
+        districtField: layer.districtField,
         ocdIdSegment: layer.ocdIdSegment,
         nameTemplate: layer.nameTemplate,
         sourceLabel,

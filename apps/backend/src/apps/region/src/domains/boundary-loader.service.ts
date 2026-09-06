@@ -149,6 +149,15 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
 
     const { sources, ctx } = precheck;
     const rows = await this.fetchAll(sources, ctx);
+
+    // County-published boundaries (#1136). Supervisorial districts have no
+    // statewide source — each county publishes its own layer — so enabled
+    // county plugins contribute their boundarySources to the same load.
+    // Counties without any (57 of 58 today) cost one indexed DB read total.
+    for (const county of await this.collectCountyBoundarySources()) {
+      rows.push(...(await this.fetchAll(county.sources, county.ctx)));
+    }
+
     const { upserted, failed, missingKey } = await this.executeUpserts(rows);
 
     this.logger.log(
@@ -162,6 +171,60 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
       ok: failed === 0,
       counts: { existing, upserted, failed, missingKey },
     };
+  }
+
+  /**
+   * Boundary sources declared by ENABLED county plugins (#1136).
+   *
+   * Reads `region_plugins` rows the same way RegionSyncService enumerates
+   * county plugins (parentRegionId set + enabled), but goes straight to the
+   * config JSON instead of constructing DeclarativeRegionPlugin — the plugin
+   * constructor demands a scraping pipeline, and boundary loading needs
+   * nothing but `boundarySources`, `fipsCode` and `stateCode`.
+   *
+   * Each county carries its own ctx: `${fipsCode}` in a county layer's WHERE
+   * or templates must substitute the COUNTY fips (06097), not the state's,
+   * and each `boundarySources.ocdIdPrefix` already scopes OCD-IDs per county.
+   * A county missing fipsCode/stateCode is skipped loudly — same contract as
+   * the state-plugin guard in checkPreconditions.
+   */
+  private async collectCountyBoundarySources(): Promise<
+    Array<{ sources: BoundarySourcesConfig; ctx: RegionContext }>
+  > {
+    const countyRows = await this.db.regionPlugin.findMany({
+      where: { parentRegionId: { not: null }, enabled: true },
+      select: { name: true, config: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const out: Array<{ sources: BoundarySourcesConfig; ctx: RegionContext }> =
+      [];
+    for (const row of countyRows) {
+      const config = row.config as {
+        boundarySources?: BoundarySourcesConfig;
+        fipsCode?: string;
+        stateCode?: string;
+      } | null;
+      const sources = config?.boundarySources;
+      if (!sources) continue;
+      if (!config?.fipsCode || !config?.stateCode) {
+        this.logger.warn(
+          `BoundaryLoader: county plugin ${row.name} declares boundarySources ` +
+            `but is missing fipsCode/stateCode — skipping its layers.`,
+        );
+        continue;
+      }
+      out.push({
+        sources,
+        ctx: { fipsCode: config.fipsCode, stateCode: config.stateCode },
+      });
+    }
+    if (out.length > 0) {
+      this.logger.log(
+        `BoundaryLoader: ${out.length} county plugin(s) contribute boundary sources.`,
+      );
+    }
+    return out;
   }
 
   /**

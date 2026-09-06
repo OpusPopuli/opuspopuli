@@ -1280,7 +1280,40 @@ export class RegionQueryService {
 
     if (!plugin?.enabled) return [];
 
-    return this.getRepresentativesByCounty(plugin.name);
+    const supervisors = await this.getRepresentativesByCounty(plugin.name);
+
+    // Filter to the user's own supervisorial district when their address has
+    // resolved one (#1136). Boundaries are county-published and ingested
+    // county by county, so most counties have none yet — and for them the
+    // whole board comes back, exactly as before. Degrading to ALL supervisors
+    // is honest ("your Board of Supervisors"); showing one arbitrary
+    // supervisor as "yours" is not, which is the bug this closes.
+    const supDistrict = await this.db.userJurisdiction.findFirst({
+      where: {
+        userId,
+        userAddress: { isPrimary: true },
+        jurisdiction: { type: 'COUNTY_SUPERVISOR_DISTRICT' },
+      },
+      include: { jurisdiction: { select: { name: true } } },
+    });
+    if (!supDistrict?.jurisdiction?.name) return supervisors;
+
+    // Digit-extraction on BOTH sides: the jurisdiction says "Sonoma County
+    // Supervisorial District 5", the roster row says district "5" (some
+    // sources zero-pad). extractDistrictNumber normalizes to two digits.
+    const userDistrict = this.extractDistrictNumber(
+      supDistrict.jurisdiction.name,
+    );
+    if (!userDistrict) return supervisors;
+
+    const own = supervisors.filter(
+      (rep) =>
+        rep.district !== null &&
+        this.extractDistrictNumber(rep.district) === userDistrict,
+    );
+    // A resolved district that matches no roster row means the boundary data
+    // and the scraped roster disagree — return the board rather than nobody.
+    return own.length > 0 ? own : supervisors;
   }
 
   // ─── Bills query ──────────────────────────────────────────────────────────────
