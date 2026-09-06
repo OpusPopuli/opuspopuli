@@ -786,8 +786,28 @@ export interface BoundarySourcesConfig {
  * `nameTemplate`, `${name}` is substituted verbatim.
  */
 export interface TigerLayerConfig {
-  /** TIGER MapServer service+layer path, e.g. 'State_County/MapServer/1'. */
+  /**
+   * TIGER MapServer path. With `layerName` set, this is the SERVICE root
+   * ('Legislative/MapServer') and the layer index is resolved at fetch time.
+   * Without it, a literal service+index path ('State_County/MapServer/1') —
+   * supported for back-compat, but index addressing is how production
+   * ingested the wrong Congress: TIGERweb prepends new vintage groups, so
+   * index 0 silently changed from the 119th to the 120th Congressional
+   * Districts when Census published the mid-decade map.
+   */
   layer: string;
+  /**
+   * Exact TIGERweb layer NAME to resolve against the service directory,
+   * e.g. '119th Congressional Districts', '2024 State Legislative
+   * Districts - Upper', 'Counties'. The name carries the legal identity
+   * (which Congress / legislature / entity); the index only carries a
+   * position that Census reshuffles every vintage roll. Duplicate names
+   * across vintage groups resolve to the LOWEST index — TIGERweb lists the
+   * newest geometry benchmark first, and any duplicate is the same legal
+   * entity. No exact match → the layer is skipped with an error naming the
+   * available layers, never silently substituted.
+   */
+  layerName?: string;
   /** ESRI WHERE clause. Defaults to `STATE='${fipsCode}'` when omitted. */
   where?: string;
   /** Comma-separated TIGER attribute fields to return, e.g. 'GEOID,NAME'. */

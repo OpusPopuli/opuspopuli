@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { useQuery } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth-context";
-import { usePrefersReducedMotion } from "@/lib/hooks";
+import { useHydrated, usePrefersReducedMotion } from "@/lib/hooks";
 import { buttonVariants } from "@/components/ui/Button";
 import {
   GET_COUNTY_THRESHOLDS,
@@ -52,6 +52,7 @@ export function CountyHero() {
   const { t } = useTranslation("landing");
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const reducedMotion = usePrefersReducedMotion();
+  const hydrated = useHydrated();
   const [mode, setMode] = useState<MapMode>("share");
   const [selectedFips, setSelectedFips] = useState(DEFAULT_FIPS);
   const [hoveredFips, setHoveredFips] = useState<string | null>(null);
@@ -92,7 +93,13 @@ export function CountyHero() {
   // unreachable this page still has to say what it is and let someone sign up.
   // An empty map, though, would read as "no counties qualify", so that half
   // says nothing rather than something false.
-  const hasData = !error && counties.length > 0;
+  //
+  // Gated on `hydrated` as well: Apollo persists its cache to IndexedDB, so a
+  // returning visitor's FIRST client render already has counties while the
+  // server's render had none. Without this the server renders the citation as
+  // this column's first child and the client renders the map's Suspense
+  // boundary, and React discards the whole hero and re-renders it.
+  const hasData = hydrated && !error && counties.length > 0;
 
   return (
     <section

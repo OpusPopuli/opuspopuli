@@ -228,6 +228,80 @@ export async function fetchPaginatedGeoJSON(
 }
 
 /**
+ * Minimal shape of an ArcGIS service directory (`<service>?f=json`) — just
+ * the layer listing needed to resolve a layer name to its current index.
+ */
+export interface ArcgisServiceDirectory {
+  layers?: Array<{ id: number; name: string }>;
+}
+
+/**
+ * Resolve a layer NAME to its current index in an ArcGIS service directory.
+ *
+ * Why this exists: TIGERweb services are stacks of vintage groups and Census
+ * PREPENDS new ones, renumbering every layer below. Addressing by index is
+ * how production ingested the 120th-Congress district map as if it were the
+ * current one — `Legislative/MapServer/0` meant the 119th Congressional
+ * Districts when the config was written and the 120th after Census published
+ * the mid-decade map. Every point-in-polygon district lookup then answered
+ * with the wrong Congress while looking internally consistent: geometry,
+ * GEOID and NAME all agree with each other, just not with the legislature
+ * that is actually seated.
+ *
+ * The layer NAME carries the legal identity ('119th Congressional
+ * Districts'), so resolving by exact name pins the meaning. Duplicate names
+ * across vintage groups (e.g. 'Counties' appears once per benchmark) resolve
+ * to the LOWEST index: TIGERweb lists the newest geometry benchmark first,
+ * and every duplicate is the same legal entity, so newest-benchmark is
+ * always the right pick.
+ *
+ * Returns null when no layer bears the exact name — the caller must treat
+ * that as a hard skip with a loud log, never fall back to an index. A
+ * missing name is what a retired vintage looks like (Census will eventually
+ * drop '119th ...'), and the correct response is a deliberate config update,
+ * not a silent guess.
+ */
+export function pickLayerIdByName(
+  directory: ArcgisServiceDirectory,
+  layerName: string,
+): number | null {
+  const matches = (directory.layers ?? [])
+    .filter((l) => l.name === layerName)
+    .map((l) => l.id);
+  if (matches.length === 0) return null;
+  return Math.min(...matches);
+}
+
+/**
+ * Fetch an ArcGIS service directory. Same SSRF guard and error philosophy
+ * as fetchPaginatedGeoJSON: private hosts refused, any failure returns null
+ * and the caller logs with layer context.
+ */
+export async function fetchServiceDirectory(
+  serviceUrl: string,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<ArcgisServiceDirectory | null> {
+  let parsed: URL;
+  try {
+    parsed = new URL(serviceUrl);
+  } catch {
+    return null;
+  }
+  if (isPrivateHost(parsed.hostname)) return null;
+
+  try {
+    const res = await fetch(`${serviceUrl}?f=json`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as ArcgisServiceDirectory;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Apply `${name}` / `${district}` / `${fipsCode}` / `${stateCode}` substitution
  * to a template, preserving each value verbatim. Used for `where` clauses,
  * `nameTemplate` rendering, and any other context where mixed-case names

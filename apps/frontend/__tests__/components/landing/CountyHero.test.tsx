@@ -26,6 +26,9 @@ jest.mock("@/lib/auth-context", () => ({
 
 jest.mock("@/lib/hooks", () => ({
   usePrefersReducedMotion: () => reducedMotion,
+  // True in these specs: they assert the post-hydration tree. The false-on-
+  // server case is covered by the useHydrated spec.
+  useHydrated: () => true,
 }));
 
 // `next/dynamic` defers the map behind a promise, so under jest the hero would
