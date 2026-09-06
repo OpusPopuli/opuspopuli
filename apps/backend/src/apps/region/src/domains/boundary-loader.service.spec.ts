@@ -108,6 +108,9 @@ describe('BoundaryLoaderService', () => {
     // verify orchestration: how it composes fetcher results into upserts.
     mockTigerFetcher = { fetch: jest.fn().mockResolvedValue([]) };
     mockGeoportalFetcher = { fetch: jest.fn().mockResolvedValue([]) };
+    // County boundary-source collection (#1136) reads enabled county rows on
+    // every load; no counties is the default world for these tests.
+    mockDb.regionPlugin.findMany.mockResolvedValue([] as never);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -552,6 +555,91 @@ describe('BoundaryLoaderService', () => {
 
       expect(result.counts.upserted).toBe(1);
       expect(result.counts.failed).toBe(1);
+    });
+  });
+
+  describe('county boundary sources (#1136)', () => {
+    const SONOMA_SOURCES = {
+      ocdIdPrefix: 'ocd-division/country:us/state:ca/county:sonoma',
+      geoportalLayers: [
+        {
+          url: 'https://socogis.example/FeatureServer/0',
+          outFields: 'SupNum',
+          jurisdictionType: 'COUNTY_SUPERVISOR_DISTRICT',
+          level: 'COUNTY',
+          nameField: 'SupDstr',
+        },
+      ],
+    };
+
+    it("fetches an enabled county plugin's layers with the COUNTY fips context", async () => {
+      // The state plugin must proceed past preconditions for county sources
+      // to be collected at all — the gate is deliberate (a region without
+      // state-level sources declaring county ones is hypothetical today).
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockRegistry.getActive.mockReturnValue(
+        createMockPlugin({ ocdIdPrefix: 'ocd-division/country:us/state:ca' }),
+      );
+      mockDb.regionPlugin.findMany.mockResolvedValue([
+        {
+          name: 'california-sonoma',
+          config: {
+            fipsCode: '06097',
+            stateCode: 'CA',
+            boundarySources: SONOMA_SOURCES,
+          },
+        },
+      ] as never);
+
+      await service.loadAll({ force: true });
+
+      const countyCall = mockGeoportalFetcher.fetch.mock.calls.find(
+        ([, ctx]) => ctx.fipsCode === '06097',
+      );
+      expect(countyCall).toBeDefined();
+      // The county's own OCD prefix, not the state's — supervisorial OCD-IDs
+      // are scoped per county.
+      expect(countyCall![2]).toBe(SONOMA_SOURCES.ocdIdPrefix);
+    });
+
+    it('skips a county that declares sources but lacks fips/state, loudly', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockRegistry.getActive.mockReturnValue(
+        createMockPlugin({ ocdIdPrefix: 'ocd-division/country:us/state:ca' }),
+      );
+      mockDb.regionPlugin.findMany.mockResolvedValue([
+        {
+          name: 'california-broken',
+          config: { boundarySources: SONOMA_SOURCES },
+        },
+      ] as never);
+
+      await service.loadAll({ force: true });
+
+      const countyCalls = mockGeoportalFetcher.fetch.mock.calls.filter(
+        ([, ctx]) => ctx.fipsCode !== '06',
+      );
+      expect(countyCalls).toHaveLength(0);
+    });
+
+    it('counties without boundarySources cost nothing — 57 of 58 today', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockRegistry.getActive.mockReturnValue(
+        createMockPlugin({ ocdIdPrefix: 'ocd-division/country:us/state:ca' }),
+      );
+      mockDb.regionPlugin.findMany.mockResolvedValue([
+        {
+          name: 'california-alpine',
+          config: { fipsCode: '06003', stateCode: 'CA' },
+        },
+      ] as never);
+
+      await service.loadAll({ force: true });
+
+      const countyCalls = mockGeoportalFetcher.fetch.mock.calls.filter(
+        ([, ctx]) => ctx.fipsCode === '06003',
+      );
+      expect(countyCalls).toHaveLength(0);
     });
   });
 });

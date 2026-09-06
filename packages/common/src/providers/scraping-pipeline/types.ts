@@ -858,6 +858,13 @@ export interface GeoportalLayerConfig {
    */
   fipsField?: string;
   fipsPrefix?: string;
+  /**
+   * FeatureServer attribute key supplying `${district}` substitutions.
+   * Added for county supervisorial layers (#1136) — the "geoportal layers
+   * have no district numbers" assumption held for fire/water districts but
+   * not for county-published political districts (e.g. Sonoma's SupNum).
+   */
+  districtField?: string;
   ocdIdSegment?: string;
   nameTemplate?: string;
 }
@@ -876,7 +883,8 @@ export type BoundaryJurisdictionType =
   | "WATER_DISTRICT"
   | "FIRE_DISTRICT"
   | "TRANSIT_DISTRICT"
-  | "SPECIAL_DISTRICT";
+  | "SPECIAL_DISTRICT"
+  | "COUNTY_SUPERVISOR_DISTRICT";
 
 /** Single source of truth for boundary-layer hierarchy levels. */
 export type BoundaryJurisdictionLevel =
