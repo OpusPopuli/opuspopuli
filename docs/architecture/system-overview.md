@@ -84,7 +84,7 @@ Opus Populi is built on a modular, provider-based architecture with three core p
 - **Components**:
   - Embeddings generation (Xenova/Ollama)
   - Vector search (pgvector on PostgreSQL)
-  - LLM inference (Ollama with Mistral, Llama 3.1)
+  - LLM inference (Ollama with Qwen 3.5 — `qwen3.5:9b` dev, `qwen3.5:35b` prod; see [AI/ML Pipeline](ai-ml-pipeline.md))
 
 ### Region Service
 - **Technology**: NestJS + Apollo Federation

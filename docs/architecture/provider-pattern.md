@@ -990,6 +990,18 @@ const dimensions = process.env.VECTOR_DB_DIMENSIONS || 384;
 const provider = process.env.EMBEDDINGS_PROVIDER || 'xenova';
 ```
 
+> **Known limitation — the one place the provider pattern does not hold.**
+> Embedding vector width is a *schema* property, not just a provider
+> property: pgvector columns are declared at a fixed dimension
+> (`EMBEDDING_DIMENSIONS` in `@opuspopuli/common`, currently 384) and the
+> HNSW index is built for that width. Switching `EMBEDDINGS_PROVIDER` (or
+> the model) to one with a different width therefore requires a **migration
+> plus a full re-embed of stored vectors** — not just an env change. A
+> startup assertion compares the running provider's width against the
+> constant and fails fast on mismatch. History: both embedding columns were
+> once declared `vector(1536)` against a 384-dim provider, and no mocked
+> test could catch it (#1074).
+
 ### LLM
 ```typescript
 // Ollama only (model is configurable)

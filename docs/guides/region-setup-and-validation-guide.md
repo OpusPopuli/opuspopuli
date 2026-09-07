@@ -132,7 +132,7 @@ Verify the model is ready:
 ollama list
 ```
 
-You should see `mistral:latest` in the output.
+You should see `qwen3.5:9b` in the output.
 
 ### 2.4 Start the Frontend
 

@@ -78,8 +78,8 @@ Any Ollama model can be used by setting `LLM_MODEL`. Some alternatives:
 ### Step 1: Pull the New Model
 
 ```bash
-# Example: Switch to Mistral
-ollama pull mistral
+# Example: switch to OLMo 3.1 (the candidate under evaluation in #1142)
+ollama pull olmo-3.1:32b-instruct
 
 # Verify it's downloaded
 ollama list
@@ -89,27 +89,40 @@ ollama list
 
 Edit `apps/backend/.env`:
 ```bash
-LLM_MODEL=mistral
+LLM_MODEL=olmo-3.1:32b-instruct
 ```
 
-### Step 3: Restart Backend
+### Step 3: Restart the Service
 
 ```bash
 cd apps/backend
-npm run start:dev
+pnpm start:knowledge   # or the service you're testing against
 ```
 
 You should see in the logs:
 ```
-[KnowledgeService] KnowledgeService initialized with vector DB: pgvector, LLM: Ollama/mistral
+[KnowledgeService] KnowledgeService initialized with vector DB: pgvector, LLM: Ollama/olmo-3.1:32b-instruct
 ```
 
 ### Step 4: Test
 
 Ask a question and verify the new model is being used. Check the logs for:
 ```
-[KnowledgeService] Generating answer with Ollama/mistral
+[KnowledgeService] Generating answer with Ollama/olmo-3.1:32b-instruct
 ```
+
+### Caveats when swapping models
+
+- **Only the tag is pinned, not the digest.** `ollama pull` on an existing
+  tag can silently change the model weights behind an unchanged config.
+- **Cached AI outputs don't all record the producing model.** Relevance
+  explanations and briefing summaries generated under the old model are
+  served until their TTL expires, and some cache rows can't attribute their
+  text to a model after a swap.
+- **Changing the platform default is an evaluated decision**, not a config
+  preference — the eval harness (#1142) gates it on our real workloads
+  (JSON validity, claims precision, EN+ES parity, throughput on our
+  hardware).
 
 ---
 
