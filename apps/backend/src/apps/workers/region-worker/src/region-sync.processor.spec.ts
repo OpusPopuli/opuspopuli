@@ -7,6 +7,7 @@ import { Job } from 'bullmq';
 import { RegionSyncProcessor } from './region-sync.processor';
 import { RegionDomainService } from 'src/apps/region/src/domains/region.service';
 import { PipelineJobService } from 'src/apps/region/src/domains/pipeline-job.service';
+import { BoundaryLoaderService } from 'src/apps/region/src/domains/boundary-loader.service';
 import { QUEUE_CONNECTION, createWorker } from '@opuspopuli/queue-provider';
 import { DataType } from '@opuspopuli/region-provider';
 
@@ -22,6 +23,7 @@ describe('RegionSyncProcessor', () => {
   let processor: RegionSyncProcessor;
   let regionService: jest.Mocked<RegionDomainService>;
   let pipelineJobService: jest.Mocked<PipelineJobService>;
+  let boundaryLoader: jest.Mocked<BoundaryLoaderService>;
 
   const mockSyncResults = [
     {
@@ -65,6 +67,10 @@ describe('RegionSyncProcessor', () => {
           provide: PipelineJobService,
           useValue: createMock<PipelineJobService>(),
         },
+        {
+          provide: BoundaryLoaderService,
+          useValue: createMock<BoundaryLoaderService>(),
+        },
         { provide: QUEUE_CONNECTION, useValue: mockConnection },
         { provide: ConfigService, useValue: createMock<ConfigService>() },
       ],
@@ -73,8 +79,13 @@ describe('RegionSyncProcessor', () => {
     processor = module.get<RegionSyncProcessor>(RegionSyncProcessor);
     regionService = module.get(RegionDomainService);
     pipelineJobService = module.get(PipelineJobService);
+    boundaryLoader = module.get(BoundaryLoaderService);
 
     regionService.syncAll.mockResolvedValue(mockSyncResults);
+    boundaryLoader.loadAll.mockResolvedValue({
+      ok: true,
+      counts: { existing: 6200, upserted: 5, failed: 0, missingKey: 0 },
+    });
     pipelineJobService.markRunning.mockResolvedValue(undefined);
     pipelineJobService.markSucceeded.mockResolvedValue(undefined);
     pipelineJobService.markFailed.mockResolvedValue(undefined);
@@ -184,6 +195,89 @@ describe('RegionSyncProcessor', () => {
       await processor.onApplicationBootstrap();
 
       expect(pipelineJobService.sweepStaleRunning).toHaveBeenCalledWith(30000);
+    });
+  });
+  describe('boundary refresh dispatch (#1122)', () => {
+    function getHandler() {
+      return (createWorker as jest.Mock).mock.calls.at(-1)[2];
+    }
+
+    function boundaryJob() {
+      return {
+        id: 'job-b1',
+        data: {
+          pipelineJobId: 'pipeline-b1',
+          triggerSource: 'manual',
+          regionId: undefined,
+          dataTypes: ['boundaries'],
+          force: true,
+        },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+      } as unknown as Job<any>;
+    }
+
+    it('runs the boundary loader, not syncAll, and threads force through', async () => {
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(boundaryJob());
+
+      expect(boundaryLoader.loadAll).toHaveBeenCalledWith({ force: true });
+      expect(regionService.syncAll).not.toHaveBeenCalled();
+    });
+
+    it('runs BOTH when a job mixes boundaries with civic types, dropping nothing', async () => {
+      // Guards the #1122 footgun: boundaries is a valid DataTypeGQL, so a
+      // syncRegionData([representatives, boundaries]) call must sync
+      // representatives AND load boundaries — not silently drop the former.
+      const job = {
+        id: 'job-mix',
+        data: {
+          pipelineJobId: 'pipeline-mix',
+          triggerSource: 'manual',
+          dataTypes: ['representatives', 'boundaries'],
+        },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+      } as unknown as Job<any>;
+
+      await processor.onApplicationBootstrap();
+      await getHandler()(job);
+
+      expect(boundaryLoader.loadAll).toHaveBeenCalledTimes(1);
+      // syncAll runs with boundaries stripped out of the civic type list.
+      expect(regionService.syncAll).toHaveBeenCalledWith(
+        ['representatives'],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'pipeline-mix',
+        undefined,
+        undefined,
+      );
+    });
+
+    it('maps boundary counts into the succeeded result (upserted→created, missingKey→skipped)', async () => {
+      boundaryLoader.loadAll.mockResolvedValue({
+        ok: false,
+        counts: { existing: 6200, upserted: 5, failed: 2, missingKey: 1 },
+      });
+
+      await processor.onApplicationBootstrap();
+      await getHandler()(boundaryJob());
+
+      const [, results] = pipelineJobService.markSucceeded.mock.calls.at(-1)!;
+      expect(results).toHaveLength(1);
+      expect(results[0]).toEqual(
+        expect.objectContaining({
+          dataType: 'boundaries',
+          itemsProcessed: 8,
+          itemsCreated: 5,
+          itemsSkipped: 1,
+        }),
+      );
+      expect(results[0].errors).toHaveLength(1);
     });
   });
 });

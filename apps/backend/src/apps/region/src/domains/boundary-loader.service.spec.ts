@@ -641,5 +641,42 @@ describe('BoundaryLoaderService', () => {
       );
       expect(countyCalls).toHaveLength(0);
     });
+
+    // #1122 durability: the state group is upserted before any county group
+    // runs, and a failing county no longer sinks the whole refresh. This is
+    // the property that fixes the production symptom — congressional (state
+    // group) persisted while the Sonoma supervisorial (county group) did not.
+    it('persists the state group even when a county fetch fails, and does not throw', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
+      mockDb.regionPlugin.findMany.mockResolvedValue([
+        {
+          name: 'california-sonoma',
+          config: {
+            fipsCode: '06097',
+            stateCode: 'CA',
+            boundarySources: SONOMA_SOURCES,
+          },
+        },
+      ] as never);
+
+      // First fetchAll (state group) yields a row; second (county group) throws.
+      jest
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .spyOn(service as any, 'fetchAll')
+        .mockResolvedValueOnce([SAMPLE_ROW])
+        .mockRejectedValueOnce(new Error('socogis 503'));
+      mockDb.jurisdiction.findUnique.mockResolvedValueOnce({
+        id: 'jur-1',
+      } as never);
+
+      const result = await service.loadAll({ force: true });
+
+      // Did not throw; state row committed before the county failure.
+      expect(result.counts.upserted).toBe(1);
+      expect(mockDb.jurisdiction.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'jur-1' } }),
+      );
+    });
   });
 });

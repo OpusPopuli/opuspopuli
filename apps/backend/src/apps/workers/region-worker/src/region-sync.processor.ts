@@ -20,7 +20,9 @@ import type {
 import { Inject } from '@nestjs/common';
 import { RegionDomainService } from 'src/apps/region/src/domains/region.service';
 import { PipelineJobService } from 'src/apps/region/src/domains/pipeline-job.service';
+import { BoundaryLoaderService } from 'src/apps/region/src/domains/boundary-loader.service';
 import { DataTypeGQL } from 'src/apps/region/src/domains/models/region-info.model';
+import { DataType, type SyncResult } from '@opuspopuli/common';
 
 @Injectable()
 export class RegionSyncProcessor
@@ -34,6 +36,7 @@ export class RegionSyncProcessor
   constructor(
     private readonly regionService: RegionDomainService,
     private readonly pipelineJobService: PipelineJobService,
+    private readonly boundaryLoader: BoundaryLoaderService,
     @Inject(QUEUE_CONNECTION) private readonly connection: IORedis,
     private readonly config: ConfigService,
   ) {}
@@ -97,10 +100,6 @@ export class RegionSyncProcessor
       triggerSource,
       regionId,
       dataTypes,
-      depth,
-      maxReps,
-      maxBills,
-      forceStatusRecheck,
       maxDocuments,
       resetWatermark,
     } = job.data;
@@ -139,14 +138,9 @@ export class RegionSyncProcessor
     await this.pipelineJobService.markRunning(effectiveJobId, job.id as string);
 
     try {
-      const results = await this.regionService.syncAll(
-        dataTypes,
-        maxReps,
-        maxBills,
-        depth,
-        regionId,
+      const results = await this.runRequestedSyncs(
+        job.data,
         effectiveJobId,
-        forceStatusRecheck,
         archiveOptions,
       );
 
@@ -191,5 +185,105 @@ export class RegionSyncProcessor
 
       throw err;
     }
+  }
+
+  /**
+   * Dispatch a region-sync job to the work it actually requested (#1122).
+   *
+   * Boundary refresh rides this same queue as its own data type but does
+   * NOT go through the plugin-driven civic `syncAll` path, so the two are
+   * partitioned rather than branched: a `boundaries` type runs the loader,
+   * every other type runs `syncAll`, and a job that mixes them (e.g.
+   * `[representatives, boundaries]`) runs BOTH — dropping the civic types
+   * on the boundary branch would silently under-sync while still reporting
+   * SUCCEEDED. An undefined `dataTypes` means "sync every civic type", the
+   * pre-#1122 default, and never triggers a boundary load on its own.
+   */
+  private async runRequestedSyncs(
+    data: RegionSyncJobData,
+    effectiveJobId: string,
+    archiveOptions:
+      | { maxDocuments?: number; resetWatermark?: boolean }
+      | undefined,
+  ): Promise<SyncResult[]> {
+    const {
+      dataTypes,
+      regionId,
+      maxReps,
+      maxBills,
+      depth,
+      forceStatusRecheck,
+      force,
+    } = data;
+    const results: SyncResult[] = [];
+
+    if (dataTypes?.includes(DataTypeGQL.BOUNDARIES)) {
+      results.push(...(await this.loadBoundaries(force ?? false, regionId)));
+    }
+
+    // Civic types = everything except boundaries. Undefined dataTypes keeps
+    // the "sync all civic types" default; an explicit boundaries-only job
+    // yields an empty civic list and skips syncAll entirely.
+    const civicTypes = dataTypes?.filter(
+      (type) => type !== DataTypeGQL.BOUNDARIES,
+    );
+    if (!dataTypes || (civicTypes && civicTypes.length > 0)) {
+      results.push(
+        ...(await this.regionService.syncAll(
+          civicTypes,
+          maxReps,
+          maxBills,
+          depth,
+          regionId,
+          effectiveJobId,
+          forceStatusRecheck,
+          archiveOptions,
+        )),
+      );
+    }
+
+    return results;
+  }
+
+  /**
+   * Run the boundary loader for a `boundaries` job (#1122) and shape its
+   * counts as a single `RegionSyncJobResult` so the shared job lifecycle
+   * (markSucceeded, poll) reports it exactly like a civic sync:
+   *   - itemsCreated  = rows upserted this run
+   *   - itemsSkipped  = rows dropped for want of an idempotency key
+   *   - errors        = one line when any row failed to upsert
+   * `existing` (prior boundary count) is carried in the log, not the result.
+   */
+  private async loadBoundaries(
+    force: boolean,
+    regionId?: string,
+  ): Promise<SyncResult[]> {
+    const result = await this.boundaryLoader.loadAll({ force });
+    const { existing, upserted, failed, missingKey } = result.counts;
+
+    let label = regionId ?? 'active';
+    try {
+      label = regionId ?? this.regionService.getRegionInfo().id;
+    } catch {
+      // No active region resolvable — fall back to the label above.
+    }
+
+    return [
+      {
+        regionId: label,
+        dataType: DataType.BOUNDARIES,
+        itemsProcessed: upserted + failed + missingKey,
+        itemsCreated: upserted,
+        itemsUpdated: 0,
+        itemsSkipped: missingKey,
+        errors:
+          failed > 0
+            ? [
+                `${failed} boundary row(s) failed to upsert (existing=${existing})`,
+              ]
+            : [],
+        syncedAt: new Date(),
+      },
+    ];
   }
 }

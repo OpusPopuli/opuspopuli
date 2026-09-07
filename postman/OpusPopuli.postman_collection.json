@@ -1053,7 +1053,7 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "query RegionSyncJob($jobId: ID!) {\n  regionSyncJob(jobId: $jobId) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n    startedAt\n    finishedAt\n    elapsedMs\n    errorMessage\n    results {\n      regionId\n      dataType\n      itemsProcessed\n      itemsCreated\n      itemsUpdated\n      errors\n      syncedAt\n    }\n  }\n}",
+                "query": "query RegionSyncJob($jobId: ID!) {\n  regionSyncJob(jobId: $jobId) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n    startedAt\n    finishedAt\n    elapsedMs\n    errorMessage\n    results {\n      regionId\n      dataType\n      itemsProcessed\n      itemsCreated\n      itemsUpdated\n      itemsSkipped\n      errors\n      syncedAt\n    }\n  }\n}",
                 "variables": "{\n  \"jobId\": \"{{sync_job_id}}\"\n}"
               }
             },
@@ -1105,14 +1105,14 @@
         },
         {
           "name": "Refresh Boundaries — dry run (Admin)",
-          "description": "Idempotent boundary load. With force=false the loader SKIPS whenever any jurisdiction already has a boundary, returning skipped=ALREADY_POPULATED plus counts.existing. Run this first to read the current state without refetching ~6k geometries from TIGER.",
+          "description": "Enqueue an idempotent boundary load and return a RegionSyncJob immediately (#1122). With force=false the loader SKIPS whenever any jurisdiction already has a boundary. This now runs on the region-sync queue instead of in the request, so it returns well inside Cloudflare's ~100s proxy timeout. Copy the returned jobId and poll it with 'Region Sync Job (poll status)' — the final counts land on the job's results, not on this response.",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation RefreshBoundaries($force: Boolean) {\n  refreshBoundaries(force: $force) {\n    ok\n    skipped\n    counts {\n      existing\n      upserted\n      failed\n      missingKey\n    }\n  }\n}",
+                "query": "mutation RefreshBoundaries($force: Boolean) {\n  refreshBoundaries(force: $force) {\n    jobId\n    status\n    triggerSource\n    dataTypes\n    enqueuedAt\n  }\n}",
                 "variables": "{\n  \"force\": false\n}"
               }
             },
@@ -1125,14 +1125,14 @@
         },
         {
           "name": "Refresh Boundaries — FORCE refetch (Admin)",
-          "description": "Re-fetches every boundary layer from source and upserts them. REQUIRED after any release that changes the region's boundarySources config or the loader's key handling — a plain deploy does NOTHING for boundaries, because the loader skips whenever any already exist.\n\nSlow: ~6k geometries (~85MB) with two DB roundtrips per row. Allow several minutes and raise Postman's request timeout.\n\nReading the result: counts.upserted is rows written; counts.failed is rows that errored — check the region service log for the per-row reason; counts.missingKey is rows the fetcher returned with neither a fipsCode nor an ocdId. A non-zero failed is the signal a layer is not landing. v1.17.0 reported 6148 upserted with 173 failing, which is how every congressional, senate and assembly district went a month with no geometry (opuspopuli#1118).",
+          "description": "Enqueue a full boundary refetch and return a RegionSyncJob immediately (#1122). REQUIRED after any release that changes the region's boundarySources config or the loader's key handling — a plain deploy does NOTHING for boundaries, because the loader skips whenever any already exist.\n\nThe load now runs in the region-worker off the request path, so it no longer hits the Cloudflare 524 that used to truncate it: with the load fetching state layers first and county-published boundaries (#1136) last, a request-path timeout dropped the county rows every time. It also upserts each source-group as it is fetched, so a load cut short keeps whatever groups completed.\n\nReading the result: this response is just the enqueued job (jobId, status=QUEUED). Poll 'Region Sync Job (poll status)' with the jobId; on SUCCEEDED the boundaries result carries itemsCreated (rows upserted) and itemsSkipped (rows with neither fipsCode nor ocdId). A non-empty errors array is the signal a layer is not landing — check the region-worker log for the per-row reason.",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation RefreshBoundaries($force: Boolean) {\n  refreshBoundaries(force: $force) {\n    ok\n    skipped\n    counts {\n      existing\n      upserted\n      failed\n      missingKey\n    }\n  }\n}",
+                "query": "mutation RefreshBoundaries($force: Boolean) {\n  refreshBoundaries(force: $force) {\n    jobId\n    status\n    triggerSource\n    dataTypes\n    enqueuedAt\n  }\n}",
                 "variables": "{\n  \"force\": true\n}"
               }
             },

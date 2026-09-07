@@ -89,11 +89,6 @@ import {
   JurisdictionModel,
   UserJurisdictionModel,
 } from './models/jurisdiction.model';
-import {
-  BoundaryLoadResultModel,
-  BoundarySkipReason,
-} from './models/boundary-load-result.model';
-import { BoundaryLoaderService } from './boundary-loader.service';
 import { CountyThresholdQueryService } from './county-threshold-query.service';
 import { CountyThresholdModel } from './models/county-threshold.model';
 import { toPublicContribution } from './region-query.service';
@@ -109,7 +104,6 @@ export class RegionResolver {
     private readonly regionService: RegionDomainService,
     private readonly pipelineJobService: PipelineJobService,
     private readonly queueService: QueueService,
-    private readonly boundaryLoader: BoundaryLoaderService,
     private readonly countyThresholdQuery: CountyThresholdQueryService,
   ) {}
 
@@ -1021,32 +1015,29 @@ export class RegionResolver {
   }
 
   /**
-   * Re-run the boundary loader for the active region. Idempotent by
-   * default (skipped if jurisdictions already populated). Pass
-   * `force: true` to override and refresh boundaries from source — useful
-   * after redistricting or when TIGER publishes a new vintage.
+   * Enqueue a boundary refresh for the active region and return the job
+   * immediately. Idempotent by default (the worker skips when jurisdictions
+   * are already populated); pass `force: true` to re-fetch from source —
+   * useful after redistricting or when TIGER publishes a new vintage.
    *
-   * Admin-only; the boot-time loader runs without auth via
-   * onApplicationBootstrap. See opuspopuli#804.
+   * Runs on the `region-sync` queue rather than in the request, so the
+   * ~5-minute, ~6.3k-geometry load survives Cloudflare\'s ~100s proxy
+   * timeout and any region-container restart, and the final counts are
+   * retrievable by polling `regionSyncJob(jobId)` instead of being lost to
+   * a 524. County-published boundaries (#1136) are appended last in the
+   * batch, so a request-path load truncated them every time — see
+   * opuspopuli#1122. Admin-only; the boot-time loader still runs unauthed
+   * via onApplicationBootstrap (opuspopuli#804).
    */
-  @Mutation(() => BoundaryLoadResultModel)
+  @Mutation(() => RegionSyncJobModel)
   @UseGuards(AuthGuard)
   @Roles(Role.Admin)
   async refreshBoundaries(
     @Args('force', { type: () => Boolean, nullable: true })
     force?: boolean,
-  ): Promise<BoundaryLoadResultModel> {
-    const result = await this.boundaryLoader.loadAll({
-      force: force ?? false,
-    });
-    // The service's `skipped` is a string literal-union mirroring the
-    // GraphQL enum value strings exactly. Cast through the enum to keep
-    // the GraphQL layer happy without a separate mapping table.
-    return {
-      ok: result.ok,
-      skipped: result.skipped as BoundarySkipReason | undefined,
-      counts: result.counts,
-    };
+    @Context() ctx?: { req: { user?: { id?: string } } },
+  ): Promise<RegionSyncJobModel> {
+    return this.enqueueBoundaryJob(force ?? false, ctx?.req?.user?.id);
   }
 
   @Mutation(() => RegionSyncJobModel)
@@ -1122,8 +1113,31 @@ export class RegionResolver {
     },
     userId?: string,
   ): Promise<RegionSyncJobModel> {
-    // Pre-generate the ID so bullmq_job_id matches the DB row ID from creation —
-    // avoids a second markRunning call from the resolver (worker owns that transition).
+    // A civic sync persists every arg to the row and carries the same set on
+    // the queue payload — no boundary-only extras.
+    return this.createAndEnqueueJob(args, args, userId);
+  }
+
+  /**
+   * Shared create-row + enqueue for every region-sync job (#1122). `rowFields`
+   * are persisted on the `pipeline_jobs` row; `payloadFields` ride the BullMQ
+   * job (a superset — e.g. the boundary `force` flag, which has no column).
+   * The row id is pre-generated so `bullmq_job_id` matches it from creation,
+   * which lets the worker own the RUNNING transition without a second call.
+   */
+  private async createAndEnqueueJob(
+    rowFields: {
+      regionId?: string;
+      dataTypes?: string[];
+      depth?: string;
+      maxReps?: number;
+      maxBills?: number;
+      maxDocuments?: number;
+      resetWatermark?: boolean;
+    },
+    payloadFields: Partial<RegionSyncJobData>,
+    userId?: string,
+  ): Promise<RegionSyncJobModel> {
     const jobId = randomUUID();
 
     const row = await this.pipelineJobService.create({
@@ -1131,13 +1145,13 @@ export class RegionResolver {
       bullmqJobId: jobId,
       triggerSource: TRIGGER_SOURCE.MANUAL,
       enqueuedBy: userId,
-      ...args,
+      ...rowFields,
     });
 
     const jobData: RegionSyncJobData = {
       pipelineJobId: row.id,
       triggerSource: TRIGGER_SOURCE.MANUAL,
-      ...args,
+      ...payloadFields,
     };
 
     await this.queueService.enqueue(REGION_SYNC_QUEUE, jobData, {
@@ -1146,5 +1160,24 @@ export class RegionResolver {
 
     const job = await this.pipelineJobService.findById(row.id);
     return job!;
+  }
+
+  /**
+   * Enqueue a boundary-refresh job on the `region-sync` queue (#1122).
+   * Carries `dataTypes: ["boundaries"]` so the region-worker dispatches it
+   * to `BoundaryLoaderService.loadAll({ force })` instead of the civic
+   * `syncAll` path.
+   */
+  private async enqueueBoundaryJob(
+    force: boolean,
+    userId?: string,
+  ): Promise<RegionSyncJobModel> {
+    // dataTypes marks it a boundary job for the worker to dispatch; `force`
+    // rides the payload only (no column) and defaults false at the loader.
+    return this.createAndEnqueueJob(
+      { dataTypes: [DataTypeGQL.BOUNDARIES] },
+      { dataTypes: [DataTypeGQL.BOUNDARIES], force },
+      userId,
+    );
   }
 }

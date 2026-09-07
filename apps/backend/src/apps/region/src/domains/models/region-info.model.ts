@@ -156,6 +156,9 @@ export enum DataTypeGQL {
   CIVICS = 'civics',
   BILLS = 'bills',
   COUNTY_THRESHOLDS = 'county_thresholds',
+  // Civic-boundary geometry load, run as a region-sync job (#1122). Present
+  // so a boundary refresh result can be stored as a SyncResultModel.
+  BOUNDARIES = 'boundaries',
 }
 
 registerEnumType(DataTypeGQL, {

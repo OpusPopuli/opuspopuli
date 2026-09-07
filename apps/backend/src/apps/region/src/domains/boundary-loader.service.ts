@@ -148,17 +148,43 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
     if ('skip' in precheck) return precheck.skip;
 
     const { sources, ctx } = precheck;
-    const rows = await this.fetchAll(sources, ctx);
 
-    // County-published boundaries (#1136). Supervisorial districts have no
-    // statewide source — each county publishes its own layer — so enabled
-    // county plugins contribute their boundarySources to the same load.
-    // Counties without any (57 of 58 today) cost one indexed DB read total.
+    // Upsert each source-group as soon as it is fetched, instead of
+    // accumulating every row and upserting once at the very end (#1122).
+    // County-published boundaries (#1136) are fetched last, so a single
+    // end-of-run upsert made them the guaranteed casualty of any mid-load
+    // interruption (Cloudflare 524, container restart): the state layers
+    // persisted, the county rows never reached the DB, and re-running just
+    // re-truncated at the same point. Persisting per group means a load cut
+    // short still keeps whatever groups already completed.
+    let upserted = 0;
+    let failed = 0;
+    let missingKey = 0;
+    const applyGroup = async (groupRows: BoundaryRow[]): Promise<void> => {
+      const r = await this.executeUpserts(groupRows);
+      upserted += r.upserted;
+      failed += r.failed;
+      missingKey += r.missingKey;
+    };
+
+    // State-level sources first, then each enabled county's own layers.
+    // Counties without boundarySources (57 of 58 today) cost one indexed
+    // DB read total via collectCountyBoundarySources().
+    await applyGroup(await this.fetchAll(sources, ctx));
     for (const county of await this.collectCountyBoundarySources()) {
-      rows.push(...(await this.fetchAll(county.sources, county.ctx)));
+      // Isolate per county: one county's flaky published endpoint must not
+      // sink the whole refresh (or the state group already persisted above).
+      // Its rows are already committed by the time the next county runs.
+      try {
+        await applyGroup(await this.fetchAll(county.sources, county.ctx));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `BoundaryLoader: a county boundary group failed (${message}) — ` +
+            `continuing with the remaining groups.`,
+        );
+      }
     }
-
-    const { upserted, failed, missingKey } = await this.executeUpserts(rows);
 
     this.logger.log(
       `BoundaryLoader: ${upserted} upserted, ${failed} failed, ${missingKey} skipped (no key). ` +

@@ -48,6 +48,13 @@ export enum DataType {
   /// gubernatorial votes change every four years, but registration is
   /// republished several times a year. See OpusPopuli/opuspopuli#1107.
   COUNTY_THRESHOLDS = "county_thresholds",
+  /// Civic-boundary geometries (counties, cities, congressional / state
+  /// legislative districts, county supervisorial districts, school &
+  /// special districts) loaded into `jurisdictions` from the active
+  /// region's `boundarySources`. Runs on the region-sync queue so the
+  /// ~5-minute load survives a client disconnect / proxy timeout rather
+  /// than aborting the load partway through. See OpusPopuli/opuspopuli#1122.
+  BOUNDARIES = "boundaries",
 }
 
 /**
