@@ -196,6 +196,79 @@ describe("LinkDiscoveryService (#1164)", () => {
     expect(result.leafUrls).toEqual([shared]);
   });
 
+  it("clamps an invalid maxLeafPages instead of returning zero leaves silently", async () => {
+    // maxLeafPages: 0 would slice every level to empty and return
+    // "no leaves, no errors" — a silent empty sync, the failure this
+    // feature exists to eliminate.
+    const service = new LinkDiscoveryService(mockExtractionFor(DEFAULT_PAGES));
+    const result = await service.discover(
+      createSource({
+        linkDiscovery: {
+          steps: [{ textPattern: "(Primary|General|Special) Election" }],
+          maxLeafPages: 0,
+        },
+      }),
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.leafUrls.length).toBeGreaterThan(0);
+    expect(result.warnings.some((w) => w.includes("maxLeafPages=0"))).toBe(
+      true,
+    );
+  });
+
+  it("errors when a step's href pattern is invalid", async () => {
+    const service = new LinkDiscoveryService(mockExtractionFor(DEFAULT_PAGES));
+    const result = await service.discover(
+      createSource({
+        linkDiscovery: {
+          steps: [{ textPattern: "Election", hrefPattern: "(unclosed" }],
+        },
+      }),
+    );
+
+    expect(result.errors[0]).toContain("invalid regex");
+  });
+
+  it("errors when the config declares no steps", async () => {
+    const service = new LinkDiscoveryService(mockExtractionFor(DEFAULT_PAGES));
+    const result = await service.discover(
+      createSource({ linkDiscovery: { steps: [] } }),
+    );
+
+    expect(result.errors[0]).toContain("at least one step");
+  });
+
+  it("does not follow a page that redirects out of scope", async () => {
+    // The fetcher follows redirects, so checking only the anchor URL would let
+    // an open redirect on the county host move the request to an internal
+    // service, whose body would then feed anchor matching and LLM analysis.
+    const extraction = {
+      fetchWithRetry: jest.fn().mockImplementation(async (url: string) => {
+        if (url === HUB_URL) {
+          return { content: HUB_HTML, url, statusCode: 200, cached: false };
+        }
+        return {
+          content:
+            "<html><body><a href='/x'>Local Measures That Have Been Filed</a></body></html>",
+          url,
+          statusCode: 200,
+          cached: false,
+          finalUrl: "http://ollama:11434/api/tags",
+          redirectedFrom: url,
+        };
+      }),
+    } as unknown as jest.Mocked<ExtractionProvider>;
+
+    const service = new LinkDiscoveryService(extraction);
+    const result = await service.discover(createSource());
+
+    expect(result.leafUrls).toEqual([]);
+    expect(
+      result.warnings.some((w) => w.includes("redirected out of scope")),
+    ).toBe(true);
+  });
+
   it("rejects a non-HTTPS seed", async () => {
     const service = new LinkDiscoveryService(mockExtractionFor({}));
     const result = await service.discover(

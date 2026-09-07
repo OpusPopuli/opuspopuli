@@ -1,4 +1,5 @@
 import { resolveCompositeTemplate } from "../src/extraction/composite-template";
+import { FieldTransformer } from "../src/extraction/field-transformer";
 
 /**
  * Composite templates build a field (in practice `externalId`) from values the
@@ -78,11 +79,62 @@ describe("resolveCompositeTemplate (#1164)", () => {
     expect(missing).toEqual(["a", "c"]);
   });
 
-  it("leaves non-placeholder braces untouched", () => {
-    const { value } = resolveCompositeTemplate("{a} {not a placeholder}", {
-      a: "x",
+  it("rejects a template with a brace group the syntax cannot parse", () => {
+    // Templates are reproduced by the structural-analysis LLM from config
+    // hints, so a stray space or hyphen is a live failure mode. Copying the
+    // unparsed group through verbatim would emit a corrupt upsert key and
+    // report it as fully resolved.
+    const spaced = resolveCompositeTemplate(
+      "california-sonoma-{electionDate : date}-measure-{letter}",
+      { electionDate: "2026-11-03T00:00:00.000Z", letter: "e" },
+    );
+    expect(spaced.value).toBeUndefined();
+    expect(spaced.missing).toContain("{electionDate : date}");
+
+    const hyphenated = resolveCompositeTemplate("{election-date}", {
+      electionDate: "2026-11-03T00:00:00.000Z",
     });
-    expect(value).toBe("x {not a placeholder}");
+    expect(hyphenated.value).toBeUndefined();
+  });
+
+  it("does not read up the prototype chain", () => {
+    // {constructor} / {toString} would otherwise stringify a built-in into
+    // the key; typeof a function is not "object" so the object guard misses it.
+    for (const path of ["toString", "constructor", "hasOwnProperty"]) {
+      const { value } = resolveCompositeTemplate(`{${path}}`, { a: "x" });
+      expect(value).toBeUndefined();
+    }
+  });
+
+  describe(":date formatter is host-timezone independent", () => {
+    // date_parse builds LOCAL midnight and serialises to UTC, so on a host at
+    // a positive offset the UTC string is the PREVIOUS day. Naively slicing it
+    // keyed Measure E to 2026-11-03 in Los Angeles but 2026-11-02 in Berlin —
+    // the same measure landing as two rows after a host move. The invariant
+    // that matters is the round trip, and it holds on whatever host runs this.
+    it("round-trips date_parse output back to the source calendar day", () => {
+      const iso = FieldTransformer.apply("November 3, 2026, General Election", {
+        type: "date_parse",
+      });
+      expect(String(iso)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+      const { value } = resolveCompositeTemplate("{d:date}", { d: iso });
+      expect(value).toBe("2026-11-03");
+    });
+
+    it("treats exact UTC midnight as the day it names", () => {
+      const { value } = resolveCompositeTemplate("{d:date}", {
+        d: "2026-11-03T00:00:00.000Z",
+      });
+      expect(value).toBe("2026-11-03");
+    });
+
+    it("passes a bare YYYY-MM-DD through unchanged", () => {
+      const { value } = resolveCompositeTemplate("{d:date}", {
+        d: "2026-11-03",
+      });
+      expect(value).toBe("2026-11-03");
+    });
   });
 
   it("passes through an unknown formatter rather than dropping the value", () => {

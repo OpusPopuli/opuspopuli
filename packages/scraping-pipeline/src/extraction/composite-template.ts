@@ -41,15 +41,50 @@ export type CompositeFormatter = "date" | "lower" | "upper" | "slug" | "trim";
 const PLACEHOLDER_RE =
   /\{([A-Za-z0-9_]{1,64}(?:\.[A-Za-z0-9_]{1,64}){0,4})(?::([a-z]{1,8}))?\}/g;
 
-/** Read a possibly dot-nested value out of the item's extracted data. */
+/**
+ * Read a possibly dot-nested value out of the item's extracted data.
+ *
+ * Own-property only: a placeholder like `{toString}` or `{constructor}` must
+ * resolve to nothing rather than reaching up the prototype chain and
+ * stringifying a built-in into an upsert key.
+ */
 function readPath(data: Record<string, unknown>, path: string): unknown {
-  if (!path.includes(".")) return data[path];
   let current: unknown = data;
   for (const segment of path.split(".")) {
     if (current === null || typeof current !== "object") return undefined;
+    if (!Object.hasOwn(current as object, segment)) return undefined;
     current = (current as Record<string, unknown>)[segment];
   }
   return current;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/**
+ * Reduce a date to its calendar day.
+ *
+ * `date_parse` builds `new Date(year, month, day)` — LOCAL midnight — and
+ * serialises with `toISOString()`, so on a host at a positive UTC offset the
+ * UTC string is the previous day and a naive `slice(0, 10)` shifts the key by
+ * one day ("2026-11-03" → "2026-11-02" in Berlin). Read a full timestamp back
+ * through local components so it round-trips whatever `date_parse` produced;
+ * a bare `YYYY-MM-DD` has no offset to undo and is taken as-is.
+ */
+function toCalendarDay(value: string): string {
+  // Already a bare calendar day, or an instant that is exactly UTC midnight
+  // (what date_parse yields on a UTC host, and what a UTC-anchored source
+  // gives directly): the leading 10 characters are the answer.
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10);
+  if (value.startsWith(value.slice(0, 10) + "T00:00:00.000Z")) {
+    return value.slice(0, 10);
+  }
+  // Otherwise the offset came from date_parse's local-midnight construction;
+  // read it back through local components to undo exactly that.
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value.slice(0, 10);
+  return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
 }
 
 function toSlug(value: string): string {
@@ -63,7 +98,7 @@ function applyFormatter(value: string, formatter?: string): string {
   switch (formatter) {
     case "date":
       // date_parse emits a full ISO timestamp; IDs want the calendar day.
-      return value.slice(0, 10);
+      return toCalendarDay(value);
     case "lower":
       return value.toLowerCase();
     case "upper":
@@ -80,9 +115,15 @@ function applyFormatter(value: string, formatter?: string): string {
 export interface CompositeResult {
   /** The built string, or undefined when any placeholder was unresolvable. */
   value?: string;
-  /** Field paths that resolved to nothing — for diagnostics. */
+  /**
+   * Field paths that resolved to nothing, plus any brace group the
+   * placeholder syntax did not recognise — for diagnostics.
+   */
   missing: string[];
 }
+
+/** Any `{...}` left after substitution — a placeholder we failed to recognise. */
+const LEFTOVER_BRACES_RE = /\{[^{}]{0,200}\}/g;
 
 /**
  * Build a composite value from `template` and the item's already-extracted
@@ -111,6 +152,14 @@ export function resolveCompositeTemplate(
       return applyFormatter(String(raw), formatter);
     },
   );
+
+  // A brace group the syntax didn't recognise — `{electionDate : date}` with a
+  // stray space, `{election-date}` with a hyphen — would otherwise be copied
+  // through verbatim and reported as fully resolved, producing a corrupt
+  // upsert key. Templates reach us reproduced by an LLM from config hints, so
+  // treat anything unconsumed as a failure rather than as literal text.
+  const leftovers = value.match(LEFTOVER_BRACES_RE);
+  if (leftovers) missing.push(...leftovers);
 
   if (missing.length > 0) return { value: undefined, missing };
   return { value, missing };

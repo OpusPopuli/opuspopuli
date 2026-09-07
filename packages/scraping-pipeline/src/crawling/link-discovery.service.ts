@@ -81,7 +81,19 @@ export class LinkDiscoveryService {
       };
     }
 
-    const maxPages = config.maxLeafPages ?? DEFAULT_MAX_LEAF_PAGES;
+    // Clamp rather than trust: `maxLeafPages: 0` would slice every level to
+    // an empty set and return "no leaves, no errors" — a silent empty sync,
+    // the exact failure #1164 exists to eliminate.
+    const configured = config.maxLeafPages ?? DEFAULT_MAX_LEAF_PAGES;
+    const maxPages =
+      Number.isFinite(configured) && configured >= 1
+        ? Math.floor(configured)
+        : DEFAULT_MAX_LEAF_PAGES;
+    if (maxPages !== configured) {
+      warnings.push(
+        `linkDiscovery maxLeafPages=${configured} is invalid; using ${maxPages}`,
+      );
+    }
     let currentPages = [seedUrl.toString()];
 
     for (const [index, step] of config.steps.entries()) {
@@ -149,40 +161,82 @@ export class LinkDiscoveryService {
     const seen = new Set<string>();
 
     for (const pageUrl of pages) {
-      let html: string;
-      try {
-        html = (await this.extraction.fetchWithRetry(pageUrl)).content;
-      } catch (error) {
-        warnings.push(
-          `${stepLabel}: fetch failed for ${pageUrl}: ${(error as Error).message}`,
-        );
-        continue;
-      }
-
-      const matches = this.matchAnchors(
-        html,
+      const matches = await this.collectFromPage(
         pageUrl,
+        stepLabel,
         seedUrl,
         textRegex,
         hrefRegex,
+        warnings,
       );
-      if (matches.length === 0) {
-        // Per-page zero is expected mid-cycle (e.g. an election page whose
-        // measures list isn't posted yet) — only all-pages-zero is fatal.
-        warnings.push(`${stepLabel}: no matching links on ${pageUrl}`);
-        continue;
-      }
-
       const take = step.select === "all" ? matches : matches.slice(0, 1);
       for (const url of take) {
-        if (!seen.has(url)) {
-          seen.add(url);
-          selected.push(url);
-        }
+        if (seen.has(url)) continue;
+        seen.add(url);
+        selected.push(url);
       }
     }
 
     return selected;
+  }
+
+  /**
+   * Fetch one page and return the in-scope anchors matching this step.
+   * Fetch failures and per-page zero-matches degrade to warnings — mid-cycle
+   * an election page legitimately has no measures list yet, and only
+   * all-pages-zero is treated as fatal by the caller.
+   */
+  private async collectFromPage(
+    pageUrl: string,
+    stepLabel: string,
+    seedUrl: URL,
+    textRegex: RegExp,
+    hrefRegex: RegExp | null,
+    warnings: string[],
+  ): Promise<string[]> {
+    let html: string;
+    let effectiveUrl = pageUrl;
+    try {
+      const fetched = await this.extraction.fetchWithRetry(pageUrl);
+      html = fetched.content;
+      // The fetcher follows redirects, so the in-scope check on the anchor
+      // does not bind where the request actually landed: an open redirect on
+      // the seed host would take us off-host (or off-HTTPS) with the response
+      // still feeding anchor matching. Re-check the landing URL, and use it
+      // as the base for relative hrefs.
+      //
+      // Scope note: this covers the pages walked HERE. The leaf fetch happens
+      // later in executeHtmlScrape, which shares the platform-wide fetcher and
+      // does not re-check its own landing URL — so a redirected leaf still
+      // reaches extraction. Tightening that belongs with the fetcher, since
+      // every source type has the same gap.
+      if (fetched.finalUrl && fetched.finalUrl !== pageUrl) {
+        if (!this.isInScope(fetched.finalUrl, seedUrl)) {
+          warnings.push(
+            `${stepLabel}: ${pageUrl} redirected out of scope to ${fetched.finalUrl} — not followed`,
+          );
+          return [];
+        }
+        effectiveUrl = fetched.finalUrl;
+      }
+    } catch (error) {
+      warnings.push(
+        `${stepLabel}: fetch failed for ${pageUrl}: ${(error as Error).message}`,
+      );
+      return [];
+    }
+
+    const matches = this.matchAnchors(
+      html,
+      effectiveUrl,
+      seedUrl,
+      textRegex,
+      hrefRegex,
+    );
+    if (matches.length === 0) {
+      warnings.push(`${stepLabel}: no matching links on ${pageUrl}`);
+    }
+    return matches;
   }
 
   /**
@@ -222,6 +276,16 @@ export class LinkDiscoveryService {
    * same host as the seed, HTTPS only. Returns the canonical absolute
    * URL (no fragment) or null when out of scope / malformed.
    */
+  /** Same host as the seed, HTTPS only — the navigation scope in one place. */
+  private isInScope(url: string, seedUrl: URL): boolean {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "https:" && parsed.host === seedUrl.host;
+    } catch {
+      return false;
+    }
+  }
+
   private resolveInScope(
     href: string,
     pageUrl: string,

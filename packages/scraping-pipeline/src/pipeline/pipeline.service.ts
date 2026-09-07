@@ -398,7 +398,21 @@ export class ScrapingPipelineService {
         url: leafUrl,
         linkDiscovery: undefined,
       };
-      const leafResult = await this.executeHtmlScrape<T>(leafSource, regionId);
+
+      let leafResult: ExtractionResult<T>;
+      try {
+        leafResult = await this.executeHtmlScrape<T>(leafSource, regionId);
+      } catch (error) {
+        // Soft-fail per leaf, matching the discovery walk and the detail
+        // crawler: a leaf that 404s mid-cycle must not discard the measures
+        // already extracted from its siblings.
+        const message = (error as Error).message;
+        this.logger.warn(`Leaf extraction failed for ${leafUrl}: ${message}`);
+        aggregate.errors.push(`[${leafUrl}] ${message}`);
+        aggregate.success = false;
+        continue;
+      }
+
       aggregate.items.push(...leafResult.items);
       aggregate.warnings.push(
         ...leafResult.warnings.map((w) => `[${leafUrl}] ${w}`),

@@ -731,6 +731,42 @@ describe("ScrapingPipelineService", () => {
       );
     });
 
+    it("keeps other leaves' items when one leaf throws", async () => {
+      // A leaf taken down mid-cycle must not discard the measures already
+      // extracted from its siblings — the discovery walk soft-fails per page
+      // and execution has to match it.
+      mockLinkDiscovery.discover.mockResolvedValue({
+        leafUrls: [LEAF_A, LEAF_B],
+        warnings: [],
+        errors: [],
+      });
+      mockStore.findLatest.mockImplementation(async (_r, sourceUrl) =>
+        createManifest({ sourceUrl: sourceUrl as string }),
+      );
+      (mockExtraction.fetchWithRetry as jest.Mock).mockImplementation(
+        async (url: string) => {
+          if (url === LEAF_A) throw new Error("HTTP 404");
+          return {
+            content: SIMPLE_HTML,
+            url,
+            statusCode: 200,
+            cached: false,
+          };
+        },
+      );
+
+      const result = await pipeline.execute(
+        linkDiscoverySource(),
+        "california",
+      );
+
+      // LEAF_B still contributed.
+      expect(result.items).toHaveLength(1);
+      expect(result.success).toBe(false);
+      expect(result.errors.some((e) => e.includes("HTTP 404"))).toBe(true);
+      expect(result.errors.some((e) => e.includes(LEAF_A))).toBe(true);
+    });
+
     it("does not consult link discovery for plain html_scrape sources", async () => {
       await pipeline.execute(createSource(), "california");
       expect(mockLinkDiscovery.discover).not.toHaveBeenCalled();
