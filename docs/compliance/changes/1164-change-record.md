@@ -65,9 +65,43 @@ run at PR prep if policy requires.
   `…/november-3-2026-general-election-local-measures-that-have-been-filed`
   (11 measures listed at time of run); `maxLeafPages` cap and per-page
   soft-warning behaviors observed as designed.
-- **PENDING**: full DB-backed Sonoma sync (expect ≥11 rows,
-  `region_plugin_name = 'california-sonoma'`) — blocked on the regions
-  package publish + `@opuspopuli/regions` bump; a release-gate step.
+- **Behavioral, full stack (2026-09-07)**: images built from this branch were
+  deployed to the local UAT stack (all 8 services healthy, `db-migrate`
+  applied the new migration), and a Sonoma `propositions` sync was driven
+  through the real `region-sync` queue — the same queue the `syncRegionData`
+  admin mutation feeds. Result: **12 measures created**, then **0 created /
+  12 updated** on a second run (idempotent), each stamped
+  `region_plugin_name = 'california-sonoma'` with externalIds of the form
+  `california-sonoma-2026-11-03-measure-ab` and `election_date = 2026-11-03`.
+  Statewide rows were untouched (52 `california` + 12 `california-sonoma`).
+  The cold-start path was exercised end to end: deferred sync → structural
+  analysis on qwen3.5:9b → per-leaf manifest → extraction.
+- **Known environment caveat**: the local overlay sets no
+  `PROMPT_SERVICE_URL`, so structural analysis used prompt-client's hardcoded
+  fallback template rather than the tuned prompt-service one. Production
+  should do no worse; the verified `fieldMappings` are pinned in the source's
+  hints either way.
+
+## Defects found in adjacent code during verification
+
+Neither is caused by this change; both are pre-existing and warrant their own
+issues.
+
+1. **manifest-ready follow-up sync is silently deduped for 7 days.**
+   `structural-analysis.processor.ts:171` builds a deterministic BullMQ job id
+   `manifest-ready:{regionId}:{dataType}`. BullMQ treats `add()` with an
+   existing job id as a no-op *regardless of state*, and the queue keeps
+   completed jobs for `removeOnComplete.age = 604800`. The code comment
+   accounts for "already queued/active" but not completed. Observed live: the
+   worker logged "Enqueued follow-up region-sync…" and nothing ran, because a
+   completed job from 2026-09-05 18:35 UTC still held the id. Effect in
+   production: after a deferred cold-start sync, the automatic re-sync that
+   should complete it fires at most once per region+dataType per week.
+2. **`staticManifest` bypasses domain mapping.**
+   `pipeline.service.ts::executeStaticManifest` returns the raw extraction
+   result without calling `DomainMapperService.map`, so static-manifest sources
+   skip Zod validation and normalization and would pass helper fields straight
+   to Prisma. This is why #1164 uses hints rather than a static manifest.
 
 ## Security evidence
 

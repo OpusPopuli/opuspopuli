@@ -99,6 +99,37 @@ records `last_item_count = 3`. Two root causes, not one:
    alarm). File follow-ups: historical outcomes (electionstats), other-county
    rollout.
 
+## Deviation — composite field templates (approved 2026-09-07, mid-implementation)
+
+UAT verification surfaced a gap this plan did not anticipate. Navigation worked
+on the first real run, but extraction still yielded 0 rows for two reasons:
+
+1. **No semantic classes on the leaf page.** It is a plain nested `<ul>`/`<li>`
+   list with inline styles, so the LLM twice invented `.measure-item` inside
+   `.tray` (which matches two elements, the first holding no measures) and the
+   self-heal re-derived the same wrong guess.
+2. **`externalId` was not expressible.** The election date appears once per
+   page (in the `h1`), not per measure, and a `FieldMapping` is one selector
+   plus one transform. Composition existed only for `bulk_download`
+   (`compositeKey`); the HTML path had nothing. No manifest — AI-derived or
+   static — could build `california-sonoma-2026-11-03-measure-e`.
+
+A `staticManifest` is **not** the escape hatch here: it is declared once on the
+hub source and shared by every leaf, so a baked-in election date would be wrong
+for other cycles — and `executeStaticManifest` returns raw items without
+running the domain mapper, so helper fields would reach Prisma unmapped.
+
+Approved fix (option 2 + option 1): add `extractionMethod: "composite"` to the
+HTML extractor — a `template` of `{field}` placeholders with
+`:date|lower|upper|slug|trim` formatters, interpolating fields already
+extracted for the same item, all-or-nothing so a missing placeholder never
+emits a half-built upsert key. Layered with hints carrying the verified
+selectors and the full `fieldMappings` block. Chosen over hint-only because
+page-scoped discriminators recur across the other 57 county configs.
+
+Two facts corrected: the page lists **12** measures, not 11, and identifiers
+are not always single letters (**"Measure AB"**).
+
 ## Risk register
 
 | Risk | Severity × likelihood | Mitigation |
@@ -112,6 +143,8 @@ records `last_item_count = 3`. Two root causes, not one:
 | Election page with no measures-filed link yet (early cycle) | low × likely | Step 2 tolerates 0 matches per election page; only all-pages-zero errors |
 | AGPL-3.0 dependency constraint | — | No new dependencies (cheerio already in-tree) |
 | Regulated-data exposure | — | None — public records; see data classification |
+| LLM omits/garbles the composite mapping on a future re-analysis | medium × possible | Hints carry the exact verified `fieldMappings`; an unresolvable composite drops the field and raises a `schema_reject` diagnostic rather than writing a malformed key |
+| Composite template emits a partial upsert key | high × rare | All-or-nothing by construction; covered by `composite-template.spec.ts` |
 
 ## Effort
 
