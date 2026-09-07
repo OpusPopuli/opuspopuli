@@ -44,7 +44,18 @@ import type { RegionSyncJobData } from '@opuspopuli/queue-provider';
 import {
   PropositionModel,
   PaginatedPropositions,
+  PropositionStatusGQL,
 } from './models/proposition.model';
+import {
+  PaginatedRegionSearchModel,
+  SearchResultType,
+  SearchSuggestionModel,
+} from './models/region-search.model';
+import { RegionSearchService } from './region-search.service';
+import {
+  OptionalSearchArgs,
+  RegionSearchQueryArgs,
+} from './dto/region-search.args';
 import { PropositionFundingModel } from './models/proposition-funding.model';
 import { RepresentativeFundingModel } from './models/representative-funding.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
@@ -105,6 +116,7 @@ export class RegionResolver {
     private readonly pipelineJobService: PipelineJobService,
     private readonly queueService: QueueService,
     private readonly countyThresholdQuery: CountyThresholdQueryService,
+    private readonly searchService: RegionSearchService,
   ) {}
 
   /**
@@ -166,15 +178,71 @@ export class RegionResolver {
   }
 
   /**
-   * Get paginated propositions
+   * Get paginated propositions, optionally filtered by status /
+   * election year and/or full-text searched (#1153). With `search`,
+   * ordering switches to relevance (ts_rank).
    */
   @Public()
   @Query(() => PaginatedPropositions)
   @Extensions({ complexity: 15 }) // Paginated list query
   async propositions(
     @Args() { skip, take }: PaginationArgs,
+    @Args() { search }: OptionalSearchArgs = {},
+    @Args({ name: 'status', type: () => PropositionStatusGQL, nullable: true })
+    status?: PropositionStatusGQL,
+    @Args({ name: 'electionYear', type: () => Int, nullable: true })
+    electionYear?: number,
   ): Promise<PaginatedPropositions> {
-    return this.regionService.getPropositions(skip, take);
+    return this.regionService.getPropositions(
+      skip,
+      take,
+      search,
+      status,
+      electionYear,
+    );
+  }
+
+  /**
+   * Unified full-text search across bills and propositions (#1153).
+   * Rank-merged; per-item ts_headline snippet with plain-text markers
+   * the frontend maps to <mark>. Deliberately uncached — see
+   * RegionSearchService.
+   */
+  @Public()
+  @Query(() => PaginatedRegionSearchModel)
+  // Priced by page size AND child selection: a flat cost would let one
+  // document alias 40 copies of the query under the 1000 cap while the
+  // union subtree (votes, coAuthors, …) rode free. take=10 with a modest
+  // selection costs ~100+; take=100 permits at most one per document.
+  @Extensions({
+    complexity: (opts: { args: { take?: number }; childComplexity: number }) =>
+      (opts.args.take ?? 10) * (opts.childComplexity + 5),
+  })
+  async regionSearch(
+    @Args() { skip, take }: PaginationArgs,
+    @Args() { query }: RegionSearchQueryArgs,
+    @Args({ name: 'type', type: () => SearchResultType, nullable: true })
+    type?: SearchResultType,
+  ): Promise<PaginatedRegionSearchModel> {
+    return this.regionService.searchRegion(query, type, skip, take);
+  }
+
+  /**
+   * Typeahead suggestions for the header search (#1153). Measure-number
+   * queries ("ab 12") return DIRECT jump rows first.
+   */
+  @Public()
+  @Query(() => [SearchSuggestionModel])
+  @Extensions({
+    complexity: (opts: { args: { take?: number } }) =>
+      10 + (opts.args.take ?? 8),
+  })
+  async regionSearchSuggest(
+    @Args() { query }: RegionSearchQueryArgs,
+    @Args({ name: 'take', type: () => Int, nullable: true, defaultValue: 8 })
+    take: number = 8,
+  ): Promise<SearchSuggestionModel[]> {
+    return this.searchService.suggest(query, Math.min(Math.max(take, 1), 10));
   }
 
   /**
@@ -889,6 +957,7 @@ export class RegionResolver {
       defaultValue: BillLifecycle.ACTIVE,
     })
     lifecycle: BillLifecycle = BillLifecycle.ACTIVE,
+    @Args() { search }: OptionalSearchArgs = {},
   ): Promise<PaginatedBillsModel> {
     return this.regionService.getBills(
       skip,
@@ -899,6 +968,7 @@ export class RegionResolver {
       committeeId,
       coAuthorId,
       lifecycle,
+      search,
     );
   }
 

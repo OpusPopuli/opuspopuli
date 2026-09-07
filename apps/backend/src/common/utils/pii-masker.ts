@@ -50,6 +50,16 @@ const SENSITIVE_FIELDS = new Set([
   // class after #980 and #1052 — when adding an input field that carries a
   // payload rather than a parameter, add it here in the same commit.
   'data',
+  // Civic search text (#1153). regionSearch/regionSearchSuggest and the
+  // bills/propositions `search` args carry what a citizen is looking up —
+  // query text joined to userId/IP is inference-grade personal information
+  // under CCPA/CPRA, and the spec's explicit non-goal is storing civic
+  // queries ("don't create a second copy" of the layer-13 retention
+  // problem). The audit interceptor captures inputVariables verbatim, so
+  // without these entries every search would sit identity-linked in 90-day
+  // audit logs. Fourth instance of the #980/#1052/#1144 masking class.
+  'query',
+  'search',
 ]);
 
 const PARTIAL_MASK_FIELDS = new Set(['email', 'phone', 'phonenumber']);

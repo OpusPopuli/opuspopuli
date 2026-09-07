@@ -40,6 +40,7 @@ import { CountyThresholdQueryService } from './county-threshold-query.service';
 import { RegionPluginService } from './region-plugin.service';
 import { HttpFetcherService } from './http-fetcher.service';
 import { RegionQueryService } from './region-query.service';
+import { RegionSearchService } from './region-search.service';
 import { RegionResolver } from './region.resolver';
 import {
   CommitteeRelevanceCacheLookup,
@@ -218,6 +219,7 @@ const promptClientAsyncConfig = {
     CountyThresholdSyncService,
     CountyThresholdQueryService,
     RegionQueryService,
+    RegionSearchService,
     RegionDomainService,
     RegionResolver,
     CommitteeRelevanceCacheLookup,
