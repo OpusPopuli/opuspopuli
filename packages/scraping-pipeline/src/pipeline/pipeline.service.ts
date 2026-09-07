@@ -34,6 +34,7 @@ import { ApiIngestHandler } from "../handlers/api-ingest.handler.js";
 import { PdfExtractHandler } from "../handlers/pdf-extract.handler.js";
 import { MinutesIngestHandler } from "../handlers/minutes-ingest.handler.js";
 import { DetailCrawlerService } from "../crawling/detail-crawler.service.js";
+import { LinkDiscoveryService } from "../crawling/link-discovery.service.js";
 import {
   MANIFEST_MISSING_CALLBACK,
   type ManifestMissingArgs,
@@ -56,6 +57,7 @@ export class ScrapingPipelineService {
     private readonly pdfExtract: PdfExtractHandler,
     private readonly minutesIngest: MinutesIngestHandler,
     private readonly detailCrawler: DetailCrawlerService,
+    private readonly linkDiscovery: LinkDiscoveryService,
     @Optional()
     @Inject(MANIFEST_MISSING_CALLBACK)
     private readonly onManifestMissing:
@@ -213,6 +215,12 @@ export class ScrapingPipelineService {
     source: DataSourceConfig,
     regionId: string,
   ): Promise<ExtractionResult<T>> {
+    // Hub-shaped source (#1164): resolve the real extraction targets first,
+    // then run this same pipeline once per leaf page.
+    if (source.linkDiscovery) {
+      return this.executeLinkDiscovery<T>(source, regionId);
+    }
+
     const pipelineStart = Date.now();
     this.logger.log(
       `Pipeline started [html_scrape]: ${regionId}/${source.dataType} from ${source.url}`,
@@ -336,6 +344,93 @@ export class ScrapingPipelineService {
     );
 
     return result;
+  }
+
+  /**
+   * Execute a linkDiscovery source (#1164): navigate hub → leaf pages,
+   * then run the standard html_scrape pipeline once per leaf with an
+   * effective source whose `url` is the leaf. Manifests are therefore
+   * keyed per leaf URL — each new election cycle's leaf gets its own
+   * manifest (cold-start on first sight, extraction from the next run;
+   * the standard async-analysis behavior).
+   *
+   * A discovery error (a step matching zero links anywhere) fails the
+   * whole source loudly — that is the staleness alarm for a site
+   * restructure. Per-leaf pipeline results are aggregated; one bad leaf
+   * doesn't discard the others' items.
+   */
+  private async executeLinkDiscovery<T>(
+    source: DataSourceConfig,
+    regionId: string,
+  ): Promise<ExtractionResult<T>> {
+    const pipelineStart = Date.now();
+    this.logger.log(
+      `Pipeline started [html_scrape+linkDiscovery]: ${regionId}/${source.dataType} from ${source.url}`,
+    );
+
+    const discovery = await this.linkDiscovery.discover(source);
+    if (discovery.errors.length > 0) {
+      this.logger.error(
+        `Link discovery failed for ${source.url}: ${discovery.errors.join("; ")}`,
+      );
+      return {
+        items: [] as T[],
+        manifestVersion: 0,
+        success: false,
+        warnings: discovery.warnings,
+        errors: discovery.errors,
+        extractionTimeMs: Date.now() - pipelineStart,
+      };
+    }
+
+    const aggregate: ExtractionResult<T> = {
+      items: [],
+      manifestVersion: 0,
+      success: true,
+      warnings: [...discovery.warnings],
+      errors: [],
+      extractionTimeMs: 0,
+    };
+
+    for (const leafUrl of discovery.leafUrls) {
+      const leafSource: DataSourceConfig = {
+        ...source,
+        url: leafUrl,
+        linkDiscovery: undefined,
+      };
+      const leafResult = await this.executeHtmlScrape<T>(leafSource, regionId);
+      aggregate.items.push(...leafResult.items);
+      aggregate.warnings.push(
+        ...leafResult.warnings.map((w) => `[${leafUrl}] ${w}`),
+      );
+      aggregate.errors.push(
+        ...leafResult.errors.map((e) => `[${leafUrl}] ${e}`),
+      );
+      aggregate.success = aggregate.success && leafResult.success;
+      aggregate.manifestVersion = Math.max(
+        aggregate.manifestVersion,
+        leafResult.manifestVersion,
+      );
+      if (leafResult.pendingManifestAnalysis) {
+        aggregate.pendingManifestAnalysis = true;
+      }
+      if (leafResult.selectorFailures?.length) {
+        aggregate.selectorFailures = [
+          ...(aggregate.selectorFailures ?? []),
+          ...leafResult.selectorFailures,
+        ];
+      }
+    }
+
+    aggregate.extractionTimeMs = Date.now() - pipelineStart;
+    this.logger.log(
+      `Pipeline complete [linkDiscovery]: ${aggregate.items.length} items from ` +
+        `${discovery.leafUrls.length} leaf page(s) in ${aggregate.extractionTimeMs}ms` +
+        (aggregate.pendingManifestAnalysis
+          ? " (some leaves pending manifest analysis)"
+          : ""),
+    );
+    return aggregate;
   }
 
   /**

@@ -71,8 +71,10 @@ describe("ScrapingPipelineService", () => {
   let mockExtractor: jest.Mocked<ManifestExtractorService>;
   let mockMapper: jest.Mocked<DomainMapperService>;
   let mockHealing: jest.Mocked<SelfHealingService>;
+  let mockLinkDiscovery: { discover: jest.Mock };
 
   beforeEach(() => {
+    mockLinkDiscovery = { discover: jest.fn() };
     mockExtraction = {
       fetchWithRetry: jest.fn().mockResolvedValue({
         content: SIMPLE_HTML,
@@ -142,6 +144,7 @@ describe("ScrapingPipelineService", () => {
       {} as any,
       {} as any,
       { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
+      mockLinkDiscovery as any,
       null,
     );
   });
@@ -288,6 +291,7 @@ describe("ScrapingPipelineService", () => {
         {} as any,
         {} as any,
         { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
+        { discover: jest.fn() } as any,
         onManifestMissing,
       );
 
@@ -408,6 +412,7 @@ describe("ScrapingPipelineService", () => {
         {} as any,
         {} as any,
         { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
+        { discover: jest.fn() } as any,
         null,
       );
     });
@@ -595,6 +600,140 @@ describe("ScrapingPipelineService", () => {
       expect(result.items).toEqual([]);
       // Original manifest version retained — the failed heal didn't win
       expect(result.manifestVersion).toBe(1);
+    });
+  });
+
+  describe("linkDiscovery routing (#1164)", () => {
+    const LEAF_A = "https://example.com/elections/nov-2026-measures";
+    const LEAF_B = "https://example.com/elections/jun-2026-measures";
+
+    function linkDiscoverySource(): DataSourceConfig {
+      return createSource({
+        linkDiscovery: {
+          steps: [{ textPattern: "Measures", select: "all" }],
+        },
+      });
+    }
+
+    it("runs the pipeline once per discovered leaf and aggregates items", async () => {
+      mockLinkDiscovery.discover.mockResolvedValue({
+        leafUrls: [LEAF_A, LEAF_B],
+        warnings: ["step 1: no matching links on https://example.com/old"],
+        errors: [],
+      });
+      // Manifests resolve per leaf URL — return a cache hit for each.
+      mockStore.findLatest.mockImplementation(async (_r, sourceUrl) =>
+        createManifest({ sourceUrl: sourceUrl as string }),
+      );
+      (mockMapper.map as jest.Mock)
+        .mockReturnValueOnce({
+          items: [{ externalId: "measure-a", title: "A" }],
+          manifestVersion: 0,
+          success: true,
+          warnings: [],
+          errors: [],
+          extractionTimeMs: 1,
+        })
+        .mockReturnValueOnce({
+          items: [{ externalId: "measure-b", title: "B" }],
+          manifestVersion: 0,
+          success: true,
+          warnings: [],
+          errors: [],
+          extractionTimeMs: 1,
+        });
+
+      const result = await pipeline.execute(
+        linkDiscoverySource(),
+        "california",
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items).toHaveLength(2);
+      // Discovery warnings surface on the aggregate result
+      expect(result.warnings.some((w) => w.includes("no matching links"))).toBe(
+        true,
+      );
+      // Each leaf was fetched and its manifest looked up under the LEAF url,
+      // not the hub url — per-leaf manifest keying.
+      expect(mockExtraction.fetchWithRetry).toHaveBeenCalledWith(LEAF_A);
+      expect(mockExtraction.fetchWithRetry).toHaveBeenCalledWith(LEAF_B);
+      expect(mockStore.findLatest).toHaveBeenCalledWith(
+        "california",
+        LEAF_A,
+        DataType.PROPOSITIONS,
+      );
+      expect(mockStore.findLatest).toHaveBeenCalledWith(
+        "california",
+        LEAF_B,
+        DataType.PROPOSITIONS,
+      );
+    });
+
+    it("fails the source loudly when discovery errors (staleness alarm)", async () => {
+      mockLinkDiscovery.discover.mockResolvedValue({
+        leafUrls: [],
+        warnings: [],
+        errors: [
+          'linkDiscovery step 1 ("Measures") matched no links on any of 1 page(s)',
+        ],
+      });
+
+      const result = await pipeline.execute(
+        linkDiscoverySource(),
+        "california",
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.items).toEqual([]);
+      expect(result.errors[0]).toContain("matched no links");
+      // No extraction was attempted
+      expect(mockExtractor.extract).not.toHaveBeenCalled();
+    });
+
+    it("propagates pendingManifestAnalysis when a leaf hits a cold manifest miss", async () => {
+      const onManifestMissing = jest.fn().mockResolvedValue(undefined);
+      pipeline = new ScrapingPipelineService(
+        { generate: jest.fn() } as any,
+        mockExtraction,
+        mockAnalyzer,
+        mockStore,
+        mockExtractor,
+        mockMapper,
+        mockHealing,
+        {} as unknown as BulkDownloadHandler,
+        {} as unknown as ApiIngestHandler,
+        {} as any,
+        {} as any,
+        { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
+        mockLinkDiscovery as any,
+        onManifestMissing,
+      );
+      mockLinkDiscovery.discover.mockResolvedValue({
+        leafUrls: [LEAF_A],
+        warnings: [],
+        errors: [],
+      });
+      // Cold miss on the (new-cycle) leaf: no stored manifest yet.
+      mockStore.findLatest.mockResolvedValue(undefined);
+
+      const result = await pipeline.execute(
+        linkDiscoverySource(),
+        "california",
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.items).toEqual([]);
+      expect(result.pendingManifestAnalysis).toBe(true);
+      // Analysis was enqueued for the leaf URL, not the hub URL.
+      expect(onManifestMissing).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceUrl: LEAF_A }),
+      );
+    });
+
+    it("does not consult link discovery for plain html_scrape sources", async () => {
+      await pipeline.execute(createSource(), "california");
+      expect(mockLinkDiscovery.discover).not.toHaveBeenCalled();
     });
   });
 });
