@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 
 import { RegionResolver } from './region.resolver';
+import { RegionSearchService } from './region-search.service';
 import { RegionDomainService } from './region.service';
 import { PipelineJobService } from './pipeline-job.service';
 import { QueueService } from '@opuspopuli/queue-provider';
@@ -16,6 +17,7 @@ describe('RegionResolver', () => {
   let pipelineJobService: jest.Mocked<PipelineJobService>;
   let queueService: jest.Mocked<QueueService>;
   let countyThresholdQuery: jest.Mocked<CountyThresholdQueryService>;
+  let searchSuggest: jest.Mock;
 
   const mockRegionInfo = {
     id: 'test-region',
@@ -180,11 +182,21 @@ describe('RegionResolver', () => {
           provide: CountyThresholdQueryService,
           useValue: { findAll: jest.fn().mockResolvedValue([]) },
         },
+        // Ranking/suggest SQL is exercised against a real DB in
+        // __tests__/integration/region/region-search.integration.spec.ts;
+        // the resolver only clamps + forwards.
+        {
+          provide: RegionSearchService,
+          useValue: { suggest: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
 
     resolver = module.get<RegionResolver>(RegionResolver);
     countyThresholdQuery = module.get(CountyThresholdQueryService);
+    searchSuggest = (
+      module.get(RegionSearchService) as unknown as { suggest: jest.Mock }
+    ).suggest;
     regionService = module.get(RegionDomainService);
     pipelineJobService = module.get(PipelineJobService);
     queueService = module.get(QueueService);
@@ -241,7 +253,13 @@ describe('RegionResolver', () => {
       const result = await resolver.propositions({ skip: 0, take: 10 });
 
       expect(result).toEqual(mockPaginatedResult);
-      expect(regionService.getPropositions).toHaveBeenCalledWith(0, 10);
+      expect(regionService.getPropositions).toHaveBeenCalledWith(
+        0,
+        10,
+        undefined,
+        undefined,
+        undefined,
+      );
     });
 
     it('should use default pagination values', async () => {
@@ -254,7 +272,13 @@ describe('RegionResolver', () => {
 
       await resolver.propositions({ skip: 0, take: 10 });
 
-      expect(regionService.getPropositions).toHaveBeenCalledWith(0, 10);
+      expect(regionService.getPropositions).toHaveBeenCalledWith(
+        0,
+        10,
+        undefined,
+        undefined,
+        undefined,
+      );
     });
   });
 
@@ -1310,6 +1334,64 @@ describe('RegionResolver', () => {
         'california',
         false,
         false,
+      );
+    });
+  });
+
+  describe('search (#1153)', () => {
+    it('forwards regionSearch to the domain service', async () => {
+      const page = {
+        items: [],
+        total: 0,
+        hasMore: false,
+        billCount: 0,
+        propositionCount: 0,
+      };
+      regionService.searchRegion = jest.fn().mockResolvedValue(page);
+
+      const result = await resolver.regionSearch(
+        { skip: 0, take: 10 },
+        { query: 'wildfire' },
+        undefined,
+      );
+
+      expect(regionService.searchRegion).toHaveBeenCalledWith(
+        'wildfire',
+        undefined,
+        0,
+        10,
+      );
+      expect(result).toBe(page);
+    });
+
+    it('clamps regionSearchSuggest take to [1, 10]', async () => {
+      await resolver.regionSearchSuggest({ query: 'ab 12' }, 50);
+      expect(searchSuggest).toHaveBeenLastCalledWith('ab 12', 10);
+
+      await resolver.regionSearchSuggest({ query: 'ab 12' }, 0);
+      expect(searchSuggest).toHaveBeenLastCalledWith('ab 12', 1);
+    });
+
+    it('passes search and filters through the propositions query', async () => {
+      regionService.getPropositions.mockResolvedValue({
+        items: [],
+        total: 0,
+        hasMore: false,
+      });
+
+      await resolver.propositions(
+        { skip: 0, take: 10 },
+        { search: 'wildfire' },
+        undefined,
+        2026,
+      );
+
+      expect(regionService.getPropositions).toHaveBeenCalledWith(
+        0,
+        10,
+        'wildfire',
+        undefined,
+        2026,
       );
     });
   });

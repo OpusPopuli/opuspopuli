@@ -25,6 +25,10 @@ import {
   PropositionModel,
   PropositionStatusGQL,
 } from './models/proposition.model';
+import {
+  PaginatedRegionSearchModel,
+  SearchResultType,
+} from './models/region-search.model';
 import { PaginatedMeetings } from './models/meeting.model';
 import { MinutesModel, PaginatedMinutes } from './models/minutes.model';
 import { PaginatedRepresentatives } from './models/representative.model';
@@ -351,8 +355,26 @@ export class RegionDomainService {
   getPropositions(
     skip?: number,
     take?: number,
+    search?: string,
+    status?: PropositionStatusGQL,
+    electionYear?: number,
   ): Promise<PaginatedPropositions> {
-    return this.queryService.getPropositions(skip, take);
+    return this.queryService.getPropositions(
+      skip,
+      take,
+      search,
+      status,
+      electionYear,
+    );
+  }
+
+  searchRegion(
+    query: string,
+    type: SearchResultType | undefined,
+    skip: number,
+    take: number,
+  ): Promise<PaginatedRegionSearchModel> {
+    return this.queryService.searchRegion(query, type, skip, take);
   }
 
   getProposition(id: string) {
@@ -591,6 +613,7 @@ export class RegionDomainService {
     committeeId?: string,
     coAuthorId?: string,
     lifecycle: BillLifecycle = BillLifecycle.ACTIVE,
+    search?: string,
   ): Promise<PaginatedBillsModel> {
     return this.queryService.getBills(
       skip,
@@ -601,6 +624,7 @@ export class RegionDomainService {
       committeeId,
       coAuthorId,
       lifecycle,
+      search,
     );
   }
 

@@ -70,6 +70,94 @@ type PaginatedBills {
   hasMore: Boolean!
 }
 
+type PropositionAnalysisSectionModel {
+  heading: String!
+  startOffset: Int!
+  endOffset: Int!
+}
+
+type PropositionAnalysisClaimModel {
+  claim: String!
+  field: String!
+  sourceStart: Int!
+  sourceEnd: Int!
+  confidence: String
+}
+
+type ExistingVsProposedModel {
+  current: String!
+  proposed: String!
+}
+
+type PropositionModel {
+  id: ID!
+  externalId: String!
+  title: String!
+  summary: String!
+  fullText: String
+  status: PropositionStatus!
+  electionDate: DateTime
+  sourceUrl: String
+  analysisSummary: String
+  keyProvisions: [String!]
+  fiscalImpact: String
+  yesOutcome: String
+  noOutcome: String
+  existingVsProposed: ExistingVsProposedModel
+  analysisSections: [PropositionAnalysisSectionModel!]
+  analysisClaims: [PropositionAnalysisClaimModel!]
+  analysisSource: String
+  analysisGeneratedAt: DateTime
+  lifecycleStageId: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""The status of a proposition"""
+enum PropositionStatus {
+  PENDING
+  PASSED
+  FAILED
+  WITHDRAWN
+}
+
+type PaginatedPropositions {
+  items: [PropositionModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type RegionSearchItem {
+  result: RegionSearchEntity!
+  snippet: String
+  rank: Float!
+}
+
+"""A bill or proposition returned by unified search"""
+union RegionSearchEntity = Bill | PropositionModel
+
+type PaginatedRegionSearch {
+  items: [RegionSearchItem!]!
+  total: Int!
+  hasMore: Boolean!
+  billCount: Int!
+  propositionCount: Int!
+}
+
+type SearchSuggestion {
+  id: ID!
+  kind: SearchSuggestionKind!
+  label: String!
+  sublabel: String
+}
+
+"""Typeahead suggestion row kind"""
+enum SearchSuggestionKind {
+  DIRECT
+  BILL
+  PROPOSITION
+}
+
 type CivicText {
   verbatim: String!
   plainLanguage: String!
@@ -151,6 +239,8 @@ enum DataType {
   CAMPAIGN_FINANCE
   CIVICS
   BILLS
+  COUNTY_THRESHOLDS
+  BOUNDARIES
 }
 
 type RegionPluginModel {
@@ -211,63 +301,6 @@ enum SyncTriggerSource {
   MANIFEST_READY
 }
 
-type PropositionAnalysisSectionModel {
-  heading: String!
-  startOffset: Int!
-  endOffset: Int!
-}
-
-type PropositionAnalysisClaimModel {
-  claim: String!
-  field: String!
-  sourceStart: Int!
-  sourceEnd: Int!
-  confidence: String
-}
-
-type ExistingVsProposedModel {
-  current: String!
-  proposed: String!
-}
-
-type PropositionModel {
-  id: ID!
-  externalId: String!
-  title: String!
-  summary: String!
-  fullText: String
-  status: PropositionStatus!
-  electionDate: DateTime
-  sourceUrl: String
-  analysisSummary: String
-  keyProvisions: [String!]
-  fiscalImpact: String
-  yesOutcome: String
-  noOutcome: String
-  existingVsProposed: ExistingVsProposedModel
-  analysisSections: [PropositionAnalysisSectionModel!]
-  analysisClaims: [PropositionAnalysisClaimModel!]
-  analysisSource: String
-  analysisGeneratedAt: DateTime
-  lifecycleStageId: String
-  createdAt: DateTime!
-  updatedAt: DateTime!
-}
-
-"""The status of a proposition"""
-enum PropositionStatus {
-  PENDING
-  PASSED
-  FAILED
-  WITHDRAWN
-}
-
-type PaginatedPropositions {
-  items: [PropositionModel!]!
-  total: Int!
-  hasMore: Boolean!
-}
-
 type TopDonorModel {
   donorName: String!
   totalAmount: Float!
@@ -296,6 +329,36 @@ type PropositionFundingModel {
   oppose: SidedFundingModel!
 }
 
+type FinanceTopDonorModel {
+  donorName: String!
+  totalAmount: Float!
+  contributionCount: Int!
+}
+
+type FinanceTopEmployerModel {
+  employer: String!
+  totalAmount: Float!
+  contributionCount: Int!
+}
+
+type RepFundingCommitteeModel {
+  id: ID!
+  name: String!
+  totalRaised: Float!
+}
+
+type RepresentativeFundingModel {
+  representativeId: ID!
+  asOf: DateTime!
+  totalRaised: Float!
+  totalSpent: Float!
+  donorCount: Int!
+  committeeCount: Int!
+  topDonors: [FinanceTopDonorModel!]!
+  topEmployers: [FinanceTopEmployerModel!]!
+  committees: [RepFundingCommitteeModel!]!
+}
+
 type MeetingModel {
   id: ID!
   externalId: String!
@@ -311,6 +374,54 @@ type MeetingModel {
 
 type PaginatedMeetings {
   items: [MeetingModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type MinutesSummaryCitationModel {
+  pageHint: String
+  quote: String
+}
+
+type MinutesSummaryClaimModel {
+  kind: MinutesClaimKind!
+  title: String!
+  detail: String!
+  citation: MinutesSummaryCitationModel!
+  billRefs: [String!]!
+  severity: ClaimSeverity
+}
+
+"""Category of a minutes summary claim"""
+enum MinutesClaimKind {
+  DECISION
+  CONCERN
+  CONTROVERSY
+  PUBLIC_COMMENT
+  DISCLOSURE
+}
+
+"""Severity of a flagged minutes concern"""
+enum ClaimSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+type MinutesModel {
+  id: ID!
+  externalId: String!
+  body: String!
+  date: DateTime!
+  summary: String
+  claims: [MinutesSummaryClaimModel!]!
+  sourceUrl: String!
+  pageCount: Int
+  parsedAt: DateTime
+}
+
+type PaginatedMinutes {
+  items: [MinutesModel!]!
   total: Int!
   hasMore: Boolean!
 }
@@ -398,11 +509,8 @@ type ContributionModel {
   committeeId: String!
   donorName: String!
   donorType: String!
-  donorEmployer: String
-  donorOccupation: String
   donorCity: String
   donorState: String
-  donorZip: String
   amount: Float!
   date: DateTime!
   electionType: String
@@ -472,6 +580,7 @@ type LegislativeCommitteeModel {
   url: String
   description: String
   memberCount: Int!
+  relevanceExplanation: String
 }
 
 type LegislativeCommitteeMemberModel {
@@ -504,6 +613,7 @@ type LegislativeCommitteeDetailModel {
   activitySummaryWindowDays: Float
   createdAt: DateTime!
   updatedAt: DateTime!
+  relevanceExplanation: String
 }
 
 type PaginatedLegislativeCommittees {
@@ -611,15 +721,90 @@ type UserJurisdictionModel {
   jurisdiction: JurisdictionModel!
 }
 
+"""
+The adjacent county with the lowest signature requirement. Null only if a county touches no other, which no California county does.
+"""
+type CheapestNeighborModel {
+  """County FIPS code."""
+  fips: String!
+
+  """County display name."""
+  name: String!
+
+  """Signatures required in that neighbour — ceil(votes * 0.10)."""
+  signaturesRequired: Int!
+}
+
+"""
+A county's signature threshold for a county initiative under California Elections Code §9118, with the public records it derives from.
+"""
+type CountyThresholdModel {
+  """County FIPS code."""
+  fips: String!
+
+  """County display name."""
+  name: String!
+
+  """
+  Votes cast for ALL gubernatorial candidates at the last gubernatorial general — the §9118 denominator, NOT the winner's total.
+  """
+  gubernatorialVotes: Int!
+
+  """Election year the vote total describes."""
+  gubernatorialYear: Int!
+
+  """Registered voters, for context. Never the §9118 basis."""
+  registeredVoters: Int
+
+  """County population."""
+  population: Int
+
+  """
+  ceil(gubernatorialVotes * 0.10). Derived per request, never stored, so it cannot drift from the votes it describes. Rounded UP — a fractional signature is not a thing, and rounding down would understate a legal requirement.
+  """
+  signaturesRequired: Int!
+
+  """
+  signaturesRequired / registeredVoters, as a fraction. Null when registration is unknown. Context only — the legal basis is the vote total.
+  """
+  shareOfRegistered: Float
+
+  """
+  Rank by signaturesRequired, 1 = fewest signatures. Ties share the lower rank.
+  """
+  rank: Int!
+
+  """Adjacent county with the lowest signature requirement."""
+  cheapestNeighbor: CheapestNeighborModel
+
+  """
+  The record this row derives from. Part of the contract, not decoration — a reader must be able to check the figure themselves.
+  """
+  sourceUrl: String!
+
+  """When the source was last read."""
+  retrievedAt: DateTime!
+}
+
 type Query {
   regionInfo: RegionInfoModel!
+
+  """
+  County initiative signature thresholds under Elections Code §9118, ordered by signatures required (fewest first).
+  """
+  countyThresholds: [CountyThresholdModel!]!
   regionPlugins: [RegionPluginModel!]!
   regionPluginByFipsCode(fipsCode: String!): RegionPluginModel
-  propositions(skip: Int! = 0, take: Int! = 10): PaginatedPropositions!
+  propositions(skip: Int! = 0, take: Int! = 10, search: String, status: PropositionStatus, electionYear: Int): PaginatedPropositions!
+  regionSearch(skip: Int! = 0, take: Int! = 10, query: String!, type: SearchResultType): PaginatedRegionSearch!
+  regionSearchSuggest(query: String!, take: Int = 8): [SearchSuggestion!]!
   proposition(id: ID!): PropositionModel
   propositionFunding(propositionId: ID!): PropositionFundingModel
+  representativeFunding(id: ID!): RepresentativeFundingModel
   meetings(skip: Int! = 0, take: Int! = 10): PaginatedMeetings!
   meeting(id: ID!): MeetingModel
+  minutesList(skip: Int! = 0, take: Int! = 10, body: String): PaginatedMinutes!
+  minutes(id: ID!): MinutesModel
   representatives(skip: Int! = 0, take: Int! = 10, chamber: String): PaginatedRepresentatives!
   representative(id: ID!): RepresentativeModel
   representativesByDistricts(congressionalDistrict: String, stateSenatorialDistrict: String, stateAssemblyDistrict: String, countyRegionId: String): [RepresentativeModel!]!
@@ -640,13 +825,19 @@ type Query {
   expenditure(id: ID!): ExpenditureModel
   independentExpenditures(skip: Int! = 0, take: Int! = 10, committeeId: String, supportOrOppose: String, sourceSystem: String): PaginatedIndependentExpenditures!
   independentExpenditure(id: ID!): IndependentExpenditureModel
-  bills(skip: Int! = 0, take: Int! = 10, measureTypeCode: String, sessionYear: String, authorId: ID, committeeId: ID, coAuthorId: ID, lifecycle: BillLifecycle = ACTIVE): PaginatedBills!
+  bills(skip: Int! = 0, take: Int! = 10, measureTypeCode: String, sessionYear: String, authorId: ID, committeeId: ID, coAuthorId: ID, lifecycle: BillLifecycle = ACTIVE, search: String): PaginatedBills!
   bill(id: ID!): Bill
   myJurisdictions: [UserJurisdictionModel!]!
   myCountySupervisors: [RepresentativeModel!]!
   regionSyncJob(jobId: ID!): RegionSyncJob
   recentRegionSyncJobs(limit: Int = 20): [RegionSyncJob!]!
   scheduledSyncJobs: [ScheduledSyncJob!]!
+}
+
+"""Restrict unified search to one entity type"""
+enum SearchResultType {
+  BILL
+  PROPOSITION
 }
 
 """
@@ -660,9 +851,12 @@ enum BillLifecycle {
 
 type Mutation {
   regeneratePropositionAnalysis(id: ID!): PropositionModel
+  regenerateMinutesSummaries(body: String, limit: Int): Int!
   invalidateManifest(regionId: String!, sourceUrl: String!): Int!
-  updateRegionPlugin(name: String!, enabled: Boolean!, cascade: Boolean = false): RegionPluginModel!
-  syncRegionData(dataTypes: [DataType!], depth: SyncDepth, regionId: String, maxReps: Int, maxBills: Int): RegionSyncJob!
+  updateRegionPlugin(name: String!, enabled: Boolean!, cascade: Boolean! = false): RegionPluginModel!
+  refreshActiveRegion: Boolean!
+  refreshBoundaries(force: Boolean): RegionSyncJob!
+  syncRegionData(dataTypes: [DataType!], depth: SyncDepth, regionId: String, maxReps: Int, maxBills: Int, maxDocuments: Int, resetWatermark: Boolean): RegionSyncJob!
 }
 
 """

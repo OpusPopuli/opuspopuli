@@ -20,7 +20,20 @@ import { CivicsBlockModel } from './models/region-info.model';
 import {
   PaginatedPropositions,
   PropositionModel,
+  PropositionStatusGQL,
 } from './models/proposition.model';
+import {
+  RegionSearchService,
+  SNIPPET_START,
+  type BillSearchFilters,
+  type PropositionSearchFilters,
+  type UnifiedSearchRow,
+} from './region-search.service';
+import {
+  PaginatedRegionSearchModel,
+  RegionSearchItemModel,
+  SearchResultType,
+} from './models/region-search.model';
 import { PaginatedMeetings } from './models/meeting.model';
 import {
   ClaimSeverityGQL,
@@ -64,6 +77,14 @@ function lifecycleClause(
   if (lifecycle === BillLifecycle.ACTIVE) return { isActive: true };
   if (lifecycle === BillLifecycle.INACTIVE) return { isActive: false };
   return {};
+}
+
+/** Prisma range clause covering one calendar year of electionDate (#1153). */
+function electionYearRange(year: number): { gte: Date; lt: Date } {
+  return {
+    gte: new Date(Date.UTC(year, 0, 1)),
+    lt: new Date(Date.UTC(year + 1, 0, 1)),
+  };
 }
 
 // ─── Local type aliases ───────────────────────────────────────────────────────
@@ -293,7 +314,19 @@ export class RegionQueryService {
     private readonly legislativeCommitteeLinker?: LegislativeCommitteeLinkerService,
     @Optional()
     private readonly representativeFunding?: RepresentativeFundingService,
+    @Optional() private readonly searchService?: RegionSearchService,
   ) {}
+
+  /**
+   * Search paths hard-require the search service — a missing binding must
+   * error loudly, never degrade to unfiltered results (#1153).
+   */
+  private requireSearchService(): RegionSearchService {
+    if (!this.searchService) {
+      throw new Error('RegionSearchService is not available');
+    }
+    return this.searchService;
+  }
 
   // ─── Civics data ──────────────────────────────────────────────────────────────
 
@@ -546,17 +579,41 @@ export class RegionQueryService {
   async getPropositions(
     skip: number = 0,
     take: number = 10,
+    search?: string,
+    status?: PropositionStatusGQL,
+    electionYear?: number,
   ): Promise<PaginatedPropositions> {
+    // Search bypasses the region cache: it has no TTL and purges by
+    // prefix, so an unbounded per-query keyspace would never evict.
+    if (search?.trim()) {
+      return this.searchPropositions(
+        search,
+        { status, electionYear },
+        skip,
+        take,
+      );
+    }
+
+    // deletedAt filter added with #1153: soft-deleted propositions were
+    // previously served from this path (the vector path at
+    // documents/retrieval.service.ts always excluded them).
+    const where = {
+      deletedAt: null,
+      ...(status && { status }),
+      ...(electionYear && { electionDate: electionYearRange(electionYear) }),
+    };
+
     return this.cacheService.cachedQuery(
-      `propositions:${skip}:${take}`,
+      `propositions:${skip}:${take}:${status ?? ''}:${electionYear ?? ''}`,
       async () => {
         const [items, total] = await Promise.all([
           this.db.proposition.findMany({
+            where,
             orderBy: [{ electionDate: 'desc' }, { createdAt: 'desc' }],
             skip,
             take: take + 1,
           }),
-          this.db.proposition.count(),
+          this.db.proposition.count({ where }),
         ]);
 
         const hasMore = items.length > take;
@@ -573,8 +630,43 @@ export class RegionQueryService {
     );
   }
 
+  private async searchPropositions(
+    search: string,
+    filters: PropositionSearchFilters,
+    skip: number,
+    take: number,
+  ): Promise<PaginatedPropositions> {
+    const { ids, total } =
+      await this.requireSearchService().searchPropositionIds(
+        search,
+        filters,
+        skip,
+        take,
+      );
+    const items = await this.hydratePropositions(ids);
+    return { items, total, hasMore: skip + take < total };
+  }
+
+  /** Fetch propositions by id, preserving the ranked id order. */
+  private async hydratePropositions(
+    ids: string[],
+  ): Promise<PropositionModel[]> {
+    if (ids.length === 0) return [];
+    const records = await this.db.proposition.findMany({
+      where: { id: { in: ids } },
+    });
+    const byId = new Map(records.map((r) => [r.id, r]));
+    return ids
+      .map((id) => byId.get(id))
+      .filter((r): r is NonNullable<typeof r> => !!r)
+      .map((r) => mapPropositionRecord(r));
+  }
+
   async getProposition(id: string) {
-    return this.db.proposition.findUnique({ where: { id } });
+    // deletedAt filter added with #1153 for consistency with the list and
+    // search paths — a soft-deleted proposition must not stay publicly
+    // reachable by direct link.
+    return this.db.proposition.findFirst({ where: { id, deletedAt: null } });
   }
 
   async getPropositionFunding(
@@ -1327,7 +1419,27 @@ export class RegionQueryService {
     committeeId?: string,
     coAuthorId?: string,
     lifecycle: BillLifecycle = BillLifecycle.ACTIVE,
+    search?: string,
   ): Promise<PaginatedBillsModel> {
+    // Search composes with every equality filter, but ordering switches
+    // to ts_rank (the SQL lives in RegionSearchService); ids come back
+    // ranked and are hydrated below with the list's usual includes.
+    if (search?.trim()) {
+      return this.searchBills(
+        search,
+        {
+          measureTypeCode,
+          sessionYear,
+          authorId,
+          committeeId,
+          coAuthorId,
+          lifecycle,
+        },
+        skip,
+        take,
+      );
+    }
+
     const where = {
       // ACTIVE → currently moveable only (partial index `bills_is_active_idx`).
       // INACTIVE → chaptered + dead together. ALL → no lifecycle filter.
@@ -1365,6 +1477,98 @@ export class RegionQueryService {
       total,
       hasMore: skip + take < total,
     };
+  }
+
+  private async searchBills(
+    search: string,
+    filters: BillSearchFilters,
+    skip: number,
+    take: number,
+  ): Promise<PaginatedBillsModel> {
+    const { ids, total } = await this.requireSearchService().searchBillIds(
+      search,
+      filters,
+      skip,
+      take,
+    );
+    const items = await this.hydrateBills(ids);
+    return { items, total, hasMore: skip + take < total };
+  }
+
+  /** Fetch bills by id with the list includes, preserving ranked order. */
+  private async hydrateBills(ids: string[]): Promise<BillModel[]> {
+    if (ids.length === 0) return [];
+    const records = await this.db.bill.findMany({
+      where: { id: { in: ids } },
+      include: {
+        votes: { orderBy: { voteDate: 'desc' } },
+        coAuthors: {
+          include: { representative: { select: { id: true, name: true } } },
+        },
+      },
+    });
+    const byId = new Map(records.map((r) => [r.id, r]));
+    return ids
+      .map((id) => byId.get(id))
+      .filter((r): r is NonNullable<typeof r> => !!r)
+      .map((r) => this.mapBillRecord(r));
+  }
+
+  /**
+   * Unified search across bills + propositions (#1153). Ranking, snippets
+   * and counts come from RegionSearchService; this method hydrates the
+   * ranked page into full GraphQL entities, preserving SQL order.
+   */
+  async searchRegion(
+    query: string,
+    type: SearchResultType | undefined,
+    skip: number,
+    take: number,
+  ): Promise<PaginatedRegionSearchModel> {
+    const { rows, billCount, propositionCount } =
+      await this.requireSearchService().searchUnified(query, type, skip, take);
+
+    const billIds = rows.filter((r) => r.kind === 'BILL').map((r) => r.id);
+    const propIds = rows
+      .filter((r) => r.kind === 'PROPOSITION')
+      .map((r) => r.id);
+    const [bills, propositions] = await Promise.all([
+      this.hydrateBills(billIds),
+      this.hydratePropositions(propIds),
+    ]);
+    const billById = new Map(bills.map((b) => [b.id, b]));
+    const propById = new Map(propositions.map((p) => [p.id, p]));
+
+    const items = rows
+      .map((row) => this.toSearchItem(row, billById, propById))
+      .filter((item): item is RegionSearchItemModel => item !== null);
+
+    const total = billCount + propositionCount;
+    return {
+      items,
+      total,
+      hasMore: skip + take < total,
+      billCount,
+      propositionCount,
+    };
+  }
+
+  private toSearchItem(
+    row: UnifiedSearchRow,
+    billById: Map<string, BillModel>,
+    propById: Map<string, PropositionModel>,
+  ): RegionSearchItemModel | null {
+    const result =
+      row.kind === 'BILL' ? billById.get(row.id) : propById.get(row.id);
+    if (!result) return null;
+    // A headline that never highlighted anything is noise, not context:
+    // title-only matches with empty source text yield '', and source text
+    // without the query lexeme yields an unmarked leading fragment. Only
+    // emit snippets that actually contain a highlight.
+    const snippet = row.snippet?.includes(SNIPPET_START)
+      ? row.snippet
+      : undefined;
+    return { result, snippet, rank: row.rank };
   }
 
   async getBill(id: string): Promise<BillModel | null> {

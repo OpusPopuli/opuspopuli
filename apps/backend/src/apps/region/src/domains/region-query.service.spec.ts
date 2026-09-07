@@ -102,7 +102,7 @@ describe('RegionQueryService — caching', () => {
     await service.getPropositions(0, 10);
 
     expect(mockCache.set).toHaveBeenCalledWith(
-      'propositions:0:10',
+      'propositions:0:10::',
       expect.any(String),
     );
   });
@@ -252,20 +252,22 @@ describe('RegionQueryService — query methods', () => {
   });
 
   describe('getProposition', () => {
-    it('should return a single proposition by ID', async () => {
+    it('should return a single non-deleted proposition by ID', async () => {
       const mockProp = { id: '1', title: 'Test Prop' };
-      mockDb.proposition.findUnique.mockResolvedValue(mockProp as never);
+      mockDb.proposition.findFirst.mockResolvedValue(mockProp as never);
 
       const result = await service.getProposition('1');
 
       expect(result).toEqual(mockProp);
-      expect(mockDb.proposition.findUnique).toHaveBeenCalledWith({
-        where: { id: '1' },
+      // deletedAt filter added with #1153 — soft-deleted propositions must
+      // not stay reachable by direct link.
+      expect(mockDb.proposition.findFirst).toHaveBeenCalledWith({
+        where: { id: '1', deletedAt: null },
       });
     });
 
     it('should return null when not found', async () => {
-      mockDb.proposition.findUnique.mockResolvedValue(null);
+      mockDb.proposition.findFirst.mockResolvedValue(null);
 
       const result = await service.getProposition('nonexistent');
 

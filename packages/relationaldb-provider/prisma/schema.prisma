@@ -1106,6 +1106,13 @@ model Proposition {
   /// all 52 rows to produce identical vectors.
   embeddingSourceHash String? @map("embedding_source_hash")
 
+  /// GENERATED ALWAYS ... STORED weighted tsvector (A: external_id+title,
+  /// B: summary, D: full_text capped at 256 kB) — the lexical search leg
+  /// (#1153). Never written by application code; GIN index
+  /// `propositions_search_vector_idx` lives in the migration (Prisma can't
+  /// express GIN-on-tsvector).
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
   status       String    @default("pending") @db.VarChar(50)
   electionDate DateTime? @map("election_date") @db.Timestamp
   sourceUrl    String?   @map("source_url")
@@ -1577,6 +1584,13 @@ model Bill {
   extractedAt DateTime @default(now()) @map("extracted_at") @db.Timestamptz
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  /// GENERATED ALWAYS ... STORED weighted tsvector (A: bill_number+title,
+  /// B: subject, C: ai_summary plainEnglishSummary, D: last_action) — the
+  /// lexical search leg (#1153). Never written by application code; GIN
+  /// indexes (`bills_search_vector_idx`, trigram `bills_bill_number_trgm_idx`)
+  /// live in the migration (Prisma can't express GIN indexes).
+  searchVector Unsupported("tsvector")? @map("search_vector")
 
   author             Representative?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
   coAuthors          BillCoAuthor[]
