@@ -1,570 +1,315 @@
 # AI/ML Pipeline Architecture
 
-## Overview
+## What this document is
 
-The AI/ML pipeline implements RAG (Retrieval-Augmented Generation) using a 100% open-source, self-hosted stack:
+The **intended end state** of the Opus Populi AI pipeline, with an honest
+status marker on every layer. It replaces an earlier version that described
+only the generic RAG slice; the pipeline it describes now is the civic
+evidence pipeline the platform is converging on.
 
-1. **Embeddings** - Convert text to semantic vectors (Xenova/Ollama)
-2. **Vector Search** - Find relevant context (pgvector on PostgreSQL)
-3. **LLM Generation** - Generate answers (Ollama with Qwen 3.5)
+Status legend (as of 2026-09): ✅ shipped · 🟡 partial · ⬜ planned.
+A layer marked ⬜ is a design commitment, not a description of running code.
 
-All processing happens locally with no data sent to third-party APIs.
+## Governing constraint
 
-## RAG Architecture
+The model is never the source of truth. Trust comes from the system around
+the model — evidence, provenance, deterministic validation, adversarial
+review, versioned history, open methodology — so that **any model is
+replaceable** and no answer asks for the model's authority.
+
+> The AI says: *here is what I found.*
+> The evidence layer says: *here is where it came from.*
+> The verification layer says: *here is why this claim is supportable — or
+> why it isn't.*
+> The citizen decides.
+
+Two operating rules fall out of this:
+
+1. **Deterministic code does what deterministic code can do.** Arithmetic,
+   citation existence, offset anchoring, hash integrity, numeric consistency,
+   schema validity are software problems — never delegated to an LLM.
+2. **Every consequential factual claim requires evidence before
+   publication.** Missing evidence means reject, downgrade, or label —
+   never silently publish.
+
+## The pipeline
 
 ```
-┌─────────────────────────────────────────────────┐
-│                 User Query                      │
-│           "What is the project status?"         │
-└─────────────────────────────────────────────────┘
-                      ↓
-┌─────────────────────────────────────────────────┐
-│            1. EMBEDDINGS GENERATION             │
-│                                                 │
-│  ┌───────────────────────────────────────────┐ │
-│  │ Xenova/Transformers.js (in-process)       │ │
-│  │ or Ollama (local server)                  │ │
-│  │                                           │ │
-│  │ Input:  "What is the project status?"     │ │
-│  │ Output: [0.12, 0.45, ..., 0.78] (384d)   │ │
-│  └───────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────┘
-                      ↓
-┌─────────────────────────────────────────────────┐
-│            2. VECTOR SIMILARITY SEARCH          │
-│                                                 │
-│  ┌───────────────────────────────────────────┐ │
-│  │ pgvector (PostgreSQL)                    │ │
-│  │                                           │ │
-│  │ Cosine similarity search for top-3        │ │
-│  │ most similar document chunks              │ │
-│  │                                           │ │
-│  │ Results:                                  │ │
-│  │   1. "Project is 75% complete..."        │ │
-│  │   2. "Status updated last week..."       │ │
-│  │   3. "Remaining tasks include..."        │ │
-│  └───────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────┘
-                      ↓
-┌─────────────────────────────────────────────────┐
-│            3. PROMPT CONSTRUCTION               │
-│                                                 │
-│  Context:                                       │
-│  - Project is 75% complete...                   │
-│  - Status updated last week...                  │
-│  - Remaining tasks include...                   │
-│                                                 │
-│  Question: What is the project status?          │
-│                                                 │
-│  Prompt:                                        │
-│  "You are a helpful assistant. Answer based on  │
-│   the context below.                            │
-│                                                 │
-│   Context: [chunks]                             │
-│   Question: [query]                             │
-│   Answer:"                                      │
-└─────────────────────────────────────────────────┘
-                      ↓
-┌─────────────────────────────────────────────────┐
-│            4. LLM GENERATION                    │
-│                                                 │
-│  ┌───────────────────────────────────────────┐ │
-│  │ Ollama (Qwen 3.5)                          │ │
-│  │                                           │ │
-│  │ Parameters:                               │ │
-│  │   - max_tokens: 500                       │ │
-│  │   - temperature: 0.7                      │ │
-│  │   - top_p: 0.95                           │ │
-│  │                                           │ │
-│  │ Output:                                   │ │
-│  │ "The project is currently 75% complete.  │ │
-│  │  According to the latest update, the     │ │
-│  │  remaining tasks include..."             │ │
-│  └───────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────┘
-                      ↓
-┌─────────────────────────────────────────────────┐
-│                 ANSWER TO USER                  │
-└─────────────────────────────────────────────────┘
+        SOURCE INGESTION  ✅                 (scraping pipeline, scans, uploads)
+                │
+        NORMALIZATION / OCR  ✅              (Tesseract, extraction, scrubbing)
+                │
+        IMMUTABLE SOURCE STORE  ⬜           (content-addressed SourceVersion:
+                │                            SHA-256 of fetched bytes, append-only)
+                ▼
+        EVIDENCE GRAPH  🟡                   (Claim / Evidence / ClaimRelation,
+                │                            spans pinned to source versions)
+                ▼
+   ┌── HYBRID RETRIEVAL ──┐
+   │  lexical ⬜   vector ✅│                (Postgres FTS + pgvector, merged)
+   └───────────┬──────────┘
+        RERANKING  ⬜                        (cross-encoder over merged candidates)
+                │
+        CIVIC REASONING (LLM)  ✅            (Ollama; structured output ⬜)
+                │
+   ┌────────────┴────────────┐
+   ▼                         ▼
+ DETERMINISTIC          ADVERSARIAL
+ VERIFICATION  🟡       REVIEW  ⬜           (second pass attacks Level 2+ output)
+   └────────────┬────────────┘
+                ▼
+        PUBLICATION / RENDERING  ✅          (application renders; model never
+                │                            writes to the public surface)
+                ▼
+        CITIZEN  +  SOURCE CITATIONS
+
+  spine: PROVENANCE (prompt hash/version, model, source refs, timestamps) 🟡
+  alongside: EVALUATION HARNESS + CIVIC BENCHMARK ⬜   ·   HITL FEEDBACK ⬜
 ```
 
-## Component Details
+## Risk tiers
 
-### 1. Embeddings Generation
+Not every civic question deserves the same machinery. Verification and review
+scale with consequence:
 
-**Purpose**: Convert text into numerical vectors that capture semantic meaning
+| Level | Example | Treatment |
+|---|---|---|
+| 0 — trivial | election date | automated |
+| 1 — factual | sponsor identity | automated + citation |
+| 2 — consequential | taxpayer cost | multiple sources + deterministic validation |
+| 3 — interpretive | who benefits? | multiple sources + adversarial review |
+| 4 — contested / value-laden | "is this good for working families?" | **no single verdict**: what the measure does, proponents' arguments, opponents' arguments, evidence, uncertainty |
 
-**Provider: Xenova (Default)**
+## Layers
 
-**Technology**: Transformers.js (ONNX Runtime in Node.js)
+### Source ingestion — ✅ shipped
 
-**Configuration**:
-```bash
-EMBEDDINGS_PROVIDER=xenova
-EMBEDDINGS_XENOVA_MODEL=Xenova/all-MiniLM-L6-v2
-EMBEDDINGS_CHUNK_SIZE=1000
-EMBEDDINGS_CHUNK_OVERLAP=200
-```
+`@opuspopuli/scraping-pipeline` (five source types: bulk download, API, PDF,
+PDF archive, HTML scrape) with throttling, retry/backoff, circuit breakers,
+ingestion watermarks, and self-healing structural manifests. Citizen-side:
+camera scans and uploads into the documents service. This layer is kept
+as-is; new layers attach to it.
 
-**Models Available**:
-| Model | Dimensions | Speed | Quality | Use Case |
-|-------|-----------|-------|---------|----------|
-| Xenova/all-MiniLM-L6-v2 | 384 | Fast | Good | General purpose (default) |
-| Xenova/paraphrase-MiniLM-L3-v2 | 768 | Fast | Good | Semantic similarity |
-| Xenova/all-mpnet-base-v2 | 768 | Medium | Better | High-quality embeddings |
+### Normalization / OCR — ✅ shipped
 
-**How It Works**:
-```typescript
-// 1. Download model on first use (cached locally)
-const pipeline = await import('@xenova/transformers').pipeline(
-  'feature-extraction',
-  'Xenova/all-MiniLM-L6-v2'
-);
+Tesseract (`@opuspopuli/ocr-provider`) with preprocessing/deskew; aggregate
+confidence gates analysis and retrieval. Signature scrubbing on petition
+scans is a deliberate lossy privacy step. Scan images are **never stored** —
+privacy is architectural and outranks completeness for user-submitted
+material.
 
-// 2. Generate embeddings
-const embedding = await pipeline(text, {
-  pooling: 'mean',
-  normalize: true,
-});
+### Immutable source store — ⬜ planned
 
-// 3. Extract array
-const vector = Array.from(embedding.data); // [0.12, 0.45, ..., 0.78]
-```
+Every *fetched civic artifact* (HTML, PDF) gets a content-addressed
+`SourceVersion`: SHA-256 of the raw bytes, fetch timestamp, HTTP validators,
+source URL, and the manifest/execution that fetched it. Append-only —
+re-fetch creates a new version, never overwrites. This is the foundation
+that lets a claim cite *the exact text version it was derived from* and lets
+the system answer "what did we know about this measure on date X."
 
-**Chunking Strategy**:
-```typescript
-// Text is split into overlapping chunks for better context
-chunkSize: 1000 characters
-chunkOverlap: 200 characters
+The store is **two-tier**: sources that claims cite are immutable forever
+(content-addressing deduplicates unchanged re-fetches, so cost tracks change,
+not fetch frequency); bulk archives (e.g. the ~1GB campaign-finance export)
+are kept on a retention schedule, with per-record hashes extracted at ingest
+so row-level provenance survives without warehousing every snapshot. Text is
+compressed at rest; store size and growth are exported as metrics per tier.
 
-Example:
-  "Lorem ipsum dolor sit amet..." (1000 chars)
-  "...amet consectetur adipiscing..." (1000 chars, 200 overlap)
-  "...adipiscing elit sed do..." (1000 chars, 200 overlap)
-```
+Today, extracted text lives on the entity rows and is updated in place; the
+existing `Minutes` revision model (`revisionSeq`/`isActive`, superseded rows
+retained) and `StructuralManifest` versioning are the shipped precedents this
+layer generalizes.
 
-**File Location**: `apps/backend/src/providers/embeddings/providers/xenova.provider.ts`
+### Evidence graph — 🟡 partial
+
+End state: relational `Claim` and `Evidence` entities (plus claim↔claim
+relations: supports, contradicts, qualifies, supersedes), each `Evidence`
+pinned to a `SourceVersion` + character span, with temporal validity. Owned
+by the **region service**; other services reference claims through GraphQL
+Federation keys. Queryable properties matter more than storage: *"show every
+published assertion that lacks primary evidence"* must be a query, not an
+audit project.
+
+Shipped today, feeding the design: claim-with-offset structures on
+propositions (`analysis_claims` — char spans into `full_text`), minutes
+(`summary_claims`), and representative bios (`bio_claims` with
+source-vs-training attribution); `LegislativeAction` rows carry
+deterministically derived spans re-sliced from stored text at read time.
+These are per-entity JSON structures — addressable, joinable claims are the
+gap.
+
+### Hybrid retrieval — 🟡 partial (vector ✅, lexical ⬜)
+
+- **Semantic** (✅): pgvector, cosine similarity, HNSW indexing
+  (`@opuspopuli/vectordb-provider`, `@opuspopuli/embeddings-provider`).
+  Embedding width is fixed by `EMBEDDING_DIMENSIONS` in
+  `@opuspopuli/common` and asserted at startup — **switching embedding
+  models of a different width is a migration, not an env change** (the one
+  place the provider pattern does not hold).
+- **Lexical** (⬜): Postgres full-text search — exact identifiers, names, and
+  statutory phrases that embeddings blur. No new infrastructure required.
+- **Fusion** (⬜): merged candidate set from both legs feeds the reranker.
+
+### Reranking — ⬜ planned
+
+A cross-encoder reranker scores the merged candidate set before generation.
+Adopted only on evaluation evidence, not by default; candidate selection is
+open, and candidates are held to the same openness/provenance standard that
+decided the embeddings model.
+
+Naming note: the existing `llm-rerank-worker` is *not* this layer — it
+generates per-item relevance explanations for the personalized feed and does
+not reorder retrieval results. The retrieval reranker gets a distinct name.
+
+### Civic reasoning (LLM) — ✅ shipped, structured output ⬜
+
+All inference is self-hosted Ollama behind `ILLMProvider`
+(`@opuspopuli/llm-provider`). Swap models via `LLM_MODEL`; no external AI
+API is on any request path.
+
+| | Current | End state |
+|---|---|---|
+| Output contract | free text, hand-parsed JSON | **schema-enforced JSON** (Ollama `format` + per-generator schema validation); parse failures are typed, recorded states — never silent degradation |
+| Model identity | tag (`qwen3.5:9b`) | tag **+ digest** pinned and recorded on every output |
+| Rendering | application renders ✅ | unchanged — the model never writes to the public surface |
+
+Generated factual claims must reference evidence (see publication invariant);
+behavior is defined for missing, conflicting, uncertain, and stale evidence —
+reject, downgrade, or label.
+
+### Deterministic verification — 🟡 partial
+
+Software-verifiable properties, verified by software:
+
+| Validator | Status | Notes |
+|---|---|---|
+| Financial reconciliation | ✅ | detail tables reconciled against publisher-reported totals; six verdicts; over-itemization is a first-class fault |
+| Section-offset anchoring | ✅ | LLM-proposed section offsets snapped to real string matches ("LLMs cannot count characters precisely") |
+| Deterministic passage spans | ✅ | legislative actions carry regex-derived offsets, re-sliced from stored text at read time |
+| Claim-span verification | ⬜ | every claim's cited span checked (or snapped) against the source text before publication — the highest-leverage missing validator |
+| Citation grounding (RAG) | ⬜ | model-emitted citations cross-checked against the actually-retrieved set |
+| Numeric consistency | ⬜ | source says $2.7B, answer says $27B → caught by code |
+| Source-hash integrity | ⬜ | requires the immutable source store |
+| Temporal validity | ⬜ | claims cannot outlive the text version they cite |
+
+### Adversarial review — ⬜ planned
+
+A second pass, prompted to attack: identify unsupported, overstated,
+ambiguous, misleading, or contradicted statements in a candidate output,
+given the evidence. Runs as queued worker jobs off the request path, on
+Level 2+ content only (inference cost roughly doubles per reviewed item).
+Initially the same model in a critic role; eventually a distinct model.
+The human layer is the planned reviewer-gated correction loop ("the Seed"),
+which keys every correction to the prompt hash of the output it critiques.
+
+### Publication / rendering — ✅ shipped
+
+The application validates and renders; claim attributions and segmented
+source text are rendered from stored offsets. End-state addition: rendering
+pins to claim → evidence → source *version*, so a page can be reconstructed
+as it stood at a point in time.
+
+### Provenance spine — 🟡 partial
+
+End state: **every AI output row** records source refs, `promptHash`,
+`promptVersion`, model (name + digest), and generation timestamp — the
+column set the civics-extraction path already ships — plus a source-text
+hash binding claims to the text version they cite. History is
+supersession-based (the Minutes pattern): updates create versions, nothing
+silently overwrites.
+
+Current coverage is uneven: complete on civics blocks, glossary, structural
+manifests, and personalized-impact records; partial on propositions and
+bills; absent on some generator outputs. Closing this is mechanical (the
+values are returned by every prompt fetch) and tracked as near-term work.
+
+### Evaluation & benchmark — ⬜ planned (spec exists: #1142)
+
+An eval harness over **real workloads with hand-verified ground truth**
+(structural manifests, bio claims precision, proposition field extraction,
+EN+ES relevance explanations, neutral titles), measuring: JSON validity,
+field-level correctness, claims precision, hallucination, omission, framing,
+**partisan asymmetry** (equivalent questions from opposing perspectives must
+behave symmetrically — measured, not asserted), uncertainty calibration,
+source-hierarchy preference, persuasion, and latency/throughput on our
+hardware.
+
+The harness grows into the **Civic AI Benchmark**: versioned items carrying
+question, gold answer, sources, evidence spans, required claims, acceptable
+interpretations, known ambiguities, counterarguments, and expected
+uncertainty — built to be publishable as an open research artifact. Model
+decisions (and any future fine-tuning) are made on this evidence, in that
+order — never fine-tune first.
+
+## Model stack
+
+Models are components, not institutions — nothing in the domain model may
+depend on a model name.
+
+| Role | Current | Target |
+|---|---|---|
+| Reasoning | `qwen3.5:9b` (dev) / `qwen3.5:35b` (prod), Apache 2.0 | **OLMo 3.1 32B Instruct** (Ai2) — candidate, eval-gated (#1142). Fully open weights *and* data *and* training code: the only model class where "don't take our word for it" extends to the model itself |
+| Embeddings | `Xenova/all-MiniLM-L6-v2`, 384-dim, in-process, **English-only** | **Decided (2026-09): `nomic-embed-text-v2-moe` @ 768-dim** via Ollama — multilingual (~100 languages; **Spanish parity is a platform gate MiniLM cannot meet**) and fully open weights + code + *training data*. Migration: dimension change + full re-embed + threshold recalibration before cutover |
+| Reranker | — | Candidate stage (eval-gated, M5); candidate selection still open — the same provenance standard that decided embeddings applies |
+
+All candidates are Apache 2.0 (no copyleft conflict with AGPL-3.0
+dual-licensing). Switching reasoning models is an env change + digest pin;
+the eval harness decides *whether*, the provider pattern decides *how*.
+
+## Prompt management
+
+All prompt construction goes through `@opuspopuli/prompt-client` — no prompt
+text is ever inlined in this repo. Every fetch returns
+`{ promptText, promptHash, promptVersion }` with a 3-tier fallback (remote
+prompt-service → database templates → hardcoded defaults) behind a circuit
+breaker, retry, TTL cache, and HMAC auth.
+
+**Openness posture (decided 2026-09, #1143):** the civic prompt *text*
+(structural analysis, document analysis, RAG, civics extraction, titles) is
+**published, with version + content-hash attestation** — every AI output can
+prove which prompt produced it, and readers can inspect that prompt. The
+*operational layer* (versioning infrastructure, A/B experimentation,
+per-region tuning, the prompt service itself) remains private. Consuming
+prompts through the client is therefore a single-source-of-truth and
+attestation mechanism, not a secrecy mechanism.
+
+Template families: `getStructuralAnalysisPrompt()`,
+`getDocumentAnalysisPrompt()` (analysis, bios, summaries),
+`getRAGPrompt()`, `getCivicsExtractionPrompt()`, bill extraction/status,
+relevance explanations, briefing summaries, personalized impact.
+
+## Privacy invariants
+
+- **100% self-hosted inference.** No user data, document text, or civic query
+  reaches a third-party AI API. No third-party analytics exist anywhere in
+  the stack.
+- **Minimum-necessary personalization inputs.** LLM prompts may receive
+  declared interest tags, boolean ranking flags, and a coarse region label —
+  never names, addresses, raw sensitive attributes, or free-text profile
+  data. Sensitive (T3) signals are encrypted at rest and cross the service
+  boundary only as booleans. See
+  [personalized-relevance.md](personalized-relevance.md).
+- **No political-belief personalization.** Inferred political opinion is
+  never stored or used; civic information is never filtered by what a user
+  is presumed to believe.
+- **Scan images are never persisted** — only their hash and scrubbed
+  extracted text.
+
+## Performance (measured, current stack)
+
+- Embeddings: ~100–200 ms/chunk CPU (Xenova); ~10–50 ms GPU (Ollama)
+- Vector search: ~10–100 ms
+- Generation: qwen3.5:9b ~0.5–2 s GPU, 5–10 s CPU; 35B MoE ~0.3–1.5 s GPU
+- End-to-end RAG: ~0.7–2.3 s GPU, ~5–10 s CPU
+
+Adversarial review and reranking add inference cost by design — which is why
+both are risk-tiered and queued off the request path, and why throughput on
+our own hardware is a first-class eval metric.
 
 ---
 
-**Provider: Ollama (Alternative)**
-
-**Technology**: Ollama server with GPU acceleration
-
-**Configuration**:
-```bash
-EMBEDDINGS_PROVIDER=ollama
-EMBEDDINGS_OLLAMA_URL=http://localhost:11434
-EMBEDDINGS_OLLAMA_MODEL=nomic-embed-text
-```
-
-**Models Available**:
-| Model | Dimensions | Speed | Quality |
-|-------|-----------|-------|---------|
-| nomic-embed-text | 768 | Fast (GPU) | Excellent |
-| all-minilm | 384 | Fast (GPU) | Good |
-
-**When to Use**:
-- You have GPU available
-- Already running Ollama for LLM
-- Need higher-quality embeddings
-- Want consistent stack (Ollama for both embeddings + LLM)
-
-**File Location**: `apps/backend/src/providers/embeddings/providers/ollama.provider.ts`
-
----
-
-### 2. Vector Similarity Search
-
-**Purpose**: Find document chunks most similar to the query
-
-**Similarity Metric**: Cosine similarity
-```
-similarity = (A · B) / (||A|| ||B||)
-
-Where:
-  A = query embedding
-  B = document embedding
-  · = dot product
-  ||x|| = L2 norm
-```
-
-**Provider: pgvector (Default)**
-
-**Technology**: PostgreSQL extension with HNSW indexing
-
-**Configuration**:
-```bash
-# pgvector uses same PostgreSQL instance
-# Falls back to RELATIONAL_DB_* if not specified
-VECTOR_DB_HOST=localhost
-VECTOR_DB_PORT=5432
-VECTOR_DB_DIMENSIONS=384  # Must match embedding model
-```
-
-**Search Process**:
-```sql
--- Find top-3 most similar vectors
-SELECT id, document_id, content,
-       1 - (embedding <=> $1::vector) as similarity
-FROM vector_embeddings
-WHERE user_id = $2
-ORDER BY embedding <=> $1::vector
-LIMIT 3;
-```
-
-**Index Type**: HNSW (Hierarchical Navigable Small World)
-- Approximate nearest neighbor (ANN) search
-- Fast queries even with millions of vectors
-- Tunable accuracy/speed tradeoff
-
-**File Location**: `packages/vectordb-provider/src/providers/pgvector.provider.ts`
-
----
-
-### 3. LLM Generation
-
-**Purpose**: Generate natural language answers based on retrieved context
-
-**Provider: Ollama (Only Option)**
-
-**Technology**: Ollama inference server with GGUF models
-
-**Configuration**:
-```bash
-LLM_URL=http://localhost:11434
-LLM_MODEL=qwen3.5:9b  # Default model
-```
-
-**Model: Qwen 3.5 (Default)**
-
-**Details**:
-- **Dev**: `qwen3.5:9b` — 9B parameters (dense), 256K context
-- **Prod**: `qwen3.5:35b` — 35B parameters (3B active, MoE), 256K context
-- **License**: Apache 2.0 (fully open source)
-- **Developer**: Alibaba Cloud
-- **Quality**: Excellent reasoning, structured output, and multilingual support
-
-**Alternative Models** (via Ollama):
-| Model | Size | Context | Speed | Quality | Use Case |
-|-------|------|---------|-------|---------|----------|
-| qwen3.5:9b | 9B | 256K | Fast | Excellent | Dev default |
-| qwen3.5:35b | 35B (3B active) | 256K | Fast | Excellent | Prod default |
-| mistral | 7B | 8K | Fast | Excellent | JSON output, instruction following |
-| gemma2 | 9B/27B | 8K | Medium | Good | General purpose |
-
-**Generation Process**:
-```typescript
-// 1. Build RAG prompt
-const prompt = `You are a helpful assistant. Answer based on context.
-
-Context:
-${contextChunks.join('\n\n')}
-
-Question: ${userQuery}
-
-Answer:`;
-
-// 2. Generate with Ollama
-const result = await ollama.generate(prompt, {
-  maxTokens: 500,      // Max length of answer
-  temperature: 0.7,    // Randomness (0.0 = deterministic, 1.0 = creative)
-  topP: 0.95,         // Nucleus sampling
-  topK: 40,           // Top-K sampling
-});
-
-// 3. Return answer
-return result.text;
-```
-
-**Generation Parameters**:
-
-| Parameter | Range | Default | Effect |
-|-----------|-------|---------|--------|
-| maxTokens | 1-4096 | 500 | Max answer length |
-| temperature | 0.0-2.0 | 0.7 | Randomness (lower = more focused) |
-| topP | 0.0-1.0 | 0.95 | Nucleus sampling threshold |
-| topK | 1-100 | 40 | Number of top tokens to consider |
-
-**Streaming Support**:
-```typescript
-// Stream tokens as they're generated
-for await (const chunk of ollama.generateStream(prompt, options)) {
-  process.stdout.write(chunk);  // Output token-by-token
-}
-```
-
-**File Location**: `apps/backend/src/providers/llm/providers/ollama.provider.ts`
-
----
-
-## Document Indexing Pipeline
-
-### Full Flow
-
-```typescript
-// apps/backend/src/apps/knowledge/src/domains/knowledge.service.ts
-
-async indexDocument(
-  userId: string,
-  documentId: string,
-  text: string
-): Promise<void> {
-  // 1. Chunk text
-  const result = await this.embeddingsService.getEmbeddingsForText(text);
-  // result = {
-  //   embeddings: [[0.1, 0.2, ...], [0.3, 0.4, ...]],
-  //   texts: ['chunk 1...', 'chunk 2...']
-  // }
-
-  // 2. Store vectors in database
-  await this.vectorDB.createEmbeddings(
-    userId,
-    documentId,
-    result.embeddings,
-    result.texts
-  );
-
-  this.logger.log(`Indexed ${result.texts.length} chunks for document ${documentId}`);
-}
-```
-
-### Performance
-
-**Xenova Embeddings**:
-- 100-200ms per chunk (CPU)
-- Batch processing: ~50-100 chunks/second
-
-**Ollama Embeddings** (with GPU):
-- 10-50ms per chunk (GPU)
-- Batch processing: ~200-500 chunks/second
-
-**Vector Storage (pgvector)**:
-- ~1-5ms per insert
-
-**Example** (1000-word document):
-```
-1. Chunking: ~10ms
-2. Generate embeddings (5 chunks): 500-1000ms (Xenova) or 50-250ms (Ollama)
-3. Store vectors: 5-25ms
-Total: ~515-1035ms per document
-```
-
----
-
-## Query Pipeline (RAG)
-
-### Full Flow
-
-```typescript
-// apps/backend/src/apps/knowledge/src/domains/knowledge.service.ts
-
-async answerQuery(userId: string, query: string): Promise<string> {
-  // 1. Generate query embedding
-  const queryEmbedding = await this.embeddingsService.getEmbeddingsForQuery(query);
-
-  // 2. Search for similar chunks (semantic search)
-  const contextChunks = await this.vectorDB.queryEmbeddings(
-    queryEmbedding,
-    userId,
-    nResults: 3
-  );
-
-  if (contextChunks.length === 0) {
-    return 'I could not find any relevant information to answer your question.';
-  }
-
-  // 3. Build RAG prompt
-  const context = contextChunks.map(c => c.content).join('\n\n');
-  const prompt = this.buildRAGPrompt(context, query);
-
-  // 4. Generate answer with LLM
-  const result = await this.llm.generate(prompt, {
-    maxTokens: 500,
-    temperature: 0.7,
-    topP: 0.95,
-  });
-
-  return result.text;
-}
-```
-
-### Performance
-
-**Query Embedding**:
-- Xenova: ~100-200ms (CPU)
-- Ollama: ~10-50ms (GPU)
-
-**Vector Search (pgvector)**:
-- ~10-100ms (millions of vectors)
-
-**LLM Generation**:
-- Qwen 3.5 9B (CPU): ~5-10 seconds
-- Qwen 3.5 9B (GPU): ~500ms-2s
-- Qwen 3.5 35B MoE (GPU): ~300ms-1.5s
-
-**Total RAG Latency**:
-- With GPU: ~700ms-2.3s
-- CPU only: ~5.1-10.3s
-
----
-
-## Prompt Management
-
-### @opuspopuli/prompt-client
-
-All AI prompt construction is managed by `@opuspopuli/prompt-client`, which provides:
-
-- **Database-backed templates** — prompt templates stored in PostgreSQL, editable without code changes
-- **Remote delegation** — optionally delegates to a federated [AI Prompt Service](https://github.com/OpusPopuli/prompt-service)
-- **3-tier fallback** — remote service → database → hardcoded defaults
-- **Resilience** — circuit breaker, retry with backoff, TTL-based caching, HMAC authentication
-
-```typescript
-// Knowledge Service uses prompt-client for RAG prompts
-const { promptText, promptHash, promptVersion } =
-  await this.promptClient.getRAGPrompt({
-    context: contextChunks.join('\n\n'),
-    query: userQuery,
-  });
-
-const result = await this.llm.generate(promptText, options);
-```
-
-### Template Types
-
-| Method | Templates | Use Case |
-|--------|-----------|----------|
-| `getStructuralAnalysisPrompt()` | `structural-analysis`, `structural-schema-*` | Web scraping schema extraction |
-| `getDocumentAnalysisPrompt()` | `document-analysis-*`, `document-analysis-base-instructions` | Document AI analysis |
-| `getRAGPrompt()` | `rag` | Retrieval-augmented generation |
-| `getBillExtractionPrompt()` | `bill-extraction-*` | Legislative bill data extraction from legislature HTML |
-
-Each template uses `{{VARIABLE}}` placeholders that are interpolated at runtime.
-
-**See**: [prompt-client README](../../packages/prompt-client/README.md) for full configuration and resilience details.
-
-### Best Practices
-
-1. **Clear Instructions**: Tell the LLM what to do
-2. **Context First**: Provide relevant information before the question
-3. **Specific Questions**: Ask focused questions for better answers
-4. **Temperature Tuning**:
-   - 0.0-0.3: Factual, deterministic answers
-   - 0.4-0.7: Balanced creativity and accuracy (default)
-   - 0.8-1.0: Creative, diverse answers
-
-### Advanced Prompting
-
-**Few-Shot Learning**:
-```typescript
-const prompt = `You are a helpful assistant. Answer based on context.
-
-Example:
-Context: The project deadline is March 15th.
-Question: When is the deadline?
-Answer: The project deadline is March 15th.
-
-Context:
-${context}
-
-Question: ${query}
-
-Answer:`;
-```
-
-**Chain-of-Thought**:
-```typescript
-const prompt = `You are a helpful assistant. Answer based on context.
-Think step by step before answering.
-
-Context:
-${context}
-
-Question: ${query}
-
-Let's think step by step:`;
-```
-
----
-
-## Error Handling
-
-### Embedding Generation Errors
-```typescript
-try {
-  const embeddings = await provider.embedDocuments(texts);
-} catch (error) {
-  this.logger.error('Embedding generation failed:', error);
-  throw new EmbeddingError('Failed to generate embeddings', error);
-}
-```
-
-### Vector Search Errors
-```typescript
-try {
-  const results = await vectorDB.queryEmbeddings(...);
-  if (results.length === 0) {
-    return 'No relevant information found';
-  }
-} catch (error) {
-  this.logger.error('Vector search failed:', error);
-  throw new VectorDBError('Failed to search vectors', error);
-}
-```
-
-### LLM Generation Errors
-```typescript
-try {
-  const result = await llm.generate(prompt, options);
-} catch (error) {
-  this.logger.error('LLM generation failed:', error);
-  throw new LLMError('Ollama', 'generate', error);
-}
-```
-
----
-
-## Monitoring and Metrics
-
-### Key Metrics to Track
-
-**Embeddings**:
-- Generation time per chunk
-- Batch throughput
-- Model load time
-- Dimension validation errors
-
-**Vector Search**:
-- Query latency (p50, p95, p99)
-- Results returned (distribution)
-- Zero-result queries (%)
-- Index size growth
-
-**LLM**:
-- Generation latency
-- Tokens per second
-- Context length used
-- Finish reasons (stop vs length)
-
-### Logging
-
-```typescript
-// Knowledge Service logs
-this.logger.log(
-  `KnowledgeService initialized with vector DB: ${this.vectorDB.getName()}, ` +
-  `LLM: ${this.llm.getName()}/${this.llm.getModelName()}`
-);
-
-this.logger.log(`Retrieved ${contextChunks.length} context chunks for RAG`);
-this.logger.log(`Generating answer with ${this.llm.getName()}/${this.llm.getModelName()}`);
-this.logger.log(`Generated answer: ${result.text.length} chars (${result.tokensUsed || 'unknown'} tokens)`);
-```
-
----
-
-**Related Documentation**:
-- [Provider Pattern](provider-pattern.md) - Architecture details
-- [Data Layer](data-layer.md) - Vector database details
-- [RAG Implementation Guide](../guides/rag-implementation.md) - Practical usage
-- [LLM Configuration Guide](../guides/llm-configuration.md) - Model setup
+**Related documentation**
+- [Provider Pattern](provider-pattern.md) — pluggable provider design
+- [Personalized Relevance](personalized-relevance.md) — signal taxonomy, T1/T2/T3, ranking axes
+- [Data Layer](data-layer.md) — vector database details
+- [RAG Implementation Guide](../guides/rag-implementation.md)
+- [LLM Configuration Guide](../guides/llm-configuration.md)

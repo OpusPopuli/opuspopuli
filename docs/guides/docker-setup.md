@@ -161,7 +161,7 @@ VECTOR_DB_DIMENSIONS=384
 
 # LLM: Ollama (runs natively on host for GPU acceleration)
 LLM_URL='http://localhost:11434'
-LLM_MODEL='mistral'
+LLM_MODEL='qwen3.5:9b'
 
 # Redis: Caching and rate limiting
 REDIS_URL='redis://localhost:6379'

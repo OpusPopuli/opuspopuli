@@ -400,16 +400,19 @@ model UserEvent {
 }
 
 /// Per-user, per-bill cache of the personalized-feed ranker output —
-/// embedding-based composite score plus the optional LLM-written
-/// "why this matters to you" sentence written by the nightly batch job
-/// (epic OpusPopuli/opuspopuli#740, issue #745). The resolver in
+/// heuristic composite score (tag-overlap across the scoring axes in
+/// `scoring.service.ts`; embeddings are NOT involved — semantic ranking
+/// is deferred, see `personalized-feed.service.ts` header) plus the
+/// optional LLM-written "why this matters to you" sentence written by
+/// the nightly batch job (epic OpusPopuli/opuspopuli#740, issue #745).
+/// The resolver in
 /// `apps/backend/src/apps/knowledge/src/domains/personalized-feed` reads
-/// from here first and falls back to on-the-fly embedding-only ranking
+/// from here first and falls back to on-the-fly heuristic ranking
 /// when no cached row exists (e.g. for bills added since the last batch).
 ///
 /// `relevanceExplanation` is nullable on purpose: when the LLM call
 /// fails, the validator rejects the output, or the per-user budget
-/// caps out, the row is still written with the embedding score so the
+/// caps out, the row is still written with the heuristic score so the
 /// feed serves — just without the personalized sentence. The frontend's
 /// WhyThisPanel already falls back to a heuristic axis explanation
 /// (planning doc §5.3 + frontend `components/briefing/bills/WhyThisPanel`).

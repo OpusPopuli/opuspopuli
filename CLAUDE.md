@@ -113,14 +113,16 @@ Note the overlay alone is invalid — it carries partial definitions for the six
 services above, so `-f docker-compose-prompt-service.yml` by itself fails with
 `service "region-worker" has neither an image nor a build context`.
 
-## Prompt templates — IP boundary
+## Prompt templates — source-of-truth boundary
 
-**Prompt template text lives exclusively in the private `prompt-service` repo.** Never write prompt text inline or hard-code it in this repo.
+**Prompt template text lives exclusively in the `prompt-service` repo.** Never write prompt text inline or hard-code it in this repo — not even temporarily.
 
-Consume prompts via `@opuspopuli/prompt-client`:
+The rationale is **attestation, not secrecy** (decided in #1143, 2026-09-06): the civic prompt *text* is open and published, with version + content-hash attestation, so every AI output can prove which prompt produced it. What stays private is the operational layer — versioning infrastructure, A/B experimentation, per-region tuning, the service itself. An inline prompt would break the attestation chain (unversioned, unhashed, unpublished), which is why the rule survives the openness decision unchanged.
+
+Consume prompts via `@opuspopuli/prompt-client`, and **keep the hash and version — persist them on the output row** (`promptHash`/`promptVersion` columns; `CivicsBlock` is the reference pattern). Destructuring only `promptText` and discarding the rest makes the output unattributable:
 ```typescript
-const { promptText } = await this.promptClient.getDocumentAnalysisPrompt({ documentType: 'my-type', text });
-const { promptText } = await this.promptClient.getCivicsExtractionPrompt({ regionId, sourceUrl, contentGoal, html });
+const { promptText, promptHash, promptVersion } =
+  await this.promptClient.getDocumentAnalysisPrompt({ documentType: 'my-type', text });
 ```
 
 Available prompt types: `getStructuralAnalysisPrompt`, `getDocumentAnalysisPrompt`, `getRagPrompt`, `getCivicsExtractionPrompt`.
