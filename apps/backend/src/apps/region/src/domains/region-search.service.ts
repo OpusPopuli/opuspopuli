@@ -471,10 +471,10 @@ export class RegionSearchService {
     exclude: SearchSuggestionModel[],
     limit: number,
   ): Promise<SearchSuggestionModel[]> {
-    const excludeIds = exclude.map((s) => s.id);
+    const excludeIdFragments = exclude.map((s) => Prisma.sql`${s.id}::text`);
     const excludeCond =
-      excludeIds.length > 0
-        ? Prisma.sql`AND b.id NOT IN (${Prisma.join(excludeIds.map((id) => Prisma.sql`${id}::text`))})`
+      excludeIdFragments.length > 0
+        ? Prisma.sql`AND b.id NOT IN (${Prisma.join(excludeIdFragments)})`
         : Prisma.empty;
     const rows = await this.db.$queryRaw<
       { id: string; bill_number: string; session_year: string; title: string }[]
