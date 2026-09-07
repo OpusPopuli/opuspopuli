@@ -12,7 +12,11 @@ RAG combines semantic search with LLM generation to answer questions based on yo
 
 **Benefits**:
 - Answers are grounded in your data
-- No hallucinations (LLM can only use provided context)
+- Reduced hallucination risk — the prompt constrains the model to the
+  retrieved context (this lowers, but does not eliminate, fabrication;
+  outputs are not yet automatically verified against the context — see the
+  verification layers in
+  [AI/ML Pipeline](../architecture/ai-ml-pipeline.md))
 - Works with private/proprietary documents
 - No fine-tuning required
 
