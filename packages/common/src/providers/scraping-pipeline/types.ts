@@ -392,6 +392,19 @@ export interface DataSourceConfig {
   billDiscovery?: BillDiscoveryConfig;
 
   /**
+   * Link discovery configuration. When present, `executeHtmlScrape`
+   * fetches the seed page, follows each step's matching links in order,
+   * and runs manifest derivation + extraction on the resulting leaf
+   * pages instead of the seed. Deterministic (no LLM), scoped to the
+   * seed's host, HTTPS only. Required for hub-shaped sources (e.g. a
+   * registrar /elections page linking to per-election pages that link
+   * to a measures list) where blind BFS wastes `crawlMaxPages` on nav
+   * links before reaching the data — see issue #1164; same rationale
+   * as `billDiscovery`.
+   */
+  linkDiscovery?: LinkDiscoveryConfig;
+
+  /**
    * 5-field cron expression for how often this source is synced
    * (e.g. '0 2 * * *' = daily at 2 AM, '0 2 * * 0' = weekly on Sunday).
    * Omit to inherit the global daily-cron fallback. The worker applies a
@@ -445,6 +458,57 @@ export interface BillDiscoveryConfig {
    * Example: "/faces/billTextClient.xhtml?bill_id={bill_id}"
    */
   textPageTemplate?: string;
+}
+
+/**
+ * Declarative hub navigation for `html_scrape` sources whose seed URL is
+ * a multi-level hub rather than the page holding the data. The pipeline
+ * fetches the seed once, follows each step's matching links in order, and
+ * extracts from the pages selected by the final step.
+ *
+ * A step that matches zero links across every page it is applied to is a
+ * pipeline error, so a site restructure fails loudly instead of yielding
+ * an empty sync.
+ */
+export interface LinkDiscoveryConfig {
+  /**
+   * Ordered navigation steps from the seed page. Step 1 is applied to
+   * the seed page's links; step N to the links of every page selected
+   * by step N-1. Pages selected by the final step are the extraction
+   * targets.
+   */
+  steps: LinkDiscoveryStep[];
+
+  /**
+   * Cap on total leaf pages extracted per sync run (default 5). Each
+   * leaf page gets its own structural manifest and extraction pass, so
+   * this bounds runtime + token spend.
+   */
+  maxLeafPages?: number;
+}
+
+/**
+ * One navigation hop: which anchor(s) to follow on the current page.
+ */
+export interface LinkDiscoveryStep {
+  /**
+   * Regex (case-insensitive) matched against each anchor's visible text.
+   * Example: "(Primary|General|Special) Election".
+   */
+  textPattern: string;
+
+  /**
+   * Optional regex additionally matched against the anchor's resolved
+   * absolute URL. Both patterns must match when set.
+   */
+  hrefPattern?: string;
+
+  /**
+   * Follow only the first matching link on a page, or every matching
+   * link (default 'first'). Non-final steps with 'all' fan out; the
+   * `maxLeafPages` cap still bounds the walk.
+   */
+  select?: "first" | "all";
 }
 
 /**
