@@ -832,8 +832,9 @@ test.describe("Representatives Page", () => {
     // Wait for cards to load
     await expect(page.getByText("Jane Smith")).toBeVisible();
 
-    // Check that chamber filter has options (chambers are displayed in cards and filter)
-    const filterSelect = page.getByRole("combobox");
+    // Scoped by label: the authed header also has a search combobox (#1154),
+    // so a bare getByRole("combobox") is ambiguous.
+    const filterSelect = page.getByLabel("Filter:");
     await expect(filterSelect).toBeVisible();
 
     // Verify chambers exist by checking card content contains chamber text
@@ -863,13 +864,13 @@ test.describe("Representatives Page", () => {
     await page.goto("/region/representatives");
 
     await expect(page.getByText("Filter:")).toBeVisible();
-    await expect(page.getByRole("combobox")).toBeVisible();
+    await expect(page.getByLabel("Filter:")).toBeVisible();
   });
 
   test("should filter by chamber when selected", async ({ page }) => {
     await page.goto("/region/representatives");
 
-    const select = page.getByRole("combobox");
+    const select = page.getByLabel("Filter:");
     await select.selectOption("Senate");
 
     await expect(select).toHaveValue("Senate");

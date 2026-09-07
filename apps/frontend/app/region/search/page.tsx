@@ -19,42 +19,14 @@ import { Breadcrumb } from "@/components/region/Breadcrumb";
 import { Pagination } from "@/components/region/Pagination";
 import { LoadingSkeleton } from "@/components/region/ListStates";
 import { PropositionStatusBadge } from "@/components/region/PropositionStatusBadge";
+import { BillCardHeader } from "@/components/region/BillCardHeader";
 import { SnippetText } from "@/components/search/SnippetText";
-import { MEASURE_TYPE_STYLES } from "@/lib/bill-styles";
 import { formatDate } from "@/lib/format";
 
 const PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_MS = 150;
 
 type TypeFilter = SearchResultType | "";
-
-function TypeChip({ code }: { readonly code: string }) {
-  const cls = MEASURE_TYPE_STYLES[code] ?? "bg-surface-alt text-content-dim";
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}`}
-    >
-      {code}
-    </span>
-  );
-}
-
-function LifecycleChip({ bill }: { readonly bill: SearchBillResult }) {
-  const { t } = useTranslation("region");
-  if (bill.isActive) return null;
-  if (bill.isDead) {
-    return (
-      <span className="inline-flex items-center rounded-full bg-warning-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-warning">
-        {t("lifecycle.historical")}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full bg-positive-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-positive">
-      {t("lifecycle.passed")}
-    </span>
-  );
-}
 
 function BillResultCard({
   bill,
@@ -63,28 +35,12 @@ function BillResultCard({
   readonly bill: SearchBillResult;
   readonly snippet?: string | null;
 }) {
-  const { t } = useTranslation("region");
   return (
     <Link
       href={`/region/bills/${bill.id}`}
       className="block rounded-lg border border-line bg-surface p-5"
     >
-      <div className="mb-1 flex items-center gap-2">
-        <TypeChip code={bill.measureTypeCode} />
-        <span className="font-mono text-sm font-semibold text-content-dim">
-          {bill.billNumber}
-        </span>
-        <span className="text-xs text-content-dim">{bill.sessionYear}</span>
-        <LifecycleChip bill={bill} />
-      </div>
-      <h3 className="text-base font-semibold text-content line-clamp-2">
-        {bill.title}
-      </h3>
-      {bill.authorName && (
-        <p className="mt-1 text-sm text-content-dim">
-          {t("search.authorLabel", { name: bill.authorName })}
-        </p>
-      )}
+      <BillCardHeader bill={bill} />
       {snippet && (
         <p className="mt-2 text-sm text-content-dim line-clamp-2">
           <SnippetText text={snippet} />
