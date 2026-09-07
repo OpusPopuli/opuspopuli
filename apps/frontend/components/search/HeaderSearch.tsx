@@ -16,6 +16,7 @@ import {
   type RegionSearchSuggestData,
   type RegionSearchSuggestVars,
   type SearchSuggestion,
+  type SearchSuggestionKind,
 } from "@/lib/graphql/region";
 
 /** Matches the committees-page precedent; typeahead fires per keystroke. */
@@ -26,6 +27,20 @@ const SUGGEST_TAKE = 8;
 type Row =
   | { type: "suggestion"; suggestion: SearchSuggestion }
   | { type: "seeAll" };
+
+/**
+ * Row styling. DIRECT rows carry a gold left rule so the "jump to bill"
+ * shortcut reads as distinct from the full-text sections below it.
+ */
+function suggestionRowClass(
+  kind: SearchSuggestionKind,
+  active: boolean,
+  baseClass: string,
+): string {
+  if (kind !== "DIRECT") return baseClass;
+  const border = active ? "border-accent bg-surface-alt" : "border-transparent";
+  return `border-l-[3px] ${border}`;
+}
 
 function rowHref(row: Row, query: string): string {
   if (row.type === "seeAll") {
@@ -187,11 +202,7 @@ export function HeaderSearch() {
         id={optionId(index)}
         role="option"
         aria-selected={active}
-        className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 ${
-          suggestion.kind === "DIRECT"
-            ? `border-l-[3px] ${active ? "border-accent bg-surface-alt" : "border-transparent"}`
-            : baseClass
-        }`}
+        className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 ${suggestionRowClass(suggestion.kind, active, baseClass)}`}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => navigateTo(row)}
       >

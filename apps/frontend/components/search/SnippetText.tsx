@@ -10,34 +10,51 @@ import { SNIPPET_START, SNIPPET_END } from "@/lib/graphql/region";
  * the markers and renders every segment as a React text node; nothing
  * here may ever grow a dangerouslySetInnerHTML.
  */
-export function SnippetText({ text }: { readonly text: string }) {
-  const segments: { marked: boolean; text: string }[] = [];
+
+interface Segment {
+  /** Character offset in the source string — a stable, unique key. */
+  readonly offset: number;
+  readonly marked: boolean;
+  readonly text: string;
+}
+
+function toSegments(text: string): Segment[] {
+  const segments: Segment[] = [];
   const chunks = text.split(SNIPPET_START);
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
+  let offset = 0;
+
+  const push = (marked: boolean, value: string) => {
+    if (value) segments.push({ offset, marked, text: value });
+    offset += value.length;
+  };
+
+  chunks.forEach((chunk, i) => {
     if (i === 0) {
-      if (chunk) segments.push({ marked: false, text: chunk });
-      continue;
+      push(false, chunk);
+      return;
     }
+    offset += SNIPPET_START.length;
     const endIdx = chunk.indexOf(SNIPPET_END);
     if (endIdx === -1) {
       // Unbalanced marker (shouldn't happen) — render as plain text.
-      segments.push({ marked: false, text: chunk });
-      continue;
+      push(false, chunk);
+      return;
     }
-    const marked = chunk.slice(0, endIdx);
-    const rest = chunk.slice(endIdx + SNIPPET_END.length);
-    if (marked) segments.push({ marked: true, text: marked });
-    if (rest) segments.push({ marked: false, text: rest });
-  }
+    push(true, chunk.slice(0, endIdx));
+    offset += SNIPPET_END.length;
+    push(false, chunk.slice(endIdx + SNIPPET_END.length));
+  });
 
+  return segments;
+}
+
+export function SnippetText({ text }: { readonly text: string }) {
   return (
     <>
-      {segments.map((seg, i) =>
+      {toSegments(text).map((seg) =>
         seg.marked ? (
           <mark
-            // eslint-disable-next-line react/no-array-index-key -- static list, render-only
-            key={i}
+            key={seg.offset}
             // text-content, NOT inherit: snippets render in text-content-dim,
             // and dim-on-gold-tint measures 4.33:1 — under the 4.5:1 AA floor
             // (caught by the axe e2e scan). Ink on the tint clears it easily,
@@ -47,8 +64,7 @@ export function SnippetText({ text }: { readonly text: string }) {
             {seg.text}
           </mark>
         ) : (
-          // eslint-disable-next-line react/no-array-index-key -- static list, render-only
-          <span key={i}>{seg.text}</span>
+          <span key={seg.offset}>{seg.text}</span>
         ),
       )}
     </>

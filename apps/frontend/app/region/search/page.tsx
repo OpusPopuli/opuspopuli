@@ -155,7 +155,8 @@ function SearchPageInner() {
       const params = new URLSearchParams();
       if (trimmed) params.set("q", trimmed);
       if (urlType) params.set("type", urlType);
-      router.replace(`/region/search${trimmed ? `?${params}` : ""}`);
+      const queryString = trimmed ? `?${params}` : "";
+      router.replace(`/region/search${queryString}`);
       setPage(0);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);
