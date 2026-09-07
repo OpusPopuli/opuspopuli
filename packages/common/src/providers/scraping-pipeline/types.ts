@@ -142,6 +142,30 @@ export interface FieldMapping {
    *  shortcuts) or a full ChildFieldConfig object that supports
    *  extractionMethod + transform. Produces an array of objects. */
   children?: Record<string, ChildFieldConfig>;
+  /**
+   * For 'composite' method: a template that builds this field by
+   * interpolating values already extracted for the same item. No DOM
+   * selector is used — `selector` is ignored.
+   *
+   * Placeholders are `{fieldName}`, optionally with a formatter:
+   * `{fieldName:date|lower|upper|slug|trim}`. Dot paths are supported
+   * (`{contactInfo.phone}`).
+   *
+   *   "california-sonoma-{electionDate:date}-measure-{measureLetter:lower}"
+   *   → "california-sonoma-2026-11-03-measure-ab"
+   *
+   * Referenced fields must be declared EARLIER in `fieldMappings` — the
+   * extractor resolves mappings in order. If any placeholder resolves to
+   * nothing, the whole composite yields nothing (so a `required` composite
+   * reports a miss rather than emitting a half-built key like
+   * "california-sonoma--measure-e").
+   *
+   * This is the HTML-extraction counterpart of `BulkDownloadConfig.compositeKey`,
+   * and exists because civic listing pages routinely carry the discriminating
+   * value (an election date, a body name) once per page rather than once per
+   * item — see issue #1164.
+   */
+  template?: string;
 }
 
 /**
@@ -195,7 +219,8 @@ export type ExtractionMethod =
   | "html"
   | "regex"
   | "constant"
-  | "structured";
+  | "structured"
+  | "composite";
 
 /**
  * Post-extraction transforms for field values.

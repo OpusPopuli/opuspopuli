@@ -20,6 +20,7 @@ import type {
 import { FieldTransformer } from "./field-transformer.js";
 import { safeRegex } from "./safe-regex.js";
 import { extractStructuredArray } from "./structured-extractor.js";
+import { resolveCompositeTemplate } from "./composite-template.js";
 
 @Injectable()
 export class ManifestExtractorService {
@@ -259,6 +260,7 @@ export class ManifestExtractorService {
         scope,
         mapping,
         baseUrl,
+        data,
       );
 
       // Selector-level miss, counted before defaults/transforms so a
@@ -305,6 +307,7 @@ export class ManifestExtractorService {
     element: Cheerio<Element>,
     mapping: FieldMapping,
     baseUrl?: string,
+    itemData?: Record<string, unknown>,
   ): { value: unknown; selectorMiss: boolean } {
     // "constant" has no selector to break
     if (mapping.extractionMethod === "constant") {
@@ -323,10 +326,17 @@ export class ManifestExtractorService {
       };
     }
 
-    const raw = this.extractFieldValue($, element, mapping);
-    const selectorMiss = Boolean(mapping.selector) && raw === undefined;
+    // "composite" reads no DOM — it interpolates fields already extracted for
+    // this item (#1164). An unresolvable placeholder is reported like a
+    // selector miss so the #966 diagnostics surface it. It then shares the
+    // transform/default tail below, so `{...}:lower` and a whole-value
+    // transform both work on a composed key.
+    const { value: rawValue, selectorMiss } =
+      mapping.extractionMethod === "composite"
+        ? this.resolveCompositeField(mapping, itemData ?? {})
+        : this.extractRawValue($, element, mapping);
 
-    let value: unknown = raw;
+    let value: unknown = rawValue;
     if (value && mapping.transform) {
       value = FieldTransformer.apply(
         value as string,
@@ -340,6 +350,50 @@ export class ManifestExtractorService {
     }
 
     return { value, selectorMiss };
+  }
+
+  /** DOM-backed extraction plus its selector-miss verdict. */
+  private extractRawValue(
+    $: CheerioAPI,
+    element: Cheerio<Element>,
+    mapping: FieldMapping,
+  ): { value: unknown; selectorMiss: boolean } {
+    const raw = this.extractFieldValue($, element, mapping);
+    return {
+      value: raw,
+      selectorMiss: Boolean(mapping.selector) && raw === undefined,
+    };
+  }
+
+  /**
+   * Build a `composite` field from the item's already-extracted values.
+   * Kept separate so the transform/default tail of resolveFieldValue applies
+   * to the composed string exactly as it does to a scraped one.
+   */
+  private resolveCompositeField(
+    mapping: FieldMapping,
+    itemData: Record<string, unknown>,
+  ): { value: unknown; selectorMiss: boolean } {
+    if (!mapping.template) {
+      this.logger.warn(
+        `Composite field "${mapping.fieldName}" has no template — skipped`,
+      );
+      return { value: undefined, selectorMiss: true };
+    }
+
+    const { value, missing } = resolveCompositeTemplate(
+      mapping.template,
+      itemData,
+    );
+
+    if (missing.length > 0) {
+      this.logger.debug(
+        `Composite field "${mapping.fieldName}" unresolved — missing: ${missing.join(", ")}`,
+      );
+      return { value: undefined, selectorMiss: true };
+    }
+
+    return { value, selectorMiss: false };
   }
 
   /**

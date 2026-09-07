@@ -42,6 +42,11 @@ export { ManifestComparator } from "./manifest/manifest-comparator.js";
 export { ManifestExtractorService } from "./extraction/manifest-extractor.service.js";
 export { FieldTransformer } from "./extraction/field-transformer.js";
 export { ExtractionValidator } from "./extraction/extraction-validator.js";
+export {
+  resolveCompositeTemplate,
+  type CompositeFormatter,
+  type CompositeResult,
+} from "./extraction/composite-template.js";
 
 // Domain mapping
 export { DomainMapperService } from "./mapping/domain-mapper.service.js";
