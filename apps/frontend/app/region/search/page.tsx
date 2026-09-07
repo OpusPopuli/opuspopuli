@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@apollo/client/react";
@@ -73,7 +73,7 @@ function PropositionResultCard({
     >
       <div className="mb-1 flex items-center gap-2">
         <span className="inline-flex items-center rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-semibold text-content-dim">
-          PROP
+          {t("search.propChip")}
         </span>
         <span className="font-mono text-sm font-semibold text-content-dim">
           {proposition.externalId}
@@ -146,12 +146,29 @@ function SearchPageInner() {
   const [input, setInput] = useState(urlQuery);
   const [page, setPage] = useState(0);
 
-  // The URL is the source of truth (shareable, back-button-safe); typing
-  // debounces into router.replace so history isn't spammed per keystroke.
+  // The URL is the source of truth (shareable, back-button-safe).
+  //
+  // Sync BOTH ways. Without the inbound direction, any external change to
+  // ?q — the header search on this very page, or the Back button — was
+  // silently reverted: this component does not remount on a same-route
+  // push, so stale local `input` won the next debounce tick and replaced
+  // the URL back. Tracking the last value we wrote keeps the two
+  // directions from fighting (#1154 review).
+  const lastWritten = useRef(urlQuery);
+
+  useEffect(() => {
+    if (urlQuery === lastWritten.current) return;
+    // Someone else changed the URL — adopt it.
+    lastWritten.current = urlQuery;
+    setInput(urlQuery);
+    setPage(0);
+  }, [urlQuery]);
+
   useEffect(() => {
     const handle = setTimeout(() => {
       const trimmed = input.trim();
-      if (trimmed === urlQuery) return;
+      if (trimmed === lastWritten.current) return;
+      lastWritten.current = trimmed;
       const params = new URLSearchParams();
       if (trimmed) params.set("q", trimmed);
       if (urlType) params.set("type", urlType);
@@ -160,9 +177,10 @@ function SearchPageInner() {
       setPage(0);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [input, urlQuery, urlType, router]);
+  }, [input, urlType, router]);
 
   function setType(type: TypeFilter) {
+    lastWritten.current = urlQuery;
     const params = new URLSearchParams();
     if (urlQuery) params.set("q", urlQuery);
     if (type) params.set("type", type);
@@ -185,6 +203,29 @@ function SearchPageInner() {
   );
 
   const result = data?.regionSearch;
+
+  const summaryText = result
+    ? t("search.summary", {
+        count: result.total,
+        total: result.total,
+        query: urlQuery,
+        bills: result.billCount,
+        propositions: result.propositionCount,
+      })
+    : "";
+
+  // Announcement text for the persistent live region below. Screen
+  // readers do not reliably announce a live region that is inserted
+  // together with its content, and the empty branch previously had none
+  // at all — so a search returning nothing said nothing (#1154 review).
+  const announcement = (() => {
+    if (!urlQuery || loading) return "";
+    if (error) return t("search.error.title");
+    if (!result || result.items.length === 0) {
+      return t("search.empty.title", { query: urlQuery });
+    }
+    return summaryText;
+  })();
 
   const renderResults = () => {
     if (!urlQuery) {
@@ -222,14 +263,10 @@ function SearchPageInner() {
     }
     return (
       <>
-        <p className="mb-5 text-sm text-content-dim" aria-live="polite">
-          {t("search.summary", {
-            count: result.total,
-            total: result.total,
-            query: urlQuery,
-            bills: result.billCount,
-            propositions: result.propositionCount,
-          })}
+        {/* aria-hidden: the same text is announced by the persistent
+            live region below, and AT should hear it once. */}
+        <p aria-hidden="true" className="mb-5 text-sm text-content-dim">
+          {summaryText}
         </p>
         <div className="space-y-3">
           {result.items.map((item) => (
@@ -254,7 +291,7 @@ function SearchPageInner() {
     <div className="mx-auto max-w-4xl px-8 py-12">
       <Breadcrumb
         segments={[
-          { label: "Region", href: "/region" },
+          { label: t("breadcrumb.region"), href: "/region" },
           { label: t("search.title") },
         ]}
       />
@@ -302,6 +339,13 @@ function SearchPageInner() {
           />
         </div>
       )}
+
+      {/* Mounted unconditionally so assistive tech is already observing it
+          when the text changes — a live region inserted with its content
+          is not reliably announced. */}
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
 
       {renderResults()}
     </div>

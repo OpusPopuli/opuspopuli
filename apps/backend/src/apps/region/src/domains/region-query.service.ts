@@ -23,6 +23,7 @@ import {
   PropositionStatusGQL,
 } from './models/proposition.model';
 import {
+  MAX_SEARCH_WINDOW,
   RegionSearchService,
   SNIPPET_START,
   type BillSearchFilters,
@@ -1525,7 +1526,7 @@ export class RegionQueryService {
     skip: number,
     take: number,
   ): Promise<PaginatedRegionSearchModel> {
-    const { rows, billCount, propositionCount } =
+    const { rows, billCount, propositionCount, matched } =
       await this.requireSearchService().searchUnified(query, type, skip, take);
 
     const billIds = rows.filter((r) => r.kind === 'BILL').map((r) => r.id);
@@ -1543,11 +1544,17 @@ export class RegionQueryService {
       .map((row) => this.toSearchItem(row, billById, propById))
       .filter((item): item is RegionSearchItemModel => item !== null);
 
-    const total = billCount + propositionCount;
+    // `total`/`hasMore` describe the FILTERED result set (what the user is
+    // paging through); billCount/propositionCount are corpus-wide so the
+    // facet chips can advertise the counts you'd get by switching.
+    // hasMore is also capped at the deep-paging window, or "Next" would
+    // stay enabled past MAX_SEARCH_WINDOW and land on an empty page that
+    // reads as "no results" for a query that has thousands (#1154 review).
+    const reachable = Math.min(matched, MAX_SEARCH_WINDOW);
     return {
       items,
-      total,
-      hasMore: skip + take < total,
+      total: matched,
+      hasMore: skip + take < reachable,
       billCount,
       propositionCount,
     };

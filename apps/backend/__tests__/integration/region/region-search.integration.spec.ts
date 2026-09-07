@@ -229,16 +229,40 @@ describe('Region search (#1153, real DB)', () => {
     ]);
   });
 
-  it('honors the type filter', async () => {
+  it('filters rows by type but keeps facet counts corpus-wide', async () => {
     const propsOnly = await search.searchUnified(
       'wildfire',
       SearchResultType.PROPOSITION,
       0,
       10,
     );
-    expect(propsOnly.billCount).toBe(0);
-    expect(propsOnly.propositionCount).toBe(1);
+    // Rows and `matched` (what pagination is over) respect the filter…
     expect(propsOnly.rows.every((r) => r.kind === 'PROPOSITION')).toBe(true);
+    expect(propsOnly.matched).toBe(1);
+    // …but the facet counts must NOT, or the UI renders "Bills · 0" while
+    // two bills match and the user can never switch back (#1154 review).
+    expect(propsOnly.billCount).toBe(2);
+    expect(propsOnly.propositionCount).toBe(1);
+
+    const billsOnly = await search.searchUnified(
+      'wildfire',
+      SearchResultType.BILL,
+      0,
+      10,
+    );
+    expect(billsOnly.rows.every((r) => r.kind === 'BILL')).toBe(true);
+    expect(billsOnly.matched).toBe(2);
+    expect(billsOnly.billCount).toBe(2);
+    expect(billsOnly.propositionCount).toBe(1);
+  });
+
+  it('caps hasMore at the deep-paging window so Next cannot lead to a false empty', async () => {
+    const page = await query.searchRegion('wildfire', undefined, 0, 10);
+    // 3 matches, all on page 1 — hasMore false regardless of the window.
+    expect(page.total).toBe(3);
+    expect(page.hasMore).toBe(false);
+    expect(page.billCount).toBe(2);
+    expect(page.propositionCount).toBe(1);
   });
 
   it('produces plain-text snippets with the fixed markers and no HTML', async () => {

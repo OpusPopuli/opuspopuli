@@ -29,27 +29,35 @@ type Row =
   | { type: "seeAll" };
 
 /**
- * Row styling. DIRECT rows carry a gold left rule so the "jump to bill"
- * shortcut reads as distinct from the full-text sections below it.
+ * Row styling.
+ *
+ * Every row carries a 3px left rule so nothing shifts as state changes:
+ * DIRECT rows show it in gold (an earned ≥3px accent, per the brand
+ * rules) to mark the "jump to bill" shortcut; the keyboard-active row
+ * shows it in ink.
+ *
+ * The active row's ink rule is load-bearing for accessibility: the old
+ * indicator was `bg-surface-alt` on `bg-surface`, which is 1.07:1 and
+ * therefore invisible (SC 1.4.11 needs 3:1 for a non-text indicator).
+ * Ink on either row background clears 12:1 (#1154 review).
  */
-function suggestionRowClass(
-  kind: SearchSuggestionKind,
-  active: boolean,
-  baseClass: string,
-): string {
-  if (kind !== "DIRECT") return baseClass;
-  const border = active ? "border-accent bg-surface-alt" : "border-transparent";
-  return `border-l-[3px] ${border}`;
+function rowRuleClass(kind: SearchSuggestionKind, active: boolean): string {
+  if (active) return "border-l-[3px] border-content bg-surface-alt";
+  if (kind === "DIRECT") return "border-l-[3px] border-accent";
+  return "border-l-[3px] border-transparent";
 }
 
 function rowHref(row: Row, query: string): string {
   if (row.type === "seeAll") {
     return `/region/search?q=${encodeURIComponent(query)}`;
   }
+  // Ids are server-supplied; encode them so a malformed one can only ever
+  // be a bad path segment, never structure.
   const { suggestion } = row;
+  const id = encodeURIComponent(suggestion.id);
   return suggestion.kind === "PROPOSITION"
-    ? `/region/propositions/${suggestion.id}`
-    : `/region/bills/${suggestion.id}`;
+    ? `/region/propositions/${id}`
+    : `/region/bills/${id}`;
 }
 
 /**
@@ -104,6 +112,14 @@ export function HeaderSearch() {
 
   const showList = open && rows.length > 0;
 
+  // Clamp the active row when the list shrinks under it. Suggestions
+  // arrive asynchronously, so a held ArrowDown can leave activeIndex
+  // past the end — Enter would then read rows[undefined] and throw, and
+  // aria-activedescendant would point at a nonexistent id (#1154 review).
+  useEffect(() => {
+    setActiveIndex((i) => (i >= rows.length ? -1 : i));
+  }, [rows.length]);
+
   // "/" focuses the field from anywhere that isn't already editable.
   useEffect(() => {
     function onSlash(e: KeyboardEvent) {
@@ -157,7 +173,7 @@ export function HeaderSearch() {
         setActiveIndex((i) => (i <= 0 ? rows.length - 1 : i - 1));
         break;
       case "Enter":
-        navigateTo(activeIndex >= 0 ? rows[activeIndex] : { type: "seeAll" });
+        navigateTo(rows[activeIndex] ?? { type: "seeAll" });
         break;
       default:
         break;
@@ -179,7 +195,11 @@ export function HeaderSearch() {
 
   function renderRow(row: Row, index: number) {
     const active = index === activeIndex;
-    const baseClass = active ? "bg-surface-alt" : "";
+    // Rows are NOT links, deliberately. Wrapping the content in an <a>
+    // would restore cmd/middle-click, but an interactive element inside
+    // role="option" is a nested-interactive axe violation (caught by
+    // region-search.a11y.test.tsx). The ARIA listbox pattern requires
+    // non-interactive options; the results page carries the real links.
     if (row.type === "seeAll") {
       return (
         <li
@@ -187,7 +207,7 @@ export function HeaderSearch() {
           id={optionId(index)}
           role="option"
           aria-selected={active}
-          className={`cursor-pointer border-t border-line px-4 py-2.5 text-sm text-content underline decoration-line underline-offset-2 ${baseClass}`}
+          className={`cursor-pointer border-t border-line px-4 py-2.5 text-sm text-content underline decoration-line underline-offset-2 ${active ? "bg-surface-alt" : ""}`}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => navigateTo(row)}
         >
@@ -202,7 +222,7 @@ export function HeaderSearch() {
         id={optionId(index)}
         role="option"
         aria-selected={active}
-        className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 ${suggestionRowClass(suggestion.kind, active, baseClass)}`}
+        className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 ${rowRuleClass(suggestion.kind, active)}`}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => navigateTo(row)}
       >
@@ -248,6 +268,7 @@ export function HeaderSearch() {
           }
           aria-autocomplete="list"
           aria-label={t("search.inputLabel")}
+          aria-describedby={`${listboxId}-hint`}
           placeholder={t("search.placeholder")}
           value={input}
           onChange={(e) => {
@@ -259,13 +280,18 @@ export function HeaderSearch() {
           onKeyDown={onKeyDown}
           className="min-w-0 flex-1 bg-transparent text-sm text-content outline-none placeholder:text-content-dim"
         />
+        {/* The glyph is decorative; the shortcut itself is announced via
+            aria-describedby so it isn't documented to sighted mouse users
+            only (a `title` is unreachable by keyboard). */}
         <kbd
           className="rounded border border-line bg-surface-alt px-1 font-mono text-[11px] text-content-dim"
-          title={t("search.shortcutHint")}
           aria-hidden="true"
         >
           /
         </kbd>
+        <span id={`${listboxId}-hint`} className="sr-only">
+          {t("search.shortcutHint")}
+        </span>
       </div>
 
       <ul
