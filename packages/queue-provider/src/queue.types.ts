@@ -29,6 +29,15 @@ export interface RegionSyncJobData {
    * `maxDocuments`), enabling an on-demand historical backfill.
    */
   resetWatermark?: boolean;
+  /**
+   * Boundary-refresh force flag. Set only by the `refreshBoundaries`
+   * mutation, which enqueues a `dataTypes: ["boundaries"]` job on this
+   * queue (OpusPopuli/opuspopuli#1122). Passed straight through to
+   * `BoundaryLoaderService.loadAll({ force })` — `true` re-fetches even
+   * when jurisdictions are already populated (redistricting / new TIGER
+   * vintage). Ignored for civic data-type syncs.
+   */
+  force?: boolean;
 }
 
 export interface RegionSyncJobResult {

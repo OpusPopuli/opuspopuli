@@ -6,7 +6,6 @@ import { RegionResolver } from './region.resolver';
 import { RegionDomainService } from './region.service';
 import { PipelineJobService } from './pipeline-job.service';
 import { QueueService } from '@opuspopuli/queue-provider';
-import { BoundaryLoaderService } from './boundary-loader.service';
 import { CountyThresholdQueryService } from './county-threshold-query.service';
 import { DataTypeGQL } from './models/region-info.model';
 import { SyncJobStatus, SyncTriggerSource } from './models/pipeline-job.model';
@@ -17,7 +16,6 @@ describe('RegionResolver', () => {
   let pipelineJobService: jest.Mocked<PipelineJobService>;
   let queueService: jest.Mocked<QueueService>;
   let countyThresholdQuery: jest.Mocked<CountyThresholdQueryService>;
-  let boundaryLoader: { loadAll: jest.Mock };
 
   const mockRegionInfo = {
     id: 'test-region',
@@ -175,18 +173,6 @@ describe('RegionResolver', () => {
         { provide: RegionDomainService, useValue: mockRegionService },
         { provide: PipelineJobService, useValue: mockPipelineJobService },
         { provide: QueueService, useValue: mockQueueService },
-        // Minimal stub — refreshBoundaries is exercised in
-        // boundary-loader.service.spec.ts; existing region.resolver.spec
-        // tests don't touch it, so a noop loadAll suffices.
-        {
-          provide: BoundaryLoaderService,
-          useValue: {
-            loadAll: jest.fn().mockResolvedValue({
-              ok: true,
-              counts: { existing: 0, upserted: 0, failed: 0, missingKey: 0 },
-            }),
-          },
-        },
         // Minimal stub — the derived fields are exercised in
         // county-threshold-query.service.spec.ts, and the resolver only
         // forwards to findAll().
@@ -202,7 +188,6 @@ describe('RegionResolver', () => {
     regionService = module.get(RegionDomainService);
     pipelineJobService = module.get(PipelineJobService);
     queueService = module.get(QueueService);
-    boundaryLoader = module.get(BoundaryLoaderService);
   });
 
   it('should be defined', () => {
@@ -1233,68 +1218,57 @@ describe('RegionResolver', () => {
     });
   });
 
-  describe('refreshBoundaries (#804)', () => {
-    it('returns the loader result mapped to the GraphQL model — happy path', async () => {
-      boundaryLoader.loadAll.mockResolvedValue({
-        ok: true,
-        counts: {
-          existing: 0,
-          upserted: 7234,
-          failed: 0,
-          missingKey: 12,
-        },
+  describe('refreshBoundaries (#1122 — async enqueue)', () => {
+    it('enqueues a boundaries job and returns it, without running the load in the request', async () => {
+      const result = await resolver.refreshBoundaries(undefined, {
+        req: { user: { id: 'admin-1' } },
       });
 
-      const result = await resolver.refreshBoundaries(undefined);
-
-      expect(boundaryLoader.loadAll).toHaveBeenCalledWith({ force: false });
-      expect(result).toEqual({
-        ok: true,
-        skipped: undefined,
-        counts: { existing: 0, upserted: 7234, failed: 0, missingKey: 12 },
-      });
+      expect(result.jobId).toBe('job-uuid-1');
+      expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+      // The load now runs in the region-worker off the request path.
+      expect(pipelineJobService.markRunning).not.toHaveBeenCalled();
+      expect(regionService.syncAll).not.toHaveBeenCalled();
     });
 
-    it('threads force=true through to loadAll', async () => {
-      boundaryLoader.loadAll.mockResolvedValue({
-        ok: true,
-        counts: { existing: 0, upserted: 10, failed: 0, missingKey: 0 },
+    it('enqueues dataTypes=[boundaries], MANUAL trigger, force=false by default', async () => {
+      await resolver.refreshBoundaries(undefined, {
+        req: { user: { id: 'admin-1' } },
       });
 
-      await resolver.refreshBoundaries(true);
-
-      expect(boundaryLoader.loadAll).toHaveBeenCalledWith({ force: true });
+      expect(queueService.enqueue).toHaveBeenCalledWith(
+        'region-sync',
+        expect.objectContaining({
+          triggerSource: 'manual',
+          dataTypes: ['boundaries'],
+          force: false,
+        }),
+        expect.objectContaining({ jobId: 'job-uuid-1' }),
+      );
+      const createCall = pipelineJobService.create.mock.calls[0][0];
+      expect(createCall.dataTypes).toEqual(['boundaries']);
+      expect(createCall.bullmqJobId).toBe(createCall.id);
+      expect(createCall.enqueuedBy).toBe('admin-1');
     });
 
-    it('passes the skipped reason through to the GraphQL enum', async () => {
-      // The service's literal string `'already-populated'` must map cleanly
-      // to BoundarySkipReason.ALREADY_POPULATED (same string value) — the
-      // resolver does a direct cast, so a typo in either layer would break
-      // this assertion.
-      boundaryLoader.loadAll.mockResolvedValue({
-        ok: true,
-        skipped: 'already-populated',
-        counts: { existing: 7000, upserted: 0, failed: 0, missingKey: 0 },
+    it('threads force=true onto the job data', async () => {
+      await resolver.refreshBoundaries(true, {
+        req: { user: { id: 'admin-1' } },
       });
 
-      const result = await resolver.refreshBoundaries(false);
-
-      expect(result.skipped).toBe('already-populated');
-      expect(result.counts.existing).toBe(7000);
+      expect(queueService.enqueue).toHaveBeenCalledWith(
+        'region-sync',
+        expect.objectContaining({ force: true, dataTypes: ['boundaries'] }),
+        expect.anything(),
+      );
     });
 
-    it('surfaces ok=false when the loader reports per-row failures', async () => {
-      // ok=false should reach the GraphQL response unchanged so an
-      // operator-facing alarm can wire to it.
-      boundaryLoader.loadAll.mockResolvedValue({
-        ok: false,
-        counts: { existing: 0, upserted: 9000, failed: 234, missingKey: 0 },
-      });
+    it('tolerates a missing user id on the context', async () => {
+      const result = await resolver.refreshBoundaries(false, undefined);
 
-      const result = await resolver.refreshBoundaries(true);
-
-      expect(result.ok).toBe(false);
-      expect(result.counts.failed).toBe(234);
+      expect(result.jobId).toBe('job-uuid-1');
+      const createCall = pipelineJobService.create.mock.calls[0][0];
+      expect(createCall.enqueuedBy).toBeUndefined();
     });
   });
 
