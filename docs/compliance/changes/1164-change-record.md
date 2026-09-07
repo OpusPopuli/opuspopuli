@@ -82,6 +82,35 @@ run at PR prep if policy requires.
   should do no worse; the verified `fieldMappings` are pinned in the source's
   hints either way.
 
+## Review outcome (2026-09-07)
+
+`/op-review` (correctness, security, regulated-data, migration, performance,
+test-coverage lenses) and `/security-review` both run. The security review
+returned **no findings at or above its confidence bar**. The code review
+returned three blockers, all fixed in `920948b1`: missing per-leaf error
+containment, composite templates passing unrecognised brace groups through as
+resolved, and a `:date` formatter that shifted the calendar day by host
+timezone. Hardening in the same commit: redirect-landing revalidation,
+own-property-only placeholder resolution, a `maxLeafPages` clamp, and the
+missing `down.sql`.
+
+One further **P0 raised by the reviews and fixed separately**:
+`propositions.external_id` was globally unique while county rows began sharing
+the table. Because every county letters its measures A, B, C…, county B's
+"Measure A" would have matched and overwritten county A's row — destroying
+civic data and mis-linking the petition scanner, whose join key this is.
+Uniqueness is now scoped to `(region_plugin_name, external_id)` (migration
+`20260907010000_proposition_jurisdiction_unique`), the sync upserts on the
+compound key, and an unnamed provider now fails before writing instead of
+mislabelling rows as statewide. Verified against the real database: two
+jurisdictions can hold `measure-a` simultaneously, a duplicate within one
+jurisdiction is rejected by the constraint, and a live re-sync reported
+`0 created / 12 updated` with row counts unchanged.
+
+**Accepted risk, not fixed:** `maxLeafPages` truncates in document order, so if
+a registrar ever stops listing newest-first the sync could follow historical
+elections without tripping the zero-match alarm. Judged acceptable for now.
+
 ## Defects found in adjacent code during verification
 
 Neither is caused by this change; both are pre-existing and warrant their own

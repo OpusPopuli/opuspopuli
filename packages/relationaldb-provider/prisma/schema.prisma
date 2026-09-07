@@ -1092,8 +1092,12 @@ model RepresentativeCommitteeAssignment {
 }
 
 model Proposition {
-  id         String  @id @default(uuid())
-  externalId String  @unique @map("external_id")
+  id String @id @default(uuid())
+
+  /// Unique WITHIN a jurisdiction, not globally (#1164). Every county letters
+  /// its measures A, B, C…, so a global unique made county B's "Measure A"
+  /// upsert silently overwrite county A's row. See @@unique below.
+  externalId String @map("external_id")
   title      String
   summary    String  @db.Text
   fullText   String? @map("full_text") @db.Text
@@ -1165,6 +1169,7 @@ model Proposition {
   legislativeActions      LegislativeAction[]
   relevanceCache          PropositionRelevanceCache[]
 
+  @@unique([regionPluginName, externalId])
   @@index([status])
   @@index([electionDate])
   @@index([lifecycleStageId])

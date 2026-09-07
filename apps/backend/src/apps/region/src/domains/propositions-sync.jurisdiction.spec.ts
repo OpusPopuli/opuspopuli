@@ -63,7 +63,7 @@ describe('PropositionsSyncService — regionPluginName stamp', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('stamps the county plugin name on create and update', async () => {
+  it('stamps the county plugin name and keys the upsert on the jurisdiction', async () => {
     const service = await build();
     const provider = {
       getName: () => 'california-sonoma',
@@ -74,10 +74,35 @@ describe('PropositionsSyncService — regionPluginName stamp', () => {
 
     expect(db.proposition.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
+        // Compound key — a county's "Measure A" must never match another
+        // jurisdiction's row and overwrite it (#1164).
+        where: {
+          regionPluginName_externalId: {
+            regionPluginName: 'california-sonoma',
+            externalId: measure.externalId,
+          },
+        },
         create: expect.objectContaining({
           regionPluginName: 'california-sonoma',
         }),
-        update: expect.objectContaining({
+      }),
+    );
+  });
+
+  it('scopes the created-vs-updated lookup to the jurisdiction', async () => {
+    const service = await build();
+    const provider = {
+      getName: () => 'california-sonoma',
+      fetchPropositions: jest.fn().mockResolvedValue([measure]),
+    };
+
+    await service.sync(provider as never, undefined, [], upsertByExternalId);
+
+    // Another county owning the same measure letter must not make this one
+    // report as an update.
+    expect(db.proposition.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
           regionPluginName: 'california-sonoma',
         }),
       }),
@@ -95,21 +120,27 @@ describe('PropositionsSyncService — regionPluginName stamp', () => {
 
     const args = db.proposition.upsert.mock.calls[0][0];
     expect(args.create.regionPluginName).toBe('california');
-    expect(args.update.regionPluginName).toBe('california');
+    expect(args.where.regionPluginName_externalId.regionPluginName).toBe(
+      'california',
+    );
+    // The update branch deliberately does NOT re-stamp: the compound key
+    // already pins the row's jurisdiction, so writing it again could only
+    // ever relabel a row that matched — which must be impossible.
+    expect(args.update).not.toHaveProperty('regionPluginName');
   });
 
-  it('omits the stamp when the provider cannot name itself (DB default applies)', async () => {
+  it('refuses to write when the provider cannot name itself', async () => {
     const service = await build();
     const provider = {
       fetchPropositions: jest.fn().mockResolvedValue([measure]),
     };
 
-    await service.sync(provider as never, undefined, [], upsertByExternalId);
-
-    const args = db.proposition.upsert.mock.calls[0][0];
-    // An anonymous provider must never overwrite a real jurisdiction label.
-    expect(args.update).not.toHaveProperty('regionPluginName');
-    expect(args.create).not.toHaveProperty('regionPluginName');
+    // The jurisdiction is half the upsert key, so an unnamed provider must
+    // fail before writing rather than mislabel rows as statewide.
+    await expect(
+      service.sync(provider as never, undefined, [], upsertByExternalId),
+    ).rejects.toThrow(/named region plugin/);
+    expect(db.proposition.upsert).not.toHaveBeenCalled();
   });
 
   it('scopes the stage backfill to the syncing plugin rows', async () => {
