@@ -114,11 +114,15 @@ export function HeaderSearch() {
 
   // Clamp the active row when the list shrinks under it. Suggestions
   // arrive asynchronously, so a held ArrowDown can leave activeIndex
-  // past the end — Enter would then read rows[undefined] and throw, and
+  // past the end — Enter would then read an undefined row and throw, and
   // aria-activedescendant would point at a nonexistent id (#1154 review).
-  useEffect(() => {
-    setActiveIndex((i) => (i >= rows.length ? -1 : i));
-  }, [rows.length]);
+  //
+  // Derived during render rather than synced in an effect: an effect
+  // that setStates cascades an extra render pass (and trips
+  // react-hooks/set-state-in-effect). `activeIndex` stays the raw
+  // keyboard cursor; everything downstream reads the clamped value.
+  const activeRow =
+    activeIndex >= 0 && activeIndex < rows.length ? activeIndex : -1;
 
   // "/" focuses the field from anywhere that isn't already editable.
   useEffect(() => {
@@ -173,7 +177,7 @@ export function HeaderSearch() {
         setActiveIndex((i) => (i <= 0 ? rows.length - 1 : i - 1));
         break;
       case "Enter":
-        navigateTo(rows[activeIndex] ?? { type: "seeAll" });
+        navigateTo(rows[activeRow] ?? { type: "seeAll" });
         break;
       default:
         break;
@@ -194,7 +198,7 @@ export function HeaderSearch() {
   }
 
   function renderRow(row: Row, index: number) {
-    const active = index === activeIndex;
+    const active = index === activeRow;
     // Rows are NOT links, deliberately. Wrapping the content in an <a>
     // would restore cmd/middle-click, but an interactive element inside
     // role="option" is a nested-interactive axe violation (caught by
@@ -264,7 +268,7 @@ export function HeaderSearch() {
           aria-expanded={showList}
           aria-controls={listboxId}
           aria-activedescendant={
-            showList && activeIndex >= 0 ? optionId(activeIndex) : undefined
+            showList && activeRow >= 0 ? optionId(activeRow) : undefined
           }
           aria-autocomplete="list"
           aria-label={t("search.inputLabel")}

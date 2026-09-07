@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@apollo/client/react";
@@ -146,41 +146,43 @@ function SearchPageInner() {
   const [input, setInput] = useState(urlQuery);
   const [page, setPage] = useState(0);
 
-  // The URL is the source of truth (shareable, back-button-safe).
+  // The URL is the source of truth (shareable, back-button-safe), and the
+  // sync runs BOTH ways.
   //
-  // Sync BOTH ways. Without the inbound direction, any external change to
-  // ?q — the header search on this very page, or the Back button — was
-  // silently reverted: this component does not remount on a same-route
-  // push, so stale local `input` won the next debounce tick and replaced
-  // the URL back. Tracking the last value we wrote keeps the two
-  // directions from fighting (#1154 review).
-  const lastWritten = useRef(urlQuery);
-
-  useEffect(() => {
-    if (urlQuery === lastWritten.current) return;
-    // Someone else changed the URL — adopt it.
-    lastWritten.current = urlQuery;
+  // Inbound: adopt an externally-changed ?q — the header search used from
+  // this very page, or the Back button. Without it the change was
+  // silently reverted, because this component does not remount on a
+  // same-route push, so stale local `input` won the next debounce tick
+  // and replaced the URL back (#1154 review).
+  //
+  // Done during render, not in an effect: React's documented "adjusting
+  // state when a prop changes" pattern re-renders before paint with no
+  // cascading effect pass (an effect here also trips
+  // react-hooks/set-state-in-effect).
+  const [syncedQuery, setSyncedQuery] = useState(urlQuery);
+  if (urlQuery !== syncedQuery) {
+    setSyncedQuery(urlQuery);
     setInput(urlQuery);
     setPage(0);
-  }, [urlQuery]);
+  }
 
+  // Outbound: typing debounces into the URL. Once the inbound sync above
+  // has run, `input` already equals `urlQuery` for external changes, so
+  // this no-ops rather than fighting them.
   useEffect(() => {
     const handle = setTimeout(() => {
       const trimmed = input.trim();
-      if (trimmed === lastWritten.current) return;
-      lastWritten.current = trimmed;
+      if (trimmed === urlQuery) return;
       const params = new URLSearchParams();
       if (trimmed) params.set("q", trimmed);
       if (urlType) params.set("type", urlType);
       const queryString = trimmed ? `?${params}` : "";
       router.replace(`/region/search${queryString}`);
-      setPage(0);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [input, urlType, router]);
+  }, [input, urlQuery, urlType, router]);
 
   function setType(type: TypeFilter) {
-    lastWritten.current = urlQuery;
     const params = new URLSearchParams();
     if (urlQuery) params.set("q", urlQuery);
     if (type) params.set("type", type);
