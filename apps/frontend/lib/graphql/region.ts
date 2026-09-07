@@ -1954,3 +1954,134 @@ export const GET_BILL_BRIEF = gql`
     }
   }
 `;
+
+// ============================================
+// Region search (#1153/#1154) — unified full-text search + typeahead.
+// Snippets carry plain-text highlight markers (SNIPPET_START/END below);
+// render them by SPLITTING into React text nodes (see SnippetText) —
+// the string is scraped source text and must never reach innerHTML.
+// ============================================
+
+/** ts_headline highlight sentinels — must match region-search.service.ts. */
+export const SNIPPET_START = "⟪";
+export const SNIPPET_END = "⟫";
+
+export type SearchResultType = "BILL" | "PROPOSITION";
+export type SearchSuggestionKind = "DIRECT" | "BILL" | "PROPOSITION";
+
+export interface SearchSuggestion {
+  id: string;
+  kind: SearchSuggestionKind;
+  label: string;
+  sublabel?: string | null;
+}
+
+export interface RegionSearchSuggestData {
+  regionSearchSuggest: SearchSuggestion[];
+}
+
+export interface RegionSearchSuggestVars {
+  query: string;
+  take?: number;
+}
+
+export const REGION_SEARCH_SUGGEST = gql`
+  query RegionSearchSuggest($query: String!, $take: Int) {
+    regionSearchSuggest(query: $query, take: $take) {
+      id
+      kind
+      label
+      sublabel
+    }
+  }
+`;
+
+export interface SearchBillResult {
+  __typename: "Bill";
+  id: string;
+  billNumber: string;
+  sessionYear: string;
+  measureTypeCode: string;
+  title: string;
+  authorName?: string | null;
+  status?: string | null;
+  lastAction?: string | null;
+  lastActionDate?: string | null;
+  isActive: boolean;
+  isDead: boolean;
+}
+
+export interface SearchPropositionResult {
+  __typename: "PropositionModel";
+  id: string;
+  externalId: string;
+  title: string;
+  status: string;
+  electionDate?: string | null;
+}
+
+export interface RegionSearchItem {
+  result: SearchBillResult | SearchPropositionResult;
+  snippet?: string | null;
+  rank: number;
+}
+
+export interface RegionSearchData {
+  regionSearch: {
+    items: RegionSearchItem[];
+    total: number;
+    hasMore: boolean;
+    billCount: number;
+    propositionCount: number;
+  };
+}
+
+export interface RegionSearchVars {
+  query: string;
+  type?: SearchResultType;
+  skip?: number;
+  take?: number;
+}
+
+export const REGION_SEARCH = gql`
+  query RegionSearch(
+    $query: String!
+    $type: SearchResultType
+    $skip: Int
+    $take: Int
+  ) {
+    regionSearch(query: $query, type: $type, skip: $skip, take: $take) {
+      items {
+        rank
+        snippet
+        result {
+          __typename
+          ... on Bill {
+            id
+            billNumber
+            sessionYear
+            measureTypeCode
+            title
+            authorName
+            status
+            lastAction
+            lastActionDate
+            isActive
+            isDead
+          }
+          ... on PropositionModel {
+            id
+            externalId
+            title
+            status
+            electionDate
+          }
+        }
+      }
+      total
+      hasMore
+      billCount
+      propositionCount
+    }
+  }
+`;

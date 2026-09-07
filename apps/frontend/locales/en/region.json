@@ -1,0 +1,46 @@
+{
+  "search": {
+    "title": "Search",
+    "subtitle": "Find bills and propositions across your region",
+    "placeholder": "Search bills…",
+    "inputLabel": "Search bills and propositions",
+    "pagePlaceholder": "Search bills and propositions…",
+    "clear": "Clear search",
+    "shortcutHint": "Press / to search",
+    "sections": {
+      "bills": "Bills",
+      "propositions": "Propositions"
+    },
+    "jumpToBill": "Jump to bill",
+    "seeAll": "See all results for “{{query}}”",
+    "hints": {
+      "navigate": "navigate",
+      "open": "open",
+      "dismiss": "dismiss"
+    },
+    "types": {
+      "all": "All · {{count}}",
+      "bills": "Bills · {{count}}",
+      "propositions": "Propositions · {{count}}"
+    },
+    "typeFilterLabel": "Result type",
+    "summary": "{{total}} results for “{{query}}” — {{bills}} bills · {{propositions}} propositions",
+    "summary_one": "{{total}} result for “{{query}}” — {{bills}} bills · {{propositions}} propositions",
+    "electionLabel": "Election: {{date}}",
+    "authorLabel": "Author: {{name}}",
+    "empty": {
+      "title": "No results for “{{query}}”",
+      "body": "Try fewer words, a different phrase, or a bill number like “AB 1236”.",
+      "languageNote": "Search works best in English for now."
+    },
+    "error": {
+      "title": "Search isn’t available right now",
+      "body": "Something went wrong running your search — this is not a “no results” answer. Please try again."
+    },
+    "prompt": "Type to search bills and propositions."
+  },
+  "lifecycle": {
+    "passed": "Passed",
+    "historical": "Historical"
+  }
+}

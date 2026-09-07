@@ -1,0 +1,361 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useQuery } from "@apollo/client/react";
+import { useTranslation } from "react-i18next";
+import {
+  REGION_SEARCH,
+  type RegionSearchData,
+  type RegionSearchItem,
+  type RegionSearchVars,
+  type SearchBillResult,
+  type SearchPropositionResult,
+  type SearchResultType,
+  type PropositionStatus,
+} from "@/lib/graphql/region";
+import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { Pagination } from "@/components/region/Pagination";
+import { LoadingSkeleton } from "@/components/region/ListStates";
+import { PropositionStatusBadge } from "@/components/region/PropositionStatusBadge";
+import { SnippetText } from "@/components/search/SnippetText";
+import { MEASURE_TYPE_STYLES } from "@/lib/bill-styles";
+import { formatDate } from "@/lib/format";
+
+const PAGE_SIZE = 10;
+const SEARCH_DEBOUNCE_MS = 150;
+
+type TypeFilter = SearchResultType | "";
+
+function TypeChip({ code }: { readonly code: string }) {
+  const cls = MEASURE_TYPE_STYLES[code] ?? "bg-surface-alt text-content-dim";
+  return (
+    <span
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}`}
+    >
+      {code}
+    </span>
+  );
+}
+
+function LifecycleChip({ bill }: { readonly bill: SearchBillResult }) {
+  const { t } = useTranslation("region");
+  if (bill.isActive) return null;
+  if (bill.isDead) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-warning-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-warning">
+        {t("lifecycle.historical")}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full bg-positive-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-positive">
+      {t("lifecycle.passed")}
+    </span>
+  );
+}
+
+function BillResultCard({
+  bill,
+  snippet,
+}: {
+  readonly bill: SearchBillResult;
+  readonly snippet?: string | null;
+}) {
+  const { t } = useTranslation("region");
+  return (
+    <Link
+      href={`/region/bills/${bill.id}`}
+      className="block rounded-lg border border-line bg-surface p-5"
+    >
+      <div className="mb-1 flex items-center gap-2">
+        <TypeChip code={bill.measureTypeCode} />
+        <span className="font-mono text-sm font-semibold text-content-dim">
+          {bill.billNumber}
+        </span>
+        <span className="text-xs text-content-dim">{bill.sessionYear}</span>
+        <LifecycleChip bill={bill} />
+      </div>
+      <h3 className="text-base font-semibold text-content line-clamp-2">
+        {bill.title}
+      </h3>
+      {bill.authorName && (
+        <p className="mt-1 text-sm text-content-dim">
+          {t("search.authorLabel", { name: bill.authorName })}
+        </p>
+      )}
+      {snippet && (
+        <p className="mt-2 text-sm text-content-dim line-clamp-2">
+          <SnippetText text={snippet} />
+        </p>
+      )}
+      {bill.lastAction && (
+        <div className="mt-3 flex items-baseline gap-2 text-xs text-content-dim">
+          <span className="whitespace-nowrap">
+            {bill.lastActionDate ? formatDate(bill.lastActionDate) : ""}
+          </span>
+          <span className="line-clamp-1">{bill.lastAction}</span>
+        </div>
+      )}
+    </Link>
+  );
+}
+
+function PropositionResultCard({
+  proposition,
+  snippet,
+}: {
+  readonly proposition: SearchPropositionResult;
+  readonly snippet?: string | null;
+}) {
+  const { t } = useTranslation("region");
+  return (
+    <Link
+      href={`/region/propositions/${proposition.id}`}
+      className="block rounded-lg border border-line bg-surface p-5"
+    >
+      <div className="mb-1 flex items-center gap-2">
+        <span className="inline-flex items-center rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-semibold text-content-dim">
+          PROP
+        </span>
+        <span className="font-mono text-sm font-semibold text-content-dim">
+          {proposition.externalId}
+        </span>
+        {proposition.electionDate && (
+          <span className="text-xs text-content-dim">
+            {t("search.electionLabel", {
+              date: formatDate(proposition.electionDate),
+            })}
+          </span>
+        )}
+        <PropositionStatusBadge
+          status={proposition.status as PropositionStatus}
+        />
+      </div>
+      <h3 className="text-base font-semibold text-content line-clamp-2">
+        {proposition.title}
+      </h3>
+      {snippet && (
+        <p className="mt-2 text-sm text-content-dim line-clamp-2">
+          <SnippetText text={snippet} />
+        </p>
+      )}
+    </Link>
+  );
+}
+
+function ResultCard({ item }: { readonly item: RegionSearchItem }) {
+  return item.result.__typename === "Bill" ? (
+    <BillResultCard bill={item.result} snippet={item.snippet} />
+  ) : (
+    <PropositionResultCard proposition={item.result} snippet={item.snippet} />
+  );
+}
+
+function TypeOption({
+  label,
+  selected,
+  onSelect,
+}: {
+  readonly label: string;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={`px-3 py-1.5 rounded-md font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+        selected
+          ? "bg-accent text-on-accent"
+          : "text-content-dim hover:bg-surface-alt"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function SearchPageInner() {
+  const { t, i18n } = useTranslation("region");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const urlQuery = searchParams.get("q") ?? "";
+  const urlType = (searchParams.get("type") ?? "") as TypeFilter;
+
+  const [input, setInput] = useState(urlQuery);
+  const [page, setPage] = useState(0);
+
+  // The URL is the source of truth (shareable, back-button-safe); typing
+  // debounces into router.replace so history isn't spammed per keystroke.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      const trimmed = input.trim();
+      if (trimmed === urlQuery) return;
+      const params = new URLSearchParams();
+      if (trimmed) params.set("q", trimmed);
+      if (urlType) params.set("type", urlType);
+      router.replace(`/region/search${trimmed ? `?${params}` : ""}`);
+      setPage(0);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [input, urlQuery, urlType, router]);
+
+  function setType(type: TypeFilter) {
+    const params = new URLSearchParams();
+    if (urlQuery) params.set("q", urlQuery);
+    if (type) params.set("type", type);
+    router.replace(`/region/search?${params}`);
+    setPage(0);
+  }
+
+  const { data, loading, error } = useQuery<RegionSearchData, RegionSearchVars>(
+    REGION_SEARCH,
+    {
+      variables: {
+        query: urlQuery,
+        ...(urlType && { type: urlType }),
+        skip: page * PAGE_SIZE,
+        take: PAGE_SIZE,
+      },
+      skip: !urlQuery,
+      fetchPolicy: "cache-and-network",
+    },
+  );
+
+  const result = data?.regionSearch;
+
+  const renderResults = () => {
+    if (!urlQuery) {
+      return <p className="text-content-dim">{t("search.prompt")}</p>;
+    }
+    if (error) {
+      // A failed search must say so — never render as "no results".
+      return (
+        <div
+          role="alert"
+          className="rounded-lg border border-danger-line bg-danger-surface p-6 text-center"
+        >
+          <p className="font-semibold text-danger">{t("search.error.title")}</p>
+          <p className="mt-1 text-sm text-danger">{t("search.error.body")}</p>
+        </div>
+      );
+    }
+    if (loading && !data) return <LoadingSkeleton />;
+    if (!result || result.items.length === 0) {
+      return (
+        <div className="rounded-lg border border-line bg-surface-alt p-8 text-center">
+          <p className="font-semibold text-content">
+            {t("search.empty.title", { query: urlQuery })}
+          </p>
+          <p className="mt-1 text-sm text-content-dim">
+            {t("search.empty.body")}
+          </p>
+          {i18n.language === "es" && (
+            <p className="mt-1 text-sm text-content-dim">
+              {t("search.empty.languageNote")}
+            </p>
+          )}
+        </div>
+      );
+    }
+    return (
+      <>
+        <p className="mb-5 text-sm text-content-dim" aria-live="polite">
+          {t("search.summary", {
+            count: result.total,
+            total: result.total,
+            query: urlQuery,
+            bills: result.billCount,
+            propositions: result.propositionCount,
+          })}
+        </p>
+        <div className="space-y-3">
+          {result.items.map((item) => (
+            <ResultCard
+              key={`${item.result.__typename}-${item.result.id}`}
+              item={item}
+            />
+          ))}
+        </div>
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={result.total}
+          hasMore={result.hasMore}
+          onPageChange={setPage}
+        />
+      </>
+    );
+  };
+
+  return (
+    <div className="mx-auto max-w-4xl px-8 py-12">
+      <Breadcrumb
+        segments={[
+          { label: "Region", href: "/region" },
+          { label: t("search.title") },
+        ]}
+      />
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-content">{t("search.title")}</h1>
+        <p className="mt-2 text-content-dim">{t("search.subtitle")}</p>
+      </div>
+
+      <label className="mb-6 block">
+        <span className="sr-only">{t("search.inputLabel")}</span>
+        <input
+          type="search"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder={t("search.pagePlaceholder")}
+          aria-label={t("search.inputLabel")}
+          className="w-full rounded-lg border border-line bg-surface px-4 py-2.5 text-content placeholder:text-content-dim focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+      </label>
+
+      {urlQuery && (
+        <div
+          role="radiogroup"
+          aria-label={t("search.typeFilterLabel")}
+          className="mb-4 inline-flex rounded-lg border border-line bg-surface p-0.5 text-sm"
+        >
+          <TypeOption
+            label={t("search.types.all", {
+              count: (result?.billCount ?? 0) + (result?.propositionCount ?? 0),
+            })}
+            selected={urlType === ""}
+            onSelect={() => setType("")}
+          />
+          <TypeOption
+            label={t("search.types.bills", { count: result?.billCount ?? 0 })}
+            selected={urlType === "BILL"}
+            onSelect={() => setType("BILL")}
+          />
+          <TypeOption
+            label={t("search.types.propositions", {
+              count: result?.propositionCount ?? 0,
+            })}
+            selected={urlType === "PROPOSITION"}
+            onSelect={() => setType("PROPOSITION")}
+          />
+        </div>
+      )}
+
+      {renderResults()}
+    </div>
+  );
+}
+
+export default function SearchPage() {
+  // useSearchParams requires a Suspense boundary in the App Router.
+  return (
+    <Suspense fallback={<LoadingSkeleton />}>
+      <SearchPageInner />
+    </Suspense>
+  );
+}

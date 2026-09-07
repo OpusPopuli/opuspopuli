@@ -7,6 +7,7 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Sunflower } from "@/components/brand";
 import { InstallAppButton } from "@/components/install/InstallAppButton";
+import { HeaderSearch } from "@/components/search/HeaderSearch";
 import { buttonVariants } from "@/components/ui/Button";
 
 export function Header() {
@@ -37,6 +38,7 @@ export function Header() {
     if (isAuthenticated && user) {
       return (
         <>
+          <HeaderSearch />
           <Link href="/me/briefing" className={navLinkClass}>
             Briefing
           </Link>
@@ -89,6 +91,13 @@ export function Header() {
     if (isAuthenticated && user) {
       return (
         <>
+          <Link
+            href="/region/search"
+            className={navLinkClass}
+            onClick={closeMenu}
+          >
+            Search
+          </Link>
           <Link
             href="/me/briefing"
             className={navLinkClass}

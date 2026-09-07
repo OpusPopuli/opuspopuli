@@ -10,6 +10,7 @@ import enCivics from "@/locales/en/civics.json";
 import enProfile from "@/locales/en/profile.json";
 import enBriefing from "@/locales/en/briefing.json";
 import enCommitments from "@/locales/en/commitments.json";
+import enRegion from "@/locales/en/region.json";
 import esCommon from "@/locales/es/common.json";
 import esSettings from "@/locales/es/settings.json";
 import esOnboarding from "@/locales/es/onboarding.json";
@@ -19,6 +20,7 @@ import esCivics from "@/locales/es/civics.json";
 import esProfile from "@/locales/es/profile.json";
 import esBriefing from "@/locales/es/briefing.json";
 import esCommitments from "@/locales/es/commitments.json";
+import esRegion from "@/locales/es/region.json";
 
 export const defaultNS = "common";
 export const supportedLanguages = ["en", "es"] as const;
@@ -35,6 +37,7 @@ export const resources = {
     profile: enProfile,
     briefing: enBriefing,
     commitments: enCommitments,
+    region: enRegion,
   },
   es: {
     common: esCommon,
@@ -46,6 +49,7 @@ export const resources = {
     profile: esProfile,
     briefing: esBriefing,
     commitments: esCommitments,
+    region: esRegion,
   },
 } as const;
 

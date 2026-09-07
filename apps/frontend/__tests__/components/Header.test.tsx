@@ -2,6 +2,13 @@ import { render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { Header } from "@/components/Header";
 
+// HeaderSearch needs the app router + Apollo; it has its own suites
+// (region-search.a11y.test.tsx, e2e/region-search.spec.ts). Header's
+// tests cover Header's own links, so stub the widget out.
+jest.mock("@/components/search/HeaderSearch", () => ({
+  HeaderSearch: () => <div data-testid="header-search-stub" />,
+}));
+
 // Mock auth context
 const mockLogout = jest.fn();
 
