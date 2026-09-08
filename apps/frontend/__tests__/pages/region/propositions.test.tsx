@@ -50,6 +50,7 @@ let mockQueryResult = {
 
 jest.mock("@apollo/client/react", () => ({
   useQuery: jest.fn(() => mockQueryResult),
+  __esModule: true,
 }));
 
 // Mock next/link
@@ -64,6 +65,14 @@ jest.mock("next/link", () => {
     return <a href={href}>{children}</a>;
   };
 });
+
+/** The status pill, not the identically-worded filter <option> (#1155). */
+function statusBadge(label: string) {
+  return screen.getByText(
+    (content, element) =>
+      content === label && element?.tagName.toLowerCase() === "span",
+  );
+}
 
 describe("PropositionsPage", () => {
   beforeEach(() => {
@@ -170,9 +179,11 @@ describe("PropositionsPage", () => {
     it("should render status badges", () => {
       render(<PropositionsPage />);
 
-      expect(screen.getByText("Pending")).toBeInTheDocument();
-      expect(screen.getByText("Passed")).toBeInTheDocument();
-      expect(screen.getByText("Failed")).toBeInTheDocument();
+      // Scoped to <span> badges: the status filter added in #1155 puts
+      // the same words in <option>s, so a bare getByText is ambiguous.
+      expect(statusBadge("Pending")).toBeInTheDocument();
+      expect(statusBadge("Passed")).toBeInTheDocument();
+      expect(statusBadge("Failed")).toBeInTheDocument();
     });
 
     it("should render election dates", () => {
@@ -267,13 +278,198 @@ describe("PropositionsPage", () => {
     it("should apply correct colors for different statuses", () => {
       render(<PropositionsPage />);
 
-      const pendingBadge = screen.getByText("Pending");
-      const passedBadge = screen.getByText("Passed");
-      const failedBadge = screen.getByText("Failed");
+      const pendingBadge = statusBadge("Pending");
+      const passedBadge = statusBadge("Passed");
+      const failedBadge = statusBadge("Failed");
 
       expect(pendingBadge).toHaveClass("bg-warning-surface", "text-warning");
       expect(passedBadge).toHaveClass("bg-positive-surface", "text-positive");
       expect(failedBadge).toHaveClass("bg-danger-surface", "text-danger");
+    });
+  });
+
+  describe("search and filters (#1155)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useQuery } = require("@apollo/client/react");
+
+    function lastVariables() {
+      const calls = (useQuery as jest.Mock).mock.calls;
+      return calls[calls.length - 1][1].variables;
+    }
+
+    it("does not send a search variable until the user types", () => {
+      render(<PropositionsPage />);
+      expect(lastVariables().search).toBeUndefined();
+    });
+
+    it("sends the typed query after the debounce", async () => {
+      const user = userEvent.setup();
+      render(<PropositionsPage />);
+
+      await user.type(
+        screen.getByRole("searchbox", { name: /search propositions/i }),
+        "wildfire",
+      );
+      await waitFor(() => expect(lastVariables().search).toBe("wildfire"));
+    });
+
+    it("sends status and election year, and composes them with search", async () => {
+      const user = userEvent.setup();
+      render(<PropositionsPage />);
+
+      await user.selectOptions(
+        screen.getByLabelText(/filter by status/i),
+        "PASSED",
+      );
+      await waitFor(() => expect(lastVariables().status).toBe("PASSED"));
+
+      await user.type(
+        screen.getByRole("searchbox", { name: /search propositions/i }),
+        "bond",
+      );
+      await waitFor(() => {
+        const v = lastVariables();
+        expect(v.search).toBe("bond");
+        expect(v.status).toBe("PASSED");
+      });
+    });
+
+    it("clear filters resets the query, the selects and the input box", async () => {
+      const user = userEvent.setup();
+      render(<PropositionsPage />);
+
+      const box = screen.getByRole("searchbox", {
+        name: /search propositions/i,
+      });
+      await user.type(box, "wildfire");
+      await user.selectOptions(
+        screen.getByLabelText(/filter by status/i),
+        "PASSED",
+      );
+      await waitFor(() => expect(lastVariables().search).toBe("wildfire"));
+
+      await user.click(screen.getByRole("button", { name: /clear filters/i }));
+
+      await waitFor(() => {
+        const v = lastVariables();
+        expect(v.search).toBeUndefined();
+        expect(v.status).toBeUndefined();
+      });
+      // The box owns its own state — clearing must reset it too, or the
+      // UI shows a query that is no longer being applied.
+      expect(
+        screen.getByRole("searchbox", { name: /search propositions/i }),
+      ).toHaveValue("");
+    });
+  });
+
+  describe("search UX regressions caught in review (#1155)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useQuery } = require("@apollo/client/react");
+
+    function lastVariables() {
+      const calls = (useQuery as jest.Mock).mock.calls;
+      return calls[calls.length - 1][1].variables;
+    }
+
+    function liveRegion() {
+      return document.querySelector('[aria-live="polite"]');
+    }
+
+    it("keeps the live region mounted so a change is actually announced", () => {
+      render(<PropositionsPage />);
+      // Present before any search — a region inserted with its content is
+      // not reliably announced.
+      expect(liveRegion()).toBeInTheDocument();
+    });
+
+    it("announces a zero-result search instead of saying nothing", async () => {
+      const user = userEvent.setup();
+      mockQueryResult = {
+        data: { propositions: { items: [], total: 0, hasMore: false } },
+        loading: false,
+        error: null,
+      };
+      render(<PropositionsPage />);
+
+      await user.type(
+        screen.getByRole("searchbox", { name: /search propositions/i }),
+        "zzzz",
+      );
+      await waitFor(() =>
+        expect(liveRegion()).toHaveTextContent(/No results for/),
+      );
+    });
+
+    it("says 'no results for your query', not 'no propositions', when a search misses", async () => {
+      const user = userEvent.setup();
+      mockQueryResult = {
+        data: { propositions: { items: [], total: 0, hasMore: false } },
+        loading: false,
+        error: null,
+      };
+      render(<PropositionsPage />);
+
+      await user.type(
+        screen.getByRole("searchbox", { name: /search propositions/i }),
+        "zzzz",
+      );
+      // Appears twice by design: the visible card and the live region.
+      await waitFor(() =>
+        expect(screen.getAllByText(/No results for/).length).toBe(2),
+      );
+      expect(screen.queryByText(/No propositions found/i)).toBeNull();
+    });
+
+    it("still shows the corpus-empty message when there is no search", () => {
+      mockQueryResult = {
+        data: { propositions: { items: [], total: 0, hasMore: false } },
+        loading: false,
+        error: null,
+      };
+      render(<PropositionsPage />);
+      expect(screen.getByText(/No propositions found/i)).toBeInTheDocument();
+    });
+
+    it("does not blank the list while refining a search", () => {
+      // loading with data present must keep rendering results rather than
+      // swapping in a skeleton on every debounce settle.
+      mockQueryResult = {
+        data: { propositions: mockPropositions },
+        loading: true,
+        error: null,
+      };
+      const { container } = render(<PropositionsPage />);
+      expect(container.querySelectorAll(".animate-pulse")).toHaveLength(0);
+      expect(
+        screen.getByText("Proposition 1: Test Measure"),
+      ).toBeInTheDocument();
+    });
+
+    it("resets pagination when a new search is applied", async () => {
+      const user = userEvent.setup();
+      // Next is disabled unless the server reports more pages.
+      mockQueryResult = {
+        data: {
+          propositions: { ...mockPropositions, total: 40, hasMore: true },
+        },
+        loading: false,
+        error: null,
+      };
+      render(<PropositionsPage />);
+
+      await user.click(screen.getByRole("button", { name: "Next" }));
+      await waitFor(() => expect(lastVariables().skip).toBe(10));
+
+      await user.type(
+        screen.getByRole("searchbox", { name: /search propositions/i }),
+        "wildfire",
+      );
+      await waitFor(() => {
+        const v = lastVariables();
+        expect(v.search).toBe("wildfire");
+        expect(v.skip).toBe(0);
+      });
     });
   });
 });

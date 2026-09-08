@@ -556,8 +556,15 @@ test.describe("Propositions Page", () => {
   test("should display status badges", async ({ page }) => {
     await page.goto("/region/propositions");
 
-    await expect(page.getByText("Pending", { exact: true })).toBeVisible();
-    await expect(page.getByText("Passed", { exact: true })).toBeVisible();
+    // Scoped to the card badges: the status filter added in #1155 puts the
+    // same words in <option>s, so a bare getByText matches both.
+    const cards = page.locator('a[href^="/region/propositions/"]');
+    await expect(
+      cards.getByText("Pending", { exact: true }).first(),
+    ).toBeVisible();
+    await expect(
+      cards.getByText("Passed", { exact: true }).first(),
+    ).toBeVisible();
   });
 
   test("should display pagination info", async ({ page }) => {

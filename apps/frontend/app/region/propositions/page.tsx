@@ -1,16 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
+import { useTranslation } from "react-i18next";
 import {
   GET_PROPOSITIONS,
   PropositionsData,
+  PropositionsVars,
   Proposition,
+  type PropositionStatus,
 } from "@/lib/graphql/region";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
 import { PropositionStatusBadge } from "@/components/region/PropositionStatusBadge";
 import { Pagination } from "@/components/region/Pagination";
+import { ListSearchInput } from "@/components/region/ListSearchInput";
+import { NoSearchResults } from "@/components/region/NoSearchResults";
+import { SearchEverythingHint } from "@/components/region/SearchEverythingHint";
 import {
   LoadingSkeleton,
   ErrorState,
@@ -86,20 +92,70 @@ function PropositionCard({
   );
 }
 
+const STATUS_FILTERS: readonly PropositionStatus[] = [
+  "PENDING",
+  "PASSED",
+  "FAILED",
+  "WITHDRAWN",
+];
+
 export default function PropositionsPage() {
+  const { t } = useTranslation("region");
   const [page, setPage] = useState(0);
-  const { data, loading, error } = useQuery<PropositionsData>(
+  const [search, setSearch] = useState("");
+  const [searchKey, setSearchKey] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [status, setStatus] = useState<PropositionStatus | "">("");
+
+  const variables: PropositionsVars = {
+    skip: page * PAGE_SIZE,
+    take: PAGE_SIZE,
+    ...(search && { search }),
+    ...(status && { status }),
+  };
+
+  const { data, loading, error } = useQuery<PropositionsData, PropositionsVars>(
     GET_PROPOSITIONS,
-    {
-      variables: { skip: page * PAGE_SIZE, take: PAGE_SIZE },
-    },
+    { variables },
   );
 
+  const hasFilters = !!(search || status);
+
+  function clearAll() {
+    setSearch("");
+    setSearchKey((k) => k + 1);
+    setStatus("");
+    setPage(0);
+    // The remount above would otherwise drop focus to <body>; the search
+    // box is also the most useful place to land.
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  }
+
+  // Announced on change, covering the empty case too — a search that
+  // returns nothing previously said nothing.
+  const announcement = (() => {
+    if (loading || !data) return "";
+    if (!search) return "";
+    return data.propositions.total === 0
+      ? t("search.empty.title", { query: search })
+      : t("search.matchCount", {
+          count: data.propositions.total,
+          query: search,
+        });
+  })();
+
   const renderContent = () => {
-    if (loading) return <LoadingSkeleton />;
+    if (loading && !data) return <LoadingSkeleton />;
     if (error) return <ErrorState entity="propositions" />;
-    if (data?.propositions.items.length === 0)
-      return <EmptyState entity="propositions" />;
+    if (data?.propositions.items.length === 0) {
+      // "No propositions found" is false when the corpus is fine and the
+      // query simply matched nothing.
+      return search ? (
+        <NoSearchResults query={search} />
+      ) : (
+        <EmptyState entity="propositions" />
+      );
+    }
 
     return (
       <>
@@ -133,6 +189,70 @@ export default function PropositionsPage() {
           Ballot measures and initiatives for your region
         </p>
       </div>
+
+      <div className="mb-3">
+        <ListSearchInput
+          key={searchKey}
+          inputRef={searchInputRef}
+          label={t("search.propositionsInputLabel")}
+          placeholder={t("search.propositionsPlaceholder")}
+          onSearch={(value) => {
+            if (value === search) return;
+            setSearch(value);
+            setPage(0);
+          }}
+        />
+      </div>
+
+      <SearchEverythingHint />
+
+      <div className="mb-6 flex flex-wrap gap-3">
+        <select
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value as PropositionStatus | "");
+            setPage(0);
+          }}
+          className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim focus:outline-none focus:ring-2 focus:ring-accent"
+          aria-label={t("search.statusFilterLabel")}
+        >
+          <option value="">{t("search.allStatuses")}</option>
+          {STATUS_FILTERS.map((s) => (
+            <option key={s} value={s}>
+              {t(`propositionStatus.${s}`)}
+            </option>
+          ))}
+        </select>
+
+        {/* Mounted-but-disabled rather than conditional: clicking it
+            unmounts the condition, which would destroy the focused
+            element mid-interaction. */}
+        <button
+          type="button"
+          onClick={clearAll}
+          disabled={!hasFilters}
+          className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim hover:bg-surface-alt disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {t("search.clearFilters")}
+        </button>
+      </div>
+
+      {search && data && !loading && (
+        <p className="mb-3 text-sm text-content-dim">
+          {t("search.matchCount", {
+            count: data.propositions.total,
+            query: search,
+          })}
+        </p>
+      )}
+
+      {/* Mounted unconditionally so assistive tech is already observing it
+          when the text changes — a live region inserted together with its
+          content is not reliably announced (the lesson from #1154). */}
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
+
       {renderContent()}
     </div>
   );

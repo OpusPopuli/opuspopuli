@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
+import { useTranslation } from "react-i18next";
 import {
   GET_BILLS,
   BillLifecycle,
@@ -19,6 +20,9 @@ import {
   EmptyState,
 } from "@/components/region/ListStates";
 import { BillCardHeader } from "@/components/region/BillCardHeader";
+import { ListSearchInput } from "@/components/region/ListSearchInput";
+import { NoSearchResults } from "@/components/region/NoSearchResults";
+import { SearchEverythingHint } from "@/components/region/SearchEverythingHint";
 import { useCivics } from "@/components/civics/CivicsContext";
 import { formatDate } from "@/lib/format";
 
@@ -121,11 +125,15 @@ export default function BillsPage() {
   const [lifecycle, setLifecycle] = useState<BillLifecycle>(
     BillLifecycle.ACTIVE,
   );
+  const [search, setSearch] = useState("");
+  const [searchKey, setSearchKey] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Honour deep-links from representative and committee detail pages
   const authorId = searchParams.get("authorId") ?? undefined;
   const committeeId = searchParams.get("committeeId") ?? undefined;
 
+  const { t } = useTranslation("region");
   const { civics } = useCivics();
   const measureTypes = civics?.measureTypes ?? [];
 
@@ -138,6 +146,7 @@ export default function BillsPage() {
     ...(filters.sessionYear && { sessionYear: filters.sessionYear }),
     ...(authorId && { authorId }),
     ...(committeeId && { committeeId }),
+    ...(search && { search }),
     lifecycle,
   };
 
@@ -156,6 +165,22 @@ export default function BillsPage() {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setPage(0);
   }
+
+  const searchBar = (
+    <div className="mb-3">
+      <ListSearchInput
+        key={searchKey}
+        inputRef={searchInputRef}
+        label={t("search.billsInputLabel")}
+        placeholder={t("search.billsPlaceholder")}
+        onSearch={(value) => {
+          if (value === search) return;
+          setSearch(value);
+          setPage(0);
+        }}
+      />
+    </div>
+  );
 
   const filterBar = (
     <div className="flex flex-wrap gap-3 mb-6">
@@ -187,18 +212,23 @@ export default function BillsPage() {
         ))}
       </select>
 
-      {(filters.measureTypeCode || filters.sessionYear) && (
-        <button
-          type="button"
-          onClick={() => {
-            setFilters({ measureTypeCode: "", sessionYear: "" });
-            setPage(0);
-          }}
-          className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim hover:bg-surface-alt"
-        >
-          Clear filters
-        </button>
-      )}
+      {/* Mounted-but-disabled rather than conditional: clicking it
+          unmounts the condition, which would destroy the focused element
+          mid-interaction. */}
+      <button
+        type="button"
+        disabled={!filters.measureTypeCode && !filters.sessionYear && !search}
+        onClick={() => {
+          setFilters({ measureTypeCode: "", sessionYear: "" });
+          setSearch("");
+          setSearchKey((k) => k + 1);
+          setPage(0);
+          requestAnimationFrame(() => searchInputRef.current?.focus());
+        }}
+        className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content-dim hover:bg-surface-alt disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {t("search.clearFilters")}
+      </button>
 
       <div
         role="radiogroup"
@@ -227,10 +257,26 @@ export default function BillsPage() {
     </div>
   );
 
+  // Announced on change, covering the empty case too (#1154 lesson).
+  const announcement = (() => {
+    if (loading || !data || !search) return "";
+    return data.bills.total === 0
+      ? t("search.empty.title", { query: search })
+      : t("search.matchCount", { count: data.bills.total, query: search });
+  })();
+
   const renderContent = () => {
     if (loading && !data) return <LoadingSkeleton />;
     if (error) return <ErrorState entity="bills" />;
-    if (data?.bills.items.length === 0) return <EmptyState entity="bills" />;
+    if (data?.bills.items.length === 0) {
+      // "No bills found" is false when the corpus is fine and the query
+      // simply matched nothing.
+      return search ? (
+        <NoSearchResults query={search} />
+      ) : (
+        <EmptyState entity="bills" />
+      );
+    }
 
     return (
       <>
@@ -261,7 +307,20 @@ export default function BillsPage() {
           Legislative bills moving through your region&apos;s legislature
         </p>
       </div>
+      {searchBar}
+      <SearchEverythingHint />
       {filterBar}
+      {search && data && !loading && (
+        <p className="mb-3 text-sm text-content-dim">
+          {t("search.matchCount", { count: data.bills.total, query: search })}
+        </p>
+      )}
+
+      {/* Mounted unconditionally — a live region inserted together with
+          its content is not reliably announced (#1154). */}
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
       {renderContent()}
     </div>
   );
