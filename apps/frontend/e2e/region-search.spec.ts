@@ -159,11 +159,8 @@ test.describe("Region search (#1154)", () => {
     await mockSearchGraphQL(page);
     await page.goto("/region/search?q=wildfire");
 
-    // The same summary exists in a visually-hidden live region, so scope
-    // to the visible copy.
-    await expect(
-      page.getByText(/2 results for/).and(page.locator("[aria-hidden=true]")),
-    ).toBeVisible();
+    // Also present in the sr-only live region, so take the visible copy.
+    await expect(page.getByText(/2 results for/).first()).toBeVisible();
     await expect(page.getByText("AB 1236")).toBeVisible();
     await expect(page.getByText("Wildfire Response Bond Act")).toBeVisible();
     // Snippet highlight renders as a real <mark>, not literal sentinels.
@@ -323,9 +320,7 @@ test.describe("Region search — review regressions (#1154)", () => {
     // one sentence ("1 results — 40 bills · 5 propositions") contradicts
     // itself, so the breakdown is dropped when a filter is active.
     await expect(page.getByRole("radio", { name: /Bills · 40/ })).toBeVisible();
-    const summary = page
-      .getByText(/results? for/)
-      .and(page.locator("[aria-hidden=true]"));
+    const summary = page.getByText(/results? for/).first();
     await expect(summary).toBeVisible();
     await expect(summary).not.toContainText("propositions");
   });

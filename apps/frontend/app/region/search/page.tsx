@@ -273,11 +273,12 @@ function SearchPageInner() {
     }
     return (
       <>
-        {/* aria-hidden: the same text is announced by the persistent
-            live region below, and AT should hear it once. */}
-        <p aria-hidden="true" className="mb-5 text-sm text-content-dim">
-          {summaryText}
-        </p>
+        {/* Deliberately NOT aria-hidden. The live region below announces
+            changes; this copy stays in the accessibility tree so someone
+            browsing the page can still read the count. Hiding it traded
+            one duplicate announcement for making the summary
+            unreachable, which is the worse deal. */}
+        <p className="mb-5 text-sm text-content-dim">{summaryText}</p>
         <div className="space-y-3">
           {result.items.map((item) => (
             <ResultCard
