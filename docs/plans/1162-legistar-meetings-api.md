@@ -44,8 +44,22 @@ Field coverage maps almost 1:1 onto the `Meeting` domain type:
 | `EventDate` + `EventTime` | `scheduledAt` | **two fields** — `2026-09-03T00:00:00` + `2:45 PM` |
 | `EventLocation` | `location` | 100% populated |
 | `EventAgendaFile` | `agendaUrl` | absolute URL; 32/40 on recent events |
-| `EventMinutesFile` | `minutesUrl` | 0/40 recent, 16/40 historical — minutes publish later, so sparseness is real |
-| `EventInSiteURL` | `sourceUrl` | meeting detail page |
+| `EventMinutesFile` | (not persisted) | 0/40 recent, 16/40 historical — minutes publish later, so sparseness is real |
+| `EventInSiteURL` | (not persisted) | meeting detail page; `MeetingSchema` has no `sourceUrl` |
+
+**Not persisted, found in review:** the meetings upsert
+(`meetings-sync.service.ts`) writes only `title, body, scheduledAt, location,
+agendaUrl, videoUrl`. Mapping `EventMinutesFile` or `EventInSiteURL` would be
+dead config, so both were dropped. Legistar publishes minutes URLs the platform
+currently discards for `Meeting` — worth a follow-up, out of scope here.
+
+**Timezone (blocker found in review):** `EventDate`/`EventTime` are naive local
+wall-clock. Containers run UTC (no `TZ` in any compose file), so
+`new Date("2026-09-03 2:45 PM")` resolves to 14:45 UTC and every Sonoma meeting
+displays 7 hours early. The composite therefore carries an explicit
+`timezone: "America/Los_Angeles"`, and `zonedWallClockToISO` converts
+wall-clock → instant DST-aware. Verified identical output under UTC, Pacific,
+Berlin and Tokyo hosts.
 
 **506 events versus 4 scraped rows**, deterministic, no LLM in the path, and it
 generalizes: 13 county configs already point at `*.legistar.com`.

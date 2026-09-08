@@ -16,7 +16,10 @@ import type {
   ExtractionResult,
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
-import { resolveCompositeTemplate } from "../extraction/composite-template.js";
+import {
+  resolveCompositeTemplate,
+  zonedWallClockToISO,
+} from "../extraction/composite-template.js";
 import {
   ExecutionTrackerService,
   type ExecutionSession,
@@ -90,7 +93,7 @@ export class ApiIngestHandler {
             async (rawPageItems, pageIndex) => {
               // Apply per-page transformations before domain mapping.
               for (const item of rawPageItems) {
-                this.applyFieldTransforms(item, api);
+                this.applyFieldTransforms(item, api, warnings);
               }
               if (sourceSystem) {
                 for (const item of rawPageItems) {
@@ -159,7 +162,7 @@ export class ApiIngestHandler {
       );
 
       for (const item of allItems) {
-        this.applyFieldTransforms(item, api);
+        this.applyFieldTransforms(item, api, warnings);
       }
 
       if (sourceSystem) {
@@ -221,7 +224,21 @@ export class ApiIngestHandler {
     let cursorParams: Record<string, string> | undefined;
     // Per-source override: an archive larger than limit × 10 (Legistar's ~500
     // events) would otherwise be truncated at the default cap (#1162).
-    const maxPages = api.pagination?.maxPages ?? MAX_PAGES;
+    //
+    // Clamped rather than trusted, mirroring linkDiscovery's maxLeafPages: a
+    // NaN or zero here makes `page < maxPages` false immediately, so the loop
+    // never runs, no warning fires, and the source reports zero items with no
+    // diagnostic — the silent empty sync these caps exist to prevent.
+    const configured = api.pagination?.maxPages ?? MAX_PAGES;
+    const maxPages =
+      Number.isFinite(configured) && configured >= 1
+        ? Math.floor(configured)
+        : MAX_PAGES;
+    if (maxPages !== configured) {
+      const message = `Invalid pagination.maxPages (${configured}); using ${maxPages}`;
+      this.logger.warn(message);
+      warnings.push(message);
+    }
 
     while (page < maxPages) {
       const { items, body } = await this.fetchPage(
@@ -479,12 +496,13 @@ export class ApiIngestHandler {
   private applyFieldTransforms(
     record: Record<string, unknown>,
     api: ApiSourceConfig,
+    warnings: string[],
   ): void {
     if (api.fieldMappings) {
       this.remapFields(record, api.fieldMappings);
     }
     if (api.compositeFields) {
-      this.applyCompositeFields(record, api.compositeFields);
+      this.applyCompositeFields(record, api.compositeFields, warnings);
     }
   }
 
@@ -498,19 +516,60 @@ export class ApiIngestHandler {
    */
   private applyCompositeFields(
     record: Record<string, unknown>,
-    compositeFields: Record<string, string>,
+    compositeFields: NonNullable<ApiSourceConfig["compositeFields"]>,
+    warnings: string[],
   ): void {
-    for (const [targetField, template] of Object.entries(compositeFields)) {
+    for (const [targetField, config] of Object.entries(compositeFields)) {
+      const { template, timezone } =
+        typeof config === "string"
+          ? { template: config, timezone: undefined }
+          : config;
+
       const { value, missing } = resolveCompositeTemplate(template, record);
       if (value === undefined) {
-        // Leave the field absent rather than half-built: downstream Zod
-        // reports a clean "required" miss instead of accepting a broken value.
-        this.logger.debug(
-          `Composite field "${targetField}" unresolved — missing: ${missing.join(", ")}`,
+        // Delete rather than leave: a stale value from fieldMappings under the
+        // same key would otherwise survive and quietly defeat the
+        // all-or-nothing rule this field's contract promises.
+        delete record[targetField];
+        this.recordCompositeMiss(targetField, missing, warnings);
+        continue;
+      }
+
+      if (!timezone) {
+        record[targetField] = value;
+        continue;
+      }
+
+      const instant = zonedWallClockToISO(value, timezone);
+      if (instant === undefined) {
+        delete record[targetField];
+        this.recordCompositeMiss(
+          targetField,
+          [`unparseable in ${timezone}: "${value}"`],
+          warnings,
         );
         continue;
       }
-      record[targetField] = value;
+      record[targetField] = instant;
+    }
+  }
+
+  /**
+   * Surface an unresolved composite as a counted warning, not just a debug
+   * line. The HTML path reports these through the #966 drift diagnostics; an
+   * API composite that quietly stops resolving — because the upstream renamed
+   * a field — should be equally visible. Deduped so one broken template
+   * doesn't emit a warning per record across a 500-row sync.
+   */
+  private recordCompositeMiss(
+    targetField: string,
+    missing: string[],
+    warnings: string[],
+  ): void {
+    const message = `Composite field "${targetField}" unresolved — missing: ${missing.join(", ")}`;
+    if (!warnings.includes(message)) {
+      warnings.push(message);
+      this.logger.warn(message);
     }
   }
 

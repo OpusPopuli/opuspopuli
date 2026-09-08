@@ -784,14 +784,41 @@ export interface ApiSourceConfig {
    * `composite` method (#1164), and is all-or-nothing for the same reason:
    * a missing placeholder yields no value rather than a half-built one.
    *
-   *   { scheduledAt: "{EventDate:date} {EventTime}" }
-   *   → "2026-09-03 2:45 PM"
+   *   { externalId: "sonoma-legistar-{EventId}" }
    *
    * Exists because APIs routinely split a single domain value across two
    * response fields — a meeting's date and time — which a flat key rename
    * cannot recombine (#1162).
+   *
+   * The object form adds `timezone`: the built string is read as wall-clock
+   * time in that IANA zone and emitted as an ISO instant. Required whenever
+   * the API publishes local time with no offset, because `new Date()` would
+   * otherwise resolve it in the SERVER's zone — our containers run UTC, so a
+   * 2:45 PM Pacific meeting would land 7 hours early.
+   *
+   *   { scheduledAt: { template: "{EventDate:date} {EventTime}",
+   *                    timezone: "America/Los_Angeles" } }
+   *   → "2026-09-03T21:45:00.000Z"
+   *
+   * Fields are resolved in declaration order, so a later template may
+   * reference an earlier one. Reordering keys changes behaviour.
    */
-  compositeFields?: Record<string, string>;
+  compositeFields?: Record<string, string | CompositeFieldConfig>;
+}
+
+/**
+ * Object form of a `compositeFields` entry, for templates that need more than
+ * the template string itself.
+ */
+export interface CompositeFieldConfig {
+  /** `{field}` template, same syntax as the string form. */
+  template: string;
+  /**
+   * IANA zone the built string should be read as wall-clock time in
+   * (e.g. "America/Los_Angeles"). The result is an ISO-8601 instant.
+   * Omit for values that are not timestamps.
+   */
+  timezone?: string;
 }
 
 /**

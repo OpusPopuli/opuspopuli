@@ -619,8 +619,93 @@ describe("ApiIngestHandler", () => {
 
       const item = result.items[0] as Record<string, unknown>;
       expect(item.scheduledAt).toBe("2026-09-03 2:45 PM");
-      // fieldMappings ran first, so templates see post-rename names.
-      expect(item.externalId).toBe(1598);
+    });
+
+    it("resolves templates against POST-rename field names", async () => {
+      // Ordering is load-bearing: the real Sonoma config builds
+      // title from {body}, which only exists after EventBodyName is renamed.
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse([
+          {
+            EventBodyName: "Board of Supervisors",
+            EventDate: "2026-09-03T00:00:00",
+          },
+        ] as never),
+      );
+
+      const result = await handler.execute(
+        createSource({
+          api: {
+            resultsPath: "$",
+            fieldMappings: { EventBodyName: "body" },
+            compositeFields: { title: "{body} — {EventDate:date}" },
+          },
+        }),
+        "california-sonoma",
+      );
+
+      expect((result.items[0] as Record<string, unknown>).title).toBe(
+        "Board of Supervisors — 2026-09-03",
+      );
+    });
+
+    it("reads a naive timestamp in the configured zone, not the server's", async () => {
+      // Containers run UTC. Without the zone, "2:45 PM" becomes 14:45Z and
+      // every Sonoma meeting displays 7 hours early.
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse([
+          { EventDate: "2026-09-03T00:00:00", EventTime: "2:45 PM" },
+        ] as never),
+      );
+
+      const result = await handler.execute(
+        createSource({
+          api: {
+            resultsPath: "$",
+            compositeFields: {
+              scheduledAt: {
+                template: "{EventDate:date} {EventTime}",
+                timezone: "America/Los_Angeles",
+              },
+            },
+          },
+        }),
+        "california-sonoma",
+      );
+
+      // 2:45 PM PDT === 21:45 UTC, whatever zone this test runs in.
+      expect((result.items[0] as Record<string, unknown>).scheduledAt).toBe(
+        "2026-09-03T21:45:00.000Z",
+      );
+    });
+
+    it("deletes a stale value when the composite fails", async () => {
+      // A fallback rename under the same key must not survive a failed
+      // composite — that would smuggle through the half-built value the
+      // all-or-nothing rule exists to reject.
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse([
+          { EventDate: "2026-09-03T00:00:00", Fallback: "stale-value" },
+        ] as never),
+      );
+
+      const result = await handler.execute(
+        createSource({
+          api: {
+            resultsPath: "$",
+            fieldMappings: { Fallback: "scheduledAt" },
+            compositeFields: { scheduledAt: "{EventDate:date} {EventTime}" },
+          },
+        }),
+        "california-sonoma",
+      );
+
+      expect(result.items[0]).not.toHaveProperty("scheduledAt");
+      expect(
+        result.warnings.some((w) =>
+          w.includes('Composite field "scheduledAt"'),
+        ),
+      ).toBe(true);
     });
 
     it("omits the field when a referenced field is missing", async () => {
