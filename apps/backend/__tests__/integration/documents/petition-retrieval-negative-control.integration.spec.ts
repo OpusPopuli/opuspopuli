@@ -167,7 +167,10 @@ describe('Petition retrieval negative control (real DB)', () => {
 
     // And the seeded row still holds exactly that string.
     const db = await getDbService();
-    const row = await db.proposition.findUnique({
+    // findFirst, not findUnique: propositions are unique per jurisdiction
+    // (#1164), and this corpus is seeded without one — the jurisdiction is
+    // incidental to what this test asserts.
+    const row = await db.proposition.findFirst({
       where: { externalId: CORPUS[0].externalId },
       select: { title: true, summary: true },
     });
