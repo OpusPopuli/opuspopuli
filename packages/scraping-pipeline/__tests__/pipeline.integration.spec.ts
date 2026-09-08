@@ -13,6 +13,7 @@ import { ManifestExtractorService } from "../src/extraction/manifest-extractor.s
 import { DomainMapperService } from "../src/mapping/domain-mapper.service";
 import { SelfHealingService } from "../src/healing/self-healing.service";
 import { BulkDownloadHandler } from "../src/handlers/bulk-download.handler";
+import { LinkDiscoveryService } from "../src/crawling/link-discovery.service";
 import { ApiIngestHandler } from "../src/handlers/api-ingest.handler";
 import type { StructuralAnalyzerService } from "../src/analysis/structural-analyzer.service";
 import type { ManifestStoreService } from "../src/manifest/manifest-store.service";
@@ -185,6 +186,7 @@ describe("Pipeline Integration Tests", () => {
       {} as any,
       {} as any,
       { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
+      new LinkDiscoveryService(mockExtraction),
       null,
     );
   });

@@ -1092,8 +1092,12 @@ model RepresentativeCommitteeAssignment {
 }
 
 model Proposition {
-  id         String  @id @default(uuid())
-  externalId String  @unique @map("external_id")
+  id String @id @default(uuid())
+
+  /// Unique WITHIN a jurisdiction, not globally (#1164). Every county letters
+  /// its measures A, B, C…, so a global unique made county B's "Measure A"
+  /// upsert silently overwrite county A's row. See @@unique below.
+  externalId String @map("external_id")
   title      String
   summary    String  @db.Text
   fullText   String? @map("full_text") @db.Text
@@ -1148,6 +1152,12 @@ model Proposition {
   /// patterns yet. Powers the lifecycle progress bar (#679).
   lifecycleStageId String? @map("lifecycle_stage_id") @db.VarChar(100)
 
+  /// Which region plugin ingested this row — 'california' for statewide
+  /// measures, 'california-sonoma' for county registrar measures (#1164,
+  /// minimal slice of #1139). Matches DeclarativeRegionPlugin.getName().
+  /// Default doubles as the backfill: every pre-#1164 row is statewide.
+  regionPluginName String @default("california") @map("region_plugin_name")
+
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
@@ -1159,9 +1169,11 @@ model Proposition {
   legislativeActions      LegislativeAction[]
   relevanceCache          PropositionRelevanceCache[]
 
+  @@unique([regionPluginName, externalId])
   @@index([status])
   @@index([electionDate])
   @@index([lifecycleStageId])
+  @@index([regionPluginName])
   @@map("propositions")
 }
 

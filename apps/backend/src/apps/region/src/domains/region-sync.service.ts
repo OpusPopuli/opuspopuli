@@ -812,7 +812,7 @@ export class RegionSyncService implements OnModuleDestroy {
       >
     > = {
       [DataType.PROPOSITIONS]: () =>
-        this.syncPropositions(provider, pipelineJobId),
+        this.syncPropositions(provider, pipelineJobId, pluginName),
       [DataType.MEETINGS]: () =>
         this.syncMeetings(provider, pipelineJobId, archiveOptions),
       [DataType.REPRESENTATIVES]: () =>
@@ -895,6 +895,7 @@ export class RegionSyncService implements OnModuleDestroy {
   private async syncPropositions(
     provider: DataFetcher = this.regionService,
     pipelineJobId?: string,
+    pluginName?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
     if (!this.propositionsSyncService) {
       // Defensive — happens only when a unit-test module instantiates
@@ -903,13 +904,23 @@ export class RegionSyncService implements OnModuleDestroy {
       // behavior when propositionAnalysis was absent.
       return { processed: 0, created: 0, updated: 0 };
     }
-    const regionId = provider.getName?.() ?? 'unknown';
+    // The jurisdiction is half the proposition upsert key (#1164), so it has
+    // to be definite. The caller already knows which plugin it is syncing —
+    // `provider` may be the shared RegionProviderService, which has no
+    // per-region name to give.
+    const regionId = pluginName ?? provider.getName?.();
+    if (!regionId) {
+      throw new Error(
+        'Propositions sync requires a named region plugin — cannot attribute rows to a jurisdiction',
+      );
+    }
     const stagePatterns = await this.buildStagePatterns(regionId);
     return this.propositionsSyncService.sync(
       provider,
       pipelineJobId,
       stagePatterns,
       this.upsertByExternalId.bind(this),
+      regionId,
     );
   }
 

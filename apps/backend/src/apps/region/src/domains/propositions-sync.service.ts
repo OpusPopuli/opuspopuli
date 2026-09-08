@@ -81,13 +81,35 @@ export class PropositionsSyncService {
     private readonly propositionEmbedding?: PropositionEmbeddingService,
   ) {}
 
+  /**
+   * @param regionPluginName - the jurisdiction these rows belong to. Half of
+   *   the proposition upsert key (#1164), so it must be definite. The
+   *   orchestrator passes the plugin it is syncing; falls back to the
+   *   provider's own name when it can give one.
+   */
   async sync(
     provider: PropositionsProvider,
     pipelineJobId: string | undefined,
     stagePatterns: StagePattern[],
     upsertByExternalId: UpsertByExternalId,
+    regionPluginName?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
-    const regionId = provider.getName?.() ?? 'unknown';
+    // The jurisdiction is half of the upsert key (#1164), so it must be
+    // known before anything is written. An unnamed provider previously fell
+    // back to the DB default 'california' — for a county sync that is exactly
+    // the wrong label, and under the compound key it would collide county
+    // measures with statewide ones. DeclarativeRegionPlugin.getName() always
+    // returns its regionId, so an absent name means something is broken:
+    // fail before writing rather than mislabel civic data.
+    const pluginName = regionPluginName ?? provider.getName?.();
+    if (!pluginName) {
+      throw new Error(
+        'Propositions sync requires a named region plugin — ' +
+          'no jurisdiction was supplied and the provider could not name itself, ' +
+          'so rows cannot be attributed',
+      );
+    }
+    const regionId = pluginName;
 
     // ─── Phase 1/3 — discover ──────────────────────────────────────
     const discoverTracker = propositionSyncTracker(this.logger, 'discover', 1, {
@@ -115,6 +137,7 @@ export class PropositionsSyncService {
         : (
             await this.db.proposition.findMany({
               where: {
+                regionPluginName: pluginName,
                 externalId: { in: propositions.map((p) => p.externalId) },
               },
               select: { externalId: true },
@@ -131,7 +154,9 @@ export class PropositionsSyncService {
       propositions,
       (ids) =>
         this.db.proposition.findMany({
-          where: { externalId: { in: ids } },
+          // Jurisdiction-scoped: another county owning the same measure
+          // letter must not make this one report as an update.
+          where: { regionPluginName: pluginName, externalId: { in: ids } },
           select: { externalId: true },
         }),
       (props): unknown[] =>
@@ -152,7 +177,14 @@ export class PropositionsSyncService {
             outcome: verb,
           });
           return this.db.proposition.upsert({
-            where: { externalId: prop.externalId },
+            // Keyed on (jurisdiction, externalId) so a county measure can
+            // never match — and overwrite — another jurisdiction's row.
+            where: {
+              regionPluginName_externalId: {
+                regionPluginName: pluginName,
+                externalId: prop.externalId,
+              },
+            },
             update: {
               title: prop.title,
               summary: prop.summary,
@@ -171,6 +203,7 @@ export class PropositionsSyncService {
               electionDate: prop.electionDate,
               sourceUrl: prop.sourceUrl,
               lifecycleStageId,
+              regionPluginName: pluginName,
             },
           });
         }),
@@ -179,7 +212,7 @@ export class PropositionsSyncService {
     extractTracker.complete();
 
     if (stagePatterns.length > 0) {
-      await this.backfillStageIds(stagePatterns);
+      await this.backfillStageIds(stagePatterns, pluginName);
     }
 
     // Keep the retrieval corpus in step with what was just written (#1074).
@@ -256,13 +289,20 @@ export class PropositionsSyncService {
    * patterns were available, or whose status matched no pattern at the
    * time of upsert. Mirrors `backfillBillStageIds`. Idempotent.
    *
-   * NOT region-scoped because Proposition has no `regionId` column today.
-   * Safe for single-region deployments; needs a Proposition.regionId
-   * migration before a second region is added — tracked in #731.
+   * Scoped to the syncing plugin's own rows via `regionPluginName`
+   * (#1164, closing the #731 caveat) — a county sync's stage patterns
+   * must not rewrite statewide rows and vice versa.
    */
-  private async backfillStageIds(stagePatterns: StagePattern[]): Promise<void> {
+  private async backfillStageIds(
+    stagePatterns: StagePattern[],
+    pluginName: string,
+  ): Promise<void> {
     const unmatched = await this.db.proposition.findMany({
-      where: { lifecycleStageId: null, deletedAt: null },
+      where: {
+        lifecycleStageId: null,
+        deletedAt: null,
+        regionPluginName: pluginName,
+      },
       select: { id: true, status: true },
     });
     if (unmatched.length === 0) return;
