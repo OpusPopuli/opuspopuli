@@ -16,6 +16,7 @@ import type {
   ExtractionResult,
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
+import { resolveCompositeTemplate } from "../extraction/composite-template.js";
 import {
   ExecutionTrackerService,
   type ExecutionSession,
@@ -88,10 +89,8 @@ export class ApiIngestHandler {
             warnings,
             async (rawPageItems, pageIndex) => {
               // Apply per-page transformations before domain mapping.
-              if (api.fieldMappings) {
-                for (const item of rawPageItems) {
-                  this.remapFields(item, api.fieldMappings);
-                }
+              for (const item of rawPageItems) {
+                this.applyFieldTransforms(item, api);
               }
               if (sourceSystem) {
                 for (const item of rawPageItems) {
@@ -159,10 +158,8 @@ export class ApiIngestHandler {
         `Fetched ${allItems.length} items from API ${source.url}`,
       );
 
-      if (api.fieldMappings) {
-        for (const item of allItems) {
-          this.remapFields(item, api.fieldMappings);
-        }
+      for (const item of allItems) {
+        this.applyFieldTransforms(item, api);
       }
 
       if (sourceSystem) {
@@ -222,8 +219,11 @@ export class ApiIngestHandler {
     const allItems: Record<string, unknown>[] = [];
     let page = 0;
     let cursorParams: Record<string, string> | undefined;
+    // Per-source override: an archive larger than limit × 10 (Legistar's ~500
+    // events) would otherwise be truncated at the default cap (#1162).
+    const maxPages = api.pagination?.maxPages ?? MAX_PAGES;
 
-    while (page < MAX_PAGES) {
+    while (page < maxPages) {
       const { items, body } = await this.fetchPage(
         baseUrl,
         api,
@@ -251,10 +251,12 @@ export class ApiIngestHandler {
       await this.delay(PAGE_DELAY_MS);
     }
 
-    if (page >= MAX_PAGES) {
-      warnings.push(
-        `Reached max page limit (${MAX_PAGES}). More data may be available.`,
-      );
+    if (page >= maxPages) {
+      // Loud on purpose: a truncated archive that reports success is the
+      // silent-undercount failure this pipeline keeps rediscovering.
+      const message = `Reached max page limit (${maxPages}). More data may be available — raise pagination.maxPages for this source.`;
+      this.logger.warn(message);
+      warnings.push(message);
     }
 
     return allItems;
@@ -392,6 +394,15 @@ export class ApiIngestHandler {
     body: Record<string, unknown>,
     resultsPath: string,
   ): Record<string, unknown>[] {
+    // Envelope-free responses: the body IS the array. OData services such as
+    // Legistar's Web API return a bare `[...]` (#1162). Accept it whenever the
+    // body is an array, so `resultsPath: "$"` is explicit but a config that
+    // simply omits the path still works rather than silently yielding zero.
+    if (Array.isArray(body)) {
+      return body as Record<string, unknown>[];
+    }
+    if (resultsPath === "$") return [];
+
     const parts = resultsPath.split(".");
     let current: unknown = body;
 
@@ -456,6 +467,51 @@ export class ApiIngestHandler {
     }
 
     return undefined;
+  }
+
+  /**
+   * Apply the source's record-level transforms, in order: rename keys, then
+   * build composite fields from the renamed record.
+   *
+   * Single entry point on purpose — the streaming and buffered paths both
+   * call it, so a transform can't land on one and silently miss the other.
+   */
+  private applyFieldTransforms(
+    record: Record<string, unknown>,
+    api: ApiSourceConfig,
+  ): void {
+    if (api.fieldMappings) {
+      this.remapFields(record, api.fieldMappings);
+    }
+    if (api.compositeFields) {
+      this.applyCompositeFields(record, api.compositeFields);
+    }
+  }
+
+  /**
+   * Build fields by interpolating other fields of the same record (#1162),
+   * reusing the extractor's template engine so API and HTML sources share one
+   * composite syntax and one all-or-nothing rule.
+   *
+   * Runs after `fieldMappings`, so templates reference the POST-rename names —
+   * whichever names the domain schema will see.
+   */
+  private applyCompositeFields(
+    record: Record<string, unknown>,
+    compositeFields: Record<string, string>,
+  ): void {
+    for (const [targetField, template] of Object.entries(compositeFields)) {
+      const { value, missing } = resolveCompositeTemplate(template, record);
+      if (value === undefined) {
+        // Leave the field absent rather than half-built: downstream Zod
+        // reports a clean "required" miss instead of accepting a broken value.
+        this.logger.debug(
+          `Composite field "${targetField}" unresolved — missing: ${missing.join(", ")}`,
+        );
+        continue;
+      }
+      record[targetField] = value;
+    }
   }
 
   /**

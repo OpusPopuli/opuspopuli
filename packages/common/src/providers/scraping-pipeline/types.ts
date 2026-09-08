@@ -763,12 +763,35 @@ export interface ApiSourceConfig {
   apiKeyHeader?: string;
   /** Pagination strategy */
   pagination?: ApiPaginationConfig;
-  /** JSON path to the items array in the response (e.g., "results" or "data.items") */
+  /**
+   * JSON path to the items array in the response (e.g., "results" or
+   * "data.items"). Defaults to "results".
+   *
+   * Use `"$"` when the response body IS the array — OData services such as
+   * Legistar's Web API return a bare `[...]` with no envelope (#1162).
+   */
   resultsPath?: string;
   /** Static query parameters appended to every request */
   queryParams?: Record<string, string>;
   /** Field name mappings: API response field → domain model field (e.g., "committee_id" → "committeeId") */
   fieldMappings?: Record<string, string>;
+  /**
+   * Fields built by interpolating other fields of the same record, applied
+   * AFTER `fieldMappings`. Maps target field name → template.
+   *
+   * Uses the same `{field}` placeholder syntax and
+   * `:date|lower|upper|slug|trim` formatters as the HTML extractor's
+   * `composite` method (#1164), and is all-or-nothing for the same reason:
+   * a missing placeholder yields no value rather than a half-built one.
+   *
+   *   { scheduledAt: "{EventDate:date} {EventTime}" }
+   *   → "2026-09-03 2:45 PM"
+   *
+   * Exists because APIs routinely split a single domain value across two
+   * response fields — a meeting's date and time — which a flat key rename
+   * cannot recombine (#1162).
+   */
+  compositeFields?: Record<string, string>;
 }
 
 /**
@@ -783,6 +806,13 @@ export interface ApiPaginationConfig {
   limitParam?: string;
   /** Number of items per page */
   limit?: number;
+  /**
+   * Cap on pages fetched per run (default 10). Raise it for sources whose
+   * full archive exceeds `limit × 10` — Legistar's event history is ~500 rows
+   * and growing (#1162). Hitting the cap is reported as a warning on the
+   * result, never a silent truncation.
+   */
+  maxPages?: number;
 }
 
 /**
