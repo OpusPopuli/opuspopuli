@@ -101,6 +101,7 @@ function ScanRow({ item, onRequestDelete }: ScanRowProps) {
           nested inside an anchor is invalid HTML and breaks keyboard order. */}
       <Link
         href={`/settings/scans/${item.id}`}
+        prefetch={false}
         className="flex-1 min-w-0 no-underline"
         aria-label={t("scans.viewDetail")}
       >

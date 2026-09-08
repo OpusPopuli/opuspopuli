@@ -31,6 +31,7 @@ export function CommitteeBriefingCard({ item }: CommitteeBriefingCardProps) {
     >
       <Link
         href={`/region/legislative-committees/${item.id}`}
+        prefetch={false}
         className="block text-base font-semibold text-content hover:underline transition-colors line-clamp-1"
       >
         {item.name}

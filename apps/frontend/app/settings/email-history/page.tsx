@@ -73,6 +73,7 @@ function EmailCard({ email }: { readonly email: EmailCorrespondence }) {
         {email.representativeId && (
           <Link
             href={`/region/representatives`}
+            prefetch={false}
             className="text-sm text-info hover:underline flex-shrink-0"
           >
             View Rep

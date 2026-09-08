@@ -43,6 +43,8 @@ export function AnalysisDisplay({
           with it: this is what the citizen is being asked to sign. */}
       {primaryMatch && (
         <Link
+          // prefetch-ok: the primary match is a single CTA; the
+          // additionalMatches list below disables prefetch
           href={`/region/propositions/${primaryMatch.propositionId}`}
           // bg-ink + text-paper/accent are FIXED tokens (never theme-flip), so
           // the gold-on-ink / paper-on-ink contrast is WCAG-valid on any
@@ -204,6 +206,7 @@ export function AnalysisDisplay({
                 <Link
                   key={prop.id}
                   href={`/region/propositions/${prop.propositionId}`}
+                  prefetch={false}
                   className="block bg-ink hover:opacity-90 rounded-lg p-3 transition-opacity"
                 >
                   <div className="flex items-center justify-between">

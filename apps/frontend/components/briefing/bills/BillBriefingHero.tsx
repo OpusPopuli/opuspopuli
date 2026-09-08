@@ -29,6 +29,8 @@ export function BillBriefingHero({ item }: BillBriefingHeroProps) {
     <article className="rounded-lg border border-line bg-surface p-5 sm:p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
+          {/* prefetch-ok: the hero is a single bill and this is the
+              briefing's primary action */}
           <Link
             href={`/region/bills/${bill.id}`}
             className="block text-xl sm:text-2xl font-bold text-content hover:underline transition-colors"
@@ -56,6 +58,7 @@ export function BillBriefingHero({ item }: BillBriefingHeroProps) {
           signals={result.contributingSignals}
           sourceDocumentUrl={result.sourceDocumentUrl}
         />
+        {/* prefetch-ok: same single hero bill as the title link above */}
         <Link
           href={`/region/bills/${bill.id}`}
           className="text-xs font-medium text-content hover:underline"

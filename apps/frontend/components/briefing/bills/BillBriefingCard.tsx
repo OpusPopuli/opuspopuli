@@ -26,6 +26,7 @@ export function BillBriefingCard({ item }: BillBriefingCardProps) {
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/bills/${bill.id}`}
+            prefetch={false}
             className="block text-base font-semibold text-content hover:underline transition-colors line-clamp-2"
           >
             {bill.title}

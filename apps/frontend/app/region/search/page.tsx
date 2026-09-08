@@ -37,6 +37,7 @@ function BillResultCard({
   return (
     <Link
       href={`/region/bills/${bill.id}`}
+      prefetch={false}
       className="block rounded-lg border border-line bg-surface p-5"
     >
       <BillCardHeader bill={bill} />
@@ -68,6 +69,7 @@ function PropositionResultCard({
   return (
     <Link
       href={`/region/propositions/${proposition.id}`}
+      prefetch={false}
       className="block rounded-lg border border-line bg-surface p-5"
     >
       <div className="mb-1 flex items-center gap-2">

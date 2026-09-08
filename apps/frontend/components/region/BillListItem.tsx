@@ -55,6 +55,7 @@ export function BillListItem({ bill }: BillListItemProps) {
   return (
     <Link
       href={`/region/bills/${bill.id}`}
+      prefetch={false}
       className="flex items-start gap-3 rounded-lg border border-line bg-surface p-3 hover:border-accent transition-all"
     >
       <span

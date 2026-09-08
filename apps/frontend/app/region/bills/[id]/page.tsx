@@ -298,6 +298,7 @@ function Snapshot({
               <span className="text-content-dim w-24 shrink-0">Author</span>
               {bill.authorId ? (
                 <Link
+                  // prefetch-ok: one author per bill, singular link
                   href={`/region/representatives/${bill.authorId}`}
                   className="text-info hover:underline font-medium"
                 >
@@ -320,6 +321,7 @@ function Snapshot({
                       <Link
                         key={ca.representativeId}
                         href={`/region/representatives/${ca.representativeId}`}
+                        prefetch={false}
                         className="text-info hover:underline"
                       >
                         {ca.name}
@@ -425,6 +427,7 @@ function Votes({
                         {v.representativeId ? (
                           <Link
                             href={`/region/representatives/${v.representativeId}`}
+                            prefetch={false}
                             className="text-info hover:underline"
                           >
                             {v.representativeName}
