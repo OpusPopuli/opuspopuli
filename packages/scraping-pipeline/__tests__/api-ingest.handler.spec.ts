@@ -543,4 +543,246 @@ describe("ApiIngestHandler", () => {
       );
     });
   });
+
+  describe("envelope-free responses (#1162)", () => {
+    // Legistar's Web API returns a bare array with no wrapper object. The
+    // dot-path walker returned [] for these, so the source silently yielded
+    // nothing.
+    const EVENTS = [
+      { EventId: 1598, EventBodyName: "Board of Supervisors" },
+      { EventId: 1599, EventBodyName: "Board of Supervisors" },
+    ];
+
+    it("treats a top-level array as the item list", async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse(EVENTS as never),
+      );
+
+      const result = await handler.execute(
+        createSource({ api: { resultsPath: "$" } }),
+        "california-sonoma",
+      );
+
+      expect(result.items).toHaveLength(2);
+    });
+
+    it("accepts a bare array even when resultsPath is left at its default", async () => {
+      // A config author who omits resultsPath for an envelope-free API should
+      // get their data, not a silent zero.
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse(EVENTS as never),
+      );
+
+      const result = await handler.execute(
+        createSource({ api: {} }),
+        "california-sonoma",
+      );
+
+      expect(result.items).toHaveLength(2);
+    });
+
+    it("still reads the envelope when the body is an object", async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse({ results: [{ id: 1 }] }),
+      );
+
+      const result = await handler.execute(createSource(), "california");
+
+      expect(result.items).toHaveLength(1);
+    });
+  });
+
+  describe("composite fields (#1162)", () => {
+    it("builds a field from two response fields, after renaming", async () => {
+      // Legistar splits a meeting across EventDate + EventTime; a flat rename
+      // cannot recombine them.
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse([
+          {
+            EventId: 1598,
+            EventDate: "2026-09-03T00:00:00",
+            EventTime: "2:45 PM",
+          },
+        ] as never),
+      );
+
+      const result = await handler.execute(
+        createSource({
+          api: {
+            resultsPath: "$",
+            fieldMappings: { EventId: "externalId" },
+            compositeFields: { scheduledAt: "{EventDate:date} {EventTime}" },
+          },
+        }),
+        "california-sonoma",
+      );
+
+      const item = result.items[0] as Record<string, unknown>;
+      expect(item.scheduledAt).toBe("2026-09-03 2:45 PM");
+    });
+
+    it("resolves templates against POST-rename field names", async () => {
+      // Ordering is load-bearing: the real Sonoma config builds
+      // title from {body}, which only exists after EventBodyName is renamed.
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse([
+          {
+            EventBodyName: "Board of Supervisors",
+            EventDate: "2026-09-03T00:00:00",
+          },
+        ] as never),
+      );
+
+      const result = await handler.execute(
+        createSource({
+          api: {
+            resultsPath: "$",
+            fieldMappings: { EventBodyName: "body" },
+            compositeFields: { title: "{body} — {EventDate:date}" },
+          },
+        }),
+        "california-sonoma",
+      );
+
+      expect((result.items[0] as Record<string, unknown>).title).toBe(
+        "Board of Supervisors — 2026-09-03",
+      );
+    });
+
+    it("reads a naive timestamp in the configured zone, not the server's", async () => {
+      // Containers run UTC. Without the zone, "2:45 PM" becomes 14:45Z and
+      // every Sonoma meeting displays 7 hours early.
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse([
+          { EventDate: "2026-09-03T00:00:00", EventTime: "2:45 PM" },
+        ] as never),
+      );
+
+      const result = await handler.execute(
+        createSource({
+          api: {
+            resultsPath: "$",
+            compositeFields: {
+              scheduledAt: {
+                template: "{EventDate:date} {EventTime}",
+                timezone: "America/Los_Angeles",
+              },
+            },
+          },
+        }),
+        "california-sonoma",
+      );
+
+      // 2:45 PM PDT === 21:45 UTC, whatever zone this test runs in.
+      expect((result.items[0] as Record<string, unknown>).scheduledAt).toBe(
+        "2026-09-03T21:45:00.000Z",
+      );
+    });
+
+    it("deletes a stale value when the composite fails", async () => {
+      // A fallback rename under the same key must not survive a failed
+      // composite — that would smuggle through the half-built value the
+      // all-or-nothing rule exists to reject.
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse([
+          { EventDate: "2026-09-03T00:00:00", Fallback: "stale-value" },
+        ] as never),
+      );
+
+      const result = await handler.execute(
+        createSource({
+          api: {
+            resultsPath: "$",
+            fieldMappings: { Fallback: "scheduledAt" },
+            compositeFields: { scheduledAt: "{EventDate:date} {EventTime}" },
+          },
+        }),
+        "california-sonoma",
+      );
+
+      expect(result.items[0]).not.toHaveProperty("scheduledAt");
+      expect(
+        result.warnings.some((w) =>
+          w.includes('Composite field "scheduledAt"'),
+        ),
+      ).toBe(true);
+    });
+
+    it("omits the field when a referenced field is missing", async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        mockFetchResponse([
+          { EventId: 1599, EventDate: "2026-09-03T00:00:00" },
+        ] as never),
+      );
+
+      const result = await handler.execute(
+        createSource({
+          api: {
+            resultsPath: "$",
+            compositeFields: { scheduledAt: "{EventDate:date} {EventTime}" },
+          },
+        }),
+        "california-sonoma",
+      );
+
+      // Half a timestamp is worse than none — downstream Zod reports a clean
+      // required-field miss instead of accepting "2026-09-03 ".
+      expect(result.items[0]).not.toHaveProperty("scheduledAt");
+    });
+  });
+
+  describe("configurable page cap (#1162)", () => {
+    it("honours pagination.maxPages and warns when it truncates", async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(
+        mockFetchResponse({ results: [{ id: 1 }, { id: 2 }] }),
+      );
+
+      const result = await handler.execute(
+        createSource({
+          api: {
+            resultsPath: "results",
+            pagination: {
+              type: "offset",
+              pageParam: "$skip",
+              limitParam: "$top",
+              limit: 2,
+              maxPages: 3,
+            },
+          },
+        }),
+        "california-sonoma",
+      );
+
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+      expect(result.items).toHaveLength(6);
+      expect(
+        result.warnings.some((w) => w.includes("max page limit (3)")),
+      ).toBe(true);
+    });
+
+    it("maps OData $skip/$top onto offset pagination", async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockFetchResponse({ results: [{ id: 1 }] }))
+        .mockResolvedValueOnce(mockFetchResponse({ results: [] }));
+
+      await handler.execute(
+        createSource({
+          api: {
+            resultsPath: "results",
+            pagination: {
+              type: "offset",
+              pageParam: "$skip",
+              limitParam: "$top",
+              limit: 100,
+            },
+          },
+        }),
+        "california-sonoma",
+      );
+
+      const firstUrl = String((global.fetch as jest.Mock).mock.calls[0][0]);
+      expect(firstUrl).toContain("%24top=100");
+      expect(firstUrl).toContain("%24skip=0");
+    });
+  });
 });
