@@ -183,7 +183,14 @@ function createLink(): ApolloLink {
  * GraphQL query results in localStorage. When the app loads offline, it can
  * serve cached data immediately while attempting to fetch fresh data.
  */
-const cache = new InMemoryCache();
+const cache = new InMemoryCache({
+  // Union/interface fragment matching (#1154). Without this, inline
+  // fragments on RegionSearchEntity silently match nothing and search
+  // results render empty. Kept by hand: the schema has exactly one union.
+  possibleTypes: {
+    RegionSearchEntity: ["Bill", "PropositionModel"],
+  },
+});
 
 // Initialize cache persistence for PWA offline support
 if (globalThis.window !== undefined) {

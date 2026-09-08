@@ -18,22 +18,11 @@ import {
   ErrorState,
   EmptyState,
 } from "@/components/region/ListStates";
+import { BillCardHeader } from "@/components/region/BillCardHeader";
 import { useCivics } from "@/components/civics/CivicsContext";
 import { formatDate } from "@/lib/format";
-import { MEASURE_TYPE_STYLES } from "@/lib/bill-styles";
 
 const PAGE_SIZE = 20;
-
-function MeasureTypeBadge({ code }: { readonly code: string }) {
-  const cls = MEASURE_TYPE_STYLES[code] ?? "bg-surface-alt text-content";
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}`}
-    >
-      {code}
-    </span>
-  );
-}
 
 /**
  * One option in the Active/Inactive segmented filter. Uses the WAI-ARIA
@@ -70,27 +59,6 @@ function LifecycleOption({
   );
 }
 
-/**
- * Per-card lifecycle pill. Active bills get no chip (cleaner default);
- * chaptered (passed-into-law) bills get a Passed chip; dead bills get a
- * Historical chip. Maps the isActive + isDead 3-way partition to a visual.
- */
-function LifecycleChip({ bill }: { readonly bill: Bill }) {
-  if (bill.isActive) return null;
-  if (bill.isDead) {
-    return (
-      <span className="inline-flex items-center rounded-full bg-warning-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-warning">
-        Historical
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full bg-positive-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-positive">
-      Passed
-    </span>
-  );
-}
-
 function BillCard({ bill }: Readonly<{ bill: Bill }>) {
   return (
     <Link
@@ -99,22 +67,7 @@ function BillCard({ bill }: Readonly<{ bill: Bill }>) {
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <MeasureTypeBadge code={bill.measureTypeCode} />
-            <span className="font-mono text-sm font-semibold text-content-dim">
-              {bill.billNumber}
-            </span>
-            <span className="text-xs text-content-dim">{bill.sessionYear}</span>
-            <LifecycleChip bill={bill} />
-          </div>
-          <h3 className="text-base font-semibold text-content line-clamp-2">
-            {bill.title}
-          </h3>
-          {bill.authorName && (
-            <p className="mt-1 text-sm text-content-dim">
-              Author: {bill.authorName}
-            </p>
-          )}
+          <BillCardHeader bill={bill} />
         </div>
         {bill.status && (
           <p className="text-sm text-content-dim whitespace-nowrap shrink-0 max-w-[10rem] text-right line-clamp-2">

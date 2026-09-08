@@ -1,0 +1,42 @@
+{
+  "search": {
+    "title": "Buscar",
+    "subtitle": "Encuentra proyectos de ley y proposiciones en tu región",
+    "placeholder": "Buscar proyectos…",
+    "inputLabel": "Buscar proyectos de ley y proposiciones",
+    "pagePlaceholder": "Buscar proyectos de ley y proposiciones…",
+    "shortcutHint": "Pulsa / para buscar",
+    "jumpToBill": "Ir al proyecto",
+    "seeAll": "Ver todos los resultados de «{{query}}»",
+    "types": {
+      "all": "Todos · {{count}}",
+      "bills": "Proyectos · {{count}}",
+      "propositions": "Proposiciones · {{count}}"
+    },
+    "typeFilterLabel": "Tipo de resultado",
+    "summary_one": "{{total}} resultado para «{{query}}» — {{bills}} proyectos · {{propositions}} proposiciones",
+    "electionLabel": "Elección: {{date}}",
+    "authorLabel": "Autor(a): {{name}}",
+    "empty": {
+      "title": "Sin resultados para «{{query}}»",
+      "body": "Prueba con menos palabras, otra frase o un número de proyecto como «AB 1236».",
+      "languageNote": "Por ahora, la búsqueda funciona mejor en inglés."
+    },
+    "error": {
+      "title": "La búsqueda no está disponible en este momento",
+      "body": "Ocurrió un error al ejecutar tu búsqueda — esto no significa «sin resultados». Inténtalo de nuevo."
+    },
+    "prompt": "Escribe para buscar proyectos de ley y proposiciones.",
+    "summary_other": "{{total}} resultados para «{{query}}» — {{bills}} proyectos · {{propositions}} proposiciones",
+    "propChip": "PROP",
+    "summaryFiltered_one": "{{total}} resultado para «{{query}}»",
+    "summaryFiltered_other": "{{total}} resultados para «{{query}}»"
+  },
+  "lifecycle": {
+    "passed": "Aprobado",
+    "historical": "Histórico"
+  },
+  "breadcrumb": {
+    "region": "Región"
+  }
+}

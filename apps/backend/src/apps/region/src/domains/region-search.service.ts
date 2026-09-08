@@ -104,8 +104,12 @@ export interface UnifiedSearchRow {
 
 export interface UnifiedSearchPage {
   rows: UnifiedSearchRow[];
+  /** Corpus-wide bill matches — unaffected by the type filter (facet label). */
   billCount: number;
+  /** Corpus-wide proposition matches — unaffected by the type filter. */
   propositionCount: number;
+  /** Matches after the type filter — what pagination is over. */
+  matched: number;
 }
 
 @Injectable()
@@ -288,20 +292,22 @@ export class RegionSearchService {
   ): Promise<UnifiedSearchPage> {
     const query = sanitizeSearchQuery(rawQuery);
     if (await this.isEmptyQuery(query)) {
-      return { rows: [], billCount: 0, propositionCount: 0 };
+      return { rows: [], billCount: 0, propositionCount: 0, matched: 0 };
     }
 
     const includeBills = type !== SearchResultType.PROPOSITION;
     const includeProps = type !== SearchResultType.BILL;
 
-    const { billCount, propositionCount } = await this.unifiedCounts(
-      query,
-      includeBills,
-      includeProps,
-    );
+    // Facet counts are ALWAYS unfiltered: they exist so the UI can label
+    // the type chips ("Bills · 40") and let the user switch to a facet
+    // they can't currently see. Counting only the included arm made
+    // "Bills · 0" render while 40 bills matched (#1154 review).
+    const { billCount, propositionCount } = await this.unifiedCounts(query);
+    const matched =
+      (includeBills ? billCount : 0) + (includeProps ? propositionCount : 0);
     const window = this.clampToWindow(skip, take);
-    if (billCount + propositionCount === 0 || !window) {
-      return { rows: [], billCount, propositionCount };
+    if (matched === 0 || !window) {
+      return { rows: [], billCount, propositionCount, matched };
     }
 
     const rows = await this.unifiedPage(
@@ -311,27 +317,22 @@ export class RegionSearchService {
       window.skip,
       window.take,
     );
-    return { rows, billCount, propositionCount };
+    return { rows, billCount, propositionCount, matched };
   }
 
-  /** Both facet counts in one round trip. Excluded arms cost nothing. */
+  /** Both facet counts in one round trip, always across the full corpus. */
   private async unifiedCounts(
     query: string,
-    includeBills: boolean,
-    includeProps: boolean,
   ): Promise<{ billCount: number; propositionCount: number }> {
-    const billWhere = includeBills
-      ? Prisma.sql`b.search_vector @@ ${this.tsquery(query)}`
-      : Prisma.sql`FALSE`;
-    const propWhere = includeProps
-      ? Prisma.sql`p.search_vector @@ ${this.tsquery(query)} AND p.deleted_at IS NULL`
-      : Prisma.sql`FALSE`;
     const rows = await this.db.$queryRaw<
       { bill_count: bigint; proposition_count: bigint }[]
     >`
       SELECT
-        (SELECT count(*) FROM bills b WHERE ${billWhere})::bigint AS bill_count,
-        (SELECT count(*) FROM propositions p WHERE ${propWhere})::bigint AS proposition_count
+        (SELECT count(*) FROM bills b
+          WHERE b.search_vector @@ ${this.tsquery(query)})::bigint AS bill_count,
+        (SELECT count(*) FROM propositions p
+          WHERE p.search_vector @@ ${this.tsquery(query)}
+            AND p.deleted_at IS NULL)::bigint AS proposition_count
     `;
     return {
       billCount: Number(rows[0]?.bill_count ?? 0),

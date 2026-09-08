@@ -70,7 +70,12 @@ describe('RegionSearchService', () => {
       const { svc, queryRaw } = serviceWithNodes(0);
       await expect(
         svc.searchUnified('the of and', undefined, 0, 10),
-      ).resolves.toEqual({ rows: [], billCount: 0, propositionCount: 0 });
+      ).resolves.toEqual({
+        rows: [],
+        billCount: 0,
+        propositionCount: 0,
+        matched: 0,
+      });
       expect(queryRaw).toHaveBeenCalledTimes(1);
     });
 

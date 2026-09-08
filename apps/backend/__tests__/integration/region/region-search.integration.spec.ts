@@ -229,16 +229,65 @@ describe('Region search (#1153, real DB)', () => {
     ]);
   });
 
-  it('honors the type filter', async () => {
+  it('filters rows by type but keeps facet counts corpus-wide', async () => {
     const propsOnly = await search.searchUnified(
       'wildfire',
       SearchResultType.PROPOSITION,
       0,
       10,
     );
-    expect(propsOnly.billCount).toBe(0);
-    expect(propsOnly.propositionCount).toBe(1);
+    // Rows and `matched` (what pagination is over) respect the filter…
     expect(propsOnly.rows.every((r) => r.kind === 'PROPOSITION')).toBe(true);
+    expect(propsOnly.matched).toBe(1);
+    // …but the facet counts must NOT, or the UI renders "Bills · 0" while
+    // two bills match and the user can never switch back (#1154 review).
+    expect(propsOnly.billCount).toBe(2);
+    expect(propsOnly.propositionCount).toBe(1);
+
+    const billsOnly = await search.searchUnified(
+      'wildfire',
+      SearchResultType.BILL,
+      0,
+      10,
+    );
+    expect(billsOnly.rows.every((r) => r.kind === 'BILL')).toBe(true);
+    expect(billsOnly.matched).toBe(2);
+    expect(billsOnly.billCount).toBe(2);
+    expect(billsOnly.propositionCount).toBe(1);
+  });
+
+  it('searchRegion reports the FILTERED total while keeping corpus-wide facets', async () => {
+    // The assertion that fails if `total` is ever computed as
+    // billCount + propositionCount again: filtered to propositions there
+    // is 1 result, but the facets must still advertise 2 bills. A
+    // total of 3 here would render "Showing 1-1 of 3" with Next enabled
+    // onto an empty page.
+    const props = await query.searchRegion(
+      'wildfire',
+      SearchResultType.PROPOSITION,
+      0,
+      10,
+    );
+    expect(props.total).toBe(1);
+    expect(props.items).toHaveLength(1);
+    expect(props.hasMore).toBe(false);
+    expect(props.billCount).toBe(2);
+    expect(props.propositionCount).toBe(1);
+
+    const bills = await query.searchRegion(
+      'wildfire',
+      SearchResultType.BILL,
+      0,
+      10,
+    );
+    expect(bills.total).toBe(2);
+    expect(bills.items).toHaveLength(2);
+    expect(bills.billCount).toBe(2);
+    expect(bills.propositionCount).toBe(1);
+
+    const all = await query.searchRegion('wildfire', undefined, 0, 10);
+    expect(all.total).toBe(3);
+    expect(all.hasMore).toBe(false);
   });
 
   it('produces plain-text snippets with the fixed markers and no HTML', async () => {
