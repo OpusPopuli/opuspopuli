@@ -28,7 +28,9 @@
     },
     "prompt": "Type to search bills and propositions.",
     "summary_other": "{{total}} results for “{{query}}” — {{bills}} bills · {{propositions}} propositions",
-    "propChip": "PROP"
+    "propChip": "PROP",
+    "summaryFiltered_one": "{{total}} result for “{{query}}”",
+    "summaryFiltered_other": "{{total}} results for “{{query}}”"
   },
   "lifecycle": {
     "passed": "Passed",

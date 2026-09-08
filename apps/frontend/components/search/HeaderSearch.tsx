@@ -90,7 +90,17 @@ export function HeaderSearch() {
   const skip = debounced.length < MIN_QUERY_LENGTH;
   const { data } = useQuery<RegionSearchSuggestData, RegionSearchSuggestVars>(
     REGION_SEARCH_SUGGEST,
-    { variables: { query: debounced, take: SUGGEST_TAKE }, skip },
+    {
+      variables: { query: debounced, take: SUGGEST_TAKE },
+      skip,
+      // no-cache, deliberately: every debounce tick is a distinct arg
+      // tuple, so caching them would add one ROOT_QUERY field per
+      // keystroke to a cache that is persisted to localStorage. On
+      // overflow apollo3-cache-persist purges the WHOLE persisted cache
+      // and stops persisting for the session, silently killing offline
+      // support. Typeahead results are also worthless to replay.
+      fetchPolicy: "no-cache",
+    },
   );
 
   // Navigation reads the LIVE input, never `debounced` — the debounce
@@ -98,9 +108,15 @@ export function HeaderSearch() {
   // fast typist who hits Enter inside the debounce window gets nothing.
   const trimmedInput = input.trim();
 
+  // Inside the debounce window `data` still belongs to the PREVIOUS query
+  // while the list is already open for the new input — arrowing down and
+  // pressing Enter then navigated to a result for text the user had
+  // already replaced. Treat lagging data as absent (#1154 review); the
+  // seeAll row keeps the list from flickering empty.
+  const stale = debounced !== trimmedInput;
   const suggestions = useMemo(
-    () => (skip ? [] : (data?.regionSearchSuggest ?? [])),
-    [skip, data?.regionSearchSuggest],
+    () => (skip || stale ? [] : (data?.regionSearchSuggest ?? [])),
+    [skip, stale, data?.regionSearchSuggest],
   );
   const rows = useMemo<Row[]>(() => {
     if (trimmedInput.length < MIN_QUERY_LENGTH) return [];
@@ -177,7 +193,11 @@ export function HeaderSearch() {
         setActiveIndex((i) => (i <= 0 ? rows.length - 1 : i - 1));
         break;
       case "Enter":
-        navigateTo(rows[activeRow] ?? { type: "seeAll" });
+        // Explicit index check rather than `?? seeAll`: without
+        // noUncheckedIndexedAccess TS types rows[activeRow] as always
+        // defined, so the fallback reads as dead code when it is in fact
+        // the common path (activeRow is -1 until something is arrowed to).
+        navigateTo(activeRow >= 0 ? rows[activeRow] : { type: "seeAll" });
         break;
       default:
         break;

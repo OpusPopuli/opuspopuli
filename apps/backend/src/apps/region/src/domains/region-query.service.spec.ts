@@ -1505,3 +1505,52 @@ describe('RegionQueryService — getMyCountySupervisors (#1136)', () => {
     expect(result).toEqual([]);
   });
 });
+
+describe('RegionQueryService — searchRegion paging window (#1154 review)', () => {
+  /**
+   * The deep-paging cap can't be reached with an integration fixture
+   * (it needs >1000 matches), so the search service is stubbed to report
+   * a large match set. Without the cap, `hasMore` stays true past the
+   * window and Next lands on an empty page that renders as "no results"
+   * for a query with thousands of hits.
+   */
+  function buildService(matched: number) {
+    const searchService = {
+      searchUnified: jest.fn().mockResolvedValue({
+        rows: [],
+        billCount: matched,
+        propositionCount: 0,
+        matched,
+      }),
+    };
+    const db = {
+      bill: { findMany: jest.fn().mockResolvedValue([]) },
+      proposition: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new RegionQueryService(
+      db as never,
+      { cachedQuery: (_k: string, fn: () => unknown) => fn() } as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      searchService as never,
+    );
+    return service;
+  }
+
+  it('keeps hasMore true while still inside the window', async () => {
+    const service = buildService(5000);
+    const page = await service.searchRegion('wildfire', undefined, 980, 10);
+    expect(page.total).toBe(5000);
+    expect(page.hasMore).toBe(true);
+  });
+
+  it('stops hasMore at the window even though thousands more matched', async () => {
+    const service = buildService(5000);
+    const page = await service.searchRegion('wildfire', undefined, 990, 10);
+    // 990 + 10 === MAX_SEARCH_WINDOW: nothing further is reachable.
+    expect(page.total).toBe(5000);
+    expect(page.hasMore).toBe(false);
+  });
+});

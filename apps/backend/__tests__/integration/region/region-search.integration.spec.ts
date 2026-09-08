@@ -256,13 +256,38 @@ describe('Region search (#1153, real DB)', () => {
     expect(billsOnly.propositionCount).toBe(1);
   });
 
-  it('caps hasMore at the deep-paging window so Next cannot lead to a false empty', async () => {
-    const page = await query.searchRegion('wildfire', undefined, 0, 10);
-    // 3 matches, all on page 1 — hasMore false regardless of the window.
-    expect(page.total).toBe(3);
-    expect(page.hasMore).toBe(false);
-    expect(page.billCount).toBe(2);
-    expect(page.propositionCount).toBe(1);
+  it('searchRegion reports the FILTERED total while keeping corpus-wide facets', async () => {
+    // The assertion that fails if `total` is ever computed as
+    // billCount + propositionCount again: filtered to propositions there
+    // is 1 result, but the facets must still advertise 2 bills. A
+    // total of 3 here would render "Showing 1-1 of 3" with Next enabled
+    // onto an empty page.
+    const props = await query.searchRegion(
+      'wildfire',
+      SearchResultType.PROPOSITION,
+      0,
+      10,
+    );
+    expect(props.total).toBe(1);
+    expect(props.items).toHaveLength(1);
+    expect(props.hasMore).toBe(false);
+    expect(props.billCount).toBe(2);
+    expect(props.propositionCount).toBe(1);
+
+    const bills = await query.searchRegion(
+      'wildfire',
+      SearchResultType.BILL,
+      0,
+      10,
+    );
+    expect(bills.total).toBe(2);
+    expect(bills.items).toHaveLength(2);
+    expect(bills.billCount).toBe(2);
+    expect(bills.propositionCount).toBe(1);
+
+    const all = await query.searchRegion('wildfire', undefined, 0, 10);
+    expect(all.total).toBe(3);
+    expect(all.hasMore).toBe(false);
   });
 
   it('produces plain-text snippets with the fixed markers and no HTML', async () => {

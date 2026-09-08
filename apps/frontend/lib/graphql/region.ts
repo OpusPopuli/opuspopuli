@@ -2016,7 +2016,7 @@ export interface SearchPropositionResult {
   id: string;
   externalId: string;
   title: string;
-  status: string;
+  status: PropositionStatus;
   electionDate?: string | null;
 }
 

@@ -13,7 +13,6 @@ import {
   type SearchBillResult,
   type SearchPropositionResult,
   type SearchResultType,
-  type PropositionStatus,
 } from "@/lib/graphql/region";
 import { Breadcrumb } from "@/components/region/Breadcrumb";
 import { Pagination } from "@/components/region/Pagination";
@@ -85,9 +84,7 @@ function PropositionResultCard({
             })}
           </span>
         )}
-        <PropositionStatusBadge
-          status={proposition.status as PropositionStatus}
-        />
+        <PropositionStatusBadge status={proposition.status} />
       </div>
       <h3 className="text-base font-semibold text-content line-clamp-2">
         {proposition.title}
@@ -141,7 +138,12 @@ function SearchPageInner() {
   const searchParams = useSearchParams();
 
   const urlQuery = searchParams.get("q") ?? "";
-  const urlType = (searchParams.get("type") ?? "") as TypeFilter;
+  // Narrowed by guard, never asserted: a hand-edited ?type=bogus would
+  // otherwise be sent as a SearchResultType enum, fail GraphQL coercion,
+  // and render the hard error state for a query that has results.
+  const rawType = searchParams.get("type");
+  const urlType: TypeFilter =
+    rawType === "BILL" || rawType === "PROPOSITION" ? rawType : "";
 
   const [input, setInput] = useState(urlQuery);
   const [page, setPage] = useState(0);
@@ -206,8 +208,14 @@ function SearchPageInner() {
 
   const result = data?.regionSearch;
 
+  // `total` is the FILTERED match count; billCount/propositionCount are
+  // corpus-wide (so the facet chips can advertise what switching would
+  // show). Printing both scales in one sentence contradicts itself —
+  // "40 results — 40 bills · 5 propositions" — so the breakdown is only
+  // used when nothing is filtered (#1154 review).
+  const summaryKey = urlType ? "search.summaryFiltered" : "search.summary";
   const summaryText = result
-    ? t("search.summary", {
+    ? t(summaryKey, {
         count: result.total,
         total: result.total,
         query: urlQuery,

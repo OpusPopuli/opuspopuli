@@ -281,35 +281,52 @@ test.describe("Region search — review regressions (#1154)", () => {
     await expect(page.getByText("Result for housing")).toBeVisible();
   });
 
-  test("arrowing past a shrinking suggestion list does not throw on Enter", async ({
+  // NOTE: the "list shrinks under the cursor" race is covered by
+  // __tests__/components/search/HeaderSearch.test.tsx, which drives the
+  // Apollo mock and debounce with fake timers. An e2e version of it was
+  // removed after being verified NOT to fail against the pre-fix code —
+  // a test that cannot catch its own bug is worse than none.
+
+  test("the results page renders corpus-wide facet counts, not page counts", async ({
     page,
   }) => {
-    const errors: string[] = [];
-    page.on("pageerror", (e) => errors.push(String(e)));
-
-    await mockEcho(page);
-    await page.goto("/region");
-    const header = page.getByRole("combobox");
-    await header.fill("wildfire");
-    await expect(page.getByRole("option").first()).toBeVisible();
-
-    for (let i = 0; i < 12; i++) await header.press("ArrowDown");
-    await header.press("Enter");
-    await page.waitForTimeout(300);
-
-    expect(errors).toEqual([]);
-  });
-
-  test("facet counts stay corpus-wide while a type filter is active", async ({
-    page,
-  }) => {
+    // NOTE: a rendering guard only. The backend fix (counts computed
+    // without the type filter) is pinned by
+    // __tests__/integration/region/region-search.integration.spec.ts —
+    // this mock returns fixed counts, so it cannot exercise that path.
     await mockEcho(page);
     await page.goto("/region/search?q=wildfire&type=PROPOSITION");
 
-    // Counting only the included arm rendered "Bills · 0" while 40 matched.
     await expect(page.getByRole("radio", { name: /Bills · 40/ })).toBeVisible();
     await expect(
       page.getByRole("radio", { name: /Propositions · 5/ }),
     ).toBeVisible();
+  });
+
+  test("a hand-edited ?type does not force the error state", async ({
+    page,
+  }) => {
+    await mockEcho(page);
+    await page.goto("/region/search?q=wildfire&type=bogus");
+    // An unvalidated cast used to send this as a SearchResultType enum,
+    // failing GraphQL coercion and rendering "Search isn't available".
+    await expect(page.getByText("Result for wildfire")).toBeVisible();
+    await expect(page.getByRole("radio", { name: /All ·/ })).toBeVisible();
+  });
+
+  test("the summary does not mix filtered and corpus-wide counts", async ({
+    page,
+  }) => {
+    await mockEcho(page);
+    await page.goto("/region/search?q=wildfire&type=BILL");
+    // Filtered total is 1 while the facets are 40/5 — printing both in
+    // one sentence ("1 results — 40 bills · 5 propositions") contradicts
+    // itself, so the breakdown is dropped when a filter is active.
+    await expect(page.getByRole("radio", { name: /Bills · 40/ })).toBeVisible();
+    const summary = page
+      .getByText(/results? for/)
+      .and(page.locator("[aria-hidden=true]"));
+    await expect(summary).toBeVisible();
+    await expect(summary).not.toContainText("propositions");
   });
 });

@@ -28,7 +28,9 @@
     },
     "prompt": "Escribe para buscar proyectos de ley y proposiciones.",
     "summary_other": "{{total}} resultados para «{{query}}» — {{bills}} proyectos · {{propositions}} proposiciones",
-    "propChip": "PROP"
+    "propChip": "PROP",
+    "summaryFiltered_one": "{{total}} resultado para «{{query}}»",
+    "summaryFiltered_other": "{{total}} resultados para «{{query}}»"
   },
   "lifecycle": {
     "passed": "Aprobado",
