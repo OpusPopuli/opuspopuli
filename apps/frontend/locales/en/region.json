@@ -30,7 +30,18 @@
     "summary_other": "{{total}} results for “{{query}}” — {{bills}} bills · {{propositions}} propositions",
     "propChip": "PROP",
     "summaryFiltered_one": "{{total}} result for “{{query}}”",
-    "summaryFiltered_other": "{{total}} results for “{{query}}”"
+    "summaryFiltered_other": "{{total}} results for “{{query}}”",
+    "billsInputLabel": "Search bills by title, number or author",
+    "billsPlaceholder": "Search bills (e.g. “housing”, “AB 1236”)…",
+    "propositionsInputLabel": "Search propositions by title or text",
+    "propositionsPlaceholder": "Search propositions (e.g. “wildfire”)…",
+    "clearFilters": "Clear filters",
+    "statusFilterLabel": "Filter by status",
+    "allStatuses": "All statuses",
+    "electionYearFilterLabel": "Filter by election year",
+    "allElections": "All elections",
+    "matchCount_one": "{{count}} match for “{{query}}”",
+    "matchCount_other": "{{count}} matches for “{{query}}”"
   },
   "lifecycle": {
     "passed": "Passed",
@@ -38,5 +49,11 @@
   },
   "breadcrumb": {
     "region": "Region"
+  },
+  "propositionStatus": {
+    "PENDING": "Pending",
+    "PASSED": "Passed",
+    "FAILED": "Failed",
+    "WITHDRAWN": "Withdrawn"
   }
 }

@@ -30,7 +30,18 @@
     "summary_other": "{{total}} resultados para «{{query}}» — {{bills}} proyectos · {{propositions}} proposiciones",
     "propChip": "PROP",
     "summaryFiltered_one": "{{total}} resultado para «{{query}}»",
-    "summaryFiltered_other": "{{total}} resultados para «{{query}}»"
+    "summaryFiltered_other": "{{total}} resultados para «{{query}}»",
+    "billsInputLabel": "Buscar proyectos por título, número o autor",
+    "billsPlaceholder": "Buscar proyectos (p. ej. «vivienda», «AB 1236»)…",
+    "propositionsInputLabel": "Buscar proposiciones por título o texto",
+    "propositionsPlaceholder": "Buscar proposiciones (p. ej. «incendios»)…",
+    "clearFilters": "Borrar filtros",
+    "statusFilterLabel": "Filtrar por estado",
+    "allStatuses": "Todos los estados",
+    "electionYearFilterLabel": "Filtrar por año electoral",
+    "allElections": "Todas las elecciones",
+    "matchCount_one": "{{count}} resultado para «{{query}}»",
+    "matchCount_other": "{{count}} resultados para «{{query}}»"
   },
   "lifecycle": {
     "passed": "Aprobado",
@@ -38,5 +49,11 @@
   },
   "breadcrumb": {
     "region": "Región"
+  },
+  "propositionStatus": {
+    "PENDING": "Pendiente",
+    "PASSED": "Aprobada",
+    "FAILED": "Rechazada",
+    "WITHDRAWN": "Retirada"
   }
 }

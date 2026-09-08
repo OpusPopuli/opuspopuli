@@ -741,9 +741,30 @@ export const GET_REGION_INFO = gql`
   }
 `;
 
+export interface PropositionsVars {
+  skip?: number;
+  take?: number;
+  /** Full-text search; switches server ordering to relevance (#1155). */
+  search?: string;
+  status?: PropositionStatus;
+  electionYear?: number;
+}
+
 export const GET_PROPOSITIONS = gql`
-  query GetPropositions($skip: Int, $take: Int) {
-    propositions(skip: $skip, take: $take) {
+  query GetPropositions(
+    $skip: Int
+    $take: Int
+    $search: String
+    $status: PropositionStatus
+    $electionYear: Int
+  ) {
+    propositions(
+      skip: $skip
+      take: $take
+      search: $search
+      status: $status
+      electionYear: $electionYear
+    ) {
       items {
         id
         externalId
@@ -1731,6 +1752,8 @@ export interface BillsVars {
   coAuthorId?: string;
   /** Defaults to ACTIVE server-side when omitted. See #747. */
   lifecycle?: BillLifecycle;
+  /** Full-text search; switches server ordering to relevance (#1155). */
+  search?: string;
 }
 
 export interface BillIdVars {
@@ -1768,6 +1791,7 @@ export const GET_BILLS = gql`
     $committeeId: ID
     $coAuthorId: ID
     $lifecycle: BillLifecycle
+    $search: String
   ) {
     bills(
       skip: $skip
@@ -1778,6 +1802,7 @@ export const GET_BILLS = gql`
       committeeId: $committeeId
       coAuthorId: $coAuthorId
       lifecycle: $lifecycle
+      search: $search
     ) {
       items {
         id
