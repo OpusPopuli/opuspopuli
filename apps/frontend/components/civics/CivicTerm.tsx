@@ -82,6 +82,8 @@ export function CivicTerm({ term, children }: CivicTermProps) {
           </span>
           {learnMoreSlug && (
             <Link
+              // prefetch-ok: every instance targets the same
+              // /region/how-it-works route, so Next dedupes to one
               href={`/region/how-it-works#term-${learnMoreSlug}`}
               className="mt-2 block text-xs font-medium text-info hover:underline"
               tabIndex={0}

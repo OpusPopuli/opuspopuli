@@ -85,6 +85,7 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/representatives/${rep.id}`}
+            prefetch={false}
             className="block text-base font-semibold text-content hover:underline transition-colors line-clamp-1"
           >
             {rep.name}
@@ -127,6 +128,7 @@ export function RepBriefingCard({ item }: RepBriefingCardProps) {
               <li key={bill.id}>
                 <Link
                   href={`/region/bills/${bill.id}`}
+                  prefetch={false}
                   className="inline-block rounded-md bg-surface-alt border border-line px-2 py-0.5 text-xs font-medium text-content hover:bg-surface-sunk transition-colors"
                   title={bill.title}
                 >

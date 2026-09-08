@@ -56,6 +56,7 @@ function PropositionCard({
   return (
     <Link
       href={`/region/propositions/${proposition.id}`}
+      prefetch={false}
       className="block bg-surface rounded-lg p-6 transition-shadow"
     >
       <div className="flex items-start justify-between gap-4">

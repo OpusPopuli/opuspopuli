@@ -58,6 +58,7 @@ function MemberRow({
   return (
     <Link
       href={`/region/representatives/${member.representativeId}`}
+      prefetch={false}
       className="flex items-center gap-4 p-4 bg-surface rounded-lg border border-line hover:border-accent transition-all"
     >
       {member.photoUrl ? (

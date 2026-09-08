@@ -52,6 +52,7 @@ export function PropositionBriefingCard({
         <div className="min-w-0 flex-1">
           <Link
             href={`/region/propositions/${proposition.id}`}
+            prefetch={false}
             className="block text-base font-semibold text-content hover:underline transition-colors line-clamp-2"
           >
             {proposition.title}

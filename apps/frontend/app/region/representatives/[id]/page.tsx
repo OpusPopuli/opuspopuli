@@ -107,6 +107,7 @@ function CommitteeRow({ c }: { readonly c: CommitteeAssignment }) {
       return (
         <Link
           href={`/region/legislative-committees/${c.legislativeCommitteeId}`}
+          prefetch={false}
           className="text-sm text-info hover:text-info-strong hover:underline"
         >
           {c.name}

@@ -31,6 +31,7 @@ function RepresentativeCard({
   return (
     <Link
       href={`/region/representatives/${representative.id}`}
+      prefetch={false}
       className="block bg-surface rounded-lg p-6 transition-shadow"
     >
       <div className="flex items-start gap-4">

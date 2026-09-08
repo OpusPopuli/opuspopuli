@@ -43,6 +43,10 @@ function CommitteeCard({
   return (
     <Link
       href={`/region/legislative-committees/${committee.id}`}
+      // SEARCH_PAGE_SIZE is 100 when searching (10 when browsing), so
+      // this list can fan out further than any other page-level list
+      // (#1174). The roll-call table on bill detail is larger still.
+      prefetch={false}
       className="block bg-surface rounded-lg p-6 transition-shadow"
     >
       <div className="flex items-start justify-between gap-4">

@@ -63,6 +63,21 @@ function BillCard({ bill }: Readonly<{ bill: Bill }>) {
   return (
     <Link
       href={`/region/bills/${bill.id}`}
+      // prefetch={false}: the App Router prefetches every Link entering
+      // the viewport, so a 20-card page fired 20 separate RSC requests to
+      // the Worker. Each is cheap on its own — these detail routes are
+      // "use client", so the server emits a client reference rather than
+      // rendering the page body — but the per-invocation overhead and
+      // layout chain, multiplied across every list in the app, is what
+      // pushed the Cloudflare Worker past its resource ceiling (Error
+      // 1102). That surfaced as "cannot log in", because the login page
+      // was one of the renders that failed (#1174).
+      //
+      // `false` and not `"auto"`: with no loading.tsx anywhere in the
+      // app, "auto" still issues one request per link, and request COUNT
+      // is what exhausted the Worker. Singular navigation links keep
+      // prefetch — the cost there is one request, and the win is real.
+      prefetch={false}
       className="block bg-surface rounded-lg p-5 transition-shadow"
     >
       <div className="flex items-start justify-between gap-4">
