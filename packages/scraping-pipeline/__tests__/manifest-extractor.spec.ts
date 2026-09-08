@@ -1020,9 +1020,7 @@ describe("selector failure diagnostics (#966 W1)", () => {
         missRatio: 1,
       }),
     ]);
-    expect(
-      result.warnings.some((w) => w.includes('"party"')),
-    ).toBe(true);
+    expect(result.warnings.some((w) => w.includes('"party"'))).toBe(true);
   });
 
   it("counts a selector miss even when a defaultValue masks it", () => {
@@ -1092,5 +1090,113 @@ describe("selector failure diagnostics (#966 W1)", () => {
     const result = extractor.extract(html, manifest);
 
     expect(result.selectorFailures).toBeUndefined();
+  });
+
+  describe("composite fields (#1164)", () => {
+    // Shape of the real Sonoma "Local Measures That Have Been Filed" page:
+    // unclassed nested <ul>/<li>, the election date only in the page heading.
+    const MEASURES_HTML = `
+      <div id="content">
+        <h1>November 3, 2026, General Election: Local Measures That Have Been Filed</h1>
+        <div class="body-copy">
+          <ul>
+            <li>The letter "F" is skipped.</li>
+            <li><strong>Measure E</strong>:&nbsp;Waugh School District Bond
+              <ul><li>Filed 6/26/26</li></ul>
+            </li>
+            <li><strong>Measure AB</strong>:&nbsp;Sonoma County Junior College District Bond
+              <ul><li>Filed 7/10/26</li></ul>
+            </li>
+          </ul>
+        </div>
+      </div>
+    `;
+
+    const measuresManifest = () =>
+      createTestManifest({
+        dataType: "propositions" as DataType,
+        extractionRules: {
+          containerSelector: "#content",
+          itemSelector: "li:has(> ul)",
+          fieldMappings: [
+            // Page-scoped: the election every measure on this page belongs to.
+            {
+              fieldName: "electionDate",
+              selector: "h1",
+              extractionMethod: "text",
+              scope: "container",
+              transform: { type: "date_parse" },
+              required: true,
+            },
+            // Item-scoped helper; not a Proposition field, stripped by Zod.
+            {
+              fieldName: "measureLetter",
+              selector: "strong",
+              extractionMethod: "regex",
+              regexPattern: "^Measure\\s+([A-Z]+)",
+              regexGroup: 1,
+              required: true,
+            },
+            {
+              fieldName: "externalId",
+              selector: "",
+              extractionMethod: "composite",
+              template:
+                "california-sonoma-{electionDate:date}-measure-{measureLetter:lower}",
+              required: true,
+            },
+          ],
+        },
+      });
+
+    it("builds externalId from a page-scoped date and an item-scoped letter", () => {
+      const result = extractor.extract(MEASURES_HTML, measuresManifest());
+
+      // The bare "letter F is skipped" note has no nested <ul> and is excluded.
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0].externalId).toBe(
+        "california-sonoma-2026-11-03-measure-e",
+      );
+      // Multi-letter measures are real on this page — "Measure AB".
+      expect(result.items[1].externalId).toBe(
+        "california-sonoma-2026-11-03-measure-ab",
+      );
+    });
+
+    it("omits the composite rather than emitting a half-built key", () => {
+      const manifest = measuresManifest();
+      // Simulate the heading selector drifting away.
+      manifest.extractionRules.fieldMappings[0].selector = ".no-such-heading";
+
+      const result = extractor.extract(MEASURES_HTML, manifest);
+
+      for (const item of result.items) {
+        expect(item.externalId).toBeUndefined();
+      }
+      expect(result.warnings.some((w) => w.includes("externalId"))).toBe(true);
+    });
+
+    it("records a field miss so drift diagnostics surface it (#966)", () => {
+      const manifest = measuresManifest();
+      manifest.extractionRules.fieldMappings[1].regexPattern = "^Nope\\s+(X)";
+
+      const result = extractor.extract(MEASURES_HTML, manifest);
+
+      const failures = result.selectorFailures ?? [];
+      expect(failures.some((f) => f.field === "externalId")).toBe(true);
+    });
+
+    it("applies transforms to the composed value", () => {
+      const manifest = measuresManifest();
+      manifest.extractionRules.fieldMappings[2].transform = {
+        type: "uppercase",
+      };
+
+      const result = extractor.extract(MEASURES_HTML, manifest);
+
+      expect(result.items[0].externalId).toBe(
+        "CALIFORNIA-SONOMA-2026-11-03-MEASURE-E",
+      );
+    });
   });
 });

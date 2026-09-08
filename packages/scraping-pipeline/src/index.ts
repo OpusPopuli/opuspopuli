@@ -42,6 +42,11 @@ export { ManifestComparator } from "./manifest/manifest-comparator.js";
 export { ManifestExtractorService } from "./extraction/manifest-extractor.service.js";
 export { FieldTransformer } from "./extraction/field-transformer.js";
 export { ExtractionValidator } from "./extraction/extraction-validator.js";
+export {
+  resolveCompositeTemplate,
+  type CompositeFormatter,
+  type CompositeResult,
+} from "./extraction/composite-template.js";
 
 // Domain mapping
 export { DomainMapperService } from "./mapping/domain-mapper.service.js";
@@ -60,6 +65,10 @@ export { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
 export { PdfExtractHandler } from "./handlers/pdf-extract.handler.js";
 export { TextExtractorService } from "./extraction/text-extractor.service.js";
 export { DetailCrawlerService } from "./crawling/detail-crawler.service.js";
+export {
+  LinkDiscoveryService,
+  type LinkDiscoveryResult,
+} from "./crawling/link-discovery.service.js";
 
 // Validation
 export { ConfigValidator } from "./validation/config-validator.js";

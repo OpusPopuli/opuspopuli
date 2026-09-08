@@ -379,6 +379,7 @@ Otherwise the load runs and the per-row tally lives on `counts` (`existing`, `up
 | `api` | `ApiSourceConfig` | No | Configuration for `api` sources |
 | `pdf` | `PdfSourceConfig` | No | Configuration for `pdf` sources |
 | `billDiscovery` | `BillDiscoveryConfig` | No | Configuration for `bills` sources on legislature sites |
+| `linkDiscovery` | `LinkDiscoveryConfig` | No | Hub navigation for `html_scrape` sources whose URL is a multi-level hub rather than the data page |
 
 ### BulkDownloadConfig Fields
 
@@ -422,6 +423,43 @@ Required when `dataType` is `"bills"` for legislature sites (such as CA leginfo)
 | `statusPageTemplate` | `string` | Yes | URL path + query template for the bill status page. Use `{bill_id}` as placeholder; origin is prepended from the seed URL. Example: `"/faces/billStatusClient.xhtml?bill_id={bill_id}"` |
 | `votesPageTemplate` | `string` | Yes | URL path + query template for the bill votes page. Same substitution rules. |
 | `textPageTemplate` | `string` | No | URL path + query template for the bill text page. When set, the sync fetches this page to check the `"Date Published"` timestamp before running LLM extraction — bills whose stored `source_published_at` matches are skipped, avoiding a redundant LLM call for unchanged bills. |
+
+### LinkDiscoveryConfig Fields
+
+For `html_scrape` sources whose seed URL is a multi-level hub rather than the page holding the data — e.g. a county registrar `/elections` page that links to per-election pages, which in turn link to a "List of Local Measures That Have Been Filed" leaf (#1164). The pipeline fetches the seed once, follows each step's matching links in order (deterministic anchor matching, no LLM; same host as the seed, HTTPS only), and runs manifest derivation + extraction on the pages selected by the **final** step. Each leaf URL gets its own structural manifest, so a new election cycle's leaf cold-starts on first sight (0 rows with `pendingManifestAnalysis`, extraction from the next run) — the standard async-analysis behavior.
+
+Same rationale as `billDiscovery`: blind `crawlDepth` BFS wastes `crawlMaxPages` on nav links and does not reliably reach a specific leaf, while the hub → leaf link *text* is stable across cycles even though the leaf URLs change every cycle.
+
+**Staleness alarm:** a step matching zero links across every page it is applied to fails the source loudly (`success: false`, error in the sync diagnostics) instead of silently syncing 0 rows. Zero matches on just one of several pages (an election whose measures list isn't posted yet) is only a warning. When the alarm fires after a site restructure, the fix is a one-line pattern edit in the region config.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `steps` | `LinkDiscoveryStep[]` | Yes | Ordered navigation hops. Step 1 applies to the seed page's links; step N to the links of every page selected by step N−1. |
+| `maxLeafPages` | `number` | No | Cap on pages selected per level (default 5). Each leaf costs its own manifest + extraction pass. |
+
+`LinkDiscoveryStep`:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `textPattern` | `string` | Yes | Regex (case-insensitive) matched against each anchor's visible text, e.g. `"(Primary\|General\|Special) Election"`. |
+| `hrefPattern` | `string` | No | Regex additionally matched against the anchor's resolved absolute URL. Both must match when set. |
+| `select` | `"first"` \| `"all"` | No | Follow only the first matching link per page (default) or every matching link. |
+
+Example (Sonoma County ballot measures):
+
+```json
+{
+  "url": "https://sonomacounty.gov/administrative-support-and-fiscal-services/registrar-of-voters/elections",
+  "dataType": "propositions",
+  "linkDiscovery": {
+    "steps": [
+      { "textPattern": "(Primary|General|Special) Election", "hrefPattern": "/registrar-of-voters/elections/", "select": "all" },
+      { "textPattern": "Local Measures That Have Been Filed", "select": "first" }
+    ],
+    "maxLeafPages": 4
+  }
+}
+```
 
 ## Data Types
 

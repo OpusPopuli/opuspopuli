@@ -92,6 +92,7 @@ describe('RegionQueryService — caching', () => {
         analysisPromptHash: null,
         analysisGeneratedAt: null,
         lifecycleStageId: null,
+        regionPluginName: 'california',
         deletedAt: null,
         createdAt: new Date('2024-01-01'),
         updatedAt: new Date('2024-01-01'),

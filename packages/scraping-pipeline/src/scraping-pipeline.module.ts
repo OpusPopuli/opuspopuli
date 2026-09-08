@@ -31,6 +31,7 @@ import { PdfExtractHandler } from "./handlers/pdf-extract.handler.js";
 import { MinutesIngestHandler } from "./handlers/minutes-ingest.handler.js";
 import { TextExtractorService } from "./extraction/text-extractor.service.js";
 import { DetailCrawlerService } from "./crawling/detail-crawler.service.js";
+import { LinkDiscoveryService } from "./crawling/link-discovery.service.js";
 
 export interface ManifestMissingArgs {
   regionId: string;
@@ -133,6 +134,7 @@ export class ScrapingPipelineModule {
         MinutesIngestHandler,
         TextExtractorService,
         DetailCrawlerService,
+        LinkDiscoveryService,
         ScrapingPipelineService,
       ],
       exports: [
