@@ -81,20 +81,20 @@ async function introspect(url) {
 }
 
 /**
- * Stable serialisation, so an unchanged schema always produces a
- * byte-identical file and `--check` compares meaning rather than layout.
+ * Stable serialisation, so regenerating an unchanged schema produces an
+ * identical file instead of a large phantom diff.
  *
  * Object keys AND arrays of named entries (types, fields, args, enum values,
  * interfaces, possibleTypes, directives) are sorted. None of those orderings
  * are semantically significant to a client — `buildClientSchema` and
  * `validate` treat a schema identically however they are ordered — but
- * federation composes the supergraph at gateway boot, and nothing promises a
- * stable emission order across instances. Comparing raw introspection byte
- * for byte would then fail in CI for a schema that had not actually changed.
+ * federation composes the supergraph at gateway boot and nothing promises a
+ * stable emission order across instances.
  *
- * A gate that fails at random gets deleted, which would leave the validation
- * test silently checking against a stale schema — the precise failure this
- * whole mechanism exists to prevent.
+ * `--check` does NOT rely on this: it canonicalises both sides through
+ * `canonical()` below, so ordering cannot cause a false failure even if this
+ * sorting were removed. The sorting exists to keep the committed file's
+ * diffs readable.
  */
 function stableStringify(value) {
   if (Array.isArray(value)) {
@@ -118,6 +118,60 @@ function stableStringify(value) {
   return value;
 }
 
+/**
+ * Compare MEANING, not bytes.
+ *
+ * The first version of this compared the file text to freshly serialised
+ * introspection and failed on any difference. That broke immediately: the
+ * pre-commit formatter rewrites the committed JSON (collapsing short arrays
+ * onto one line), so the bytes on disk stopped matching what this script
+ * emits and `--check` failed in CI for a schema that was perfectly current.
+ *
+ * Canonicalising both sides through the same function makes the comparison
+ * immune to whitespace, key order, and any formatter that touches the file.
+ */
+function canonical(value) {
+  return JSON.stringify(stableStringify(value));
+}
+
+/** Human-readable summary of what actually changed, so CI failure is actionable. */
+function describeDrift(committed, fresh) {
+  const typesOf = (d) =>
+    new Map((d.__schema?.types ?? []).map((t) => [t.name, t]));
+  const before = typesOf(committed);
+  const after = typesOf(fresh);
+
+  const added = [...after.keys()].filter((n) => !before.has(n));
+  const removed = [...before.keys()].filter((n) => !after.has(n));
+
+  const changed = [];
+  for (const [name, t] of after) {
+    const prior = before.get(name);
+    if (!prior) continue;
+    if (canonical(prior) === canonical(t)) continue;
+    const fieldsOf = (x) => new Set((x.fields ?? []).map((f) => f.name));
+    const fa = fieldsOf(t);
+    const fb = fieldsOf(prior);
+    const plus = [...fa].filter((f) => !fb.has(f));
+    const minus = [...fb].filter((f) => !fa.has(f));
+    const detail = [
+      plus.length ? `+${plus.join(", +")}` : "",
+      minus.length ? `-${minus.join(", -")}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    changed.push(
+      `    ${name}${detail ? `: ${detail}` : " (field types/args)"}`,
+    );
+  }
+
+  const lines = [];
+  if (added.length) lines.push(`  added types: ${added.join(", ")}`);
+  if (removed.length) lines.push(`  removed types: ${removed.join(", ")}`);
+  if (changed.length) lines.push(`  changed types:\n${changed.join("\n")}`);
+  return lines.length ? lines.join("\n") : "  (no structural difference found)";
+}
+
 const data = await introspect(endpoint);
 const serialised = JSON.stringify(stableStringify(data), null, 2) + "\n";
 
@@ -126,13 +180,15 @@ if (checkOnly) {
     console.error(`MISSING snapshot: ${SNAPSHOT}`);
     process.exit(1);
   }
-  const current = readFileSync(SNAPSHOT, "utf8");
-  if (current !== serialised) {
+  const committed = JSON.parse(readFileSync(SNAPSHOT, "utf8"));
+  if (canonical(committed) !== canonical(data)) {
     console.error(
       "The committed GraphQL schema snapshot is STALE.\n" +
         "The backend schema changed without refreshing it, so " +
         "document-validation.test.ts is checking against an old schema.\n\n" +
-        "Regenerate with the stack running:\n" +
+        "What differs:\n" +
+        describeDrift(committed, data) +
+        "\n\nRegenerate with the stack running:\n" +
         `  node apps/frontend/scripts/refresh-schema-snapshot.mjs ${endpoint}\n`,
     );
     process.exit(1);
