@@ -278,6 +278,20 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # The unit test __tests__/graphql/document-validation.test.ts validates
+      # every frontend GraphQL document against a COMMITTED introspection
+      # snapshot, so it needs no stack and runs everywhere. This step is what
+      # keeps that snapshot honest: the gateway is already up here, so
+      # re-introspect it and fail if the committed copy has drifted.
+      #
+      # Without this, a backend schema change would leave the snapshot stale
+      # and the validation test would quietly check documents against an old
+      # schema — the exact failure mode that made the committed subgraph SDL
+      # unusable for this (two of four files were 6+ months out of date).
+      - name: Verify GraphQL schema snapshot is current
+        if: ${{ matrix.shard == 1 }}
+        run: node apps/frontend/scripts/refresh-schema-snapshot.mjs --check http://localhost:4000/api
+
       - name: Trivy container scan — users
         if: ${{ matrix.shard == 1 }}
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0

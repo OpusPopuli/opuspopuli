@@ -2029,7 +2029,8 @@ export interface SearchBillResult {
   measureTypeCode: string;
   title: string;
   authorName?: string | null;
-  status?: string | null;
+  // No `status`: see the note in REGION_SEARCH — selecting Bill.status
+  // alongside PropositionModel.status is invalid GraphQL in this union.
   lastAction?: string | null;
   lastActionDate?: string | null;
   isActive: boolean;
@@ -2081,6 +2082,14 @@ export const REGION_SEARCH = gql`
         snippet
         result {
           __typename
+          # NOTE: do NOT select "status" on Bill here. Bill.status is a
+          # String while PropositionModel.status is the PropositionStatus
+          # enum, so selecting both under one response name is invalid
+          # GraphQL ("Fields 'status' conflict...") and fails the WHOLE
+          # query — the page then renders its error state for every search,
+          # not just some. Nothing in this union renders a bill status
+          # (BillCardHeaderBill keys off isActive/isDead), so it is simply
+          # not selected. If one is ever needed, it must be aliased.
           ... on Bill {
             id
             billNumber
@@ -2088,7 +2097,6 @@ export const REGION_SEARCH = gql`
             measureTypeCode
             title
             authorName
-            status
             lastAction
             lastActionDate
             isActive
