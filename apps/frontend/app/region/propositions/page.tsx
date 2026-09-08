@@ -16,6 +16,7 @@ import { PropositionStatusBadge } from "@/components/region/PropositionStatusBad
 import { Pagination } from "@/components/region/Pagination";
 import { ListSearchInput } from "@/components/region/ListSearchInput";
 import { NoSearchResults } from "@/components/region/NoSearchResults";
+import { SearchEverythingHint } from "@/components/region/SearchEverythingHint";
 import {
   LoadingSkeleton,
   ErrorState,
@@ -202,6 +203,8 @@ export default function PropositionsPage() {
           }}
         />
       </div>
+
+      <SearchEverythingHint />
 
       <div className="mb-6 flex flex-wrap gap-3">
         <select

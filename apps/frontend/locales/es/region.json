@@ -41,7 +41,9 @@
     "electionYearFilterLabel": "Filtrar por año electoral",
     "allElections": "Todas las elecciones",
     "matchCount_one": "{{count}} resultado para «{{query}}»",
-    "matchCount_other": "{{count}} resultados para «{{query}}»"
+    "matchCount_other": "{{count}} resultados para «{{query}}»",
+    "outsideList": "¿Buscas algo fuera de esta lista?",
+    "searchEverything": "Buscar en todo"
   },
   "lifecycle": {
     "passed": "Aprobado",

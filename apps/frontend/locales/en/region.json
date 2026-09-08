@@ -41,7 +41,9 @@
     "electionYearFilterLabel": "Filter by election year",
     "allElections": "All elections",
     "matchCount_one": "{{count}} match for “{{query}}”",
-    "matchCount_other": "{{count}} matches for “{{query}}”"
+    "matchCount_other": "{{count}} matches for “{{query}}”",
+    "outsideList": "Looking for something outside this list?",
+    "searchEverything": "Search everything"
   },
   "lifecycle": {
     "passed": "Passed",

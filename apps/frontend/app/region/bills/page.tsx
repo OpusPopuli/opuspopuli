@@ -22,6 +22,7 @@ import {
 import { BillCardHeader } from "@/components/region/BillCardHeader";
 import { ListSearchInput } from "@/components/region/ListSearchInput";
 import { NoSearchResults } from "@/components/region/NoSearchResults";
+import { SearchEverythingHint } from "@/components/region/SearchEverythingHint";
 import { useCivics } from "@/components/civics/CivicsContext";
 import { formatDate } from "@/lib/format";
 
@@ -307,6 +308,7 @@ export default function BillsPage() {
         </p>
       </div>
       {searchBar}
+      <SearchEverythingHint />
       {filterBar}
       {search && data && !loading && (
         <p className="mb-3 text-sm text-content-dim">
