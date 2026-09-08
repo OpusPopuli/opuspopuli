@@ -112,6 +112,102 @@ function applyFormatter(value: string, formatter?: string): string {
   }
 }
 
+/**
+ * Wall-clock components read back out of a formatted date.
+ */
+function partsInZone(instant: Date, timeZone: string): number {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const p: Record<string, string> = {};
+  for (const { type, value } of fmt.formatToParts(instant)) p[type] = value;
+  // Intl renders midnight as hour 24 in some ICU versions.
+  const hour = p.hour === "24" ? "00" : p.hour;
+  return Date.UTC(
+    Number(p.year),
+    Number(p.month) - 1,
+    Number(p.day),
+    Number(hour),
+    Number(p.minute),
+    Number(p.second),
+  );
+}
+
+/**
+ * Read a naive timestamp's calendar/clock components into a UTC epoch — the
+ * components as written, with no zone applied yet.
+ *
+ * Parsed explicitly rather than via `Date.parse`, which resolves anything it
+ * doesn't recognise as ISO in the HOST's zone and would silently reintroduce
+ * the host dependence this whole function exists to remove. Accepts
+ * `YYYY-MM-DD` with an optional `H:MM[:SS]` and optional AM/PM — the shapes
+ * `date_parse` and civic APIs actually emit.
+ */
+function parseNaiveWallClock(naive: string): number | undefined {
+  const m =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?/.exec(
+      naive.trim(),
+    );
+  if (!m) return undefined;
+
+  let hour = m[4] ? Number(m[4]) : 0;
+  const meridiem = m[7]?.toLowerCase();
+  if (meridiem === "pm" && hour < 12) hour += 12;
+  if (meridiem === "am" && hour === 12) hour = 0;
+  if (hour > 23) return undefined;
+
+  return Date.UTC(
+    Number(m[1]),
+    Number(m[2]) - 1,
+    Number(m[3]),
+    hour,
+    m[5] ? Number(m[5]) : 0,
+    m[6] ? Number(m[6]) : 0,
+  );
+}
+
+/**
+ * Interpret a timezone-naive timestamp as wall-clock time in `timeZone` and
+ * return it as an ISO-8601 instant.
+ *
+ * Civic APIs routinely publish local wall-clock with no offset — Legistar
+ * returns `EventDate` and `EventTime` separately, both naive (#1162). Handing
+ * such a string to `new Date()` resolves it in the SERVER's zone: our
+ * containers run UTC, so a 2:45 PM Pacific meeting became 2:45 PM UTC and
+ * displayed 7 hours early. Wrong-but-confident times are worse than absent
+ * ones, so the zone has to be applied explicitly.
+ *
+ * Solved by iteration rather than a tz table: guess the instant as if the
+ * wall-clock were UTC, measure the zone's offset there, correct, then measure
+ * once more so a guess that lands on the far side of a DST transition settles
+ * on the right side.
+ */
+export function zonedWallClockToISO(
+  naive: string,
+  timeZone: string,
+): string | undefined {
+  const wallClock = parseNaiveWallClock(naive);
+  if (wallClock === undefined) return undefined;
+
+  let instant = wallClock;
+  for (let i = 0; i < 2; i++) {
+    try {
+      instant =
+        wallClock + (instant - partsInZone(new Date(instant), timeZone));
+    } catch {
+      return undefined; // invalid IANA zone
+    }
+  }
+  return new Date(instant).toISOString();
+}
+
 export interface CompositeResult {
   /** The built string, or undefined when any placeholder was unresolvable. */
   value?: string;

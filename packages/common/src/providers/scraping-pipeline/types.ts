@@ -763,12 +763,62 @@ export interface ApiSourceConfig {
   apiKeyHeader?: string;
   /** Pagination strategy */
   pagination?: ApiPaginationConfig;
-  /** JSON path to the items array in the response (e.g., "results" or "data.items") */
+  /**
+   * JSON path to the items array in the response (e.g., "results" or
+   * "data.items"). Defaults to "results".
+   *
+   * Use `"$"` when the response body IS the array — OData services such as
+   * Legistar's Web API return a bare `[...]` with no envelope (#1162).
+   */
   resultsPath?: string;
   /** Static query parameters appended to every request */
   queryParams?: Record<string, string>;
   /** Field name mappings: API response field → domain model field (e.g., "committee_id" → "committeeId") */
   fieldMappings?: Record<string, string>;
+  /**
+   * Fields built by interpolating other fields of the same record, applied
+   * AFTER `fieldMappings`. Maps target field name → template.
+   *
+   * Uses the same `{field}` placeholder syntax and
+   * `:date|lower|upper|slug|trim` formatters as the HTML extractor's
+   * `composite` method (#1164), and is all-or-nothing for the same reason:
+   * a missing placeholder yields no value rather than a half-built one.
+   *
+   *   { externalId: "sonoma-legistar-{EventId}" }
+   *
+   * Exists because APIs routinely split a single domain value across two
+   * response fields — a meeting's date and time — which a flat key rename
+   * cannot recombine (#1162).
+   *
+   * The object form adds `timezone`: the built string is read as wall-clock
+   * time in that IANA zone and emitted as an ISO instant. Required whenever
+   * the API publishes local time with no offset, because `new Date()` would
+   * otherwise resolve it in the SERVER's zone — our containers run UTC, so a
+   * 2:45 PM Pacific meeting would land 7 hours early.
+   *
+   *   { scheduledAt: { template: "{EventDate:date} {EventTime}",
+   *                    timezone: "America/Los_Angeles" } }
+   *   → "2026-09-03T21:45:00.000Z"
+   *
+   * Fields are resolved in declaration order, so a later template may
+   * reference an earlier one. Reordering keys changes behaviour.
+   */
+  compositeFields?: Record<string, string | CompositeFieldConfig>;
+}
+
+/**
+ * Object form of a `compositeFields` entry, for templates that need more than
+ * the template string itself.
+ */
+export interface CompositeFieldConfig {
+  /** `{field}` template, same syntax as the string form. */
+  template: string;
+  /**
+   * IANA zone the built string should be read as wall-clock time in
+   * (e.g. "America/Los_Angeles"). The result is an ISO-8601 instant.
+   * Omit for values that are not timestamps.
+   */
+  timezone?: string;
 }
 
 /**
@@ -783,6 +833,13 @@ export interface ApiPaginationConfig {
   limitParam?: string;
   /** Number of items per page */
   limit?: number;
+  /**
+   * Cap on pages fetched per run (default 10). Raise it for sources whose
+   * full archive exceeds `limit × 10` — Legistar's event history is ~500 rows
+   * and growing (#1162). Hitting the cap is reported as a warning on the
+   * result, never a silent truncation.
+   */
+  maxPages?: number;
 }
 
 /**

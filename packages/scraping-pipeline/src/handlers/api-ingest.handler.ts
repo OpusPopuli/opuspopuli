@@ -17,6 +17,10 @@ import type {
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
 import {
+  resolveCompositeTemplate,
+  zonedWallClockToISO,
+} from "../extraction/composite-template.js";
+import {
   ExecutionTrackerService,
   type ExecutionSession,
 } from "../pipeline/execution-tracker.service.js";
@@ -88,10 +92,8 @@ export class ApiIngestHandler {
             warnings,
             async (rawPageItems, pageIndex) => {
               // Apply per-page transformations before domain mapping.
-              if (api.fieldMappings) {
-                for (const item of rawPageItems) {
-                  this.remapFields(item, api.fieldMappings);
-                }
+              for (const item of rawPageItems) {
+                this.applyFieldTransforms(item, api, warnings);
               }
               if (sourceSystem) {
                 for (const item of rawPageItems) {
@@ -159,10 +161,8 @@ export class ApiIngestHandler {
         `Fetched ${allItems.length} items from API ${source.url}`,
       );
 
-      if (api.fieldMappings) {
-        for (const item of allItems) {
-          this.remapFields(item, api.fieldMappings);
-        }
+      for (const item of allItems) {
+        this.applyFieldTransforms(item, api, warnings);
       }
 
       if (sourceSystem) {
@@ -222,8 +222,25 @@ export class ApiIngestHandler {
     const allItems: Record<string, unknown>[] = [];
     let page = 0;
     let cursorParams: Record<string, string> | undefined;
+    // Per-source override: an archive larger than limit × 10 (Legistar's ~500
+    // events) would otherwise be truncated at the default cap (#1162).
+    //
+    // Clamped rather than trusted, mirroring linkDiscovery's maxLeafPages: a
+    // NaN or zero here makes `page < maxPages` false immediately, so the loop
+    // never runs, no warning fires, and the source reports zero items with no
+    // diagnostic — the silent empty sync these caps exist to prevent.
+    const configured = api.pagination?.maxPages ?? MAX_PAGES;
+    const maxPages =
+      Number.isFinite(configured) && configured >= 1
+        ? Math.floor(configured)
+        : MAX_PAGES;
+    if (maxPages !== configured) {
+      const message = `Invalid pagination.maxPages (${configured}); using ${maxPages}`;
+      this.logger.warn(message);
+      warnings.push(message);
+    }
 
-    while (page < MAX_PAGES) {
+    while (page < maxPages) {
       const { items, body } = await this.fetchPage(
         baseUrl,
         api,
@@ -251,10 +268,12 @@ export class ApiIngestHandler {
       await this.delay(PAGE_DELAY_MS);
     }
 
-    if (page >= MAX_PAGES) {
-      warnings.push(
-        `Reached max page limit (${MAX_PAGES}). More data may be available.`,
-      );
+    if (page >= maxPages) {
+      // Loud on purpose: a truncated archive that reports success is the
+      // silent-undercount failure this pipeline keeps rediscovering.
+      const message = `Reached max page limit (${maxPages}). More data may be available — raise pagination.maxPages for this source.`;
+      this.logger.warn(message);
+      warnings.push(message);
     }
 
     return allItems;
@@ -392,6 +411,15 @@ export class ApiIngestHandler {
     body: Record<string, unknown>,
     resultsPath: string,
   ): Record<string, unknown>[] {
+    // Envelope-free responses: the body IS the array. OData services such as
+    // Legistar's Web API return a bare `[...]` (#1162). Accept it whenever the
+    // body is an array, so `resultsPath: "$"` is explicit but a config that
+    // simply omits the path still works rather than silently yielding zero.
+    if (Array.isArray(body)) {
+      return body as Record<string, unknown>[];
+    }
+    if (resultsPath === "$") return [];
+
     const parts = resultsPath.split(".");
     let current: unknown = body;
 
@@ -456,6 +484,93 @@ export class ApiIngestHandler {
     }
 
     return undefined;
+  }
+
+  /**
+   * Apply the source's record-level transforms, in order: rename keys, then
+   * build composite fields from the renamed record.
+   *
+   * Single entry point on purpose — the streaming and buffered paths both
+   * call it, so a transform can't land on one and silently miss the other.
+   */
+  private applyFieldTransforms(
+    record: Record<string, unknown>,
+    api: ApiSourceConfig,
+    warnings: string[],
+  ): void {
+    if (api.fieldMappings) {
+      this.remapFields(record, api.fieldMappings);
+    }
+    if (api.compositeFields) {
+      this.applyCompositeFields(record, api.compositeFields, warnings);
+    }
+  }
+
+  /**
+   * Build fields by interpolating other fields of the same record (#1162),
+   * reusing the extractor's template engine so API and HTML sources share one
+   * composite syntax and one all-or-nothing rule.
+   *
+   * Runs after `fieldMappings`, so templates reference the POST-rename names —
+   * whichever names the domain schema will see.
+   */
+  private applyCompositeFields(
+    record: Record<string, unknown>,
+    compositeFields: NonNullable<ApiSourceConfig["compositeFields"]>,
+    warnings: string[],
+  ): void {
+    for (const [targetField, config] of Object.entries(compositeFields)) {
+      const { template, timezone } =
+        typeof config === "string"
+          ? { template: config, timezone: undefined }
+          : config;
+
+      const { value, missing } = resolveCompositeTemplate(template, record);
+      if (value === undefined) {
+        // Delete rather than leave: a stale value from fieldMappings under the
+        // same key would otherwise survive and quietly defeat the
+        // all-or-nothing rule this field's contract promises.
+        delete record[targetField];
+        this.recordCompositeMiss(targetField, missing, warnings);
+        continue;
+      }
+
+      if (!timezone) {
+        record[targetField] = value;
+        continue;
+      }
+
+      const instant = zonedWallClockToISO(value, timezone);
+      if (instant === undefined) {
+        delete record[targetField];
+        this.recordCompositeMiss(
+          targetField,
+          [`unparseable in ${timezone}: "${value}"`],
+          warnings,
+        );
+        continue;
+      }
+      record[targetField] = instant;
+    }
+  }
+
+  /**
+   * Surface an unresolved composite as a counted warning, not just a debug
+   * line. The HTML path reports these through the #966 drift diagnostics; an
+   * API composite that quietly stops resolving — because the upstream renamed
+   * a field — should be equally visible. Deduped so one broken template
+   * doesn't emit a warning per record across a 500-row sync.
+   */
+  private recordCompositeMiss(
+    targetField: string,
+    missing: string[],
+    warnings: string[],
+  ): void {
+    const message = `Composite field "${targetField}" unresolved — missing: ${missing.join(", ")}`;
+    if (!warnings.includes(message)) {
+      warnings.push(message);
+      this.logger.warn(message);
+    }
   }
 
   /**
