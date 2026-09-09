@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import { createMock } from '@golevelup/ts-jest';
 
 import { RegionSyncScheduler } from './region-sync.scheduler';
@@ -56,7 +57,8 @@ describe('RegionSyncScheduler', () => {
   });
 
   describe('onApplicationBootstrap', () => {
-    it('falls back to daily-cron when no sources have syncCadence', async () => {
+    // The default mock returns [] — no plugins, no sources at all.
+    it('falls back to daily-cron only when there are no data sources', async () => {
       await scheduler.onApplicationBootstrap();
 
       expect(queueService.upsertScheduler).toHaveBeenCalledWith(
@@ -65,6 +67,45 @@ describe('RegionSyncScheduler', () => {
         '0 2 * * *',
         expect.objectContaining({ triggerSource: 'cron' }),
       );
+    });
+
+    // #1184. This previously keyed off "no source declares a cadence", so a
+    // region whose sources declared none fell through the per-source loop
+    // (each `if (source.syncCadence)` skipped) AND was denied the fallback
+    // as soon as any OTHER region declared one. It registered nothing and
+    // said nothing. Sonoma shipped enabled in that state and never synced.
+    it('registers per-source schedulers for a region with no cadences, rather than falling back', async () => {
+      regionService.getPluginDataSourceConfigs.mockResolvedValueOnce([
+        {
+          regionId: 'california',
+          sources: [
+            {
+              url: 'https://example.com/bills',
+              dataType: 'bills' as never,
+              contentGoal: 'bills',
+              syncCadence: '0 2 * * *',
+            },
+          ],
+        },
+        {
+          regionId: 'california-sonoma',
+          sources: [
+            {
+              url: 'https://example.com/meetings',
+              dataType: 'meetings' as never,
+              contentGoal: 'meetings',
+              // no syncCadence — the Sonoma shape
+            },
+          ],
+        },
+      ]);
+
+      await scheduler.onApplicationBootstrap();
+
+      const keys = queueService.upsertScheduler.mock.calls.map((c) => c[1]);
+      expect(keys).toContain('california-sonoma-meetings-cron');
+      // and NOT the blanket fallback, which would sync everything
+      expect(keys).not.toContain('daily-cron');
     });
 
     it('registers per-source schedulers when syncCadence is configured', async () => {
@@ -179,7 +220,10 @@ describe('RegionSyncScheduler', () => {
       );
     });
 
-    it('skips sources without syncCadence', async () => {
+    // Replaces "skips sources without syncCadence" (#1184). Skipping was the
+    // bug: a configured source that never runs is not a deliberate choice,
+    // and the skip was silent. It now defaults to the daily cron and says so.
+    it('defaults a source with no syncCadence instead of skipping it', async () => {
       regionService.getPluginDataSourceConfigs.mockResolvedValueOnce([
         {
           regionId: 'california',
@@ -188,7 +232,7 @@ describe('RegionSyncScheduler', () => {
               url: 'https://example.com',
               dataType: 'meetings' as never,
               contentGoal: 'meetings',
-              syncCadence: '0 2 * * *',
+              syncCadence: '0 5 * * *',
             },
             {
               url: 'https://example.com/props',
@@ -202,13 +246,66 @@ describe('RegionSyncScheduler', () => {
 
       await scheduler.onApplicationBootstrap();
 
-      expect(queueService.upsertScheduler).toHaveBeenCalledTimes(1);
-      expect(queueService.upsertScheduler).toHaveBeenCalledWith(
-        'region-sync',
-        'california-meetings-cron',
-        expect.any(String),
-        expect.any(Object),
+      expect(queueService.upsertScheduler).toHaveBeenCalledTimes(2);
+
+      const byKey = Object.fromEntries(
+        queueService.upsertScheduler.mock.calls.map((c) => [c[1], c[2]]),
       );
+      expect(byKey).toHaveProperty('california-propositions-cron');
+      // Explicit cadence still honoured (hour 5), default applied to the other
+      // (hour 2). Both are staggered, so assert the hour rather than the string.
+      expect(byKey['california-meetings-cron']).toMatch(/^\d+ 5 \* \* \*$/);
+      expect(byKey['california-propositions-cron']).toMatch(/^\d+ 2 \* \* \*$/);
+    });
+
+    // syncCadence is an optional string from JSON, so "" is reachable.
+    // `??` would pass it through to staggeredCron as an invalid pattern;
+    // the default must treat empty as absent, matching the warn's own check.
+    it('treats an empty-string cadence as absent, not as a pattern', async () => {
+      regionService.getPluginDataSourceConfigs.mockResolvedValueOnce([
+        {
+          regionId: 'california-sonoma',
+          sources: [
+            {
+              url: 'https://example.com/meetings',
+              dataType: 'meetings' as never,
+              contentGoal: 'meetings',
+              syncCadence: '',
+            },
+          ],
+        },
+      ]);
+
+      await scheduler.onApplicationBootstrap();
+
+      const cron = queueService.upsertScheduler.mock.calls[0][2];
+      expect(cron).toMatch(/^\d+ 2 \* \* \*$/);
+    });
+
+    it('warns when it defaults a cadence, so the config author can see it', async () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      regionService.getPluginDataSourceConfigs.mockResolvedValueOnce([
+        {
+          regionId: 'california-sonoma',
+          sources: [
+            {
+              url: 'https://example.com/props',
+              dataType: 'propositions' as never,
+              contentGoal: 'props',
+            },
+          ],
+        },
+      ]);
+
+      await scheduler.onApplicationBootstrap();
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('declares no syncCadence'),
+      );
+      warn.mockRestore();
     });
 
     it('continues registering remaining sources when one upsert fails', async () => {

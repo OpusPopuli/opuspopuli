@@ -127,7 +127,12 @@ export class StructuralAnalysisProcessor
         'Structural-analysis job succeeded',
       );
 
-      await this.enqueueFollowUpSync(regionId, dataType);
+      await this.enqueueFollowUpSync(
+        regionId,
+        dataType,
+        manifestId,
+        manifestVersion,
+      );
 
       return { manifestId, manifestVersion, analysisTimeMs };
     } catch (err) {
@@ -158,17 +163,37 @@ export class StructuralAnalysisProcessor
 
   /**
    * Enqueue a targeted region-sync job after a manifest is written.
-   * Uses a deterministic jobId so BullMQ deduplicates concurrent analyses
-   * for the same (regionId, dataType) — only one follow-up sync is queued.
+   *
+   * The jobId is scoped to the MANIFEST, not just (regionId, dataType)
+   * — see #1172. It previously omitted the manifest, and the comment
+   * claimed BullMQ "silently skips if already queued/active". BullMQ
+   * actually no-ops a duplicate jobId in *any* state including
+   * `completed`, and completed jobs are retained for 7 days
+   * (`removeOnComplete.age` in queue.service.ts). So the id stayed
+   * occupied by the previous run and every follow-up inside that window
+   * was dropped, while `enqueue()` returned normally and the log below
+   * still claimed success.
+   *
+   * That is the mechanism the deferred cold-start path depends on: the
+   * first sync primes the manifest and returns 0 items, and this
+   * follow-up is what actually extracts. Losing it leaves the source
+   * empty behind a `succeeded` job — observed on UAT 2026-09-07 and in
+   * production 2026-09-08 (Sonoma propositions, 12 measures stranded
+   * behind an already-built manifest).
+   *
+   * Including the version matters because a re-analysis can bump a
+   * manifest in place; a new version is a new reason to sync.
    */
   private async enqueueFollowUpSync(
     regionId: string,
     dataType: string,
+    manifestId: string,
+    manifestVersion: number,
   ): Promise<void> {
     try {
-      // Deterministic jobId deduplicates concurrent analyses for the same
-      // (regionId, dataType) — BullMQ silently skips if already queued/active.
-      const dedupeJobId = `manifest-ready:${regionId}:${dataType}`;
+      // Still deterministic — concurrent analyses of the SAME manifest
+      // collapse to one follow-up, which was the original intent.
+      const dedupeJobId = `manifest-ready:${regionId}:${dataType}:${manifestId}:v${manifestVersion}`;
 
       await this.queueService.enqueue<RegionSyncJobData>(
         REGION_SYNC_QUEUE,

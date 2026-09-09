@@ -60,6 +60,59 @@ describe("QueueService", () => {
       ).resolves.toBe("job-123");
       delete process.env.BULLMQ_QUEUE_REGION_SYNC_ATTEMPTS;
     });
+
+    // #1172. BullMQ returns the EXISTING job when a caller-supplied jobId is
+    // already taken — in any state, including `completed` (retained 7 days).
+    // The call resolves normally, so without this warning a caller reports
+    // "enqueued" for work that will never run. That silence is what made the
+    // manifest-ready follow-up bug expensive to find.
+    it("warns when a caller-supplied jobId collided with a finished job", async () => {
+      const { Queue } = jest.requireMock("bullmq") as {
+        Queue: jest.Mock;
+      };
+      const queue = Queue.mock.results[0]?.value ?? new Queue();
+      const finishedAt = Date.parse("2026-09-07T03:06:09.549Z");
+      queue.add.mockResolvedValueOnce({
+        id: "manifest-ready:california-sonoma:propositions",
+        finishedOn: finishedAt,
+      });
+
+      const warn = jest
+        .spyOn(
+          (service as unknown as { logger: { warn: (m: string) => void } })
+            .logger,
+          "warn",
+        )
+        .mockImplementation(() => undefined);
+
+      await service.enqueue(
+        "region-sync",
+        { triggerSource: "manifest_ready" },
+        { jobId: "manifest-ready:california-sonoma:propositions" },
+      );
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("NO-OP"));
+      warn.mockRestore();
+    });
+
+    it("does not warn for a normal enqueue", async () => {
+      const warn = jest
+        .spyOn(
+          (service as unknown as { logger: { warn: (m: string) => void } })
+            .logger,
+          "warn",
+        )
+        .mockImplementation(() => undefined);
+
+      await service.enqueue(
+        "region-sync",
+        { triggerSource: "manual" },
+        { jobId: "fresh-id" },
+      );
+
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
   });
 
   describe("upsertScheduler", () => {
