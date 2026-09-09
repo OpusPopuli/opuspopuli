@@ -81,6 +81,11 @@ jobs:
           severity: 'HIGH,CRITICAL'
           format: 'sarif'
           output: 'trivy-fs-results.sarif'
+          # Without this the repo's .trivyignore.yaml is never read: Trivy
+          # only auto-detects a plain `.trivyignore`, so every suppression in
+          # that file — including the pre-existing `secrets:` entries — has
+          # been inert in CI while working locally via --ignorefile.
+          trivyignores: '.trivyignore.yaml'
 
       - name: Upload Trivy scan results to GitHub Security
         uses: github/codeql-action/upload-sarif@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4

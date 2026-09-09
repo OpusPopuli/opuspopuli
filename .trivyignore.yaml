@@ -33,3 +33,27 @@ secrets:
   - id: jwt-token
     paths:
       - "apps/backend/docker/scripts/db-migrate.sh"
+
+vulnerabilities:
+  # MapLibre GL JS XSS sanitizer bypass (CVSS 10). The same advisory pnpm
+  # audit knows as GHSA-jrc7-96c5-q579, suppressed there in
+  # pnpm-workspace-level `auditConfig.ignoreGhsas` — Trivy carries its own
+  # database, so suppressing one gate and not the other leaves CI red on a
+  # finding we have already assessed and accepted.
+  #
+  # Unfixable for us: the vulnerable range covers ALL of maplibre 5.x, and
+  # no deck.gl release supports the patched 6.4.1+ — the map renders blank
+  # (attempted and reverted, see #1187).
+  #
+  # Not reachable: `sanitize()` has exactly one call site in the installed
+  # bundle, the attribution control, which every map disables; the style
+  # carries no sources, so there is no attribution HTML to sanitize at all;
+  # and no Popup/setHTML/setDOMContent appears in components/map.
+  #
+  # That reachability argument is ENFORCED, not just recorded, by
+  # apps/frontend/__tests__/components/map/maplibre-sanitize-guard.test.ts —
+  # verified by introducing each violation and confirming it fails.
+  #
+  # Remove this entry when deck.gl supports maplibre 6 and we take 6.4.1+.
+  - id: CVE-2026-85061
+
