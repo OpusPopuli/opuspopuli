@@ -1,7 +1,7 @@
 # Dockerfile for Integration Test Runner
 # Build context: monorepo root (.)
 
-FROM node:20-slim AS base
+FROM node:24-slim AS base
 
 # Install OpenSSL for Prisma, postgresql-client for PostGIS setup
 RUN apt-get update -y && apt-get install -y openssl postgresql-client && rm -rf /var/lib/apt/lists/*
