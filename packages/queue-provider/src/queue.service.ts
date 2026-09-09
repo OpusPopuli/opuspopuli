@@ -30,7 +30,26 @@ export class QueueService implements OnModuleDestroy {
     const queue = this.getQueue(queueName);
     const jobOpts = this.buildJobOptions(queueName, opts);
     const job = await queue.add(queueName, data, jobOpts);
-    this.logger.debug(`Enqueued job ${job.id} on ${queueName}`);
+
+    // A caller-supplied jobId that is already taken makes `add()` a no-op:
+    // BullMQ returns the EXISTING job rather than enqueuing, in any state
+    // including `completed` (retained here for 7 days). The call still
+    // resolves, so a caller that only logs "enqueued" reports success for
+    // work that will never run — exactly how #1172 stayed invisible.
+    //
+    // `finishedOn` is only set on a job that has already run, so its
+    // presence on a just-"added" job is proof we collided with an old one.
+    if (jobOpts.jobId && job.finishedOn) {
+      this.logger.warn(
+        `Enqueue was a NO-OP on ${queueName}: jobId "${jobOpts.jobId}" is ` +
+          `already held by a job that finished at ` +
+          `${new Date(job.finishedOn).toISOString()}. Nothing was queued. ` +
+          `Deterministic jobIds must be unique per unit of work, not per ` +
+          `caller — include whatever makes this request distinct.`,
+      );
+    } else {
+      this.logger.debug(`Enqueued job ${job.id} on ${queueName}`);
+    }
     return job.id as string;
   }
 

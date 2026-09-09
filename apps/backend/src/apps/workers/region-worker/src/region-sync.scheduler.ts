@@ -44,11 +44,20 @@ export class RegionSyncScheduler implements OnApplicationBootstrap {
   private async registerSchedulers(): Promise<void> {
     const configs = await this.regionService.getPluginDataSourceConfigs();
 
-    const hasCadences = configs.some(({ sources }) =>
-      sources.some((s) => s.syncCadence || s.statusScanCadence),
+    // Fall back to one blanket scheduler ONLY when there is nothing to
+    // schedule per-source. This used to key off "no source declares a
+    // cadence", which was the #1184 trap: one region declaring cadences
+    // suppressed the fallback for every other region, and a region whose
+    // sources declared none then registered nothing at all. Now that a
+    // missing cadence gets a default below, the per-source path always
+    // covers a config that HAS sources, and this is only for the empty case
+    // (no plugins enabled, or none carrying data sources).
+    const totalSources = configs.reduce(
+      (count, { sources }) => count + sources.length,
+      0,
     );
 
-    if (!hasCadences) {
+    if (totalSources === 0) {
       await this.queueService.upsertScheduler(
         REGION_SYNC_QUEUE,
         'daily-cron',
@@ -70,19 +79,44 @@ export class RegionSyncScheduler implements OnApplicationBootstrap {
     // is isolated in its own try/catch via `registerSourceScheduler` so a
     // failure on one does not prevent the other from registering.
     for (const { regionId, sources } of configs) {
+      const before = registeredKeys.size;
+
       for (const source of sources) {
-        if (source.syncCadence) {
-          await this.registerSourceScheduler(
-            `${regionId}-${source.dataType}-cron`,
-            staggeredCron(source.syncCadence, `${regionId}-${source.dataType}`),
-            {
-              triggerSource: TRIGGER_SOURCE.CRON,
-              regionId,
-              dataTypes: [source.dataType as string],
-            },
-            registeredKeys,
+        // A source with no `syncCadence` used to be SKIPPED, which meant a
+        // plugin whose config declared none registered nothing at all — and
+        // the `hasCadences` fallback above could not help, because one other
+        // region declaring cadences suppresses it. Sonoma shipped enabled
+        // with four sources and zero cadences and therefore never synced,
+        // silently, until someone ran the mutation by hand (#1184).
+        //
+        // A configured data source that never runs is not a choice anyone
+        // makes deliberately, so default it. `staggeredCron` spreads the
+        // load by source, so defaulting many sources to one base cron does
+        // not stampede.
+        // `||` not `??` — deliberately. `syncCadence` is an optional string
+        // from JSON config, so `""` is reachable, and `??` would let it
+        // through to staggeredCron() as an invalid pattern. The old code's
+        // `if (source.syncCadence)` guard treated `""` as absent; keep that.
+        const cadence = source.syncCadence || DAILY_CRON;
+
+        if (!source.syncCadence) {
+          this.logger.warn(
+            `${regionId}/${source.dataType} declares no syncCadence — ` +
+              `defaulting to ${DAILY_CRON}. Set one in the region config to ` +
+              `choose its own schedule.`,
           );
         }
+
+        await this.registerSourceScheduler(
+          `${regionId}-${source.dataType}-cron`,
+          staggeredCron(cadence, `${regionId}-${source.dataType}`),
+          {
+            triggerSource: TRIGGER_SOURCE.CRON,
+            regionId,
+            dataTypes: [source.dataType as string],
+          },
+          registeredKeys,
+        );
 
         // Weekly bills status-scan backstop (#689) — bills only.
         if (source.statusScanCadence && source.dataType === 'bills') {
@@ -101,6 +135,18 @@ export class RegionSyncScheduler implements OnApplicationBootstrap {
             registeredKeys,
           );
         }
+      }
+
+      // Defensive: after the default above this should be unreachable for a
+      // plugin that has any sources. If it ever fires, the guard has
+      // regressed and that region is silently dark again — which is the
+      // whole failure mode of #1184, and it took a production incident to
+      // notice because nothing said so.
+      if (sources.length > 0 && registeredKeys.size === before) {
+        this.logger.warn(
+          `${regionId} has ${sources.length} data source(s) but registered ` +
+            `NO schedulers — it will never sync on its own.`,
+        );
       }
     }
 
