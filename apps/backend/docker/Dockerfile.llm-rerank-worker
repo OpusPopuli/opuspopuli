@@ -1,7 +1,7 @@
 # Dockerfile for LLM Re-rank Worker (async BullMQ job processor, opuspopuli#745)
 # Build context: monorepo root (.)
 
-FROM node:20-slim AS base
+FROM node:24-slim AS base
 
 ### Build the project ###
 FROM base AS builder
