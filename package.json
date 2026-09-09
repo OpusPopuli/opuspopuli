@@ -71,7 +71,7 @@
       "file-type": ">=21.3.1",
       "hono": ">=4.12.25",
       "@hono/node-server": ">=1.19.13",
-      "next": ">=16.2.11",
+      "next": ">=16.3.3 <17.0.0",
       "handlebars": ">=4.7.9",
       "picomatch": ">=4.0.4",
       "path-to-regexp": ">=8.4.0",
