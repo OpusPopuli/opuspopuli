@@ -937,12 +937,12 @@ pnpm start        # Start production server
 
 ```dockerfile
 # Multi-stage build
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN pnpm build
 
-FROM node:20-alpine
+FROM node:24-alpine
 COPY --from=builder /app/.next .next
 COPY --from=builder /app/public public
 CMD ["pnpm", "start"]
