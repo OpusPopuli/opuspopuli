@@ -43,7 +43,7 @@ export function Header() {
             Briefing
           </Link>
           <Link href="/region" className={navLinkClass}>
-            Region
+            Where you live
           </Link>
           <Link
             href="/settings"
@@ -106,7 +106,7 @@ export function Header() {
             Briefing
           </Link>
           <Link href="/region" className={navLinkClass} onClick={closeMenu}>
-            Region
+            Where you live
           </Link>
           <Link
             href="/settings"

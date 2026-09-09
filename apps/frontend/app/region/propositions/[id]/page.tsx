@@ -502,7 +502,7 @@ export default function PropositionDetailPage() {
         <div className="max-w-4xl mx-auto px-8 py-12">
           <Breadcrumb
             segments={[
-              { label: "Region", href: "/region" },
+              { label: "Where you live", href: "/region" },
               { label: "Propositions", href: "/region/propositions" },
               { label: proposition.externalId },
             ]}

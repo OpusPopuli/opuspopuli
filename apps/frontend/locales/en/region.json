@@ -50,12 +50,41 @@
     "historical": "Historical"
   },
   "breadcrumb": {
-    "region": "Region"
+    "region": "Where you live"
   },
   "propositionStatus": {
     "PENDING": "Pending",
     "PASSED": "Passed",
     "FAILED": "Failed",
     "WITHDRAWN": "Withdrawn"
+  },
+  "stack": {
+    "entity": "your jurisdictions",
+    "title": "Where you live",
+    "subtitle": "Three governments claim your address. They are listed smallest first, because the small ones are the ones that answer.",
+    "open": "Open →",
+    "levels": {
+      "county": "County",
+      "state": "State",
+      "federal": "Federal"
+    },
+    "count": {
+      "thisWeek": "{{value}} this week",
+      "unavailable": "Not counted yet"
+    },
+    "county": {
+      "board_one": "Board of Supervisors · {{count}} seat",
+      "board_other": "Board of Supervisors · {{count}} seats",
+      "yourSeat": "Your seat",
+      "seatValue": "District {{district}} — {{name}}",
+      "wrongSeat": "Not right?"
+    },
+    "federal": {
+      "subtitle": "U.S. House and Senate"
+    },
+    "noAddress": {
+      "title": "We don't know where you live yet",
+      "body": "Add your address in settings and this page will show the governments that claim it."
+    }
   }
 }

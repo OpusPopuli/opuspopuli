@@ -50,12 +50,41 @@
     "historical": "Histórico"
   },
   "breadcrumb": {
-    "region": "Región"
+    "region": "Dónde vives"
   },
   "propositionStatus": {
     "PENDING": "Pendiente",
     "PASSED": "Aprobada",
     "FAILED": "Rechazada",
     "WITHDRAWN": "Retirada"
+  },
+  "stack": {
+    "entity": "tus jurisdicciones",
+    "title": "Dónde vives",
+    "subtitle": "Tres gobiernos reclaman tu dirección. Se enumeran de menor a mayor, porque los pequeños son los que responden.",
+    "open": "Abrir →",
+    "levels": {
+      "county": "Condado",
+      "state": "Estado",
+      "federal": "Federal"
+    },
+    "count": {
+      "thisWeek": "{{value}} esta semana",
+      "unavailable": "Aún sin contar"
+    },
+    "county": {
+      "board_one": "Junta de Supervisores · {{count}} escaño",
+      "board_other": "Junta de Supervisores · {{count}} escaños",
+      "yourSeat": "Tu escaño",
+      "seatValue": "Distrito {{district}} — {{name}}",
+      "wrongSeat": "¿No es correcto?"
+    },
+    "federal": {
+      "subtitle": "Cámara de Representantes y Senado de EE. UU."
+    },
+    "noAddress": {
+      "title": "Todavía no sabemos dónde vives",
+      "body": "Agrega tu dirección en la configuración y esta página mostrará los gobiernos que la reclaman."
+    }
   }
 }

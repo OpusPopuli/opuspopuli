@@ -299,7 +299,10 @@ export default function BillsPage() {
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
       <Breadcrumb
-        segments={[{ label: "Region", href: "/region" }, { label: "Bills" }]}
+        segments={[
+          { label: "Where you live", href: "/region" },
+          { label: "Bills" },
+        ]}
       />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-content">Bills</h1>

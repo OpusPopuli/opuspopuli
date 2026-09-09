@@ -163,7 +163,10 @@ export default function MeetingsPage() {
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
       <Breadcrumb
-        segments={[{ label: "Region", href: "/region" }, { label: "Meetings" }]}
+        segments={[
+          { label: "Where you live", href: "/region" },
+          { label: "Meetings" },
+        ]}
       />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-content">Meetings</h1>

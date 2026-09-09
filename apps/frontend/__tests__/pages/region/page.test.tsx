@@ -1,33 +1,22 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { useQuery } from "@apollo/client/react";
 import RegionPage from "@/app/region/page";
+import {
+  GET_BILLS,
+  MY_COUNTY_SUPERVISORS,
+  MY_JURISDICTIONS,
+} from "@/lib/graphql/region";
 
-// Mock Apollo Client
-const mockRegionInfo = {
-  id: "test-region",
-  name: "Test Region",
-  description: "A test region for civic data",
-  timezone: "America/Los_Angeles",
-  dataSourceUrls: ["https://example.com/data"],
-  supportedDataTypes: [
-    "PROPOSITIONS",
-    "MEETINGS",
-    "REPRESENTATIVES",
-    "CAMPAIGN_FINANCE",
-  ],
-};
+jest.mock("@apollo/client/react", () => ({ useQuery: jest.fn() }));
 
-let mockQueryResult = {
-  data: { regionInfo: mockRegionInfo },
-  loading: false,
-  error: null as Error | null,
-};
-
-jest.mock("@apollo/client/react", () => ({
-  useQuery: jest.fn(() => mockQueryResult),
+jest.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, vars?: Record<string, unknown>) =>
+      vars ? `${key}:${JSON.stringify(vars)}` : key,
+  }),
 }));
 
-// Mock next/link
 jest.mock("next/link", () => {
   return function MockLink({
     children,
@@ -40,226 +29,209 @@ jest.mock("next/link", () => {
   };
 });
 
-describe("RegionPage", () => {
+const mockUseQuery = useQuery as jest.Mock;
+
+function jurisdiction(
+  type: string,
+  name: string,
+  level: string,
+): Record<string, unknown> {
+  return {
+    resolvedBy: "address",
+    resolvedAt: "2026-09-01T00:00:00Z",
+    jurisdiction: { id: type, name, type, level, stateCode: "CA" },
+  };
+}
+
+const FULL_STACK = [
+  jurisdiction("COUNTY", "Sonoma County", "COUNTY"),
+  jurisdiction("STATE", "California", "STATE"),
+  jurisdiction("CONGRESSIONAL_DISTRICT", "CA-04", "FEDERAL"),
+  jurisdiction("STATE_ASSEMBLY_DISTRICT", "Assembly District 10", "STATE"),
+  jurisdiction("STATE_SENATE_DISTRICT", "Senate District 02", "STATE"),
+];
+
+const HOPKINS = {
+  id: "sup-5",
+  name: "Lynda Hopkins",
+  chamber: "BOARD",
+  district: "5",
+  party: null,
+  photoUrl: null,
+};
+
+/** Dates the count probe should accept / reject, relative to a fixed now. */
+const NOW = Date.parse("2026-09-09T12:00:00Z");
+const TWO_DAYS_AGO = "2026-09-07T12:00:00Z";
+const THIRTY_DAYS_AGO = "2026-08-10T12:00:00Z";
+
+interface Options {
+  jurisdictions?: unknown[];
+  supervisors?: unknown[];
+  billDates?: (string | null)[];
+  billError?: boolean;
+  jurisdictionsLoading?: boolean;
+  jurisdictionsError?: boolean;
+}
+
+function setup(options: Options = {}) {
+  const {
+    jurisdictions = FULL_STACK,
+    supervisors = [HOPKINS],
+    billDates = [TWO_DAYS_AGO],
+    billError = false,
+    jurisdictionsLoading = false,
+    jurisdictionsError = false,
+  } = options;
+
+  mockUseQuery.mockImplementation((document: unknown) => {
+    if (document === MY_JURISDICTIONS) {
+      return {
+        data: jurisdictionsLoading
+          ? undefined
+          : { myJurisdictions: jurisdictions },
+        loading: jurisdictionsLoading,
+        error: jurisdictionsError ? new Error("boom") : null,
+      };
+    }
+    if (document === MY_COUNTY_SUPERVISORS) {
+      return {
+        data: { myCountySupervisors: supervisors },
+        loading: false,
+        error: null,
+      };
+    }
+    if (document === GET_BILLS) {
+      return {
+        data: billError
+          ? undefined
+          : {
+              bills: {
+                items: billDates.map((lastActionDate, i) => ({
+                  id: `bill-${i}`,
+                  lastActionDate,
+                })),
+                total: billDates.length,
+                hasMore: false,
+              },
+            },
+        loading: false,
+        error: billError ? new Error("search down") : null,
+      };
+    }
+    return { data: undefined, loading: false, error: null };
+  });
+}
+
+describe("RegionPage — the jurisdiction stack (#1194)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockQueryResult = {
-      data: { regionInfo: mockRegionInfo },
-      loading: false,
-      error: null,
-    };
+    jest.useFakeTimers().setSystemTime(NOW);
+    setup();
   });
 
-  describe("loading state", () => {
-    it("should show loading skeleton", () => {
-      mockQueryResult = {
-        data: null as unknown as typeof mockQueryResult.data,
-        loading: true,
-        error: null,
-      };
-
-      render(<RegionPage />);
-
-      // Check for skeleton elements
-      const skeletons = document.querySelectorAll(".animate-pulse");
-      expect(skeletons.length).toBeGreaterThan(0);
-    });
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
-  describe("error state", () => {
-    it("should show error message when query fails", () => {
-      mockQueryResult = {
-        data: null as unknown as typeof mockQueryResult.data,
-        loading: false,
-        error: new Error("Failed to fetch"),
-      };
-
-      render(<RegionPage />);
-
-      expect(
-        screen.getByText(/Failed to load region information/i),
-      ).toBeInTheDocument();
-    });
+  it("renders the three governments smallest first", () => {
+    render(<RegionPage />);
+    const links = screen.getAllByRole("link");
+    const hrefs = links.map((l) => l.getAttribute("href"));
+    expect(hrefs).toContain("/region/county");
+    expect(hrefs).toContain("/region/state");
+    expect(hrefs).toContain("/region/federal");
+    // County before state before federal — the ordering is the design.
+    expect(hrefs.indexOf("/region/county")).toBeLessThan(
+      hrefs.indexOf("/region/state"),
+    );
+    expect(hrefs.indexOf("/region/state")).toBeLessThan(
+      hrefs.indexOf("/region/federal"),
+    );
   });
 
-  describe("rendering", () => {
-    it("should render region name and description", () => {
-      render(<RegionPage />);
-
-      expect(screen.getByText("Test Region")).toBeInTheDocument();
-      expect(
-        screen.getByText("A test region for civic data"),
-      ).toBeInTheDocument();
-    });
-
-    it("should render timezone", () => {
-      render(<RegionPage />);
-
-      expect(
-        screen.getByText(/Timezone: America\/Los_Angeles/),
-      ).toBeInTheDocument();
-    });
-
-    it("should render data type cards for supported types", () => {
-      render(<RegionPage />);
-
-      expect(screen.getByText("Propositions")).toBeInTheDocument();
-      // MEETINGS card removed from the home page (issue #665) — past
-      // meeting minutes flow through the rep + committee L3 feeds and
-      // forward-looking calendar entries are lower civic-action value.
-      expect(screen.queryByText("Meetings")).not.toBeInTheDocument();
-      expect(screen.getByText("Representatives")).toBeInTheDocument();
-      // Campaign Finance has its own front door again (#936) — no longer
-      // hijacked to render legislative-committees.
-      expect(screen.getByText("Campaign Finance")).toBeInTheDocument();
-      // Legislative Committees renders as its own card, gated on MEETINGS
-      // support (derived from minutes ingestion, not a backend DataType).
-      expect(screen.getByText("Legislative Committees")).toBeInTheDocument();
-    });
-
-    it("should render data type descriptions", () => {
-      render(<RegionPage />);
-
-      expect(
-        screen.getByText("Ballot measures and initiatives"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Elected officials and legislators"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          "Where bills get debated and shaped before the floor vote",
-        ),
-      ).toBeInTheDocument();
-      // Meetings description should no longer appear (#665).
-      expect(
-        screen.queryByText("Legislative sessions and hearings"),
-      ).not.toBeInTheDocument();
-    });
-
-    it("should render navigation links to sub-pages", () => {
-      render(<RegionPage />);
-
-      const propositionsLink = screen.getByRole("link", {
-        name: /Propositions/i,
-      });
-      const representativesLink = screen.getByRole("link", {
-        name: /Representatives/i,
-      });
-
-      expect(propositionsLink).toHaveAttribute("href", "/region/propositions");
-      expect(representativesLink).toHaveAttribute(
-        "href",
-        "/region/representatives",
-      );
-      // No meetings card link on the home page anymore.
-      expect(
-        screen.queryByRole("link", { name: /^Meetings$/i }),
-      ).not.toBeInTheDocument();
-
-      const legislativeCommitteesLink = screen.getByRole("link", {
-        name: /Legislative Committees/i,
-      });
-      expect(legislativeCommitteesLink).toHaveAttribute(
-        "href",
-        "/region/legislative-committees",
-      );
-
-      // Campaign Finance now links to its own hub (#936).
-      const campaignFinanceLink = screen.getByRole("link", {
-        name: /Campaign Finance/i,
-      });
-      expect(campaignFinanceLink).toHaveAttribute(
-        "href",
-        "/region/campaign-finance",
-      );
-    });
-
-    it("should render data source URLs", () => {
-      render(<RegionPage />);
-
-      expect(screen.getByText("Data Sources")).toBeInTheDocument();
-      expect(screen.getByText("https://example.com/data")).toBeInTheDocument();
-    });
+  it("does not render a city layer", () => {
+    render(<RegionPage />);
+    expect(
+      screen.getAllByRole("link").map((l) => l.getAttribute("href")),
+    ).not.toContain("/region/city");
   });
 
-  describe("partial data", () => {
-    it("should handle missing data source URLs", () => {
-      mockQueryResult = {
-        data: {
-          regionInfo: {
-            ...mockRegionInfo,
-            dataSourceUrls: undefined,
-          },
-        },
-        loading: false,
-        error: null,
-      };
+  it("shows the reader's seat when exactly one supervisor resolves", () => {
+    render(<RegionPage />);
+    expect(screen.getByText(/stack.county.yourSeat/)).toBeInTheDocument();
+    expect(screen.getByText(/Lynda Hopkins/)).toBeInTheDocument();
+  });
 
-      render(<RegionPage />);
-
-      expect(screen.queryByText("Data Sources")).not.toBeInTheDocument();
+  it("omits the seat line when the district did not resolve (#1136)", () => {
+    // 57 of 58 counties have no supervisorial boundary, so the server
+    // returns the whole board. Naming one of five as "yours" would be a
+    // guess, and a wrong-supervisor claim is worse than no claim.
+    setup({
+      supervisors: [HOPKINS, { ...HOPKINS, id: "sup-1", district: "1" }],
     });
+    render(<RegionPage />);
+    expect(screen.queryByText(/stack.county.yourSeat/)).not.toBeInTheDocument();
+  });
 
-    it("should handle empty data source URLs", () => {
-      mockQueryResult = {
-        data: {
-          regionInfo: {
-            ...mockRegionInfo,
-            dataSourceUrls: [],
-          },
-        },
-        loading: false,
-        error: null,
-      };
+  it("counts only bills inside the trailing window", () => {
+    setup({ billDates: [TWO_DAYS_AGO, THIRTY_DAYS_AGO, null] });
+    render(<RegionPage />);
+    expect(
+      screen.getByText(/stack.count.thisWeek.*"value":"1"/),
+    ).toBeInTheDocument();
+  });
 
-      render(<RegionPage />);
+  it("marks a saturated probe page as capped", () => {
+    setup({ billDates: new Array(25).fill(TWO_DAYS_AGO) });
+    render(<RegionPage />);
+    expect(screen.getByText(/"value":"25\+"/)).toBeInTheDocument();
+  });
 
-      expect(screen.queryByText("Data Sources")).not.toBeInTheDocument();
-    });
+  it("renders 'not counted yet' — never zero — where we cannot count", () => {
+    // County meetings carry no jurisdiction (#1139) and there is no federal
+    // corpus. "We did not look" and "nothing happened" are different claims.
+    render(<RegionPage />);
+    expect(screen.getAllByText("stack.count.unavailable")).toHaveLength(2);
+  });
 
-    it("should handle limited supported data types", () => {
-      mockQueryResult = {
-        data: {
-          regionInfo: {
-            ...mockRegionInfo,
-            supportedDataTypes: ["PROPOSITIONS"],
-          },
-        },
-        loading: false,
-        error: null,
-      };
+  it("treats a failed bill probe as uncounted, not as zero", () => {
+    setup({ billError: true });
+    render(<RegionPage />);
+    expect(screen.getAllByText("stack.count.unavailable")).toHaveLength(3);
+    expect(screen.queryByText(/"value":"0"/)).not.toBeInTheDocument();
+  });
 
-      render(<RegionPage />);
+  it("renders zero as a real answer when the window is genuinely empty", () => {
+    setup({ billDates: [THIRTY_DAYS_AGO] });
+    render(<RegionPage />);
+    expect(screen.getByText(/"value":"0"/)).toBeInTheDocument();
+  });
 
-      expect(screen.getByText("Propositions")).toBeInTheDocument();
-      expect(screen.queryByText("Meetings")).not.toBeInTheDocument();
-      expect(screen.queryByText("Representatives")).not.toBeInTheDocument();
-      expect(
-        screen.queryByText("Legislative Committees"),
-      ).not.toBeInTheDocument();
-    });
+  it("prompts for an address when nothing resolved", () => {
+    setup({ jurisdictions: [] });
+    render(<RegionPage />);
+    expect(screen.getByText("stack.noAddress.title")).toBeInTheDocument();
+  });
 
-    it("gates Legislative Committees on MEETINGS without hiding Campaign Finance (#936)", () => {
-      // MEETINGS absent → no committees card; CAMPAIGN_FINANCE still renders
-      // its own finance card (the two are decoupled).
-      mockQueryResult = {
-        data: {
-          regionInfo: {
-            ...mockRegionInfo,
-            supportedDataTypes: ["PROPOSITIONS", "CAMPAIGN_FINANCE"],
-          },
-        },
-        loading: false,
-        error: null,
-      };
+  it("shows a skeleton while jurisdictions load", () => {
+    setup({ jurisdictionsLoading: true });
+    const { container } = render(<RegionPage />);
+    expect(container.querySelector(".animate-pulse")).toBeInTheDocument();
+  });
 
-      render(<RegionPage />);
+  it("shows an error state when jurisdictions fail", () => {
+    setup({ jurisdictionsError: true });
+    render(<RegionPage />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
 
-      expect(screen.getByText("Campaign Finance")).toBeInTheDocument();
-      expect(
-        screen.queryByText("Legislative Committees"),
-      ).not.toBeInTheDocument();
-    });
+  it("keeps the county's gold rule redundant with a text label", () => {
+    render(<RegionPage />);
+    // WCAG 1.4.1 — the rule must never be the only carrier.
+    const county = screen.getByText("Sonoma County").closest("a");
+    expect(
+      within(county as HTMLElement).getByText("stack.levels.county"),
+    ).toBeInTheDocument();
   });
 });

@@ -36,7 +36,7 @@ export default function CampaignFinancePage() {
           href="/region"
           className="text-sm text-info hover:text-info-strong hover:underline"
         >
-          Region
+          Where you live
         </Link>
         <span className="mx-2 text-content-dim">/</span>
         <span className="text-sm text-content-dim">Campaign Finance</span>

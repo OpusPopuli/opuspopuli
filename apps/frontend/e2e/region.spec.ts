@@ -539,10 +539,10 @@ test.describe("Propositions Page", () => {
 
     const breadcrumb = page
       .getByRole("navigation")
-      .filter({ hasText: "Region" })
+      .filter({ hasText: "Where you live" })
       .last();
     await expect(
-      breadcrumb.getByRole("link", { name: /Region/i }),
+      breadcrumb.getByRole("link", { name: /Where you live/i }),
     ).toBeVisible();
   });
 
@@ -588,9 +588,9 @@ test.describe("Propositions Page", () => {
 
     const breadcrumb = page
       .getByRole("navigation")
-      .filter({ hasText: "Region" })
+      .filter({ hasText: "Where you live" })
       .last();
-    await breadcrumb.getByRole("link", { name: /Region/i }).click();
+    await breadcrumb.getByRole("link", { name: /Where you live/i }).click();
     await expect(page).toHaveURL(/\/region$/);
   });
 });
@@ -1620,10 +1620,10 @@ test.describe("Campaign Finance Hub Page", () => {
 
     const breadcrumb = page
       .getByRole("navigation")
-      .filter({ hasText: "Region" })
+      .filter({ hasText: "Where you live" })
       .last();
     await expect(
-      breadcrumb.getByRole("link", { name: /Region/i }),
+      breadcrumb.getByRole("link", { name: /Where you live/i }),
     ).toBeVisible();
   });
 
@@ -1661,9 +1661,9 @@ test.describe("Campaign Finance Hub Page", () => {
 
     const breadcrumb = page
       .getByRole("navigation")
-      .filter({ hasText: "Region" })
+      .filter({ hasText: "Where you live" })
       .last();
-    await breadcrumb.getByRole("link", { name: /Region/i }).click();
+    await breadcrumb.getByRole("link", { name: /Where you live/i }).click();
     await expect(page).toHaveURL(/\/region$/);
   });
 });

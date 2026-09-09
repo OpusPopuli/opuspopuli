@@ -31,7 +31,7 @@ describe("CampaignFinancePage", () => {
   it("should render breadcrumb navigation", () => {
     render(<CampaignFinancePage />);
 
-    const regionLink = screen.getByRole("link", { name: /Region/i });
+    const regionLink = screen.getByRole("link", { name: /Where you live/i });
     expect(regionLink).toHaveAttribute("href", "/region");
   });
 

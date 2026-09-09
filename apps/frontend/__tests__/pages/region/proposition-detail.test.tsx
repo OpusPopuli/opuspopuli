@@ -455,7 +455,7 @@ describe("PropositionDetailPage", () => {
     it("should render breadcrumb with links", () => {
       render(<PropositionDetailPage />);
 
-      const regionLink = screen.getByRole("link", { name: "Region" });
+      const regionLink = screen.getByRole("link", { name: "Where you live" });
       expect(regionLink).toHaveAttribute("href", "/region");
 
       const propositionsLink = screen.getByRole("link", {

@@ -623,7 +623,7 @@ export default function BillDetailPage() {
     <div className="max-w-4xl mx-auto px-8 py-12">
       <Breadcrumb
         segments={[
-          { label: "Region", href: "/region" },
+          { label: "Where you live", href: "/region" },
           { label: "Bills", href: "/region/bills" },
           { label: bill.billNumber },
         ]}

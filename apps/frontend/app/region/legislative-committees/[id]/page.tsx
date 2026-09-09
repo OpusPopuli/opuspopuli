@@ -413,7 +413,7 @@ export default function LegislativeCommitteeDetailPage() {
         <div className="max-w-4xl mx-auto px-8 py-12">
           <Breadcrumb
             segments={[
-              { label: "Region", href: "/region" },
+              { label: "Where you live", href: "/region" },
               {
                 label: "Legislative Committees",
                 href: "/region/legislative-committees",

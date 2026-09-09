@@ -89,7 +89,7 @@ export default function IndependentExpendituresPage() {
     <div className="max-w-4xl mx-auto px-8 py-12">
       <Breadcrumb
         segments={[
-          { label: "Region", href: "/region" },
+          { label: "Where you live", href: "/region" },
           { label: "Campaign Finance", href: "/region/campaign-finance" },
           { label: "Independent Expenditures" },
         ]}

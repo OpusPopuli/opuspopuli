@@ -128,13 +128,14 @@ describe("Header", () => {
       ).toHaveAttribute("href", "/settings");
     });
 
-    it("should show region link", () => {
+    it("should show the where-you-live link", () => {
       render(<Header />);
 
-      expect(screen.getByRole("link", { name: /region/i })).toHaveAttribute(
-        "href",
-        "/region",
-      );
+      // The route stays /region — deep links and every /region/* child
+      // survive the rename; only the label changed (#1194).
+      expect(
+        screen.getByRole("link", { name: /where you live/i }),
+      ).toHaveAttribute("href", "/region");
     });
 
     it("should not show sign out button (moved to settings sidebar)", () => {
