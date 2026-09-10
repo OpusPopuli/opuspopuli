@@ -2,7 +2,7 @@
  * Civics-data types — the response shape of the civics-extraction
  * prompt + the runtime shape stored in DB and exposed via GraphQL.
  *
- * The extractor (private prompt-service) instructs the LLM to
+ * The extractor (prompt-service) instructs the LLM to
  * produce JSON matching `CivicsBlock`. Every text field that has a
  * lay reading is wrapped in `CivicText`, which carries BOTH the
  * verbatim source text (institutional language) AND a plain-language

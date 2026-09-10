@@ -118,8 +118,17 @@ export default function PromptCharterPage() {
             </h2>
             <ul className="list-disc pl-6 space-y-2">
               <li>
-                Prompts are stored in a <strong>private repository</strong>,
-                separate from the open-source application code.
+                Prompt template text is <strong>published</strong>, in the
+                separate open-source{" "}
+                <a
+                  href="https://github.com/OpusPopuli/prompt-service"
+                  className="text-info hover:underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  prompt-service repository
+                </a>
+                . You can read every prompt the system uses.
               </li>
               <li>
                 Every prompt change goes through code review before deployment.

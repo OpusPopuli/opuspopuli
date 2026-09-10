@@ -76,13 +76,29 @@ export class PgVectorProvider implements IVectorDBProvider {
         )
       `);
 
-      // Create indexes for efficient querying
-      // Using ivfflat for approximate nearest neighbor search
+      // HNSW, not IVFFlat (#1150).
+      //
+      // IVFFlat trains its centroids from the rows present WHEN THE INDEX IS
+      // BUILT. This runs at service init, against a table created moments
+      // earlier — so the index was always trained on zero rows and stayed
+      // degenerate until someone rebuilt it, which nothing does. Recall
+      // silently suffers; nothing errors.
+      //
+      // That is the exact failure the propositions migration
+      // (20260828000000_proposition_embeddings) chose HNSW to avoid; the
+      // knowledge path never got the same treatment. HNSW builds
+      // incrementally and is correct on an empty table.
       await this.client.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS "${this.tableName}_embedding_idx"
+        CREATE INDEX IF NOT EXISTS "${this.tableName}_embedding_hnsw_idx"
         ON "${this.tableName}"
-        USING ivfflat (embedding vector_cosine_ops)
-        WITH (lists = 100)
+        USING hnsw (embedding vector_cosine_ops)
+      `);
+
+      // Retire the degenerate IVFFlat index from installs that predate the
+      // switch. Dropped only AFTER the replacement exists, so no query is
+      // ever left without an index to use.
+      await this.client.$executeRawUnsafe(`
+        DROP INDEX IF EXISTS "${this.tableName}_embedding_idx"
       `);
 
       await this.client.$executeRawUnsafe(`

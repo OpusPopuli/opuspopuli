@@ -357,6 +357,23 @@ export class BriefingSummaryService {
    * still surfaces the just-generated paragraph to the user — the next
    * load will simply regenerate, which is wasteful but not broken.
    */
+
+  /**
+   * Provenance for a cached briefing (#1149).
+   *
+   * Tied to `templateHash`, which is null exactly when no generation
+   * happened. Stamping a model onto a row nothing produced would be false
+   * attribution — the opposite of what these columns exist for.
+   */
+  private provenanceFor(templateHash: string | null): {
+    llmProvider: string | null;
+    llmModel: string | null;
+  } {
+    return templateHash === null
+      ? { llmProvider: null, llmModel: null }
+      : { llmProvider: this.llm.getName(), llmModel: this.llm.getModelName() };
+  }
+
   private async writeCache(
     userId: string,
     language: 'en' | 'es',
@@ -373,12 +390,14 @@ export class BriefingSummaryService {
           language,
           summaryText,
           templateHash,
+          ...this.provenanceFor(templateHash),
           tokensOut,
           expiresAt,
         },
         update: {
           summaryText,
           templateHash,
+          ...this.provenanceFor(templateHash),
           tokensOut,
           computedAt: new Date(),
           expiresAt,

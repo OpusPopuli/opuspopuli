@@ -51,7 +51,7 @@ interface PropForAnalysis {
  *   no-ops gracefully in envs without either (e.g., unit tests).
  * - Uses `documentType: 'proposition-analysis'` which the prompt-client
  *   routes to a `document-analysis-proposition-analysis` template in the
- *   private prompt-service. Template lives there, not here.
+ *   prompt-service repo. Template lives there, not here.
  * - Short-circuits reruns when the prompt hash is unchanged and fullText
  *   hasn't been touched since the last generation — cheap idempotency.
  *

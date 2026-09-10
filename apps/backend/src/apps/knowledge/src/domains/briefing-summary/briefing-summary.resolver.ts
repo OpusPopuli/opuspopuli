@@ -92,7 +92,7 @@ export class BriefingSummaryResolver {
    * boundary — pin each to a tight per-field ceiling so a hostile or
    * buggy client cannot inflate a count and force the LLM to invent a
    * giant paragraph or trip the validator's word-count gate. Caps
-   * mirror the prompt-service DTO (BriefingSummaryDto in the private
+   * mirror the prompt-service DTO (BriefingSummaryDto in the
    * prompt-service repo); when the DTO is tightened, mirror the
    * change here too.
    */
