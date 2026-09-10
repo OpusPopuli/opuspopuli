@@ -165,6 +165,7 @@ type PropositionRecord = {
   fullText: string | null;
   status: string;
   electionDate: Date | null;
+  regionPluginName: string | null;
   sourceUrl: string | null;
   analysisSummary: string | null;
   keyProvisions: unknown;
@@ -585,13 +586,14 @@ export class RegionQueryService {
     search?: string,
     status?: PropositionStatusGQL,
     electionYear?: number,
+    regionPluginName?: string,
   ): Promise<PaginatedPropositions> {
     // Search bypasses the region cache: it has no TTL and purges by
     // prefix, so an unbounded per-query keyspace would never evict.
     if (search?.trim()) {
       return this.searchPropositions(
         search,
-        { status, electionYear },
+        { status, electionYear, regionPluginName },
         skip,
         take,
       );
@@ -604,10 +606,15 @@ export class RegionQueryService {
       deletedAt: null,
       ...(status && { status }),
       ...(electionYear && { electionDate: electionYearRange(electionYear) }),
+      // The discriminator has been on the row since the 2026-09-07
+      // migration; this is the first path that can filter on it, which is
+      // what turns twelve ingested Sonoma measures from unreachable into
+      // listable (#1202).
+      ...(regionPluginName && { regionPluginName }),
     };
 
     return this.cacheService.cachedQuery(
-      `propositions:${skip}:${take}:${status ?? ''}:${electionYear ?? ''}`,
+      `propositions:${skip}:${take}:${status ?? ''}:${electionYear ?? ''}:${regionPluginName ?? ''}`,
       async () => {
         const [items, total] = await Promise.all([
           this.db.proposition.findMany({
@@ -691,17 +698,28 @@ export class RegionQueryService {
   async getMeetings(
     skip: number = 0,
     take: number = 10,
+    body?: string,
   ): Promise<PaginatedMeetings> {
+    // `body` is an interim jurisdiction discriminator until meetings carry
+    // a real one (#1139). The table mixes 507 county board meetings with 13
+    // legislative ones, and a caller that wanted only county business had
+    // to take a date-ordered page and filter it client-side — so a burst of
+    // Assembly meetings could push every board meeting out of the window
+    // and empty a county surface while hundreds existed. Narrowing here
+    // makes the caller's scope a property of the query instead of a
+    // property of what happened to be recent.
+    const where = body ? { body } : {};
     return this.cacheService.cachedQuery(
-      `meetings:${skip}:${take}`,
+      `meetings:${skip}:${take}:${body ?? 'all'}`,
       async () => {
         const [items, total] = await Promise.all([
           this.db.meeting.findMany({
+            where,
             orderBy: { scheduledAt: 'desc' },
             skip,
             take: take + 1,
           }),
-          this.db.meeting.count(),
+          this.db.meeting.count({ where }),
         ]);
 
         const hasMore = items.length > take;

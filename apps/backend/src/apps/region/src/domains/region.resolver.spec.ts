@@ -259,6 +259,7 @@ describe('RegionResolver', () => {
         undefined,
         undefined,
         undefined,
+        undefined,
       );
     });
 
@@ -275,6 +276,7 @@ describe('RegionResolver', () => {
       expect(regionService.getPropositions).toHaveBeenCalledWith(
         0,
         10,
+        undefined,
         undefined,
         undefined,
         undefined,
@@ -386,7 +388,7 @@ describe('RegionResolver', () => {
       const result = await resolver.meetings({ skip: 0, take: 10 });
 
       expect(result).toEqual(mockPaginatedResult);
-      expect(regionService.getMeetings).toHaveBeenCalledWith(0, 10);
+      expect(regionService.getMeetings).toHaveBeenCalledWith(0, 10, undefined);
     });
   });
 
@@ -1392,6 +1394,7 @@ describe('RegionResolver', () => {
         'wildfire',
         undefined,
         2026,
+        undefined,
       );
     });
   });

@@ -46,6 +46,20 @@ export class PropositionModel {
   @Field({ nullable: true })
   electionDate?: Date;
 
+  /**
+   * Which jurisdiction's sync wrote this row — "california" for statewide
+   * measures, "california-sonoma" for a county's own.
+   *
+   * Written by propositions-sync.service since the 2026-09-07 migration and
+   * populated for every row, but never exposed: county measures were
+   * ingested and unreachable, so surfaces that wanted them had to say "in
+   * the data, not yet listed". Nullable because the column is, and a row
+   * predating the migration should read as unknown rather than as
+   * statewide (#1202).
+   */
+  @Field({ nullable: true })
+  regionPluginName?: string;
+
   @Field({ nullable: true })
   sourceUrl?: string;
 
