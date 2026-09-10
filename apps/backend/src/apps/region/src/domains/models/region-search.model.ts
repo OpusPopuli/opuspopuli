@@ -9,6 +9,7 @@ import {
 } from '@nestjs/graphql';
 import { BillModel } from './bill.model';
 import { PropositionModel } from './proposition.model';
+import { JurisdictionLevelGQL } from './jurisdiction.model';
 
 /**
  * Unified search over the civic corpus (#1153, spec
@@ -40,6 +41,64 @@ export const RegionSearchEntity = createUnionType({
   },
 });
 
+/**
+ * Which jurisdiction a result belongs to (#1180).
+ *
+ * Constant today — every bill and proposition in the corpus is state-level
+ * California — and derived in the resolver rather than stored, so this
+ * needs no column and no migration.
+ *
+ * It exists now because of what happens when county minutes are indexed:
+ * jurisdiction has to be recorded **at ingest**, on the row. Inferring a
+ * county from document text at query time is the kind of guess this
+ * platform does not make. Shipping the field now gives that ingest work an
+ * obvious slot to fill; adding it later means re-versioning a query the
+ * frontend already consumes.
+ */
+@ObjectType('ResultJurisdiction')
+export class ResultJurisdictionModel {
+  @Field(() => JurisdictionLevelGQL)
+  level!: JurisdictionLevelGQL;
+
+  /** Display name, e.g. "California" or "Sonoma County". */
+  @Field()
+  name!: string;
+
+  /** Region plugin id where one applies, e.g. "california-sonoma". */
+  @Field(() => ID, { nullable: true })
+  id?: string | null;
+}
+
+/**
+ * A per-corpus match count. Replaces the two-type-shaped
+ * `billCount`/`propositionCount`, which cannot survive a third corpus.
+ * Both are kept until the frontend migrates.
+ */
+@ObjectType('SearchTypeCount')
+export class SearchTypeCountModel {
+  @Field(() => SearchResultType)
+  type!: SearchResultType;
+
+  @Field(() => Int)
+  count!: number;
+}
+
+/**
+ * Every bill and proposition in the corpus is a California statewide
+ * record, so jurisdiction is a constant rather than a column (#1180).
+ *
+ * Deliberately one shared object, not a per-row lookup: the moment county
+ * minutes are indexed, jurisdiction must come from the INDEXED ROW,
+ * stamped at ingest. When that lands this constant should disappear
+ * rather than grow a branch — inferring a county at query time is the
+ * guess this field exists to prevent.
+ */
+export const STATE_JURISDICTION: ResultJurisdictionModel = {
+  level: JurisdictionLevelGQL.STATE,
+  name: 'California',
+  id: 'california',
+};
+
 @ObjectType('RegionSearchItem')
 export class RegionSearchItemModel {
   @Field(() => RegionSearchEntity)
@@ -60,6 +119,10 @@ export class RegionSearchItemModel {
 
   @Field(() => Float)
   rank!: number;
+
+  /** Which jurisdiction this result belongs to (#1180). */
+  @Field(() => ResultJurisdictionModel)
+  jurisdiction!: ResultJurisdictionModel;
 }
 
 @ObjectType('PaginatedRegionSearch')
@@ -80,6 +143,27 @@ export class PaginatedRegionSearchModel {
   /** Count of proposition matches across the whole result set. */
   @Field(() => Int)
   propositionCount!: number;
+
+  /**
+   * The corpora this query actually searched (#1180).
+   *
+   * Distinguishes "we searched there and found nothing" from "we never
+   * looked" — states an empty result set otherwise conflates, and which
+   * only diverge once a corpus exists that a given query does not cover.
+   * A surface that cannot say what it covered should not imply it covered
+   * everything; the same instinct as `county_thresholds.source_url` being
+   * NOT NULL.
+   */
+  @Field(() => [SearchResultType])
+  searchedTypes!: SearchResultType[];
+
+  /**
+   * Generic per-corpus counts. Prefer this over billCount/propositionCount,
+   * which are deprecated in spirit and will be removed once the frontend
+   * has migrated.
+   */
+  @Field(() => [SearchTypeCountModel])
+  counts!: SearchTypeCountModel[];
 }
 
 /**
@@ -113,4 +197,12 @@ export class SearchSuggestionModel {
   /** Secondary text — e.g. "AB 1236 · 2025-2026" or "Proposition 12". */
   @Field({ nullable: true })
   sublabel?: string;
+
+  /**
+   * Which jurisdiction this suggestion belongs to (#1180). Typeahead needs
+   * it for the same reason results do: once county records are indexed, a
+   * row reading "Measure H" is ambiguous without its county.
+   */
+  @Field(() => ResultJurisdictionModel)
+  jurisdiction!: ResultJurisdictionModel;
 }
