@@ -12,7 +12,7 @@ import {
   type BillsVars,
   type Bill,
 } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { Pagination } from "@/components/region/Pagination";
 import {
   LoadingSkeleton,
@@ -298,15 +298,11 @@ export default function BillsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[{ label: "Region", href: "/region" }, { label: "Bills" }]}
+      <RegionPageHeader
+        segments={[{ label: t("pages.bills.title") }]}
+        title={t("pages.bills.title")}
+        meta={t("pages.bills.meta")}
       />
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">Bills</h1>
-        <p className="mt-2 text-content-dim">
-          Legislative bills moving through your region&apos;s legislature
-        </p>
-      </div>
       {searchBar}
       <SearchEverythingHint />
       {filterBar}

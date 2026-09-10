@@ -129,10 +129,9 @@ describe("CommitteesPage", () => {
     it("should render breadcrumb navigation", () => {
       render(<CommitteesPage />);
 
-      expect(screen.getByRole("link", { name: /Region/i })).toHaveAttribute(
-        "href",
-        "/region",
-      );
+      expect(
+        screen.getByRole("link", { name: /Where you live/i }),
+      ).toHaveAttribute("href", "/region");
       expect(
         screen.getByRole("link", { name: /Campaign Finance/i }),
       ).toHaveAttribute("href", "/region/campaign-finance");

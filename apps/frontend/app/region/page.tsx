@@ -1,310 +1,123 @@
 "use client";
 
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useQuery } from "@apollo/client/react";
+import { useTranslation } from "react-i18next";
 import {
-  GET_REGION_INFO,
-  RegionInfoData,
-  DataType,
+  GET_BILLS,
+  MY_COUNTY_SUPERVISORS,
+  type BillsData,
+  type MyCountySupervisorsData,
 } from "@/lib/graphql/region";
+import { JurisdictionStack } from "@/components/region/JurisdictionStack";
+import { useJurisdictions } from "@/components/region/JurisdictionsContext";
+import {
+  COUNT_PROBE_SIZE,
+  WINDOW_DAYS,
+  countInWindow,
+} from "@/lib/region-stack";
+import { useStateLegislators } from "@/lib/hooks/useStateLegislators";
+import { ErrorState, LoadingSkeleton } from "@/components/region/ListStates";
 
-const DATA_TYPE_CARDS: Partial<
-  Record<
-    DataType,
-    { title: string; description: string; href: string; icon: string }
-  >
-> = {
-  PROPOSITIONS: {
-    title: "Propositions",
-    description: "Ballot measures and initiatives",
-    href: "/region/propositions",
-    icon: "ballot",
-  },
-  // MEETINGS card removed from the home page (issue #665). The
-  // standalone meetings hub mostly surfaces forward-looking
-  // calendar entries, which is lower civic-action value than the
-  // representative + committee + proposition surfaces. Past
-  // meeting minutes (the daily-journal data) are now woven into
-  // the rep + committee Layer-3 activity feeds, not browsed
-  // standalone — daily-journals don't deserve a top-nav entry.
-  // The /region/meetings route stays deployed and reachable by
-  // direct URL; only the home front door changes.
-  REPRESENTATIVES: {
-    title: "Representatives",
-    description: "Elected officials and legislators",
-    href: "/region/representatives",
-    icon: "users",
-  },
-  // Campaign finance gets its own front door again (#936). It was briefly
-  // repurposed to point at legislative-committees, which orphaned finance
-  // (no inbound link for signed-in users) and conflated two unrelated
-  // "committee" concepts — FPPC campaign filers vs. Assembly/Senate policy
-  // committees. Legislative Committees now renders as its own card below.
-  CAMPAIGN_FINANCE: {
-    title: "Campaign Finance",
-    description: "Follow the money — donors, committees, and spending",
-    href: "/region/campaign-finance",
-    icon: "finance",
-  },
-  BILLS: {
-    title: "Bills",
-    description: "Legislation moving through your legislature",
-    href: "/region/bills",
-    icon: "bill",
-  },
-};
-
-function DataTypeIcon({ type }: { readonly type: string }) {
-  switch (type) {
-    case "ballot":
-      return (
-        <svg
-          className="w-8 h-8"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      );
-    case "calendar":
-      return (
-        <svg
-          className="w-8 h-8"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-          />
-        </svg>
-      );
-    case "users":
-      return (
-        <svg
-          className="w-8 h-8"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-          />
-        </svg>
-      );
-    case "finance":
-      return (
-        <svg
-          className="w-8 h-8"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      );
-    case "committee":
-      // Capitol-dome glyph — a single dome arch above a flat platform,
-      // chosen over the generic clipboard "list" icon to read as
-      // legislative chamber rather than to-do list.
-      return (
-        <svg
-          className="w-8 h-8"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M4 20h16M5 20v-7m14 7v-7M5 13h14M6 13V9a6 6 0 0112 0v4M12 3v3"
-          />
-        </svg>
-      );
-    case "bill":
-      return (
-        <svg
-          className="w-8 h-8"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-          />
-        </svg>
-      );
-    default:
-      return null;
-  }
-}
-
-/** A single region-hub navigation card. Shared by the data-type-driven
- *  cards and the derived Legislative Committees card so the markup lives
- *  in one place (#936). */
-function RegionCard({
-  href,
-  icon,
-  title,
-  description,
-}: {
-  readonly href: string;
-  readonly icon: string;
-  readonly title: string;
-  readonly description: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="group bg-surface rounded-lg p-6 transition-all duration-200"
-    >
-      <div className="text-content-dim group-hover:text-content transition-colors mb-4">
-        <DataTypeIcon type={icon} />
-      </div>
-      <h2 className="text-lg font-semibold text-content group-hover:text-info-strong transition-colors">
-        {title}
-      </h2>
-      <p className="mt-1 text-sm text-content-dim">{description}</p>
-    </Link>
-  );
-}
-
+/**
+ * "Where you live" — the three governments that claim the reader's address
+ * (#1194, epic #1193).
+ *
+ * Replaces the five-card California directory. Those five destinations are
+ * not lost: they move wholesale onto the state layer page (#1196), which is
+ * why nothing here links to them directly.
+ *
+ * Counts are honest per level rather than uniform. Only the state card
+ * carries one today: `meetings` has no jurisdiction filter (#1139), so any
+ * county number would be a state/county mix presented as a county fact, and
+ * there is no federal corpus to count. Both render "not counted yet", which
+ * is a different sentence from zero.
+ */
 export default function RegionPage() {
-  const { data, loading, error } = useQuery<RegionInfoData>(GET_REGION_INFO);
+  const { t } = useTranslation("region");
+  const {
+    jurisdictions,
+    loading: jurisdictionsLoading,
+    error: jurisdictionsError,
+  } = useJurisdictions();
 
-  if (loading) {
+  const { data: supervisorData } = useQuery<MyCountySupervisorsData>(
+    MY_COUNTY_SUPERVISORS,
+  );
+
+  const { data: billData, error: billError } = useQuery<BillsData>(GET_BILLS, {
+    variables: { take: COUNT_PROBE_SIZE },
+  });
+
+  // Captured once per mount rather than read during render: `Date.now()`
+  // in a render path is impure (react-hooks/purity) and would re-derive the
+  // window on every re-render. The boundary is seven days wide, so
+  // mount-time precision is ample.
+  const [now] = useState(() => Date.now());
+
+  const legislators = useStateLegislators(jurisdictions);
+
+  const stateCount = useMemo(() => {
+    // A failed probe is "we could not count", never zero.
+    if (billError || !billData?.bills) return null;
+    return countInWindow(
+      billData.bills.items.map((b) => b.lastActionDate),
+      now,
+      WINDOW_DAYS,
+    );
+  }, [billData, billError, now]);
+
+  // Capped when the WINDOW is full, not when the PAGE is. The list is
+  // date-descending, so once a row falls outside the window no later row
+  // can be inside it — a full page therefore says nothing about
+  // saturation. Testing page length rendered "0+ this week" whenever 25
+  // rows came back and none of them were recent.
+  const stateCountCapped = stateCount === COUNT_PROBE_SIZE;
+
+  if (jurisdictionsLoading) {
     return (
-      <div className="max-w-4xl mx-auto px-8 py-12">
-        <div className="animate-pulse space-y-8">
-          <div className="space-y-4">
-            <div className="h-8 bg-surface-sunk rounded w-1/3"></div>
-            <div className="h-4 bg-surface-sunk rounded w-2/3"></div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-40 bg-surface-sunk rounded-lg"></div>
-            ))}
-          </div>
-        </div>
+      <div className="mx-auto max-w-3xl px-8 py-12">
+        <LoadingSkeleton count={3} height="h-20" />
       </div>
     );
   }
 
-  if (error) {
+  if (jurisdictionsError) {
     return (
-      <div className="max-w-4xl mx-auto px-8 py-12">
-        <div className="bg-danger-surface border border-danger-line rounded-lg p-6 text-center">
-          <p className="text-danger">
-            Failed to load region information. Please try again later.
-          </p>
-        </div>
+      <div className="mx-auto max-w-3xl px-8 py-12">
+        <ErrorState entity={t("stack.entity")} />
       </div>
     );
   }
-
-  const regionInfo = data?.regionInfo;
 
   return (
-    <div className="max-w-4xl mx-auto px-8 py-12">
-      {/* Region Header */}
-      <div className="mb-10">
-        <h1 className="text-3xl font-bold text-content">
-          {regionInfo?.name || "Region"}
-        </h1>
-        <p className="mt-2 text-content-dim">
-          {regionInfo?.description || "Explore civic data for your region"}
-        </p>
-        {regionInfo?.timezone && (
-          <p className="mt-1 text-sm text-content-dim">
-            Timezone: {regionInfo.timezone}
-          </p>
-        )}
-      </div>
+    <div className="mx-auto max-w-3xl px-8 py-12">
+      <h1 className="font-serif text-3xl text-content">{t("stack.title")}</h1>
+      {/* The ordering is smallest-first, which fights the way every map and
+          every mailing address is written. Saying so costs one line and
+          saves the reader deciding the page is broken. */}
+      <p className="mt-2 max-w-xl text-content-dim">{t("stack.subtitle")}</p>
 
-      {/* Data Type Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {regionInfo?.supportedDataTypes.map((dataType) => {
-          const card = DATA_TYPE_CARDS[dataType];
-          if (!card) return null;
-          return <RegionCard key={dataType} {...card} />;
-        })}
-        {/* Legislative Committees isn't a backend DataType — it's derived
-            from minutes/meetings ingestion — so it renders as its own card
-            (no longer hijacking the CAMPAIGN_FINANCE key), gated on MEETINGS
-            support. #936. */}
-        {regionInfo?.supportedDataTypes.includes("MEETINGS") && (
-          <RegionCard
-            href="/region/legislative-committees"
-            icon="committee"
-            title="Legislative Committees"
-            description="Where bills get debated and shaped before the floor vote"
-          />
-        )}
-      </div>
-
-      {/* Civics Hub */}
       <div className="mt-8">
-        <Link
-          href="/region/how-it-works"
-          className="flex items-center justify-between rounded-lg border border-info-line bg-info-surface px-6 py-4 hover:bg-info-line transition-colors/20 dark:hover:bg-info-surface/30"
-        >
-          <div>
-            <h2 className="text-base font-semibold text-info">
-              How your government works →
-            </h2>
-            <p className="mt-0.5 text-sm text-info">
-              Measure types, glossary, and the legislative process explained
+        {jurisdictions.length === 0 ? (
+          <div className="rounded-lg border border-line bg-surface p-6">
+            <p className="font-semibold text-content">
+              {t("stack.noAddress.title")}
+            </p>
+            <p className="mt-1 text-sm text-content-dim">
+              {t("stack.noAddress.body")}
             </p>
           </div>
-          <span aria-hidden="true" className="text-2xl">
-            🏛️
-          </span>
-        </Link>
+        ) : (
+          <JurisdictionStack
+            jurisdictions={jurisdictions}
+            supervisors={supervisorData?.myCountySupervisors ?? []}
+            legislators={legislators}
+            stateCount={stateCount}
+            stateCountCapped={stateCountCapped}
+          />
+        )}
       </div>
-
-      {/* Data Sources */}
-      {regionInfo?.dataSourceUrls && regionInfo.dataSourceUrls.length > 0 && (
-        <div className="mt-12 pt-8 border-t border-line">
-          <h3 className="text-sm font-medium text-content-dim uppercase tracking-wider mb-3">
-            Data Sources
-          </h3>
-          <ul className="space-y-2">
-            {Array.from(new Set(regionInfo.dataSourceUrls)).map((url) => (
-              <li key={url}>
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-info hover:text-info-strong hover:underline"
-                >
-                  {url}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }

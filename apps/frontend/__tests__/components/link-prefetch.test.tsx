@@ -15,6 +15,12 @@
  * `prefetch={false}` and not `"auto"`: with no loading.tsx in the app,
  * "auto" still issues one request per link, and request COUNT is what
  * exhausted the Worker.
+ *
+ * The guard covers two shapes: a templated href (`/region/bills/${id}`),
+ * and an href passed in as a prop or variable. The second is opaque at
+ * source level, so it demands an explicit decision rather than being
+ * assumed safe — that gap is how ActivityRow shipped an unguarded link
+ * inside a list.
  */
 
 import { readFileSync, readdirSync, statSync } from "fs";
@@ -70,10 +76,21 @@ function hasOkMarker(tag: string, source: string, line: number): boolean {
 
 /** True when this link is allowed to prefetch. */
 function isExempt(tag: string, source: string, line: number): boolean {
-  // Only links to a per-item ROUTE matter — a templated href. Same-page
-  // fragments (`#term-x`) never trigger a route prefetch.
-  const dynamicRoute = /href=\{`/.test(tag) && !/href=\{`#/.test(tag);
-  if (!dynamicRoute) return true;
+  // A templated href is a per-item route. Same-page fragments (`#term-x`)
+  // never trigger a route prefetch.
+  const templated = /href=\{`/.test(tag) && !/href=\{`#/.test(tag);
+
+  // An href arriving as a prop or variable is OPAQUE to a source-level
+  // guard: `<Link href={href}>` inside a row component may well point at a
+  // per-item route, and several do. This was a real blind spot — the
+  // region layer pages feed `/region/bills/${id}` into ActivityRow, which
+  // rendered an unguarded Link, so a list of five bills issued five
+  // prefetches while this test stayed green. Opaque means "state your
+  // intent", not "assume it is fine": either prefetch={false}, or a
+  // prefetch-ok: marker saying why one request is acceptable here.
+  const indirect = /href=\{(?!`)/.test(tag) && !/href=\{\s*["'`]#/.test(tag);
+
+  if (!templated && !indirect) return true;
   if (tag.includes("prefetch={false}")) return true;
   return hasOkMarker(tag, source, line);
 }
@@ -99,6 +116,23 @@ function countGuarded(): number {
 describe("dynamic-route links do not prefetch (#1174)", () => {
   it("every <Link> to a dynamic route disables prefetch or is a documented exception", () => {
     expect(findOffenders()).toEqual([]);
+  });
+
+  it("treats an href arriving as a prop as needing an explicit decision", () => {
+    // The rule this file exists to enforce is easy to widen and easy to
+    // narrow back by accident. These assertions pin the two shapes it must
+    // catch and the three it must not, so a regex edit that quietly stops
+    // matching fails here rather than going green with real offenders in
+    // the tree — which is exactly how ActivityRow slipped through.
+    expect(isExempt("<Link href={href}>", "", 1)).toBe(false);
+    expect(isExempt("<Link href={`/region/bills/${id}`}>", "", 1)).toBe(false);
+
+    expect(isExempt('<Link href="/region">', "", 1)).toBe(true);
+    expect(isExempt("<Link href={`#term-x`}>", "", 1)).toBe(true);
+    expect(isExempt("<Link href={href} prefetch={false}>", "", 1)).toBe(true);
+    expect(
+      isExempt("<Link\n  // prefetch-ok: reason\n  href={href}>", "", 1),
+    ).toBe(true);
   });
 
   it("guards a meaningful number of call sites", () => {

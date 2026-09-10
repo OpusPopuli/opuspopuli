@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import {
@@ -8,7 +10,7 @@ import {
   IndependentExpenditure,
 } from "@/lib/graphql/region";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { Pagination } from "@/components/region/Pagination";
 import { SupportOpposeBadge } from "@/components/region/SupportOpposeBadge";
 import {
@@ -53,6 +55,7 @@ function IndependentExpenditureCard({
 }
 
 export default function IndependentExpendituresPage() {
+  const { t } = useTranslation("region");
   const [page, setPage] = useState(0);
   const { data, loading, error } = useQuery<IndependentExpendituresData>(
     GET_INDEPENDENT_EXPENDITURES,
@@ -87,21 +90,17 @@ export default function IndependentExpendituresPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
+      <RegionPageHeader
         segments={[
-          { label: "Region", href: "/region" },
-          { label: "Campaign Finance", href: "/region/campaign-finance" },
-          { label: "Independent Expenditures" },
+          {
+            label: t("pages.campaignFinance.title"),
+            href: "/region/campaign-finance",
+          },
+          { label: t("pages.independentExpenditures.title") },
         ]}
+        title={t("pages.independentExpenditures.title")}
+        meta={t("pages.independentExpenditures.meta")}
       />
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">
-          Independent Expenditures
-        </h1>
-        <p className="mt-2 text-content-dim">
-          Independent spending for/against candidates and measures
-        </p>
-      </div>
       {renderContent()}
     </div>
   );

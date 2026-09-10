@@ -154,6 +154,7 @@ export function BriefingSection({
           </div>
         </button>
         <Link
+          // prefetch-ok: one "see all" per section, to a static index route
           href={seeAllHref}
           className="text-sm font-medium text-content hover:underline shrink-0 mt-1 whitespace-nowrap"
         >

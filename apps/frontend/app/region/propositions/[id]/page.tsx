@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -17,7 +19,7 @@ import {
   GET_PETITION_DOCUMENTS_FOR_PROPOSITION,
   type PetitionDocumentsForPropositionData,
 } from "@/lib/graphql/documents";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { RegionDetailShell } from "@/components/region/RegionDetailShell";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { ComingSoon } from "@/components/region/ComingSoon";
@@ -440,6 +442,7 @@ function DeepDive({
 }
 
 export default function PropositionDetailPage() {
+  const { t } = useTranslation("region");
   const { id } = useParams<{ id: string }>();
   const [layer, setLayer] = useState(1);
   const [focusedClaimKey, setFocusedClaimKey] = useState<string | undefined>();
@@ -500,12 +503,14 @@ export default function PropositionDetailPage() {
     >
       {proposition && (
         <div className="max-w-4xl mx-auto px-8 py-12">
-          <Breadcrumb
+          <RegionPageHeader
             segments={[
-              { label: "Region", href: "/region" },
-              { label: "Propositions", href: "/region/propositions" },
-              { label: proposition.externalId },
+              {
+                label: t("pages.propositions.title"),
+                href: "/region/propositions",
+              },
             ]}
+            title={proposition.externalId}
           />
 
           {/* Persistent Header */}

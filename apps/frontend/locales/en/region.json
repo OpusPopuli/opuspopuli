@@ -1,7 +1,5 @@
 {
   "search": {
-    "title": "Search",
-    "subtitle": "Find bills and propositions across your region",
     "placeholder": "Search bills…",
     "inputLabel": "Search bills and propositions",
     "pagePlaceholder": "Search bills and propositions…",
@@ -50,12 +48,151 @@
     "historical": "Historical"
   },
   "breadcrumb": {
-    "region": "Region"
+    "region": "Where you live",
+    "label": "Breadcrumb"
   },
   "propositionStatus": {
     "PENDING": "Pending",
     "PASSED": "Passed",
     "FAILED": "Failed",
     "WITHDRAWN": "Withdrawn"
+  },
+  "stack": {
+    "entity": "your jurisdictions",
+    "title": "Where you live",
+    "subtitle": "Three governments claim your address. They are listed smallest first, because the small ones are the ones that answer.",
+    "open": "Open →",
+    "levels": {
+      "county": "County",
+      "state": "State",
+      "federal": "Federal"
+    },
+    "count": {
+      "thisWeek": "{{value}} this week",
+      "unavailable": "Not counted yet"
+    },
+    "county": {
+      "board": "Board of Supervisors",
+      "yourSeat": "Your seat",
+      "seatValue": "District {{district}} — {{name}}",
+      "wrongSeat": "Not right?"
+    },
+    "federal": {
+      "subtitle": "U.S. House and Senate"
+    },
+    "noAddress": {
+      "title": "We don't know where you live yet",
+      "body": "Add your address in settings and this page will show the governments that claim it."
+    }
+  },
+  "layer": {
+    "recent": "Recently",
+    "browse": "Browse this level",
+    "alsoHere": "Also at this level",
+    "seeAll": "See all →",
+    "building": "Building",
+    "county": {
+      "threshold": "10% of the gubernatorial votes cast here, 2022 · Elections Code §9118",
+      "thresholdSource": "CA Secretary of State, {{year}}",
+      "noMeetings": "No board meetings recorded yet.",
+      "meetings": "Board meetings & minutes",
+      "measures": "County measures",
+      "filers": "Local campaign filers",
+      "noMeetingsInWindow": "No board meetings in the most recent records we checked.",
+      "thresholdLead": "signatures compel the Board",
+      "statewide": "Statewide the same initiative right costs {{statewide}} signatures.",
+      "yourSeatSection": "Your seat on this board",
+      "resolvedFrom": "Resolved from your address ·",
+      "ledger": "What the county did",
+      "whatDid": "What the county did",
+      "seats_one": "{{count}} seat",
+      "seats_other": "{{count}} seats",
+      "nextMeeting": "next meeting {{when}}",
+      "otherSeats_one": "The other seat",
+      "otherSeats_other": "The other {{count}} seats",
+      "measuresPending": "In the data, not yet listed",
+      "resolvedFromPlain": "Resolved from your address"
+    },
+    "state": {
+      "noBills": "No recent bill activity.",
+      "bills": "Bills",
+      "propositions": "Propositions",
+      "committees": "Legislative committees",
+      "finance": "Campaign finance",
+      "representatives": "Representatives",
+      "legislature": "State Legislature — Assembly and Senate",
+      "yourSeats": "Your seats",
+      "seatValue": "{{chamber}} District {{district}} — {{name}}",
+      "threshold": "5% of the votes cast for Governor · a constitutional amendment needs {{amendment}} · Cal. Const. art. II §8(b), Elections Code §9035",
+      "thresholdLead": "signatures qualify an initiative statute",
+      "ledger": "What the state did",
+      "whatDid": "What the state did"
+    },
+    "federal": {
+      "thin": "We ingest very little at this level, on purpose — it is the government you can least affect, and we would rather be honest about the gap than pad the page.",
+      "ledger": "What Congress did",
+      "title": "United States of America",
+      "meta": "U.S. House and Senate · {{district}}",
+      "yourSeats": "Your seats",
+      "seatsPending": "Your representative for {{district}} and both U.S. senators will appear here. We do not extract members of Congress yet — the roster we hold covers California's Assembly, Senate and county boards."
+    },
+    "when": "When"
+  },
+  "switcher": {
+    "home": "Home",
+    "choose": "Choose a county",
+    "visiting": "You don't live here. Figures and public records are shown in full; the tools for acting stay with {{home}}, where your signature counts.",
+    "visitingNoHome": "You don't live here. Figures and public records are shown in full; the tools for acting stay with your own county, where your signature counts.",
+    "unknown": {
+      "title": "We don't recognise that county",
+      "body": "No California county matches the code “{{fips}}”. Nothing is broken — the link was probably mistyped or has gone stale.",
+      "back": "Back to {{home}}"
+    }
+  },
+  "pages": {
+    "bills": {
+      "title": "Bills",
+      "meta": "Legislative bills moving through your region's legislature"
+    },
+    "propositions": {
+      "title": "Propositions",
+      "meta": "Ballot measures and initiatives for your region"
+    },
+    "representatives": {
+      "title": "Representatives",
+      "meta": "Elected officials and legislators"
+    },
+    "meetings": {
+      "title": "Meetings",
+      "meta": "Legislative sessions and public hearings"
+    },
+    "legislativeCommittees": {
+      "title": "Legislative Committees",
+      "meta": "Where bills get debated and shaped before they reach the floor. Click a committee to see who sits on it and what hearings it has held."
+    },
+    "campaignFinance": {
+      "title": "Campaign Finance",
+      "meta": "Committees, contributions, and expenditures for your region"
+    },
+    "committees": {
+      "title": "Committees",
+      "meta": "Campaign committees and PACs for your region"
+    },
+    "contributions": {
+      "title": "Contributions",
+      "meta": "Campaign donations and contributions for your region"
+    },
+    "expenditures": {
+      "title": "Expenditures",
+      "meta": "Campaign spending and payments for your region"
+    },
+    "independentExpenditures": {
+      "title": "Independent Expenditures",
+      "meta": "Independent spending for/against candidates and measures"
+    },
+    "search": {
+      "title": "Search",
+      "meta": "Find bills and propositions across your region"
+    }
   }
 }

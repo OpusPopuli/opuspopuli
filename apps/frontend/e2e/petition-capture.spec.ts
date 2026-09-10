@@ -356,7 +356,11 @@ test.describe("Petition Capture", () => {
       await page.goto("/petition");
 
       await expect(page.getByTestId("activity-feed")).toBeVisible();
-      await expect(page.getByText("Live")).toBeVisible();
+      // Scoped to the feed: the nav label "Where you live" contains this
+      // substring, so an unscoped getByText matches two elements.
+      await expect(
+        page.getByTestId("activity-feed").getByText("Live"),
+      ).toBeVisible();
       await expect(page.getByText(/scans in the last 24 hours/)).toBeVisible();
       await expect(page.getByText(/improving local parks/)).toBeVisible();
     });

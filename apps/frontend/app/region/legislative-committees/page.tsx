@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
@@ -8,7 +10,7 @@ import {
   LegislativeCommittee,
   LegislativeCommitteesData,
 } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { ChamberBadge } from "@/components/region/ChamberBadge";
 import { Pagination } from "@/components/region/Pagination";
 import {
@@ -71,6 +73,7 @@ function CommitteeCard({
 }
 
 export default function LegislativeCommitteesPage() {
+  const { t } = useTranslation("region");
   const [page, setPage] = useState(0);
   const [chamber, setChamber] = useState<string | undefined>(undefined);
   // Two-state debounce: `searchInput` follows keystrokes;
@@ -149,21 +152,13 @@ export default function LegislativeCommitteesPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: "Region", href: "/region" },
-          { label: "Legislative Committees" },
-        ]}
+      <RegionPageHeader
+        segments={[{ label: t("pages.legislativeCommittees.title") }]}
+        title={t("pages.legislativeCommittees.title")}
+        meta={
+          "Where bills get debated and shaped before they reach the floor. Click a committee to see who sits on it and what hearings it has held."
+        }
       />
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">
-          Legislative Committees
-        </h1>
-        <p className="mt-2 text-content-dim">
-          Where bills get debated and shaped before they reach the floor. Click
-          a committee to see who sits on it and what hearings it has held.
-        </p>
-      </div>
 
       <div className="mb-6 space-y-3">
         <label className="block">

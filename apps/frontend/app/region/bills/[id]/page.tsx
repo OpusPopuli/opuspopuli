@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@apollo/client/react";
@@ -12,7 +14,7 @@ import {
   type BillIdVars,
   type BillVote,
 } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { LayerButton } from "@/components/region/LayerButton";
@@ -558,6 +560,7 @@ function Sources({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function BillDetailPage() {
+  const { t } = useTranslation("region");
   const { id } = useParams<{ id: string }>();
   const [layer, setLayer] = useState(1);
   const { civics, measureTypeByCode } = useCivics();
@@ -621,12 +624,9 @@ export default function BillDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: "Region", href: "/region" },
-          { label: "Bills", href: "/region/bills" },
-          { label: bill.billNumber },
-        ]}
+      <RegionPageHeader
+        segments={[{ label: t("pages.bills.title"), href: "/region/bills" }]}
+        title={bill.billNumber}
       />
 
       <div className="mb-6">

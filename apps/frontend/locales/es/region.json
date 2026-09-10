@@ -1,7 +1,5 @@
 {
   "search": {
-    "title": "Buscar",
-    "subtitle": "Encuentra proyectos de ley y proposiciones en tu región",
     "placeholder": "Buscar proyectos…",
     "inputLabel": "Buscar proyectos de ley y proposiciones",
     "pagePlaceholder": "Buscar proyectos de ley y proposiciones…",
@@ -50,12 +48,151 @@
     "historical": "Histórico"
   },
   "breadcrumb": {
-    "region": "Región"
+    "region": "Dónde vives",
+    "label": "Ruta de navegación"
   },
   "propositionStatus": {
     "PENDING": "Pendiente",
     "PASSED": "Aprobada",
     "FAILED": "Rechazada",
     "WITHDRAWN": "Retirada"
+  },
+  "stack": {
+    "entity": "tus jurisdicciones",
+    "title": "Dónde vives",
+    "subtitle": "Tres gobiernos reclaman tu dirección. Se enumeran de menor a mayor, porque los pequeños son los que responden.",
+    "open": "Abrir →",
+    "levels": {
+      "county": "Condado",
+      "state": "Estado",
+      "federal": "Federal"
+    },
+    "count": {
+      "thisWeek": "{{value}} esta semana",
+      "unavailable": "Aún sin contar"
+    },
+    "county": {
+      "board": "Junta de Supervisores",
+      "yourSeat": "Tu escaño",
+      "seatValue": "Distrito {{district}} — {{name}}",
+      "wrongSeat": "¿No es correcto?"
+    },
+    "federal": {
+      "subtitle": "Cámara de Representantes y Senado de EE. UU."
+    },
+    "noAddress": {
+      "title": "Todavía no sabemos dónde vives",
+      "body": "Agrega tu dirección en la configuración y esta página mostrará los gobiernos que la reclaman."
+    }
+  },
+  "layer": {
+    "recent": "Recientemente",
+    "browse": "Explorar este nivel",
+    "alsoHere": "También en este nivel",
+    "seeAll": "Ver todo →",
+    "building": "En construcción",
+    "county": {
+      "threshold": "10% de los votos para gobernador emitidos aquí, 2022 · Código Electoral §9118",
+      "thresholdSource": "Secretaría de Estado de California, {{year}}",
+      "noMeetings": "Aún no hay reuniones de la junta registradas.",
+      "meetings": "Reuniones y actas de la junta",
+      "measures": "Medidas del condado",
+      "filers": "Comités de campaña locales",
+      "noMeetingsInWindow": "No hay reuniones de la junta en los registros más recientes que revisamos.",
+      "thresholdLead": "firmas obligan a la Junta",
+      "statewide": "A nivel estatal, el mismo derecho de iniciativa cuesta {{statewide}} firmas.",
+      "yourSeatSection": "Tu escaño en esta junta",
+      "resolvedFrom": "Resuelto desde tu dirección ·",
+      "ledger": "Lo que hizo el condado",
+      "whatDid": "Lo que hizo el condado",
+      "seats_one": "{{count}} escaño",
+      "seats_other": "{{count}} escaños",
+      "nextMeeting": "próxima reunión {{when}}",
+      "otherSeats_one": "El otro escaño",
+      "otherSeats_other": "Los otros {{count}} escaños",
+      "measuresPending": "En los datos, aún sin listar",
+      "resolvedFromPlain": "Resuelto desde tu dirección"
+    },
+    "state": {
+      "noBills": "Sin actividad legislativa reciente.",
+      "bills": "Proyectos de ley",
+      "propositions": "Propuestas",
+      "committees": "Comités legislativos",
+      "finance": "Financiamiento de campañas",
+      "representatives": "Representantes",
+      "legislature": "Legislatura estatal: Asamblea y Senado",
+      "yourSeats": "Tus escaños",
+      "seatValue": "{{chamber}} Distrito {{district}} — {{name}}",
+      "threshold": "5% de los votos emitidos para gobernador · una enmienda constitucional requiere {{amendment}} · Const. de California art. II §8(b), Código Electoral §9035",
+      "thresholdLead": "firmas califican una ley por iniciativa",
+      "ledger": "Lo que hizo el estado",
+      "whatDid": "Lo que hizo el estado"
+    },
+    "federal": {
+      "thin": "Recopilamos muy poco en este nivel, a propósito: es el gobierno sobre el que menos se puede influir, y preferimos ser honestos sobre la brecha antes que rellenar la página.",
+      "ledger": "Lo que hizo el Congreso",
+      "title": "Estados Unidos de América",
+      "meta": "Cámara de Representantes y Senado de EE. UU. · {{district}}",
+      "yourSeats": "Tus escaños",
+      "seatsPending": "Tu representante por {{district}} y ambos senadores de EE. UU. aparecerán aquí. Todavía no extraemos miembros del Congreso: el registro que tenemos cubre la Asamblea y el Senado de California y las juntas de condado."
+    },
+    "when": "Cuándo"
+  },
+  "switcher": {
+    "home": "Tu condado",
+    "choose": "Elige un condado",
+    "visiting": "No vives aquí. Las cifras y los registros públicos se muestran completos; las herramientas para actuar permanecen en {{home}}, donde cuenta tu firma.",
+    "visitingNoHome": "No vives aquí. Las cifras y los registros públicos se muestran completos; las herramientas para actuar permanecen en tu propio condado, donde cuenta tu firma.",
+    "unknown": {
+      "title": "No reconocemos ese condado",
+      "body": "Ningún condado de California coincide con el código «{{fips}}». No hay ningún error: probablemente el enlace se escribió mal o quedó obsoleto.",
+      "back": "Volver a {{home}}"
+    }
+  },
+  "pages": {
+    "bills": {
+      "title": "Proyectos de ley",
+      "meta": "Proyectos de ley en trámite en la legislatura de tu región"
+    },
+    "propositions": {
+      "title": "Propuestas",
+      "meta": "Medidas electorales e iniciativas de tu región"
+    },
+    "representatives": {
+      "title": "Representantes",
+      "meta": "Cargos electos y legisladores"
+    },
+    "meetings": {
+      "title": "Reuniones",
+      "meta": "Sesiones legislativas y audiencias públicas"
+    },
+    "legislativeCommittees": {
+      "title": "Comités legislativos",
+      "meta": "Donde los proyectos de ley se debaten y se moldean antes de llegar al pleno. Haz clic en un comité para ver quién lo integra y qué audiencias ha celebrado."
+    },
+    "campaignFinance": {
+      "title": "Financiamiento de campañas",
+      "meta": "Comités, contribuciones y gastos de tu región"
+    },
+    "committees": {
+      "title": "Comités",
+      "meta": "Comités de campaña y PAC de tu región"
+    },
+    "contributions": {
+      "title": "Contribuciones",
+      "meta": "Donaciones y contribuciones de campaña de tu región"
+    },
+    "expenditures": {
+      "title": "Gastos",
+      "meta": "Gastos y pagos de campaña de tu región"
+    },
+    "independentExpenditures": {
+      "title": "Gastos independientes",
+      "meta": "Gastos independientes a favor o en contra de candidatos y medidas"
+    },
+    "search": {
+      "title": "Buscar",
+      "meta": "Encuentra proyectos de ley y propuestas en tu región"
+    }
   }
 }

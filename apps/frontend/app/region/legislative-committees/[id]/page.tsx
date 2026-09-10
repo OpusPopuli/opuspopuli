@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -16,7 +18,7 @@ import {
   type BillsData,
   type BillsVars,
 } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { RegionDetailShell } from "@/components/region/RegionDetailShell";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { ComingSoon } from "@/components/region/ComingSoon";
@@ -380,6 +382,7 @@ function DeepDive({
 }
 
 export default function LegislativeCommitteeDetailPage() {
+  const { t } = useTranslation("region");
   const { id } = useParams<{ id: string }>();
   const [layer, setLayer] = useState(1);
 
@@ -411,11 +414,10 @@ export default function LegislativeCommitteeDetailPage() {
       {/* committee is guaranteed non-null here */}
       {committee && (
         <div className="max-w-4xl mx-auto px-8 py-12">
-          <Breadcrumb
+          <RegionPageHeader
             segments={[
-              { label: "Region", href: "/region" },
               {
-                label: "Legislative Committees",
+                label: t("pages.legislativeCommittees.title"),
                 href: "/region/legislative-committees",
               },
               { label: committee.name },

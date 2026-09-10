@@ -30,6 +30,17 @@
    them. Prefer adding a scope block below over editing these values.
    ═══════════════════════════════════════════════════════════════════════════ */
 :root {
+  /* Sticky-offset for anything that parks under the site header: py-4
+     (32px) + the 34px mark + the 1px bottom border. Declared once so the
+     region crumb bar cannot drift out of sync with Header.tsx.
+
+     Deliberately in plain :root rather than @theme. Tailwind v4 only emits
+     @theme entries in a recognised namespace, so this was pruned from the
+     stylesheet entirely — `top: var(--op-header-h)` then resolved to
+     nothing, `top` fell back to auto, and a sticky element with top:auto
+     never sticks. The bar looked correct and simply scrolled away. */
+  --op-header-h: 67px;
+
   /* Status — light surfaces */
   --ramp-danger-fg-light: #a3231b;
   --ramp-danger-bg-light: #fbedeb;

@@ -46,6 +46,7 @@ export default function TransparencyPage() {
           {pages.map((page) => (
             <Link
               key={page.href}
+              // prefetch-ok: three static transparency pages
               href={page.href}
               className="group block p-6 bg-surface rounded-lg transition-shadow"
             >

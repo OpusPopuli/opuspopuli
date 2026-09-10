@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -14,7 +16,7 @@ import {
   Representative,
 } from "@/lib/graphql/region";
 import { GET_MY_ADDRESSES, type MyAddressesData } from "@/lib/graphql/profile";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { Pagination } from "@/components/region/Pagination";
 import {
   LoadingSkeleton,
@@ -166,6 +168,7 @@ function MyRepresentativesSection({
 }
 
 export default function RepresentativesPage() {
+  const { t } = useTranslation("region");
   const [page, setPage] = useState(0);
   const [chamber, setChamber] = useState<string | undefined>(undefined);
 
@@ -254,19 +257,11 @@ export default function RepresentativesPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: "Region", href: "/region" },
-          { label: "Representatives" },
-        ]}
+      <RegionPageHeader
+        segments={[{ label: t("pages.representatives.title") }]}
+        title={t("pages.representatives.title")}
+        meta={t("pages.representatives.meta")}
       />
-
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">Representatives</h1>
-        <p className="mt-2 text-content-dim">
-          Elected officials and legislators
-        </p>
-      </div>
 
       <MyRepresentativesSection
         stateReps={stateReps}

@@ -41,7 +41,8 @@
   },
   "navigation": {
     "backToApp": "Volver a la App",
-    "scanPetition": "Escanear una petición"
+    "scanPetition": "Escanear una petición",
+    "whereYouLive": "Dónde vives"
   },
   "accessibility": {
     "languageChanged": "Idioma cambiado a Espanol",

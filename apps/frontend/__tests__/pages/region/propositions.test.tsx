@@ -150,7 +150,7 @@ describe("PropositionsPage", () => {
     it("should render breadcrumb navigation", () => {
       render(<PropositionsPage />);
 
-      const regionLink = screen.getByRole("link", { name: /Region/i });
+      const regionLink = screen.getByRole("link", { name: /Where you live/i });
       expect(regionLink).toHaveAttribute("href", "/region");
     });
 
@@ -289,7 +289,6 @@ describe("PropositionsPage", () => {
   });
 
   describe("search and filters (#1155)", () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useQuery } = require("@apollo/client/react");
 
     function lastVariables() {
@@ -364,7 +363,6 @@ describe("PropositionsPage", () => {
   });
 
   describe("search UX regressions caught in review (#1155)", () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useQuery } = require("@apollo/client/react");
 
     function lastVariables() {

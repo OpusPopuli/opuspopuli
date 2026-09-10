@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import {
@@ -8,7 +10,7 @@ import {
   Expenditure,
 } from "@/lib/graphql/region";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { Pagination } from "@/components/region/Pagination";
 import { SupportOpposeBadge } from "@/components/region/SupportOpposeBadge";
 import {
@@ -53,6 +55,7 @@ function ExpenditureCard({
 }
 
 export default function ExpendituresPage() {
+  const { t } = useTranslation("region");
   const [page, setPage] = useState(0);
   const { data, loading, error } = useQuery<ExpendituresData>(
     GET_EXPENDITURES,
@@ -87,19 +90,17 @@ export default function ExpendituresPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
+      <RegionPageHeader
         segments={[
-          { label: "Region", href: "/region" },
-          { label: "Campaign Finance", href: "/region/campaign-finance" },
-          { label: "Expenditures" },
+          {
+            label: t("pages.campaignFinance.title"),
+            href: "/region/campaign-finance",
+          },
+          { label: t("pages.expenditures.title") },
         ]}
+        title={t("pages.expenditures.title")}
+        meta={t("pages.expenditures.meta")}
       />
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">Expenditures</h1>
-        <p className="mt-2 text-content-dim">
-          Campaign spending and payments for your region
-        </p>
-      </div>
       {renderContent()}
     </div>
   );
