@@ -109,6 +109,7 @@ export function Breadcrumb({
           )}
           {segment.href ? (
             <Link
+              // prefetch-ok: at most four ancestors, all static section routes
               href={segment.href}
               className="text-sm text-info hover:text-info-strong hover:underline"
             >

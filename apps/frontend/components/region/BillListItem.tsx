@@ -34,6 +34,7 @@ export function BillsList({ bills, totalCount, viewAllHref }: BillsListProps) {
       ))}
       {totalCount > 10 && (
         <Link
+          // prefetch-ok: one "view all" per list, to a static index route
           href={viewAllHref}
           className="block text-center text-sm text-info hover:underline pt-1"
         >

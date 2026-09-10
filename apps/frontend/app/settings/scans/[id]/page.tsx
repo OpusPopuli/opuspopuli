@@ -28,6 +28,7 @@ const LIST_HREF = "/settings/scans";
 function BackLink({ label }: { readonly label: string }) {
   return (
     <Link
+      // prefetch-ok: single back-link to a static list route
       href={LIST_HREF}
       className="inline-flex items-center gap-1.5 text-sm text-content-dim hover:text-content transition-colors no-underline"
     >
@@ -133,6 +134,7 @@ export default function SettingsScanDetailPage() {
             {t("scans.scanNotFoundDescription")}
           </p>
           <Link
+            // prefetch-ok: single back-link to a static list route
             href={LIST_HREF}
             className="inline-block px-6 py-3 bg-inverse-surface text-on-inverse rounded-lg font-medium no-underline hover:opacity-90 transition-opacity"
           >

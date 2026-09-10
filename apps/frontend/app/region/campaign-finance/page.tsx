@@ -48,6 +48,7 @@ export default function CampaignFinancePage() {
         {CAMPAIGN_FINANCE_CARDS.map((card) => (
           <Link
             key={card.href}
+            // prefetch-ok: four static sub-category routes, not per-item
             href={card.href}
             className="group bg-surface rounded-lg p-6 transition-all duration-200"
           >

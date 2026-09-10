@@ -151,7 +151,12 @@ export function IndexRow({
   return (
     <div className="border-b border-line last:border-b-0">
       {href ? (
-        <Link href={href} className="block hover:bg-surface-alt">
+        <Link
+          // prefetch-ok: index rows point at static section routes; the
+          // entity rows are ActivityRow above, which disables prefetch
+          href={href}
+          className="block hover:bg-surface-alt"
+        >
           {body}
         </Link>
       ) : (

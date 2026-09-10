@@ -157,6 +157,7 @@ export function Header() {
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-md supports-[backdrop-filter]:bg-surface/75">
       <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
         <Link
+          // prefetch-ok: the masthead, one per page, to a static route
           href={isAuthenticated ? "/me/briefing" : "/"}
           className="group flex items-center gap-2.5 hover:opacity-90 transition-opacity"
           aria-label="Opus Populi — home"

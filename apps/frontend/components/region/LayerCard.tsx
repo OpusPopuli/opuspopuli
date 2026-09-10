@@ -61,6 +61,7 @@ export function LayerCard({
       }`}
     >
       <Link
+        // prefetch-ok: three static layer routes, one card each
         href={href}
         className="flex items-center gap-4 px-5 py-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content"
       >
