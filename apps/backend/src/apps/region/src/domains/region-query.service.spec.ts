@@ -9,6 +9,7 @@ import {
   type MockDbClient,
 } from '@opuspopuli/relationaldb-provider/testing';
 import { BillLifecycle } from './models/bill.model';
+import { SearchResultType } from './models/region-search.model';
 
 function createMockCache() {
   return {
@@ -1553,5 +1554,80 @@ describe('RegionQueryService — searchRegion paging window (#1154 review)', () 
     // 990 + 10 === MAX_SEARCH_WINDOW: nothing further is reachable.
     expect(page.total).toBe(5000);
     expect(page.hasMore).toBe(false);
+  });
+});
+
+describe('RegionQueryService — searchRegion additive fields (#1180)', () => {
+  function buildService() {
+    const searchService = {
+      searchUnified: jest.fn().mockResolvedValue({
+        rows: [],
+        billCount: 7,
+        propositionCount: 3,
+        matched: 10,
+      }),
+    };
+    const db = {
+      bill: { findMany: jest.fn().mockResolvedValue([]) },
+      proposition: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    return new RegionQueryService(
+      db as never,
+      { cachedQuery: (_k: string, fn: () => unknown) => fn() } as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      searchService as never,
+    );
+  }
+
+  // The state an empty result set otherwise hides: "we searched there and
+  // found nothing" reads identically to "we never looked".
+  it('reports both corpora as searched when no type filter is given', async () => {
+    const page = await buildService().searchRegion(
+      'wildfire',
+      undefined,
+      0,
+      10,
+    );
+    expect([...page.searchedTypes].sort()).toEqual(['BILL', 'PROPOSITION']);
+  });
+
+  it('narrows searchedTypes to the filtered corpus', async () => {
+    const page = await buildService().searchRegion(
+      'wildfire',
+      SearchResultType.PROPOSITION,
+      0,
+      10,
+    );
+    expect(page.searchedTypes).toEqual([SearchResultType.PROPOSITION]);
+  });
+
+  // Generic counts must agree with the two named fields they replace, or a
+  // frontend migrating between them would show different numbers.
+  it('reports generic counts matching billCount/propositionCount', async () => {
+    const page = await buildService().searchRegion(
+      'wildfire',
+      undefined,
+      0,
+      10,
+    );
+    expect(page.counts).toEqual([
+      { type: SearchResultType.BILL, count: page.billCount },
+      { type: SearchResultType.PROPOSITION, count: page.propositionCount },
+    ]);
+  });
+
+  it('keeps counts corpus-wide when a type filter narrows the results', async () => {
+    // The facet chips advertise what you would get by switching, so these
+    // stay corpus-wide even though searchedTypes narrows.
+    const page = await buildService().searchRegion(
+      'wildfire',
+      SearchResultType.BILL,
+      0,
+      10,
+    );
+    expect(page.counts.map((c) => c.count)).toEqual([7, 3]);
   });
 });

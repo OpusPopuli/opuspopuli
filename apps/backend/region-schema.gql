@@ -127,10 +127,71 @@ type PaginatedPropositions {
   hasMore: Boolean!
 }
 
+type JurisdictionModel {
+  id: ID!
+  fipsCode: String
+  ocdId: String
+  name: String!
+  type: JurisdictionType!
+  level: JurisdictionLevel!
+  stateCode: String!
+  parent: JurisdictionModel
+}
+
+enum JurisdictionType {
+  STATE
+  CONGRESSIONAL_DISTRICT
+  STATE_SENATE_DISTRICT
+  STATE_ASSEMBLY_DISTRICT
+  COUNTY
+  CITY
+  SCHOOL_DISTRICT_UNIFIED
+  SCHOOL_DISTRICT_ELEMENTARY
+  SCHOOL_DISTRICT_HIGH
+  COMMUNITY_COLLEGE_DISTRICT
+  WATER_DISTRICT
+  FIRE_DISTRICT
+  TRANSIT_DISTRICT
+  SPECIAL_DISTRICT
+  COUNTY_SUPERVISOR_DISTRICT
+}
+
+enum JurisdictionLevel {
+  FEDERAL
+  STATE
+  COUNTY
+  MUNICIPAL
+  DISTRICT
+}
+
+type UserJurisdictionModel {
+  resolvedBy: String!
+  resolvedAt: DateTime!
+  jurisdiction: JurisdictionModel!
+}
+
+type ResultJurisdiction {
+  level: JurisdictionLevel!
+  name: String!
+  id: ID
+}
+
+type SearchTypeCount {
+  type: SearchResultType!
+  count: Int!
+}
+
+"""Restrict unified search to one entity type"""
+enum SearchResultType {
+  BILL
+  PROPOSITION
+}
+
 type RegionSearchItem {
   result: RegionSearchEntity!
   snippet: String
   rank: Float!
+  jurisdiction: ResultJurisdiction!
 }
 
 """A bill or proposition returned by unified search"""
@@ -142,6 +203,8 @@ type PaginatedRegionSearch {
   hasMore: Boolean!
   billCount: Int!
   propositionCount: Int!
+  searchedTypes: [SearchResultType!]!
+  counts: [SearchTypeCount!]!
 }
 
 type SearchSuggestion {
@@ -149,6 +212,7 @@ type SearchSuggestion {
   kind: SearchSuggestionKind!
   label: String!
   sublabel: String
+  jurisdiction: ResultJurisdiction!
 }
 
 """Typeahead suggestion row kind"""
@@ -678,49 +742,6 @@ type MinutesPassageModel {
   sectionContext: String
 }
 
-type JurisdictionModel {
-  id: ID!
-  fipsCode: String
-  ocdId: String
-  name: String!
-  type: JurisdictionType!
-  level: JurisdictionLevel!
-  stateCode: String!
-  parent: JurisdictionModel
-}
-
-enum JurisdictionType {
-  STATE
-  CONGRESSIONAL_DISTRICT
-  STATE_SENATE_DISTRICT
-  STATE_ASSEMBLY_DISTRICT
-  COUNTY
-  CITY
-  SCHOOL_DISTRICT_UNIFIED
-  SCHOOL_DISTRICT_ELEMENTARY
-  SCHOOL_DISTRICT_HIGH
-  COMMUNITY_COLLEGE_DISTRICT
-  WATER_DISTRICT
-  FIRE_DISTRICT
-  TRANSIT_DISTRICT
-  SPECIAL_DISTRICT
-  COUNTY_SUPERVISOR_DISTRICT
-}
-
-enum JurisdictionLevel {
-  FEDERAL
-  STATE
-  COUNTY
-  MUNICIPAL
-  DISTRICT
-}
-
-type UserJurisdictionModel {
-  resolvedBy: String!
-  resolvedAt: DateTime!
-  jurisdiction: JurisdictionModel!
-}
-
 """
 The adjacent county with the lowest signature requirement. Null only if a county touches no other, which no California county does.
 """
@@ -832,12 +853,6 @@ type Query {
   regionSyncJob(jobId: ID!): RegionSyncJob
   recentRegionSyncJobs(limit: Int = 20): [RegionSyncJob!]!
   scheduledSyncJobs: [ScheduledSyncJob!]!
-}
-
-"""Restrict unified search to one entity type"""
-enum SearchResultType {
-  BILL
-  PROPOSITION
 }
 
 """

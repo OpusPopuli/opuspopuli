@@ -34,7 +34,9 @@ import {
   PaginatedRegionSearchModel,
   RegionSearchItemModel,
   SearchResultType,
+  STATE_JURISDICTION,
 } from './models/region-search.model';
+
 import { PaginatedMeetings } from './models/meeting.model';
 import {
   ClaimSeverityGQL,
@@ -1551,12 +1553,26 @@ export class RegionQueryService {
     // stay enabled past MAX_SEARCH_WINDOW and land on an empty page that
     // reads as "no results" for a query that has thousands (#1154 review).
     const reachable = Math.min(matched, MAX_SEARCH_WINDOW);
+    // What we actually looked in — a type filter narrows it to one corpus.
+    // Reported so an empty result can distinguish "searched, found nothing"
+    // from "never looked there" (#1180).
+    const searchedTypes = type
+      ? [type]
+      : [SearchResultType.BILL, SearchResultType.PROPOSITION];
+
     return {
       items,
       total: matched,
       hasMore: skip + take < reachable,
       billCount,
       propositionCount,
+      searchedTypes,
+      // Generic counts alongside the two named ones, which cannot survive a
+      // third corpus. Counts stay corpus-wide, matching billCount above.
+      counts: [
+        { type: SearchResultType.BILL, count: billCount },
+        { type: SearchResultType.PROPOSITION, count: propositionCount },
+      ],
     };
   }
 
@@ -1575,7 +1591,12 @@ export class RegionQueryService {
     const snippet = row.snippet?.includes(SNIPPET_START)
       ? row.snippet
       : undefined;
-    return { result, snippet, rank: row.rank };
+    return {
+      result,
+      snippet,
+      rank: row.rank,
+      jurisdiction: STATE_JURISDICTION,
+    };
   }
 
   async getBill(id: string): Promise<BillModel | null> {
