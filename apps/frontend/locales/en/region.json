@@ -149,5 +149,47 @@
       "body": "No California county matches the code “{{fips}}”. Nothing is broken — the link was probably mistyped or has gone stale.",
       "back": "Back to {{home}}"
     }
+  },
+  "pages": {
+    "bills": {
+      "title": "Bills",
+      "meta": "Legislative bills moving through your region's legislature"
+    },
+    "propositions": {
+      "title": "Propositions",
+      "meta": "Ballot measures and initiatives for your region"
+    },
+    "representatives": {
+      "title": "Representatives",
+      "meta": "Elected officials and legislators"
+    },
+    "meetings": {
+      "title": "Meetings",
+      "meta": "Legislative sessions and public hearings"
+    },
+    "legislativeCommittees": {
+      "title": "Legislative Committees",
+      "meta": "Where bills get debated and shaped before they reach the floor. Click a committee to see who sits on it and what hearings it has held."
+    },
+    "campaignFinance": {
+      "title": "Campaign Finance",
+      "meta": "Committees, contributions, and expenditures for your region"
+    },
+    "committees": {
+      "title": "Committees",
+      "meta": "Campaign committees and PACs for your region"
+    },
+    "contributions": {
+      "title": "Contributions",
+      "meta": "Campaign donations and contributions for your region"
+    },
+    "expenditures": {
+      "title": "Expenditures",
+      "meta": "Campaign spending and payments for your region"
+    },
+    "independentExpenditures": {
+      "title": "Independent Expenditures",
+      "meta": "Independent spending for/against candidates and measures"
+    }
   }
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import {
@@ -53,6 +55,7 @@ function ExpenditureCard({
 }
 
 export default function ExpendituresPage() {
+  const { t } = useTranslation("region");
   const [page, setPage] = useState(0);
   const { data, loading, error } = useQuery<ExpendituresData>(
     GET_EXPENDITURES,
@@ -89,11 +92,14 @@ export default function ExpendituresPage() {
     <div className="max-w-4xl mx-auto px-8 py-12">
       <RegionPageHeader
         segments={[
-          { label: "Campaign Finance", href: "/region/campaign-finance" },
-          { label: "Expenditures" },
+          {
+            label: t("pages.campaignFinance.title"),
+            href: "/region/campaign-finance",
+          },
+          { label: t("pages.expenditures.title") },
         ]}
-        title="Expenditures"
-        meta={"Campaign spending and payments for your region"}
+        title={t("pages.expenditures.title")}
+        meta={t("pages.expenditures.meta")}
       />
       {renderContent()}
     </div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -440,6 +442,7 @@ function DeepDive({
 }
 
 export default function PropositionDetailPage() {
+  const { t } = useTranslation("region");
   const { id } = useParams<{ id: string }>();
   const [layer, setLayer] = useState(1);
   const [focusedClaimKey, setFocusedClaimKey] = useState<string | undefined>();
@@ -501,7 +504,12 @@ export default function PropositionDetailPage() {
       {proposition && (
         <div className="max-w-4xl mx-auto px-8 py-12">
           <RegionPageHeader
-            segments={[{ label: "Propositions", href: "/region/propositions" }]}
+            segments={[
+              {
+                label: t("pages.propositions.title"),
+                href: "/region/propositions",
+              },
+            ]}
             title={proposition.externalId}
           />
 

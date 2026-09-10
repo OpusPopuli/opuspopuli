@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -166,6 +168,7 @@ function MyRepresentativesSection({
 }
 
 export default function RepresentativesPage() {
+  const { t } = useTranslation("region");
   const [page, setPage] = useState(0);
   const [chamber, setChamber] = useState<string | undefined>(undefined);
 
@@ -255,9 +258,9 @@ export default function RepresentativesPage() {
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
       <RegionPageHeader
-        segments={[{ label: "Representatives" }]}
-        title="Representatives"
-        meta={"Elected officials and legislators"}
+        segments={[{ label: t("pages.representatives.title") }]}
+        title={t("pages.representatives.title")}
+        meta={t("pages.representatives.meta")}
       />
 
       <MyRepresentativesSection

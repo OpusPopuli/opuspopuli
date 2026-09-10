@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import {
@@ -91,6 +93,7 @@ function CommitteeCard({ committee }: Readonly<{ committee: Committee }>) {
 }
 
 export default function CommitteesPage() {
+  const { t } = useTranslation("region");
   const [page, setPage] = useState(0);
   const { data, loading, error } = useQuery<CommitteesData>(GET_COMMITTEES, {
     variables: { skip: page * PAGE_SIZE, take: PAGE_SIZE },
@@ -124,11 +127,14 @@ export default function CommitteesPage() {
     <div className="max-w-4xl mx-auto px-8 py-12">
       <RegionPageHeader
         segments={[
-          { label: "Campaign Finance", href: "/region/campaign-finance" },
-          { label: "Committees" },
+          {
+            label: t("pages.campaignFinance.title"),
+            href: "/region/campaign-finance",
+          },
+          { label: t("pages.committees.title") },
         ]}
-        title="Committees"
-        meta={"Campaign committees and PACs for your region"}
+        title={t("pages.committees.title")}
+        meta={t("pages.committees.meta")}
       />
       {renderContent()}
     </div>

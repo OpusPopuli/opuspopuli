@@ -178,9 +178,9 @@ export default function PropositionsPage() {
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
       <RegionPageHeader
-        segments={[{ label: "Propositions" }]}
-        title="Propositions"
-        meta={"Ballot measures and initiatives for your region"}
+        segments={[{ label: t("pages.propositions.title") }]}
+        title={t("pages.propositions.title")}
+        meta={t("pages.propositions.meta")}
       />
 
       <div className="mb-3">

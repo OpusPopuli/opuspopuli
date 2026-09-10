@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -380,6 +382,7 @@ function DeepDive({
 }
 
 export default function LegislativeCommitteeDetailPage() {
+  const { t } = useTranslation("region");
   const { id } = useParams<{ id: string }>();
   const [layer, setLayer] = useState(1);
 
@@ -414,7 +417,7 @@ export default function LegislativeCommitteeDetailPage() {
           <RegionPageHeader
             segments={[
               {
-                label: "Legislative Committees",
+                label: t("pages.legislativeCommittees.title"),
                 href: "/region/legislative-committees",
               },
               { label: committee.name },

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
@@ -71,6 +73,7 @@ function CommitteeCard({
 }
 
 export default function LegislativeCommitteesPage() {
+  const { t } = useTranslation("region");
   const [page, setPage] = useState(0);
   const [chamber, setChamber] = useState<string | undefined>(undefined);
   // Two-state debounce: `searchInput` follows keystrokes;
@@ -150,8 +153,8 @@ export default function LegislativeCommitteesPage() {
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
       <RegionPageHeader
-        segments={[{ label: "Legislative Committees" }]}
-        title="Legislative Committees"
+        segments={[{ label: t("pages.legislativeCommittees.title") }]}
+        title={t("pages.legislativeCommittees.title")}
         meta={
           "Where bills get debated and shaped before they reach the floor. Click a committee to see who sits on it and what hearings it has held."
         }

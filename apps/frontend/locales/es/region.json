@@ -149,5 +149,47 @@
       "body": "Ningún condado de California coincide con el código «{{fips}}». No hay ningún error: probablemente el enlace se escribió mal o quedó obsoleto.",
       "back": "Volver a {{home}}"
     }
+  },
+  "pages": {
+    "bills": {
+      "title": "Proyectos de ley",
+      "meta": "Proyectos de ley en trámite en la legislatura de tu región"
+    },
+    "propositions": {
+      "title": "Propuestas",
+      "meta": "Medidas electorales e iniciativas de tu región"
+    },
+    "representatives": {
+      "title": "Representantes",
+      "meta": "Cargos electos y legisladores"
+    },
+    "meetings": {
+      "title": "Reuniones",
+      "meta": "Sesiones legislativas y audiencias públicas"
+    },
+    "legislativeCommittees": {
+      "title": "Comités legislativos",
+      "meta": "Donde los proyectos de ley se debaten y se moldean antes de llegar al pleno. Haz clic en un comité para ver quién lo integra y qué audiencias ha celebrado."
+    },
+    "campaignFinance": {
+      "title": "Financiamiento de campañas",
+      "meta": "Comités, contribuciones y gastos de tu región"
+    },
+    "committees": {
+      "title": "Comités",
+      "meta": "Comités de campaña y PAC de tu región"
+    },
+    "contributions": {
+      "title": "Contribuciones",
+      "meta": "Donaciones y contribuciones de campaña de tu región"
+    },
+    "expenditures": {
+      "title": "Gastos",
+      "meta": "Gastos y pagos de campaña de tu región"
+    },
+    "independentExpenditures": {
+      "title": "Gastos independientes",
+      "meta": "Gastos independientes a favor o en contra de candidatos y medidas"
+    }
   }
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -869,6 +871,7 @@ function PersistentHeader({
 }
 
 export default function RepresentativeDetailPage() {
+  const { t } = useTranslation("region");
   const { id } = useParams<{ id: string }>();
   const [showContactForm, setShowContactForm] = useState(false);
   const [layer, setLayer] = useState(1);
@@ -916,7 +919,10 @@ export default function RepresentativeDetailPage() {
     <div className="max-w-4xl mx-auto px-8 py-12">
       <RegionPageHeader
         segments={[
-          { label: "Representatives", href: "/region/representatives" },
+          {
+            label: t("pages.representatives.title"),
+            href: "/region/representatives",
+          },
           { label: rep.name },
         ]}
       />

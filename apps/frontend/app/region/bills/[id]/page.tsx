@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@apollo/client/react";
@@ -558,6 +560,7 @@ function Sources({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function BillDetailPage() {
+  const { t } = useTranslation("region");
   const { id } = useParams<{ id: string }>();
   const [layer, setLayer] = useState(1);
   const { civics, measureTypeByCode } = useCivics();
@@ -622,7 +625,7 @@ export default function BillDetailPage() {
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
       <RegionPageHeader
-        segments={[{ label: "Bills", href: "/region/bills" }]}
+        segments={[{ label: t("pages.bills.title"), href: "/region/bills" }]}
         title={bill.billNumber}
       />
 

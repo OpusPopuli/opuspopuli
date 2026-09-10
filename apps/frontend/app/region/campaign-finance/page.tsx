@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "react-i18next";
+
 import Link from "next/link";
 import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 
@@ -29,12 +31,13 @@ const CAMPAIGN_FINANCE_CARDS = [
 ];
 
 export default function CampaignFinancePage() {
+  const { t } = useTranslation("region");
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
       <RegionPageHeader
-        segments={[{ label: "Campaign Finance" }]}
-        title="Campaign Finance"
-        meta="Committees, contributions, and expenditures for your region"
+        segments={[{ label: t("pages.campaignFinance.title") }]}
+        title={t("pages.campaignFinance.title")}
+        meta={t("pages.campaignFinance.meta")}
       />
 
       {/* Sub-category Cards */}
