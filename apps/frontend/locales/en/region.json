@@ -138,5 +138,16 @@
       "seatsPending": "Your representative for {{district}} and both U.S. senators will appear here. We do not extract members of Congress yet — the roster we hold covers California's Assembly, Senate and county boards."
     },
     "when": "When"
+  },
+  "switcher": {
+    "home": "Home",
+    "choose": "Choose a county",
+    "visiting": "You don't live here. Figures and public records are shown in full; the tools for acting stay with {{home}}, where your signature counts.",
+    "visitingNoHome": "You don't live here. Figures and public records are shown in full; the tools for acting stay with your own county, where your signature counts.",
+    "unknown": {
+      "title": "We don't recognise that county",
+      "body": "No California county matches the code “{{fips}}”. Nothing is broken — the link was probably mistyped or has gone stale.",
+      "back": "Back to {{home}}"
+    }
   }
 }

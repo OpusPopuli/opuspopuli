@@ -12,6 +12,13 @@ export interface RegionPageHeaderProps {
   /** Sits above the title — the level pill on a layer page. */
   readonly eyebrow?: ReactNode;
   /**
+   * A control sharing the eyebrow's row, hard right — the county switcher.
+   * It sits level with the pill rather than below the meta line because
+   * both answer "which government am I looking at", and separating them
+   * put the answer and the way to change it at opposite ends of the block.
+   */
+  readonly control?: ReactNode;
+  /**
    * Rendered as the page heading. Omit on pages that already render their
    * own persistent heading — representative and committee details both do,
    * and passing it there produced two <h1>s with the same text.
@@ -40,6 +47,7 @@ export interface RegionPageHeaderProps {
 export function RegionPageHeader({
   segments = [],
   eyebrow,
+  control,
   title,
   meta,
   children,
@@ -50,7 +58,12 @@ export function RegionPageHeader({
         <Breadcrumb segments={segments} />
       </div>
 
-      {eyebrow && <div className="mt-8">{eyebrow}</div>}
+      {(eyebrow || control) && (
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+          <span>{eyebrow}</span>
+          {control}
+        </div>
+      )}
       {title && (
         <h1 className="mt-5 font-serif text-5xl leading-none text-content">
           {title}

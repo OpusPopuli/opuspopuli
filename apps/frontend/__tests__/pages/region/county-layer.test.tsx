@@ -10,6 +10,13 @@ import {
 import { GET_COUNTY_THRESHOLDS } from "@/lib/graphql/counties";
 
 jest.mock("@apollo/client/react", () => ({ useQuery: jest.fn() }));
+
+// The viewed county lives in ?fips=; home always comes from the resolved
+// jurisdiction, never from the URL.
+let mockFips: string | null = null;
+jest.mock("next/navigation", () => ({
+  useSearchParams: () => ({ get: () => mockFips }),
+}));
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, vars?: Record<string, unknown>) =>
@@ -32,13 +39,16 @@ jest.mock("@/components/region/RegionPageHeader", () => ({
   RegionPageHeader: ({
     title,
     meta,
+    control,
   }: {
     title?: string;
     meta?: React.ReactNode;
+    control?: React.ReactNode;
   }) => (
     <>
       <h1>{title}</h1>
       <p>{meta}</p>
+      {control}
     </>
   ),
 }));
@@ -135,6 +145,13 @@ function setup(
               gubernatorialYear: 2022,
               sourceUrl: "https://sos.ca.gov/example",
             },
+            {
+              fips: "06055",
+              name: "Napa County",
+              signaturesRequired: 9000,
+              gubernatorialYear: 2022,
+              sourceUrl: "https://sos.ca.gov/example",
+            },
           ],
         },
         loading: false,
@@ -165,7 +182,10 @@ function setup(
 }
 
 describe("County layer page (#1195)", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFips = null;
+  });
 
   it("shows only board meetings, never legislative ones", () => {
     // The table has no jurisdiction column (#1139); Assembly rows sharing it
@@ -278,5 +298,59 @@ describe("County layer page (#1195)", () => {
     setup([later, soon]);
     render(<CountyLayerPage />);
     expect(screen.getByText(/layer.county.nextMeeting/)).toBeInTheDocument();
+  });
+
+  it("keeps home from the resolved jurisdiction, not the URL (AC4)", () => {
+    // Switching changes what is being read, never where the reader lives.
+    mockFips = "06055";
+    setup([board(1)], [BOARD[4]]);
+    render(<CountyLayerPage />);
+    // AC1 is "no state in which the page forgets where they live". While
+    // visiting, the closed trigger names the county being READ — badging it
+    // "Home" would be a lie about Napa — so home is carried by the notice,
+    // and by the badge pinned to the top of the control's own list.
+    expect(screen.getByText(/switcher.visiting/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Sonoma County/).length).toBeGreaterThan(0);
+  });
+
+  it("explains the visiting state rather than thinning out silently (AC2)", () => {
+    mockFips = "06055";
+    setup([board(1)], [BOARD[4]]);
+    render(<CountyLayerPage />);
+    // The seat section is built from the reader's own jurisdiction, so it
+    // is not shown for somewhere they do not live — and the notice says so.
+    expect(screen.getByText(/switcher.visiting/)).toBeInTheDocument();
+    expect(
+      screen.queryByText("layer.county.yourSeatSection"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the home county in full when no fips is requested", () => {
+    setup([board(1)], [BOARD[4]]);
+    render(<CountyLayerPage />);
+    expect(
+      screen.getByText("layer.county.yourSeatSection"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/switcher.visiting/)).not.toBeInTheDocument();
+  });
+
+  it("says so when ?fips= names no real county (regression)", () => {
+    // An unknown fips left name="" and the header only emits an <h1> when
+    // it has a title, so the page rendered with no heading at all — under a
+    // notice telling the reader they do not live there.
+    mockFips = "99999";
+    setup([board(1)], [BOARD[4]]);
+    render(<CountyLayerPage />);
+    expect(screen.getByText("switcher.unknown.title")).toBeInTheDocument();
+    expect(screen.queryByText(/switcher.visiting/)).not.toBeInTheDocument();
+  });
+
+  it("offers the way back to the reader's own county", () => {
+    mockFips = "99999";
+    setup([board(1)], [BOARD[4]]);
+    render(<CountyLayerPage />);
+    expect(
+      screen.getByRole("link", { name: /switcher.unknown.back/ }),
+    ).toHaveAttribute("href", "/region/county");
   });
 });

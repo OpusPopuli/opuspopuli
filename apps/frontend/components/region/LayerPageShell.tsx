@@ -8,6 +8,8 @@ import { LevelPill, type StackLevel } from "@/components/region/LevelPill";
 export interface LayerPageShellProps {
   readonly level: StackLevel;
   readonly levelLabel: string;
+  /** Sits level with the pill, hard right. */
+  readonly control?: ReactNode;
   readonly name: string;
   readonly meta?: string | null;
   /** "Who governs here" detail — seats, threshold, whatever the level has. */
@@ -26,6 +28,7 @@ export interface LayerPageShellProps {
 export function LayerPageShell({
   level,
   levelLabel,
+  control,
   name,
   meta,
   header,
@@ -37,6 +40,7 @@ export function LayerPageShell({
         title={name}
         meta={meta}
         eyebrow={<LevelPill level={level} label={levelLabel} />}
+        control={control}
       />
 
       {header}

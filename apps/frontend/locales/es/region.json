@@ -138,5 +138,16 @@
       "seatsPending": "Tu representante por {{district}} y ambos senadores de EE. UU. aparecerán aquí. Todavía no extraemos miembros del Congreso: el registro que tenemos cubre la Asamblea y el Senado de California y las juntas de condado."
     },
     "when": "Cuándo"
+  },
+  "switcher": {
+    "home": "Tu condado",
+    "choose": "Elige un condado",
+    "visiting": "No vives aquí. Las cifras y los registros públicos se muestran completos; las herramientas para actuar permanecen en {{home}}, donde cuenta tu firma.",
+    "visitingNoHome": "No vives aquí. Las cifras y los registros públicos se muestran completos; las herramientas para actuar permanecen en tu propio condado, donde cuenta tu firma.",
+    "unknown": {
+      "title": "No reconocemos ese condado",
+      "body": "Ningún condado de California coincide con el código «{{fips}}». No hay ningún error: probablemente el enlace se escribió mal o quedó obsoleto.",
+      "back": "Volver a {{home}}"
+    }
   }
 }

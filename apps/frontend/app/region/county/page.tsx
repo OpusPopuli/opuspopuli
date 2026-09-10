@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import Link from "next/link";
 import { useQuery } from "@apollo/client/react";
@@ -27,6 +28,11 @@ import {
   Ledger,
 } from "@/components/region/LayerPageShell";
 import { LoadingSkeleton } from "@/components/region/ListStates";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
+import {
+  CountySwitcher,
+  VisitingNotice,
+} from "@/components/region/CountySwitcher";
 import { useJurisdictions } from "@/components/region/JurisdictionsContext";
 import {
   COUNTY_BOARD_CHAMBER,
@@ -60,12 +66,28 @@ function lastName(name: string): string {
  * not as a per-row "what it would take" column, which was cut from this epic
  * on 2026-09-09. Do not reintroduce it here without revisiting that.
  */
-export default function CountyLayerPage() {
+function CountyLayerPageInner() {
   const { t, i18n } = useTranslation("region");
 
   const { jurisdictions, loading } = useJurisdictions();
+  const searchParams = useSearchParams();
+
+  // ?fips= chooses which county is being READ. It never moves home: that
+  // comes from the reader's resolved jurisdiction and nothing on this page
+  // can change it.
+  const requestedFips = searchParams.get("fips") ?? undefined;
+
+  // Derived above the queries so the home-scoped ones can be skipped: while
+  // visiting, every consumer of them sits behind {!visiting && …}, so they
+  // would fetch a hundred meeting rows and a board roster to throw away.
+  const home = findByType(jurisdictions, "COUNTY");
+  const homeFips = home?.jurisdiction.fipsCode ?? undefined;
+  const visiting = Boolean(requestedFips && requestedFips !== homeFips);
+  const viewedFips = visiting ? requestedFips : homeFips;
+
   const { data: sup } = useQuery<MyCountySupervisorsData>(
     MY_COUNTY_SUPERVISORS,
+    { skip: visiting },
   );
   const { data: thresholds } = useQuery<CountyThresholdsData>(
     GET_COUNTY_THRESHOLDS,
@@ -79,6 +101,7 @@ export default function CountyLayerPage() {
   // real fix and lands with #1139.
   const { data: meetingData } = useQuery<MeetingsData>(GET_MEETINGS, {
     variables: { take: MEETING_PROBE_SIZE },
+    skip: visiting,
   });
 
   // The whole board, not just the reader's seat: myCountySupervisors is
@@ -86,7 +109,10 @@ export default function CountyLayerPage() {
   // cannot answer "how many seats" or "who are the others".
   const { data: boardData } = useQuery<RepresentativesData>(
     GET_REPRESENTATIVES,
-    { variables: { take: 20, chamber: COUNTY_BOARD_CHAMBER } },
+    {
+      variables: { take: 20, chamber: COUNTY_BOARD_CHAMBER },
+      skip: visiting,
+    },
   );
 
   // Captured once per mount: Date.now() in a render path is impure
@@ -102,7 +128,7 @@ export default function CountyLayerPage() {
     );
   }
 
-  const county = findByType(jurisdictions, "COUNTY");
+  const county = home;
   if (!county) {
     return (
       <div className="mx-auto max-w-3xl px-8 py-12">
@@ -121,9 +147,19 @@ export default function CountyLayerPage() {
 
   // Matched on FIPS, never on name: two answers to "what is 06097 called"
   // is exactly the drift #1105 refused to introduce.
-  const threshold = thresholds?.countyThresholds.find(
-    (c) => c.fips === county.jurisdiction.fipsCode,
-  );
+  const allCounties = thresholds?.countyThresholds ?? [];
+
+  // Only countyThresholds covers all 58. Supervisors, meetings and the board
+  // roster are home-scoped, which is why a visited county shows figures and
+  // nothing else — the honest shape, not a limitation papered over.
+  const threshold = allCounties.find((c) => c.fips === viewedFips);
+
+  // ?fips= is user-controlled, so an unknown value has to be an explicit
+  // state. Without this the page rendered with name="" — and because the
+  // header only emits an <h1> when it has a title, the result was a
+  // headingless page telling the reader "you don't live here" under no
+  // title at all.
+  const unknownCounty = visiting && !threshold;
 
   // `meetings` has no jurisdiction filter (#1139), so county activity is
   // separated by its own `body` rather than assumed. State meetings sit in
@@ -156,11 +192,39 @@ export default function CountyLayerPage() {
 
   const nf = new Intl.NumberFormat(i18n.language);
 
+  if (unknownCounty) {
+    return (
+      <div className="mx-auto max-w-3xl px-8 py-12">
+        <RegionPageHeader title={t("switcher.unknown.title")} />
+        <p className="mt-4 text-content-dim">
+          {t("switcher.unknown.body", { fips: requestedFips })}
+        </p>
+        <p className="mt-6">
+          <Link
+            href="/region/county"
+            className="text-info underline underline-offset-4 hover:text-info-strong"
+          >
+            {t("switcher.unknown.back", {
+              home: home.jurisdiction.name,
+            })}
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
   return (
     <LayerPageShell
       level="COUNTY"
+      control={
+        <CountySwitcher
+          counties={allCounties}
+          homeFips={homeFips}
+          selectedFips={viewedFips}
+        />
+      }
       levelLabel={t("stack.levels.county")}
-      name={county.jurisdiction.name}
+      name={visiting ? (threshold?.name ?? "") : county.jurisdiction.name}
       meta={[
         t("stack.county.board"),
         board.length > 0
@@ -175,130 +239,157 @@ export default function CountyLayerPage() {
         .filter(Boolean)
         .join(" · ")}
       header={
-        threshold ? (
-          <div className="mt-8">
-            <div className="border-l-[3px] border-accent bg-surface-sunk px-6 py-5">
-              <p className="font-serif text-5xl leading-none tabular-nums text-content">
-                {nf.format(threshold.signaturesRequired)}
-              </p>
-              <p className="mt-3 font-semibold text-content">
-                {t("layer.county.thresholdLead")}
-              </p>
-              <p className="mt-0.5 text-sm text-content-dim">
-                {t("layer.county.threshold")}
+        <>
+          {visiting && <VisitingNotice homeName={home?.jurisdiction.name} />}
+
+          {threshold ? (
+            <div className="mt-8">
+              <div className="border-l-[3px] border-accent bg-surface-sunk px-6 py-5">
+                <p className="font-serif text-5xl leading-none tabular-nums text-content">
+                  {nf.format(threshold.signaturesRequired)}
+                </p>
+                <p className="mt-3 font-semibold text-content">
+                  {t("layer.county.thresholdLead")}
+                </p>
+                <p className="mt-0.5 text-sm text-content-dim">
+                  {t("layer.county.threshold")}
+                </p>
+              </div>
+              <p className="mt-3 text-sm text-content-dim">
+                {t("layer.county.statewide", {
+                  statewide: nf.format(STATEWIDE_INITIATIVE.statute),
+                })}{" "}
+                <a
+                  href={threshold.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  {t("layer.county.thresholdSource", {
+                    year: threshold.gubernatorialYear,
+                  })}
+                </a>
               </p>
             </div>
-            <p className="mt-3 text-sm text-content-dim">
-              {t("layer.county.statewide", {
-                statewide: nf.format(STATEWIDE_INITIATIVE.statute),
-              })}{" "}
-              <a
-                href={threshold.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                {t("layer.county.thresholdSource", {
-                  year: threshold.gubernatorialYear,
-                })}
-              </a>
-            </p>
-          </div>
-        ) : null
+          ) : null}
+        </>
       }
     >
-      {seat && (
-        <LayerSection title={t("layer.county.yourSeatSection")}>
-          <DetailRow
-            strong
-            label={
-              <Link
-                href={`/region/representatives/${seat.id}`}
-                prefetch={false}
-                className="underline decoration-line underline-offset-4 hover:decoration-accent"
-              >
-                {seat.district
-                  ? t("stack.county.seatValue", {
-                      district: seat.district,
-                      name: seat.name,
-                    })
-                  : seat.name}
-              </Link>
-            }
-            detail={
-              <>
-                {t("layer.county.resolvedFrom")}{" "}
-                <Link href="/settings" className="underline">
-                  {t("stack.county.wrongSeat")}
-                </Link>
-              </>
-            }
-          />
-          {otherSeats.length > 0 && (
-            <DetailRow
-              label={t("layer.county.otherSeats", {
-                count: otherSeats.length,
-              })}
-              detail={
-                <Link
-                  href="/region/representatives"
-                  className="underline decoration-line underline-offset-4 hover:decoration-accent"
-                >
-                  {otherSeats.map((r) => lastName(r.name)).join(" · ")} →
-                </Link>
-              }
-            />
+      {!visiting && (
+        <>
+          {seat && (
+            <LayerSection title={t("layer.county.yourSeatSection")}>
+              <DetailRow
+                strong
+                label={
+                  <Link
+                    href={`/region/representatives/${seat.id}`}
+                    prefetch={false}
+                    className="underline decoration-line underline-offset-4 hover:decoration-accent"
+                  >
+                    {seat.district
+                      ? t("stack.county.seatValue", {
+                          district: seat.district,
+                          name: seat.name,
+                        })
+                      : seat.name}
+                  </Link>
+                }
+                detail={
+                  <>
+                    {t("layer.county.resolvedFrom")}{" "}
+                    <Link href="/settings" className="underline">
+                      {t("stack.county.wrongSeat")}
+                    </Link>
+                  </>
+                }
+              />
+              {otherSeats.length > 0 && (
+                <DetailRow
+                  label={t("layer.county.otherSeats", {
+                    count: otherSeats.length,
+                  })}
+                  detail={
+                    <Link
+                      href="/region/representatives"
+                      className="underline decoration-line underline-offset-4 hover:decoration-accent"
+                    >
+                      {otherSeats.map((r) => lastName(r.name)).join(" · ")} →
+                    </Link>
+                  }
+                />
+              )}
+            </LayerSection>
           )}
-        </LayerSection>
-      )}
 
-      <Ledger when={t("layer.when")} what={t("layer.county.whatDid")}>
-        {meetings.length === 0 ? (
-          <p className="py-5 text-sm text-content-dim">
-            {t(
-              probeSaturated
-                ? "layer.county.noMeetingsInWindow"
-                : "layer.county.noMeetings",
+          <Ledger when={t("layer.when")} what={t("layer.county.whatDid")}>
+            {meetings.length === 0 ? (
+              <p className="py-5 text-sm text-content-dim">
+                {t(
+                  probeSaturated
+                    ? "layer.county.noMeetingsInWindow"
+                    : "layer.county.noMeetings",
+                )}
+              </p>
+            ) : (
+              meetings.map((m) => (
+                <ActivityRow
+                  key={m.id}
+                  what={m.title}
+                  sub={m.body}
+                  when={m.scheduledAt ? formatDate(m.scheduledAt) : null}
+                  href="/region/meetings"
+                />
+              ))
             )}
-          </p>
-        ) : (
-          meetings.map((m) => (
-            <ActivityRow
-              key={m.id}
-              what={m.title}
-              sub={m.body}
-              when={m.scheduledAt ? formatDate(m.scheduledAt) : null}
-              href="/region/meetings"
-            />
-          ))
-        )}
-      </Ledger>
+          </Ledger>
 
-      <LayerSection title={t("layer.alsoHere")}>
-        <IndexRow
-          label={t("layer.county.meetings")}
-          href="/region/meetings"
-          count={t("layer.seeAll")}
-        />
-        {/* The rows exist — 12 Sonoma measures carry
+          <LayerSection title={t("layer.alsoHere")}>
+            <IndexRow
+              label={t("layer.county.meetings")}
+              href="/region/meetings"
+              count={t("layer.seeAll")}
+            />
+            {/* The rows exist — 12 Sonoma measures carry
             propositions.region_plugin_name — but that column is not on the
             GraphQL model and there is no filter arg, so they cannot be
             counted or listed scoped to this county yet. "Building" claimed
             we held nothing, which was false; this says what is actually
             true. Exposing the field is #1202. */}
-        <IndexRow
-          label={t("layer.county.measures")}
-          count={
-            <span className="text-content-dim">
-              {t("layer.county.measuresPending")}
-            </span>
-          }
-        />
-        <IndexRow
-          label={t("layer.county.filers")}
-          count={<BuildingTag label={t("layer.building")} />}
-        />
-      </LayerSection>
+            <IndexRow
+              label={t("layer.county.measures")}
+              count={
+                <span className="text-content-dim">
+                  {t("layer.county.measuresPending")}
+                </span>
+              }
+            />
+            <IndexRow
+              label={t("layer.county.filers")}
+              count={<BuildingTag label={t("layer.building")} />}
+            />
+          </LayerSection>
+        </>
+      )}
     </LayerPageShell>
+  );
+}
+
+/**
+ * useSearchParams needs a Suspense boundary in the App Router. The viewed
+ * county lives in the URL so a visited county is shareable and survives the
+ * back button.
+ */
+export default function CountyLayerPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-3xl px-8 py-12">
+          <LoadingSkeleton count={3} height="h-20" />
+        </div>
+      }
+    >
+      <CountyLayerPageInner />
+    </Suspense>
   );
 }
