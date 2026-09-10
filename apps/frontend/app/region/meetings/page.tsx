@@ -162,12 +162,11 @@ export default function MeetingsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <RegionPageHeader segments={[{ label: "Meetings" }]} title="Meetings" />
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">
-          Legislative sessions and public hearings
-        </p>
-      </div>
+      <RegionPageHeader
+        segments={[{ label: "Meetings" }]}
+        title="Meetings"
+        meta={"Legislative sessions and public hearings"}
+      />
       {renderContent()}
     </div>
   );

@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import {
-  isLayerRoot,
-  layerForPath,
-  type StackLayer,
-} from "@/lib/region-breadcrumbs";
+import { isLayerRoot, layerForPath } from "@/lib/region-breadcrumbs";
 import type { UserJurisdictionData } from "@/lib/graphql/region";
 import { useJurisdictions } from "@/components/region/JurisdictionsContext";
-import { findByType, findState } from "@/lib/region-stack";
+import {
+  findByType,
+  findState,
+  levelSlug,
+  type StackLevel,
+} from "@/lib/region-stack";
 
 export interface BreadcrumbSegment {
   readonly label: string;
@@ -35,14 +36,14 @@ export interface BreadcrumbSegment {
  */
 /** The reader's own name for a layer — "Sonoma County", "California". */
 function layerName(
-  layer: StackLayer,
+  layer: StackLevel,
   jurisdictions: readonly UserJurisdictionData[],
   federalTitle: string,
 ): string | undefined {
   if (jurisdictions.length === 0) return undefined;
-  if (layer === "county")
+  if (layer === "COUNTY")
     return findByType(jurisdictions, "COUNTY")?.jurisdiction.name;
-  if (layer === "state") return findState(jurisdictions)?.name;
+  if (layer === "STATE") return findState(jurisdictions)?.name;
   // No country-level jurisdiction exists — resolution is point-in-polygon
   // and nothing loads a national boundary — so the only federal row a
   // reader has is their congressional district. The trail names the
@@ -79,8 +80,8 @@ export function Breadcrumb({
       // jurisdictions are still loading, or if none resolved.
       label:
         layerName(layer, jurisdictions, t("layer.federal.title")) ??
-        t(`stack.levels.${layer}`),
-      href: onLayerRoot ? undefined : `/region/${layer}`,
+        t(`stack.levels.${levelSlug(layer)}`),
+      href: onLayerRoot ? undefined : `/region/${levelSlug(layer)}`,
     });
   }
 

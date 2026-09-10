@@ -180,12 +180,8 @@ export default function PropositionsPage() {
       <RegionPageHeader
         segments={[{ label: "Propositions" }]}
         title="Propositions"
+        meta={"Ballot measures and initiatives for your region"}
       />
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">
-          Ballot measures and initiatives for your region
-        </p>
-      </div>
 
       <div className="mb-3">
         <ListSearchInput

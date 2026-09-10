@@ -34,14 +34,8 @@ export default function CampaignFinancePage() {
       <RegionPageHeader
         segments={[{ label: "Campaign Finance" }]}
         title="Campaign Finance"
+        meta="Committees, contributions, and expenditures for your region"
       />
-
-      {/* Header */}
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">
-          Committees, contributions, and expenditures for your region
-        </p>
-      </div>
 
       {/* Sub-category Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

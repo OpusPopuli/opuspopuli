@@ -107,12 +107,8 @@ export default function ContributionsPage() {
           { label: "Contributions" },
         ]}
         title="Contributions"
+        meta={"Campaign donations and contributions for your region"}
       />
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">
-          Campaign donations and contributions for your region
-        </p>
-      </div>
       {renderContent()}
     </div>
   );

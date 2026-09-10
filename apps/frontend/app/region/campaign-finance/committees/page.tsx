@@ -128,12 +128,8 @@ export default function CommitteesPage() {
           { label: "Committees" },
         ]}
         title="Committees"
+        meta={"Campaign committees and PACs for your region"}
       />
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">
-          Campaign committees and PACs for your region
-        </p>
-      </div>
       {renderContent()}
     </div>
   );

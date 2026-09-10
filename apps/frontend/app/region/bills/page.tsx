@@ -298,12 +298,11 @@ export default function BillsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <RegionPageHeader segments={[{ label: "Bills" }]} title="Bills" />
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">
-          Legislative bills moving through your region&apos;s legislature
-        </p>
-      </div>
+      <RegionPageHeader
+        segments={[{ label: "Bills" }]}
+        title="Bills"
+        meta={"Legislative bills moving through your region&apos;s legislature"}
+      />
       {searchBar}
       <SearchEverythingHint />
       {filterBar}

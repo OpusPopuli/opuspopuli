@@ -152,13 +152,10 @@ export default function LegislativeCommitteesPage() {
       <RegionPageHeader
         segments={[{ label: "Legislative Committees" }]}
         title="Legislative Committees"
+        meta={
+          "Where bills get debated and shaped before they reach the floor. Click a committee to see who sits on it and what hearings it has held."
+        }
       />
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">
-          Where bills get debated and shaped before they reach the floor. Click
-          a committee to see who sits on it and what hearings it has held.
-        </p>
-      </div>
 
       <div className="mb-6 space-y-3">
         <label className="block">

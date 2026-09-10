@@ -93,12 +93,8 @@ export default function IndependentExpendituresPage() {
           { label: "Independent Expenditures" },
         ]}
         title="Independent Expenditures"
+        meta={"Independent spending for/against candidates and measures"}
       />
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">
-          Independent spending for/against candidates and measures
-        </p>
-      </div>
       {renderContent()}
     </div>
   );

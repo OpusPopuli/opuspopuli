@@ -305,10 +305,8 @@ function SearchPageInner() {
       <RegionPageHeader
         segments={[{ label: t("search.title") }]}
         title={t("search.title")}
+        meta={t("search.subtitle")}
       />
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">{t("search.subtitle")}</p>
-      </div>
 
       <label className="mb-6 block">
         <span className="sr-only">{t("search.inputLabel")}</span>

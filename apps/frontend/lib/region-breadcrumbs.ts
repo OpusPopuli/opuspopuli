@@ -1,3 +1,5 @@
+import { levelSlug, type StackLevel } from "@/lib/region-stack";
+
 /**
  * Which government a region route belongs to.
  *
@@ -22,22 +24,20 @@
  * genuine: search is the axis that cuts across every layer, and the civics
  * explainer belongs to no single government.
  */
-export type StackLayer = "county" | "state" | "federal";
-
-const ROUTE_LAYERS: ReadonlyArray<readonly [string, StackLayer]> = [
-  ["/region/county", "county"],
-  ["/region/state", "state"],
-  ["/region/federal", "federal"],
-  ["/region/bills", "state"],
-  ["/region/propositions", "state"],
-  ["/region/legislative-committees", "state"],
-  ["/region/campaign-finance", "state"],
-  ["/region/representatives", "state"],
-  ["/region/meetings", "county"],
+const ROUTE_LAYERS: ReadonlyArray<readonly [string, StackLevel]> = [
+  ["/region/county", "COUNTY"],
+  ["/region/state", "STATE"],
+  ["/region/federal", "FEDERAL"],
+  ["/region/bills", "STATE"],
+  ["/region/propositions", "STATE"],
+  ["/region/legislative-committees", "STATE"],
+  ["/region/campaign-finance", "STATE"],
+  ["/region/representatives", "STATE"],
+  ["/region/meetings", "COUNTY"],
 ];
 
 /** The layer a pathname sits under, or null when it has no honest home. */
-export function layerForPath(pathname: string): StackLayer | null {
+export function layerForPath(pathname: string): StackLevel | null {
   for (const [prefix, layer] of ROUTE_LAYERS) {
     if (pathname === prefix || pathname.startsWith(`${prefix}/`)) return layer;
   }
@@ -45,6 +45,6 @@ export function layerForPath(pathname: string): StackLayer | null {
 }
 
 /** True when this path IS the layer page, so it isn't linked to itself. */
-export function isLayerRoot(pathname: string, layer: StackLayer): boolean {
-  return pathname === `/region/${layer}`;
+export function isLayerRoot(pathname: string, layer: StackLevel): boolean {
+  return pathname === `/region/${levelSlug(layer)}`;
 }

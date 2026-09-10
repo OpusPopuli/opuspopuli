@@ -3,6 +3,21 @@ import type {
   JurisdictionType,
 } from "@/lib/graphql/region";
 
+/**
+ * The three governments the stack renders, smallest first.
+ *
+ * Uppercase to match the GraphQL JurisdictionLevel enum this is derived
+ * from. Routes and translation keys take `levelSlug()` rather than carrying
+ * a second lowercase union — two spellings of the same three values is how
+ * they drift apart.
+ */
+export type StackLevel = "COUNTY" | "STATE" | "FEDERAL";
+
+/** "COUNTY" -> "county", for `/region/{slug}` and `stack.levels.{slug}`. */
+export function levelSlug(level: StackLevel): string {
+  return level.toLowerCase();
+}
+
 /** Meeting `body` values that belong to a county board, not the legislature. */
 export const COUNTY_MEETING_BODY = "Board of Supervisors";
 

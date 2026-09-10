@@ -1,7 +1,7 @@
 "use client";
 
-/** The three governments the stack renders, smallest first. */
-export type StackLevel = "COUNTY" | "STATE" | "FEDERAL";
+import type { StackLevel } from "@/lib/region-stack";
+export type { StackLevel };
 
 /**
  * Hue distance from gold tracks jurisdictional distance from the reader.

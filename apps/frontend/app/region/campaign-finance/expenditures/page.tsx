@@ -93,12 +93,8 @@ export default function ExpendituresPage() {
           { label: "Expenditures" },
         ]}
         title="Expenditures"
+        meta={"Campaign spending and payments for your region"}
       />
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">
-          Campaign spending and payments for your region
-        </p>
-      </div>
       {renderContent()}
     </div>
   );

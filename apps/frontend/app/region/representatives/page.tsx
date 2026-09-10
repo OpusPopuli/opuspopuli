@@ -257,13 +257,8 @@ export default function RepresentativesPage() {
       <RegionPageHeader
         segments={[{ label: "Representatives" }]}
         title="Representatives"
+        meta={"Elected officials and legislators"}
       />
-
-      <div className="mb-8">
-        <p className="mt-2 text-content-dim">
-          Elected officials and legislators
-        </p>
-      </div>
 
       <MyRepresentativesSection
         stateReps={stateReps}
