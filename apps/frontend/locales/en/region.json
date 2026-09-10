@@ -73,8 +73,7 @@
       "unavailable": "Not counted yet"
     },
     "county": {
-      "board_one": "Board of Supervisors · {{count}} seat",
-      "board_other": "Board of Supervisors · {{count}} seats",
+      "board": "Board of Supervisors",
       "yourSeat": "Your seat",
       "seatValue": "District {{district}} — {{name}}",
       "wrongSeat": "Not right?"

@@ -31,24 +31,46 @@ jest.mock("next/link", () => {
 
 const mockUseQuery = useQuery as jest.Mock;
 
+const CALIFORNIA = {
+  id: "ca",
+  name: "California",
+  type: "STATE",
+  level: "STATE",
+};
+
 function jurisdiction(
   type: string,
   name: string,
   level: string,
+  parent?: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
     resolvedBy: "address",
     resolvedAt: "2026-09-01T00:00:00Z",
-    jurisdiction: { id: type, name, type, level, stateCode: "CA" },
+    jurisdiction: { id: type, name, type, level, stateCode: "CA", parent },
   };
 }
 
+/**
+ * Production shape, verified against the running stack: user_jurisdictions
+ * never carries a STATE row — resolution is point-in-polygon and no
+ * statewide boundary is loaded — only districts whose parent is the state.
+ */
 const FULL_STACK = [
   jurisdiction("COUNTY", "Sonoma County", "COUNTY"),
-  jurisdiction("STATE", "California", "STATE"),
   jurisdiction("CONGRESSIONAL_DISTRICT", "CA-04", "FEDERAL"),
-  jurisdiction("STATE_ASSEMBLY_DISTRICT", "Assembly District 10", "STATE"),
-  jurisdiction("STATE_SENATE_DISTRICT", "Senate District 02", "STATE"),
+  jurisdiction(
+    "STATE_ASSEMBLY_DISTRICT",
+    "Assembly District 10",
+    "STATE",
+    CALIFORNIA,
+  ),
+  jurisdiction(
+    "STATE_SENATE_DISTRICT",
+    "Senate District 02",
+    "STATE",
+    CALIFORNIA,
+  ),
 ];
 
 const HOPKINS = {
@@ -233,5 +255,32 @@ describe("RegionPage — the jurisdiction stack (#1194)", () => {
     expect(
       within(county as HTMLElement).getByText("stack.levels.county"),
     ).toBeInTheDocument();
+  });
+
+  it("derives the state card from a district's parent (no STATE row exists)", () => {
+    // Regression: reading `type === "STATE"` found nothing in production and
+    // silently dropped the card holding nearly all of today's data.
+    render(<RegionPage />);
+    expect(screen.getByText("California")).toBeInTheDocument();
+  });
+
+  it("still uses a real STATE row when one resolves", () => {
+    setup({
+      jurisdictions: [
+        ...FULL_STACK,
+        jurisdiction("STATE", "California", "STATE"),
+      ],
+    });
+    render(<RegionPage />);
+    expect(screen.getAllByText("California")).toHaveLength(1);
+  });
+
+  it("never claims a board size from the district-filtered supervisor list", () => {
+    // myCountySupervisors returns ONE supervisor when the seat resolves
+    // (#1136), so its length is not the size of the board. "1 seat" for a
+    // five-seat board is worse than saying nothing.
+    render(<RegionPage />);
+    expect(screen.getByText("stack.county.board")).toBeInTheDocument();
+    expect(screen.queryByText(/"count":1/)).not.toBeInTheDocument();
   });
 });

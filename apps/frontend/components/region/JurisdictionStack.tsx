@@ -25,6 +25,32 @@ function findByType(
   return jurisdictions.find((j) => j.jurisdiction.type === type);
 }
 
+/**
+ * The state the reader lives in.
+ *
+ * Jurisdictions are resolved by point-in-polygon against loaded boundaries,
+ * and no statewide boundary is loaded — so `user_jurisdictions` never
+ * contains a STATE row, only the districts inside it. Reading the state off
+ * `type === "STATE"` therefore found nothing and dropped the whole state
+ * card, which is where nearly all of today's data lives.
+ *
+ * The district rows carry `parent: { type: STATE, name: "California" }`, and
+ * MY_JURISDICTIONS already selects it. Prefer a real STATE row if one ever
+ * resolves; otherwise derive it from a district's parent.
+ */
+function findState(
+  jurisdictions: readonly UserJurisdictionData[],
+): { id: string; name: string } | undefined {
+  const direct = findByType(jurisdictions, "STATE");
+  if (direct) return direct.jurisdiction;
+
+  for (const entry of jurisdictions) {
+    const parent = entry.jurisdiction.parent;
+    if (parent?.type === "STATE") return { id: parent.id, name: parent.name };
+  }
+  return undefined;
+}
+
 /** "Assembly D-10 · Senate D-02", from whichever of the two resolved. */
 function stateSeatSummary(
   jurisdictions: readonly UserJurisdictionData[],
@@ -60,7 +86,7 @@ export function JurisdictionStack({
   const { t } = useTranslation("region");
 
   const county = findByType(jurisdictions, "COUNTY");
-  const state = findByType(jurisdictions, "STATE");
+  const state = findState(jurisdictions);
   const federal = findByType(jurisdictions, "CONGRESSIONAL_DISTRICT");
 
   // The supervisorial district is not a layer — it is one of five seats on
@@ -82,11 +108,7 @@ export function JurisdictionStack({
           level="COUNTY"
           levelLabel={t("stack.levels.county")}
           name={county.jurisdiction.name}
-          subtitle={
-            supervisors.length > 0
-              ? t("stack.county.board", { count: supervisors.length })
-              : null
-          }
+          subtitle={supervisors.length > 0 ? t("stack.county.board") : null}
           href="/region/county"
           count={null}
           countUnavailableLabel={t("stack.count.unavailable")}
@@ -121,7 +143,7 @@ export function JurisdictionStack({
         <LayerCard
           level="STATE"
           levelLabel={t("stack.levels.state")}
-          name={state.jurisdiction.name}
+          name={state.name}
           subtitle={stateSeatSummary(jurisdictions)}
           href="/region/state"
           count={stateCount}

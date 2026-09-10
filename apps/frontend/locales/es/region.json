@@ -73,8 +73,7 @@
       "unavailable": "Aún sin contar"
     },
     "county": {
-      "board_one": "Junta de Supervisores · {{count}} escaño",
-      "board_other": "Junta de Supervisores · {{count}} escaños",
+      "board": "Junta de Supervisores",
       "yourSeat": "Tu escaño",
       "seatValue": "Distrito {{district}} — {{name}}",
       "wrongSeat": "¿No es correcto?"
