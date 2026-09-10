@@ -1443,31 +1443,10 @@ export const GET_INDEPENDENT_EXPENDITURE = gql`
 // Mutations
 // ============================================
 
-export const SYNC_ALL = gql`
-  mutation SyncAll {
-    syncAll {
-      dataType
-      itemsProcessed
-      itemsCreated
-      itemsUpdated
-      errors
-      syncedAt
-    }
-  }
-`;
-
-export const SYNC_DATA_TYPE = gql`
-  mutation SyncDataType($dataType: DataType!) {
-    syncDataType(dataType: $dataType) {
-      dataType
-      itemsProcessed
-      itemsCreated
-      itemsUpdated
-      errors
-      syncedAt
-    }
-  }
-`;
+// SYNC_ALL / SYNC_DATA_TYPE removed in #1181: `Mutation.syncAll` and
+// `Mutation.syncDataType` no longer exist on the region subgraph — sync moved
+// to `syncRegionData` on the region worker. Both documents were referenced by
+// nothing and would have failed the moment anyone wired them up.
 
 // ============================================
 // LEGISLATIVE ACTIONS (issue #665)

@@ -60,14 +60,13 @@ const SNAPSHOT = resolve(__dirname, "./__fixtures__/schema.introspection.json");
  * repaired one also fails it, telling you to delete the entry.
  */
 const KNOWN_INVALID = new Map<string, string>([
-  [
-    "IndexDocument",
-    "knowledge.ts — flat args; schema wants input: IndexDocumentInput!",
-  ],
-  ["AnswerQuery", "knowledge.ts — flat args; schema wants input: QueryInput!"],
-  ["SearchText", "knowledge.ts — flat args; schema wants input: SearchInput!"],
-  ["SyncAll", "region.ts — Mutation.syncAll no longer exists"],
-  ["SyncDataType", "region.ts — Mutation.syncDataType no longer exists"],
+  // Empty, and that is the point. The five entries this started with
+  // (three in knowledge.ts, two region sync mutations) were deleted in
+  // #1181 rather than repaired — nothing referenced them, and they had
+  // drifted far enough from the schema to be misleading.
+  //
+  // Adding an entry here is a deliberate act: it exempts a document that
+  // WILL fail at runtime. Prefer fixing or deleting the document.
 ]);
 
 function isDocumentNode(value: unknown): value is DocumentNode {
