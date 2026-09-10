@@ -104,7 +104,7 @@ describe('RegionQueryService — caching', () => {
     await service.getPropositions(0, 10);
 
     expect(mockCache.set).toHaveBeenCalledWith(
-      'propositions:0:10::',
+      'propositions:0:10:::',
       expect.any(String),
     );
   });
@@ -251,6 +251,47 @@ describe('RegionQueryService — query methods', () => {
       expect(result.items).toHaveLength(10);
       expect(result.hasMore).toBe(true);
     });
+    it('filters on the jurisdiction discriminator when asked (#1202)', async () => {
+      // The column has been written since the 2026-09-07 migration but was
+      // never queryable, so twelve ingested Sonoma measures were
+      // unreachable and county surfaces had to say "in the data, not yet
+      // listed".
+      mockDb.proposition.findMany.mockResolvedValue([] as never);
+      mockDb.proposition.count.mockResolvedValue(0);
+
+      await service.getPropositions(
+        0,
+        10,
+        undefined,
+        undefined,
+        undefined,
+        'california-sonoma',
+      );
+
+      expect(mockDb.proposition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            regionPluginName: 'california-sonoma',
+            deletedAt: null,
+          }),
+        }),
+      );
+    });
+
+    it('does not constrain the jurisdiction when none is given', async () => {
+      mockDb.proposition.findMany.mockResolvedValue([] as never);
+      mockDb.proposition.count.mockResolvedValue(0);
+
+      await service.getPropositions(0, 10);
+
+      expect(mockDb.proposition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            regionPluginName: expect.anything(),
+          }),
+        }),
+      );
+    });
   });
 
   describe('getProposition', () => {
@@ -302,6 +343,37 @@ describe('RegionQueryService — query methods', () => {
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
       expect(result.hasMore).toBe(false);
+    });
+
+    it('narrows to a body when one is given (#1201)', async () => {
+      // The interim jurisdiction discriminator. Without it a caller wanting
+      // county business had to filter a date-ordered page after the fact,
+      // so a burst of legislative meetings could push every board meeting
+      // out of the window and empty a county surface.
+      mockDb.meeting.findMany.mockResolvedValue([] as never);
+      mockDb.meeting.count.mockResolvedValue(0);
+
+      await service.getMeetings(0, 10, 'Board of Supervisors');
+
+      expect(mockDb.meeting.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { body: 'Board of Supervisors' } }),
+      );
+      // Counted through the same filter, or total describes a different
+      // population than items.
+      expect(mockDb.meeting.count).toHaveBeenCalledWith({
+        where: { body: 'Board of Supervisors' },
+      });
+    });
+
+    it('leaves the query unfiltered when no body is given', async () => {
+      mockDb.meeting.findMany.mockResolvedValue([] as never);
+      mockDb.meeting.count.mockResolvedValue(0);
+
+      await service.getMeetings(0, 10);
+
+      expect(mockDb.meeting.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: {} }),
+      );
     });
   });
 

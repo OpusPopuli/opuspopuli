@@ -89,6 +89,8 @@ export interface BillSearchFilters {
 export interface PropositionSearchFilters {
   status?: PropositionStatusGQL;
   electionYear?: number;
+  /** Jurisdiction discriminator — "california", "california-sonoma" (#1202). */
+  regionPluginName?: string;
 }
 
 export interface RankedIdPage {
@@ -249,6 +251,14 @@ export class RegionSearchService {
     ];
     if (filters.status) {
       conds.push(Prisma.sql`p.status = ${filters.status}`);
+    }
+    if (filters.regionPluginName) {
+      // Applied here as well as on the list path: without it, adding a
+      // search term to a county-scoped view would silently widen the
+      // results back out to statewide.
+      conds.push(
+        Prisma.sql`p.region_plugin_name = ${filters.regionPluginName}`,
+      );
     }
     if (filters.electionYear) {
       conds.push(Prisma.sql`p.election_date >= make_date(${filters.electionYear}::int, 1, 1)

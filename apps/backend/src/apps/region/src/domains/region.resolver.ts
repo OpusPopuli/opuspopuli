@@ -192,6 +192,8 @@ export class RegionResolver {
     status?: PropositionStatusGQL,
     @Args({ name: 'electionYear', type: () => Int, nullable: true })
     electionYear?: number,
+    @Args({ name: 'regionPluginName', type: () => String, nullable: true })
+    regionPluginName?: string,
   ): Promise<PaginatedPropositions> {
     return this.regionService.getPropositions(
       skip,
@@ -199,6 +201,7 @@ export class RegionResolver {
       search,
       status,
       electionYear,
+      regionPluginName,
     );
   }
 
@@ -332,8 +335,9 @@ export class RegionResolver {
   @Extensions({ complexity: 15 }) // Paginated list query
   async meetings(
     @Args() { skip, take }: PaginationArgs,
+    @Args({ name: 'body', type: () => String, nullable: true }) body?: string,
   ): Promise<PaginatedMeetings> {
-    return this.regionService.getMeetings(skip, take);
+    return this.regionService.getMeetings(skip, take, body);
   }
 
   /**

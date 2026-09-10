@@ -97,6 +97,7 @@ type PropositionModel {
   fullText: String
   status: PropositionStatus!
   electionDate: DateTime
+  regionPluginName: String
   sourceUrl: String
   analysisSummary: String
   keyProvisions: [String!]
@@ -816,13 +817,13 @@ type Query {
   countyThresholds: [CountyThresholdModel!]!
   regionPlugins: [RegionPluginModel!]!
   regionPluginByFipsCode(fipsCode: String!): RegionPluginModel
-  propositions(skip: Int! = 0, take: Int! = 10, search: String, status: PropositionStatus, electionYear: Int): PaginatedPropositions!
+  propositions(skip: Int! = 0, take: Int! = 10, search: String, status: PropositionStatus, electionYear: Int, regionPluginName: String): PaginatedPropositions!
   regionSearch(skip: Int! = 0, take: Int! = 10, query: String!, type: SearchResultType): PaginatedRegionSearch!
   regionSearchSuggest(query: String!, take: Int = 8): [SearchSuggestion!]!
   proposition(id: ID!): PropositionModel
   propositionFunding(propositionId: ID!): PropositionFundingModel
   representativeFunding(id: ID!): RepresentativeFundingModel
-  meetings(skip: Int! = 0, take: Int! = 10): PaginatedMeetings!
+  meetings(skip: Int! = 0, take: Int! = 10, body: String): PaginatedMeetings!
   meeting(id: ID!): MeetingModel
   minutesList(skip: Int! = 0, take: Int! = 10, body: String): PaginatedMinutes!
   minutes(id: ID!): MinutesModel

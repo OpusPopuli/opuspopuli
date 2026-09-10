@@ -187,6 +187,7 @@ type InternalPropositionRecord = {
   fullText: string | null;
   status: string;
   electionDate: Date | null;
+  regionPluginName: string | null;
   sourceUrl: string | null;
   analysisSummary: string | null;
   keyProvisions: unknown;
@@ -218,6 +219,7 @@ export function mapPropositionRecord(
     fullText: item.fullText ?? undefined,
     status: item.status as unknown as PropositionStatusGQL,
     electionDate: item.electionDate ?? undefined,
+    regionPluginName: item.regionPluginName ?? undefined,
     sourceUrl: item.sourceUrl ?? undefined,
     analysisSummary: item.analysisSummary ?? undefined,
     keyProvisions: Array.isArray(item.keyProvisions)
@@ -358,6 +360,7 @@ export class RegionDomainService {
     search?: string,
     status?: PropositionStatusGQL,
     electionYear?: number,
+    regionPluginName?: string,
   ): Promise<PaginatedPropositions> {
     return this.queryService.getPropositions(
       skip,
@@ -365,6 +368,7 @@ export class RegionDomainService {
       search,
       status,
       electionYear,
+      regionPluginName,
     );
   }
 
@@ -393,8 +397,12 @@ export class RegionDomainService {
     return this.queryService.getRepresentativeFunding(representativeId);
   }
 
-  getMeetings(skip?: number, take?: number): Promise<PaginatedMeetings> {
-    return this.queryService.getMeetings(skip, take);
+  getMeetings(
+    skip?: number,
+    take?: number,
+    body?: string,
+  ): Promise<PaginatedMeetings> {
+    return this.queryService.getMeetings(skip, take, body);
   }
 
   getMinutes(

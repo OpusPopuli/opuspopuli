@@ -13920,6 +13920,17 @@
             "args": [],
             "deprecationReason": null,
             "isDeprecated": false,
+            "name": "regionPluginName",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
             "name": "sourceUrl",
             "type": {
               "kind": "SCALAR",
@@ -15268,6 +15279,15 @@
           {
             "args": [
               {
+                "defaultValue": null,
+                "name": "body",
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                }
+              },
+              {
                 "defaultValue": "0",
                 "name": "skip",
                 "type": {
@@ -16385,6 +16405,15 @@
                 "type": {
                   "kind": "SCALAR",
                   "name": "Int",
+                  "ofType": null
+                }
+              },
+              {
+                "defaultValue": null,
+                "name": "regionPluginName",
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "String",
                   "ofType": null
                 }
               },
