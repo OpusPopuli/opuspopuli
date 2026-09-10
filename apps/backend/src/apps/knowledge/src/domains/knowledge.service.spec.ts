@@ -26,6 +26,7 @@ describe('KnowledgeService', () => {
       createEmbeddings: jest.fn().mockResolvedValue(undefined),
       queryEmbeddings: jest.fn().mockResolvedValue([]),
       deleteEmbeddingsByDocumentId: jest.fn().mockResolvedValue(undefined),
+      getDimensions: jest.fn().mockReturnValue(384),
     };
 
     const mockLLM: Partial<ILLMProvider> = {
@@ -69,6 +70,44 @@ describe('KnowledgeService', () => {
     embeddingsService = module.get<EmbeddingsService>(EmbeddingsService);
     vectorDB = module.get<IVectorDBProvider>('VECTOR_DB_PROVIDER');
     llm = module.get<ILLMProvider>('LLM_PROVIDER');
+  });
+
+  /**
+   * #1150. VECTORDB_DIMENSIONS is configured independently of
+   * EMBEDDINGS_PROVIDER, so the two can disagree. When they do, the failure
+   * is a per-document insert error or a silently empty retrieval — the
+   * vector(1536)-vs-384 incident that gave the region path the same
+   * assertion (#1074). A boot failure is the right blast radius: every
+   * embedding written after a mismatch is unusable.
+   */
+  describe('vector width assertion at boot (#1150)', () => {
+    it('starts when the provider and store agree', () => {
+      embeddingsService.getProviderInfo = jest
+        .fn()
+        .mockReturnValue({ dimensions: 384 });
+
+      expect(() => knowledgeService.onModuleInit()).not.toThrow();
+    });
+
+    it('refuses to start when they disagree', () => {
+      embeddingsService.getProviderInfo = jest
+        .fn()
+        .mockReturnValue({ dimensions: 768 });
+
+      expect(() => knowledgeService.onModuleInit()).toThrow(
+        /768-dimension vectors but the vector store expects 384/,
+      );
+    });
+
+    // The message has to say what to do, not just that something is wrong:
+    // the fix is re-embedding the corpus, not editing a number until it boots.
+    it('says a width change needs re-embedding, not a config edit', () => {
+      embeddingsService.getProviderInfo = jest
+        .fn()
+        .mockReturnValue({ dimensions: 1536 });
+
+      expect(() => knowledgeService.onModuleInit()).toThrow(/re-embedding/);
+    });
   });
 
   it('services should be defined', () => {
@@ -174,19 +213,22 @@ describe('KnowledgeService', () => {
       expect(llm.generate).not.toHaveBeenCalled();
     });
 
-    it('should return no-info result when semantic search fails', async () => {
-      // semanticSearch catches errors and returns empty array
+    // Replaces "should return no-info result when semantic search fails",
+    // which asserted the #1150 defect: retrieval failure was reported to the
+    // user as "I could not find any relevant information to answer your
+    // question." That is false — nothing was searched. Telling someone their
+    // question has no answer in the corpus, when the corpus was never
+    // consulted, is the worst failure mode this tool has.
+    it('propagates a retrieval failure instead of reporting "no information"', async () => {
       embeddingsService.getEmbeddingsForQuery = jest
         .fn()
         .mockRejectedValue(new Error('Query embedding failed'));
 
-      const answer = await knowledgeService.answerQuery('user-1', 'Test query');
+      await expect(
+        knowledgeService.answerQuery('user-1', 'Test query'),
+      ).rejects.toThrow('Query embedding failed');
 
-      expect(answer).toEqual({
-        answer:
-          'I could not find any relevant information to answer your question.',
-        sourcedFrom: [],
-      });
+      // And it must not answer from nothing.
       expect(llm.generate).not.toHaveBeenCalled();
     });
 
@@ -319,21 +361,17 @@ describe('KnowledgeService', () => {
       );
     });
 
-    it('should return empty results when search fails', async () => {
+    // Replaces "should return empty results when search fails" (#1150). An
+    // empty page and a broken search are different answers, and the caller
+    // cannot tell them apart if both return `{ results: [], total: 0 }`.
+    it('propagates a retrieval failure instead of returning an empty page', async () => {
       embeddingsService.getEmbeddingsForQuery = jest
         .fn()
         .mockRejectedValue(new Error('Search failed'));
 
-      const results = await knowledgeService.searchText(
-        'user-1',
-        'search term',
-      );
-
-      expect(results).toEqual({
-        results: [],
-        total: 0,
-        hasMore: false,
-      });
+      await expect(
+        knowledgeService.searchText('user-1', 'search term'),
+      ).rejects.toThrow('Search failed');
     });
 
     it('should use default skip=0 and take=10', async () => {

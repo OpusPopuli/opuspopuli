@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
 import { IVectorDBProvider } from '@opuspopuli/vectordb-provider';
 import { ILLMProvider } from '@opuspopuli/llm-provider';
@@ -43,7 +43,7 @@ function parseRagResponse(text: string): QueryResult {
  * Uses pluggable providers for vector database and LLM.
  */
 @Injectable()
-export class KnowledgeService {
+export class KnowledgeService implements OnModuleInit {
   private readonly logger = new Logger(KnowledgeService.name, {
     timestamp: true,
   });
@@ -57,6 +57,35 @@ export class KnowledgeService {
     this.logger.log(
       `KnowledgeService initialized with vector DB: ${this.vectorDB.getName()}, LLM: ${this.llm.getName()}/${this.llm.getModelName()}`,
     );
+  }
+
+  /**
+   * Fail at boot if the embeddings provider and the vector store disagree
+   * about vector width (#1150).
+   *
+   * `VECTORDB_DIMENSIONS` is read independently of `EMBEDDINGS_PROVIDER`, so
+   * the two can be configured apart. When they are, the failure is a runtime
+   * insert error buried per-document, or a silently empty retrieval — the
+   * vector(1536)-vs-384 incident that prompted the region path's identical
+   * assertion (#1074, proposition-embedding.service.ts). The knowledge path
+   * never got one.
+   *
+   * A boot failure is the correct blast radius: a mismatch means every
+   * embedding written from now on is unusable, and nothing downstream can
+   * detect that.
+   */
+  onModuleInit(): void {
+    const providerWidth = this.embeddingsService.getProviderInfo().dimensions;
+    const storeWidth = this.vectorDB.getDimensions();
+
+    if (providerWidth !== storeWidth) {
+      throw new Error(
+        `Embeddings provider produces ${providerWidth}-dimension vectors but ` +
+          `the vector store expects ${storeWidth}. Align VECTORDB_DIMENSIONS ` +
+          `with the configured EMBEDDINGS_PROVIDER; changing model width ` +
+          `requires re-embedding the corpus, not just a config edit.`,
+      );
+    }
   }
 
   /**
@@ -219,8 +248,24 @@ export class KnowledgeService {
         score: result.score ?? 0,
       }));
     } catch (error) {
-      this.logger.error('Error in semantic search:', error);
-      return [];
+      // Deliberately rethrown, not swallowed (#1150).
+      //
+      // Returning [] here made a retrieval FAILURE indistinguishable from a
+      // genuine no-hit, and the caller then told the user "I could not find
+      // any relevant information to answer your question" — which is false.
+      // It did not look: the embeddings provider was down, or the vector
+      // query errored. Telling someone their question has no answer in the
+      // corpus, when the corpus was never consulted, is the worst failure
+      // mode a civic-information tool has.
+      //
+      // Both callers surface it correctly: answerQuery rethrows, searchText
+      // has no catch. Same rule the region search service follows.
+      this.logger.error(
+        `Semantic search failed for user ${userId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      throw error;
     }
   }
 
