@@ -12,6 +12,7 @@ import {
   type MyJurisdictionsData,
 } from "@/lib/graphql/region";
 import { JurisdictionStack } from "@/components/region/JurisdictionStack";
+import { useStateLegislators } from "@/lib/hooks/useStateLegislators";
 import { ErrorState, LoadingSkeleton } from "@/components/region/ListStates";
 
 /**
@@ -82,6 +83,10 @@ export default function RegionPage() {
   // mount-time precision is ample.
   const [now] = useState(() => Date.now());
 
+  const legislators = useStateLegislators(
+    jurisdictionData?.myJurisdictions ?? [],
+  );
+
   const stateCount = useMemo(() => {
     // A failed probe is "we could not count", never zero.
     if (billError || !billData?.bills) return null;
@@ -134,6 +139,7 @@ export default function RegionPage() {
           <JurisdictionStack
             jurisdictions={jurisdictions}
             supervisors={supervisorData?.myCountySupervisors ?? []}
+            legislators={legislators}
             stateCount={stateCount}
             stateCountCapped={stateCountCapped}
           />

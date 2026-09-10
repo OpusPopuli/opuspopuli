@@ -7,7 +7,7 @@ import {
   CommitteesData,
   Committee,
 } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { Pagination } from "@/components/region/Pagination";
 import {
   LoadingSkeleton,
@@ -122,15 +122,14 @@ export default function CommitteesPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
+      <RegionPageHeader
         segments={[
-          { label: "Where you live", href: "/region" },
           { label: "Campaign Finance", href: "/region/campaign-finance" },
           { label: "Committees" },
         ]}
+        title="Committees"
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">Committees</h1>
         <p className="mt-2 text-content-dim">
           Campaign committees and PACs for your region
         </p>

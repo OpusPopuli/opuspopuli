@@ -17,7 +17,7 @@ import {
   GET_PETITION_DOCUMENTS_FOR_PROPOSITION,
   type PetitionDocumentsForPropositionData,
 } from "@/lib/graphql/documents";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { RegionDetailShell } from "@/components/region/RegionDetailShell";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { ComingSoon } from "@/components/region/ComingSoon";
@@ -500,12 +500,9 @@ export default function PropositionDetailPage() {
     >
       {proposition && (
         <div className="max-w-4xl mx-auto px-8 py-12">
-          <Breadcrumb
-            segments={[
-              { label: "Where you live", href: "/region" },
-              { label: "Propositions", href: "/region/propositions" },
-              { label: proposition.externalId },
-            ]}
+          <RegionPageHeader
+            segments={[{ label: "Propositions", href: "/region/propositions" }]}
+            title={proposition.externalId}
           />
 
           {/* Persistent Header */}

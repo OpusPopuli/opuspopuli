@@ -14,7 +14,7 @@ import {
   Representative,
 } from "@/lib/graphql/region";
 import { GET_MY_ADDRESSES, type MyAddressesData } from "@/lib/graphql/profile";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { Pagination } from "@/components/region/Pagination";
 import {
   LoadingSkeleton,
@@ -254,15 +254,12 @@ export default function RepresentativesPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: "Where you live", href: "/region" },
-          { label: "Representatives" },
-        ]}
+      <RegionPageHeader
+        segments={[{ label: "Representatives" }]}
+        title="Representatives"
       />
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">Representatives</h1>
         <p className="mt-2 text-content-dim">
           Elected officials and legislators
         </p>

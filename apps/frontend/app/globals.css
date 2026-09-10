@@ -135,6 +135,11 @@
   --text-base: 1.0625rem; /* 17px (was 16) — body copy */
   --text-base--line-height: 1.65rem;
 
+  /* Sticky-offset for anything that parks under the site header: py-4
+     (32px) + the 34px mark + the 1px bottom border. Declared once so the
+     region crumb bar cannot drift out of sync with Header.tsx. */
+  --op-header-h: 67px;
+
   /* ── Fixed brand constants — identical in both themes ── */
   --color-gold: #e8c000; /* the mark's disc; never recolored */
   --color-ink: #1a1714; /* literal ink — the mark, fixed inverse panels */

@@ -8,7 +8,7 @@ import {
   LegislativeCommittee,
   LegislativeCommitteesData,
 } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { ChamberBadge } from "@/components/region/ChamberBadge";
 import { Pagination } from "@/components/region/Pagination";
 import {
@@ -149,16 +149,11 @@ export default function LegislativeCommitteesPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: "Where you live", href: "/region" },
-          { label: "Legislative Committees" },
-        ]}
+      <RegionPageHeader
+        segments={[{ label: "Legislative Committees" }]}
+        title="Legislative Committees"
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">
-          Legislative Committees
-        </h1>
         <p className="mt-2 text-content-dim">
           Where bills get debated and shaped before they reach the floor. Click
           a committee to see who sits on it and what hearings it has held.

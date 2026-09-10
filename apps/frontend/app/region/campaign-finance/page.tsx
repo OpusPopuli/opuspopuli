@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 
 import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
 
@@ -30,21 +31,13 @@ const CAMPAIGN_FINANCE_CARDS = [
 export default function CampaignFinancePage() {
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      {/* Breadcrumb */}
-      <nav className="mb-6">
-        <Link
-          href="/region"
-          className="text-sm text-info hover:text-info-strong hover:underline"
-        >
-          Where you live
-        </Link>
-        <span className="mx-2 text-content-dim">/</span>
-        <span className="text-sm text-content-dim">Campaign Finance</span>
-      </nav>
+      <RegionPageHeader
+        segments={[{ label: "Campaign Finance" }]}
+        title="Campaign Finance"
+      />
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">Campaign Finance</h1>
         <p className="mt-2 text-content-dim">
           Committees, contributions, and expenditures for your region
         </p>

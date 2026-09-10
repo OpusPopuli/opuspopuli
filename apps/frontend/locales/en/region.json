@@ -50,7 +50,8 @@
     "historical": "Historical"
   },
   "breadcrumb": {
-    "region": "Where you live"
+    "region": "Where you live",
+    "label": "Breadcrumb"
   },
   "propositionStatus": {
     "PENDING": "Pending",
@@ -84,6 +85,36 @@
     "noAddress": {
       "title": "We don't know where you live yet",
       "body": "Add your address in settings and this page will show the governments that claim it."
+    }
+  },
+  "layer": {
+    "recent": "Recently",
+    "browse": "Browse this level",
+    "alsoHere": "Also at this level",
+    "seeAll": "See all →",
+    "building": "Building",
+    "county": {
+      "threshold": "signatures oblige the Board to act — 10% of the gubernatorial votes cast here.",
+      "thresholdSource": "CA Secretary of State, {{year}}",
+      "noMeetings": "No board meetings recorded yet.",
+      "meetings": "Board meetings & minutes",
+      "measures": "County measures",
+      "filers": "Local campaign filers"
+    },
+    "state": {
+      "noBills": "No recent bill activity.",
+      "bills": "Bills",
+      "propositions": "Propositions",
+      "committees": "Legislative committees",
+      "finance": "Campaign finance",
+      "representatives": "Representatives",
+      "legislature": "State Legislature — Assembly and Senate",
+      "yourSeats": "Your seats",
+      "seatValue": "{{chamber}} District {{district}} — {{name}}",
+      "threshold": "signatures qualify an initiative statute — 5% of the votes cast for Governor. A constitutional amendment needs {{amendment}}. Cal. Const. art. II §8(b) · Elections Code §9035."
+    },
+    "federal": {
+      "thin": "We ingest very little at this level, on purpose — it is the government you can least affect, and we would rather be honest about the gap than pad the page."
     }
   }
 }

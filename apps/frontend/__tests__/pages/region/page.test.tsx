@@ -4,6 +4,7 @@ import { useQuery } from "@apollo/client/react";
 import RegionPage from "@/app/region/page";
 import {
   GET_BILLS,
+  GET_REPRESENTATIVES_BY_DISTRICTS,
   MY_COUNTY_SUPERVISORS,
   MY_JURISDICTIONS,
 } from "@/lib/graphql/region";
@@ -73,6 +74,15 @@ const FULL_STACK = [
   ),
 ];
 
+const MCGUIRE = {
+  id: "sen-2",
+  name: "Mike McGuire",
+  chamber: "Senate",
+  district: "2",
+  party: null,
+  photoUrl: null,
+};
+
 const HOPKINS = {
   id: "sup-5",
   name: "Lynda Hopkins",
@@ -92,6 +102,7 @@ interface Options {
   supervisors?: unknown[];
   billDates?: (string | null)[];
   billError?: boolean;
+  legislators?: unknown[];
   jurisdictionsLoading?: boolean;
   jurisdictionsError?: boolean;
 }
@@ -102,6 +113,7 @@ function setup(options: Options = {}) {
     supervisors = [HOPKINS],
     billDates = [TWO_DAYS_AGO],
     billError = false,
+    legislators = [MCGUIRE],
     jurisdictionsLoading = false,
     jurisdictionsError = false,
   } = options;
@@ -119,6 +131,13 @@ function setup(options: Options = {}) {
     if (document === MY_COUNTY_SUPERVISORS) {
       return {
         data: { myCountySupervisors: supervisors },
+        loading: false,
+        error: null,
+      };
+    }
+    if (document === GET_REPRESENTATIVES_BY_DISTRICTS) {
+      return {
+        data: { representativesByDistricts: legislators },
         loading: false,
         error: null,
       };
@@ -282,5 +301,43 @@ describe("RegionPage — the jurisdiction stack (#1194)", () => {
     render(<RegionPage />);
     expect(screen.getByText("stack.county.board")).toBeInTheDocument();
     expect(screen.queryByText(/"count":1/)).not.toBeInTheDocument();
+  });
+
+  it("shows the reader's own state legislators on the state card", () => {
+    render(<RegionPage />);
+    expect(screen.getByText(/Mike McGuire/)).toBeInTheDocument();
+  });
+
+  it("links both the supervisor and the legislators to their profiles", () => {
+    render(<RegionPage />);
+    const hrefs = screen
+      .getAllByRole("link")
+      .map((l) => l.getAttribute("href"));
+    expect(hrefs).toContain("/region/representatives/sup-5");
+    expect(hrefs).toContain("/region/representatives/sen-2");
+  });
+
+  it("omits the state seat line when no legislators resolve", () => {
+    setup({ legislators: [] });
+    render(<RegionPage />);
+    expect(screen.queryByText(/Mike McGuire/)).not.toBeInTheDocument();
+  });
+
+  it("offers a way to re-resolve a wrong seat (AC2)", () => {
+    // The link is the cheapest bug report we get for the #1136 class of
+    // error: a reader who sees the wrong district can say so immediately.
+    render(<RegionPage />);
+    const link = screen.getByRole("link", { name: "stack.county.wrongSeat" });
+    expect(link).toHaveAttribute("href", "/settings");
+  });
+
+  it("keeps the re-resolve link out of the card's own link target", () => {
+    // The card is itself a <Link>; nesting one inside another is invalid
+    // HTML and the inner one stops being reachable.
+    render(<RegionPage />);
+    const wrongSeat = screen.getByRole("link", {
+      name: "stack.county.wrongSeat",
+    });
+    expect(wrongSeat.closest('a[href="/region/county"]')).toBeNull();
   });
 });

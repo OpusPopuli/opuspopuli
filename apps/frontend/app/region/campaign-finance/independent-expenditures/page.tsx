@@ -8,7 +8,7 @@ import {
   IndependentExpenditure,
 } from "@/lib/graphql/region";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { Pagination } from "@/components/region/Pagination";
 import { SupportOpposeBadge } from "@/components/region/SupportOpposeBadge";
 import {
@@ -87,17 +87,14 @@ export default function IndependentExpendituresPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
+      <RegionPageHeader
         segments={[
-          { label: "Where you live", href: "/region" },
           { label: "Campaign Finance", href: "/region/campaign-finance" },
           { label: "Independent Expenditures" },
         ]}
+        title="Independent Expenditures"
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">
-          Independent Expenditures
-        </h1>
         <p className="mt-2 text-content-dim">
           Independent spending for/against candidates and measures
         </p>

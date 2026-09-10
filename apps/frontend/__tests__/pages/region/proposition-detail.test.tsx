@@ -86,6 +86,8 @@ jest.mock("@apollo/client/react", () => ({
 }));
 
 jest.mock("next/navigation", () => ({
+  // The region breadcrumb derives its trail from the pathname.
+  usePathname: jest.fn(() => "/region"),
   useParams: jest.fn(() => ({ id: "1" })),
 }));
 

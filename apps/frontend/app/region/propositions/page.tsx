@@ -11,7 +11,7 @@ import {
   Proposition,
   type PropositionStatus,
 } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { PropositionStatusBadge } from "@/components/region/PropositionStatusBadge";
 import { Pagination } from "@/components/region/Pagination";
 import { ListSearchInput } from "@/components/region/ListSearchInput";
@@ -177,14 +177,11 @@ export default function PropositionsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: "Where you live", href: "/region" },
-          { label: "Propositions" },
-        ]}
+      <RegionPageHeader
+        segments={[{ label: "Propositions" }]}
+        title="Propositions"
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">Propositions</h1>
         <p className="mt-2 text-content-dim">
           Ballot measures and initiatives for your region
         </p>

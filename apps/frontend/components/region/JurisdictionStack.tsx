@@ -3,65 +3,21 @@
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import type {
-  JurisdictionType,
   Representative,
   UserJurisdictionData,
 } from "@/lib/graphql/region";
+import { findByType, findState, stateSeatSummary } from "@/lib/region-stack";
 import { LayerCard, formatWindowCount } from "./LayerCard";
 
 export interface JurisdictionStackProps {
   readonly jurisdictions: readonly UserJurisdictionData[];
   /** Server-filtered to the reader's district where one resolved (#1136). */
   readonly supervisors: readonly Representative[];
+  /** The reader's own Assembly and Senate members. */
+  readonly legislators: readonly Representative[];
   /** Bills touched in the trailing window; null when we cannot count. */
   readonly stateCount: number | null;
   readonly stateCountCapped?: boolean;
-}
-
-function findByType(
-  jurisdictions: readonly UserJurisdictionData[],
-  type: JurisdictionType,
-): UserJurisdictionData | undefined {
-  return jurisdictions.find((j) => j.jurisdiction.type === type);
-}
-
-/**
- * The state the reader lives in.
- *
- * Jurisdictions are resolved by point-in-polygon against loaded boundaries,
- * and no statewide boundary is loaded — so `user_jurisdictions` never
- * contains a STATE row, only the districts inside it. Reading the state off
- * `type === "STATE"` therefore found nothing and dropped the whole state
- * card, which is where nearly all of today's data lives.
- *
- * The district rows carry `parent: { type: STATE, name: "California" }`, and
- * MY_JURISDICTIONS already selects it. Prefer a real STATE row if one ever
- * resolves; otherwise derive it from a district's parent.
- */
-function findState(
-  jurisdictions: readonly UserJurisdictionData[],
-): { id: string; name: string } | undefined {
-  const direct = findByType(jurisdictions, "STATE");
-  if (direct) return direct.jurisdiction;
-
-  for (const entry of jurisdictions) {
-    const parent = entry.jurisdiction.parent;
-    if (parent?.type === "STATE") return { id: parent.id, name: parent.name };
-  }
-  return undefined;
-}
-
-/** "Assembly D-10 · Senate D-02", from whichever of the two resolved. */
-function stateSeatSummary(
-  jurisdictions: readonly UserJurisdictionData[],
-): string | null {
-  const parts = [
-    findByType(jurisdictions, "STATE_ASSEMBLY_DISTRICT"),
-    findByType(jurisdictions, "STATE_SENATE_DISTRICT"),
-  ]
-    .filter((j): j is UserJurisdictionData => Boolean(j))
-    .map((j) => j.jurisdiction.name);
-  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /**
@@ -80,6 +36,7 @@ function stateSeatSummary(
 export function JurisdictionStack({
   jurisdictions,
   supervisors,
+  legislators,
   stateCount,
   stateCountCapped,
 }: JurisdictionStackProps) {
@@ -119,14 +76,18 @@ export function JurisdictionStack({
                 <span className="text-xs font-bold uppercase tracking-wider text-content-dim">
                   {t("stack.county.yourSeat")}
                 </span>
-                <span className="font-semibold text-content">
+                <Link
+                  href={`/region/representatives/${seat.id}`}
+                  prefetch={false}
+                  className="font-semibold text-content underline decoration-line underline-offset-2 hover:decoration-accent"
+                >
                   {seat.district
                     ? t("stack.county.seatValue", {
                         district: seat.district,
                         name: seat.name,
                       })
                     : seat.name}
-                </span>
+                </Link>
                 <Link
                   href="/settings"
                   className="text-content-dim underline decoration-line underline-offset-2 hover:decoration-accent"
@@ -145,6 +106,29 @@ export function JurisdictionStack({
           levelLabel={t("stack.levels.state")}
           name={state.name}
           subtitle={stateSeatSummary(jurisdictions)}
+          seat={
+            legislators.length > 0 ? (
+              <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-content-dim">
+                  {t("layer.state.yourSeats")}
+                </span>
+                {legislators.map((rep) => (
+                  <Link
+                    key={rep.id}
+                    href={`/region/representatives/${rep.id}`}
+                    prefetch={false}
+                    className="font-semibold text-content underline decoration-line underline-offset-2 hover:decoration-accent"
+                  >
+                    {t("layer.state.seatValue", {
+                      chamber: rep.chamber,
+                      district: rep.district,
+                      name: rep.name,
+                    })}
+                  </Link>
+                ))}
+              </span>
+            ) : null
+          }
           href="/region/state"
           count={stateCount}
           countCapped={stateCountCapped}

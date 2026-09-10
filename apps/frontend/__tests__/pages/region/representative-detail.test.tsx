@@ -28,6 +28,8 @@ const mockRepresentative = {
 };
 
 jest.mock("next/navigation", () => ({
+  // The region breadcrumb derives its trail from the pathname.
+  usePathname: jest.fn(() => "/region"),
   useParams: () => ({ id: "rep-1" }),
 }));
 

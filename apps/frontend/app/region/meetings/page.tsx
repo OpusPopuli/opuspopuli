@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import { GET_MEETINGS, MeetingsData, Meeting } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { Pagination } from "@/components/region/Pagination";
 import {
   LoadingSkeleton,
@@ -162,14 +162,8 @@ export default function MeetingsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: "Where you live", href: "/region" },
-          { label: "Meetings" },
-        ]}
-      />
+      <RegionPageHeader segments={[{ label: "Meetings" }]} title="Meetings" />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">Meetings</h1>
         <p className="mt-2 text-content-dim">
           Legislative sessions and public hearings
         </p>

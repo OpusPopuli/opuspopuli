@@ -132,9 +132,11 @@ describe("Header", () => {
       render(<Header />);
 
       // The route stays /region — deep links and every /region/* child
-      // survive the rename; only the label changed (#1194).
+      // survive the rename; only the label changed (#1194). The suite's
+      // i18n mock returns the key, so this asserts the label goes through
+      // translation rather than being hardcoded English (AC4).
       expect(
-        screen.getByRole("link", { name: /where you live/i }),
+        screen.getByRole("link", { name: "navigation.whereYouLive" }),
       ).toHaveAttribute("href", "/region");
     });
 

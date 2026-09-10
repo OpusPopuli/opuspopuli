@@ -16,7 +16,7 @@ import {
   type BillsData,
   type BillsVars,
 } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { RegionDetailShell } from "@/components/region/RegionDetailShell";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { ComingSoon } from "@/components/region/ComingSoon";
@@ -411,9 +411,8 @@ export default function LegislativeCommitteeDetailPage() {
       {/* committee is guaranteed non-null here */}
       {committee && (
         <div className="max-w-4xl mx-auto px-8 py-12">
-          <Breadcrumb
+          <RegionPageHeader
             segments={[
-              { label: "Where you live", href: "/region" },
               {
                 label: "Legislative Committees",
                 href: "/region/legislative-committees",

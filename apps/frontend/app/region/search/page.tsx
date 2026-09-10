@@ -14,7 +14,7 @@ import {
   type SearchPropositionResult,
   type SearchResultType,
 } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { Pagination } from "@/components/region/Pagination";
 import { LoadingSkeleton } from "@/components/region/ListStates";
 import { PropositionStatusBadge } from "@/components/region/PropositionStatusBadge";
@@ -302,14 +302,11 @@ function SearchPageInner() {
 
   return (
     <div className="mx-auto max-w-4xl px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: t("breadcrumb.region"), href: "/region" },
-          { label: t("search.title") },
-        ]}
+      <RegionPageHeader
+        segments={[{ label: t("search.title") }]}
+        title={t("search.title")}
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-content">{t("search.title")}</h1>
         <p className="mt-2 text-content-dim">{t("search.subtitle")}</p>
       </div>
 

@@ -19,7 +19,7 @@ import {
   type BillsVars,
 } from "@/lib/graphql/region";
 import { ContactRepresentativeForm } from "@/components/email/ContactRepresentativeForm";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
 import { PartyBadge } from "@/components/region/PartyBadge";
 import { SectionTitle } from "@/components/region/SectionTitle";
@@ -914,9 +914,8 @@ export default function RepresentativeDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
+      <RegionPageHeader
         segments={[
-          { label: "Where you live", href: "/region" },
           { label: "Representatives", href: "/region/representatives" },
           { label: rep.name },
         ]}

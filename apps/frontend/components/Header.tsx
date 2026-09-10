@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth-context";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -11,6 +12,7 @@ import { HeaderSearch } from "@/components/search/HeaderSearch";
 import { buttonVariants } from "@/components/ui/Button";
 
 export function Header() {
+  const { t } = useTranslation();
   const { user, isAuthenticated, isLoading } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -43,7 +45,7 @@ export function Header() {
             Briefing
           </Link>
           <Link href="/region" className={navLinkClass}>
-            Where you live
+            {t("navigation.whereYouLive")}
           </Link>
           <Link
             href="/settings"
@@ -106,7 +108,7 @@ export function Header() {
             Briefing
           </Link>
           <Link href="/region" className={navLinkClass} onClick={closeMenu}>
-            Where you live
+            {t("navigation.whereYouLive")}
           </Link>
           <Link
             href="/settings"

@@ -12,7 +12,7 @@ import {
   type BillIdVars,
   type BillVote,
 } from "@/lib/graphql/region";
-import { Breadcrumb } from "@/components/region/Breadcrumb";
+import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { LayerButton } from "@/components/region/LayerButton";
@@ -621,12 +621,9 @@ export default function BillDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12">
-      <Breadcrumb
-        segments={[
-          { label: "Where you live", href: "/region" },
-          { label: "Bills", href: "/region/bills" },
-          { label: bill.billNumber },
-        ]}
+      <RegionPageHeader
+        segments={[{ label: "Bills", href: "/region/bills" }]}
+        title={bill.billNumber}
       />
 
       <div className="mb-6">

@@ -50,7 +50,8 @@
     "historical": "Histórico"
   },
   "breadcrumb": {
-    "region": "Dónde vives"
+    "region": "Dónde vives",
+    "label": "Ruta de navegación"
   },
   "propositionStatus": {
     "PENDING": "Pendiente",
@@ -84,6 +85,36 @@
     "noAddress": {
       "title": "Todavía no sabemos dónde vives",
       "body": "Agrega tu dirección en la configuración y esta página mostrará los gobiernos que la reclaman."
+    }
+  },
+  "layer": {
+    "recent": "Recientemente",
+    "browse": "Explorar este nivel",
+    "alsoHere": "También en este nivel",
+    "seeAll": "Ver todo →",
+    "building": "En construcción",
+    "county": {
+      "threshold": "firmas obligan a la Junta a actuar: el 10% de los votos para gobernador emitidos aquí.",
+      "thresholdSource": "Secretaría de Estado de California, {{year}}",
+      "noMeetings": "Aún no hay reuniones de la junta registradas.",
+      "meetings": "Reuniones y actas de la junta",
+      "measures": "Medidas del condado",
+      "filers": "Comités de campaña locales"
+    },
+    "state": {
+      "noBills": "Sin actividad legislativa reciente.",
+      "bills": "Proyectos de ley",
+      "propositions": "Propuestas",
+      "committees": "Comités legislativos",
+      "finance": "Financiamiento de campañas",
+      "representatives": "Representantes",
+      "legislature": "Legislatura estatal: Asamblea y Senado",
+      "yourSeats": "Tus escaños",
+      "seatValue": "{{chamber}} Distrito {{district}} — {{name}}",
+      "threshold": "firmas califican una ley por iniciativa: el 5% de los votos emitidos para gobernador. Una enmienda constitucional requiere {{amendment}}. Const. de California art. II §8(b) · Código Electoral §9035."
+    },
+    "federal": {
+      "thin": "Recopilamos muy poco en este nivel, a propósito: es el gobierno sobre el que menos se puede influir, y preferimos ser honestos sobre la brecha antes que rellenar la página."
     }
   }
 }
