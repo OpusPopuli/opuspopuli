@@ -1,7 +1,5 @@
 {
   "search": {
-    "title": "Buscar",
-    "subtitle": "Encuentra proyectos de ley y proposiciones en tu región",
     "placeholder": "Buscar proyectos…",
     "inputLabel": "Buscar proyectos de ley y proposiciones",
     "pagePlaceholder": "Buscar proyectos de ley y proposiciones…",
@@ -112,7 +110,8 @@
       "nextMeeting": "próxima reunión {{when}}",
       "otherSeats_one": "El otro escaño",
       "otherSeats_other": "Los otros {{count}} escaños",
-      "measuresPending": "En los datos, aún sin listar"
+      "measuresPending": "En los datos, aún sin listar",
+      "resolvedFromPlain": "Resuelto desde tu dirección"
     },
     "state": {
       "noBills": "Sin actividad legislativa reciente.",
@@ -190,6 +189,10 @@
     "independentExpenditures": {
       "title": "Gastos independientes",
       "meta": "Gastos independientes a favor o en contra de candidatos y medidas"
+    },
+    "search": {
+      "title": "Buscar",
+      "meta": "Encuentra proyectos de ley y propuestas en tu región"
     }
   }
 }

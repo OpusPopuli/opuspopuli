@@ -35,9 +35,10 @@ describe("region page headers carry no hardcoded copy (#1160)", () => {
   const files = walk(ROOT).filter((f) => headerTag(readFileSync(f, "utf8")));
 
   it("finds the headers to check", () => {
-    // If this drops, either pages were deleted or the tag regex stopped
-    // matching and every assertion below went quietly green.
-    expect(files.length).toBeGreaterThanOrEqual(14);
+    // Sixteen pages render the header today. The floor is set AT that
+    // number, not below it: a slack floor would sleep through two pages
+    // falling out of coverage, which is the exact failure it exists for.
+    expect(files.length).toBeGreaterThanOrEqual(16);
   });
 
   it.each(files)("%s passes no string literal as title or meta", (file) => {

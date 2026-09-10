@@ -126,7 +126,7 @@ export default function StateLayerPage() {
                   {seat.label}
                 </Link>
               }
-              detail={t("layer.county.resolvedFrom").replace(" ·", "")}
+              detail={t("layer.county.resolvedFromPlain")}
             />
           ))}
         </LayerSection>

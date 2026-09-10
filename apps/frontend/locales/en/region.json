@@ -1,7 +1,5 @@
 {
   "search": {
-    "title": "Search",
-    "subtitle": "Find bills and propositions across your region",
     "placeholder": "Search bills…",
     "inputLabel": "Search bills and propositions",
     "pagePlaceholder": "Search bills and propositions…",
@@ -112,7 +110,8 @@
       "nextMeeting": "next meeting {{when}}",
       "otherSeats_one": "The other seat",
       "otherSeats_other": "The other {{count}} seats",
-      "measuresPending": "In the data, not yet listed"
+      "measuresPending": "In the data, not yet listed",
+      "resolvedFromPlain": "Resolved from your address"
     },
     "state": {
       "noBills": "No recent bill activity.",
@@ -190,6 +189,10 @@
     "independentExpenditures": {
       "title": "Independent Expenditures",
       "meta": "Independent spending for/against candidates and measures"
+    },
+    "search": {
+      "title": "Search",
+      "meta": "Find bills and propositions across your region"
     }
   }
 }

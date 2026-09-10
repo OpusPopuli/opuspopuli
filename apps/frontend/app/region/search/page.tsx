@@ -303,9 +303,9 @@ function SearchPageInner() {
   return (
     <div className="mx-auto max-w-4xl px-8 py-12">
       <RegionPageHeader
-        segments={[{ label: t("search.title") }]}
-        title={t("search.title")}
-        meta={t("search.subtitle")}
+        segments={[{ label: t("pages.search.title") }]}
+        title={t("pages.search.title")}
+        meta={t("pages.search.meta")}
       />
 
       <label className="mb-6 block">
