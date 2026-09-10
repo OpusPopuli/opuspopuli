@@ -6,6 +6,7 @@ import {
   SearchResultType,
   SearchSuggestionKind,
   SearchSuggestionModel,
+  STATE_JURISDICTION,
 } from './models/region-search.model';
 
 /**
@@ -464,6 +465,7 @@ export class RegionSearchService {
       kind: SearchSuggestionKind.DIRECT,
       label: r.title,
       sublabel: `${r.bill_number} · ${r.session_year}`,
+      jurisdiction: STATE_JURISDICTION,
     }));
   }
 
@@ -492,6 +494,7 @@ export class RegionSearchService {
       kind: SearchSuggestionKind.BILL,
       label: r.title,
       sublabel: `${r.bill_number} · ${r.session_year}`,
+      jurisdiction: STATE_JURISDICTION,
     }));
   }
 
@@ -515,6 +518,7 @@ export class RegionSearchService {
       kind: SearchSuggestionKind.PROPOSITION,
       label: r.title,
       sublabel: r.external_id,
+      jurisdiction: STATE_JURISDICTION,
     }));
   }
 }
