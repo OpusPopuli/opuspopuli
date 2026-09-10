@@ -37,12 +37,19 @@ export interface BreadcrumbSegment {
 function layerName(
   layer: StackLayer,
   jurisdictions: readonly UserJurisdictionData[],
+  federalTitle: string,
 ): string | undefined {
   if (jurisdictions.length === 0) return undefined;
   if (layer === "county")
     return findByType(jurisdictions, "COUNTY")?.jurisdiction.name;
   if (layer === "state") return findState(jurisdictions)?.name;
-  return findByType(jurisdictions, "CONGRESSIONAL_DISTRICT")?.jurisdiction.name;
+  // No country-level jurisdiction exists — resolution is point-in-polygon
+  // and nothing loads a national boundary — so the only federal row a
+  // reader has is their congressional district. The trail names the
+  // government at the other two levels and must not name a district here.
+  return findByType(jurisdictions, "CONGRESSIONAL_DISTRICT")
+    ? federalTitle
+    : undefined;
 }
 
 export function Breadcrumb({
@@ -70,7 +77,9 @@ export function Breadcrumb({
       // name only appeared in the title — so from a bill three levels down
       // it was invisible. Falls back to the level word while the
       // jurisdictions are still loading, or if none resolved.
-      label: layerName(layer, jurisdictions) ?? t(`stack.levels.${layer}`),
+      label:
+        layerName(layer, jurisdictions, t("layer.federal.title")) ??
+        t(`stack.levels.${layer}`),
       href: onLayerRoot ? undefined : `/region/${layer}`,
     });
   }

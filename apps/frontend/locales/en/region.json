@@ -131,7 +131,11 @@
     },
     "federal": {
       "thin": "We ingest very little at this level, on purpose — it is the government you can least affect, and we would rather be honest about the gap than pad the page.",
-      "ledger": "What Congress did"
+      "ledger": "What Congress did",
+      "title": "United States of America",
+      "meta": "U.S. House and Senate · {{district}}",
+      "yourSeats": "Your seats",
+      "seatsPending": "Your representative for {{district}} and both U.S. senators will appear here. We do not extract members of Congress yet — the roster we hold covers California's Assembly, Senate and county boards."
     },
     "when": "When"
   }

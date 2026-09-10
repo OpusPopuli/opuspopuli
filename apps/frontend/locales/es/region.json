@@ -131,7 +131,11 @@
     },
     "federal": {
       "thin": "Recopilamos muy poco en este nivel, a propósito: es el gobierno sobre el que menos se puede influir, y preferimos ser honestos sobre la brecha antes que rellenar la página.",
-      "ledger": "Lo que hizo el Congreso"
+      "ledger": "Lo que hizo el Congreso",
+      "title": "Estados Unidos de América",
+      "meta": "Cámara de Representantes y Senado de EE. UU. · {{district}}",
+      "yourSeats": "Tus escaños",
+      "seatsPending": "Tu representante por {{district}} y ambos senadores de EE. UU. aparecerán aquí. Todavía no extraemos miembros del Congreso: el registro que tenemos cubre la Asamblea y el Senado de California y las juntas de condado."
     },
     "when": "Cuándo"
   }

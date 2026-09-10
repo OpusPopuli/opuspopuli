@@ -2,10 +2,7 @@
 
 import { useTranslation } from "react-i18next";
 import {
-  MY_JURISDICTIONS,
-  type MyJurisdictionsData,
-} from "@/lib/graphql/region";
-import {
+  BuildingTag,
   LayerPageShell,
   LayerSection,
 } from "@/components/region/LayerPageShell";
@@ -50,9 +47,20 @@ export default function FederalLayerPage() {
     <LayerPageShell
       level="FEDERAL"
       levelLabel={t("stack.levels.federal")}
-      name={federal.jurisdiction.name}
-      meta={t("stack.federal.subtitle")}
+      name={t("layer.federal.title")}
+      meta={t("layer.federal.meta", {
+        district: federal.jurisdiction.name,
+      })}
     >
+      <LayerSection title={t("layer.federal.yourSeats")}>
+        <p className="flex flex-wrap items-center gap-3 py-5 text-sm leading-relaxed text-content-dim">
+          <BuildingTag label={t("layer.building")} />
+          {t("layer.federal.seatsPending", {
+            district: federal.jurisdiction.name,
+          })}
+        </p>
+      </LayerSection>
+
       <LayerSection title={t("layer.federal.ledger")}>
         <p className="py-5 text-sm leading-relaxed text-content-dim">
           {t("layer.federal.thin")}

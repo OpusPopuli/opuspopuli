@@ -151,8 +151,10 @@ export function JurisdictionStack({
         <LayerCard
           level="FEDERAL"
           levelLabel={t("stack.levels.federal")}
-          name={federal.jurisdiction.name}
-          subtitle={t("stack.federal.subtitle")}
+          name={t("layer.federal.title")}
+          subtitle={t("layer.federal.meta", {
+            district: federal.jurisdiction.name,
+          })}
           href="/region/federal"
           count={null}
           countUnavailableLabel={t("stack.count.unavailable")}
