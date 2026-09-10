@@ -101,6 +101,105 @@ describe('GraphQLAuditInterceptor', () => {
     handle: () => throwError(() => error),
   });
 
+  /**
+   * #1151. `entityId` came from `args.id` alone, so every mutation using the
+   * input-object convention — all of `documents` — logged a null id and the
+   * `(entityType, entityId)` index answered nothing for that service.
+   */
+  describe('entityId resolution for input-object mutations (#1151)', () => {
+    const captureEntityId = (
+      ctx: ExecutionContext,
+      done: (v: string | undefined) => void,
+    ) => {
+      interceptor.intercept(ctx, createMockCallHandler()).subscribe({
+        complete: () => {
+          const call = auditLogService.log.mock.calls[0]?.[0] as
+            | { entityId?: string }
+            | undefined;
+          done(call?.entityId);
+        },
+      });
+    };
+
+    it('still reads a top-level args.id', (done) => {
+      const ctx = createMockGqlContext({
+        fieldName: 'updateDocument',
+        operationType: 'mutation',
+        args: { id: 'doc-top' },
+      });
+      captureEntityId(ctx, (id) => {
+        expect(id).toBe('doc-top');
+        done();
+      });
+    });
+
+    it('reads input.id when the mutation takes an input object', (done) => {
+      const ctx = createMockGqlContext({
+        fieldName: 'updateDocument',
+        operationType: 'mutation',
+        args: { input: { id: 'doc-in-input' } },
+      });
+      captureEntityId(ctx, (id) => {
+        expect(id).toBe('doc-in-input');
+        done();
+      });
+    });
+
+    it('reads input.documentId — the documents convention', (done) => {
+      const ctx = createMockGqlContext({
+        fieldName: 'analyzeDocument',
+        operationType: 'mutation',
+        args: { input: { documentId: 'doc-typed' } },
+      });
+      captureEntityId(ctx, (id) => {
+        expect(id).toBe('doc-typed');
+        done();
+      });
+    });
+
+    // Two ids in one input. Resolution is by LIST ORDER — documentId leads
+    // because the document is the subject being acted on — so this pins the
+    // ordering, not just that some id was found.
+    it('prefers documentId when the input carries several ids', (done) => {
+      const ctx = createMockGqlContext({
+        fieldName: 'linkDocumentToProposition',
+        operationType: 'mutation',
+        args: {
+          input: { propositionId: 'prop-999', documentId: 'doc-correct' },
+        },
+      });
+      captureEntityId(ctx, (id) => {
+        expect(id).toBe('doc-correct');
+        done();
+      });
+    });
+
+    // A create mutation has no id yet. Null is honest; a guessed id is not.
+    it('records no id for a mutation that mints the entity', (done) => {
+      const ctx = createMockGqlContext({
+        fieldName: 'processScan',
+        operationType: 'mutation',
+        args: { input: { data: 'base64…', mimeType: 'image/jpeg' } },
+      });
+      captureEntityId(ctx, (id) => {
+        expect(id).toBeUndefined();
+        done();
+      });
+    });
+
+    it('ignores a non-string id rather than coercing it', (done) => {
+      const ctx = createMockGqlContext({
+        fieldName: 'updateDocument',
+        operationType: 'mutation',
+        args: { input: { id: { nested: 'object' } } },
+      });
+      captureEntityId(ctx, (id) => {
+        expect(id).toBeUndefined();
+        done();
+      });
+    });
+  });
+
   describe('intercept', () => {
     it('should be defined', () => {
       expect(interceptor).toBeDefined();

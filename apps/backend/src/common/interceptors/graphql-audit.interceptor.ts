@@ -120,9 +120,7 @@ export class GraphQLAuditInterceptor implements NestInterceptor {
     // Determine action from metadata or infer from operation type
     const action = auditMetadata?.action || this.inferAction(info);
     const entityType = auditMetadata?.entityType || this.inferEntityType(info);
-    const entityId = auditMetadata?.entityIdArg
-      ? (args[auditMetadata.entityIdArg] as string)
-      : (args.id as string | undefined);
+    const entityId = this.resolveEntityId(args, auditMetadata?.entityIdArg);
 
     return next.handle().pipe(
       tap(() => {
@@ -217,6 +215,62 @@ export class GraphQLAuditInterceptor implements NestInterceptor {
 
   private static readonly ENTITY_PATTERN =
     /(?:get|create|update|delete|find|list|search|index|upload|download)(\w+)/i;
+
+  /**
+   * Ordered list of id-bearing keys looked for inside an `input` object.
+   *
+   * Deliberately short and explicit. `documentId` leads because `documents`
+   * is the service whose mutations all take input objects — and in an input
+   * carrying several ids (`LinkDocumentToPropositionInput` has `documentId`
+   * AND `propositionId`) the document is the subject being acted on.
+   */
+  private static readonly INPUT_ID_KEYS = [
+    'id',
+    'documentId',
+    'scanId',
+    'propositionId',
+  ] as const;
+
+  /**
+   * Resolve the audited entity's id from resolver args (#1151).
+   *
+   * `args.id` alone left `entityId` null for every mutation using the
+   * input-object convention — all of `documents` — so the
+   * `(entityType, entityId)` index on `audit_logs` answered nothing for that
+   * service. "Show me this document's audit history" was unanswerable for
+   * exactly the records most likely to need it.
+   *
+   * An ordered list of KNOWN keys, deliberately not a deep search: guessing
+   * an id out of an arbitrary object graph is how an audit row ends up
+   * attributed to the WRONG entity, which is worse than a null.
+   *
+   * A create mutation legitimately has no id at interception time —
+   * `processScan` mints the document it audits. Those still record null,
+   * which is honest. Where the resolver knows the created id, prefer an
+   * explicit @Audit over widening this list.
+   */
+  private resolveEntityId(
+    args: Record<string, unknown>,
+    entityIdArg: string | undefined,
+  ): string | undefined {
+    const input = args.input as Record<string, unknown> | undefined;
+    const asId = (v: unknown): string | undefined =>
+      typeof v === 'string' && v.length > 0 ? v : undefined;
+
+    // An explicit @Audit({ entityIdArg }) wins, at either level.
+    if (entityIdArg) {
+      return asId(args[entityIdArg]) ?? asId(input?.[entityIdArg]);
+    }
+
+    if (asId(args.id)) return asId(args.id);
+    if (!input) return undefined;
+
+    for (const key of GraphQLAuditInterceptor.INPUT_ID_KEYS) {
+      const found = asId(input[key]);
+      if (found) return found;
+    }
+    return undefined;
+  }
 
   private inferEntityType(info: GraphQLInfo): string | undefined {
     const entityFromFieldName = this.extractEntityFromFieldName(
