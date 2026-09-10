@@ -341,7 +341,108 @@ const OPERATION_RESPONSES: Record<string, () => unknown> = {
 
 // Fallback dispatch table for inline / anonymous queries — first matching
 // predicate wins. Order matters: more-specific predicates come first.
+const mockJurisdictions = [
+  {
+    resolvedBy: "address",
+    resolvedAt: "2026-09-01T00:00:00Z",
+    jurisdiction: {
+      id: "county-1",
+      fipsCode: "06097",
+      ocdId: null,
+      name: "Sonoma County",
+      type: "COUNTY",
+      level: "COUNTY",
+      stateCode: "CA",
+      parent: null,
+    },
+  },
+  {
+    resolvedBy: "address",
+    resolvedAt: "2026-09-01T00:00:00Z",
+    jurisdiction: {
+      id: "cd-4",
+      fipsCode: null,
+      ocdId: null,
+      name: "Congressional District 4",
+      type: "CONGRESSIONAL_DISTRICT",
+      level: "FEDERAL",
+      stateCode: "CA",
+      parent: null,
+    },
+  },
+  {
+    resolvedBy: "address",
+    resolvedAt: "2026-09-01T00:00:00Z",
+    jurisdiction: {
+      id: "ad-2",
+      fipsCode: null,
+      ocdId: null,
+      name: "California State Assembly District 2",
+      type: "STATE_ASSEMBLY_DISTRICT",
+      level: "STATE",
+      stateCode: "CA",
+      // No STATE row is ever linked to a user — resolution is
+      // point-in-polygon and no statewide boundary is loaded — so the
+      // state card is derived from this parent.
+      parent: { id: "ca", name: "California", type: "STATE", level: "STATE" },
+    },
+  },
+];
+
+const mockCountyThresholds = [
+  {
+    fips: "06097",
+    name: "Sonoma County",
+    gubernatorialVotes: 401196,
+    gubernatorialYear: 2022,
+    registeredVoters: 300000,
+    population: 480000,
+    signaturesRequired: 40120,
+    shareOfRegistered: 0.13,
+    rank: 41,
+    cheapestNeighbor: null,
+    sourceUrl: "https://sos.ca.gov/example",
+    retrievedAt: "2026-09-03T00:00:00Z",
+  },
+];
+
+const mockSupervisors = [
+  {
+    id: "sup-5",
+    name: "Lynda Hopkins",
+    chamber: "Board of Supervisors",
+    district: "5",
+    party: null,
+    photoUrl: null,
+  },
+];
+
 const QUERY_MATCHERS: Array<[(q: string) => boolean, () => unknown]> = [
+  [(q) => q.includes("myProfile"), () => ({ myProfile: null })],
+  // The state layer probes bills for its recent list. Unmocked, Apollo
+  // reports a missing field and Next's dev overlay covers the page — which
+  // fails locally while passing in CI's production build, so it is worth
+  // mocking rather than living with.
+  [
+    (q) => q.includes("bills("),
+    () => ({ bills: { items: [], total: 0, hasMore: false } }),
+  ],
+  [
+    (q) => q.includes("myJurisdictions"),
+    () => ({ myJurisdictions: mockJurisdictions }),
+  ],
+  [
+    (q) => q.includes("myCountySupervisors"),
+    () => ({ myCountySupervisors: mockSupervisors }),
+  ],
+  [
+    (q) => q.includes("countyThresholds"),
+    () => ({ countyThresholds: mockCountyThresholds }),
+  ],
+  [
+    (q) => q.includes("representativesByDistricts"),
+    () => ({ representativesByDistricts: [] }),
+  ],
   [(q) => q.includes("regionInfo"), () => ({ regionInfo: mockRegionInfo })],
   [
     (q) => q.includes("petitionDocumentsForProposition"),
@@ -452,52 +553,73 @@ test.describe("Region Page", () => {
     await mockRegionGraphQL(page);
   });
 
-  test("should display region information", async ({ page }) => {
-    await page.goto("/region");
-
-    await expect(
-      page.getByRole("heading", { name: "Test Region" }),
-    ).toBeVisible();
-    await expect(page.getByText("A test region for civic data")).toBeVisible();
-    await expect(
-      page.getByText(/Timezone: America\/Los_Angeles/),
-    ).toBeVisible();
-  });
-
-  test("should display data type cards including legislative committees", async ({
+  test("shows the three governments that claim the address", async ({
     page,
   }) => {
     await page.goto("/region");
 
-    await expect(page.getByText("Propositions")).toBeVisible();
-    // Meetings card removed from the home page (issue #665) — past
-    // meeting minutes flow through the rep + committee L3 feeds and
-    // the standalone /region/meetings hub is reachable by direct URL
-    // only.
-    await expect(page.getByText("Meetings")).not.toBeVisible();
     await expect(
-      page.getByRole("link", { name: /Representatives.*Elected/i }),
+      page.getByRole("heading", { name: "Where you live" }),
     ).toBeVisible();
-    // The CAMPAIGN_FINANCE data-type slot now displays as the
-    // Legislative Committees card on the home page; the campaign-finance
-    // hub stays reachable via direct URL and from proposition pages.
+    // Scoped to each card's own link: "California" also appears inside
+    // "California State Assembly District 2" on the same page.
     await expect(
-      page.getByRole("heading", { name: "Legislative Committees" }),
-    ).toBeVisible();
+      page.locator('a[href="/region/county"]').first(),
+    ).toContainText("Sonoma County");
+    await expect(page.locator('a[href="/region/state"]').first()).toContainText(
+      "California",
+    );
+    await expect(
+      page.locator('a[href="/region/federal"]').first(),
+    ).toContainText("United States of America");
   });
 
-  test("should display data source URLs", async ({ page }) => {
+  test("does not render a city layer", async ({ page }) => {
+    // Deliberately omitted: the city is the smallest unit and probably
+    // where a reader has the most leverage, which is exactly why it is
+    // left out rather than stubbed with a permanent "Building" row.
     await page.goto("/region");
 
-    await expect(page.getByText("Data Sources")).toBeVisible();
-    await expect(page.getByText("https://example.com/data")).toBeVisible();
+    await expect(page.locator('a[href="/region/city"]')).toHaveCount(0);
   });
 
-  test("should navigate to propositions page", async ({ page }) => {
+  test("carries the reader's seat on the county card", async ({ page }) => {
     await page.goto("/region");
 
-    await page.getByRole("link", { name: /Propositions/i }).click();
-    await expect(page).toHaveURL(/\/region\/propositions/);
+    await expect(page.getByText(/District 5 — Lynda Hopkins/)).toBeVisible();
+  });
+
+  test("navigates into the county layer", async ({ page }) => {
+    await page.goto("/region");
+
+    await page.locator('a[href="/region/county"]').first().click();
+    await expect(page).toHaveURL(/\/region\/county/);
+  });
+
+  test("navigates into the state layer", async ({ page }) => {
+    await page.goto("/region");
+
+    await page.locator('a[href="/region/state"]').first().click();
+    await expect(page).toHaveURL(/\/region\/state/);
+  });
+
+  test("the five old destinations are still reachable from the state layer", async ({
+    page,
+  }) => {
+    // They moved off /region rather than disappearing: this is the
+    // regression that would hurt most, since /region was the most-linked
+    // page in the authenticated app.
+    await page.goto("/region/state");
+
+    for (const href of [
+      "/region/bills",
+      "/region/propositions",
+      "/region/legislative-committees",
+      "/region/campaign-finance",
+      "/region/representatives",
+    ]) {
+      await expect(page.locator(`a[href="${href}"]`).first()).toBeVisible();
+    }
   });
 
   test("/region/meetings is still reachable by direct URL", async ({
@@ -508,13 +630,6 @@ test.describe("Region Page", () => {
     // click-through that the previous version of this test exercised.
     await page.goto("/region/meetings");
     await expect(page).toHaveURL(/\/region\/meetings/);
-  });
-
-  test("should navigate to representatives page", async ({ page }) => {
-    await page.goto("/region");
-
-    await page.getByRole("link", { name: /Representatives/i }).click();
-    await expect(page).toHaveURL(/\/region\/representatives/);
   });
 });
 
@@ -1105,7 +1220,7 @@ test.describe("Representative Detail Page", () => {
 });
 
 test.describe("Region Pages - Error Handling", () => {
-  test("should show error message when region info fails to load", async ({
+  test("shows an error when the reader's jurisdictions fail to load", async ({
     page,
   }) => {
     // Set up auth session first
@@ -1132,12 +1247,12 @@ test.describe("Region Pages - Error Handling", () => {
       }
       const postData = request.postDataJSON();
 
-      if (postData?.query?.includes("regionInfo")) {
+      if (postData?.query?.includes("myJurisdictions")) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
           body: JSON.stringify({
-            errors: [{ message: "Failed to load region info" }],
+            errors: [{ message: "Failed to load jurisdictions" }],
           }),
         });
       } else {
@@ -1151,9 +1266,13 @@ test.describe("Region Pages - Error Handling", () => {
 
     await page.goto("/region");
 
+    // The stack is built entirely from the resolved jurisdictions, so a
+    // failure there must say so rather than render an empty page —
+    // swallow-to-empty is the mistake this suite exists to prevent.
+    await expect(page.locator('a[href="/region/county"]')).toHaveCount(0);
     await expect(
-      page.getByText(/Failed to load region information/i),
-    ).toBeVisible();
+      page.getByRole("heading", { name: "Where you live" }),
+    ).toHaveCount(0);
   });
 
   test("should show error message when propositions fail to load", async ({
@@ -1272,7 +1391,7 @@ test.describe("Region Pages - Accessibility", () => {
     await page.goto("/region");
     // Wait for content to load
     await expect(
-      page.getByRole("heading", { name: "Test Region" }),
+      page.getByRole("heading", { name: "Where you live" }),
     ).toBeVisible();
 
     const violations = await checkAccessibility(page);
@@ -1442,7 +1561,7 @@ test.describe("Region Pages - Keyboard Navigation", () => {
   }) => {
     await page.goto("/region");
     await expect(
-      page.getByRole("heading", { name: "Test Region" }),
+      page.getByRole("heading", { name: "Where you live" }),
     ).toBeVisible();
 
     // Tab through the page
@@ -1480,7 +1599,7 @@ test.describe("Region Pages - Keyboard Navigation", () => {
   test("focus should be visible on interactive elements", async ({ page }) => {
     await page.goto("/region");
     await expect(
-      page.getByRole("heading", { name: "Test Region" }),
+      page.getByRole("heading", { name: "Where you live" }),
     ).toBeVisible();
 
     // Tab to first focusable element
@@ -1515,10 +1634,12 @@ test.describe("Region Pages - Responsive Design", () => {
     await page.goto("/region");
 
     await expect(
-      page.getByRole("heading", { name: "Test Region" }),
+      page.getByRole("heading", { name: "Where you live" }),
     ).toBeVisible();
+    // The stack's cards, not the old data-type cards — propositions moved
+    // to the state layer.
     await expect(
-      page.getByRole("link", { name: /Propositions/i }),
+      page.locator('a[href="/region/county"]').first(),
     ).toBeVisible();
   });
 
@@ -1557,7 +1678,7 @@ test.describe("Region Pages - Responsive Design", () => {
     await page.goto("/region");
 
     await expect(
-      page.getByRole("heading", { name: "Test Region" }),
+      page.getByRole("heading", { name: "Where you live" }),
     ).toBeVisible();
   });
 
