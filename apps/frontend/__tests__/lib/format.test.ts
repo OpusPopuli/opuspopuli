@@ -1,14 +1,17 @@
 /**
- * These tests run in a fixed westward timezone on purpose.
+ * These tests depend on running WEST of UTC, which `jest.globalSetup.js`
+ * guarantees by pinning TZ to America/Los_Angeles.
  *
- * #1167 was invisible to anyone testing in UTC: `new Date(utcMidnight)
- * .toLocaleDateString()` only shifts the day once the viewer is west of
- * UTC. Pinning TZ here is what makes the regression reproducible — in the
- * default CI timezone these assertions would pass against the broken
- * implementation.
+ * #1167 is invisible in UTC: `new Date(utcMidnight).toLocaleDateString()`
+ * only shifts the day once the viewer is west of UTC, so in the default CI
+ * timezone these assertions pass against the BROKEN implementation and
+ * guard nothing.
+ *
+ * Setting `process.env.TZ` here instead does not work — Node resolves the
+ * zone before module code runs. That mistake is why the first version of
+ * this file passed locally (where TZ was exported on the command line) and
+ * failed in CI.
  */
-process.env.TZ = "America/Los_Angeles";
-
 import { formatCurrency, formatDate } from "@/lib/format";
 
 describe("formatDate", () => {

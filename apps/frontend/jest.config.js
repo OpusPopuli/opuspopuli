@@ -84,6 +84,9 @@ const config = {
     },
   },
   verbose: true,
+  // Runs before the test environment exists, which is the only point at
+  // which TZ can still be set — see the file for why (#1167).
+  globalSetup: "<rootDir>/jest.globalSetup.js",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   // `.open-next` alongside `.next` — the Cloudflare build copies the whole app
   // into .open-next/server-functions/default/, package.json included, so Jest
