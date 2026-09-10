@@ -131,7 +131,6 @@ export function JurisdictionStack({
           }
           href="/region/state"
           count={stateCount}
-          countCapped={stateCountCapped}
           countLabel={
             stateCount === null
               ? undefined

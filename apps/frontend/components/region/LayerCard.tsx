@@ -17,8 +17,6 @@ export interface LayerCardProps {
    * means "we did not look", the other means "nothing happened".
    */
   readonly count?: number | null;
-  /** The count hit the page cap, so it reads "25+" rather than "25". */
-  readonly countCapped?: boolean;
   readonly countLabel?: string;
   readonly countUnavailableLabel?: string;
   readonly openLabel: string;
@@ -45,7 +43,6 @@ export function LayerCard({
   subtitle,
   href,
   count,
-  countCapped,
   countLabel,
   countUnavailableLabel,
   openLabel,
