@@ -48,7 +48,11 @@ const RESOLVED = [
 
 let mockJurisdictions: unknown[] = RESOLVED;
 jest.mock("@/components/region/JurisdictionsContext", () => ({
-  useJurisdictions: () => mockJurisdictions,
+  useJurisdictions: () => ({
+    jurisdictions: mockJurisdictions,
+    loading: false,
+    error: null,
+  }),
 }));
 
 const mockPathname = usePathname as jest.Mock;
@@ -144,12 +148,40 @@ describe("RegionPageHeader — trail + title in one place", () => {
     expect(screen.getByRole("heading", { name: "Bills" })).toBeInTheDocument();
   });
 
-  it("lets the title end the trail instead of repeating it", () => {
-    // A layer page's location and heading are the same jurisdiction, so
-    // rendering both stacked "Sonoma County" over "Sonoma County".
+  it("keeps the current page in the trail even when the title repeats it", () => {
+    // A trail that stops one level short reads as though the page you are
+    // on has no place in the hierarchy.
     mockPathname.mockReturnValue("/region/county");
     render(<RegionPageHeader title="Sonoma County" />);
-    expect(screen.getAllByText("Sonoma County")).toHaveLength(1);
+    expect(screen.getAllByText("Sonoma County")).toHaveLength(2);
+  });
+
+  it("renders breadcrumb, eyebrow, title and meta in that order", () => {
+    mockPathname.mockReturnValue("/region/county");
+    const { container } = render(
+      <RegionPageHeader
+        title="Sonoma County"
+        eyebrow={<span>COUNTY</span>}
+        meta="Board of Supervisors · 5 seats"
+      />,
+    );
+    const text = (container.textContent ?? "").replace(/\s+/g, " ");
+    expect(text.indexOf("Where you live")).toBeLessThan(text.indexOf("COUNTY"));
+    expect(text.indexOf("COUNTY")).toBeLessThan(
+      text.lastIndexOf("Sonoma County"),
+    );
+    expect(text.lastIndexOf("Sonoma County")).toBeLessThan(
+      text.indexOf("Board of Supervisors"),
+    );
+  });
+
+  it("pins the breadcrumb and nothing else", () => {
+    mockPathname.mockReturnValue("/region/county");
+    const { container } = render(<RegionPageHeader title="Sonoma County" />);
+    const sticky = container.querySelector(".sticky");
+    expect(sticky).not.toBeNull();
+    expect(sticky?.querySelector("nav")).not.toBeNull();
+    expect(sticky?.querySelector("h1")).toBeNull();
   });
 
   it("keeps the trail intact when the title is not its last segment", () => {
@@ -163,13 +195,13 @@ describe("RegionPageHeader — trail + title in one place", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders a subtitle outside the pinned bar", () => {
+  it("renders the meta line outside the pinned bar", () => {
     mockPathname.mockReturnValue("/region/bills");
     render(
       <RegionPageHeader
         segments={[{ label: "Bills" }]}
         title="Bills"
-        subtitle="Legislation moving through your legislature"
+        meta="Legislation moving through your legislature"
       />,
     );
     expect(

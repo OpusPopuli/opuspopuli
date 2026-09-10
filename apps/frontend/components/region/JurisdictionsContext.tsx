@@ -8,7 +8,17 @@ import {
   type UserJurisdictionData,
 } from "@/lib/graphql/region";
 
-const JurisdictionsContext = createContext<readonly UserJurisdictionData[]>([]);
+export interface JurisdictionsState {
+  readonly jurisdictions: readonly UserJurisdictionData[];
+  readonly loading: boolean;
+  readonly error: unknown;
+}
+
+const JurisdictionsContext = createContext<JurisdictionsState>({
+  jurisdictions: [],
+  loading: false,
+  error: null,
+});
 
 /**
  * The reader's resolved jurisdictions, fetched once for the whole region
@@ -21,6 +31,10 @@ const JurisdictionsContext = createContext<readonly UserJurisdictionData[]>([]);
  * ask for, and every test asserting on query variables or call order broke,
  * because the component under test was no longer the only caller.
  *
+ * `loading` is exposed so the four region pages can render their skeletons
+ * from this one query instead of each opening a second watched query for
+ * the same data — which is what they did before, five in total.
+ *
  * Consumers get an empty array outside the provider, which the breadcrumb
  * treats as "not known yet" and falls back to the level word.
  */
@@ -29,10 +43,11 @@ export function JurisdictionsProvider({
 }: {
   readonly children: ReactNode;
 }) {
-  const { data } = useQuery<MyJurisdictionsData>(MY_JURISDICTIONS);
+  const { data, loading, error } =
+    useQuery<MyJurisdictionsData>(MY_JURISDICTIONS);
   const value = useMemo(
-    () => data?.myJurisdictions ?? [],
-    [data?.myJurisdictions],
+    () => ({ jurisdictions: data?.myJurisdictions ?? [], loading, error }),
+    [data?.myJurisdictions, loading, error],
   );
   return (
     <JurisdictionsContext.Provider value={value}>
@@ -41,6 +56,6 @@ export function JurisdictionsProvider({
   );
 }
 
-export function useJurisdictions(): readonly UserJurisdictionData[] {
+export function useJurisdictions(): JurisdictionsState {
   return useContext(JurisdictionsContext);
 }

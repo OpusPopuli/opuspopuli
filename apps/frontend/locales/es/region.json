@@ -94,12 +94,25 @@
     "seeAll": "Ver todo →",
     "building": "En construcción",
     "county": {
-      "threshold": "firmas obligan a la Junta a actuar: el 10% de los votos para gobernador emitidos aquí.",
+      "threshold": "10% de los votos para gobernador emitidos aquí, 2022 · Código Electoral §9118",
       "thresholdSource": "Secretaría de Estado de California, {{year}}",
       "noMeetings": "Aún no hay reuniones de la junta registradas.",
       "meetings": "Reuniones y actas de la junta",
       "measures": "Medidas del condado",
-      "filers": "Comités de campaña locales"
+      "filers": "Comités de campaña locales",
+      "noMeetingsInWindow": "No hay reuniones de la junta en los registros más recientes que revisamos.",
+      "thresholdLead": "firmas obligan a la Junta",
+      "statewide": "A nivel estatal, el mismo derecho de iniciativa cuesta {{statewide}} firmas.",
+      "yourSeatSection": "Tu escaño en esta junta",
+      "resolvedFrom": "Resuelto desde tu dirección ·",
+      "ledger": "Lo que hizo el condado",
+      "whatDid": "Lo que hizo el condado",
+      "seats_one": "{{count}} escaño",
+      "seats_other": "{{count}} escaños",
+      "nextMeeting": "próxima reunión {{when}}",
+      "otherSeats_one": "El otro escaño",
+      "otherSeats_other": "Los otros {{count}} escaños",
+      "measuresPending": "En los datos, aún sin listar"
     },
     "state": {
       "noBills": "Sin actividad legislativa reciente.",
@@ -111,10 +124,15 @@
       "legislature": "Legislatura estatal: Asamblea y Senado",
       "yourSeats": "Tus escaños",
       "seatValue": "{{chamber}} Distrito {{district}} — {{name}}",
-      "threshold": "firmas califican una ley por iniciativa: el 5% de los votos emitidos para gobernador. Una enmienda constitucional requiere {{amendment}}. Const. de California art. II §8(b) · Código Electoral §9035."
+      "threshold": "5% de los votos emitidos para gobernador · una enmienda constitucional requiere {{amendment}} · Const. de California art. II §8(b), Código Electoral §9035",
+      "thresholdLead": "firmas califican una ley por iniciativa",
+      "ledger": "Lo que hizo el estado",
+      "whatDid": "Lo que hizo el estado"
     },
     "federal": {
-      "thin": "Recopilamos muy poco en este nivel, a propósito: es el gobierno sobre el que menos se puede influir, y preferimos ser honestos sobre la brecha antes que rellenar la página."
-    }
+      "thin": "Recopilamos muy poco en este nivel, a propósito: es el gobierno sobre el que menos se puede influir, y preferimos ser honestos sobre la brecha antes que rellenar la página.",
+      "ledger": "Lo que hizo el Congreso"
+    },
+    "when": "Cuándo"
   }
 }

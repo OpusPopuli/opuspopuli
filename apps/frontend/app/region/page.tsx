@@ -6,45 +6,18 @@ import { useTranslation } from "react-i18next";
 import {
   GET_BILLS,
   MY_COUNTY_SUPERVISORS,
-  MY_JURISDICTIONS,
   type BillsData,
   type MyCountySupervisorsData,
-  type MyJurisdictionsData,
 } from "@/lib/graphql/region";
 import { JurisdictionStack } from "@/components/region/JurisdictionStack";
+import { useJurisdictions } from "@/components/region/JurisdictionsContext";
+import {
+  COUNT_PROBE_SIZE,
+  WINDOW_DAYS,
+  countInWindow,
+} from "@/lib/region-stack";
 import { useStateLegislators } from "@/lib/hooks/useStateLegislators";
 import { ErrorState, LoadingSkeleton } from "@/components/region/ListStates";
-
-/**
- * Trailing window for the "this week" counts.
- *
- * Deliberately a fixed window rather than "since your last visit": no
- * last-visit timestamp exists anywhere in the codebase, so that framing
- * would need a new column, a write on every page view, and a privacy note
- * for a new per-user behavioural record. Decided 2026-09-09 (#1194).
- */
-const WINDOW_DAYS = 7;
-
-/**
- * Page size for the count probe. Counting client-side off an existing
- * date-ordered query keeps this story free of a new resolver or aggregate;
- * the cost is that a busier week than this saturates the page, which the
- * "N+" rendering states rather than hides.
- */
-const COUNT_PROBE_SIZE = 25;
-
-/** Bills whose last action falls inside the window. */
-function countInWindow(
-  dates: readonly (string | null | undefined)[],
-  now: number,
-): number {
-  const cutoff = now - WINDOW_DAYS * 24 * 60 * 60 * 1000;
-  return dates.filter((d) => {
-    if (!d) return false;
-    const t = Date.parse(d);
-    return !Number.isNaN(t) && t >= cutoff;
-  }).length;
-}
 
 /**
  * "Where you live" — the three governments that claim the reader's address
@@ -62,12 +35,11 @@ function countInWindow(
  */
 export default function RegionPage() {
   const { t } = useTranslation("region");
-
   const {
-    data: jurisdictionData,
+    jurisdictions,
     loading: jurisdictionsLoading,
     error: jurisdictionsError,
-  } = useQuery<MyJurisdictionsData>(MY_JURISDICTIONS);
+  } = useJurisdictions();
 
   const { data: supervisorData } = useQuery<MyCountySupervisorsData>(
     MY_COUNTY_SUPERVISORS,
@@ -83,9 +55,7 @@ export default function RegionPage() {
   // mount-time precision is ample.
   const [now] = useState(() => Date.now());
 
-  const legislators = useStateLegislators(
-    jurisdictionData?.myJurisdictions ?? [],
-  );
+  const legislators = useStateLegislators(jurisdictions);
 
   const stateCount = useMemo(() => {
     // A failed probe is "we could not count", never zero.
@@ -93,11 +63,16 @@ export default function RegionPage() {
     return countInWindow(
       billData.bills.items.map((b) => b.lastActionDate),
       now,
+      WINDOW_DAYS,
     );
   }, [billData, billError, now]);
 
-  const stateCountCapped =
-    stateCount !== null && billData?.bills?.items.length === COUNT_PROBE_SIZE;
+  // Capped when the WINDOW is full, not when the PAGE is. The list is
+  // date-descending, so once a row falls outside the window no later row
+  // can be inside it — a full page therefore says nothing about
+  // saturation. Testing page length rendered "0+ this week" whenever 25
+  // rows came back and none of them were recent.
+  const stateCountCapped = stateCount === COUNT_PROBE_SIZE;
 
   if (jurisdictionsLoading) {
     return (
@@ -114,8 +89,6 @@ export default function RegionPage() {
       </div>
     );
   }
-
-  const jurisdictions = jurisdictionData?.myJurisdictions ?? [];
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-12">

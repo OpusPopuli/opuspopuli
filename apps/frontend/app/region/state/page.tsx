@@ -6,19 +6,20 @@ import { useTranslation } from "react-i18next";
 import {
   GET_BILLS,
   GET_PROPOSITIONS,
-  MY_JURISDICTIONS,
   type BillsData,
   type PropositionsData,
-  type MyJurisdictionsData,
 } from "@/lib/graphql/region";
 import { STATEWIDE_INITIATIVE } from "@/lib/graphql/counties";
 import {
   ActivityRow,
+  DetailRow,
   IndexRow,
   LayerPageShell,
   LayerSection,
+  Ledger,
 } from "@/components/region/LayerPageShell";
 import { LoadingSkeleton } from "@/components/region/ListStates";
+import { useJurisdictions } from "@/components/region/JurisdictionsContext";
 import { findState } from "@/lib/region-stack";
 import { useStateLegislators } from "@/lib/hooks/useStateLegislators";
 import { formatDate } from "@/lib/format";
@@ -36,8 +37,7 @@ const RECENT_LIMIT = 5;
 export default function StateLayerPage() {
   const { t, i18n } = useTranslation("region");
 
-  const { data: jur, loading } =
-    useQuery<MyJurisdictionsData>(MY_JURISDICTIONS);
+  const { jurisdictions, loading } = useJurisdictions();
   const { data: billData } = useQuery<BillsData>(GET_BILLS, {
     variables: { take: RECENT_LIMIT },
   });
@@ -45,7 +45,7 @@ export default function StateLayerPage() {
     variables: { take: RECENT_LIMIT },
   });
 
-  const legislators = useStateLegislators(jur?.myJurisdictions ?? []);
+  const legislators = useStateLegislators(jurisdictions);
 
   if (loading) {
     return (
@@ -55,7 +55,6 @@ export default function StateLayerPage() {
     );
   }
 
-  const jurisdictions = jur?.myJurisdictions ?? [];
   const state = findState(jurisdictions);
   if (!state) {
     return (
@@ -88,41 +87,20 @@ export default function StateLayerPage() {
 
   return (
     <LayerPageShell
+      level="STATE"
       levelLabel={t("stack.levels.state")}
       name={state.name}
       meta={t("layer.state.legislature")}
       header={
-        <div className="mt-6 space-y-4">
-          {seats.length > 0 && (
-            <div className="rounded-md bg-surface-sunk px-4 py-3 text-sm">
-              <span className="text-xs font-bold uppercase tracking-wider text-content-dim">
-                {t("layer.state.yourSeats")}
-              </span>
-              <ul className="mt-1 space-y-0.5">
-                {seats.map((seat) => (
-                  <li key={seat.id}>
-                    <Link
-                      href={`/region/representatives/${seat.id}`}
-                      prefetch={false}
-                      className="font-semibold text-content underline decoration-line underline-offset-2 hover:decoration-accent"
-                    >
-                      {seat.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {/* The county figure links to a stored source_url because it comes
-              from county_thresholds. These two are fixed percentages set by
-              statute, not an ingested dataset, so they cite the statute
-              instead — and no deep link, which the SOS reorganises between
-              cycles (#1105). */}
-          <div className="border-l-[3px] border-line bg-surface-sunk px-4 py-3">
-            <p className="font-serif text-2xl tabular-nums text-content">
+        <div className="mt-8">
+          <div className="border-l-[3px] border-line bg-surface-sunk px-6 py-5">
+            <p className="font-serif text-5xl leading-none tabular-nums text-content">
               {nf.format(STATEWIDE_INITIATIVE.statute)}
             </p>
-            <p className="mt-1 text-sm text-content-dim">
+            <p className="mt-3 font-semibold text-content">
+              {t("layer.state.thresholdLead")}
+            </p>
+            <p className="mt-0.5 text-sm text-content-dim">
               {t("layer.state.threshold", {
                 amendment: nf.format(
                   STATEWIDE_INITIATIVE.constitutionalAmendment,
@@ -133,9 +111,30 @@ export default function StateLayerPage() {
         </div>
       }
     >
-      <LayerSection title={t("layer.recent")}>
+      {seats.length > 0 && (
+        <LayerSection title={t("layer.state.yourSeats")}>
+          {seats.map((seat) => (
+            <DetailRow
+              key={seat.id}
+              strong
+              label={
+                <Link
+                  href={`/region/representatives/${seat.id}`}
+                  prefetch={false}
+                  className="underline decoration-line underline-offset-4 hover:decoration-accent"
+                >
+                  {seat.label}
+                </Link>
+              }
+              detail={t("layer.county.resolvedFrom").replace(" ·", "")}
+            />
+          ))}
+        </LayerSection>
+      )}
+
+      <Ledger when={t("layer.when")} what={t("layer.state.whatDid")}>
         {bills.length === 0 ? (
-          <p className="py-4 text-sm text-content-dim">
+          <p className="py-5 text-sm text-content-dim">
             {t("layer.state.noBills")}
           </p>
         ) : (
@@ -150,7 +149,7 @@ export default function StateLayerPage() {
             />
           ))
         )}
-      </LayerSection>
+      </Ledger>
 
       {/* The five destinations from the old /region — every one still
           reachable, now with a number on the door. */}

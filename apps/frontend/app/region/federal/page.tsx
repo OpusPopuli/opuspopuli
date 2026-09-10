@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
 import {
   MY_JURISDICTIONS,
@@ -12,6 +11,7 @@ import {
 } from "@/components/region/LayerPageShell";
 import { LoadingSkeleton } from "@/components/region/ListStates";
 import { findByType } from "@/lib/region-stack";
+import { useJurisdictions } from "@/components/region/JurisdictionsContext";
 
 /**
  * The federal layer page (#1197).
@@ -22,7 +22,7 @@ import { findByType } from "@/lib/region-stack";
  */
 export default function FederalLayerPage() {
   const { t } = useTranslation("region");
-  const { data, loading } = useQuery<MyJurisdictionsData>(MY_JURISDICTIONS);
+  const { jurisdictions, loading } = useJurisdictions();
 
   if (loading) {
     return (
@@ -32,10 +32,7 @@ export default function FederalLayerPage() {
     );
   }
 
-  const federal = findByType(
-    data?.myJurisdictions ?? [],
-    "CONGRESSIONAL_DISTRICT",
-  );
+  const federal = findByType(jurisdictions, "CONGRESSIONAL_DISTRICT");
   if (!federal) {
     return (
       <div className="mx-auto max-w-3xl px-8 py-12">
@@ -51,12 +48,13 @@ export default function FederalLayerPage() {
 
   return (
     <LayerPageShell
+      level="FEDERAL"
       levelLabel={t("stack.levels.federal")}
       name={federal.jurisdiction.name}
       meta={t("stack.federal.subtitle")}
     >
-      <LayerSection title={t("layer.recent")}>
-        <p className="py-4 text-sm text-content-dim">
+      <LayerSection title={t("layer.federal.ledger")}>
+        <p className="py-5 text-sm leading-relaxed text-content-dim">
           {t("layer.federal.thin")}
         </p>
       </LayerSection>

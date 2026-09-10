@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-
-/** The three governments the stack renders, smallest first. */
-export type StackLevel = "COUNTY" | "STATE" | "FEDERAL";
+import { LevelPill, type StackLevel } from "@/components/region/LevelPill";
 
 export interface LayerCardProps {
   readonly level: StackLevel;
@@ -31,10 +29,11 @@ export interface LayerCardProps {
 /**
  * One government in the stack (#1194).
  *
- * The county carries a 3px gold left rule. Gold is wayfinding here — "this
- * is the near one" — not a claim about leverage, and it is never the only
- * carrier of the distinction: `levelLabel` states it in words for anyone
- * who cannot see the rule (WCAG 1.4.1).
+ * The county carries a 3px gold left rule, and each level carries its own
+ * pill colour (see LevelPill). Colour is wayfinding here — how far from you
+ * this government sits — not a claim about leverage, and it is never the
+ * only carrier: `levelLabel` states the level in words for anyone who
+ * cannot see either (WCAG 1.4.1).
  *
  * Cards are links, not accordions. The index stays an index; depth lives
  * on real pages with real URLs.
@@ -66,15 +65,7 @@ export function LayerCard({
         className="flex items-center gap-4 px-5 py-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content"
       >
         <span className="w-24 shrink-0">
-          <span
-            className={`inline-block rounded px-2 py-0.5 text-xs font-bold uppercase tracking-wider ${
-              isCounty
-                ? "bg-accent text-on-accent"
-                : "bg-surface-sunk text-content-dim"
-            }`}
-          >
-            {levelLabel}
-          </span>
+          <LevelPill level={level} label={levelLabel} size="sm" />
         </span>
 
         <span className="min-w-0 flex-1">

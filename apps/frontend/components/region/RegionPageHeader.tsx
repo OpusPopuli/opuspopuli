@@ -9,50 +9,54 @@ import {
 export interface RegionPageHeaderProps {
   /** The tail of the trail. Root and layer are derived from the pathname. */
   readonly segments?: BreadcrumbSegment[];
+  /** Sits above the title — the level pill on a layer page. */
+  readonly eyebrow?: ReactNode;
   /**
-   * Rendered as the page's heading. Omit on pages that already render their
-   * own persistent heading — passing it there produces two <h1>s with the
-   * same text (representative and committee details both do this).
+   * Rendered as the page heading. Omit on pages that already render their
+   * own persistent heading — representative and committee details both do,
+   * and passing it there produced two <h1>s with the same text.
    */
   readonly title?: string;
-  /** Descriptive line under the bar. Not pinned — it is context, not location. */
-  readonly subtitle?: ReactNode;
-  /** Level chip, seats, thresholds — whatever this page's header carries. */
+  /** The line under the title: body, seats, next meeting. */
+  readonly meta?: ReactNode;
   readonly children?: ReactNode;
 }
 
 /**
- * The one header every region page uses: pinned trail + title, with the
- * page's own detail underneath.
+ * The one header every region page uses.
  *
- * Before this, each page hand-rolled the same three lines — a `<Breadcrumb>`,
- * then `<div className="mb-8"><h1 className="text-3xl font-bold …">` — eight
- * times over, while the layer pages had grown a fourth variant of their own.
- * They drifted in exactly the way copies do: different type ramps, and only
- * some of them pinned, so the title vanished on scroll depending on which
- * page you were standing on.
+ * Order is breadcrumb → eyebrow → title → meta.
  *
- * Only the trail and the title are sticky. Subtitles are descriptive prose;
- * pinning them would eat a third of a phone screen to repeat something the
- * reader has already read.
+ * **Only the breadcrumb is sticky.** An earlier version pinned the title
+ * with it, but the pill belongs between the two, and pinning all four would
+ * park roughly 180px of chrome on every scroll. The trail alone is what a
+ * reader needs to climb from three levels deep; the title is right there at
+ * the top of the page they are already on.
+ *
+ * Before this component the same header was hand-rolled on eight pages,
+ * with the layer pages carrying a ninth variant. They had drifted into
+ * different type ramps, and only some of them pinned anything.
  */
 export function RegionPageHeader({
   segments = [],
+  eyebrow,
   title,
-  subtitle,
+  meta,
   children,
 }: RegionPageHeaderProps) {
   return (
     <>
-      <div className="sticky top-[var(--op-header-h)] z-30 -mx-8 mb-6 border-b border-line bg-surface/85 px-8 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-surface/75">
-        <Breadcrumb segments={segments} title={title} />
-        {title && (
-          <h1 className="mt-1 truncate font-serif text-2xl text-content">
-            {title}
-          </h1>
-        )}
+      <div className="sticky top-[var(--op-header-h)] z-30 border-b border-line bg-surface/85 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-surface/75">
+        <Breadcrumb segments={segments} />
       </div>
-      {subtitle && <p className="-mt-2 mb-6 text-content-dim">{subtitle}</p>}
+
+      {eyebrow && <div className="mt-8">{eyebrow}</div>}
+      {title && (
+        <h1 className="mt-5 font-serif text-5xl leading-none text-content">
+          {title}
+        </h1>
+      )}
+      {meta && <p className="mt-4 text-lg text-content-dim">{meta}</p>}
       {children}
     </>
   );

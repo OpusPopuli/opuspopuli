@@ -3,10 +3,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { RegionPageHeader } from "@/components/region/RegionPageHeader";
+import { LevelPill, type StackLevel } from "@/components/region/LevelPill";
 
 export interface LayerPageShellProps {
+  readonly level: StackLevel;
   readonly levelLabel: string;
-  readonly gold?: boolean;
   readonly name: string;
   readonly meta?: string | null;
   /** "Who governs here" detail — seats, threshold, whatever the level has. */
@@ -23,8 +24,8 @@ export interface LayerPageShellProps {
  * level label carries the same information in words (WCAG 1.4.1).
  */
 export function LayerPageShell({
+  level,
   levelLabel,
-  gold,
   name,
   meta,
   header,
@@ -32,18 +33,11 @@ export function LayerPageShell({
 }: LayerPageShellProps) {
   return (
     <div className="mx-auto max-w-3xl px-8 py-12">
-      {/* The trail supplies root + layer from the pathname; on a layer page
-          the layer IS the location, so no tail segment is passed. */}
-      <RegionPageHeader title={name} />
-
-      <span
-        className={`inline-block rounded px-2 py-0.5 text-xs font-bold uppercase tracking-wider ${
-          gold ? "bg-accent text-on-accent" : "bg-surface-sunk text-content-dim"
-        }`}
-      >
-        {levelLabel}
-      </span>
-      {meta && <p className="mt-2 text-content-dim">{meta}</p>}
+      <RegionPageHeader
+        title={name}
+        meta={meta}
+        eyebrow={<LevelPill level={level} label={levelLabel} />}
+      />
 
       {header}
 
@@ -61,8 +55,8 @@ export function LayerSection({
   readonly children: ReactNode;
 }) {
   return (
-    <section className="mt-8 first:mt-0">
-      <h2 className="border-b border-content pb-2 text-xs font-bold uppercase tracking-wider text-content-dim">
+    <section className="mt-12 first:mt-0">
+      <h2 className="border-b border-content pb-3 text-xs font-bold uppercase tracking-[0.13em] text-content-dim">
         {title}
       </h2>
       {children}
@@ -71,8 +65,44 @@ export function LayerSection({
 }
 
 /**
- * One row of "what happened". Same anatomy at every level — badge, what,
- * when — so scanning transfers between pages and is learned once.
+ * A ledger: column headings over a single rule, then rows.
+ *
+ * The headings ARE the section heading — "What the county did" names the
+ * section and labels the column at once, which is why this is not wrapped
+ * in a LayerSection. Nesting the two stacked two heavy rules with the
+ * column labels trapped between them.
+ */
+export function Ledger({
+  when,
+  what,
+  children,
+}: {
+  readonly when: string;
+  readonly what: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <section className="mt-12">
+      <div className="grid grid-cols-[7rem_1fr] items-baseline gap-6 border-b border-content pb-3">
+        <span className="text-xs font-bold uppercase tracking-[0.13em] text-content-dim">
+          {when}
+        </span>
+        <h2 className="text-xs font-bold uppercase tracking-[0.13em] text-content-dim">
+          {what}
+        </h2>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * One row of "what happened".
+ *
+ * The date is a left-hand column rather than a right-aligned tail: dates
+ * that share an edge can be compared down the page, and the eye finds the
+ * headline at one consistent indent instead of at wherever the previous
+ * title happened to wrap.
  */
 export function ActivityRow({
   badge,
@@ -88,19 +118,23 @@ export function ActivityRow({
   readonly href?: string;
 }) {
   const body = (
-    <div className="flex items-start gap-3 py-3">
-      {badge && (
-        <span className="mt-0.5 shrink-0 rounded bg-surface-sunk px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-content-dim">
-          {badge}
-        </span>
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-content">{what}</p>
-        {sub && <p className="mt-0.5 text-sm text-content-dim">{sub}</p>}
+    <div className="grid grid-cols-[7rem_1fr] gap-6 py-5">
+      <span className="pt-0.5 text-sm text-content-dim">{when}</span>
+      <div className="min-w-0">
+        <p className="text-lg leading-snug font-semibold text-content">
+          {what}
+        </p>
+        {(sub || badge) && (
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-content-dim">
+            {badge && (
+              <span className="rounded bg-surface-sunk px-2 py-0.5 text-xs font-bold uppercase tracking-wider">
+                {badge}
+              </span>
+            )}
+            {sub}
+          </p>
+        )}
       </div>
-      {when && (
-        <span className="shrink-0 text-xs text-content-dim">{when}</span>
-      )}
     </div>
   );
   return (
@@ -125,6 +159,33 @@ export function ActivityRow({
   );
 }
 
+/**
+ * A labelled row whose detail sits hard right — used for the reader's own
+ * seats, where the fact is the name and the provenance is secondary.
+ */
+export function DetailRow({
+  label,
+  detail,
+  strong,
+}: {
+  readonly label: ReactNode;
+  readonly detail?: ReactNode;
+  readonly strong?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-line py-4 last:border-b-0">
+      <span
+        className={
+          strong ? "text-lg font-semibold text-content" : "text-content"
+        }
+      >
+        {label}
+      </span>
+      {detail && <span className="text-sm text-content-dim">{detail}</span>}
+    </div>
+  );
+}
+
 /** A door with a count on it, for the type index. */
 export function IndexRow({
   label,
@@ -138,7 +199,7 @@ export function IndexRow({
   readonly href?: string;
 }) {
   const body = (
-    <div className="flex items-baseline justify-between gap-4 py-3">
+    <div className="flex items-baseline justify-between gap-4 py-4">
       <span className="min-w-0">
         <span className="font-semibold text-content">{label}</span>
         {description && (

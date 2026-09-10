@@ -19,12 +19,18 @@ import {
   GET_BILLS,
   GET_REPRESENTATIVES_BY_DISTRICTS,
   MY_COUNTY_SUPERVISORS,
-  MY_JURISDICTIONS,
 } from "@/lib/graphql/region";
 
 expect.extend(toHaveNoViolations);
 
 jest.mock("@apollo/client/react", () => ({ useQuery: jest.fn() }));
+jest.mock("@/components/region/JurisdictionsContext", () => ({
+  useJurisdictions: () => ({
+    jurisdictions: JURISDICTIONS,
+    loading: false,
+    error: null,
+  }),
+}));
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, vars?: Record<string, unknown>) =>
@@ -69,12 +75,6 @@ const SUPERVISOR = {
 
 beforeEach(() => {
   (useQuery as jest.Mock).mockImplementation((document: unknown) => {
-    if (document === MY_JURISDICTIONS)
-      return {
-        data: { myJurisdictions: JURISDICTIONS },
-        loading: false,
-        error: null,
-      };
     if (document === MY_COUNTY_SUPERVISORS)
       return {
         data: { myCountySupervisors: [SUPERVISOR] },
@@ -119,6 +119,20 @@ describe("Jurisdiction stack — WCAG 2.2 AA", () => {
     levels.forEach((level, i) => {
       if (i > 0) expect(level - levels[i - 1]).toBeLessThanOrEqual(1);
     });
+  });
+
+  it("never carries the level by colour alone (SC 1.4.1)", () => {
+    // Each level has its own pill colour — gold county, teal state, purple
+    // federal — so the label has to state the level in words for anyone who
+    // cannot distinguish them.
+    render(<RegionPage />);
+    for (const key of [
+      "stack.levels.county",
+      "stack.levels.state",
+      "stack.levels.federal",
+    ]) {
+      expect(screen.getByText(key)).toBeInTheDocument();
+    }
   });
 
   it("does not rely on the gold rule alone to mark the county (SC 1.4.1)", () => {

@@ -47,20 +47,13 @@ function layerName(
 
 export function Breadcrumb({
   segments,
-  title,
 }: {
   readonly segments: BreadcrumbSegment[];
-  /**
-   * The heading RegionPageHeader will render. Passed in only so the trail
-   * can drop a final segment that would repeat it — on a layer page the
-   * location and the heading are the same jurisdiction.
-   */
-  readonly title?: string;
 }) {
   const pathname = usePathname() ?? "";
   const { t } = useTranslation("region");
 
-  const jurisdictions = useJurisdictions();
+  const { jurisdictions } = useJurisdictions();
 
   const layer = layerForPath(pathname);
   const trail: BreadcrumbSegment[] = [
@@ -85,22 +78,9 @@ export function Breadcrumb({
   // Tolerate legacy callers that still prepend the root themselves.
   trail.push(...segments.filter((s) => s.href !== "/region"));
 
-  // When the pinned title repeats the last crumb — which is exactly the case
-  // on a layer page, where the location and the heading are the same
-  // jurisdiction — drop the crumb and let the title be the end of the trail.
-  // Otherwise "Where you live / Sonoma County" sits directly above a heading
-  // that also says Sonoma County.
-  const last = trail[trail.length - 1];
-  const titleEndsTheTrail =
-    title !== undefined &&
-    last !== undefined &&
-    last.label === title &&
-    !last.href;
-  const rendered = titleEndsTheTrail ? trail.slice(0, -1) : trail;
-
   return (
     <nav aria-label={t("breadcrumb.label")}>
-      {rendered.map((segment, i) => (
+      {trail.map((segment, i) => (
         <span key={`${segment.label}-${i}`}>
           {i > 0 && (
             <span aria-hidden="true" className="mx-2 text-content-dim">
@@ -118,11 +98,7 @@ export function Breadcrumb({
           ) : (
             <span
               className="text-sm text-content-dim"
-              aria-current={
-                !titleEndsTheTrail && i === rendered.length - 1
-                  ? "page"
-                  : undefined
-              }
+              aria-current={i === trail.length - 1 ? "page" : undefined}
             >
               {segment.label}
             </span>

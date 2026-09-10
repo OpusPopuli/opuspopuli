@@ -6,6 +6,13 @@ import type {
 /** Meeting `body` values that belong to a county board, not the legislature. */
 export const COUNTY_MEETING_BODY = "Board of Supervisors";
 
+/**
+ * `representatives.chamber` for a county supervisor. Spelled the same as
+ * COUNTY_MEETING_BODY but kept separate on purpose: one describes a meeting
+ * row, the other a roster row, and nothing guarantees they stay in step.
+ */
+export const COUNTY_BOARD_CHAMBER = "Board of Supervisors";
+
 export function findByType(
   jurisdictions: readonly UserJurisdictionData[],
   type: JurisdictionType,

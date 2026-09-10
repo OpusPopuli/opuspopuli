@@ -94,12 +94,25 @@
     "seeAll": "See all →",
     "building": "Building",
     "county": {
-      "threshold": "signatures oblige the Board to act — 10% of the gubernatorial votes cast here.",
+      "threshold": "10% of the gubernatorial votes cast here, 2022 · Elections Code §9118",
       "thresholdSource": "CA Secretary of State, {{year}}",
       "noMeetings": "No board meetings recorded yet.",
       "meetings": "Board meetings & minutes",
       "measures": "County measures",
-      "filers": "Local campaign filers"
+      "filers": "Local campaign filers",
+      "noMeetingsInWindow": "No board meetings in the most recent records we checked.",
+      "thresholdLead": "signatures compel the Board",
+      "statewide": "Statewide the same initiative right costs {{statewide}} signatures.",
+      "yourSeatSection": "Your seat on this board",
+      "resolvedFrom": "Resolved from your address ·",
+      "ledger": "What the county did",
+      "whatDid": "What the county did",
+      "seats_one": "{{count}} seat",
+      "seats_other": "{{count}} seats",
+      "nextMeeting": "next meeting {{when}}",
+      "otherSeats_one": "The other seat",
+      "otherSeats_other": "The other {{count}} seats",
+      "measuresPending": "In the data, not yet listed"
     },
     "state": {
       "noBills": "No recent bill activity.",
@@ -111,10 +124,15 @@
       "legislature": "State Legislature — Assembly and Senate",
       "yourSeats": "Your seats",
       "seatValue": "{{chamber}} District {{district}} — {{name}}",
-      "threshold": "signatures qualify an initiative statute — 5% of the votes cast for Governor. A constitutional amendment needs {{amendment}}. Cal. Const. art. II §8(b) · Elections Code §9035."
+      "threshold": "5% of the votes cast for Governor · a constitutional amendment needs {{amendment}} · Cal. Const. art. II §8(b), Elections Code §9035",
+      "thresholdLead": "signatures qualify an initiative statute",
+      "ledger": "What the state did",
+      "whatDid": "What the state did"
     },
     "federal": {
-      "thin": "We ingest very little at this level, on purpose — it is the government you can least affect, and we would rather be honest about the gap than pad the page."
-    }
+      "thin": "We ingest very little at this level, on purpose — it is the government you can least affect, and we would rather be honest about the gap than pad the page.",
+      "ledger": "What Congress did"
+    },
+    "when": "When"
   }
 }

@@ -6,10 +6,20 @@ import {
   GET_BILLS,
   GET_REPRESENTATIVES_BY_DISTRICTS,
   MY_COUNTY_SUPERVISORS,
-  MY_JURISDICTIONS,
 } from "@/lib/graphql/region";
 
 jest.mock("@apollo/client/react", () => ({ useQuery: jest.fn() }));
+
+// The page reads jurisdictions from the region-level provider now, so the
+// four pages share one watched query instead of opening their own.
+let mockJurisdictionsState: {
+  jurisdictions: unknown[];
+  loading: boolean;
+  error: unknown;
+} = { jurisdictions: [], loading: false, error: null };
+jest.mock("@/components/region/JurisdictionsContext", () => ({
+  useJurisdictions: () => mockJurisdictionsState,
+}));
 
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -118,16 +128,13 @@ function setup(options: Options = {}) {
     jurisdictionsError = false,
   } = options;
 
+  mockJurisdictionsState = {
+    jurisdictions: jurisdictionsLoading ? [] : jurisdictions,
+    loading: jurisdictionsLoading,
+    error: jurisdictionsError ? new Error("boom") : null,
+  };
+
   mockUseQuery.mockImplementation((document: unknown) => {
-    if (document === MY_JURISDICTIONS) {
-      return {
-        data: jurisdictionsLoading
-          ? undefined
-          : { myJurisdictions: jurisdictions },
-        loading: jurisdictionsLoading,
-        error: jurisdictionsError ? new Error("boom") : null,
-      };
-    }
     if (document === MY_COUNTY_SUPERVISORS) {
       return {
         data: { myCountySupervisors: supervisors },
@@ -339,5 +346,17 @@ describe("RegionPage — the jurisdiction stack (#1194)", () => {
       name: "stack.county.wrongSeat",
     });
     expect(wrongSeat.closest('a[href="/region/county"]')).toBeNull();
+  });
+
+  it('never renders a capped zero (regression: "0+ this week")', () => {
+    // A full page of results says nothing about saturation — the list is
+    // date-descending, so once a row falls outside the window no later row
+    // can be inside it. Testing page length instead of the count rendered
+    // "0+" whenever 25 rows came back and none were recent, which is what
+    // the live data actually produced.
+    setup({ billDates: new Array(25).fill(THIRTY_DAYS_AGO) });
+    render(<RegionPage />);
+    expect(screen.getByText(/"value":"0"/)).toBeInTheDocument();
+    expect(screen.queryByText(/"value":"0\+"/)).not.toBeInTheDocument();
   });
 });
