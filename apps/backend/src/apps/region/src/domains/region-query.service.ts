@@ -1482,7 +1482,14 @@ export class RegionQueryService {
         where,
         skip,
         take,
-        orderBy: [{ lastActionDate: 'desc' }, { billNumber: 'asc' }],
+        // nulls last, explicitly: Postgres puts NULLs FIRST on a DESC sort,
+        // so undated bills occupied the head of the list and displaced real
+        // rows out of any bounded window a caller took. That silently
+        // skewed the "recent activity" count on the region stack.
+        orderBy: [
+          { lastActionDate: { sort: 'desc', nulls: 'last' } },
+          { billNumber: 'asc' },
+        ],
         include: {
           votes: { orderBy: { voteDate: 'desc' } },
           coAuthors: {
