@@ -104,7 +104,7 @@ const FABRICATED_BILL_CITATION =
  * catches drift / model hallucinations. The opuspopuli side OWNS this
  * validator (not the prompt-service) so an open-source contributor can
  * audit exactly what we're blocking without needing to read the
- * private prompt repo.
+ * prompt-service repo.
  */
 @Injectable()
 export class BriefingSummaryValidatorService {

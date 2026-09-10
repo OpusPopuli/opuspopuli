@@ -264,11 +264,13 @@ prompt-service → database templates → hardcoded defaults) behind a circuit
 breaker, retry, TTL cache, and HMAC auth.
 
 **Openness posture (decided 2026-09, #1143):** the civic prompt *text*
-(structural analysis, document analysis, RAG, civics extraction, titles) is
-**published, with version + content-hash attestation** — every AI output can
-prove which prompt produced it, and readers can inspect that prompt. The
-*operational layer* (versioning infrastructure, A/B experimentation,
-per-region tuning, the prompt service itself) remains private. Consuming
+(structural analysis, document analysis, RAG, civics extraction, relevance,
+briefing, titles) is **published, with version + content-hash attestation** —
+every AI output can prove which prompt produced it, and readers can go read
+that prompt. `prompt-service` is a public repository; its `prisma/seed.ts`
+carries the template text for every prompt family the platform uses. What is
+not public is runtime state rather than code: live experiment assignments and
+per-region tuning values held in the deployed service's database. Consuming
 prompts through the client is therefore a single-source-of-truth and
 attestation mechanism, not a secrecy mechanism.
 

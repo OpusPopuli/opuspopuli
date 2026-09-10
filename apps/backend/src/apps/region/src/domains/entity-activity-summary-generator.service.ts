@@ -8,7 +8,7 @@
  * Mirrors `bio-generator.service.ts` and
  * `committee-summary-generator.service.ts`:
  *   - DI: PromptClientService + ILLMProvider, both Optional.
- *   - Prompt name lives in the private prompt-service repo
+ *   - Prompt name lives in the prompt-service repo
  *     (`representative-activity-summary` and
  *     `committee-activity-summary` documentTypes). The consumer
  *     here ships the structured input + persists the result; the

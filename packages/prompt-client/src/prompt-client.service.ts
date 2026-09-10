@@ -253,7 +253,7 @@ HTML:
       "bill-analysis",
       "document_analysis",
       // Minimal fallback — the authoritative template with full neutrality
-      // rules, security notices, and field guidance lives in the private
+      // rules, security notices, and field guidance lives in the
       // prompt-service repo (epic #740). This degraded version preserves
       // the output schema + controlled vocabularies so consumers can parse
       // responses even when prompt-service is unreachable.
@@ -298,7 +298,7 @@ If the input is blank/garbled/not-a-bill, return: { "skip": true }`,
       "document_analysis",
       // Minimal fallback for opuspopuli#823 — the authoritative template
       // with full neutrality rules, security notices, and field guidance
-      // lives in the private prompt-service repo. This degraded version
+      // lives in the prompt-service repo. This degraded version
       // preserves the merged output schema (status + summary + skip) so
       // region-sync consumers can parse responses even when prompt-service
       // is unreachable. REGENERATE this minimal template whenever the
@@ -567,7 +567,7 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
    * nightly batch job in the knowledge service (#745).
    *
    * Cross-repo contract: this corresponds 1:1 with the
-   * `bill-relevance-explanation` template in the private prompt-service
+   * `bill-relevance-explanation` template in the prompt-service
    * (PR #75 / issue #72). When the template gains new variables, update
    * both the service-side seed and the `composeBillRelevanceExplanation`
    * variable map below.
@@ -585,7 +585,7 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
    * Vote recommendations are forbidden by the template's hard constraints.
    *
    * Cross-repo contract: corresponds 1:1 with the
-   * `proposition-relevance-explanation` template in the private prompt-service
+   * `proposition-relevance-explanation` template in the prompt-service
    * (prompt-service#79). Consumed by the multi-entity rerank batch in the
    * knowledge service (opuspopuli#836).
    */
@@ -602,7 +602,7 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
    * short, grounded plain-language read of how the measure affects them.
    *
    * Cross-repo contract: corresponds 1:1 with the `personalized-impact`
-   * template in the private prompt-service. Only declared signals + a coarse
+   * template in the prompt-service. Only declared signals + a coarse
    * region label reach the service (see PersonalizedImpactParams).
    */
   async getPersonalizedImpactPrompt(
@@ -663,7 +663,7 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
    * any match.
    *
    * Cross-repo contract: corresponds 1:1 with the `briefing-summary`
-   * template in the private prompt-service. When the template gains
+   * template in the prompt-service. When the template gains
    * new variables, update both the service-side seed and the
    * `composeBriefingSummary` variable map below.
    */

@@ -117,7 +117,7 @@ services above, so `-f docker-compose-prompt-service.yml` by itself fails with
 
 **Prompt template text lives exclusively in the `prompt-service` repo.** Never write prompt text inline or hard-code it in this repo — not even temporarily.
 
-The rationale is **attestation, not secrecy** (decided in #1143, 2026-09-06): the civic prompt *text* is open and published, with version + content-hash attestation, so every AI output can prove which prompt produced it. What stays private is the operational layer — versioning infrastructure, A/B experimentation, per-region tuning, the service itself. An inline prompt would break the attestation chain (unversioned, unhashed, unpublished), which is why the rule survives the openness decision unchanged.
+The rationale is **attestation and single-source-of-truth, not secrecy** (decided in #1143, 2026-09-06): `prompt-service` is a public repository and the civic prompt *text* is published there (`prisma/seed.ts`), with version + content-hash attestation, so every AI output can prove which prompt produced it and a reader can go read that prompt. What is not public is runtime state, not code — live experiment assignments and per-region tuning values in the deployed service's database. An inline prompt would break the attestation chain (unversioned, unhashed, unpublished), which is why the never-inline rule holds regardless.
 
 Consume prompts via `@opuspopuli/prompt-client`, and **keep the hash and version — persist them on the output row** (`promptHash`/`promptVersion` columns; `CivicsBlock` is the reference pattern). Destructuring only `promptText` and discarding the rest makes the output unattributable:
 ```typescript

@@ -139,9 +139,9 @@ export default function SystemCardPage() {
                 detect when prompts change.
               </li>
               <li>
-                Prompts are served from a centralized, private prompt service
-                &mdash; they cannot be modified by individual nodes in a
-                federated deployment.
+                Prompts are served from a centralized prompt service &mdash;
+                they cannot be modified by individual nodes in a federated
+                deployment. The template text itself is published and readable.
               </li>
             </ul>
             <p className="mt-3">

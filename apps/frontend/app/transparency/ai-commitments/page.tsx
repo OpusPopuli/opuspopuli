@@ -31,11 +31,11 @@ const commitments = [
   {
     title: "Never Store Prompt Templates in Client Code",
     commitment:
-      "All AI prompts live in a private, centralized prompt service. The open-source codebase never contains prompt text.",
+      "All AI prompts live in a centralized prompt service, so every analysis is generated from one reviewed, versioned template. The application codebase never contains prompt text.",
     control:
-      "Prompts are served via authenticated API calls at analysis time. The prompt service is a separate, private repository.",
+      "Prompts are served via authenticated API calls at analysis time. The prompt service is a separate, open-source repository, and its template text is published.",
     verify:
-      "Inspect the open-source codebase on GitHub \u2014 you will find prompt service API calls but no prompt template text.",
+      "Inspect the application codebase on GitHub \u2014 you will find prompt service API calls but no prompt template text. Then read the prompts themselves at github.com/OpusPopuli/prompt-service.",
   },
   {
     title: "Never Train on User Documents",
