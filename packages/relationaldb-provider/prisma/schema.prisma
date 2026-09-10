@@ -445,6 +445,10 @@ model BillRelevanceCache {
   /// SHA-256 of the prompt template at generation time. Lets us
   /// re-rank when the prompt is updated upstream (#745 follow-up).
   templateHash String? @map("template_hash")
+  /// Producing model, e.g. "ollama/qwen3.5:9b" (#1149). Without it a
+  /// LLM_MODEL swap makes every cached explanation unattributable.
+  llmProvider  String? @map("llm_provider") @db.VarChar(50)
+  llmModel     String? @map("llm_model") @db.VarChar(80)
   /// A/B experiment variant assigned to this user for this batch run.
   /// "control" or "variant_a" / "variant_b" — see prompt-service
   /// experiments admin.
@@ -480,6 +484,10 @@ model PropositionRelevanceCache {
 
   // ---------- LLM telemetry (parity with BillRelevanceCache) ----------
   templateHash String? @map("template_hash")
+  /// Producing model, e.g. "ollama/qwen3.5:9b" (#1149). Without it a
+  /// LLM_MODEL swap makes every cached explanation unattributable.
+  llmProvider  String? @map("llm_provider") @db.VarChar(50)
+  llmModel     String? @map("llm_model") @db.VarChar(80)
   variantId    String? @map("variant_id") @db.VarChar(50)
   tokensIn     Int?    @map("tokens_in")
   tokensOut    Int?    @map("tokens_out")
@@ -510,9 +518,17 @@ model RepresentativeRelevanceCache {
   relevanceExplanation String? @map("relevance_explanation") @db.Text
 
   templateHash String? @map("template_hash")
-  variantId    String? @map("variant_id") @db.VarChar(50)
-  tokensIn     Int?    @map("tokens_in")
-  tokensOut    Int?    @map("tokens_out")
+
+  /// Producing model, e.g. "ollama/qwen3.5:9b" (#1149). Without it a
+
+  /// LLM_MODEL swap makes every cached explanation unattributable.
+
+  llmProvider String? @map("llm_provider") @db.VarChar(50)
+
+  llmModel  String? @map("llm_model") @db.VarChar(80)
+  variantId String? @map("variant_id") @db.VarChar(50)
+  tokensIn  Int?    @map("tokens_in")
+  tokensOut Int?    @map("tokens_out")
 
   computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz
   expiresAt  DateTime @map("expires_at") @db.Timestamptz
@@ -545,9 +561,17 @@ model CommitteeRelevanceCache {
   relevanceExplanation String? @map("relevance_explanation") @db.Text
 
   templateHash String? @map("template_hash")
-  variantId    String? @map("variant_id") @db.VarChar(50)
-  tokensIn     Int?    @map("tokens_in")
-  tokensOut    Int?    @map("tokens_out")
+
+  /// Producing model, e.g. "ollama/qwen3.5:9b" (#1149). Without it a
+
+  /// LLM_MODEL swap makes every cached explanation unattributable.
+
+  llmProvider String? @map("llm_provider") @db.VarChar(50)
+
+  llmModel  String? @map("llm_model") @db.VarChar(80)
+  variantId String? @map("variant_id") @db.VarChar(50)
+  tokensIn  Int?    @map("tokens_in")
+  tokensOut Int?    @map("tokens_out")
 
   computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz
   expiresAt  DateTime @map("expires_at") @db.Timestamptz
@@ -588,6 +612,10 @@ model BriefingSummaryCache {
   /// invalidates every cached briefing summary on next visit — no
   /// manual cache flush needed when the prompt changes upstream.
   templateHash String? @map("template_hash")
+  /// Producing model, e.g. "ollama/qwen3.5:9b" (#1149). Without it a
+  /// LLM_MODEL swap makes every cached explanation unattributable.
+  llmProvider  String? @map("llm_provider") @db.VarChar(50)
+  llmModel     String? @map("llm_model") @db.VarChar(80)
   /// Active A/B-experiment variant for this user/language pair, if
   /// any. Reserved for future use; sibling caches use the same field.
   variantId    String? @map("variant_id") @db.VarChar(50)
@@ -1097,7 +1125,7 @@ model Proposition {
   /// Unique WITHIN a jurisdiction, not globally (#1164). Every county letters
   /// its measures A, B, C…, so a global unique made county B's "Measure A"
   /// upsert silently overwrite county A's row. See @@unique below.
-  externalId String @map("external_id")
+  externalId String  @map("external_id")
   title      String
   summary    String  @db.Text
   fullText   String? @map("full_text") @db.Text
@@ -1140,6 +1168,9 @@ model Proposition {
   analysisSource        String?   @map("analysis_source") @db.VarChar(20) /// 'ai-generated' | 'manual'
   /// SHA-256 of the prompt template text used for this run; used to detect stale analyses.
   analysisPromptHash    String?   @map("analysis_prompt_hash") @db.VarChar(64)
+  analysisPromptVersion String?   @map("analysis_prompt_version") @db.VarChar(20)
+  /// Model that produced the analysis (#1149).
+  analysisLlmModel      String?   @map("analysis_llm_model") @db.VarChar(80)
   analysisGeneratedAt   DateTime? @map("analysis_generated_at") @db.Timestamptz
   /// Why the last analysis attempt was refused, or NULL if none was. Vocabulary
   /// is owned by GenerationFailureReason in llm-generator.base.ts (#1085);
@@ -1576,12 +1607,17 @@ model Bill {
   /// Produced by the bill-analysis prompt-service endpoint and consumed by
   /// the ranking layer (#743) + the briefing feed UI (#744). Null when not
   /// yet enriched OR when the LLM emitted `{ skip: true }`.
-  aiSummary            Json?     @map("ai_summary") @db.JsonB
+  aiSummary              Json?     @map("ai_summary") @db.JsonB
   /// Bill-analysis prompt-template version at the time of generation,
   /// e.g. "v1". Re-enrichment fires when this differs from the currently-
   /// active prompt-service template version.
-  aiSummaryVersion     String?   @map("ai_summary_version") @db.VarChar(20)
-  aiSummaryGeneratedAt DateTime? @map("ai_summary_generated_at") @db.Timestamptz
+  aiSummaryVersion       String?   @map("ai_summary_version") @db.VarChar(20)
+  aiSummaryGeneratedAt   DateTime? @map("ai_summary_generated_at") @db.Timestamptz
+  /// Prompt + model that produced aiSummary (#1149). aiSummaryVersion is
+  /// a CONTENT version — not the prompt, and not the model that ran it.
+  aiSummaryPromptHash    String?   @map("ai_summary_prompt_hash") @db.VarChar(64)
+  aiSummaryPromptVersion String?   @map("ai_summary_prompt_version") @db.VarChar(20)
+  aiSummaryLlmModel      String?   @map("ai_summary_llm_model") @db.VarChar(80)
 
   /// Procedurally dead — vetoed without override, withdrawn, failed deadline,
   /// inactive file, failed passage, OR from a closed session that did not

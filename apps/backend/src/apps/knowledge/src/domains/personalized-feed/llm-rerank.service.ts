@@ -331,6 +331,7 @@ export class LlmRerankService {
         relevanceScore: candidate.relevanceScore,
         relevanceExplanation: acceptedExplanation,
         templateHash: llmResult.templateHash,
+        ...this.provenanceFor(llmResult.templateHash),
         tokensIn: llmResult.tokensIn,
         tokensOut: llmResult.tokensOut,
         expiresAt: expiryFor(acceptedExplanation, expiresAt),
@@ -348,6 +349,7 @@ export class LlmRerankService {
             relevanceScore: candidate.relevanceScore,
             relevanceExplanation: acceptedExplanation,
             templateHash: llmResult.templateHash,
+            ...this.provenanceFor(llmResult.templateHash),
             tokensIn: llmResult.tokensIn,
             tokensOut: llmResult.tokensOut,
             computedAt: new Date(),
@@ -546,6 +548,24 @@ export class LlmRerankService {
         .filter((r) => String(r.relevanceExplanation ?? '').trim().length > 0)
         .map((r) => String(r[idField])),
     );
+  }
+
+  /**
+   * Provenance for a cache row (#1149).
+   *
+   * Tied to `templateHash` on purpose: that value is null exactly when no
+   * generation happened (budget exhausted, LLM failure, model skip), and
+   * stamping a model onto a row nothing produced would be false attribution
+   * — the opposite of what these columns exist for. Null here means
+   * "unattributable", which for pre-#1149 rows is simply true.
+   */
+  private provenanceFor(templateHash: string | null): {
+    llmProvider: string | null;
+    llmModel: string | null;
+  } {
+    return templateHash === null
+      ? { llmProvider: null, llmModel: null }
+      : { llmProvider: this.llm.getName(), llmModel: this.llm.getModelName() };
   }
 
   private emptyResult() {
@@ -894,6 +914,7 @@ export class LlmRerankService {
         propositionId,
         relevanceExplanation: accepted,
         templateHash: result.templateHash,
+        ...this.provenanceFor(result.templateHash),
         tokensIn: result.tokensIn,
         tokensOut: result.tokensOut,
         expiresAt: expiryFor(accepted, expiresAt),
@@ -905,6 +926,7 @@ export class LlmRerankService {
         ? {
             relevanceExplanation: accepted,
             templateHash: result.templateHash,
+            ...this.provenanceFor(result.templateHash),
             tokensIn: result.tokensIn,
             tokensOut: result.tokensOut,
             computedAt: new Date(),
@@ -1012,6 +1034,7 @@ export class LlmRerankService {
         representativeId,
         relevanceExplanation: accepted,
         templateHash: result.templateHash,
+        ...this.provenanceFor(result.templateHash),
         tokensIn: result.tokensIn,
         tokensOut: result.tokensOut,
         expiresAt: expiryFor(accepted, expiresAt),
@@ -1023,6 +1046,7 @@ export class LlmRerankService {
         ? {
             relevanceExplanation: accepted,
             templateHash: result.templateHash,
+            ...this.provenanceFor(result.templateHash),
             tokensIn: result.tokensIn,
             tokensOut: result.tokensOut,
             computedAt: new Date(),
@@ -1125,6 +1149,7 @@ export class LlmRerankService {
         legislativeCommitteeId: candidate.legislativeCommitteeId,
         relevanceExplanation: accepted,
         templateHash: result.templateHash,
+        ...this.provenanceFor(result.templateHash),
         tokensIn: result.tokensIn,
         tokensOut: result.tokensOut,
         expiresAt: expiryFor(accepted, expiresAt),
@@ -1136,6 +1161,7 @@ export class LlmRerankService {
         ? {
             relevanceExplanation: accepted,
             templateHash: result.templateHash,
+            ...this.provenanceFor(result.templateHash),
             tokensIn: result.tokensIn,
             tokensOut: result.tokensOut,
             computedAt: new Date(),

@@ -169,6 +169,10 @@ describe('LlmRerankService', () => {
     });
     expect(call.create.relevanceExplanation).toBe('Caps rent costs in 94110.');
     expect(call.create.templateHash).toBe('h'.repeat(64));
+    // #1149: a row that records WHICH prompt must also record which model
+    // ran it, or a LLM_MODEL swap makes the cached text unattributable.
+    expect(call.create.llmProvider).toBe('mock');
+    expect(call.create.llmModel).toBe('mock');
     expect(call.create.tokensOut).toBe(42);
     expect(call.update.relevanceExplanation).toBe('Caps rent costs in 94110.');
   });
@@ -199,6 +203,10 @@ describe('LlmRerankService', () => {
     expect(call.create.relevanceExplanation).toBeNull();
     // Skip is still a successful LLM call — hash + tokens still recorded
     expect(call.create.templateHash).toBe('h'.repeat(64));
+    // #1149: a row that records WHICH prompt must also record which model
+    // ran it, or a LLM_MODEL swap makes the cached text unattributable.
+    expect(call.create.llmProvider).toBe('mock');
+    expect(call.create.llmModel).toBe('mock');
     expect(call.create.tokensOut).toBe(10);
   });
 
@@ -248,6 +256,10 @@ describe('LlmRerankService', () => {
       .calls[0][0];
     expect(call.create.relevanceExplanation).toBeNull();
     expect(call.create.templateHash).toBeNull();
+    // #1149: nothing ran, so nothing is attributed. Stamping a model here
+    // would be false attribution — the opposite of what these columns are for.
+    expect(call.create.llmProvider).toBeNull();
+    expect(call.create.llmModel).toBeNull();
   });
 
   it('passes the TRUE-only RankingFlags list into the prompt-client params', async () => {
@@ -310,6 +322,10 @@ describe('LlmRerankService', () => {
     // The hash + tokens are still recorded — the LLM call succeeded;
     // it's the explanation that got dropped.
     expect(call.create.templateHash).toBe('h'.repeat(64));
+    // #1149: a row that records WHICH prompt must also record which model
+    // ran it, or a LLM_MODEL swap makes the cached text unattributable.
+    expect(call.create.llmProvider).toBe('mock');
+    expect(call.create.llmModel).toBe('mock');
     expect(call.create.tokensOut).toBe(12);
   });
 
@@ -332,6 +348,10 @@ describe('LlmRerankService', () => {
       .calls[0][0];
     expect(call.create.relevanceExplanation).toBeNull();
     expect(call.create.templateHash).toBeNull();
+    // #1149: nothing ran, so nothing is attributed. Stamping a model here
+    // would be false attribution — the opposite of what these columns are for.
+    expect(call.create.llmProvider).toBeNull();
+    expect(call.create.llmModel).toBeNull();
   });
 
   it('skips bills with no aiSummary on the bill row', async () => {
