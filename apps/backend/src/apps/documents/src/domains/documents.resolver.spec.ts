@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 
 import { DocumentsResolver } from './documents.resolver';
+import { AUDIT_METADATA_KEY } from 'src/common/decorators/audit.decorator';
+import { AuditAction } from 'src/common/enums/audit-action.enum';
 import { File } from './models/file.model';
 import { DocumentStatus } from 'src/common/enums/document.status.enum';
 import { SubmitAbuseReportInput } from './dto/abuse-report.dto';
@@ -627,5 +629,39 @@ describe('DocumentsResolver', () => {
         'prop-1',
       );
     });
+  });
+});
+
+/**
+ * #1210 — audit entityType metadata guard.
+ *
+ * Six of eight documents mutations use verbs the interceptor's
+ * ENTITY_PATTERN does not recognise (process/analyze/link/submit/extract),
+ * so without explicit @Audit metadata their audit rows carry no entityType
+ * and the (entityType, entityId) index cannot answer "show me this
+ * document's history". This reads the decorator metadata straight off the
+ * resolver methods, so deleting a decorator fails here rather than as a
+ * silent null in audit_logs.
+ */
+describe('audit entityType metadata (#1210)', () => {
+  const metadataOf = (method: string) =>
+    Reflect.getMetadata(
+      AUDIT_METADATA_KEY,
+      DocumentsResolver.prototype[method as keyof DocumentsResolver],
+    );
+
+  it.each([
+    'processScan',
+    'extractTextFromFile',
+    'analyzeDocument',
+    'submitAbuseReport',
+    'linkDocumentToProposition',
+    'unlinkDocumentFromProposition',
+  ])('%s declares entityType Document', (method) => {
+    expect(metadataOf(method)).toMatchObject({ entityType: 'Document' });
+  });
+
+  it('processScan records CREATE — it mints the document it audits', () => {
+    expect(metadataOf('processScan').action).toBe(AuditAction.CREATE);
   });
 });
