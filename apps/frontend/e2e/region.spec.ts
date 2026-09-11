@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { checkAccessibility } from "./utils/test-helpers";
 
 // Mock data for region tests
 const mockRegionInfo = {
@@ -537,15 +537,6 @@ async function mockRegionGraphQL(page: import("@playwright/test").Page) {
       body: JSON.stringify({ data: data ?? {} }),
     });
   });
-}
-
-// Helper to check accessibility
-async function checkAccessibility(page: import("@playwright/test").Page) {
-  const accessibilityScanResults = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-
-  return accessibilityScanResults.violations;
 }
 
 test.describe("Region Page", () => {
@@ -1485,6 +1476,55 @@ test.describe("Region Pages - Accessibility", () => {
       .click();
     await expect(page.getByText("Committee Assignments")).toBeVisible();
     await page.waitForTimeout(400);
+
+    const violations = await checkAccessibility(page);
+    expect(violations).toEqual([]);
+  });
+
+  // Regression for #1213. The sticky breadcrumb bar used to be translucent
+  // (bg-surface/85 + backdrop-blur), which left it with no fixed background
+  // colour — its effective one was whatever had scrolled behind it. At the
+  // foot of the Layer 2 page dark content sits under the bar and its links
+  // measured 3.78:1. That is what the intermittent Layer 2 failure was: the
+  // layer switch shortens the document, so the browser clamps the scroll
+  // offset, and whether the clamp lands on the bottom depends on how much
+  // async content has loaded by then.
+  test("breadcrumb bar keeps contrast at the foot of the page", async ({
+    page,
+  }) => {
+    await page.goto("/region/representatives/1");
+    await page
+      .getByRole("button", { name: "What They Care About" })
+      .last()
+      .click();
+    await expect(page.getByText("Committee Assignments")).toBeVisible();
+    // The layer fades in over 250ms and axe blends a text node's foreground
+    // against its ancestors' opacity, so scanning mid-fade measures washed-out
+    // text. Wait the fade out rather than guessing at a timeout.
+    await page.evaluate(() =>
+      Promise.all(
+        Array.from(document.querySelectorAll(".animate-layer-enter")).flatMap(
+          (el) => el.getAnimations().map((a) => a.finished.catch(() => null)),
+        ),
+      ),
+    );
+
+    await page.evaluate(() =>
+      window.scrollTo({
+        top: document.documentElement.scrollHeight,
+        behavior: "instant",
+      }),
+    );
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            window.scrollY +
+            window.innerHeight -
+            document.documentElement.scrollHeight,
+        ),
+      )
+      .toBeGreaterThan(-2);
 
     const violations = await checkAccessibility(page);
     expect(violations).toEqual([]);

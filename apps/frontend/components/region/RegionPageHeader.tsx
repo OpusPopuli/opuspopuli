@@ -54,7 +54,9 @@ export function RegionPageHeader({
 }: RegionPageHeaderProps) {
   return (
     <>
-      <div className="sticky top-[var(--op-header-h)] z-30 border-b border-line bg-surface/85 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-surface/75">
+      {/* Opaque: a translucent bar's effective background is whatever scrolls
+          behind it, so the breadcrumb links cannot be held to 4.5:1 — #1213. */}
+      <div className="sticky top-[var(--op-header-h)] z-30 border-b border-line bg-surface py-3">
         <Breadcrumb segments={segments} />
       </div>
 
