@@ -183,7 +183,7 @@ EMBEDDINGS_XENOVA_MODEL=Xenova/all-MiniLM-L6-v2
 # Ollama (GPU-accelerated)
 EMBEDDINGS_PROVIDER=ollama
 EMBEDDINGS_OLLAMA_URL=http://localhost:11434
-EMBEDDINGS_OLLAMA_MODEL=nomic-embed-text
+EMBEDDINGS_OLLAMA_MODEL=nomic-embed-text-v2-moe:latest
 ```
 
 **Module**: `EmbeddingsModule`
