@@ -13,6 +13,8 @@ import { User } from './models/user.model';
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import { Permissions } from 'src/common/decorators/permissions.decorator';
+import { Audit } from 'src/common/decorators/audit.decorator';
+import { AuditAction } from 'src/common/enums/audit-action.enum';
 import { Action } from 'src/common/enums/action.enum';
 import {
   GqlContext,
@@ -147,6 +149,8 @@ export class DocumentsResolver {
   @UseGuards(AuthGuard)
   @Permissions({ action: Action.Create, subject: 'File' })
   @Extensions({ complexity: 75 }) // Storage upload + OCR
+  // #1210: verb inference yields neither action nor type for `process*`.
+  @Audit({ action: AuditAction.CREATE, entityType: 'Document' })
   async processScan(
     @Args('input') input: ProcessScanInput,
     @Context() context: GqlContext,
@@ -172,6 +176,8 @@ export class DocumentsResolver {
   @UseGuards(AuthGuard)
   @Permissions({ action: Action.Update, subject: 'File' })
   @Extensions({ complexity: 50 }) // OCR is computationally expensive
+  // #1210: inference would yield `TextFromFile` — a type matching nothing.
+  @Audit({ entityType: 'Document' })
   async extractTextFromFile(
     @Args('input') input: ExtractTextFromFileInput,
     @Context() context: GqlContext,
@@ -207,6 +213,7 @@ export class DocumentsResolver {
   @UseGuards(AuthGuard)
   @Permissions({ action: Action.Update, subject: 'File' })
   @Extensions({ complexity: 100 }) // LLM inference is expensive
+  @Audit({ entityType: 'Document' })
   async analyzeDocument(
     @Args('input') input: AnalyzeDocumentInput,
     @Context() context: GqlContext,
@@ -327,6 +334,13 @@ export class DocumentsResolver {
   @Mutation(() => SubmitAbuseReportResult)
   @UseGuards(AuthGuard)
   @Permissions({ action: Action.Create, subject: 'File' })
+  // #1210: typed as Document, not AbuseReport — the input's only id is the
+  // documentId (#1151 resolves it), and a row typed AbuseReport carrying a
+  // Document id would be attributed to the wrong entity. Document-typed, the
+  // row lands in "show me this document's history", which is the query the
+  // (entityType, entityId) index exists for; resolverName still says
+  // submitAbuseReport.
+  @Audit({ entityType: 'Document' })
   async submitAbuseReport(
     @Args('input') input: SubmitAbuseReportInput,
     @Context() context: GqlContext,
@@ -450,6 +464,9 @@ export class DocumentsResolver {
   @Mutation(() => LinkDocumentResult)
   @UseGuards(AuthGuard)
   @Permissions({ action: Action.Update, subject: 'File' })
+  // #1210: inference yields the compound `DocumentToProposition`. The
+  // document is the subject (INPUT_ID_KEYS resolves documentId first).
+  @Audit({ entityType: 'Document' })
   async linkDocumentToProposition(
     @Args('input') input: LinkDocumentToPropositionInput,
     @Context() context: GqlContext,
@@ -468,6 +485,7 @@ export class DocumentsResolver {
   @Mutation(() => Boolean)
   @UseGuards(AuthGuard)
   @Permissions({ action: Action.Update, subject: 'File' })
+  @Audit({ entityType: 'Document' })
   async unlinkDocumentFromProposition(
     @Args('input') input: UnlinkDocumentFromPropositionInput,
     @Context() context: GqlContext,

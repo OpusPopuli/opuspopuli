@@ -2,7 +2,13 @@ import { SetMetadata } from '@nestjs/common';
 import { AuditAction } from '../enums/audit-action.enum';
 
 export interface AuditMetadata {
-  action: AuditAction;
+  /**
+   * Optional (#1210): the interceptor falls back to verb inference when
+   * absent, so a resolver can pin just the entityType — the field verb
+   * inference gets wrong far more often than the action (it produced
+   * `TextFromFile` and undefined for six of eight documents mutations).
+   */
+  action?: AuditAction;
   entityType?: string;
   entityIdArg?: string; // Name of the arg containing entity ID
   skipAudit?: boolean;
