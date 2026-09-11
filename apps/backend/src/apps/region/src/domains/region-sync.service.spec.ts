@@ -1799,7 +1799,7 @@ describe('RegionSyncService', () => {
       type WriteFn = (
         bill: ReturnType<typeof mkBill>,
         parsed: Record<string, unknown>,
-        promptVersion: string,
+        prompt: { promptVersion: string; promptHash: string },
         stagePatterns: typeof STAGE_PATTERNS,
         stageIdSet: Set<string>,
       ) => Promise<void>;
@@ -1818,7 +1818,7 @@ describe('RegionSyncService', () => {
         await writeStatusSummary(service)(
           mkBill(),
           { skip: true },
-          'v3',
+          { promptVersion: 'v3', promptHash: 'sha-v3' },
           STAGE_PATTERNS,
           STAGE_ID_SET,
         );
@@ -1830,6 +1830,10 @@ describe('RegionSyncService', () => {
           data: expect.objectContaining({
             aiSummary: { skip: true },
             aiSummaryVersion: 'v3',
+            // #1149 — the sentinel carries attribution too: "this
+            // prompt+model decided to skip" is a provenance fact.
+            aiSummaryPromptVersion: 'v3',
+            aiSummaryPromptHash: 'sha-v3',
           }),
         });
         // Bill-state columns left untouched.
@@ -1861,7 +1865,7 @@ describe('RegionSyncService', () => {
               stakeholderImpact: 'Homeowners benefit.',
             },
           },
-          'v4',
+          { promptVersion: 'v4', promptHash: 'sha-v4' },
           STAGE_PATTERNS,
           STAGE_ID_SET,
         );
@@ -1877,6 +1881,8 @@ describe('RegionSyncService', () => {
             stakeholderImpact: 'Homeowners benefit.',
           },
           aiSummaryVersion: 'v4',
+          aiSummaryPromptVersion: 'v4',
+          aiSummaryPromptHash: 'sha-v4',
           status: 'Senate - Held in Committee',
           // S-2: lastActionSnippet flows into bills.lastAction so the
           // bill-extraction view and the merged-call view stay in sync.
@@ -1913,7 +1919,7 @@ describe('RegionSyncService', () => {
             },
             summary: { plainEnglishSummary: '...' },
           },
-          'v1',
+          { promptVersion: 'v1', promptHash: 'sha-v1' },
           STAGE_PATTERNS,
           STAGE_ID_SET,
         );
@@ -1941,7 +1947,7 @@ describe('RegionSyncService', () => {
             },
             summary: { plainEnglishSummary: '...' },
           },
-          'v1',
+          { promptVersion: 'v1', promptHash: 'sha-v1' },
           STAGE_PATTERNS,
           STAGE_ID_SET,
         );
@@ -1970,7 +1976,7 @@ describe('RegionSyncService', () => {
             },
             summary: { plainEnglishSummary: '...' },
           },
-          'v1',
+          { promptVersion: 'v1', promptHash: 'sha-v1' },
           STAGE_PATTERNS,
           STAGE_ID_SET,
         );

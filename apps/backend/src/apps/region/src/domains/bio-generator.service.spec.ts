@@ -41,6 +41,7 @@ describe('BioGeneratorService', () => {
     });
 
     const mockLlm = {
+      getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
       generate: jest.fn(),
     } as unknown as jest.Mocked<ILLMProvider>;
 
@@ -139,6 +140,10 @@ describe('BioGeneratorService', () => {
           data: expect.objectContaining({
             bio: 'Jane Smith represents District 5 in the California Senate.',
             bioSource: 'ai-generated',
+            // #1149 — the attribution triple rides the same write.
+            bioPromptHash: 'hash',
+            bioPromptVersion: '1.0.0',
+            bioLlmModel: 'qwen-test:9b',
           }),
         }),
       );

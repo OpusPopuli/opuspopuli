@@ -7,7 +7,7 @@ import {
 } from '@opuspopuli/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
-import { LlmGeneratorBase } from './llm-generator.base';
+import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
 
 /**
  * Generates AI bios for representatives that lack a scraped biography.
@@ -142,14 +142,14 @@ export class BioGeneratorService extends LlmGeneratorBase {
    */
   private async tryGenerateBio(rep: Representative): Promise<boolean> {
     try {
-      const parsed = await this.generateBio(rep);
-      if (parsed?.bio) {
-        rep.bio = parsed.bio;
+      const generated = await this.generateBio(rep);
+      if (generated?.parsed.bio) {
+        rep.bio = generated.parsed.bio;
         rep.bioSource = 'ai-generated';
         // Persist the full claims array (#602). Undefined on tier-2
         // salvage since only the bio string survived parsing.
-        rep.bioClaims = parsed.claims;
-        await this.persistBio(rep);
+        rep.bioClaims = generated.parsed.claims;
+        await this.persistBio(rep, generated.provenance);
         return true;
       }
     } catch (error) {
@@ -169,7 +169,10 @@ export class BioGeneratorService extends LlmGeneratorBase {
    * only in memory and discarded (the whole reps sync produced 0 persisted
    * bios). See #881.
    */
-  private async persistBio(rep: Representative): Promise<void> {
+  private async persistBio(
+    rep: Representative,
+    provenance: AiOutputProvenance,
+  ): Promise<void> {
     if (!this.db) {
       this.logger.warn(
         `No DbService available — generated bio for ${rep.name} not persisted`,
@@ -184,6 +187,9 @@ export class BioGeneratorService extends LlmGeneratorBase {
         ...(rep.bioClaims
           ? { bioClaims: rep.bioClaims as unknown as Prisma.InputJsonValue }
           : {}),
+        bioPromptHash: provenance.promptHash,
+        bioPromptVersion: provenance.promptVersion,
+        bioLlmModel: provenance.llmModel,
       },
     });
   }
@@ -193,13 +199,18 @@ export class BioGeneratorService extends LlmGeneratorBase {
    */
   private async generateBio(
     rep: Representative,
-  ): Promise<BioResponse | undefined> {
+  ): Promise<
+    { parsed: BioResponse; provenance: AiOutputProvenance } | undefined
+  > {
     const structuredText = this.formatRepData(rep);
 
-    const { promptText } = await this.promptClient!.getDocumentAnalysisPrompt({
+    // Full destructure on purpose (#1149): dropping hash/version here is
+    // what left every persisted bio unattributable.
+    const prompt = await this.promptClient!.getDocumentAnalysisPrompt({
       documentType: 'representative-bio',
       text: structuredText,
     });
+    const { promptText } = prompt;
 
     const result = await this.llm!.generate(promptText, {
       maxTokens: this.maxTokens,
@@ -207,10 +218,9 @@ export class BioGeneratorService extends LlmGeneratorBase {
     });
 
     const parsed = this.parseBioFromResponse(result.text);
-    if (parsed) {
-      this.logClaimsSummary(rep, parsed);
-    }
-    return parsed;
+    if (!parsed) return undefined;
+    this.logClaimsSummary(rep, parsed);
+    return { parsed, provenance: this.outputProvenance(prompt) };
   }
 
   /**

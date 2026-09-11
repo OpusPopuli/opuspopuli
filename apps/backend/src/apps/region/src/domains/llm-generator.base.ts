@@ -44,6 +44,23 @@ export interface GenerationFailure {
   readonly detail?: string;
 }
 
+/**
+ * The attribution triple every persisted AI output must carry (#1149).
+ *
+ * `CivicsBlock` is the reference pattern: `promptHash` + `promptVersion`
+ * name the exact published prompt (the #1143 attestation chain), `llmModel`
+ * names what ran it. Field names here are generic; each writer maps them
+ * onto its own prefixed columns (`bio_prompt_hash`, `summary_prompt_hash`,
+ * …) because a table carrying several AI outputs needs to say WHICH output
+ * a hash attributes.
+ */
+export interface AiOutputProvenance {
+  readonly promptHash: string;
+  readonly promptVersion: string;
+  /** Bare model name from `getModelName()` — the CivicsBlock convention. */
+  readonly llmModel: string | null;
+}
+
 export abstract class LlmGeneratorBase {
   constructor(
     @Optional() protected readonly config?: ConfigService,
@@ -79,5 +96,24 @@ export abstract class LlmGeneratorBase {
     }
     if (failure.detail) parts.push(`detail=${failure.detail}`);
     return `Generation failed for ${subject}: ${parts.join(' ')}`;
+  }
+
+  /**
+   * Capture provenance at the prompt-fetch site (#1149).
+   *
+   * Exists so a generator cannot destructure `{ promptText }` and silently
+   * discard the attribution the prompt client already returned — the exact
+   * failure this primitive retrofits away. Call it with the full prompt
+   * response; thread the result to the persist call.
+   */
+  protected outputProvenance(prompt: {
+    promptHash: string;
+    promptVersion: string;
+  }): AiOutputProvenance {
+    return {
+      promptHash: prompt.promptHash,
+      promptVersion: prompt.promptVersion,
+      llmModel: this.llm?.getModelName() ?? null,
+    };
   }
 }

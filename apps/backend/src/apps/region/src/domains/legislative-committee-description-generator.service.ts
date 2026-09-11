@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { extractFieldString, extractJsonObjectSlice } from '@opuspopuli/common';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
-import { LlmGeneratorBase } from './llm-generator.base';
+import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
 
 /** Minimal shape of a committee row needed to render a description prompt. */
 interface CommitteeForDescription {
@@ -96,11 +96,16 @@ export class LegislativeCommitteeDescriptionGeneratorService extends LlmGenerato
     committee: CommitteeForDescription,
   ): Promise<boolean> {
     try {
-      const description = await this.generateDescription(committee);
-      if (!description) return false;
+      const generated = await this.generateDescription(committee);
+      if (!generated) return false;
       await this.db!.legislativeCommittee.update({
         where: { id: committee.id },
-        data: { description },
+        data: {
+          description: generated.description,
+          descriptionPromptHash: generated.provenance.promptHash,
+          descriptionPromptVersion: generated.provenance.promptVersion,
+          descriptionLlmModel: generated.provenance.llmModel,
+        },
       });
       return true;
     } catch (error) {
@@ -113,20 +118,25 @@ export class LegislativeCommitteeDescriptionGeneratorService extends LlmGenerato
 
   private async generateDescription(
     committee: CommitteeForDescription,
-  ): Promise<string | undefined> {
+  ): Promise<
+    { description: string; provenance: AiOutputProvenance } | undefined
+  > {
     const structuredText = this.formatCommitteeData(committee);
 
-    const { promptText } = await this.promptClient!.getDocumentAnalysisPrompt({
+    const prompt = await this.promptClient!.getDocumentAnalysisPrompt({
       documentType: 'legislative-committee-description',
       text: structuredText,
     });
+    const { promptText } = prompt;
 
     const result = await this.llm!.generate(promptText, {
       maxTokens: this.maxTokens,
       temperature: 0.2,
     });
 
-    return this.parseDescriptionFromResponse(result.text);
+    const description = this.parseDescriptionFromResponse(result.text);
+    if (!description) return undefined;
+    return { description, provenance: this.outputProvenance(prompt) };
   }
 
   /**

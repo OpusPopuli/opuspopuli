@@ -1018,33 +1018,42 @@ model AbuseReport {
 // ============================================
 
 model Representative {
-  id                         String    @id @default(uuid())
-  externalId                 String    @unique @map("external_id")
-  regionId                   String    @default("california") @map("region_id") @db.VarChar(100) /// e.g. "california", "california-sonoma", "federal"
-  name                       String
-  lastName                   String    @default("") @map("last_name") /// derived from `name`, used for alphabetical sorting
-  chamber                    String
-  district                   String
-  party                      String?
-  photoUrl                   String?   @map("photo_url")
-  contactInfo                Json?     @map("contact_info")
-  committees                 Json?     @map("committees") /// CommitteeAssignment[] as JSON — canonical source for the LegislativeCommittee backfill
-  committeesSummary          String?   @map("committees_summary") @db.Text /// AI-generated preamble describing the policy areas touched by committee assignments
-  bio                        String?   @db.Text
-  bioSource                  String?   @map("bio_source") @db.VarChar(20) /// 'scraped' | 'ai-generated'
-  bioClaims                  Json?     @map("bio_claims") /// BioClaim[] — per-sentence attribution for ai-generated bios
+  id                             String    @id @default(uuid())
+  externalId                     String    @unique @map("external_id")
+  regionId                       String    @default("california") @map("region_id") @db.VarChar(100) /// e.g. "california", "california-sonoma", "federal"
+  name                           String
+  lastName                       String    @default("") @map("last_name") /// derived from `name`, used for alphabetical sorting
+  chamber                        String
+  district                       String
+  party                          String?
+  photoUrl                       String?   @map("photo_url")
+  contactInfo                    Json?     @map("contact_info")
+  committees                     Json?     @map("committees") /// CommitteeAssignment[] as JSON — canonical source for the LegislativeCommittee backfill
+  committeesSummary              String?   @map("committees_summary") @db.Text /// AI-generated preamble describing the policy areas touched by committee assignments
+  bio                            String?   @db.Text
+  bioSource                      String?   @map("bio_source") @db.VarChar(20) /// 'scraped' | 'ai-generated'
+  bioClaims                      Json?     @map("bio_claims") /// BioClaim[] — per-sentence attribution for ai-generated bios
+  bioPromptHash                  String?   @map("bio_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `bio`
+  bioPromptVersion               String?   @map("bio_prompt_version") @db.VarChar(20)
+  bioLlmModel                    String?   @map("bio_llm_model") @db.VarChar(80)
+  committeesSummaryPromptHash    String?   @map("committees_summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `committeesSummary`
+  committeesSummaryPromptVersion String?   @map("committees_summary_prompt_version") @db.VarChar(20)
+  committeesSummaryLlmModel      String?   @map("committees_summary_llm_model") @db.VarChar(80)
   /// AI-generated 2-3 sentence summary of recent legislative activity
   /// (presence + amendments + hearings + reports linked to this rep).
   /// Refreshed by run-generate-activity-summaries when new minutes
   /// ingest. Issue #665.
-  activitySummary            String?   @map("activity_summary") @db.Text
-  activitySummaryGeneratedAt DateTime? @map("activity_summary_generated_at") @db.Timestamptz
+  activitySummary                String?   @map("activity_summary") @db.Text
+  activitySummaryGeneratedAt     DateTime? @map("activity_summary_generated_at") @db.Timestamptz
   /// Window the summary covers, in days. Default 90 to match the L3
   /// stats counters; overridable per-call.
-  activitySummaryWindowDays  Int?      @map("activity_summary_window_days")
-  createdAt                  DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt                  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt                  DateTime? @map("deleted_at") @db.Timestamptz
+  activitySummaryWindowDays      Int?      @map("activity_summary_window_days")
+  activitySummaryPromptHash      String?   @map("activity_summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `activitySummary`
+  activitySummaryPromptVersion   String?   @map("activity_summary_prompt_version") @db.VarChar(20)
+  activitySummaryLlmModel        String?   @map("activity_summary_llm_model") @db.VarChar(80)
+  createdAt                      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                      DateTime? @map("deleted_at") @db.Timestamptz
 
   committeeAssignments RepresentativeCommitteeAssignment[]
   legislativeActions   LegislativeAction[]
@@ -1068,24 +1077,30 @@ model Representative {
 /// service. NOT a campaign-finance committee — that's the separate `Committee`
 /// model. See ROADMAP issue for the eventual `Committee` → `FinanceCommittee` rename.
 model LegislativeCommittee {
-  id                         String    @id @default(uuid())
-  externalId                 String    @unique @map("external_id") /// `<chamber-lowercased>:<normalized-name>` e.g. "assembly:budget"
-  name                       String /// Display name as scraped (e.g. "Budget")
-  chamber                    String    @db.VarChar(20) /// "Assembly" | "Senate"
-  url                        String? /// Optional canonical official link (when present in source data)
+  id                           String    @id @default(uuid())
+  externalId                   String    @unique @map("external_id") /// `<chamber-lowercased>:<normalized-name>` e.g. "assembly:budget"
+  name                         String /// Display name as scraped (e.g. "Budget")
+  chamber                      String    @db.VarChar(20) /// "Assembly" | "Senate"
+  url                          String? /// Optional canonical official link (when present in source data)
   /// AI-generated description placeholder for Phase 2 — kept nullable so the
   /// column ships now and a future analyzer can populate later.
-  description                String?   @db.Text
+  description                  String?   @db.Text
+  descriptionPromptHash        String?   @map("description_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `description`
+  descriptionPromptVersion     String?   @map("description_prompt_version") @db.VarChar(20)
+  descriptionLlmModel          String?   @map("description_llm_model") @db.VarChar(80)
   /// AI-generated 2-3 sentence summary of recent committee activity
   /// (hearings, bill reports, amendments). Refreshed by
   /// run-generate-activity-summaries when new minutes ingest.
   /// Issue #665.
-  activitySummary            String?   @map("activity_summary") @db.Text
-  activitySummaryGeneratedAt DateTime? @map("activity_summary_generated_at") @db.Timestamptz
-  activitySummaryWindowDays  Int?      @map("activity_summary_window_days")
-  createdAt                  DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt                  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt                  DateTime? @map("deleted_at") @db.Timestamptz
+  activitySummary              String?   @map("activity_summary") @db.Text
+  activitySummaryGeneratedAt   DateTime? @map("activity_summary_generated_at") @db.Timestamptz
+  activitySummaryWindowDays    Int?      @map("activity_summary_window_days")
+  activitySummaryPromptHash    String?   @map("activity_summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `activitySummary`
+  activitySummaryPromptVersion String?   @map("activity_summary_prompt_version") @db.VarChar(20)
+  activitySummaryLlmModel      String?   @map("activity_summary_llm_model") @db.VarChar(80)
+  createdAt                    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                    DateTime? @map("deleted_at") @db.Timestamptz
 
   assignments        RepresentativeCommitteeAssignment[]
   legislativeActions LegislativeAction[]
@@ -1236,42 +1251,45 @@ model Proposition {
 /// against the active revision; superseded rows stay in-place for
 /// audit but UI queries should filter `minutes.isActive = true`.
 model Minutes {
-  id            String    @id @default(uuid())
+  id                   String    @id @default(uuid())
   /// `${region}-${body-lowercase}-${YYYY-MM-DD}` for chamber-wide r0;
   /// `${region}-${body-lowercase}-${committee-slug}-${YYYY-MM-DD}` for
   /// per-committee minutes; suffixed `-r${n}` for revisions.
-  externalId    String    @unique @map("external_id")
-  body          String    @db.VarChar(20)
-  date          DateTime  @db.Date
+  externalId           String    @unique @map("external_id")
+  body                 String    @db.VarChar(20)
+  date                 DateTime  @db.Date
   /// Revision sequence: 0 for the original publication, 1+ for
   /// re-issues. Combined with (body, date, committeeId) gives a stable
   /// natural key.
-  revisionSeq   Int       @default(0) @map("revision_seq")
+  revisionSeq          Int       @default(0) @map("revision_seq")
   /// True for the canonical-current version; false for superseded
   /// predecessors. UI queries filter on this.
-  isActive      Boolean   @default(true) @map("is_active")
+  isActive             Boolean   @default(true) @map("is_active")
   /// Set when the document is a single-committee minutes. Null for
   /// chamber-wide daily journals.
-  committeeId   String?   @map("committee_id")
+  committeeId          String?   @map("committee_id")
   /// Set when this minutes record corresponds to a specific scheduled
   /// meeting. Null when the source PDF doesn't map to a calendared
   /// meeting.
-  meetingId     String?   @map("meeting_id")
-  pageCount     Int?      @map("page_count")
-  sourceUrl     String    @map("source_url")
+  meetingId            String?   @map("meeting_id")
+  pageCount            Int?      @map("page_count")
+  sourceUrl            String    @map("source_url")
   /// Full pdf-parse output. Capped at ~256kB at write time; longer
   /// documents are truncated. Used by downstream passes (linker, AI
   /// summarization) so they can be re-run without re-fetching the PDF.
-  rawText       String?   @map("raw_text") @db.Text
+  rawText              String?   @map("raw_text") @db.Text
   /// V2: AI-generated plain-language summary. Reserved column.
-  summary       String?   @db.Text
+  summary              String?   @db.Text
   /// V2: per-claim attribution into rawText for citizen-facing
   /// "letter to representative with quote" features. Mirrors the
   /// PropositionAnalysisClaim shape (sourceStart/sourceEnd offsets).
-  summaryClaims Json?     @map("summary_claims")
-  parsedAt      DateTime? @map("parsed_at") @db.Timestamptz
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  summaryClaims        Json?     @map("summary_claims")
+  summaryPromptHash    String?   @map("summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `summary`
+  summaryPromptVersion String?   @map("summary_prompt_version") @db.VarChar(20)
+  summaryLlmModel      String?   @map("summary_llm_model") @db.VarChar(80)
+  parsedAt             DateTime? @map("parsed_at") @db.Timestamptz
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   committee LegislativeCommittee? @relation(fields: [committeeId], references: [id], onDelete: SetNull)
   meeting   Meeting?              @relation(fields: [meetingId], references: [id], onDelete: SetNull)
