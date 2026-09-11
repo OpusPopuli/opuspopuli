@@ -10,11 +10,22 @@
  * Bump the version suffix whenever a non-backward-compatible schema change
  * ships, so existing clients drop stale entries on next load rather than
  * serving them while the network result arrives. See #747.
+ *
+ * v3 (#1216): v1.12.0 deleted five GraphQL documents and rebuilt /region
+ * around jurisdictions WITHOUT bumping this key — returning browsers
+ * restored a pre-v1.12.0 cache blob into the new client and hung, while
+ * fresh profiles (and phones) were fine. The bump is the whole fix: the
+ * legacy purge below self-heals every returning client on next load.
+ * The lesson is procedural, not mechanical — a release that changes the
+ * GraphQL document set must bump this key in the same PR.
  */
-export const APOLLO_CACHE_KEY = "apollo-cache-persist-v2";
+export const APOLLO_CACHE_KEY = "apollo-cache-persist-v3";
 
 /** Superseded keys, removed on boot so they cannot accumulate. */
-export const LEGACY_APOLLO_CACHE_KEYS = ["apollo-cache-persist"];
+export const LEGACY_APOLLO_CACHE_KEYS = [
+  "apollo-cache-persist",
+  "apollo-cache-persist-v2",
+];
 
 /**
  * Drop the persisted cache from storage.
