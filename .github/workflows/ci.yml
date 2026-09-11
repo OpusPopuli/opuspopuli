@@ -203,10 +203,24 @@ jobs:
       - name: Build frontend
         run: pnpm --filter frontend build
 
-  # Compute the E2E shard matrix: the full browser matrix on main is split
-  # across 4 parallel shards (Playwright --shard) so it finishes well under the
-  # timeout; PRs run a single Chromium shard. Previously the un-sharded full
-  # matrix on main cancelled at the 45m job timeout on every release.
+  # Compute the E2E shard matrix.
+  #
+  # main: the full six-projection matrix, split across 4 parallel shards
+  # (Playwright --shard) so it finishes well under the timeout. Previously the
+  # un-sharded full matrix cancelled at the 45m job timeout on every release.
+  #
+  # PRs: chromium + mobile-chrome across 2 shards (#1218). Chromium-only was
+  # the gap that let #1169 through — its mobile regression was structurally
+  # undiscoverable before merge, so it landed and held main red for 14
+  # consecutive runs, and v1.21.0 shipped from that state. One mobile
+  # projection catches that class; splitting across 2 shards keeps PR
+  # wall-clock roughly flat rather than doubling it.
+  #
+  # Deliberately NOT the full matrix on PRs: webkit/firefox/tablet need their
+  # own browser downloads and runner time for a much thinner slice of real
+  # regressions. mobile-chrome reuses the chromium binary. The residue —
+  # webkit-only failures, e.g. the mobile-safari a11y race in #1213 — is
+  # still main-only, and that is a conscious trade, not an oversight.
   e2e-shards:
     name: Compute E2E shard matrix
     runs-on: ubuntu-latest
@@ -215,14 +229,14 @@ jobs:
       total: ${{ steps.set.outputs.total }}
     steps:
       - id: set
-        name: Select shard count (full matrix on main, single on PRs)
+        name: Select shard count (full matrix on main, chromium+mobile on PRs)
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo 'shards=[1,2,3,4]' >> "$GITHUB_OUTPUT"
             echo 'total=4' >> "$GITHUB_OUTPUT"
           else
-            echo 'shards=[1]' >> "$GITHUB_OUTPUT"
-            echo 'total=1' >> "$GITHUB_OUTPUT"
+            echo 'shards=[1,2]' >> "$GITHUB_OUTPUT"
+            echo 'total=2' >> "$GITHUB_OUTPUT"
           fi
 
   e2e:
@@ -407,12 +421,16 @@ jobs:
 
       - name: Run E2E tests
         run: |
-          # Full browser matrix on main (sharded across parallel jobs),
-          # Chromium only on PRs (single shard).
+          # Full browser matrix on main; chromium + mobile-chrome on PRs
+          # (#1218). Both sharded — see the e2e-shards comment for why the
+          # PR set is two projections rather than one or six.
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             pnpm --filter frontend e2e --shard=${{ matrix.shard }}/${{ needs.e2e-shards.outputs.total }}
           else
-            pnpm --filter frontend e2e --project=chromium
+            pnpm --filter frontend e2e \
+              --project=chromium \
+              --project=mobile-chrome \
+              --shard=${{ matrix.shard }}/${{ needs.e2e-shards.outputs.total }}
           fi
 
       - name: Show backend logs on failure
