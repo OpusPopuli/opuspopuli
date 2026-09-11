@@ -5,7 +5,7 @@ import {
   type CommitteeAssignment,
 } from '@opuspopuli/common';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
-import { LlmGeneratorBase } from './llm-generator.base';
+import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
 
 /** Minimal shape of a representative needed to render a committee summary. */
 interface RepForSummary {
@@ -130,11 +130,16 @@ export class CommitteeSummaryGeneratorService extends LlmGeneratorBase {
   /** Generate + persist a summary for one rep; swallow errors. */
   private async tryGenerateAndPersist(rep: RepForSummary): Promise<boolean> {
     try {
-      const summary = await this.generateSummary(rep);
-      if (!summary) return false;
+      const generated = await this.generateSummary(rep);
+      if (!generated) return false;
       await this.db!.representative.update({
         where: { id: rep.id },
-        data: { committeesSummary: summary },
+        data: {
+          committeesSummary: generated.summary,
+          committeesSummaryPromptHash: generated.provenance.promptHash,
+          committeesSummaryPromptVersion: generated.provenance.promptVersion,
+          committeesSummaryLlmModel: generated.provenance.llmModel,
+        },
       });
       return true;
     } catch (error) {
@@ -147,20 +152,23 @@ export class CommitteeSummaryGeneratorService extends LlmGeneratorBase {
 
   private async generateSummary(
     rep: RepForSummary,
-  ): Promise<string | undefined> {
+  ): Promise<{ summary: string; provenance: AiOutputProvenance } | undefined> {
     const structuredText = this.formatRepData(rep);
 
-    const { promptText } = await this.promptClient!.getDocumentAnalysisPrompt({
+    const prompt = await this.promptClient!.getDocumentAnalysisPrompt({
       documentType: 'representative-committees-summary',
       text: structuredText,
     });
+    const { promptText } = prompt;
 
     const result = await this.llm!.generate(promptText, {
       maxTokens: this.maxTokens,
       temperature: 0.2,
     });
 
-    return this.parseSummaryFromResponse(result.text);
+    const summary = this.parseSummaryFromResponse(result.text);
+    if (!summary) return undefined;
+    return { summary, provenance: this.outputProvenance(prompt) };
   }
 
   /**

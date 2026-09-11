@@ -7,7 +7,7 @@ import type {
 } from '@opuspopuli/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
-import { LlmGeneratorBase } from './llm-generator.base';
+import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
 
 const VALID_KINDS = new Set<MinutesSummaryClaimKind>([
   'decision',
@@ -144,14 +144,18 @@ export class MinutesSummaryService extends LlmGeneratorBase {
     row: MinutesForSummary,
   ): Promise<boolean> {
     try {
-      const payload = await this.generateOne(row);
-      if (!payload) return false;
+      const generated = await this.generateOne(row);
+      if (!generated) return false;
 
       await this.db!.minutes.update({
         where: { id: row.id },
         data: {
-          summary: payload.summary,
-          summaryClaims: payload.claims as unknown as Prisma.InputJsonValue,
+          summary: generated.payload.summary,
+          summaryClaims: generated.payload
+            .claims as unknown as Prisma.InputJsonValue,
+          summaryPromptHash: generated.provenance.promptHash,
+          summaryPromptVersion: generated.provenance.promptVersion,
+          summaryLlmModel: generated.provenance.llmModel,
         },
       });
       return true;
@@ -165,11 +169,15 @@ export class MinutesSummaryService extends LlmGeneratorBase {
 
   private async generateOne(
     row: MinutesForSummary,
-  ): Promise<MinutesSummaryResult | undefined> {
-    const { promptText } = await this.promptClient!.getDocumentAnalysisPrompt({
+  ): Promise<
+    | { payload: MinutesSummaryResult; provenance: AiOutputProvenance }
+    | undefined
+  > {
+    const prompt = await this.promptClient!.getDocumentAnalysisPrompt({
       documentType: 'minutes-summary',
       text: this.formatMinutes(row),
     });
+    const { promptText } = prompt;
 
     const result = await this.llm!.generate(promptText, {
       maxTokens: this.maxTokens,
@@ -185,7 +193,9 @@ export class MinutesSummaryService extends LlmGeneratorBase {
       );
     }
 
-    return this.parsePayload(result.text, row);
+    const payload = this.parsePayload(result.text, row);
+    if (!payload) return undefined;
+    return { payload, provenance: this.outputProvenance(prompt) };
   }
 
   private formatMinutes(row: MinutesForSummary): string {

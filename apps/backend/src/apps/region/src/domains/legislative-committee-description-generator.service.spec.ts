@@ -31,6 +31,7 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
     });
 
     const mockLlm = {
+      getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
       generate: jest.fn(),
     } as unknown as jest.Mocked<ILLMProvider>;
 
@@ -200,7 +201,12 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
 
       expect(built.db.legislativeCommittee.update).toHaveBeenCalledWith({
         where: { id: 'c1' },
-        data: { description: 'Reviews the state budget.' },
+        data: {
+          description: 'Reviews the state budget.',
+          descriptionPromptHash: 'hash',
+          descriptionPromptVersion: '1.0.0',
+          descriptionLlmModel: 'qwen-test:9b',
+        },
       });
     });
 
@@ -225,7 +231,12 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
 
       expect(built.db.legislativeCommittee.update).toHaveBeenCalledWith({
         where: { id: 'c1' },
-        data: { description: 'Considers fiscal-impact legislation' },
+        data: {
+          description: 'Considers fiscal-impact legislation',
+          descriptionPromptHash: 'hash',
+          descriptionPromptVersion: '1.0.0',
+          descriptionLlmModel: 'qwen-test:9b',
+        },
       });
     });
 
@@ -258,7 +269,12 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
       expect(built.db.legislativeCommittee.update).toHaveBeenCalledTimes(1);
       expect(built.db.legislativeCommittee.update).toHaveBeenCalledWith({
         where: { id: 'c2' },
-        data: { description: 'ok' },
+        data: {
+          description: 'ok',
+          descriptionPromptHash: 'hash',
+          descriptionPromptVersion: '1.0.0',
+          descriptionLlmModel: 'qwen-test:9b',
+        },
       });
     });
   });

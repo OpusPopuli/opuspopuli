@@ -36,6 +36,7 @@ describe('CommitteeSummaryGeneratorService', () => {
     });
 
     const mockLlm = {
+      getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
       generate: jest.fn(),
     } as unknown as jest.Mocked<ILLMProvider>;
 
@@ -134,7 +135,12 @@ describe('CommitteeSummaryGeneratorService', () => {
       expect(built.db.representative.update).toHaveBeenCalledTimes(1);
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-with' },
-        data: { committeesSummary: 'Budget chair.' },
+        data: {
+          committeesSummary: 'Budget chair.',
+          committeesSummaryPromptHash: 'hash',
+          committeesSummaryPromptVersion: '1.0.0',
+          committeesSummaryLlmModel: 'qwen-test:9b',
+        },
       });
     });
 
@@ -292,7 +298,12 @@ describe('CommitteeSummaryGeneratorService', () => {
 
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-1' },
-        data: { committeesSummary: 'Jane chairs Budget.' },
+        data: {
+          committeesSummary: 'Jane chairs Budget.',
+          committeesSummaryPromptHash: 'hash',
+          committeesSummaryPromptVersion: '1.0.0',
+          committeesSummaryLlmModel: 'qwen-test:9b',
+        },
       });
     });
 
@@ -306,7 +317,12 @@ describe('CommitteeSummaryGeneratorService', () => {
 
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-1' },
-        data: { committeesSummary: 'Fenced.' },
+        data: {
+          committeesSummary: 'Fenced.',
+          committeesSummaryPromptHash: 'hash',
+          committeesSummaryPromptVersion: '1.0.0',
+          committeesSummaryLlmModel: 'qwen-test:9b',
+        },
       });
     });
 
@@ -321,7 +337,12 @@ describe('CommitteeSummaryGeneratorService', () => {
 
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-1' },
-        data: { committeesSummary: 'Budget chair, fiscal oversight lead.' },
+        data: {
+          committeesSummary: 'Budget chair, fiscal oversight lead.',
+          committeesSummaryPromptHash: 'hash',
+          committeesSummaryPromptVersion: '1.0.0',
+          committeesSummaryLlmModel: 'qwen-test:9b',
+        },
       });
     });
 
@@ -354,7 +375,12 @@ describe('CommitteeSummaryGeneratorService', () => {
       expect(built.db.representative.update).toHaveBeenCalledTimes(1);
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-2' },
-        data: { committeesSummary: 'ok' },
+        data: {
+          committeesSummary: 'ok',
+          committeesSummaryPromptHash: 'hash',
+          committeesSummaryPromptVersion: '1.0.0',
+          committeesSummaryLlmModel: 'qwen-test:9b',
+        },
       });
     });
   });

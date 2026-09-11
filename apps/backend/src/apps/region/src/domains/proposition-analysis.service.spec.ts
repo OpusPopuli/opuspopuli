@@ -137,6 +137,7 @@ describe('PropositionAnalysisService', () => {
     mockPromptClient.getPromptHash.mockResolvedValue(promptHash);
 
     const mockLlm = {
+      getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
       generate: jest.fn(async () => {
         if (llmThrows) throw llmThrows;
         return {
@@ -313,6 +314,9 @@ describe('PropositionAnalysisService', () => {
       ]);
       expect(update.data.analysisSource).toBe('ai-generated');
       expect(update.data.analysisPromptHash).toBe(PROMPT_HASH);
+      // #1149 — version + model join the hash that shipped first.
+      expect(update.data.analysisPromptVersion).toBe('1.0.0');
+      expect(update.data.analysisLlmModel).toBe('qwen-test:9b');
       expect(update.data.analysisGeneratedAt).toBeInstanceOf(Date);
     });
 

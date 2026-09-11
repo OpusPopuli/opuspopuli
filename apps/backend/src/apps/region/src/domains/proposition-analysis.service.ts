@@ -62,7 +62,12 @@ interface PropForAnalysis {
  * - PROPOSITION_ANALYSIS_MAX_PROPS (default unlimited) — dev cap.
  */
 type GenerateOutcome =
-  | { ok: true; payload: AnalysisPayload; promptHash: string }
+  | {
+      ok: true;
+      payload: AnalysisPayload;
+      promptHash: string;
+      promptVersion: string;
+    }
   | { ok: false; failure: GenerationFailure };
 
 type PersistOutcome =
@@ -289,6 +294,8 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
             .analysisClaims as unknown as Prisma.InputJsonValue,
           analysisSource: 'ai-generated',
           analysisPromptHash: outcome.promptHash,
+          analysisPromptVersion: outcome.promptVersion,
+          analysisLlmModel: this.llm?.getModelName() ?? null,
           analysisGeneratedAt: new Date(),
           // A measure that analyses now is no longer unanalysable. Clearing in
           // the same update is what keeps the column from accumulating stale
@@ -335,7 +342,7 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
   }
 
   private async generateOne(prop: PropForAnalysis): Promise<GenerateOutcome> {
-    const { promptText, promptHash } =
+    const { promptText, promptHash, promptVersion } =
       await this.promptClient!.getDocumentAnalysisPrompt({
         documentType: 'proposition-analysis',
         text: this.formatPropData(prop),
@@ -404,7 +411,7 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
       return { ok: false, failure: { reason: 'no_summary', ...context } };
     }
 
-    return { ok: true, payload, promptHash };
+    return { ok: true, payload, promptHash, promptVersion };
   }
 
   /**

@@ -198,7 +198,7 @@ describe('bill-status-summary merge — integration (#823)', () => {
   };
   let mockLoader: { loadPlugin: jest.Mock };
   let mockPromptClient: ReturnType<typeof buildPromptClientStub>;
-  let mockLlm: { generate: jest.Mock };
+  let mockLlm: { generate: jest.Mock; getModelName: jest.Mock };
 
   beforeAll(async () => {
     db = await getDbService();
@@ -219,7 +219,14 @@ describe('bill-status-summary merge — integration (#823)', () => {
     };
     mockLoader = { loadPlugin: jest.fn().mockResolvedValue(plugin) };
     mockPromptClient = buildPromptClientStub();
-    mockLlm = { generate: jest.fn() };
+    mockLlm = {
+      generate: jest.fn(),
+      // #1149: writeStatusSummary reads the model for the attribution
+      // triple; a mock without it throws inside the enrichment catch and
+      // reports failed:1 with no visible error — exactly how this mock
+      // gap was found.
+      getModelName: jest.fn().mockReturnValue('qwen-it:9b'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -397,6 +404,10 @@ describe('bill-status-summary merge — integration (#823)', () => {
       stakeholderImpact: 'Homeowners benefit.',
     });
     expect(row.aiSummaryVersion).toBe('v1');
+    // #1149 — the attribution triple lands on the real row.
+    expect(row.aiSummaryPromptVersion).toBe('v1');
+    expect(row.aiSummaryPromptHash).toBe('h');
+    expect(row.aiSummaryLlmModel).toBe('qwen-it:9b');
   });
 
   it('persists the { skip: true } sentinel without touching status / stage / lastActionDate', async () => {
