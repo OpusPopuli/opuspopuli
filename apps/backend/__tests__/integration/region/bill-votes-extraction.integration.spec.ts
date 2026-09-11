@@ -99,7 +99,7 @@ describe('votes_only extraction — integration (#889)', () => {
   let service: RegionSyncService;
   let db: DbService;
   let mockPromptClient: { getBillVotesExtractionPrompt: jest.Mock };
-  let mockLlm: { generate: jest.Mock };
+  let mockLlm: { getModelName: jest.Mock; generate: jest.Mock };
   let fetchSpy: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -129,6 +129,7 @@ describe('votes_only extraction — integration (#889)', () => {
       }),
     };
     mockLlm = {
+      getModelName: jest.fn().mockReturnValue('qwen-it:9b'),
       generate: jest.fn().mockResolvedValue({ text: ROLL_CALL_JSON }),
     };
 
