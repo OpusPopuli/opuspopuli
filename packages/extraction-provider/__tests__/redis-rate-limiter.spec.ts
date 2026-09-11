@@ -90,13 +90,26 @@ describe("RedisRateLimiter (Unit)", () => {
         .mockResolvedValueOnce([0, 100]) // No tokens, wait 100ms
         .mockResolvedValueOnce([4, 0]); // Tokens available after wait
 
-      const startTime = Date.now();
-      await limiter.acquire();
-      const elapsed = Date.now() - startTime;
+      // Assert the CONTRACT (it waited the interval Redis asked for, then
+      // retried), not the wall clock. The previous version measured
+      // `Date.now()` around a real `setTimeout(100)` and required
+      // `elapsed >= 100` — but a Node timer can fire a fraction of a
+      // millisecond early relative to `Date.now()`, and under a loaded
+      // parallel test run it does. That made this the flakiest test in the
+      // repo, failing PRs that touch nothing in this package.
+      const sleepSpy = jest
+        .spyOn(
+          limiter as unknown as { sleep: (ms: number) => Promise<void> },
+          "sleep",
+        )
+        .mockResolvedValue(undefined);
 
-      expect(elapsed).toBeGreaterThanOrEqual(100);
+      await limiter.acquire();
+
+      expect(sleepSpy).toHaveBeenCalledWith(100);
       expect(mockRedisInstance.tokenBucket).toHaveBeenCalledTimes(2);
-    }, 10000);
+      sleepSpy.mockRestore();
+    });
 
     it("should allow request on Redis error (fail open)", async () => {
       mockRedisInstance.tokenBucket.mockRejectedValueOnce(
