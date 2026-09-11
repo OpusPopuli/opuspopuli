@@ -27,7 +27,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { extractFieldString, extractJsonObjectSlice } from '@opuspopuli/common';
 import { readPositiveInt } from './config-helpers';
-import { LlmGeneratorBase } from './llm-generator.base';
+import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
 
 /** Structured shape we feed the prompt. */
 interface ActivityBundle {
@@ -129,16 +129,12 @@ export class EntityActivitySummaryGeneratorService extends LlmGeneratorBase {
           windowDays,
         );
         if (bundle.recentActions.length === 0) continue;
-        const summary = await this.runPrompt(bundle);
-        if (!summary) continue;
+        const generated = await this.runPrompt(bundle);
+        if (!generated) continue;
 
         await this.db.representative.update({
           where: { id: rep.id },
-          data: {
-            activitySummary: summary,
-            activitySummaryGeneratedAt: new Date(),
-            activitySummaryWindowDays: windowDays,
-          },
+          data: this.activitySummaryData(generated, windowDays),
         });
         updated += 1;
         this.logger.log(
@@ -177,16 +173,12 @@ export class EntityActivitySummaryGeneratorService extends LlmGeneratorBase {
           windowDays,
         );
         if (bundle.recentActions.length === 0) continue;
-        const summary = await this.runPrompt(bundle);
-        if (!summary) continue;
+        const generated = await this.runPrompt(bundle);
+        if (!generated) continue;
 
         await this.db.legislativeCommittee.update({
           where: { id: cmt.id },
-          data: {
-            activitySummary: summary,
-            activitySummaryGeneratedAt: new Date(),
-            activitySummaryWindowDays: windowDays,
-          },
+          data: this.activitySummaryData(generated, windowDays),
         });
         updated += 1;
         this.logger.log(
@@ -266,7 +258,28 @@ export class EntityActivitySummaryGeneratorService extends LlmGeneratorBase {
     };
   }
 
-  private async runPrompt(bundle: ActivityBundle): Promise<string | undefined> {
+  /**
+   * The write payload both entity kinds share — one place so the
+   * provenance triple (#1149) cannot drift between the rep and committee
+   * paths, and so the CPD gate has nothing to find.
+   */
+  private activitySummaryData(
+    generated: { summary: string; provenance: AiOutputProvenance },
+    windowDays: number,
+  ) {
+    return {
+      activitySummary: generated.summary,
+      activitySummaryGeneratedAt: new Date(),
+      activitySummaryWindowDays: windowDays,
+      activitySummaryPromptHash: generated.provenance.promptHash,
+      activitySummaryPromptVersion: generated.provenance.promptVersion,
+      activitySummaryLlmModel: generated.provenance.llmModel,
+    };
+  }
+
+  private async runPrompt(
+    bundle: ActivityBundle,
+  ): Promise<{ summary: string; provenance: AiOutputProvenance } | undefined> {
     if (!this.promptClient || !this.llm) return undefined;
     const documentType =
       bundle.entityType === 'representative'
@@ -274,15 +287,18 @@ export class EntityActivitySummaryGeneratorService extends LlmGeneratorBase {
         : 'committee-activity-summary';
 
     const text = this.formatBundle(bundle);
-    const { promptText } = await this.promptClient.getDocumentAnalysisPrompt({
+    const prompt = await this.promptClient.getDocumentAnalysisPrompt({
       documentType,
       text,
     });
+    const { promptText } = prompt;
     const result = await this.llm.generate(promptText, {
       maxTokens: this.maxTokens,
       temperature: 0.2,
     });
-    return this.parseSummary(result.text);
+    const summary = this.parseSummary(result.text);
+    if (!summary) return undefined;
+    return { summary, provenance: this.outputProvenance(prompt) };
   }
 
   /**

@@ -1787,7 +1787,7 @@ export class RegionSyncService implements OnModuleDestroy {
         await this.fetchUrlText(bill.fullTextUrl),
       );
 
-      const { promptText, promptVersion } =
+      const { promptText, promptVersion, promptHash } =
         await this.promptClient!.getBillStatusSummaryPrompt({
           regionId: bill.regionId,
           billNumber: bill.billNumber,
@@ -1821,7 +1821,7 @@ export class RegionSyncService implements OnModuleDestroy {
       await this.writeStatusSummary(
         bill,
         parsed,
-        promptVersion,
+        { promptVersion, promptHash },
         stagePatterns,
         stageIdSet,
       );
@@ -1892,17 +1892,28 @@ export class RegionSyncService implements OnModuleDestroy {
   private async writeStatusSummary(
     bill: BillEnrichmentCandidate,
     parsed: BillStatusSummaryShape,
-    promptVersion: string,
+    prompt: { promptVersion: string; promptHash: string },
     stagePatterns: StagePattern[],
     stageIdSet: Set<string>,
   ): Promise<void> {
+    // #1149 — the attribution triple, on the skip sentinel too: "this
+    // prompt+model decided to skip" is a provenance fact like any other.
+    // `aiSummaryVersion` predates `aiSummaryPromptVersion` and stays
+    // written for existing consumers; the prompt_* columns are the
+    // CivicsBlock-convention set.
+    const provenance = {
+      aiSummaryVersion: prompt.promptVersion,
+      aiSummaryPromptVersion: prompt.promptVersion,
+      aiSummaryPromptHash: prompt.promptHash,
+      aiSummaryLlmModel: this.llm?.getModelName() ?? null,
+      aiSummaryGeneratedAt: new Date(),
+    };
     if (parsed.skip === true) {
       await this.db.bill.update({
         where: { id: bill.id },
         data: {
           aiSummary: { skip: true } as Prisma.InputJsonValue,
-          aiSummaryVersion: promptVersion,
-          aiSummaryGeneratedAt: new Date(),
+          ...provenance,
         },
       });
       return;
@@ -1923,8 +1934,7 @@ export class RegionSyncService implements OnModuleDestroy {
       where: { id: bill.id },
       data: {
         aiSummary: summary as Prisma.InputJsonValue,
-        aiSummaryVersion: promptVersion,
-        aiSummaryGeneratedAt: new Date(),
+        ...provenance,
         ...(status.raw ? { status: status.raw } : {}),
         // status.lastActionSnippet is the LLM's fresh read of the most
         // recent history entry; writing it keeps bills.lastAction in sync

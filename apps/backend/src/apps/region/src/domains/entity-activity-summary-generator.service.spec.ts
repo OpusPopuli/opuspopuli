@@ -58,6 +58,7 @@ describe('EntityActivitySummaryGeneratorService', () => {
     });
 
     const mockLlm = {
+      getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
       generate: jest.fn().mockResolvedValue({ text: llmText, tokensUsed: 100 }),
     } as unknown as jest.Mocked<ILLMProvider>;
 
@@ -176,6 +177,10 @@ describe('EntityActivitySummaryGeneratorService', () => {
           activitySummary:
             'Bauer-Kahan attended hearings and authored amendments.',
           activitySummaryWindowDays: 90,
+          // #1149
+          activitySummaryPromptHash: 'hash',
+          activitySummaryPromptVersion: '1.0.0',
+          activitySummaryLlmModel: 'qwen-test:9b',
         }),
       }),
     );
@@ -209,6 +214,10 @@ describe('EntityActivitySummaryGeneratorService', () => {
         where: { id: 'cmt-1' },
         data: expect.objectContaining({
           activitySummary: 'Public Safety processed several bills this week.',
+          // #1149
+          activitySummaryPromptHash: 'hash',
+          activitySummaryPromptVersion: '1.0.0',
+          activitySummaryLlmModel: 'qwen-test:9b',
         }),
       }),
     );

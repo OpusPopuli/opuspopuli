@@ -51,6 +51,7 @@ function build(opts: { llmText?: string; findUnique?: unknown } = {}): Mocks {
   } as unknown as PromptClientService;
 
   const llm = {
+    getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
     generate: jest.fn(async () => ({ text: llmText })),
   } as unknown as ILLMProvider & { generate: jest.Mock };
 
@@ -89,6 +90,10 @@ describe('MinutesSummaryService', () => {
     expect(data.summary).toBe(
       'The Assembly advanced AB 1234 out of committee.',
     );
+    // #1149 — the attribution triple rides the same write.
+    expect(data.summaryPromptHash).toBe('h');
+    expect(data.summaryPromptVersion).toBe('v1');
+    expect(data.summaryLlmModel).toBe('qwen-test:9b');
     // 3 claims in, 2 invalid dropped → only the decision survives
     expect(data.summaryClaims).toHaveLength(1);
     expect(data.summaryClaims[0]).toMatchObject({
