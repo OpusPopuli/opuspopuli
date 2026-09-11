@@ -12,6 +12,7 @@ import {
   setupAuthSession,
   checkAccessibility,
   viewports,
+  MOBILE_PROJECTS,
 } from "./utils/test-helpers";
 
 async function setupAuthed(page: Page) {
@@ -23,8 +24,6 @@ async function setupAuthed(page: Page) {
 // being hidden under `md` — each one says so, and each is covered by
 // Header unit tests. (This block used to cite #766; that was the
 // settings-shell sidebar overlap, which is fixed and closed.)
-const MOBILE_PROJECTS = ["mobile-chrome", "mobile-safari"];
-
 test.describe("Civic briefing page", () => {
   test("authenticated user lands on the page with greeting + four sections", async ({
     page,
