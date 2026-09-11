@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "kind": "retrieval",
+  "corpus": "propositions",
+  "corpusField": "title + '\\n\\n' + summary",
+  "description": "Retrieval gold set over the California proposition corpus. Each item is a plausible citizen query with the measure(s) that should rank first. Gold is a SET: several filings are genuine duplicates of one another (same initiative filed twice, or three near-identical revenue measures), so any member ranking first is correct.",
+  "provenance": {
+    "authored": "2026-09-11",
+    "authoredAgainst": "64 propositions, pre-#1219 summaries",
+    "caveat": "Queries and gold labels were authored by the same session that first ran them, so absolute scores are soft. Comparisons between models over the identical item set are the sound use. See README."
+  },
+  "items": [
+    {
+      "id": "ret-en-001",
+      "lang": "en",
+      "query": "teaching climate and sustainability in schools",
+      "gold": ["25-0001"],
+      "difficulty": "direct"
+    },
+    {
+      "id": "ret-en-002",
+      "lang": "en",
+      "query": "my insurance denied treatment my doctor said I need",
+      "gold": ["25-0002A1"],
+      "difficulty": "oblique",
+      "notes": "Colloquial phrasing; the measure's title is 'RESTRICTS INSURANCE DENIALS FOR PHYSICIAN-RECOMMENDED MEDICAL CARE'."
+    },
+    {
+      "id": "ret-en-003",
+      "lang": "en",
+      "query": "ethnic studies requirement to graduate from CSU",
+      "gold": ["25-0003"],
+      "difficulty": "direct"
+    },
+    {
+      "id": "ret-en-004",
+      "lang": "en",
+      "query": "voter ID and proof of citizenship to vote",
+      "gold": ["25-0007A1"],
+      "difficulty": "direct"
+    },
+    {
+      "id": "ret-en-005",
+      "lang": "en",
+      "query": "health clinics must spend most money on patient care",
+      "gold": ["25-0008A1"],
+      "difficulty": "oblique"
+    },
+    {
+      "id": "ret-en-006",
+      "lang": "en",
+      "query": "cap on hospital executive pay",
+      "gold": ["25-0009A1"],
+      "difficulty": "oblique"
+    },
+    {
+      "id": "ret-en-007",
+      "lang": "en",
+      "query": "protecting boycotts supporting Palestinian rights",
+      "gold": ["25-0011"],
+      "difficulty": "direct"
+    },
+    {
+      "id": "ret-en-008",
+      "lang": "en",
+      "query": "make it harder for cities to raise local taxes",
+      "gold": ["25-0004A1", "25-0005A1", "25-0006A1"],
+      "difficulty": "ambiguous",
+      "notes": "Three filings share an identical title. 25-0004A1 and 25-0005A1 are BYTE-IDENTICAL in title+summary and therefore produce identical vectors — no encoder can separate them. Any of the three ranking first is correct. See #1219."
+    },
+    {
+      "id": "ret-en-009",
+      "lang": "en",
+      "query": "should california secede from the united states",
+      "gold": ["24-0001A2", "25-0010"],
+      "difficulty": "ambiguous",
+      "notes": "Same initiative filed twice under different ids."
+    },
+    {
+      "id": "ret-en-010",
+      "lang": "en",
+      "query": "nonprofit clinic overhead spending limits",
+      "gold": ["25-0008A1"],
+      "difficulty": "oblique"
+    },
+    {
+      "id": "ret-en-011",
+      "lang": "en",
+      "query": "salaries of executives running hospitals",
+      "gold": ["25-0009A1"],
+      "difficulty": "oblique"
+    },
+    {
+      "id": "ret-en-012",
+      "lang": "en",
+      "query": "school curriculum about protecting the environment",
+      "gold": ["25-0001"],
+      "difficulty": "oblique"
+    },
+    {
+      "id": "ret-en-013",
+      "lang": "en",
+      "query": "proving you are a citizen before casting a ballot",
+      "gold": ["25-0007A1"],
+      "difficulty": "oblique"
+    },
+    {
+      "id": "ret-en-014",
+      "lang": "en",
+      "query": "denial of medically necessary procedures by insurers",
+      "gold": ["25-0002A1"],
+      "difficulty": "oblique"
+    },
+    {
+      "id": "ret-es-001",
+      "lang": "es",
+      "query": "enseñanza sobre el clima y la sostenibilidad en las escuelas",
+      "gold": ["25-0001"],
+      "difficulty": "cross-lingual",
+      "notes": "Spanish query against an English corpus. MiniLM-L6-v2 is English-only and cannot serve these; this is the ES-parity gate the nomic decision rests on."
+    },
+    {
+      "id": "ret-es-002",
+      "lang": "es",
+      "query": "mi seguro médico negó el tratamiento que recomendó mi doctor",
+      "gold": ["25-0002A1"],
+      "difficulty": "cross-lingual"
+    },
+    {
+      "id": "ret-es-003",
+      "lang": "es",
+      "query": "requisito de estudios étnicos para graduarse de la universidad",
+      "gold": ["25-0003"],
+      "difficulty": "cross-lingual"
+    },
+    {
+      "id": "ret-es-004",
+      "lang": "es",
+      "query": "identificación del votante y prueba de ciudadanía para votar",
+      "gold": ["25-0007A1"],
+      "difficulty": "cross-lingual"
+    },
+    {
+      "id": "ret-es-005",
+      "lang": "es",
+      "query": "las clínicas deben gastar la mayor parte en servicios al paciente",
+      "gold": ["25-0008A1"],
+      "difficulty": "cross-lingual"
+    },
+    {
+      "id": "ret-es-006",
+      "lang": "es",
+      "query": "límite a los sueldos de los ejecutivos de hospitales",
+      "gold": ["25-0009A1"],
+      "difficulty": "cross-lingual"
+    },
+    {
+      "id": "ret-es-007",
+      "lang": "es",
+      "query": "si California debería independizarse de Estados Unidos",
+      "gold": ["24-0001A2", "25-0010"],
+      "difficulty": "cross-lingual"
+    },
+    {
+      "id": "ret-es-008",
+      "lang": "es",
+      "query": "proteger los boicots en apoyo a los derechos palestinos",
+      "gold": ["25-0011"],
+      "difficulty": "cross-lingual"
+    }
+  ]
+}
