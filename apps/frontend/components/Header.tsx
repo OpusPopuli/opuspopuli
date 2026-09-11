@@ -152,9 +152,14 @@ export function Header() {
 
   return (
     // Sticky so account state and the way back are always one glance away.
-    // bg-surface/85 + blur keeps the paper reading through it rather than
-    // stamping an opaque bar across the page.
-    <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-md supports-[backdrop-filter]:bg-surface/75">
+    //
+    // Opaque, not the frosted bg-surface/85 + backdrop-blur this used to be.
+    // A translucent bar has no fixed background colour: its effective one is
+    // whatever happens to be scrolled behind it, so no foreground token can
+    // be guaranteed to clear 4.5:1. See #1213, where the same treatment on
+    // the region breadcrumb bar put a link at 3.78:1 whenever a dark element
+    // passed underneath.
+    <header className="sticky top-0 z-40 border-b border-line bg-surface">
       <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
         <Link
           // prefetch-ok: the masthead, one per page, to a static route

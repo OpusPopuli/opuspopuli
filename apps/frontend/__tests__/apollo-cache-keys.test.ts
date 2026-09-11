@@ -12,6 +12,28 @@ import {
  * cache-first by default, so a persisted cache that outlives its owner is
  * rendered to whoever signs in next, from disk, before any network request.
  */
+describe("cache key versioning invariants (#1216)", () => {
+  it("the live key is never in the legacy purge list", () => {
+    // If it were, boot would purge the active cache on every load —
+    // persistence silently off, no error anywhere.
+    expect(LEGACY_APOLLO_CACHE_KEYS).not.toContain(APOLLO_CACHE_KEY);
+  });
+
+  it("every superseded key version is in the legacy purge list", () => {
+    // The v1.12.0 incident (#1216): the key was not bumped across a
+    // breaking GraphQL-document change. This cannot catch a forgotten
+    // bump, but it does catch the sibling mistake — bumping the key and
+    // forgetting to add the previous version to the purge list, which
+    // strands the old blob (with profile data in it) on disk forever.
+    const version = Number(/-v(\d+)$/.exec(APOLLO_CACHE_KEY)?.[1]);
+    expect(version).toBeGreaterThanOrEqual(3);
+    expect(LEGACY_APOLLO_CACHE_KEYS).toContain("apollo-cache-persist");
+    for (let v = 2; v < version; v++) {
+      expect(LEGACY_APOLLO_CACHE_KEYS).toContain(`apollo-cache-persist-v${v}`);
+    }
+  });
+});
+
 describe("purgePersistedCache", () => {
   beforeEach(() => {
     localStorage.clear();
