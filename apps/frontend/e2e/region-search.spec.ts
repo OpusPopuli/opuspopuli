@@ -6,6 +6,7 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { MOBILE_PROJECTS } from "./utils/test-helpers";
 
 const SNIP = (s: string) => `⟪${s}⟫`;
 
@@ -119,7 +120,11 @@ async function mockSearchGraphQL(page: import("@playwright/test").Page) {
 test.describe("Region search (#1154)", () => {
   test("header typeahead shows sections and navigates to a suggestion", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      MOBILE_PROJECTS.includes(testInfo.project.name),
+      "Header typeahead is desktop-only (Header.tsx renders it inside `hidden md:flex`); the < md path is covered by the mobile menu test",
+    );
     await mockSearchGraphQL(page);
     await page.goto("/region");
 
@@ -139,7 +144,11 @@ test.describe("Region search (#1154)", () => {
 
   test("Enter routes to the results page with the query in the URL", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      MOBILE_PROJECTS.includes(testInfo.project.name),
+      "Header typeahead is desktop-only (Header.tsx renders it inside `hidden md:flex`); the < md path is covered by the mobile menu test",
+    );
     await mockSearchGraphQL(page);
     await page.goto("/region");
 
@@ -148,6 +157,33 @@ test.describe("Region search (#1154)", () => {
     await input.press("Enter");
 
     await expect(page).toHaveURL(/\/region\/search\?q=wildfire/);
+    await expect(
+      page.getByRole("heading", { name: /Search|Buscar/ }),
+    ).toBeVisible();
+  });
+
+  test("mobile: the collapsed menu links straight to the results page", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      !MOBILE_PROJECTS.includes(testInfo.project.name),
+      "Covers the < md path only; at md and above the Header renders the typeahead instead",
+    );
+    await mockSearchGraphQL(page);
+    await page.goto("/region");
+
+    // Below `md` the typeahead is not rendered at all — this is the
+    // affordance mobile readers actually get, and nothing covered it
+    // before: the three tests above silently assumed a desktop viewport
+    // and timed out here for two releases (#1154).
+    await expect(page.getByRole("combobox")).toHaveCount(0);
+
+    await page.getByRole("button", { name: /open menu/i }).click();
+    const menu = page.locator("#mobile-menu");
+    await expect(menu).toBeVisible();
+    await menu.getByRole("link", { name: /^search$/i }).click();
+
+    await expect(page).toHaveURL(/\/region\/search/);
     await expect(
       page.getByRole("heading", { name: /Search|Buscar/ }),
     ).toBeVisible();
@@ -261,7 +297,11 @@ test.describe("Region search — review regressions (#1154)", () => {
 
   test("a header search run from the results page is not reverted by the stale input", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      MOBILE_PROJECTS.includes(testInfo.project.name),
+      "Header typeahead is desktop-only (Header.tsx renders it inside `hidden md:flex`); the < md path is covered by the mobile menu test",
+    );
     await mockEcho(page);
     await page.goto("/region/search?q=taxes");
     await expect(page.getByText("Result for taxes")).toBeVisible();

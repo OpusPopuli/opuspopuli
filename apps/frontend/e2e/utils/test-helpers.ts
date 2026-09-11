@@ -232,6 +232,17 @@ export const viewports = {
 } as const;
 
 /**
+ * Playwright projects whose viewport sits below Tailwind's `md` (768px).
+ *
+ * The Header renders its desktop nav — and with it `HeaderSearch`, the only
+ * `role="combobox"` in the app — inside `hidden md:flex`. Below that
+ * breakpoint the nav collapses to a hamburger, so a spec that drives the
+ * header typeahead has to skip these projects or it waits the full 30s
+ * auto-wait for an element that is absent by design.
+ */
+export const MOBILE_PROJECTS = ["mobile-chrome", "mobile-safari"];
+
+/**
  * Test responsive layout at different viewports
  */
 export async function testResponsive(
